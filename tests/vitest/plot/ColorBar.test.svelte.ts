@@ -438,36 +438,59 @@ describe(`ColorBar Interactive Selects`, () => {
     },
   )
 
-  test(`property selection reports intent and loading without mutating caller data`, async () => {
-    const state = $state({
-      selected_property_key: `energy`,
-      range: [0, 10] as Vec2,
-      loading: false,
-    })
-    const on_property_change = vi.fn()
-    mount_bar(bind_props({ property_options, on_property_change }, state))
-    await tick()
-    const trigger = doc_query<HTMLButtonElement>(`.property-select`)
-    trigger.click()
-    await tick()
-    const volume_option = [
-      ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
-    ].find((option) => option.textContent?.includes(`Volume`))
-    if (!volume_option) throw new Error(`Missing volume option`)
-    volume_option.click()
-    await tick()
-    expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
-    expect(trigger.textContent).toContain(`Energy`)
-    expect(state.range).toEqual([0, 10])
-    state.loading = true
-    await tick()
-    expect(trigger.disabled).toBe(true)
-    Object.assign(state, { selected_property_key: `volume`, range: [10, 20], loading: false })
-    await tick()
-    expect(trigger.disabled).toBe(false)
-    expect(trigger.textContent).toContain(`Volume`)
-    expect(tick_texts()).toContain(`20`)
-  })
+  test.each([undefined, { Public: `#123456`, Partial: `#abcdef` }])(
+    `property selection reports intent and loading with categories=%j`,
+    async (categories) => {
+      const state = $state({
+        selected_property_key: `energy`,
+        range: [0, 10] as Vec2,
+        loading: false,
+        show_scale: true,
+      })
+      const on_property_change = vi.fn()
+      mount_bar(bind_props({ property_options, on_property_change, categories }, state))
+      await tick()
+      const trigger = doc_query<HTMLButtonElement>(`.property-select`)
+      trigger.click()
+      await tick()
+      const volume_option = [
+        ...document.querySelectorAll<HTMLButtonElement>(`[role="option"]`),
+      ].find((option) => option.textContent?.includes(`Volume`))
+      if (!volume_option) throw new Error(`Missing volume option`)
+      volume_option.click()
+      await tick()
+      expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
+      expect(trigger.textContent).toContain(`Energy`)
+      expect(state.range).toEqual([0, 10])
+      state.loading = true
+      await tick()
+      expect(trigger.disabled).toBe(true)
+      Object.assign(state, {
+        selected_property_key: `volume`,
+        range: [10, 20],
+        loading: false,
+      })
+      await tick()
+      expect(trigger.disabled).toBe(false)
+      expect(trigger.textContent).toContain(`Volume`)
+      if (categories) {
+        expect(document.querySelector(`.colorbar .bar`)).toBeNull()
+        const swatches = [...document.querySelectorAll<HTMLElement>(`.category-legend > span`)]
+        expect(swatches.map((node) => node.textContent?.trim())).toEqual([
+          `● Public`,
+          `● Partial`,
+        ])
+        expect(swatches.map((node) => node.querySelector(`span`)?.style.color)).toEqual([
+          `#123456`,
+          `#abcdef`,
+        ])
+      } else expect(tick_texts()).toContain(`20`)
+      state.show_scale = false
+      await tick()
+      expect(document.querySelector(`.colorbar .bar, .category-legend`)).toBeNull()
+      expect(trigger.isConnected).toBe(true)
+    },
+  )
 
   test.each([false, true])(
     `palette selection waits for the caller to commit (function scale: %s)`,

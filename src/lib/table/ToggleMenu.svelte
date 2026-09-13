@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon, Popover } from 'svelte-widgets'
   import { Columns, Reset } from 'svelte-widgets/icons'
-  import { portal, click_outside, tooltip } from 'svelte-widgets/attachments'
+  import { portal, float, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import type { Column } from '$lib/table'
   import { strip_html } from '$lib/utils'
@@ -9,10 +9,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { slide } from 'svelte/transition'
 
-  type MenuColumn = Omit<Column, `cell`>
-
   // Hosts with external visibility state can keep the declared reset baseline separate.
-  type ToggleColumn = MenuColumn & { default_visible?: boolean }
+  type MenuColumn = Omit<Column, `cell`> & { default_visible?: boolean }
 
   let {
     columns = $bindable([]),
@@ -21,17 +19,17 @@
     on_toggle,
     trigger,
   }: {
-    columns: ToggleColumn[]
+    columns: MenuColumn[]
     column_panel_open?: boolean
     collapsed_sections?: string[]
     // Every visibility change, resets included, for hosts that track it outside
     // `col.visible` (HeatmapTable keeps an id list)
-    on_toggle?: (col: ToggleColumn, visible: boolean) => void
+    on_toggle?: (col: MenuColumn, visible: boolean) => void
     // Replaces the default "Columns" button. The summary keeps owning the click.
     trigger?: Snippet<[{ open: boolean }]>
   } = $props()
 
-  const default_visible = (col: ToggleColumn): boolean =>
+  const default_visible = (col: MenuColumn): boolean =>
     col.default_visible ?? col.visible !== false
   const toggle_menu_id = $props.id()
   const dropdown_selector = `[data-toggle-menu-id="${toggle_menu_id}"]`
@@ -70,7 +68,13 @@
     }
     return snapshot.defaults
   })
-  const keep_snapshot = () => (snapshot.signature = default_signature())
+  // Refresh objects too: hosts may supply unproxied columns from a $derived.
+  function publish_visibility(changed: MenuColumn[]): void {
+    const updated = new Map(changed.map((col) => [col.id, { ...col }]))
+    columns = columns.map((col) => updated.get(col.id) ?? col)
+    snapshot.signature = default_signature()
+    for (const col of changed) on_toggle?.(col, col.visible !== false)
+  }
 
   // Check if a column's visibility differs from its default
   const is_changed = (col: MenuColumn) =>
@@ -86,9 +90,7 @@
     const defaults = default_visibility
     for (const col of changed) col.visible = defaults.get(col.id) ?? true
     // Record our write before notifying a host that may feed new columns back in.
-    keep_snapshot()
-    columns = [...columns]
-    for (const col of changed) on_toggle?.(col, col.visible !== false)
+    publish_visibility(changed)
   }
 
   // Keep first-occurrence group order, with ungrouped columns last, even when filtering.
@@ -114,16 +116,6 @@
       : [...collapsed_sections, name]
   }
 
-  function toggle_column_visibility(
-    col: MenuColumn,
-    event: Event & { currentTarget: HTMLInputElement },
-  ) {
-    col.visible = event.currentTarget.checked
-    keep_snapshot()
-    columns = [...columns] // trigger reactivity on parent binding
-    on_toggle?.(col, event.currentTarget.checked)
-  }
-
   // Prefer two tall columns, adding a third only when the item count would make them unwieldy
   const grid_template = (item_count: number): string => {
     const preferred = item_count <= 1 ? 1 : Math.max(2, Math.ceil(item_count / MAX_MENU_ROWS))
@@ -132,44 +124,7 @@
 
   // Portal the dropdown to <body> so ancestor overflow/stacking contexts cannot clip it.
   const dropdown_target = typeof document === `undefined` ? undefined : document.body
-  let details_el = $state<HTMLElement>()
-  let dropdown_el = $state<HTMLElement>()
-  const position_dropdown = (): void => {
-    const summary_el = details_el?.querySelector(`summary`)
-    if (!column_panel_open || !summary_el || !dropdown_el) return
-    const trigger_rect = summary_el.getBoundingClientRect()
-    const dropdown_rect = dropdown_el.getBoundingClientRect()
-    const viewport_padding = 8
-    const gap = 4
-    const max_left = Math.max(
-      viewport_padding,
-      globalThis.innerWidth - dropdown_rect.width - viewport_padding,
-    )
-    const left = Math.min(
-      Math.max(viewport_padding, trigger_rect.right - dropdown_rect.width),
-      max_left,
-    )
-    const below = trigger_rect.bottom + gap
-    const top =
-      below + dropdown_rect.height <= globalThis.innerHeight - viewport_padding
-        ? below
-        : Math.max(viewport_padding, trigger_rect.top - dropdown_rect.height - gap)
-    Object.assign(dropdown_el.style, {
-      left: `${left}px`,
-      right: `auto`,
-      top: `${top}px`,
-      visibility: `visible`,
-    })
-  }
-  $effect(() => {
-    if (!column_panel_open || !details_el || !dropdown_el) return
-    // Re-run when section state changes while open
-    void collapsed_sections
-    void filtered_columns
-    void filtered_sections
-    const frame = requestAnimationFrame(position_dropdown)
-    return () => cancelAnimationFrame(frame)
-  })
+  let trigger_el = $state<HTMLElement>()
 </script>
 
 {#snippet toggle_item(col: MenuColumn)}
@@ -179,7 +134,10 @@
         type="checkbox"
         checked={col.visible !== false}
         disabled={col.disabled}
-        onchange={(event) => toggle_column_visibility(col, event)}
+        onchange={(event) => {
+          col.visible = event.currentTarget.checked
+          publish_visibility([col])
+        }}
       />
       {@html sanitize_html(col.label)}
     </label>
@@ -205,7 +163,6 @@
 
 <details
   class="column-toggles"
-  bind:this={details_el}
   open={column_panel_open}
   {@attach click_outside({
     enabled: column_panel_open,
@@ -214,6 +171,7 @@
   })}
 >
   <summary
+    bind:this={trigger_el}
     class:custom={Boolean(trigger)}
     aria-expanded={column_panel_open}
     aria-label={trigger ? `Columns` : undefined}
@@ -245,7 +203,6 @@
   </summary>
 
   <div
-    bind:this={dropdown_el}
     class={has_sections ? `sections-container` : `column-menu`}
     data-toggle-menu-id={toggle_menu_id}
     hidden={!column_panel_open}
@@ -254,6 +211,15 @@
       ? undefined
       : grid_template(filtered_columns.length)}
     {@attach portal(dropdown_target)}
+    {@attach float({
+      anchor: trigger_el,
+      enabled: column_panel_open,
+      placement: `bottom`,
+      align: `end`,
+      flip: [`bottom`, `top`],
+      offset: 4,
+      padding: 8,
+    })}
   >
     {#if show_column_filter}
       <input
@@ -346,10 +312,6 @@
   .column-menu,
   .sections-container {
     font-size: var(--tgl-font-size, 1.1em);
-    position: fixed;
-    left: 0;
-    top: 0;
-    visibility: hidden;
     box-sizing: border-box;
     width: max-content;
     background: var(--tgl-dropdown-bg, var(--page-bg));

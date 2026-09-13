@@ -86,6 +86,8 @@
     Search as SearchIcon,
   } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
+  import { flip } from 'svelte/animate'
+  import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -114,6 +116,7 @@
     pagination = false,
     virtual = false,
     row_key,
+    row_animation_ms = 0,
     selected_ids = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
@@ -170,6 +173,8 @@
     virtual?: VirtualScroll
     // Required for selection; identifies rows across sorting and data replacement.
     row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
+    // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
+    row_animation_ms?: number
     selected_ids?: RowId[]
     // Column IDs hidden through the column toggle. Bindable for persistence.
     hidden_columns?: string[]
@@ -1715,6 +1720,9 @@
           {@const abs_idx = display_range.start + row_idx}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
+            animate:flip={{
+              duration: reduced_motion.current || virtual_config ? 0 : row_animation_ms,
+            }}
             style={row.style}
             class={[row.class, { selected: row_selected }]}
             data-row-idx={abs_idx}

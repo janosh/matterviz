@@ -232,8 +232,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 
   // Sync ranges from axis.range overrides and auto ranges. resolve_axis_ranges returns
   // null for transient non-finite bounds (skip: writing NaN breaks scales and, since
-  // NaN !== NaN, loops the effect).
+  // NaN !== NaN, loops the effect). Run before rendering so new data is never culled
+  // against stale ranges, which would remount markers and discard their active tweens.
+  // Some callers initialize auto ranges after creating the frame.
+  let initialized = $state(false)
   $effect(() => {
+    initialized = true
+  })
+  $effect.pre(() => {
+    if (!initialized) return
     const sources = opts.range_sources?.() ?? opts.axes()
     const next = resolve_axis_ranges(sources, opts.auto_ranges())
     if (!next) return

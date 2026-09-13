@@ -37,6 +37,8 @@
 
   let {
     title,
+    categories,
+    show_scale = true,
     scale,
     bar_style,
     title_style,
@@ -62,6 +64,10 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string
+    // Discrete label → color swatches replace the continuous gradient and ticks.
+    categories?: Record<string, string>
+    // Keep property selection available when the plot has no values to color.
+    show_scale?: boolean
     // Either a d3 interpolator name, sampled across `range`, or a prebuilt function
     // with the data domain it expects. One or the other, never both.
     scale?: ColorBarScale
@@ -304,30 +310,47 @@
       {/if}
     </div>
   {/if}
-  <div
-    {@attach observe_bar}
-    style={final_bar_style}
-    class={[
-      `bar`,
-      orientation,
-      visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
-    ]}
-  >
-    {#each visible_ticks as { value, label } (value)}
-      {@const position_percent = tick_scale(value)}
-      <span
-        class={[`tick-label`, orientation, `tick-${tick_side}`]}
-        style:left={is_vertical ? undefined : `${position_percent}%`}
-        style:top={is_vertical ? `${position_percent}%` : undefined}
-        style:color={tick_side === `inside` ? inside_tick_color(value) : `inherit`}
-      >
-        {label}
-      </span>
-    {/each}
-  </div>
+  {#if show_scale && categories}
+    <div class="category-legend" style:flex-direction={is_vertical ? `column` : `row`}>
+      {#each Object.entries(categories) as [label, color] (label)}
+        <span><span style:color aria-hidden="true">●</span> {label}</span>
+      {/each}
+    </div>
+  {:else if show_scale}
+    <div
+      {@attach observe_bar}
+      style={final_bar_style}
+      class={[
+        `bar`,
+        orientation,
+        visible_ticks.length > 0 && tick_side !== `inside` && `tick-${tick_side}`,
+      ]}
+    >
+      {#each visible_ticks as { value, label } (value)}
+        {@const position_percent = tick_scale(value)}
+        <span
+          class={[`tick-label`, orientation, `tick-${tick_side}`]}
+          style:left={is_vertical ? undefined : `${position_percent}%`}
+          style:top={is_vertical ? `${position_percent}%` : undefined}
+          style:color={tick_side === `inside` ? inside_tick_color(value) : `inherit`}
+        >
+          {label}
+        </span>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
+  .category-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3em 1em;
+    > span {
+      white-space: nowrap;
+    }
+  }
   div.colorbar {
     display: flex;
     box-sizing: border-box;

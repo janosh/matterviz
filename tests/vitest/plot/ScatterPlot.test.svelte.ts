@@ -1313,6 +1313,36 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  test.each([`x`, `y`] as const)(
+    `animates %s quantity changes across new ranges and reordered series`,
+    async (axis) => {
+      const state = $state<{ series: DataSeries[] }>({
+        series: [
+          { id: `other`, x: [1, 10], y: [1, 10] },
+          { id: `tracked`, x: [3, 7], y: [3, 7] },
+        ],
+      })
+      const plot = await mount_sized_scatter_plot(
+        bind_props({ point_tween: { duration: 60_000 }, legend: null }, state),
+      )
+      const marker = () => query(plot, `[data-series-id="tracked"] .marker`)
+      const original = marker()
+      const position = original.parentElement?.getAttribute(`transform`)
+      vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
+
+      state.series = state.series.toReversed().map((series) => ({
+        ...series,
+        [axis]: series.id === `tracked` ? [240, 180] : [100, 300],
+      }))
+      flushSync()
+      await tick()
+
+      expect(marker()).toBe(original)
+      // The same marker starts its tween at the old position instead of snapping.
+      expect(marker().parentElement?.getAttribute(`transform`)).toBe(position)
+    },
+  )
+
   test(`reports all visible group keys when more than two axes are required`, async () => {
     const target = document.createElement(`div`)
     document.body.append(target)
