@@ -1,5 +1,7 @@
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
+import { accumulate_error_extent } from '$lib/plot/core/error-bars'
+import type { ErrorValues } from '$lib/plot/core/error-bars'
 import {
   accumulate_extent,
   collect_scale_ranges,
@@ -221,6 +223,58 @@ describe(`scales`, () => {
   })
 
   describe(`accumulate_extent / nice_range_from_extent`, () => {
+    test.each<{
+      values: number[]
+      error: ErrorValues | undefined
+      count?: number
+      expected: ReturnType<typeof empty_extent>
+    }>([
+      {
+        values: [0, 2, 5],
+        error: [-1, 0, 2],
+        expected: { min: -1, max: 7, min_positive: 1, n_finite: 6 },
+      },
+      {
+        values: [2, 8],
+        error: { lower: [3, NaN], upper: 4 },
+        expected: { min: -1, max: 12, min_positive: 6, n_finite: 4 },
+      },
+      {
+        values: [NaN, Infinity, -Infinity, 1, -0, 0],
+        error: Infinity,
+        expected: { min: -0, max: 1, min_positive: 1, n_finite: 6 },
+      },
+      {
+        values: [Number.MAX_VALUE, -Number.MAX_VALUE, Number.MIN_VALUE],
+        error: Number.MAX_VALUE,
+        expected: {
+          min: -Number.MAX_VALUE,
+          max: Number.MAX_VALUE,
+          min_positive: Number.MAX_VALUE,
+          n_finite: 4,
+        },
+      },
+      {
+        values: [1, 2, 3],
+        error: 1,
+        count: 2,
+        expected: { min: 0, max: 3, min_positive: 1, n_finite: 4 },
+      },
+      { values: [-0], error: 0, count: 3, expected: { min: -0, max: -0, n_finite: 2 } },
+      { values: [1, 2], error: undefined, expected: { n_finite: 0 } },
+    ])(`accumulates error-bar bounds for %j`, ({ values, error, count, expected }) => {
+      const extent = empty_extent()
+      accumulate_error_extent(extent, values, error, count)
+      expect(extent).toEqual(expected)
+      accumulate_extent(extent, [-10, 100])
+      expect(extent).toEqual({
+        min: expected.min === undefined || expected.min > -10 ? -10 : expected.min,
+        max: expected.max === undefined || expected.max < 100 ? 100 : expected.max,
+        min_positive: Math.min(expected.min_positive ?? Infinity, 100),
+        n_finite: expected.n_finite + 2,
+      })
+    })
+
     test(`tracks finite extent; multi-pass; every niced range is finite`, () => {
       for (const values of [
         [3, 1, 4, 1, 5],

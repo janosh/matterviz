@@ -10,6 +10,14 @@ import { grid_data_range, MAX_GRID_POINTS } from './types'
 
 const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
+// Preserve the rounding of ((frac % 1) + 1) % 1 while avoiding remainder operations
+// for coordinates already in the cell. The addition can round up to exactly 2.
+const wrap_fraction = (frac: number): number => {
+  const shifted = (frac > -1 && frac < 1 ? frac : frac % 1) + 1
+  if (shifted >= 1) return shifted === 2 ? 0 : shifted - 1
+  return shifted
+}
+
 // Lower voxel index along one axis of a trilinear sample. Singleton axes (n === 1) pin
 // both corners to 0 so the n - 2 clamp never goes negative.
 const lower_corner = (count: number, floor_g: number, periodic: boolean): number => {
@@ -150,9 +158,9 @@ function volume_sampler_xyz(
     let frac_y = i10 * cart_x + i11 * cart_y + i12 * cart_z
     let frac_z = i20 * cart_x + i21 * cart_y + i22 * cart_z
     if (periodic) {
-      frac_x = safe_mod(frac_x, 1)
-      frac_y = safe_mod(frac_y, 1)
-      frac_z = safe_mod(frac_z, 1)
+      frac_x = wrap_fraction(frac_x)
+      frac_y = wrap_fraction(frac_y)
+      frac_z = wrap_fraction(frac_z)
     } else {
       if (
         fallback &&

@@ -7,6 +7,7 @@ import {
   resolve_volume_display_range,
   sample_volume_at_positions,
   sanitize_display_range,
+  trilinear_interpolate,
 } from '$lib/isosurface/sampling'
 import type { DisplayRange } from '$lib/isosurface/sampling'
 import type { VolumetricData } from '$lib/isosurface/types'
@@ -84,6 +85,35 @@ describe(`create_volume_sampler`, () => {
     )
     const cos = create_volume_sampler(make_volume(grid, { lattice: cubic, periodic: true }))
     expect(Math.abs(cos([9.999, 5, 5]) - cos([0.001, 5, 5]))).toBeLessThan(0.01)
+
+    // Wrapping retains the rounding of the two-remainder formula, including fractions
+    // whose addition to 1 rounds up to 2 and non-finite coordinates.
+    const volume = linear_volume(10, cubic_matrix(1), true)
+    const sample = create_volume_sampler(volume)
+    for (const coord of [
+      -Infinity,
+      -100.25,
+      -1,
+      -Number.EPSILON,
+      -Number.MIN_VALUE,
+      -0,
+      0,
+      Number.MIN_VALUE,
+      Number.EPSILON,
+      0.123,
+      1 - Number.EPSILON / 2,
+      1,
+      1 + Number.EPSILON,
+      2,
+      100.25,
+      Infinity,
+      NaN,
+    ]) {
+      const wrapped = ((coord % 1) + 1) % 1
+      expect(sample([coord, coord, coord])).toBe(
+        trilinear_interpolate(volume, wrapped, wrapped, wrapped, true),
+      )
+    }
   })
 
   test.each([

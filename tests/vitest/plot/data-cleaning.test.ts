@@ -158,6 +158,7 @@ describe(`detect_instability`, () => {
 
 describe(`smooth_moving_average`, () => {
   it.each([
+    { values: [], window: 3, expected: [] },
     { values: [1, 2, 3, 4, 5], window: 1, expected: [1, 2, 3, 4, 5] },
     {
       values: [Number.MIN_VALUE, Number.MIN_VALUE],
@@ -182,6 +183,11 @@ describe(`smooth_moving_average`, () => {
     const result = smooth_moving_average(values, window)
     expect(result).toEqual(expected)
     expect(result).not.toBe(values)
+    for (const indices of [[], values.map((_, idx) => idx).filter((idx) => idx % 2 === 0)]) {
+      expect(smooth_moving_average(values, window, indices)).toEqual(
+        indices.map((idx) => expected[idx]),
+      )
+    }
   })
 
   it(`stays exact for huge magnitudes and after cancellation`, () => {
@@ -207,6 +213,13 @@ describe(`smooth_moving_average`, () => {
   it.each([0, -1, 1.5, NaN, Infinity])(`rejects window %s`, (window) => {
     expect(() => smooth_moving_average([1, 2, 3], window)).toThrow(RangeError)
   })
+
+  it.each([[-1], [3], [1, 1], [2, 0], [NaN], [1.5], Array<number>(1)])(
+    `rejects invalid sample indices %j`,
+    (...indices) => {
+      expect(() => smooth_moving_average([1, 2, 3], 3, indices)).toThrow(RangeError)
+    },
+  )
 
   it(`processes wide windows with linear work`, () => {
     const values = Array.from({ length: 10_000 }, (_, idx) => idx)

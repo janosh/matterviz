@@ -1556,6 +1556,113 @@ describe(`neighbor_query`, () => {
     expect(streamed.toSorted(by_neighbor)).toEqual(listed.toSorted(by_neighbor))
   })
 
+  const expect_dense_stream_matches_list = (positions: Vec3[], cutoff: number) => {
+    const structure = make_crystal(
+      10,
+      positions.map((xyz) => ({ element: `Si`, xyz })),
+    )
+    const options = { cutoff, pbc: [false, false, false] as const }
+    const list = bonding.neighbor_query(structure, options)
+    const expected = new Map<number, number>()
+    for (let center = 0; center < positions.length; center++) {
+      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
+        expected.set(center * positions.length + list.neighbors[slot], list.distances[slot])
+      }
+    }
+    let max_error = 0
+    bonding.visit_neighbor_distances(structure, options, (center, neighbor, distance) => {
+      const key = center * positions.length + neighbor
+      const reference = expected.get(key)
+      if (reference === undefined) throw new Error(`Unexpected contact ${center}, ${neighbor}`)
+      max_error = Math.max(max_error, Math.abs(reference - distance))
+      expected.delete(key)
+    })
+    expect(expected.size).toBe(0)
+    return max_error
+  }
+
+  test.each([
+    [1999, false],
+    [2000, false],
+    [2047, true],
+    [2048, true],
+  ] as const)(
+    `dense streaming across grid-size/density gates: %i sites`,
+    (count, density_gate) => {
+      const positions = Array.from({ length: count }, (_, idx): Vec3 =>
+        density_gate
+          ? // 4³ original bins: 2047/64 < 32, 2048/64 === 32 cloud points per bin.
+            [
+              (Math.floor(idx / 256) * 1.5) / 7,
+              ((Math.floor(idx / 16) % 16) * 1.5) / 15,
+              ((idx % 16) * 1.5) / 15,
+            ]
+          : [Math.floor(idx / 144) * 0.2, (Math.floor(idx / 12) % 12) * 0.2, (idx % 12) * 0.2],
+      )
+      expect(expect_dense_stream_matches_list(positions, density_gate ? 0.5 : 1)).toBe(0)
+    },
+  )
+
+  test.each([0, -7, 17])(`dense half-bin cutoff boundaries at origin %i`, (origin) => {
+    const next_float = (value: number, direction: number): number => {
+      const view = new DataView(new ArrayBuffer(8))
+      view.setFloat64(0, value)
+      view.setBigUint64(0, view.getBigUint64(0) + BigInt(value < 0 ? -direction : direction))
+      return view.getFloat64(0)
+    }
+    const positions = Array.from({ length: 2000 }, (_, idx): Vec3 => [
+      origin + Math.floor(idx / 144) * 0.2,
+      origin + (Math.floor(idx / 12) % 12) * 0.2,
+      origin + (idx % 12) * 0.2,
+    ])
+    for (const first_ulp of [-1, 0, 1]) {
+      for (const second_ulp of [-1, 0, 1]) {
+        positions[1] = [next_float(origin + 0.5, first_ulp), origin, origin]
+        positions[2] = [next_float(origin + 1.5, second_ulp), origin, origin]
+        // .5 - 1 ULP and 1.5 have rounded distance 1, but unpadded half bins 0 and 3.
+        expect(expect_dense_stream_matches_list(positions, 1)).toBe(0)
+      }
+    }
+  })
+
+  test(`dense streaming includes rounded cutoff contacts across whole-bin boundaries`, () => {
+    const positions = Array.from({ length: 2000 }, (_, idx): Vec3 => [
+      Math.floor(idx / 144) * 0.2,
+      (Math.floor(idx / 12) % 12) * 0.2,
+      (idx % 12) * 0.2,
+    ])
+    positions[1] = [1 - Number.EPSILON / 2, 0, 0]
+    positions[2] = [2, 0, 0]
+    const structure = make_crystal(
+      10,
+      positions.map((xyz) => ({ element: `Si`, xyz })),
+    )
+    const expected = new Map<number, number>()
+    for (let center = 0; center < positions.length; center++) {
+      for (let neighbor = center + 1; neighbor < positions.length; neighbor++) {
+        const delta_x = positions[neighbor][0] - positions[center][0]
+        const delta_y = positions[neighbor][1] - positions[center][1]
+        const delta_z = positions[neighbor][2] - positions[center][2]
+        const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+        if (dist_sq > 1) continue
+        expected.set(center * positions.length + neighbor, Math.sqrt(dist_sq))
+        expected.set(neighbor * positions.length + center, Math.sqrt(dist_sq))
+      }
+    }
+    // Rounded subtraction gives distance 1; unpadded whole bins 0 and 2 miss this pair.
+    expect(expected.get(positions.length + 2)).toBe(1)
+    bonding.visit_neighbor_distances(
+      structure,
+      { cutoff: 1, pbc: [false, false, false] },
+      (center, neighbor, distance) => {
+        const key = center * positions.length + neighbor
+        expect(distance).toBe(expected.get(key))
+        expected.delete(key)
+      },
+    )
+    expect(expected.size).toBe(0)
+  })
+
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
     const simple_cubic = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
     const list = bonding.neighbor_query(simple_cubic, { cutoff: 3.01 })

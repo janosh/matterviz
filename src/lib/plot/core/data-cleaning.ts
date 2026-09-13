@@ -321,14 +321,29 @@ class SlidingSum {
 }
 
 // Centered finite-aware moving average. Each value enters and leaves a compensated sum,
-// so the cost is linear in the input length, independent of the window width.
-export function smooth_moving_average(values: readonly number[], window: number): number[] {
+// so the cost is linear in the input length, independent of the window width. Optional
+// increasing sample indices avoid computing and allocating outputs a downsampled plot drops.
+export function smooth_moving_average(
+  values: readonly number[],
+  window: number,
+  sample_indices?: readonly number[],
+): number[] {
   if (!Number.isSafeInteger(window) || window < 1) {
     throw new RangeError(
       `Moving average window must be a positive safe integer, got ${window}`,
     )
   }
-  if (values.length === 0 || window === 1) return [...values]
+  let previous_idx = -1
+  for (const idx of sample_indices ?? []) {
+    if (!Number.isInteger(idx) || idx <= previous_idx || idx >= values.length) {
+      throw new RangeError(
+        `Moving average sample indices must increase within 0..${values.length - 1}`,
+      )
+    }
+    previous_idx = idx
+  }
+  if (values.length === 0 || window === 1 || sample_indices?.length === 0)
+    return sample_indices ? sample_indices.map((idx) => values[idx]) : [...values]
   const half_window = Math.floor(window / 2)
   const max_count = Math.min(values.length, 2 * half_window + 1)
   let max_abs = 0
@@ -338,7 +353,8 @@ export function smooth_moving_average(values: readonly number[], window: number)
   const normalizer =
     max_abs >= Number.MAX_VALUE / max_count ? 2 ** Math.ceil(Math.log2(max_count)) : 1
   const min_scaled = normalizer === 1 ? 0 : 2 ** -1022 * normalizer
-  const result = Array<number>(values.length)
+  const result = Array<number>(sample_indices?.length ?? values.length)
+  let sample_idx = 0
   const sum = new SlidingSum()
   const tiny_sum = new SlidingSum()
   let count = 0
@@ -361,7 +377,11 @@ export function smooth_moving_average(values: readonly number[], window: number)
       else sum.add(value / normalizer)
       count++
     }
-    result[idx] = count > 0 ? sum.mean(count, normalizer, tiny_sum) : values[idx]
+    // Retain every add/remove operation even between requested samples: compensated sums
+    // depend on their order. Only output allocation and mean evaluation are sparse.
+    if (!sample_indices || sample_indices[sample_idx] === idx) {
+      result[sample_idx++] = count > 0 ? sum.mean(count, normalizer, tiny_sum) : values[idx]
+    }
   }
   return result
 }

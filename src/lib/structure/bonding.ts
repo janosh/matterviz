@@ -707,15 +707,18 @@ const grow_i32 = (buffer: Int32Array, needed: number, cap = Infinity): Int32Arra
   return next
 }
 
-// The 13 lexicographically "forward" bin offsets. Each unordered pair of adjacent bins is
-// seen from exactly one side, so with own-bin pairs taken only for larger slot indices the
-// sweep below computes every pair once.
-const FORWARD_BIN_OFFSETS: [number, number, number][] = []
-for (let delta_x = -1; delta_x <= 1; delta_x++) {
-  for (let delta_y = -1; delta_y <= 1; delta_y++) {
-    for (let delta_z = -1; delta_z <= 1; delta_z++) {
-      if (delta_x * 9 + delta_y * 3 + delta_z > 0)
-        FORWARD_BIN_OFFSETS.push([delta_x, delta_y, delta_z])
+// Forward offsets for cutoff-wide bins (13 neighbors) and half-width bins (62).
+// Each unordered pair of bins is searched once; own-bin pairs use increasing slots.
+const FORWARD_BIN_OFFSETS: Vec3[] = []
+const FINE_BIN_OFFSETS: Vec3[] = []
+for (let delta_x = -2; delta_x <= 2; delta_x++) {
+  for (let delta_y = -2; delta_y <= 2; delta_y++) {
+    for (let delta_z = -2; delta_z <= 2; delta_z++) {
+      if (delta_x * 25 + delta_y * 5 + delta_z <= 0) continue
+      const offset: Vec3 = [delta_x, delta_y, delta_z]
+      FINE_BIN_OFFSETS.push(offset)
+      if (Math.max(Math.abs(delta_x), Math.abs(delta_y), Math.abs(delta_z)) <= 1)
+        FORWARD_BIN_OFFSETS.push(offset)
     }
   }
 }
@@ -754,6 +757,7 @@ function neighbor_query_cutoff(
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
     throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
   }
+  const cutoff_sq = cutoff * cutoff
   const lattice = `lattice` in structure ? structure.lattice.matrix : null
   const pbc = lattice_pbc_or_throw(structure, pbc_override)
 
@@ -886,9 +890,9 @@ function neighbor_query_cutoff(
   }
 
   // Dense bins over the cloud's bounding box, filled by counting sort so each bin is one
-  // contiguous slice of `bin_items` (ascending slot, so base sites precede images). Bins are
-  // `cutoff` wide unless that would make the grid much larger than the cloud, in which case
-  // they widen; either way a neighbor can only sit in the 27 bins around the center's.
+  // contiguous slice of `bin_items` (ascending slot, so base sites precede images).
+  // Fine bins reduce candidate pairs in dense clouds; sparse grids widen to fit the cloud.
+  // The selected forward stencil spans at least the cutoff along every axis.
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (let slot = 0; slot < n_cloud; slot++) {
@@ -908,6 +912,24 @@ function neighbor_query_cutoff(
   // cloud ends within 2x of the ideal width, which holds under 0.5 atoms per cutoff-bin.
   const bin: Vec3 = [cutoff, cutoff, cutoff]
   const n_axis: Vec3 = [bins_along(cutoff, 0), bins_along(cutoff, 1), bins_along(cutoff, 2)]
+  // Dense RDF queries spend most of their time rejecting pairs outside the cutoff.
+  // Finer bins reduce these candidates; sparse clouds and small cells keep cheap setup.
+  const fine_bins =
+    Boolean(visit) &&
+    n_sites >= 2000 &&
+    Number.isFinite(cutoff_sq) &&
+    cutoff_sq >= Number.MIN_VALUE / Number.EPSILON &&
+    n_cloud / (n_axis[0] * n_axis[1] * n_axis[2]) >= 32
+  if (fine_bins) {
+    for (let axis = 0; axis < 3; axis++) {
+      // Subtracting the origin and dividing into bins each round both endpoints. Include
+      // their span-scaled errors and the rounded distance comparison, so a cutoff pair
+      // cannot straddle three half-width bins. Distance and cutoff arithmetic is unchanged.
+      bin[axis] = cutoff / 2 + 4 * Number.EPSILON * (maxs[axis] - mins[axis] + cutoff)
+      n_axis[axis] = bins_along(bin[axis], axis)
+    }
+  }
+  const forward_offsets = fine_bins ? FINE_BIN_OFFSETS : FORWARD_BIN_OFFSETS
   while (n_axis[0] * n_axis[1] * n_axis[2] > max_bins) {
     const widest = n_axis.indexOf(Math.max(...n_axis))
     bin[widest] *= 2
@@ -948,16 +970,15 @@ function neighbor_query_cutoff(
   // every range that contains no base endpoints.
   // Pairs are stored once (struct of arrays) and counted towards each base
   // endpoint; the per-center lists are assembled from them below.
-  const cutoff_sq = cutoff * cutoff
   let pair_a: Int32Array = new Int32Array(visit ? 0 : Math.max(256, n_sites * 8))
   let pair_b: Int32Array = new Int32Array(pair_a.length)
   let pair_dist_sq: Float64Array = new Float64Array(pair_a.length)
   const offsets = new Int32Array(n_sites + 1) // per-center counts until the prefix sum below
   let n_pairs = 0
-  // the 14 bin ranges to scan per slot, own bin first (starting just past the slot itself)
-  const range_start = new Int32Array(14)
-  const range_end = new Int32Array(14)
-  const range_base_end = new Int32Array(14)
+  // Scan own bin first (starting just past the slot itself), then forward neighbors.
+  const range_start = new Int32Array(forward_offsets.length + 1)
+  const range_end = new Int32Array(forward_offsets.length + 1)
+  const range_base_end = new Int32Array(forward_offsets.length + 1)
   const n_groups = visit ? n_bins : n_cloud
   for (let group_idx = 0; group_idx < n_groups; group_idx++) {
     const bin_idx = visit ? group_idx : bin_of[group_idx]
@@ -970,7 +991,7 @@ function neighbor_query_cutoff(
     const images_only = bin_base_end[bin_idx] === bin_first
     let n_ranges = 1
     range_end[0] = bin_end
-    for (const [delta_x, delta_y, delta_z] of FORWARD_BIN_OFFSETS) {
+    for (const [delta_x, delta_y, delta_z] of forward_offsets) {
       const neighbor_x = idx_x + delta_x
       const neighbor_y = idx_y + delta_y
       const neighbor_z = idx_z + delta_z

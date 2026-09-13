@@ -535,15 +535,15 @@ export function prepare_trajectory_scatter_series(
     const source_raw_y = data_series.raw_y ?? data_series.y
     let window_size = Math.max(5, Math.round(data_series.x.length / 50))
     if (window_size % 2 === 0) window_size++
-    const smoothed_y = smooth_moving_average(data_series.y, window_size)
     const sampled = downsample_indices(data_series.x, source_raw_y, limit)
+    const smoothed_y = smooth_moving_average(data_series.y, window_size, sampled)
     const sampled_x = sampled.map((idx) => data_series.x[idx])
     const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
     const color = data_series.line_style?.stroke ?? `currentColor`
     return {
       ...data_series,
       x: sampled_x,
-      y: sampled.map((idx) => smoothed_y[idx]),
+      y: smoothed_y,
       raw_y: sampled_raw_y,
       markers: `line`,
       metadata: data_series.metadata,

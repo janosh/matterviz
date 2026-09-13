@@ -1,4 +1,5 @@
 import type { DataSeries } from '$lib/plot'
+import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import type { TrajectoryMetadata } from '$lib/trajectory'
 import {
   available_x_quantities,
@@ -306,6 +307,8 @@ describe(`generate_plot_series`, () => {
       )
       expect(sampled.x).toEqual(indices.map((idx) => source_x[idx]))
       expect(sampled.raw_y).toEqual(indices.map((idx) => source_y[idx]))
+      const smoothed = smooth_moving_average(source_y, 5)
+      expect(sampled.y).toEqual(indices.map((idx) => smoothed[idx]))
     }
   })
 

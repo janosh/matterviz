@@ -7,6 +7,7 @@
 // x - measurement error is rarely confined to one axis.
 
 import type { Vec2 } from '$lib/math'
+import type { RunningExtent } from './scales'
 
 // Scalar (same for every point), per-point array, or asymmetric. Deliberately the same
 // shape `ErrorBand.error` accepts, so moving between a ribbon and bars is a prop rename.
@@ -26,7 +27,10 @@ const is_asymmetric = (
   typeof error === `object` && !Array.isArray(error)
 
 const side_getter = (side: number | readonly number[]): ((idx: number) => number) => {
-  if (typeof side === `number`) return () => (Number.isFinite(side) ? Math.abs(side) : 0)
+  if (typeof side === `number`) {
+    const magnitude = Number.isFinite(side) ? Math.abs(side) : 0
+    return () => magnitude
+  }
   return (idx) => {
     const value = side[idx]
     return typeof value === `number` && Number.isFinite(value) ? Math.abs(value) : 0
@@ -64,19 +68,27 @@ export function error_lengths(error: ErrorValues | undefined | null): number[] {
 
 // The reach of the bars, so an axis can be ranged to include them: a point at 10 ± 5
 // whose bar ends at 15 must not have that end clipped off the plot.
-export function error_bounds(
+export function accumulate_error_extent(
+  extent: RunningExtent,
   values: readonly number[],
   error: ErrorValues | undefined | null,
   count = values.length,
-): { lo: number[]; hi: number[] } | null {
-  const get = error_getter(error)
-  if (!get) return null
-  const [lower, upper] = [Array<number>(count), Array<number>(count)]
-  for (let idx = 0; idx < count; idx++) {
-    const value = values[idx]
-    const [below, above] = get(idx)
-    lower[idx] = value - below
-    upper[idx] = value + above
+): void {
+  if (error == null) return
+  const sides = is_asymmetric(error) ? [error.lower, error.upper] : [error, error]
+  let min_positive = extent.min_positive ?? Infinity
+  // Visit lower bounds before upper bounds, preserving signed-zero ties. Accumulate
+  // directly instead of allocating two bound arrays and a pair for every point.
+  for (let side_idx = 0; side_idx < 2; side_idx++) {
+    const get = side_getter(sides[side_idx])
+    for (let idx = 0; idx < count; idx++) {
+      const value = side_idx === 0 ? values[idx] - get(idx) : values[idx] + get(idx)
+      if (!Number.isFinite(value)) continue
+      extent.n_finite++
+      if (extent.min === undefined || value < extent.min) extent.min = value
+      if (extent.max === undefined || value > extent.max) extent.max = value
+      if (value > 0 && value < min_positive) min_positive = value
+    }
   }
-  return { lo: lower, hi: upper }
+  if (min_positive < Infinity) extent.min_positive = min_positive
 }
