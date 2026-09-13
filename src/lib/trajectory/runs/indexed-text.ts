@@ -17,61 +17,21 @@ import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
 
-// Rows per batch pushed into `properties` before yielding to the event loop
+// Bound both cheap row counts and expensive per-atom force scans between event-loop turns.
 const PROPERTY_BATCH = 2000
+const PROPERTY_BUDGET_MS = 8
 
 const yield_to_event_loop = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0))
 
-type FrameSource = AseFrames & { format: `xyz` | `ase` }
-
-const run_from_source = (
-  source: FrameSource,
-  provenance: TrajectoryProvenance,
-  collector: WarningCollector,
-): TrajectoryRun => {
-  const { frame_count, format, decode } = source
-  const properties = new TrajectoryProperties()
-  // Disposal finishes `properties`, which is what stops this loop
-  void (async () => {
-    for (let start = 0; start < frame_count; start += PROPERTY_BATCH) {
-      if (properties.complete) return
-      const end = Math.min(start + PROPERTY_BATCH, frame_count)
-      const batch: TrajectoryMetadata[] = []
-      for (let frame_idx = start; frame_idx < end; frame_idx++) {
-        try {
-          batch.push(source.property_row(frame_idx))
-        } catch (error) {
-          collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
-        }
-      }
-      properties.push(batch)
-      if (end < frame_count) await yield_to_event_loop()
-    }
-    properties.finish()
-  })()
-  return sync_run({
-    label: `Indexed ${format} trajectory`,
-    frame_count,
-    read: decode,
-    provenance: { ...provenance, format },
-    properties,
-    metadata: {},
-    warnings: collector.warnings,
-    collect_positions: (options) => accumulate_positions(frame_count, decode, options),
-    release: source.release,
-  })
-}
-
 // === XYZ / EXTXYZ ===
 
-const xyz_source = (data: string, collector: WarningCollector): FrameSource => {
+const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   // Offsets into the untouched text, never an array of line strings (see iter_xyz_frames);
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
   let text = data
   const frames = index_xyz_frames(text, collector.warn)
   return {
-    format: `xyz`,
     frame_count: frames.length,
     decode: (frame_idx): TrajectoryFrame =>
       build_xyz_frame(
@@ -110,15 +70,51 @@ export const indexed_text_run = (
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
 ): TrajectoryRun => {
-  if (format === `xyz` && typeof data !== `string`) {
-    throw new TypeError(`Indexed XYZ trajectories need text data, got ArrayBuffer`)
+  let source: AseFrames
+  if (format === `xyz`) {
+    if (typeof data !== `string`) {
+      throw new TypeError(`Indexed XYZ trajectories need text data, got ArrayBuffer`)
+    }
+    source = xyz_source(data, collector)
+  } else {
+    if (!(data instanceof ArrayBuffer)) {
+      throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
+    }
+    source = open_ase_frames(data)
   }
-  if (format === `ase` && !(data instanceof ArrayBuffer)) {
-    throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
-  }
-  const source: FrameSource =
-    format === `xyz`
-      ? xyz_source(data as string, collector)
-      : { format: `ase`, ...open_ase_frames(data as ArrayBuffer) }
-  return run_from_source(source, provenance, collector)
+  const { frame_count, decode } = source
+  const properties = new TrajectoryProperties()
+  const run = sync_run({
+    label: `Indexed ${format} trajectory`,
+    frame_count,
+    read: decode,
+    provenance: { ...provenance, format },
+    properties,
+    metadata: {},
+    warnings: collector.warnings,
+    collect_positions: (options) => accumulate_positions(frame_count, decode, options),
+    release: source.release,
+  })
+  // Yield before each batch so the preview appears before scanning property columns.
+  // Disposal finishes `properties`, stopping work on the next event-loop turn.
+  void (async () => {
+    for (let frame_idx = 0; frame_idx < frame_count;) {
+      await yield_to_event_loop()
+      if (properties.complete) return
+      const end = Math.min(frame_idx + PROPERTY_BATCH, frame_count)
+      const deadline = performance.now() + PROPERTY_BUDGET_MS
+      const batch: TrajectoryMetadata[] = []
+      do {
+        try {
+          batch.push(source.property_row(frame_idx))
+        } catch (error) {
+          collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
+        }
+        frame_idx++
+      } while (frame_idx < end && performance.now() < deadline)
+      properties.push(batch)
+    }
+    properties.finish()
+  })()
+  return run
 }

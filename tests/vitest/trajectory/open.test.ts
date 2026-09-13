@@ -45,17 +45,42 @@ describe(`loading policy`, () => {
     const long = synthetic_extxyz(2100, 3)
     const lazy = await open(long, `long.extxyz`, { index_above_bytes: 0 })
     expect(lazy.properties.complete).toBe(false)
+    expect(lazy.properties.rows).toHaveLength(0)
+    expect(lazy.preview.structure.sites).toHaveLength(3)
     const seen: [number, boolean][] = []
     lazy.properties.subscribe((batch, complete) => seen.push([batch.length, complete]))
     await lazy.properties.done
-    // the first 2000 rows were extracted during open; the tail and the completion follow
-    expect(seen).toEqual([
-      [100, false],
-      [0, true],
-    ])
+    // Every batch follows the preview; a time budget can yield before the 2000-row ceiling.
+    expect(seen.at(-1)).toEqual([0, true])
+    const batches = seen.slice(0, -1)
+    expect(batches.every(([size, complete]) => size > 0 && size <= 2000 && !complete)).toBe(
+      true,
+    )
+    expect(batches.reduce((total, [size]) => total + size, 0)).toBe(2100)
     expect(lazy.properties.rows).toHaveLength(2100)
     expect(lazy.properties.rows.at(-1)).toMatchObject({ frame_number: 2099, step: 20990 })
   })
+
+  it.each([`before scanning`, `after the first batch`])(
+    `stops indexed property work when disposed %s`,
+    async (phase) => {
+      const lazy = await open(synthetic_extxyz(2100, 3), `long.extxyz`, {
+        index_above_bytes: 0,
+      })
+      const seen: [number, boolean][] = []
+      lazy.properties.subscribe((batch, complete) => {
+        seen.push([batch.length, complete])
+        if (!complete && phase === `after the first batch`) lazy.dispose()
+      })
+      if (phase === `before scanning`) lazy.dispose()
+      await lazy.properties.done
+      // Let the pending background turn observe disposal; no further source reads can land.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(seen.at(-1)).toEqual([0, true])
+      expect(seen).toHaveLength(phase === `before scanning` ? 1 : 2)
+      expect(lazy.properties.rows).toHaveLength(phase === `before scanning` ? 0 : seen[0][0])
+    },
+  )
 
   it(`reads the threshold from DEFAULTS.trajectory when not given`, async () => {
     expect(DEFAULTS.trajectory.index_above_bytes).toBeGreaterThan(1_000_000)

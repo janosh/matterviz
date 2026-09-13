@@ -476,19 +476,42 @@ describe(`TrajectoryProperties`, () => {
     const seen: number[][] = []
     properties.subscribe((batch) => seen.push(batch.map((row) => row.frame_number)))
     properties.push([{ frame_number: 5, step: 5, properties: {} }])
+    const first_snapshot = properties.rows
     expect(properties.rows.map((row) => row.frame_number)).toEqual([5])
     properties.push([
-      { frame_number: 1, step: 1, properties: {} },
       { frame_number: 5, step: 5, properties: { dup: 1 } },
+      { frame_number: 1, step: 1, properties: {} },
     ])
     expect(properties.rows.map((row) => row.frame_number)).toEqual([1, 5])
-    expect(seen).toEqual([[5], [1, 5]])
+    expect(properties.rows[1].properties).toEqual({}) // The first copy of a frame wins.
+    expect(first_snapshot.map((row) => row.frame_number)).toEqual([5])
+    expect(seen).toEqual([[5], [5, 1]]) // Sorting must not reorder the caller's batch.
     properties.finish()
     expect(properties.complete).toBe(true)
     expect(() => properties.push([{ frame_number: 9, step: 9, properties: {} }])).toThrow(
       /after finish/,
     )
     properties.finish() // idempotent
+  })
+
+  it.each([
+    [0, 1, 2],
+    [2, 1, 0],
+    [0, 1, 2, 1],
+  ])(`owns its initial row snapshot %j`, (...frame_numbers) => {
+    const rows = frame_numbers.map((frame_number) => ({
+      frame_number,
+      step: frame_number,
+      properties: {},
+    }))
+    const properties = new TrajectoryProperties(rows)
+    expect(rows.map((row) => row.frame_number)).toEqual(frame_numbers)
+    rows[0] = { frame_number: 99, step: 99, properties: {} }
+    expect(properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2])
+    const previous_snapshot = properties.rows
+    properties.push([{ frame_number: 3, step: 3, properties: {} }])
+    expect(previous_snapshot.map((row) => row.frame_number)).toEqual([0, 1, 2])
+    expect(properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2, 3])
   })
 })
 

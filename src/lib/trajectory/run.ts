@@ -50,7 +50,7 @@ export class TrajectoryProperties {
   private readonly pending_notifications: (TrajectoryMetadata[] | null)[] = []
 
   constructor(rows: TrajectoryMetadata[] = [], complete = false) {
-    this.rows = sort_rows(rows)
+    this.rows = sort_rows([...rows])
     this.complete = complete
     if (complete) this.completion.resolve(undefined)
   }
@@ -58,12 +58,9 @@ export class TrajectoryProperties {
   push(batch: readonly TrajectoryMetadata[]): void {
     if (this.complete) throw new Error(`TrajectoryProperties.push after finish()`)
     if (batch.length === 0) return
-    const last = this.rows.at(-1)
-    const merged = [...this.rows, ...batch]
-    const in_order =
-      (last === undefined || batch[0].frame_number > last.frame_number) &&
-      batch.every((row, idx) => idx === 0 || row.frame_number > batch[idx - 1].frame_number)
-    this.rows = in_order ? merged : sort_rows(merged)
+    // Native concatenation allocates the final snapshot once. Spreading a long prefix into
+    // a growable array copied that prefix again for every progressive batch.
+    this.rows = sort_rows(this.rows.concat(batch), Math.max(1, this.rows.length))
     this.notify(batch)
   }
 
@@ -118,12 +115,24 @@ export class TrajectoryProperties {
   }
 }
 
-const sort_rows = (rows: readonly TrajectoryMetadata[]): TrajectoryMetadata[] =>
-  rows
-    .toSorted((row_a, row_b) => row_a.frame_number - row_b.frame_number)
-    .filter(
-      (row, idx, sorted) => idx === 0 || row.frame_number !== sorted[idx - 1].frame_number,
-    )
+const sort_rows = (rows: TrajectoryMetadata[], start = 1): TrajectoryMetadata[] => {
+  // Callers supply an owned snapshot; `start` skips its already-ordered prefix. Sorting
+  // that snapshot only when needed avoids another copy and preserves earlier snapshots.
+  for (let idx = start; idx < rows.length; idx++) {
+    if (!(rows[idx].frame_number > rows[idx - 1].frame_number)) {
+      return (
+        rows
+          // eslint-disable-next-line unicorn/no-array-sort -- this snapshot belongs to the caller
+          .sort((row_a, row_b) => row_a.frame_number - row_b.frame_number)
+          .filter(
+            (row, row_idx, sorted) =>
+              row_idx === 0 || row.frame_number !== sorted[row_idx - 1].frame_number,
+          )
+      )
+    }
+  }
+  return rows
+}
 
 type FrameResult = TrajectoryFrame | Promise<TrajectoryFrame>
 
