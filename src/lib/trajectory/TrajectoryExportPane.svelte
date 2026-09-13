@@ -29,6 +29,7 @@
   } from '$lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
   import { to_error } from '$lib/utils'
+  import { getAbortSignal } from 'svelte'
 
   let {
     export_pane_open = $bindable(false),
@@ -72,15 +73,11 @@
     controller: AbortController
   } | null>(null)
   let export_error = $state<string | null>(null)
-  let run_lifetime = new AbortController()
+  let run_signal: AbortSignal
   $effect(() => {
     if (!run) return
-    const lifetime = new AbortController()
-    run_lifetime = lifetime
-    return () => {
-      lifetime.abort()
-      running?.controller.abort()
-    }
+    run_signal = getAbortSignal()
+    return () => running?.controller.abort()
   })
 
   let total_frames_available = $derived(run?.frame_count ?? 0)
@@ -207,7 +204,7 @@
     }
     const original_step = current_step_idx
     const export_run = run
-    const lifetime_signal = run_lifetime.signal
+    const lifetime_signal = run_signal
     const first_frame = start_frame
     await run_export(format.toUpperCase(), async (signal) => {
       // The viewer pauses playback here, before a lazy frame read can take over.

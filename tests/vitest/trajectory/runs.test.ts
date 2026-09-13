@@ -353,19 +353,16 @@ describe(`worker-served run lifecycle`, () => {
         const handler = add_listener.mock.calls.find(([type]) => type === `message`)?.[1]
         if (typeof handler !== `function`) throw new Error(`Missing worker message handler`)
         // Invoke directly so the test can assert errors normally reported by the event loop.
-        const deliver = () =>
+        const deliver = vi.fn(() =>
           handler.call(
             port,
             new MessageEvent(`message`, {
               data: { properties: batch, complete: true },
             }),
-          )
-        let caught_error: unknown
-        try {
-          deliver()
-        } catch (error) {
-          caught_error = error
-        }
+          ),
+        )
+        expect(deliver).toThrow(Error)
+        const caught_error: unknown = deliver.mock.results[0].value
         if (error_count === 1) expect(caught_error).toBe(failures[0])
         else {
           expect(caught_error).toBeInstanceOf(AggregateError)
