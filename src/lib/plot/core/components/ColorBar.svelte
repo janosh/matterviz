@@ -107,6 +107,7 @@
     override: () => backdrop_color,
   })
 
+  const category_entries = $derived(Object.entries(categories ?? {}))
   const is_vertical = $derived(orientation === `vertical`)
   const opposite_side = { top: `bottom`, bottom: `top`, left: `right`, right: `left` } as const
   const outside_tick_side = $derived.by(() => {
@@ -310,9 +311,9 @@
       {/if}
     </div>
   {/if}
-  {#if show_scale && categories}
+  {#if show_scale && category_entries.length}
     <div class="category-legend" style:flex-direction={is_vertical ? `column` : `row`}>
-      {#each Object.entries(categories) as [label, color] (label)}
+      {#each category_entries as [label, color] (label)}
         <span><span style:color aria-hidden="true">●</span> {label}</span>
       {/each}
     </div>

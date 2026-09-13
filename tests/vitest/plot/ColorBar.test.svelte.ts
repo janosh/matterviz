@@ -438,7 +438,7 @@ describe(`ColorBar Interactive Selects`, () => {
     },
   )
 
-  test.each([undefined, { Public: `#123456`, Partial: `#abcdef` }])(
+  test.each([undefined, {}, { Public: `#123456`, Partial: `#abcdef` }])(
     `property selection reports intent and loading with categories=%j`,
     async (categories) => {
       const state = $state({
@@ -473,7 +473,7 @@ describe(`ColorBar Interactive Selects`, () => {
       await tick()
       expect(trigger.disabled).toBe(false)
       expect(trigger.textContent).toContain(`Volume`)
-      if (categories) {
+      if (categories && Object.keys(categories).length) {
         expect(document.querySelector(`.colorbar .bar`)).toBeNull()
         const swatches = [...document.querySelectorAll<HTMLElement>(`.category-legend > span`)]
         expect(swatches.map((node) => node.textContent?.trim())).toEqual([

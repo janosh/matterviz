@@ -613,7 +613,8 @@
   // fall back to the series color/radius per point, so they must not widen either scale.
   const scale_ranges = $derived(collect_scale_ranges(assigned_series))
   const has_color_scale = $derived(
-    scale_ranges.color_extent.n_finite > 0 || Boolean(color_bar?.categories),
+    scale_ranges.color_extent.n_finite > 0 ||
+      Object.keys(color_bar?.categories ?? {}).length > 0,
   )
   const show_colorbar = $derived(
     Boolean(

@@ -102,8 +102,9 @@ test.each([
 
     options.nothing_hidden = false
     options.is_site_visible = (site_idx) => site_idx !== 0
+    const visible_positions = layers[0].arrows.slice(1).map(({ position }) => [...position])
     check([`force`, `magmom`])
-    expect(layers[0].arrows.map(({ site_idx }) => site_idx)).toEqual([1, 2])
+    expect(layers[0].arrows.map(({ position }) => position)).toEqual(visible_positions)
     expect(layers[0].arrows[0]).toBe(first_force)
     options.nothing_hidden = true
     options.vector_configs = { force: { visible: false } }
@@ -117,9 +118,13 @@ test.each([
     }
     options.vector_configs = {}
     check([`force`, `magmom`, `velocity`])
-    expect(layers[0].arrows.map(({ site_idx }) => site_idx)).toEqual([0, 1, 2])
     options.vector_configs = { magmom: { visible: false }, velocity: { visible: false } }
     check([`force`])
+    expect(layers[0].arrows.map(({ position }) => position)).toEqual([
+      [0, 2, 0],
+      [2, 0, 0],
+      [4, 5, 6],
+    ])
 
     // Inactive layers and all their records are released, including a zero-site replacement.
     options.vector_configs.force = { visible: false }

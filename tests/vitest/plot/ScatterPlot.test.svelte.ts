@@ -1132,19 +1132,32 @@ describe(`ScatterPlot`, () => {
     expect(on_plot_click).not.toHaveBeenCalled()
   })
 
-  test(`does not render a colorbar in a zero-sized plot`, async () => {
-    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(0)
-    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(0)
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ ...basic, color_values: basic.x }],
-        color_bar: {},
-      },
-    })
-    await tick()
-    expect(document.querySelector(`.colorbar-wrapper`)).toBeNull()
-  })
+  test.each([
+    { width: 0, color_values: [0, 1], has_scale: false },
+    { width: 400, color_values: [0, 1], has_scale: true },
+    { width: 400, color_values: [NaN, Infinity], has_scale: false },
+  ])(
+    `empty categories preserve colorbar visibility at width $width with $color_values`,
+    async ({ width, color_values, has_scale }) => {
+      vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
+      vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(width ? 300 : 0)
+      const color_bar = $state({
+        categories: {},
+        property_options: [{ key: `energy`, label: `Energy` }],
+      })
+      mount(ScatterPlot, {
+        target: document.body,
+        props: { series: [{ x: [0, 1], y: [0, 1], color_values }], color_bar },
+      })
+      await tick()
+      expect(Boolean(document.querySelector(`.colorbar .bar`))).toBe(has_scale)
+      expect(document.querySelector(`.category-legend`)).toBeNull()
+      expect(Boolean(document.querySelector(`.property-select`))).toBe(width > 0)
+      color_bar.property_options = []
+      await tick()
+      expect(Boolean(document.querySelector(`.colorbar-wrapper`))).toBe(has_scale)
+    },
+  )
 
   test.each([
     [`points only`, `points`, 5, 3, undefined],

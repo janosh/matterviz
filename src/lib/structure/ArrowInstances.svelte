@@ -3,7 +3,7 @@
   // (forces, magnetic moments, ...). Replaces one <Arrow> component per site
   // (2 meshes + 2 geometries + 2 materials each) with 2 draw calls per layer.
   // Sizing math mirrors Arrow.svelte so the two render identically.
-  import type { Vec3 } from '$lib/math'
+  import type { VectorArrow } from './arrow-instances'
   import { EPS } from '$lib/math'
   import { set_linear_css_color } from '$lib/scene/colors'
   import { T, useThrelte } from '@threlte/core'
@@ -19,20 +19,13 @@
     Vector3,
   } from 'three/webgpu'
 
-  type ArrowInstance = {
-    position: Vec3
-    vector: Vec3
-    scale: number
-    color: string
-  }
-
   let {
     arrows,
     shaft_radius,
     arrow_head_radius,
     arrow_head_length,
   }: {
-    arrows: ArrowInstance[]
+    arrows: VectorArrow[]
     shaft_radius: number // negative = relative to shaft length
     arrow_head_radius: number // negative = relative to shaft length
     arrow_head_length: number // negative = relative to arrow length

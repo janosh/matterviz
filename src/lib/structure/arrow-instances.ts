@@ -14,8 +14,7 @@ import {
   type Site,
 } from './index'
 
-type VectorArrow = {
-  site_idx: number
+export type VectorArrow = {
   position: Vec3
   vector: Vec3
   scale: number
@@ -108,13 +107,11 @@ export function build_vector_layers(
       if (!vec) continue
       max_mag = Math.max(max_mag, Math.hypot(...vec))
       const arrow = previous_arrows[arrow_count++] ?? {
-        site_idx,
         position: site.xyz,
         vector: vec,
         scale: 0,
         color: ``,
       }
-      arrow.site_idx = site_idx
       arrow.position = site.xyz
       arrow.vector = vec
       arrows[site_idx] = arrow
