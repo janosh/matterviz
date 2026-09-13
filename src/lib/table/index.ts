@@ -1,5 +1,5 @@
 import { contrast_color_memo, type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
-import { array_extent, quantile_unordered } from '$lib/math'
+import { quantile_unordered } from '$lib/math'
 import { color_ramp_scale } from '$lib/plot/core/color-ramp'
 import { clamp01 } from '$lib/utils'
 import { scaleSequential } from 'd3-scale'
@@ -183,13 +183,16 @@ export function compute_column_stats(
   // array per column, on top of the one the caller already built.
   const nums: number[] = []
   let sum = 0
+  let lowest = Infinity
+  let highest = -Infinity
   for (const val of values) {
     if (typeof val !== `number` || !Number.isFinite(val)) continue
     nums.push(val)
     sum += val
+    if (val < lowest) lowest = val
+    if (val > highest) highest = val
   }
   if (nums.length === 0) return null
-  const [lowest, highest] = array_extent(nums)
   // A running mean only when the plain sum overflowed past ~1.8e308, so a column of huge
   // values still reports a real mean rather than Infinity.
   let mean = sum / nums.length

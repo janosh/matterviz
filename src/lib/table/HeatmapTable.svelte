@@ -41,7 +41,6 @@
   import {
     compute_column_stats,
     make_cell_color_scale,
-    merge_domains,
     NULL_CELL_COLOR,
     resolve_color_domain,
   } from '$lib/table'
@@ -660,55 +659,34 @@
   // === Column statistics and colors ===
   // One numeric pass per visible column, shared by the color scales, the summary row,
   // best-cell highlighting and data bars. Quantiles are skipped unless requested.
-  let needs_quantiles = $derived(
-    summary_stats.includes(`median`) || columns.some((col) => col.normalize === `quantile`),
-  )
+  // Preference changes don't affect these statistics; best-cell direction is resolved below.
+  let needs_median = $derived(summary_stats.includes(`median`))
   // Each column's stats carry the color domain they resolve to, since every consumer
   // (color scale, data bar) needs both together.
   let column_stats = $derived.by(() => {
     const stats = new Map<string, ColumnStats & { domain: [number, number] }>()
-    const groups = new Map<string, [number, number][]>()
+    const groups = new Map<string, [number, number]>()
     for (const col of visible_columns) {
-      const parsed = filtered_data.map((row) => parse_numeric_val(row[cell_key(col)]))
-      const col_stats = compute_column_stats(parsed, better_of(col), needs_quantiles)
+      const key = cell_key(col)
+      const parsed = filtered_data.map((row) => parse_numeric_val(row[key]))
+      const col_stats = compute_column_stats(
+        parsed,
+        undefined,
+        needs_median || col.normalize === `quantile`,
+      )
       if (!col_stats) continue
-      const domain = resolve_color_domain(col_stats, col.normalize)
-      stats.set(col.id, { ...col_stats, domain })
+      let domain = resolve_color_domain(col_stats, col.normalize)
       const group = col.domain_group
-      if (group) groups.set(group, [...(groups.get(group) ?? []), domain])
-    }
-    // Columns sharing a tag end up on one merged domain, so their cells compare directly
-    for (const col of visible_columns) {
-      const entry = stats.get(col.id)
-      const merged = col.domain_group && merge_domains(groups.get(col.domain_group) ?? [])
-      if (entry && merged) entry.domain = merged
+      const shared_domain = group && groups.get(group)
+      if (shared_domain) {
+        // Earlier columns retain this tuple, so widening it updates the whole group.
+        shared_domain[0] = Math.min(shared_domain[0], domain[0])
+        shared_domain[1] = Math.max(shared_domain[1], domain[1])
+        domain = shared_domain
+      } else if (group) groups.set(group, domain)
+      stats.set(col.id, { ...col_stats, domain })
     }
     return stats
-  })
-
-  // Construct each color mapper once per visible column, not once per rendered cell
-  let column_color_scales = $derived.by(() => {
-    const scales = new Map<string, (val: number | null | undefined) => CellColor>()
-    if (!show_heatmap) return scales
-    for (const col of visible_columns) {
-      const col_id = col.id
-      const stats = column_stats.get(col_id)
-      const configured_scale = color_scale_of(col)
-      if (configured_scale === null) continue
-      scales.set(
-        col_id,
-        make_cell_color_scale(
-          stats?.values ?? [],
-          better_of(col),
-          configured_scale ?? `interpolateViridis`,
-          col.scale_type || `linear`,
-          // minmax needs no explicit domain; leaving it off keeps the unclamped behavior
-          // for every column that doesn't opt into normalization
-          col.normalize || col.domain_group ? stats?.domain : undefined,
-        ),
-      )
-    }
-    return scales
   })
 
   // Does the column paint? An unconfigured numeric column defaults to interpolateViridis, so the
@@ -753,26 +731,30 @@
   // === Column view model ===
   // Everything the header, body and summary cells need per column, resolved once per column
   // rather than once per rendered cell: a 60x30 virtual window re-renders 1800 cells per scroll.
-  type ColumnView = {
-    col: Column<Row>
-    id: string
-    key: string // row key holding the column's values
-    numeric: boolean
-    sticky_left: string | undefined
-    width: number | undefined
-    head_style: string | undefined
-    cell_style: string | undefined
-    dt_mode: DateTimeFormatMode | null // null unless the column holds dates
-    color: ((num: number | null) => CellColor) | undefined
-    stats: (ColumnStats & { domain: [number, number] }) | undefined
-    bar: boolean
-    best: number | null // value to ring when highlight_best is set
-  }
-  let cols = $derived<ColumnView[]>(
-    visible_columns.map((col) => {
-      const identifier = col.id
-      const width = prefs_of(identifier).width
-      const stats = column_stats.get(identifier)
+  // Keep unchanged column views and color functions stable: editing one preference must
+  // not invalidate every cell in the other visible columns.
+  function create_column_view(col: Column<Row>) {
+    const identifier = col.id
+    const width = $derived(prefs_of(identifier).width)
+    const stats = $derived(column_stats.get(identifier))
+    const better = $derived(better_of(col))
+    const configured_scale = $derived(color_scale_of(col))
+    const dt_mode = $derived(is_datetime_column(col) ? datetime_mode(col) : null)
+    const color = $derived(
+      !show_heatmap || configured_scale === null
+        ? undefined
+        : make_cell_color_scale(
+            // Linear scales need only the cached extrema; logarithmic scales still need
+            // the smallest positive value, which may differ from the overall minimum.
+            !stats ? [] : col.scale_type === `log` ? stats.values : [stats.min, stats.max],
+            better,
+            configured_scale ?? `interpolateViridis`,
+            col.scale_type || `linear`,
+            // Explicit domains clamp; plain minmax preserves its unclamped behavior.
+            col.normalize || col.domain_group ? stats?.domain : undefined,
+          ),
+    )
+    const view = $derived.by(() => {
       const size = (edge: `min-width` | `max-width`) =>
         width ? `; width: ${width}px; ${edge}: ${width}px` : ``
       return {
@@ -784,14 +766,25 @@
         width,
         head_style: `${col.style ?? ``}${size(`min-width`)}` || undefined,
         cell_style: `${col.cell_style ?? col.style ?? ``}${size(`max-width`)}` || undefined,
-        dt_mode: is_datetime_column(col) ? datetime_mode(col) : null,
-        color: column_color_scales.get(identifier),
+        dt_mode,
+        color,
         stats,
         bar: col.render_as === `bar` || col.render_as === `both`,
-        best: col.highlight_best ? (stats?.best ?? null) : null,
+        best:
+          col.highlight_best && stats
+            ? better === `lower`
+              ? stats.min
+              : better === `higher`
+                ? stats.max
+                : null
+            : null,
       }
-    }),
-  )
+    })
+    return () => view
+  }
+  const column_views = $derived(visible_columns.map(create_column_view))
+  let cols = $derived(column_views.map((get_view) => get_view()))
+  type ColumnView = (typeof cols)[number]
 
   // Fraction of the column's domain a value fills, for in-cell data bars. Clamped so a
   // quantile-clipped domain saturates instead of overflowing the cell.

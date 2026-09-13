@@ -59,6 +59,25 @@ describe(`filter_series_to_ranges`, () => {
         // Connecting lines still receive the complete source arrays outside the marker window.
         expect(result.x).toBe(series[0].x)
       }
+      // A fully visible dataset keeps the same point array across pans; clipping either
+      // axis still picks just the visible markers, and returning to full view recovers it.
+      for (const y_range of [
+        [0, 10],
+        [6, 10],
+        [NaN, 10],
+        [10, 0],
+      ]) {
+        const [result] = filter_series_to_ranges(materialized, {
+          ...ranges,
+          x: [-Infinity, Infinity],
+          y: [y_range[0], y_range[1]],
+        })
+        const expected = materialized[0].points.filter(
+          (point) => point.y >= Math.min(...y_range) && point.y <= Math.max(...y_range),
+        )
+        expect(result.filtered_data).toEqual(expected)
+        if (expected.length > 0) expect(result.filtered_data).toBe(materialized[0].points)
+      }
     },
   )
 
@@ -168,6 +187,8 @@ describe(`filter_series_to_ranges`, () => {
           size_values: [7, 9],
           point_style: [{ fill: `red` }, { fill: `blue` }],
           metadata: [{ tag: `a` }, { tag: `b` }],
+          x_error: [0.1, 0.2],
+          y_error: { lower: [0.3, 0.4], upper: [0.5, 0.6] },
         },
       ],
       ranges,
@@ -180,6 +201,8 @@ describe(`filter_series_to_ranges`, () => {
       point_idx: 1,
       point_style: { fill: `blue` },
       metadata: { tag: `b` },
+      x_error: [0.2, 0.2],
+      y_error: [0.4, 0.6],
     })
     expect(
       filter_to_ranges(
