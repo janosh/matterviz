@@ -3,6 +3,7 @@ import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
 import type { RdfPattern } from '$lib/rdf'
 import type { Crystal, Pbc } from '$lib/structure'
+import { neighbor_query } from '$lib/structure/bonding'
 import { is_crystal } from '$lib/structure/validation'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
@@ -350,7 +351,7 @@ describe(`calculate_all_pair_rdfs`, () => {
           ...site,
           species:
             idx === mixed_idx
-              ? [...site.species, { element: `Cl`, occu: 0.25, oxidation_state: 0 }]
+              ? [...site.species, { element: `Cl`, occu: 0.3, oxidation_state: 0 }]
               : vacancy && idx === 0
                 ? site.species.map((species) => ({ ...species, occu: 0 }))
                 : site.species,
@@ -384,6 +385,11 @@ describe(`calculate_all_pair_rdfs`, () => {
       ] as Pbc[]) {
         const opts = { cutoff: 8, n_bins: 50, pbc }
         const patterns = calculate_all_pair_rdfs(structure, opts)
+        const { offsets, neighbors, distances } = neighbor_query(structure, {
+          cutoff: opts.cutoff,
+          pbc,
+          sorted: false,
+        })
         expect(patterns.map((pattern) => pattern.element_pair)).toEqual(pairs)
         for (const { element_pair, r: radius, g_r } of patterns) {
           const [center_species, neighbor_species] = element_pair ?? []
@@ -394,6 +400,41 @@ describe(`calculate_all_pair_rdfs`, () => {
           })
           expect(radius).toBe(patterns[0].r)
           expect(g_r).toEqual(direct.g_r)
+          // Independent materialized-list reference catches missed directed contacts and
+          // mixed-occupancy dispatch errors in the streaming histogram. Reordering positive
+          // additions has relative error <= 2*n*eps across the two summation orders.
+          const weights = [center_species, neighbor_species].map((element) =>
+            structure.sites.map(({ species }) =>
+              species.reduce(
+                (sum, spec) => sum + (spec.element === element ? spec.occu : 0),
+                0,
+              ),
+            ),
+          )
+          const expected = Array<number>(opts.n_bins).fill(0)
+          const bin_size = opts.cutoff / opts.n_bins
+          for (let center = 0; center < structure.sites.length; center++) {
+            for (let slot = offsets[center]; slot < offsets[center + 1]; slot++) {
+              const bin = Math.floor(distances[slot] / bin_size + 1e-9)
+              if (distances[slot] > 0 && bin < opts.n_bins) {
+                expected[bin] += weights[0][center] * weights[1][neighbors[slot]]
+              }
+            }
+          }
+          const pair_weight = weights.reduce(
+            (product, values) => product * values.reduce((sum, weight) => sum + weight, 0),
+            1,
+          )
+          const { volume } = math.calc_lattice_params(structure.lattice.matrix)
+          const relative_tolerance = 2 * distances.length * Number.EPSILON
+          for (let bin = 0; bin < opts.n_bins; bin++) {
+            if (pair_weight > 0)
+              expected[bin] /=
+                (pair_weight * 4 * Math.PI * radius[bin] ** 2 * bin_size) / volume
+            expect(Math.abs(g_r[bin] - expected[bin])).toBeLessThanOrEqual(
+              relative_tolerance * Math.abs(expected[bin]),
+            )
+          }
         }
       }
     },

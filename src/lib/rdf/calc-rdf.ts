@@ -3,7 +3,7 @@
 // N_a · N_b · 4π r² Δr / V, so g(r) → 1 for an uncorrelated system.
 import { calc_lattice_params } from '$lib/math'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
-import { neighbor_query } from '$lib/structure/bonding'
+import { visit_neighbor_distances } from '$lib/structure/bonding'
 import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
 import type { RdfOptions, RdfPattern } from './index'
 
@@ -17,13 +17,11 @@ const species_weights = (sites: Site[], element: string | undefined): Float64Arr
     ),
   )
 
-// Cap on the histogram length. `n_bins > 0` bounds neither the allocation (bin centres, bin
-// indices and one g(r) array PER ELEMENT PAIR are all n_bins long: 480 MB at 1e7 on a
-// 3-element cell) nor the type (2.5 reached `Array(2.5)`, a bare `Invalid array length`).
+// Bound allocations: one radius grid and one n_bins-long histogram per element pair.
 const MAX_RDF_BINS = 1_000_000
 
-// The neighbour list and bin assignment depend only on geometry and binning, never on the
-// species pair, so all-pair callers share them across all histograms.
+// Only the histogram grid is retained. Neighbours stream into it so wide cutoffs on large
+// frames never allocate pair lists, displacement vectors or per-contact bin indices.
 function prepare_rdf(structure: Crystal, options: RdfOptions) {
   const { cutoff = 15, n_bins = 75 } = options
   // finite too: Infinity passes `> 0` and resurfaces as a neighbor_query error naming no caller
@@ -39,64 +37,30 @@ function prepare_rdf(structure: Crystal, options: RdfOptions) {
     throw new Error(`RDF calculation: ${lattice_unavailable_reason(structure, true)}`)
   }
   const { volume } = calc_lattice_params(structure.lattice.matrix)
-  // every slot is binned regardless of order, so the per-center distance sort is skipped
-  const list = neighbor_query(structure, { cutoff, pbc: options.pbc, sorted: false })
   const bin_size = cutoff / n_bins
-  // Bin per neighbour slot, or -1 for the slots g(r) never counts: the true self term and
-  // coincident duplicate sites (distance 0), and distances at exactly the cutoff, which the
-  // half-open range [0, cutoff) excludes. Periodic images of the center itself are real
-  // neighbours and stay in (they are the whole signal of a 1-atom cell).
+  // Exclude zero distances and the exact cutoff. Periodic self images remain included
+  // (they are the whole signal of a 1-atom cell).
   // Crystal shells often sit exactly on a bin edge (rocksalt a/2 = 2.8 Å on 0.2 Å bins), and
   // the image positions carry ±1 ulp of noise, so without the nudge one shell splits across
   // two bins. 1e-9 is ~4 orders above that noise (≤ n_bins · eps) and 1e-9 bin widths below
   // any physical separation, so it only decides edge cases, and decides them as [lo, hi).
-  const { distances } = list
-  const bins = new Int32Array(distances.length)
-  for (let slot = 0; slot < distances.length; slot++) {
-    const dist = distances[slot]
-    const bin = Math.floor(dist / bin_size + 1e-9)
-    bins[slot] = dist > 0 && bin < n_bins ? bin : -1
+  const bin_of = (distance: number): number => {
+    const bin = Math.floor(distance / bin_size + 1e-9)
+    return distance > 0 && bin < n_bins ? bin : -1
   }
   return {
+    cutoff,
+    pbc: options.pbc,
     n_bins,
     bin_size,
     volume,
-    list,
-    bins,
+    bin_of,
     r: Array.from({ length: n_bins }, (_unused, idx) => (idx + 0.5) * bin_size),
   }
 }
 
-type PreparedRdf = ReturnType<typeof prepare_rdf>
-
-function histogram_pairs(
-  prepared: PreparedRdf,
-  center_weights: Float64Array,
-  neighbor_weights: Float64Array,
-  element_pair: [string, string] | undefined,
-): RdfPattern {
-  const { n_bins, list, bins } = prepared
-  const g_r = Array<number>(n_bins).fill(0)
-  const { offsets, neighbors } = list
-  for (let center = 0; center < list.n_centers; center++) {
-    const center_weight = center_weights[center]
-    if (center_weight === 0) continue
-    for (let slot = offsets[center]; slot < offsets[center + 1]; slot++) {
-      const bin = bins[slot]
-      if (bin >= 0) g_r[bin] += center_weight * neighbor_weights[neighbors[slot]]
-    }
-  }
-  // Ideal-gas normalisation with the original cell's density and occupancy-weighted counts.
-  // Self-pairs are not subtracted: the unshifted self was never counted, and a site's own
-  // periodic images are valid neighbours.
-  const pair_weight =
-    center_weights.reduce((sum, occu) => sum + occu, 0) *
-    neighbor_weights.reduce((sum, occu) => sum + occu, 0)
-  return normalize_histogram(prepared, g_r, pair_weight, element_pair)
-}
-
 function normalize_histogram(
-  { n_bins, bin_size, volume, r: radius }: PreparedRdf,
+  { n_bins, bin_size, volume, r: radius }: ReturnType<typeof prepare_rdf>,
   g_r: number[],
   pair_weight: number,
   element_pair: [string, string] | undefined,
@@ -113,10 +77,25 @@ function normalize_histogram(
 // neighbor_species b (either may be omitted to leave that end unfiltered).
 export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
   const { center_species, neighbor_species } = options
-  return histogram_pairs(
-    prepare_rdf(structure, options),
-    species_weights(structure.sites, center_species),
-    species_weights(structure.sites, neighbor_species),
+  const prepared = prepare_rdf(structure, options)
+  const center_weights = species_weights(structure.sites, center_species)
+  const neighbor_weights = species_weights(structure.sites, neighbor_species)
+  const g_r = Array<number>(prepared.n_bins).fill(0)
+  visit_neighbor_distances(structure, prepared, (center, neighbor, distance) => {
+    const center_weight = center_weights[center]
+    if (center_weight === 0) return
+    const bin = prepared.bin_of(distance)
+    if (bin >= 0) g_r[bin] += center_weight * neighbor_weights[neighbor]
+  })
+  // The original cell's occupancy-weighted density includes self images. Only the
+  // unshifted self and coincident sites were excluded when binning above.
+  const pair_weight =
+    center_weights.reduce((sum, occu) => sum + occu, 0) *
+    neighbor_weights.reduce((sum, occu) => sum + occu, 0)
+  return normalize_histogram(
+    prepared,
+    g_r,
+    pair_weight,
     center_species && neighbor_species ? [center_species, neighbor_species] : undefined,
   )
 }
@@ -143,59 +122,85 @@ export function calculate_all_pair_rdfs(
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
   const prepared = prepare_rdf(structure, options)
-  const elements = [
-    ...new Set(structure.sites.flatMap((site) => site.species.map((spec) => spec.element))),
-  ].toSorted()
-  const weights = elements.map((element) => species_weights(structure.sites, element))
-  // Sparse dispatch wins for many ordered species, but costs more for small or mixed sets.
-  // Aggregate repeated entries before multiplying, exactly as the single-pair kernel does.
-  let site_weights: ({ element_idx: number; weight: number } | undefined)[] | undefined
-  if (elements.length > 4) {
-    site_weights = []
-    for (let site_idx = 0; site_idx < structure.sites.length; site_idx++) {
-      let occupied: { element_idx: number; weight: number } | undefined
-      for (let element_idx = 0; element_idx < elements.length; element_idx++) {
-        const weight = weights[element_idx][site_idx]
-        if (weight === 0) continue
-        if (occupied) {
-          site_weights = undefined
-          break
-        }
-        occupied = { element_idx, weight }
-      }
-      if (!site_weights) break
-      site_weights.push(occupied)
-    }
+  const element_set = new Set<string>()
+  for (const { species } of structure.sites) {
+    for (const { element } of species) element_set.add(element)
   }
-  if (!site_weights) {
-    return elements.flatMap((el_a, idx_a) =>
-      elements
-        .slice(idx_a)
-        .map((el_b, offset) =>
-          histogram_pairs(prepared, weights[idx_a], weights[idx_a + offset], [el_a, el_b]),
-        ),
-    )
+  const elements = [...element_set].toSorted()
+  const element_ids = new Map(elements.map((element, idx) => [element, idx]))
+  const counts = new Float64Array(elements.length)
+  const site_offsets = new Int32Array(structure.sites.length + 1)
+  const species_ids: number[] = []
+  const site_weights: number[] = []
+  const occupied_weights = new Float64Array(elements.length)
+  let ordered = true
+  for (let site_idx = 0; site_idx < structure.sites.length; site_idx++) {
+    occupied_weights.fill(0)
+    // Aggregate repeated species before multiplying, as the single-pair kernel does.
+    for (const { element, occu } of structure.sites[site_idx].species) {
+      const element_idx = element_ids.get(element)
+      if (element_idx !== undefined) occupied_weights[element_idx] += occu
+    }
+    for (let element_idx = 0; element_idx < elements.length; element_idx++) {
+      const weight = occupied_weights[element_idx]
+      counts[element_idx] += weight
+      if (weight === 0) continue
+      species_ids.push(element_idx)
+      site_weights.push(weight)
+    }
+    site_offsets[site_idx + 1] = species_ids.length
+    if (site_offsets[site_idx + 1] - site_offsets[site_idx] > 1) ordered = false
   }
   const histograms = elements.map((_element, idx_a) =>
     elements.map((_neighbor_element, idx_b) =>
       idx_a <= idx_b ? Array<number>(prepared.n_bins).fill(0) : [],
     ),
   )
-  const { list, bins } = prepared
-  for (let center = 0; center < list.n_centers; center++) {
-    const center_species = site_weights[center]
-    if (!center_species) continue
-    const { element_idx, weight } = center_species
-    const row = histograms[element_idx]
-    for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
-      const bin = bins[slot]
-      const neighbor = site_weights[list.neighbors[slot]]
-      if (bin >= 0 && neighbor && element_idx <= neighbor.element_idx) {
-        row[neighbor.element_idx][bin] += weight * neighbor.weight
-      }
-    }
-  }
-  const counts = weights.map((values) => values.reduce((sum, weight) => sum + weight, 0))
+  visit_neighbor_distances(
+    structure,
+    prepared,
+    ordered
+      ? (center, neighbor, distance) => {
+          const center_slot = site_offsets[center]
+          const neighbor_slot = site_offsets[neighbor]
+          if (
+            center_slot === site_offsets[center + 1] ||
+            neighbor_slot === site_offsets[neighbor + 1]
+          )
+            return
+          const center_species = species_ids[center_slot]
+          const neighbor_species = species_ids[neighbor_slot]
+          if (center_species > neighbor_species) return
+          const bin = prepared.bin_of(distance)
+          if (bin >= 0) {
+            histograms[center_species][neighbor_species][bin] +=
+              site_weights[center_slot] * site_weights[neighbor_slot]
+          }
+        }
+      : (center, neighbor, distance) => {
+          const bin = prepared.bin_of(distance)
+          if (bin < 0) return
+          for (
+            let center_slot = site_offsets[center];
+            center_slot < site_offsets[center + 1];
+            center_slot++
+          ) {
+            const center_species = species_ids[center_slot]
+            const row = histograms[center_species]
+            const center_weight = site_weights[center_slot]
+            for (
+              let neighbor_slot = site_offsets[neighbor];
+              neighbor_slot < site_offsets[neighbor + 1];
+              neighbor_slot++
+            ) {
+              const neighbor_species = species_ids[neighbor_slot]
+              if (center_species <= neighbor_species) {
+                row[neighbor_species][bin] += center_weight * site_weights[neighbor_slot]
+              }
+            }
+          }
+        },
+  )
   return elements.flatMap((el_a, idx_a) =>
     elements.slice(idx_a).map((el_b, offset) => {
       const idx_b = idx_a + offset

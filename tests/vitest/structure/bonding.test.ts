@@ -1495,6 +1495,12 @@ describe(`neighbor_query`, () => {
     [`clustered, full pbc`, clustered, [true, true, true], 2.1],
     [`clustered, no pbc`, clustered, [false, false, false], 2.1],
     [
+      `image-dominated small cell`,
+      make_crystal(3, [{ element: `Si`, abc: [0.2, 0.3, 0.4] }]),
+      [true, true, true],
+      7.5,
+    ],
+    [
       `reversed clusters, full pbc`,
       { ...clustered, sites: clustered.sites.toReversed() },
       [true, true, true],
@@ -1535,6 +1541,19 @@ describe(`neighbor_query`, () => {
     }
     expect(list.offsets[list.n_centers]).toBe(list.neighbors.length)
     expect(list.offsets[list.n_centers]).toBe(expected.size)
+    const streamed: [number, number, number][] = []
+    bonding.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
+      streamed.push([center, neighbor, dist])
+    })
+    const listed: typeof streamed = []
+    for (let center = 0; center < list.n_centers; center++) {
+      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
+        listed.push([center, list.neighbors[slot], list.distances[slot]])
+      }
+    }
+    const by_neighbor = (first: number[], second: number[]) =>
+      first[0] - second[0] || first[1] - second[1] || first[2] - second[2]
+    expect(streamed.toSorted(by_neighbor)).toEqual(listed.toSorted(by_neighbor))
   })
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
@@ -1601,6 +1620,11 @@ describe(`neighbor_query`, () => {
     [{ k: 1.5 }, /k must be a positive integer/],
   ])(`rejects %j`, (options, message) => {
     expect(() => bonding.neighbor_query(triclinic, options)).toThrow(message)
+    if (`cutoff` in options) {
+      expect(() => bonding.visit_neighbor_distances(triclinic, options, () => {})).toThrow(
+        message,
+      )
+    }
   })
 
   test(`rejects a degenerate periodic lattice and an absurd cutoff`, () => {
@@ -1632,6 +1656,10 @@ describe(`neighbor_query`, () => {
     expect(() => bonding.neighbor_query(dense, { cutoff: 100 })).toThrow(
       /more than 10,000,000 pairs within 100 A of 4600 sites/,
     )
+    // Streaming has no pair storage to exhaust, so this cloud can be processed in full.
+    let n_visits = 0
+    bonding.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
+    expect(n_visits).toBe(4600 * 4599)
   })
 
   // The refusal estimate counts the images that will actually be built (only those within
@@ -1724,7 +1752,7 @@ describe(`neighbor_query`, () => {
     ).toBe(0)
   })
 
-  test(`sorted: false yields the same contacts per center, in some order`, () => {
+  test(`sorted: false preserves slot discovery order and the same contacts`, () => {
     const sorted = bonding.neighbor_query(triclinic, { cutoff: 5.5 })
     const unsorted = bonding.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })
     expect(Array.from(unsorted.offsets)).toEqual(Array.from(sorted.offsets))
@@ -1737,6 +1765,21 @@ describe(`neighbor_query`, () => {
     for (let center = 0; center < sorted.n_centers; center++) {
       expect(keys(unsorted, center).toSorted()).toEqual(keys(sorted, center).toSorted())
     }
+    // Bin-major traversal is reserved for streamed histograms. Materialized contacts keep
+    // their slot order because bond consumers deduplicate geometric vertices in that order.
+    const interleaved = make_crystal(
+      10,
+      [3, 0, 1, 2, 4, 5].map((coord) => ({ element: `Si`, xyz: [coord, 0, 0] as Vec3 })),
+    )
+    const list = bonding.neighbor_query(interleaved, {
+      cutoff: 2.1,
+      sorted: false,
+      pbc: [false, false, false],
+    })
+    expect(Array.from(list.offsets)).toEqual([0, 4, 6, 9, 13, 16, 18])
+    expect(Array.from(list.neighbors)).toEqual([
+      4, 5, 2, 3, 2, 3, 1, 3, 0, 1, 2, 0, 4, 0, 3, 5, 0, 4,
+    ])
   })
 
   test.each([Number.NaN, Infinity])(`rejects a %s coordinate instead of binning it`, (bad) => {
