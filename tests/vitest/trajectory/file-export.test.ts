@@ -86,9 +86,9 @@ describe(`poscar_frame_filename`, () => {
 describe(`trajectory_frame_to_extxyz_str`, () => {
   // Frame-level fields (step, energy, …) live outside the structure the single-structure
   // exporter sees; scalars/booleans join the comment, arrays/strings/non-finites do not.
-  test(`merges frame scalars into the comment and skips the rest`, () => {
-    const comment = trajectory_frame_to_extxyz_str(
-      make_frame(5, two_sites, {
+  test.each([0, 2])(`merges frame scalars into the comment for %i sites`, (site_count) => {
+    const lines = trajectory_frame_to_extxyz_str(
+      make_frame(5, two_sites.slice(0, site_count), {
         energy: -11.25,
         force_max: 0.1,
         temperature: 300,
@@ -98,7 +98,9 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
         stress: [1, 2, 3, 4, 5, 6],
         label: `some string`,
       }),
-    ).split(`\n`)[1]
+    ).split(`\n`)
+    expect(lines).toHaveLength(site_count + 2)
+    const comment = lines[1]
     expect(comment).toContain(`Properties=species:S:1:pos:R:3`)
     expect(comment).toContain(`step=5`)
     expect(comment).toContain(`energy=-11.25`)

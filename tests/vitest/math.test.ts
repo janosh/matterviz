@@ -91,6 +91,9 @@ test.each([
 
 // oxfmt-ignore
 test.each([
+  [[], [], []],
+  [[0, -0], [-0, -0], [0, 0]],
+  [[Infinity, NaN, Number.MAX_VALUE], [-Infinity, 1, Number.MAX_VALUE], [NaN, NaN, Infinity]],
   [[1, 2], [3, 4], [4, 6]],
   [[1, 2, 3], [4, 5, 6], [5, 7, 9]],
   [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [8, 10, 12, 14, 16, 18]],
@@ -102,6 +105,9 @@ test(`add sums more than two vectors and rejects arity/length mismatches`, () =>
   // Test multiple vector addition
   expect(math.add([1, 2], [3, 4], [5, 6])).toEqual([9, 12])
   expect(math.add([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])).toEqual([22, 26, 30])
+  const sparse: number[] = []
+  sparse[1] = 2
+  expect(math.add(sparse, [3, 4])).toEqual([NaN, 6])
 
   // Test error cases
   expect(() => math.add()).toThrow(/zero\s+vectors/i)

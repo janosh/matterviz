@@ -332,7 +332,8 @@ export function add<T extends number[]>(...vecs: T[]): T {
     throw new Error(`All vectors must have the same length`)
   }
 
-  const result = Array.from<number>({ length }).fill(0)
+  // oxlint-disable-next-line unicorn/no-new-array -- Allocate once without Array.from's element iteration.
+  const result = new Array<number>(length).fill(0)
   for (const vec of vecs) {
     for (let idx = 0; idx < length; idx++) {
       result[idx] += vec[idx]

@@ -68,9 +68,7 @@ const SKIP_METADATA_KEYS = new Set([`forces`, `step`, `volume`])
 // knows nothing about energy or step, so both are merged in here.
 export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
   const sites = frame_sites_with_forces(frame)
-  const lines = structure_to_xyz_str({ ...frame.structure, ...(sites && { sites }) }).split(
-    `\n`,
-  )
+  const xyz = structure_to_xyz_str({ ...frame.structure, ...(sites && { sites }) })
   const extra = [`step=${frame.step}`]
   for (const [key, value] of Object.entries(frame.metadata ?? {})) {
     if (SKIP_METADATA_KEYS.has(key)) continue
@@ -80,8 +78,8 @@ export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
       extra.push(`${key.replaceAll(/[^A-Za-z0-9_]/g, `_`)}=${value}`)
     }
   }
-  lines[1] = `${lines[1]} ${extra.join(` `)}`
-  return lines.join(`\n`)
+  // Only the header changes; keep atom rows intact instead of splitting and joining them all.
+  return xyz.replace(/^[^\n]*\n[^\n]*/, (header) => `${header} ${extra.join(` `)}`)
 }
 
 // Walk an inclusive frame range, resolving one frame at a time. The event loop gets a turn

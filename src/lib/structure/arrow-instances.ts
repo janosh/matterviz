@@ -14,7 +14,7 @@ import {
   type Site,
 } from './index'
 
-export type VectorArrow = {
+type VectorArrow = {
   site_idx: number
   position: Vec3
   vector: Vec3
@@ -92,19 +92,42 @@ export function build_vector_layers(
   const active_keys = keys.filter((key) => vector_configs[key]?.visible !== false)
   if (active_keys.length === 0) return []
 
-  // Build per-site lookup; skip hidden sites so they don't contribute
-  // arrows or affect autoscaling. null entries = hidden site.
+  // Build render records directly; empty slots keep site indices aligned until compaction.
+  // Hidden sites contribute neither arrows nor the maximum used for autoscaling.
   let max_mag = 0
   const sites = structure.sites
-  // One array per visible layer, rather than one Map and key/value objects per atom.
-  const vectors = active_keys.map((key) =>
-    sites.map((site, site_idx) => {
-      if (nothing_hidden ? site.species.length === 0 : !is_site_visible(site_idx)) return null
+  const layers = active_keys.map((key) => {
+    const previous_arrows = previous_layers.find((layer) => layer.key === key)?.arrows ?? []
+    // oxlint-disable-next-line unicorn/no-new-array -- Site slots are compacted before returning.
+    const arrows = new Array<VectorArrow>(sites.length)
+    let arrow_count = 0
+    for (let site_idx = 0; site_idx < sites.length; site_idx++) {
+      const site = sites[site_idx]
+      if (nothing_hidden ? site.species.length === 0 : !is_site_visible(site_idx)) continue
       const vec = try_parse_vec3(site.properties?.[key])
-      if (vec) max_mag = Math.max(max_mag, Math.hypot(...vec))
-      return vec
-    }),
-  )
+      if (!vec) continue
+      max_mag = Math.max(max_mag, Math.hypot(...vec))
+      const arrow = previous_arrows[arrow_count++] ?? {
+        site_idx,
+        position: site.xyz,
+        vector: vec,
+        scale: 0,
+        color: ``,
+      }
+      arrow.site_idx = site_idx
+      arrow.position = site.xyz
+      arrow.vector = vec
+      arrows[site_idx] = arrow
+    }
+    const display_defaults = vector_display_defaults(key)
+    return {
+      key,
+      arrows,
+      shaft_radius: eff_shaft_radius * display_defaults.shaft_radius,
+      arrow_head_radius: eff_head_radius * display_defaults.arrow_head_radius,
+      arrow_head_length: eff_head_length * display_defaults.arrow_head_length,
+    }
+  })
 
   // When normalize is on, treat all magnitudes as 1 so arrows have equal length
   const effective_max = vector_normalize ? 1 : max_mag
@@ -118,65 +141,57 @@ export function build_vector_layers(
   // of the visual atom radius (0 = center, 0.5 = halfway to surface).
   // get_site_radius() returns the uniform scale applied to SphereGeometry(0.5),
   // so visual_radius = get_site_radius() * 0.5.
-  const site_offsets =
-    vector_origin_gap > 0 && !is_single
-      ? sites.map((site, site_idx) => {
-          const layer_indices = active_keys
-            .map((_key, idx) => idx)
-            .filter((idx) => vectors[idx][site_idx])
-          const n_keys = layer_indices.length
-          if (n_keys <= 1) return null
-          const visual_radius = get_site_radius(site, site_idx) * 0.5
-          const gap_abs = vector_origin_gap * visual_radius
-          let mean: Vec3 = [0, 0, 0]
-          for (const layer_idx of layer_indices) {
-            const vec = vectors[layer_idx][site_idx]
-            if (vec) mean = math.add(mean, math.normalize_vec(vec))
-          }
-          const mean_dir = math.normalize_vec(mean, [0, 1, 0] as Vec3)
-          const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
-          const offsets = new Map<string, Vec3>()
-          for (const [idx, layer_idx] of layer_indices.entries()) {
-            const angle = (2 * Math.PI * idx) / n_keys
-            const delta_x = math.scale(u_vec, gap_abs * Math.cos(angle))
-            const delta_y = math.scale(v_vec, gap_abs * Math.sin(angle))
-            offsets.set(active_keys[layer_idx], math.add(delta_x, delta_y))
-          }
-          return offsets
-        })
-      : null
+  if (vector_origin_gap > 0 && !is_single) {
+    const site_arrows: VectorArrow[] = []
+    for (let site_idx = 0; site_idx < sites.length; site_idx++) {
+      site_arrows.length = 0
+      for (const { arrows } of layers) {
+        const arrow = arrows[site_idx]
+        if (arrow) site_arrows.push(arrow)
+      }
+      if (site_arrows.length <= 1) continue
+      const visual_radius = get_site_radius(sites[site_idx], site_idx) * 0.5
+      const gap_abs = vector_origin_gap * visual_radius
+      let mean: Vec3 = [0, 0, 0]
+      for (const { vector } of site_arrows) {
+        mean = math.add(mean, math.normalize_vec(vector))
+      }
+      const mean_dir = math.normalize_vec(mean, [0, 1, 0] as Vec3)
+      const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
+      for (const [idx, arrow] of site_arrows.entries()) {
+        const angle = (2 * Math.PI * idx) / site_arrows.length
+        const delta_x = math.scale(u_vec, gap_abs * Math.cos(angle))
+        const delta_y = math.scale(v_vec, gap_abs * Math.sin(angle))
+        arrow.position = math.add(sites[site_idx].xyz, math.add(delta_x, delta_y))
+      }
+    }
+  }
 
   const mag_interpolator = get_d3_interpolator(vector_color_scale)
 
-  return active_keys.map((key, layer_idx) => {
+  for (const [layer_idx, { key, arrows }] of layers.entries()) {
     const layer_cfg = vector_configs[key]
     const configured_color = layer_cfg?.color
-    const display_defaults = vector_display_defaults(key)
     const layer_scale = effective_global_scale * (layer_cfg?.scale ?? 1.0)
     const layer_color = configured_color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
+    const effective_mode =
+      vector_color_mode === `auto`
+        ? key.startsWith(`magmom`) || key.startsWith(`spin`)
+          ? `spin_direction`
+          : `element`
+        : vector_color_mode
 
-    const previous_arrows = previous_layers.find((layer) => layer.key === key)?.arrows ?? []
-    // oxlint-disable-next-line unicorn/no-new-array -- Preallocate once; every active slot is written below.
-    const arrows = new Array<VectorArrow>(sites.length)
     let arrow_count = 0
     for (let site_idx = 0; site_idx < sites.length; site_idx++) {
+      const arrow = arrows[site_idx]
+      if (!arrow) continue
       const site = sites[site_idx]
-      const vec = vectors[layer_idx][site_idx]
-      if (!vec) continue
+      const vec = arrow.vector
 
       // Resolve color mode: explicit per-key color always wins,
       // then multi-key uses palette, then mode-based coloring
-      let arrow_color: string
-      if (configured_color) {
-        arrow_color = configured_color
-      } else if (!is_single) arrow_color = layer_color
-      else {
-        const effective_mode =
-          vector_color_mode === `auto`
-            ? key.startsWith(`magmom`) || key.startsWith(`spin`)
-              ? `spin_direction`
-              : `element`
-            : vector_color_mode
+      let arrow_color = layer_color
+      if (!configured_color && is_single) {
         if (effective_mode === `magnitude`) {
           const mag = Math.hypot(...vec)
           const norm = max_mag > 1e-10 ? mag / max_mag : 0
@@ -192,39 +207,13 @@ export function build_vector_layers(
         }
       }
 
-      const offset = site_offsets?.[site_idx]?.get(key)
-      const position = offset ? math.add(site.xyz, offset) : site.xyz
-      const arrow_vec = vector_normalize ? math.normalize_vec(vec) : vec
-
-      // Every visual field is recomputed: slot reuse is independent of site identity,
-      // composition, visibility, vector-key order, and per-layer settings.
-      const arrow = previous_arrows[arrow_count]
-      if (arrow) {
-        arrow.site_idx = site_idx
-        arrow.position = position
-        arrow.vector = arrow_vec
-        arrow.scale = layer_scale
-        arrow.color = arrow_color
-        arrows[arrow_count++] = arrow
-      } else {
-        arrows[arrow_count++] = {
-          site_idx,
-          position,
-          vector: arrow_vec,
-          scale: layer_scale,
-          color: arrow_color,
-        }
-      }
+      if (vector_normalize) arrow.vector = math.normalize_vec(vec)
+      arrow.scale = layer_scale
+      arrow.color = arrow_color
+      arrows[arrow_count++] = arrow
     }
     // Fresh arrays invalidate child instance buffers; inactive keys/slots aren't retained.
     arrows.length = arrow_count
-
-    return {
-      key,
-      arrows,
-      shaft_radius: eff_shaft_radius * display_defaults.shaft_radius,
-      arrow_head_radius: eff_head_radius * display_defaults.arrow_head_radius,
-      arrow_head_length: eff_head_length * display_defaults.arrow_head_length,
-    }
-  })
+  }
+  return layers
 }
