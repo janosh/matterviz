@@ -606,6 +606,17 @@ export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   )
 }
 
+// Shared by density cells and legend ramps so clipped palettes stay identical.
+export function color_interpolator(config: ColorScaleConfig | D3InterpolateName) {
+  const { scheme = SCALE_DEFAULTS.scheme, color_range = [0, 1] } =
+    typeof config === `string` ? { scheme: config } : config
+  const [start, end] = color_range
+  if (!(start >= 0 && end <= 1 && start < end))
+    throw new Error(`Invalid color_range: ${color_range}`)
+  const interpolate = get_d3_interpolator(scheme)
+  return (fraction: number): string => interpolate(start + fraction * (end - start))
+}
+
 // Create a color scale function from configuration
 export function create_color_scale(
   color_scale_config: ColorScaleConfig | D3InterpolateName,
@@ -615,12 +626,8 @@ export function create_color_scale(
     typeof color_scale_config === `string`
       ? { scheme: color_scale_config }
       : color_scale_config
-  const {
-    scheme = SCALE_DEFAULTS.scheme,
-    value_range = auto_color_range,
-    type: scale_type,
-  } = config
-  const interpolator = get_d3_interpolator(scheme)
+  const { value_range = auto_color_range, type: scale_type } = config
+  const interpolator = color_interpolator(config)
   const [min_val, max_val] = value_range
 
   const type_name = get_scale_type_name(scale_type)

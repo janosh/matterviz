@@ -1,5 +1,6 @@
 <script lang="ts">
   import { add_alpha } from '$lib/colors'
+  import { color_interpolator } from '$lib/plot/core/scales'
   import { symbol_map } from '$lib/labels'
   import type { LegendItem, Orientation } from '$lib/plot'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
@@ -300,9 +301,31 @@
     aria-pressed={series.visible}
     aria-label="Toggle visibility for {strip_html(series.label)}"
   >
-    <span class="legend-marker">
+    <span
+      class="legend-marker"
+      style:width={series.display_style.color_scale ? `44px` : undefined}
+    >
       <!-- Fill region swatch -->
-      {#if is_fill_item && (series.display_style.fill_color || series.display_style.fill_gradient)}
+      {#if series.display_style.color_scale}
+        {@const interpolate = color_interpolator(series.display_style.color_scale)}
+        {@const gradient_id = `legend-scale-${instance_id}-${series.series_idx}`}
+        <svg
+          width="40"
+          height="12"
+          viewBox="0 0 40 12"
+          class="color-scale-swatch"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id={gradient_id}>
+              {#each Array.from({ length: 11 }, (_, idx) => idx / 10) as fraction}
+                <stop offset={`${fraction * 100}%`} stop-color={interpolate(fraction)} />
+              {/each}
+            </linearGradient>
+          </defs>
+          <rect x="1" y="1" width="38" height="10" rx="2" fill={`url(#${gradient_id})`} />
+        </svg>
+      {:else if is_fill_item && (series.display_style.fill_color || series.display_style.fill_gradient)}
         {@const gradient = series.display_style.fill_gradient}
         {@const gradient_id = `legend-grad-${instance_id}-${series.fill_idx}`}
         {@const fill_color = add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}

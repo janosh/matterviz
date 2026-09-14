@@ -5,7 +5,7 @@ import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
 import { plot_color } from '$lib/colors'
-import { interpolateViridis } from 'd3-scale-chromatic'
+import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -169,6 +169,66 @@ function mock_label_measurement(width: number, height: number) {
 }
 
 describe(`BinnedScatterPlot`, () => {
+  test.each([false, true])(
+    `separate density scales retain overlapping series and picking (reversed=%s)`,
+    async (reversed) => {
+      const rectangles: (TestRect & { color: CanvasRenderingContext2D[`fillStyle`] })[] = []
+      const ctx = mock_canvas_context({
+        fillRect: vi.fn((x: number, y: number, width: number, height: number) =>
+          rectangles.push({ x, y, width, height, color: ctx.fillStyle }),
+        ),
+      })
+      const on_point_click = vi.fn()
+      mount_plot({
+        series: [
+          {
+            label: `Blue`,
+            x: [0.5],
+            y: [0.5],
+            metadata: [{ model: `Blue` }],
+            density_color_scale: `interpolateBlues`,
+          },
+          {
+            label: `Red`,
+            x: [0.5, 0.5],
+            y: [0.5, 0.5],
+            metadata: [{ model: `Red` }, { model: `Red` }],
+            density_color_scale: `interpolateReds`,
+          },
+        ],
+        ...density_mode_with_colorbar({ bin_click: `point`, bin_px: 20 }),
+        x_axis: { range: reversed ? [1, 0] : [0, 1] },
+        y_axis: { range: reversed ? [1, 0] : [0, 1] },
+        on_point_click,
+      })
+      await settle()
+      const strips = rectangles.slice(-2)
+      expect(strips.map(({ color }) => color)).toEqual([
+        interpolateBlues(0),
+        interpolateReds(1),
+      ])
+      expect(strips[0].x + strips[0].width).toBeCloseTo(strips[1].x, 10)
+      expect(strips[0].width).toBe(strips[1].width)
+      expect(document.body.textContent).not.toContain(`Density (3 points)`)
+      for (const [series_idx, strip] of strips.entries()) {
+        const center_x = strip.x + strip.width / 2
+        const center_y = strip.y + strip.height / 2
+        hover_plot(center_x, center_y)
+        await settle()
+        expect(doc_query(`.plot-tooltip`).textContent).toContain(series_idx ? `Red` : `Blue`)
+        expect(doc_query(`.plot-tooltip`).textContent).toContain(`${series_idx + 1} samples`)
+        click_plot(center_x, center_y)
+        expect(on_point_click).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            series_idx,
+            metadata: { model: series_idx ? `Red` : `Blue` },
+            color: strip.color,
+          }),
+        )
+      }
+    },
+  )
+
   test(`supports ScatterPlot-style fullscreen controls and overlay snippets`, async () => {
     mock_fullscreen()
     mount_plot({

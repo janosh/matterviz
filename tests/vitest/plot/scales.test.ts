@@ -8,6 +8,7 @@ import {
   collect_series_extent,
   collect_size_range,
   create_color_scale,
+  color_interpolator,
   create_scale,
   empty_extent,
   generate_arcsinh_ticks,
@@ -1022,3 +1023,15 @@ describe(`scales`, () => {
     })
   })
 })
+
+test.each([`linear`, `log`, `arcsinh`] as const)(
+  `clipped %s color scale matches legend endpoints`,
+  (type) => {
+    const config = { scheme: `interpolateBlues`, color_range: [0.3, 1] as Vec2, type } as const
+    const scale = create_color_scale(config, [1, 100])
+    const interpolate = color_interpolator(config)
+    expect(scale(1)).toBe(interpolate(0))
+    expect(scale(100)).toBe(interpolate(1))
+    expect(() => color_interpolator({ color_range: [1, 0] })).toThrow(`Invalid color_range`)
+  },
+)

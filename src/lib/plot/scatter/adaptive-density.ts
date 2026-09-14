@@ -1,3 +1,4 @@
+import type { BinnedColorScaleConfig } from '$lib/plot/scatter/binned-scatter-types'
 import { clamp, partition_point, type Point2D, type Vec2 } from '$lib/math'
 import { axis_transform, range_bounds, validate_log_range } from '$lib/plot/core/interactions'
 import type { ScaleType } from '$lib/plot/core/types'
@@ -14,6 +15,8 @@ export interface DensePointSeries<Metadata = Record<string, unknown>> {
   point_ids?: ArrayLike<string | number>
   size_values?: ArrayLike<number | null>
   color?: string
+  // Opt into separate density bins and a color scale for this series.
+  density_color_scale?: BinnedColorScaleConfig
 }
 
 export interface DenseInternalPoint<Metadata = Record<string, unknown>> {
