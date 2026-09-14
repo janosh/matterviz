@@ -46,6 +46,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     page,
   }) => {
     const diagram = ternary_diagram(page)
+    await page.mouse.move(0, 0)
     await expect(diagram).toHaveAttribute(`data-has-hover`, `false`)
     await expect(diagram).toHaveAttribute(`data-is-dragging`, `false`)
     expect(await diagram.locator(`.plot-tooltip`).count()).toBe(0)
@@ -59,7 +60,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     for (const overlay of overlays) {
       await expect(overlay).toBeAttached()
       await expect(overlay).toHaveClass(/hover-visible/)
-      expect(await opacity_of(overlay)).toBe(0)
+      await expect.poll(() => opacity_of(overlay)).toBe(0)
     }
     await diagram.hover()
     for (const overlay of overlays) await expect.poll(() => opacity_of(overlay)).toBe(1)
@@ -302,9 +303,22 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
       `auto`,
     )
 
-    // Dragging the handle should NOT rotate the hull behind it
-    const canvas = diagram.locator(`canvas`).first()
-    const hash_before = await get_canvas_hash(canvas)
+    // Read the camera directly: canvas pixels can change as fonts finish loading.
+    const read_camera = () =>
+      diagram.evaluate((element) => {
+        const {
+          elevation,
+          azimuth,
+          zoom,
+          centerX: center_x,
+          centerY: center_y,
+        } = (element as HTMLElement).dataset
+        return { elevation, azimuth, zoom, center_x, center_y }
+      })
+    const camera_before = await read_camera()
+    for (const value of Object.values(camera_before))
+      expect(Number.isFinite(Number(value))).toBe(true)
+    const pane_before = await require_bbox(pane)
     const handle_box = await require_bbox(pane.locator(`.drag-handle`), `drag handle`)
     const [handle_x, handle_y] = [
       handle_box.x + handle_box.width / 2,
@@ -314,7 +328,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await page.mouse.down()
     await page.mouse.move(handle_x + 50, handle_y + 30, { steps: 5 })
     await page.mouse.up()
-    await page.waitForTimeout(100)
-    expect(await get_canvas_hash(canvas)).toBe(hash_before)
+    await expect.poll(async () => (await require_bbox(pane)).x).toBeGreaterThan(pane_before.x)
+    expect(await read_camera()).toEqual(camera_before)
   })
 })

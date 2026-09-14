@@ -65,6 +65,7 @@ const url_params = (page: Page): Record<string, string> =>
 
 test.describe(`PhononModeExplorer`, () => {
   test.beforeEach(async ({ page }) => {
+    await page.clock.install()
     await page.goto(`/reciprocal/phonon-mode-explorer`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
   })
@@ -91,6 +92,7 @@ test.describe(`PhononModeExplorer`, () => {
     const trajectory_viewer = explorer.locator(`.trajectory-pane .trajectory`)
     const trajectory_controls = trajectory_viewer.locator(`.trajectory-controls`)
     const step_input = explorer.locator(`.trajectory-controls .step-input`)
+    await explorer.locator(`.plot-pane`).hover()
     await expect(trajectory_controls).toHaveCSS(`opacity`, `0`)
     await trajectory_viewer.hover()
     await expect(trajectory_controls).toHaveCSS(`opacity`, `1`)
@@ -110,24 +112,19 @@ test.describe(`PhononModeExplorer`, () => {
     await expect.poll(() => step_input.inputValue()).not.toBe(`12`)
     await pause_button.click()
 
+    // Advance each animation tick explicitly: slow GPUs can present several MD steps at once.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000))
     await step_input.fill(`46`)
-    const visited_frames = await step_input.evaluate(async (input: HTMLInputElement) => {
-      const play_button = input
-        .closest(`.trajectory-controls`)
-        ?.querySelector<HTMLButtonElement>(`.play-button`)
-      if (!play_button) throw new Error(`Missing trajectory play button`)
-      const frames = [Number(input.value)]
-      play_button.click()
-      const start = performance.now()
-      while (frames.length < 3 && performance.now() - start < 1000) {
-        await new Promise(requestAnimationFrame)
-        const frame = Number(input.value)
-        if (frame !== frames.at(-1)) frames.push(frame)
-      }
-      return frames
-    })
-    expect(visited_frames.slice(0, 3)).toEqual([46, 47, 0])
+    const visited_frames = [Number(await step_input.inputValue())]
+    await explorer.getByRole(`button`, { name: `Play`, exact: true }).click()
+    for (let tick = 0; tick < 64 && visited_frames.length < 3; tick++) {
+      await page.clock.runFor(16)
+      const frame = Number(await step_input.inputValue())
+      if (frame !== visited_frames.at(-1)) visited_frames.push(frame)
+    }
+    expect(visited_frames).toEqual([46, 47, 0])
     await explorer.getByRole(`button`, { name: `Pause` }).click()
+    await page.clock.resume()
 
     const cell_toggle = explorer.locator(`.cell-select .toggle-btn`)
     await expect(cell_toggle).toContainText(`3`)

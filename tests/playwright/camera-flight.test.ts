@@ -50,9 +50,33 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect
       .poll(() => read_pose().catch(String), { timeout: 20_000 })
       .toEqual(expect.objectContaining({ projection: expect.any(String) }))
+    // Registration precedes OrbitControls' first update on software GPUs.
+    await expect.poll(async () => (await read_pose()).quaternion).not.toEqual([0, 0, 0, 1])
     const step_input = viewer.locator(`.step-input`)
     if (kind === `trajectory`) await step_input.fill(`2`)
     const original = await read_pose()
+    const expect_original_pose = () =>
+      expect(async () => {
+        const pose = await read_pose()
+        expect(pose.projection).toBe(original.projection)
+        // OrbitControls normalizes the target and converts spherical coordinates each tick.
+        // Measured drift was < 2 eps relative; allow 8 eps, with an absolute floor near zero.
+        for (const field of [
+          `position`,
+          `target`,
+          `quaternion`,
+          `pan`,
+          `zoom`,
+          `fov`,
+        ] as const) {
+          const reference = [original[field]].flat()
+          for (const [idx, value] of [pose[field]].flat().entries()) {
+            expect(Math.abs(value - reference[idx]), `${field}[${idx}]`).toBeLessThanOrEqual(
+              8 * Number.EPSILON * Math.max(1, Math.abs(reference[idx])),
+            )
+          }
+        }
+      }).toPass({ timeout: 20_000 })
     await export_toggle.click()
     const export_font_size = await export_pane
       .locator(`.pane-content`)
@@ -132,7 +156,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
       nodes.map((node) => node.getAttribute(`src`)),
     )
     expect(new Set(thumbnails).size).toBeGreaterThan(3)
-    await expect.poll(read_pose).toEqual(original)
+    await expect_original_pose()
     if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
 
     // Both a thumbnail and the continuous playhead change the actual camera and MD frame.
@@ -179,7 +203,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
       await expect(playhead).toHaveValue(`0.25`)
     }
     await home.click()
-    await expect.poll(read_pose).toEqual(original)
+    await expect_original_pose()
     if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
 
     // The thumbnail remains paired with its pose through drag, undo, update and insertion.
@@ -212,7 +236,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(playhead).toHaveValue(paused_time)
     await preview.click()
     await expect(home).toBeDisabled({ timeout: 10_000 })
-    await expect.poll(read_pose).toEqual(original)
+    await expect_original_pose()
     if (kind === `trajectory`) {
       await expect(step_input).toHaveValue(`2`)
       const play_button = viewer.locator(`.play-button`)
@@ -232,7 +256,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
         : toggle
     ).click()
     await expect(pane).toBeHidden()
-    await expect.poll(read_pose).toEqual(original)
+    await expect_original_pose()
     await open_planner()
     await expect(images).toHaveCount(9)
     await expect(flight.getByLabel(`Flight duration`, { exact: true })).toHaveValue(`2`)

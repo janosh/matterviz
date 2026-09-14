@@ -223,6 +223,7 @@ test.describe(`Structure Component Tests`, () => {
     const structure = page.locator(`#test-structure`)
     const supercell = structure.locator(`.cell-select`)
 
+    await page.mouse.move(0, 0)
     await expect(supercell).toHaveCSS(`opacity`, `0`)
     await structure.hover()
     await expect(supercell).toHaveCSS(`opacity`, `1`)
@@ -705,6 +706,7 @@ test.describe(`Show Buttons Tests`, () => {
   for (const { mode, css_class, opacity } of show_controls_cases) {
     test(`show_controls=${mode} reveals buttons ${mode}`, async ({ page }) => {
       await goto_structure_test(page, `/test/structure?show_controls=${mode}`)
+      await page.mouse.move(0, 0)
       const control_buttons = page.locator(`#test-structure section.control-buttons`)
       const info_toggle = page.locator(`.structure-info-toggle`)
       if (css_class) await expect(control_buttons).toHaveClass(new RegExp(css_class))

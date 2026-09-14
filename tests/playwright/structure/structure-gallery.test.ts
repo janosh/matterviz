@@ -21,10 +21,11 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
       throw new Error(`Missing gallery layers`)
     }
     const track_box = track_element.getBoundingClientRect()
+    const track_left = track_box.left + track_element.clientLeft
     const card_box = card.getBoundingClientRect()
     return {
-      lead_gap: card_box.left - track_box.left,
-      trail_gap: track_box.right - card_box.right,
+      lead_gap: card_box.left - track_left,
+      trail_gap: track_left + track_element.clientWidth - card_box.right,
       structure_right: structure.getBoundingClientRect().right,
       canvas_right: canvas_element.getBoundingClientRect().right,
       card_right: card_box.right,
