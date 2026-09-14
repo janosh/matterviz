@@ -495,6 +495,7 @@ export const is_video_export_supported = (format: VideoFormat): boolean =>
 async function run_recorder_action(
   recorder: MediaRecorder,
   action: 'start' | 'stop',
+  timeout_ms: number,
   signal?: AbortSignal,
   after_action?: () => void,
 ): Promise<void> {
@@ -505,7 +506,7 @@ async function run_recorder_action(
     await new Promise<void>((resolve, reject) => {
       timeout = setTimeout(
         () => reject(new Error(`Recording timeout - recorder did not ${action}`)),
-        5000,
+        timeout_ms,
       )
       const options = { signal: listeners.signal }
       recorder.addEventListener(action, () => resolve(), options)
@@ -566,6 +567,7 @@ export async function export_trajectory_video(
     on_finish,
     on_save,
     resolution_multiplier = DEFAULT_VIDEO_RESOLUTION,
+    stop_timeout_ms,
     signal,
   }: {
     format?: VideoFormat
@@ -578,11 +580,18 @@ export async function export_trajectory_video(
     // Save the completed video to a caller-selected destination instead of downloading it.
     on_save?: (blob: Blob) => void | Promise<void>
     resolution_multiplier?: number
+    // Finalization deadline in ms (1–2^31-1). Default: 30s + 1s per estimated MB, capped at 5min.
+    stop_timeout_ms?: number
     signal?: AbortSignal
   } = {},
 ): Promise<void> {
   signal?.throwIfAborted()
   if (!canvas) throw new Error(`Canvas not ready for video export`)
+  if (
+    stop_timeout_ms !== undefined &&
+    !(stop_timeout_ms >= 1 && stop_timeout_ms <= 2_147_483_647)
+  )
+    throw new RangeError(`Invalid stop_timeout_ms: ${stop_timeout_ms}; expected 1–2147483647`)
   const mime_type = video_mime_types[format]
   if (!is_video_export_supported(format))
     throw new Error(`AV1 recording (${mime_type}) is not supported in this browser`)
@@ -680,13 +689,14 @@ export async function export_trajectory_video(
 
     // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
     // encoder can otherwise start after a short trajectory has already called stop().
-    await run_recorder_action(recorder, `start`, signal, () => {
+    await run_recorder_action(recorder, `start`, 5000, signal, () => {
       if (total_frames > 0) {
         copy_frame()
         track.requestFrame?.()
       }
     })
 
+    const recording_start = performance.now()
     const frame_duration = 1000 / fps
 
     // Advance frames sequentially, allowing rendering time between steps.
@@ -706,7 +716,14 @@ export async function export_trajectory_video(
         await wait_for_video_tick(signal, remaining)
       }
     }
-    await run_recorder_action(recorder, `stop`, signal)
+    // Include time spent rendering/reading frames when estimating the encoded size.
+    const estimated_megabytes = (bitrate * (performance.now() - recording_start)) / 8e9
+    await run_recorder_action(
+      recorder,
+      `stop`,
+      stop_timeout_ms ?? Math.min(300_000, 30_000 + estimated_megabytes * 1000),
+      signal,
+    )
   } catch (error) {
     stop_recorder()
     throw error

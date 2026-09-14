@@ -476,6 +476,15 @@ describe(`export_trajectory_video`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
 
+  test.each([0, -1, NaN, Infinity, 2 ** 31])(`rejects stop_timeout_ms=%s`, async (timeout) => {
+    const { canvas, renderer } = make_canvas_with_renderer()
+    await expect(
+      export_trajectory_video(canvas, `test`, { stop_timeout_ms: timeout }),
+    ).rejects.toThrow(`Invalid stop_timeout_ms: ${timeout}`)
+    expect(renderer.init).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+  })
+
   test.each([
     [`webm`, undefined],
     [`mp4`, undefined],
@@ -599,11 +608,29 @@ describe(`export_trajectory_video`, () => {
 
   test.each([
     [`success`, undefined],
-    [`success-mp4`, undefined],
-    [`success-save`, undefined],
+    [`success-mp4`, undefined, { stop_delay_ms: 6000 }],
+    [`success-save`, undefined, { stop_delay_ms: 6000 }],
+    [`success-size-scaled`, undefined, { fps: 1 / 60, stop_delay_ms: 40_000 }],
+    [`success-override`, undefined, { stop_delay_ms: 40_000, stop_timeout_ms: 60_000 }],
     [`save-error`, `folder write failed`],
     [`download-error`, `download failed`],
     [`timeout`, `Recording timeout - recorder did not stop`],
+    [
+      `timeout-override`,
+      `Recording timeout - recorder did not stop`,
+      {
+        stop_timeout_ms: 1500,
+        cleanup_delay_ms: 1500,
+      },
+    ],
+    [
+      `timeout-size-cap`,
+      `Recording timeout - recorder did not stop`,
+      {
+        fps: 1 / 6000,
+        cleanup_delay_ms: 300_000,
+      },
+    ],
     [`step-error`, `step failed`],
     [`start-error`, `MediaRecorder error: encoder failed`],
     [`start-throw`, `start failed`],
@@ -615,9 +642,21 @@ describe(`export_trajectory_video`, () => {
     [`abort-start-string`, `cancelled`],
     [`abort-delay`, `cancelled`],
     [`abort-stop`, `cancelled`],
+    [`abort-stop-delayed`, `cancelled`, { stop_delay_ms: 6000, cleanup_delay_ms: 1000 }],
     [`abort-finish`, `cancelled`],
     [`finish-error`, `restore failed`],
-  ] as const)(`releases recording resources after %s`, async (outcome, error_message) => {
+  ] as const)(`releases resources after %s`, async (outcome, error_message, settings?) => {
+    const {
+      fps = 24,
+      stop_delay_ms = 0,
+      stop_timeout_ms,
+      cleanup_delay_ms = 30_000,
+    }: {
+      fps?: number
+      stop_delay_ms?: number
+      stop_timeout_ms?: number
+      cleanup_delay_ms?: number
+    } = settings ?? {}
     vi.useFakeTimers()
     const controller = new AbortController()
     const cancel = () =>
@@ -628,6 +667,8 @@ describe(`export_trajectory_video`, () => {
     const format = outcome === `success-mp4` ? `mp4` : undefined
     const mime_type = format === `mp4` ? `video/mp4;codecs=av01` : `video/webm;codecs=av1`
     let recording_started = false
+    let stop_started = 0
+    let cleanup_delay = 0
     class MockMediaRecorder extends EventTarget {
       constructor(stream: MediaStream, options: MediaRecorderOptions) {
         super()
@@ -657,13 +698,19 @@ describe(`export_trajectory_video`, () => {
         if (!outcome.startsWith(`start-`) && !outcome.startsWith(`abort-start`))
           expect(recording_started, `do not stop before the encoder starts`).toBe(true)
         recorder_stop()
+        stop_started = performance.now()
         if (outcome === `stop-error`) throw new Error(`stop failed`)
         this.state = `inactive`
         if (outcome === `abort-stop`) cancel()
-        this.dispatchEvent(
-          Object.assign(new Event(`dataavailable`), { data: new Blob([`encoded frame`]) }),
-        )
-        if (outcome !== `timeout`) this.dispatchEvent(new Event(`stop`))
+        if (outcome === `abort-stop-delayed`) setTimeout(cancel, 1000)
+        const finish = () => {
+          this.dispatchEvent(
+            Object.assign(new Event(`dataavailable`), { data: new Blob([`encoded frame`]) }),
+          )
+          if (!outcome.startsWith(`timeout`)) this.dispatchEvent(new Event(`stop`))
+        }
+        if (stop_delay_ms) setTimeout(finish, stop_delay_ms)
+        else finish()
       })
     }
     vi.stubGlobal(`MediaRecorder`, MockMediaRecorder)
@@ -682,8 +729,10 @@ describe(`export_trajectory_video`, () => {
     renderer.getContext().getConfiguration().device.limits.maxTextureDimension2D =
       format === `mp4` ? 2400 : 1600
     scene_registry.set(canvas, view)
+    const completed_frames = success || outcome === `timeout-size-cap`
     const total_frames =
-      success || [`step-error`, `abort-step`, `abort-delay`, `abort-read`].includes(outcome)
+      completed_frames ||
+      [`step-error`, `abort-step`, `abort-delay`, `abort-read`].includes(outcome)
         ? 2
         : 0
     if (total_frames) {
@@ -734,13 +783,15 @@ describe(`export_trajectory_video`, () => {
 
     const export_promise = export_trajectory_video(canvas, `test.WEBM`, {
       format,
-      fps: 24,
+      fps,
       total_frames,
+      stop_timeout_ms,
       on_step,
       on_save: custom_save ? on_save : undefined,
       resolution_multiplier: format === `mp4` ? undefined : 2,
       signal: controller.signal,
       on_finish: () => {
+        cleanup_delay = performance.now() - stop_started
         expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
         for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
         if (outcome === `abort-finish`) cancel()
@@ -748,6 +799,14 @@ describe(`export_trajectory_video`, () => {
       },
     })
     const result = export_promise.catch((error: unknown) => error)
+    if (success && stop_delay_ms && fps === 24) {
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(recorder_stop).toHaveBeenCalledOnce()
+      expect(download).not.toHaveBeenCalled()
+      expect(on_save).not.toHaveBeenCalled()
+      for (const track of tracks) expect(track.stop).not.toHaveBeenCalled()
+      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(format === `mp4` ? 3 : 2)
+    }
     if (outcome === `abort-read`) {
       await vi.advanceTimersByTimeAsync(600)
       expect(on_step).toHaveBeenLastCalledWith(1, controller.signal)
@@ -756,6 +815,8 @@ describe(`export_trajectory_video`, () => {
       read.resolve(undefined)
     }
     await vi.runAllTimersAsync()
+    if (outcome.startsWith(`timeout`) || outcome === `abort-stop-delayed`)
+      expect(cleanup_delay).toBe(cleanup_delay_ms)
     if (error_message) expect(await result).toEqual(expected_error)
     else {
       await expect(export_promise).resolves.toBeUndefined()
@@ -778,16 +839,18 @@ describe(`export_trajectory_video`, () => {
 
     expect(recorder_create).toHaveBeenCalledExactlyOnceWith(stream, {
       mimeType: mime_type,
-      videoBitsPerSecond: 1_152_000,
+      videoBitsPerSecond: fps === 24 ? 1_152_000 : 1_000_000,
     })
     expect(recorder_stop).toHaveBeenCalledTimes(outcome === `stop-error` ? 2 : 1)
     expect(renderer.setPixelRatio).toHaveBeenNthCalledWith(1, format === `mp4` ? 3 : 2)
     expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
     expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
-    expect(capture_canvas.captureStream).toHaveBeenCalledWith(24)
+    expect(capture_canvas.captureStream).toHaveBeenCalledWith(fps)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
-    expect(captured_steps).toEqual(success ? [0, 0, 1] : total_frames ? [0, 0] : [])
-    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(success ? 2 : total_frames ? 1 : 0)
+    expect(captured_steps).toEqual(completed_frames ? [0, 0, 1] : total_frames ? [0, 0] : [])
+    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(
+      completed_frames ? 2 : total_frames ? 1 : 0,
+    )
     expect(download).toHaveBeenCalledTimes(
       !custom_save && (success || outcome === `download-error`) ? 1 : 0,
     )
