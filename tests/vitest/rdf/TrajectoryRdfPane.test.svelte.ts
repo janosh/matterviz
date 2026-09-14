@@ -122,6 +122,8 @@ test.each([
     expect(csv_button.textContent).toContain(`g(r) CSV`)
     expect(json_button.textContent).toContain(`Analysis JSON`)
     csv_button.click()
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    await settle()
     const csv = vi.mocked(download).mock.calls.at(-1)
     expect(csv?.slice(1)).toEqual([`rdf.csv`, `text/csv`])
     if (typeof csv?.[0] !== `string`) throw new Error(`Expected CSV text`)
@@ -131,6 +133,7 @@ test.each([
       state.result?.r.map((radius, idx) => [radius, state.result?.curves[0].g_r[idx]]),
     )
     json_button.click()
+    await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(2))
     expect(stringify).toHaveBeenCalledWith(
       expect.objectContaining({ analysis: `rdf` }),
       null,

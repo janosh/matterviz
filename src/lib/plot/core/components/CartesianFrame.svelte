@@ -337,7 +337,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
+    --icon-size: var(--ctrl-btn-icon-size, 1rem);
   }
   /* Hide controls and fullscreen toggles by default, show on hover */
   .plot-frame .header-controls {
@@ -348,7 +348,7 @@
   }
   .plot-frame :global(.pane-toggle),
   .plot-frame :global(.fullscreen-btn) {
-    font-size: var(--viewer-chrome-icon-size, var(--ctrl-btn-icon-size));
+    --icon-size: var(--ctrl-btn-icon-size, 1rem);
   }
   .header-controls.always-visible,
   .plot-frame:hover .header-controls,

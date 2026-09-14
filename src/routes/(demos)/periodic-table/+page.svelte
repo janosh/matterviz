@@ -233,6 +233,7 @@
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
         heatmap_values={element_data.map((element) => element[property] || 0)}
         {color_scale}
+        color_bar_props={{ title }}
         gap="1px"
         style="--ptable-inner-transition-offset: 0.3"
       />

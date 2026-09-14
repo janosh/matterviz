@@ -145,7 +145,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - run: pnpm exec playwright install chromium --no-shell
-      - run: pnpm exec playwright test
+      # Linux headless WebGPU presents transparent canvases, including drawImage captures.
+      - run: xvfb-run -a pnpm exec playwright test --headed
         env:
           MATTERVIZ_E2E_MODE: source
           DEBUG: pw:browser
@@ -176,7 +177,7 @@ jobs:
           name: browser-test-site
           path: .svelte-kit/output/
       - name: Run E2E tests
-        run: pnpm exec playwright test --shard=${{ matrix.shard }}/6
+        run: xvfb-run -a pnpm exec playwright test --headed --shard=${{ matrix.shard }}/6
         env:
           MATTERVIZ_E2E_MODE: preview
           DEBUG: pw:browser

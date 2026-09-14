@@ -144,7 +144,9 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     state.entries = [...toy_entries] // same data, new identity: old phase indices are void
     flushSync()
     expect(document.querySelectorAll(`.phase-event-list li`)).toHaveLength(0)
-    expect(doc_query(`.side-panel.computing`).textContent).toContain(`Sweeping`)
+    expect(
+      doc_query(`.side-panel.computing .spinner[role="status"]`).textContent?.trim(),
+    ).toBe(`Sweeping temperatures…`)
     await wait_for_events()
     state.entries = [...toy_entries, { composition: { Rb: 1 }, energy: 0 }]
     flushSync()

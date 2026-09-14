@@ -372,10 +372,9 @@
       <ColorBar
         scale={color_bar_scale}
         range={heat_range}
-        tick_labels={color_bar_props.tick_labels ?? 3}
+        tick_labels={3}
         tick_side="primary"
         scale_type={log ? `log` : `linear`}
-        wrapper_style="width: 100%;"
         bar_style="width: 100%;"
         {...color_bar_props}
       />
@@ -522,12 +521,16 @@
   }
   .periodic-table :global(.auto-colorbar-inset) {
     place-items: center;
-    padding: clamp(0.3em, 1.5cqw, 1em) clamp(0.4em, 3cqw, 2em);
-    --cbar-font-size: clamp(7pt, 1.8cqw, 9pt);
-    --cbar-thickness: clamp(8px, 2.5cqw, 14px);
+    padding: min(1.5cqw, 1em) min(3cqw, 2em);
+    --cbar-font-size: min(4.5cqw, 9pt);
+    --cbar-thickness: min(5cqw, 14px);
+    --cbar-label-padding: 0 0.4em;
+    --cbar-tick-label-padding: 0 0.2em;
+    --cbar-tick-gutter: 1.2em;
   }
   .periodic-table :global(.auto-colorbar-inset .colorbar) {
     width: 90%;
+    line-height: 1.2;
   }
   div.spacer {
     grid-row: 8;

@@ -2,6 +2,7 @@
 // chemical potential exporters. The exporters are lazy-imported so viewers that never export
 // don't ship them.
 import { download } from '$lib/io/fetch'
+import type { FileSaver } from '$lib/io/file-export.svelte'
 import { clamp01, to_error } from '$lib/utils'
 import type { BufferGeometry, InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {
@@ -218,6 +219,7 @@ export async function export_scene_as(
   scene: Object3D,
   format: SceneExportFormat,
   basename: string,
+  save: FileSaver = download,
 ): Promise<void> {
   const export_root = convert_instanced_meshes_to_regular(scene)
   if (format === `stl`) {
@@ -225,33 +227,27 @@ export async function export_scene_as(
     const result = new STLExporter().parse(export_root, { binary: true })
     // Binary STL returns DataView, convert to ArrayBuffer for Blob
     const buffer = result instanceof DataView ? result.buffer : result
-    download(buffer, `${basename}.stl`, `application/octet-stream`)
+    await save(buffer, `${basename}.stl`, `application/octet-stream`)
   } else if (format === `obj`) {
     const { OBJExporter } = await import(`three/examples/jsm/exporters/OBJExporter.js`)
     const mtl_filename = `${basename}.mtl`
     // Material library reference goes at the top of the OBJ file
     const obj_content = `mtllib ${mtl_filename}\n${new OBJExporter().parse(export_root)}`
-    download(obj_content, `${basename}.obj`, `text/plain`)
+    await save(obj_content, `${basename}.obj`, `text/plain`)
     // Small delay to prevent some browsers from blocking rapid successive downloads as
     // potential abuse. A more robust solution might be to zip both files together.
     const mtl_content = generate_mtl_content(export_root)
-    setTimeout(() => download(mtl_content, mtl_filename, `text/plain`), 100)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await save(mtl_content, mtl_filename, `text/plain`)
   } else if (format === `glb`) {
     const { GLTFExporter } = await import(`three/examples/jsm/exporters/GLTFExporter.js`)
-    await new Promise<void>((resolve, reject) => {
-      new GLTFExporter().parse(
-        export_root,
-        (result) => {
-          if (!(result instanceof ArrayBuffer)) {
-            reject(new Error(`GLB export returned ${typeof result} instead of ArrayBuffer`))
-            return
-          }
-          download(result, `${basename}.glb`, `model/gltf-binary`)
-          resolve()
-        },
-        (error) => reject(to_error(error)),
-        { binary: true },
-      )
-    })
+    const buffer = await new GLTFExporter()
+      .parseAsync(export_root, { binary: true })
+      .catch((error: unknown) => {
+        throw to_error(error)
+      })
+    if (!(buffer instanceof ArrayBuffer))
+      throw new Error(`GLB export returned ${typeof buffer} instead of ArrayBuffer`)
+    await save(buffer, `${basename}.glb`, `model/gltf-binary`)
   } else throw new Error(`Unsupported scene export format: ${format}`)
 }

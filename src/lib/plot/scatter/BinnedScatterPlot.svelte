@@ -159,8 +159,13 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  let hovered_bin = $state<DensityBin | null>(null)
-  let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
+  // Clear stale indices before the tooltip reads a replaced or shortened series array.
+  const reset_hover = () => {
+    void series.length
+    return null
+  }
+  let hovered_bin = $derived.by<DensityBin | null>(reset_hover)
+  let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let annotation_element = $state<HTMLDivElement>()
   let annotation_size_revision = $state(0)
@@ -287,6 +292,7 @@
   // Wait for measured dimensions before indexing and binning, avoiding an extra pass
   // for the placeholder plot size.
   const x_order = $derived(series_x_order(series))
+  const per_series_density = $derived(series.some((srs) => srs.density_color_scale != null))
   const density_result = $derived(
     bin_points(
       has_plot_size ? series : [],
@@ -296,16 +302,59 @@
       density_bins.y,
       bin_transforms,
       has_plot_size ? x_order : [],
+      per_series_density,
     ),
   )
-  const bin_at = (coords: Point2D) =>
-    density_bin_at_point(density_result, coords, plot_rect, x_range, y_range, bin_transforms)
-  const auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
-  const color_scale_fn = $derived(
-    create_color_scale(density_settings.color_scale, auto_color_range),
+  // The pooled grid still drives occupancy and zoom; colored strips retain each series'
+  // counts so overlapping models never hide each other or mix into a misleading color.
+  const density_grids = $derived(density_result.series_bins ?? [density_result])
+  const occupied_series = (bin_idx: number): number[] =>
+    density_grids.flatMap((result, idx) => (result.counts[bin_idx] ? [idx] : []))
+  const screen_cell = (x_bin: number, y_bin: number) =>
+    density_screen_cell(
+      x_bin,
+      y_bin,
+      density_result.x_bins,
+      density_result.y_bins,
+      x_range,
+      y_range,
+    )
+  function bin_at(coords: Point2D): DensityBin | null {
+    const bin = density_bin_at_point(
+      density_result,
+      coords,
+      plot_rect,
+      x_range,
+      y_range,
+      bin_transforms,
+    )
+    if (!bin || !per_series_density) return bin
+    const bin_idx = bin.y_bin * density_result.x_bins + bin.x_bin
+    const occupied = occupied_series(bin_idx)
+    const [col] = screen_cell(bin.x_bin, bin.y_bin)
+    const fraction = (coords.x - plot_rect.x) / (plot_rect.width / density_result.x_bins) - col
+    const series_idx =
+      occupied[
+        Math.min(occupied.length - 1, Math.max(0, Math.floor(fraction * occupied.length)))
+      ]
+    return { ...bin, series_idx, count: density_grids[series_idx].counts[bin_idx] }
+  }
+  const auto_color_range = $derived<Vec2>([
+    1,
+    Math.max(1, ...density_grids.map(({ max_count }) => max_count)),
+  ])
+  const color_scales = $derived(
+    density_grids.map((_, idx) =>
+      create_color_scale(
+        (per_series_density ? series[idx].density_color_scale : undefined) ??
+          density_settings.color_scale,
+        auto_color_range,
+      ),
+    ),
   )
+  const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
   const color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
-    if (!color_bar) return null
+    if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
       scale_type:
@@ -335,14 +384,7 @@
       if (occupied_idx++ % stride) continue
       // canonical bin -> screen cell, same as draw_density: without it the obstacle field is
       // mirrored on a reversed range and the solver drops decorations onto the dense cloud
-      const [col, row] = density_screen_cell(
-        idx % x_bins,
-        Math.floor(idx / x_bins),
-        x_bins,
-        y_bins,
-        x_range,
-        y_range,
-      )
+      const [col, row] = screen_cell(idx % x_bins, Math.floor(idx / x_bins))
       points.push({ x: (col + 0.5) / x_bins, y: (row + 0.5) / y_bins })
     }
     return points
@@ -495,29 +537,28 @@
     const { counts, x_bins, y_bins, max_count } = density_result
     const bin_w = plot_rect.width / x_bins
     const bin_h = plot_rect.height / y_bins
-    const style_cache = new Map<number, { fill: string; alpha: number }>()
-    for (let y_bin = 0; y_bin < y_bins; y_bin++) {
-      for (let x_bin = 0; x_bin < x_bins; x_bin++) {
-        const count = counts[y_bin * x_bins + x_bin]
-        if (!count) continue
-        let style = style_cache.get(count)
-        if (!style) {
-          style = {
-            fill: color_scale_fn(count),
-            alpha: Math.min(0.95, 0.2 + Math.log1p(count) / Math.log1p(max_count)),
-          }
-          style_cache.set(count, style)
+    const style_cache = color_scales.map(() => new Map<number, string>())
+    for (let bin_idx = 0; bin_idx < counts.length; bin_idx++) {
+      if (!counts[bin_idx]) continue
+      const [col, row] = screen_cell(bin_idx % x_bins, Math.floor(bin_idx / x_bins))
+      const occupied = occupied_series(bin_idx)
+      for (const [strip_idx, series_idx] of occupied.entries()) {
+        const count = density_grids[series_idx].counts[bin_idx]
+        const cache = style_cache[series_idx]
+        let fill = cache.get(count)
+        if (!fill) {
+          fill = color_scales[series_idx](count)
+          cache.set(count, fill)
         }
-        ctx.fillStyle = style.fill
-        ctx.globalAlpha = style.alpha
-        // bins are canonical (bin 0 = data minimum) while this grid is positional, so a
-        // descending range paints them mirrored against its own axis
-        const [col, row] = density_screen_cell(x_bin, y_bin, x_bins, y_bins, x_range, y_range)
+        ctx.fillStyle = fill
+        ctx.globalAlpha = per_series_density
+          ? 1
+          : Math.min(0.95, 0.2 + Math.log1p(count) / Math.log1p(max_count))
         ctx.fillRect(
-          pad.l + col * bin_w,
+          pad.l + (col + strip_idx / occupied.length) * bin_w,
           pad.t + row * bin_h,
-          Math.ceil(bin_w) + 0.5,
-          Math.ceil(bin_h) + 0.5,
+          per_series_density ? bin_w / occupied.length : Math.ceil(bin_w) + 0.5,
+          per_series_density ? bin_h : Math.ceil(bin_h) + 0.5,
         )
       }
     }
@@ -799,7 +840,8 @@
       if (
         hovered_bin?.x_bin !== bin?.x_bin ||
         hovered_bin?.y_bin !== bin?.y_bin ||
-        hovered_bin?.count !== bin?.count
+        hovered_bin?.count !== bin?.count ||
+        hovered_bin?.series_idx !== bin?.series_idx
       )
         hovered_bin = bin
       return
@@ -842,7 +884,7 @@
     }
     if (bin.count > 1 && density_settings.bin_click !== `point`) return
     const point = first_point_in_bin(series, density_result, bin, x_scale_fn, y_scale_fn)
-    if (point) emit_point_click(point, event, color_scale_fn(bin.count))
+    if (point) emit_point_click(point, event, bin_color(bin))
   }
 </script>
 
@@ -944,7 +986,7 @@
         decoration={colorbar}
         color_bar={{
           ...color_bar_props,
-          scale: { fn: color_scale_fn, domain: auto_color_range },
+          scale: { fn: color_scales[0], domain: auto_color_range },
           range: auto_color_range,
         }}
       />
@@ -970,8 +1012,12 @@
         constrain_to={{ width, height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 150, height: 64 }}
-        bg_color={color_scale_fn(hovered_bin.count)}
+        bg_color={bin_color(hovered_bin)}
       >
+        {#if hovered_bin.series_idx != null}
+          {series[hovered_bin.series_idx].label ?? `Series ${hovered_bin.series_idx + 1}`}<br
+          />
+        {/if}
         {hovered_bin.count.toLocaleString()} samples<br />
         x: {fmt_x(hovered_bin.x_range[0])} - {fmt_x(hovered_bin.x_range[1])}<br />
         y: {fmt_y(hovered_bin.y_range[0])} - {fmt_y(hovered_bin.y_range[1])}

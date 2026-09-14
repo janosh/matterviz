@@ -213,16 +213,16 @@
       items: [
         {
           label: `SVG`,
-          on_download: () => {
+          on_download: ({ filename, save }) => {
             const svg = get_svg_element()
-            if (svg) export_svg_as_svg(svg, `${export_basename}.svg`)
+            if (svg) return export_svg_as_svg(svg, `${filename}.svg`, [], {}, save)
           },
         },
         {
           label: `PNG`,
-          on_download: () => {
+          on_download: ({ filename, save }) => {
             const svg = get_svg_element()
-            if (svg) export_svg_as_png(svg, `${export_basename}.png`)
+            if (svg) return export_svg_as_png(svg, `${filename}.png`, undefined, [], {}, save)
           },
         },
       ],
@@ -232,7 +232,7 @@
       items: [
         {
           label: `JSON`,
-          on_download: () => export_json_file(json_payload, export_basename),
+          on_download: ({ filename, save }) => export_json_file(json_payload, filename, save),
           copy_text: () => get_json_string(json_payload),
         },
       ],
@@ -259,6 +259,7 @@
 
 {#snippet export_toggle()}
   <ExportPane
+    filename={export_basename}
     bind:export_pane_open
     sections={export_sections}
     pane_props={{ class: `chempot-export-pane` }}

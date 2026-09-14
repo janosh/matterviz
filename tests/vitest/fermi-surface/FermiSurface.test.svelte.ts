@@ -8,6 +8,7 @@ import {
   bind_props,
   mock_parse_worker,
   create_drop_event,
+  doc_query,
   IDENTITY_MATRIX3,
   make_bxsf,
 } from '../setup'
@@ -36,6 +37,9 @@ test(`custom drops receive raw content while loading remains visible`, async () 
     file,
   })
   expect(props.loading).toBe(true)
+  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+    `Loading Fermi surface...`,
+  )
   pending.resolve(undefined)
   await vi.waitFor(() => expect(props.loading).toBe(false))
 })
@@ -145,7 +149,9 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
 
   props.mu = 0.1 // bigger sphere → more vertices
   await vi.advanceTimersByTimeAsync(160) // past the debounce, inside the extraction tick
-  expect(document.body.textContent).toContain(`Extracting Fermi surface...`)
+  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+    `Extracting Fermi surface...`,
+  )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
   await vi.advanceTimersByTimeAsync(100)
   expect(document.body.textContent).not.toContain(`Extracting Fermi surface...`)

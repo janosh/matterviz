@@ -27,7 +27,7 @@ vi.mock(`$lib/convex-hull/canvas-draw`, async (import_actual) => {
       _canvas: unknown,
       _event: unknown,
       index: ReturnType<typeof canvas_draw.build_hull_pick_index>,
-    ) => index.cells.values().next().value?.[0]?.item.entry ?? null,
+    ) => index.items[0]?.entry ?? null,
   }
 })
 

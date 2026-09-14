@@ -35,7 +35,7 @@ vi.mock(`three/examples/jsm/exporters/OBJExporter.js`, () => ({
 }))
 vi.mock(`three/examples/jsm/exporters/GLTFExporter.js`, () => ({
   GLTFExporter: class {
-    parse = gltf_spy
+    parseAsync = gltf_spy
   },
 }))
 
@@ -58,11 +58,7 @@ describe(`export_scene_as`, () => {
     obj_spy
       .mockReset()
       .mockImplementation(() => `# OBJ file\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n`)
-    gltf_spy
-      .mockReset()
-      .mockImplementation((_scene: Scene, on_done: (result: ArrayBuffer) => void) =>
-        on_done(new ArrayBuffer(12)),
-      )
+    gltf_spy.mockReset().mockResolvedValue(new ArrayBuffer(12))
     vi.stubGlobal(`URL`, {
       createObjectURL: vi.fn((blob: Blob) => {
         downloads.push({ blob, filename: `` })
@@ -106,14 +102,16 @@ describe(`export_scene_as`, () => {
   })
 
   it(`obj: writes a mtllib-referenced OBJ, then the MTL with the scene's material colors`, async () => {
-    await export_scene_as(scene, `obj`, `test`)
+    const exporting = export_scene_as(scene, `obj`, `test`)
+    await vi.advanceTimersByTimeAsync(0)
     expect(obj_spy).toHaveBeenCalledOnce()
     expect(downloads.map((item) => item.filename)).toEqual([`test.obj`])
     const obj_text = await downloads[0].blob.text()
     expect(obj_text).toMatch(/^mtllib test\.mtl\n# OBJ file/)
     expect(obj_text).toMatch(/f \d+ \d+ \d+/)
     // the companion MTL is delayed so browsers don't flag back-to-back downloads
-    vi.advanceTimersByTime(100)
+    await vi.advanceTimersByTimeAsync(100)
+    await exporting
     expect(downloads.map((item) => item.filename)).toEqual([`test.obj`, `test.mtl`])
     const mtl_text = await downloads[1].blob.text()
     expect(mtl_text).toContain(`newmtl red_sphere`)
@@ -124,26 +122,19 @@ describe(`export_scene_as`, () => {
   it(`glb: binary glTF download`, async () => {
     await export_scene_as(scene, `glb`, `test`)
     expect(gltf_spy).toHaveBeenCalledOnce()
-    expect(gltf_spy.mock.calls[0][3]).toEqual({ binary: true })
+    expect(gltf_spy.mock.calls[0][1]).toEqual({ binary: true })
     expect(downloads).toEqual([{ blob: expect.any(Blob), filename: `test.glb` }])
     expect(downloads[0].blob.type).toBe(`model/gltf-binary`)
     expect(downloads[0].blob.size).toBe(12)
   })
 
   it.each([
-    [
-      `exporter error`,
-      (_scene: Scene, _ok: unknown, on_error: (error: Error) => void) =>
-        on_error(new Error(`GLTF export failed`)),
-      `GLTF export failed`,
-    ],
-    [
-      `non-binary result`,
-      (_scene: Scene, on_done: (result: object) => void) => on_done({ asset: {} }),
-      `GLB export returned object instead of ArrayBuffer`,
-    ],
-  ])(`glb: rejects on %s without downloading`, async (_label, parse_impl, message) => {
-    gltf_spy.mockImplementation(parse_impl)
+    [`exporter error`, new Error(`GLTF export failed`), `GLTF export failed`],
+    [`non-Error failure`, `encoder failed`, `encoder failed`],
+    [`non-binary result`, { asset: {} }, `GLB export returned object instead of ArrayBuffer`],
+  ] as const)(`glb: rejects on %s without downloading`, async (label, result, message) => {
+    if (label === `non-binary result`) gltf_spy.mockResolvedValue(result)
+    else gltf_spy.mockRejectedValue(result)
     await expect(export_scene_as(scene, `glb`, `test`)).rejects.toThrow(message)
     expect(downloads).toHaveLength(0)
   })

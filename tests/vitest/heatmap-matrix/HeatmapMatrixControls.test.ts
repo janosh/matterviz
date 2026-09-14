@@ -86,7 +86,9 @@ describe(`HeatmapMatrixControls`, () => {
     for (const pane of panes) {
       // Caller-provided ordering/hide-empty rows must share the built-in settings grid.
       expect(pane.querySelectorAll(`.settings-section.grid > label`)).toHaveLength(
-        pane.querySelectorAll(`label`).length,
+        [...pane.querySelectorAll(`label`)].filter(
+          (label) => !label.closest(`.export-destination`),
+        ).length,
       )
     }
     const setting = (pane_idx: number, name: string) => {
@@ -122,14 +124,12 @@ describe(`HeatmapMatrixControls`, () => {
     const download = vi.spyOn(file_io, `download`).mockImplementation(() => {})
     for (const button of panes[0].querySelectorAll<HTMLButtonElement>(`.pane-row button`)) {
       button.click()
+      await tick()
+      await vi.waitFor(() => expect(button.disabled).toBe(false))
     }
     expect(download.mock.calls).toEqual([
-      [`y_key,Co\nCo,0`, `electronegativity-difference.csv`, `text/csv;charset=utf-8`],
-      [
-        JSON.stringify([{ y_key: `Co`, Co: 0 }], null, 2),
-        `electronegativity-difference.json`,
-        `application/json`,
-      ],
+      [`y_key,Co\nCo,0`, `heatmap.csv`, `text/csv;charset=utf-8`],
+      [JSON.stringify([{ y_key: `Co`, Co: 0 }], null, 2), `heatmap.json`, `application/json`],
     ])
   })
 
@@ -225,7 +225,7 @@ describe(`HeatmapMatrixControls`, () => {
 
   test.each([undefined, [], [`csv`, `json`]] as const)(
     `export controls require a handler and formats: %j`,
-    (formats) => {
+    async (formats) => {
       const export_handler = vi.fn()
       mount_controls({
         on_export: formats ? export_handler : undefined,
@@ -242,7 +242,12 @@ describe(`HeatmapMatrixControls`, () => {
       for (const [idx, format] of formats.entries()) {
         expect(buttons[idx].textContent?.trim()).toBe(`Export ${format.toUpperCase()}`)
         buttons[idx].click()
-        expect(export_handler).toHaveBeenLastCalledWith(format)
+        await tick()
+        await vi.waitFor(() => expect(buttons[idx].disabled).toBe(false))
+        expect(export_handler).toHaveBeenLastCalledWith(
+          format,
+          expect.objectContaining({ filename: `heatmap`, save: expect.any(Function) }),
+        )
       }
       expect(export_handler).toHaveBeenCalledTimes(2)
     },

@@ -5,6 +5,7 @@
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type ChartExportFormat = `png` | `svg` | `csv`
@@ -29,20 +30,27 @@ export function export_chart_image(
   svg_element: SVGElement | null,
   base_filename: string,
   format: `svg` | `png`,
-): void {
+  save: FileSaver = download,
+): void | Promise<void> {
   if (!svg_element) return
   const filename = `${base_filename}.${format}`
   if (format === `svg`) {
-    export_svg_as_svg(svg_element, filename, CHART_EXPORT_INLINE_STYLES, CHART_EXPORT_OPTIONS)
-  } else {
-    export_svg_as_png(
+    return export_svg_as_svg(
       svg_element,
       filename,
-      DEFAULT_PNG_DPI,
       CHART_EXPORT_INLINE_STYLES,
       CHART_EXPORT_OPTIONS,
+      save,
     )
   }
+  return export_svg_as_png(
+    svg_element,
+    filename,
+    DEFAULT_PNG_DPI,
+    CHART_EXPORT_INLINE_STYLES,
+    CHART_EXPORT_OPTIONS,
+    save,
+  )
 }
 
 // === CSV ===
@@ -55,14 +63,6 @@ const csv_cell = (cell: CsvCell): string =>
 
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)
-
-function export_csv(
-  header: readonly string[],
-  rows: readonly CsvCell[][],
-  base_filename: string,
-): void {
-  download(to_csv(header, rows), `${base_filename}.csv`, `text/csv;charset=utf-8`)
-}
 
 // Long format (one row per point, series named in a column) rather than wide: series
 // can differ in length, sit on different axes and carry different extra channels, none
@@ -109,24 +109,23 @@ export const export_filename = (...parts: (string | undefined)[]): string =>
     .replaceAll(/^-+|-+$/g, ``)
     .slice(0, 100) || `chart`
 
+type ChartExportSource = {
+  svg_element: SVGElement | null
+  title_config?: { text?: string } | null
+  axes: { x: { label?: string }; y: { label?: string } }
+}
+
+export const chart_export_filename = (frame: ChartExportSource): string =>
+  export_filename(frame.title_config?.text, frame.axes.x.label, frame.axes.y.label)
+
 // Charts differ only in the table they write: the svg, the filename recipe and the
 // csv/image branch are the same everywhere, so they live here rather than once per chart.
 export const create_chart_exporter =
-  (
-    frame: {
-      svg_element: SVGElement | null
-      title_config?: { text?: string } | null
-      axes: { x: { label?: string }; y: { label?: string } }
-    },
-    csv: () => { header: readonly string[]; rows: CsvCell[][] },
-  ) =>
-  (format: ChartExportFormat): void => {
-    const name = export_filename(
-      frame.title_config?.text,
-      frame.axes.x.label,
-      frame.axes.y.label,
-    )
-    if (format !== `csv`) return export_chart_image(frame.svg_element, name, format)
+  (frame: ChartExportSource, csv: () => { header: readonly string[]; rows: CsvCell[][] }) =>
+  (format: ChartExportFormat, context?: FileExportContext): void | Promise<void> => {
+    const name = context?.filename ?? chart_export_filename(frame)
+    const save = context?.save ?? download
+    if (format !== `csv`) return export_chart_image(frame.svg_element, name, format, save)
     const { header, rows } = csv()
-    export_csv(header, rows, name)
+    return save(to_csv(header, rows), `${name}.csv`, `text/csv;charset=utf-8`)
   }

@@ -1,4 +1,8 @@
 <script lang="ts">
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
@@ -27,12 +31,13 @@
     grid_step?: number
     show_grid?: boolean
     show_ticks?: boolean
-    on_export?: (format: ChartExportFormat) => void
+    on_export?: (format: ChartExportFormat, context: FileExportContext) => void | Promise<void>
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
 
+  const export_state = new FileExportState(() => `ternary`)
   const grid_settings = track_settings(
     () => ({ grid_step, show_grid, show_ticks }),
     GRID_DEFAULTS,
@@ -68,16 +73,14 @@
     </label>
   </SettingsSection>
   {#if on_export}
+    <ExportDestination state={export_state} />
     <SettingsSection title="Export" layout="flow">
-      {#each EXPORT_FORMATS as format (format)}
-        <button
-          type="button"
-          style="padding: 2pt 8pt; cursor: pointer"
-          onclick={() => on_export?.(format)}
-        >
-          {format.toUpperCase()}
-        </button>
-      {/each}
+      <ExportButtons
+        state={export_state}
+        formats={EXPORT_FORMATS}
+        {on_export}
+        button_props={() => ({ style: `padding: 2pt 8pt; cursor: pointer` })}
+      />
     </SettingsSection>
   {/if}
 </ControlPane>

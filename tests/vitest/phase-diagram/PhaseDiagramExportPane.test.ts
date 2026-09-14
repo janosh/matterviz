@@ -17,7 +17,10 @@ vi.mock(`$lib/io/export`, () => ({
 // Cast through unknown since JSON arrays aren't inferred as tuples
 const mock_phase_data = al_cu_data as unknown as PhaseDiagramData
 const mount_pane = (props: ComponentProps<typeof PhaseDiagramExportPane>) =>
-  mount(PhaseDiagramExportPane, { target: document.body, props })
+  mount(PhaseDiagramExportPane, {
+    target: document.body,
+    props: { export_pane_open: true, ...props },
+  })
 
 describe(`PhaseDiagramExportPane`, () => {
   let wrapper_div: HTMLDivElement
@@ -78,7 +81,13 @@ describe(`PhaseDiagramExportPane`, () => {
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div, ...props })
     get_button(`Download SVG`).click()
     await vi.waitFor(() => {
-      expect(export_svg_as_svg).toHaveBeenCalledWith(mock_svg, expected)
+      expect(export_svg_as_svg).toHaveBeenCalledWith(
+        mock_svg,
+        expected,
+        [],
+        {},
+        expect.any(Function),
+      )
     })
   })
 
@@ -94,6 +103,9 @@ describe(`PhaseDiagramExportPane`, () => {
         mock_svg,
         `phase-diagram-AL-CU.png`,
         png_dpi,
+        [],
+        {},
+        expect.any(Function),
       )
     })
   })

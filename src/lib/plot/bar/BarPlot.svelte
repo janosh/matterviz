@@ -2,7 +2,11 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { create_chart_exporter, series_to_csv_rows } from '$lib/plot/core/utils/chart-export'
+  import {
+    chart_export_filename,
+    create_chart_exporter,
+    series_to_csv_rows,
+  } from '$lib/plot/core/utils/chart-export'
   import type { D3InterpolateName } from '$lib/colors'
   import { format_value_or_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -1007,6 +1011,7 @@
 
     <BarPlotControls
       on_export={handle_export}
+      export_filename={chart_export_filename(frame)}
       toggle_props={controls_toggle_props}
       pane_props={controls_pane_props}
       bind:show_controls

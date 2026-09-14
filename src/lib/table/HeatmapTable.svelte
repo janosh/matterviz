@@ -11,7 +11,8 @@
     resolve_backdrop,
     resolve_css_color,
   } from '$lib/colors'
-  import { download } from '$lib/io/fetch'
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState } from '$lib/io/file-export.svelte'
   import { format_num } from '$lib/labels'
   import { array_max, clamp } from '$lib/math'
   import { is_activation_key } from '$lib/plot/core/interactions'
@@ -97,6 +98,7 @@
     controls,
     initial_sort = undefined,
     sort = $bindable({ column: ``, dir: `asc` }),
+    multi_sort = $bindable([]),
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     on_row_click,
@@ -138,6 +140,8 @@
     initial_sort?: InitialSort
     // Active sort by column ID. Bindable for external control/persistence.
     sort?: TableSort
+    // Shift-click criteria in priority order. Takes precedence over sort; bind to persist.
+    multi_sort?: { column: string; ascending: boolean }[]
     default_num_format?: string
     show_heatmap?: boolean
     on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
@@ -295,6 +299,7 @@
       filename: `table-export`,
     }),
   )
+  const export_state = new FileExportState(() => export_config?.filename ?? `table-export`)
   let virtual_config = $derived(
     pagination_config ? null : with_defaults(virtual, { overscan: 10, min_window: 60 }),
   )
@@ -523,17 +528,18 @@
   // === Sorting ===
   // Sort criteria as column IDs. multi_sort (Shift+click) takes precedence over the single
   // bindable sort, which falls back to initial_sort while unset.
-  let multi_sort = $state<{ column: string; ascending: boolean }[]>([])
   let sort_state = $derived({
     column: sort.column || initial_sort_config?.column || ``,
     ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
   })
-  let sort_criteria = $derived.by((): SortCriterion[] => {
-    const active = multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
-    return active
+  const active_sort = $derived(
+    multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : [],
+  )
+  let sort_criteria = $derived<SortCriterion[]>(
+    active_sort
       .filter(({ column }) => columns_by_id.has(column)) // skip entries for removed columns
-      .map(({ column, ascending }) => ({ key: key_of_id(column), ascending }))
-  })
+      .map(({ column, ascending }) => ({ key: key_of_id(column), ascending })),
+  )
   let sorted_data = $derived(
     sort_criteria.length === 0 ? filtered_data : sort_table_rows(filtered_data, sort_criteria),
   )
@@ -576,16 +582,13 @@
   const sort_indicator = (
     col_id: string,
   ): { ascending: boolean; rank: number | null } | null => {
-    const multi_idx = multi_sort.findIndex((entry) => entry.column === col_id)
-    const active =
-      multi_idx !== -1
-        ? multi_sort[multi_idx]
-        : sort_state.column === col_id
-          ? sort_state
-          : null
-    if (!active) return null
-    const ranked = multi_idx !== -1 && multi_sort.length > 1
-    return { ascending: active.ascending, rank: ranked ? multi_idx + 1 : null }
+    const idx = active_sort.findIndex((entry) => entry.column === col_id)
+    return idx === -1
+      ? null
+      : {
+          ascending: active_sort[idx].ascending,
+          rank: active_sort.length > 1 ? idx + 1 : null,
+        }
   }
 
   // === Pagination and row virtualisation ===
@@ -1487,17 +1490,20 @@
           )}
           {#if open_dropdown === `export`}
             <div class="dropdown-pane">
+              <ExportDestination state={export_state} />
               {#each export_config.formats as format (format)}
                 <button
                   class="dropdown-option"
-                  onclick={() => {
-                    download(
-                      EXPORTERS[format](),
-                      `${export_config.filename}.${format}`,
-                      EXPORT_MIME_TYPES[format],
-                    )
-                    open_dropdown = null
-                  }}
+                  disabled={export_state.disabled}
+                  onclick={() =>
+                    export_state.run(async ({ filename, save }) => {
+                      await save(
+                        EXPORTERS[format](),
+                        `${filename}.${format}`,
+                        EXPORT_MIME_TYPES[format],
+                      )
+                      open_dropdown = null
+                    })}
                 >
                   <Icon icon={Download} style="width: 12px" />
                   {format.toUpperCase()}
@@ -1663,7 +1669,7 @@
               data-col-id={col_id}
               style:left={view.sticky_left}
               tabindex={sortable ? 0 : undefined}
-              role={sortable ? `button` : undefined}
+              role="columnheader"
               oncontextmenu={(event) => open_column_context_menu(event, col_id)}
               onclick={(event) => activate_header(event, col)}
               onkeydown={(event) => activate_header(event, col)}
@@ -1676,8 +1682,8 @@
               data-drag-side={drag_side(col_id)}
               draggable="true"
               aria-dropeffect="move"
-              aria-sort={sort_state.column === col_id
-                ? sort_state.ascending
+              aria-sort={active_sort[0]?.column === col_id
+                ? active_sort[0].ascending
                   ? `ascending`
                   : `descending`
                 : `none`}

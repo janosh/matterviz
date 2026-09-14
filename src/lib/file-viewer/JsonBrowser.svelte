@@ -576,13 +576,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="json-browser" class:dragging={split_drag !== null}>
   <aside class="sidebar" bind:this={sidebar_element}>
-    <JsonTree
-      {value}
-      root_label={filename}
-      default_fold_level={1}
-      on_select={handle_select}
-      show_header
-    />
+    <JsonTree {value} root_label={filename} default_fold_level={1} on_select={handle_select} />
   </aside>
 
   <PaneDivider

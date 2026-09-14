@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ExportPane from '$lib/io/ExportPane.svelte'
+
   import type { ColorSchemeName } from '$lib/constants'
   import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
@@ -69,8 +71,7 @@
     [
       [`copy_formula`, Copy, `Copy Formula`],
       [`copy_data`, Copy, `Copy Data`],
-      [`export_svg`, Download, `Export SVG`],
-      [`export_png`, Download, `Export PNG`],
+      [`export_files`, Download, `Export files…`],
     ] as const
   ).map(([identifier, icon, label]) => ({
     id: identifier,
@@ -93,14 +94,13 @@
         navigator.clipboard.writeText(JSON.stringify(parsed, null, 2))
       } else if (!svg_node) console.warn(`Chart SVG not available for export`)
       else {
-        const filename = `${get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}.${export_type.slice(7)}`
-        if (export_type === `export_svg`) export_svg_as_svg(svg_node, filename)
-        else export_svg_as_png(svg_node, filename, DEFAULT_PNG_DPI)
+        export_pane_open = true
       }
     } catch (error) {
       console.error(`Export failed:`, error)
     }
   }
+  let export_pane_open = $state(false)
 </script>
 
 <!-- the chart itself is the right-click region; `at` is also set from the keyboard
@@ -137,3 +137,26 @@ path below, which has no pointer position to read -->
     {action.label}
   {/snippet}
 </ActionMenu>
+
+<ExportPane
+  bind:export_pane_open
+  filename={get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}
+  toggle_props={{ style: `display: none` }}
+  sections={[
+    {
+      title: `Export composition`,
+      items: [
+        {
+          label: `SVG`,
+          on_download: ({ filename, save }) =>
+            export_svg_as_svg(svg_node, `${filename}.svg`, [], {}, save),
+        },
+        {
+          label: `PNG`,
+          on_download: ({ filename, save }) =>
+            export_svg_as_png(svg_node, `${filename}.png`, DEFAULT_PNG_DPI, [], {}, save),
+        },
+      ],
+    },
+  ]}
+/>

@@ -23,6 +23,7 @@
   import { structure_files } from '$site/structures'
   import { file_param, set_file_param } from '$site/state.svelte'
   import { onMount } from 'svelte'
+  import { Spinner } from 'svelte-widgets'
 
   let wasm_ready = $state(false)
   let error = $state<string | null>(null)
@@ -118,8 +119,7 @@
   <div>
     {#if !wasm_ready}
       <div class="loading-placeholder">
-        <div class="loading-spinner"></div>
-        <p>Loading symmetry analysis...</p>
+        <Spinner text="Loading symmetry analysis..." />
       </div>
     {:else if error}
       <pre style="color: var(--error-color)">{error}</pre>
@@ -249,27 +249,9 @@
   }
   .loading-placeholder {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-  }
-  .loading-placeholder p {
-    margin: 1em 0 0;
-    font-size: 0.95em;
-  }
-  .loading-spinner {
-    box-sizing: border-box;
-    width: 40px;
-    height: 40px;
-    border: 4px solid var(--surface-bg-darker, #e0e0e0);
-    border-top-color: var(--accent-color, #0066cc);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    min-height: 100%;
   }
   /* layout example CSS */
   .example-section {

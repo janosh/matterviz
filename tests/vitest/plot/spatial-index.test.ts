@@ -36,7 +36,9 @@ describe(`spatial index`, () => {
 
     const items = [
       { cx: 10, cy: 10, id: `near` },
+      { cx: NaN, cy: 10, id: `invalid` },
       { cx: 14, cy: 10, id: `nearer-to-15` },
+      { cx: 1e100, cy: 0, id: `off-grid` },
       { cx: 500, cy: 500, id: `far` },
     ]
     const index = build_spatial_index(items, 20)
@@ -103,7 +105,7 @@ describe(`spatial index`, () => {
       cy: random() * 600 - 50,
       idx,
     }))
-    const index = build_spatial_index(items, radius_px)
+    const index = build_spatial_index(items.values(), radius_px)
     for (let query = 0; query < 200; query++) {
       const pointer = { x: random() * 900 - 50, y: random() * 600 - 50 }
       expect(query_nearest(index, pointer)).toBe(linear_nearest(items, pointer, radius_px))
@@ -129,8 +131,10 @@ test(`topmost picking preserves paint order with overlapping variable radii`, ()
     { cx: 1, cy: 0 },
     { cx: -1, cy: 0 },
   ]
+  // Repeated references retain their last paint position despite invalid entries between.
+  overlap.push({ cx: NaN, cy: 0 }, overlap[0])
   expect(query_topmost(build_spatial_index(overlap, 10), { x: 0, y: 0 }, () => true)).toBe(
-    overlap[2],
+    overlap[0],
   )
   // Absolute cell increments stall beyond f64 integer precision; both axes must terminate.
   for (const coord of [NaN, Infinity, -Infinity, 2 ** 60, -(2 ** 60), Number.MAX_VALUE]) {

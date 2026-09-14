@@ -199,10 +199,11 @@ test(`exports reproducible predictions separately from the original structure`, 
   await page.goto(`/structure/host-tool`)
   await page.getByRole(`button`, { name: `Run prediction`, exact: true }).click()
   await page.locator(`button.structure-export-toggle`).click()
+  await page.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`host-result`)
   const prediction_download = page.waitForEvent(`download`)
   await page.getByTitle(`Download Export prediction`, { exact: true }).click()
   const download = await prediction_download
-  expect(download.suggestedFilename()).toMatch(/^prediction-\d+\.json$/)
+  expect(download.suggestedFilename()).toBe(`host-result-prediction.json`)
   const data = await read_download(download)
   expect(data.provenance).toMatchObject({
     model: `Deterministic host example`,
@@ -217,7 +218,9 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(data.volumes[0].values).toHaveLength(12 ** 3)
   const original_download = page.waitForEvent(`download`)
   await page.getByTitle(`Download JSON`, { exact: true }).click()
-  const original = await read_download(await original_download)
+  const original_file = await original_download
+  expect(original_file.suggestedFilename()).toBe(`host-result.json`)
+  const original = await read_download(original_file)
   expect(original.sites).toEqual(data.input.sites)
   expect(original.lattice).toEqual(data.input.lattice)
   expect(original.volumes).toBeUndefined()

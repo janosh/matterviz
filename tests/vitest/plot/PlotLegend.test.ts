@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { interpolateBlues, interpolateReds } from 'd3-scale-chromatic'
 import { type FillGradient, type LegendItem, PlotLegend } from '$lib/plot'
 import {
   symbol as d3_symbol,
@@ -62,6 +63,33 @@ const default_series_data: LegendItem[] = [
 ]
 
 describe(`PlotLegend`, () => {
+  test(`renders distinct clipped color-scale bars with ordinary series toggles`, async () => {
+    const on_toggle = vi.fn()
+    mount_legend({
+      series_data: [
+        legend_item(`Blue`, 0, {
+          color_scale: { scheme: `interpolateBlues`, color_range: [0.3, 1] },
+        }),
+        legend_item(`Red`, 1, { color_scale: `interpolateReds` }),
+      ],
+      on_toggle,
+    })
+    const bars = [...document.querySelectorAll(`.color-scale-swatch`)]
+    expect(bars).toHaveLength(2)
+    const ids = bars.map((bar) => bar.querySelector(`linearGradient`)?.id)
+    expect(new Set(ids).size).toBe(2)
+    for (const [idx, bar] of bars.entries()) {
+      const stops = [...bar.querySelectorAll(`stop`)]
+      const interpolate = idx ? interpolateReds : interpolateBlues
+      expect(stops[0].getAttribute(`stop-color`)).toBe(interpolate(idx ? 0 : 0.3))
+      expect(stops.at(-1)?.getAttribute(`stop-color`)).toBe(interpolate(1))
+      expect(bar.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`url(#${ids[idx]})`)
+    }
+    doc_query(`[aria-label="Toggle visibility for Red"]`).click()
+    await tick()
+    expect(on_toggle).toHaveBeenCalledWith(1)
+  })
+
   // Each item renders a toggle button whose marker shows its line and/or symbol style
   test.each([
     [0, `true`, false, 2, [`red`, `solid`], `red`],

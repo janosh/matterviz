@@ -1,4 +1,8 @@
 <script lang="ts">
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
+  import { FileExportState } from '$lib/io/file-export.svelte'
+
   import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
@@ -37,8 +41,11 @@
     toggle_props = {},
     pane_props = {},
     on_export,
+    export_filename = controls_title,
     export_formats = [`png`, `svg`, `csv`],
   }: PlotControlsProps = $props()
+
+  const export_state = new FileExportState(() => export_filename)
 
   // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
   const range_spans_zero = (lower: number, upper: number): boolean =>
@@ -410,21 +417,22 @@
   {@render post_children?.()}
 
   {#if on_export}
+    <ExportDestination state={export_state} />
     <SettingsSection title="Export" layout="flow">
-      {#each export_formats as format (format)}
-        <button type="button" class="export-btn" onclick={() => on_export?.(format)}>
-          {format.toUpperCase()}
-        </button>
-      {/each}
+      <ExportButtons
+        state={export_state}
+        formats={export_formats}
+        {on_export}
+        button_props={() => ({
+          class: `export-btn`,
+          style: `padding: 2pt 8pt; cursor: pointer`,
+        })}
+      />
     </SettingsSection>
   {/if}
 </ControlPane>
 
 <style>
-  .export-btn {
-    padding: 2pt 8pt;
-    cursor: pointer;
-  }
   :is(.control-options, .range-pair) {
     display: flex;
     align-items: center;

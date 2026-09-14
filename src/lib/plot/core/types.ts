@@ -1,3 +1,4 @@
+import type { FileExportContext } from '$lib/io/file-export.svelte'
 import type { ShowControlsProp } from '$lib/controls'
 import type { PaneProps, PaneToggleProps } from '$lib/overlays'
 import type { D3InterpolateName } from '$lib/colors'
@@ -277,6 +278,8 @@ export type ColorScaleConfig = {
   type?: ScaleType
   // Prefixed d3 interpolator name (`interpolateViridis`, not `Viridis`)
   scheme?: D3InterpolateName
+  // Fraction of the palette to use, e.g. [0.25, 1] to keep low counts visibly colored.
+  color_range?: Vec2
   value_range?: Vec2
 }
 export type SizeScaleConfig = {
@@ -407,6 +410,8 @@ export interface LegendItem {
   fill_source_type?: `fill_region` | `error_band`
   fill_source_idx?: number
   display_style: {
+    // A short continuous color-scale bar, with ordinary series toggle behavior.
+    color_scale?: ColorScaleConfig | D3InterpolateName
     symbol_type?: D3SymbolName
     symbol_color?: string
     symbol_opacity?: number
@@ -656,8 +661,9 @@ export interface PlotControlsProps
   auto_ranges?: Partial<Record<AxisKey, Vec2>>
   // Saves the figure or the numbers behind it. Omit to hide the Export section - a
   // chart that can't serialize its data should not offer a CSV button that does nothing.
-  on_export?: (format: ChartExportFormat) => void
+  on_export?: (format: ChartExportFormat, context: FileExportContext) => void | Promise<void>
   export_formats?: readonly ChartExportFormat[]
+  export_filename?: string
   // Component props
   controls_title?: string
   controls_name?: string

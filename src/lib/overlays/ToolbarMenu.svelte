@@ -81,7 +81,7 @@
       gap: 1pt;
       background: transparent;
       padding: var(--view-mode-button-padding, 1px 2px);
-      font-size: var(--ctrl-btn-icon-size, inherit);
+      font-size: var(--ctrl-btn-icon-size, 1rem);
     }
     > button.active {
       color: var(--accent-color, #4a9eff);

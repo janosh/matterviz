@@ -6,7 +6,8 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { Icon, Spinner, StatusMessage, Toast } from 'svelte-widgets'
+  import { Icon, StatusMessage, Toast } from 'svelte-widgets'
+  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -964,6 +965,7 @@
   class:multi-view={is_multi_view_active}
   style:--struct-viewport-gap="{MULTI_VIEW_MIN_PANE.gap}px"
   style:--struct-bg-override={background_override}
+  style:--struct-pane-max-height="calc({height}px - 50px)"
   role="application"
   tabindex="0"
   aria-label="Structure viewer"
@@ -985,10 +987,7 @@
   {@attach forward_window_keydown({ handle: handle_hover_keydown })}
 >
   {@render children?.({ structure, fullscreen })}
-  {#if loading}<Spinner
-      text="Loading structure..."
-      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
-    />{/if}
+  {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if notice_message}<StatusMessage bind:message={notice_message} dismissible />{/if}
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
@@ -1104,6 +1103,9 @@
             bind:export_pane_open={
               () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
             }
+            bind:flight_pane_open={
+              () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
+            }
             structure={session.normalized_structure}
             {wrapper}
             {scene}
@@ -1114,7 +1116,7 @@
               : undefined}
             enable_3d_export={display_mode === `structure`}
             bind:png_dpi
-            pane_props={{ style: `--pane-max-height: calc(${height}px - 50px)` }}
+            pane_props={{ style: `--pane-max-height: var(--struct-pane-max-height)` }}
           />
         {/if}
 
@@ -1285,7 +1287,7 @@
   .structure {
     position: relative;
     container-type: size; /* enable cqh/cqw for internal panes */
-    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, var(--viewer-chrome-icon-size));
+    --ctrl-btn-icon-size: var(--struct-ctrl-btn-icon-size, 1rem);
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
     max-width: var(--struct-max-width, 100%);

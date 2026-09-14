@@ -157,13 +157,9 @@
   --pane-color: var(--text-color, light-dark(#374151, #eee));
   --pane-muted-color: var(--text-color-muted, light-dark(#6b7280, #a0a0a0));
 
-  /* Single source of truth for viewer control-button icon size, shared by all viewer chromes
-     (Structure/Brillouin/Fermi/ConvexHull/Trajectory). Scales with the container but is capped so
-     toolbar icons don't grow oversized in fullscreen. Uses rem (not em) so the size is consistent
-     across viewers regardless of their local font-size (e.g. Trajectory's controls run at 0.85em).
-     Override per viewer by setting this on its wrapper. */
-  --ctrl-btn-icon-size: clamp(0.7rem, 2cqmin, 0.85rem);
-  --viewer-chrome-icon-size: clamp(0.91rem, 2cqmin, 1rem);
+  /* Shared by viewer, sequence and plot toolbars. rem keeps icons independent of local
+     font sizes, container dimensions and fullscreen. Hosts can override this per viewer. */
+  --ctrl-btn-icon-size: 1rem;
 
   /* In-viewer overlay stack (inside one viewer container, above its 3D
      canvas): 1 viewport labels · 2 glass chips · 4–6 gallery chrome
@@ -225,10 +221,12 @@
   /* plot chrome (pane toggles, fullscreen button) is ~20px on pointer screens, too small to
      hit reliably; the icons keep their size, the hit area grows */
   .header-controls {
-    font-size: 1.2rem;
-    --pane-toggle-font-size: 1.1rem;
     --pane-toggle-padding: 5pt;
     --fullscreen-btn-padding: 7pt;
+    > button {
+      min-width: 32px;
+      min-height: 32px;
+    }
   }
 }
 body.fullscreen .draggable-pane {
@@ -311,6 +309,13 @@ body.fullscreen .draggable-pane {
   padding: 2px 4px;
   font-size: 0.8em;
 }
+/* Flow sections need row spacing too; compact horizontal groups own their layout. */
+.draggable-pane :where(.settings-section.flow:not(.ctrl-line):not(.axis-fields)) {
+  display: flex;
+  flex-direction: column;
+  gap: 6pt;
+  min-width: 0;
+}
 /* Grid tracks supply the spacing. Native fields share dimensions regardless of input type
    or whether their row comes from the component or a caller's snippet. Keep specificity low
    so controls with intentional compact sizing can override these defaults. */
@@ -384,12 +389,6 @@ body.fullscreen .draggable-pane {
 }
 .draggable-pane.compact-settings .pane-content > .settings-section-heading:first-child {
   margin-top: 0;
-}
-.draggable-pane.compact-settings section.flow:not(.ctrl-line):not(.axis-fields) {
-  display: flex;
-  flex-direction: column;
-  gap: 6pt;
-  min-width: 0;
 }
 .draggable-pane.compact-settings .ctrl-line {
   display: flex;

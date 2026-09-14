@@ -70,7 +70,7 @@ export type MeasureMode = `distance` | `angle` | `dihedral` | `edit-bonds` | `ed
 export type BondEditMode = `add` | `delete`
 export type StructureDisplayMode = `structure` | `slice`
 // The one floating pane a Structure viewer has open
-export type StructurePane = `controls` | `info` | `export`
+export type StructurePane = `controls` | `info` | `export` | `flight`
 
 // A single viewport definition for the multi-side (2x2) view. `direction` is the
 // camera offset direction from the structure center (target-relative); `projection`

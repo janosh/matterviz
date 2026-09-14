@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { goto_structure_test, IS_CI, open_structure_export_pane } from '../helpers'
 
 test.describe(`StructureExportPane Tests`, () => {
@@ -21,6 +22,14 @@ test.describe(`StructureExportPane Tests`, () => {
       await expect(copy_btn).toHaveText(`✅`)
       await expect(copy_btn).toHaveText(`📋`)
     }
+    await pane_div.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`My crystal`)
+    const downloaded = page.waitForEvent(`download`)
+    await pane_div.getByRole(`button`, { name: `Download JSON`, exact: true }).click()
+    const download = await downloaded
+    expect(download.suggestedFilename()).toBe(`My crystal.json`)
+    const path = await download.path()
+    if (!path) throw new Error(`Missing exported structure`)
+    expect(JSON.parse(await readFile(path, `utf8`)).sites.length).toBeGreaterThan(0)
   })
 
   const text_format_tooltips = [

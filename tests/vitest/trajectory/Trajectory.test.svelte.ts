@@ -13,6 +13,7 @@ import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
 import {
   resize_element,
+  trigger_resize_observer,
   mock_fullscreen,
   bind_props,
   doc_query,
@@ -174,8 +175,10 @@ describe(`display modes`, () => {
     const target = mount_trajectory(props)
     await tick()
     const view_mode_button = doc_query<HTMLButtonElement>(`${CONTROLS} .view-mode-button`)
+    expect(view_mode_button.querySelectorAll(`svg`)).toHaveLength(1)
     view_mode_button.click()
     await tick()
+    expect(view_mode_button.querySelectorAll(`svg`)).toHaveLength(1)
     menu_option(target, `Histogram-only`).click()
     await tick()
     expect(props.display_mode).toBe(`histogram`)
@@ -267,8 +270,11 @@ describe(`controls`, () => {
     const target = mount_trajectory(
       default_props({ show_controls: { hidden: [`msd-pane`, `spectroscopy-pane`] } }),
     )
-    target.querySelector<HTMLButtonElement>(`button[aria-label="Analysis"]`)?.click()
+    const analysis_button = doc_query<HTMLButtonElement>(`button[aria-label="Analysis"]`)
+    expect(analysis_button.querySelectorAll(`svg`)).toHaveLength(1)
+    analysis_button.click()
     await tick()
+    expect(analysis_button.querySelectorAll(`svg`)).toHaveLength(1)
     const labels = [
       ...target.querySelectorAll(`.analysis-dropdown .view-mode-option span`),
     ].map((span) => span.textContent)
@@ -611,6 +617,57 @@ describe(`panes`, () => {
     props.active_pane = `export`
     await tick()
     expect(open_panes()).toEqual([`export-pane`])
+    const flight_anchor = doc_query<HTMLButtonElement>(`.trajectory-flight-toggle`)
+    expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
+    expect(flight_anchor.tabIndex).toBe(-1)
+    const launch_flight = [...doc_query(`.export-pane`).querySelectorAll(`button`)].find(
+      (button) => button.textContent?.includes(`Plan camera flight`),
+    )
+    expect(launch_flight).toBeDefined()
+    launch_flight?.click()
+    await tick()
+    expect(props.active_pane).toBe(`flight`)
+    expect(open_panes()).toEqual([`trajectory-flight-pane`])
+    const planner = doc_query(`.trajectory-flight-pane`)
+    // The paired frame controls synchronize number/slider edits and retain valid bounds.
+    const frame_inputs = [...planner.querySelectorAll<HTMLInputElement>(`.input-row input`)]
+    expect(frame_inputs.map((input) => input.type)).toEqual([
+      `number`,
+      `range`,
+      `number`,
+      `range`,
+    ])
+    const [first_number, first_slider, last_number, last_slider] = frame_inputs
+    first_number.value = `1`
+    first_number.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(first_slider.value).toBe(`1`)
+    expect(last_number.min).toBe(`1`)
+    last_slider.value = `1`
+    last_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+    expect(last_number.value).toBe(`1`)
+    last_number.value = ``
+    last_number.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(last_number.value).toBe(`1`)
+    planner.style.left = `123px`
+    planner.style.top = `234px`
+    const content = doc_query(`.trajectory > .content-area`)
+    await resize_element(content, 1000, 600)
+    trigger_resize_observer(content)
+    await tick()
+    expect(doc_query(`.trajectory`).style.getPropertyValue(`--traj-pane-max-height`)).toBe(
+      `600px`,
+    )
+    expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
+    props.active_pane = null
+    await tick()
+    doc_query<HTMLButtonElement>(`.structure-flight-toggle`).click()
+    await tick()
+    expect(props.active_pane).toBe(`flight`)
+    expect(open_panes()).toEqual([`trajectory-flight-pane`])
+    expect(target.querySelector(`.structure-flight-pane.viewer-pane-open`)).toBeNull()
 
     await open_analysis(target, `Mean squared displacement`)
     expect(props.active_pane).toBe(`msd`)

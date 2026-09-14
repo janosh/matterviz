@@ -22,7 +22,7 @@ vi.mock(`@threlte/core`, async (original) => {
       camera: core.currentWritable({ id: 1 }),
       // SceneCamera re-applies its view-offset pan on resize
       size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: undefined,
+      renderer: { domElement: document.createElement(`canvas`) },
     }),
   }
 })

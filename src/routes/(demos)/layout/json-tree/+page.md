@@ -212,7 +212,7 @@ Values flash when updated. Click the button and watch the values change:
   Update Values
 </button>
 
-<JsonTree value={dynamic_value} highlight_changes={true} show_header={false} />
+<JsonTree value={dynamic_value} highlight_changes={true} ui={{ header: false }} />
 
 ### Interactive Callbacks
 
@@ -225,7 +225,7 @@ Click nodes and values to see callbacks fire:
 
 <JsonTree
 value={{ user: { name: "Click me", id: 42 }, items: [1, 2, 3] }}
-show_header={false}
+ui={{ header: false }}
 default_fold_level={5}
 on_select={handle_select}
 on_copy={handle_copy}
@@ -233,13 +233,13 @@ on_copy={handle_copy}
 
 ### Prop Variants
 
-Sorted keys, custom root label, and headerless mode:
+Sorted keys, custom root label, and compact display:
 
-<JsonTree value={{ zebra: 1, apple: 2, mango: 3, banana: 4 }} sort_keys={true} show_header={false} />
+<JsonTree value={{ zebra: 1, apple: 2, mango: 3, banana: 4 }} sort_keys={true} ui={{ header: false }} />
 
-<JsonTree value={["red", "green", "blue"]} root_label="colors" show_header={false} />
+<JsonTree value={["red", "green", "blue"]} root_label="colors" ui={{ header: false }} />
 
-<JsonTree value={{ compact: true, clean: "display" }} show_header={false} />
+<JsonTree value={{ compact: true, clean: "display" }} ui={{ header: false, path: false, node_actions: false, size_hints: false }} />
 
 ## Interactions
 
@@ -269,24 +269,24 @@ All built-in, no props needed:
 
 ## Props Reference
 
-| Prop                 | Type                    | Default     | Description                                          |
-| -------------------- | ----------------------- | ----------- | ---------------------------------------------------- |
-| `value`              | `unknown`               | required    | Data to display                                      |
-| `root_label`         | `string`                | -           | Label for root node                                  |
-| `default_fold_level` | `number`                | `2`         | Initial expansion depth                              |
-| `auto_fold_arrays`   | `number`                | `10`        | Auto-collapse arrays larger than this                |
-| `auto_fold_objects`  | `number`                | `20`        | Auto-collapse objects larger than this               |
-| `collapsed_paths`    | `Set<string>`           | `new Set()` | Bindable collapse state                              |
-| `show_header`        | `boolean`               | `true`      | Show search/controls                                 |
-| `show_data_types`    | `boolean`               | `false`     | Show type annotations                                |
-| `show_array_indices` | `boolean`               | `true`      | Show array indices                                   |
-| `sort_keys`          | `boolean`               | `false`     | Alphabetize keys                                     |
-| `max_string_length`  | `number`                | `200`       | Truncate long strings                                |
-| `highlight_changes`  | `boolean`               | `true`      | Flash on value change                                |
-| `compare_value`      | `unknown`               | -           | Diff against this value (shows adds/removes/changes) |
-| `on_select`          | `(path, value) => void` | -           | Node click callback                                  |
-| `on_copy`            | `(path, value) => void` | -           | Copy callback                                        |
-| `download_filename`  | `string`                | auto        | Custom filename for JSON download                    |
+| Prop                 | Type                                             | Default     | Description                                                          |
+| -------------------- | ------------------------------------------------ | ----------- | -------------------------------------------------------------------- |
+| `value`              | `unknown`                                        | required    | Data to display                                                      |
+| `root_label`         | `string`                                         | -           | Label for root node                                                  |
+| `default_fold_level` | `number`                                         | `2`         | Initial expansion depth                                              |
+| `auto_fold_arrays`   | `number`                                         | `10`        | Auto-collapse arrays larger than this                                |
+| `auto_fold_objects`  | `number`                                         | `20`        | Auto-collapse objects larger than this                               |
+| `collapsed_paths`    | `Set<string>`                                    | `new Set()` | Bindable collapse state                                              |
+| `ui`                 | `{ header?, path?, node_actions?, size_hints? }` | all `true`  | Toggle toolbar, selected path, extra node tools, and byte-size hints |
+| `show_data_types`    | `boolean`                                        | `false`     | Show type annotations                                                |
+| `show_array_indices` | `boolean`                                        | `true`      | Show array indices                                                   |
+| `sort_keys`          | `boolean`                                        | `false`     | Alphabetize keys                                                     |
+| `max_string_length`  | `number`                                         | `200`       | Truncate long strings                                                |
+| `highlight_changes`  | `boolean`                                        | `true`      | Flash on value change                                                |
+| `compare_value`      | `unknown`                                        | -           | Diff against this value (shows adds/removes/changes)                 |
+| `on_select`          | `(path, value) => void`                          | -           | Node click callback                                                  |
+| `on_copy`            | `(path, value) => void`                          | -           | Copy callback                                                        |
+| `download_filename`  | `string`                                         | auto        | Custom filename for JSON download                                    |
 
 ## CSS Customization
 

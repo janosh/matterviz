@@ -1,3 +1,4 @@
+import type { FileExportContext } from '$lib/io/file-export.svelte'
 // Reactive shell state shared by the hierarchical part-of-whole charts
 // (Sunburst, Treemap): hierarchy ingestion, zoom/breadcrumb navigation, hover +
 // tooltip state, legend muting, metric coloring, color-bar layout and keyboard
@@ -464,8 +465,13 @@ export class HierarchyChartState<
         : null
   }
 
-  export_chart = (format: `svg` | `png`): void =>
-    export_chart_image(this.svg_element, this.#opts.export_filename(), format)
+  export_chart = (format: `svg` | `png`, context?: FileExportContext): void | Promise<void> =>
+    export_chart_image(
+      this.svg_element,
+      context?.filename ?? this.#opts.export_filename(),
+      format,
+      context?.save,
+    )
 }
 
 // zoom_root_id reaches the layout only while bucketing measures against the view root; else a

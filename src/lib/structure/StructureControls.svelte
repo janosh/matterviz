@@ -12,7 +12,8 @@
   import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { capitalize, format_num } from '$lib/labels'
-  import { download } from '$lib/io/fetch'
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState } from '$lib/io/file-export.svelte'
   import {
     NumberRangeInput,
     SettingsGroup,
@@ -256,11 +257,10 @@
     serialize_structure_view_state(current_view_state)
   const copy_view_state = (): void =>
     void copy_view_state_text(serialize_current_view_state(), `viewer-settings`)
-  const download_view_state = (): void =>
-    download(
-      serialize_current_view_state(),
-      `matterviz-view-settings.json`,
-      `application/json`,
+  const export_state = new FileExportState(() => `matterviz-view-settings`)
+  const download_view_state = () =>
+    export_state.run(({ filename, save }) =>
+      save(serialize_current_view_state(), `${filename}.json`, `application/json`),
     )
 
   const import_view_state = async (event: Event): Promise<void> => {
@@ -1548,6 +1548,7 @@
       title="Preferences"
       subtitle={persist_settings ? `saved in this browser` : `session only`}
     >
+      <ExportDestination state={export_state} />
       <div class="settings-actions">
         <button type="button" onclick={copy_view_state} aria-label="Copy viewer settings JSON">
           {copied_view_state.has(`viewer-settings`) ? `Copied ✓` : `Copy JSON`}

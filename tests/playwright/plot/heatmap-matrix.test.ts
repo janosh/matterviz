@@ -16,7 +16,7 @@ test(`settings align native fields and custom rows at different pane widths`, as
       const section = node.querySelector(`.settings-section.grid`)
       if (!section) throw new Error(`Missing heatmap settings grid`)
       const fields = [...node.querySelectorAll(`select, input:not([type])`)]
-      const rows = [...node.querySelectorAll(`.settings-section.grid > :is(label, .setting)`)]
+      const rows = [...section.children]
       const row_bounds = rows.map((row) => row.getBoundingClientRect())
       return {
         fields: fields.map((field) => {
@@ -42,13 +42,16 @@ test(`CSV and JSON exports download the filtered heatmap data`, async ({ page })
   await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
   await page.locator(`.heatmap-matrix-controls-toggle`).first().click({ force: true })
   const pane = page.locator(`.heatmap-controls`).first()
+  await pane
+    .getByRole(`textbox`, { name: `File name`, exact: true })
+    .fill(`element-differences`)
   await pane.getByPlaceholder(`Filter labels/keys`).fill(`Co`)
   await expect(page.locator(`.heatmap`).first().locator(`.cell`)).toHaveCount(1)
   for (const format of [`csv`, `json`]) {
     const downloaded = page.waitForEvent(`download`)
     await pane.getByRole(`button`, { name: `Export ${format.toUpperCase()}` }).click()
     const file = await downloaded
-    expect(file.suggestedFilename()).toBe(`electronegativity-difference.${format}`)
+    expect(file.suggestedFilename()).toBe(`element-differences.${format}`)
     const file_path = await file.path()
     if (!file_path) throw new Error(`No downloaded ${format} file`)
     const content = await readFile(file_path, `utf8`)

@@ -1239,27 +1239,73 @@ describe(`HeatmapTable`, () => {
 
   describe(`Multi-Column Sorting`, () => {
     it(`Shift+click toggles multi-sort columns and regular click clears them`, async () => {
-      mount_sample()
+      const state = $state({
+        data: sample_data.map((row) => ({
+          ...row,
+          Score: row.Model === `Model C` ? 0.85 : row.Score,
+        })),
+        multi_sort: [] as { column: string; ascending: boolean }[],
+      })
+      mount_sample(state)
       const headers = document.querySelectorAll(`th`)
       const shift_click = async (idx: number) => {
         await fire(headers[idx], mouse(`click`, { shiftKey: true }))
       }
+      const expect_sort = (primary: number, direction: string) =>
+        expect([...headers].map((header) => header.getAttribute(`aria-sort`))).toEqual(
+          [...headers].map((_header, idx) => (idx === primary ? direction : `none`)),
+        )
+      expect(
+        [...headers].every((header) => header.getAttribute(`role`) === `columnheader`),
+      ).toBe(true)
 
       await shift_click(0)
       await shift_click(1)
+      expect(state.multi_sort).toEqual([
+        { column: `Model`, ascending: false },
+        { column: `Score`, ascending: false },
+      ])
+      expect(col_values(`Model`)).toEqual([`Model C`, `Model B`, `Model A`])
       expect(headers[0].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
       expect(headers[0].textContent).toMatch(/[↑↓]/)
       expect(headers[1].textContent).toMatch(/[↑↓]/)
+      expect_sort(0, `descending`)
 
       await shift_click(0)
+      expect(state.multi_sort).toEqual([{ column: `Score`, ascending: false }])
       expect(headers[0].textContent).not.toMatch(/[↑↓]/)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
+      expect_sort(1, `descending`)
 
       await click(headers[2])
+      expect(state.multi_sort).toEqual([])
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
       expect(headers[2].textContent).toMatch(/[↑↓]/)
+      expect_sort(2, `ascending`)
+
+      // Restored external criteria take precedence over the single-column sort and
+      // the second criterion resolves tied scores.
+      state.multi_sort = [
+        { column: `Score`, ascending: true },
+        { column: `Value`, ascending: false },
+      ]
+      await tick()
+      expect(col_values(`Model`)).toEqual([`Model C`, `Model B`, `Model A`])
+      expect(headers[1].innerHTML).toContain(`<sup>1</sup>`)
+      expect(headers[2].innerHTML).toContain(`<sup>2</sup>`)
+      expect_sort(1, `ascending`)
+      state.multi_sort = [{ column: `Score`, ascending: true }]
+      await tick()
+      expect(headers[1].textContent).toMatch(/[↑↓]/)
+      expect(headers[2].textContent).not.toMatch(/[↑↓]/)
+      expect_sort(1, `ascending`)
+      state.multi_sort = []
+      await tick()
+      expect(col_values(`Model`)).toEqual([`Model A`, `Model B`, `Model C`])
+      expect(headers[2].textContent).toMatch(/[↑↓]/)
+      expect_sort(2, `ascending`)
     })
   })
 

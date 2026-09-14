@@ -1,17 +1,19 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
-import { dpi_to_scale } from '$lib/io/export'
+import { canvas_to_png_blob, dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import type { FileSaver } from '$lib/io/file-export.svelte'
 import { export_scene_as } from '$lib/scene'
 import { escape_html as xml_escape } from '$lib/utils'
 import * as THREE from 'three/webgpu'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)
 
-const download_json = (payload: unknown, filename: string): void =>
-  download(get_json_string(payload), filename, `application/json`)
-
-export const export_json_file = (payload: unknown, basename: string): void =>
-  download_json(payload, `${basename}.json`)
+export const export_json_file = (
+  payload: unknown,
+  basename: string,
+  save: FileSaver = download,
+): void | Promise<void> =>
+  save(get_json_string(payload), `${basename}.json`, `application/json`)
 
 interface XYZ {
   x: number
@@ -51,7 +53,8 @@ export function get_view_settings(opts: {
 export const export_view_json_file = (
   view_settings: Record<string, unknown>,
   basename: string,
-): void => download_json(view_settings, `${basename}-view.json`)
+  save: FileSaver = download,
+): void | Promise<void> => export_json_file(view_settings, `${basename}-view`, save)
 
 interface OverlayTextItem {
   x: number
@@ -90,11 +93,12 @@ function get_overlay_text_items(
 }
 
 // Composite the 3D canvas + HTML overlay labels into a single PNG download
-export function export_png_file(
+export async function export_png_file(
   wrapper: HTMLElement | undefined,
   basename: string,
   png_dpi: number,
-): void {
+  save: FileSaver = download,
+): Promise<void> {
   const gl_canvas = get_gl_canvas(wrapper)
   if (!gl_canvas || !wrapper) return
 
@@ -125,10 +129,9 @@ export function export_png_file(
     ctx.fillText(text_item.text, text_item.x, text_item.y)
   }
 
-  out.toBlob((blob) => {
-    if (!blob) return
-    download(blob, `${basename}.png`, `image/png`)
-  }, `image/png`)
+  // Already scaled and composited above; encode these pixels without another DPI multiplier.
+  const blob = await canvas_to_png_blob(out, 72)
+  await save(blob, `${basename}.png`, `image/png`)
 }
 
 // SVG snapshot: rasterized canvas as embedded image + overlay labels as real text nodes
@@ -136,7 +139,8 @@ export function export_svg_file(
   wrapper: HTMLElement | undefined,
   basename: string,
   view_settings: Record<string, unknown>,
-): void {
+  save: FileSaver = download,
+): void | Promise<void> {
   const gl_canvas = get_gl_canvas(wrapper)
   if (!gl_canvas || !wrapper) return
   const canvas_rect = gl_canvas.getBoundingClientRect()
@@ -163,7 +167,7 @@ export function export_svg_file(
     ...text_nodes,
     `</svg>`,
   ].join(``)
-  download(svg, `${basename}.svg`, `image/svg+xml`)
+  return save(svg, `${basename}.svg`, `image/svg+xml`)
 }
 
 interface ChemPotGlbParts {
@@ -175,7 +179,11 @@ interface ChemPotGlbParts {
 }
 
 // Rebuild the scene from its geometries and export as binary GLTF
-export function export_glb_file(parts: ChemPotGlbParts, basename: string): void {
+export function export_glb_file(
+  parts: ChemPotGlbParts,
+  basename: string,
+  save: FileSaver = download,
+): Promise<void> {
   const {
     hull_geometry,
     hull_opacity = 0.25,
@@ -207,7 +215,5 @@ export function export_glb_file(parts: ChemPotGlbParts, basename: string): void 
   for (const { geometry, color } of formula_edges) {
     add_lines(geometry, new THREE.Color(color))
   }
-  export_scene_as(export_root, `glb`, basename).catch((err: unknown) =>
-    console.error(`Failed to export GLB:`, err),
-  )
+  return export_scene_as(export_root, `glb`, basename, save)
 }

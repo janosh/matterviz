@@ -438,7 +438,7 @@
             </Canvas>
           </div>
         {:else}
-          <div class="prism-fallback"><Spinner /> Sweeping temperatures…</div>
+          <div class="prism-fallback"><Spinner text="Sweeping temperatures…" /></div>
         {/if}
         <div class="temperature-bar">
           <button
@@ -486,8 +486,10 @@
           <span class="stable-count">{section.stable.length} stable</span>
           {#if computing}
             <span class="progress">
-              <Spinner style="--spinner-size: 0.9em; --spinner-border-width: 2px; margin: 0" />
-              {progress ? `${progress.done}/${progress.total}` : `sweeping`}
+              <Spinner
+                text={progress ? `${progress.done}/${progress.total}` : `sweeping`}
+                style="--spinner-size: 0.9em; --spinner-border-width: 2px; margin: 0"
+              />
             </span>
           {/if}
         </div>
@@ -531,7 +533,7 @@
           {/if}
         </div>
       {:else if (settings.show_map || settings.show_events) && computing}
-        <div class="side-panel computing"><Spinner /> Sweeping temperatures…</div>
+        <div class="side-panel computing"><Spinner text="Sweeping temperatures…" /></div>
       {/if}
     </div>
   {:else if entries.length === 0}
@@ -663,7 +665,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5em;
     opacity: 0.7;
   }
   .side-panel {

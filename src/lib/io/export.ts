@@ -1,5 +1,6 @@
-import { DEFAULT_PNG_DPI } from '$lib/constants'
+import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
 import { download } from '$lib/io/fetch'
+import type { FileSaver } from './file-export.svelte'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
@@ -23,77 +24,77 @@ export const dpi_to_scale = (png_dpi: number): number =>
   Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
 
 const device_timeout_ms = 5000
-const blob_timeout_ms = 5000
+// Encoding cost grows with image pixels or recording size, but stalled exports stay bounded.
+const export_timeout_ms = (estimated_megabytes: number): number =>
+  Math.min(300_000, 30_000 + estimated_megabytes * 1000)
 
-function canvas_to_blob(canvas: HTMLCanvasElement, failure_message: string): Promise<Blob> {
-  return new Promise<Blob>((resolve, reject) => {
-    let settled = false
-    const finish = (error?: Error, blob?: Blob): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      if (error) reject(error)
-      else if (blob) resolve(blob)
-      else reject(new Error(failure_message))
-    }
-    const timer = setTimeout(
-      () =>
-        finish(new Error(`${failure_message}: toBlob timed out after ${blob_timeout_ms}ms`)),
-      blob_timeout_ms,
-    )
-    try {
-      canvas.toBlob((blob) => finish(undefined, blob ?? undefined), `image/png`)
-    } catch (error) {
-      finish(to_error(error))
-    }
-  })
-}
-
-// Wait for the GPU device, but never indefinitely: an unfulfilled device request would leave
-// the export promise pending forever, giving the user neither a file nor an error.
-async function device_ready(renderer: WebGPURenderer): Promise<boolean> {
+async function with_timeout<Value>(
+  operation: () => Promise<Value>,
+  timeout_ms: number,
+  message: string,
+): Promise<Value> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      renderer.init().then(() => true), // caches its own promise, so repeat calls are free
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), device_timeout_ms)
+      operation(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${message} timed out after ${timeout_ms}ms`)),
+          timeout_ms,
+        )
       }),
     ])
-  } catch {
-    return false
+  } catch (error) {
+    throw to_error(error)
   } finally {
     clearTimeout(timer)
   }
 }
 
-// Re-render a GPU canvas so its drawing buffer holds a fresh frame at capture time. Awaits the
-// device since render() throws before init() resolves and this runs outside Threlte's loop.
-// Without one, capture whatever the canvas holds — stale beats an export that never resolves.
-// Software WebGPU (CI) can throw on createBuffer during render; swallow and keep going.
-async function render_for_capture(
-  renderer: WebGPURenderer,
-  scene: Scene | null,
-  camera: Camera | null,
-): Promise<void> {
-  if (!scene || !camera) return
-  if (!(await device_ready(renderer))) return
-  try {
-    renderer.render(scene, camera)
-  } catch (error) {
-    console.warn(`PNG capture re-render failed; exporting current canvas buffer`, error)
-  }
+const canvas_to_blob = (
+  canvas: HTMLCanvasElement,
+  failure_message = `Failed to generate PNG blob`,
+): Promise<Blob> =>
+  with_timeout(
+    () =>
+      new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error(failure_message))),
+          `image/png`,
+        )
+      }),
+    export_timeout_ms((canvas.width * canvas.height * 4) / 1e6),
+    `${failure_message}: toBlob`,
+  )
+
+// Wait for the GPU device, but never indefinitely: an unfulfilled device request would leave
+// the export promise pending forever, giving the user neither a file nor an error.
+// init() caches its own promise, so repeat calls are free.
+export async function wait_for_renderer(renderer: WebGPURenderer): Promise<void> {
+  await with_timeout(() => renderer.init(), device_timeout_ms, `GPU initialization`)
 }
 
-// Capture at the renderer's current pixel ratio after an optional re-render.
-async function capture_native(
-  canvas: HTMLCanvasElement,
-  renderer: WebGPURenderer | undefined,
-  scene: Scene | null,
-  camera: Camera | null,
-): Promise<Blob> {
-  if (renderer) await render_for_capture(renderer, scene, camera)
-  return canvas_to_blob(canvas, `Failed to generate PNG - canvas may be empty`)
+// Check before resizing: an oversized drawing buffer can invalidate the live viewer.
+function validate_capture_size(
+  renderer: WebGPURenderer,
+  size: Vector2,
+  pixel_ratio: number,
+): void {
+  const width = Math.floor(size.width * pixel_ratio)
+  const height = Math.floor(size.height * pixel_ratio)
+  const context = renderer.getContext() as GPUCanvasContext | WebGL2RenderingContext
+  const max_dimension =
+    `getConfiguration` in context
+      ? context.getConfiguration()?.device.limits.maxTextureDimension2D
+      : Math.min(
+          context.getParameter(context.MAX_TEXTURE_SIZE),
+          context.getParameter(context.MAX_RENDERBUFFER_SIZE),
+        )
+  if (!max_dimension) throw new Error(`GPU canvas is not configured for export`)
+  if (width > max_dimension || height > max_dimension)
+    throw new Error(
+      `Export resolution ${width}×${height} exceeds this GPU's ${max_dimension}px limit per dimension. Select a lower resolution or resize the viewer.`,
+    )
 }
 
 // GPU canvases temporarily adjust renderer pixel ratio; plain 2D canvases are drawn into a
@@ -105,11 +106,11 @@ export async function canvas_to_png_blob(
   camera: Camera | null = null,
 ): Promise<Blob> {
   const resolution_multiplier = dpi_to_scale(png_dpi)
+  const resize = resolution_multiplier > 1.1
   const renderer = renderer_registry.get(canvas)
 
-  if (resolution_multiplier <= 1.1) return capture_native(canvas, renderer, scene, camera)
-
   if (!renderer) {
+    if (!resize) return canvas_to_blob(canvas)
     const scaled_canvas = document.createElement(`canvas`)
     scaled_canvas.width = Math.max(1, Math.round(canvas.width * resolution_multiplier))
     scaled_canvas.height = Math.max(1, Math.round(canvas.height * resolution_multiplier))
@@ -119,65 +120,45 @@ export async function canvas_to_png_blob(
     return canvas_to_blob(scaled_canvas, `Failed to generate high-resolution PNG`)
   }
 
-  // Temporarily modify the renderer's pixel ratio for high-res capture
+  await wait_for_renderer(renderer)
   const orig_pixel_ratio = renderer.getPixelRatio()
   const orig_size = renderer.getSize(new Vector2())
-  const restore = () => {
-    renderer.setPixelRatio(orig_pixel_ratio)
-    renderer.setSize(orig_size.width, orig_size.height, false)
-  }
+  // Scale the live ratio so HiDPI exports retain their display resolution.
+  const pixel_ratio = orig_pixel_ratio * (resize ? resolution_multiplier : 1)
+  validate_capture_size(renderer, orig_size, pixel_ratio)
 
   try {
-    // Multiplied by the live ratio, not set outright: on a HiDPI display the renderer is
-    // already at 2, so assigning the multiplier directly SHRANK the export. An 800x600 scene
-    // on a dpr-2 screen went from a native 1600x1200 to 1111x833 at 100 DPI, and everything
-    // below ~144 DPI exported at less than screen resolution. export_trajectory_video, a few
-    // hundred lines down, already scales the same way.
-    renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
-    renderer.setSize(orig_size.width, orig_size.height, false)
-    await render_for_capture(renderer, scene, camera)
-    return await canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
-  } catch (error) {
-    // High-DPI needs larger mapped GPU buffers; CI's software WebGPU often refuses them.
-    console.warn(
-      `High-DPI PNG capture failed; falling back to native canvas resolution`,
-      error,
-    )
+    if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, pixel_ratio)
+    if (scene && camera) renderer.render(scene, camera)
+    return await canvas_to_blob(canvas)
   } finally {
-    restore()
+    if (resize)
+      renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
   }
-  // Reached only on failure: the renderer is back at native resolution by now
-  return capture_native(canvas, renderer, scene, camera)
 }
 
 // Export structure as PNG image from canvas (triggers browser download)
-export function export_canvas_as_png(
+export async function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure_or_filename: AnyStructure | string | undefined,
   png_dpi = DEFAULT_PNG_DPI,
   scene: Scene | null = null,
   camera: Camera | null = null,
-): void {
+  save: FileSaver = download,
+): Promise<void> {
   if (!canvas) {
     if (typeof window !== `undefined`) console.warn(`Canvas not found for PNG export`)
     return
   }
 
-  let filename =
+  const basename =
     typeof structure_or_filename === `string`
       ? structure_or_filename
       : create_structure_filename(structure_or_filename, `png`)
 
-  const suffix = `-${Math.round(png_dpi)}dpi`
-  if (filename.toLowerCase().endsWith(`.png`)) {
-    filename = filename.replace(/\.png$/i, `${suffix}.png`)
-  } else {
-    filename = `${filename}${suffix}.png`
-  }
+  const filename = `${basename.replace(/\.png$/i, ``)}-${Math.round(png_dpi)}dpi.png`
 
-  canvas_to_png_blob(canvas, png_dpi, scene, camera)
-    .then((blob) => download(blob, filename, `image/png`))
-    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
+  await save(await canvas_to_png_blob(canvas, png_dpi, scene, camera), filename, `image/png`)
 }
 
 interface SvgExportOptions {
@@ -353,21 +334,18 @@ export function export_svg_as_svg(
   filename: string,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
-): void {
+  save: FileSaver = download,
+): void | Promise<void> {
   if (!svg_element) {
     console.warn(`SVG element not found for export`)
     return
   }
-  try {
-    const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
-    download(svg_content, filename, `image/svg+xml;charset=utf-8`)
-  } catch (error) {
-    console.error(`Error exporting SVG:`, error)
-  }
+  const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
+  return save(svg_content, filename, `image/svg+xml;charset=utf-8`)
 }
 
 // Rasterize an SVG using its viewBox or viewport dimensions.
-export function svg_to_png_blob(
+export async function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
@@ -375,11 +353,10 @@ export function svg_to_png_blob(
 ): Promise<Blob> {
   const padding = resolve_viewbox_padding(svg_element, options)
   const padded_viewbox = svg_viewbox(svg_element, padding)
-  if (!padded_viewbox)
-    return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
+  if (!padded_viewbox) throw new Error(`Invalid SVG dimensions for PNG export`)
   const [, , width, height] = padded_viewbox
   if (!Number.isFinite(png_dpi) || png_dpi <= 0) {
-    return Promise.reject(new Error(`Invalid PNG DPI for export`))
+    throw new Error(`Invalid PNG DPI for export`)
   }
 
   const resolution_multiplier = dpi_to_scale(png_dpi)
@@ -389,7 +366,7 @@ export function svg_to_png_blob(
 
   const canvas = document.createElement(`canvas`)
   const ctx = canvas.getContext(`2d`)
-  if (!ctx) return Promise.reject(new Error(`Canvas 2D context not available`))
+  if (!ctx) throw new Error(`Canvas 2D context not available`)
 
   canvas.width = pixel_width
   canvas.height = pixel_height
@@ -400,61 +377,53 @@ export function svg_to_png_blob(
   ])
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
-  let url_revoked = false
-  const revoke_url = () => {
-    if (url_revoked) return
-    url_revoked = true
+  const listeners = new AbortController()
+  try {
+    const img = new Image()
+    await with_timeout(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const event_options = { once: true, signal: listeners.signal }
+          img.addEventListener(`load`, () => resolve(), event_options)
+          img.addEventListener(
+            `error`,
+            () => reject(new Error(`Failed to load SVG for PNG export`)),
+            event_options,
+          )
+          img.src = svg_data_url
+        }),
+      export_timeout_ms((pixel_width * pixel_height * 4) / 1e6),
+      `SVG image load`,
+    )
+    ctx.clearRect(0, 0, pixel_width, pixel_height)
+    ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
+    return await canvas_to_blob(canvas)
+  } catch (error) {
+    throw to_error(error)
+  } finally {
+    listeners.abort()
     URL.revokeObjectURL(svg_data_url)
   }
-
-  return new Promise((resolve, reject) => {
-    try {
-      const img = new Image()
-      img.addEventListener(`load`, () => {
-        try {
-          ctx.clearRect(0, 0, pixel_width, pixel_height)
-          ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
-          canvas.toBlob(
-            (blob) => {
-              if (blob) resolve(blob)
-              else reject(new Error(`Failed to generate PNG blob`))
-            },
-            `image/png`,
-            1,
-          )
-        } catch (error) {
-          reject(to_error(error))
-        } finally {
-          revoke_url()
-        }
-      })
-      img.addEventListener(`error`, () => {
-        revoke_url()
-        reject(new Error(`Failed to load SVG for PNG export`))
-      })
-      img.src = svg_data_url
-    } catch (error) {
-      revoke_url()
-      reject(to_error(error))
-    }
-  })
 }
 
 // Export SVG element as PNG (triggers browser download)
-export function export_svg_as_png(
+export async function export_svg_as_png(
   svg_element: SVGElement | null,
   filename: string,
   png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
-): void {
+  save: FileSaver = download,
+): Promise<void> {
   if (!svg_element) {
     console.warn(`SVG element not found for PNG export`)
     return
   }
-  svg_to_png_blob(svg_element, png_dpi, inline_styles, options)
-    .then((blob) => download(blob, filename, `image/png`))
-    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
+  await save(
+    await svg_to_png_blob(svg_element, png_dpi, inline_styles, options),
+    filename,
+    `image/png`,
+  )
 }
 
 // Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately
@@ -475,60 +444,62 @@ export function observe_canvas_presence(
   return () => observer.disconnect()
 }
 
-// Estimate VP9 video bitrate (bits/s) from pixel count and frame rate.
-// VP9 needs ~0.1 bits per pixel per frame for good quality; clamped to [1, 200] Mbps.
+// Bitrate target (bits/s) for AV1 exports, clamped to [1, 200] Mbps.
+// This pixel-rate heuristic also drives the file-size estimate; actual sizes vary by scene.
 export const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
   clamp(pixel_count * fps * 0.1, 1_000_000, 200_000_000)
 
-// Generate FFmpeg command for WebM to MP4 conversion
-export function get_ffmpeg_conversion_command(input_filename: string): string {
-  const output = input_filename.replace(/\.webm$/i, `.mp4`)
-  return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
-}
+// Both containers use AV1. MP4 requires its registered sample-entry code, av01.
+const video_mime_types = {
+  webm: `video/webm;codecs=av1`,
+  mp4: `video/mp4;codecs=av01`,
+} as const
+export type VideoFormat = keyof typeof video_mime_types
+
+export const is_video_export_supported = (format: VideoFormat): boolean =>
+  typeof MediaRecorder !== `undefined` &&
+  MediaRecorder.isTypeSupported(video_mime_types[format])
 
 // Recorder state changes synchronously; its encoder starts and stops asynchronously.
-function run_recorder_action(
+async function run_recorder_action(
   recorder: MediaRecorder,
   action: 'start' | 'stop',
+  timeout_ms: number,
   signal?: AbortSignal,
   after_action?: () => void,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    signal?.throwIfAborted()
-    const listeners = new AbortController()
-    const finish = (error?: Error): void => {
-      clearTimeout(timeout)
-      listeners.abort()
-      if (error !== undefined) reject(error)
-      else resolve()
-    }
-    const timeout = setTimeout(
-      () => finish(new Error(`Recording timeout - recorder did not ${action}`)),
-      5000,
-    )
-    recorder.addEventListener(action, () => finish(), { signal: listeners.signal })
-    signal?.addEventListener(`abort`, () => finish(to_error(signal.reason)), {
-      signal: listeners.signal,
-      once: true,
-    })
-    recorder.addEventListener(
-      `error`,
-      (event) => {
-        const message =
-          event instanceof ErrorEvent && event.error instanceof Error
-            ? event.error.message
-            : event.type
-        finish(new Error(`MediaRecorder error: ${message}`))
-      },
-      { signal: listeners.signal },
-    )
-    try {
+  signal?.throwIfAborted()
+  const listeners = new AbortController()
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    await new Promise<void>((resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error(`Recording timeout - recorder did not ${action}`)),
+        timeout_ms,
+      )
+      const options = { signal: listeners.signal }
+      recorder.addEventListener(action, () => resolve(), options)
+      signal?.addEventListener(`abort`, () => reject(to_error(signal.reason)), options)
+      recorder.addEventListener(
+        `error`,
+        (event) => {
+          const message =
+            event instanceof ErrorEvent && event.error instanceof Error
+              ? event.error.message
+              : event.type
+          reject(new Error(`MediaRecorder error: ${message}`))
+        },
+        options,
+      )
       recorder[action]()
       after_action?.()
-    } catch (error) {
-      finish(to_error(error))
-    }
-  })
+    })
+  } catch (error) {
+    throw to_error(error)
+  } finally {
+    clearTimeout(timeout)
+    listeners.abort()
+  }
 }
 
 // Cancel scheduled work too: animation frames may never fire in a hidden/unmounted viewer.
@@ -552,50 +523,56 @@ function wait_for_video_tick(signal?: AbortSignal, duration?: number): Promise<v
   })
 }
 
-// Export trajectory video as WebM while advancing through the requested frames.
-// Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
+// Export AV1 video while advancing through the requested trajectory frames.
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,
-  options: {
+  {
+    format = `webm`,
+    fps = 30,
+    total_frames = 100,
+    on_progress,
+    on_step,
+    on_finish,
+    on_save,
+    resolution_multiplier = DEFAULT_VIDEO_RESOLUTION,
+    stop_timeout_ms,
+    signal,
+  }: {
+    format?: VideoFormat
     fps?: number
     total_frames?: number
     on_progress?: (progress: number) => void
     on_step?: (step_idx: number, signal?: AbortSignal) => void | Promise<void>
     // Restore caller-owned state after recording cleanup, before any download.
     on_finish?: () => void | Promise<void>
+    // Save the completed video to a caller-selected destination instead of downloading it.
+    on_save?: (blob: Blob) => void | Promise<void>
     resolution_multiplier?: number
+    // Finalization deadline in ms (1–2^31-1). Default: 30s + 1s per estimated MB, capped at 5min.
+    stop_timeout_ms?: number
     signal?: AbortSignal
   } = {},
 ): Promise<void> {
-  const {
-    fps = 30,
-    total_frames = 100,
-    on_progress,
-    on_step,
-    on_finish,
-    resolution_multiplier = 1,
-    signal,
-  } = options
-
   signal?.throwIfAborted()
+  if (!canvas) throw new Error(`Canvas not ready for video export`)
   if (
-    !canvas ||
-    typeof MediaRecorder === `undefined` ||
-    !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
+    stop_timeout_ms !== undefined &&
+    !(stop_timeout_ms >= 1 && stop_timeout_ms <= 2_147_483_647)
   )
-    throw new Error(`WebM video recording not supported in this browser`)
+    throw new RangeError(`Invalid stop_timeout_ms: ${stop_timeout_ms}; expected 1–2147483647`)
+  const mime_type = video_mime_types[format]
+  if (!is_video_export_supported(format))
+    throw new Error(`AV1 recording (${mime_type}) is not supported in this browser`)
 
   const renderer = renderer_registry.get(canvas)
   // Recording captures the canvas stream while Threlte drives frames, but resizing the
   // renderer below touches GPU resources, so make sure the device exists first.
-  if (renderer) await device_ready(renderer)
+  if (renderer) await wait_for_renderer(renderer)
   signal?.throwIfAborted()
 
-  // Store original renderer settings if changing resolution
-  let orig_pixel_ratio: number | undefined
-  let orig_size: Vector2 | undefined
-  let recorder: MediaRecorder | undefined = undefined
+  let restore_renderer: (() => void) | undefined
+  let recorder: MediaRecorder | undefined
   let stream: MediaStream | undefined
   const chunks: Blob[] = []
   const stop_recorder = () => {
@@ -617,11 +594,13 @@ export async function export_trajectory_video(
     // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
     if (total_frames > 0) await prepare_step(0)
     if (resolution_multiplier !== 1 && renderer) {
-      orig_pixel_ratio = renderer.getPixelRatio()
-      orig_size = renderer.getSize(new Vector2())
-      // Adjust pixel ratio for different resolution export
-      renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
-      renderer.setSize(orig_size.width, orig_size.height, false)
+      const size = renderer.getSize(new Vector2())
+      const orig_pixel_ratio = renderer.getPixelRatio()
+      const pixel_ratio = orig_pixel_ratio * resolution_multiplier
+      validate_capture_size(renderer, size, pixel_ratio)
+      restore_renderer = () =>
+        renderer.setDrawingBufferSize(size.width, size.height, orig_pixel_ratio)
+      renderer.setDrawingBufferSize(size.width, size.height, pixel_ratio)
     }
 
     // Calculate bitrate based on actual video dimensions
@@ -646,7 +625,7 @@ export async function export_trajectory_video(
     if (total_frames > 0) copy_frame()
     stream = capture_canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
-      mimeType: `video/webm;codecs=vp9`,
+      mimeType: mime_type,
       videoBitsPerSecond: bitrate,
     })
 
@@ -660,13 +639,14 @@ export async function export_trajectory_video(
 
     // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
     // encoder can otherwise start after a short trajectory has already called stop().
-    await run_recorder_action(recorder, `start`, signal, () => {
+    await run_recorder_action(recorder, `start`, 5000, signal, () => {
       if (total_frames > 0) {
         copy_frame()
         track.requestFrame?.()
       }
     })
 
+    const recording_start = performance.now()
     const frame_duration = 1000 / fps
 
     // Advance frames sequentially, allowing rendering time between steps.
@@ -686,7 +666,14 @@ export async function export_trajectory_video(
         await wait_for_video_tick(signal, remaining)
       }
     }
-    await run_recorder_action(recorder, `stop`, signal)
+    // Include time spent rendering/reading frames when estimating the encoded size.
+    const estimated_megabytes = (bitrate * (performance.now() - recording_start)) / 8e9
+    await run_recorder_action(
+      recorder,
+      `stop`,
+      stop_timeout_ms ?? export_timeout_ms(estimated_megabytes),
+      signal,
+    )
   } catch (error) {
     stop_recorder()
     throw error
@@ -694,10 +681,7 @@ export async function export_trajectory_video(
     signal?.removeEventListener(`abort`, stop_recorder)
     try {
       // Restore original renderer settings after the encoder has finished reading frames.
-      if (orig_pixel_ratio !== undefined && orig_size && renderer) {
-        renderer.setPixelRatio(orig_pixel_ratio)
-        renderer.setSize(orig_size.width, orig_size.height, false)
-      }
+      restore_renderer?.()
     } finally {
       try {
         for (const track of stream?.getTracks() ?? []) track.stop()
@@ -707,7 +691,9 @@ export async function export_trajectory_video(
     }
   }
   signal?.throwIfAborted()
-  const blob = new Blob(chunks, { type: `video/webm` })
-  download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
+  const container_mime = `video/${format}`
+  const blob = new Blob(chunks, { type: container_mime })
+  if (on_save) await on_save(blob)
+  else download(blob, `${filename.replace(/\.(?:mp4|webm)$/i, ``)}.${format}`, container_mime)
   on_progress?.(100)
 }

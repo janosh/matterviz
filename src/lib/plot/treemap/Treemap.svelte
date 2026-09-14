@@ -436,6 +436,7 @@
       bind:show_breadcrumbs
       {export_buttons}
       on_export={chart_state.export_chart}
+      {export_filename}
     >
       {@render controls_extra?.({ zoom_root_id })}
     </TreemapControls>

@@ -110,7 +110,10 @@ describe(`source`, () => {
     })
     input.dispatchEvent(new Event(`change`, { bubbles: true }))
     await vi.waitFor(() => expect(pending).toHaveLength(1))
-    query<HTMLButtonElement>(target, `.task-status button`).click()
+    const loading_status = query(target, `.trajectory-loading [role="status"]`)
+    expect(loading_status.textContent?.trim()).toBe(`Loading trajectory...`)
+    expect(query(target, `.trajectory-loading progress`).hasAttribute(`value`)).toBe(false)
+    query<HTMLButtonElement>(target, `.trajectory-loading button`).click()
     await vi.waitFor(() => expect(pending[0].signal?.aborted).toBe(true))
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
     const late = make_run(`picked.xyz`)
@@ -295,36 +298,43 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
   })
 
-  test(`replacement loading pauses playback and shows worker progress until the run arrives`, async () => {
-    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
-    let release: ((run: TrajectoryRun) => void) | undefined
-    stub_worker(
-      (_data, filename, _is_base64, options) =>
-        new Promise<TrajectoryRun>((resolve) => {
-          options?.on_progress?.({ current: 42.4, total: 100, stage: `Indexing frames` })
-          release = () => resolve(make_run(filename))
-        }),
-    )
-    const target = mount_viewer({
-      spinner_props: { title: `Parsing in a worker` },
-      trajectory: make_run(`previous.xyz`),
-      on_controller,
-    })
-    drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
-    await vi.waitFor(() =>
-      expect(doc_query(`.task-status [role="status"]`).textContent).toBe(
-        `Indexing frames (42%)`,
-      ),
-    )
-    const controller = on_controller.mock.calls.at(-1)?.[0]
-    expect(controller?.state().total_frames).toBe(0)
-    expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(42.4)
-    expect(doc_query(`.spinner`).getAttribute(`title`)).toBe(`Parsing in a worker`)
-    if (!release) throw new Error(`worker stub never ran`)
-    release(make_run(`big.xyz`))
-    await vi.waitFor(() => expect(target.querySelector(`.spinner`)).toBeNull())
-    expect(controller?.state().total_frames).toBe(3)
-  })
+  test.each([
+    { current: 0, label: `Indexing frames (0%)` },
+    { current: 42.4, label: `Indexing frames (42%)` },
+  ])(
+    `replacement loading pauses playback and shows $current% progress until the run arrives`,
+    async ({ current, label }) => {
+      const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
+      let release: ((run: TrajectoryRun) => void) | undefined
+      stub_worker(
+        (_data, filename, _is_base64, options) =>
+          new Promise<TrajectoryRun>((resolve) => {
+            options?.on_progress?.({ current, total: 100, stage: `Indexing frames` })
+            release = () => resolve(make_run(filename))
+          }),
+      )
+      const target = mount_viewer({
+        spinner_props: { title: `Parsing in a worker` },
+        trajectory: make_run(`previous.xyz`),
+        on_controller,
+      })
+      drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
+      await vi.waitFor(() =>
+        expect(doc_query(`.trajectory-loading [role="status"]`).textContent?.trim()).toBe(
+          label,
+        ),
+      )
+      const controller = on_controller.mock.calls.at(-1)?.[0]
+      expect(controller?.state().total_frames).toBe(0)
+      expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(current)
+      expect(doc_query(`.trajectory-loading [role="status"] .circle-spinner`)).not.toBeNull()
+      expect(doc_query(`.spinner`).getAttribute(`title`)).toBe(`Parsing in a worker`)
+      if (!release) throw new Error(`worker stub never ran`)
+      release(make_run(`big.xyz`))
+      await vi.waitFor(() => expect(target.querySelector(`.spinner`)).toBeNull())
+      expect(controller?.state().total_frames).toBe(3)
+    },
+  )
 
   test(`changing source aborts the in-flight load and disposes its late result`, async () => {
     const pending = deferred_worker()

@@ -1,4 +1,8 @@
 <script lang="ts">
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   // Shared controls pane for the hierarchical part-of-whole charts. Exported as
@@ -39,6 +43,7 @@
     padding_outer = $bindable(DEFAULTS.treemap.padding_outer),
     export_buttons = true,
     on_export,
+    export_filename = chart,
     toggle_props = {},
     pane_props = {},
     children,
@@ -63,12 +68,15 @@
     padding_inner?: number
     padding_top?: number
     padding_outer?: number
+    export_filename?: string
     export_buttons?: boolean // show SVG/PNG download buttons in the pane
-    on_export?: (format: `svg` | `png`) => void
+    on_export?: (format: `svg` | `png`, context: FileExportContext) => void | Promise<void>
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
+
+  const export_state = new FileExportState(() => export_filename)
 
   let current_values = $derived({
     value_mode,
@@ -199,6 +207,7 @@
     </label>
   </SettingsSection>
   {#if export_buttons && on_export}
+    <ExportDestination state={export_state} />
     <!-- --hier-btn-*: forward the chart's own theming vars (--sunburst-btn-bg /
       --treemap-btn-bg); when unset, the outer var() falls back to the gray default -->
     <div
@@ -206,14 +215,15 @@
       style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
     >
       Export
-      {#each [`svg`, `png`] as const as fmt (fmt)}
-        <button
-          type="button"
-          class="export-btn"
-          aria-label="Download {fmt.toUpperCase()}"
-          onclick={() => on_export?.(fmt)}>{fmt.toUpperCase()}</button
-        >
-      {/each}
+      <ExportButtons
+        state={export_state}
+        formats={[`svg`, `png`] as const}
+        {on_export}
+        button_props={(format) => ({
+          class: `export-btn`,
+          'aria-label': `Download ${format.toUpperCase()}`,
+        })}
+      />
     </div>
   {/if}
 </ControlPane>
@@ -226,7 +236,7 @@
     margin-top: 6px;
     font-size: 0.85em;
   }
-  .export-btn {
+  .export-row :global(.export-btn) {
     background: var(--hier-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
     border: none;
@@ -234,7 +244,7 @@
     padding: 1px 6px;
     cursor: pointer;
   }
-  .export-btn:hover {
+  .export-row :global(.export-btn:hover) {
     background: var(--hier-btn-hover-bg, rgba(128, 128, 128, 0.35));
   }
 </style>

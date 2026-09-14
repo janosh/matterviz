@@ -8,7 +8,6 @@
     HeatmapMatrix,
   } from '$lib/heatmap-matrix'
   import { format_num } from '$lib/labels'
-  import { download } from '$lib/io/fetch'
 
   // === Demo 1: Full element matrix with ordering controls, tooltip, and click ===
   let ordering = $state<ElementAxisOrderingKey>(`atomic_number`)
@@ -135,10 +134,10 @@
         (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
           payload.x_range[1]
         }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-      on_export={(format_name, payload) => {
-        download(
+      on_export={async (format_name, payload, { filename, save }) => {
+        await save(
           typeof payload === `string` ? payload : JSON.stringify(payload, null, 2),
-          `electronegativity-difference.${format_name}`,
+          `${filename}.${format_name}`,
           format_name === `csv` ? `text/csv;charset=utf-8` : `application/json`,
         )
         last_export_status = `Exported ${format_name.toUpperCase()}`

@@ -510,7 +510,7 @@ describe(`ConvexHullStats`, () => {
     test.each([
       { format: `CSV`, ext: `csv`, mime_type: `text/csv` },
       { format: `JSON`, ext: `json`, mime_type: `application/json` },
-    ])(`exports $format via dropdown and closes menu`, ({ format, ext, mime_type }) => {
+    ])(`exports $format via dropdown and closes menu`, async ({ format, ext, mime_type }) => {
       const { create, revoke } = mock_object_url()
       let downloaded_as = ``
       // download() clicks a detached anchor; capture filename from the click target
@@ -528,9 +528,7 @@ describe(`ConvexHullStats`, () => {
         document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
       )
       options.find((element) => element.textContent?.includes(format))?.click()
-      flushSync()
-
-      expect(document.querySelector(`.dropdown-pane`)).toBeNull()
+      await vi.waitFor(() => expect(document.querySelector(`.dropdown-pane`)).toBeNull())
       expect(create).toHaveBeenCalledTimes(1)
       expect((create.mock.calls[0][0] as Blob).type).toBe(mime_type)
       expect(anchor_click).toHaveBeenCalledTimes(1)
