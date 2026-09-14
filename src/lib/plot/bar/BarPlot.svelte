@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import {
-    export_filename,
+    chart_export_filename,
     create_chart_exporter,
     series_to_csv_rows,
   } from '$lib/plot/core/utils/chart-export'
@@ -1011,11 +1011,7 @@
 
     <BarPlotControls
       on_export={handle_export}
-      export_filename={export_filename(
-        frame.title_config?.text,
-        frame.axes.x.label,
-        frame.axes.y.label,
-      )}
+      export_filename={chart_export_filename(frame)}
       toggle_props={controls_toggle_props}
       pane_props={controls_pane_props}
       bind:show_controls

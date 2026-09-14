@@ -1,5 +1,5 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
-import { dpi_to_scale } from '$lib/io/export'
+import { canvas_to_png_blob, dpi_to_scale } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import type { FileSaver } from '$lib/io/file-export.svelte'
 import { export_scene_as } from '$lib/scene'
@@ -8,17 +8,12 @@ import * as THREE from 'three/webgpu'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)
 
-const download_json = (
-  payload: unknown,
-  filename: string,
-  save: FileSaver,
-): void | Promise<void> => save(get_json_string(payload), filename, `application/json`)
-
 export const export_json_file = (
   payload: unknown,
   basename: string,
   save: FileSaver = download,
-): void | Promise<void> => download_json(payload, `${basename}.json`, save)
+): void | Promise<void> =>
+  save(get_json_string(payload), `${basename}.json`, `application/json`)
 
 interface XYZ {
   x: number
@@ -59,7 +54,7 @@ export const export_view_json_file = (
   view_settings: Record<string, unknown>,
   basename: string,
   save: FileSaver = download,
-): void | Promise<void> => download_json(view_settings, `${basename}-view.json`, save)
+): void | Promise<void> => export_json_file(view_settings, `${basename}-view`, save)
 
 interface OverlayTextItem {
   x: number
@@ -134,8 +129,8 @@ export async function export_png_file(
     ctx.fillText(text_item.text, text_item.x, text_item.y)
   }
 
-  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, `image/png`))
-  if (!blob) throw new Error(`Failed to encode ${basename}.png`)
+  // Already scaled and composited above; encode these pixels without another DPI multiplier.
+  const blob = await canvas_to_png_blob(out, 72)
   await save(blob, `${basename}.png`, `image/png`)
 }
 

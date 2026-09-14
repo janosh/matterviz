@@ -159,13 +159,13 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  let hovered_bin = $state<(DensityBin & { series_idx?: number }) | null>(null)
-  let hovered_point = $state<DenseInternalPoint<Metadata> | null>(null)
-  $effect(() => {
-    void series
-    hovered_bin = null
-    hovered_point = null
-  })
+  // Clear stale indices before the tooltip reads a replaced or shortened series array.
+  const reset_hover = () => {
+    void series.length
+    return null
+  }
+  let hovered_bin = $derived.by<(DensityBin & { series_idx?: number }) | null>(reset_hover)
+  let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let annotation_element = $state<HTMLDivElement>()
   let annotation_size_revision = $state(0)
@@ -317,6 +317,15 @@
   )
   const occupied_series = (bin_idx: number): number[] =>
     density_grids.flatMap((result, idx) => (result.counts[bin_idx] ? [idx] : []))
+  const screen_cell = (x_bin: number, y_bin: number) =>
+    density_screen_cell(
+      x_bin,
+      y_bin,
+      density_result.x_bins,
+      density_result.y_bins,
+      x_range,
+      y_range,
+    )
   function bin_at(coords: Point2D): (DensityBin & { series_idx?: number }) | null {
     const bin = density_bin_at_point(
       density_result,
@@ -329,14 +338,7 @@
     if (!bin || !per_series_density) return bin
     const bin_idx = bin.y_bin * density_result.x_bins + bin.x_bin
     const occupied = occupied_series(bin_idx)
-    const [col] = density_screen_cell(
-      bin.x_bin,
-      bin.y_bin,
-      density_result.x_bins,
-      density_result.y_bins,
-      x_range,
-      y_range,
-    )
+    const [col] = screen_cell(bin.x_bin, bin.y_bin)
     const fraction = (coords.x - plot_rect.x) / (plot_rect.width / density_result.x_bins) - col
     const series_idx =
       occupied[
@@ -390,14 +392,7 @@
       if (occupied_idx++ % stride) continue
       // canonical bin -> screen cell, same as draw_density: without it the obstacle field is
       // mirrored on a reversed range and the solver drops decorations onto the dense cloud
-      const [col, row] = density_screen_cell(
-        idx % x_bins,
-        Math.floor(idx / x_bins),
-        x_bins,
-        y_bins,
-        x_range,
-        y_range,
-      )
+      const [col, row] = screen_cell(idx % x_bins, Math.floor(idx / x_bins))
       points.push({ x: (col + 0.5) / x_bins, y: (row + 0.5) / y_bins })
     }
     return points
@@ -553,14 +548,7 @@
     const style_cache = new Map<string, string>()
     for (let bin_idx = 0; bin_idx < counts.length; bin_idx++) {
       if (!counts[bin_idx]) continue
-      const [col, row] = density_screen_cell(
-        bin_idx % x_bins,
-        Math.floor(bin_idx / x_bins),
-        x_bins,
-        y_bins,
-        x_range,
-        y_range,
-      )
+      const [col, row] = screen_cell(bin_idx % x_bins, Math.floor(bin_idx / x_bins))
       const occupied = occupied_series(bin_idx)
       for (const [strip_idx, series_idx] of occupied.entries()) {
         const count = density_grids[series_idx].counts[bin_idx]

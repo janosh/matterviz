@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { export_filename, create_chart_exporter } from '$lib/plot/core/utils/chart-export'
+  import {
+    chart_export_filename,
+    create_chart_exporter,
+  } from '$lib/plot/core/utils/chart-export'
   import { format_value_or_num } from '$lib/labels'
   import type {
     BarStyle,
@@ -628,11 +631,7 @@
 
     <HistogramControls
       on_export={handle_export}
-      export_filename={export_filename(
-        frame.title_config?.text,
-        frame.axes.x.label,
-        frame.axes.y.label,
-      )}
+      export_filename={chart_export_filename(frame)}
       toggle_props={controls_toggle_props}
       pane_props={controls_pane_props}
       bind:show_controls

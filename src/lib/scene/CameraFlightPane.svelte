@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { renderer_registry, scene_registry } from '$lib/io/export'
+  import { wait_for_renderer, renderer_registry, scene_registry } from '$lib/io/export'
   import ExportDestination from '$lib/io/ExportDestination.svelte'
   import { FileExportState } from '$lib/io/file-export.svelte'
   import { format_num } from '$lib/labels'
@@ -16,6 +16,7 @@
     orbit_camera_flight,
     validate_camera_flight,
     type CameraFlight,
+    type CameraPose,
   } from './camera-flight'
   import { create_camera_flight_editor } from './camera-flight-editor.svelte'
   import {
@@ -71,7 +72,7 @@
   const locked = $derived(disabled || busy)
   const ready = $derived(Boolean(canvas) && frames.length >= 2)
 
-  async function attempt(action: () => unknown | Promise<unknown>) {
+  async function attempt(action: () => unknown) {
     error = ``
     try {
       await action()
@@ -111,7 +112,7 @@
     const renderer = renderer_registry.get(canvas)
     const view = scene_registry.get(canvas)
     if (!renderer || !view) throw new Error(`Wait for the 3D view to be ready`)
-    await renderer.init()
+    await wait_for_renderer(renderer)
     renderer.render(view.scene, view.camera)
     const image = document.createElement(`canvas`)
     image.width = 160
@@ -132,9 +133,7 @@
     return attempt(() =>
       session?.run(
         `thumbnails`,
-        async ({ signal }) => {
-          const pose = canvas && camera_flight_registry.get(canvas)?.capture()
-          if (!pose) throw new Error(`Wait for the 3D camera to be ready`)
+        async ({ pose, signal }) => {
           const image = await thumbnail()
           signal.throwIfAborted()
           if (mode === `update`) editor.update(selected, pose, image)
@@ -146,12 +145,15 @@
     )
   }
 
-  function replace_path(make: () => CameraFlight | Promise<CameraFlight>, automatic = false) {
+  function replace_path(
+    make: (pose: CameraPose) => CameraFlight | Promise<CameraFlight>,
+    automatic = false,
+  ) {
     return attempt(() =>
       session?.run(
         `thumbnails`,
-        async ({ signal, show, timeline: steps }) => {
-          const path = await make()
+        async ({ pose, signal, show, timeline: steps }) => {
+          const path = await make(pose)
           validate_camera_flight(path)
           const duration = path.keyframes[path.keyframes.length - 1].time
           const images: string[] = []
@@ -170,12 +172,7 @@
     )
   }
 
-  const orbit = () =>
-    replace_path(() => {
-      const pose = canvas && camera_flight_registry.get(canvas)?.capture()
-      if (!pose) throw new Error(`Wait for the 3D camera to be ready`)
-      return orbit_camera_flight(pose, draft.duration)
-    }, true)
+  const orbit = () => replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)
 
   async function import_flight(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -321,20 +318,16 @@
         <p>Compose a path through your {timeline ? `trajectory` : `structure`}.</p>
       </div>
       <div class="history">
-        <button
-          type="button"
-          aria-label="Undo flight edit"
-          title="Undo (⌘/Ctrl Z)"
-          disabled={locked || !editor.can_undo}
-          onclick={() => history(true)}>↶</button
-        >
-        <button
-          type="button"
-          aria-label="Redo flight edit"
-          title="Redo (⌘/Ctrl Shift Z)"
-          disabled={locked || !editor.can_redo}
-          onclick={() => history(false)}>↷</button
-        >
+        {#each [true, false] as back}
+          {@const label = back ? `Undo` : `Redo`}
+          <button
+            type="button"
+            aria-label="{label} flight edit"
+            title="{label} (⌘/Ctrl {back ? `` : `Shift `}Z)"
+            disabled={locked || !(back ? editor.can_undo : editor.can_redo)}
+            onclick={() => history(back)}>{back ? `↶` : `↷`}</button
+          >
+        {/each}
       </div>
     </header>
 
@@ -375,9 +368,7 @@
             <button type="button" onclick={() => import_input.click()}>Load path</button>
             <button
               type="button"
-              disabled={frames.length < 2 ||
-                path_export.busy ||
-                Boolean(path_export.filename_error)}
+              disabled={frames.length < 2 || path_export.disabled}
               onclick={() =>
                 path_export.run(({ filename, save }) =>
                   save(
@@ -437,28 +428,25 @@
           <span style="margin-right: auto"
             >{selected >= 0 ? `View ${selected + 1}` : `Select a view`}</span
           >
-          <button
-            type="button"
-            disabled={selected < 0 || !canvas}
-            onclick={() => capture_view(`update`)}>Update view</button
-          >
-          <button
-            type="button"
-            disabled={selected < 0 || !canvas}
-            onclick={() => capture_view(`insert`)}>Insert after</button
-          >
-          <button
-            type="button"
-            aria-label="Move selected view earlier"
-            disabled={selected <= 0}
-            onclick={() => move_view(selected, selected - 1)}>←</button
-          >
-          <button
-            type="button"
-            aria-label="Move selected view later"
-            disabled={selected < 0 || selected >= frames.length - 1}
-            onclick={() => move_view(selected, selected + 1)}>→</button
-          >
+          {#each [`update`, `insert`] as const as mode}
+            <button
+              type="button"
+              disabled={selected < 0 || !canvas}
+              onclick={() => capture_view(mode)}
+              >{mode === `update` ? `Update view` : `Insert after`}</button
+            >
+          {/each}
+          {#each [-1, 1] as direction}
+            <button
+              type="button"
+              aria-label="Move selected view {direction < 0 ? `earlier` : `later`}"
+              disabled={selected < 0 ||
+                selected + direction < 0 ||
+                selected + direction >= frames.length}
+              onclick={() => move_view(selected, selected + direction)}
+              >{direction < 0 ? `←` : `→`}</button
+            >
+          {/each}
           <button
             type="button"
             aria-label="Delete selected view"

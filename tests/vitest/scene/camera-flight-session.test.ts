@@ -113,7 +113,8 @@ it.each([false, true])(
       setup()
     const result = session.run(
       `thumbnails`,
-      async ({ show }) => {
+      async ({ pose, show }) => {
+        expect(pose).toEqual(original)
         await show(moved, 2)
         expect(playing()).toBe(false)
         if (failure) throw new Error(`thumbnail failed`)

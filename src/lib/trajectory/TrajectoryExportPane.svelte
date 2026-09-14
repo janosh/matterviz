@@ -11,7 +11,7 @@
   } from '$lib/io/export'
   import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
   import ExportPane from '$lib/io/ExportPane.svelte'
-  import type { ExportSection } from '$lib/io/types'
+  import type { ExportItem, ExportSection } from '$lib/io/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
   import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
@@ -142,6 +142,13 @@
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
     resolve_frame ? resolve_frame(idx, signal) : (run?.read_frame(idx, signal) ?? null)
 
+  async function prepare_frame(idx: number, signal: AbortSignal) {
+    const frame = await frame_at(idx, signal)
+    signal.throwIfAborted()
+    if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
+    await on_step_change?.(idx)
+  }
+
   const on_progress = (done: number, total: number) => {
     if (running) running.progress = (done / total) * 100
   }
@@ -187,27 +194,20 @@
     return format === `csv` ? frame_rows_to_csv(table) : frame_rows_to_json(table)
   }
 
-  const download_export = (
-    label: string,
-    output_name: string,
+  const data_export_item = (
+    item: ExportItem,
+    suffix: string,
     mime: string,
-    serialize: (signal: AbortSignal) => Promise<string | Blob>,
-    context: FileExportContext,
-  ) =>
-    run_export(label, async (signal) => {
-      const save = await context.prepare(output_name, signal)
-      const data = await serialize(signal)
-      await save(data, mime)
-    })
-
-  const download_table = (format: TableFormat, context: FileExportContext) =>
-    download_export(
-      format.toUpperCase(),
-      `${context.filename}_frames_${range}.${format}`,
-      format === `csv` ? `text/csv` : `application/json`,
-      (signal) => serialize_table(format, signal),
-      context,
-    )
+    serialize: (signal: AbortSignal, filename: string) => Promise<string | Blob>,
+  ): ExportItem => ({
+    ...item,
+    disabled: data_export_disabled || Boolean(item.disabled_reason),
+    on_download: ({ filename: basename, prepare }) =>
+      run_export(item.label, async (signal) => {
+        const save = await prepare(`${basename}${suffix}`, signal)
+        await save(await serialize(signal, basename), mime)
+      }),
+  })
 
   async function export_video(format: VideoFormat, context: FileExportContext) {
     if (!run || !on_step_change || !canvas || export_frame_count === 0) {
@@ -239,14 +239,7 @@
         on_progress: (progress) => {
           if (running) running.progress = progress
         },
-        on_step: async (idx) => {
-          const frame_idx = first_frame + idx
-          // Wait for lazy frame data before committing the index and rendering it.
-          const frame = await frame_at(frame_idx, signal)
-          signal.throwIfAborted()
-          if (!frame) throw new Error(`Trajectory frame ${frame_idx} is unavailable`)
-          await on_step_change(frame_idx)
-        },
+        on_step: (idx) => prepare_frame(first_frame + idx, signal),
         on_finish: async () => {
           if (run !== export_run || lifetime_signal.aborted) return
           // Cancel still restores the mounted viewer; teardown must also release a read
@@ -275,65 +268,62 @@
     {
       title: `Export Data`,
       items: [
-        {
-          label: `extXYZ`,
-          hint: `All frames ${range} as one extended XYZ file`,
-          disabled: data_export_disabled || Boolean(xyz_reason),
-          disabled_reason: xyz_reason,
-          on_download: (context) =>
-            download_export(
-              `extXYZ`,
-              `${context.filename}.extxyz`,
-              `chemical/x-xyz`,
-              (signal) =>
-                serialize_extxyz_frame_range(
-                  start_frame,
-                  end_frame,
-                  frame_at,
-                  on_progress,
-                  signal,
-                ),
-              context,
+        data_export_item(
+          {
+            label: `extXYZ`,
+            hint: `All frames ${range} as one extended XYZ file`,
+            disabled_reason: xyz_reason,
+          },
+          `.extxyz`,
+          `chemical/x-xyz`,
+          (signal) =>
+            serialize_extxyz_frame_range(
+              start_frame,
+              end_frame,
+              frame_at,
+              on_progress,
+              signal,
             ),
-        },
-        {
-          label: `POSCAR ZIP`,
-          hint: `One numbered POSCAR per frame, zipped`,
-          disabled: data_export_disabled || Boolean(poscar_reason),
-          disabled_reason: poscar_reason,
-          on_download: (context) =>
-            download_export(
-              `POSCAR ZIP`,
-              `${context.filename}_poscar_${range}.zip`,
-              `application/zip`,
-              (signal) =>
-                create_poscar_frame_range_zip(
-                  start_frame,
-                  end_frame,
-                  frame_at,
-                  context.filename,
-                  total_frames_available,
-                  on_progress,
-                  signal,
-                ),
-              context,
+        ),
+        data_export_item(
+          {
+            label: `POSCAR ZIP`,
+            hint: `One numbered POSCAR per frame, zipped`,
+            disabled_reason: poscar_reason,
+          },
+          `_poscar_${range}.zip`,
+          `application/zip`,
+          (signal, basename) =>
+            create_poscar_frame_range_zip(
+              start_frame,
+              end_frame,
+              frame_at,
+              basename,
+              total_frames_available,
+              on_progress,
+              signal,
             ),
-        },
+        ),
       ],
     },
     {
       title: `Export Properties`,
-      items: ([`csv`, `json`] as const).map((format) => ({
-        label: format.toUpperCase(),
-        hint:
-          format === `csv`
-            ? `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`
-            : `Same per-frame numbers as the CSV, with a separate units map`,
-        disabled: data_export_disabled,
-        on_download: (context) => download_table(format, context),
-        copy_text: () =>
-          run_export(format.toUpperCase(), (signal) => serialize_table(format, signal)),
-      })),
+      items: ([`csv`, `json`] as const).map((format) =>
+        data_export_item(
+          {
+            label: format.toUpperCase(),
+            hint:
+              format === `csv`
+                ? `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`
+                : `Same per-frame numbers as the CSV, with a separate units map`,
+            copy_text: () =>
+              run_export(format.toUpperCase(), (signal) => serialize_table(format, signal)),
+          },
+          `_frames_${range}.${format}`,
+          format === `csv` ? `text/csv` : `application/json`,
+          (signal) => serialize_table(format, signal),
+        ),
+      ),
     },
   ])
 
@@ -452,8 +442,7 @@
             type="button"
             onclick={() => export_state.run((context) => export_video(format, context))}
             disabled={data_export_disabled ||
-              export_state.busy ||
-              Boolean(export_state.filename_error) ||
+              export_state.disabled ||
               !on_step_change ||
               !canvas ||
               !supported}
@@ -510,12 +499,7 @@
       end: end_frame,
       current: current_step_idx,
       begin: on_flight_start,
-      prepare: async (idx, signal) => {
-        const frame = await frame_at(idx, signal)
-        signal.throwIfAborted()
-        if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
-        await on_step_change?.(idx)
-      },
+      prepare: prepare_frame,
     }}
   >
     {#snippet timeline_controls()}

@@ -10,7 +10,6 @@
   import CameraFlightPane from '$lib/scene/CameraFlightPane.svelte'
   import type { AnyStructure } from '$lib/structure'
   import * as exports from '$lib/structure/export'
-  import type { StructTextFormat } from '$lib/structure/export'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
   import type { Camera, Scene } from 'three/webgpu'
@@ -89,17 +88,6 @@
     },
   ] as const
 
-  // Clipboard content for a text format; must not throw (ExportPane evaluates on click)
-  function get_text_content(format: StructTextFormat): string | null {
-    if (!structure) return null
-    try {
-      return exports.STRUCT_TEXT_FORMATS[format].to_str(structure)
-    } catch (error) {
-      console.error(`Failed to copy ${format.toUpperCase()} to clipboard`, error)
-      return null
-    }
-  }
-
   let wrapper_canvas = $state.raw<HTMLCanvasElement | null>(null)
   let flight_running = $state(false)
 
@@ -132,7 +120,6 @@
             items: [
               {
                 label: `Export prediction`,
-                disabled: flight_running,
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
                 on_download: ({ filename, save }: FileExportContext) => {
                   const content = prediction_text()
@@ -158,14 +145,15 @@
         return {
           label,
           hint,
-          disabled: flight_running || Boolean(disabled_reason),
+          disabled: Boolean(disabled_reason),
           disabled_reason,
           on_download: ({ filename, save }: FileExportContext) => {
             if (!structure) return
             const { to_str, ext, mime } = exports.STRUCT_TEXT_FORMATS[format]
             return save(to_str(structure), `${filename}.${ext}`, mime)
           },
-          copy_text: () => get_text_content(format),
+          copy_text: () =>
+            structure ? exports.STRUCT_TEXT_FORMATS[format].to_str(structure) : null,
         }
       }),
     },
@@ -174,7 +162,7 @@
       items: [
         {
           label: `PNG`,
-          disabled: flight_running || !has_canvas,
+          disabled: !has_canvas,
           disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
           on_download: ({ filename, save }: FileExportContext) => {
@@ -201,7 +189,7 @@
             items: model_3d_formats.map(({ label, format, hint }) => ({
               label,
               hint,
-              disabled: flight_running || !scene,
+              disabled: !scene,
               disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
               on_download: ({ filename, save }: FileExportContext) =>
                 scene && export_scene_as(scene, format, filename, save),
@@ -216,6 +204,7 @@
 
 <ExportPane
   state={export_state}
+  busy={flight_running}
   bind:export_pane_open
   bind:png_dpi
   sections={export_pane_open ? sections : []}
@@ -243,6 +232,7 @@
   <CameraFlightPane
     bind:open={flight_pane_open}
     canvas={wrapper_canvas}
+    source_key={structure}
     filename={image_filename ?? `structure`}
     bind:busy={flight_running}
     class_prefix="structure-flight"

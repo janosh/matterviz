@@ -29,6 +29,7 @@ export class FileExportState {
         ? `Enter a name without path separators; choose the folder below.`
         : ``,
   )
+  disabled = $derived(this.busy || Boolean(this.filename_error))
 
   constructor(private readonly default_filename: () => string) {}
 

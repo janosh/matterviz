@@ -1,5 +1,6 @@
 <script lang="ts">
   import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
   import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
 
   import { track_settings } from '$lib/controls'
@@ -214,16 +215,15 @@
       style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
     >
       Export
-      {#each [`svg`, `png`] as const as fmt (fmt)}
-        <button
-          type="button"
-          class="export-btn"
-          aria-label="Download {fmt.toUpperCase()}"
-          disabled={export_state.busy || Boolean(export_state.filename_error)}
-          onclick={() => export_state.run((context) => on_export?.(fmt, context))}
-          >{fmt.toUpperCase()}</button
-        >
-      {/each}
+      <ExportButtons
+        state={export_state}
+        formats={[`svg`, `png`] as const}
+        {on_export}
+        button_props={(format) => ({
+          class: `export-btn`,
+          'aria-label': `Download ${format.toUpperCase()}`,
+        })}
+      />
     </div>
   {/if}
 </ControlPane>
@@ -236,7 +236,7 @@
     margin-top: 6px;
     font-size: 0.85em;
   }
-  .export-btn {
+  .export-row :global(.export-btn) {
     background: var(--hier-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
     border: none;
@@ -244,7 +244,7 @@
     padding: 1px 6px;
     cursor: pointer;
   }
-  .export-btn:hover {
+  .export-row :global(.export-btn:hover) {
     background: var(--hier-btn-hover-bg, rgba(128, 128, 128, 0.35));
   }
 </style>

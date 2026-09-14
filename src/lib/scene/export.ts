@@ -241,20 +241,13 @@ export async function export_scene_as(
     await save(mtl_content, mtl_filename, `text/plain`)
   } else if (format === `glb`) {
     const { GLTFExporter } = await import(`three/examples/jsm/exporters/GLTFExporter.js`)
-    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-      new GLTFExporter().parse(
-        export_root,
-        (result) => {
-          if (!(result instanceof ArrayBuffer)) {
-            reject(new Error(`GLB export returned ${typeof result} instead of ArrayBuffer`))
-            return
-          }
-          resolve(result)
-        },
-        (error) => reject(to_error(error)),
-        { binary: true },
-      )
-    })
+    const buffer = await new GLTFExporter()
+      .parseAsync(export_root, { binary: true })
+      .catch((error: unknown) => {
+        throw to_error(error)
+      })
+    if (!(buffer instanceof ArrayBuffer))
+      throw new Error(`GLB export returned ${typeof buffer} instead of ArrayBuffer`)
     await save(buffer, `${basename}.glb`, `model/gltf-binary`)
   } else throw new Error(`Unsupported scene export format: ${format}`)
 }

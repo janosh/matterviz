@@ -532,12 +532,14 @@
     column: sort.column || initial_sort_config?.column || ``,
     ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
   })
-  let sort_criteria = $derived.by((): SortCriterion[] => {
-    const active = multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : []
-    return active
+  const active_sort = $derived(
+    multi_sort.length > 0 ? multi_sort : sort_state.column ? [sort_state] : [],
+  )
+  let sort_criteria = $derived<SortCriterion[]>(
+    active_sort
       .filter(({ column }) => columns_by_id.has(column)) // skip entries for removed columns
-      .map(({ column, ascending }) => ({ key: key_of_id(column), ascending }))
-  })
+      .map(({ column, ascending }) => ({ key: key_of_id(column), ascending })),
+  )
   let sorted_data = $derived(
     sort_criteria.length === 0 ? filtered_data : sort_table_rows(filtered_data, sort_criteria),
   )
@@ -580,16 +582,13 @@
   const sort_indicator = (
     col_id: string,
   ): { ascending: boolean; rank: number | null } | null => {
-    const multi_idx = multi_sort.findIndex((entry) => entry.column === col_id)
-    const active =
-      multi_idx !== -1
-        ? multi_sort[multi_idx]
-        : sort_state.column === col_id
-          ? sort_state
-          : null
-    if (!active) return null
-    const ranked = multi_idx !== -1 && multi_sort.length > 1
-    return { ascending: active.ascending, rank: ranked ? multi_idx + 1 : null }
+    const idx = active_sort.findIndex((entry) => entry.column === col_id)
+    return idx === -1
+      ? null
+      : {
+          ascending: active_sort[idx].ascending,
+          rank: active_sort.length > 1 ? idx + 1 : null,
+        }
   }
 
   // === Pagination and row virtualisation ===
@@ -1495,7 +1494,7 @@
               {#each export_config.formats as format (format)}
                 <button
                   class="dropdown-option"
-                  disabled={export_state.busy || Boolean(export_state.filename_error)}
+                  disabled={export_state.disabled}
                   onclick={() =>
                     export_state.run(async ({ filename, save }) => {
                       await save(

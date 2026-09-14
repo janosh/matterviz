@@ -46,9 +46,8 @@ const make_mock_renderer = () => ({
   init: vi.fn().mockResolvedValue(undefined),
   render: vi.fn(),
   getPixelRatio: vi.fn().mockReturnValue(1),
-  setPixelRatio: vi.fn(),
+  setDrawingBufferSize: vi.fn(),
   getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
-  setSize: vi.fn(),
   getContext: vi.fn().mockReturnValue({
     getConfiguration: vi.fn().mockReturnValue({
       device: { limits: { maxTextureDimension2D: 8192 } },
@@ -87,21 +86,26 @@ const mock_offscreen_canvas = (): HTMLCanvasElement & {
   return canvas as unknown as HTMLCanvasElement & { getContext: ReturnType<typeof vi.fn> }
 }
 
-// Replace Image so setting src synchronously fires `load` (or throws), restored on finish
-const mock_image = (src_behaviour: `load` | `throw`) => {
+// Keep image events controllable, including slow loads and late events after a timeout.
+const mock_image = (src_behaviour: `load` | `error` | `throw` | `never`, delay_ms = 0) => {
+  const images: EventTarget[] = []
   vi.stubGlobal(
     `Image`,
-    class MockImage {
-      load_listener: EventListener | null = null
-      addEventListener(type: string, listener: EventListener): void {
-        if (type === `load`) this.load_listener = listener
+    class MockImage extends EventTarget {
+      constructor() {
+        super()
+        images.push(this)
       }
       set src(_url: string) {
         if (src_behaviour === `throw`) throw new Error(`image setup failed`)
-        queueMicrotask(() => this.load_listener?.(new Event(`load`)))
+        if (src_behaviour === `never`) return
+        const dispatch = () => this.dispatchEvent(new Event(src_behaviour))
+        if (delay_ms) setTimeout(dispatch, delay_ms)
+        else queueMicrotask(dispatch)
       }
     },
   )
+  return images
 }
 
 describe(`dpi_to_scale`, () => {
@@ -120,13 +124,21 @@ describe(`dpi_to_scale`, () => {
 })
 
 describe(`canvas_to_png_blob`, () => {
-  test(`returns a valid PNG Blob from plain canvas (no renderer)`, async () => {
-    const canvas = make_mock_canvas()
-    const blob = await canvas_to_png_blob(canvas, 72)
-    expect(blob.type).toBe(`image/png`)
-    expect(await blob.text()).toBe(`test`)
+  test.each([
+    { width: 800, height: 600, delay_ms: 0 },
+    { width: 800, height: 600, delay_ms: 6000 },
+    { width: 4000, height: 4000, delay_ms: 40_000 },
+  ])(`encodes $width×$height PNG after $delay_ms ms`, async ({ width, height, delay_ms }) => {
+    vi.useFakeTimers()
+    const blob = new Blob([`test`], { type: `image/png` })
+    const canvas = make_mock_canvas((callback) => setTimeout(() => callback(blob), delay_ms))
+    Object.assign(canvas, { width, height })
+    const pending = canvas_to_png_blob(canvas, 72).catch((error: unknown) => error)
+    await vi.runAllTimersAsync()
+    expect(await pending).toBe(blob)
     // at native resolution the canvas itself is encoded, with no offscreen rescale
     expect(canvas.toBlob).toHaveBeenCalledExactlyOnceWith(expect.any(Function), `image/png`)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   test(`scales plain 2D canvases for high-DPI export`, async () => {
@@ -144,7 +156,7 @@ describe(`canvas_to_png_blob`, () => {
   test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 72)
-    expect(renderer.setPixelRatio).not.toHaveBeenCalled()
+    expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -160,20 +172,44 @@ describe(`canvas_to_png_blob`, () => {
       const camera = {} as Camera
       await canvas_to_png_blob(canvas, dpi, scene, camera)
       expect(renderer.render).toHaveBeenCalledWith(scene, camera)
-      expect(renderer.setPixelRatio.mock.calls).toEqual([[expected_ratio], [display_ratio]])
-      expect(renderer.setSize).toHaveBeenCalledTimes(2)
+      expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
+        [800, 600, expected_ratio],
+        [800, 600, display_ratio],
+      ])
     },
   )
 
-  test(`still resolves when the GPU device never comes up`, async () => {
-    vi.useFakeTimers()
+  test.each([72, 432])(
+    `rejects %s DPI when the GPU never initializes, without resizing`,
+    async (dpi) => {
+      vi.useFakeTimers()
+      const { canvas, renderer } = make_canvas_with_renderer()
+      renderer.init = vi.fn().mockReturnValue(new Promise<void>(() => {})) // never settles
+      const pending = canvas_to_png_blob(canvas, dpi, {} as Scene, {} as Camera).catch(
+        (error: unknown) => error,
+      )
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(await pending).toMatchObject({
+        message: `GPU initialization timed out after 5000ms`,
+      })
+      expect(renderer.render).not.toHaveBeenCalled() // render() would throw without a device
+      expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
+      expect(canvas.toBlob).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([
+    [800, 600],
+    [600, 800],
+  ])(`refuses oversized HiDPI PNGs for %s×%s before resizing`, async (width, height) => {
     const { canvas, renderer } = make_canvas_with_renderer()
-    renderer.init = vi.fn().mockReturnValue(new Promise<void>(() => {})) // never settles
-    const pending = canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
-    await vi.advanceTimersByTimeAsync(6000)
-    expect(await pending).toBeInstanceOf(Blob)
-    expect(renderer.render).not.toHaveBeenCalled() // render() would throw without a device
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1) // still restored
+    renderer.getSize.mockReturnValue(new Vector2(width, height))
+    renderer.getPixelRatio.mockReturnValue(2)
+    await expect(canvas_to_png_blob(canvas, 432)).rejects.toThrow(
+      `Export resolution ${width * 12}×${height * 12} exceeds this GPU's 8192px limit`,
+    )
+    expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
+    expect(canvas.toBlob).not.toHaveBeenCalled()
   })
 
   test(`rejects when toBlob returns null`, async () => {
@@ -188,56 +224,39 @@ describe(`canvas_to_png_blob`, () => {
     await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
   })
 
-  test.each([`setSize`, `toBlob`] as const)(
-    `falls back to native resolution when high-DPI %s fails`,
+  test.each([`setDrawingBufferSize`, `render`, `toBlob`] as const)(
+    `restores the renderer and rejects when high-DPI %s fails`,
     async (failure_stage) => {
-      let to_blob_calls = 0
-      const to_blob_impl =
-        failure_stage === `toBlob`
-          ? (callback: BlobCallback) => {
-              to_blob_calls += 1
-              if (to_blob_calls === 1) throw new Error(`toBlob failed`)
-              callback(new Blob([`fallback`], { type: `image/png` }))
-            }
-          : undefined
-      const { canvas, renderer } = make_canvas_with_renderer(to_blob_impl)
-      if (failure_stage === `setSize`) {
-        renderer.setSize.mockImplementationOnce(() => {
-          throw new Error(`setSize failed`)
-        })
-      }
+      const { canvas, renderer } = make_canvas_with_renderer()
+      const method = failure_stage === `toBlob` ? canvas.toBlob : renderer[failure_stage]
+      vi.mocked(method).mockImplementationOnce(() => {
+        throw new Error(`${failure_stage} failed`)
+      })
 
-      const blob = await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
-      expect(blob).toBeInstanceOf(Blob)
-      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-      expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+      await expect(canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)).rejects.toThrow(
+        `${failure_stage} failed`,
+      )
+      expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
+      expect(canvas.toBlob).toHaveBeenCalledTimes(failure_stage === `toBlob` ? 1 : 0)
     },
   )
 
-  test(`high-DPI render failures still export the current canvas buffer`, async () => {
-    const { canvas, renderer } = make_canvas_with_renderer()
-    renderer.render.mockImplementationOnce(() => {
-      throw new Error(`render failed`)
-    })
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const blob = await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
-    expect(blob).toBeInstanceOf(Blob)
-    expect(warn_spy).toHaveBeenCalledWith(
-      expect.stringContaining(`re-render failed`),
-      expect.any(Error),
-    )
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-  })
-
-  test(`rejects when toBlob never calls back`, async () => {
+  test.each([
+    { width: 800, height: 600, deadline_ms: 31_920 },
+    { width: 20_000, height: 20_000, deadline_ms: 300_000 },
+  ])(`bounds a stalled $width×$height PNG encode`, async ({ width, height, deadline_ms }) => {
     vi.useFakeTimers()
     const canvas = make_mock_canvas(() => {}) // never invokes callback
-    // Handle rejection before advancing timers so it cannot become unhandled.
-    const pending = canvas_to_png_blob(canvas, 72).catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(6000)
-    const error = await pending
-    expect(error).toBeInstanceOf(Error)
-    expect(error).toMatchObject({ message: expect.stringContaining(`toBlob timed out`) })
+    Object.assign(canvas, { width, height })
+    const settled = vi.fn()
+    void canvas_to_png_blob(canvas, 72).then(settled, settled)
+    await vi.advanceTimersByTimeAsync(deadline_ms - 1)
+    expect(settled).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: expect.stringContaining(`toBlob timed out`) }),
+    )
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 
@@ -315,6 +334,7 @@ describe(`svg_to_png_blob`, () => {
   beforeEach(() => {
     mock_canvas_element = mock_offscreen_canvas()
     object_url = mock_object_url()
+    mock_image(`load`)
   })
 
   test(`rejects when both viewBox and viewport dimensions are missing`, async () => {
@@ -350,15 +370,14 @@ describe(`svg_to_png_blob`, () => {
     ).rejects.toThrow(`Invalid SVG dimensions`)
   })
 
-  // canvas dimensions are set synchronously before the Image load promise
   test.each([
     { viewBox: `0,0,100,100`, dpi: 72, size: 100, label: `comma-separated viewBox` },
     { viewBox: `0 0 100 100`, dpi: 144, size: 200, label: `2x multiplier` },
     { viewBox: `0 0 100 100`, dpi: 1440, size: 1000, label: `capped at 10x` },
     // 10 viewBox units at the 1 DPI floor would round to 0 without the >=1px clamp
     { viewBox: `0 0 10 10`, dpi: 1, size: 1, label: `clamped to >=1px` },
-  ])(`viewBox $viewBox at $dpi DPI → $size px ($label)`, ({ viewBox, dpi, size }) => {
-    void svg_to_png_blob(make_svg(viewBox), dpi)
+  ])(`viewBox $viewBox at $dpi DPI → $size px ($label)`, async ({ viewBox, dpi, size }) => {
+    expect(await svg_to_png_blob(make_svg(viewBox), dpi)).toBeInstanceOf(Blob)
     expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual([size, size])
   })
 
@@ -377,7 +396,7 @@ describe(`svg_to_png_blob`, () => {
       svg.style.width = `100px`
       svg.style.height = `50px`
       document.body.append(svg)
-      void svg_to_png_blob(svg, 144, [], { viewbox_padding: padding })
+      await svg_to_png_blob(svg, 144, [], { viewbox_padding: padding })
       expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual(size)
       const svg_blob = object_url.create.mock.calls[0][0] as Blob
       expect(svg_blob.type).toBe(`image/svg+xml;charset=utf-8`)
@@ -403,18 +422,39 @@ describe(`svg_to_png_blob`, () => {
     )
   })
 
-  test(`revokes object URL after image load`, async () => {
-    mock_image(`load`)
-    expect(await svg_to_png_blob(make_svg(`0 0 100 100`), 72)).toBeInstanceOf(Blob)
-    expect(object_url.revoke).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
-  })
-
-  test(`revokes object URL when image setup throws`, async () => {
-    mock_image(`throw`)
-    await expect(svg_to_png_blob(make_svg(`0 0 100 100`), 72)).rejects.toThrow(
-      `image setup failed`,
+  test.each([
+    [`success`, `load`, null],
+    [`empty`, `load`, `Failed to generate PNG blob`],
+    [`throw`, `load`, `encoding failed`],
+    [`timeout`, `load`, `toBlob timed out`],
+    [`image-throw`, `throw`, `image setup failed`],
+    [`image-error`, `error`, `Failed to load SVG for PNG export`],
+    [`image-timeout`, `never`, `SVG image load timed out`],
+    [`image-slow`, `load`, null],
+  ] as const)(`PNG export cleanup: %s`, async (outcome, image_event, message) => {
+    vi.useFakeTimers()
+    const images = mock_image(image_event, outcome === `image-slow` ? 40_000 : 0)
+    if ([`empty`, `throw`, `timeout`].includes(outcome))
+      vi.mocked(mock_canvas_element.toBlob).mockImplementation((callback) => {
+        if (outcome === `throw`) throw new Error(`encoding failed`)
+        if (outcome === `empty`) callback(null)
+      })
+    const size = outcome === `image-slow` ? 4000 : 100
+    const result = svg_to_png_blob(make_svg(`0 0 ${size} ${size}`), 72).catch(
+      (error: unknown) => error,
     )
+    await vi.runAllTimersAsync()
+    if (message)
+      expect(await result).toMatchObject({ message: expect.stringContaining(message) })
+    else expect(await result).toBeInstanceOf(Blob)
     expect(object_url.revoke).toHaveBeenCalledExactlyOnceWith(`blob:test-url`)
+    expect(vi.getTimerCount()).toBe(0)
+    if (image_event !== `load`) {
+      images[0].dispatchEvent(new Event(`load`))
+      await Promise.resolve()
+      expect(mock_canvas_element.getContext(`2d`)?.drawImage).not.toHaveBeenCalled()
+      expect(mock_canvas_element.toBlob).not.toHaveBeenCalled()
+    }
   })
 })
 
@@ -425,10 +465,7 @@ describe(`export_canvas_as_png`, () => {
   ])(`downloads %s as %s`, async (filename, expected_filename) => {
     mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
     await export_canvas_as_png(make_mock_canvas(), filename, 150)
-    // canvas_to_png_blob is async, wait for download to be called
-    await vi.waitFor(() => {
-      expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
-    })
+    expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
   })
 
   test(`delegates to canvas_to_png_blob for high-DPI with renderer`, async () => {
@@ -436,18 +473,17 @@ describe(`export_canvas_as_png`, () => {
     const scene = {} as Scene
     const camera = {} as Camera
     await export_canvas_as_png(canvas, `test.png`, 150, scene, camera)
-    await vi.waitFor(() => {
-      expect(download).toHaveBeenCalledExactlyOnceWith(
-        expect.any(Blob),
-        `test-150dpi.png`,
-        `image/png`,
-      )
-    })
+    expect(download).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Blob),
+      `test-150dpi.png`,
+      `image/png`,
+    )
     // the renderer was bumped to the 150 dpi ratio, re-rendered with the given scene and
     // camera, then restored to its original ratio
-    expect(renderer.setPixelRatio).toHaveBeenCalledTimes(2)
-    expect(renderer.setPixelRatio).toHaveBeenNthCalledWith(1, dpi_to_scale(150))
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
+      [800, 600, dpi_to_scale(150)],
+      [800, 600, 1],
+    ])
     expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
   })
 })
@@ -465,9 +501,7 @@ describe(`export_svg_as_png`, () => {
     mock_image(`load`)
     await export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, 144)
     expect([canvas.width, canvas.height]).toEqual([200, 200])
-    await vi.waitFor(() => {
-      expect(download).toHaveBeenCalledWith(expect.any(Blob), `test.png`, `image/png`)
-    })
+    expect(download).toHaveBeenCalledWith(expect.any(Blob), `test.png`, `image/png`)
   })
 })
 
@@ -525,7 +559,7 @@ describe(`export_trajectory_video`, () => {
       const on_finish = vi.fn()
       let message = `resize failed`
       if (failure === `resize`)
-        renderer.setSize.mockImplementationOnce(() => {
+        renderer.setDrawingBufferSize.mockImplementationOnce(() => {
           throw new Error(message)
         })
       else if (failure === `width` || failure === `height`) {
@@ -533,14 +567,14 @@ describe(`export_trajectory_video`, () => {
         renderer.getSize.mockReturnValue(
           failure === `width` ? new Vector2(800, 600) : new Vector2(600, 800),
         )
-        message = `Video resolution ${failure === `width` ? `9600×7200` : `7200×9600`} exceeds this GPU's 8192px limit per dimension`
+        message = `Export resolution ${failure === `width` ? `9600×7200` : `7200×9600`} exceeds this GPU's 8192px limit per dimension`
       } else if (failure === `webgl`) {
         renderer.getContext.mockReturnValue({
           MAX_TEXTURE_SIZE: 0x0d33,
           MAX_RENDERBUFFER_SIZE: 0x84e8,
           getParameter: (parameter: number) => (parameter === 0x0d33 ? 8192 : 4096),
         })
-        message = `Video resolution 4800×3600 exceeds this GPU's 4096px limit per dimension`
+        message = `Export resolution 4800×3600 exceeds this GPU's 4096px limit per dimension`
       } else if (failure === `unconfigured`) {
         renderer.getContext().getConfiguration.mockReturnValue(null)
         message = `GPU canvas is not configured`
@@ -550,7 +584,10 @@ describe(`export_trajectory_video`, () => {
             ? new Promise(() => {})
             : Promise.reject(new Error(`device failed`)),
         )
-        message = `GPU initialization failed or timed out`
+        message =
+          failure === `init-timeout`
+            ? `GPU initialization timed out after 5000ms`
+            : `device failed`
       }
 
       const result = export_trajectory_video(canvas, `test.webm`, {
@@ -561,11 +598,9 @@ describe(`export_trajectory_video`, () => {
       await vi.runAllTimersAsync()
       expect(await result).toMatchObject({ message: expect.stringContaining(message) })
       if (failure === `resize`) {
-        expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-        expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+        expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
       } else {
-        expect(renderer.setPixelRatio).not.toHaveBeenCalled()
-        expect(renderer.setSize).not.toHaveBeenCalled()
+        expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
       }
       expect(on_finish).toHaveBeenCalledTimes(failure.startsWith(`init-`) ? 0 : 1)
       expect(renderer.render).not.toHaveBeenCalled()
@@ -644,6 +679,7 @@ describe(`export_trajectory_video`, () => {
     [`abort-stop`, `cancelled`],
     [`abort-stop-delayed`, `cancelled`, { stop_delay_ms: 6000, cleanup_delay_ms: 1000 }],
     [`abort-finish`, `cancelled`],
+    [`restore-size-error`, `resize restore failed`],
     [`finish-error`, `restore failed`],
   ] as const)(`releases resources after %s`, async (outcome, error_message, settings?) => {
     const {
@@ -760,6 +796,10 @@ describe(`export_trajectory_video`, () => {
       capture_canvas as unknown as HTMLCanvasElement,
     )
     const expected_error = new Error(error_message)
+    if (outcome === `restore-size-error`)
+      renderer.setDrawingBufferSize.mockImplementation((_width, _height, ratio) => {
+        if (ratio === 1) throw expected_error
+      })
     const custom_save = outcome === `success-save` || outcome === `save-error`
     const on_save = vi.fn(async (_blob: Blob) => {
       await new Promise((resolve) => setTimeout(resolve, 10))
@@ -792,7 +832,7 @@ describe(`export_trajectory_video`, () => {
       signal: controller.signal,
       on_finish: () => {
         cleanup_delay = performance.now() - stop_started
-        expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+        expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
         for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
         if (outcome === `abort-finish`) cancel()
         if (outcome === `finish-error`) throw expected_error
@@ -805,7 +845,11 @@ describe(`export_trajectory_video`, () => {
       expect(download).not.toHaveBeenCalled()
       expect(on_save).not.toHaveBeenCalled()
       for (const track of tracks) expect(track.stop).not.toHaveBeenCalled()
-      expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(format === `mp4` ? 3 : 2)
+      expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(
+        800,
+        600,
+        format === `mp4` ? 3 : 2,
+      )
     }
     if (outcome === `abort-read`) {
       await vi.advanceTimersByTimeAsync(600)
@@ -842,9 +886,10 @@ describe(`export_trajectory_video`, () => {
       videoBitsPerSecond: fps === 24 ? 1_152_000 : 1_000_000,
     })
     expect(recorder_stop).toHaveBeenCalledTimes(outcome === `stop-error` ? 2 : 1)
-    expect(renderer.setPixelRatio).toHaveBeenNthCalledWith(1, format === `mp4` ? 3 : 2)
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-    expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+    expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
+      [800, 600, format === `mp4` ? 3 : 2],
+      [800, 600, 1],
+    ])
     expect(capture_canvas.captureStream).toHaveBeenCalledWith(fps)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
     expect(captured_steps).toEqual(completed_frames ? [0, 0, 1] : total_frames ? [0, 0] : [])

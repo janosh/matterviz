@@ -64,15 +64,6 @@ const csv_cell = (cell: CsvCell): string =>
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)
 
-function export_csv(
-  header: readonly string[],
-  rows: readonly CsvCell[][],
-  base_filename: string,
-  save: FileSaver,
-): void | Promise<void> {
-  return save(to_csv(header, rows), `${base_filename}.csv`, `text/csv;charset=utf-8`)
-}
-
 // Long format (one row per point, series named in a column) rather than wide: series
 // can differ in length, sit on different axes and carry different extra channels, none
 // of which a shared-x column layout can represent without inventing blanks.
@@ -118,23 +109,23 @@ export const export_filename = (...parts: (string | undefined)[]): string =>
     .replaceAll(/^-+|-+$/g, ``)
     .slice(0, 100) || `chart`
 
+type ChartExportSource = {
+  svg_element: SVGElement | null
+  title_config?: { text?: string } | null
+  axes: { x: { label?: string }; y: { label?: string } }
+}
+
+export const chart_export_filename = (frame: ChartExportSource): string =>
+  export_filename(frame.title_config?.text, frame.axes.x.label, frame.axes.y.label)
+
 // Charts differ only in the table they write: the svg, the filename recipe and the
 // csv/image branch are the same everywhere, so they live here rather than once per chart.
 export const create_chart_exporter =
-  (
-    frame: {
-      svg_element: SVGElement | null
-      title_config?: { text?: string } | null
-      axes: { x: { label?: string }; y: { label?: string } }
-    },
-    csv: () => { header: readonly string[]; rows: CsvCell[][] },
-  ) =>
+  (frame: ChartExportSource, csv: () => { header: readonly string[]; rows: CsvCell[][] }) =>
   (format: ChartExportFormat, context?: FileExportContext): void | Promise<void> => {
-    const name =
-      context?.filename ??
-      export_filename(frame.title_config?.text, frame.axes.x.label, frame.axes.y.label)
+    const name = context?.filename ?? chart_export_filename(frame)
     const save = context?.save ?? download
     if (format !== `csv`) return export_chart_image(frame.svg_element, name, format, save)
     const { header, rows } = csv()
-    return export_csv(header, rows, name, save)
+    return save(to_csv(header, rows), `${name}.csv`, `text/csv;charset=utf-8`)
   }

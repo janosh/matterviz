@@ -29,9 +29,11 @@ test(`filename follows the source until edited, rejects paths, and resets the de
   input.value = `My movie`
   input.dispatchEvent(new Event(`input`, { bubbles: true }))
   await tick()
-  await export_state.run(({ filename, save }) =>
-    save(`contents`, `${filename}.csv`, `text/csv`),
-  )
+  await export_state.run(({ filename, save }) => {
+    expect(export_state.disabled).toBe(true)
+    return save(`contents`, `${filename}.csv`, `text/csv`)
+  })
+  expect(export_state.disabled).toBe(false)
   expect(download).toHaveBeenCalledExactlyOnceWith(`contents`, `My movie.csv`, `text/csv`)
   expect(
     document.querySelector<HTMLButtonElement>(`[aria-label="Choose export folder"]`)?.disabled,
@@ -42,6 +44,7 @@ test(`filename follows the source until edited, rejects paths, and resets the de
     export_state.filename = invalid
     await export_state.run(task)
     expect(export_state.error).not.toBe(``)
+    expect(export_state.disabled).toBe(true)
   }
   expect(task).not.toHaveBeenCalled()
   await unmount(pane)

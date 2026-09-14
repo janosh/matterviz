@@ -1,6 +1,7 @@
 <script lang="ts">
   import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
   import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
 
   import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
@@ -158,16 +159,12 @@
       <div class="setting">
         <span>Export</span>
         <div class="pane-row">
-          {#each export_formats as export_format (export_format)}
-            <button
-              type="button"
-              disabled={export_state.busy || Boolean(export_state.filename_error)}
-              onclick={() =>
-                export_state.run((context) => on_export?.(export_format, context))}
-            >
-              Export {export_format.toUpperCase()}
-            </button>
-          {/each}
+          <ExportButtons
+            state={export_state}
+            formats={export_formats}
+            {on_export}
+            label={(format) => `Export ${format.toUpperCase()}`}
+          />
         </div>
       </div>
     {/if}

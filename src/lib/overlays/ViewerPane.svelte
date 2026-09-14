@@ -43,33 +43,26 @@
       const rect = pane_element.getBoundingClientRect()
       if (!rect.width || !rect.height) return
       const tab = pane_element.querySelector(`:scope > .control-tab`)?.getBoundingClientRect()
-      const shift_x = viewport_shift(
-        rect.left,
-        Math.max(rect.right, tab?.right ?? rect.right),
-        globalThis.innerWidth,
-      )
-      const shift_y = viewport_shift(
-        rect.top,
-        Math.max(rect.bottom, tab?.bottom ?? rect.bottom),
-        globalThis.innerHeight,
-      )
-      if (Math.abs(shift_x) < 0.5 && Math.abs(shift_y) < 0.5) return
       // offsetLeft/Top round to integers, which can make scaled corrections oscillate.
       const styles = getComputedStyle(pane_element)
       const parent = pane_element.offsetParent
       const parent_rect = parent instanceof HTMLElement ? parent.getBoundingClientRect() : null
-      const scale_x =
-        parent_rect && parent instanceof HTMLElement && parent.offsetWidth
-          ? parent_rect.width / parent.offsetWidth
-          : 1
-      const scale_y =
-        parent_rect && parent instanceof HTMLElement && parent.offsetHeight
-          ? parent_rect.height / parent.offsetHeight
-          : 1
-      if (Math.abs(shift_x) >= 0.5 && scale_x)
-        pane_element.style.left = `${Number(styles.left.slice(0, -2)) + shift_x / scale_x}px`
-      if (Math.abs(shift_y) >= 0.5 && scale_y)
-        pane_element.style.top = `${Number(styles.top.slice(0, -2)) + shift_y / scale_y}px`
+      for (const [start, end, dimension, offset, viewport] of [
+        [`left`, `right`, `width`, `offsetWidth`, innerWidth],
+        [`top`, `bottom`, `height`, `offsetHeight`, innerHeight],
+      ] as const) {
+        const shift = viewport_shift(
+          rect[start],
+          Math.max(rect[end], tab?.[end] ?? rect[end]),
+          viewport,
+        )
+        const scale =
+          parent_rect && parent instanceof HTMLElement && parent[offset]
+            ? parent_rect[dimension] / parent[offset]
+            : 1
+        if (Math.abs(shift) >= 0.5 && scale)
+          pane_element.style[start] = `${Number(styles[start].slice(0, -2)) + shift / scale}px`
+      }
     }
     const position_observer = new MutationObserver(keep_in_viewport)
     const handle_fullscreen = () => {

@@ -9,6 +9,7 @@ export type FlightTimeline = {
 }
 export type FlightActivity = `play` | `seek` | `thumbnails` | `restore` | null
 type FlightTask = {
+  pose: CameraPose
   signal: AbortSignal
   timeline?: FlightTimeline
   show: (pose: CameraPose, frame?: number) => Promise<void>
@@ -39,7 +40,6 @@ export function create_camera_flight_session(hooks: {
 }) {
   const lifetime = new AbortController()
   let operation: AbortController | undefined
-  let revision = 0
   let queue = Promise.resolve()
   let activity: FlightActivity = null
   let origin:
@@ -51,8 +51,8 @@ export function create_camera_flight_session(hooks: {
     | undefined
   const notify = () => hooks.on_change(activity, Boolean(origin))
   const cancel = () => {
-    revision++
     operation?.abort()
+    operation = undefined
     activity = null
     notify()
   }
@@ -63,14 +63,14 @@ export function create_camera_flight_session(hooks: {
     temporary = false,
   ): Promise<boolean> => {
     operation?.abort()
-    const requested = ++revision
+    const requested = new AbortController()
+    operation = requested
+    const signal = AbortSignal.any([requested.signal, lifetime.signal])
     activity = kind
     notify()
     const result = queue
       .then(async () => {
-        if (requested !== revision || lifetime.signal.aborted) return false
-        operation = new AbortController()
-        const signal = AbortSignal.any([operation.signal, lifetime.signal])
+        if (signal.aborted) return false
         const controller = hooks.controller()
         if (!controller) throw new Error(`Wait for the 3D camera to be ready`)
         const timeline = hooks.timeline()
@@ -85,6 +85,7 @@ export function create_camera_flight_session(hooks: {
           await hooks.settle()
           signal.throwIfAborted()
           await task({
+            pose,
             signal,
             timeline,
             show: async (view, idx) => {
@@ -112,7 +113,7 @@ export function create_camera_flight_session(hooks: {
         }
       })
       .finally(() => {
-        if (requested === revision) {
+        if (operation === requested) {
           operation = undefined
           activity = null
           notify()
@@ -136,9 +137,7 @@ export function create_camera_flight_session(hooks: {
         await queue
         return
       }
-      const restored = await run(`restore`, async ({ show }) => {
-        await show(saved.pose, saved.frame)
-      })
+      const restored = await run(`restore`, ({ show }) => show(saved.pose, saved.frame))
       if (restored && origin === saved) {
         origin = undefined
         saved.resume?.()

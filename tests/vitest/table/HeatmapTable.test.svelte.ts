@@ -1285,9 +1285,14 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Model`)).toEqual([`Model C`, `Model B`, `Model A`])
       expect(headers[1].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[2].innerHTML).toContain(`<sup>2</sup>`)
+      state.multi_sort = [{ column: `Score`, ascending: true }]
+      await tick()
+      expect(headers[1].textContent).toMatch(/[↑↓]/)
+      expect(headers[2].textContent).not.toMatch(/[↑↓]/)
       state.multi_sort = []
       await tick()
       expect(col_values(`Model`)).toEqual([`Model A`, `Model B`, `Model C`])
+      expect(headers[2].textContent).toMatch(/[↑↓]/)
     })
   })
 

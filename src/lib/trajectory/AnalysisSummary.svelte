@@ -52,7 +52,7 @@
         type="button"
         class="analysis-download"
         title="Download {item.label}"
-        disabled={export_state.busy || Boolean(export_state.filename_error)}
+        disabled={export_state.disabled}
         onclick={() =>
           export_state.run(({ filename, save }) => {
             const suffix = item.filename.startsWith(`${default_name}.`)

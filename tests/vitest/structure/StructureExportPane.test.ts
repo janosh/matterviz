@@ -1,15 +1,26 @@
 import type { AnyStructure } from '$lib'
 import { download } from '$lib/io/fetch'
 import app_css from '$lib/app.css?inline'
-import { export_canvas_as_png } from '$lib/io/export'
+import { export_canvas_as_png, renderer_registry, scene_registry } from '$lib/io/export'
+import {
+  camera_flight_registry,
+  create_camera_flight_controller,
+} from '$lib/scene/camera-flight'
 import { export_scene_as } from '$lib/scene'
 import { StructureExportPane } from '$lib/structure'
 import * as export_funcs from '$lib/structure/export'
 import { mount, tick } from 'svelte'
+import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
-import type { Camera, Scene } from 'three/webgpu'
+import {
+  PerspectiveCamera,
+  Vector3,
+  type Camera,
+  type Scene,
+  type WebGPURenderer,
+} from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, simple_structure } from '../setup'
+import { doc_query, mock_canvas_context, simple_structure } from '../setup'
 
 const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
   mount(StructureExportPane, {
@@ -63,12 +74,7 @@ describe(`StructureExportPane`, () => {
     const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
       btn.title?.includes(title_part),
     )
-    if (matches.length === 0) {
-      throw new Error(`No button found with title containing "${title_part}"`)
-    }
-    if (matches.length > 1) {
-      throw new Error(`Multiple buttons match "${title_part}": ${matches.length} found`)
-    }
+    expect(matches, `buttons with title containing "${title_part}"`).toHaveLength(1)
     return matches[0]
   }
 
@@ -132,64 +138,33 @@ describe(`StructureExportPane`, () => {
     }
   })
 
-  test.each([
-    { format: `json`, label: `JSON` },
-    { format: `xyz`, label: `XYZ` },
-    { format: `cif`, label: `CIF` },
-    { format: `poscar`, label: `POSCAR` },
-  ] as const)(
-    `uses the chosen name and serializer for $label download`,
-    async ({ format, label }) => {
+  test.each(
+    (
+      [
+        [`json`, `{"test": "json"}`],
+        [`xyz`, `3\ntest\nH 0 0 0`],
+        [`cif`, `data_test\n_cell_length_a 1.0`],
+        [`poscar`, `test\n1.0\n1 0 0`],
+      ] as const
+    ).flatMap(([format, content]) =>
+      [`Download`, `Copy`].map((action) => ({ format, content, action })),
+    ),
+  )(
+    `$action $format uses its serializer and chosen filename`,
+    async ({ format, content, action }) => {
       vi.mocked(download).mockClear()
       mount_pane({ structure: simple_structure })
       const name_input = doc_query<HTMLInputElement>(`.export-destination input`)
       name_input.value = `Relaxed structure`
       name_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       await tick()
-      get_button(`Download ${label}`).click()
+      get_button(`${action} ${format.toUpperCase()}`).click()
       const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
-      await vi.waitFor(() =>
-        expect(download).toHaveBeenCalledWith(
-          to_str(simple_structure),
-          `Relaxed structure.${ext}`,
-          mime,
-        ),
-      )
-    },
-  )
-
-  test.each([
-    {
-      label: `JSON`,
-      str_fn_name: `structure_to_json_str`,
-      expected_content: `{"test": "json"}`,
-    },
-    {
-      label: `XYZ`,
-      str_fn_name: `structure_to_xyz_str`,
-      expected_content: `3\ntest\nH 0 0 0`,
-    },
-    {
-      label: `CIF`,
-      str_fn_name: `structure_to_cif_str`,
-      expected_content: `data_test\n_cell_length_a 1.0`,
-    },
-    {
-      label: `POSCAR`,
-      str_fn_name: `structure_to_poscar_str`,
-      expected_content: `test\n1.0\n1 0 0`,
-    },
-  ])(
-    `copies $label content to clipboard`,
-    async ({ label, str_fn_name, expected_content }) => {
-      mount_pane({ structure: simple_structure })
-
-      const str_fn = export_funcs[str_fn_name as keyof typeof export_funcs]
-      get_button(`Copy ${label}`).dispatchEvent(new Event(`click`, { bubbles: true }))
-
       await vi.waitFor(() => {
-        expect(str_fn).toHaveBeenCalledWith(simple_structure)
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_content)
+        expect(to_str).toHaveBeenCalledWith(simple_structure)
+        if (action === `Download`)
+          expect(download).toHaveBeenCalledWith(content, `Relaxed structure.${ext}`, mime)
+        else expect(navigator.clipboard.writeText).toHaveBeenCalledWith(content)
       })
     },
   )
@@ -274,6 +249,53 @@ describe(`StructureExportPane`, () => {
 
     wrapper_div.innerHTML = ``
     await vi.waitFor(() => expect(disabled_buttons()).toEqual([true, true]))
+  })
+
+  test(`replacing a structure discards the previous flight origin`, async () => {
+    mock_canvas_context()
+    vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
+      `data:image/webp;base64,thumbnail`,
+    )
+    const canvas = wrapper_div.querySelector(`canvas`)
+    if (!canvas) throw new Error(`Missing viewer canvas`)
+    const camera = new PerspectiveCamera(50)
+    camera.position.set(0, 0, 10)
+    const controller = create_camera_flight_controller(
+      { object: camera, target: new Vector3() },
+      () => ({ width: 800, height: 600 }),
+      vi.fn(),
+      vi.fn(),
+    )
+    camera_flight_registry.set(canvas, controller)
+    renderer_registry.set(canvas, {
+      init: async () => {},
+      render: vi.fn(),
+    } as unknown as WebGPURenderer)
+    scene_registry.set(canvas, { scene: mock_scene, camera })
+    const source = writable(simple_structure)
+    const structure = fromStore(source)
+    mount(StructureExportPane, {
+      target: document.body,
+      props: {
+        get structure() {
+          return structure.current
+        },
+        wrapper: wrapper_div,
+        flight_pane_open: true,
+      },
+    })
+    await tick()
+    get_button(`Create a complete orbit`).click()
+    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(9))
+    doc_query<HTMLButtonElement>(`[aria-label="Go to view 3"]`).click()
+    const home = [...document.querySelectorAll(`button`)].find((button) =>
+      button.textContent?.includes(`Return to original view`),
+    )
+    await vi.waitFor(() => expect(home?.disabled).toBe(false))
+    const inspected = controller.capture()
+    source.set(structuredClone(simple_structure))
+    await vi.waitFor(() => expect(home?.disabled).toBe(true))
+    expect(controller.capture()).toEqual(inspected)
   })
 
   test(`slice export uses its explicit canvas and hides 3D formats`, async () => {
@@ -431,20 +453,27 @@ describe(`StructureExportPane`, () => {
     },
   )
 
-  test(`a throwing serializer on download is logged, not thrown from the click handler`, () => {
-    vi.mocked(export_funcs.STRUCT_TEXT_FORMATS.cif.to_str).mockImplementationOnce(() => {
-      throw new Error(`serializer exploded`)
-    })
-    const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    mount_pane({ structure: simple_structure })
+  test.each([`Download`, `Copy`])(
+    `a throwing serializer on %s is logged, not thrown from the click handler`,
+    (action) => {
+      vi.mocked(export_funcs.STRUCT_TEXT_FORMATS.cif.to_str).mockImplementationOnce(() => {
+        throw new Error(`serializer exploded`)
+      })
+      const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+      mount_pane({ structure: simple_structure })
 
-    expect(() => get_button(`Download CIF`).click()).not.toThrow()
-    expect(console_error_spy).toHaveBeenCalledWith(
-      expect.stringContaining(`Export structure-basename failed`),
-      expect.any(Error),
-    )
-    console_error_spy.mockRestore()
-  })
+      expect(() => get_button(`${action} CIF`).click()).not.toThrow()
+      expect(console_error_spy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          action === `Download`
+            ? `Export structure-basename failed`
+            : `Failed to copy CIF to clipboard`,
+        ),
+        expect.any(Error),
+      )
+      console_error_spy.mockRestore()
+    },
+  )
 
   test(`custom props are applied correctly`, () => {
     mount_pane({

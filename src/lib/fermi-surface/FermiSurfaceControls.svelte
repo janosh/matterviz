@@ -1,5 +1,6 @@
 <script lang="ts">
   import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
   import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
 
   import { track_settings } from '$lib/controls'
@@ -57,11 +58,7 @@
 
   const export_state = new FileExportState(() => export_filename)
 
-  const export_formats = [
-    [`stl`, `3D printing`],
-    [`obj`, `Wavefront`],
-    [`glb`, `web/AR`],
-  ] as const
+  const export_formats = { stl: `3D printing`, obj: `Wavefront`, glb: `web/AR` }
 
   // Per-vertex scalars (Fermi velocity, orbital character, …) are only colourable when some
   // sheet carries them
@@ -337,16 +334,14 @@
     <ExportDestination state={export_state} />
     <SettingsSection title="Export" layout="grid">
       <div class="export-buttons">
-        {#each export_formats as [format, blurb] (format)}
-          <button
-            type="button"
-            disabled={export_state.busy || Boolean(export_state.filename_error)}
-            onclick={() => export_state.run((context) => on_export?.(format, context))}
-            title="Export as {format.toUpperCase()} ({blurb})"
-          >
-            {format.toUpperCase()}
-          </button>
-        {/each}
+        <ExportButtons
+          state={export_state}
+          formats={Object.keys(export_formats) as SceneExportFormat[]}
+          {on_export}
+          button_props={(format) => ({
+            title: `Export as ${format.toUpperCase()} (${export_formats[format]})`,
+          })}
+        />
       </div>
       <small>Export visible Fermi surfaces</small>
     </SettingsSection>
@@ -405,7 +400,7 @@
     font-family: monospace;
     font-size: 0.9em;
   }
-  .export-buttons button {
+  .export-buttons :global(button) {
     padding: 0.3em 0.8em;
     font-size: 0.85em;
     background: var(--btn-bg, #4488cc);
@@ -414,7 +409,7 @@
     border-radius: 3pt;
     cursor: pointer;
   }
-  .export-buttons button:hover {
+  .export-buttons :global(button:hover) {
     background: var(--btn-bg-hover, #3377bb);
   }
 </style>

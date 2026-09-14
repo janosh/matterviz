@@ -1,5 +1,6 @@
 <script lang="ts">
   import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import ExportButtons from '$lib/io/ExportButtons.svelte'
   import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
 
   import { track_settings } from '$lib/controls'
@@ -74,16 +75,12 @@
   {#if on_export}
     <ExportDestination state={export_state} />
     <SettingsSection title="Export" layout="flow">
-      {#each EXPORT_FORMATS as format (format)}
-        <button
-          type="button"
-          style="padding: 2pt 8pt; cursor: pointer"
-          disabled={export_state.busy || Boolean(export_state.filename_error)}
-          onclick={() => export_state.run((context) => on_export?.(format, context))}
-        >
-          {format.toUpperCase()}
-        </button>
-      {/each}
+      <ExportButtons
+        state={export_state}
+        formats={EXPORT_FORMATS}
+        {on_export}
+        button_props={() => ({ style: `padding: 2pt 8pt; cursor: pointer` })}
+      />
     </SettingsSection>
   {/if}
 </ControlPane>

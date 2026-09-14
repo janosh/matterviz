@@ -179,7 +179,7 @@ describe(`BinnedScatterPlot`, () => {
         ),
       })
       const on_point_click = vi.fn()
-      mount_plot({
+      const state = $state({
         series: [
           {
             label: `Blue`,
@@ -196,11 +196,19 @@ describe(`BinnedScatterPlot`, () => {
             density_color_scale: `interpolateReds`,
           },
         ],
-        ...density_mode_with_colorbar({ bin_click: `point`, bin_px: 20 }),
-        x_axis: { range: reversed ? [1, 0] : [0, 1] },
-        y_axis: { range: reversed ? [1, 0] : [0, 1] },
-        on_point_click,
       })
+      const axis_range: Vec2 = reversed ? [1, 0] : [0, 1]
+      mount_plot(
+        bind_props(
+          {
+            ...density_mode_with_colorbar({ bin_click: `point`, bin_px: 20 }),
+            x_axis: { range: axis_range },
+            y_axis: { range: axis_range },
+            on_point_click,
+          },
+          state,
+        ),
+      )
       await settle()
       const strips = rectangles.slice(-2)
       expect(strips.map(({ color }) => color)).toEqual([
@@ -226,6 +234,9 @@ describe(`BinnedScatterPlot`, () => {
           }),
         )
       }
+      state.series.pop()
+      await settle()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     },
   )
 

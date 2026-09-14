@@ -1,4 +1,5 @@
 import ChemPotDiagram3D from '$lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import { export_png_file } from '$lib/chempot-diagram/export'
 import type { ChemPotHoverInfo } from '$lib/chempot-diagram/types'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type * as scene_module from '$lib/scene'
@@ -45,6 +46,48 @@ afterEach(() => {
   threlte_stub.reset()
   document.body.innerHTML = ``
   vi.restoreAllMocks()
+  vi.useRealTimers()
+})
+
+test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async (outcome) => {
+  vi.useFakeTimers()
+  const wrapper = document.createElement(`div`)
+  const canvas = document.createElement(`canvas`)
+  wrapper.append(canvas)
+  vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
+  const context = { scale: vi.fn(), drawImage: vi.fn() }
+  const blob = new Blob([`pixels`], { type: `image/png` })
+  const output = {
+    width: 0,
+    height: 0,
+    getContext: () => context,
+    toBlob: (callback: BlobCallback) => {
+      if (outcome === `success`) setTimeout(() => callback(blob), 6000)
+      if (outcome === `empty`) callback(null)
+    },
+  }
+  vi.spyOn(document, `createElement`).mockReturnValue(output as unknown as HTMLCanvasElement)
+  const save = vi.fn()
+  const settled = vi.fn()
+  void export_png_file(wrapper, `diagram`, 144, save).then(settled, settled)
+  await vi.runAllTimersAsync()
+  expect([output.width, output.height]).toEqual([400, 200])
+  expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
+  expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(canvas, 0, 0, 200, 100)
+  if (outcome === `success`) {
+    expect(settled).toHaveBeenCalledExactlyOnceWith(undefined)
+    expect(save).toHaveBeenCalledExactlyOnceWith(blob, `diagram.png`, `image/png`)
+  } else {
+    expect(settled).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          outcome === `empty` ? `Failed to generate PNG blob` : `toBlob timed out`,
+        ),
+      }),
+    )
+    expect(save).not.toHaveBeenCalled()
+  }
+  expect(vi.getTimerCount()).toBe(0)
 })
 
 // Mount, silence the expected console noise and wait out the compute spinner. Returns a getter
