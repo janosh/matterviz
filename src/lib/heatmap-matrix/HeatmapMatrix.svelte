@@ -702,6 +702,8 @@
   }
 
   const export_state = new FileExportState(() => `heatmap`)
+  const handle_export = (format: HeatmapExportFormat, context: FileExportContext) =>
+    on_export?.(format, build_export_payload(format), context)
   const ARROW_STEPS: Record<string, [x: number, y: number]> = {
     ArrowRight: [1, 0],
     ArrowLeft: [-1, 0],
@@ -715,9 +717,7 @@
     if (event.key.toLowerCase() === `e` && !event.repeat) {
       const format = export_formats[0]
       if (format && on_export)
-        void export_state.run((context) =>
-          on_export?.(format, build_export_payload(format), context),
-        )
+        void export_state.run((context) => handle_export(format, context))
       return
     }
     const step = ARROW_STEPS[event.key]
@@ -824,10 +824,7 @@
     bind:show_col_summaries
     {export_formats}
     {export_state}
-    on_export={on_export
-      ? (fmt: HeatmapExportFormat, context: FileExportContext) =>
-          on_export(fmt, build_export_payload(fmt), context)
-      : undefined}
+    on_export={on_export ? handle_export : undefined}
     {show_controls}
   />
   <div

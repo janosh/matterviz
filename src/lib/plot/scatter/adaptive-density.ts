@@ -60,6 +60,7 @@ const x_window = (values: NumericArray, min: number, max: number, order: -1 | 0 
 
 interface DensityBinResult {
   counts: Uint32Array
+  series_bins?: { counts: Uint32Array; first_point_idxs: Int32Array; max_count: number }[]
   first_point_idxs: Int32Array
   first_series_idxs: Int32Array
   max_count: number
@@ -69,6 +70,7 @@ interface DensityBinResult {
 }
 
 export interface DensityBin {
+  series_idx?: number
   x_bin: number
   y_bin: number
   count: number
@@ -192,6 +194,7 @@ export function bin_points(
   y_bins: number,
   transforms?: BinTransforms,
   x_order: readonly (-1 | 0 | 1)[] = [],
+  separate_series = false,
 ): DensityBinResult {
   series.forEach(assert_series_lengths)
   const cells = x_bins * y_bins
@@ -202,6 +205,14 @@ export function bin_points(
     )
   }
   const counts = new Uint32Array(cells)
+  // Collect colored strips in the same pass; their series index is implicit.
+  const series_bins = separate_series
+    ? series.map(() => ({
+        counts: new Uint32Array(cells),
+        first_point_idxs: new Int32Array(cells),
+        max_count: 0,
+      }))
+    : undefined
   const first_point_idxs = new Int32Array(counts.length)
   const first_series_idxs = new Int32Array(counts.length)
   const [x_min, x_max] = range_bounds(x_range)
@@ -220,6 +231,7 @@ export function bin_points(
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
+    const series_bin = series_bins?.[series_idx]
     const [start, end] = x_window(srs.x, x_min, x_max, x_order[series_idx] ?? 0)
     for (let point_idx = start; point_idx < end; point_idx++) {
       const coord_x = srs.x[point_idx]
@@ -232,6 +244,11 @@ export function bin_points(
       const y_bin = raw_y_bin < 0 ? 0 : raw_y_bin > last_y_bin ? last_y_bin : raw_y_bin
       const idx = y_bin * x_bins + x_bin
       const count = ++counts[idx]
+      if (series_bin) {
+        const series_count = ++series_bin.counts[idx]
+        if (series_count === 1) series_bin.first_point_idxs[idx] = point_idx
+        if (series_count > series_bin.max_count) series_bin.max_count = series_count
+      }
       if (count === 1) {
         first_series_idxs[idx] = series_idx
         first_point_idxs[idx] = point_idx
@@ -243,6 +260,7 @@ export function bin_points(
 
   return {
     counts,
+    series_bins,
     first_point_idxs,
     first_series_idxs,
     max_count,
@@ -361,14 +379,15 @@ export function* visible_points<Metadata>(
 export function first_point_in_bin<Metadata>(
   series: readonly DensePointSeries<Metadata>[],
   density: DensityBinResult,
-  bin: Pick<DensityBin, `x_bin` | `y_bin`>,
+  bin: Pick<DensityBin, `x_bin` | `y_bin` | `series_idx`>,
   x_scale: (value: number) => number,
   y_scale: (value: number) => number,
 ): DenseInternalPoint<Metadata> | null {
   const idx = bin.y_bin * density.x_bins + bin.x_bin
-  if (!density.counts[idx]) return null
-  const series_idx = density.first_series_idxs[idx]
-  const point_idx = density.first_point_idxs[idx]
+  const grid = bin.series_idx === undefined ? density : density.series_bins?.[bin.series_idx]
+  if (!grid?.counts[idx]) return null
+  const series_idx = bin.series_idx ?? density.first_series_idxs[idx]
+  const point_idx = grid.first_point_idxs[idx]
   const srs = series[series_idx]
   return srs ? internal_point(srs, series_idx, point_idx, x_scale, y_scale) : null
 }

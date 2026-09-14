@@ -5,6 +5,7 @@ import { export_canvas_as_png, renderer_registry, scene_registry } from '$lib/io
 import {
   camera_flight_registry,
   create_camera_flight_controller,
+  type CameraFlight,
 } from '$lib/scene/camera-flight'
 import { export_scene_as } from '$lib/scene'
 import { StructureExportPane } from '$lib/structure'
@@ -251,7 +252,7 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(disabled_buttons()).toEqual([true, true]))
   })
 
-  test(`replacing a structure discards the previous flight origin`, async () => {
+  test(`imports validated paths and discards the flight origin on structure replacement`, async () => {
     mock_canvas_context()
     vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
       `data:image/webp;base64,thumbnail`,
@@ -286,6 +287,31 @@ describe(`StructureExportPane`, () => {
     })
     await tick()
     get_button(`Create a complete orbit`).click()
+    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(9))
+    const pose = controller.capture()
+    const imported: CameraFlight = {
+      interpolation: `linear`,
+      keyframes: [0, 2].map((time) => ({ ...pose, time, zoom: 2 })),
+    }
+    const input = doc_query<HTMLInputElement>(`.camera-flight input[type="file"]`)
+    for (const content of [`{`, `{}`, JSON.stringify(imported)]) {
+      Object.defineProperty(input, `files`, {
+        value: [new File([content], `flight.json`, { type: `application/json` })],
+        configurable: true,
+      })
+      input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await tick()
+      const valid = content === JSON.stringify(imported)
+      await vi.waitFor(() => {
+        expect(doc_query<HTMLFieldSetElement>(`.camera-flight fieldset`).disabled).toBe(false)
+        expect(document.querySelectorAll(`.waypoint`)).toHaveLength(valid ? 2 : 9)
+        expect(document.querySelectorAll(`.camera-flight [role="alert"]`)).toHaveLength(
+          valid ? 0 : 1,
+        )
+      })
+      expect(input.value).toBe(``)
+    }
+    doc_query<HTMLButtonElement>(`[aria-label="Undo flight edit"]`).click()
     await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(9))
     doc_query<HTMLButtonElement>(`[aria-label="Go to view 3"]`).click()
     const home = [...document.querySelectorAll(`button`)].find((button) =>

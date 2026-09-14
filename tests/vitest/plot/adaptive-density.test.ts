@@ -46,17 +46,31 @@ describe(`adaptive density utilities`, () => {
     else expect(run().counts).toHaveLength(x_bins * y_bins)
   })
 
-  it(`bins only visible points and tracks max bin count`, () => {
-    const result = bin_points(series, [0, 2], [0, 2], 2, 2)
+  it.each([false, true])(
+    `bins visible points and tracks max counts (colored=%s)`,
+    (colored) => {
+      const result = bin_points(series, [0, 2], [0, 2], 2, 2, undefined, [], colored)
 
-    expect(result.visible_count).toBe(4)
-    expect(result.max_count).toBe(3)
-    expect([...result.counts]).toEqual([3, 0, 0, 1])
-    expect(result.first_point_idxs[0]).toBe(0)
-    expect(result.first_point_idxs[3]).toBe(3)
-    expect(result.first_series_idxs[0]).toBe(0)
-    expect(result.first_series_idxs[3]).toBe(0)
-  })
+      expect(result.visible_count).toBe(4)
+      expect(result.max_count).toBe(3)
+      expect([...result.counts]).toEqual([3, 0, 0, 1])
+      expect(result.first_point_idxs[0]).toBe(0)
+      expect(result.first_point_idxs[3]).toBe(3)
+      expect(result.first_series_idxs[0]).toBe(0)
+      expect(result.first_series_idxs[3]).toBe(0)
+      expect(result.series_bins).toEqual(
+        colored
+          ? [
+              {
+                counts: result.counts,
+                first_point_idxs: result.first_point_idxs,
+                max_count: 3,
+              },
+            ]
+          : undefined,
+      )
+    },
+  )
 
   // bin 0 is always the data minimum, but both the pointer hit-test and the canvas heatmap are
   // positional, so a descending range mirrors the grid: with x_range [2, 0] the low-x bins sit

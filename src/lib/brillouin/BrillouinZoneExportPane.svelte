@@ -34,25 +34,19 @@
     return export_canvas_as_png(canvas, png_name, png_dpi, scene, camera, save)
   }
 
-  function get_json_data() {
+  function json_string() {
     if (!bz_data) return null
-    return {
-      order: bz_data.order,
-      volume: bz_data.volume,
-      vertices: bz_data.vertices,
-      faces: bz_data.faces,
-      edges: bz_data.edges,
-      reciprocal_lattice: bz_data.k_lattice,
-    }
-  }
-
-  function export_as_json({ filename, save }: FileExportContext) {
-    const json_data = get_json_data()
-    if (!json_data || !bz_data) return
-    return save(
-      JSON.stringify(json_data, null, 2),
-      `${filename}-bz-order-${bz_data.order}.json`,
-      `application/json`,
+    return JSON.stringify(
+      {
+        order: bz_data.order,
+        volume: bz_data.volume,
+        vertices: bz_data.vertices,
+        faces: bz_data.faces,
+        edges: bz_data.edges,
+        reciprocal_lattice: bz_data.k_lattice,
+      },
+      null,
+      2,
     )
   }
 
@@ -75,11 +69,16 @@
         {
           label: `JSON`,
           disabled: !bz_data,
-          on_download: export_as_json,
-          copy_text: () => {
-            const json_data = get_json_data()
-            return json_data ? JSON.stringify(json_data, null, 2) : null
+          on_download: ({ filename, save }) => {
+            const content = json_string()
+            if (content && bz_data)
+              return save(
+                content,
+                `${filename}-bz-order-${bz_data.order}.json`,
+                `application/json`,
+              )
           },
+          copy_text: json_string,
         },
       ],
     },

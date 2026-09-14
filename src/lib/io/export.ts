@@ -151,17 +151,12 @@ export async function export_canvas_as_png(
     return
   }
 
-  let filename =
+  const basename =
     typeof structure_or_filename === `string`
       ? structure_or_filename
       : create_structure_filename(structure_or_filename, `png`)
 
-  const suffix = `-${Math.round(png_dpi)}dpi`
-  if (filename.toLowerCase().endsWith(`.png`)) {
-    filename = filename.replace(/\.png$/i, `${suffix}.png`)
-  } else {
-    filename = `${filename}${suffix}.png`
-  }
+  const filename = `${basename.replace(/\.png$/i, ``)}-${Math.round(png_dpi)}dpi.png`
 
   await save(await canvas_to_png_blob(canvas, png_dpi, scene, camera), filename, `image/png`)
 }

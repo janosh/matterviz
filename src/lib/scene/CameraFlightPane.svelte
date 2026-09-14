@@ -145,10 +145,7 @@
     )
   }
 
-  function replace_path(
-    make: (pose: CameraPose) => CameraFlight | Promise<CameraFlight>,
-    automatic = false,
-  ) {
+  function replace_path(make: (pose: CameraPose) => unknown, automatic = false) {
     return attempt(() =>
       session?.run(
         `thumbnails`,
@@ -179,11 +176,7 @@
     const file = input.files?.[0]
     if (!file) return
     try {
-      await replace_path(async () => {
-        const parsed: unknown = JSON.parse(await file.text())
-        validate_camera_flight(parsed)
-        return parsed
-      })
+      await replace_path(async (): Promise<unknown> => JSON.parse(await file.text()))
     } finally {
       input.value = ``
     }

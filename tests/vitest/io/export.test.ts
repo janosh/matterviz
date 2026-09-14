@@ -461,6 +461,7 @@ describe(`svg_to_png_blob`, () => {
 describe(`export_canvas_as_png`, () => {
   test.each([
     [`structure.png`, `structure-150dpi.png`], // suffix injected before extension
+    [`structure.PNG`, `structure-150dpi.png`],
     [`structure`, `structure-150dpi.png`], // .png appended when missing
   ])(`downloads %s as %s`, async (filename, expected_filename) => {
     mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas

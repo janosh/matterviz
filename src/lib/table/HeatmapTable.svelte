@@ -1669,7 +1669,7 @@
               data-col-id={col_id}
               style:left={view.sticky_left}
               tabindex={sortable ? 0 : undefined}
-              role={sortable ? `button` : undefined}
+              role="columnheader"
               oncontextmenu={(event) => open_column_context_menu(event, col_id)}
               onclick={(event) => activate_header(event, col)}
               onkeydown={(event) => activate_header(event, col)}
@@ -1682,8 +1682,8 @@
               data-drag-side={drag_side(col_id)}
               draggable="true"
               aria-dropeffect="move"
-              aria-sort={sort_state.column === col_id
-                ? sort_state.ascending
+              aria-sort={active_sort[0]?.column === col_id
+                ? active_sort[0].ascending
                   ? `ascending`
                   : `descending`
                 : `none`}

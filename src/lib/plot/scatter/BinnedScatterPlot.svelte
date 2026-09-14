@@ -164,7 +164,7 @@
     void series.length
     return null
   }
-  let hovered_bin = $derived.by<(DensityBin & { series_idx?: number }) | null>(reset_hover)
+  let hovered_bin = $derived.by<DensityBin | null>(reset_hover)
   let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let annotation_element = $state<HTMLDivElement>()
@@ -292,6 +292,7 @@
   // Wait for measured dimensions before indexing and binning, avoiding an extra pass
   // for the placeholder plot size.
   const x_order = $derived(series_x_order(series))
+  const per_series_density = $derived(series.some((srs) => srs.density_color_scale != null))
   const density_result = $derived(
     bin_points(
       has_plot_size ? series : [],
@@ -301,20 +302,12 @@
       density_bins.y,
       bin_transforms,
       has_plot_size ? x_order : [],
+      per_series_density,
     ),
   )
   // The pooled grid still drives occupancy and zoom; colored strips retain each series'
   // counts so overlapping models never hide each other or mix into a misleading color.
-  const per_series_density = $derived(series.some((srs) => srs.density_color_scale != null))
-  const density_grids = $derived(
-    per_series_density
-      ? (has_plot_size ? series : []).map((srs, idx) =>
-          bin_points([srs], x_range, y_range, density_bins.x, density_bins.y, bin_transforms, [
-            x_order[idx],
-          ]),
-        )
-      : [density_result],
-  )
+  const density_grids = $derived(density_result.series_bins ?? [density_result])
   const occupied_series = (bin_idx: number): number[] =>
     density_grids.flatMap((result, idx) => (result.counts[bin_idx] ? [idx] : []))
   const screen_cell = (x_bin: number, y_bin: number) =>
@@ -326,7 +319,7 @@
       x_range,
       y_range,
     )
-  function bin_at(coords: Point2D): (DensityBin & { series_idx?: number }) | null {
+  function bin_at(coords: Point2D): DensityBin | null {
     const bin = density_bin_at_point(
       density_result,
       coords,
@@ -359,8 +352,7 @@
       ),
     ),
   )
-  const bin_color = (bin: DensityBin & { series_idx?: number }): string =>
-    color_scales[bin.series_idx ?? 0](bin.count)
+  const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
   const color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
     if (!color_bar || per_series_density) return null
     return {
@@ -545,18 +537,18 @@
     const { counts, x_bins, y_bins, max_count } = density_result
     const bin_w = plot_rect.width / x_bins
     const bin_h = plot_rect.height / y_bins
-    const style_cache = new Map<string, string>()
+    const style_cache = color_scales.map(() => new Map<number, string>())
     for (let bin_idx = 0; bin_idx < counts.length; bin_idx++) {
       if (!counts[bin_idx]) continue
       const [col, row] = screen_cell(bin_idx % x_bins, Math.floor(bin_idx / x_bins))
       const occupied = occupied_series(bin_idx)
       for (const [strip_idx, series_idx] of occupied.entries()) {
         const count = density_grids[series_idx].counts[bin_idx]
-        const cache_key = `${series_idx}:${count}`
-        let fill = style_cache.get(cache_key)
+        const cache = style_cache[series_idx]
+        let fill = cache.get(count)
         if (!fill) {
           fill = color_scales[series_idx](count)
-          style_cache.set(cache_key, fill)
+          cache.set(count, fill)
         }
         ctx.fillStyle = fill
         ctx.globalAlpha = per_series_density
@@ -891,20 +883,8 @@
       return
     }
     if (bin.count > 1 && density_settings.bin_click !== `point`) return
-    const { series_idx } = bin
-    const point = first_point_in_bin(
-      series_idx == null ? series : [series[series_idx]],
-      density_grids[series_idx ?? 0],
-      bin,
-      x_scale_fn,
-      y_scale_fn,
-    )
-    if (point)
-      emit_point_click(
-        { ...point, series_idx: series_idx ?? point.series_idx },
-        event,
-        bin_color(bin),
-      )
+    const point = first_point_in_bin(series, density_result, bin, x_scale_fn, y_scale_fn)
+    if (point) emit_point_click(point, event, bin_color(bin))
   }
 </script>
 

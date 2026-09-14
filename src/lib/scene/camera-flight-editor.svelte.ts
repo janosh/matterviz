@@ -34,24 +34,18 @@ export function create_camera_flight_editor() {
     cursor = history.length - 1
     selected = Math.min(selected, next.views.length - 1)
   }
-  const space_evenly = (next: FlightDraft): FlightDraft => ({
-    ...next,
-    views: next.views.map((view, idx, views) => ({
+  const space_evenly = (views: FlightDraft[`views`], duration: number) =>
+    views.map((view, idx) => ({
       ...view,
-      time: views.length < 2 ? 0 : (idx / (views.length - 1)) * next.duration,
-    })),
-  })
-  const set_views = (views: FlightDraft[`views`]) => {
-    const next = { ...draft, views }
-    commit(
-      draft.automatic
-        ? space_evenly(next)
-        : {
-            ...next,
-            duration: views.length > 1 ? views[views.length - 1].time : draft.duration,
-          },
-    )
-  }
+      time: views.length < 2 ? 0 : (idx / (views.length - 1)) * duration,
+    }))
+  const set_views = (views: FlightDraft[`views`]) =>
+    commit({
+      ...draft,
+      views: draft.automatic ? space_evenly(views, draft.duration) : views,
+      duration:
+        !draft.automatic && views.length > 1 ? views[views.length - 1].time : draft.duration,
+    })
   return {
     get flight() {
       return flight
@@ -118,15 +112,16 @@ export function create_camera_flight_editor() {
       if (!Number.isFinite(duration) || duration <= 0)
         throw new Error(`Duration must be greater than zero`)
       if (duration === draft.duration) return
-      const next = {
+      commit({
         ...draft,
         duration,
-        views: draft.views.map((view) => ({
-          ...view,
-          time: (view.time / draft.duration) * duration,
-        })),
-      }
-      commit(draft.automatic ? space_evenly(next) : next)
+        views: draft.automatic
+          ? space_evenly(draft.views, duration)
+          : draft.views.map((view) => ({
+              ...view,
+              time: (view.time / draft.duration) * duration,
+            })),
+      })
     },
     set_time(idx: number, time: number) {
       const views = draft.views
@@ -146,8 +141,11 @@ export function create_camera_flight_editor() {
       })
     },
     set_automatic(automatic: boolean) {
-      const next = { ...draft, automatic }
-      commit(automatic ? space_evenly(next) : next)
+      commit({
+        ...draft,
+        automatic,
+        views: automatic ? space_evenly(draft.views, draft.duration) : draft.views,
+      })
     },
     set_interpolation(interpolation: CameraFlight[`interpolation`]) {
       commit({ ...draft, interpolation })

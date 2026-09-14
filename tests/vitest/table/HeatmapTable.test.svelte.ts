@@ -1251,6 +1251,13 @@ describe(`HeatmapTable`, () => {
       const shift_click = async (idx: number) => {
         await fire(headers[idx], mouse(`click`, { shiftKey: true }))
       }
+      const expect_sort = (primary: number, direction: string) =>
+        expect([...headers].map((header) => header.getAttribute(`aria-sort`))).toEqual(
+          [...headers].map((_header, idx) => (idx === primary ? direction : `none`)),
+        )
+      expect(
+        [...headers].every((header) => header.getAttribute(`role`) === `columnheader`),
+      ).toBe(true)
 
       await shift_click(0)
       await shift_click(1)
@@ -1263,17 +1270,20 @@ describe(`HeatmapTable`, () => {
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
       expect(headers[0].textContent).toMatch(/[↑↓]/)
       expect(headers[1].textContent).toMatch(/[↑↓]/)
+      expect_sort(0, `descending`)
 
       await shift_click(0)
       expect(state.multi_sort).toEqual([{ column: `Score`, ascending: false }])
       expect(headers[0].textContent).not.toMatch(/[↑↓]/)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
+      expect_sort(1, `descending`)
 
       await click(headers[2])
       expect(state.multi_sort).toEqual([])
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
       expect(headers[2].textContent).toMatch(/[↑↓]/)
+      expect_sort(2, `ascending`)
 
       // Restored external criteria take precedence over the single-column sort and
       // the second criterion resolves tied scores.
@@ -1285,14 +1295,17 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Model`)).toEqual([`Model C`, `Model B`, `Model A`])
       expect(headers[1].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[2].innerHTML).toContain(`<sup>2</sup>`)
+      expect_sort(1, `ascending`)
       state.multi_sort = [{ column: `Score`, ascending: true }]
       await tick()
       expect(headers[1].textContent).toMatch(/[↑↓]/)
       expect(headers[2].textContent).not.toMatch(/[↑↓]/)
+      expect_sort(1, `ascending`)
       state.multi_sort = []
       await tick()
       expect(col_values(`Model`)).toEqual([`Model A`, `Model B`, `Model C`])
       expect(headers[2].textContent).toMatch(/[↑↓]/)
+      expect_sort(2, `ascending`)
     })
   })
 
