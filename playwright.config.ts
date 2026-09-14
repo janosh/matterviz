@@ -16,7 +16,7 @@ export default {
     timeout: 60_000,
   },
   use: {
-    // Use Chromium's modern headless mode consistently in CI and local runs.
+    // Full Chromium supports headed capture under Xvfb in CI and local headless runs.
     channel: `chromium`,
     // 3D failures on CI's software renderer say nothing as a bare log line. First retry only:
     // recording costs time on an already saturated box.

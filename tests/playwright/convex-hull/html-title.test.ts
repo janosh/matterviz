@@ -75,8 +75,7 @@ test.describe(`ConvexHull HTML Title Rendering`, () => {
       for (const { width, height, font_size } of sizes) {
         expect(height).toBe(width)
         expect(width).toBe(sizes[0].width)
-        // 10% above the former 1.3em fullscreen icon; allow subpixel layout rounding.
-        expect(width).toBeCloseTo(font_size * 1.3 * 1.1, 1)
+        expect(width).toBe(font_size)
       }
     })
 

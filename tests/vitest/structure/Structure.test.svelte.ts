@@ -2382,13 +2382,18 @@ const mock_prediction_export = () => {
     expect(document.querySelector(`[title="Download Export prediction"]`)).toBeNull()
     doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
     await tick()
+    const filename = doc_query<HTMLInputElement>(`.export-destination input[type="text"]`)
+    filename.value = `restored-structure`
+    await fire(filename, new Event(`input`, { bubbles: true }))
     const export_button = doc_query<HTMLButtonElement>(`[title="Download Export prediction"]`)
     expect(export_button.disabled).toBe(false)
     export_button.click()
-    expect(download).toHaveBeenCalledExactlyOnceWith(
-      expect.any(String),
-      `prediction-7.json`,
-      `application/json`,
+    await vi.waitFor(() =>
+      expect(download).toHaveBeenCalledExactlyOnceWith(
+        expect.any(String),
+        `restored-structure-prediction.json`,
+        `application/json`,
+      ),
     )
     expect(prediction_from_json(download.mock.calls[0][0])).toEqual(prediction)
   }
