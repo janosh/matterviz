@@ -18,7 +18,9 @@ test.describe(`Periodic Table`, () => {
     return option_list
   }
 
-  test(`renders the default table with equal tile tracks across widths`, async ({ page }) => {
+  test(`keeps tile tracks equal and color bars inside their insets across widths`, async ({
+    page,
+  }) => {
     await page.goto(`/periodic-table`)
 
     const periodic_table = page.locator(`.periodic-table`).first()
@@ -30,7 +32,14 @@ test.describe(`Periodic Table`, () => {
     const n_lanthanide_actinide_placeholders = 2
     expect(await tiles.count()).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
-    for (const width of [1000, 480]) {
+    const auto_tables = page.locator(`.auto-colorbar-grid .periodic-table`)
+    await expect(auto_tables.locator(`.colorbar .label`)).toHaveText([
+      `Atomic Mass`,
+      `Density`,
+      `Boiling Point`,
+    ])
+
+    for (const width of [120, 200, 480, 1000]) {
       await periodic_table.evaluate((element, next_width) => {
         element.style.width = `${next_width}px`
       }, width)
@@ -41,6 +50,32 @@ test.describe(`Periodic Table`, () => {
         }),
       )
       expect(Math.max(...dimensions) - Math.min(...dimensions)).toBeLessThan(0.5)
+
+      await auto_tables.evaluateAll((elements, next_width) => {
+        for (const element of elements) {
+          element.style.width = `${next_width}px`
+          element.style.setProperty(`--ptable-min-tile-size`, `0`)
+        }
+      }, width)
+      // Titles, gradients and every tick must fit without clipping or covering element tiles.
+      await expect
+        .poll(() =>
+          auto_tables.locator(`.auto-colorbar-inset`).evaluateAll((insets) =>
+            insets.map((inset) => {
+              const bounds = inset.getBoundingClientRect()
+              return [...inset.querySelectorAll(`.label, .bar, .tick-label`)].every((part) => {
+                const box = part.getBoundingClientRect()
+                return (
+                  box.left > bounds.left - 0.5 &&
+                  box.right < bounds.right + 0.5 &&
+                  box.top > bounds.top - 0.5 &&
+                  box.bottom < bounds.bottom + 0.5
+                )
+              })
+            }),
+          ),
+        )
+        .toEqual([true, true, true])
     }
   })
 

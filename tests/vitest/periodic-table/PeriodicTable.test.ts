@@ -961,7 +961,7 @@ describe(`PeriodicTable`, () => {
         target: document.body,
         props: {
           heatmap_values: [1, 2, 3],
-          color_bar_props: { title: `Test Property` },
+          color_bar_props: { title: `Test Property`, wrapper_style: `width: 70%` },
         },
       })
 
@@ -970,7 +970,7 @@ describe(`PeriodicTable`, () => {
 
       // auto-colorbar-inset class provides styling via CSS (place-items, padding)
       expect(inset.classList.contains(`auto-colorbar-inset`)).toBe(true)
-      expect(colorbar.getAttribute(`style`)).toContain(`width: 100%`)
+      expect(colorbar.style.width).toBe(`70%`)
       expect(colorbar.querySelector(`.label`)?.textContent).toBe(`Test Property`)
     })
 
