@@ -1,4 +1,6 @@
 import type { AnyStructure } from '$lib'
+import { download } from '$lib/io/fetch'
+import app_css from '$lib/app.css?inline'
 import { export_canvas_as_png } from '$lib/io/export'
 import { export_scene_as } from '$lib/scene'
 import { StructureExportPane } from '$lib/structure'
@@ -15,6 +17,8 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
     props: { export_pane_open: true, ...props },
   })
 
+vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+
 // Mock the export functions
 vi.mock(`$lib/structure/export`, async (import_original) => {
   const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
@@ -24,7 +28,6 @@ vi.mock(`$lib/structure/export`, async (import_original) => {
   return {
     ...(await import_original<typeof export_funcs>()),
     create_structure_filename: vi.fn(() => `structure-basename`),
-    export_structure_as: vi.fn(),
     structure_to_json_str,
     structure_to_xyz_str,
     structure_to_cif_str,
@@ -134,17 +137,26 @@ describe(`StructureExportPane`, () => {
     { format: `xyz`, label: `XYZ` },
     { format: `cif`, label: `CIF` },
     { format: `poscar`, label: `POSCAR` },
-  ])(`calls correct export function for $label download`, async ({ format, label }) => {
-    vi.mocked(export_funcs.export_structure_as).mockClear() // shared across test.each runs
-    mount_pane({ structure: simple_structure })
-
-    expect(export_funcs.export_structure_as).not.toHaveBeenCalled()
-
-    get_button(`Download ${label}`).dispatchEvent(new Event(`click`, { bubbles: true }))
-    await vi.waitFor(() =>
-      expect(export_funcs.export_structure_as).toHaveBeenCalledWith(format, simple_structure),
-    )
-  })
+  ] as const)(
+    `uses the chosen name and serializer for $label download`,
+    async ({ format, label }) => {
+      vi.mocked(download).mockClear()
+      mount_pane({ structure: simple_structure })
+      const name_input = doc_query<HTMLInputElement>(`.export-destination input`)
+      name_input.value = `Relaxed structure`
+      name_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+      get_button(`Download ${label}`).click()
+      const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
+      await vi.waitFor(() =>
+        expect(download).toHaveBeenCalledWith(
+          to_str(simple_structure),
+          `Relaxed structure.${ext}`,
+          mime,
+        ),
+      )
+    },
+  )
 
   test.each([
     {
@@ -234,18 +246,34 @@ describe(`StructureExportPane`, () => {
     expect(get_button(`PNG`).title).toContain(`(200 DPI)`)
   })
 
-  test(`PNG export button disabled when canvas absent or removed`, async () => {
+  test(`PNG and camera flight share canvas readiness and one observer`, async () => {
     wrapper_div.innerHTML = ``
-    mount_pane({ structure: simple_structure, wrapper: wrapper_div })
-
-    const png_btn = get_button(`PNG`)
-    expect(png_btn?.disabled).toBe(true)
+    const style = document.createElement(`style`)
+    style.textContent = app_css
+    document.body.append(style)
+    const observe = vi.spyOn(MutationObserver.prototype, `observe`)
+    mount_pane({
+      structure: simple_structure,
+      wrapper: wrapper_div,
+      pane_props: { style: `font-size: 12px` },
+    })
+    await tick()
+    const export_styles = getComputedStyle(doc_query(`.export-pane .pane-content`))
+    const flight_styles = getComputedStyle(doc_query(`.camera-flight`))
+    expect(export_styles.fontSize).toBe(`12px`)
+    expect(flight_styles.fontSize).toBe(export_styles.fontSize)
+    const disabled_buttons = () => [
+      get_button(`PNG`).disabled,
+      doc_query<HTMLButtonElement>(`.camera-flight .actions button`).disabled,
+    ]
+    expect(observe.mock.calls.filter(([target]) => target === wrapper_div)).toHaveLength(1)
+    expect(disabled_buttons()).toEqual([true, true])
 
     wrapper_div.append(document.createElement(`canvas`))
-    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
+    await vi.waitFor(() => expect(disabled_buttons()).toEqual([false, false]))
 
     wrapper_div.innerHTML = ``
-    await vi.waitFor(() => expect(png_btn?.disabled).toBe(true))
+    await vi.waitFor(() => expect(disabled_buttons()).toEqual([true, true]))
   })
 
   test(`slice export uses its explicit canvas and hides 3D formats`, async () => {
@@ -266,6 +294,7 @@ describe(`StructureExportPane`, () => {
         150,
         null,
         null,
+        expect.any(Function),
       )
     })
     expect(document.body.textContent).not.toContain(`Export as 3D model`)
@@ -285,7 +314,12 @@ describe(`StructureExportPane`, () => {
 
       download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
       await vi.waitFor(() =>
-        expect(export_scene_as).toHaveBeenCalledWith(mock_scene, format, `structure-basename`),
+        expect(export_scene_as).toHaveBeenCalledWith(
+          mock_scene,
+          format,
+          `structure-basename`,
+          expect.any(Function),
+        ),
       )
       expect(export_funcs.create_structure_filename).toHaveBeenCalledWith(simple_structure)
     },
@@ -398,7 +432,7 @@ describe(`StructureExportPane`, () => {
   )
 
   test(`a throwing serializer on download is logged, not thrown from the click handler`, () => {
-    vi.mocked(export_funcs.export_structure_as).mockImplementationOnce(() => {
+    vi.mocked(export_funcs.STRUCT_TEXT_FORMATS.cif.to_str).mockImplementationOnce(() => {
       throw new Error(`serializer exploded`)
     })
     const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -406,7 +440,7 @@ describe(`StructureExportPane`, () => {
 
     expect(() => get_button(`Download CIF`).click()).not.toThrow()
     expect(console_error_spy).toHaveBeenCalledWith(
-      expect.stringContaining(`Failed to export CIF`),
+      expect.stringContaining(`Export structure-basename failed`),
       expect.any(Error),
     )
     console_error_spy.mockRestore()
@@ -447,10 +481,11 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         wrapper_div.querySelector(`canvas`),
-        simple_structure,
+        `structure-basename`,
         props.png_dpi ?? 150,
         mock_scene,
         props.camera,
+        expect.any(Function),
       )
     })
   })

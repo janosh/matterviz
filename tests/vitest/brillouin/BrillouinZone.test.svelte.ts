@@ -173,6 +173,10 @@ test.each([{ data: poscar, filename: `inline.poscar` }, new File([poscar], `loca
     flushSync()
     // Parsing is asynchronous, so the spinner covers at least one microtask
     expect(props.loading).toBe(true)
+    expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+      `Loading structure...`,
+    )
+    expect(document.querySelector(`.loading-overlay :is(progress, button)`)).toBeNull()
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
     expect(props.loading).toBe(false)
     expect(on_file_load.mock.calls[0][0].bz_data?.order).toBe(1)

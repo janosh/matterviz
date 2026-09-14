@@ -1,5 +1,11 @@
 import { expect, type Page, test } from '@playwright/test'
-import { IS_CI, wait_for_3d_canvas } from './helpers'
+import {
+  expect_centered,
+  expect_inline_spinner,
+  IS_CI,
+  require_bbox,
+  wait_for_3d_canvas,
+} from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
 const status_locator = (page: Page, test_id: string) =>
@@ -7,6 +13,41 @@ const status_locator = (page: Page, test_id: string) =>
 // IBZ computation requires moyo-wasm symmetry analysis which can be slow,
 // especially in CI with software rendering. 10s accommodates most structures.
 const IBZ_LOAD_TIMEOUT = 10000
+
+test(`loading overlay stays centered and compact in wide and narrow viewers`, async ({
+  page,
+}) => {
+  const load_gate = Promise.withResolvers<undefined>()
+  await page.route(
+    (url) => url.pathname === `/pending.poscar`,
+    async (route) => {
+      await load_gate.promise
+      await route.fulfill({ body: `Si\n1\n3 0 0\n0 3 0\n0 0 3\nSi\n1\nDirect\n0 0 0\n` })
+    },
+  )
+  await page.goto(`/test/brillouin-zone?source=/pending.poscar`, {
+    waitUntil: `domcontentloaded`,
+  })
+  const viewer = page.locator(BZ_SELECTOR)
+  const loading = viewer.locator(`.loading-overlay`)
+  await expect(loading.getByRole(`status`)).toHaveText(`Loading structure...`)
+  try {
+    for (const width of [800, 160]) {
+      await viewer.evaluate((element, size) => {
+        element.style.setProperty(`--bz-width`, `${size}px`)
+        element.style.setProperty(`--bz-min-width`, `0`)
+      }, width)
+      const bounds = await require_bbox(viewer)
+      const { status, label } = await expect_inline_spinner(loading)
+      expect_centered(status, bounds)
+      expect(status.width).toBeLessThan(bounds.width - 24)
+      expect(label.x + label.width).toBeLessThan(bounds.x + bounds.width)
+    }
+  } finally {
+    load_gate.resolve(undefined)
+  }
+  await expect(loading).toBeHidden()
+})
 
 test.describe(`BrillouinZone Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {

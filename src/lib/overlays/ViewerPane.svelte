@@ -27,13 +27,72 @@
     children?: Snippet
   } = $props()
 
-  let dragging = $state(false)
+  let has_been_dragged = $state(false)
   const container_gap_px = 4
   // Leave room for the pane's protruding control tab plus a small inset on both sides.
   const container_width_reserve_px = 32
+  const viewport_shift = (start: number, end: number, viewport_size: number) =>
+    Math.max(container_gap_px - start, Math.min(0, viewport_size - container_gap_px - end))
 
   $effect(() => {
-    if (!open || !pane || position === `fixed` || dragging) return
+    if (!open || !pane) return
+    const pane_element = pane
+    let frame_id = 0
+    const keep_in_viewport = () => {
+      if (!document.fullscreenElement?.contains(pane_element)) return
+      const rect = pane_element.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      const tab = pane_element.querySelector(`:scope > .control-tab`)?.getBoundingClientRect()
+      const shift_x = viewport_shift(
+        rect.left,
+        Math.max(rect.right, tab?.right ?? rect.right),
+        globalThis.innerWidth,
+      )
+      const shift_y = viewport_shift(
+        rect.top,
+        Math.max(rect.bottom, tab?.bottom ?? rect.bottom),
+        globalThis.innerHeight,
+      )
+      if (Math.abs(shift_x) < 0.5 && Math.abs(shift_y) < 0.5) return
+      // offsetLeft/Top round to integers, which can make scaled corrections oscillate.
+      const styles = getComputedStyle(pane_element)
+      const parent = pane_element.offsetParent
+      const parent_rect = parent instanceof HTMLElement ? parent.getBoundingClientRect() : null
+      const scale_x =
+        parent_rect && parent instanceof HTMLElement && parent.offsetWidth
+          ? parent_rect.width / parent.offsetWidth
+          : 1
+      const scale_y =
+        parent_rect && parent instanceof HTMLElement && parent.offsetHeight
+          ? parent_rect.height / parent.offsetHeight
+          : 1
+      if (Math.abs(shift_x) >= 0.5 && scale_x)
+        pane_element.style.left = `${Number(styles.left.slice(0, -2)) + shift_x / scale_x}px`
+      if (Math.abs(shift_y) >= 0.5 && scale_y)
+        pane_element.style.top = `${Number(styles.top.slice(0, -2)) + shift_y / scale_y}px`
+    }
+    const position_observer = new MutationObserver(keep_in_viewport)
+    const handle_fullscreen = () => {
+      cancelAnimationFrame(frame_id)
+      position_observer.disconnect()
+      // Responsive pane_props can rewrite inline position after fullscreenchange. Keep
+      // those later updates on screen too, without resetting manual placement ownership.
+      if (!document.fullscreenElement?.contains(pane_element)) return
+      position_observer.observe(pane_element, { attributes: true, attributeFilter: [`style`] })
+      frame_id = requestAnimationFrame(keep_in_viewport)
+    }
+    document.addEventListener(`fullscreenchange`, handle_fullscreen)
+    handle_fullscreen()
+    return () => {
+      cancelAnimationFrame(frame_id)
+      position_observer.disconnect()
+      document.removeEventListener(`fullscreenchange`, handle_fullscreen)
+    }
+  })
+
+  $effect(() => {
+    // Constrain automatic placement only; manual placement belongs to the user until Reset.
+    if (!open || !pane || position === `fixed` || has_been_dragged) return
     const pane_element = pane
     let container = pane_element.parentElement
     while (container && getComputedStyle(container).containerType === `normal`) {
@@ -42,6 +101,7 @@
     if (!container) return
 
     const constrain_to_container = (): void => {
+      if (!open || has_been_dragged) return
       const offset_parent = pane_element.offsetParent
       if (!(offset_parent instanceof HTMLElement)) return
 
@@ -58,8 +118,11 @@
       if (globalThis.innerWidth <= 640) {
         const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
         const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
-        pane_element.style.setProperty(`--pane-viewport-clamp`, `${Math.max(cap, 150)}px`)
-      } else pane_element.style.removeProperty(`--pane-viewport-clamp`)
+        const height = `${Math.max(cap, 150)}px`
+        if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`) !== height)
+          pane_element.style.setProperty(`--pane-viewport-clamp`, height)
+      } else if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`))
+        pane_element.style.removeProperty(`--pane-viewport-clamp`)
       const min_left = container_rect.left + container_gap_px
       const max_right = container_rect.right - container_gap_px
       const shift_px = Math.min(
@@ -73,20 +136,27 @@
           ? offset_parent.getBoundingClientRect().width / offset_parent.clientWidth
           : 1
       if (scale_x === 0) return
-      pane_element.style.left = `${pane_element.offsetLeft + shift_px / scale_x}px`
+      pane_element.style.left = `${Number(getComputedStyle(pane_element).left.slice(0, -2)) + shift_px / scale_x}px`
     }
     const resize_observer = new ResizeObserver(constrain_to_container)
     resize_observer.observe(container)
     resize_observer.observe(pane_element)
+    // DraggablePane reanchors after a debounced viewport resize, even if its size stays
+    // unchanged. Observe that position update too; the correction is idempotent.
+    const position_observer = new MutationObserver(constrain_to_container)
+    position_observer.observe(pane_element, { attributes: true, attributeFilter: [`style`] })
     constrain_to_container()
-    return () => resize_observer.disconnect()
+    return () => {
+      resize_observer.disconnect()
+      position_observer.disconnect()
+    }
   })
 </script>
 
 <DraggablePane
   bind:open
   bind:pane
-  bind:dragging
+  bind:has_been_dragged
   toggle_props={{
     title: `${open ? `Close` : `Open`} ${pane_name}`,
     ...toggle_props,

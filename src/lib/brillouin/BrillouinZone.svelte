@@ -3,7 +3,8 @@
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
-  import { Spinner, StatusMessage } from 'svelte-widgets'
+  import { type Spinner, StatusMessage } from 'svelte-widgets'
+  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback, FileLoadData } from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
@@ -276,7 +277,7 @@
 >
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}
-    <Spinner text="Loading structure..." {...spinner_props} />
+    <LoadingStatus overlay label="Loading structure..." {...spinner_props} />
   {:else if error_msg}
     <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if zone || structure?.lattice}

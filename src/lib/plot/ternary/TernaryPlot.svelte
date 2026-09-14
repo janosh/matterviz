@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import type { FileExportContext } from '$lib/io/file-export.svelte'
   import { plot_color } from '$lib/colors'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
   import { StatusMessage } from 'svelte-widgets'
@@ -350,7 +351,7 @@
     { dx: -8, 'text-anchor': `end`, 'dominant-baseline': `middle` },
   ] as const
 
-  const export_chart = (format: ChartExportFormat) =>
+  const export_chart = (format: ChartExportFormat, context: FileExportContext) =>
     create_chart_exporter(
       {
         svg_element,
@@ -365,7 +366,7 @@
           point.color_value,
         ]),
       }),
-    )(format)
+    )(format, context)
 </script>
 
 <ChartShell

@@ -1,4 +1,5 @@
 import type { TrajectorySource } from '$lib/trajectory/index'
+import type { FileExportContext } from './file-export.svelte'
 
 export interface FileInfo {
   name: string
@@ -48,7 +49,7 @@ export interface ExportItem {
   // Visible, accessible explanation for disabled download/copy buttons.
   disabled_reason?: string
   // Click handler for the ⬇ download button (omit to hide the button)
-  on_download?: () => void
+  on_download?: (context: FileExportContext) => unknown
   // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return
   // (or resolve) null/empty to no-op, must not throw
   copy_text?: () => string | null | Promise<string | null>

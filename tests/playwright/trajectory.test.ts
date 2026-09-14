@@ -6,7 +6,13 @@ import type * as OpenTrajectoryModule from '$lib/trajectory/open'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
-import { drop_file, IS_CI } from './helpers'
+import {
+  drop_file,
+  expect_centered,
+  expect_inline_spinner,
+  IS_CI,
+  require_bbox,
+} from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
@@ -59,6 +65,17 @@ test.describe(`Trajectory Component`, () => {
     trajectory_viewer = page.locator(`#loaded-trajectory`)
     controls = trajectory_viewer.locator(`.trajectory-controls`)
     const query = test_info.tags.includes(`@single-viewer`) ? `?single-viewer` : ``
+    if (test_info.tags.includes(`@file-destination`)) {
+      await page.addInitScript(() => {
+        // Keep the native writable handle and stream; replace only the OS picker in automation.
+        Object.defineProperty(window, `showDirectoryPicker`, {
+          value: async () =>
+            (await navigator.storage.getDirectory()).getDirectoryHandle(`chosen-exports`, {
+              create: true,
+            }),
+        })
+      })
+    }
     if (query) await page.setViewportSize({ width: 1500, height: 1400 })
     await page.goto(`/test/trajectory${query}`, { waitUntil: `domcontentloaded` })
     await expect(trajectory_viewer).toBeVisible({ timeout: 30_000 })
@@ -81,18 +98,46 @@ test.describe(`Trajectory Component`, () => {
     )
   })
 
-  test(`analysis pane toggles stay hidden anchors behind the Analysis menu`, async () => {
-    // The MSD/VACF/RDF/structure-id/data-inspector panes keep their ViewerPane toggles inside
-    // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
-    // component and a scoped selector stopped hiding them (stray toolbar icons)
-    const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
-    await expect(anchors).toHaveCount(5)
-    for (const anchor of await anchors.all()) {
-      await expect(anchor).toHaveCSS(`opacity`, `0`)
-      await expect(anchor).toHaveCSS(`pointer-events`, `none`)
-    }
-    await expect(controls.locator(`.analysis-button`)).toBeVisible()
-  })
+  test(
+    `toolbar icons stay consistent and analysis anchors stay hidden`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      // The MSD/VACF/RDF/structure-id/data-inspector panes keep their ViewerPane toggles inside
+      // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
+      // component and a scoped selector stopped hiding them (stray toolbar icons)
+      const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
+      await expect(anchors).toHaveCount(5)
+      for (const anchor of await anchors.all()) {
+        await expect(anchor).toHaveCSS(`opacity`, `0`)
+        await expect(anchor).toHaveCSS(`pointer-events`, `none`)
+      }
+      await expect(controls.locator(`.analysis-button`)).toBeVisible()
+      await expect(controls.locator(`.analysis-button > svg`)).toHaveCount(1)
+      await expect(controls.locator(`.view-mode-button > svg`)).toHaveCount(1)
+      const check_icon_sizes = async () => {
+        const icons = trajectory_viewer.locator(
+          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button) > svg`,
+        )
+        expect(await icons.count()).toBeGreaterThan(8)
+        const size = await page.evaluate(
+          () => getComputedStyle(document.documentElement).fontSize,
+        )
+        for (const icon of await icons.all()) {
+          await expect(icon).toHaveCSS(`width`, size)
+          await expect(icon).toHaveCSS(`height`, size)
+        }
+      }
+      await check_icon_sizes()
+      const fullscreen = controls.locator(`.fullscreen-button`)
+      await fullscreen.click()
+      await expect(fullscreen).toHaveAttribute(`aria-pressed`, `true`)
+      await check_icon_sizes()
+      await fullscreen.click()
+      await expect(fullscreen).toHaveAttribute(`aria-pressed`, `false`)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await check_icon_sizes()
+    },
+  )
 
   test(`narrow viewer hides the filename and keeps the step slider off the FPS input`, async () => {
     await trajectory_viewer.evaluate((element) => {
@@ -134,6 +179,11 @@ test.describe(`Trajectory Component`, () => {
   test(`loads a remote HDF5 Blob once through the lazy worker loader`, async ({ page }) => {
     const empty_trajectory = page.locator(`#empty-state`)
     const source_url = `/trajectories/flame-gold-cluster-55-atoms.h5`
+    const load_gate = Promise.withResolvers<undefined>()
+    await page.route(`**${source_url}`, async (route) => {
+      await load_gate.promise
+      await route.continue()
+    })
     let source_requests = 0
     page.on(`request`, (request) => {
       if (new URL(request.url()).pathname === source_url) source_requests++
@@ -143,6 +193,36 @@ test.describe(`Trajectory Component`, () => {
       transfer.setData(`application/json`, JSON.stringify({ url }))
       target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
     }, source_url)
+
+    const loading = empty_trajectory.locator(`.trajectory-loading`)
+    await expect(loading.getByRole(`status`)).toHaveText(`Loading trajectory...`)
+    try {
+      for (const width of [1200, 420]) {
+        await page.setViewportSize({ width, height: 900 })
+        const [viewer, panel, bar, cancel] = await Promise.all(
+          [
+            empty_trajectory,
+            loading,
+            loading.getByRole(`progressbar`),
+            loading.getByRole(`button`, { name: `Cancel` }),
+          ].map((locator) => require_bbox(locator)),
+        )
+        const { label } = await expect_inline_spinner(loading)
+        for (const box of [panel, bar, cancel]) {
+          expect_centered(box, viewer, `x`)
+        }
+        expect_centered(panel, viewer, `y`)
+        expect(bar.y).toBeGreaterThan(label.y + label.height)
+        expect(cancel.y).toBeGreaterThan(bar.y + bar.height)
+        expect(bar.width).toBeLessThan(viewer.width - 24)
+        const font_size = await loading.evaluate((element) =>
+          Number(getComputedStyle(element).fontSize.replace(`px`, ``)),
+        )
+        expect(bar.width).toBeLessThanOrEqual(24 * font_size)
+      }
+    } finally {
+      load_gate.resolve(undefined)
+    }
 
     await expect(empty_trajectory.locator(`button.filename`)).toContainText(
       `flame-gold-cluster-55-atoms.h5`,
@@ -440,87 +520,154 @@ test.describe(`Trajectory Component`, () => {
     await expect(analysis).not.toContainText(`time_unit 'invalid' cannot be converted`)
   })
 
-  test(
-    `tiny trajectory WebM export cancels, restores its frame, and retries with decodable video`,
-    { tag: `@single-viewer` },
-    async ({ page }) => {
-      await trajectory_viewer.scrollIntoViewIfNeeded()
-      const step_input = controls.locator(`.step-input`)
-      await step_input.fill(`2`)
-      await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
-      const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
-      await pane.getByRole(`button`, { name: `0.5x`, exact: true }).click()
-      await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
-      const export_button = pane.getByRole(`button`, { name: `Download WebM`, exact: true })
-      let downloads = 0
-      page.on(`download`, () => downloads++)
-      await export_button.click()
-      await pane.getByRole(`button`, { name: `Cancel export`, exact: true }).click()
-      await expect(export_button).toBeEnabled()
-      await expect(step_input).toHaveValue(`2`)
-      expect(downloads).toBe(0)
-      const [download] = await Promise.all([
-        page.waitForEvent(`download`),
-        export_button.click().then(async () => {
-          await expect(export_button).toBeEnabled()
-          expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
-        }),
-      ])
-      await expect(step_input).toHaveValue(`2`)
-      expect(downloads).toBe(1)
-      const path = await download.path()
-      if (!path) throw new Error(`WebM download has no file`)
-      const video_data = await readFile(path)
-      expect(download.suggestedFilename()).toMatch(/\.webm$/)
-      const decoded = await page.evaluate(
-        (encoded) =>
-          new Promise<{ width: number; height: number; color_span: number }>(
-            (resolve, reject) => {
-              const video = document.createElement(`video`)
-              const bytes = Uint8Array.from(atob(encoded), (character) =>
-                character.charCodeAt(0),
-              )
-              const url = URL.createObjectURL(new Blob([bytes], { type: `video/webm` }))
-              video.requestVideoFrameCallback(() => {
-                video.pause()
-                URL.revokeObjectURL(url)
-                const canvas = document.createElement(`canvas`)
-                canvas.width = video.videoWidth
-                canvas.height = video.videoHeight
-                const context = canvas.getContext(`2d`)
-                if (!context) return reject(new Error(`Canvas 2D context not available`))
-                context.drawImage(video, 0, 0)
-                const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-                let min_channel = 255
-                let max_channel = 0
-                for (let idx = 0; idx < pixels.length; idx++) {
-                  if (idx % 4 === 3) continue
-                  min_channel = Math.min(min_channel, pixels[idx])
-                  max_channel = Math.max(max_channel, pixels[idx])
-                }
-                resolve({
-                  width: video.videoWidth,
-                  height: video.videoHeight,
-                  color_span: max_channel - min_channel,
+  for (const label of [`WebM`, `MP4`])
+    test(
+      `tiny trajectory AV1 ${label} export cancels, restores its frame, and retries with decodable video`,
+      { tag: [`@single-viewer`, `@file-destination`] },
+      async ({ page }, test_info) => {
+        await trajectory_viewer.scrollIntoViewIfNeeded()
+        const step_input = controls.locator(`.step-input`)
+        await step_input.fill(`2`)
+        await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
+        const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
+        await pane
+          .getByRole(`textbox`, { name: `File name`, exact: true })
+          .fill(`My trajectory`)
+        for (const width of [390, 1200]) {
+          await page.setViewportSize({ width, height: 1000 })
+          // Both adjacent frame inputs and mixed FPS/resolution controls need breathing room.
+          for (const section of await pane.locator(`.settings-section`).all()) {
+            const gaps = await section.evaluate((element) => {
+              const rows = [...element.children].map((row) => row.getBoundingClientRect())
+              return rows.slice(1).map((row, idx) => row.top - rows[idx].bottom)
+            })
+            expect(gaps.length).toBeGreaterThan(0)
+            for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(7.5)
+          }
+        }
+        await expect(pane.locator(`.resolution-buttons button`)).toHaveText([
+          `0.5x`,
+          `1x`,
+          `2x`,
+          `4x`,
+        ])
+        await expect(pane.locator(`.resolution-buttons .active`)).toHaveText(`1x`)
+        await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
+        const expected_size = await trajectory_viewer
+          .locator(`canvas`)
+          .first()
+          .evaluate((canvas) => {
+            // The renderer scales fractional CSS dimensions before flooring to whole pixels.
+            const { width, height } = canvas.getBoundingClientRect()
+            return {
+              width: Math.floor(width * devicePixelRatio * 3),
+              height: Math.floor(height * devicePixelRatio * 3),
+            }
+          })
+        const export_button = pane.getByRole(`button`, {
+          name: `Download ${label}`,
+          exact: true,
+        })
+        let downloads = 0
+        page.on(`download`, () => downloads++)
+        await export_button.click()
+        const [progress, status, cancel] = await pane
+          .locator(`.export-progress`)
+          .evaluate((element) =>
+            [element, ...element.querySelectorAll(`[role="status"], button`)].map((node) => {
+              const { x, y, width, height, bottom } = node.getBoundingClientRect()
+              return { x, y, width, height, bottom }
+            }),
+          )
+        await pane.getByRole(`button`, { name: `Cancel export`, exact: true }).click()
+        for (const box of [status, cancel]) {
+          expect_centered(box, progress, `x`)
+        }
+        expect(cancel.y - status.bottom).toBeGreaterThanOrEqual(8)
+        await expect(export_button).toBeEnabled()
+        await expect(step_input).toHaveValue(`2`)
+        expect(downloads).toBe(0)
+        const [download] = await Promise.all([
+          page.waitForEvent(`download`),
+          export_button.click().then(async () => {
+            await expect(export_button).toBeEnabled()
+            expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
+          }),
+        ])
+        await expect(step_input).toHaveValue(`2`)
+        expect(downloads).toBe(1)
+        const format = label.toLowerCase()
+        const path = test_info.outputPath(`trajectory.${format}`)
+        await download.saveAs(path)
+        const video_data = await readFile(path)
+        expect(download.suggestedFilename()).toBe(`My trajectory.${format}`)
+        // Assert the encoded track, not just the requested MIME type or file extension.
+        expect(video_data.includes(format === `webm` ? `V_AV1` : `av01`)).toBe(true)
+        const decoded = await page.evaluate(
+          ({ encoded, mime_type }) =>
+            new Promise<{ width: number; height: number; color_span: number }>(
+              (resolve, reject) => {
+                const video = document.createElement(`video`)
+                video.requestVideoFrameCallback(() => {
+                  video.pause()
+                  const canvas = document.createElement(`canvas`)
+                  canvas.width = video.videoWidth
+                  canvas.height = video.videoHeight
+                  const context = canvas.getContext(`2d`)
+                  if (!context) return reject(new Error(`Canvas 2D context not available`))
+                  context.drawImage(video, 0, 0)
+                  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+                  let min_channel = 255
+                  let max_channel = 0
+                  for (let idx = 0; idx < pixels.length; idx++) {
+                    if (idx % 4 === 3) continue
+                    min_channel = Math.min(min_channel, pixels[idx])
+                    max_channel = Math.max(max_channel, pixels[idx])
+                  }
+                  resolve({
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                    color_span: max_channel - min_channel,
+                  })
                 })
-              })
-              video.addEventListener(`error`, () => {
-                URL.revokeObjectURL(url)
-                reject(new Error(video.error?.message ?? `WebM decode failed`))
-              })
-              video.muted = true
-              video.src = url
-              video.play().catch(reject)
-            },
-          ),
-        video_data.toString(`base64`),
-      )
-      expect(decoded.width).toBeGreaterThan(0)
-      expect(decoded.height).toBeGreaterThan(0)
-      // A valid container holding only a blank frame is still a broken trajectory export.
-      expect(decoded.color_span).toBeGreaterThan(40)
-    },
-  )
+                video.addEventListener(`error`, () =>
+                  reject(new Error(video.error?.message ?? `AV1 decode failed`)),
+                )
+                video.muted = true
+                video.src = `data:${mime_type};base64,${encoded}`
+                video.play().catch(reject)
+              },
+            ),
+          { encoded: video_data.toString(`base64`), mime_type: `video/${format}` },
+        )
+        expect(decoded.width).toBe(expected_size.width)
+        expect(decoded.height).toBe(expected_size.height)
+        // A valid container holding only a blank frame is still a broken trajectory export.
+        expect(decoded.color_span).toBeGreaterThan(40)
+        await pane.getByRole(`button`, { name: `Choose export folder`, exact: true }).click()
+        await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
+        await export_button.click()
+        await expect(export_button).toBeEnabled()
+        await expect(pane.getByRole(`alert`)).toHaveCount(0)
+        expect(downloads).toBe(1)
+        const saved = await page.evaluate(async (container) => {
+          const directory = await (
+            await navigator.storage.getDirectory()
+          ).getDirectoryHandle(`chosen-exports`)
+          const file = await (
+            await directory.getFileHandle(`My trajectory.${container}`)
+          ).getFile()
+          const contents = new TextDecoder().decode(await file.arrayBuffer())
+          return {
+            name: file.name,
+            size: file.size,
+            av1: contents.includes(container === `webm` ? `V_AV1` : `av01`),
+          }
+        }, format)
+        expect(saved).toMatchObject({ name: `My trajectory.${format}`, av1: true })
+        expect(saved.size).toBeGreaterThan(100)
+      },
+    )
 
   test.describe(`layout and configuration options`, () => {
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {

@@ -51,7 +51,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
-    --icon-size: var(--sequence-controls-icon-size, 1.05em);
+    --icon-size: var(--sequence-controls-icon-size, var(--ctrl-btn-icon-size, 1rem));
     &.hover-visible {
       position: absolute;
       inset: 0 0 auto;
@@ -63,12 +63,11 @@
     &:focus-within {
       z-index: var(--sequence-controls-focus-z-index, var(--z-index-viewer-dropdown, 100));
     }
-    :global(svg) {
+    :global(button > svg) {
       width: var(--icon-size);
       height: var(--icon-size);
     }
     :global(.fullscreen-button) {
-      --icon-size: var(--sequence-fullscreen-icon-size, 1.25rem);
       --fullscreen-btn-padding: 0;
       --fullscreen-btn-bg: transparent;
     }

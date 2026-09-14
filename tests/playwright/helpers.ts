@@ -31,6 +31,27 @@ export const require_bbox = async (locator: Locator, label = `element`): Promise
   return box
 }
 
+// Allow subpixel layout rounding, while catching a full CSS pixel of misalignment.
+export const expect_centered = (inner: Box, outer: Box, axis?: `x` | `y`): void => {
+  for (const direction of axis ? [axis] : ([`x`, `y`] as const)) {
+    const size = direction === `x` ? `width` : `height`
+    expect(
+      Math.abs(inner[direction] + inner[size] / 2 - outer[direction] - outer[size] / 2),
+    ).toBeLessThan(1)
+  }
+}
+
+export const expect_inline_spinner = async (container: Locator) => {
+  const [status, spinner, label] = await Promise.all(
+    [`.spinner`, `.circle-spinner`, `.spinner > span`].map((selector) =>
+      require_bbox(container.locator(selector)),
+    ),
+  )
+  expect(spinner.x + spinner.width).toBeLessThan(label.x)
+  expect_centered(spinner, label, `y`)
+  return { status, spinner, label }
+}
+
 // Bounding boxes of the first `count` matches (all by default), skipping unrendered ones
 export const bounding_boxes = async (locator: Locator, count = Infinity): Promise<Box[]> =>
   (

@@ -1,5 +1,6 @@
-import { DEFAULT_PNG_DPI } from '$lib/constants'
+import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
 import { download } from '$lib/io/fetch'
+import type { FileSaver } from './file-export.svelte'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
@@ -151,13 +152,14 @@ export async function canvas_to_png_blob(
 }
 
 // Export structure as PNG image from canvas (triggers browser download)
-export function export_canvas_as_png(
+export async function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure_or_filename: AnyStructure | string | undefined,
   png_dpi = DEFAULT_PNG_DPI,
   scene: Scene | null = null,
   camera: Camera | null = null,
-): void {
+  save: FileSaver = download,
+): Promise<void> {
   if (!canvas) {
     if (typeof window !== `undefined`) console.warn(`Canvas not found for PNG export`)
     return
@@ -175,9 +177,7 @@ export function export_canvas_as_png(
     filename = `${filename}${suffix}.png`
   }
 
-  canvas_to_png_blob(canvas, png_dpi, scene, camera)
-    .then((blob) => download(blob, filename, `image/png`))
-    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
+  await save(await canvas_to_png_blob(canvas, png_dpi, scene, camera), filename, `image/png`)
 }
 
 interface SvgExportOptions {
@@ -353,17 +353,14 @@ export function export_svg_as_svg(
   filename: string,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
-): void {
+  save: FileSaver = download,
+): void | Promise<void> {
   if (!svg_element) {
     console.warn(`SVG element not found for export`)
     return
   }
-  try {
-    const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
-    download(svg_content, filename, `image/svg+xml;charset=utf-8`)
-  } catch (error) {
-    console.error(`Error exporting SVG:`, error)
-  }
+  const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
+  return save(svg_content, filename, `image/svg+xml;charset=utf-8`)
 }
 
 // Rasterize an SVG using its viewBox or viewport dimensions.
@@ -441,20 +438,23 @@ export function svg_to_png_blob(
 }
 
 // Export SVG element as PNG (triggers browser download)
-export function export_svg_as_png(
+export async function export_svg_as_png(
   svg_element: SVGElement | null,
   filename: string,
   png_dpi = DEFAULT_PNG_DPI,
   inline_styles: readonly string[] = [],
   options: SvgExportOptions = {},
-): void {
+  save: FileSaver = download,
+): Promise<void> {
   if (!svg_element) {
     console.warn(`SVG element not found for PNG export`)
     return
   }
-  svg_to_png_blob(svg_element, png_dpi, inline_styles, options)
-    .then((blob) => download(blob, filename, `image/png`))
-    .catch((error: unknown) => console.error(`Error exporting PNG:`, error))
+  await save(
+    await svg_to_png_blob(svg_element, png_dpi, inline_styles, options),
+    filename,
+    `image/png`,
+  )
 }
 
 // Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately
@@ -475,60 +475,61 @@ export function observe_canvas_presence(
   return () => observer.disconnect()
 }
 
-// Estimate VP9 video bitrate (bits/s) from pixel count and frame rate.
-// VP9 needs ~0.1 bits per pixel per frame for good quality; clamped to [1, 200] Mbps.
+// Bitrate target (bits/s) for AV1 exports, clamped to [1, 200] Mbps.
+// This pixel-rate heuristic also drives the file-size estimate; actual sizes vary by scene.
 export const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
   clamp(pixel_count * fps * 0.1, 1_000_000, 200_000_000)
 
-// Generate FFmpeg command for WebM to MP4 conversion
-export function get_ffmpeg_conversion_command(input_filename: string): string {
-  const output = input_filename.replace(/\.webm$/i, `.mp4`)
-  return `ffmpeg -i "${input_filename}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "${output}"`
-}
+// Both containers use AV1. MP4 requires its registered sample-entry code, av01.
+const video_mime_types = {
+  webm: `video/webm;codecs=av1`,
+  mp4: `video/mp4;codecs=av01`,
+} as const
+export type VideoFormat = keyof typeof video_mime_types
+
+export const is_video_export_supported = (format: VideoFormat): boolean =>
+  typeof MediaRecorder !== `undefined` &&
+  MediaRecorder.isTypeSupported(video_mime_types[format])
 
 // Recorder state changes synchronously; its encoder starts and stops asynchronously.
-function run_recorder_action(
+async function run_recorder_action(
   recorder: MediaRecorder,
   action: 'start' | 'stop',
   signal?: AbortSignal,
   after_action?: () => void,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    signal?.throwIfAborted()
-    const listeners = new AbortController()
-    const finish = (error?: Error): void => {
-      clearTimeout(timeout)
-      listeners.abort()
-      if (error !== undefined) reject(error)
-      else resolve()
-    }
-    const timeout = setTimeout(
-      () => finish(new Error(`Recording timeout - recorder did not ${action}`)),
-      5000,
-    )
-    recorder.addEventListener(action, () => finish(), { signal: listeners.signal })
-    signal?.addEventListener(`abort`, () => finish(to_error(signal.reason)), {
-      signal: listeners.signal,
-      once: true,
-    })
-    recorder.addEventListener(
-      `error`,
-      (event) => {
-        const message =
-          event instanceof ErrorEvent && event.error instanceof Error
-            ? event.error.message
-            : event.type
-        finish(new Error(`MediaRecorder error: ${message}`))
-      },
-      { signal: listeners.signal },
-    )
-    try {
+  signal?.throwIfAborted()
+  const listeners = new AbortController()
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    await new Promise<void>((resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error(`Recording timeout - recorder did not ${action}`)),
+        5000,
+      )
+      const options = { signal: listeners.signal }
+      recorder.addEventListener(action, () => resolve(), options)
+      signal?.addEventListener(`abort`, () => reject(to_error(signal.reason)), options)
+      recorder.addEventListener(
+        `error`,
+        (event) => {
+          const message =
+            event instanceof ErrorEvent && event.error instanceof Error
+              ? event.error.message
+              : event.type
+          reject(new Error(`MediaRecorder error: ${message}`))
+        },
+        options,
+      )
       recorder[action]()
       after_action?.()
-    } catch (error) {
-      finish(to_error(error))
-    }
-  })
+    })
+  } catch (error) {
+    throw to_error(error)
+  } finally {
+    clearTimeout(timeout)
+    listeners.abort()
+  }
 }
 
 // Cancel scheduled work too: animation frames may never fire in a hidden/unmounted viewer.
@@ -552,39 +553,39 @@ function wait_for_video_tick(signal?: AbortSignal, duration?: number): Promise<v
   })
 }
 
-// Export trajectory video as WebM while advancing through the requested frames.
-// Note: Browsers only support WebM natively. Use FFmpeg for MP4 conversion (see get_ffmpeg_conversion_command).
+// Export AV1 video while advancing through the requested trajectory frames.
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,
-  options: {
+  {
+    format = `webm`,
+    fps = 30,
+    total_frames = 100,
+    on_progress,
+    on_step,
+    on_finish,
+    on_save,
+    resolution_multiplier = DEFAULT_VIDEO_RESOLUTION,
+    signal,
+  }: {
+    format?: VideoFormat
     fps?: number
     total_frames?: number
     on_progress?: (progress: number) => void
     on_step?: (step_idx: number, signal?: AbortSignal) => void | Promise<void>
     // Restore caller-owned state after recording cleanup, before any download.
     on_finish?: () => void | Promise<void>
+    // Save the completed video to a caller-selected destination instead of downloading it.
+    on_save?: (blob: Blob) => void | Promise<void>
     resolution_multiplier?: number
     signal?: AbortSignal
   } = {},
 ): Promise<void> {
-  const {
-    fps = 30,
-    total_frames = 100,
-    on_progress,
-    on_step,
-    on_finish,
-    resolution_multiplier = 1,
-    signal,
-  } = options
-
   signal?.throwIfAborted()
-  if (
-    !canvas ||
-    typeof MediaRecorder === `undefined` ||
-    !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
-  )
-    throw new Error(`WebM video recording not supported in this browser`)
+  if (!canvas) throw new Error(`Canvas not ready for video export`)
+  const mime_type = video_mime_types[format]
+  if (!is_video_export_supported(format))
+    throw new Error(`AV1 recording (${mime_type}) is not supported in this browser`)
 
   const renderer = renderer_registry.get(canvas)
   // Recording captures the canvas stream while Threlte drives frames, but resizing the
@@ -646,7 +647,7 @@ export async function export_trajectory_video(
     if (total_frames > 0) copy_frame()
     stream = capture_canvas.captureStream(fps)
     recorder = new MediaRecorder(stream, {
-      mimeType: `video/webm;codecs=vp9`,
+      mimeType: mime_type,
       videoBitsPerSecond: bitrate,
     })
 
@@ -707,7 +708,9 @@ export async function export_trajectory_video(
     }
   }
   signal?.throwIfAborted()
-  const blob = new Blob(chunks, { type: `video/webm` })
-  download(blob, filename.replace(/\.(?:mp4|webm)$/i, `.webm`), `video/webm`)
+  const container_mime = `video/${format}`
+  const blob = new Blob(chunks, { type: container_mime })
+  if (on_save) await on_save(blob)
+  else download(blob, `${filename.replace(/\.(?:mp4|webm)$/i, ``)}.${format}`, container_mime)
   on_progress?.(100)
 }

@@ -23,6 +23,12 @@ test(`table settings reset authored overrides and preserve column widths`, async
   }
   await expect(pane.getByLabel(`Show heatmap`, { exact: true })).toBeChecked()
   await expect(pane.getByLabel(`Row numbers`, { exact: true })).not.toBeChecked()
+  const heatmap_rows = await pane
+    .getByRole(`region`, { name: `Heatmap`, exact: true })
+    .locator(`:scope > label`)
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().toJSON()))
+  expect(heatmap_rows).toHaveLength(2)
+  expect(heatmap_rows[1].top - heatmap_rows[0].bottom).toBeGreaterThanOrEqual(7.5)
   const score_cell = table.locator(`td[data-col="Score"]`).first()
   await expect(score_cell).toHaveCSS(`width`, `120px`)
   await expect
@@ -52,10 +58,13 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   await expect(rows).toContainText(`Beta`)
   for (const format of [`csv`, `json`, `md`, `tex`]) {
     await table.getByRole(`button`, { name: `Export`, exact: true }).click()
+    const filename = table.getByRole(`textbox`, { name: `File name`, exact: true })
+    if (format === `csv`) await filename.fill(`Selected rows`)
+    await expect(filename).toHaveValue(`Selected rows`)
     const downloaded = page.waitForEvent(`download`)
     await table.getByRole(`button`, { name: format.toUpperCase(), exact: true }).click()
     const download = await downloaded
-    expect(download.suggestedFilename()).toBe(`table-export.${format}`)
+    expect(download.suggestedFilename()).toBe(`Selected rows.${format}`)
     const path = await download.path()
     if (!path) throw new Error(`Missing downloaded ${format} path`)
     const content = await readFile(path, `utf8`)

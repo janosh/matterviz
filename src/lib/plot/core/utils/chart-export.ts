@@ -5,6 +5,7 @@
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
+import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type ChartExportFormat = `png` | `svg` | `csv`
@@ -29,20 +30,27 @@ export function export_chart_image(
   svg_element: SVGElement | null,
   base_filename: string,
   format: `svg` | `png`,
-): void {
+  save: FileSaver = download,
+): void | Promise<void> {
   if (!svg_element) return
   const filename = `${base_filename}.${format}`
   if (format === `svg`) {
-    export_svg_as_svg(svg_element, filename, CHART_EXPORT_INLINE_STYLES, CHART_EXPORT_OPTIONS)
-  } else {
-    export_svg_as_png(
+    return export_svg_as_svg(
       svg_element,
       filename,
-      DEFAULT_PNG_DPI,
       CHART_EXPORT_INLINE_STYLES,
       CHART_EXPORT_OPTIONS,
+      save,
     )
   }
+  return export_svg_as_png(
+    svg_element,
+    filename,
+    DEFAULT_PNG_DPI,
+    CHART_EXPORT_INLINE_STYLES,
+    CHART_EXPORT_OPTIONS,
+    save,
+  )
 }
 
 // === CSV ===
@@ -60,8 +68,9 @@ function export_csv(
   header: readonly string[],
   rows: readonly CsvCell[][],
   base_filename: string,
-): void {
-  download(to_csv(header, rows), `${base_filename}.csv`, `text/csv;charset=utf-8`)
+  save: FileSaver,
+): void | Promise<void> {
+  return save(to_csv(header, rows), `${base_filename}.csv`, `text/csv;charset=utf-8`)
 }
 
 // Long format (one row per point, series named in a column) rather than wide: series
@@ -120,13 +129,12 @@ export const create_chart_exporter =
     },
     csv: () => { header: readonly string[]; rows: CsvCell[][] },
   ) =>
-  (format: ChartExportFormat): void => {
-    const name = export_filename(
-      frame.title_config?.text,
-      frame.axes.x.label,
-      frame.axes.y.label,
-    )
-    if (format !== `csv`) return export_chart_image(frame.svg_element, name, format)
+  (format: ChartExportFormat, context?: FileExportContext): void | Promise<void> => {
+    const name =
+      context?.filename ??
+      export_filename(frame.title_config?.text, frame.axes.x.label, frame.axes.y.label)
+    const save = context?.save ?? download
+    if (format !== `csv`) return export_chart_image(frame.svg_element, name, format, save)
     const { header, rows } = csv()
-    export_csv(header, rows, name)
+    return export_csv(header, rows, name, save)
   }

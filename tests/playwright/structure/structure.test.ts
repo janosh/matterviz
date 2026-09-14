@@ -10,6 +10,8 @@ import {
   enter_edit_atoms_mode,
   expect_canvas_changed,
   expect_canvas_changed_by,
+  expect_centered,
+  expect_inline_spinner,
   get_canvas_timeout,
   goto_structure_test,
   IS_CI,
@@ -126,6 +128,13 @@ test.describe(`compressed source URL`, () => {
   for (const [route_path, heading_tag] of routes) {
     test(`${route_path} keeps the compressed source URL after loading`, async ({ page }) => {
       const requests: string[] = []
+      const wasm_gate = Promise.withResolvers<undefined>()
+      if (route_path === `/structure/symmetry`) {
+        await page.route(/moyo.*\.wasm(?:\?|$)/, async (route) => {
+          await wasm_gate.promise
+          await route.continue()
+        })
+      }
       await page.route(`**${compressed_source_path}`, (route) =>
         route.fulfill({ body: gzipSync(source_structure), contentType: `application/gzip` }),
       )
@@ -135,8 +144,24 @@ test.describe(`compressed source URL`, () => {
       })
 
       await page.goto(`${route_path}?file=${compressed_source_filename}`, {
-        waitUntil: `networkidle`,
+        waitUntil: `domcontentloaded`,
       })
+      try {
+        if (route_path === `/structure/symmetry`) {
+          const loading = page.locator(`.loading-placeholder`)
+          await expect(loading.getByRole(`status`)).toHaveText(`Loading symmetry analysis...`)
+          for (const width of [1200, 420]) {
+            await page.setViewportSize({ width, height: 900 })
+            const slot = await require_bbox(loading)
+            const { status, spinner, label } = await expect_inline_spinner(loading)
+            expect_centered(status, slot)
+            expect(spinner.height).toBeLessThanOrEqual(label.height)
+            expect(slot.x + slot.width).toBeLessThanOrEqual(width)
+          }
+        }
+      } finally {
+        wasm_gate.resolve(undefined)
+      }
 
       expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
       await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(

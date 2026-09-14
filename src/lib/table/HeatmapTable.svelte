@@ -11,7 +11,8 @@
     resolve_backdrop,
     resolve_css_color,
   } from '$lib/colors'
-  import { download } from '$lib/io/fetch'
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState } from '$lib/io/file-export.svelte'
   import { format_num } from '$lib/labels'
   import { array_max, clamp } from '$lib/math'
   import { is_activation_key } from '$lib/plot/core/interactions'
@@ -97,6 +98,7 @@
     controls,
     initial_sort = undefined,
     sort = $bindable({ column: ``, dir: `asc` }),
+    multi_sort = $bindable([]),
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     on_row_click,
@@ -138,6 +140,8 @@
     initial_sort?: InitialSort
     // Active sort by column ID. Bindable for external control/persistence.
     sort?: TableSort
+    // Shift-click criteria in priority order. Takes precedence over sort; bind to persist.
+    multi_sort?: { column: string; ascending: boolean }[]
     default_num_format?: string
     show_heatmap?: boolean
     on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
@@ -295,6 +299,7 @@
       filename: `table-export`,
     }),
   )
+  const export_state = new FileExportState(() => export_config?.filename ?? `table-export`)
   let virtual_config = $derived(
     pagination_config ? null : with_defaults(virtual, { overscan: 10, min_window: 60 }),
   )
@@ -523,7 +528,6 @@
   // === Sorting ===
   // Sort criteria as column IDs. multi_sort (Shift+click) takes precedence over the single
   // bindable sort, which falls back to initial_sort while unset.
-  let multi_sort = $state<{ column: string; ascending: boolean }[]>([])
   let sort_state = $derived({
     column: sort.column || initial_sort_config?.column || ``,
     ascending: sort.column ? sort.dir !== `desc` : initial_sort_config?.direction !== `desc`,
@@ -1487,17 +1491,20 @@
           )}
           {#if open_dropdown === `export`}
             <div class="dropdown-pane">
+              <ExportDestination state={export_state} />
               {#each export_config.formats as format (format)}
                 <button
                   class="dropdown-option"
-                  onclick={() => {
-                    download(
-                      EXPORTERS[format](),
-                      `${export_config.filename}.${format}`,
-                      EXPORT_MIME_TYPES[format],
-                    )
-                    open_dropdown = null
-                  }}
+                  disabled={export_state.busy || Boolean(export_state.filename_error)}
+                  onclick={() =>
+                    export_state.run(async ({ filename, save }) => {
+                      await save(
+                        EXPORTERS[format](),
+                        `${filename}.${format}`,
+                        EXPORT_MIME_TYPES[format],
+                      )
+                      open_dropdown = null
+                    })}
                 >
                   <Icon icon={Download} style="width: 12px" />
                   {format.toUpperCase()}

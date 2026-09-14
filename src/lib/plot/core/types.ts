@@ -1,3 +1,4 @@
+import type { FileExportContext } from '$lib/io/file-export.svelte'
 import type { ShowControlsProp } from '$lib/controls'
 import type { PaneProps, PaneToggleProps } from '$lib/overlays'
 import type { D3InterpolateName } from '$lib/colors'
@@ -660,8 +661,9 @@ export interface PlotControlsProps
   auto_ranges?: Partial<Record<AxisKey, Vec2>>
   // Saves the figure or the numbers behind it. Omit to hide the Export section - a
   // chart that can't serialize its data should not offer a CSV button that does nothing.
-  on_export?: (format: ChartExportFormat) => void
+  on_export?: (format: ChartExportFormat, context: FileExportContext) => void | Promise<void>
   export_formats?: readonly ChartExportFormat[]
+  export_filename?: string
   // Component props
   controls_title?: string
   controls_name?: string

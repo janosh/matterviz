@@ -1,18 +1,38 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
+// Cover ChartShell and the convex-hull toolbar in addition to the nested viewers in Trajectory.
+// oxlint-disable-next-line vitest/prefer-each -- Playwright has no test.each.
+for (const [route, toolbar] of [
+  [`/plot/sankey`, `.header-controls`],
+  [`/test/convex-hull-performance?dim=2d&count=100`, `.convex-hull-toolbar`],
+]) {
+  test(`${toolbar} uses the shared toolbar icon size`, async ({ page }) => {
+    await page.goto(route, { waitUntil: `networkidle` })
+    const icons = page.locator(toolbar).first().locator(`:scope > button > svg`)
+    await expect(icons.first()).toBeAttached()
+    expect(await icons.count()).toBeGreaterThanOrEqual(2)
+    const size = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)
+    for (const icon of await icons.all()) {
+      await expect(icon).toHaveCSS(`width`, size)
+      await expect(icon).toHaveCSS(`height`, size)
+    }
+  })
+}
+
 const export_routes = [`ternary`, `box-plot`, `scatter-plot`, `histogram`, `bar-plot`]
 export_routes.forEach((route) => {
   test(`${route} pane exports real SVG, CSV and PNG files`, async ({ page }) => {
     await page.goto(`/plot/${route}`, { waitUntil: `networkidle` })
     await page.locator(`button.pane-toggle`).first().click()
     const pane = page.locator(`.draggable-pane:visible`).first()
+    await pane.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`My ${route}`)
     for (const format of [`svg`, `csv`, `png`]) {
       const downloaded = page.waitForEvent(`download`)
       await pane.getByRole(`button`, { name: format.toUpperCase(), exact: true }).click()
       const download = await downloaded
       expect(await download.failure()).toBeNull()
-      expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format}$`))
+      expect(download.suggestedFilename()).toBe(`My ${route}.${format}`)
       const path = await download.path()
       if (!path) throw new Error(`No downloaded ${format} file for ${route}`)
       const contents = await readFile(path)
@@ -37,6 +57,15 @@ reset_cases.forEach(([route, section, label, value]) => {
     await page.locator(`button.pane-toggle`).first().click()
     const pane = page.locator(`.draggable-pane:visible`).first()
     const row = pane.locator(`label`).filter({ hasText: label }).first()
+    // Both grid and flow sections separate their stacked rows.
+    for (const settings_section of await pane
+      .locator(`.settings-section:not(.ctrl-line):not(.axis-fields)`)
+      .all()) {
+      const gap = await settings_section.evaluate(
+        (element) => getComputedStyle(element).rowGap,
+      )
+      expect(Number(gap.slice(0, -2))).toBeGreaterThan(0)
+    }
     if (route === `box-plot`) await row.locator(`select`).selectOption(value)
     else await row.locator(`input[type=number]`).fill(value)
     const reset = pane.getByRole(`button`, {

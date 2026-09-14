@@ -3,7 +3,7 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
-  import { download } from '$lib/io/fetch'
+  import type { FileExportContext } from '$lib/io/file-export.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import type { BrillouinZoneData } from './types'
@@ -14,7 +14,7 @@
     wrapper,
     scene,
     camera,
-    filename = `brillouin-zone`,
+    filename: source_filename = `brillouin-zone`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -27,11 +27,11 @@
     png_dpi?: number
   } = $props()
 
-  function export_as_png() {
+  function export_as_png({ filename, save }: FileExportContext) {
     const canvas = wrapper?.querySelector(`canvas`)
     if (!canvas || !scene || !camera) return
     const png_name = `${filename}-${bz_data?.order ?? `1`}.png`
-    export_canvas_as_png(canvas, png_name, png_dpi, scene, camera)
+    return export_canvas_as_png(canvas, png_name, png_dpi, scene, camera, save)
   }
 
   function get_json_data() {
@@ -46,10 +46,10 @@
     }
   }
 
-  function export_as_json() {
+  function export_as_json({ filename, save }: FileExportContext) {
     const json_data = get_json_data()
     if (!json_data || !bz_data) return
-    download(
+    return save(
       JSON.stringify(json_data, null, 2),
       `${filename}-bz-order-${bz_data.order}.json`,
       `application/json`,
@@ -87,6 +87,7 @@
 </script>
 
 <ExportPane
+  filename={source_filename}
   bind:export_pane_open
   bind:png_dpi
   {sections}

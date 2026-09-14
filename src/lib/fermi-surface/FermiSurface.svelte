@@ -1,11 +1,13 @@
 <script lang="ts">
+  import type { FileExportContext } from '$lib/io/file-export.svelte'
   import type { MaterialSource } from '$lib/file-viewer/open'
   import type { BrillouinZoneData } from '$lib/brillouin'
   import { compute_brillouin_zone } from '$lib/brillouin'
   import { reciprocal_lattice } from '$lib/math'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
-  import { Spinner, StatusMessage } from 'svelte-widgets'
+  import { type Spinner, StatusMessage } from 'svelte-widgets'
+  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback } from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
@@ -237,13 +239,16 @@
     return () => clearTimeout(timeout)
   })
 
-  async function handle_export(format: SceneExportFormat) {
+  async function handle_export(
+    format: SceneExportFormat,
+    { filename, save }: FileExportContext,
+  ) {
     if (!scene) {
       console.error(`No scene available for export`)
       return
     }
     try {
-      await export_scene_as(scene, format, current_filename || `fermi-surface`)
+      await export_scene_as(scene, format, filename, save)
     } catch (err) {
       console.error(`Export failed:`, err)
       error_msg = `Export failed: ${to_error(err).message}`
@@ -309,11 +314,7 @@
 >
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
-    <Spinner
-      text="Loading Fermi surface..."
-      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
-      {...spinner_props}
-    />
+    <LoadingStatus overlay label="Loading Fermi surface..." {...spinner_props} />
   {:else if error_msg}
     <StatusMessage
       bind:message={error_msg}
@@ -323,11 +324,7 @@
     />
   {:else if surface_data || grid_data}
     {#if extracting}
-      <Spinner
-        text="Extracting Fermi surface..."
-        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1"
-        {...spinner_props}
-      />
+      <LoadingStatus overlay label="Extracting Fermi surface..." {...spinner_props} />
     {/if}
     <ViewerChrome
       {controls_config}
@@ -362,6 +359,7 @@
           bind:interpolation_factor
           bind:camera_projection
           on_export={handle_export}
+          export_filename={current_filename || `fermi-surface`}
         />
       {/if}
     </ViewerChrome>

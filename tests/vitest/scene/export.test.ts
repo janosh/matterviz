@@ -106,14 +106,16 @@ describe(`export_scene_as`, () => {
   })
 
   it(`obj: writes a mtllib-referenced OBJ, then the MTL with the scene's material colors`, async () => {
-    await export_scene_as(scene, `obj`, `test`)
+    const exporting = export_scene_as(scene, `obj`, `test`)
+    await vi.advanceTimersByTimeAsync(0)
     expect(obj_spy).toHaveBeenCalledOnce()
     expect(downloads.map((item) => item.filename)).toEqual([`test.obj`])
     const obj_text = await downloads[0].blob.text()
     expect(obj_text).toMatch(/^mtllib test\.mtl\n# OBJ file/)
     expect(obj_text).toMatch(/f \d+ \d+ \d+/)
     // the companion MTL is delayed so browsers don't flag back-to-back downloads
-    vi.advanceTimersByTime(100)
+    await vi.advanceTimersByTimeAsync(100)
+    await exporting
     expect(downloads.map((item) => item.filename)).toEqual([`test.obj`, `test.mtl`])
     const mtl_text = await downloads[1].blob.text()
     expect(mtl_text).toContain(`newmtl red_sphere`)

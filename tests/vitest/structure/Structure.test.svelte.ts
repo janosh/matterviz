@@ -49,6 +49,7 @@ import {
   mouse,
   press_window_key,
   trigger_resize_observer,
+  resize_element,
 } from '../setup'
 
 // Exercise viewport lifecycle without creating a renderer in happy-dom.
@@ -1767,11 +1768,11 @@ describe(`Structure`, () => {
     },
   )
 
-  test(`export and controls panes exclude each other and preserve export edits`, async () => {
+  test(`export, flight and controls panes exclude each other and preserve edits`, async () => {
     const props = $state<{ active_pane: StructurePane | null }>({ active_pane: null })
     mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
     await tick()
-    const toggle_pane = async (pane: `export` | `controls`): Promise<void> => {
+    const toggle_pane = async (pane: `export` | `controls` | `flight`): Promise<void> => {
       doc_query<HTMLButtonElement>(`.structure-${pane}-toggle`).click()
       await tick()
     }
@@ -1798,6 +1799,33 @@ describe(`Structure`, () => {
     expect(doc_query(`.export-pane`).style.display).toBe(`none`)
     await toggle_pane(`export`)
     expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+    await toggle_pane(`flight`)
+    expect(props.active_pane).toBe(`flight`)
+    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+    // Viewer sizing must not replace the planner's manually written insets.
+    const planner = doc_query(`.structure-flight-pane`)
+    const motion = doc_query<HTMLSelectElement>(`[aria-label="Camera interpolation"]`)
+    expect(motion.closest(`details`)).toBeNull()
+    motion.value = `linear`
+    await fire(motion, new Event(`change`, { bubbles: true }))
+    planner.style.left = `123px`
+    planner.style.top = `234px`
+    const viewer = doc_query(`.structure`)
+    await resize_element(viewer, 1000, 600)
+    trigger_resize_observer(viewer)
+    await tick()
+    expect(viewer.style.getPropertyValue(`--struct-pane-max-height`)).toBe(
+      `calc(600px - 50px)`,
+    )
+    expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
+    const duration = doc_query<HTMLInputElement>(`[aria-label="Flight duration"]`)
+    duration.value = `12`
+    await fire(duration, new Event(`change`, { bubbles: true }))
+    await toggle_pane(`controls`)
+    expect(doc_query(`.structure-flight-pane`).style.display).toBe(`none`)
+    await toggle_pane(`flight`)
+    expect(duration.value).toBe(`12`)
+    expect(motion.value).toBe(`linear`)
   })
 
   // The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
@@ -2175,11 +2203,14 @@ describe(`source acquisition`, () => {
     mock_fetch_response(SAMPLE_POSCAR_CONTENT)
     const { promise, resolve } = Promise.withResolvers<undefined>()
     const on_file_drop = vi.fn(() => promise)
-    const state = { loading: false }
+    const state = $state({ loading: false })
     mount_structure(bind_props({ source: `/test.poscar`, on_file_drop }, state))
 
     await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
     expect(state.loading).toBe(true)
+    expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+      `Loading structure...`,
+    )
     resolve(undefined)
     await vi.waitFor(() => expect(state.loading).toBe(false))
   })

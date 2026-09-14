@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import { track_settings } from '$lib/controls'
   import { ISO_COLORMAP_SELECT_PROPS } from '$lib/isosurface/coloring'
   import { format_num } from '$lib/labels'
@@ -38,6 +41,7 @@
     // Camera
     camera_projection = $bindable(defaults.camera_projection),
     on_export,
+    export_filename = `fermi-surface`,
     children,
   }: Partial<FermiSurfaceSettings> & {
     controls_open?: boolean
@@ -46,9 +50,12 @@
     // Label for the per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
     custom_property_label?: string
     selected_bands?: number[]
-    on_export?: (format: SceneExportFormat) => void
+    export_filename?: string
+    on_export?: (format: SceneExportFormat, context: FileExportContext) => void | Promise<void>
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
+
+  const export_state = new FileExportState(() => export_filename)
 
   const export_formats = [
     [`stl`, `3D printing`],
@@ -327,12 +334,14 @@
   </SettingsGroup>
 
   {#if on_export}
+    <ExportDestination state={export_state} />
     <SettingsSection title="Export" layout="grid">
       <div class="export-buttons">
         {#each export_formats as [format, blurb] (format)}
           <button
             type="button"
-            onclick={() => on_export?.(format)}
+            disabled={export_state.busy || Boolean(export_state.filename_error)}
+            onclick={() => export_state.run((context) => on_export?.(format, context))}
             title="Export as {format.toUpperCase()} ({blurb})"
           >
             {format.toUpperCase()}

@@ -415,10 +415,6 @@
 {/if}
 
 <style>
-  :global(.convex-hull-toolbar > button > svg) {
-    --viewer-buttons-icon-size: 1.43em;
-    font-size: var(--ctrl-btn-icon-size, clamp(0.7rem, 2cqmin, 0.85rem));
-  }
   .hull-title {
     position: absolute;
     left: 1em;

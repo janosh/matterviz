@@ -227,9 +227,6 @@
         vector={vec}
         scale={0.5}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
-        shaft_radius={0.1}
-        arrow_head_radius={0.2}
-        arrow_head_length={0.8}
         onpointerenter={() => (hovered_idx = idx)}
         onpointerleave={() => (hovered_idx = null)}
       />

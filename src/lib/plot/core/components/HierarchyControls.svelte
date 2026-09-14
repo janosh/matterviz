@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import { track_settings } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   // Shared controls pane for the hierarchical part-of-whole charts. Exported as
@@ -39,6 +42,7 @@
     padding_outer = $bindable(DEFAULTS.treemap.padding_outer),
     export_buttons = true,
     on_export,
+    export_filename = chart,
     toggle_props = {},
     pane_props = {},
     children,
@@ -63,12 +67,15 @@
     padding_inner?: number
     padding_top?: number
     padding_outer?: number
+    export_filename?: string
     export_buttons?: boolean // show SVG/PNG download buttons in the pane
-    on_export?: (format: `svg` | `png`) => void
+    on_export?: (format: `svg` | `png`, context: FileExportContext) => void | Promise<void>
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
+
+  const export_state = new FileExportState(() => export_filename)
 
   let current_values = $derived({
     value_mode,
@@ -199,6 +206,7 @@
     </label>
   </SettingsSection>
   {#if export_buttons && on_export}
+    <ExportDestination state={export_state} />
     <!-- --hier-btn-*: forward the chart's own theming vars (--sunburst-btn-bg /
       --treemap-btn-bg); when unset, the outer var() falls back to the gray default -->
     <div
@@ -211,7 +219,9 @@
           type="button"
           class="export-btn"
           aria-label="Download {fmt.toUpperCase()}"
-          onclick={() => on_export?.(fmt)}>{fmt.toUpperCase()}</button
+          disabled={export_state.busy || Boolean(export_state.filename_error)}
+          onclick={() => export_state.run((context) => on_export?.(fmt, context))}
+          >{fmt.toUpperCase()}</button
         >
       {/each}
     </div>

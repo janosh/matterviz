@@ -1059,13 +1059,14 @@
       items: [
         {
           label: `SVG`,
-          on_download: () =>
-            export_svg_file(wrapper, export_basename, current_view_settings()),
+          on_download: ({ filename, save }) =>
+            export_svg_file(wrapper, filename, current_view_settings(), save),
         },
         {
           label: `PNG`,
           show_dpi: true,
-          on_download: () => export_png_file(wrapper, export_basename, png_dpi),
+          on_download: ({ filename, save }) =>
+            export_png_file(wrapper, filename, png_dpi, save),
         },
       ],
     },
@@ -1074,16 +1075,18 @@
       items: [
         {
           label: `JSON`,
-          on_download: () => export_json_file(export_json_payload(), export_basename),
+          on_download: ({ filename, save }) =>
+            export_json_file(export_json_payload(), filename, save),
           copy_text: () => get_json_string(export_json_payload()),
         },
         {
           label: `View`,
-          on_download: () => export_view_json_file(current_view_settings(), export_basename),
+          on_download: ({ filename, save }) =>
+            export_view_json_file(current_view_settings(), filename, save),
         },
         {
           label: `GLB`,
-          on_download: () =>
+          on_download: ({ filename, save }) =>
             export_glb_file(
               {
                 hull_geometry: colored_hull_geometry,
@@ -1092,7 +1095,8 @@
                 formula_meshes: formula_mesh_data,
                 formula_edges: formula_edge_data,
               },
-              export_basename,
+              filename,
+              save,
             ),
         },
       ],
@@ -1195,6 +1199,7 @@
   >
     {#if controls_config.visible(`export`)}
       <ExportPane
+        filename={export_basename}
         bind:export_pane_open
         bind:png_dpi
         sections={export_sections}

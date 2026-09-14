@@ -5,7 +5,6 @@ import {
   export_svg_as_png,
   export_svg_as_svg,
   export_trajectory_video,
-  get_ffmpeg_conversion_command,
   renderer_registry,
   scene_registry,
   svg_to_png_blob,
@@ -112,22 +111,6 @@ describe(`dpi_to_scale`, () => {
     [Infinity, 1],
   ])(`dpi=%s -> scale=%s`, (png_dpi, expected) => {
     expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
-  })
-})
-
-describe(`get_ffmpeg_conversion_command`, () => {
-  test.each([
-    [
-      `trajectory.webm`,
-      `ffmpeg -i "trajectory.webm" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -movflags faststart "trajectory.mp4"`,
-    ],
-    [`path/to/video.WEBM`, `"path/to/video.mp4"`], // case-insensitive, path preserved
-    [`recording.avi`, `"recording.avi"`], // non-.webm input keeps original extension
-  ])(`%s → contains %s`, (input: string, expected: string) => {
-    const result = get_ffmpeg_conversion_command(input)
-    // Verify always returns a proper ffmpeg command, not just the filename
-    expect(result).toMatch(/^ffmpeg\s+-i\s+/)
-    expect(result).toContain(expected)
   })
 })
 
@@ -267,7 +250,7 @@ describe(`svg_to_svg_string`, () => {
     ])
       expect(result).toContain(expected)
     expect(svg.attributes).toHaveLength(original_attrs)
-    export_svg_as_svg(svg, `output.svg`)
+    void export_svg_as_svg(svg, `output.svg`)
     expect(download).toHaveBeenCalledExactlyOnceWith(
       result,
       `output.svg`,
@@ -436,7 +419,7 @@ describe(`export_canvas_as_png`, () => {
     [`structure`, `structure-150dpi.png`], // .png appended when missing
   ])(`downloads %s as %s`, async (filename, expected_filename) => {
     mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
-    export_canvas_as_png(make_mock_canvas(), filename, 150)
+    await export_canvas_as_png(make_mock_canvas(), filename, 150)
     // canvas_to_png_blob is async, wait for download to be called
     await vi.waitFor(() => {
       expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
@@ -447,7 +430,7 @@ describe(`export_canvas_as_png`, () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     const scene = {} as Scene
     const camera = {} as Camera
-    export_canvas_as_png(canvas, `test.png`, 150, scene, camera)
+    await export_canvas_as_png(canvas, `test.png`, 150, scene, camera)
     await vi.waitFor(() => {
       expect(download).toHaveBeenCalledExactlyOnceWith(
         expect.any(Blob),
@@ -465,19 +448,17 @@ describe(`export_canvas_as_png`, () => {
 })
 
 describe(`export_svg_as_png`, () => {
-  test(`logs error for missing SVG dimensions`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    export_svg_as_png(make_svg(), `test.png`)
-    await vi.waitFor(() => {
-      expect(error_spy).toHaveBeenCalledWith(`Error exporting PNG:`, expect.any(Error))
-    })
+  test(`reports missing SVG dimensions to the export UI`, async () => {
+    await expect(export_svg_as_png(make_svg(), `test.png`)).rejects.toThrow(
+      `Invalid SVG dimensions`,
+    )
   })
 
   test(`downloads the rasterized PNG under the given filename`, async () => {
     const canvas = mock_offscreen_canvas()
     mock_object_url()
     mock_image(`load`)
-    export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, 144)
+    await export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, 144)
     expect([canvas.width, canvas.height]).toEqual([200, 200])
     await vi.waitFor(() => {
       expect(download).toHaveBeenCalledWith(expect.any(Blob), `test.png`, `image/png`)
@@ -490,14 +471,27 @@ describe(`export_trajectory_video`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => {})
   })
 
-  test.each<[string | null, string]>([
-    [null, `null canvas`],
-    [`valid`, `MediaRecorder undefined`],
-  ])(`throws for %s (%s)`, async (canvas_type) => {
-    const canvas = canvas_type === null ? null : make_mock_canvas()
-    await expect(export_trajectory_video(canvas, `test.webm`)).rejects.toThrow(
-      `WebM video recording not supported`,
+  test.each([
+    [`webm`, undefined],
+    [`mp4`, undefined],
+    [`webm`, `video/webm;codecs=vp9`],
+    [`mp4`, `video/mp4;codecs=avc1`],
+    [`webm`, `video/mp4;codecs=av01`],
+    [`mp4`, `video/webm;codecs=av1`],
+  ] as const)(`refuses %s when only %s is supported`, async (format, supported_mime) => {
+    vi.stubGlobal(
+      `MediaRecorder`,
+      supported_mime
+        ? { isTypeSupported: (mime: string) => mime === supported_mime }
+        : undefined,
     )
+    await expect(export_trajectory_video(null, `test`, { format })).rejects.toThrow(
+      `Canvas not ready`,
+    )
+    await expect(
+      export_trajectory_video(make_mock_canvas(), `test`, { format }),
+    ).rejects.toThrow(`AV1 recording (video/${format};codecs=`)
+    expect(download).not.toHaveBeenCalled()
   })
 
   test(`restores renderer state when high-resolution setup throws`, async () => {
@@ -549,15 +543,20 @@ describe(`export_trajectory_video`, () => {
 
   test.each([
     [`success`, undefined],
+    [`success-mp4`, undefined],
+    [`success-save`, undefined],
+    [`save-error`, `folder write failed`],
     [`download-error`, `download failed`],
     [`timeout`, `Recording timeout - recorder did not stop`],
     [`step-error`, `step failed`],
     [`start-error`, `MediaRecorder error: encoder failed`],
+    [`start-throw`, `start failed`],
     [`start-timeout`, `Recording timeout - recorder did not start`],
     [`stop-error`, `stop failed`],
     [`abort-step`, `cancelled`],
     [`abort-read`, `cancelled`],
     [`abort-start`, `cancelled`],
+    [`abort-start-string`, `cancelled`],
     [`abort-delay`, `cancelled`],
     [`abort-stop`, `cancelled`],
     [`abort-finish`, `cancelled`],
@@ -565,17 +564,27 @@ describe(`export_trajectory_video`, () => {
   ] as const)(`releases recording resources after %s`, async (outcome, error_message) => {
     vi.useFakeTimers()
     const controller = new AbortController()
-    const cancel = () => controller.abort(new Error(`cancelled`))
+    const cancel = () =>
+      controller.abort(outcome === `abort-start-string` ? `cancelled` : new Error(`cancelled`))
     const recorder_stop = vi.fn()
+    const recorder_create = vi.fn()
+    const success = outcome.startsWith(`success`)
+    const format = outcome === `success-mp4` ? `mp4` : undefined
+    const mime_type = format === `mp4` ? `video/mp4;codecs=av01` : `video/webm;codecs=av1`
     let recording_started = false
     class MockMediaRecorder extends EventTarget {
-      static isTypeSupported(): boolean {
-        return true
+      constructor(stream: MediaStream, options: MediaRecorderOptions) {
+        super()
+        recorder_create(stream, options)
+      }
+      static isTypeSupported(mime: string): boolean {
+        return mime === mime_type
       }
       state: MediaRecorder[`state`] = `inactive`
       start = vi.fn(() => {
         this.state = `recording`
-        if (outcome === `abort-start`) setTimeout(cancel, 1)
+        if (outcome === `start-throw`) throw new Error(`start failed`)
+        if (outcome.startsWith(`abort-start`)) setTimeout(cancel, 1)
         if (outcome === `start-timeout`) return
         // Cold encoders can start after the entire short trajectory would have finished.
         setTimeout(() => {
@@ -589,12 +598,15 @@ describe(`export_trajectory_video`, () => {
         }, 500)
       })
       stop = vi.fn(() => {
-        if (!outcome.startsWith(`start-`) && outcome !== `abort-start`)
+        if (!outcome.startsWith(`start-`) && !outcome.startsWith(`abort-start`))
           expect(recording_started, `do not stop before the encoder starts`).toBe(true)
         recorder_stop()
         if (outcome === `stop-error`) throw new Error(`stop failed`)
         this.state = `inactive`
         if (outcome === `abort-stop`) cancel()
+        this.dispatchEvent(
+          Object.assign(new Event(`dataavailable`), { data: new Blob([`encoded frame`]) }),
+        )
         if (outcome !== `timeout`) this.dispatchEvent(new Event(`stop`))
       })
     }
@@ -611,15 +623,10 @@ describe(`export_trajectory_video`, () => {
     const { canvas, renderer } = make_canvas_with_renderer()
     const view = { scene: {} as Scene, camera: {} as Camera }
     scene_registry.set(canvas, view)
-    const total_frames = [
-      `success`,
-      `step-error`,
-      `abort-step`,
-      `abort-delay`,
-      `abort-read`,
-    ].includes(outcome)
-      ? 2
-      : 0
+    const total_frames =
+      success || [`step-error`, `abort-step`, `abort-delay`, `abort-read`].includes(outcome)
+        ? 2
+        : 0
     if (total_frames) {
       canvas.width = 300
       canvas.height = 150
@@ -645,6 +652,11 @@ describe(`export_trajectory_video`, () => {
       capture_canvas as unknown as HTMLCanvasElement,
     )
     const expected_error = new Error(error_message)
+    const custom_save = outcome === `success-save` || outcome === `save-error`
+    const on_save = vi.fn(async (_blob: Blob) => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      if (outcome === `save-error`) throw expected_error
+    })
     if (outcome === `download-error`) {
       vi.mocked(download).mockImplementationOnce(() => {
         throw expected_error
@@ -661,11 +673,13 @@ describe(`export_trajectory_video`, () => {
       if (outcome === `abort-read` && step === 1) await read.promise
     })
 
-    const export_promise = export_trajectory_video(canvas, `test.webm`, {
+    const export_promise = export_trajectory_video(canvas, `test.WEBM`, {
+      format,
       fps: 24,
       total_frames,
       on_step,
-      resolution_multiplier: 2,
+      on_save: custom_save ? on_save : undefined,
+      resolution_multiplier: format === `mp4` ? undefined : 2,
       signal: controller.signal,
       on_finish: () => {
         expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
@@ -687,22 +701,38 @@ describe(`export_trajectory_video`, () => {
     else {
       await expect(export_promise).resolves.toBeUndefined()
       expect(renderer.render).toHaveBeenLastCalledWith(view.scene, view.camera)
+      const container = format ?? `webm`
+      if (custom_save) expect(on_save).toHaveBeenCalledExactlyOnceWith(expect.any(Blob))
+      else
+        expect(download).toHaveBeenCalledExactlyOnceWith(
+          expect.any(Blob),
+          `test.${container}`,
+          `video/${container}`,
+        )
+      const blob = custom_save
+        ? on_save.mock.calls[0][0]
+        : vi.mocked(download).mock.calls[0][0]
+      if (!(blob instanceof Blob)) throw new Error(`Expected a video Blob`)
+      expect(blob.type).toBe(`video/${container}`)
+      expect(await blob.text()).toBe(`encoded frame`)
     }
 
+    expect(recorder_create).toHaveBeenCalledExactlyOnceWith(stream, {
+      mimeType: mime_type,
+      videoBitsPerSecond: 1_152_000,
+    })
     expect(recorder_stop).toHaveBeenCalledTimes(outcome === `stop-error` ? 2 : 1)
+    expect(renderer.setPixelRatio).toHaveBeenNthCalledWith(1, format === `mp4` ? 3 : 2)
     expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
     expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
     expect(capture_canvas.captureStream).toHaveBeenCalledWith(24)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
-    expect(captured_steps).toEqual(
-      outcome === `success` ? [0, 0, 1] : total_frames ? [0, 0] : [],
-    )
-    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(
-      outcome === `success` ? 2 : total_frames ? 1 : 0,
-    )
+    expect(captured_steps).toEqual(success ? [0, 0, 1] : total_frames ? [0, 0] : [])
+    expect(tracks[0].requestFrame).toHaveBeenCalledTimes(success ? 2 : total_frames ? 1 : 0)
     expect(download).toHaveBeenCalledTimes(
-      [`success`, `download-error`].includes(outcome) ? 1 : 0,
+      !custom_save && (success || outcome === `download-error`) ? 1 : 0,
     )
+    expect(on_save).toHaveBeenCalledTimes(custom_save ? 1 : 0)
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })
 })
@@ -711,8 +741,8 @@ test.each([
   [export_canvas_as_png, `Canvas not found for PNG export`],
   [export_svg_as_svg, `SVG element not found for export`],
   [export_svg_as_png, `SVG element not found for PNG export`],
-] as const)(`null input warns: %s`, (export_image, message) => {
+] as const)(`null input warns: %s`, async (export_image, message) => {
   const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-  export_image(null, `test`)
+  await export_image(null, `test`)
   expect(warn).toHaveBeenCalledWith(message)
 })

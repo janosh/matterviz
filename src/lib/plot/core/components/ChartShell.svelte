@@ -152,6 +152,7 @@
     box-sizing: border-box;
   }
   .header-controls {
+    --icon-size: var(--ctrl-btn-icon-size, 1rem);
     position: absolute;
     /* tucked into the corner: the chrome floats over the chart itself, and further in
        it straddles cell boundaries and header labels instead of clearing them */

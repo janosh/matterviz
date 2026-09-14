@@ -82,6 +82,33 @@ test(`cell surfaces reuse unchanged geometry and dispose replaced blocks indepen
   expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
 })
 
+test(`cell arrows keep slender proportions as the lattice changes size`, () => {
+  const props = $state({ matrix: cubic })
+  const component = mount(Lattice, { target: document.body, props })
+  teardown = () => void unmount(component)
+  for (const length of [2, 0.5, 20]) {
+    props.matrix = [
+      [length, 0, 0],
+      [0, length, 0],
+      [0, 0, length],
+    ]
+    flushSync()
+    const shafts = threlte_stub.nodes.filter((node) => node.tag === `CylinderGeometry`)
+    const heads = threlte_stub.nodes.filter((node) => node.tag === `ConeGeometry`)
+    expect(shafts).toHaveLength(3)
+    expect(heads).toHaveLength(3)
+    for (const [idx, shaft] of shafts.entries()) {
+      const [shaft_radius, , shaft_length] = shaft.props.args as number[]
+      const [head_radius, head_length] = heads[idx].props.args as number[]
+      // On the 2 A test cell, the old 0.2 A head radius and 0.8 A head length dwarfed atoms.
+      expect(shaft_radius).toBeLessThan(length * 0.01)
+      expect(head_radius).toBeLessThan(length * 0.025)
+      expect(head_length).toBe(length * 0.05)
+      expect(shaft_length).toBeGreaterThan(head_length * 5)
+    }
+  }
+})
+
 test.each([
   [[1, 1, 1], false],
   [[0.5, -1, 1.9], false],

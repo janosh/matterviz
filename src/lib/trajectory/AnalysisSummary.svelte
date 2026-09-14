@@ -2,7 +2,8 @@
   // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
   // for the column headers, the compact styling, the faint note line each plot used to copy
   // and downloads of the curves and their analysis metadata
-  import { download } from '$lib/io/fetch'
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+  import { FileExportState } from '$lib/io/file-export.svelte'
   import { columns_to_csv } from '$lib/trajectory/analysis'
   import type { Snippet } from 'svelte'
 
@@ -23,6 +24,8 @@
     // Provenance line rendered below the table
     note: Snippet
   } = $props()
+  const default_name = $derived(downloads[0]?.filename.replace(/\.[^.]+$/, ``) ?? `analysis`)
+  const export_state = new FileExportState(() => default_name)
 </script>
 
 <table class="analysis-summary">
@@ -39,20 +42,36 @@
 </table>
 <p class="analysis-note">
   {@render note()}
-  {#each downloads as item (item.label)}
-    <button
-      type="button"
-      class="analysis-download"
-      title="Download {item.label}"
-      onclick={() =>
-        `columns` in item
-          ? download(columns_to_csv(item.columns()), item.filename, `text/csv`)
-          : download(JSON.stringify(item.json(), null, 2), item.filename, `application/json`)}
-    >
-      ⬇ {item.label}
-    </button>
-  {/each}
 </p>
+{#if downloads.length}
+  <details>
+    <summary>Export files</summary>
+    <ExportDestination state={export_state} />
+    {#each downloads as item (item.label)}
+      <button
+        type="button"
+        class="analysis-download"
+        title="Download {item.label}"
+        disabled={export_state.busy || Boolean(export_state.filename_error)}
+        onclick={() =>
+          export_state.run(({ filename, save }) => {
+            const suffix = item.filename.startsWith(`${default_name}.`)
+              ? item.filename.slice(default_name.length)
+              : `-${item.filename}`
+            return `columns` in item
+              ? save(columns_to_csv(item.columns()), `${filename}${suffix}`, `text/csv`)
+              : save(
+                  JSON.stringify(item.json(), null, 2),
+                  `${filename}${suffix}`,
+                  `application/json`,
+                )
+          })}
+      >
+        ⬇ {item.label}
+      </button>
+    {/each}
+  </details>
+{/if}
 
 <style>
   .analysis-summary {

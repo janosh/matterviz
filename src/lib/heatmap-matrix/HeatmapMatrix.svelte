@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import type { D3InterpolateName } from '$lib/colors'
   import { contrast_color_memo, is_color, resolve_backdrop } from '$lib/colors'
   import { format_num } from '$lib/labels'
@@ -163,7 +165,11 @@
     virtualize?: boolean
     overscan?: number
     export_formats?: HeatmapExportFormat[]
-    on_export?: (format: HeatmapExportFormat, payload: unknown) => void
+    on_export?: (
+      format: HeatmapExportFormat,
+      payload: unknown,
+      context: FileExportContext,
+    ) => void | Promise<void>
     // Mean of each visible row/column in an extra track
     show_row_summaries?: boolean
     show_col_summaries?: boolean
@@ -695,6 +701,7 @@
     active_cell = { x_idx, y_idx }
   }
 
+  const export_state = new FileExportState(() => `heatmap`)
   const ARROW_STEPS: Record<string, [x: number, y: number]> = {
     ArrowRight: [1, 0],
     ArrowLeft: [-1, 0],
@@ -707,7 +714,10 @@
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
     if (event.key.toLowerCase() === `e` && !event.repeat) {
       const format = export_formats[0]
-      if (format && on_export) on_export(format, build_export_payload(format))
+      if (format && on_export)
+        void export_state.run((context) =>
+          on_export?.(format, build_export_payload(format), context),
+        )
       return
     }
     const step = ARROW_STEPS[event.key]
@@ -813,8 +823,10 @@
     bind:show_row_summaries
     bind:show_col_summaries
     {export_formats}
+    {export_state}
     on_export={on_export
-      ? (fmt: HeatmapExportFormat) => on_export(fmt, build_export_payload(fmt))
+      ? (fmt: HeatmapExportFormat, context: FileExportContext) =>
+          on_export(fmt, build_export_payload(fmt), context)
       : undefined}
     {show_controls}
   />

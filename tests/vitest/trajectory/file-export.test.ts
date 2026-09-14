@@ -1,4 +1,5 @@
 import type { Crystal } from '$lib/structure'
+import app_css from '$lib/app.css?inline'
 import type { Vec3 } from '$lib/math'
 import { parse_poscar, parse_xyz } from '$lib/structure/parse'
 import { download } from '$lib/io/fetch'
@@ -530,6 +531,9 @@ describe(`TrajectoryExportPane property export`, () => {
     `video export requires frame navigation=%s`,
     async (can_navigate) => {
       vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+      const style = document.createElement(`style`)
+      style.textContent = app_css
+      document.body.append(style)
       const wrapper = document.createElement(`div`)
       open_pane({
         run: trajectory,
@@ -539,10 +543,26 @@ describe(`TrajectoryExportPane property export`, () => {
         on_step_change: can_navigate ? vi.fn() : undefined,
       })
       await tick()
+      for (const section of document.querySelectorAll(`.settings-section`)) {
+        const styles = getComputedStyle(section)
+        expect(styles.display).toBe(`flex`)
+        expect(styles.flexDirection).toBe(`column`)
+        expect(styles.gap).toBe(`6pt`)
+      }
       const reset_selector = `button[aria-label="Reset video settings to defaults"]`
       doc_query<HTMLButtonElement>(reset_selector).click()
       await tick()
       expect(document.querySelector(reset_selector)).toBeNull()
+      expect(doc_query(`.resolution-buttons .active`).textContent).toBe(`1x`)
+      const resolution_buttons = [
+        ...document.querySelectorAll<HTMLButtonElement>(`.resolution-buttons button`),
+      ]
+      expect(resolution_buttons.map((button) => button.textContent)).toEqual([
+        `0.5x`,
+        `1x`,
+        `2x`,
+        `4x`,
+      ])
       const number_inputs = document.querySelectorAll<HTMLInputElement>(
         `.settings-section input[type="number"]`,
       )
@@ -566,14 +586,29 @@ describe(`TrajectoryExportPane property export`, () => {
         await vi.waitFor(() =>
           expect(doc_query(`.export-info`).textContent).not.toBe(initial_info),
         )
-        await click(`Download WebM`)
-        await vi.waitFor(() =>
-          expect(io_export.export_trajectory_video).toHaveBeenCalledExactlyOnceWith(
-            replacement,
-            `run.extxyz.webm`,
-            expect.objectContaining({ total_frames: 3, fps: 30, resolution_multiplier: 1 }),
-          ),
-        )
+        for (const [idx, resolution_multiplier] of [1.5, 3, 6, 12].entries()) {
+          resolution_buttons[idx].click()
+          await tick()
+          expect(resolution_buttons[idx].classList.contains(`active`)).toBe(true)
+          for (const label of [`WebM`, `MP4`]) {
+            vi.mocked(io_export.export_trajectory_video).mockClear()
+            const format = label.toLowerCase()
+            await click(`Download ${label}`)
+            await vi.waitFor(() =>
+              expect(io_export.export_trajectory_video).toHaveBeenCalledExactlyOnceWith(
+                replacement,
+                `run.${format}`,
+                expect.objectContaining({
+                  format,
+                  total_frames: 3,
+                  fps: 30,
+                  resolution_multiplier,
+                }),
+              ),
+            )
+            expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+          }
+        }
         replacement.remove()
         await vi.waitFor(() =>
           expect(
@@ -583,6 +618,42 @@ describe(`TrajectoryExportPane property export`, () => {
       }
     },
   )
+
+  test.each([
+    [`video/webm;codecs=av1`, `WebM`],
+    [`video/mp4;codecs=av01`, `MP4`],
+    [`video/webm;codecs=vp9`, null],
+    [`video/mp4;codecs=avc1`, null],
+    [undefined, null],
+  ])(`enables only AV1 exports with %s support`, async (supported_mime, enabled_label) => {
+    vi.stubGlobal(
+      `MediaRecorder`,
+      supported_mime
+        ? { isTypeSupported: (mime: string) => mime === supported_mime }
+        : undefined,
+    )
+    const wrapper = document.createElement(`div`)
+    wrapper.append(document.createElement(`canvas`))
+    open_pane({ run: trajectory, wrapper, on_step_change: vi.fn() })
+    await tick()
+    if (enabled_label) {
+      expect(doc_query(`.resolution-buttons .active`).textContent).toBe(`1x`)
+      for (const label of [`WebM`, `MP4`]) {
+        expect(
+          doc_query<HTMLButtonElement>(`button[aria-label="Download ${label}"]`).disabled,
+        ).toBe(label !== enabled_label)
+      }
+    } else {
+      expect(doc_query(`.warning`).textContent).toContain(
+        `does not support AV1 video recording`,
+      )
+      expect(document.querySelector(`button[aria-label="Download WebM"]`)).toBeNull()
+      expect(document.querySelector(`button[aria-label="Download MP4"]`)).toBeNull()
+    }
+    expect(doc_query<HTMLButtonElement>(`button[aria-label="Download extXYZ"]`).disabled).toBe(
+      false,
+    )
+  })
 
   test.each([
     [`success`, ``],
@@ -619,7 +690,7 @@ describe(`TrajectoryExportPane property export`, () => {
       })
       let export_signal: AbortSignal | undefined
       vi.mocked(io_export.export_trajectory_video).mockImplementationOnce(
-        async (_canvas, filename, { signal, on_step, on_finish } = {}) => {
+        async (_canvas, _filename, { signal, on_step, on_finish, on_save } = {}) => {
           export_signal = signal
           try {
             await on_step?.(0, signal)
@@ -636,7 +707,7 @@ describe(`TrajectoryExportPane property export`, () => {
             await on_finish?.()
           }
           signal?.throwIfAborted()
-          download(new Blob(), filename, `video/webm`)
+          await on_save?.(new Blob([], { type: `video/webm` }))
         },
       )
       const pane = open_pane({
@@ -650,6 +721,9 @@ describe(`TrajectoryExportPane property export`, () => {
       })
       await click(`Download WebM`)
       await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledWith(0, export_signal))
+      expect(
+        document.querySelector(`.export-progress .spinner[role="status"]`)?.textContent,
+      ).toContain(`Exporting WEBM`)
       const export_settled = vi.fn()
       const export_result = vi.mocked(io_export.export_trajectory_video).mock.results[0]
       void Promise.resolve(export_result.value).then(export_settled, export_settled)

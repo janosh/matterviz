@@ -3,6 +3,7 @@
 // StructureScene, ScatterPlot3DScene, TernaryPrismScene and ChemPotScene3D.
 export * from './bind-renderer.svelte'
 export * from './colors'
+export * from './camera-flight'
 export * from './export'
 export * from './fly-to'
 export * from './geometry.svelte'

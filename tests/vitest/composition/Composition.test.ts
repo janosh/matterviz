@@ -87,7 +87,7 @@ describe(`Composition component`, () => {
     await open_context_menu()
 
     const menu_options = document.querySelectorAll(`.action-menu button`)
-    expect(menu_options.length).toBeGreaterThanOrEqual(13) // 3 display modes + 6 color schemes + 4 export options
+    expect(menu_options.length).toBeGreaterThanOrEqual(12) // 3 display modes + 6 color schemes + 3 export options
 
     const option_texts = Array.from(menu_options).map((opt) => opt.textContent?.trim())
     const expected_options = [
@@ -99,8 +99,7 @@ describe(`Composition component`, () => {
       `Alloy`,
       `Copy Formula`,
       `Copy Data`,
-      `Export SVG`,
-      `Export PNG`,
+      `Export files…`,
     ]
     for (const label of expected_options) expect(option_texts).toContain(label)
   })

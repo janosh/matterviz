@@ -86,8 +86,8 @@ describe(`create_chart_exporter`, () => {
 
   beforeEach(() => vi.clearAllMocks())
 
-  test(`csv writes the table under the .csv name and draws no image`, () => {
-    make()(`csv`)
+  test(`csv writes the table under the configured name and draws no image`, async () => {
+    await make()(`csv`)
     expect(download).toHaveBeenCalledWith(
       `a\n1`,
       `My-Chart-E-eV-n.csv`,
@@ -95,18 +95,32 @@ describe(`create_chart_exporter`, () => {
     )
     expect(export_svg_as_png).not.toHaveBeenCalled()
     expect(export_svg_as_svg).not.toHaveBeenCalled()
+    const save = vi.fn()
+    await make()(`csv`, { filename: `My results`, save, prepare: vi.fn() })
+    expect(save).toHaveBeenCalledExactlyOnceWith(
+      `a\n1`,
+      `My results.csv`,
+      expect.stringContaining(`csv`),
+    )
   })
 
   test.each([
     [`png`, export_svg_as_png],
     [`svg`, export_svg_as_svg],
-  ] as const)(`%s renders the image and writes no csv`, (format, exporter) => {
-    make()(format)
+  ] as const)(`%s renders the image and writes no csv`, async (format, exporter) => {
+    await make()(format)
     // Only the leading args are the contract here; styles/dpi belong to the io helpers
     expect(vi.mocked(exporter).mock.calls[0].slice(0, 2)).toEqual([
       svg,
       `My-Chart-E-eV-n.${format}`,
     ])
     expect(download).not.toHaveBeenCalled()
+    const save = vi.fn()
+    await make()(format, { filename: `My figure`, save, prepare: vi.fn() })
+    expect(vi.mocked(exporter).mock.lastCall?.slice(0, 2)).toEqual([
+      svg,
+      `My figure.${format}`,
+    ])
+    expect(vi.mocked(exporter).mock.lastCall?.at(-1)).toBe(save)
   })
 })

@@ -1,20 +1,23 @@
 <script lang="ts">
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_canvas_as_png, observe_canvas_presence } from '$lib/io/export'
   import { export_scene_as } from '$lib/scene'
+  import CameraFlightPane from '$lib/scene/CameraFlightPane.svelte'
   import type { AnyStructure } from '$lib/structure'
   import * as exports from '$lib/structure/export'
   import type { StructTextFormat } from '$lib/structure/export'
-  import { download } from '$lib/io/fetch'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
   import type { Camera, Scene } from 'three/webgpu'
 
   let {
     export_pane_open = $bindable(false),
+    flight_pane_open = $bindable(false),
     structure = undefined,
     prediction,
     on_clear_prediction,
@@ -31,6 +34,7 @@
     ...rest
   }: {
     export_pane_open?: boolean
+    flight_pane_open?: boolean
     structure?: AnyStructure
     prediction?: StructureToolPrediction
     on_clear_prediction?: () => void
@@ -45,6 +49,9 @@
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()
+  const export_state = new FileExportState(
+    () => image_filename ?? exports.create_structure_filename(structure),
+  )
 
   const text_export_formats = [
     {
@@ -93,34 +100,18 @@
     }
   }
 
-  async function handle_3d_export(format: `glb` | `obj`) {
-    if (!scene) {
-      console.warn(`No scene available for ${format.toUpperCase()} export`)
-      return
-    }
-    try {
-      await export_scene_as(scene, format, exports.create_structure_filename(structure))
-    } catch (error) {
-      console.error(`Failed to export ${format.toUpperCase()}:`, error)
-    }
-  }
+  let wrapper_canvas = $state.raw<HTMLCanvasElement | null>(null)
+  let flight_running = $state(false)
 
-  let wrapper_has_canvas = $state(false)
-
-  $effect(() => observe_canvas_presence(wrapper, (val) => (wrapper_has_canvas = val)))
-  let has_canvas = $derived(Boolean(image_canvas) || wrapper_has_canvas)
+  $effect(() =>
+    observe_canvas_presence(wrapper, () => {
+      wrapper_canvas = wrapper?.querySelector(`canvas`) ?? null
+    }),
+  )
+  let has_canvas = $derived(Boolean(image_canvas || wrapper_canvas))
 
   const fractional_reason = $derived(exports.fractional_export_unavailable_reason(structure))
   const xyz_reason = $derived(exports.xyz_export_unavailable_reason(structure))
-
-  function handle_text_export(format: StructTextFormat) {
-    if (!structure) return
-    try {
-      exports.export_structure_as(format, structure)
-    } catch (error) {
-      console.error(`Failed to export ${format.toUpperCase()}:`, error)
-    }
-  }
 
   let prediction_error = $state(``)
   function prediction_text(): string | null {
@@ -141,15 +132,12 @@
             items: [
               {
                 label: `Export prediction`,
+                disabled: flight_running,
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
-                on_download: () => {
+                on_download: ({ filename, save }: FileExportContext) => {
                   const content = prediction_text()
                   if (prediction && content)
-                    download(
-                      content,
-                      `prediction-${prediction.run_id}.json`,
-                      `application/json`,
-                    )
+                    return save(content, `${filename}-prediction.json`, `application/json`)
                 },
                 copy_text: prediction_text,
               },
@@ -170,9 +158,13 @@
         return {
           label,
           hint,
-          disabled: Boolean(disabled_reason),
+          disabled: flight_running || Boolean(disabled_reason),
           disabled_reason,
-          on_download: () => handle_text_export(format),
+          on_download: ({ filename, save }: FileExportContext) => {
+            if (!structure) return
+            const { to_str, ext, mime } = exports.STRUCT_TEXT_FORMATS[format]
+            return save(to_str(structure), `${filename}.${ext}`, mime)
+          },
           copy_text: () => get_text_content(format),
         }
       }),
@@ -182,20 +174,22 @@
       items: [
         {
           label: `PNG`,
-          disabled: !has_canvas,
+          disabled: flight_running || !has_canvas,
           disabled_reason: has_canvas ? undefined : `Waiting for the 3D view to render`,
           show_dpi: true,
-          on_download: () => {
+          on_download: ({ filename, save }: FileExportContext) => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
             if (canvas) {
-              export_canvas_as_png(
+              return export_canvas_as_png(
                 canvas,
-                image_filename ?? structure,
+                filename,
                 png_dpi,
                 image_canvas ? null : scene,
                 image_canvas ? null : camera,
+                save,
               )
-            } else console.warn(`Canvas element not found for PNG export`)
+            }
+            console.warn(`Canvas element not found for PNG export`)
           },
         },
       ],
@@ -207,9 +201,10 @@
             items: model_3d_formats.map(({ label, format, hint }) => ({
               label,
               hint,
-              disabled: !scene,
+              disabled: flight_running || !scene,
               disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
-              on_download: () => handle_3d_export(format),
+              on_download: ({ filename, save }: FileExportContext) =>
+                scene && export_scene_as(scene, format, filename, save),
             })),
           },
         ]
@@ -220,6 +215,7 @@
 {#if prediction_error}<p role="alert">{prediction_error}</p>{/if}
 
 <ExportPane
+  state={export_state}
   bind:export_pane_open
   bind:png_dpi
   sections={export_pane_open ? sections : []}
@@ -242,3 +238,18 @@
     </div>
   {/if}
 </ExportPane>
+
+{#if enable_3d_export}
+  <CameraFlightPane
+    bind:open={flight_pane_open}
+    canvas={wrapper_canvas}
+    filename={image_filename ?? `structure`}
+    bind:busy={flight_running}
+    class_prefix="structure-flight"
+    {pane_props}
+    on_export={() => {
+      flight_pane_open = false
+      export_pane_open = true
+    }}
+  />
+{/if}

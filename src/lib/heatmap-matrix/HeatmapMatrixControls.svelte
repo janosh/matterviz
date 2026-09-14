@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+  import ExportDestination from '$lib/io/ExportDestination.svelte'
+
   import type { ShowControlsProp } from '$lib/controls'
   import { SettingsSection } from '$lib/layout'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
@@ -29,6 +32,7 @@
     show_col_summaries = $bindable(false),
     export_formats = [`csv`, `json`],
     on_export,
+    export_state = new FileExportState(() => `heatmap`),
     pane_props = {},
     toggle_props = {},
     children,
@@ -49,7 +53,11 @@
     show_row_summaries?: boolean
     show_col_summaries?: boolean
     export_formats?: HeatmapExportFormat[]
-    on_export?: (format: HeatmapExportFormat) => void
+    export_state?: FileExportState
+    on_export?: (
+      format: HeatmapExportFormat,
+      context: FileExportContext,
+    ) => void | Promise<void>
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
     children?: Snippet<[{ controls_open: boolean }]>
@@ -146,11 +154,17 @@
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
     {#if on_export && export_formats.length}
+      <ExportDestination state={export_state} />
       <div class="setting">
         <span>Export</span>
         <div class="pane-row">
           {#each export_formats as export_format (export_format)}
-            <button type="button" onclick={() => on_export?.(export_format)}>
+            <button
+              type="button"
+              disabled={export_state.busy || Boolean(export_state.filename_error)}
+              onclick={() =>
+                export_state.run((context) => on_export?.(export_format, context))}
+            >
               Export {export_format.toUpperCase()}
             </button>
           {/each}

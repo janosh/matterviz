@@ -70,8 +70,15 @@ describe(`FermiSurfaceControls`, () => {
     await render_controls({ on_export: has_handler ? on_export : undefined })
     const buttons = document.querySelectorAll<HTMLButtonElement>(`.export-buttons button`)
     expect(buttons).toHaveLength(has_handler ? 3 : 0)
-    for (const button of buttons) button.click()
-    expect(on_export.mock.calls).toEqual(has_handler ? [[`stl`], [`obj`], [`glb`]] : [])
+    for (const button of buttons) {
+      button.click()
+      await tick()
+    }
+    expect(on_export.mock.calls.map(([format]) => format)).toEqual(
+      has_handler ? [`stl`, `obj`, `glb`] : [],
+    )
+    for (const [, context] of on_export.mock.calls)
+      expect(context).toMatchObject({ filename: `fermi-surface`, save: expect.any(Function) })
   })
 
   test.each<{

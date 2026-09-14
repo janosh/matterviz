@@ -31,6 +31,8 @@ export const FPS_STEP = 0.1
 
 // Default resolution for PNG export, shared by every viewer's export pane and the export helpers
 export const DEFAULT_PNG_DPI = 150
+// Scale both video dimensions relative to the viewer's drawing buffer.
+export const DEFAULT_VIDEO_RESOLUTION = 3
 
 // Canonical element-color scheme names live in this dependency-free module because settings
 // and extension build scripts need the choices without loading the color tables themselves.

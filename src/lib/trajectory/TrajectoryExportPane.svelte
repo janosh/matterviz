@@ -1,17 +1,20 @@
 <script lang="ts">
+  import { DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
   import { track_settings } from '$lib/controls'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import {
     estimate_video_bitrate,
     export_trajectory_video,
-    get_ffmpeg_conversion_command,
+    is_video_export_supported,
     observe_canvas_presence,
+    type VideoFormat,
   } from '$lib/io/export'
-  import { download } from '$lib/io/fetch'
+  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import type { ExportSection } from '$lib/io/types'
   import { format_num } from '$lib/labels'
   import { NumberRangeInput, SettingsSection } from '$lib/layout'
+  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import { clamp } from '$lib/math'
   import {
     fractional_export_unavailable_reason,
@@ -30,22 +33,28 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import { to_error } from '$lib/utils'
   import { getAbortSignal } from 'svelte'
+  import CameraFlightPane from '$lib/scene/CameraFlightPane.svelte'
+  import { Icon } from 'svelte-widgets'
+  import { Camera } from 'svelte-widgets/icons'
 
   let {
     export_pane_open = $bindable(false),
+    flight_pane_open = $bindable(false),
     run = undefined,
     wrapper = undefined,
     filename = `trajectory`,
     video_fps = $bindable(30),
-    resolution_multiplier = $bindable(1),
+    resolution_multiplier = $bindable(DEFAULT_VIDEO_RESOLUTION),
     current_step_idx = 0,
     on_step_change = undefined,
     resolve_frame = undefined,
+    on_flight_start,
     pane_props = {},
     toggle_props = {},
     ...rest
   }: {
     export_pane_open?: boolean
+    flight_pane_open?: boolean
     // Trajectory data for generating filename
     run?: TrajectoryRun
     // Canvas wrapper for video export
@@ -59,12 +68,15 @@
     // Loads one frame by index. Indexed trajectories keep only a few frames in `frames`, so
     // without this the data exports below would silently write a truncated file.
     resolve_frame?: TrajectoryFrameResolver
+    // Pause playback for deterministic stepping; returns a callback to restore playback.
+    on_flight_start?: () => () => void
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
   } = $props()
 
-  type VideoFormat = `webm` | `mp4`
   type TableFormat = `csv` | `json`
+
+  const export_state = new FileExportState(() => trajectory_export_basename(filename))
 
   // Which export is running (one at a time) and how far along it is
   let running = $state<{
@@ -73,6 +85,7 @@
     controller: AbortController
   } | null>(null)
   let export_error = $state<string | null>(null)
+  let flight_running = $state(false)
   let run_signal: AbortSignal
   $effect(() => {
     if (!run) return
@@ -91,7 +104,9 @@
   })
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
   let range = $derived(`${start_frame}-${end_frame}`)
-  let data_export_disabled = $derived(running !== null || !run || export_frame_count === 0)
+  let data_export_disabled = $derived(
+    running !== null || flight_running || !run || export_frame_count === 0,
+  )
   // Preview is frame zero; only gate ranges containing it. Writers validate every frame.
   let poscar_reason = $derived(
     run && start_frame === 0
@@ -111,10 +126,11 @@
       canvas = wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null
     }),
   )
-  let is_video_supported = $derived(
-    typeof MediaRecorder !== `undefined` &&
-      MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
-  )
+  const video_formats = ([`webm`, `mp4`] as const).map((format) => ({
+    format,
+    label: format === `webm` ? `WebM` : `MP4`,
+    supported: is_video_export_supported(format),
+  }))
   // Estimated file size in MB
   let file_size_mb = $derived.by(() => {
     if (!canvas) return 0
@@ -136,7 +152,7 @@
     label: string,
     task: (signal: AbortSignal) => Promise<Result>,
   ): Promise<Result | null> {
-    if (running) return null
+    if (running || flight_running) return null
     export_error = null
     const controller = new AbortController()
     running = { label, progress: 0, controller }
@@ -176,22 +192,24 @@
     output_name: string,
     mime: string,
     serialize: (signal: AbortSignal) => Promise<string | Blob>,
+    context: FileExportContext,
   ) =>
     run_export(label, async (signal) => {
+      const save = await context.prepare(output_name, signal)
       const data = await serialize(signal)
-      signal.throwIfAborted()
-      download(data, output_name, mime)
+      await save(data, mime)
     })
 
-  const download_table = (format: TableFormat) =>
+  const download_table = (format: TableFormat, context: FileExportContext) =>
     download_export(
       format.toUpperCase(),
-      `${trajectory_export_basename(filename)}_frames_${range}.${format}`,
+      `${context.filename}_frames_${range}.${format}`,
       format === `csv` ? `text/csv` : `application/json`,
       (signal) => serialize_table(format, signal),
+      context,
     )
 
-  async function export_video(format: VideoFormat) {
+  async function export_video(format: VideoFormat, context: FileExportContext) {
     if (!run || !on_step_change || !canvas || export_frame_count === 0) {
       export_error = !run
         ? `No trajectory`
@@ -207,13 +225,17 @@
     const lifetime_signal = run_signal
     const first_frame = start_frame
     await run_export(format.toUpperCase(), async (signal) => {
+      const output_name = `${context.filename}.${format}`
+      const save = await context.prepare(output_name, signal)
       // The viewer pauses playback here, before a lazy frame read can take over.
       await on_step_change(original_step)
-      await export_trajectory_video(canvas, `${filename}.webm`, {
+      await export_trajectory_video(canvas, output_name, {
+        format,
         fps: video_fps,
         total_frames: export_frame_count,
         resolution_multiplier,
         signal,
+        on_save: (blob) => save(blob, blob.type),
         on_progress: (progress) => {
           if (running) running.progress = progress
         },
@@ -246,11 +268,6 @@
           }
         },
       })
-      if (format === `mp4`) {
-        navigator.clipboard
-          .writeText(get_ffmpeg_conversion_command(`${filename}.webm`))
-          .catch(console.warn)
-      }
     })
   }
 
@@ -263,10 +280,10 @@
           hint: `All frames ${range} as one extended XYZ file`,
           disabled: data_export_disabled || Boolean(xyz_reason),
           disabled_reason: xyz_reason,
-          on_download: () =>
+          on_download: (context) =>
             download_export(
               `extXYZ`,
-              `${trajectory_export_basename(filename)}.extxyz`,
+              `${context.filename}.extxyz`,
               `chemical/x-xyz`,
               (signal) =>
                 serialize_extxyz_frame_range(
@@ -276,6 +293,7 @@
                   on_progress,
                   signal,
                 ),
+              context,
             ),
         },
         {
@@ -283,21 +301,22 @@
           hint: `One numbered POSCAR per frame, zipped`,
           disabled: data_export_disabled || Boolean(poscar_reason),
           disabled_reason: poscar_reason,
-          on_download: () =>
+          on_download: (context) =>
             download_export(
               `POSCAR ZIP`,
-              `${trajectory_export_basename(filename)}_poscar_${range}.zip`,
+              `${context.filename}_poscar_${range}.zip`,
               `application/zip`,
               (signal) =>
                 create_poscar_frame_range_zip(
                   start_frame,
                   end_frame,
                   frame_at,
-                  filename,
+                  context.filename,
                   total_frames_available,
                   on_progress,
                   signal,
                 ),
+              context,
             ),
         },
       ],
@@ -311,7 +330,7 @@
             ? `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`
             : `Same per-frame numbers as the CSV, with a separate units map`,
         disabled: data_export_disabled,
-        on_download: () => download_table(format),
+        on_download: (context) => download_table(format, context),
         copy_text: () =>
           run_export(format.toUpperCase(), (signal) => serialize_table(format, signal)),
       })),
@@ -328,12 +347,14 @@
     () => ({ video_fps, resolution_multiplier }),
     {
       video_fps: 30,
-      resolution_multiplier: 1,
+      resolution_multiplier: DEFAULT_VIDEO_RESOLUTION,
     },
   )
 </script>
 
 <ExportPane
+  state={export_state}
+  busy={running !== null || flight_running}
   bind:export_pane_open
   {pane_props}
   toggle_props={{
@@ -361,23 +382,36 @@
   {/snippet}
 
   {#if running}
-    <div class="export-info">
-      Exporting {running.label}… {format_num(running.progress, `.0f`)}%
-      <button
-        type="button"
-        aria-label="Cancel export"
-        onclick={() => running?.controller.abort()}>Cancel</button
-      >
+    <div class="export-info export-progress">
+      <LoadingStatus
+        label={`Exporting ${running.label}… ${format_num(running.progress, `.0f`)}%`}
+        cancel_label="Cancel export"
+        on_cancel={() => running?.controller.abort()}
+      />
     </div>
   {/if}
   {#if export_error}
     <div class="error-message">⚠️ {export_error}</div>
   {/if}
 
-  <h4>Export Video</h4>
+  <h4>Export Video · AV1</h4>
 
-  {#if !is_video_supported}
-    <div class="warning">Video export requires Chrome, Edge, or Opera</div>
+  {#if run && on_step_change}
+    <button
+      type="button"
+      disabled={running !== null}
+      style="display: inline-flex; align-items: center; gap: 0.5em; justify-self: start"
+      onclick={() => {
+        export_pane_open = false
+        flight_pane_open = true
+      }}
+    >
+      <Icon icon={Camera} /> Plan camera flight
+    </button>
+  {/if}
+
+  {#if !video_formats.some(({ supported }) => supported)}
+    <div class="warning">This browser does not support AV1 video recording.</div>
   {:else}
     <SettingsSection
       title="Video Settings"
@@ -392,7 +426,8 @@
       <span class="field-label">
         Resolution
         <div class="resolution-buttons">
-          {#each [0.5, 1, 2, 4, 8] as multiplier (multiplier)}
+          {#each [0.5, 1, 2, 4] as scale (scale)}
+            {@const multiplier = scale * DEFAULT_VIDEO_RESOLUTION}
             {@const size = canvas
               ? ` (${Math.round(canvas.width * multiplier)}×${Math.round(canvas.height * multiplier)})`
               : ``}
@@ -400,9 +435,9 @@
               type="button"
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
-              {@attach tooltip({ content: `${multiplier}x${size}` })}
+              {@attach tooltip({ content: `${scale}x${size}` })}
             >
-              {multiplier}x
+              {scale}x
             </button>
           {/each}
         </div>
@@ -410,15 +445,24 @@
     </SettingsSection>
 
     <div class="export-buttons">
-      {#each [{ label: `WebM`, format: `webm`, hint: `Export as WebM video` }, { label: `MP4`, format: `mp4`, hint: `WebM + ffmpeg command` }] as const as { label, format, hint } (format)}
+      {#each video_formats as { label, format, supported } (format)}
         <div style="display: flex; align-items: center; gap: 4pt">
           {label}
           <button
             type="button"
-            onclick={() => export_video(format)}
-            disabled={data_export_disabled || !on_step_change || !canvas}
+            onclick={() => export_state.run((context) => export_video(format, context))}
+            disabled={data_export_disabled ||
+              export_state.busy ||
+              Boolean(export_state.filename_error) ||
+              !on_step_change ||
+              !canvas ||
+              !supported}
             aria-label="Download {label}"
-            {@attach tooltip({ content: hint })}
+            {@attach tooltip({
+              content: supported
+                ? `Export AV1 video as ${label}`
+                : `AV1 recording in ${label} is not supported in this browser`,
+            })}
           >
             ⬇
           </button>
@@ -440,6 +484,59 @@
     {/if}
   {/if}
 </ExportPane>
+
+{#if run && on_step_change}
+  <CameraFlightPane
+    bind:open={flight_pane_open}
+    {canvas}
+    {filename}
+    source_key={run}
+    disabled={running !== null}
+    bind:busy={flight_running}
+    class_prefix="trajectory-flight"
+    {pane_props}
+    toggle_props={{
+      // Keep an anchor in the toolbar without occupying space or exposing a second button.
+      style: `position: absolute; visibility: hidden`,
+      tabindex: -1,
+      'aria-hidden': true,
+    }}
+    on_export={() => {
+      flight_pane_open = false
+      export_pane_open = true
+    }}
+    timeline={{
+      start: start_frame,
+      end: end_frame,
+      current: current_step_idx,
+      begin: on_flight_start,
+      prepare: async (idx, signal) => {
+        const frame = await frame_at(idx, signal)
+        signal.throwIfAborted()
+        if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
+        await on_step_change?.(idx)
+      },
+    }}
+  >
+    {#snippet timeline_controls()}
+      <NumberRangeInput
+        min={0}
+        max={last_frame_idx}
+        step={1}
+        bind:value={start_frame}
+        range_props={{ 'aria-label': `First MD frame slider` }}
+        >First MD frame</NumberRangeInput
+      >
+      <NumberRangeInput
+        min={start_frame}
+        max={last_frame_idx}
+        step={1}
+        bind:value={end_frame}
+        range_props={{ 'aria-label': `Last MD frame slider` }}>Last MD frame</NumberRangeInput
+      >
+    {/snippet}
+  </CameraFlightPane>
+{/if}
 
 <style>
   .field-label {

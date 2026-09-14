@@ -10,10 +10,9 @@
   import { create_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
-  import { FileInput, Icon, Spinner, StatusMessage, TaskStatus } from 'svelte-widgets'
+  import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
+  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import {
-    ArrowDown,
-    ArrowUp,
     Atom,
     Check,
     Database,
@@ -107,6 +106,7 @@
     | `structure-id`
     | `data-inspector`
     | `export`
+    | `flight`
   export type TrajectoryDisplayMode =
     | `structure+scatter`
     | `structure`
@@ -496,10 +496,6 @@
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
   let controls_height = $state(0)
   let content_size = $state({ width: 0, height: 0 })
-  // Cap panes to .content-area (controls bar is a flex sibling above it)
-  let pane_max_height = $derived(
-    content_size.height > 0 ? `--pane-max-height: ${content_size.height}px` : undefined,
-  )
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
   // wrapper's height that no pane ever gets
   let actual_layout = $derived.by(() => {
@@ -823,7 +819,7 @@
     // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
     property_rows: session.property_rows,
     properties_complete: session.properties_complete,
-    pane_props: { style: pane_max_height },
+    pane_props: { style: `--pane-max-height: var(--traj-pane-max-height)` },
     toggle_props: {
       class: `analysis-toggle-anchor`,
       tabindex: -1,
@@ -865,6 +861,9 @@
     scatter_controls_open ||
     active_pane !== null}
   bind:this={wrapper}
+  style:--traj-pane-max-height={content_size.height > 0
+    ? `${content_size.height}px`
+    : undefined}
   data-scrubbing={scrub_active}
   role="application"
   aria-label={!trajectory && allow_file_drop
@@ -946,21 +945,21 @@
       </button>
     </EmptyState>
   {:else if loading}
-    <TaskStatus
-      label={progress
-        ? `${progress.stage} (${Math.round(progress.current)}%)`
-        : `Loading trajectory...`}
-      value={progress?.current}
-      on_cancel={() => {
-        const controller = load_controller
-        if (!controller) return
-        controller.abort(new DOMException(`Cancelled`, `AbortError`))
-        end_load(controller)
-      }}
-      style="flex: 1; align-content: center; justify-items: center; padding: 1em"
-    >
-      <Spinner {...spinner_props} />
-    </TaskStatus>
+    <div class="trajectory-loading">
+      <LoadingStatus
+        label={progress
+          ? `${progress.stage} (${Math.round(progress.current)}%)`
+          : `Loading trajectory...`}
+        progress={progress?.current ?? null}
+        {...spinner_props}
+        on_cancel={() => {
+          const controller = load_controller
+          if (!controller) return
+          controller.abort(new DOMException(`Cancelled`, `AbortError`))
+          end_load(controller)
+        }}
+      />
+    </div>
   {:else if error_msg}
     <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
   {:else if trajectory}
@@ -1056,13 +1055,16 @@
               bind:pane_open={
                 () => is_pane_open(`info`), (open) => set_pane_open(`info`, open)
               }
-              pane_props={{ style: pane_max_height }}
+              pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
             />
           {/if}
           {#if controls_config.visible(`export-pane`)}
             <TrajectoryExportPane
               bind:export_pane_open={
                 () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
+              }
+              bind:flight_pane_open={
+                () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
               }
               run={trajectory}
               {wrapper}
@@ -1073,7 +1075,14 @@
                 session.commit(idx)
               }}
               resolve_frame={session.resolve_frame}
-              pane_props={{ style: pane_max_height }}
+              on_flight_start={() => {
+                const was_playing = player.is_playing
+                player.pause()
+                return () => {
+                  if (was_playing) player.play()
+                }
+              }}
+              pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
             />
           {/if}
           <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
@@ -1089,7 +1098,6 @@
             >
               {#snippet button()}
                 <Icon icon={Graph} />
-                <Icon icon={analysis_menu_open ? ArrowUp : ArrowDown} />
               {/snippet}
               {#each visible_analyses as entry (entry.pane)}
                 <button
@@ -1165,7 +1173,6 @@
             >
               {#snippet button()}
                 <Icon icon={current_display_mode.icon} />
-                <Icon icon={view_mode_dropdown_open ? ArrowUp : ArrowDown} />
               {/snippet}
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
@@ -1233,6 +1240,12 @@
           bind:active_pane={
             () => (active_pane === `controls` ? `controls` : structure_pane),
             (pane) => {
+              // Both camera buttons plan the same flight, synchronized to MD playback.
+              if (pane === `flight`) {
+                active_pane = `flight`
+                structure_pane = null
+                return
+              }
               set_pane_open(`controls`, pane === `controls`)
               structure_pane = pane === `controls` ? null : pane
             }
@@ -1369,6 +1382,11 @@
 </div>
 
 <style>
+  .trajectory-loading {
+    width: min(24em, calc(100% - 2em));
+    margin: auto;
+    padding-block: 1em;
+  }
   .trajectory {
     --min-height: 500px;
     display: flex;
@@ -1467,7 +1485,8 @@
     padding: 0;
     background: transparent;
   }
-  button {
+  button,
+  .trajectory-loading :global(button) {
     &:hover:not(:disabled) {
       background: var(--border-color);
     }

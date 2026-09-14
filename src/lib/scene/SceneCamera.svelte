@@ -9,6 +9,8 @@
   import Gizmo from './Gizmo.svelte'
   import { attach_pan_gesture, read_pan_offset, set_pan_offset } from './pan'
   import type { build_orbit_props } from './props.svelte'
+  import { camera_flight_registry, create_camera_flight_controller } from './camera-flight'
+  import { OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
   let {
     camera_projection = `perspective`,
@@ -31,7 +33,7 @@
     // clip; a positive value clips geometry nearer than that distance (ChemPotDiagram3D).
     ortho_near?: number
     far?: number // far plane for either projection (three's default when omitted)
-    orbit_props: ReturnType<typeof build_orbit_props>
+    orbit_props: ReturnType<typeof build_orbit_props> & { enabled?: boolean }
     gizmo?: boolean | GizmoOptions
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
   } = $props()
@@ -55,7 +57,33 @@
 
   // Pan as a view offset on the camera (see pan.ts) so the orbit target stays the pivot;
   // OrbitControls' own pan is disabled below and its enablePan/panSpeed drive this gesture.
-  const { size } = useThrelte()
+  const { size, invalidate, renderer } = useThrelte()
+  let flight_active = $state(false)
+  $effect(() => {
+    const controls = orbit_controls
+    const canvas = renderer.domElement
+    const camera = controls?.object
+    if (
+      !(canvas instanceof HTMLCanvasElement) ||
+      !controls ||
+      !(camera instanceof PerspectiveCamera || camera instanceof OrthographicCamera)
+    )
+      return
+    const controller = create_camera_flight_controller(
+      { object: camera, target: controls.target },
+      () => size.current,
+      (active) => {
+        flight_active = active
+      },
+      invalidate,
+    )
+    camera_flight_registry.set(canvas, controller)
+    return () => {
+      controller.dispose()
+      if (camera_flight_registry.get(canvas) === controller)
+        camera_flight_registry.delete(canvas)
+    }
+  })
   $effect(() => {
     const dom_element = orbit_controls?.domElement
     if (!(dom_element instanceof HTMLElement)) return
@@ -76,8 +104,15 @@
 </script>
 
 {#snippet camera_contents()}
-  <extras.OrbitControls bind:ref={orbit_controls} {...orbit_props} enablePan={false}>
-    {#if gizmo}
+  <extras.OrbitControls
+    bind:ref={orbit_controls}
+    {...orbit_props}
+    enablePan={false}
+    enabled={!flight_active && (orbit_props.enabled ?? true)}
+    enableDamping={!flight_active && orbit_props.enableDamping}
+    autoRotate={!flight_active && orbit_props.autoRotate}
+  >
+    {#if gizmo && !flight_active}
       <Gizmo
         {...typeof gizmo === `object` ? gizmo : {}}
         on_start={orbit_props.onstart}

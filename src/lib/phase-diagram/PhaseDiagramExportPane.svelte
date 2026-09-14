@@ -4,7 +4,6 @@
   import type { ExportSection } from '$lib/io'
   import ExportPane from '$lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import { download } from '$lib/io/fetch'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
@@ -12,7 +11,7 @@
     export_pane_open = $bindable(false),
     data,
     wrapper,
-    filename = `phase-diagram`,
+    filename: source_filename = `phase-diagram`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
@@ -30,8 +29,8 @@
   // Generate filename with components if available (requires exactly 2 components)
   const full_filename = $derived(
     data?.components?.length === 2
-      ? `${filename}-${data.components[0]}-${data.components[1]}`
-      : filename,
+      ? `${source_filename}-${data.components[0]}-${data.components[1]}`
+      : source_filename,
   )
 
   // Looked up per action: the SVG mounts after this pane (a sibling further down the diagram
@@ -49,9 +48,9 @@
       items: [
         {
           label: `SVG`,
-          on_download: () => {
+          on_download: ({ filename, save }) => {
             const svg = get_svg()
-            if (svg) export_svg_as_svg(svg, `${full_filename}.svg`)
+            if (svg) return export_svg_as_svg(svg, `${filename}.svg`, [], {}, save)
           },
           copy_text: () => {
             const svg = get_svg()
@@ -61,9 +60,9 @@
         {
           label: `PNG`,
           show_dpi: true,
-          on_download: () => {
+          on_download: ({ filename, save }) => {
             const svg = get_svg()
-            if (svg) export_svg_as_png(svg, `${full_filename}.png`, png_dpi)
+            if (svg) return export_svg_as_png(svg, `${filename}.png`, png_dpi, [], {}, save)
           },
         },
       ],
@@ -75,9 +74,9 @@
         {
           label: `JSON`,
           disabled: !data,
-          on_download: () => {
+          on_download: ({ filename, save }) => {
             const content = json_string()
-            if (content) download(content, `${full_filename}.json`, `application/json`)
+            if (content) return save(content, `${filename}.json`, `application/json`)
           },
           copy_text: json_string,
         },
@@ -87,6 +86,7 @@
 </script>
 
 <ExportPane
+  filename={full_filename}
   bind:export_pane_open
   bind:png_dpi
   {sections}
