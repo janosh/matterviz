@@ -393,30 +393,37 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
 // nothing requested the highest-priority group shows so the plot is never empty.
 type PropertySeries = DataSeries & { id: string; visible: boolean }
 
-function build_series(stats: PropertyStats, options: PlotSeriesOptions): PropertySeries[] {
+export function generate_plot_series(
+  rows: readonly TrajectoryMetadata[],
+  options: PlotSeriesOptions = {},
+): PropertySeries[] {
+  if (rows.length === 0) return []
   const {
     property_config = trajectory_property_config,
     default_visible_properties,
     x_map = FRAME_X_MAP,
   } = options
   const series: PropertySeries[] = []
-  for (const [key, stat] of stats) {
-    const n_values = stat.values.length
+  const x_grids = new Map<readonly number[], number[]>()
+  for (const [key, { values, frame_indices }] of cached_property_statistics(rows)) {
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
+    // Dense properties share one frame grid; interpolate its step/time coordinates once.
+    let x_values = x_map.to_x === FRAME_X_MAP.to_x ? frame_indices : x_grids.get(frame_indices)
+    if (!x_values) {
+      x_values = frame_indices.map(x_map.to_x)
+      x_grids.set(frame_indices, x_values)
+    }
     series.push({
       id: key,
-      x:
-        x_map.to_x === FRAME_X_MAP.to_x
-          ? stat.frame_indices
-          : stat.frame_indices.map(x_map.to_x),
-      y: stat.values,
+      x: x_values,
+      y: values,
       label: clean_label,
       unit,
       visible: false,
       y_axis: `y`,
       ...(axis_group ? { axis_group } : {}),
-      markers: n_values < 30 ? `line+points` : `line`,
+      markers: values.length < 30 ? `line+points` : `line`,
       // Series-level (not per point): every consumer resolves a scalar metadata object
       metadata: {
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
@@ -474,13 +481,6 @@ export function with_visible_properties(
     }
   })
 }
-
-// Plot series from a run's property rows
-export const generate_plot_series = (
-  rows: readonly TrajectoryMetadata[],
-  options: PlotSeriesOptions = {},
-): PropertySeries[] =>
-  rows.length > 0 ? build_series(cached_property_statistics(rows), options) : []
 
 // A plot of one frame, or of nothing but flat lines, says nothing: hide it
 export function should_hide_plot(

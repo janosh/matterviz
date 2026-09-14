@@ -532,7 +532,11 @@ describe(`x axis quantity`, () => {
     [0, 500, 1000, 1500].map((step, frame_number) => ({
       frame_number,
       step,
-      properties: { energy: -10 - frame_number },
+      properties: {
+        energy: -10 - frame_number,
+        force_max: frame_number + 0.1,
+        ...(frame_number % 2 ? { volume: 100 + frame_number } : {}),
+      },
     }))
 
   // oxfmt-ignore
@@ -574,7 +578,19 @@ describe(`x axis quantity`, () => {
     expect(x_map.label).toBe(label)
     expect(x_map.unit).toBe(unit)
     const series = generate_plot_series(rows, { x_map })
-    expect(find_series_by_label(series, `energy`)?.x).toEqual(expected_x)
+    const energy = find_series_by_label(series, `energy`)
+    expect(energy?.x).toEqual(expected_x)
+    expect(series.find((srs) => srs.id === `force_max`)?.x).toBe(energy?.x)
+    expect(series.find((srs) => srs.id === `volume`)?.x).toEqual([
+      expected_x[1],
+      expected_x[3],
+    ])
+    const changed_axis = generate_plot_series(rows, {
+      x_map: { ...x_map, to_x: (frame) => x_map.to_x(frame) * 3 },
+    })
+    expect(find_series_by_label(changed_axis, `energy`)?.x).toEqual(
+      expected_x.map((value) => value * 3),
+    )
   })
 
   it(`falls back to frame numbering when the data cannot support the request`, () => {

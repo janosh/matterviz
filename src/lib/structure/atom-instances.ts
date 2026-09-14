@@ -77,27 +77,16 @@ export class AtomInstances extends InstancedMesh<SphereGeometry> {
   max_radius = 0
 
   update_atoms(atoms: readonly InstancedAtom[]): void {
-    const matrices = this.instanceMatrix.array
     this.count = Math.min(atoms.length, this.instanceMatrix.count)
-    for (let idx = 0; idx < this.count; idx++) {
-      const { position, radius } = atoms[idx]
-      const offset = idx * 16
-      // InstancedMesh initializes identity matrices; the other ten entries never change.
-      matrices[offset] = radius
-      matrices[offset + 5] = radius
-      matrices[offset + 10] = radius
-      matrices[offset + 12] = position[0]
-      matrices[offset + 13] = position[1]
-      matrices[offset + 14] = position[2]
-    }
-    this.update_bounds()
+    this.update_bounds(atoms)
     this.instanceMatrix.clearUpdateRanges()
     this.instanceMatrix.addUpdateRange(0, this.count * 16)
     this.instanceMatrix.needsUpdate = true
   }
 
-  // Changing tessellation updates picking bounds without re-uploading atom transforms.
-  update_bounds(): void {
+  // Atom updates write transforms and read their bounds in one pass. Tessellation-only
+  // changes reuse the uploaded transforms.
+  update_bounds(atoms?: readonly InstancedAtom[]): void {
     if (!this.geometry.boundingSphere) this.geometry.computeBoundingSphere()
     const sphere = this.geometry.boundingSphere
     if (!sphere) return
@@ -111,6 +100,17 @@ export class AtomInstances extends InstancedMesh<SphereGeometry> {
     this.max_radius = 0
     for (let idx = 0; idx < this.count; idx++) {
       const offset = idx * 16
+      if (atoms) {
+        const { position, radius } = atoms[idx]
+        // InstancedMesh initializes identity matrices; the other ten entries never change.
+        matrices[offset] = radius
+        matrices[offset + 5] = radius
+        matrices[offset + 10] = radius
+        matrices[offset + 12] = position[0]
+        matrices[offset + 13] = position[1]
+        matrices[offset + 14] = position[2]
+      }
+      // Read back the uploaded f32 values so bounds also enclose rounded coordinates.
       const scale = matrices[offset]
       const extent = Math.abs(scale) * sphere.radius
       const pos_x = matrices[offset + 12] + scale * sphere.center.x

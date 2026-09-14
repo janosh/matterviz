@@ -143,6 +143,14 @@ test.each([8, 15, 20])(
         }
       }
     }
+    // Tessellation/geometry edits must update bounds without rewriting atom transforms.
+    const uploaded = actual.instanceMatrix.array.slice()
+    geometry.translate(0.2, -0.3, 0.1)
+    actual.update_bounds()
+    const bounds = actual.boundingSphere?.clone()
+    expect(actual.instanceMatrix.array).toEqual(uploaded)
+    actual.update_atoms(atoms)
+    expect(actual.boundingSphere).toEqual(bounds)
     actual.dispose()
     native.dispose()
     geometry.dispose()

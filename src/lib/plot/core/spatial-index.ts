@@ -8,11 +8,12 @@ const COORD_STRIDE = 1 << 16
 const pack_cell_key = (col: number, row: number): number =>
   (col + COORD_OFFSET) * COORD_STRIDE + (row + COORD_OFFSET)
 
-// Index pixel-positioned values directly without wrappers.
+// Keep one reference per point; cell buckets hold paint-order indices, not per-point wrappers.
 export type Positioned = { cx: number; cy: number }
 
 export type SpatialIndex<T extends Positioned> = {
-  cells: Map<number, { item: T; idx: number }[]>
+  cells: Map<number, number[]>
+  items: T[]
   cell_size: number
   radius_px: number
   count: number // indexed items, i.e. excluding those dropped as non-finite/off-grid
@@ -29,7 +30,8 @@ export function build_spatial_index<T extends Positioned>(
     throw new RangeError(`radius_px must be a non-negative finite number, got ${radius_px}`)
   }
   const cell_size = Math.max(1, radius_px)
-  const cells = new Map<number, { item: T; idx: number }[]>()
+  const cells = new Map<number, number[]>()
+  const indexed_items: T[] = Array.isArray(items) ? Array<T>(items.length) : []
   let count = 0
 
   for (const item of items) {
@@ -41,13 +43,15 @@ export function build_spatial_index<T extends Positioned>(
     if (!in_grid(col) || !in_grid(row)) continue
 
     const key = pack_cell_key(col, row)
-    const entry = { item, idx: count++ }
+    indexed_items[count] = item
     const bucket = cells.get(key)
-    if (bucket) bucket.push(entry)
-    else cells.set(key, [entry])
+    if (bucket) bucket.push(count)
+    else cells.set(key, [count])
+    count++
   }
 
-  return { cells, cell_size, radius_px, count }
+  indexed_items.length = count
+  return { cells, items: indexed_items, cell_size, radius_px, count }
 }
 
 // Nearest indexed item within `radius_px` of `pointer` (inclusive), or null. Exact
@@ -56,11 +60,10 @@ export function query_nearest<T extends Positioned>(
   index: SpatialIndex<T>,
   pointer: Point2D,
 ): T | null {
-  const { cells, cell_size, radius_px } = index
+  const { cells, items, cell_size, radius_px } = index
   if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null
   const center_col = Math.floor(pointer.x / cell_size)
   const center_row = Math.floor(pointer.y / cell_size)
-  let best: T | null = null
   let best_dist_sq = radius_px * radius_px
   let best_idx = Infinity
 
@@ -82,20 +85,20 @@ export function query_nearest<T extends Positioned>(
       if (dx_min * dx_min + dy_min * dy_min > best_dist_sq) continue
       const bucket = cells.get(pack_cell_key(col, row))
       if (!bucket) continue
-      for (const { item, idx } of bucket) {
+      for (const idx of bucket) {
+        const item = items[idx]
         const delta_x = pointer.x - item.cx
         const delta_y = pointer.y - item.cy
         const dist_sq = delta_x * delta_x + delta_y * delta_y
         if (dist_sq < best_dist_sq || (dist_sq === best_dist_sq && idx < best_idx)) {
           best_dist_sq = dist_sq
           best_idx = idx
-          best = item
         }
       }
     }
   }
 
-  return best
+  return items[best_idx] ?? null
 }
 
 // Last-painted candidate accepted by `contains`. The index radius must bound the
@@ -108,7 +111,6 @@ export function query_topmost<T extends Positioned>(
   if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null
   const col = Math.floor(pointer.x / index.cell_size)
   const row = Math.floor(pointer.y / index.cell_size)
-  let best: T | null = null
   let best_idx = -1
   for (let col_offset = -1; col_offset <= 1; col_offset++) {
     const cell_col = col + col_offset
@@ -119,15 +121,14 @@ export function query_topmost<T extends Positioned>(
       const bucket = index.cells.get(pack_cell_key(cell_col, cell_row))
       if (!bucket) continue
       for (let offset = bucket.length - 1; offset >= 0; offset--) {
-        const { item, idx } = bucket[offset]
+        const idx = bucket[offset]
         if (idx <= best_idx) break
-        if (contains(item)) {
-          best = item
+        if (contains(index.items[idx])) {
           best_idx = idx
           break
         }
       }
     }
   }
-  return best
+  return index.items[best_idx] ?? null
 }
