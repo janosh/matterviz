@@ -49,6 +49,11 @@ const make_mock_renderer = () => ({
   setPixelRatio: vi.fn(),
   getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
   setSize: vi.fn(),
+  getContext: vi.fn().mockReturnValue({
+    getConfiguration: vi.fn().mockReturnValue({
+      device: { limits: { maxTextureDimension2D: 8192 } },
+    }),
+  }),
 })
 
 function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => void): {
@@ -237,7 +242,7 @@ describe(`canvas_to_png_blob`, () => {
 })
 
 describe(`svg_to_svg_string`, () => {
-  test(`emits a standalone SVG document without mutating the source element`, () => {
+  test(`emits a standalone SVG document without mutating the source element`, async () => {
     const svg = make_svg(`0 0 200 150`)
     const original_attrs = svg.attributes.length
     const result = svg_to_svg_string(svg)
@@ -250,7 +255,7 @@ describe(`svg_to_svg_string`, () => {
     ])
       expect(result).toContain(expected)
     expect(svg.attributes).toHaveLength(original_attrs)
-    void export_svg_as_svg(svg, `output.svg`)
+    await export_svg_as_svg(svg, `output.svg`)
     expect(download).toHaveBeenCalledExactlyOnceWith(
       result,
       `output.svg`,
@@ -494,19 +499,70 @@ describe(`export_trajectory_video`, () => {
     expect(download).not.toHaveBeenCalled()
   })
 
-  test(`restores renderer state when high-resolution setup throws`, async () => {
-    vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
-    const { canvas, renderer } = make_canvas_with_renderer()
-    renderer.setSize.mockImplementationOnce(() => {
-      throw new Error(`resize failed`)
-    })
+  test.each([
+    `resize`,
+    `width`,
+    `height`,
+    `webgl`,
+    `unconfigured`,
+    `init-failure`,
+    `init-timeout`,
+  ])(
+    `handles video setup failure at %s without leaving the renderer resized`,
+    async (failure) => {
+      vi.useFakeTimers()
+      vi.stubGlobal(`MediaRecorder`, { isTypeSupported: () => true })
+      const { canvas, renderer } = make_canvas_with_renderer()
+      const on_finish = vi.fn()
+      let message = `resize failed`
+      if (failure === `resize`)
+        renderer.setSize.mockImplementationOnce(() => {
+          throw new Error(message)
+        })
+      else if (failure === `width` || failure === `height`) {
+        renderer.getPixelRatio.mockReturnValue(2)
+        renderer.getSize.mockReturnValue(
+          failure === `width` ? new Vector2(800, 600) : new Vector2(600, 800),
+        )
+        message = `Video resolution ${failure === `width` ? `9600×7200` : `7200×9600`} exceeds this GPU's 8192px limit per dimension`
+      } else if (failure === `webgl`) {
+        renderer.getContext.mockReturnValue({
+          MAX_TEXTURE_SIZE: 0x0d33,
+          MAX_RENDERBUFFER_SIZE: 0x84e8,
+          getParameter: (parameter: number) => (parameter === 0x0d33 ? 8192 : 4096),
+        })
+        message = `Video resolution 4800×3600 exceeds this GPU's 4096px limit per dimension`
+      } else if (failure === `unconfigured`) {
+        renderer.getContext().getConfiguration.mockReturnValue(null)
+        message = `GPU canvas is not configured`
+      } else {
+        renderer.init.mockImplementation(() =>
+          failure === `init-timeout`
+            ? new Promise(() => {})
+            : Promise.reject(new Error(`device failed`)),
+        )
+        message = `GPU initialization failed or timed out`
+      }
 
-    await expect(
-      export_trajectory_video(canvas, `test.webm`, { resolution_multiplier: 2 }),
-    ).rejects.toThrow(`resize failed`)
-    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
-    expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
-  })
+      const result = export_trajectory_video(canvas, `test.webm`, {
+        resolution_multiplier: 6,
+        total_frames: 0,
+        on_finish,
+      }).catch((error: unknown) => error)
+      await vi.runAllTimersAsync()
+      expect(await result).toMatchObject({ message: expect.stringContaining(message) })
+      if (failure === `resize`) {
+        expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+        expect(renderer.setSize).toHaveBeenLastCalledWith(800, 600, false)
+      } else {
+        expect(renderer.setPixelRatio).not.toHaveBeenCalled()
+        expect(renderer.setSize).not.toHaveBeenCalled()
+      }
+      expect(on_finish).toHaveBeenCalledTimes(failure.startsWith(`init-`) ? 0 : 1)
+      expect(renderer.render).not.toHaveBeenCalled()
+      expect(download).not.toHaveBeenCalled()
+    },
+  )
 
   test.each([`before-start`, `progress`, `render-wait`])(
     `cancels during %s without recording`,
@@ -622,6 +678,9 @@ describe(`export_trajectory_video`, () => {
     }
     const { canvas, renderer } = make_canvas_with_renderer()
     const view = { scene: {} as Scene, camera: {} as Camera }
+    // The exact device limit is valid; only larger dimensions must be refused.
+    renderer.getContext().getConfiguration().device.limits.maxTextureDimension2D =
+      format === `mp4` ? 2400 : 1600
     scene_registry.set(canvas, view)
     const total_frames =
       success || [`step-error`, `abort-step`, `abort-delay`, `abort-read`].includes(outcome)

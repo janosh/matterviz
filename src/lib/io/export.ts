@@ -590,7 +590,8 @@ export async function export_trajectory_video(
   const renderer = renderer_registry.get(canvas)
   // Recording captures the canvas stream while Threlte drives frames, but resizing the
   // renderer below touches GPU resources, so make sure the device exists first.
-  if (renderer) await device_ready(renderer)
+  if (renderer && !(await device_ready(renderer)))
+    throw new Error(`GPU initialization failed or timed out before video export`)
   signal?.throwIfAborted()
 
   // Store original renderer settings if changing resolution
@@ -618,10 +619,28 @@ export async function export_trajectory_video(
     // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
     if (total_frames > 0) await prepare_step(0)
     if (resolution_multiplier !== 1 && renderer) {
+      const size = renderer.getSize(new Vector2())
+      const pixel_ratio = renderer.getPixelRatio() * resolution_multiplier
+      const width = Math.floor(size.width * pixel_ratio)
+      const height = Math.floor(size.height * pixel_ratio)
+      const context = renderer.getContext() as GPUCanvasContext | WebGL2RenderingContext
+      const max_dimension =
+        `getConfiguration` in context
+          ? context.getConfiguration()?.device.limits.maxTextureDimension2D
+          : Math.min(
+              context.getParameter(context.MAX_TEXTURE_SIZE),
+              context.getParameter(context.MAX_RENDERBUFFER_SIZE),
+            )
+      if (!max_dimension) throw new Error(`GPU canvas is not configured for video export`)
+      // Reject before resizing: an oversized drawing buffer can invalidate the live viewer.
+      if (width > max_dimension || height > max_dimension)
+        throw new Error(
+          `Video resolution ${width}×${height} exceeds this GPU's ${max_dimension}px limit per dimension. Select a lower resolution or resize the viewer.`,
+        )
       orig_pixel_ratio = renderer.getPixelRatio()
-      orig_size = renderer.getSize(new Vector2())
+      orig_size = size
       // Adjust pixel ratio for different resolution export
-      renderer.setPixelRatio(orig_pixel_ratio * resolution_multiplier)
+      renderer.setPixelRatio(pixel_ratio)
       renderer.setSize(orig_size.width, orig_size.height, false)
     }
 
