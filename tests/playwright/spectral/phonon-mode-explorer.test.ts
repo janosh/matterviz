@@ -63,14 +63,19 @@ const select_supercell = async (explorer: Locator, scale: number): Promise<void>
 const url_params = (page: Page): Record<string, string> =>
   Object.fromEntries(new URL(page.url()).searchParams)
 
-test.describe(`PhononModeExplorer`, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.clock.install()
-    await page.goto(`/reciprocal/phonon-mode-explorer`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
-  })
+const open_explorer = async (page: Page): Promise<void> => {
+  await page.goto(`/reciprocal/phonon-mode-explorer`, { waitUntil: `networkidle` })
+  await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
+}
 
+const open_menu = async (explorer: Locator, name: string): Promise<void> => {
+  await explorer.locator(`.structure`).hover()
+  await explorer.getByRole(`button`, { name, exact: true }).click()
+}
+
+test.describe(`PhononModeExplorer`, () => {
   test(`synchronizes mode controls, spectra, and trajectory playback`, async ({ page }) => {
+    await open_explorer(page)
     const symmetry_errors: string[] = []
     page.on(`console`, (message) => {
       if (message.text().includes(`Symmetry analysis failed`))
@@ -111,20 +116,6 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(pause_button).toBeVisible()
     await expect.poll(() => step_input.inputValue()).not.toBe(`12`)
     await pause_button.click()
-
-    // Advance each animation tick explicitly: slow GPUs can present several MD steps at once.
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000))
-    await step_input.fill(`46`)
-    const visited_frames = [Number(await step_input.inputValue())]
-    await explorer.getByRole(`button`, { name: `Play`, exact: true }).click()
-    for (let tick = 0; tick < 64 && visited_frames.length < 3; tick++) {
-      await page.clock.runFor(16)
-      const frame = Number(await step_input.inputValue())
-      if (frame !== visited_frames.at(-1)) visited_frames.push(frame)
-    }
-    expect(visited_frames).toEqual([46, 47, 0])
-    await explorer.getByRole(`button`, { name: `Pause` }).click()
-    await page.clock.resume()
 
     const cell_toggle = explorer.locator(`.cell-select .toggle-btn`)
     await expect(cell_toggle).toContainText(`3`)
@@ -174,12 +165,12 @@ test.describe(`PhononModeExplorer`, () => {
     ).toBeGreaterThan(1e-6)
     expect(max_coordinate_delta(frame_zero, frame_one)).toBeGreaterThan(1e-6)
 
-    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
+    await open_menu(explorer, `Phonon settings`)
     const qpoint_select = explorer.getByLabel(`q-point`, { exact: true })
     await qpoint_select.selectOption(`2`)
     await expect(summary).toContainText(`q = [0.25, 0, 0.25]`)
 
-    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
+    await open_menu(explorer, `Modes`)
     await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     const stick = explorer.locator(`line.mode-stick`).nth(1)
     await stick.click({ force: true })
@@ -188,7 +179,29 @@ test.describe(`PhononModeExplorer`, () => {
     expect(symmetry_errors).toEqual([])
   })
 
+  test(`plays every frame across the loop boundary`, async ({ page }) => {
+    // Mock time only here: advance every frame explicitly, even on slow software GPUs.
+    await page.clock.install({ time: 0 })
+    await page.clock.pauseAt(60_000)
+    await open_explorer(page)
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    await explorer.locator(`.trajectory`).hover()
+    await explorer.getByRole(`button`, { name: `Pause` }).click()
+    const step_input = explorer.locator(`.step-input`)
+    await step_input.fill(`46`)
+    const visited_frames = [Number(await step_input.inputValue())]
+    await explorer.getByRole(`button`, { name: `Play`, exact: true }).click()
+    for (let tick = 0; tick < 64 && visited_frames.length < 3; tick++) {
+      await page.clock.runFor(16)
+      const frame = Number(await step_input.inputValue())
+      if (frame !== visited_frames.at(-1)) visited_frames.push(frame)
+    }
+    expect(visited_frames).toEqual([46, 47, 0])
+    await explorer.getByRole(`button`, { name: `Pause` }).click()
+  })
+
   test(`picker swaps mode datasets and accepts local phonopy output`, async ({ page }) => {
+    await open_explorer(page)
     const picker = page.getByRole(`region`, { name: `Demo fixtures` })
     await expect(picker.locator(`.file-item`)).toHaveCount(9)
     await expect(picker.getByRole(`button`, { name: /NaCl rock salt/ })).toHaveClass(/active/)
@@ -205,7 +218,7 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(detail).toContainText(`eigenvectors at 15 of 35 q-points`)
     await expect(summary).toContainText(`eigenvectors at 15/35 q-points`)
     await expect(summary).toContainText(`Γ q = [0, 0, 0]`)
-    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
+    await open_menu(explorer, `Phonon settings`)
     await expect(
       explorer.getByLabel(`q-point`, { exact: true }).locator(`option:disabled`),
     ).toHaveCount(20)
@@ -223,7 +236,7 @@ test.describe(`PhononModeExplorer`, () => {
     await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
     await expect(detail).toContainText(`Γ-only file with Born charges and Raman tensors`)
     await expect(summary).toContainText(`q = [0, 0, 0]`)
-    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
+    await open_menu(explorer, `Modes`)
     await expect(explorer.getByRole(`button`, { name: `Raman`, exact: true })).toBeVisible()
 
     const co2_yaml = gunzip_sync(
@@ -255,16 +268,16 @@ test.describe(`PhononModeExplorer`, () => {
   })
 
   test(`persists the fixture and non-default explorer state in the URL`, async ({ page }) => {
+    await open_explorer(page)
     await expect.poll(() => url_params(page)).toEqual({ file: `NaCl-Gamma-X-band.yaml` })
 
     const explorer = page.locator(`#phonon-mode-explorer`)
-    await explorer.locator(`.trajectory`).hover()
-    await explorer.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
+    await open_menu(explorer, `Phonon settings`)
     await explorer.getByLabel(`q-point`, { exact: true }).selectOption(`3`)
     await explorer.getByLabel(`Mode`, { exact: true }).selectOption(`4`)
     await explorer.locator(`.amplitude-control input`).fill(`0.42`)
     await explorer.getByLabel(`Eigenvectors`).check()
-    await explorer.getByRole(`button`, { name: `Modes`, exact: true }).click()
+    await open_menu(explorer, `Modes`)
     await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     await explorer.locator(`.fps-section input`).fill(`18`)
     await select_supercell(explorer, 2)
@@ -289,13 +302,11 @@ test.describe(`PhononModeExplorer`, () => {
     const restored_summary = restored.getByTestId(`phonon-mode-summary`)
     await expect(restored_summary).toContainText(`Mode 5`)
     await expect(restored_summary).toContainText(`q = [0.375, 0, 0.375]`)
-    await restored.locator(`.trajectory`).hover()
-    await restored.getByRole(`button`, { name: `Modes`, exact: true }).click()
+    await open_menu(restored, `Modes`)
     await expect(restored.getByRole(`button`, { name: `IR`, exact: true })).toHaveClass(
       /active/,
     )
-    await restored.locator(`.trajectory`).hover()
-    await restored.getByRole(`button`, { name: `Phonon settings`, exact: true }).click()
+    await open_menu(restored, `Phonon settings`)
     await expect(restored.locator(`.amplitude-control input`)).toHaveValue(`0.42`)
     await expect(restored.locator(`.fps-section input`)).toHaveValue(`18`)
     await expect(restored.getByLabel(`Eigenvectors`)).toBeChecked()

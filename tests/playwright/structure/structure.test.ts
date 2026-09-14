@@ -322,6 +322,21 @@ test.describe(`Structure Component Tests`, () => {
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
+    // Enter the server-rendered viewer before its shortcut listeners mount during hydration.
+    const scripts_ready = Promise.withResolvers<undefined>()
+    await page.route(`**/*`, (route) =>
+      route.request().resourceType() === `script`
+        ? scripts_ready.promise.then(() => route.continue())
+        : route.continue(),
+    )
+    try {
+      await page.reload({ waitUntil: `commit` })
+      await expect(structure_div).not.toHaveAttribute(`data-mv-fullscreen-root`, ``)
+      await structure_div.hover()
+    } finally {
+      scripts_ready.resolve(undefined)
+    }
+    await expect(structure_div).toHaveAttribute(`data-mv-fullscreen-root`, ``)
     await structure_div.click()
     // a handled key is the one the viewer preventDefaults
     const handles = (init: Parameters<typeof dispatch_cancelable_keydown>[1]) =>
