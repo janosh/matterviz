@@ -19,7 +19,7 @@ import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { IDENTITY_MATRIX3, make_crystal, read_binary_test_file } from '../setup'
+import { IDENTITY_MATRIX3, make_crystal, read_binary_test_file } from '../test-fixtures'
 
 // parse_structure_file throws on parse failure but can still return a structure with
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Wrap it in a spy that

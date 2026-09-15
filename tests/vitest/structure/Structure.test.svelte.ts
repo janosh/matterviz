@@ -37,20 +37,22 @@ import {
   create_drop_event,
   deferred_fetch_responses,
   doc_query,
-  fcc_primitive_matrix,
-  IDENTITY_MATRIX3,
-  init_moyo_for_tests,
   keydown,
-  make_crystal,
-  make_grid,
-  make_position_stream,
-  make_volume,
   mock_fullscreen,
   mouse,
   press_window_key,
   trigger_resize_observer,
   resize_element,
 } from '../setup'
+import {
+  fcc_primitive_matrix,
+  IDENTITY_MATRIX3,
+  init_moyo_for_tests,
+  make_crystal,
+  make_grid,
+  make_position_stream,
+  make_volume,
+} from '../test-fixtures'
 
 // Exercise viewport lifecycle without creating a renderer in happy-dom.
 vi.mock(`@threlte/core`, async (import_original) => ({
@@ -1608,12 +1610,10 @@ describe(`Structure`, () => {
         ...site,
         properties: {
           ...site.properties,
-          ...(site_idx === 0
-            ? {
-                force: [1, 0, 0],
-                ...(include_magmom ? { magmom: [0, 1, 0] } : {}),
-              }
-            : {}),
+          ...(site_idx === 0 && {
+            force: [1, 0, 0],
+            ...(include_magmom && { magmom: [0, 1, 0] }),
+          }),
         },
       })),
     })
@@ -1931,6 +1931,55 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   await tick()
   expect(scene_stub.props?.auto_rotate).toBe(1.5)
 })
+
+test.each([100, 101])(
+  `defaults lattice arrows by input atom count (%s), with working overrides`,
+  async (atom_count) => {
+    mock_gpu()
+    const sites = Array.from({ length: 101 }, (_, idx): [string, Vec3] => [
+      `Si`,
+      [idx / 101, 0.3, 0.3],
+    ])
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: make_crystal(30, sites.slice(0, atom_count)),
+      active_pane: `controls`,
+      show_controls: true,
+      analyze_symmetry: false,
+      scene_props: {},
+    })
+    mount_structure(bind_props({}, props))
+    await tick()
+    const toggle = doc_query<HTMLInputElement>(
+      `[data-key="show_cell_vectors"] input[type="checkbox"]`,
+    )
+    const visible = atom_count <= 100
+    expect(toggle.checked).toBe(visible)
+    expect(scene_stub.props?.show_cell_vectors).toBe(visible)
+
+    toggle.click()
+    flushSync()
+    expect(toggle.checked).toBe(!visible)
+    expect(scene_stub.props?.show_cell_vectors).toBe(!visible)
+
+    // Frame/source updates keep the explicit choice; clearing it restores automatic sizing.
+    props.structure = make_crystal(fcc_primitive_matrix(30), sites)
+    await tick()
+    expect(scene_stub.props?.show_cell_vectors).toBe(!visible)
+    props.scene_props = { show_cell_vectors: undefined }
+    await tick()
+    expect(toggle.checked).toBe(false)
+    expect(scene_stub.props?.show_cell_vectors).toBe(false)
+    toggle.click()
+    flushSync()
+    expect(scene_stub.props?.show_cell_vectors).toBe(true)
+    doc_query<HTMLButtonElement>(
+      `[aria-label="Reset all viewer settings to defaults"]`,
+    ).click()
+    flushSync()
+    expect(toggle.checked).toBe(false)
+    expect(scene_stub.props?.show_cell_vectors).toBe(false)
+  },
+)
 
 test(`scene_props owns the trail toggle in both directions`, async () => {
   const trajectory_position_stream = make_position_stream(

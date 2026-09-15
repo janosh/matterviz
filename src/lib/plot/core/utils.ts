@@ -39,3 +39,37 @@ export const observe_size =
       on_size({ height: 0, width: 0 }, element)
     }
   }
+
+// Keep the bitmap inside its SVG foreignObject so export preserves the layer's paint order.
+export const attach_canvas =
+  (class_name: string, assign: (canvas: HTMLCanvasElement | undefined) => void) =>
+  (foreign_object: SVGForeignObjectElement) => {
+    const canvas = document.createElement(`canvas`)
+    canvas.className = class_name
+    Object.assign(canvas.style, { display: `block`, pointerEvents: `none` })
+    foreign_object.append(canvas)
+    assign(canvas)
+    return () => {
+      assign(undefined)
+      canvas.remove()
+    }
+  }
+
+// Round fractional CSS sizes/DPR to the nearest physical pixel, keeping tiny canvases valid.
+// Assign dimensions only when changed: writing them resets the bitmap and context state.
+export function prepare_canvas(
+  canvas: HTMLCanvasElement | undefined,
+  width: number,
+  height: number,
+) {
+  if (!canvas || !(width > 0 && height > 0)) return undefined
+  const pixel_ratio = globalThis.devicePixelRatio || 1
+  const backing_width = Math.max(1, Math.round(width * pixel_ratio))
+  const backing_height = Math.max(1, Math.round(height * pixel_ratio))
+  if (canvas.width !== backing_width) canvas.width = backing_width
+  if (canvas.height !== backing_height) canvas.height = backing_height
+  if (canvas.style.width !== `${width}px`) canvas.style.width = `${width}px`
+  if (canvas.style.height !== `${height}px`) canvas.style.height = `${height}px`
+  const ctx = canvas.getContext(`2d`)
+  return ctx ? { ctx, width, height, pixel_ratio } : undefined
+}

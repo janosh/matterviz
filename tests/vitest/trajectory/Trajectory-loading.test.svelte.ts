@@ -15,14 +15,17 @@ import {
   mock_parse_worker,
   create_drop_event,
   doc_query,
-  gzip_bytes,
   hdf5_group_option,
-  make_ambiguous_hdf5,
+  query,
+} from '../setup'
+import {
+  gzip_bytes,
   make_run as make_shared_run,
   MULTI_FRAME_XYZ,
-  query,
   read_binary_test_file,
-} from '../setup'
+} from '../test-fixtures'
+
+import { make_ambiguous_hdf5 } from './fixtures'
 
 beforeEach(mock_parse_worker)
 

@@ -16,13 +16,18 @@ const cases = [
   {
     name: `IR broadening`,
     route: `/reciprocal/ir-raman`,
-    plot: `.scatter:has(#ir-raman-fwhm)`,
+    plot: `#infrared-spectrum-of-nacl ~ .code-example .scatter:has(#ir-raman-fwhm)`,
     section: `broadening`,
   },
 ]
 cases.forEach(({ name, route, plot: selector, section }) => {
   test(`${name} reset restores defaults and clears its changed state`, async ({ page }) => {
     await page.goto(route, { waitUntil: `networkidle` })
+    if (section === `broadening`)
+      await page
+        .locator(`#infrared-spectrum-of-nacl ~ .code-example`)
+        .first()
+        .scrollIntoViewIfNeeded()
     const plot = page.locator(selector).first()
     await plot.locator(`button.pane-toggle`).first().click()
     const pane = plot.locator(`.draggable-pane`)

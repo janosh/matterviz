@@ -26,14 +26,14 @@ import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { make_rng } from './numeric-helpers'
+import { mount_sized } from './setup'
 import {
   IDENTITY_MATRIX3,
   make_crystal,
   make_molecule,
   make_rocksalt,
   make_struct,
-  mount_sized,
-} from './setup'
+} from './test-fixtures'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,

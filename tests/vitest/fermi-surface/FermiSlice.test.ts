@@ -4,14 +4,13 @@ import FermiSlice from '$lib/fermi-surface/FermiSlice.svelte'
 import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { doc_query, mount_sized } from '../setup'
 import {
   BOX_TRI_FACES,
   BOX_VERTICES,
-  doc_query,
   make_fermi_isosurface,
   make_fermi_surface,
-  mount_sized,
-} from '../setup'
+} from '../test-fixtures'
 
 // Box-shaped Fermi surface data with one sheet per band
 const create_mock_fermi_data = (band_indices: number[] = [0, 1]): FermiSurfaceData =>

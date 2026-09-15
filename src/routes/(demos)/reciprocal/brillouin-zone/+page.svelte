@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { BrillouinZone } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import type { FileInfo } from '$lib/io/types'
@@ -116,7 +117,9 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <BrillouinZone {structure} {surface_opacity} {show_ibz} />
+      <LazyDemo label="brillouin zone">
+        <BrillouinZone {structure} {surface_opacity} {show_ibz} />
+      </LazyDemo>
     </div>
   {/each}
 </div>
@@ -135,13 +138,15 @@
     on_click={handle_file_pick}
     style="max-width: 600px; margin-inline: auto"
   />
-  <BrillouinZone
-    bind:structure={dropped_structure}
-    {surface_opacity}
-    show_controls
-    allow_file_drop
-    style="height: 450px"
-  />
+  <LazyDemo label="Try Your Own Structure" height="450px">
+    <BrillouinZone
+      bind:structure={dropped_structure}
+      {surface_opacity}
+      show_controls
+      allow_file_drop
+      style="height: 450px"
+    />
+  </LazyDemo>
 </div>
 
 <h2 id="higher-order-brillouin-zones" style="text-align: center; margin-block: 3em 1em">
@@ -154,13 +159,15 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <BrillouinZone
-        {structure}
-        {surface_opacity}
-        bz_order={order}
-        show_controls
-        allow_file_drop
-      />
+      <LazyDemo label="brillouin zone">
+        <BrillouinZone
+          {structure}
+          {surface_opacity}
+          bz_order={order}
+          show_controls
+          allow_file_drop
+        />
+      </LazyDemo>
     </div>
   {/each}
 </div>

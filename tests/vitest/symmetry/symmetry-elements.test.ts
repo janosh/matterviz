@@ -26,7 +26,7 @@ import {
   IDENTITY_MATRIX3 as IDENTITY,
   init_moyo_for_tests,
   make_crystal,
-} from '../setup'
+} from '../test-fixtures'
 
 const INVERSION: Matrix3x3 = [
   [-1, 0, 0],

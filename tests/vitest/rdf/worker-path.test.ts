@@ -6,7 +6,8 @@ import { calc_frame_rdfs, type FrameRdfOptions } from '$lib/rdf/calc-rdf'
 import type { StructureIdPayload } from '$lib/structure-id/worker-payload'
 import { structure_from_payload } from '$lib/structure-id/worker-payload'
 import { afterEach, beforeAll, expect, test } from 'vitest'
-import { expect_module_worker, install_stub_worker, make_crystal } from '../setup'
+import { expect_module_worker, install_stub_worker } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const stub = install_stub_worker<{
   id: number

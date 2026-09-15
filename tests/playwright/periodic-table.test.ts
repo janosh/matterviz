@@ -32,6 +32,7 @@ test.describe(`Periodic Table`, () => {
     const n_lanthanide_actinide_placeholders = 2
     expect(await tiles.count()).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
+    await page.locator(`.auto-colorbar-grid`).scrollIntoViewIfNeeded()
     const auto_tables = page.locator(`.auto-colorbar-grid .periodic-table`)
     await expect(auto_tables.locator(`.colorbar .label`)).toHaveText([
       `Atomic Mass`,

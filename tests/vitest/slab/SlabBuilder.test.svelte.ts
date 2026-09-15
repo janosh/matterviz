@@ -4,7 +4,8 @@ import { SlabBuilder } from '$lib/slab'
 import type { Crystal } from '$lib/structure'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
-import { bind_props, doc_query, make_crystal, make_rocksalt } from '../setup'
+import { bind_props, doc_query } from '../setup'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 
 // oxfmt-ignore
 const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]

@@ -1,10 +1,7 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '$lib/colors'
-  import type { CompositionType } from '$lib/composition'
   import { clamp } from '$lib/math'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment, ElementPatterns } from './chart'
+  import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
@@ -31,16 +28,8 @@
     patterns = {},
     svg_node = $bindable(null),
     ...rest
-  }: SVGAttributes<SVGSVGElement> & {
-    composition: CompositionType
-    size?: number
+  }: CompositionChartProps & {
     bar_height?: number
-    show_labels?: boolean
-    show_percentages?: boolean
-    show_amounts?: boolean
-    color_scheme?: ColorSchemeName
-    patterns?: ElementPatterns // hatch/texture fill per element symbol
-    svg_node?: SVGSVGElement | null
   } = $props()
 
   const uid = $props.id()
@@ -57,7 +46,7 @@
   })
 
   let segments = $derived.by((): BarSegment[] => {
-    let [cursor, n_above, n_below] = [0, 0, 0]
+    let [cursor, n_external] = [0, 0]
     const raw_segments = composition_segments(composition, color_scheme, patterns, pattern_uid)
     return raw_segments.map((segment) => {
       const width = segment.fraction * size
@@ -70,9 +59,7 @@
       let label_pos: BarSegment[`label_pos`] = null
       if (segment.fraction < THIN_FRACTION) {
         if (width >= MIN_EXTERNAL_WIDTH) {
-          label_pos = n_above <= n_below ? `above` : `below`
-          if (label_pos === `above`) n_above++
-          else n_below++
+          label_pos = n_external++ % 2 === 0 ? `above` : `below`
         }
       } else if (width >= MIN_LABEL_WIDTH) label_pos = `inside`
       return { ...segment, x: coord_x, width, font_scale, label_pos }

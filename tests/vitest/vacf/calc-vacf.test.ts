@@ -2,7 +2,7 @@ import type { ElementSymbol } from '$lib/element'
 import { group_atoms_by_element } from '$lib/trajectory/positions'
 import { autocorrelation_sums, calc_vacf, central_difference_velocities } from '$lib/vacf'
 import { describe, expect, it } from 'vitest'
-import { cubic_matrix } from '../setup'
+import { cubic_matrix } from '../test-fixtures'
 import {
   build_vacf_input,
   circular_motion,

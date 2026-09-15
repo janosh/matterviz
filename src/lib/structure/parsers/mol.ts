@@ -4,10 +4,7 @@ import type { ElementSymbol } from '$lib/element'
 import type { BondOrder, Molecule, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
-  diag_error,
-  diag_warn,
   element_from_candidates,
-  guard_parse,
   is_num_token,
   parse_coordinate,
   parsed_result,
@@ -25,7 +22,7 @@ const MOL_BOND_ORDERS: Record<number, BondOrder> = { 1: 1, 2: 2, 3: 3, 4: `aroma
 const mol_bond_order = (code: number, context: string): BondOrder => {
   const order = MOL_BOND_ORDERS[code]
   if (order !== undefined) return order
-  diag_warn(`${context}: query bond type ${code} has no definite order, treating as single`)
+  console.warn(`${context}: query bond type ${code} has no definite order, treating as single`)
   return 1
 }
 
@@ -61,23 +58,21 @@ type MolBlock = {
 
 // V2000: fixed-column atom block (x/y/z in 10-char fields, symbol at cols 32-34) followed
 // by a bond block of `atom_1 atom_2 type` triples, both counted by the counts line.
-const parse_v2000 = (lines: string[], counts_idx: number): MolBlock | null => {
+const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
   const counts = read_int_fields(lines[counts_idx], 2)
   const [num_atoms, num_bonds] = counts
-  if (counts.length !== 2 || num_atoms <= 0) {
-    diag_error(`Invalid atom/bond counts in MOL counts line: '${lines[counts_idx].trim()}'`)
-    return null
-  }
+  if (counts.length !== 2 || num_atoms <= 0)
+    throw new Error(
+      `Invalid atom/bond counts in MOL counts line: '${lines[counts_idx].trim()}'`,
+    )
   const atom_start = counts_idx + 1
   const bond_start = atom_start + num_atoms
-  if (lines.length < bond_start) {
-    diag_error(
+  if (lines.length < bond_start)
+    throw new Error(
       `MOL atom block truncated: counts line declares ${num_atoms} atoms but only ${
         lines.length - atom_start
       } lines follow`,
     )
-    return null
-  }
 
   const sites: Site[] = []
   for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
@@ -101,14 +96,12 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock | null => {
   for (let bond_idx = 0; bond_idx < num_bonds; bond_idx++) {
     const line = lines[bond_start + bond_idx]
     const fields = line === undefined ? [] : read_int_fields(line, 3)
-    if (fields.length !== 3) {
-      diag_error(
+    if (fields.length !== 3)
+      throw new Error(
         `MOL bond block invalid or truncated at bond ${
           bond_idx + 1
         } of ${num_bonds}: '${line?.trim() ?? `<end of file>`}'`,
       )
-      return null
-    }
     const [atom_id_1, atom_id_2, code] = fields
     bonds.push({
       atom_id_1,
@@ -123,14 +116,12 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock | null => {
 
 // V3000: free-format `M  V30` tagged lines inside BEGIN/END ATOM and BOND blocks.
 // Atom rows are `index symbol x y z aamap`, bond rows are `index type atom_1 atom_2`.
-const parse_v3000 = (lines: string[]): MolBlock | null => {
+const parse_v3000 = (lines: string[]): MolBlock => {
   const v30_lines = lines
     .filter((line) => line.trimStart().toUpperCase().startsWith(`M  V30`))
     .map((line) => line.trimStart().slice(6).trim())
-  if (v30_lines.some((line) => line.endsWith(`-`))) {
-    diag_error(`MOL V3000 line continuations ('-' at end of line) are not supported`)
-    return null
-  }
+  if (v30_lines.some((line) => line.endsWith(`-`)))
+    throw new Error(`MOL V3000 line continuations ('-' at end of line) are not supported`)
 
   const section_rows = (section: string): string[] => {
     const start = v30_lines.findIndex((line) => line.toUpperCase() === `BEGIN ${section}`)
@@ -142,16 +133,13 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
   }
 
   const atom_rows = section_rows(`ATOM`)
-  if (atom_rows.length === 0) {
-    diag_error(`MOL V3000 file has no atoms in its BEGIN ATOM block`)
-    return null
-  }
+  if (atom_rows.length === 0)
+    throw new Error(`MOL V3000 file has no atoms in its BEGIN ATOM block`)
 
   const sites: Site[] = []
   const site_idx_by_atom_id = new Map<number, number>()
   for (const [atom_idx, row] of atom_rows.entries()) {
     const tokens = row_tokens(row, 5, `MOL V3000 atom row (need 'index symbol x y z')`)
-    if (!tokens) return null
     const element = mol_element(tokens[1], atom_idx)
     const xyz = vec3_from_values(
       tokens.slice(2, 5).map(parse_coordinate),
@@ -164,7 +152,6 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
   const bonds: RawBond[] = []
   for (const row of section_rows(`BOND`)) {
     const tokens = row_tokens(row, 4, `MOL V3000 bond row (need 'index type atom_1 atom_2')`)
-    if (!tokens) return null
     const [, code, atom_id_1, atom_id_2] = tokens.map(Number)
     bonds.push({
       atom_id_1,
@@ -176,46 +163,37 @@ const parse_v3000 = (lines: string[]): MolBlock | null => {
   return { sites, bonds, site_idx_by_atom_id }
 }
 
-export const parse_mol = (content: string): Molecule | null =>
-  guard_parse(`MOL/SDF`, () => {
-    const all_lines = content.split(/\r?\n/)
-    // SDF concatenates records terminated by `$$$$`; only the first is parsed. Every
-    // terminator ends one record, plus an unterminated final record when content follows
-    // the last one (writers often omit the last `$$$$`).
-    const terminators = all_lines.flatMap((line, idx) => (line.trim() === `$$$$` ? [idx] : []))
-    const lines = terminators.length === 0 ? all_lines : all_lines.slice(0, terminators[0])
-    if (terminators.length > 0) {
-      const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
-      const n_records =
-        terminators.length + Number(trailing.some((line) => line.trim() !== ``))
-      if (n_records > 1) {
-        diag_warn(
-          `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
-        )
-      }
+export const parse_mol = (content: string): Molecule => {
+  const all_lines = content.split(/\r?\n/)
+  // SDF concatenates records terminated by `$$$$`; only the first is parsed. Every
+  // terminator ends one record, plus an unterminated final record when content follows
+  // the last one (writers often omit the last `$$$$`).
+  const terminators = all_lines.flatMap((line, idx) => (line.trim() === `$$$$` ? [idx] : []))
+  const lines = terminators.length === 0 ? all_lines : all_lines.slice(0, terminators[0])
+  if (terminators.length > 0) {
+    const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
+    const n_records = terminators.length + Number(trailing.some((line) => line.trim() !== ``))
+    if (n_records > 1) {
+      console.warn(
+        `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
+      )
     }
+  }
 
-    // The counts line is the 4th line of the header block; locate it by its version
-    // marker so files with a mangled header still parse
-    const counts_idx = lines.findIndex((line) => /V[23]000\s*$/i.test(line))
-    if (counts_idx === -1) {
-      if (lines.length < 4) {
-        diag_error(
-          `MOL file too short: expected a 3-line header plus a counts line, got ${lines.length} lines`,
-        )
-        return null
-      }
-      diag_warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
-      return finalize_mol_block(parse_v2000(lines, 3))
-    }
+  // The counts line is the 4th line of the header block; locate it by its version
+  // marker so files with a mangled header still parse
+  let counts_idx = lines.findIndex((line) => /V[23]000\s*$/i.test(line))
+  if (counts_idx === -1) {
+    if (lines.length < 4)
+      throw new Error(
+        `MOL file too short: expected a 3-line header plus a counts line, got ${lines.length} lines`,
+      )
+    console.warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
+    counts_idx = 3
+  }
 
-    const is_v3000 = /V3000\s*$/i.test(lines[counts_idx])
-    return finalize_mol_block(is_v3000 ? parse_v3000(lines) : parse_v2000(lines, counts_idx))
-  })
-
-const finalize_mol_block = (block: MolBlock | null): Molecule | null =>
-  block &&
-  parsed_result(
-    block.sites,
-    resolve_bonds(block.bonds, block.site_idx_by_atom_id, `MOL bond block`),
-  )
+  const { sites, bonds, site_idx_by_atom_id } = /V3000\s*$/i.test(lines[counts_idx])
+    ? parse_v3000(lines)
+    : parse_v2000(lines, counts_idx)
+  return parsed_result(sites, resolve_bonds(bonds, site_idx_by_atom_id, `MOL bond block`))
+}

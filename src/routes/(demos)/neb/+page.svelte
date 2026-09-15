@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { analyze_barrier, NebPlot, NebViewer, path_spline } from '$lib/neb'
   import { download } from '$lib/io'
   import { format_num } from '$lib/labels'
@@ -55,7 +56,9 @@
     differ. The direct hop demonstrates force-projected fitting; the curved hop demonstrates
     the energy-only cubic fallback.
   </p>
-  <NebPlot paths={reaction_paths} energy_reference="initial" style="height: 420px" />
+  <LazyDemo label="Comparing mechanisms" height="420px">
+    <NebPlot paths={reaction_paths} energy_reference="initial" style="height: 420px" />
+  </LazyDemo>
 
   <h2 id="input-format">Input format</h2>
   <p>

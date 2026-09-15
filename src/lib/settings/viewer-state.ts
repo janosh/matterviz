@@ -1,4 +1,4 @@
-import type { DefaultSettings, SettingType } from '../settings'
+import type { DefaultSettings } from '../settings'
 import { SETTINGS_CONFIG, validate_setting_value } from '../settings'
 import { is_plain_object } from '../utils'
 import { storage_get, storage_remove, storage_set } from 'svelte-widgets/storage'
@@ -6,7 +6,7 @@ import { storage_get, storage_remove, storage_set } from 'svelte-widgets/storage
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`
 
-type StructureSettings = DefaultSettings[`structure`]
+type StructureSettings = DefaultSettings[`structure`] & { atom_color_property_key?: string }
 type StructureSettingKey = keyof StructureSettings
 
 export type StructurePaneSize = { width: number; height: number }
@@ -45,10 +45,6 @@ type StructureViewStateParseResult =
   | { state: StructureViewState; error?: never }
   | { state?: never; error: string }
 
-// Vector property keys belong to one structure; restoring them can suppress vector discovery.
-const is_non_portable_structure_key = (key: StructureSettingKey): boolean =>
-  key === `vector_configs`
-
 const object_value = (source: object | undefined, key: PropertyKey): unknown =>
   source && Reflect.has(source, key) ? Reflect.get(source, key) : undefined
 
@@ -74,12 +70,9 @@ const structure_setting_source = (
   key: StructureSettingKey,
   source: StructureViewStateSource,
 ): unknown => {
-  if (key === `show_image_atoms`) return source.show_image_atoms
-  if (key === `show_trajectory_lines`) return source.show_trajectory_lines
-  if (key === `atom_color_mode`) return object_value(source.atom_color_config, `mode`)
-  if (key === `atom_color_scale`) return object_value(source.atom_color_config, `scale`)
-  if (key === `atom_color_scale_type`)
-    return object_value(source.atom_color_config, `scale_type`)
+  if (key === `show_image_atoms` || key === `show_trajectory_lines`) return source[key]
+  if (key.startsWith(`atom_color_`))
+    return object_value(source.atom_color_config, key.slice(`atom_color_`.length))
   return object_value(source.scene_props, key)
 }
 
@@ -87,11 +80,16 @@ const normalize_structure_settings = (
   setting_value: (key: StructureSettingKey) => unknown,
 ): Partial<StructureSettings> => {
   const settings: Partial<StructureSettings> = {}
-  for (const [raw_key, raw_setting] of Object.entries(SETTINGS_CONFIG.structure)) {
-    const key = raw_key as StructureSettingKey
-    const setting = raw_setting as SettingType<StructureSettings[StructureSettingKey]>
-    if (is_non_portable_structure_key(key)) continue
-    Reflect.set(settings, key, validate_setting_value(setting_value(key), setting))
+  const property_key = setting_value(`atom_color_property_key`)
+  if (typeof property_key === `string` && property_key)
+    settings.atom_color_property_key = property_key
+  for (const [key, setting] of Object.entries(SETTINGS_CONFIG.structure)) {
+    // Vector keys belong to one structure; restoring them can suppress vector discovery.
+    if (key === `vector_configs`) continue
+    const value = setting_value(key as StructureSettingKey)
+    // Omission keeps the atom-count default instead of saving it as an explicit choice.
+    if (key === `show_cell_vectors` && typeof value !== `boolean`) continue
+    Reflect.set(settings, key, validate_setting_value<unknown>(value, setting))
   }
   return settings
 }

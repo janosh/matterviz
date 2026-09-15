@@ -159,13 +159,17 @@ const get_col = (columns: Map<string, ColumnInfo>, key?: string): ColumnInfo | u
 const optional_numbers = (col?: ColumnInfo): number[] | undefined =>
   col ? to_numbers(col.values) : undefined
 
-// Filter N axis arrays to only include indices where all axes are finite,
-// keeping optional color/size arrays aligned
-function filter_finite(
-  axes: number[][],
-  color?: number[],
-  size?: number[],
-): { axes: number[][]; color_values?: number[]; size_values?: number[] } {
+// Resolve the point axes and filter non-finite coordinates, keeping color/size aligned.
+const build_point_axes = (
+  columns: Map<string, ColumnInfo>,
+  mapping: AxisMapping,
+  axis_keys: (`x` | `y` | `z`)[],
+) => {
+  const cols = axis_keys.map((key) => get_col(columns, mapping[key]))
+  if (!cols.every((col) => col !== undefined)) return null
+  const axes = cols.map((col) => to_numbers(col.values))
+  const color = optional_numbers(get_col(columns, mapping.color))
+  const size = optional_numbers(get_col(columns, mapping.size))
   const out = axes.map(() => [] as number[])
   const color_values = color ? ([] as number[]) : undefined
   const size_values = size ? ([] as number[]) : undefined
@@ -176,20 +180,6 @@ function filter_finite(
     if (size && size_values) size_values.push(size[idx])
   }
   return { axes: out, color_values, size_values }
-}
-
-const build_point_axes = (
-  columns: Map<string, ColumnInfo>,
-  mapping: AxisMapping,
-  axis_keys: (`x` | `y` | `z`)[],
-) => {
-  const cols = axis_keys.map((key) => get_col(columns, mapping[key]))
-  if (!cols.every((col) => col !== undefined)) return null
-  return filter_finite(
-    cols.map((col) => to_numbers(col.values)),
-    optional_numbers(get_col(columns, mapping.color)),
-    optional_numbers(get_col(columns, mapping.size)),
-  )
 }
 
 export function build_scatter_series(

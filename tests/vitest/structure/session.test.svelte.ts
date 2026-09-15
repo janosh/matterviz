@@ -23,7 +23,7 @@ import {
   get_dummy_structure,
   init_moyo_for_tests,
   make_crystal,
-} from '../setup'
+} from '../test-fixtures'
 
 type Host = {
   structure: AnyStructure | undefined

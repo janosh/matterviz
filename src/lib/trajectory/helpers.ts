@@ -33,8 +33,8 @@ export const is_supported_trajectory_signal_shape = (
       (sample_shape[0] === n_atoms && sample_shape[1] === 3)))
 
 // Throws: a trajectory whose species table is unreadable has no salvageable frames
-export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
-  numbers.map((num) => {
+export const convert_atomic_numbers = (numbers: ArrayLike<number>): ElementSymbol[] =>
+  Array.from(numbers, (num) => {
     const symbol = element_from_atomic_number(num)
     if (!symbol) throw new Error(`Unknown atomic number in trajectory data: ${num}`)
     return symbol
@@ -160,6 +160,32 @@ export const create_trajectory_frame = (
     metadata:
       `lattice` in structure ? { ...metadata, volume: structure.lattice.volume } : metadata,
   }
+}
+
+// A strided preview keeps full-topology indices without scanning every atom's species.
+export const create_sampled_frame = (
+  positions: Float64Array,
+  elements: ElementSymbol[],
+  stride: number,
+  lattice: math.Matrix3x3 | undefined,
+  pbc: Pbc | undefined,
+  step: number,
+  metadata: Record<string, unknown> = {},
+): TrajectoryFrame => {
+  const source_atom_indices = Array.from(
+    { length: positions.length / 3 },
+    (_unused, idx) => idx * stride,
+  )
+  return create_trajectory_frame(
+    source_atom_indices.map((_atom_idx, idx) =>
+      Array.from(positions.subarray(idx * 3, idx * 3 + 3)),
+    ),
+    source_atom_indices.map((idx) => elements[idx]),
+    lattice,
+    pbc,
+    step,
+    { ...metadata, total_atoms: elements.length, render_sample: true, source_atom_indices },
+  )
 }
 
 // Buffers backing a position stream, for zero-copy postMessage out of a worker

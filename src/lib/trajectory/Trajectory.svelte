@@ -30,7 +30,7 @@
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
   import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton } from '$lib/layout'
+  import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
@@ -43,11 +43,13 @@
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
+  import TrajectoryHotspotPane from './TrajectoryHotspotPane.svelte'
+  import type { HotspotResult, HotspotMetric } from './hotspots'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { tick as flush_updates, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -72,6 +74,7 @@
     generate_axis_labels,
     generate_axis_scale_types,
     generate_plot_series,
+    is_energy_property,
     with_visible_properties,
     get_frame_step_samples,
     get_frame_time_step,
@@ -103,6 +106,7 @@
     | `vacf`
     | `rdf`
     | `spectroscopy`
+    | `hotspots`
     | `structure-id`
     | `data-inspector`
     | `export`
@@ -124,6 +128,7 @@
     | `vacf-pane`
     | `rdf-pane`
     | `spectroscopy-pane`
+    | `hotspots-pane`
     | `structure-id-pane`
     | `data-inspector-pane`
     | `x-axis`
@@ -171,6 +176,7 @@
     property_labels,
     x_quantity = $bindable(),
     visible_properties = $bindable(),
+    relative_energy = $bindable(false),
     step_labels = DEFAULTS.trajectory.step_labels,
     plot_skimming = true,
     show_controls,
@@ -230,6 +236,8 @@
     x_quantity?: TrajectoryXQuantity
     // Bindable exact property keys (independent of display labels); [] hides every series.
     visible_properties?: string[]
+    // Plot each energy relative to its first finite recorded value; source data is unchanged.
+    relative_energy?: boolean
     // Slider labels: n evenly spaced ticks (n > 0), every |n|th step (n < 0), or exact indices
     step_labels?: number | number[]
     // Clicking the plot moves the playhead
@@ -369,7 +377,7 @@
       on_file_load?.({
         trajectory: run,
         frame_count: run.frame_count,
-        total_atoms: run.preview.structure.sites.length,
+        total_atoms: run.atom_count,
         ...opened.provenance,
       })
     } catch (error) {
@@ -447,6 +455,7 @@
   })
   const session = create_trajectory_session({
     run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
+    load_frames: () => !particle_view,
     index: () => current_step_idx,
     set_index: (idx) => (current_step_idx = idx),
     fps: () => fps,
@@ -465,6 +474,31 @@
     },
   })
   const { player, controller } = session
+  let hotspot_result = $state.raw<HotspotResult>()
+  let particle_renderer = $state<{
+    wait_for_frame: (idx: number, signal: AbortSignal) => Promise<void>
+  }>()
+  async function prepare_particle_frame(idx: number, signal: AbortSignal): Promise<void> {
+    await flush_updates()
+    signal.throwIfAborted()
+    if (!particle_renderer) throw new Error(`Wait for the particle view to finish loading`)
+    await particle_renderer.wait_for_frame(idx, signal)
+    await flush_updates()
+  }
+  let hotspot_metric = $state<HotspotMetric>(`energy`)
+  let hotspot_min_atoms = $state(10)
+  let hotspot_threshold = $state(1.25)
+  let export_particles = $state(false)
+  const particle_view = $derived.by(() => {
+    // Track pane changes even before a result exists, including locally bound pane props.
+    const pane = active_pane
+    const exporting = export_particles
+    return Boolean(
+      trajectory?.read_atoms &&
+      hotspot_result &&
+      (pane === `hotspots` || (exporting && (pane === `export` || pane === `flight`))),
+    )
+  })
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)
   let scrub_active = $derived(session.scrubbing)
@@ -519,8 +553,13 @@
 
   const is_pane_open = (pane: TrajectoryPane): boolean => active_pane === pane
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
-    if (open) active_pane = pane
-    else if (active_pane === pane) active_pane = null
+    if (open) {
+      export_particles = (pane === `export` || pane === `flight`) && particle_view
+      active_pane = pane
+    } else if (active_pane === pane) {
+      export_particles = false
+      active_pane = null
+    }
   }
 
   // === trails ===
@@ -548,7 +587,7 @@
     const collect_trails = async () => {
       const frame_stride = suggest_frame_stride(
         owner.frame_count,
-        owner.preview.structure.sites.length,
+        owner.atom_count,
         TRAIL_POSITION_MAX_BYTES,
       )
       return collect_trajectory_positions(owner, {
@@ -669,6 +708,7 @@
   let base_plot_series = $derived(
     generate_plot_series(session.property_rows, {
       property_config: extended_config,
+      relative_energy,
       x_map,
     }),
   )
@@ -839,6 +879,7 @@
       [`vacf`, `Velocity autocorrelation & VDOS`, Graph],
       [`rdf`, `Radial distribution function`, Graph],
       [`spectroscopy`, `Trajectory IR/Raman & VDOS`, Graph],
+      [`hotspots`, `Thermal hotspots`, Graph],
       [`structure-id`, `Structure identification`, Atom],
       [`data-inspector`, `Data inspector`, Database],
     ] as const
@@ -853,6 +894,25 @@
   )
   let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
 </script>
+
+{#snippet energy_controls()}
+  {#if base_plot_series.some((srs) => is_energy_property(srs.id))}
+    <SettingsSection
+      title="Energy"
+      changed_keys={relative_energy ? [`relative_energy`] : []}
+      on_reset={() => (relative_energy = false)}
+    >
+      <label
+        {@attach tooltip({
+          content: `Subtract each energy series' first finite recorded value. Δ marks the change; other quantities are unchanged.`,
+        })}
+      >
+        <input type="checkbox" name="relative_energy" bind:checked={relative_energy} />
+        Change from initial value
+      </label>
+    </SettingsSection>
+  {/if}
+{/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
@@ -875,7 +935,6 @@
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
-  class:show-both-views={show_plot && show_structure && !spectroscopy_open}
   class:spectroscopy-mode={spectroscopy_open}
   {@attach file_io.raw_file_drop_zone({
     allow: () => allow_file_drop,
@@ -1075,6 +1134,7 @@
                 session.commit(idx)
               }}
               resolve_frame={session.resolve_frame}
+              prepare_display_frame={particle_view ? prepare_particle_frame : undefined}
               on_flight_start={() => {
                 const was_playing = player.is_playing
                 player.pause()
@@ -1139,6 +1199,21 @@
                     () => is_pane_open(`structure-id`),
                     (open) => set_pane_open(`structure-id`, open)
                   }
+                />
+                <TrajectoryHotspotPane
+                  max_width="42em"
+                  run={trajectory}
+                  bind:result={hotspot_result}
+                  bind:metric={hotspot_metric}
+                  bind:min_atoms={hotspot_min_atoms}
+                  bind:threshold={hotspot_threshold}
+                  bind:pane_open={
+                    () => is_pane_open(`hotspots`), (open) => set_pane_open(`hotspots`, open)
+                  }
+                  pane_props={{
+                    style: `--pane-max-height: var(--traj-pane-max-height); width: min(42em, calc(100vw - 3em))`,
+                  }}
+                  toggle_props={analysis_pane_props.toggle_props}
                 />
                 <TrajectoryDataInspectorPane
                   {...analysis_pane_props}
@@ -1216,7 +1291,21 @@
         ? `calc(${controls_height}px + 1ex)`
         : undefined}
     >
-      {#if show_structure}
+      {#if show_structure && particle_view && trajectory && hotspot_result}
+        {#key trajectory}
+          {#await import('./TrajectoryParticleView.svelte') then { default: ParticleView }}
+            <ParticleView
+              bind:this={particle_renderer}
+              run={trajectory}
+              frame_idx={current_step_idx}
+              result={hotspot_result}
+              metric={hotspot_metric}
+              min_atoms={hotspot_min_atoms}
+              threshold={hotspot_threshold}
+            />
+          {/await}
+        {/key}
+      {:else if show_structure}
         <Structure
           allow_file_drop={false}
           style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
@@ -1298,6 +1387,10 @@
             padding={trajectory_scatter_padding}
             hover_config={trajectory_hover_config}
           >
+            {#snippet controls_extra(config)}
+              {@render energy_controls()}
+              {@render scatter_props.controls_extra?.(config)}
+            {/snippet}
             {#snippet tooltip({
               x: coord_x,
               y: coord_y,
@@ -1331,6 +1424,10 @@
             mode={histogram_props.mode ?? `overlay`}
             style="height: 100%"
           >
+            {#snippet controls_extra(config)}
+              {@render energy_controls()}
+              {@render histogram_props.controls_extra?.(config)}
+            {/snippet}
             {#snippet tooltip({
               value,
               count,
@@ -1388,12 +1485,11 @@
     padding-block: 1em;
   }
   .trajectory {
-    --min-height: 500px;
     display: flex;
     flex-direction: column;
     height: var(--traj-height, 100%);
     position: relative;
-    min-height: var(--traj-min-height, var(--min-height));
+    min-height: var(--traj-min-height, 500px);
     --traj-surface-bg: var(
       --traj-bg,
       color-mix(in srgb, var(--page-bg, Canvas) 97%, var(--text-color, CanvasText) 3%)
@@ -1494,17 +1590,6 @@
       background: var(--btn-disabled-bg);
       color: var(--text-color-muted);
       cursor: not-allowed;
-    }
-  }
-  @media (orientation: portrait) {
-    .trajectory {
-      &.show-both-views:not(.spectroscopy-mode) {
-        min-height: calc(var(--min-height) * 2);
-      }
-      &.vertical .content-area.show-both:not(.hide-plot):not(.hide-structure) {
-        grid-template-columns: minmax(0, 1fr) !important;
-        grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr) !important;
-      }
     }
   }
   .x-quantity-select {

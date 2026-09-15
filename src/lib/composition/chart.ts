@@ -9,6 +9,7 @@ import type { ElementSymbol } from '$lib/element'
 import { format_num } from '$lib/labels'
 import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
 import { resolve_pattern } from '$lib/plot/core/patterns'
+import type { SVGAttributes } from 'svelte/elements'
 import { format_amount } from './format'
 import { fractional_composition } from './parse'
 
@@ -25,6 +26,18 @@ export type ChartSegment = {
 export type ElementPatterns = Partial<Record<ElementSymbol, FillPattern>>
 
 export type ChartLabelOptions = { show_amounts: boolean; show_percentages: boolean }
+
+// Shared SVG, data, color and label contract for all three composition charts.
+export type CompositionChartProps = SVGAttributes<SVGSVGElement> & {
+  composition: CompositionType
+  size?: number
+  show_labels?: boolean
+  show_amounts?: boolean
+  show_percentages?: boolean
+  color_scheme?: ColorSchemeName
+  patterns?: ElementPatterns // hatch/texture fill per element symbol
+  svg_node?: SVGSVGElement | null
+}
 
 // Positive-amount elements in insertion order with their atomic fraction and scheme color.
 // `pattern_prefix` scopes the SVG <pattern> ids so several charts can share a page.

@@ -92,31 +92,21 @@ describe(`compute_box_stats`, () => {
     },
   )
 
-  test(`percentile mode uses 5th/95th by default and is order-insensitive`, () => {
-    const data = Array.from({ length: 100 }, (_, idx) => idx + 1) // 1..100
-    const stats = compute_box_stats(data, { whisker_mode: `percentile` })
-    // p05 index = 4.95 => 5.95 ; p95 index = 94.05 => 95.05
-    expect(stats.whisker_low).toBeCloseTo(5.95, 10)
-    expect(stats.whisker_high).toBeCloseTo(95.05, 10)
-    // values <5.95 (1..5) and >95.05 (96..100) => 10 outliers
-    expect(stats.outliers).toHaveLength(10)
-    expect(stats.outliers).toEqual([1, 2, 3, 4, 5, 96, 97, 98, 99, 100])
-    // reversed [95, 5] yields the same box as the default ordered pair
-    expect(
-      compute_box_stats(data, { whisker_mode: `percentile`, whisker_percentiles: [95, 5] }),
-    ).toEqual(stats)
-  })
-
-  test(`percentile mode honors custom whisker_percentiles`, () => {
+  // Type-7 interpolation on 1..100: p05=5.95, p95=95.05; p10=10.9, p90=90.1.
+  test.each<[string, [number, number] | undefined, [number, number]]>([
+    [`default 5th/95th`, undefined, [5.95, 95.05]],
+    [`custom 10th/90th`, [10, 90], [10.9, 90.1]],
+  ])(`percentile bounds: %s`, (_desc, percentiles, [low, high]) => {
     const data = Array.from({ length: 100 }, (_, idx) => idx + 1)
-    const stats = compute_box_stats(data, {
-      whisker_mode: `percentile`,
-      whisker_percentiles: [10, 90],
-    })
-    // p10 index = 9.9 => 10.9 ; p90 index = 89.1 => 90.1
-    expect(stats.whisker_low).toBeCloseTo(10.9, 10)
-    expect(stats.whisker_high).toBeCloseTo(90.1, 10)
-    expect(stats.outliers).toHaveLength(20) // 1..10 (<10.9) and 91..100 (>90.1)
+    const measure = (whisker_percentiles?: [number, number]) =>
+      compute_box_stats(data, { whisker_mode: `percentile`, whisker_percentiles })
+    const stats = measure(percentiles)
+    expect(stats.whisker_low).toBeCloseTo(low, 10)
+    expect(stats.whisker_high).toBeCloseTo(high, 10)
+    expect(stats.outliers).toEqual(data.filter((value) => value < low || value > high))
+    // Reversed percentiles preserve every statistic, including the outlier values/count.
+    const [lower, upper] = percentiles ?? [5, 95]
+    expect(measure([upper, lower])).toEqual(stats)
   })
 
   test(`std mode clamps whiskers to data extent`, () => {

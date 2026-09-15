@@ -4,7 +4,8 @@ import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import type { SynthesisRoute } from '$lib/synthesis-planning/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, load_json, trigger_resize_observer } from '../setup'
+import { bind_props, doc_query, trigger_resize_observer } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const base = plan_synthesis({
   entries: load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`),

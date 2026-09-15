@@ -14,6 +14,8 @@ import type {
   TrajectorySignal,
   TrajectorySignalDescriptor,
 } from './index'
+import { ATOM_BATCH_SIZE, frame_atom_batch, type ReadAtoms } from './atom-batches'
+import type { HotspotRequest, HotspotResult } from './hotspots'
 
 // `values` is what separates a signal held in memory from one the run streams on request
 export const is_loaded_signal = (signal: TrajectoryRunSignal): signal is TrajectorySignal =>
@@ -137,9 +139,12 @@ const sort_rows = (rows: TrajectoryMetadata[], start = 1): TrajectoryMetadata[] 
 type FrameResult = TrajectoryFrame | Promise<TrajectoryFrame>
 
 export interface TrajectoryRun {
+  readonly atom_count: number
+  read_atoms?: ReadAtoms
+  compute_hotspots?: (options: HotspotRequest) => Promise<HotspotResult>
   // Mandatory and >= 1: an electronic-only vaspout.h5 is a spectral result, never a run
   readonly frame_count: number
-  // Frame 0: species, atom count and lattice for layout; cheap to produce for every run kind
+  // Frame 0 for layout; may sample sites, so use atom_count for the full initial topology.
   readonly preview: TrajectoryFrame
   readonly provenance: TrajectoryProvenance
   readonly properties: TrajectoryProperties
@@ -167,6 +172,8 @@ export interface TrajectoryRun {
 // Serialisable picture of a run that lives in another thread or process (parse worker,
 // VS Code host). Everything except frames and collect_positions, which travel over a port.
 export interface TrajectoryRunSummary {
+  atom_count: number
+  has_read_atoms?: boolean
   frame_count: number
   preview: TrajectoryFrame
   provenance: TrajectoryProvenance
@@ -180,6 +187,8 @@ export interface TrajectoryRunSummary {
 }
 
 export const summarize_run = (run: TrajectoryRun): TrajectoryRunSummary => ({
+  atom_count: run.atom_count,
+  has_read_atoms: run.read_atoms !== undefined,
   frame_count: run.frame_count,
   preview: run.preview,
   provenance: run.provenance,
@@ -207,7 +216,8 @@ type SharedRunFields = Pick<
 
 export const run_fields_from_summary = (
   summary: TrajectoryRunSummary,
-): SharedRunFields & Pick<TrajectoryRun, `frame_count` | `preview`> => ({
+): SharedRunFields & Pick<TrajectoryRun, `frame_count` | `preview` | `atom_count`> => ({
+  atom_count: summary.atom_count,
   frame_count: summary.frame_count,
   preview: summary.preview,
   provenance: summary.provenance,
@@ -231,6 +241,9 @@ export const disposed_error = (what: string): Error =>
 // What a same-thread run supplies on top of the shared fields: a synchronous frame decoder,
 // optionally a full-pass sweep, and the resources `release` lets go of on dispose
 export interface SyncRunSource extends SharedRunFields {
+  atom_count?: number
+  read_atoms?: ReadAtoms
+  preview?: TrajectoryFrame
   // Names the run in the disposed error, e.g. `HDF5 trajectory`
   label: string
   frame_count: number
@@ -243,7 +256,17 @@ export interface SyncRunSource extends SharedRunFields {
 // frame 0 is decoded once as the preview, every read is range-checked, and dispose is
 // idempotent, finishes the property stream and refuses further reads.
 export function sync_run(source: SyncRunSource): TrajectoryRun {
-  const { label, frame_count, read, collect_positions, release, ...fields } = source
+  const {
+    label,
+    frame_count,
+    read,
+    collect_positions,
+    release,
+    preview: source_preview,
+    read_atoms: source_atoms,
+    atom_count: source_atom_count,
+    ...fields
+  } = source
   if (!Number.isInteger(frame_count) || frame_count < 1) {
     throw new Error(`Trajectory must have at least one frame, got ${frame_count}`)
   }
@@ -256,13 +279,31 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
       `time_step needs a positive value and a unit, got ${JSON.stringify(time_step)}`,
     )
   }
-  const preview = read(0)
+  const preview = source_preview ?? read(0)
+  const atom_count = source_atom_count ?? preview.structure.sites.length
   let disposed = false
   const live = (): void => {
     if (disposed) throw disposed_error(label)
   }
+  const read_atoms: ReadAtoms = (options, signal) => {
+    live()
+    signal?.throwIfAborted()
+    assert_frame_idx({ frame_count }, options.frame_idx)
+    return source_atoms
+      ? source_atoms(options, signal)
+      : frame_atom_batch(read(options.frame_idx), options, fields.atom_masses, fields.signals)
+  }
   return {
     ...fields,
+    atom_count,
+    ...((Boolean(source_atoms) || atom_count <= ATOM_BATCH_SIZE) && {
+      read_atoms,
+      compute_hotspots: async (options: HotspotRequest) => {
+        live()
+        const { calculate_hotspots } = await import('./hotspots')
+        return calculate_hotspots(frame_count, read_atoms, options)
+      },
+    }),
     frame_count,
     // Keep the snapshot unproxied when Svelte binds the run to reactive state.
     get preview() {
@@ -272,17 +313,15 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
       assert_frame_idx({ frame_count }, frame_idx)
       live()
       signal?.throwIfAborted()
-      if (frame_idx === 0) return preview
+      if (frame_idx === 0 && !source_preview) return preview
       return read(frame_idx)
     },
-    ...(collect_positions
-      ? {
-          collect_positions: async (options = {}) => {
-            live()
-            return collect_positions(options)
-          },
-        }
-      : {}),
+    ...(collect_positions && {
+      collect_positions: async (options = {}) => {
+        live()
+        return collect_positions(options)
+      },
+    }),
     dispose: () => {
       if (disposed) return
       disposed = true

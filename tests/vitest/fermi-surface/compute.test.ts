@@ -24,7 +24,7 @@ import {
   IDENTITY_MATRIX3,
   make_fermi_isosurface,
   make_fermi_surface,
-} from '../setup'
+} from '../test-fixtures'
 
 // Vertex `idx` of a typed-array mesh as a Vec3
 const vertex_at = ({ positions }: FermiIsosurface, idx: number): Vec3 => [

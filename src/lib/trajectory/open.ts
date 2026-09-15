@@ -4,10 +4,9 @@
 // the caller (the file viewer): an ambiguous HDF5 file throws Hdf5GroupSelectionRequiredError.
 import { HDF5_EXT_REGEX } from '$lib/constants'
 import { DEFAULTS } from '$lib/settings'
-import { is_plain_object } from '$lib/utils'
+import { is_plain_object, to_error } from '$lib/utils'
 import type { AnyStructure } from '$lib/structure/index'
 import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structure/parse'
-import { get_parse_errors, reset_parse_diagnostics } from '$lib/structure/parsers/shared'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames, has_multiple_xyz_frames } from './helpers'
 import type {
@@ -167,22 +166,26 @@ const parse_text = (
     )
   }
   if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
-    reset_parse_diagnostics()
-    const structure = parse_xyz(data)
-    if (structure) {
-      const parsed: ParsedTrajectory = {
-        format: `xyz`,
-        frames: [{ structure, step: 0, metadata: {} }],
-        metadata: {},
-      }
-      return run_from_parsed(parsed, provenance, collector)
+    let structure: AnyStructure | undefined
+    try {
+      structure = parse_xyz(data)
+    } catch (error) {
+      // A declared XYZ format is authoritative; an unrecognized name can still hold JSON.
+      if (xyz_hint)
+        throw new Error(`Failed to parse ${filename} as XYZ: ${to_error(error).message}`, {
+          cause: error,
+        })
     }
-    // The extension says XYZ, so the structure parser's reasons beat a JSON fallback
-    if (xyz_hint) {
-      throw new Error(
-        `Failed to parse ${filename} as XYZ: ${get_parse_errors().join(`; `) || `no valid frame found`}`,
+    if (structure)
+      return run_from_parsed(
+        {
+          format: `xyz`,
+          frames: [{ structure, step: 0, metadata: {} }],
+          metadata: {},
+        },
+        provenance,
+        collector,
       )
-    }
   }
   let value: unknown
   try {
@@ -218,7 +221,7 @@ export async function open_trajectory(
     signal?.throwIfAborted()
     const hdf5_provenance = {
       ...provenance,
-      ...(hdf5_group_path ? { hdf5_group: hdf5_group_path } : {}),
+      ...(hdf5_group_path && { hdf5_group: hdf5_group_path }),
     }
     if (result.kind === `parsed`)
       return run_from_parsed(result.parsed, hdf5_provenance, collector)

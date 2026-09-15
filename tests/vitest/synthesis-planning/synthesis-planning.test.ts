@@ -34,7 +34,7 @@ import { describe_atmosphere } from '$lib/synthesis-planning/scoring'
 import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
 import * as math from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
-import { make_phase, read_maybe_gz } from '../setup'
+import { make_phase, read_maybe_gz } from '../test-fixtures'
 import pymatgen_reference from './fixtures/ba_ti_o_pymatgen_reference.json' with { type: 'json' }
 
 const load_system = (path: string): PhaseData[] => JSON.parse(read_maybe_gz(path))

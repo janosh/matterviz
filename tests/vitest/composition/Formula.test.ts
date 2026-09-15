@@ -1,6 +1,7 @@
 import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import type { OxiComposition } from '$lib/composition'
 import { Formula } from '$lib/composition'
+import { rgb } from 'd3-color'
 import { type ComponentProps, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -79,23 +80,13 @@ test.each([`span`, `div`, `h1`, `strong`, `p`])(
   },
 )
 
-// Normalize any color format to lowercase hex
-function normalize_to_hex(color: string): string {
-  if (color.startsWith(`#`)) return color.toLowerCase()
-  const match = /rgb\((?<red>\d+),\s*(?<green>\d+),\s*(?<blue>\d+)\)/.exec(color)
-  if (!match) return color
-  const [, red, green, blue] = match
-  const to_hex = (num_str: string) => Number(num_str).toString(16).padStart(2, `0`)
-  return `#${to_hex(red)}${to_hex(green)}${to_hex(blue)}`
-}
-
 test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
   `Formula renders with color scheme "%s" applied to element symbols`,
   (scheme) => {
     const element = mount_formula({ formula: `H2O`, color_scheme: scheme })
     const symbols = element?.querySelectorAll<HTMLElement>(`.element-symbol`) ?? []
     // each symbol is painted with the scheme's color for its own element
-    expect([...symbols].map((symbol) => normalize_to_hex(symbol.style.color))).toEqual(
+    expect([...symbols].map((symbol) => rgb(symbol.style.color).formatHex())).toEqual(
       [`H`, `O`].map((symbol) => ELEMENT_COLOR_SCHEMES[scheme][symbol].toLowerCase()),
     )
   },
@@ -131,7 +122,7 @@ test.each([`Vesta`, `Jmol`] as const)(
     // The tile background should match the color scheme for Fe
     const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.Fe
     if (!expected_hex) throw new Error(`Missing color for Fe in ${color_scheme}`)
-    const actual_hex = normalize_to_hex(tile.style.backgroundColor)
+    const actual_hex = rgb(tile.style.backgroundColor).formatHex()
     expect(actual_hex).toBe(expected_hex.toLowerCase())
   },
 )

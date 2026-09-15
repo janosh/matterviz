@@ -15,6 +15,8 @@ import { create_highlighter } from 'svelte-widgets/highlight'
 const defaults = {
   hide_style: true,
   collapsible: true,
+  csr: true,
+  wrapper: `$site/CodeExample.svelte`,
 }
 
 // svelte-widgets' default highlighter only knows starry-night's `common` bundle plus

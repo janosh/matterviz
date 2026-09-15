@@ -21,7 +21,7 @@ import {
 import { structure_map } from '$site/structures'
 import { space_group_type } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../setup'
+import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'
 
 // Helper to get structure or throw with descriptive error
 function get_structure(identifier: string) {

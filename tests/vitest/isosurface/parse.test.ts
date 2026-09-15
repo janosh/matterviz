@@ -11,7 +11,7 @@ import type { VolumetricFileData } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { normalize_scientific_notation } from '$lib/utils'
-import { grid_value, read_maybe_gz } from '../setup'
+import { grid_value, read_maybe_gz } from '../test-fixtures'
 import { create_volume_sampler } from '$lib/isosurface/sampling'
 // spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
 // failing assertion above it, silencing console.warn for the rest of the file

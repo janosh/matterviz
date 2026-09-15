@@ -10,7 +10,7 @@ import {
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
 import { describe, expect, it } from 'vitest'
-import { make_frame, make_position_stream } from '../setup'
+import { make_frame, make_position_stream } from '../test-fixtures'
 
 describe(`curve_slots`, () => {
   it.each([

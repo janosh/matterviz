@@ -241,13 +241,17 @@ describe(`BarChart`, () => {
     expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(expected)
   })
 
-  test(`thin segments alternate external labels above and below the bar`, () => {
-    mount_chart(BarChart, { composition: { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }, size: 300 })
+  // oxfmt-ignore
+  test.each([
+    [`thin segments`, { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }, [10, 64, 10, 64, 10, 64], 0],
+    [`thin, inside and hidden labels`, { H: 10, C: 1, N: 0.01, O: 1, F: 0.01, Na: 1, Cl: 1 }, [10, 64, 10, 64], 1],
+  ] as const)(`alternates external labels for %s`, (_label, composition, expected_y, n_inside) => {
+    mount_chart(BarChart, { composition, size: 300 })
     const y_values = [...document.querySelectorAll(`text.external-label`)].map((label) =>
       Number(label.getAttribute(`y`)),
     )
-    expect(y_values).toEqual([10, 64, 10, 64, 10, 64]) // LABEL_HEIGHT/2 and below-row center
-    expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(0)
+    expect(y_values).toEqual(expected_y) // LABEL_HEIGHT/2 and below-row center
+    expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(n_inside)
   })
 
   test(`shows amount and percentage tspans when enabled`, () => {

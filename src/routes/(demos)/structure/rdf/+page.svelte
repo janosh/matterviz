@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import type { ElementSymbol, Matrix3x3, Vec3 } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import { PLOT_COLORS } from '$lib/colors'
@@ -101,25 +102,29 @@
 
 <div class="bleed-1400">
   <h2 id="element-pair-rdfs">Element-Pair RDFs</h2>
-  <section class="demo-2col">
-    <Structure structure={structures[`Al₂Lu`]} />
-    <RdfPlot
-      structures={structures[`Al₂Lu`]}
-      mode="element_pairs"
-      {cutoff}
-      {n_bins}
-      style="height: 100%"
-    />
-  </section>
+  <LazyDemo label="Element-Pair RDFs">
+    <section class="demo-2col">
+      <Structure structure={structures[`Al₂Lu`]} />
+      <RdfPlot
+        structures={structures[`Al₂Lu`]}
+        mode="element_pairs"
+        {cutoff}
+        {n_bins}
+        style="height: 100%"
+      />
+    </section>
+  </LazyDemo>
 
   <h2 id="full-rdf">Full RDF</h2>
-  <RdfPlot
-    structures={structures[`Al₂Lu`]}
-    mode="full"
-    {cutoff}
-    {n_bins}
-    style="height: 500px"
-  />
+  <LazyDemo label="Full RDF">
+    <RdfPlot
+      structures={structures[`Al₂Lu`]}
+      mode="full"
+      {cutoff}
+      {n_bins}
+      style="height: 500px"
+    />
+  </LazyDemo>
 
   <h2 id="pair-distribution-function-g-r">Pair Distribution Function G(r)</h2>
   <p>
@@ -127,14 +132,16 @@
     Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the closest
     approach.
   </p>
-  <PdfPlot
-    {structures}
-    bind:quantity={pdf_quantity}
-    bind:radiation={pdf_radiation}
-    bind:cutoff={pdf_cutoff}
-    bind:n_bins={pdf_bins}
-    style="height: 500px"
-  />
+  <LazyDemo label="Pair Distribution Function G(r)">
+    <PdfPlot
+      {structures}
+      bind:quantity={pdf_quantity}
+      bind:radiation={pdf_radiation}
+      bind:cutoff={pdf_cutoff}
+      bind:n_bins={pdf_bins}
+      style="height: 500px"
+    />
+  </LazyDemo>
 
   <h2 id="negative-scattering-length-nih">Negative Scattering Length: NiH</h2>
   <p>
@@ -142,28 +149,32 @@
       >coh</sub
     >, while the Ni–Ni shell stays positive.
   </p>
-  <section class="demo-2col">
-    <Structure structure={nickel_hydride} />
-    <PdfPlot
-      structures={nickel_hydride}
-      cutoff={10}
-      n_bins={1000}
-      show_partials
-      style="height: 100%"
-    />
-  </section>
+  <LazyDemo label="Negative Scattering Length: NiH">
+    <section class="demo-2col">
+      <Structure structure={nickel_hydride} />
+      <PdfPlot
+        structures={nickel_hydride}
+        cutoff={10}
+        n_bins={1000}
+        show_partials
+        style="height: 100%"
+      />
+    </section>
+  </LazyDemo>
 
   <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
-  <section class="demo-2col">
-    <Structure structure={structures[`Bi₂Zr₂O₈`]} />
-    <RdfPlot
-      structures={structures[`Bi₂Zr₂O₈`]}
-      mode="element_pairs"
-      {cutoff}
-      {n_bins}
-      style="height: 100%"
-    />
-  </section>
+  <LazyDemo label="Complex: Bi₂Zr₂O₈">
+    <section class="demo-2col">
+      <Structure structure={structures[`Bi₂Zr₂O₈`]} />
+      <RdfPlot
+        structures={structures[`Bi₂Zr₂O₈`]}
+        mode="element_pairs"
+        {cutoff}
+        {n_bins}
+        style="height: 100%"
+      />
+    </section>
+  </LazyDemo>
 
   <h2 id="compare-structures">Compare Structures</h2>
   <div class="demo-controls">
@@ -195,15 +206,17 @@
     >
   </div>
 
-  <RdfPlot
-    structures={Object.fromEntries(
-      selected.map((key) => [key, structures[key as keyof typeof structures]]),
-    )}
-    {mode}
-    {cutoff}
-    {n_bins}
-    style="height: 500px"
-  />
+  <LazyDemo label="Compare Structures">
+    <RdfPlot
+      structures={Object.fromEntries(
+        selected.map((key) => [key, structures[key as keyof typeof structures]]),
+      )}
+      {mode}
+      {cutoff}
+      {n_bins}
+      style="height: 500px"
+    />
+  </LazyDemo>
 
   <h2 id="amorphous-structure">Amorphous Structure</h2>
 
@@ -224,24 +237,28 @@
     >
   </div>
 
-  <section class="demo-2col">
-    <Structure structure={amorphous} />
-    <RdfPlot
-      structures={amorphous}
-      mode={amorphous_mode}
-      cutoff={10}
-      n_bins={100}
-      style="height: 100%"
-    />
-  </section>
+  <LazyDemo label="Amorphous Structure">
+    <section class="demo-2col">
+      <Structure structure={amorphous} />
+      <RdfPlot
+        structures={amorphous}
+        mode={amorphous_mode}
+        cutoff={10}
+        n_bins={100}
+        style="height: 100%"
+      />
+    </section>
+  </LazyDemo>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
-  <RdfPlot mode="element_pairs" allow_file_drop cutoff={7} style="height: 500px" />
+  <LazyDemo label="Try Your Own Structure">
+    <RdfPlot mode="element_pairs" allow_file_drop cutoff={7} style="height: 500px" />
+  </LazyDemo>
 </div>
 
 <style>
-  .bleed-1400 > section {
+  .bleed-1400 section {
     margin: 2em 0;
   }
   p {

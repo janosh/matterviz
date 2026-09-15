@@ -5,15 +5,8 @@ import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import {
-  mock_parse_worker,
-  create_drop_event,
-  cubic_matrix,
-  doc_query,
-  make_crystal,
-  mock_fullscreen,
-  type SimpleSite,
-} from '../setup'
+import { mock_parse_worker, create_drop_event, doc_query, mock_fullscreen } from '../setup'
+import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
 

@@ -12,6 +12,7 @@ import type {
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
+import { frame_atom_batch, type ReadAtoms } from '../atom-batches'
 
 export interface MemoryRunExtras {
   provenance?: TrajectoryProvenance
@@ -121,6 +122,15 @@ export function trajectory_from_frames(
   validate_frames(frames, extras)
   return trajectory_from_frame_source(frames.length, (frame_idx) => frames[frame_idx], {
     ...extras,
+    read_atoms: (options, signal) => {
+      signal?.throwIfAborted()
+      return frame_atom_batch(
+        frames[options.frame_idx],
+        options,
+        extras.atom_masses,
+        extras.signals,
+      )
+    },
     properties: extras.properties ?? rows_from_frames(frames, extras.data_extractor),
   })
 }
@@ -131,7 +141,10 @@ export function trajectory_from_frames(
 export function trajectory_from_frame_source(
   frame_count: number,
   read: (frame_idx: number) => TrajectoryFrame,
-  extras: Omit<MemoryRunExtras, `data_extractor`> & { properties: TrajectoryMetadata[] },
+  extras: Omit<MemoryRunExtras, `data_extractor`> & {
+    properties: TrajectoryMetadata[]
+    read_atoms?: ReadAtoms
+  },
 ): TrajectoryRun {
   const { provenance = {}, metadata = {}, warnings = [], properties, ...fields } = extras
   return sync_run({

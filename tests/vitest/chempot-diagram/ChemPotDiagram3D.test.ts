@@ -10,7 +10,8 @@ import type { Vec3 } from '$lib/math'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, load_json } from '../setup'
+import { bind_props } from '../setup'
+import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
 // the component's live deriveds) and every ConvexGeometry build is counted

@@ -2,7 +2,8 @@ import { get_d3_interpolator } from '$lib/colors'
 import StructureGallery from '$lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, keydown, make_crystal, mouse } from '../setup'
+import { doc_query, keydown, mouse } from '../setup'
+import { make_crystal } from '../test-fixtures'
 import StructureGalleryHarness from './StructureGalleryHarness.svelte'
 
 const items = Array.from({ length: 5 }, (_, idx) => ({

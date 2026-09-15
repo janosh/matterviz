@@ -142,6 +142,8 @@
     current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
   )
   let active_sites = $derived(active_frame?.structure.sites ?? [])
+  const atom_sample = $derived(Boolean(active_frame?.metadata?.render_sample))
+  const atom_indices = $derived(active_frame?.metadata?.source_atom_indices)
 
   // Enumerated from the sites rather than hardcoded: parsers keep growing the set of
   // per-atom entries they retain (forces, magmoms, charges, selective dynamics, …).
@@ -180,7 +182,8 @@
     active_sites.map((site, site_idx) => {
       const { species, abc, xyz, properties } = site
       const row: RowData = {
-        site_idx,
+        site_idx:
+          atom_sample && Array.isArray(atom_indices) ? atom_indices[site_idx] : site_idx,
         element: species.map(({ element }) => element).join(`/`),
         frac_a: abc[0],
         frac_b: abc[1],
@@ -271,11 +274,19 @@
           {#if active_sites.length === 0}
             <StatusMessage message="No frame loaded" style="border: none" />
           {:else}
+            {#if atom_sample}
+              <StatusMessage
+                message={`Sampled atoms: ${active_sites.length} of ${active_frame?.metadata?.total_atoms}. Site indices refer to the original frame; exported rows contain this sample only.`}
+              />
+            {/if}
             <HeatmapTable
               data={atom_rows}
               columns={atom_columns}
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
-              export_data={{ formats: [`csv`, `json`], filename: `frame-atoms` }}
+              export_data={{
+                formats: [`csv`, `json`],
+                filename: atom_sample ? `frame-atoms-sample` : `frame-atoms`,
+              }}
               initial_sort={{ column: `site_idx` }}
               on_row_click={row_click_handler(on_site_select, `site_idx`)}
               {...table_props}

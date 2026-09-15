@@ -187,17 +187,11 @@ export const format_value_or_num = (value: number, fmt?: string): string =>
 const DEFAULT_TICK_PRECISION = 3
 const MAX_TICK_PRECISION = 17
 
-const tick_format_with_precision = (formatter: string, precision: number): string =>
-  formatter.replace(/(?:\.\d+)?(?=~?[a-z%]$)/iu, `.${precision}`)
-
 const labels_collide = (values: readonly number[], labels: readonly string[]): boolean =>
   labels.some(
     (label, value_idx) =>
       label === labels[value_idx - 1] && !Object.is(values[value_idx - 1], values[value_idx]),
   )
-
-const formatter_precision = (formatter: string): number =>
-  Number(/\.(?<precision>\d+)/u.exec(formatter)?.groups?.precision ?? DEFAULT_TICK_PRECISION)
 
 const longest_label = (labels: readonly string[]): number =>
   labels.reduce((longest, label) => Math.max(longest, label.length), 0)
@@ -221,12 +215,17 @@ export const format_tick_values = (
         value,
         fixed
           ? `.${precision}~f`
-          : tick_format_with_precision(DEFAULT_FMT[Math.abs(value) >= 1 ? 0 : 1], precision),
+          : DEFAULT_FMT[Math.abs(value) >= 1 ? 0 : 1].replace(
+              /(?:\.\d+)?(?=~?[a-z%]$)/iu,
+              `.${precision}`,
+            ),
       ),
     )
   const minimum_precision = Math.max(
     DEFAULT_TICK_PRECISION,
-    ...DEFAULT_FMT.map(formatter_precision),
+    ...DEFAULT_FMT.map((fmt) =>
+      Number(/\.(?<precision>\d+)/u.exec(fmt)?.groups?.precision ?? DEFAULT_TICK_PRECISION),
+    ),
   )
   for (let precision = minimum_precision + 1; precision <= MAX_TICK_PRECISION; precision++) {
     labels = labels_with_precision(precision)

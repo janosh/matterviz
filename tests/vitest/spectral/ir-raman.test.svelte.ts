@@ -199,12 +199,6 @@ describe(`IR intensities against closed-form results`, () => {
     expect(ir_intensity(eigenvector, [4, 1], born_charges)).toBeCloseTo(1.14, 14)
   })
 
-  it(`throws when Born charge and eigenvector atom counts disagree`, () => {
-    const born = { ...nacl_born_data, born_charges: [nacl_born_data.born_charges[0]] }
-    const compute = () => compute_ir_raman_spectrum(nacl_data.qpoints[0], nacl_masses, born)
-    expect(compute).toThrow(/1 Born charge tensors for 2 atoms/)
-  })
-
   // Building a spectrum means pairing a phonopy YAML with a BORN and maybe a Raman file,
   // routinely from different sources, so every shape mismatch has to name what disagreed
   // rather than silently truncate to the shorter array.
@@ -214,19 +208,14 @@ describe(`IR intensities against closed-form results`, () => {
   const charges = nacl_born_data.born_charges
   // oxfmt-ignore
   it.each([
+    [`fewer Born charge tensors than atoms`, () => compute_ir_raman_spectrum(nacl_q(), nacl_masses, { ...nacl_born_data, born_charges: charges.slice(0, 1) }), /1 Born charge tensors for 2 atoms/],
+    [`missing eigenvectors`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.map((mode) => ({ ...mode, eigenvector: null })) }), /has no eigenvector/],
     [`fewer modes than 3N`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.slice(0, 5) }), /5 modes for 2 atoms, expected 3N = 6/],
     [`one Raman tensor for six modes`, () => spec({ raman_tensors: [mat3([1, 0, 0], [0, 1, 0], [0, 0, 1])] }), /1 Raman tensors for 6 modes/],
     [`one Raman activity for six modes`, () => spec({ raman_activities: [1] }), /1 Raman activities for 6 modes/],
     [`a mass array shorter than the eigenvector`, () => ir_intensity(nacl_optical_eigvec, [M_NA], charges), /length mismatch/],
     [`a non-physical mass`, () => ir_intensity(nacl_optical_eigvec, [0, M_CL], charges), /atom 0 has invalid mass 0/],
   ])(`rejects %s`, (_name, run, pattern) => expect(run).toThrow(pattern))
-
-  it(`throws when a mode has no eigenvector`, () => {
-    const modes = nacl_data.qpoints[0].modes.map((mode) => ({ ...mode, eigenvector: null }))
-    const stripped = { ...nacl_data.qpoints[0], modes }
-    const compute = () => compute_ir_raman_spectrum(stripped, nacl_masses, nacl_born_data)
-    expect(compute).toThrow(/has no eigenvector/)
-  })
 
   it(`scales quadratically with the Born charges`, () => {
     const born_charges = nacl_born_data.born_charges.map(
@@ -604,20 +593,19 @@ describe(`broaden_spectrum`, () => {
   })
 })
 
-// The conversion factors themselves are pinned per unit in helpers.test.ts
-it(`round-trips a 4000 cm^-1 mode through THz and meV`, () => {
-  const cm_per_thz = convert_frequencies([1], `cm^-1`)[0]
-  const thz = 4000 / cm_per_thz
-  expect(convert_frequencies([thz], `cm^-1`)[0]).toBeCloseTo(4000, 9)
-  expect(convert_frequencies([thz], `meV`)[0]).toBeCloseTo(495.9, 1) // 4000 cm^-1 = 0.4959 eV
-})
-
-it(`a 4000 cm^-1 stick survives the IR path`, () => {
-  const cm_per_thz = convert_frequencies([1], `cm^-1`)[0]
-  // Mode 8 is optical and IR-active, so only its frequency has to be swapped out
-  const mode = { ...co2_spectrum.modes[8], frequency: 4000 / cm_per_thz }
-  const spectrum = { ...co2_spectrum, modes: [mode] }
-  expect(spectrum_sticks(spectrum, `ir`, { unit: `cm^-1` }).x[0]).toBeCloseTo(4000, 9)
+// Unit conversion constants are pinned per unit in helpers.test.ts; exercise both units
+// through the complete stick-selection path for the high-frequency mode.
+it.each([
+  [`cm^-1`, 4000, 9],
+  [`meV`, 495.9, 1],
+] as const)(`a 4000 cm^-1 stick survives the IR path in %s`, (unit, expected, precision) => {
+  const thz = 4000 / convert_frequencies([1], `cm^-1`)[0]
+  expect(convert_frequencies([thz], unit)[0]).toBeCloseTo(expected, precision)
+  const mode = { ...co2_spectrum.modes[8], frequency: thz }
+  expect(spectrum_sticks({ ...co2_spectrum, modes: [mode] }, `ir`, { unit }).x[0]).toBeCloseTo(
+    expected,
+    precision,
+  )
 })
 
 // Its only caller inverts the result as 1 - A, so a silent no-op here would render a

@@ -15,8 +15,16 @@ import type {
 } from '../index'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
+import { atom_batch_transfers, type AtomBatch, type AtomReadOptions } from '../atom-batches'
+import type { HotspotOptions, HotspotRequest, HotspotResult } from '../hotspots'
 
-type RunPortMethod = `read_frame` | `collect_positions` | `abort` | `dispose`
+type RunPortMethod =
+  | `read_frame`
+  | `read_atoms`
+  | `compute_hotspots`
+  | `collect_positions`
+  | `abort`
+  | `dispose`
 
 interface RunPortRequest {
   id: number
@@ -39,6 +47,8 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   let served: TrajectoryRun | null = run
   const controllers = new Map<number, AbortController>()
   let queue = Promise.resolve()
+  let hotspot_queue = Promise.resolve()
+  let hotspot_controller: AbortController | undefined
   const unsubscribe = run.properties.subscribe((batch, complete) =>
     post({ properties: batch, complete }),
   )
@@ -74,7 +84,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
     if (method === `abort`) return controllers.get(Number(args[0]))?.abort(abort_error())
     const controller = new AbortController()
     controllers.set(identifier, controller)
-    queue = queue.then(async () => {
+    const execute = async () => {
       const active = served
       if (!active) return
       if (controller.signal.aborted) {
@@ -85,6 +95,23 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
         if (method === `read_frame`) {
           const frame = await active.read_frame(Number(args[0]), controller.signal)
           post({ id: identifier, result: frame })
+        } else if (method === `read_atoms`) {
+          if (!active.read_atoms) throw new Error(`Run cannot read atom batches`)
+          const batch = await active.read_atoms(args[0] as AtomReadOptions, controller.signal)
+          post({ id: identifier, result: batch }, atom_batch_transfers(batch))
+        } else if (method === `compute_hotspots`) {
+          if (!active.compute_hotspots) throw new Error(`Run cannot calculate hotspots`)
+          const result = await active.compute_hotspots({
+            ...(args[0] as HotspotOptions),
+            signal: controller.signal,
+            on_progress: (progress) => post({ id: identifier, progress }),
+          })
+          post({ id: identifier, result }, [
+            result.energy.buffer,
+            result.population.buffer,
+            result.dof.buffer,
+            result.occupied_frames.buffer,
+          ])
         } else if (method === `collect_positions`) {
           if (!active.collect_positions) throw new Error(`Run cannot collect positions`)
           const stream = await active.collect_positions({
@@ -99,7 +126,14 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
       } finally {
         controllers.delete(identifier)
       }
-    })
+    }
+    // Hotspot scans yield between numeric batches. They must not reserve the serial frame
+    // queue for the whole trajectory; interactive reads and cancellation get each next turn.
+    if (method === `compute_hotspots`) {
+      hotspot_controller?.abort(abort_error())
+      hotspot_controller = controller
+      hotspot_queue = hotspot_queue.then(execute)
+    } else queue = queue.then(execute)
   })
   port1.start()
   return channel.port2
@@ -225,6 +259,12 @@ export const worker_run = (
 
   return {
     ...fields,
+    ...(summary.has_read_atoms && {
+      read_atoms: (options: AtomReadOptions, signal?: AbortSignal) =>
+        rpc<AtomBatch>(`read_atoms`, [options], signal),
+      compute_hotspots: ({ signal, on_progress, ...options }: HotspotRequest) =>
+        rpc<HotspotResult>(`compute_hotspots`, [options], signal, on_progress),
+    }),
     // Keep the snapshot unproxied when Svelte binds the run to reactive state.
     get preview() {
       return summary.preview
@@ -233,17 +273,15 @@ export const worker_run = (
       assert_frame_idx(summary, frame_idx)
       if (disposed_reason) return Promise.reject(disposed_reason)
       if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
-      if (frame_idx === 0) return summary.preview
+      if (frame_idx === 0 && !summary.preview.metadata?.render_sample) return summary.preview
       return rpc<TrajectoryFrame>(`read_frame`, [frame_idx], signal)
     },
-    ...(summary.has_collect_positions
-      ? {
-          // Only the cloneable sweep options cross the port; progress and abort travel as
-          // port messages
-          collect_positions: ({ on_progress, signal, ...options } = {}) =>
-            rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
-        }
-      : {}),
+    ...(summary.has_collect_positions && {
+      // Only the cloneable sweep options cross the port; progress and abort travel as
+      // port messages
+      collect_positions: ({ on_progress, signal, ...options } = {}) =>
+        rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
+    }),
     dispose: () => dispose(),
   }
 }

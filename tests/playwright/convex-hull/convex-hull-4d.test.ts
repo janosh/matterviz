@@ -39,7 +39,7 @@ const semi_transparent_pixels = (canvas: Locator) =>
 test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull#quaternary-chemical-systems`, { waitUntil: `networkidle` })
     // the grid appears once data loads; a diagram canvas means it has also rendered
     await expect(page.locator(`.quaternary-grid`).first()).toBeVisible({ timeout: 50000 })
     await expect(hull_canvas(quaternary_diagram(page))).toBeVisible({

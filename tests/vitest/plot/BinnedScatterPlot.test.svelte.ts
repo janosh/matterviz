@@ -4,9 +4,10 @@ import type { FacetLayoutContext } from '$lib/plot/core/facets'
 import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
 import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
 import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
+import { svg_to_svg_string } from '$lib/io/export'
 import { plot_color } from '$lib/colors'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
-import { createRawSnippet, mount, tick, type ComponentProps } from 'svelte'
+import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   mock_fullscreen,
@@ -52,9 +53,9 @@ const settle = async () => {
   await tick()
   await tick()
 }
-const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>): void => {
+const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>) => {
   // Object.assign (not spread) keeps bind_props accessors intact
-  mount(BinnedScatterPlot, {
+  return mount(BinnedScatterPlot, {
     target: document.body,
     props: Object.assign(props, { style: props.style ?? `width: 800px; height: 600px` }),
   })
@@ -790,7 +791,7 @@ describe(`BinnedScatterPlot`, () => {
 
   // The pulsing marker sits on its own canvas, so a tick repaints one circle rather than
   // every point in the plot. Counted per canvas because both share the mocked getContext.
-  test(`pulse ticks repaint only the marked-points overlay`, async () => {
+  test(`hover and pulse repaint only the overlay, then stop on unmount`, async () => {
     vi.useFakeTimers({ toFake: [`requestAnimationFrame`, `cancelAnimationFrame`] })
     const clears = { base: 0, overlay: 0 }
     const width_setter = vi.spyOn(HTMLCanvasElement.prototype, `width`, `set`)
@@ -812,7 +813,7 @@ describe(`BinnedScatterPlot`, () => {
       },
     )
 
-    mount_plot({
+    const component = mount_plot({
       series: [{ x: [0.4, 0.6], y: [0.5, 0.5], point_ids: [`selected`, `other`] }],
       ...point_mode(),
       selected_point_id: `selected`,
@@ -829,6 +830,39 @@ describe(`BinnedScatterPlot`, () => {
     expect(clears.overlay).toBeGreaterThan(settled.overlay)
     expect(clears.base).toBe(settled.base) // points layer untouched between view changes
     expect(resize_count()).toBe(settled.resizes)
+
+    const before_hover = clears.overlay
+    const rect = plot_rect()
+    hover_plot(rect.x + rect.width * 0.6, rect.y + rect.height * 0.5)
+    await settle()
+    expect(clears.overlay).toBeGreaterThan(before_hover)
+    expect(clears.base).toBe(settled.base)
+
+    const canvases = [...binned_plot().querySelectorAll(`canvas`)]
+    for (const canvas of canvases) {
+      vi.spyOn(canvas, `toDataURL`).mockReturnValue(
+        `data:image/png;base64,${btoa(canvas.className)}`,
+      )
+    }
+    const exported = new DOMParser().parseFromString(
+      svg_to_svg_string(plot_svg()),
+      `image/svg+xml`,
+    )
+    expect(
+      [...exported.querySelectorAll(`image`)].map((image) => image.getAttribute(`href`)),
+    ).toEqual(
+      [`density-canvas`, `marked-points`].map((name) => `data:image/png;base64,${btoa(name)}`),
+    )
+    expect(
+      query(exported, `image`).compareDocumentPosition(query(exported, `.x-axis`)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    await unmount(component)
+    const after_unmount = { ...clears }
+    advance_frames(3)
+    await settle()
+    expect(clears).toEqual(after_unmount)
+    expect(canvases.every((canvas) => canvas.parentNode === null)).toBe(true)
   })
 
   test(`missing selected point ID does not schedule pulse frames`, async () => {

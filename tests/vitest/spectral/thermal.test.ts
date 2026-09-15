@@ -2,7 +2,7 @@ import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '$lib/constants'
 import { frequency_unit_per_thz, thermal_properties } from '$lib/spectral'
 import type { PhononDos } from '$lib/spectral'
 import { describe, expect, test } from 'vitest'
-import { load_json } from '../setup'
+import { load_json } from '../test-fixtures'
 
 // Reference F, U, S, C_v (J/mol and J/(K·mol) per primitive cell) stored alongside the DOS in
 // the atomate2 fixture. They come from the same trapezoid integration over this DOS grid (the

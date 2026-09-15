@@ -1,7 +1,8 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import type { ElementPatterns } from '$lib/composition'
   import { BarChart, BubbleChart, PieChart } from '$lib/composition'
-  import { CompositionDemo } from '$site'
+  import CompositionDemo from '$site/CompositionDemo.svelte'
 
   let show_labels = $state(true)
   let show_amounts = $state(true)
@@ -41,30 +42,34 @@
   >
 </div>
 
-<div class="chart-row">
-  <BarChart
-    {composition}
-    size={chart_size}
-    {bar_height}
-    {show_labels}
-    {show_amounts}
-    {show_percentages}
-    {patterns}
-  />
-  <PieChart
-    {composition}
-    size={chart_size}
-    inner_radius={(inner_radius * chart_size) / 2}
-    {show_labels}
-    {show_amounts}
-    {show_percentages}
-    {patterns}
-  />
-  <BubbleChart {composition} size={chart_size} {show_labels} {show_amounts} {patterns} />
-</div>
+<LazyDemo label="Chart Controls" height="500px">
+  <div class="chart-row">
+    <BarChart
+      {composition}
+      size={chart_size}
+      {bar_height}
+      {show_labels}
+      {show_amounts}
+      {show_percentages}
+      {patterns}
+    />
+    <PieChart
+      {composition}
+      size={chart_size}
+      inner_radius={(inner_radius * chart_size) / 2}
+      {show_labels}
+      {show_amounts}
+      {show_percentages}
+      {patterns}
+    />
+    <BubbleChart {composition} size={chart_size} {show_labels} {show_amounts} {patterns} />
+  </div>
+</LazyDemo>
 
 <h2 id="dynamic-user-input">Dynamic User Input</h2>
-<CompositionDemo show_interactive />
+<LazyDemo label="Dynamic composition input" height="300px">
+  <CompositionDemo show_interactive />
+</LazyDemo>
 
 <style>
   h2:not(:first-of-type) {

@@ -24,7 +24,7 @@ export const host_run = (
       assert_frame_idx(summary, frame_idx)
       if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))
       if (signal?.aborted) return Promise.reject(to_error(signal.reason))
-      if (frame_idx === 0) return summary.preview
+      if (frame_idx === 0 && !summary.preview.metadata?.render_sample) return summary.preview
       return request_frame(frame_idx, signal)
     },
     dispose: () => {

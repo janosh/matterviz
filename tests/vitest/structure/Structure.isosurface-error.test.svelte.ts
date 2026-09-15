@@ -8,7 +8,8 @@ import Structure from '$lib/structure/Structure.svelte'
 import { structures } from '$site/structures'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, make_grid, make_volume } from '../setup'
+import { doc_query } from '../setup'
+import { make_grid, make_volume } from '../test-fixtures'
 
 const worker_message = `Isosurface geometry failed: Failed to fetch dynamically imported module`
 vi.mock(`$lib/structure/StructureViewport.svelte`, () => ({

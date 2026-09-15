@@ -7,7 +7,7 @@ import type {
 import { parse_in_worker } from '$lib/file-viewer/parse-in-worker'
 import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
 import { prediction_to_json } from '$lib/structure/prediction'
-import { make_grid, make_volume } from '../setup'
+import { make_grid, make_volume } from '../test-fixtures'
 import type { Hdf5GroupSelectionRequiredError, TrajectoryFrame } from '$lib/trajectory'
 import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
 import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'

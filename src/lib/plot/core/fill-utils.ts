@@ -275,7 +275,10 @@ export function resolve_boundary_points(
 
   // flat horizontal edge at constant y (number / constant / axis boundaries)
   const flat_edge = (coord_y: number): ResolvedBoundary => ({
-    points: horizontal(span_xs, coord_y),
+    points: [
+      { x: span_xs[0], y: coord_y },
+      { x: span_xs[span_xs.length - 1], y: coord_y },
+    ],
     curve: `linear`,
   })
   // function / data edges trace with monotoneX by default; a series edge inherits the
@@ -324,24 +327,17 @@ export function resolve_boundary_points(
     }
     // No x: align values to the companion's x by index (or fraction when lengths differ)
     const num_values = boundary.values.length
-    const companion_x = (idx: number): number =>
-      span_xs.length === num_values
-        ? span_xs[idx]
-        : span_xs[Math.round((idx / Math.max(1, num_values - 1)) * (span_xs.length - 1))]
-    const points = boundary.values.map((value, idx) => ({ x: companion_x(idx), y: value }))
+    const points = boundary.values.map((value, idx) => ({
+      x:
+        span_xs.length === num_values
+          ? span_xs[idx]
+          : span_xs[Math.round((idx / Math.max(1, num_values - 1)) * (span_xs.length - 1))],
+      y: value,
+    }))
     return curved_edge(clean_pts(points))
   }
   return null
 }
-
-// Two points spanning [first, last] of xs at constant y
-const horizontal = (x_values: readonly number[], coord_y: number): Pt[] =>
-  x_values.length === 0
-    ? []
-    : [
-        { x: x_values[0], y: coord_y },
-        { x: x_values[x_values.length - 1], y: coord_y },
-      ]
 
 // Clip a prepared boundary to [xa, xb], inserting on-curve endpoints so the edge starts/ends at xa/xb
 function clip_boundary(boundary: PreparedBoundary, start_x: number, end_x: number): Pt[] {
@@ -350,8 +346,7 @@ function clip_boundary(boundary: PreparedBoundary, start_x: number, end_x: numbe
   const inside = boundary.points.slice(first, last)
   const start = { x: start_x, y: boundary.eval(start_x) }
   const end = { x: end_x, y: boundary.eval(end_x) }
-  const pts = [start, ...inside, end]
-  return pts.filter((point) => Number.isFinite(point.y))
+  return [start, ...inside, end].filter((point) => Number.isFinite(point.y))
 }
 
 // Binary-search the x where a `where` toggle occurs between two grid samples (boundaries linear between them)

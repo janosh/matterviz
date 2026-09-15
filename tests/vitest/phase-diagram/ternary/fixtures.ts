@@ -1,6 +1,6 @@
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element'
-import { make_phase } from '../../setup'
+import { make_phase } from '../../test-fixtures'
 
 // Li-Na-K toy system with one T-dependent phase. Elements are synthetic (dG_f = 0), so AB's
 // tabulated free energies are its formation energies: dG_f(AB) = -0.5 + 0.0005 (T - 300).

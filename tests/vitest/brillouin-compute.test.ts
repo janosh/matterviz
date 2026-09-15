@@ -24,7 +24,12 @@ import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { col_major, cubic_matrix, IDENTITY_MATRIX3 as IDENTITY_MAT, load_json } from './setup'
+import {
+  col_major,
+  cubic_matrix,
+  IDENTITY_MATRIX3 as IDENTITY_MAT,
+  load_json,
+} from './test-fixtures'
 
 const recip_2pi = (lattice: Matrix3x3) => math.reciprocal_lattice(lattice, { two_pi: true })
 

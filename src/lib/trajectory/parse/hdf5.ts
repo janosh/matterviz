@@ -1,4 +1,6 @@
 import type { Matrix3x3 } from '$lib/math'
+import { element_by_symbol } from '$lib/element/data'
+import { ATOM_BATCH_SIZE, atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
 import { calc_lattice_params, first_non_increasing_index, partition_point } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
 import { to_error } from '$lib/utils'
@@ -6,6 +8,7 @@ import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
+  create_sampled_frame,
   create_trajectory_frame,
   is_supported_trajectory_signal_shape,
   values_per_sample,
@@ -17,7 +20,6 @@ import type {
 } from '$lib/trajectory/index'
 import {
   Hdf5GroupSelectionRequiredError,
-  attach_site_vectors,
   attribute_value,
   dataset_at,
   dataset_shape as shape_of_dataset,
@@ -27,6 +29,7 @@ import {
   lattice_from_values,
   read_numeric_1d as read_1d,
   read_numeric_hyperslab,
+  read_numeric_buffer,
   read_numeric_samples,
   resolve_stream_channels,
   sampled_property_rows,
@@ -38,6 +41,7 @@ import {
   trajectory_signal,
 } from './h5-utils'
 import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference-md-h5'
+import { is_md_h5_file, parse_md_h5_file } from './md-h5'
 import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
@@ -62,11 +66,13 @@ export const open_hdf5_trajectory = async (
   const opened = await open_h5_source(source, filename)
   let lazy: LazyTrajectorySource | undefined
   try {
-    const result = is_vaspout_h5_file(opened.h5_file)
-      ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
-      : is_reference_md_h5_file(opened.h5_file)
-        ? parse_reference_md_h5_file(opened.h5_file, hdf5_group_path)
-        : parse_torch_sim_h5_file(opened.h5_file, hdf5_group_path)
+    const result = is_md_h5_file(opened.h5_file)
+      ? parse_md_h5_file(opened.h5_file, hdf5_group_path)
+      : is_vaspout_h5_file(opened.h5_file)
+        ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
+        : is_reference_md_h5_file(opened.h5_file)
+          ? parse_reference_md_h5_file(opened.h5_file, hdf5_group_path)
+          : parse_torch_sim_h5_file(opened.h5_file, hdf5_group_path)
     if (!is_lazy_source(result)) return { kind: `parsed`, parsed: result }
     const dispose_source = result.dispose
     lazy = {
@@ -150,6 +156,19 @@ const dataset_shape = (dataset: Dataset, path: string): number[] =>
 const read_numeric_1d = (dataset: Dataset, path: string, count: number): number[] =>
   read_1d(dataset, path, count, FORMAT)
 
+// Static metadata or its first frame can exceed one logical slice just like positions.
+const read_atom_scalars = (dataset: Dataset, path: string, n_atoms: number): number[] =>
+  Array.from(
+    read_numeric_samples(dataset, path, n_atoms, 1, 1, (start, end) =>
+      dataset.shape?.length === 1
+        ? [[start, end]]
+        : [
+            [0, 1],
+            [start, end],
+          ],
+    ),
+  )
+
 const parent_path = (path: string): string => path.slice(0, path.lastIndexOf(`/`))
 
 const validate_steps = (steps: number[], path: string): void => {
@@ -211,7 +230,7 @@ const discover_torch_sim_signals = (
       const valid_shape =
         (shape.length === 1 && shape[0] === n_atoms) ||
         (shape.length === 2 && shape[0] === 1 && shape[1] === n_atoms)
-      const mass_values = valid_shape ? read_numeric_hyperslab(dataset, path, [[]]) : null
+      const mass_values = valid_shape ? read_atom_scalars(dataset, path, n_atoms) : null
       if (!mass_values || mass_values.some((mass) => !Number.isFinite(mass) || mass <= 0)) {
         throw new Error(
           `TorchSim HDF5 masses ${path} must contain ${n_atoms} finite positive values`,
@@ -260,7 +279,7 @@ const discover_torch_sim_signals = (
       path,
       sample_shape,
       steps: steps_raw,
-      ...(unit ? { unit } : {}),
+      ...(unit && { unit }),
     }
     signal_paths[key] = path
   }
@@ -364,12 +383,12 @@ const parse_torch_sim_datasets = (
     `atomic numbers`,
   )
   const dynamic_atomic_numbers = atomic_number_layout === `dynamic`
-  const static_atomic_numbers = dynamic_atomic_numbers
-    ? null
-    : read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[]])
-  const first_atomic_numbers =
-    static_atomic_numbers ??
-    read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[0, 1]])
+  const first_atomic_numbers = read_atom_scalars(
+    atomic_numbers_dataset,
+    atomic_number_path,
+    n_atoms,
+  )
+  const static_atomic_numbers = dynamic_atomic_numbers ? null : first_atomic_numbers
   const elements = convert_atomic_numbers(first_atomic_numbers)
   const data_group_path = structural_parent.endsWith(`/data`) ? structural_parent : undefined
   const steps_group_path = data_group_path ? `${parent_path(data_group_path)}/steps` : `/steps`
@@ -441,12 +460,21 @@ const parse_torch_sim_datasets = (
       Boolean(pbc_values?.[frame_idx * 3 + 1]),
       Boolean(pbc_values?.[frame_idx * 3 + 2]),
     ]
-  const read_positions = (start: number, end: number): number[] =>
-    read_numeric_hyperslab(
-      positions_dataset,
-      position_path,
-      positions_have_frame_axis ? [[start, end, 1]] : [[]],
-    )
+  const read_positions = (start: number, end: number): Float64Array => {
+    const values = new Float64Array((end - start) * position_values_per_frame)
+    for (let frame_idx = start; frame_idx < end; frame_idx++) {
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE) {
+        const ranges: [number, number, number][] = positions_have_frame_axis
+          ? [[frame_idx, frame_idx + 1, 1]]
+          : []
+        ranges.push([atom_idx, Math.min(n_atoms, atom_idx + ATOM_BATCH_SIZE), 1])
+        const batch = read_numeric_buffer(positions_dataset, position_path, ranges)
+        const offset = (frame_idx - start) * position_values_per_frame + atom_idx * 3
+        values.set(batch, offset)
+      }
+    }
+    return values
+  }
   const read_atomic_numbers = (start: number, end: number): number[] =>
     static_atomic_numbers ??
     read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[start, end, 1]])
@@ -494,7 +522,7 @@ const parse_torch_sim_datasets = (
     return null
   }
   const tail_chunk_size = hdf5_frames_per_slice(
-    position_values_per_frame,
+    Math.min(position_values_per_frame, ATOM_BATCH_SIZE * 3),
     ...(dynamic_atomic_numbers ? [n_atoms] : []),
     ...(dynamic_cells ? [9] : []),
   )
@@ -505,21 +533,27 @@ const parse_torch_sim_datasets = (
   // Last frame in [start, end) with any non-zero position / atomic number / cell value, or
   // null when the whole chunk is zero-filled. One hyperslab read per dataset per chunk.
   const last_non_zero_frame_in = (start: number, end: number): number | null => {
-    const positions = read_positions(start, end)
     const atomic_numbers = dynamic_atomic_numbers ? read_atomic_numbers(start, end) : null
     const cells = read_cells(start, end)
     for (let frame_idx = end - 1; frame_idx >= start; frame_idx--) {
       const local_idx = frame_idx - start
       const frame_zero =
-        range_is_zero(
-          positions,
-          local_idx * position_values_per_frame,
-          (local_idx + 1) * position_values_per_frame,
-        ) &&
         (!atomic_numbers ||
           range_is_zero(atomic_numbers, local_idx * n_atoms, (local_idx + 1) * n_atoms)) &&
         (!cells || range_is_zero(cells, local_idx * 9, (local_idx + 1) * 9))
       if (!frame_zero) return frame_idx
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE) {
+        const ranges: [number, number, number][] = positions_have_frame_axis
+          ? [[frame_idx, frame_idx + 1, 1]]
+          : []
+        ranges.push([atom_idx, Math.min(n_atoms, atom_idx + ATOM_BATCH_SIZE), 1])
+        if (
+          read_numeric_buffer(positions_dataset, position_path, ranges).some(
+            (value) => value !== 0,
+          )
+        )
+          return frame_idx
+      }
     }
     return null
   }
@@ -644,6 +678,22 @@ const parse_torch_sim_datasets = (
     }),
   )
   const energy_dataset = energy_is_frame_aligned ? candidate_energy_dataset : null
+  const time_signal = signal_manifest.time
+  const time_for_frame = (frame_idx: number, required = false): number | undefined => {
+    if (!time_signal) return undefined
+    if (time_signal.sample_shape.length !== 0) {
+      if (required) throw new Error(`HDF5 time must be scalar per frame: ${time_signal.path}`)
+      return undefined
+    }
+    const sample_idx = partition_point(time_signal.steps, (step) => step < steps[frame_idx])
+    if (time_signal.steps[sample_idx] !== steps[frame_idx]) {
+      if (required) throw new Error(`HDF5 time has no sample at step ${steps[frame_idx]}`)
+      return undefined
+    }
+    return read_numeric_buffer(time_signal.dataset, time_signal.path, [
+      [sample_idx, sample_idx + 1],
+    ])[0]
+  }
   const lattice_for_frame = (frame_idx: number): Matrix3x3 | undefined => {
     if (static_lattice) return static_lattice
     const values = read_cells(frame_idx, frame_idx + 1)
@@ -663,7 +713,7 @@ const parse_torch_sim_datasets = (
         : undefined
     const frame = create_trajectory_frame(
       Array.from({ length: n_atoms }, (_unused, atom_idx) =>
-        values.slice(atom_idx * 3, atom_idx * 3 + 3),
+        Array.from(values.subarray(atom_idx * 3, atom_idx * 3 + 3)),
       ),
       elements,
       lattice,
@@ -671,16 +721,24 @@ const parse_torch_sim_datasets = (
       steps[frame_idx],
       energy === undefined ? {} : { energy },
     )
+    const time = time_for_frame(frame_idx)
+    if (time !== undefined) frame.metadata = { ...frame.metadata, time }
     for (const [key, signal] of Object.entries(signal_manifest)) {
       if (!is_per_atom_vector(signal)) continue
       const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
       if (signal.steps[signal_idx] !== steps[frame_idx]) continue
-      const ranges: [number, number][] = [[signal_idx, signal_idx + 1]]
-      attach_site_vectors(
-        frame,
-        key,
-        read_numeric_hyperslab(signal.dataset, signal.path, ranges),
-      )
+      for (let start = 0; start < n_atoms; start += ATOM_BATCH_SIZE) {
+        const end = Math.min(n_atoms, start + ATOM_BATCH_SIZE)
+        const vectors = read_numeric_buffer(signal.dataset, signal.path, [
+          [signal_idx, signal_idx + 1],
+          [start, end],
+          [0, 3],
+        ])
+        for (let idx = start; idx < end; idx++)
+          frame.structure.sites[idx].properties[key] = Array.from(
+            vectors.subarray((idx - start) * 3, (idx - start + 1) * 3),
+          )
+      }
     }
     return frame
   }
@@ -702,17 +760,89 @@ const parse_torch_sim_datasets = (
             ? lattice_from_values(sampled_cells, sample_idx * 9)
             : static_lattice
           return {
-            ...(sampled_energy ? { energy: sampled_energy[sample_idx] } : {}),
-            ...(lattice ? { volume: calc_lattice_params(lattice).volume } : {}),
+            ...(sampled_energy && { energy: sampled_energy[sample_idx] }),
+            ...(lattice && { volume: calc_lattice_params(lattice).volume }),
           }
         })
       },
     )
   const { timing, source_metadata } = torch_sim_context(inherited_attribute)
+  const read_atoms: ReadAtoms = (options, signal) => {
+    signal?.throwIfAborted()
+    const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
+    if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count)
+      throw new Error(`Invalid HDF5 frame ${frame_idx}`)
+    const { start, count, stride } = atom_range(n_atoms, options)
+    const atom_slice: [number, number, number] = [
+      start,
+      Math.min(n_atoms, start + count * stride),
+      stride,
+    ]
+    const positions = read_numeric_buffer(
+      positions_dataset,
+      position_path,
+      positions_have_frame_axis ? [[frame_idx, frame_idx + 1], atom_slice] : [atom_slice],
+    )
+    const channel = (key: string, width: number): Float64Array => {
+      const entry = signal_manifest[key]
+      if (
+        !entry ||
+        (entry.sample_shape.join(`,`) !== (width === 3 ? `${n_atoms},3` : `${n_atoms}`) &&
+          !(n_atoms === 1 && width === 1 && entry.sample_shape.length === 0))
+      )
+        throw new Error(`HDF5 ${key} must have shape [${n_atoms}${width === 3 ? `,3` : ``}]`)
+      const sample_idx = partition_point(entry.steps, (step) => step < steps[frame_idx])
+      if (entry.steps[sample_idx] !== steps[frame_idx])
+        throw new Error(`HDF5 ${key} has no sample at step ${steps[frame_idx]}`)
+      return read_numeric_buffer(
+        entry.dataset,
+        entry.path,
+        entry.dataset.shape?.length === 1
+          ? [[sample_idx, sample_idx + 1]]
+          : [[sample_idx, sample_idx + 1], atom_slice],
+      )
+    }
+    const atomic_numbers = Uint8Array.from(
+      { length: count },
+      (_unused, idx) => first_atomic_numbers[start + idx * stride],
+    )
+    const batch: AtomBatch = {
+      positions,
+      atomic_numbers,
+      total_atoms: n_atoms,
+      start,
+      stride,
+      step: steps[frame_idx],
+      time: time_for_frame(frame_idx, Boolean(velocity_key) || Boolean(energy_key)),
+      cell: lattice_for_frame(frame_idx),
+      origin: [0, 0, 0],
+      pbc: pbc_for_frame(frame_idx),
+      ...(velocity_key && { velocities: channel(velocity_key, 3) }),
+      ...(energy_key && { energies: channel(energy_key, 1) }),
+    }
+    if (mass_source)
+      batch.masses = Float64Array.from({ length: count }, (_unused, idx) => {
+        const atom_idx = start + idx * stride
+        const mass =
+          mass_source === `standard`
+            ? element_by_symbol.get(elements[atom_idx])?.atomic_mass
+            : atom_masses?.[atom_idx]
+        if (mass === undefined || !Number.isFinite(mass) || mass <= 0)
+          throw new Error(`Missing ${mass_source} mass at atom ${atom_idx}`)
+        return mass
+      })
+    if (selection_key)
+      batch.selected = Uint8Array.from(channel(selection_key, 1), (value) => {
+        if (value !== 0 && value !== 1)
+          throw new Error(`HDF5 selection ${selection_key} must contain 0/1`)
+        return value
+      })
+    return batch
+  }
   const shared = {
     format: `hdf5`,
     ...timing,
-    ...(atom_masses ? { atom_masses } : {}),
+    ...(atom_masses && { atom_masses }),
     metadata: {
       discovered_datasets: {
         positions: position_path,
@@ -725,10 +855,10 @@ const parse_torch_sim_datasets = (
       },
       total_groups_found,
       ...source_metadata,
-      ...(dropped_steps > 0 ? { dropped_steps } : {}),
+      ...(dropped_steps > 0 && { dropped_steps }),
     },
   }
-  if (valid_frame_count === 1) {
+  if (valid_frame_count === 1 && n_atoms <= ATOM_BATCH_SIZE) {
     const signals: Record<string, TrajectorySignal> = Object.fromEntries(
       Object.entries(signal_manifest).map(([key, signal]) => [
         key,
@@ -738,7 +868,7 @@ const parse_torch_sim_datasets = (
     return {
       ...shared,
       frames: [load_frame(0)],
-      ...(Object.keys(signals).length > 0 ? { signals } : {}),
+      ...(Object.keys(signals).length > 0 && { signals }),
     }
   }
   // One sample per surviving frame on exactly the geometry steps: only such a signal can be
@@ -866,17 +996,42 @@ const parse_torch_sim_datasets = (
       coords_unwrapped: false,
       frame_stride,
       steps: frame_indices.map((frame_idx) => steps[frame_idx]),
-      ...(vector_keys.length > 0 ? { vectors } : {}),
-      ...(signal_keys.length > 0 ? { signals } : {}),
+      ...(vector_keys.length > 0 && { vectors }),
+      ...(signal_keys.length > 0 && { signals }),
     }
   }
   return {
     ...shared,
+    atom_count: n_atoms,
+    read_atoms,
+    ...(n_atoms > ATOM_BATCH_SIZE && {
+      preview: (() => {
+        const stride = Math.ceil(n_atoms / 2000)
+        const positions = read_numeric_buffer(
+          positions_dataset,
+          position_path,
+          positions_have_frame_axis
+            ? [
+                [0, 1],
+                [0, n_atoms, stride],
+              ]
+            : [[0, n_atoms, stride]],
+        )
+        return create_sampled_frame(
+          positions,
+          elements,
+          stride,
+          lattice_for_frame(0),
+          pbc_for_frame(0),
+          steps[0],
+        )
+      })(),
+    }),
     frame_count: valid_frame_count,
     read_frame: load_frame,
     properties: sampled_properties(),
     collect_positions,
-    ...(Object.keys(signal_descriptors).length > 0 ? { signals: signal_descriptors } : {}),
+    ...(Object.keys(signal_descriptors).length > 0 && { signals: signal_descriptors }),
   }
 }
 
@@ -902,18 +1057,16 @@ function parse_torch_sim_h5_file(
   }
   discover(h5_file)
 
-  const paths_for = (names: string[]): string[] =>
-    names.flatMap((name) => found_paths[name] ?? [])
   const structural_paths_for = (names: string[]): string[] =>
-    paths_for(names).filter((path) => !path.includes(`/steps/`))
+    names
+      .flatMap((name) => found_paths[name] ?? [])
+      .filter((path) => !path.includes(`/steps/`))
   const position_paths = structural_paths_for(POSITION_ALIASES)
   const atomic_number_paths = structural_paths_for(ATOMIC_NUMBER_ALIASES)
   const structural_parents = new Set(position_paths.map(parent_path))
   const common_parents = new Set(
     atomic_number_paths.map(parent_path).filter((parent) => structural_parents.has(parent)),
   )
-  const dataset_path_for = (paths: string[], parent: string): string | undefined =>
-    paths.find((path) => parent_path(path) === parent)
   const group_attribute_value = (parent: string, names: string[]): unknown => {
     let current = parent
     while (current) {
@@ -945,7 +1098,7 @@ function parse_torch_sim_h5_file(
   const first_path = (names: string[]): string | undefined =>
     structural_parent === undefined
       ? undefined
-      : dataset_path_for(structural_paths_for(names), structural_parent)
+      : structural_paths_for(names).find((path) => parent_path(path) === structural_parent)
   const position_path = first_path(POSITION_ALIASES)
   const atomic_number_path = first_path(ATOMIC_NUMBER_ALIASES)
   const cell_path = first_path(CELL_ALIASES)

@@ -18,7 +18,7 @@ import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
 import { Color, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { make_crystal, make_rocksalt } from '../setup'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
 
@@ -356,28 +356,20 @@ describe(`compute_polyhedra`, () => {
     expect(compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))).toHaveLength(0)
   })
 
-  test(`min_neighbors threshold filters low-coordination centers`, () => {
-    const structure = make_nacl_cluster()
-    const count = (min_neighbors: number) =>
-      compute_polyhedra(structure, octahedral_bonds, { min_neighbors }).length
-    expect(count(7)).toBe(0)
-    expect(count(6)).toBe(1)
-  })
-
-  test(`excluded_center_elements removes matching centers`, () => {
-    const polyhedra = compute_polyhedra(make_nacl_cluster(), octahedral_bonds, {
-      excluded_center_elements: [`Na`],
-    })
-    expect(polyhedra).toHaveLength(0)
-  })
-
-  test(`electronegativity_margin tightens the cation test`, () => {
+  test.each([
+    [{ min_neighbors: 7 }, 0],
+    [{ min_neighbors: 6 }, 1],
+    [{ excluded_center_elements: [`Na`] }, 0],
     // Na (0.93) vs Cl (3.16): margin of 3 exceeds the EN gap, so Na no longer qualifies
-    const polyhedra = compute_polyhedra(make_nacl_cluster(), octahedral_bonds, {
-      electronegativity_margin: 3,
-    })
-    expect(polyhedra).toHaveLength(0)
-  })
+    [{ electronegativity_margin: 3 }, 0],
+  ] satisfies [Parameters<typeof compute_polyhedra>[2], number][])(
+    `NaCl center filters %j leave %i polyhedra`,
+    (options, expected) => {
+      expect(compute_polyhedra(make_nacl_cluster(), octahedral_bonds, options)).toHaveLength(
+        expected,
+      )
+    },
+  )
 
   test(`boundary completeness: truncated supercell copies are skipped`, () => {
     // Rocksalt NaCl conventional cell -> real bonding -> 3x3x3 supercell without

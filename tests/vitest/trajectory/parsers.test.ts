@@ -32,7 +32,8 @@ import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { make_crystal, read_binary_test_file, read_maybe_gz, rejection_of } from '../setup'
+import { rejection_of } from '../setup'
+import { make_crystal, read_binary_test_file, read_maybe_gz } from '../test-fixtures'
 import type { H5Spec } from './fixtures'
 import {
   create_dataset,
@@ -1579,13 +1580,17 @@ describe(`HDF5 slice budgets`, () => {
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application slice limit`,
     )
     const slice = vi.fn()
-    const dataset = { shape: [too_many], slice } as unknown as H5Dataset
+    const dataset = { metadata: { size: 8 }, shape: [too_many], slice } as unknown as H5Dataset
     expect(() => read_numeric_hyperslab(dataset, `/large`, [[]])).toThrow(
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
     expect(slice).not.toHaveBeenCalled()
     // an undecoded 2-byte [n_atoms] masses used to yield 2*n_atoms plausible byte values
-    const undecoded = { shape: [4], slice: () => new Uint8Array(8) } as unknown as H5Dataset
+    const undecoded = {
+      metadata: { size: 2 },
+      shape: [4],
+      slice: () => new Uint8Array(8),
+    } as unknown as H5Dataset
     expect(() => read_numeric_hyperslab(undecoded, `/masses`, [[]])).toThrow(
       `HDF5 dataset /masses hyperslab returned 8 values, expected 4`,
     )
@@ -1615,6 +1620,7 @@ describe(`HDF5 slice budgets`, () => {
   it(`copies large axis chunks and sampled hyperslabs without spreading into the call stack`, () => {
     const entry_count = 130_000
     const axis = {
+      metadata: { size: 8 },
       shape: [entry_count],
       slice: () => Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
     } as unknown as H5Dataset
@@ -1623,6 +1629,7 @@ describe(`HDF5 slice budgets`, () => {
     expect(values.at(-1)).toBe(entry_count - 1)
 
     const samples = {
+      metadata: { size: 8 },
       shape: [3, 2],
       slice: () => Float64Array.from([1, 2, 3, 4, 5, 6]),
     } as unknown as H5Dataset
@@ -1642,7 +1649,11 @@ describe(`HDF5 slice budgets`, () => {
         (_unused, value_idx) => start + Math.floor(value_idx / sample_size) * stride,
       )
     })
-    const dataset = { shape: [sample_count, sample_size], slice } as unknown as H5Dataset
+    const dataset = {
+      metadata: { size: 8 },
+      shape: [sample_count, sample_size],
+      slice,
+    } as unknown as H5Dataset
     const values = read_numeric_samples(
       dataset,
       `/observables/dipole`,
@@ -1902,9 +1913,7 @@ describe(`HDF5`, () => {
     )
   })
 
-  // The torn-tail scan must read every position chunk at most once. The candidates are the
-  // trailing run of zero steps; a non-zero frame inside it moves the tear past itself
-  // instead of re-reading the chunk for the next candidate (O(n_tail × chunk) before).
+  // Scan tail frames backwards without rereading them; stop at the first nonzero frame.
   it.each([
     {
       // writer killed between positions and steps: frame 2 has positions but no step
@@ -1931,7 +1940,7 @@ describe(`HDF5`, () => {
       error: /must increase strictly/,
     },
   ])(
-    `reads positions once while scanning $desc`,
+    `reads each tail frame at most once while scanning $desc`,
     async ({ position_steps, frames, error }) => {
       const content = await h5_bytes(`torn-scan`, (file) => {
         const data = file.create_group(`data`)
@@ -1944,10 +1953,17 @@ describe(`HDF5`, () => {
       const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
       onTestFinished(() => slice_spy.mockRestore())
       await expect(open(content, `torn-scan.h5`)).rejects.toThrow(error)
-      const position_reads = slice_spy.mock.contexts.filter(
-        (dataset) => (dataset as H5Dataset).path === `/data/positions`,
+      const position_reads = slice_spy.mock.calls.filter(
+        (_call, idx) => (slice_spy.mock.contexts[idx] as H5Dataset).path === `/data/positions`,
       )
-      expect(position_reads).toHaveLength(1)
+      expect(position_reads).toEqual(
+        (frames[3].some(Boolean) ? [3] : [3, 2]).map((frame_idx) => [
+          [
+            [frame_idx, frame_idx + 1, 1],
+            [0, 1, 1],
+          ],
+        ]),
+      )
     },
   )
 

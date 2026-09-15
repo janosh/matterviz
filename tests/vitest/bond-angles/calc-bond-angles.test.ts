@@ -15,14 +15,8 @@ import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
 import { structure_map } from '$site/structures'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import {
-  bind_props,
-  expect_plot_controls,
-  make_crystal,
-  make_molecule,
-  make_rocksalt,
-  mount_sized,
-} from '../setup'
+import { bind_props, expect_plot_controls, mount_sized } from '../setup'
+import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
 // Exact tetrahedral angle: acos(-1/3) in degrees
 const TETRAHEDRAL_ANGLE = 109.47122063449069

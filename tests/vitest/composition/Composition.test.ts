@@ -1,7 +1,10 @@
 import { Composition } from '$lib/composition'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+
+const mount_composition = (props: ComponentProps<typeof Composition>) =>
+  mount(Composition, { target: document.body, props })
 
 async function open_context_menu() {
   const wrapper = doc_query(`.composition`)
@@ -11,24 +14,28 @@ async function open_context_menu() {
 
 describe(`Composition component`, () => {
   test.each([`pie`, `bubble`, `bar`] as const)(`renders %s mode correctly`, (mode) => {
-    mount(Composition, { target: document.body, props: { composition: `H2O`, mode } })
+    mount_composition({ composition: `H2O`, mode })
     expect(doc_query(`.${mode}-chart`)).toBeInstanceOf(SVGSVGElement)
   })
 
-  test(`forwards size to child chart`, () => {
-    mount(Composition, {
-      target: document.body,
-      props: { composition: `H2O`, size: 200 },
+  test(`forwards chart options and SVG attributes`, () => {
+    mount_composition({
+      composition: `H2O`,
+      size: 200,
+      style: `background-color: red;`,
+      class: `my-custom-class`,
+      show_labels: false,
     })
-    expect(doc_query(`.pie-chart`).getAttribute(`viewBox`)).toBe(`0 0 200 200`)
+    const container = doc_query(`.composition.pie-chart`)
+    expect(container.getAttribute(`viewBox`)).toBe(`0 0 200 200`)
+    expect(container.getAttribute(`style`)).toContain(`background-color: red;`)
+    expect(container.classList.contains(`my-custom-class`)).toBe(true)
+    expect(container.querySelector(`text`)).toBeNull()
   })
 
   test(`reports parsed composition`, async () => {
     const on_parse = vi.fn()
-    mount(Composition, {
-      target: document.body,
-      props: { composition: `H2O`, on_parse },
-    })
+    mount_composition({ composition: `H2O`, on_parse })
     await tick()
     expect(on_parse).toHaveBeenCalledWith({ H: 2, O: 1 })
   })
@@ -37,15 +44,13 @@ describe(`Composition component`, () => {
     [`invalid`, `Unexpected character "i"`],
     [`Xx2O`, `Invalid element symbol: Xx`],
   ])(`rejects invalid input %s`, (composition, error) => {
-    expect(() =>
-      mount(Composition, { target: document.body, props: { composition } }),
-    ).toThrow(error)
+    expect(() => mount_composition({ composition })).toThrow(error)
   })
 
   test(`copies a plain-text electronegativity formula (no HTML subscripts)`, async () => {
     const write_text = vi.fn()
     vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
-    mount(Composition, { target: document.body, props: { composition: `O3Fe2` } })
+    mount_composition({ composition: `O3Fe2` })
     await open_context_menu()
     const copy_btn = [
       ...document.querySelectorAll<HTMLButtonElement>(`.action-menu button`),
@@ -55,22 +60,8 @@ describe(`Composition component`, () => {
     vi.unstubAllGlobals()
   })
 
-  test(`applies custom styling`, () => {
-    mount(Composition, {
-      target: document.body,
-      props: {
-        composition: `H2O`,
-        style: `background-color: red;`,
-        class: `my-custom-class`,
-      },
-    })
-    const container = doc_query(`.composition`)
-    expect(container.getAttribute(`style`)).toContain(`background-color: red;`)
-    expect(container.classList.contains(`my-custom-class`)).toBe(true)
-  })
-
-  test(`opens context menu on right click`, async () => {
-    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+  test(`right click opens the checked display modes, color schemes, and export options`, async () => {
+    mount_composition({ composition: `H2O` })
     await open_context_menu()
     expect(doc_query(`.action-menu`)).toBeInstanceOf(HTMLElement)
     expect(doc_query(`.section-title`).textContent).toBe(`Display Mode`)
@@ -80,12 +71,6 @@ describe(`Composition component`, () => {
       `Pie Chart`,
       `true`,
     ])
-  })
-
-  test(`context menu lists display modes, color schemes, and export options`, async () => {
-    mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    await open_context_menu()
-
     const menu_options = document.querySelectorAll(`.action-menu button`)
     expect(menu_options.length).toBeGreaterThanOrEqual(12) // 3 display modes + 6 color schemes + 3 export options
 
@@ -105,7 +90,7 @@ describe(`Composition component`, () => {
   })
 
   test(`context menu changes propagate to chart components`, async () => {
-    mount(Composition, { target: document.body, props: { composition: `H2O` } })
+    mount_composition({ composition: `H2O` })
     await open_context_menu()
 
     const bubble_option = Array.from(

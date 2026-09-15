@@ -1,4 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
+import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { get_density } from '$lib/structure/density'
 import { calc_force_stats, copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame } from './index'
@@ -12,13 +13,7 @@ const make_metadata_extractor =
     return data
   }
 
-export const energy_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
-  `energy`,
-  `energy_per_atom`,
-  `potential_energy`,
-  `kinetic_energy`,
-  `total_energy`,
-])
+export const energy_data_extractor = make_metadata_extractor(TRAJECTORY_ENERGY_KEYS)
 
 // Force statistics as the parser recorded them, else computed from the per-atom forces array
 // (the parsers that carry forces also record the statistics, so this avoids a second pass

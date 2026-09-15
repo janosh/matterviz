@@ -9,10 +9,10 @@ import {
   bind_props,
   create_drop_event,
   doc_query,
-  make_phase,
   mock_parse_worker,
   mount_sized,
 } from '../setup'
+import { make_phase } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 beforeEach(mock_parse_worker)

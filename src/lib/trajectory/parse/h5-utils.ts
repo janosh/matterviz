@@ -213,6 +213,12 @@ const validated_numeric_hyperslab = (
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
 ): ArrayLike<unknown> => {
+  const { chunks, size } = dataset.metadata
+  const physical_bytes = chunks?.reduce((count, dimension) => count * dimension, size) ?? 0
+  if (physical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES)
+    throw new Error(
+      `HDF5 ${path} uses ${physical_bytes}-byte storage chunks, above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte interactive decoder limit; rechunk this dataset`,
+    )
   const requested = requested_hyperslab_values(dataset, path, ranges)
   assert_budget(path, requested, `hyperslab requests`, HDF5_MAX_LOGICAL_SLICE_BYTES)
   const values = numeric_values(dataset.slice(ranges))
@@ -235,6 +241,20 @@ export const read_numeric_hyperslab = (
   Array.from(validated_numeric_hyperslab(dataset, path, ranges), (value) =>
     finite_or_throw(value, path),
   )
+
+// Retain the flat numeric representation for atom batches; no nested arrays or Site records.
+export const read_numeric_buffer = (
+  dataset: Dataset,
+  path: string,
+  ranges: Parameters<Dataset[`slice`]>[0],
+): Float64Array => {
+  const values = validated_numeric_hyperslab(dataset, path, ranges)
+  if (values instanceof Float64Array) {
+    for (const value of values) finite_or_throw(value, path)
+    return values
+  }
+  return Float64Array.from(values, (value) => finite_or_throw(value, path))
+}
 
 const copy_numeric_hyperslab = (
   dataset: Dataset,
@@ -351,7 +371,7 @@ export const trajectory_signal = (
   values: Float64Array,
   { sample_shape, unit }: { sample_shape: number[]; unit?: string },
   steps: number[],
-): TrajectorySignal => ({ values, sample_shape, steps, ...(unit ? { unit } : {}) })
+): TrajectorySignal => ({ values, sample_shape, steps, ...(unit && { unit }) })
 
 // `frame_aligned_of` says whether the signal's step axis is the geometry's (see
 // `TrajectorySignalDescriptor.frame_aligned`); the parser knows both axes, consumers don't
@@ -367,7 +387,7 @@ export const signal_descriptors = <Manifest extends { sample_shape: number[]; un
         sample_shape: signal.sample_shape,
         sample_count: sample_count_of(signal),
         frame_aligned: frame_aligned_of(signal),
-        ...(signal.unit ? { unit: signal.unit } : {}),
+        ...(signal.unit && { unit: signal.unit }),
       },
     ]),
   )
@@ -545,7 +565,9 @@ export async function open_h5_source(
       cleanup_source = () => best_effort(() => file_system.unlink(source_path))
       file_system.writeFile(source_path, new Uint8Array(source))
     }
-    h5_file = new hdf5_2.File(source_path, `r`)
+    // SWMR read access also opens ordinary files and preserves readable committed prefixes
+    // after an interrupted writer leaves the superblock's write-consistency flag set.
+    h5_file = new hdf5_2.File(source_path, `Sr`)
   } catch (error) {
     cleanup_source()
     throw error

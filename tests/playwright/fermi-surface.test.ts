@@ -121,6 +121,13 @@ test.describe(`FermiSurface smoke`, () => {
     await expect(viewer.locator(`.filename`)).toHaveText(`tiny.bxsf`, {
       timeout: LOAD_TIMEOUT,
     })
+    const viewer_box = await require_bbox(viewer)
+    const filename_box = await require_bbox(viewer.locator(`.filename`))
+    expect(filename_box.x - viewer_box.x).toBeGreaterThan(0)
+    expect(filename_box.x - viewer_box.x).toBeLessThan(16)
+    expect(filename_box.y - viewer_box.y).toBeGreaterThan(0)
+    expect(filename_box.y - viewer_box.y).toBeLessThan(16)
+    await expect(viewer.locator(`.filename`)).toHaveCSS(`padding`, `2px 4px`)
     await expect(viewer.locator(`.spinner`)).toHaveCount(0, { timeout: LOAD_TIMEOUT })
     await expect(viewer.locator(`[role="alert"], .status-message.error`)).toHaveCount(0)
     await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)

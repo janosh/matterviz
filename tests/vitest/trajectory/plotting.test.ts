@@ -1,4 +1,5 @@
 import type { DataSeries } from '$lib/plot'
+import { trajectory_property_config } from '$lib/labels'
 import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import type { TrajectoryMetadata } from '$lib/trajectory'
 import {
@@ -50,7 +51,7 @@ const create_series = (
   y: y_values,
   label,
   unit,
-  ...(axis_group ? { axis_group } : {}),
+  ...(axis_group && { axis_group }),
   visible,
   y_axis,
   markers: `line` as const,
@@ -64,6 +65,52 @@ const find_series_by_label = (series: DataSeries[], search_term: string) =>
 const plot_options = (options: PlotSeriesOptions): PlotSeriesOptions => options
 
 describe(`generate_plot_series`, () => {
+  it.each([
+    `energy`,
+    `potential_energy`,
+    `kinetic_energy`,
+    `total_energy`,
+    `energy_per_atom`,
+    `Potential (Energy)`,
+  ])(`plots changes in %s without modifying source values or other quantities`, (key) => {
+    const rows = create_rows([
+      { force_max: 4, temperature: 400, scf_energy_delta: 0.1 },
+      { [key]: -1_746_205, force_max: 3, temperature: 401, scf_energy_delta: 0.01 },
+      { [key]: -1_746_180, force_max: 2, temperature: 402, scf_energy_delta: 0.001 },
+      { [key]: -1_746_209, force_max: 1, temperature: 403, scf_energy_delta: 0.0001 },
+    ])
+    const source = structuredClone(rows)
+    const unit = key === `energy_per_atom` ? `eV/atom` : `eV`
+    const options = {
+      property_config: {
+        ...trajectory_property_config,
+        [key]: { label: `Custom label`, unit },
+      },
+    }
+    const absolute = generate_plot_series(rows, options)
+    const relative = generate_plot_series(rows, { ...options, relative_energy: true })
+    expect(relative.find((srs) => srs.id === key)).toMatchObject({
+      x: [1, 2, 3],
+      y: [0, 25, -4],
+      label: `Δ Custom label`,
+      unit,
+      metadata: { series_label: `Δ Custom label (${unit})`, property_key: key },
+    })
+    for (const original of absolute.filter((srs) => srs.id !== key)) {
+      expect(relative.find((srs) => srs.id === original.id)).toEqual(original)
+    }
+    expect(generate_plot_series(rows, options)).toEqual(absolute)
+    expect(rows).toEqual(source)
+  })
+
+  it.each([NaN, Infinity, -Infinity])(`uses the first finite energy after %s`, (missing) => {
+    const series = generate_plot_series(
+      create_rows([missing, -10, -8].map((energy) => ({ energy }))),
+      { relative_energy: true },
+    )
+    expect(series[0].y).toEqual([missing, 0, 2])
+  })
+
   it(`omits frame, step, and time coordinates from eager trajectory series`, () => {
     const series = generate_plot_series(
       create_rows([
@@ -213,7 +260,7 @@ describe(`generate_plot_series`, () => {
       const rows = create_rows(
         Array.from({ length: 5 }, (_, idx) => ({
           energy: -10 - idx,
-          ...(present_frames.includes(idx) ? { temperature: 300 + idx * 10 } : {}),
+          ...(present_frames.includes(idx) && { temperature: 300 + idx * 10 }),
         })),
       )
       for (const row of rows) row.frame_number = 2 + row.frame_number * 10
@@ -337,6 +384,8 @@ describe(`generate_plot_series`, () => {
   // oxfmt-ignore
   it.each([
     { name: `constant`, key: `test_prop`, values: [10.0, 10.0, 10.0], should_include: false },
+    { name: `constant kinetic energy`, key: `kinetic_energy`, values: [0, 0, 0], should_include: true },
+    { name: `constant energy per atom`, key: `energy_per_atom`, values: [-9, -9, -9], should_include: true },
     { name: `normalized constant energy`, key: `Potential (Energy)`, values: [10, 10, 10], should_include: true },
     { name: `nearly constant`, key: `test_prop`, values: [10.000001, 10.000002, 10.000001], should_include: false },
     { name: `varying`, key: `test_prop`, values: [10.0, 10.1, 10.2], should_include: true },
@@ -354,11 +403,12 @@ describe(`generate_plot_series`, () => {
       },
     },
   ])(`filters $name properties`, ({ key, values, should_include, match }) => {
-    const series = generate_plot_series(
-      create_rows(values.map((value) => ({ [key]: value }))),
-    )
+    const rows = create_rows(values.map((value) => ({ [key]: value })))
+    const series = generate_plot_series(rows)
     expect(series).toHaveLength(should_include ? 1 : 0)
     if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
+    expect(generate_plot_series(rows, { relative_energy: true }).map((srs) => srs.id))
+      .toEqual(series.map((srs) => srs.id))
   })
 })
 
@@ -535,7 +585,7 @@ describe(`x axis quantity`, () => {
       properties: {
         energy: -10 - frame_number,
         force_max: frame_number + 0.1,
-        ...(frame_number % 2 ? { volume: 100 + frame_number } : {}),
+        ...(frame_number % 2 && { volume: 100 + frame_number }),
       },
     }))
 

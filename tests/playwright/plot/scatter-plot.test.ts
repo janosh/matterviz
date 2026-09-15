@@ -73,9 +73,13 @@ const legend_item = (plot: Locator, label: string) =>
 
 test(`interactive axis labels hide export text and switch properties`, async ({ page }) => {
   await page.goto(`/plot/scatter-plot`, { waitUntil: `networkidle` })
+  const example = page
+    .locator(`#interactive-axis-labels-with-lazy-data-loading ~ .code-example`)
+    .first()
+  await example.scrollIntoViewIfNeeded()
   for (const axis of [`x`, `y`]) {
-    const label = page.locator(`.interactive-axis-label.${axis}-label`).first()
-    const export_label = page.locator(`text.${axis}-label[data-export-only]`).first()
+    const label = example.locator(`.interactive-axis-label.${axis}-label`)
+    const export_label = example.locator(`text.${axis}-label[data-export-only]`)
     await expect(export_label).toHaveCSS(`display`, `none`)
     await expect(label).toHaveCSS(`display`, `flex`)
     const trigger = label.getByRole(`button`)

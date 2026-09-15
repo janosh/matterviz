@@ -7,7 +7,8 @@ import type { StructureEntry, StructureInput } from '$lib'
 import { calc_coordination_nums, CoordinationBarPlot } from '$lib/coordination'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_molecule, make_rocksalt, mount_sized } from '../setup'
+import { mount_sized } from '../setup'
+import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
 // Simple cubic structure (NaCl-like)
 const simple_cubic = make_crystal(5, [

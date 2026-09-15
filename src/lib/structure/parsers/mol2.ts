@@ -5,11 +5,8 @@ import type { AnyStructure, BondOrder, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
   cell_frame,
-  diag_error,
-  diag_warn,
   drop_placeholder_cell,
   element_from_candidates,
-  guard_parse,
   is_placeholder_cell,
   parsed_result,
   parse_coordinate,
@@ -84,77 +81,70 @@ const mol2_element = (
   return element_from_candidates(candidates, atom_idx)
 }
 
-export const parse_mol2 = (content: string): AnyStructure | null =>
-  guard_parse(`MOL2`, () => {
-    // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
-    const molecule_headers = [...content.matchAll(/^@<TRIPOS>MOLECULE/gim)]
-    const first_record =
-      molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
-    if (molecule_headers.length > 1) {
-      diag_warn(
-        `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${
-          molecule_headers.length - 1
-        }`,
-      )
-    }
-
-    const sections = split_mol2_sections(first_record)
-    const atom_rows = sections.get(`ATOM`) ?? []
-    if (atom_rows.length === 0) {
-      diag_error(`MOL2 file has no @<TRIPOS>ATOM section or the section is empty`)
-      return null
-    }
-
-    const crysin_row = sections.get(`CRYSIN`)?.[0]
-    const crysin = read_crysin_cell(crysin_row)
-    if (crysin_row !== undefined && crysin === null) {
-      diag_error(`MOL2 @<TRIPOS>CRYSIN row has invalid cell parameters: '${crysin_row}'`)
-      return null
-    }
-    // Cartesian coordinates stay authoritative and are not wrapped into the cell so
-    // molecules are not torn apart across periodic boundaries
-    const { lattice_matrix, to_frac } = cell_frame(
-      crysin && drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
-      `MOL2 CRYSIN cell`,
+export const parse_mol2 = (content: string): AnyStructure => {
+  // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
+  const molecule_headers = [...content.matchAll(/^@<TRIPOS>MOLECULE/gim)]
+  const first_record =
+    molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
+  if (molecule_headers.length > 1) {
+    console.warn(
+      `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${
+        molecule_headers.length - 1
+      }`,
     )
+  }
 
-    const sites: Site[] = []
-    const site_idx_by_atom_id = new Map<number, number>()
-    for (const [atom_idx, row] of atom_rows.entries()) {
-      // atom_id atom_name x y z atom_type [subst_id subst_name charge]
-      const tokens = row_tokens(row, 5, `MOL2 atom row (need 'id name x y z [type]')`)
-      if (!tokens) return null
-      const xyz = vec3_from_values(
-        tokens.slice(2, 5).map(parse_coordinate),
-        `MOL2 atom coordinates on row '${row}'`,
+  const sections = split_mol2_sections(first_record)
+  const atom_rows = sections.get(`ATOM`) ?? []
+  if (atom_rows.length === 0)
+    throw new Error(`MOL2 file has no @<TRIPOS>ATOM section or the section is empty`)
+
+  const crysin_row = sections.get(`CRYSIN`)?.[0]
+  const crysin = read_crysin_cell(crysin_row)
+  if (crysin_row !== undefined && crysin === null)
+    throw new Error(`MOL2 @<TRIPOS>CRYSIN row has invalid cell parameters: '${crysin_row}'`)
+  // Cartesian coordinates stay authoritative and are not wrapped into the cell so
+  // molecules are not torn apart across periodic boundaries
+  const { lattice_matrix, to_frac } = cell_frame(
+    crysin && drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
+    `MOL2 CRYSIN cell`,
+  )
+
+  const sites: Site[] = []
+  const site_idx_by_atom_id = new Map<number, number>()
+  for (const [atom_idx, row] of atom_rows.entries()) {
+    // atom_id atom_name x y z atom_type [subst_id subst_name charge]
+    const tokens = row_tokens(row, 5, `MOL2 atom row (need 'id name x y z [type]')`)
+    const xyz = vec3_from_values(
+      tokens.slice(2, 5).map(parse_coordinate),
+      `MOL2 atom coordinates on row '${row}'`,
+    )
+    const element = mol2_element(tokens[5] ?? ``, tokens[1], atom_idx)
+    const abc = to_frac(xyz)
+    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
+    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
+  }
+
+  const raw_bonds: RawBond[] = []
+  for (const row of sections.get(`BOND`) ?? []) {
+    // bond_id origin_atom_id target_atom_id bond_type
+    const tokens = row_tokens(row, 4, `MOL2 bond row (need 'id origin target type')`)
+    const bond_type = tokens[3].toLowerCase()
+    // `nc` declares the pair explicitly not connected
+    if (bond_type === `nc`) continue
+    const order = MOL2_BOND_ORDERS[bond_type]
+    if (order === undefined) {
+      console.warn(
+        `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
       )
-      const element = mol2_element(tokens[5] ?? ``, tokens[1], atom_idx)
-      const abc = to_frac(xyz)
-      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
-      record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
     }
+    raw_bonds.push({
+      atom_id_1: Number(tokens[1]),
+      atom_id_2: Number(tokens[2]),
+      order: order ?? 1,
+    })
+  }
+  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`)
 
-    const raw_bonds: RawBond[] = []
-    for (const row of sections.get(`BOND`) ?? []) {
-      // bond_id origin_atom_id target_atom_id bond_type
-      const tokens = row_tokens(row, 4, `MOL2 bond row (need 'id origin target type')`)
-      if (!tokens) return null
-      const bond_type = tokens[3].toLowerCase()
-      // `nc` declares the pair explicitly not connected
-      if (bond_type === `nc`) continue
-      const order = MOL2_BOND_ORDERS[bond_type]
-      if (order === undefined) {
-        diag_warn(
-          `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
-        )
-      }
-      raw_bonds.push({
-        atom_id_1: Number(tokens[1]),
-        atom_id_2: Number(tokens[2]),
-        order: order ?? 1,
-      })
-    }
-    const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`)
-
-    return parsed_result(sites, bonds, lattice_matrix)
-  })
+  return parsed_result(sites, bonds, lattice_matrix)
+}

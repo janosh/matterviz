@@ -16,7 +16,7 @@ import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { describe, expect, it, test, vi } from 'vitest'
 import { max_abs_error } from '../numeric-helpers'
-import { make_trajectory_frame, read_binary_test_file } from '../setup'
+import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
 
 const N_FRAMES = 40
@@ -130,12 +130,33 @@ const RUN_CASES: RunCase[] = [
   },
 ]
 
+it.each([27, 100_000])(
+  `uses the full %i atom count to gate frame-backed analysis`,
+  (atom_count) => {
+    const run = sync_run({
+      label: `sampled preview`,
+      atom_count,
+      frame_count: 1,
+      preview: reference_frames[0],
+      read: () => reference_frames[0],
+      properties: new TrajectoryProperties(),
+      provenance: {},
+      metadata: {},
+      warnings: [],
+    })
+    expect(run.atom_count).toBe(atom_count)
+    expect(run.read_atoms !== undefined).toBe(atom_count === 27)
+    run.dispose()
+  },
+)
+
 describe.each(RUN_CASES)(
   `$name run`,
   ({ make, sync_reads, has_collect, n_frames, n_atoms }) => {
     it(`exposes frame_count, a frame-0 preview and range-checked frame reads`, async () => {
       const run = await make()
       expect(run.frame_count).toBe(n_frames)
+      expect(run.atom_count).toBe(n_atoms)
       expect(run.preview.structure.sites).toHaveLength(n_atoms)
       // frame 0 is always served synchronously (it IS the preview)
       expect(run.read_frame(0)).toBe(run.preview)

@@ -1,11 +1,12 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { goto } from '$app/navigation'
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib'
   import { element_data, PeriodicTable } from '$lib'
   import { array_max, array_min, type Vec2 } from '$lib/math'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
-  import { MultiValueHeatmapDemo, PeriodicTableDemo } from '$site'
+  import MultiValueHeatmapDemo from '$site/MultiValueHeatmapDemo.svelte'
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
   const four_fold_quadrants = [
@@ -75,7 +76,11 @@
 
 <h1 id="periodic-table">Periodic Table</h1>
 
-<PeriodicTableDemo />
+<LazyDemo
+  label="Periodic table"
+  load={() => import('$site/PeriodicTableDemo.svelte')}
+  props={{}}
+/>
 
 <MultiValueHeatmapDemo />
 
@@ -86,32 +91,34 @@
   <strong>bottom-left = covalent radius</strong>,
   <strong>bottom-right = |electron affinity|</strong>.
 </p>
-<PeriodicTable
-  tile_props={{ show_name: false, show_number: false }}
-  heatmap_values={four_fold_data}
-  color_scale="interpolateViridis"
-  split_layout="quadrant"
-  tooltip
-  {on_activate}
->
-  {#snippet inset()}
-    <TableInset
-      style="display: grid; grid-template-columns: max-content max-content; gap: 2em; place-content: center"
-    >
-      {#each four_fold_ranges as [title, range] (title)}
-        <ColorBar
-          {title}
-          scale="interpolateViridis"
-          {range}
-          orientation="horizontal"
-          bar_style="width: 135px; height: 12px"
-          tick_labels={3}
-          title_side="top"
-        />
-      {/each}
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
+<LazyDemo label="4-fold Split" height="400px">
+  <PeriodicTable
+    tile_props={{ show_name: false, show_number: false }}
+    heatmap_values={four_fold_data}
+    color_scale="interpolateViridis"
+    split_layout="quadrant"
+    tooltip
+    {on_activate}
+  >
+    {#snippet inset()}
+      <TableInset
+        style="display: grid; grid-template-columns: max-content max-content; gap: 2em; place-content: center"
+      >
+        {#each four_fold_ranges as [title, range] (title)}
+          <ColorBar
+            {title}
+            scale="interpolateViridis"
+            {range}
+            orientation="horizontal"
+            bar_style="width: 135px; height: 12px"
+            tick_labels={3}
+            title_side="top"
+          />
+        {/each}
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+</LazyDemo>
 
 <h2 id="missing-color-demo">Missing Color Demo</h2>
 <p>
@@ -123,63 +130,65 @@
   through the color scale. Only absent / <code>null</code> entries count as missing.
 </p>
 
-<PeriodicTable
-  tile_props={{ show_name: window_width > 800 }}
-  heatmap_values={missing_heatmap_values}
-  missing={missing_config}
-  bind:active_element={missing_active_element}
-  bind:active_category={missing_active_category}
-  links="name"
-  tooltip
-  style="margin: 1em auto; max-width: 1000px"
-  {on_activate}
->
-  {#snippet inset()}
-    {@const style = `display: flex; align-items: center; gap: 3pt;`}
-    <TableInset style="display: flex; gap: 1em; justify-content: center; flex-wrap: wrap">
-      <label {style}>
-        <input
-          type="checkbox"
-          bind:checked={missing_use_category}
-          disabled={!missing_heatmap_values?.length}
-        />
-        Use element category colors
-      </label>
+<LazyDemo label="Missing Color Demo">
+  <PeriodicTable
+    tile_props={{ show_name: window_width > 800 }}
+    heatmap_values={missing_heatmap_values}
+    missing={missing_config}
+    bind:active_element={missing_active_element}
+    bind:active_category={missing_active_category}
+    links="name"
+    tooltip
+    style="margin: 1em auto; max-width: 1000px"
+    {on_activate}
+  >
+    {#snippet inset()}
+      {@const style = `display: flex; align-items: center; gap: 3pt;`}
+      <TableInset style="display: flex; gap: 1em; justify-content: center; flex-wrap: wrap">
+        <label {style}>
+          <input
+            type="checkbox"
+            bind:checked={missing_use_category}
+            disabled={!missing_heatmap_values?.length}
+          />
+          Use element category colors
+        </label>
 
-      <label {style}>
-        Missing color:
-        <input
-          type="color"
-          bind:value={missing_color}
-          disabled={missing_use_category || !missing_heatmap_values?.length}
-        />
-      </label>
+        <label {style}>
+          Missing color:
+          <input
+            type="color"
+            bind:value={missing_color}
+            disabled={missing_use_category || !missing_heatmap_values?.length}
+          />
+        </label>
 
-      <label {style}>
-        Missing label:
-        <input
-          type="text"
-          placeholder="e.g. N/A"
-          bind:value={missing_label}
-          disabled={!missing_heatmap_values?.length}
-          style="width: 5em"
-        />
-      </label>
+        <label {style}>
+          Missing label:
+          <input
+            type="text"
+            placeholder="e.g. N/A"
+            bind:value={missing_label}
+            disabled={!missing_heatmap_values?.length}
+            style="width: 5em"
+          />
+        </label>
 
-      <label {style}>
-        Missing opacity: {missing_opacity}
-        <input
-          type="range"
-          min="0.1"
-          max="1"
-          step="0.1"
-          bind:value={missing_opacity}
-          disabled={!missing_heatmap_values?.length}
-        />
-      </label>
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
+        <label {style}>
+          Missing opacity: {missing_opacity}
+          <input
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.1"
+            bind:value={missing_opacity}
+            disabled={!missing_heatmap_values?.length}
+          />
+        </label>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+</LazyDemo>
 
 <h2 id="active-elements-border-styling">Active Elements Border Styling</h2>
 <p>
@@ -188,35 +197,37 @@
   >.
 </p>
 
-<PeriodicTable
-  tile_props={{ show_name: window_width > 800 }}
-  {active_elements}
-  style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
-  {on_activate}
->
-  {#snippet inset()}
-    <TableInset
-      style="display: flex; gap: 1em; place-content: center; flex-wrap: wrap; align-items: center"
-    >
-      <select bind:value={active_tile_border.width}>
-        <option>1px</option>
-        <option>2px</option>
-        <option>3px</option>
-      </select>
-      <select bind:value={active_tile_border.style}>
-        <option>solid</option>
-        <option>dashed</option>
-        <option>dotted</option>
-      </select>
-      <input type="color" bind:value={active_tile_border.color} style="height: 1.5em" />
-      <code style="background: var(--sms-ui-bg); padding: 4px 8px; border-radius: 4px">
-        {active_tile_border.width}
-        {active_tile_border.style}
-        {active_tile_border.color}
-      </code>
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
+<LazyDemo label="Active Elements Border Styling">
+  <PeriodicTable
+    tile_props={{ show_name: window_width > 800 }}
+    {active_elements}
+    style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
+    {on_activate}
+  >
+    {#snippet inset()}
+      <TableInset
+        style="display: flex; gap: 1em; place-content: center; flex-wrap: wrap; align-items: center"
+      >
+        <select bind:value={active_tile_border.width}>
+          <option>1px</option>
+          <option>2px</option>
+          <option>3px</option>
+        </select>
+        <select bind:value={active_tile_border.style}>
+          <option>solid</option>
+          <option>dashed</option>
+          <option>dotted</option>
+        </select>
+        <input type="color" bind:value={active_tile_border.color} style="height: 1.5em" />
+        <code style="background: var(--sms-ui-bg); padding: 4px 8px; border-radius: 4px">
+          {active_tile_border.width}
+          {active_tile_border.style}
+          {active_tile_border.color}
+        </code>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
+</LazyDemo>
 
 <h2 id="auto-scaling-color-bar">Auto-Scaling Color Bar</h2>
 <p>
@@ -229,14 +240,16 @@
   {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolatePlasma` }, { title: `Density`, property: `density`, color_scale: `interpolateCividis` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateTurbo` }] as const as { title, property, color_scale } (title)}
     <div>
       <h3 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h3>
-      <PeriodicTable
-        tile_props={{ show_name: false, show_number: false, show_symbol: false }}
-        heatmap_values={element_data.map((element) => element[property] || 0)}
-        {color_scale}
-        color_bar_props={{ title }}
-        gap="1px"
-        style="--ptable-inner-transition-offset: 0.3"
-      />
+      <LazyDemo label="periodic table">
+        <PeriodicTable
+          tile_props={{ show_name: false, show_number: false, show_symbol: false }}
+          heatmap_values={element_data.map((element) => element[property] || 0)}
+          {color_scale}
+          color_bar_props={{ title }}
+          gap="1px"
+          style="--ptable-inner-transition-offset: 0.3"
+        />
+      </LazyDemo>
     </div>
   {/each}
 </div>
@@ -245,18 +258,20 @@
 
 <div class="two-by-two-grid">
   {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}
-    <PeriodicTable
-      tile_props={{ show_name: false, show_number: false }}
-      heatmap_values={element_data.map((element) => element[property] || 0)}
-      {color_scale}
-      show_color_bar={false}
-    >
-      {#snippet inset()}
-        <TableInset style="display: grid; place-content: center">
-          <h3 style="margin: 0">{title}</h3>
-        </TableInset>
-      {/snippet}
-    </PeriodicTable>
+    <LazyDemo label="2×2 Grid Layout">
+      <PeriodicTable
+        tile_props={{ show_name: false, show_number: false }}
+        heatmap_values={element_data.map((element) => element[property] || 0)}
+        {color_scale}
+        show_color_bar={false}
+      >
+        {#snippet inset()}
+          <TableInset style="display: grid; place-content: center">
+            <h3 style="margin: 0">{title}</h3>
+          </TableInset>
+        {/snippet}
+      </PeriodicTable>
+    </LazyDemo>
   {/each}
 </div>
 

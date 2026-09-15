@@ -4,7 +4,8 @@ import { trajectory_from_frames, type TrajectoryFrame } from '$lib/trajectory'
 import TrajectoryDataInspectorPane from '$lib/trajectory/TrajectoryDataInspectorPane.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, make_run as make_shared_run, with_property_rows } from '../setup'
+import { doc_query } from '../setup'
+import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -80,6 +81,18 @@ test(`frames tab renders every property row with units`, async () => {
   expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`0`, `0`])
   expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`3`, `30`])
   expect(document.body.textContent).not.toContain(`Sampled frames`)
+})
+
+test(`sampled atom rows retain source indices and identify exported samples`, async () => {
+  const run = make_run()
+  const current_frame = {
+    ...run.preview,
+    metadata: { render_sample: true, total_atoms: 1500, source_atom_indices: [0, 500, 1000] },
+  }
+  await mount_pane({ run, current_frame })
+  await open_atoms()
+  expect(document.body.textContent).toContain(`Sampled atoms: 3 of 1500`)
+  expect(cell_texts(body_rows()[1])[0]).toBe(`500`)
 })
 
 test(`sampled property rows keep their real frame numbers and disclose sampling`, async () => {

@@ -7,9 +7,6 @@ import { get_element_counts } from '$lib/structure/density'
 import { format_num } from '$lib/labels'
 import { parse_composition } from './parse'
 
-const is_structure_like = (input: CompositionType | AnyStructure): input is AnyStructure =>
-  `sites` in input || `lattice` in input
-
 // Default d3 format for stoichiometric amounts: fixed notation with trailing zeros trimmed.
 // Not `s`: SI prefixes render C1000 as C1k, which no formula parser reads back.
 export const AMOUNT_FORMAT = `.3~f`
@@ -50,10 +47,8 @@ export const format_composition_formula = (
     delim = ` `,
     amount_format = AMOUNT_FORMAT,
   }: FormulaFormatOptions = {},
-): string => {
-  const symbols = Object.keys(composition).filter(is_elem_symbol)
-
-  return sort_fn(symbols)
+): string =>
+  sort_fn(Object.keys(composition).filter(is_elem_symbol))
     .filter((element) => composition[element] && composition[element] > 0)
     .map((element) => {
       const amount = Number(composition[element])
@@ -64,7 +59,6 @@ export const format_composition_formula = (
         : `${element}<sub>${formatted_amount}</sub>`
     })
     .join(delim)
-}
 
 type FormulaInput = string | CompositionType | AnyStructure
 
@@ -72,15 +66,16 @@ const format_formula_generic = (
   input: FormulaInput,
   sort_fn: (symbols: ElementSymbol[]) => ElementSymbol[],
   options: FormulaFormatOptions,
-): string => {
-  const composition =
+): string =>
+  format_composition_formula(
     typeof input === `string`
       ? parse_composition(input)
-      : is_structure_like(input)
-        ? get_element_counts(input)
-        : input
-  return format_composition_formula(composition, sort_fn, options)
-}
+      : `sites` in input || `lattice` in input
+        ? get_element_counts(input as AnyStructure)
+        : input,
+    sort_fn,
+    options,
+  )
 
 // Create alphabetical formula
 export const get_alphabetical_formula = (
@@ -191,18 +186,16 @@ export interface FormulaLabelSegment {
 // semantics for the HTML/SVG renderers.)
 export function get_formula_label_segments(label: string): FormulaLabelSegment[] {
   const segments: FormulaLabelSegment[] = []
-  const push = (text: string, subscript: boolean): void => {
-    const prev = segments.at(-1)
-    if (prev && !subscript && !prev.subscript) prev.text += text
-    else segments.push({ text, subscript })
-  }
   // the ` + ` separators tokenize to a single plain text token themselves
   for (const part of label.split(PHASE_SEPARATOR_RE)) {
     const tokens = tokenize_formula_markup(part)
     for (const [idx, token] of tokens.entries()) {
       const at_word_start = idx === 0 || /\s$/.test(tokens[idx - 1].text ?? ``)
       const subscript = token.sub !== undefined && !at_word_start
-      push(token.text ?? token.sub ?? token.sup ?? ``, subscript)
+      const text = token.text ?? token.sub ?? token.sup ?? ``
+      const prev = segments.at(-1)
+      if (prev && !subscript && !prev.subscript) prev.text += text
+      else segments.push({ text, subscript })
     }
   }
   return segments.length > 0 ? segments : [{ text: label, subscript: false }]

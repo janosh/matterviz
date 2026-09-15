@@ -27,6 +27,7 @@
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import { resolve_cell_vectors } from './settings'
   import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
   import { colors, theme_state } from '$lib/state.svelte'
   import type {
@@ -211,7 +212,7 @@
     cell_edge_width = DEFAULTS.structure.cell_edge_width,
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
-    show_cell_vectors = DEFAULTS.structure.show_cell_vectors,
+    show_cell_vectors = undefined,
     lattice_planes = [],
     symmetry_elements = [],
     symmetry_elements_props = {},
@@ -2211,7 +2212,7 @@
           {cell_edge_width}
           {cell_edge_opacity}
           {cell_surface_opacity}
-          {show_cell_vectors}
+          show_cell_vectors={resolve_cell_vectors(show_cell_vectors, structure)}
         />
         {#if lattice_planes.length > 0}
           <LatticePlanes

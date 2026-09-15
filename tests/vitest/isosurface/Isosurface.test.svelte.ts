@@ -11,7 +11,7 @@ import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { make_grid, make_volume } from '../setup'
+import { make_grid, make_volume } from '../test-fixtures'
 import { threlte_stub } from './threlte-stub'
 
 // Threlte's on-demand renderer only repaints on invalidate(); the component must call it

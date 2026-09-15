@@ -10,13 +10,8 @@ import type {
 } from '$lib/isosurface/types'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import {
-  doc_query,
-  bind_props,
-  expect_labelled_settings_grid,
-  make_grid,
-  make_volume as make_volume_fixture,
-} from '../setup'
+import { doc_query, bind_props, expect_labelled_settings_grid } from '../setup'
+import { make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
 const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData =>

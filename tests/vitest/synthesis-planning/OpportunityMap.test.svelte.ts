@@ -7,7 +7,8 @@ import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import type { SynthesisConditions } from '$lib/synthesis-planning/types'
 import { mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { expect_module_worker, install_stub_worker, load_json } from '../setup'
+import { expect_module_worker, install_stub_worker } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
 

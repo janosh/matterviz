@@ -16,6 +16,8 @@ interface TrajectorySessionInputs extends Omit<
   'count'
 > {
   run: () => TrajectoryRun | undefined
+  // Numeric renderers own their frame buffers; keep playback without decoding Site objects.
+  load_frames?: () => boolean
   // Fired after every committed index change (slider, keyboard, plot click, controller, clamp)
   on_step_change?: (idx: number) => void
   on_frame_error?: (frame_idx: number, error: Error) => void
@@ -52,6 +54,7 @@ export function create_trajectory_session(
   } = options
 
   const frame_count = $derived(inputs.run()?.frame_count ?? 0)
+  const load_frames = $derived(inputs.load_frames?.() ?? true)
 
   // === property rows mirrored into state (runs themselves are rune-free) ===
   let property_rows = $state.raw<readonly TrajectoryMetadata[]>([])
@@ -141,6 +144,13 @@ export function create_trajectory_session(
     const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
     if (!run || frame_idx === null) {
       loaded = null
+      // These lazy derived values can retain frames after their renderer stops reading them.
+      displayed = { run: undefined, structure: undefined }
+      current_frame = null
+      current_structure = undefined
+      cache.clear()
+      cache_atoms = 0
+      cache_owner = undefined
       return
     }
     claim_cache(run)
@@ -188,8 +198,7 @@ export function create_trajectory_session(
     cancel_prefetch()
     // Do not decode a speculative frame that cannot coexist with the displayed frame.
     // Besides immediately evicting useful data, large replies block the main thread and GC.
-    const frame_atoms =
-      cache.get(from_idx)?.structure.sites.length ?? run.preview.structure.sites.length
+    const frame_atoms = cache.get(from_idx)?.structure.sites.length ?? run.atom_count
     const prefetch_limit = Math.min(
       2,
       cache_max_frames - 1,
@@ -238,10 +247,11 @@ export function create_trajectory_session(
   $effect(() => {
     const run = inputs.run()
     const frame_idx = inputs.index()
-    untrack(() => request_frame(run, frame_idx))
+    const frame_source = load_frames ? run : undefined
+    untrack(() => request_frame(frame_source, frame_idx))
   })
 
-  const current_frame = $derived.by((): TrajectoryFrame | null => {
+  let current_frame = $derived.by((): TrajectoryFrame | null => {
     const run = inputs.run()
     const idx = inputs.index()
     return loaded && loaded.run === run && loaded.idx === idx ? loaded.frame : null
@@ -256,11 +266,16 @@ export function create_trajectory_session(
     run: undefined,
     structure: undefined,
   }
-  const current_structure = $derived.by((): AnyStructure | undefined => {
+  let current_structure = $derived.by((): AnyStructure | undefined => {
     const run = inputs.run()
     const frame = current_frame
-    if (frame) displayed = { run, structure: frame.structure }
-    else if (displayed.run !== run) displayed = { run, structure: run?.preview.structure }
+    if (!load_frames) displayed = { run, structure: undefined }
+    else if (frame) displayed = { run, structure: frame.structure }
+    else if (displayed.run !== run)
+      displayed = {
+        run,
+        structure: run?.preview.metadata?.render_sample ? undefined : run?.preview.structure,
+      }
     return displayed.structure
   })
 

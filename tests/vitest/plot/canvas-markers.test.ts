@@ -1,5 +1,11 @@
 import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
-import { describe, expect, test } from 'vitest'
+import { prepare_canvas } from '$lib/plot/core/utils'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 class StubPath2D {
   added: { path: StubPath2D; transform: DOMMatrix }[] = []
@@ -59,13 +65,46 @@ const stamps = (overrides: Partial<CanvasMarker>) =>
   filled_path(draw([marker(overrides)])).added
 
 describe(`canvas markers`, () => {
-  test(`clears and scales the canvas while preserving context state`, () => {
-    const hidpi = draw([marker()], { width: 400, height: 300, pixel_ratio: 2 })
-    expect(ops(hidpi, `clearRect`)[0].args).toEqual([0, 0, 800, 600])
-    expect(ops(hidpi, `scale`)[0].args).toEqual([2, 2])
-    const empty_ops = draw([]).calls.map(({ op: operation }) => operation)
-    expect(empty_ops).toEqual([`save`, `setTransform`, `clearRect`, `restore`])
-  })
+  test.each([
+    [400, 300, 1, 400, 300],
+    [400, 300, 2, 800, 600],
+    [100.4, 200.6, 1.25, 126, 251],
+    [0.1, 0.2, 1.25, 1, 1],
+  ])(
+    `prepares %sx%s at DPR %s without resetting unchanged dimensions`,
+    (width, height, pixel_ratio, backing_width, backing_height) => {
+      vi.stubGlobal(`devicePixelRatio`, pixel_ratio)
+      const ctx = draw([marker()], { width, height, pixel_ratio })
+      const canvas = document.createElement(`canvas`)
+      vi.spyOn(canvas, `getContext`).mockReturnValue(ctx)
+      const setters = [
+        vi.spyOn(canvas, `width`, `set`),
+        vi.spyOn(canvas, `height`, `set`),
+        vi.spyOn(canvas.style, `setProperty`),
+      ]
+      const writes = () => setters.map((setter) => setter.mock.calls.length)
+      expect(prepare_canvas(canvas, width, height)).toEqual({
+        ctx,
+        width,
+        height,
+        pixel_ratio,
+      })
+      expect([canvas.width, canvas.height]).toEqual([backing_width, backing_height])
+      expect([canvas.style.width, canvas.style.height]).toEqual([`${width}px`, `${height}px`])
+      const initial_writes = writes()
+      prepare_canvas(canvas, width, height)
+      expect(writes()).toEqual(initial_writes)
+      expect(ops(ctx, `clearRect`)[0].args).toEqual([
+        0,
+        0,
+        width * pixel_ratio,
+        height * pixel_ratio,
+      ])
+      expect(ops(ctx, `scale`)[0].args).toEqual([pixel_ratio, pixel_ratio])
+      const empty_ops = draw([]).calls.map(({ op: operation }) => operation)
+      expect(empty_ops).toEqual([`save`, `setTransform`, `clearRect`, `restore`])
+    },
+  )
 
   test(`batches opaque markers and splits translucent or changed styles`, () => {
     // Opaque identical styles batch; translucent markers isolate for SVG alpha parity.

@@ -13,23 +13,29 @@ import {
   StructureControls,
   type StructureSettings,
 } from '$lib/structure'
-import { next_atom_color_config } from '$lib/structure/atom-properties'
+import {
+  type AtomColorConfig,
+  DEFAULT_ATOM_COLOR_CONFIG,
+  next_atom_color_config,
+} from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
-  cubic_matrix,
   doc_query,
   expect_labelled_settings_grid,
+  query,
+  trigger_resize_observer,
+} from '../setup'
+import {
+  cubic_matrix,
   IDENTITY_MATRIX3,
   make_crystal,
   make_position_stream,
-  query,
   simple_structure,
-  trigger_resize_observer,
-} from '../setup'
+} from '../test-fixtures'
 
 const mount_controls = async (
   props: ComponentProps<typeof StructureControls>,
@@ -659,10 +665,20 @@ describe(`StructureControls layout`, () => {
   })
 })
 
-const mount_persisted_controls = async () => {
+const property_structure = {
+  ...simple_structure,
+  sites: simple_structure.sites.map((site) => ({
+    ...site,
+    properties: { ...site.properties, charge: 0.5, velocity: 2, [CNA_TYPE_PROPERTY]: 1 },
+  })),
+}
+const mount_persisted_controls = async (
+  atom_color_config: AtomColorConfig = DEFAULT_ATOM_COLOR_CONFIG,
+) => {
   save_structure_view_state(
     create_structure_view_state({
       scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
+      atom_color_config,
       show_trajectory_lines: true,
       color_scheme: `Jmol`,
       background_color: `#123456`,
@@ -673,6 +689,7 @@ const mount_persisted_controls = async () => {
     }),
   )
   const toggles = $state({
+    atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
     color_scheme: DEFAULTS.color_scheme,
     background_color: undefined,
     background_opacity: DEFAULTS.background_opacity,
@@ -683,31 +700,73 @@ const mount_persisted_controls = async () => {
   })
   const initial_scene = { ...DEFAULTS.structure }
   const state = bind_props(raw_scene_state(initial_scene), toggles)
-  const target = await mount_bound_controls(state, { persist_settings: true })
+  const target = await mount_bound_controls(state, {
+    persist_settings: true,
+    structure: property_structure,
+  })
   return { target, state, initial_scene }
 }
 
 describe(`StructureControls reactive props`, () => {
-  test(`restores persisted settings and treats them as the reset snapshot`, async () => {
-    const { state, target, initial_scene } = await mount_persisted_controls()
-    expect(state.scene_props).not.toBe(initial_scene)
-    expect(initial_scene).toStrictEqual(DEFAULTS.structure)
-    expect(state).toMatchObject({
-      scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
-      color_scheme: `Jmol`,
-      background_color: `#123456`,
-      background_opacity: 0.4,
-      show_image_atoms: false,
-      show_trajectory_lines: true,
-      supercell_scaling: `2x2x1`,
-      multi_view: true,
-    })
-    // Persisted values define this session's reset snapshot, so they do not immediately
-    // masquerade as unsaved changes.
-    expect(
-      target.querySelector(`button[aria-label="Restore atoms to initial values"]`),
-    ).toBeNull()
-  })
+  test.each<AtomColorConfig>([
+    DEFAULT_ATOM_COLOR_CONFIG,
+    { mode: `coordination`, scale: `interpolateTurbo`, scale_type: `categorical` },
+    {
+      mode: `property`,
+      property_key: `velocity`,
+      scale: `interpolateTurbo`,
+      scale_type: `categorical`,
+    },
+  ])(
+    `restores $mode coloring and treats persisted settings as the reset snapshot`,
+    async (atom_color_config) => {
+      const { state, target, initial_scene } =
+        await mount_persisted_controls(atom_color_config)
+      expect(state.scene_props).not.toBe(initial_scene)
+      expect(initial_scene).toStrictEqual(DEFAULTS.structure)
+      expect(state).toMatchObject({
+        scene_props: { atom_radius: 1.35, ambient_light: 2.5, cell_edge_opacity: 0.75 },
+        atom_color_config,
+        color_scheme: `Jmol`,
+        background_color: `#123456`,
+        background_opacity: 0.4,
+        show_image_atoms: false,
+        show_trajectory_lines: true,
+        supercell_scaling: `2x2x1`,
+        multi_view: true,
+      })
+      // Persisted values define this session's reset snapshot, so they do not immediately
+      // masquerade as unsaved changes.
+      expect(
+        target.querySelector(`button[aria-label="Restore atoms to initial values"]`),
+      ).toBeNull()
+      const choose = async (key: string, value: string) => {
+        const select = doc_query<HTMLSelectElement>(`[data-key="${key}"] select`)
+        select.value = value
+        select.dispatchEvent(new Event(`change`, { bubbles: true }))
+        await tick()
+      }
+      await choose(
+        `atom_color_mode`,
+        atom_color_config.mode === `element` ? `coordination` : `element`,
+      )
+      doc_query<HTMLButtonElement>(
+        `[data-key="atom_color_mode"] .setting-reset-button`,
+      ).click()
+      await tick()
+      expect(state.atom_color_config).toEqual(atom_color_config)
+      for (const reset_button of [
+        `[data-key="atom_color_property_key"] .setting-reset-button`,
+        `button[aria-label="Restore atoms to initial values"]`,
+      ]) {
+        await choose(`atom_color_mode`, `property`)
+        await choose(`atom_color_property_key`, CNA_TYPE_PROPERTY)
+        doc_query<HTMLButtonElement>(reset_button).click()
+        await tick()
+        expect(state.atom_color_config).toEqual(atom_color_config)
+      }
+    },
+  )
 
   test(`persists changed settings and pane size after debounce`, async () => {
     const { state } = await mount_persisted_controls()
@@ -799,7 +858,8 @@ describe(`StructureControls reactive props`, () => {
 
   test(`copies and imports viewer settings through the visible actions`, async () => {
     const initial_scene = { ...DEFAULTS.structure }
-    const state = raw_scene_state(initial_scene)
+    const toggles = $state({ atom_color_config: DEFAULT_ATOM_COLOR_CONFIG })
+    const state = bind_props(raw_scene_state(initial_scene), toggles)
     const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
     doc_query<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`).click()
@@ -809,8 +869,14 @@ describe(`StructureControls reactive props`, () => {
       settings: { structure: { atom_radius: DEFAULTS.structure.atom_radius } },
     })
 
+    const atom_color_config = {
+      mode: `wyckoff`,
+      scale: `interpolateTurbo`,
+      scale_type: `continuous`,
+    } as const
     const shared = create_structure_view_state({
       scene_props: { atom_radius: 1.8, camera_projection: `perspective` },
+      atom_color_config,
     })
     await import_settings_file(
       target,
@@ -819,6 +885,7 @@ describe(`StructureControls reactive props`, () => {
     )
     expect(state.scene_props.atom_radius).toBe(1.8)
     expect(state.scene_props.camera_projection).toBe(`perspective`)
+    expect(state.atom_color_config).toEqual(atom_color_config)
     expect(state.scene_props).not.toBe(initial_scene)
     expect(initial_scene).toStrictEqual(DEFAULTS.structure)
   })
@@ -947,23 +1014,17 @@ describe(`StructureControls reactive props`, () => {
     )
   })
 
-  test(`updates the scale type when the selected property changes`, async () => {
-    const structure = {
-      ...simple_structure,
-      sites: simple_structure.sites.map((site) => ({
-        ...site,
-        properties: { ...site.properties, charge: 0.5, [CNA_TYPE_PROPERTY]: 1 },
-      })),
-    }
-    const state = $state({
+  test(`updates coloring when the selected property changes or disappears`, async () => {
+    const state = $state<{ atom_color_config: AtomColorConfig; structure: AnyStructure }>({
+      structure: property_structure,
       atom_color_config: {
-        mode: `property` as const,
+        mode: `property`,
         property_key: `charge`,
         scale: DEFAULTS.structure.atom_color_scale,
-        scale_type: `continuous` as const,
+        scale_type: `continuous`,
       },
     })
-    await mount_bound_controls(state, { structure })
+    await mount_bound_controls(state)
 
     const prop_select = doc_query<HTMLSelectElement>(
       `[data-key="atom_color_property_key"] select`,
@@ -976,6 +1037,9 @@ describe(`StructureControls reactive props`, () => {
       property_key: CNA_TYPE_PROPERTY,
       scale_type: `categorical`,
     })
+    state.structure = simple_structure
+    await tick()
+    expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {

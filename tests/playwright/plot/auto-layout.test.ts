@@ -2,6 +2,7 @@ import { expect, test, type Locator } from '@playwright/test'
 
 type RenderedLabel = {
   text: string
+  corners: { x: number; y: number }[]
   aria_label: string | null
   left: number
   right: number
@@ -14,6 +15,7 @@ type RenderedLabel = {
 const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
   axis.locator(`.tick text`).evaluateAll((elements) =>
     elements.flatMap((element) => {
+      if (!(element instanceof SVGTextElement)) throw new Error(`Expected SVG tick text`)
       const style = globalThis.getComputedStyle(element)
       const box = element.getBoundingClientRect()
       if (
@@ -26,9 +28,24 @@ const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
         return []
       }
       const svg = element.closest(`svg`)?.getBoundingClientRect()
+      const bounds = element.getBBox()
+      const transform = element.getScreenCTM()
+      if (!transform) throw new Error(`Missing label transform`)
       return [
         {
           text: element.textContent ?? ``,
+          corners: [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+          ].map(([offset_x, offset_y]) => {
+            const point = new DOMPoint(
+              bounds.x + offset_x * bounds.width,
+              bounds.y + offset_y * bounds.height,
+            ).matrixTransform(transform)
+            return { x: point.x, y: point.y }
+          }),
           aria_label: element.getAttribute(`aria-label`),
           left: box.left,
           right: box.right,
@@ -54,11 +71,26 @@ const overlapping_pairs = (labels: readonly RenderedLabel[], tolerance = 0.5): s
     const first = labels[first_idx]
     for (let second_idx = first_idx + 1; second_idx < labels.length; second_idx++) {
       const second = labels[second_idx]
+      // Screen-aligned boxes overlap at rotated corners even when the text does not.
       if (
-        first.left + tolerance < second.right &&
-        second.left + tolerance < first.right &&
-        first.top + tolerance < second.bottom &&
-        second.top + tolerance < first.bottom
+        [first.corners, second.corners].every((corners) =>
+          corners.every((point, idx) => {
+            const next = corners[(idx + 1) % corners.length]
+            const axis_x = point.y - next.y
+            const axis_y = next.x - point.x
+            const axis_length = Math.hypot(axis_x, axis_y)
+            const [first_range, second_range] = [first, second].map((label) => {
+              const projected = label.corners.map(
+                (corner) => (corner.x * axis_x + corner.y * axis_y) / axis_length,
+              )
+              return [Math.min(...projected), Math.max(...projected)]
+            })
+            return (
+              first_range[1] > second_range[0] + tolerance &&
+              second_range[1] > first_range[0] + tolerance
+            )
+          }),
+        )
       ) {
         pairs.push(`${first.text.trim()} <-> ${second.text.trim()}`)
       }
@@ -129,6 +161,10 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
   page.on(`pageerror`, (error) => page_errors.push(error.message))
   await page.goto(`/plot/bar-plot`, { waitUntil: `domcontentloaded` })
 
+  await page
+    .locator(`#adaptive-tick-strategies-under-pressure ~ .code-example`)
+    .first()
+    .scrollIntoViewIfNeeded()
   const demo = page.locator(`[data-testid="adaptive-tick-demo"]`)
   await demo.scrollIntoViewIfNeeded()
   await expect(demo.locator(`.bar-plot`)).toBeVisible()

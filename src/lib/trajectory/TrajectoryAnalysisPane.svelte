@@ -20,6 +20,7 @@
     no_full_pass_message,
   } from '$lib/trajectory/analysis'
   import { resolve_frame_range } from './runs/accumulate'
+  import { create_request_owner } from './async-result.svelte'
   import { to_error } from '$lib/utils'
   import { format_bytes } from 'svelte-widgets/format'
   import { type Snippet, untrack } from 'svelte'
@@ -234,7 +235,8 @@
       clear()
       // a collect still running for the old trajectory may no longer report here
       progress = null
-      abort_collect()
+      requests.cancel()
+      collecting = false
     }
     if (time_unit_fallback && !manual_timing) {
       const has_default_timestep =
@@ -287,30 +289,13 @@
     },
   }
 
-  // A sweep outlives a trajectory swap; its result belongs to the run that is no longer on
-  // screen, so only the request for the current trajectory may write back. A newer request
-  // on the same trajectory likewise supersedes an older one.
-  let request_id = 0
-  // Aborted whenever a collect's answer can no longer be used, so a collector that honours
-  // the signal stops reading frames (and posting worker jobs) instead of running to the end
-  let collect_controller: AbortController | undefined
-  const abort_collect = (): void => {
-    collect_controller?.abort()
-    collect_controller = undefined
-  }
-  // Unmount: invalidate first so the abort rejection is not reported as a collect error
-  $effect(() => () => {
-    request_id++
-    abort_collect()
-  })
+  const requests = create_request_owner()
+  $effect(() => requests.cancel)
   async function run_collect() {
     if (!run || disabled_reason) return
     const requested = run
-    const this_request = ++request_id
-    const is_current = () => run === requested && this_request === request_id
-    abort_collect()
-    const controller = new AbortController()
-    collect_controller = controller
+    const signal = requests.start()
+    const is_current = () => run === requested && !signal.aborted
     collecting = true
     error_msg = undefined
     progress = null
@@ -320,7 +305,7 @@
       const collected = await collect(requested, {
         frame_stride: requested_stride,
         ...range,
-        signal: controller.signal,
+        signal,
         on_progress: (parse_progress) => {
           if (is_current()) progress = parse_progress
         },
@@ -340,9 +325,7 @@
       clear()
       error_msg = to_error(exc).message
     } finally {
-      if (collect_controller === controller) collect_controller = undefined
-      // the button must re-enable even when the answer was discarded
-      if (this_request === request_id) {
+      if (is_current()) {
         collecting = false
         progress = null
       }
