@@ -94,12 +94,10 @@ it(`requires units, calculates a slice, and keeps display changes independent of
 it(`aborts an old computation when the source changes`, async () => {
   const old_run = make_run()
   let signal: AbortSignal | undefined
-  let resolve: ((result: HotspotResult) => void) | undefined
+  const pending = Promise.withResolvers<HotspotResult>()
   old_run.compute_hotspots = (options) => {
     signal = options.signal
-    return new Promise((done) => {
-      resolve = done
-    })
+    return pending.promise
   }
   const props = $state({ run: old_run, pane_open: true })
   mounted = mount(TrajectoryHotspotPane, { target: document.body, props })
@@ -118,7 +116,7 @@ it(`aborts an old computation when the source changes`, async () => {
   expect(control(`Degrees of freedom`).value).toBe(`3`)
   expect(calculate_button().disabled).toBe(true)
   if (!next.read_atoms) throw new Error(`Missing atom reader`)
-  resolve?.(
+  pending.resolve(
     await calculate_hotspots(next.frame_count, next.read_atoms, {
       velocity_unit: `A/ps`,
       mass_unit: `amu`,

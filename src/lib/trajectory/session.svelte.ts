@@ -13,7 +13,7 @@ import type { TrajectoryRun } from './run'
 // Playback inputs bind current_step_idx through index and set_index.
 interface TrajectorySessionInputs extends Omit<
   Parameters<typeof create_sequence_player>[0],
-  'count'
+  'count' | 'can_advance'
 > {
   run: () => TrajectoryRun | undefined
   // Numeric renderers own their frame buffers; keep playback without decoding Site objects.
@@ -121,7 +121,14 @@ export function create_trajectory_session(
   let loading = $state(false)
   let in_flight: AbortController | undefined
   let prefetch_timer: ReturnType<typeof setTimeout> | undefined
-  let prefetching = false
+  let prefetched:
+    | {
+        run: TrajectoryRun
+        idx: number
+        controller: AbortController
+        pending: Promise<TrajectoryFrame>
+      }
+    | undefined
 
   const cancel_in_flight = (): void => {
     in_flight?.abort(new DOMException(`Superseded by a newer frame request`, `AbortError`))
@@ -131,6 +138,8 @@ export function create_trajectory_session(
   const cancel_prefetch = (): void => {
     if (prefetch_timer !== undefined) clearTimeout(prefetch_timer)
     prefetch_timer = undefined
+    prefetched?.controller.abort(new DOMException(`Prefetch cancelled`, `AbortError`))
+    prefetched = undefined
   }
 
   const settle = (run: TrajectoryRun, frame_idx: number, frame: TrajectoryFrame): void => {
@@ -140,8 +149,11 @@ export function create_trajectory_session(
 
   function request_frame(run: TrajectoryRun | undefined, requested_idx: number): void {
     cancel_in_flight()
-    cancel_prefetch()
     const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
+    const next =
+      prefetched?.run === run && prefetched?.idx === frame_idx ? prefetched : undefined
+    if (next) prefetched = undefined
+    cancel_prefetch()
     if (!run || frame_idx === null) {
       loaded = null
       // These lazy derived values can retain frames after their renderer stops reading them.
@@ -161,12 +173,17 @@ export function create_trajectory_session(
       return
     }
     let pending: Promise<TrajectoryFrame>
-    const controller = new AbortController()
+    const controller = next?.controller ?? new AbortController()
     try {
-      const result = run.read_frame(frame_idx, controller.signal)
-      if (!is_promise(result)) return settle(run, frame_idx, result)
+      const result = next?.pending ?? run.read_frame(frame_idx, controller.signal)
+      if (!is_promise(result)) {
+        settle(run, frame_idx, result)
+        if (player.is_playing) schedule_prefetch(run, frame_idx)
+        return
+      }
       pending = result
     } catch (error) {
+      player.pause()
       inputs.on_frame_error?.(frame_idx, to_error(error))
       return
     }
@@ -186,49 +203,60 @@ export function create_trajectory_session(
         if (in_flight !== controller) return
         in_flight = undefined
         loading = false
+        player.pause()
         inputs.on_frame_error?.(frame_idx, to_error(error))
       },
     )
   }
 
-  // Warm the next frame or two once a step has settled. The delay lets a slider burst cancel
-  // speculative work before it occupies the read lane; at most one async read is in flight.
+  // During playback, overlap the next read with rendering and adopt it on advance. Keep one
+  // large frame outside the LRU until requested; prefetch must not evict the displayed frame.
+  // Paused navigation retains its delay and cache budget so slider bursts cancel speculation.
   function schedule_prefetch(run: TrajectoryRun, from_idx: number): void {
-    if (scrubbing || prefetching) return
+    if (scrubbing || prefetched) return
     cancel_prefetch()
-    // Do not decode a speculative frame that cannot coexist with the displayed frame.
-    // Besides immediately evicting useful data, large replies block the main thread and GC.
+    // Playback reserves one next frame even when a single frame exceeds the LRU budget.
     const frame_atoms = cache.get(from_idx)?.structure.sites.length ?? run.atom_count
     const prefetch_limit = Math.min(
       2,
       cache_max_frames - 1,
-      Math.floor(cache_max_atoms / frame_atoms) - 1,
+      Math.max(player.is_playing ? 1 : 0, Math.floor(cache_max_atoms / frame_atoms) - 1),
     )
     if (prefetch_limit < 1) return
-    prefetch_timer = setTimeout(() => {
+    const read_ahead = () => {
       prefetch_timer = undefined
       for (let ahead = 1; ahead <= prefetch_limit; ahead++) {
-        const idx = from_idx + ahead
-        if (idx >= run.frame_count || cache.has(idx) || cache_owner !== run) continue
+        const idx = (from_idx + ahead) % run.frame_count
+        if (idx === from_idx || cache.has(idx) || cache_owner !== run) continue
+        const controller = new AbortController()
         try {
-          const result = run.read_frame(idx)
+          const result = run.read_frame(idx, controller.signal)
           if (!is_promise(result)) {
             cache_put(run, idx, result)
             continue
           }
-          prefetching = true
+          const request = { run, idx, controller, pending: result }
+          prefetched = request
           result
-            .then((frame) => cache_put(run, idx, frame))
-            .catch((error: unknown) => console.warn(`Prefetch of frame ${idx} failed:`, error))
-            .finally(() => {
-              prefetching = false
+            .then((frame) => {
+              if (prefetched !== request || player.is_playing) return
+              cache_put(run, idx, frame)
+              prefetched = undefined
+            })
+            .catch((error: unknown) => {
+              if (prefetched !== request) return
+              prefetched = undefined
+              if (!controller.signal.aborted)
+                console.warn(`Prefetch of frame ${idx} failed:`, error)
             })
         } catch (error) {
           console.warn(`Prefetch of frame ${idx} failed:`, error)
         }
         break
       }
-    }, prefetch_delay_ms)
+    }
+    if (player.is_playing) read_ahead()
+    else prefetch_timer = setTimeout(read_ahead, prefetch_delay_ms)
   }
 
   // Normalize out-of-range and fractional indices (Number.MAX_SAFE_INTEGER means "last frame"
@@ -344,8 +372,18 @@ export function create_trajectory_session(
     set_fps: inputs.set_fps,
     fps_range: inputs.fps_range,
     should_auto_play: () => inputs.should_auto_play() && inputs.run() !== undefined,
-    on_play: inputs.on_play,
-    on_pause: inputs.on_pause,
+    can_advance: () => !load_frames || current_frame !== null,
+    on_play: () => {
+      inputs.on_play?.()
+      const run = inputs.run()
+      if (!run || !load_frames) return
+      if (current_frame) schedule_prefetch(run, inputs.index())
+      else if (!loading) request_frame(run, inputs.index())
+    },
+    on_pause: () => {
+      cancel_prefetch()
+      inputs.on_pause?.()
+    },
     on_end: inputs.on_end,
     on_loop: inputs.on_loop,
   })

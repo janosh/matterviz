@@ -1271,8 +1271,18 @@
     image: RenderAtom[]
     partial: RenderAtom[]
   }
-  const atom_appearance = $derived({ palette, radius_options, effective_atom_radius })
-  let previous_atoms: { appearance: object; groups: AtomGroups; colored: boolean } | undefined
+  // Function bindings can invalidate equal override objects on every trajectory frame.
+  // Compare their values so coordinate updates keep the existing atom records.
+  const atom_appearance = $derived(
+    JSON.stringify([
+      palette,
+      radius_options.same_size_atoms,
+      radius_options.element_radius_overrides,
+      [...(radius_options.site_radius_overrides ?? [])],
+      effective_atom_radius,
+    ]),
+  )
+  let previous_atoms: { appearance: string; groups: AtomGroups; colored: boolean } | undefined
 
   // Build render groups and site anchors together. Frames with the same ordered atoms
   // reuse records and lookup; fresh base arrays still invalidate child instance buffers.
@@ -1296,7 +1306,7 @@
     const radius_scale = effective_atom_radius
     const radius_opts = radius_options
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
-    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers
+    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers?.size
     const appearance = atom_appearance
     if (reusable && previous_atoms?.appearance === appearance && structure) {
       const updated = update_ordered_atom_positions(

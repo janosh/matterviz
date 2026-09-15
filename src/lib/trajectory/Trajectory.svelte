@@ -551,7 +551,6 @@
       : undefined,
   )
 
-  const is_pane_open = (pane: TrajectoryPane): boolean => active_pane === pane
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
     if (open) {
       export_particles = (pane === `export` || pane === `flight`) && particle_view
@@ -1112,7 +1111,7 @@
               property_rows={session.property_rows}
               properties_complete={session.properties_complete}
               bind:pane_open={
-                () => is_pane_open(`info`), (open) => set_pane_open(`info`, open)
+                () => active_pane === `info`, (open) => set_pane_open(`info`, open)
               }
               pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
             />
@@ -1120,10 +1119,10 @@
           {#if controls_config.visible(`export-pane`)}
             <TrajectoryExportPane
               bind:export_pane_open={
-                () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
+                () => active_pane === `export`, (open) => set_pane_open(`export`, open)
               }
               bind:flight_pane_open={
-                () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
+                () => active_pane === `flight`, (open) => set_pane_open(`flight`, open)
               }
               run={trajectory}
               {wrapper}
@@ -1178,25 +1177,25 @@
                 <TrajectoryMsdPane
                   {...correlation_pane_props}
                   bind:pane_open={
-                    () => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)
+                    () => active_pane === `msd`, (open) => set_pane_open(`msd`, open)
                   }
                 />
                 <TrajectoryVacfPane
                   {...correlation_pane_props}
                   bind:pane_open={
-                    () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
+                    () => active_pane === `vacf`, (open) => set_pane_open(`vacf`, open)
                   }
                 />
                 <TrajectoryRdfPane
                   {...analysis_pane_props}
                   bind:pane_open={
-                    () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
+                    () => active_pane === `rdf`, (open) => set_pane_open(`rdf`, open)
                   }
                 />
                 <TrajectoryStructureIdPane
                   {...analysis_pane_props}
                   bind:pane_open={
-                    () => is_pane_open(`structure-id`),
+                    () => active_pane === `structure-id`,
                     (open) => set_pane_open(`structure-id`, open)
                   }
                 />
@@ -1208,7 +1207,7 @@
                   bind:min_atoms={hotspot_min_atoms}
                   bind:threshold={hotspot_threshold}
                   bind:pane_open={
-                    () => is_pane_open(`hotspots`), (open) => set_pane_open(`hotspots`, open)
+                    () => active_pane === `hotspots`, (open) => set_pane_open(`hotspots`, open)
                   }
                   pane_props={{
                     style: `--pane-max-height: var(--traj-pane-max-height); width: min(42em, calc(100vw - 3em))`,
@@ -1220,7 +1219,7 @@
                   {current_step_idx}
                   {current_frame}
                   bind:pane_open={
-                    () => is_pane_open(`data-inspector`),
+                    () => active_pane === `data-inspector`,
                     (open) => set_pane_open(`data-inspector`, open)
                   }
                   on_step_change={session.commit}
@@ -1355,7 +1354,7 @@
         inline
         run={trajectory}
         bind:pane_open={
-          () => is_pane_open(`spectroscopy`), (open) => set_pane_open(`spectroscopy`, open)
+          () => active_pane === `spectroscopy`, (open) => set_pane_open(`spectroscopy`, open)
         }
       />
 

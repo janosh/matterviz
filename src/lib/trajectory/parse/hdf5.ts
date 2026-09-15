@@ -50,10 +50,6 @@ type Hdf5TrajectoryResult =
   // `lazy.dispose` closes the h5wasm handle and releases the backing FS entry
   | { kind: `lazy`; lazy: LazyTrajectorySource }
 
-const is_lazy_source = (
-  result: ParsedTrajectory | LazyTrajectorySource,
-): result is LazyTrajectorySource => `read_frame` in result
-
 // Opens an HDF5 trajectory. vaspout.h5 and single-frame files come back fully parsed (the
 // handle is closed before returning); multi-frame TorchSim / Reference MD files stay open
 // and decode frames on demand until the returned source is disposed.
@@ -73,7 +69,7 @@ export const open_hdf5_trajectory = async (
         : is_reference_md_h5_file(opened.h5_file)
           ? parse_reference_md_h5_file(opened.h5_file, hdf5_group_path)
           : parse_torch_sim_h5_file(opened.h5_file, hdf5_group_path)
-    if (!is_lazy_source(result)) return { kind: `parsed`, parsed: result }
+    if (!(`read_frame` in result)) return { kind: `parsed`, parsed: result }
     const dispose_source = result.dispose
     lazy = {
       ...result,
@@ -292,10 +288,8 @@ const read_torch_sim_signal = (
   end_step = Infinity,
 ): TrajectorySignal => {
   const { dataset, path, steps, sample_shape } = signal
-  const start = steps.findIndex((step) => step >= start_step)
-  const end = steps.findIndex((step) => step >= end_step)
-  const sample_start = start === -1 ? steps.length : start
-  const sample_end = end === -1 ? steps.length : end
+  const sample_start = partition_point(steps, (step) => step < start_step)
+  const sample_end = partition_point(steps, (step) => step < end_step)
   const values = read_numeric_samples(
     dataset,
     path,
@@ -706,9 +700,10 @@ const parse_torch_sim_datasets = (
         ? read_numeric_hyperslab(energy_dataset, energy_path, [[frame_idx, frame_idx + 1]])[0]
         : undefined
     const frame = create_trajectory_frame(
-      Array.from({ length: n_atoms }, (_unused, atom_idx) =>
-        Array.from(values.subarray(atom_idx * 3, atom_idx * 3 + 3)),
-      ),
+      Array.from({ length: n_atoms }, (_unused, atom_idx) => {
+        const offset = atom_idx * 3
+        return [values[offset], values[offset + 1], values[offset + 2]]
+      }),
       elements,
       lattice,
       pbc_for_frame(frame_idx),
@@ -728,10 +723,14 @@ const parse_torch_sim_datasets = (
           [start, end],
           [0, 3],
         ])
-        for (let idx = start; idx < end; idx++)
-          frame.structure.sites[idx].properties[key] = Array.from(
-            vectors.subarray((idx - start) * 3, (idx - start + 1) * 3),
-          )
+        for (let idx = start; idx < end; idx++) {
+          const offset = (idx - start) * 3
+          frame.structure.sites[idx].properties[key] = [
+            vectors[offset],
+            vectors[offset + 1],
+            vectors[offset + 2],
+          ]
+        }
       }
     }
     return frame
@@ -1072,25 +1071,18 @@ function parse_torch_sim_h5_file(
   }
   const structural_parent =
     selected_parent ?? (common_parents.has(`/data`) ? `/data` : [...common_parents][0])
-  const inherited_attribute = (names: string[]): unknown =>
-    group_attribute_value(structural_parent ?? ``, names)
   const first_path = (names: string[]): string | undefined =>
     structural_parent === undefined
       ? undefined
       : structural_paths_for(names).find((path) => parent_path(path) === structural_parent)
-  const position_path = first_path(POSITION_ALIASES)
-  const atomic_number_path = first_path(ATOMIC_NUMBER_ALIASES)
-  const cell_path = first_path(CELL_ALIASES)
-  const energy_path = first_path(ENERGY_ALIASES)
-  const pbc_path = first_path(PBC_ALIASES)
   return parse_torch_sim_datasets(h5_file, {
     structural_parent: structural_parent ?? ``,
-    position_path,
-    atomic_number_path,
-    cell_path,
-    energy_path,
-    pbc_path,
-    inherited_attribute,
+    position_path: first_path(POSITION_ALIASES),
+    atomic_number_path: first_path(ATOMIC_NUMBER_ALIASES),
+    cell_path: first_path(CELL_ALIASES),
+    energy_path: first_path(ENERGY_ALIASES),
+    pbc_path: first_path(PBC_ALIASES),
+    inherited_attribute: (names) => group_attribute_value(structural_parent ?? ``, names),
     total_groups_found,
   })
 }

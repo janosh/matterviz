@@ -241,27 +241,14 @@ export const get_dummy_structure = (
   })),
   lattice: {
     matrix: cubic_matrix(5),
-    ...(with_lattice
-      ? {
-          pbc: [true, true, true] as Pbc,
-          a: 5,
-          b: 5,
-          c: 5,
-          volume: 125,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-        }
-      : {
-          pbc: [false, false, false] as Pbc,
-          a: 0,
-          b: 0,
-          c: 0,
-          volume: 0,
-          alpha: 0,
-          beta: 0,
-          gamma: 0,
-        }),
+    pbc: [with_lattice, with_lattice, with_lattice],
+    a: with_lattice ? 5 : 0,
+    b: with_lattice ? 5 : 0,
+    c: with_lattice ? 5 : 0,
+    volume: with_lattice ? 125 : 0,
+    alpha: with_lattice ? 90 : 0,
+    beta: with_lattice ? 90 : 0,
+    gamma: with_lattice ? 90 : 0,
   },
   charge: 0,
 })
@@ -281,15 +268,6 @@ type SimpleSiteObject = {
 // Tuple shorthand: [`Li`, [0, 0, 0]] or [`Li`, [0, 0, 0], 1] (with oxidation state)
 export type SimpleSite = SimpleSiteObject | [string, Vec3, number?]
 
-// Normalize tuple or object site input to object form
-const normalize_site_input = (input: SimpleSite): SimpleSiteObject => {
-  if (Array.isArray(input)) {
-    const [element, abc, oxidation_state] = input
-    return { element, abc, oxidation_state }
-  }
-  return input
-}
-
 // Flexible helper to create test structures with minimal boilerplate
 // Handles auto-calculation of abc↔xyz, lattice params, and site defaults
 export function make_crystal(
@@ -306,19 +284,12 @@ export function make_crystal(
   // degenerate (singular) lattices as long as all sites pass abc coords
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
   let cart_to_frac: ((vec: Vec3) => Vec3) | undefined
-  const {
-    a: lattice_a,
-    b: lattice_b,
-    c: lattice_c,
-    alpha,
-    beta,
-    gamma,
-    volume,
-  } = math.calc_lattice_params(lattice_matrix)
-  const pbc = options.pbc ?? [true, true, true]
+  const lattice_params = math.calc_lattice_params(lattice_matrix)
 
   const sites: Site[] = site_inputs.map((raw_input, idx) => {
-    const input = normalize_site_input(raw_input)
+    const input = Array.isArray(raw_input)
+      ? { element: raw_input[0], abc: raw_input[1], oxidation_state: raw_input[2] }
+      : raw_input
     const element = input.element as ElementSymbol
     // Calculate coordinates - abc takes precedence to ensure consistency
     let abc: Vec3
@@ -351,14 +322,8 @@ export function make_crystal(
   return {
     lattice: {
       matrix: lattice_matrix,
-      pbc,
-      a: lattice_a,
-      b: lattice_b,
-      c: lattice_c,
-      alpha,
-      beta,
-      gamma,
-      volume,
+      pbc: options.pbc ?? [true, true, true],
+      ...lattice_params,
     },
     sites,
     ...(options.charge !== undefined && { charge: options.charge }),
@@ -549,24 +514,8 @@ export const make_bxsf = (fermi_energy = 7) =>
 
 // Encode a 3x3 matrix as a flat 9-array in COLUMN-major order — how moyo/nalgebra serialize
 // rotation matrices on the wire (inverse of mat3_from_flat_col_major in symmetry-elements).
-export const col_major = (mat: math.Matrix3x3): number[] => {
-  const [
-    [value_a_1, value_a_2, value_a_3],
-    [value_a_4, value_a_5, value_a_6],
-    [value_a_7, value_a_8, value_a_9],
-  ] = mat
-  return [
-    value_a_1,
-    value_a_4,
-    value_a_7,
-    value_a_2,
-    value_a_5,
-    value_a_8,
-    value_a_3,
-    value_a_6,
-    value_a_9,
-  ]
-}
+export const col_major = (mat: math.Matrix3x3): number[] =>
+  mat[0].flatMap((_value, idx) => [mat[0][idx], mat[1][idx], mat[2][idx]])
 
 // Build an orbit-path SymmetryDataset mock from std-cell-aligned fields. The input cell is
 // taken to equal the std cell (identity std_linear) and sites are grouped into orbits by

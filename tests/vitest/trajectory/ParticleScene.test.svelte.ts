@@ -25,12 +25,7 @@ vi.mock(`$lib/scene`, async () => ({
   bind_renderer: () => ({
     camera: readable(test_camera),
     invalidate: vi.fn(),
-    size: {
-      subscribe: (callback: (size: { width: number; height: number }) => void) => {
-        callback({ width: 800, height: 600 })
-        return () => {}
-      },
-    },
+    size: readable({ width: 800, height: 600 }),
   }),
 }))
 

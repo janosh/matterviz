@@ -259,19 +259,19 @@ describe(`MD HDF5`, () => {
   })
 
   it(`exposes only committed frames and ignores a nonfinite uncommitted tail`, async () => {
-    const buffer = await fixture({
-      committed: 2,
-      mutate: (file) => {
-        ;(file.get(`/frames/positions`) as Dataset).write_slice(
-          [
-            [2, 3],
-            [0, 1],
-          ],
-          [NaN, NaN, NaN],
-        )
-      },
-    })
-    const run = await open(buffer)
+    const run = await open(
+      await fixture({
+        committed: 2,
+        mutate: (file) =>
+          (file.get(`/frames/positions`) as Dataset).write_slice(
+            [
+              [2, 3],
+              [0, 1],
+            ],
+            [NaN, NaN, NaN],
+          ),
+      }),
+    )
     expect(run.frame_count).toBe(2)
     expect(run.metadata?.successful).toBe(false)
     expect((await run.read_frame(1)).step).toBe(2301)
@@ -336,89 +336,77 @@ describe(`MD HDF5`, () => {
       velocity_key: `velocity`,
       mass_source: `recorded`,
     })
-    expect(slices).toEqual([
-      {
-        path: `/frames/positions`,
+    expect(slices).toEqual(
+      [`positions`, `velocities`].map((name) => ({
+        path: `/frames/${name}`,
         ranges: [
           [2, 3],
           [start, start + 2 * stride, stride],
         ],
-      },
-      {
-        path: `/frames/velocities`,
-        ranges: [
-          [2, 3],
-          [start, start + 2 * stride, stride],
-        ],
-      },
-    ])
+      })),
+    )
   })
 
-  it.each<readonly [string, (file: H5File) => void]>([
+  it.each<readonly [string, Parameters<typeof fixture>[0]]>([
     [
       `nonconsecutive step`,
-      (file: H5File) =>
-        (file.get(`/frames/md_step`) as Dataset).write_slice(
-          [[1, 2]],
-          new BigInt64Array([2310n]),
-        ),
+      {
+        mutate: (file) =>
+          (file.get(`/frames/md_step`) as Dataset).write_slice(
+            [[1, 2]],
+            new BigInt64Array([2310n]),
+          ),
+      },
     ],
     [
       `wrong units`,
-      (file: H5File) => {
-        const dataset = file.get(`/frames/velocities`) as Dataset
-        dataset.delete_attribute(`units`)
-        dataset.create_attribute(`units`, `A/fs`)
+      {
+        mutate: (file) => {
+          const dataset = file.get(`/frames/velocities`) as Dataset
+          dataset.delete_attribute(`units`)
+          dataset.create_attribute(`units`, `A/fs`)
+        },
       },
     ],
     ...[0, -1, NaN].map(
-      (value) =>
-        [
-          `invalid timestep ${value}`,
-          (file: H5File) => {
-            file.delete_attribute(`timestep_fs`)
-            file.create_attribute(`timestep_fs`, value)
-          },
-        ] as const,
+      (value) => [`invalid timestep ${value}`, { timestep_fs: value }] as const,
     ),
-    [`invalid success count`, (_file: H5File) => undefined],
-    [`incorrect float32 dtype`, (_file: H5File) => undefined],
+    [`invalid success count`, { committed: 2, successful: true }],
+    [`incorrect float32 dtype`, { float32: true }],
     [
       `short committed channel`,
-      (file: H5File) => (file.get(`/frames/positions`) as Dataset).resize([2, 4, 3]),
+      { mutate: (file) => (file.get(`/frames/positions`) as Dataset).resize([2, 4, 3]) },
     ],
     [
       `unknown schema`,
-      (file: H5File) => {
-        file.delete_attribute(`schema`)
-        file.create_attribute(`schema`, `md-trajectory-v9`)
+      {
+        mutate: (file) => {
+          file.delete_attribute(`schema`)
+          file.create_attribute(`schema`, `md-trajectory-v9`)
+        },
       },
     ],
     [
       `reordered IDs`,
-      (file: H5File) =>
-        (file.get(`/static/global_atom_ids`) as Dataset).write_slice([[0, 2]], [1, 0]),
+      {
+        mutate: (file) =>
+          (file.get(`/static/global_atom_ids`) as Dataset).write_slice([[0, 2]], [1, 0]),
+      },
     ],
     [
       `nonfinite committed frame`,
-      (file: H5File) =>
-        (file.get(`/frames/positions`) as Dataset).write_slice(
-          [
-            [0, 1],
-            [0, 1],
-          ],
-          [NaN, NaN, NaN],
-        ),
+      {
+        mutate: (file) =>
+          (file.get(`/frames/positions`) as Dataset).write_slice(
+            [
+              [0, 1],
+              [0, 1],
+            ],
+            [NaN, NaN, NaN],
+          ),
+      },
     ],
-  ])(`rejects %s`, async (label, mutate) => {
-    await expect(
-      open(
-        await fixture({
-          mutate,
-          ...(label === `invalid success count` && { committed: 2, successful: true }),
-          float32: label === `incorrect float32 dtype`,
-        }),
-      ),
-    ).rejects.toThrow(/MD|finite/)
+  ])(`rejects %s`, async (_label, options) => {
+    await expect(open(await fixture(options))).rejects.toThrow(/MD|finite/)
   })
 })

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   calculate_hotspots,
   hotspot_bin,
@@ -33,6 +33,7 @@ const grid: HotspotGrid = {
   ],
   pbc: [false, false, false],
 }
+const velocity_options = { grid, mass_unit: `amu`, velocity_unit: `A/ps` } as const
 const conversion = (0.5 * 1.66053906892e-27 * 100 ** 2) / 1.602176634e-19
 
 function source(n_atoms = 8, steps = [0, 1, 2], drift = 0): ReadAtoms {
@@ -67,9 +68,7 @@ function source(n_atoms = 8, steps = [0, 1, 2], drift = 0): ReadAtoms {
 describe(`spatial kinetic hotspots`, () => {
   it.each([1, 3, 8])(`preserves energies across batch size %s`, async (batch_size) => {
     const result = await calculate_hotspots(3, source(), {
-      grid,
-      mass_unit: `amu`,
-      velocity_unit: `A/ps`,
+      ...velocity_options,
       batch_size,
     })
     expect(Array.from(result.population)).toEqual([8, 8])
@@ -83,9 +82,7 @@ describe(`spatial kinetic hotspots`, () => {
     `removes %s without subtracting large raw energies`,
     async (motion) => {
       const options = {
-        grid,
-        mass_unit: `amu` as const,
-        velocity_unit: `A/ps` as const,
+        ...velocity_options,
         motion,
       }
       const expected = await calculate_hotspots(3, source(8), options)
@@ -147,9 +144,7 @@ describe(`spatial kinetic hotspots`, () => {
       pbc: grid.pbc,
     })
     const result = await calculate_hotspots(1, read, {
-      grid,
-      velocity_unit: `A/ps`,
-      mass_unit: `amu`,
+      ...velocity_options,
       motion: `local`,
     })
     // The populated bin has residuals [-0.5, 0.5, -0.5, 0.5], with squared sum 1.
@@ -161,9 +156,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it(`masks underpopulated cells and converts explicit degrees of freedom`, async () => {
     const result = await calculate_hotspots(1, source(), {
-      grid,
-      mass_unit: `amu`,
-      velocity_unit: `A/ps`,
+      ...velocity_options,
       dof_per_atom: 2,
     })
     expect(hotspot_values(result, `energy`, 5).every(Number.isNaN)).toBe(true)
@@ -178,11 +171,13 @@ describe(`spatial kinetic hotspots`, () => {
       { energy_key: `ke`, energy_unit: `constructor`, energy_reference: `device` },
       /Declare kinetic-energy units/,
     ],
-    [{ mass_unit: `amu`, velocity_unit: `A/ps`, max_bytes: 1 }, /budget/],
-    [{ mass_unit: `amu`, velocity_unit: `A/ps`, retained_bytes: 128 * 1024 ** 2 }, /budget/],
-    [{ mass_unit: `amu`, velocity_unit: `A/ps`, frame_stride: 0 }, /Invalid hotspot frame/],
-    [{ mass_unit: `amu`, velocity_unit: `A/ps`, bins: 129, grid: undefined }, /Bins per axis/],
+    [{ ...velocity_options, max_bytes: 1 }, /budget/],
+    [{ ...velocity_options, retained_bytes: 128 * 1024 ** 2 }, /budget/],
+    [{ ...velocity_options, frame_stride: 0 }, /Invalid hotspot frame/],
+    [{ ...velocity_options, bins: 129, grid: undefined }, /Bins per axis/],
     [{ energy_key: `ke`, energy_unit: `eV`, motion: `local` }, /cannot remove motion/],
+    [{ velocity_unit: `m/s` }, /Declare recorded mass units/],
+    [{ ...velocity_options, selection_key: `mobile` }, /Missing or invalid selection/],
   ] as const)(`rejects invalid options %j`, async (options, message) => {
     await expect(
       calculate_hotspots(3, source(), { grid, ...options } as HotspotRequest),
@@ -205,11 +200,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it.each([100_000, 1_000_000])(`processes %s atoms with bounded batches`, async (n_atoms) => {
     const read = vi.fn(source(n_atoms))
-    const result = await calculate_hotspots(3, read, {
-      grid,
-      mass_unit: `amu`,
-      velocity_unit: `A/ps`,
-    })
+    const result = await calculate_hotspots(3, read, velocity_options)
     expect(result.population[0] + result.population[1]).toBe(n_atoms * 2)
     expect(read.mock.calls.every(([options]) => (options.count ?? 0) <= 65_536)).toBe(true)
     expect(result.reserved_buffer_bytes).toBeLessThan(32 * 1024 ** 2)
@@ -221,9 +212,7 @@ describe(`spatial kinetic hotspots`, () => {
     const read = vi.fn(source(100_000))
     await expect(
       calculate_hotspots(3, read, {
-        grid,
-        mass_unit: `amu`,
-        velocity_unit: `A/ps`,
+        ...velocity_options,
         signal: controller.signal,
         on_progress: () => controller.abort(),
       }),
@@ -231,15 +220,7 @@ describe(`spatial kinetic hotspots`, () => {
     expect(read.mock.calls.length).toBeLessThan(6)
   })
 
-  it(`rejects missing selections and overflowing energy instead of publishing a map`, async () => {
-    await expect(
-      calculate_hotspots(1, source(), {
-        grid,
-        velocity_unit: `A/ps`,
-        mass_unit: `amu`,
-        selection_key: `mobile`,
-      }),
-    ).rejects.toThrow(`Missing or invalid selection`)
+  it(`rejects overflowing energy instead of publishing a map`, async () => {
     const read: ReadAtoms = (options) => ({
       ...(source()(options) as AtomBatch),
       velocities: new Float64Array(24).fill(1e200),
@@ -313,54 +294,46 @@ describe(`spatial kinetic hotspots`, () => {
       return packed_batch
     }
     const run = worker_run(serve_run_over_port(backing), summarize_run(backing))
-    try {
-      expect((await run.read_atoms?.({ frame_idx: 1 }))?.positions).toEqual(
-        new Float64Array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5]),
-      )
-      if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
-      const computation = run.compute_hotspots({
-        grid,
-        mass_unit: `amu`,
-        velocity_unit: `A/ps`,
-      })
-      expect((await run.read_frame(1)).step).toBe(1)
-      expect(hotspot_mean(await computation, `energy`)).toBe(28 * conversion)
-      const compute = backing.compute_hotspots
-      if (!compute) throw new Error(`Missing backing computation`)
-      const started = Promise.withResolvers<undefined>()
-      let active = 0
-      let peak_active = 0
-      let calls = 0
-      backing.compute_hotspots = async (options) => {
-        active++
-        peak_active = Math.max(active, peak_active)
-        try {
-          if (calls++ === 0) {
-            const signal = options.signal
-            if (!signal) throw new Error(`Missing worker cancellation signal`)
-            started.resolve(undefined)
-            // Retain the first job through another turn after cancellation, like a reducer
-            // unwinding its buffers. A replacement must not allocate alongside it.
-            await new Promise((resolve) =>
-              signal.addEventListener(`abort`, () => setTimeout(resolve, 0), { once: true }),
-            )
-            signal.throwIfAborted()
-          }
-          return await compute(options)
-        } finally {
-          active--
+    onTestFinished(() => run.dispose())
+    expect((await run.read_atoms?.({ frame_idx: 1 }))?.positions).toEqual(
+      new Float64Array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5]),
+    )
+    if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
+    const computation = run.compute_hotspots(velocity_options)
+    expect((await run.read_frame(1)).step).toBe(1)
+    expect(hotspot_mean(await computation, `energy`)).toBe(28 * conversion)
+    const compute = backing.compute_hotspots
+    if (!compute) throw new Error(`Missing backing computation`)
+    const started = Promise.withResolvers<undefined>()
+    let active = 0
+    let peak_active = 0
+    let calls = 0
+    backing.compute_hotspots = async (options) => {
+      active++
+      peak_active = Math.max(active, peak_active)
+      try {
+        if (calls++ === 0) {
+          const signal = options.signal
+          if (!signal) throw new Error(`Missing worker cancellation signal`)
+          started.resolve(undefined)
+          // Retain the first job through another turn after cancellation, like a reducer
+          // unwinding its buffers. A replacement must not allocate alongside it.
+          await new Promise((resolve) =>
+            signal.addEventListener(`abort`, () => setTimeout(resolve, 0), { once: true }),
+          )
+          signal.throwIfAborted()
         }
+        return await compute(options)
+      } finally {
+        active--
       }
-      const options = { grid, mass_unit: `amu` as const, velocity_unit: `A/ps` as const }
-      const superseded = run.compute_hotspots(options).catch((error: unknown) => error)
-      await started.promise
-      const replacement = run.compute_hotspots(options)
-      expect(await superseded).toBeInstanceOf(Error)
-      expect(hotspot_mean(await replacement, `energy`)).toBe(28 * conversion)
-      expect(peak_active).toBe(1)
-    } finally {
-      run.dispose()
     }
+    const superseded = run.compute_hotspots(velocity_options).catch((error: unknown) => error)
+    await started.promise
+    const replacement = run.compute_hotspots(velocity_options)
+    expect(await superseded).toBeInstanceOf(Error)
+    expect(hotspot_mean(await replacement, `energy`)).toBe(28 * conversion)
+    expect(peak_active).toBe(1)
   })
 
   it(`restores box origins and weights recorded physical timestamps`, async () => {
@@ -380,27 +353,21 @@ describe(`spatial kinetic hotspots`, () => {
       1.5, 0.5, 0.5,
     ])
     const run = trajectory_from_frames(frames)
-    try {
-      if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
-      const result = await run.compute_hotspots({
-        grid,
-        energy_key: `ke`,
-        energy_unit: `eV`,
-        energy_reference: `device`,
-      })
-      expect(result.weighting).toBe(`recorded time`)
-      expect(result.time_weight).toBe(10)
-      expect(hotspot_mean(result, `energy`)).toBe(4.5)
-      expect(Array.from(result.population)).toEqual([5, 5])
-    } finally {
-      run.dispose()
-    }
+    onTestFinished(() => run.dispose())
+    if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
+    const result = await run.compute_hotspots({
+      grid,
+      energy_key: `ke`,
+      energy_unit: `eV`,
+      energy_reference: `device`,
+    })
+    expect(result.weighting).toBe(`recorded time`)
+    expect(result.time_weight).toBe(10)
+    expect(hotspot_mean(result, `energy`)).toBe(4.5)
+    expect(Array.from(result.population)).toEqual([5, 5])
   })
 
-  it(`requires recorded mass units and rejects changing periodic device grids`, async () => {
-    await expect(
-      calculate_hotspots(1, source(), { grid, velocity_unit: `m/s` }),
-    ).rejects.toThrow(`Declare recorded mass units`)
+  it(`rejects changing periodic device grids`, async () => {
     const read: ReadAtoms = (options) => ({
       ...(source()(options) as AtomBatch),
       cell:
@@ -456,30 +423,27 @@ describe(`spatial kinetic hotspots`, () => {
         data.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
       })
       const run = await open_trajectory(bytes, { filename: `scalar.h5` })
-      try {
-        if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
-        if (sparse_time) {
-          expect((await run.read_frame(1)).step).toBe(1)
-          expect((await run.read_atoms?.({ frame_idx: 1 }))?.time).toBeUndefined()
-        }
-        const computation = run.compute_hotspots({
-          grid,
-          energy_key: `ke`,
-          energy_unit: `eV`,
-          energy_reference: `device`,
-          selection_key: `mobile`,
-        })
-        if (sparse_time) {
-          await expect(computation).rejects.toThrow(`HDF5 time has no sample at step 1`)
-          return
-        }
-        const result = await computation
-        expect(hotspot_mean(result, `energy`)).toBe([2, 3, 6.6][n_frames - 1])
-        expect(result.weighting).toBe(`recorded time`)
-        expect(hotspot_values(result, `temperature`).every(Number.isNaN)).toBe(true)
-      } finally {
-        run.dispose()
+      onTestFinished(() => run.dispose())
+      if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
+      if (sparse_time) {
+        expect((await run.read_frame(1)).step).toBe(1)
+        expect((await run.read_atoms?.({ frame_idx: 1 }))?.time).toBeUndefined()
       }
+      const computation = run.compute_hotspots({
+        grid,
+        energy_key: `ke`,
+        energy_unit: `eV`,
+        energy_reference: `device`,
+        selection_key: `mobile`,
+      })
+      if (sparse_time) {
+        await expect(computation).rejects.toThrow(`HDF5 time has no sample at step 1`)
+        return
+      }
+      const result = await computation
+      expect(hotspot_mean(result, `energy`)).toBe([2, 3, 6.6][n_frames - 1])
+      expect(result.weighting).toBe(`recorded time`)
+      expect(hotspot_values(result, `temperature`).every(Number.isNaN)).toBe(true)
     },
   )
 
@@ -604,38 +568,33 @@ describe(`spatial kinetic hotspots`, () => {
     })
     const started = performance.now()
     const run = await open_trajectory(bytes, { filename: `million.h5` })
-    try {
-      expect(run.atom_count).toBe(n_atoms)
-      expect(run.preview.structure.sites.length).toBeLessThanOrEqual(2000)
-      expect(run.preview.metadata?.render_sample).toBe(true)
-      expect(run.preview.metadata?.volume).toBe(2)
-      const indices = run.preview.metadata?.source_atom_indices
-      expect(indices).toHaveLength(2000)
-      if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
-      expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
-      const tail = await run.read_atoms?.({
-        frame_idx: 1,
-        start: n_atoms - 5,
-        count: 8,
-        stride: 2,
-      })
-      expect(tail?.positions).toEqual(
-        Float64Array.of(1.375, 0.5, 0.5, 1.625, 0.5, 0.5, 1.875, 0.5, 0.5),
-      )
-      if (!run.compute_hotspots) throw new Error(`Missing hotspot reader`)
-      const result = await run.compute_hotspots({
-        grid,
-        mass_unit: `amu`,
-        velocity_unit: `A/ps`,
-        motion: `translation`,
-      })
-      expect(hotspot_mean(result, `energy`)).toBeCloseTo(28 * conversion, 12)
-      expect(result.population.reduce((sum, value) => sum + value, 0)).toBe(n_atoms)
-      console.info(
-        `Million-atom HDF5 open-to-result: ${Math.round(performance.now() - started)} ms; analysis buffer reservation ${result.reserved_buffer_bytes} bytes`,
-      )
-    } finally {
-      run.dispose()
-    }
+    onTestFinished(() => run.dispose())
+    expect(run.atom_count).toBe(n_atoms)
+    expect(run.preview.structure.sites.length).toBeLessThanOrEqual(2000)
+    expect(run.preview.metadata?.render_sample).toBe(true)
+    expect(run.preview.metadata?.volume).toBe(2)
+    const indices = run.preview.metadata?.source_atom_indices
+    expect(indices).toHaveLength(2000)
+    if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
+    expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
+    const tail = await run.read_atoms?.({
+      frame_idx: 1,
+      start: n_atoms - 5,
+      count: 8,
+      stride: 2,
+    })
+    expect(tail?.positions).toEqual(
+      Float64Array.of(1.375, 0.5, 0.5, 1.625, 0.5, 0.5, 1.875, 0.5, 0.5),
+    )
+    if (!run.compute_hotspots) throw new Error(`Missing hotspot reader`)
+    const result = await run.compute_hotspots({
+      ...velocity_options,
+      motion: `translation`,
+    })
+    expect(hotspot_mean(result, `energy`)).toBeCloseTo(28 * conversion, 12)
+    expect(result.population.reduce((sum, value) => sum + value, 0)).toBe(n_atoms)
+    console.info(
+      `Million-atom HDF5 open-to-result: ${Math.round(performance.now() - started)} ms; analysis buffer reservation ${result.reserved_buffer_bytes} bytes`,
+    )
   })
 })

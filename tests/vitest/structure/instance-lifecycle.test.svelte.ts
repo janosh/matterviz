@@ -19,7 +19,10 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     make_site(`H`, [0, 0, 0], [3, 0, 0], `H`),
   ]
   let structure = $state.raw({ sites })
+  let carbon_radius = $state(1)
   let property_colors = $state.raw<AtomPropertyColors | null>(null)
+  const update_atoms = vi.spyOn(AtomInstances.prototype, `update_atoms`)
+  onTestFinished(() => update_atoms.mockRestore())
   const { scene, unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, {
       get structure() {
@@ -28,8 +31,14 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
       get property_colors() {
         return property_colors
       },
+      get element_radius_overrides() {
+        // Function bindings supply fresh, value-equal options on coordinate updates.
+        void structure
+        return { C: carbon_radius }
+      },
       show_bonds: `never`,
       show_polyhedra: `never`,
+      polyhedra_hide_center_atoms: true,
       gizmo: false,
       interactive: false,
     }),
@@ -45,6 +54,8 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     const element_colors = atoms.instanceColor.array.slice()
     property_colors = { colors: [`red`, `blue`, `green`], values: [0, 1, 2] }
     flushSync()
+    const previous_atoms = update_atoms.mock.lastCall?.[0].slice()
+    expect(previous_atoms).toHaveLength(sites.length)
     for (const frame_idx of [1, 2]) {
       structure = {
         sites: sites.map((site) => ({ ...site, xyz: [site.xyz[0], frame_idx, 0] as Vec3 })),
@@ -55,6 +66,9 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
         values: [0, 1, 2],
       }
       flushSync()
+      const current_atoms = update_atoms.mock.lastCall?.[0]
+      for (let idx = 0; idx < sites.length; idx++)
+        expect(current_atoms?.[idx]).toBe(previous_atoms?.[idx])
       expect(Array.from(atoms.instanceColor.array.slice(0, 6))).toEqual(
         frame_idx === 1 ? [0, 0, 1, 1, 0, 0] : [1, 0, 0, 0, 0, 1],
       )
@@ -66,6 +80,10 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     property_colors = null
     flushSync()
     expect(atoms.instanceColor.array).toEqual(element_colors)
+    const original_radius = atoms.instanceMatrix.array[0]
+    carbon_radius = 2
+    flushSync()
+    expect(atoms.instanceMatrix.array[0]).toBe(original_radius * 2)
     property_colors = { colors: [`red`], values: [0, 1, 2] }
     flushSync()
     // JavaScript callers can supply a property-color record without its color array.

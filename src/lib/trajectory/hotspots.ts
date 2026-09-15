@@ -168,8 +168,7 @@ export function hotspot_slice(
     throw new Error(
       `Invalid hotspot slice: axis=${axis}, layer=${layer}, values=${values.length}`,
     )
-  const axes = [0, 1, 2].filter((value) => value !== axis)
-  const [axis_u, axis_v] = axes
+  const [axis_u, axis_v] = [0, 1, 2].filter((value) => value !== axis)
   const { cell, dims, origin } = grid
   const u_axis = normalize_vec(cell[axis_u])
   const normal = normalize_vec(cross_3d(cell[axis_u], cell[axis_v]))
@@ -391,13 +390,12 @@ export async function calculate_hotspots(
     if (!Number.isInteger(target) || target < 1 || target > 128)
       throw new Error(`Bins per axis must be 1..128, got ${target}`)
     const geometric_mean = Math.cbrt(lengths[0] * lengths[1] * lengths[2])
-    const dims = lengths.map((length) =>
-      Math.max(1, Math.min(128, Math.round((target * length) / geometric_mean))),
-    ) as Vec3
     grid = {
       cell,
       origin,
-      dims,
+      dims: lengths.map((length) =>
+        Math.max(1, Math.min(128, Math.round((target * length) / geometric_mean))),
+      ) as Vec3,
       pbc: coordinates === `cell` ? [...first.pbc] : [false, false, false],
     }
   }

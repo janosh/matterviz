@@ -342,6 +342,82 @@ describe(`scrub vs commit`, () => {
 })
 
 describe(`controller and playback`, () => {
+  it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
+    let next_frame: FrameRequestCallback | undefined
+    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
+      next_frame = callback
+      return 1
+    })
+    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    const { run, pending, reads, resolve_next } = make_async_run(frames(4))
+    const { session, destroy } = make_session({ run, fps: 30 }, { cache_max_atoms: 3 })
+    try {
+      session.player.play()
+      flushSync()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(reads).toEqual([1])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(0)
+      expect(session.cached_frames).toBe(1)
+      next_frame?.(34)
+      flushSync()
+      await Promise.resolve()
+      flushSync()
+      expect(session.current_frame?.step).toBe(10)
+      expect(reads).toEqual([1, 2])
+      session.player.pause()
+      flushSync()
+      expect(pending).toHaveLength(0)
+      expect(session.current_frame?.step).toBe(10)
+    } finally {
+      destroy()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it(`finishes slow frame reads before advancing and pauses on a read failure`, async () => {
+    let next_frame: FrameRequestCallback | undefined
+    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
+      next_frame = callback
+      return 1
+    })
+    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    const { run, pending, reads, resolve_next } = make_async_run(frames(4))
+    const { host, session, errors, destroy } = make_session({ run, fps: 30 })
+    const tick = (time: number) => {
+      next_frame?.(time)
+      flushSync()
+    }
+    try {
+      session.player.play()
+      flushSync()
+      tick(34)
+      expect(reads).toEqual([1])
+      for (const time of [68, 102, 500]) tick(time)
+      expect(host.index).toBe(1)
+      expect(pending.map(({ idx }) => idx)).toEqual([1])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(10)
+      tick(534)
+      expect(reads).toEqual([1, 2])
+      expect(host.index).toBe(2)
+      pending[0].reject(new Error(`Read failed`))
+      await resolve_next()
+      expect(errors).toEqual([`2:Read failed`])
+      expect(session.player.is_playing).toBe(false)
+      session.player.play()
+      flushSync()
+      expect(reads).toEqual([1, 2, 2])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(20)
+    } finally {
+      destroy()
+      vi.restoreAllMocks()
+    }
+  })
+
   it(`controller bounds the step, reports state and pauses playback on seek`, () => {
     const run = trajectory_from_frames(frames(5))
     const { host, session, events, destroy } = make_session({ run })

@@ -1,16 +1,10 @@
 import LazyDemo from '$site/LazyDemo.svelte'
 import CodeExample from '$site/CodeExample.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 import { trigger_intersection } from '../environment'
 import { doc_query } from '../setup'
-
-const mounted: ReturnType<typeof mount>[] = []
-
-afterEach(async () => {
-  for (const component of mounted.splice(0)) await unmount(component)
-})
 
 test(`defers loading until visible, loads once and forwards reactive props`, async () => {
   const result = Promise.withResolvers<{
@@ -19,7 +13,8 @@ test(`defers loading until visible, loads once and forwards reactive props`, asy
   }>()
   const load = vi.fn(() => result.promise)
   const props = $state({ label: `Test demo`, load, props: { message: `Current message` } })
-  mounted.push(mount(LazyDemo, { target: document.body, props }))
+  const component = mount(LazyDemo, { target: document.body, props })
+  onTestFinished(() => unmount(component))
   flushSync()
   const region = doc_query(`.lazy-demo`)
   trigger_intersection(region, false)
@@ -41,12 +36,11 @@ test(`defers loading until visible, loads once and forwards reactive props`, asy
 
 test(`reports a failed import with the demo name`, async () => {
   const load = vi.fn(() => Promise.reject(new Error(`Module unavailable`)))
-  mounted.push(
-    mount(LazyDemo, {
-      target: document.body,
-      props: { label: `Phonon spectra`, load, props: {} },
-    }),
-  )
+  const component = mount(LazyDemo, {
+    target: document.body,
+    props: { label: `Phonon spectra`, load, props: {} },
+  })
+  onTestFinished(() => unmount(component))
   await vi.waitFor(() => {
     expect(doc_query(`[role="alert"]`).textContent).toContain(
       `Failed to load Phonon spectra: Module unavailable`,

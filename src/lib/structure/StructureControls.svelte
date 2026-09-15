@@ -647,11 +647,14 @@
   // Unique majority elements in the structure, for polyhedra center toggles.
   // Majority (not all) species so the list matches what compute_polyhedra can
   // actually use as centers - minority occupancies of disordered sites never are.
-  let structure_elements = $derived(
-    [
-      ...new Set((structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? [])),
-    ].toSorted(),
-  )
+  let structure_elements = $derived.by(() => {
+    const elements = new Set<ElementSymbol>()
+    for (const site of structure?.sites ?? []) {
+      const element = get_majority_element(site)
+      if (element) elements.add(element)
+    }
+    return [...elements].toSorted()
+  })
 
   // An element counts as an enabled polyhedra center if it isn't excluded and is
   // either force-included or currently rendered. Using configured intent (not just

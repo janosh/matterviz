@@ -6,6 +6,7 @@ import { explicit_only } from '$lib/structure/bonding'
 import {
   detect_structure_type,
   is_structure_file,
+  normalize_fractional_coords,
   optimade_structure_from_raw,
   optimade_to_structure,
   parse_cif,
@@ -372,6 +373,17 @@ describe(`XYZ Parser`, () => {
       else expect(result.sites[0].abc[axis]).toBeCloseTo(1.2, 12)
     }
     expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
+    if (expected.every((periodic) => !periodic)) {
+      const read_sites = vi.fn(() => result.sites)
+      const non_periodic = {
+        ...result,
+        get sites() {
+          return read_sites()
+        },
+      }
+      expect(normalize_fractional_coords(non_periodic)).toBe(non_periodic)
+      expect(read_sites).not.toHaveBeenCalled()
+    }
   })
 
   it(`still wraps into the cell when the file declares no pbc`, () => {

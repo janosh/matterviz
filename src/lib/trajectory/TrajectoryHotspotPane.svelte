@@ -76,8 +76,6 @@
     dimensions,
     ...((source === `velocity` || stored_dof_known) && { dof_per_atom }),
   })
-  const settings_key = $derived(JSON.stringify(options))
-  const stale = $derived(Boolean(result && JSON.stringify(result.options) !== settings_key))
   $effect(() => {
     const next = run
     untrack(() => {
@@ -110,13 +108,12 @@
     const compute = active?.compute_hotspots
     if (!compute) return
     const signal = requests.start()
-    const snapshot = $state.snapshot(options)
     busy = true
     progress = 0
     error = ``
     try {
       const computed = await compute({
-        ...snapshot,
+        ...$state.snapshot(options),
         retained_bytes: result ? result.energy.length * 36 : 0,
         signal,
         on_progress: ({ current, total }) => {
@@ -301,7 +298,9 @@
       message="This trajectory source does not provide numeric atom analysis."
     />{/if}
   {#if error}<StatusMessage message={error} type="error" />{/if}
-  {#if stale}<StatusMessage message="Settings changed. Recalculate to update this map." />{/if}
+  {#if result && JSON.stringify(result.options) !== JSON.stringify(options)}
+    <StatusMessage message="Settings changed. Recalculate to update this map." />
+  {/if}
   {#if result}
     <div class="hotspot-controls">
       <label

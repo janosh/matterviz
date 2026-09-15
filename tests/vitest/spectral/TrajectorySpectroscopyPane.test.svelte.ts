@@ -6,6 +6,7 @@ import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, query, set_select } from '../setup'
+import { make_position_stream } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
   const cancel = vi.fn()
@@ -40,17 +41,10 @@ const make_run = (): TrajectoryRun =>
   )
 
 const make_input = (): TrajectorySpectroscopyInput => ({
-  positions: {
-    positions: new Float64Array([0, 0, 0, 1, 0, 0]),
-    n_frames: 2,
-    n_atoms: 1,
-    elements: [`H`],
+  positions: make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`], {
     lattice_matrices: null,
     pbc: [false, false, false],
-    coords_unwrapped: false,
-    frame_stride: 1,
-    steps: [0, 1],
-  },
+  }),
   masses: new Float64Array([1]),
   velocities: {
     values: new Float64Array([1, 0, 0, 1, 0, 0]),
@@ -61,8 +55,8 @@ const make_input = (): TrajectorySpectroscopyInput => ({
   raman_signal: null,
 })
 
-const make_result = (name: string): TrajectorySpectroscopyResult => {
-  const curve = {
+const make_result = (name: string): TrajectorySpectroscopyResult => ({
+  vdos: {
     frequencies: [0, 1],
     power: [0, 1],
     normalized_power: [0, 1],
@@ -71,23 +65,20 @@ const make_result = (name: string): TrajectorySpectroscopyResult => {
     frequency_spacing: 1,
     rayleigh_resolution: 1,
     nyquist: 1,
-  }
-  return {
-    vdos: curve,
-    ir: null,
-    raman: null,
-    peaks: [],
-    frequency_unit: `cm^-1`,
-    preprocessing: `body_fixed`,
-    velocity_source: `stored`,
-    reference_positions: [[0, 0, 0]],
-    elements: [`H`],
-    masses: [1],
-    pbc: [false, false, false],
-    reference_lattice: null,
-    metadata: { name },
-  }
-}
+  },
+  ir: null,
+  raman: null,
+  peaks: [],
+  frequency_unit: `cm^-1`,
+  preprocessing: `body_fixed`,
+  velocity_source: `stored`,
+  reference_positions: [[0, 0, 0]],
+  elements: [`H`],
+  masses: [1],
+  pbc: [false, false, false],
+  reference_lattice: null,
+  metadata: { name },
+})
 
 const render_pane = (props: {
   run: TrajectoryRun

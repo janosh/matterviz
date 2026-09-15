@@ -50,9 +50,15 @@ test(`filename follows the source until edited, rejects paths, and resets the de
   await unmount(pane)
 })
 
-test.each([`success`, `exists`, `denied`, `write-error`, `cancel-write`] as const)(
+test.each([
+  [`success`, ``],
+  [`exists`, `already exists`],
+  [`denied`, `permission denied`],
+  [`write-error`, `Disk full`],
+  [`cancel-write`, `Cancelled`],
+] as const)(
   `selected folder handles %s without redirecting to browser downloads`,
-  async (outcome) => {
+  async (outcome, error_message) => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
     const controller = new AbortController()
     const chunks: Uint8Array<ArrayBuffer>[] = []
@@ -112,22 +118,14 @@ test.each([`success`, `exists`, `denied`, `write-error`, `cancel-write`] as cons
     })
     expect(download).not.toHaveBeenCalled()
     expect(export_state.busy).toBe(false)
+    expect(export_state.error).toContain(error_message)
+    expect(error_spy).toHaveBeenCalledTimes(error_message ? 1 : 0)
     expect(encode).toHaveBeenCalledTimes([`exists`, `denied`].includes(outcome) ? 0 : 1)
     expect(close).toHaveBeenCalledTimes(outcome === `success` ? 1 : 0)
     if (outcome === `success`) {
       expect(await new Blob(chunks).text()).toBe(`encoded video`)
       expect(export_state.error).toBe(``)
       expect(get_file).toHaveBeenLastCalledWith(`My movie.mp4`, { create: true })
-    } else {
-      expect(export_state.error).toContain(
-        {
-          exists: `already exists`,
-          denied: `permission denied`,
-          'write-error': `Disk full`,
-          'cancel-write': `Cancelled`,
-        }[outcome],
-      )
-      expect(error_spy).toHaveBeenCalledOnce()
     }
     if (outcome === `cancel-write`) expect(abort).toHaveBeenCalledOnce()
     document.querySelector<HTMLButtonElement>(`[aria-label="Use browser downloads"]`)?.click()

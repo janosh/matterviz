@@ -365,13 +365,14 @@ describe(`controls`, () => {
   })
 
   test.each([
-    [`count`, 3, [`0`, `5`, `10`]],
-    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`]],
-    [`spacing`, -4, [`0`, `4`, `8`, `10`]],
-    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`]],
-    [`disabled`, 0, []],
-  ])(`step_labels %s`, (_kind, step_labels, expected) => {
-    const steps = Array.from({ length: 11 }, (_unused, idx) => idx * 5)
+    [`count`, 3, [`0`, `5`, `10`], 11],
+    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`], 11],
+    [`spacing`, -4, [`0`, `4`, `8`, `10`], 11],
+    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`], 11],
+    [`disabled`, 0, [], 11],
+    [`single frame`, 5, [], 1],
+  ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {
+    const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ steps }), step_labels }),
     )
@@ -384,13 +385,6 @@ describe(`controls`, () => {
       (element) => element.style.left,
     )
     expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
-  })
-
-  test(`step_labels vanish for a single frame`, () => {
-    const target = mount_trajectory(
-      default_props({ trajectory: make_run({ steps: [0] }), step_labels: 5 }),
-    )
-    expect(target.querySelector(`.step-label`)).toBeNull()
   })
 })
 

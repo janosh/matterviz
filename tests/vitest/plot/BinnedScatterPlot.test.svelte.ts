@@ -53,13 +53,12 @@ const settle = async () => {
   await tick()
   await tick()
 }
-const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>) => {
-  // Object.assign (not spread) keeps bind_props accessors intact
-  return mount(BinnedScatterPlot, {
+// Object.assign (not spread) keeps bind_props accessors intact
+const mount_plot = (props: ComponentProps<typeof BinnedScatterPlot>) =>
+  mount(BinnedScatterPlot, {
     target: document.body,
     props: Object.assign(props, { style: props.style ?? `width: 800px; height: 600px` }),
   })
-}
 // Pinning both axes to [0,1] makes client coordinates map to known data values, so
 // plot_center() lands on (0.5, 0.5).
 const unit_axes = { x_axis: { range: [0, 1] as Vec2 }, y_axis: { range: [0, 1] as Vec2 } }
