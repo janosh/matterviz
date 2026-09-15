@@ -21,19 +21,21 @@ import { compute_polyhedra, merge_polyhedra_buffers } from '$lib/structure/polyh
 import { make_supercell } from '$lib/structure/supercell'
 import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
+import { atom_range, type ReadAtoms } from '$lib/trajectory/atom-batches'
+import { calculate_hotspots } from '$lib/trajectory/hotspots'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { make_rng } from './numeric-helpers'
+import { mount_sized } from './setup'
 import {
   IDENTITY_MATRIX3,
   make_crystal,
   make_molecule,
   make_rocksalt,
   make_struct,
-  mount_sized,
-} from './setup'
+} from './test-fixtures'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,
@@ -60,6 +62,8 @@ const BASELINES = {
   'neighbor_query 39304 sites + flyaway atom': 45,
   'coordination colors 27000 atoms': 8,
   'make_supercell 1000 sites x 3x3x3': 25,
+  // 2026-09-15: M5 Max/Node 24.21/Vitest 5; 170 ms median, normalized from its 32.4 ms reference.
+  'hotspots 1M atoms x 4 frames': (170 * REFERENCE_MS) / 32.4,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -524,6 +528,56 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     await measure(`density binning 1M points`, () => {
       const result = bin_points(series, [0, 1], [0, 1], 512, 512)
       expect(result.visible_count).toBe(1_000_000)
+    })
+  })
+
+  test(`hotspots 1M atoms x 4 frames`, async () => {
+    const n_atoms = 1_000_000
+    const positions = new Float64Array(n_atoms * 3)
+    const velocities = new Float64Array(n_atoms * 3)
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      const offset = atom_idx * 3
+      positions[offset] = (atom_idx % 100) + 0.5
+      positions[offset + 1] = (Math.floor(atom_idx / 100) % 100) + 0.5
+      positions[offset + 2] = Math.floor(atom_idx / 10_000) + 0.5
+      velocities[offset] = atom_idx % 2 ? 1 : -1
+    }
+    const read_atoms: ReadAtoms = (options) => {
+      const { start, count, stride } = atom_range(n_atoms, options)
+      return {
+        positions: positions.slice(start * 3, (start + count) * 3),
+        velocities: velocities.slice(start * 3, (start + count) * 3),
+        masses: new Float64Array(count).fill(28),
+        atomic_numbers: new Uint8Array(count).fill(14),
+        total_atoms: n_atoms,
+        start,
+        stride,
+        step: options.frame_idx,
+        origin: [0, 0, 0],
+        cell: [
+          [100, 0, 0],
+          [0, 100, 0],
+          [0, 0, 100],
+        ],
+        pbc: [false, false, false],
+      }
+    }
+    // Each bin has 125 atoms, mean velocity +/-0.2, and variance 1 - 0.2^2 = 0.96.
+    const expected_mean = (0.5 * 28 * 1.66053906892e-27 * 100 ** 2 * 0.96) / 1.602176634e-19
+    await measure(`hotspots 1M atoms x 4 frames`, async () => {
+      const result = await calculate_hotspots(4, read_atoms, {
+        bins: 20,
+        velocity_unit: `A/ps`,
+        mass_unit: `amu`,
+        motion: `local`,
+      })
+      expect(result.population).toEqual(new Float64Array(20 ** 3).fill(375))
+      const max_error = result.energy.reduce(
+        (largest, energy) => Math.max(largest, Math.abs(energy / 375 - expected_mean)),
+        0,
+      )
+      // Allow 16 f64 eps for the weighted variance and summation, not a physical tolerance.
+      expect(max_error).toBeLessThanOrEqual(16 * Number.EPSILON * expected_mean)
     })
   })
 

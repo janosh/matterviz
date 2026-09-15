@@ -1,10 +1,7 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '$lib/colors'
-  import type { CompositionType } from '$lib/composition'
   import { hierarchy, pack } from 'd3-hierarchy'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment, ElementPatterns } from './chart'
+  import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
@@ -19,16 +16,8 @@
     patterns = {},
     svg_node = $bindable(null),
     ...rest
-  }: SVGAttributes<SVGSVGElement> & {
-    composition: CompositionType
-    size?: number
+  }: CompositionChartProps & {
     padding?: number
-    show_labels?: boolean
-    show_amounts?: boolean
-    show_percentages?: boolean
-    color_scheme?: ColorSchemeName
-    patterns?: ElementPatterns // hatch/texture fill per element symbol
-    svg_node?: SVGSVGElement | null
   } = $props()
 
   const uid = $props.id()
@@ -96,7 +85,6 @@
         y={bubble.y}
         segment={bubble}
         font_scale={bubble.font_scale}
-        text_color={bubble.text_color}
         {label_opts}
       />
     {/each}

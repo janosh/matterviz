@@ -9,7 +9,16 @@ import { is_band_grid_data, is_fermi_surface_data } from '$lib/fermi-surface/typ
 import type { BandGridData } from '$lib/fermi-surface/types'
 import { fermi_surface_files } from '$site/fermi-surfaces'
 import { describe, expect, test } from 'vitest'
-import { IDENTITY_MATRIX3, make_bxsf, make_fermi_surface } from '../setup'
+import { IDENTITY_MATRIX3, make_bxsf, make_fermi_surface } from '../test-fixtures'
+
+const triangle_mesh = {
+  vertices: [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0.5, 0.5, 0.5],
+  ],
+  faces: [[0, 1, 2]],
+}
 
 // Parse a band-grid format (BXSF/FRMSF/JSON grid) and assert the result is BandGridData
 const parse_grid = (content: string, filename?: string): BandGridData => {
@@ -33,29 +42,32 @@ describe(`parse_fermi_file`, () => {
   describe(`BXSF format`, () => {
     const sample_bxsf = make_bxsf(7.0)
 
-    test(`parses metadata, grid shape, energies and Fermi energy from valid BXSF`, () => {
-      const band_data = parse_grid(sample_bxsf, `test.bxsf`)
-      expect(band_data.k_grid).toEqual([3, 3, 3])
-      expect(band_data.n_bands).toBe(1)
-      expect(band_data.n_spins).toBe(1)
+    test.each([`test.bxsf`, `TEST.BXSF.GZ`, `unknown.txt`, undefined])(
+      `parses BXSF metadata, grid and energies with filename %s`,
+      (filename) => {
+        const band_data = parse_grid(sample_bxsf, filename)
+        expect(band_data.k_grid).toEqual([3, 3, 3])
+        expect(band_data.n_bands).toBe(1)
+        expect(band_data.n_spins).toBe(1)
 
-      // Grid shape: [spin][band] → flat z-fastest Float64Array with dims = k_grid
-      expect(band_data.energies).toHaveLength(1)
-      expect(band_data.energies[0]).toHaveLength(1)
-      const [grid] = band_data.energies[0]
-      expect(grid.dims).toEqual([3, 3, 3])
-      expect(grid.order).toBe(`z_fastest`)
-      expect(grid.values).toBeInstanceOf(Float64Array)
-      expect(grid.values).toHaveLength(27)
+        // Grid shape: [spin][band] → flat z-fastest Float64Array with dims = k_grid
+        expect(band_data.energies).toHaveLength(1)
+        expect(band_data.energies[0]).toHaveLength(1)
+        const [grid] = band_data.energies[0]
+        expect(grid.dims).toEqual([3, 3, 3])
+        expect(grid.order).toBe(`z_fastest`)
+        expect(grid.values).toBeInstanceOf(Float64Array)
+        expect(grid.values).toHaveLength(27)
 
-      // First row (ix=0, iy=0): 5.0 6.0 5.0; the grid centre (1,1,1) is the 8.0 maximum
-      expect(Array.from(grid.values.subarray(0, 3))).toEqual([5.0, 6.0, 5.0])
-      expect(energy_at(band_data, 1, 1, 1)).toBe(8.0)
-      expect(band_data.periodic).toBeUndefined() // BXSF grids are endpoint-inclusive
+        // First row (ix=0, iy=0): 5.0 6.0 5.0; the grid centre (1,1,1) is the 8.0 maximum
+        expect(Array.from(grid.values.subarray(0, 3))).toEqual([5.0, 6.0, 5.0])
+        expect(energy_at(band_data, 1, 1, 1)).toBe(8.0)
+        expect(band_data.periodic).toBeUndefined() // BXSF grids are endpoint-inclusive
 
-      // Fermi energy extracted from the `# Fermi energy: 7.0 eV` comment
-      expect(band_data.fermi_energy).toBe(7.0)
-    })
+        // Fermi energy extracted from the `# Fermi energy: 7.0 eV` comment
+        expect(band_data.fermi_energy).toBe(7.0)
+      },
+    )
 
     // the origin was parsed and never read, while extract_fermi_surface re-centres on Γ
     // unconditionally, so a header encoding that shift would apply it twice
@@ -123,12 +135,6 @@ END_BLOCK_BANDGRID_3D`
       )
     })
 
-    test(`throws on invalid BXSF file`, () => {
-      expect(() => parse_fermi_file(`invalid content`, `test.bxsf`)).toThrow(
-        /Failed to parse Fermi surface file 'test.bxsf': BXSF/,
-      )
-    })
-
     // Without a filename the format is detected from the BEGIN_BLOCK_BANDGRID_3D marker
     test(`auto-detects BXSF by content and skips blank/comment lines before END_BANDGRID`, () => {
       const bxsf_with_blanks = `BEGIN_BLOCK_BANDGRID_3D
@@ -169,23 +175,26 @@ END_BLOCK_BANDGRID_3D
       ...frmsf_energies.split(/\s+/).filter(Boolean),
     ].join(`\n`)}\n`
 
-    test(`parses valid FRMSF metadata and converts energies from Hartree to eV`, () => {
-      const band_data = parse_grid(sample_frmsf, `test.frmsf`)
-      expect(band_data.k_grid).toEqual([3, 3, 3])
-      expect(band_data.n_bands).toBe(1)
-      expect(band_data.n_spins).toBe(1)
-      expect(band_data.periodic).toBe(true) // FRMSF stores k=i/n with no duplicated endpoint
-      expect(band_data.grid_shift).toEqual([0, 0, 0]) // lshift=1: Γ-centred
-      expect(band_data.energies[0][0].dims).toEqual([3, 3, 3])
-      // 0.1 Hartree in eV, pinned as a literal rather than via HARTREE_TO_EV so that
-      // reverting to the old hardcoded 27.2114 (1.4e-6 off) fails here. The tolerance
-      // used to be 5e-4, loose enough to accept either constant.
-      expect(energy_at(band_data, 0, 0, 0)).toBeCloseTo(2.7211386245981, 9)
-      // 14th value (0.4 Ha) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
-      expect(energy_at(band_data, 1, 1, 1)).toBeCloseTo(4 * 2.7211386245981, 9)
-      // Reciprocal vectors are converted from Bohr⁻¹ to Å⁻¹
-      expect(band_data.k_lattice[0][0]).toBeCloseTo(1 / 0.529177210544, 12)
-    })
+    test.each([`test.frmsf`, `TEST.FRMSF.GZ`, `unknown.txt`, undefined])(
+      `parses FRMSF metadata and converts Hartree to eV with filename %s`,
+      (filename) => {
+        const band_data = parse_grid(sample_frmsf, filename)
+        expect(band_data.k_grid).toEqual([3, 3, 3])
+        expect(band_data.n_bands).toBe(1)
+        expect(band_data.n_spins).toBe(1)
+        expect(band_data.periodic).toBe(true) // FRMSF stores k=i/n with no duplicated endpoint
+        expect(band_data.grid_shift).toEqual([0, 0, 0]) // lshift=1: Γ-centred
+        expect(band_data.energies[0][0].dims).toEqual([3, 3, 3])
+        // 0.1 Hartree in eV, pinned as a literal rather than via HARTREE_TO_EV so that
+        // reverting to the old hardcoded 27.2114 (1.4e-6 off) fails here. The tolerance
+        // used to be 5e-4, loose enough to accept either constant.
+        expect(energy_at(band_data, 0, 0, 0)).toBeCloseTo(2.7211386245981, 9)
+        // 14th value (0.4 Ha) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
+        expect(energy_at(band_data, 1, 1, 1)).toBeCloseTo(4 * 2.7211386245981, 9)
+        // Reciprocal vectors are converted from Bohr⁻¹ to Å⁻¹
+        expect(band_data.k_lattice[0][0]).toBeCloseTo(1 / 0.529177210544, 12)
+      },
+    )
 
     // lshift=2 places point i at (i + ½)/n. lshift=0 is a Monkhorst-Pack mesh, point i at
     // (2i − n + 1)/(2n) = (i + ½)/n − ½ for odd and even n alike (odd n: −1/3, 0, 1/3 for
@@ -220,12 +229,6 @@ END_BLOCK_BANDGRID_3D
       expect(energy_at(parse_grid(with_colors, `test.frmsf`), 0, 0, 1)).toBeCloseTo(
         2 * 2.7211386245981,
         9,
-      )
-    })
-
-    test(`throws on invalid FRMSF file`, () => {
-      expect(() => parse_fermi_file(`invalid`, `test.frmsf`)).toThrow(
-        /Failed to parse Fermi surface file 'test.frmsf': FRMSF/,
       )
     })
 
@@ -394,12 +397,7 @@ END_BLOCK_BANDGRID_3D
         isosurfaces: {
           1: [
             {
-              vertices: [
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 0.5, 0.5],
-              ],
-              faces: [[0, 1, 2]],
+              ...triangle_mesh,
               band_idx: 1,
               dimensionality: `3D`,
               orientation: null,
@@ -460,11 +458,7 @@ END_BLOCK_BANDGRID_3D
         isosurfaces: {
           1: [
             {
-              vertices: [
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 0.5, 0.5],
-              ],
+              ...triangle_mesh,
               // Face indices 99, 100, 101 are out of bounds (only 3 vertices exist)
               faces: [
                 [0, 1, 2],
@@ -481,9 +475,21 @@ END_BLOCK_BANDGRID_3D
   })
 
   describe(`format detection`, () => {
-    test(`throws for unrecognized format`, () => {
-      expect(() => parse_fermi_file(`random gibberish`, `unknown.txt`)).toThrow(
-        /Failed to parse Fermi surface file 'unknown.txt': unrecognized format/,
+    test.each([
+      [`test.bxsf`, `invalid content`, `BXSF`],
+      [`test.frmsf`, `invalid`, `FRMSF`],
+      [`unknown.txt`, `random gibberish`, `unrecognized format`],
+      [`TEST.JSON.GZ`, make_bxsf(7), `JSON`], // filename takes priority over content
+      [`test.bxsf.gz`, `{}`, `BXSF`],
+    ])(`reports the selected format for invalid %s`, (filename, content, format) => {
+      expect(() => parse_fermi_file(content, filename)).toThrow(
+        `Failed to parse Fermi surface file '${filename}': ${format}`,
+      )
+    })
+
+    test(`retains content-detection order in aggregated errors`, () => {
+      expect(() => parse_fermi_file(`{"marker":"BEGIN_BANDGRID_3D"}`)).toThrow(
+        `BXSF: BXSF file missing BEGIN_BLOCK_BANDGRID_3D; JSON: Unrecognized JSON format`,
       )
     })
   })

@@ -37,6 +37,9 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
   })
 
   await page.goto(`/`, { waitUntil: `domcontentloaded` })
+  await page
+    .getByRole(`region`, { name: `Trajectory viewer`, exact: true })
+    .scrollIntoViewIfNeeded()
   const filename = page.locator(`.trajectory button.filename`)
   await expect(filename).toBeVisible({ timeout: LOAD_TIMEOUT })
 
@@ -102,11 +105,11 @@ test.describe(`Trajectory Component`, () => {
     `toolbar icons stay consistent and analysis anchors stay hidden`,
     { tag: `@single-viewer` },
     async ({ page }) => {
-      // The MSD/VACF/RDF/structure-id/data-inspector panes keep their ViewerPane toggles inside
+      // The MSD/VACF/RDF/hotspots/structure-id/data-inspector panes keep their ViewerPane toggles inside
       // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
       // component and a scoped selector stopped hiding them (stray toolbar icons)
       const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
-      await expect(anchors).toHaveCount(5)
+      await expect(anchors).toHaveCount(6)
       for (const anchor of await anchors.all()) {
         await expect(anchor).toHaveCSS(`opacity`, `0`)
         await expect(anchor).toHaveCSS(`pointer-events`, `none`)
@@ -890,6 +893,26 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`responsive design and viewport-based layout`, () => {
+    test(
+      `viewer height stays compact across viewport orientations`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        await expect(trajectory_viewer.locator(`.scatter`)).toBeVisible()
+        for (const min_height of [500, 420]) {
+          if (min_height !== 500) {
+            await trajectory_viewer.evaluate((element, height) => {
+              element.style.setProperty(`--traj-min-height`, `${height}px`)
+            }, min_height)
+          }
+          // Cross the portrait/landscape boundary in both directions, then a phone width.
+          for (const width of [1200, 899, 901, 390, 1200]) {
+            await page.setViewportSize({ width, height: 900 })
+            await expect(trajectory_viewer).toHaveCSS(`height`, `${min_height}px`)
+          }
+        }
+      },
+    )
+
     test(`display mode menu updates the visible pane`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
       const content_area = trajectory.locator(`.content-area`)

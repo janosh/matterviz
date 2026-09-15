@@ -65,6 +65,7 @@
   } from '$lib/plot/core/types'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
+  import { attach_canvas, prepare_canvas } from '$lib/plot/core/utils'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -624,17 +625,10 @@
     draw: (ctx: CanvasRenderingContext2D) => void,
     clip_to_plot = false,
   ) => {
-    if (!node || !has_plot_size) return
-    const dpr = globalThis.devicePixelRatio || 1
-    const backing_width = Math.max(1, Math.round(width * dpr))
-    const backing_height = Math.max(1, Math.round(height * dpr))
-    if (node.width !== backing_width) node.width = backing_width
-    if (node.height !== backing_height) node.height = backing_height
-    if (node.style.width !== `${width}px`) node.style.width = `${width}px`
-    if (node.style.height !== `${height}px`) node.style.height = `${height}px`
-    const ctx = node.getContext(`2d`)
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const surface = prepare_canvas(node, width, height)
+    if (!surface) return
+    const { ctx, pixel_ratio } = surface
+    ctx.setTransform(pixel_ratio, 0, 0, pixel_ratio, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.save()
     if (clip_to_plot) {
@@ -650,19 +644,6 @@
   // under the axes, reference lines and marginals, above the title background.
   let base_canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
-  const attach_canvas =
-    (class_name: string, assign: (canvas: HTMLCanvasElement | undefined) => void) =>
-    (foreign_object: SVGForeignObjectElement) => {
-      const canvas = document.createElement(`canvas`)
-      canvas.className = class_name
-      canvas.style.display = `block`
-      foreign_object.append(canvas)
-      assign(canvas)
-      return () => {
-        assign(undefined)
-        canvas.remove()
-      }
-    }
   $effect(() =>
     paint(
       base_canvas,

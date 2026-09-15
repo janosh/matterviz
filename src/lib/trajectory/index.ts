@@ -8,6 +8,8 @@ import type { TrajectoryRun } from './run'
 
 export * from './analysis'
 export * from './positions'
+export * from './atom-batches'
+export * from './hotspots'
 export {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,

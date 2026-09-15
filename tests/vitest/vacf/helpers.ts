@@ -3,7 +3,7 @@ import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import type { VacfInput } from '$lib/vacf'
 import { build_positions, type BuildPositionsOptions } from '../msd/helpers'
 import { flatten_xyz_frames, make_rng } from '../numeric-helpers'
-import { make_frame } from '../setup'
+import { make_frame } from '../test-fixtures'
 
 export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 

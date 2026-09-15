@@ -21,7 +21,7 @@ import {
   make_grid,
   make_linear_volume as linear_volume,
   make_volume,
-} from '../setup'
+} from '../test-fixtures'
 
 // Grid whose value is a linear function of fractional coordinates — trilinear
 // interpolation reproduces linear fields exactly, so samples have closed forms.

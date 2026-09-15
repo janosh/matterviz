@@ -8,7 +8,7 @@
   // from OS preference to the app's data-theme. See that plugin for details.
   // oxlint-disable-next-line import/no-unassigned-import -- global syntax-highlight styles
   import '@wooorm/starry-night/style/both'
-  import { element_data } from '$lib/element'
+  import element_data from '$lib/element/data'
   import { theme_state } from '$lib/state.svelte'
   import {
     apply_theme_to_dom,
@@ -19,7 +19,7 @@
   } from '$lib/theme'
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
-  import { Footer } from '$site'
+  import Footer from '$site/Footer.svelte'
   import { link_source_mentions } from '$site/source-links'
   import { nav_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'

@@ -2,18 +2,18 @@ import { symbol_map, symbol_names } from '$lib/labels'
 import type { PointStyle } from '$lib/plot/core/types'
 import ScatterPoint from '$lib/plot/scatter/ScatterPoint.svelte'
 import { symbol, symbolCircle } from 'd3-shape'
-import { mount } from 'svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { mount, type ComponentProps } from 'svelte'
+import { describe, expect, test } from 'vitest'
 import { doc_query, expect_transition_properties } from '../setup'
 
-describe(`ScatterPoint`, () => {
-  const container_style = `width: 800px; height: 600px;`
-  beforeEach(() => {
-    const container = document.createElement(`div`)
-    container.setAttribute(`style`, container_style)
-    document.body.append(container)
-  })
+const mount_point = (props: Partial<ComponentProps<typeof ScatterPoint>> = {}) => {
+  const target = document.createElement(`div`)
+  target.style.cssText = `width: 800px; height: 600px;`
+  document.body.append(target)
+  return mount(ScatterPoint, { target, props: { x: 100, y: 100, ...props } })
+}
 
+describe(`ScatterPoint`, () => {
   // the fill rides on a CSS variable so a parent can recolor the marker; every other paint
   // attribute falls back to a visible default when the style omits it
   test.each<{ desc: string; style?: PointStyle; attrs: Record<string, string> }>([
@@ -46,7 +46,7 @@ describe(`ScatterPoint`, () => {
       },
     },
   ])(`renders marker paint attributes for $desc`, ({ style, attrs }) => {
-    mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, style } })
+    mount_point({ style })
     const path = doc_query(`path`)
     expect(path).toBeInstanceOf(SVGPathElement)
     expect(path.getAttribute(`d`)).not.toBeNull()
@@ -66,10 +66,7 @@ describe(`ScatterPoint`, () => {
   })
 
   test(`extends the transparent hit radius without changing the visible marker`, () => {
-    mount(ScatterPoint, {
-      target: doc_query(`div`),
-      props: { x: 100, y: 100, style: { radius: 5 }, hit_padding: 3 },
-    })
+    mount_point({ style: { radius: 5 }, hit_padding: 3 })
 
     const hit_target = doc_query(`circle.marker-hit-target`)
     expect(hit_target.getAttribute(`r`)).toBe(`8`)
@@ -86,7 +83,7 @@ describe(`ScatterPoint`, () => {
     `renders the d3 %s path at the requested symbol_size`,
     (symbol_type) => {
       const style: PointStyle = { radius: 6, symbol_type, symbol_size: 100 }
-      mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, style } })
+      mount_point({ style })
       const shape = symbol_map[symbol_type]
       if (shape === undefined) throw new Error(`symbol_map lacks ${symbol_type}`)
       // symbol_size wins over radius (which would give pi * 36)
@@ -107,8 +104,7 @@ describe(`ScatterPoint`, () => {
       expected: { scale: `1.5`, stroke: `white`, stroke_width: `0px` },
     },
   ])(`handles hover effects with $desc`, ({ hover, expected }) => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, hover, is_hovered: true } })
+    mount_point({ hover, is_hovered: true })
     const group = doc_query(`g`)
     expect(doc_query(`path.marker`).classList.contains(`is-hovered`)).toBe(true)
     expect(group.style.getPropertyValue(`--hover-scale`)).toBe(expected.scale)
@@ -117,8 +113,7 @@ describe(`ScatterPoint`, () => {
   })
 
   test(`applies dimmed marker state`, () => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_dimmed: true } })
+    mount_point({ is_dimmed: true })
 
     expect(doc_query(`path.marker`).classList.contains(`is-dimmed`)).toBe(true)
   })
@@ -130,8 +125,7 @@ describe(`ScatterPoint`, () => {
       font_size: `12px`,
       font_family: `Arial`,
     }
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
+    mount_point({ label })
 
     const text = doc_query(`text`)
     expect(text.textContent).toBe(label.text)
@@ -142,8 +136,7 @@ describe(`ScatterPoint`, () => {
   })
 
   test(`handles empty label configuration`, () => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, label: {} } }) // Empty label object
+    mount_point({ label: {} }) // Empty label object
 
     // Should not render text element
     expect(document.querySelector(`text`)).toBeNull()
@@ -157,10 +150,7 @@ describe(`ScatterPoint`, () => {
     [`not-allowed`, `not-allowed`],
     [undefined, ``],
   ])(`cursor style %s renders as '%s'`, (cursor, expected) => {
-    mount(ScatterPoint, {
-      target: doc_query(`div`),
-      props: { x: 100, y: 100, style: { cursor } },
-    })
+    mount_point({ style: { cursor } })
     expect(doc_query(`path.marker`).style.cursor).toBe(expected)
   })
 
@@ -168,8 +158,7 @@ describe(`ScatterPoint`, () => {
     { is_selected: false, desc: `is_selected=false` },
     { is_selected: undefined, desc: `is_selected omitted (defaults false)` },
   ])(`no effect ring when $desc`, ({ is_selected }) => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected } })
+    mount_point({ is_selected })
     expect(document.querySelector(`circle.effect-ring`)).toBeNull()
   })
 
@@ -177,11 +166,7 @@ describe(`ScatterPoint`, () => {
     { radius: 6, expected_r: `15`, desc: `custom radius 6` },
     { radius: undefined, expected_r: `10`, desc: `default radius 4` },
   ])(`effect ring radius = style.radius * 2.5 ($desc)`, ({ radius, expected_r }) => {
-    const target = doc_query(`div`)
-    mount(ScatterPoint, {
-      target,
-      props: { x: 100, y: 100, is_selected: true, style: { radius } },
-    })
+    mount_point({ is_selected: true, style: { radius } })
 
     const ring = doc_query(`circle.effect-ring`)
     const marker = doc_query(`path.marker`)
@@ -201,7 +186,7 @@ describe(`ScatterPoint`, () => {
       { desc: `auto_placement absent`, auto_placement: undefined, expected: null },
     ])(`text-anchor is $expected when $desc`, ({ auto_placement, expected }) => {
       const label = { text: `Label`, auto_placement, offset: { x: 10, y: 0 } }
-      mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, label } })
+      mount_point({ label })
       expect(doc_query(`text`).getAttribute(`text-anchor`)).toBe(expected)
     })
   })
@@ -235,10 +220,7 @@ describe(`ScatterPoint`, () => {
     ])(`$desc → visible=$visible`, ({ offset, threshold, visible }) => {
       // "Pt" at 10px → half_w≈4, edge_dist≈4, marker_radius=3 → start≈5, end≈11, len≈6 → suppressed
       const label = { text: `Pt`, offset }
-      mount(ScatterPoint, {
-        target: doc_query(`div`),
-        props: { x: 100, y: 100, label, leader_line_threshold: threshold },
-      })
+      mount_point({ label, leader_line_threshold: threshold })
       const line = document.querySelector(`line.leader-line`)
       if (visible) expect(line).toBeInstanceOf(SVGLineElement)
       else expect(line).toBeNull()
@@ -246,10 +228,7 @@ describe(`ScatterPoint`, () => {
 
     test(`leader line endpoint stops outside text bounding box`, () => {
       const label = { text: `LongLabel`, offset: { x: 60, y: 0 } }
-      mount(ScatterPoint, {
-        target: doc_query(`div`),
-        props: { x: 100, y: 100, label, leader_line_threshold: 10, style: { radius: 3 } },
-      })
+      mount_point({ label, leader_line_threshold: 10, style: { radius: 3 } })
       const line = doc_query(`line.leader-line`)
       const coord_x = Number(line.getAttribute(`x2`) ?? `0`)
       // Text center is at offset_x=60, half_w ≈ 9*10*0.2=18
@@ -260,10 +239,7 @@ describe(`ScatterPoint`, () => {
 
     test(`leader line has correct CSS custom property defaults`, () => {
       const label = { text: `Styled`, offset: { x: 40, y: 0 } }
-      mount(ScatterPoint, {
-        target: doc_query(`div`),
-        props: { x: 100, y: 100, label, leader_line_threshold: 10 },
-      })
+      mount_point({ label, leader_line_threshold: 10 })
       const line = doc_query(`line.leader-line`)
       expect(line.getAttribute(`stroke-dasharray`)).toContain(`2 2`)
       expect(line.getAttribute(`stroke-opacity`)).toContain(`0.6`)
@@ -287,7 +263,7 @@ describe(`ScatterPoint`, () => {
       `translate(100 150)`,
     ],
   ] as const)(`renders at $name without animating on mount`, (_name, props, expected) => {
-    mount(ScatterPoint, { target: doc_query(`div`), props })
+    mount_point(props)
     expect(doc_query(`g`).getAttribute(`transform`)).toBe(expected)
   })
 })

@@ -2,7 +2,8 @@ import type { StructurePopupContext } from '$lib/convex-hull'
 import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal } from '../setup'
+import { doc_query } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 // The shared shell (Escape/click-outside dismissal, dragging, drag tab) is covered by
 // tests/vitest/overlays/FloatingPopup.test.ts; these cover what StructurePopup adds

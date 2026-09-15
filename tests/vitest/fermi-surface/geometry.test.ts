@@ -10,8 +10,8 @@ import { css_to_linear_rgb } from '$lib/scene/colors'
 import { get_d3_interpolator } from '$lib/colors'
 import type { Vec3 } from '$lib/math'
 import type { BufferAttribute } from 'three/webgpu'
-import { describe, expect, test } from 'vitest'
-import { make_fermi_isosurface } from '../setup'
+import { describe, expect, onTestFinished, test } from 'vitest'
+import { make_fermi_isosurface } from '../test-fixtures'
 
 // Unit-square sheet at z=0 plus one vertex lifted to z=1
 const vertices: Vec3[] = [
@@ -32,11 +32,17 @@ const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface
   )
 const viridis: VertexColorOptions = { colormap: `interpolateViridis`, color_range: [0, 1] }
 
+const make_geometry = (surface = make_surface()) => {
+  const geometry = build_isosurface_geometry(surface)
+  if (!geometry) throw new Error(`expected geometry`)
+  onTestFinished(() => geometry.dispose())
+  return geometry
+}
+
 describe(`build_isosurface_geometry`, () => {
   test(`wraps the surface buffers without copying`, () => {
     const surface = make_surface()
-    const geometry = build_isosurface_geometry(surface)
-    if (!geometry) throw new Error(`expected geometry`)
+    const geometry = make_geometry(surface)
     expect(geometry.getAttribute(`position`).count).toBe(5)
     expect(geometry.getAttribute(`position`).array).toBe(surface.positions)
     expect(geometry.getAttribute(`normal`).array).toBe(surface.normals)
@@ -46,7 +52,6 @@ describe(`build_isosurface_geometry`, () => {
     // farthest vertices at sqrt(3 * 0.5^2)
     expect(geometry.boundingSphere?.center.toArray()).toEqual([0.5, 0.5, 0.5])
     expect(geometry.boundingSphere?.radius).toBeCloseTo(Math.sqrt(0.75), 5)
-    geometry.dispose()
   })
 
   test.each([
@@ -61,8 +66,7 @@ describe(`apply_vertex_colors`, () => {
   test(`maps per-vertex properties through the colormap once per vertex (linear RGB)`, () => {
     const properties = Float32Array.from([0, 0.25, 0.5, 0.75, 1])
     const surface = make_surface({ properties })
-    const geometry = build_isosurface_geometry(surface)
-    if (!geometry) throw new Error(`expected geometry`)
+    const geometry = make_geometry(surface)
     apply_vertex_colors(geometry, surface, viridis)
     const colors = geometry.getAttribute(`color`)
     expect(colors.count).toBe(5)
@@ -74,13 +78,11 @@ describe(`apply_vertex_colors`, () => {
       expect(Math.abs(colors.array[3 * idx + 1] - green)).toBeLessThan(0.01)
       expect(Math.abs(colors.array[3 * idx + 2] - blue)).toBeLessThan(0.01)
     }
-    geometry.dispose()
   })
 
   test(`recolours in place and removes the attribute when colouring is switched off`, () => {
     const surface = make_surface({ properties: Float32Array.from([0, 0.25, 0.5, 0.75, 1]) })
-    const geometry = build_isosurface_geometry(surface)
-    if (!geometry) throw new Error(`expected geometry`)
+    const geometry = make_geometry(surface)
     apply_vertex_colors(geometry, surface, viridis)
     const first = geometry.getAttribute(`color`) as BufferAttribute
     const before = Array.from(first.array)
@@ -96,16 +98,13 @@ describe(`apply_vertex_colors`, () => {
     expect(geometry.getAttribute(`position`).array).toBe(surface.positions)
     apply_vertex_colors(geometry, surface, null)
     expect(geometry.hasAttribute(`color`)).toBe(false)
-    geometry.dispose()
   })
 
   test(`skips the colour attribute when properties do not cover every vertex`, () => {
     const surface = make_surface({ properties: Float32Array.from([1, 2]) })
-    const geometry = build_isosurface_geometry(surface)
-    if (!geometry) throw new Error(`expected geometry`)
+    const geometry = make_geometry(surface)
     apply_vertex_colors(geometry, surface, viridis)
     expect(geometry.hasAttribute(`color`)).toBe(false)
-    geometry.dispose()
   })
 })
 
@@ -117,9 +116,7 @@ describe(`nearest_face_vertex`, () => {
     { face: { a: 0, b: 2, c: 3 }, point: { x: -5, y: 10, z: 0 }, expected: 3 },
     { face: { a: 0, b: 2, c: 3 }, point: { x: 0.2, y: 0.7, z: 0.8 }, expected: 3 },
   ])(`picks corner $expected of $face nearest to $point`, ({ face, point, expected }) => {
-    const geometry = build_isosurface_geometry(make_surface())
-    if (!geometry) throw new Error(`expected geometry`)
+    const geometry = make_geometry()
     expect(nearest_face_vertex(geometry, face, point)).toBe(expected)
-    geometry.dispose()
   })
 })

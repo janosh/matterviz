@@ -7,7 +7,7 @@ import type { VacfInput, VacfOptions, VacfResult } from '$lib/vacf/index'
 import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '$lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
-import { SvelteMap } from 'svelte/reactivity'
+import { fromStore, writable } from 'svelte/store'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { build_vacf_input, circular_motion, orbit_run } from './helpers'
@@ -38,29 +38,27 @@ afterEach(() => {
 
 describe(`worker code path`, () => {
   it.each([
-    [`stored`, true],
-    [`central-difference`, false],
-  ])(`round-trips a %s request and matches the synchronous result`, async (_label, stored) => {
-    const input = orbit_input(60, stored)
-    const sync = calc_vacf(input)
-    const result = await compute_vacf_async(input)
-    expect(stub.posted).toHaveLength(1)
-    expect(result).toEqual(sync)
-    expect(stub.posted[0].message.input.velocities === null).toBe(!stored)
-    expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
-  })
-
-  // Transferring would detach the caller's buffer, breaking the dedupe cache on a repeat
-  // request for the same input, so the buffers are always copied
-  it(`copies position and velocity buffers without transferring`, async () => {
-    const input = orbit_input(15)
-    await compute_vacf_async(input)
-    const { input: payload } = stub.posted[0].message
-    expect(stub.posted[0].transfer).toHaveLength(0)
-    expect(input.positions).toHaveLength(15 * 3)
-    expect(payload.positions).toHaveLength(15 * 3)
-    expect(payload.velocities).toHaveLength(15 * 3)
-  })
+    [`stored`, true, 60],
+    [`central-difference`, false, 60],
+    [`stored`, true, 15],
+  ])(
+    `round-trips a %s request (stored=%s, frames=%i) and copies its buffers`,
+    async (_label, stored, n_frames) => {
+      const input = orbit_input(n_frames, stored)
+      const sync = calc_vacf(input)
+      const result = await compute_vacf_async(input)
+      expect(stub.posted).toHaveLength(1)
+      expect(result).toEqual(sync)
+      const { input: payload } = stub.posted[0].message
+      expect(payload.velocities === null).toBe(!stored)
+      // Transfers would detach the caller's buffers and break repeat requests.
+      expect(stub.posted[0].transfer).toHaveLength(0)
+      expect(input.positions).toHaveLength(n_frames * 3)
+      expect(payload.positions).toHaveLength(n_frames * 3)
+      if (stored) expect(payload.velocities).toHaveLength(n_frames * 3)
+      expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
+    },
+  )
 })
 
 const mount_and_read = async <Props extends Record<string, unknown>>(
@@ -132,41 +130,29 @@ describe(`VacfPlot`, () => {
     const pending_compute = Promise.withResolvers<VacfResult>()
     vi.spyOn(vacf_async_module, `compute_vacf_async`).mockReturnValue(pending_compute.promise)
     const input = orbit_input(40)
-    const state = new SvelteMap<string, VacfInput | VacfResult | boolean | undefined>([
-      [`input`, input],
-      [`result`, undefined],
-      [`loading`, false],
-    ])
+    const current_input = fromStore(writable<VacfInput | undefined>(input))
+    const state = { result: undefined as VacfResult | undefined, loading: false }
     const component = mount(VacfPlot, {
       target: document.body,
-      props: {
-        get input() {
-          return state.get(`input`) as VacfInput | undefined
+      props: bind_props(
+        {
+          get input() {
+            return current_input.current
+          },
         },
-        get result() {
-          return state.get(`result`) as VacfResult | undefined
-        },
-        set result(value: VacfResult | undefined) {
-          state.set(`result`, value)
-        },
-        get loading() {
-          return state.get(`loading`) as boolean
-        },
-        set loading(value: boolean) {
-          state.set(`loading`, value)
-        },
-      },
+        state,
+      ),
     })
     try {
       await tick()
-      expect(state.get(`loading`)).toBe(true)
-      state.set(`input`, undefined)
+      expect(state.loading).toBe(true)
+      current_input.current = undefined
       await tick()
-      expect(state.get(`loading`)).toBe(false)
+      expect(state.loading).toBe(false)
 
       pending_compute.resolve(calc_vacf(input))
       await settle()
-      expect(state.get(`result`)).toBeUndefined()
+      expect(state.result).toBeUndefined()
     } finally {
       await unmount(component)
     }

@@ -129,8 +129,8 @@
   const frame_at_time = (time: number, duration: number, steps?: FlightTimeline) =>
     steps ? camera_flight_frame(time / duration, steps.start, steps.end) : undefined
 
-  function capture_view(mode: `append` | `insert` | `update` = `append`) {
-    return attempt(() =>
+  const capture_view = (mode: `append` | `insert` | `update` = `append`) =>
+    attempt(() =>
       session?.run(
         `thumbnails`,
         async ({ pose, signal }) => {
@@ -143,10 +143,9 @@
         true,
       ),
     )
-  }
 
-  function replace_path(make: (pose: CameraPose) => unknown, automatic = false) {
-    return attempt(() =>
+  const replace_path = (make: (pose: CameraPose) => unknown, automatic = false) =>
+    attempt(() =>
       session?.run(
         `thumbnails`,
         async ({ pose, signal, show, timeline: steps }) => {
@@ -167,9 +166,6 @@
         true,
       ),
     )
-  }
-
-  const orbit = () => replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)
 
   async function import_flight(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -350,7 +346,8 @@
         </button>
         <button
           type="button"
-          onclick={orbit}
+          onclick={() =>
+            replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)}
           disabled={!canvas}
           title="Create a complete orbit; Undo keeps your previous path">360° orbit</button
         >

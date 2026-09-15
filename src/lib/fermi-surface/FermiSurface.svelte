@@ -429,6 +429,14 @@
     border-radius: var(--fermi-border-radius, 0);
     background: var(--fermi-bg, var(--surface-bg));
     color: var(--fermi-text-color, var(--text-color));
+    :global(.control-buttons) {
+      left: 1ex;
+      justify-content: flex-end;
+    }
+    :global(.filename) {
+      margin-right: auto;
+      padding: 2px 4px;
+    }
   }
   .fermi-surface.active {
     z-index: var(--fermi-active-z-index, 2);

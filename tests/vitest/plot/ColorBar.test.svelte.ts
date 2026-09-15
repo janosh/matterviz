@@ -329,6 +329,43 @@ describe(`ColorBar tick labels`, () => {
     },
   )
 
+  test.each<{ range: Vec2; values: number[]; labels: string[] }>([
+    {
+      range: [1, 27946],
+      values: [1, 10, 100, 1000, 10000],
+      labels: [`1`, `10`, `100`, `1k`, `10k`],
+    },
+    {
+      range: [27946, 1],
+      values: [10000, 1000, 100, 10, 1],
+      labels: [`10k`, `1k`, `100`, `10`, `1`],
+    },
+    { range: [2.3, 8.7], values: [3, 4, 5, 6, 7, 8], labels: [`3`, `4`, `5`, `6`, `7`, `8`] },
+    {
+      range: [1e-12, 3e-8],
+      values: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8],
+      labels: [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`],
+    },
+  ])(
+    `uses readable log ticks within an unexpanded $range`,
+    async ({ range, values, labels }) => {
+      const state = $state({ nice_range: [0, 1] as Vec2 })
+      mount_bar(
+        bind_props({ range, scale_type: `log`, tick_labels: 3, snap_ticks: false }, state),
+      )
+      await tick()
+      expect(state.nice_range).toEqual(range)
+      expect(tick_texts()).toEqual(labels)
+      tick_spans().forEach((span, idx) => {
+        const position =
+          (100 * Math.log(values[idx] / range[0])) / Math.log(range[1] / range[0])
+        // CSS percentages should agree to 1e-10 percentage points.
+        const actual_position = Number(span.style.left.replace(`%`, ``))
+        expect(Math.abs(actual_position - position)).toBeLessThan(1e-10)
+      })
+    },
+  )
+
   test(`formats intra-day ticks with a time format`, () => {
     mount_bar({
       range: [day(0, 1), day(0, 1, 23, 59, 59)],

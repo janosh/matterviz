@@ -10,7 +10,7 @@ import {
 } from '$lib/structure/trajectory-lines'
 import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_position_stream } from '../setup'
+import { make_crystal, make_position_stream } from '../test-fixtures'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…
 // The wrap between frames 9 and 10 is the artefact unwrapping must remove.

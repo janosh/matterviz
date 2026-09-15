@@ -148,16 +148,12 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
   const { x_min, x_max, y_min, y_max, x_scale, y_scale } = axes
 
   const is_x_visible = (x_val: number): boolean => x_val >= x_min && x_val <= x_max
-  const is_y_visible = (y_val: number): boolean => y_val >= y_min && y_val <= y_max
 
   // Apply span constraints (works for both x and y)
   const apply_x_span = (coord_x_1: number, coord_x: number) =>
     apply_span(coord_x_1, coord_x, ref_line.x_span)
   const apply_y_span = (coord_y_1: number, coord_y_2: number) =>
     apply_span(coord_y_1, coord_y_2, ref_line.y_span)
-
-  const to_data_x = (rel: number): number => x_min + rel * (x_max - x_min)
-  const to_data_y = (rel: number): number => y_min + rel * (y_max - y_min)
 
   let [x1_data, x2_data] = [0, 0]
   let [y1_data, y2_data] = [0, 0]
@@ -166,14 +162,16 @@ export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Ve
 
   if (line_type === `horizontal`) {
     const y_val = normalize_value(ref_line.y)
-    const y_coord = ref_line.coord_mode === `relative` ? to_data_y(y_val) : y_val
-    if (!is_y_visible(y_coord)) return null
+    const y_coord =
+      ref_line.coord_mode === `relative` ? y_min + y_val * (y_max - y_min) : y_val
+    if (!(y_coord >= y_min && y_coord <= y_max)) return null
     ;[x1_data, x2_data] = apply_x_span(x_min, x_max)
     y1_data = y_coord
     y2_data = y_coord
   } else if (line_type === `vertical`) {
     const x_val = normalize_value(ref_line.x)
-    const x_coord = ref_line.coord_mode === `relative` ? to_data_x(x_val) : x_val
+    const x_coord =
+      ref_line.coord_mode === `relative` ? x_min + x_val * (x_max - x_min) : x_val
     if (!is_x_visible(x_coord)) return null
     x1_data = x_coord
     x2_data = x_coord
@@ -279,8 +277,6 @@ export function calculate_annotation_position(
 ): AnnotationPosition {
   const position = annotation.position ?? `end`
   const side = annotation.side ?? `above`
-  const offset_x = annotation.offset?.x ?? 0
-  const offset_y = annotation.offset?.y ?? 0
   const gap = annotation.gap ?? 8 // pixels from line
   const edge_padding = annotation.edge_padding ?? 4 // pixels from plot edge at start/end
 
@@ -296,12 +292,10 @@ export function calculate_annotation_position(
   let base_y = coord_y_1 + frac * delta_y
 
   if (len > 0 && position !== `center`) {
-    const dir_x = delta_x / len
-    const dir_y = delta_y / len
     // At 'end', move back toward start; at 'start', move toward end
     const inward = position === `end` ? -edge_padding : edge_padding
-    base_x += dir_x * inward
-    base_y += dir_y * inward
+    base_x += (delta_x / len) * inward
+    base_y += (delta_y / len) * inward
   }
 
   let perp_x = 0
@@ -342,8 +336,8 @@ export function calculate_annotation_position(
   }
 
   return {
-    x: base_x + perp_x + offset_x,
-    y: base_y + perp_y + offset_y,
+    x: base_x + perp_x + (annotation.offset?.x ?? 0),
+    y: base_y + perp_y + (annotation.offset?.y ?? 0),
     text_anchor,
     dominant_baseline: SIDE_BASELINE[side],
     rotation,
@@ -380,9 +374,8 @@ export const estimate_reference_annotation_metrics = (
   )
   const text_metrics = measure_text_line(annotation.text, {
     ...inherited_font,
-    ...(annotation.font_family && annotation.font_family !== `inherit`
-      ? { font_family: annotation.font_family }
-      : {}),
+    ...(annotation.font_family &&
+      annotation.font_family !== `inherit` && { font_family: annotation.font_family }),
     font_size,
     line_height: font_size * 1.2,
   })

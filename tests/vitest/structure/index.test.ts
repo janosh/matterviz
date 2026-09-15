@@ -22,7 +22,7 @@ import { make_site as create_site } from '$lib/structure/site'
 import { generate_lattice_points } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const ref_data: Record<
   string,

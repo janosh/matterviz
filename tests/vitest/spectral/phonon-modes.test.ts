@@ -21,7 +21,7 @@ import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
 import { describe, expect, it } from 'vitest'
 import cspbi3_band_yaml from '$site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
-import { IDENTITY_MATRIX3 } from '../setup'
+import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
   const run = create_phonon_mode_run(...args)

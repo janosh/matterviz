@@ -1,7 +1,6 @@
 <script lang="ts">
   import ExportPane from '$lib/io/ExportPane.svelte'
 
-  import type { ColorSchemeName } from '$lib/constants'
   import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
   import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
@@ -14,7 +13,7 @@
     ScatterPlot,
   } from 'svelte-widgets/icons'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import type { SVGAttributes } from 'svelte/elements'
+  import type { CompositionChartProps } from './chart'
   import BarChart from './BarChart.svelte'
   import BubbleChart from './BubbleChart.svelte'
   import { get_electro_neg_formula } from './format'
@@ -28,12 +27,10 @@
     on_parse,
     color_scheme = $bindable(`Vesta`),
     ...rest
-  }: SVGAttributes<SVGSVGElement> & {
+  }: Omit<CompositionChartProps, `composition` | `svg_node`> & {
     composition: string | CompositionType
     mode?: CompositionChartMode
     on_parse?: (composition: CompositionType) => void
-    color_scheme?: ColorSchemeName
-    size?: number
   } = $props()
 
   let svg_node = $state<SVGSVGElement | null>(null)

@@ -14,7 +14,7 @@ import { auto_volume_layer } from '$lib/isosurface'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import type { AnyStructure } from '$lib/structure'
-import { fcc_primitive_matrix, make_crystal, make_grid, make_volume } from '../setup'
+import { fcc_primitive_matrix, make_crystal, make_grid, make_volume } from '../test-fixtures'
 
 const provenance: StructureToolProvenance = {
   model: `example`,

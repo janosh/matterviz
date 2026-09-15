@@ -8,7 +8,7 @@ import { create_trajectory_session } from '$lib/trajectory/session.svelte'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { make_trajectory_frame } from '../setup'
+import { make_trajectory_frame } from '../test-fixtures'
 
 const frames = (count: number, site_count = 3): TrajectoryFrame[] =>
   Array.from({ length: count }, (_unused, idx) =>
@@ -45,7 +45,13 @@ const make_async_run = (frame_list: TrajectoryFrame[]) => {
   return { run, pending, reads, resolve_next }
 }
 
-type Host = { run: TrajectoryRun | undefined; index: number; fps: number; auto_play: boolean }
+type Host = {
+  run: TrajectoryRun | undefined
+  index: number
+  fps: number
+  auto_play: boolean
+  load_frames: boolean
+}
 
 function make_session(initial: Partial<Host> = {}, options = {}) {
   const host = $state<Host>({
@@ -53,6 +59,7 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
     index: 0,
     fps: 10,
     auto_play: false,
+    load_frames: true,
     ...initial,
   })
   const events: string[] = []
@@ -62,6 +69,7 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
     session = create_trajectory_session(
       {
         run: () => host.run,
+        load_frames: () => host.load_frames,
         index: () => host.index,
         set_index: (idx) => (host.index = idx),
         fps: () => host.fps,
@@ -86,6 +94,65 @@ beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
 afterEach(() => vi.useRealTimers())
 
 describe(`frame loading`, () => {
+  it(`releases object frames while a numeric renderer owns playback`, async () => {
+    const frame_list = frames(3)
+    const { run, reads, resolve_next } = make_async_run(frame_list)
+    const { host, session, destroy } = make_session({ run, index: 1 })
+    try {
+      await resolve_next()
+      expect(session.current_structure).toBe(frame_list[1].structure)
+      host.load_frames = false
+      flushSync()
+      // The removed Structure branch stops reading the lazy current_structure derived.
+      expect(session.cached_frames).toBe(0)
+      host.index = 2
+      flushSync()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(reads).toEqual([1])
+      expect(session.frame_count).toBe(3)
+      expect(session.current_frame).toBeNull()
+      host.load_frames = true
+      flushSync()
+      // Resume from the preview while loading, without retaining the previous full frame.
+      expect(session.current_structure).toBe(frame_list[0].structure)
+      expect(reads).toEqual([1, 2])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(20)
+    } finally {
+      destroy()
+    }
+  })
+
+  it(`loads complete frame zero when the host supplies only a sampled preview`, async () => {
+    const backing = trajectory_from_frames(frames(2))
+    const summary = summarize_run(backing)
+    summary.atom_count = 1_000_000
+    summary.preview = {
+      ...summary.preview,
+      metadata: { render_sample: true },
+      structure: { ...summary.preview.structure, sites: [] },
+    }
+    const complete = backing.preview
+    const pending = Promise.withResolvers<TrajectoryFrame>()
+    const read = vi.fn(() => pending.promise)
+    const run = host_run(summary, read)
+    expect(run.atom_count).toBe(1_000_000)
+    const { session, destroy } = make_session({ run })
+    try {
+      expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+      expect(session.current_structure).toBeUndefined()
+      pending.resolve(complete)
+      await pending.promise
+      flushSync()
+      expect(session.current_frame).toEqual(complete)
+      expect(session.current_structure?.sites).toHaveLength(3)
+      expect(await session.resolve_frame(0)).toEqual(complete)
+      expect(read).toHaveBeenCalledTimes(1)
+    } finally {
+      destroy()
+    }
+  })
+
   it(`serves sync runs immediately and clamps out-of-range indices with a notification`, () => {
     const run = trajectory_from_frames(frames(5))
     const { host, session, events, destroy } = make_session({
@@ -275,6 +342,82 @@ describe(`scrub vs commit`, () => {
 })
 
 describe(`controller and playback`, () => {
+  it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
+    let next_frame: FrameRequestCallback | undefined
+    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
+      next_frame = callback
+      return 1
+    })
+    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    const { run, pending, reads, resolve_next } = make_async_run(frames(4))
+    const { session, destroy } = make_session({ run, fps: 30 }, { cache_max_atoms: 3 })
+    try {
+      session.player.play()
+      flushSync()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(reads).toEqual([1])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(0)
+      expect(session.cached_frames).toBe(1)
+      next_frame?.(34)
+      flushSync()
+      await Promise.resolve()
+      flushSync()
+      expect(session.current_frame?.step).toBe(10)
+      expect(reads).toEqual([1, 2])
+      session.player.pause()
+      flushSync()
+      expect(pending).toHaveLength(0)
+      expect(session.current_frame?.step).toBe(10)
+    } finally {
+      destroy()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it(`finishes slow frame reads before advancing and pauses on a read failure`, async () => {
+    let next_frame: FrameRequestCallback | undefined
+    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
+      next_frame = callback
+      return 1
+    })
+    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    const { run, pending, reads, resolve_next } = make_async_run(frames(4))
+    const { host, session, errors, destroy } = make_session({ run, fps: 30 })
+    const tick = (time: number) => {
+      next_frame?.(time)
+      flushSync()
+    }
+    try {
+      session.player.play()
+      flushSync()
+      tick(34)
+      expect(reads).toEqual([1])
+      for (const time of [68, 102, 500]) tick(time)
+      expect(host.index).toBe(1)
+      expect(pending.map(({ idx }) => idx)).toEqual([1])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(10)
+      tick(534)
+      expect(reads).toEqual([1, 2])
+      expect(host.index).toBe(2)
+      pending[0].reject(new Error(`Read failed`))
+      await resolve_next()
+      expect(errors).toEqual([`2:Read failed`])
+      expect(session.player.is_playing).toBe(false)
+      session.player.play()
+      flushSync()
+      expect(reads).toEqual([1, 2, 2])
+      await resolve_next()
+      expect(session.current_frame?.step).toBe(20)
+    } finally {
+      destroy()
+      vi.restoreAllMocks()
+    }
+  })
+
   it(`controller bounds the step, reports state and pauses playback on seek`, () => {
     const run = trajectory_from_frames(frames(5))
     const { host, session, events, destroy } = make_session({ run })

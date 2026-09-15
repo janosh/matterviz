@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import CodeBlock from 'svelte-widgets/CodeBlock.svelte'
   import { ScatterPlot } from '$lib'
@@ -603,19 +604,21 @@ const { series: cleaned, quality } = clean_series(series, config)
     {/if}
   </div>
 
-  <ScatterPlot
-    series={plot_series}
-    {ref_lines}
-    x_axis={{ label: `X (index)` }}
-    y_axis={{ label: `Y Value` }}
-    legend={{ layout: `horizontal`, style: `justify-content: center;` }}
-    style="height: 400px"
-  >
-    {#snippet tooltip({ x: coord_x, y: coord_y, label })}
-      <strong>{label}</strong><br />
-      x: {coord_x.toFixed(1)}, y: {Number.isFinite(coord_y) ? coord_y.toFixed(2) : `NaN`}
-    {/snippet}
-  </ScatterPlot>
+  <LazyDemo label="Single Series Cleaning" height="400px">
+    <ScatterPlot
+      series={plot_series}
+      {ref_lines}
+      x_axis={{ label: `X (index)` }}
+      y_axis={{ label: `Y Value` }}
+      legend={{ layout: `horizontal`, style: `justify-content: center;` }}
+      style="height: 400px"
+    >
+      {#snippet tooltip({ x: coord_x, y: coord_y, label })}
+        <strong>{label}</strong><br />
+        x: {coord_x.toFixed(1)}, y: {Number.isFinite(coord_y) ? coord_y.toFixed(2) : `NaN`}
+      {/snippet}
+    </ScatterPlot>
+  </LazyDemo>
 
   <CodeBlock
     code={live_code}
@@ -642,89 +645,93 @@ const { series: cleaned, quality } = clean_series(series, config)
   <div class="multi-series-grid">
     <div>
       <h3 id="raw-data-nan-positions-marked">Raw Data (NaN positions marked)</h3>
-      <ScatterPlot
-        series={[
-          {
-            x: multi_series_data.x.filter((_, idx) =>
-              Number.isFinite(multi_series_data.y_arrays[0][idx]),
-            ),
-            y: multi_series_data.y_arrays[0].filter((y_val) => Number.isFinite(y_val)),
-            label: `Temperature`,
-            point_style: { fill: `#e74c3c`, radius: 4 },
-            line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
-            markers: `line+points`,
-          },
-          {
-            x: multi_series_data.x.filter((_, idx) =>
-              Number.isFinite(multi_series_data.y_arrays[1][idx]),
-            ),
-            y: multi_series_data.y_arrays[1].filter((y_val) => Number.isFinite(y_val)),
-            label: `Pressure`,
-            point_style: { fill: `#3498db`, radius: 4 },
-            line_style: { stroke: `#3498db`, stroke_width: 1.5 },
-            markers: `line+points`,
-          },
-          ...(multi_series_nan_markers.temp_nan.length > 0
-            ? [
-                {
-                  x: multi_series_nan_markers.temp_nan.map((point) => point.x),
-                  y: multi_series_nan_markers.temp_nan.map((point) => point.y),
-                  label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
-                  point_style: {
-                    fill: `#9b59b6`,
-                    radius: 8,
-                    symbol_type: `Cross` as const,
+      <LazyDemo label="Raw Data (NaN positions marked)" height="280px">
+        <ScatterPlot
+          series={[
+            {
+              x: multi_series_data.x.filter((_, idx) =>
+                Number.isFinite(multi_series_data.y_arrays[0][idx]),
+              ),
+              y: multi_series_data.y_arrays[0].filter((y_val) => Number.isFinite(y_val)),
+              label: `Temperature`,
+              point_style: { fill: `#e74c3c`, radius: 4 },
+              line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
+              markers: `line+points`,
+            },
+            {
+              x: multi_series_data.x.filter((_, idx) =>
+                Number.isFinite(multi_series_data.y_arrays[1][idx]),
+              ),
+              y: multi_series_data.y_arrays[1].filter((y_val) => Number.isFinite(y_val)),
+              label: `Pressure`,
+              point_style: { fill: `#3498db`, radius: 4 },
+              line_style: { stroke: `#3498db`, stroke_width: 1.5 },
+              markers: `line+points`,
+            },
+            ...(multi_series_nan_markers.temp_nan.length > 0
+              ? [
+                  {
+                    x: multi_series_nan_markers.temp_nan.map((point) => point.x),
+                    y: multi_series_nan_markers.temp_nan.map((point) => point.y),
+                    label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
+                    point_style: {
+                      fill: `#9b59b6`,
+                      radius: 8,
+                      symbol_type: `Cross` as const,
+                    },
+                    markers: `points` as const,
                   },
-                  markers: `points` as const,
-                },
-              ]
-            : []),
-          ...(multi_series_nan_markers.pressure_nan.length > 0
-            ? [
-                {
-                  x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
-                  y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
-                  label: `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
-                  point_style: {
-                    fill: `#8e44ad`,
-                    radius: 8,
-                    symbol_type: `Cross` as const,
+                ]
+              : []),
+            ...(multi_series_nan_markers.pressure_nan.length > 0
+              ? [
+                  {
+                    x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
+                    y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
+                    label: `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
+                    point_style: {
+                      fill: `#8e44ad`,
+                      radius: 8,
+                      symbol_type: `Cross` as const,
+                    },
+                    markers: `points` as const,
                   },
-                  markers: `points` as const,
-                },
-              ]
-            : []),
-        ]}
-        x_axis={{ label: `Time (s)` }}
-        y_axis={{ label: `Value` }}
-        style="height: 280px"
-      />
+                ]
+              : []),
+          ]}
+          x_axis={{ label: `Time (s)` }}
+          y_axis={{ label: `Value` }}
+          style="height: 280px"
+        />
+      </LazyDemo>
     </div>
     <div>
       <h3 id="cleaned-series-aligned">Cleaned (series aligned)</h3>
-      <ScatterPlot
-        series={[
-          {
-            x: multi_series_cleaned.x,
-            y: multi_series_cleaned.cleaned_y[0],
-            label: `Temperature`,
-            point_style: { fill: `#27ae60`, radius: 4 },
-            line_style: { stroke: `#27ae60`, stroke_width: 2 },
-            markers: `line+points`,
-          },
-          {
-            x: multi_series_cleaned.x,
-            y: multi_series_cleaned.cleaned_y[1],
-            label: `Pressure`,
-            point_style: { fill: `#2980b9`, radius: 4 },
-            line_style: { stroke: `#2980b9`, stroke_width: 2 },
-            markers: `line+points`,
-          },
-        ]}
-        x_axis={{ label: `Time (s)` }}
-        y_axis={{ label: `Value` }}
-        style="height: 280px"
-      />
+      <LazyDemo label="Cleaned (series aligned)" height="280px">
+        <ScatterPlot
+          series={[
+            {
+              x: multi_series_cleaned.x,
+              y: multi_series_cleaned.cleaned_y[0],
+              label: `Temperature`,
+              point_style: { fill: `#27ae60`, radius: 4 },
+              line_style: { stroke: `#27ae60`, stroke_width: 2 },
+              markers: `line+points`,
+            },
+            {
+              x: multi_series_cleaned.x,
+              y: multi_series_cleaned.cleaned_y[1],
+              label: `Pressure`,
+              point_style: { fill: `#2980b9`, radius: 4 },
+              line_style: { stroke: `#2980b9`, stroke_width: 2 },
+              markers: `line+points`,
+            },
+          ]}
+          x_axis={{ label: `Time (s)` }}
+          y_axis={{ label: `Value` }}
+          style="height: 280px"
+        />
+      </LazyDemo>
     </div>
   </div>
 </section>
@@ -744,58 +751,62 @@ const { series: cleaned, quality } = clean_series(series, config)
   <div class="multi-series-grid">
     <div>
       <h3 id="raw-data-nan-positions-marked-1">Raw Data (NaN positions marked)</h3>
-      <ScatterPlot
-        series={[
-          {
-            x: xyz_data.x.filter(
-              (coord_x, idx) => Number.isFinite(coord_x) && Number.isFinite(xyz_data.y[idx]),
-            ),
-            y: xyz_data.y.filter(
-              (coord_y, idx) => Number.isFinite(coord_y) && Number.isFinite(xyz_data.x[idx]),
-            ),
-            label: `Trajectory`,
-            point_style: { fill: `#e74c3c`, radius: 4 },
-            line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
-            markers: `line+points`,
-          },
-          ...(trajectory_nan_markers.length > 0
-            ? [
-                {
-                  x: trajectory_nan_markers.map((point) => point.x),
-                  y: trajectory_nan_markers.map((point) => point.y),
-                  label: `NaN points (${trajectory_nan_markers.length})`,
-                  point_style: {
-                    fill: `#9b59b6`,
-                    radius: 10,
-                    symbol_type: `Cross` as const,
+      <LazyDemo label="Raw Data (NaN positions marked)" height="300px">
+        <ScatterPlot
+          series={[
+            {
+              x: xyz_data.x.filter(
+                (coord_x, idx) => Number.isFinite(coord_x) && Number.isFinite(xyz_data.y[idx]),
+              ),
+              y: xyz_data.y.filter(
+                (coord_y, idx) => Number.isFinite(coord_y) && Number.isFinite(xyz_data.x[idx]),
+              ),
+              label: `Trajectory`,
+              point_style: { fill: `#e74c3c`, radius: 4 },
+              line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
+              markers: `line+points`,
+            },
+            ...(trajectory_nan_markers.length > 0
+              ? [
+                  {
+                    x: trajectory_nan_markers.map((point) => point.x),
+                    y: trajectory_nan_markers.map((point) => point.y),
+                    label: `NaN points (${trajectory_nan_markers.length})`,
+                    point_style: {
+                      fill: `#9b59b6`,
+                      radius: 10,
+                      symbol_type: `Cross` as const,
+                    },
+                    markers: `points` as const,
                   },
-                  markers: `points` as const,
-                },
-              ]
-            : []),
-        ]}
-        x_axis={{ label: `X position` }}
-        y_axis={{ label: `Y position` }}
-        style="height: 300px"
-      />
+                ]
+              : []),
+          ]}
+          x_axis={{ label: `X position` }}
+          y_axis={{ label: `Y position` }}
+          style="height: 300px"
+        />
+      </LazyDemo>
     </div>
     <div>
       <h3 id="cleaned-nan-points-removed">Cleaned (NaN points removed)</h3>
-      <ScatterPlot
-        series={[
-          {
-            x: xyz_cleaned.x,
-            y: xyz_cleaned.y,
-            label: `Cleaned trajectory`,
-            point_style: { fill: `#27ae60`, radius: 4 },
-            line_style: { stroke: `#27ae60`, stroke_width: 1.5 },
-            markers: `line+points`,
-          },
-        ]}
-        x_axis={{ label: `X position` }}
-        y_axis={{ label: `Y position` }}
-        style="height: 300px"
-      />
+      <LazyDemo label="Cleaned (NaN points removed)" height="300px">
+        <ScatterPlot
+          series={[
+            {
+              x: xyz_cleaned.x,
+              y: xyz_cleaned.y,
+              label: `Cleaned trajectory`,
+              point_style: { fill: `#27ae60`, radius: 4 },
+              line_style: { stroke: `#27ae60`, stroke_width: 1.5 },
+              markers: `line+points`,
+            },
+          ]}
+          x_axis={{ label: `X position` }}
+          y_axis={{ label: `Y position` }}
+          style="height: 300px"
+        />
+      </LazyDemo>
     </div>
   </div>
 </section>

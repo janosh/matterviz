@@ -3,7 +3,8 @@ import { TrajectorySpectroscopyPane, TrajectorySpectrumPlot } from '$lib/spectra
 import { trajectory_from_frames } from '$lib/trajectory'
 import { flushSync, mount, tick, unmount, type Component } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { query } from '../setup'
+import { query, set_select } from '../setup'
+import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 const curve = {
   frequencies: [0, 1, 2, 3, 4],
@@ -76,25 +77,6 @@ const labeled_select = (root: HTMLElement, label: string): HTMLSelectElement => 
   )
   if (!select) throw new Error(`missing select labeled ${label}`)
   return select
-}
-
-const set_select = (select: HTMLSelectElement, value: string): void => {
-  // Svelte's select bind reads `option:checked`; happy-dom does not match that selector.
-  type QueryableSelect = {
-    querySelector: (selector: string) => Element | null
-  }
-  const queryable_select = select as unknown as QueryableSelect
-  const original_query = queryable_select.querySelector
-  queryable_select.querySelector = (selector: string) => {
-    if (selector === `:checked`) {
-      return [...select.options].find((option) => option.value === value) ?? null
-    }
-    return original_query.call(select, selector)
-  }
-  select.value = value
-  select.dispatchEvent(new Event(`change`, { bubbles: true }))
-  flushSync()
-  queryable_select.querySelector = original_query
 }
 
 describe(`TrajectorySpectrumPlot`, () => {
@@ -233,40 +215,22 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   const run = trajectory_from_frames(
     Array.from({ length: 4 }, (_unused, frame_idx) => ({
       step: frame_idx,
-      structure: {
-        sites: [
+      structure: make_crystal(
+        10,
+        [
           {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            element: `H`,
             abc: [0, 0, 0],
-            xyz: [0, 0, 0],
             label: `H1`,
             properties: { velocity: [0, 0, 0], mass: 1 },
           },
         ],
-        lattice: {
-          matrix: [
-            [10, 0, 0],
-            [0, 10, 0],
-            [0, 0, 10],
-          ],
-          pbc: [false, false, false],
-          a: 10,
-          b: 10,
-          c: 10,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-          volume: 1000,
-        },
-      },
+        { pbc: [false, false, false] },
+      ),
       metadata: {
         dipole: [frame_idx, 0, 0],
         polarization: [0, frame_idx, 0],
-        polarizability: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
+        polarizability: IDENTITY_MATRIX3,
       },
     })),
   )

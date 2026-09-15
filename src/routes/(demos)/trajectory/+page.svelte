@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
   import { trajectory_files } from '$site/trajectories'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
@@ -48,16 +49,15 @@
 </details>
 
 <div class="full-bleed traj-pair">
-  <Trajectory
-    source="/trajectories/flame-gold-cluster-55-atoms.h5"
-    style={viewer_style}
-    on_file_load={handle_file_load}
-  />
-  <Trajectory
-    source="/trajectories/vasp-XDATCAR-traj.gz"
-    style={viewer_style}
-    on_file_load={handle_file_load}
-  />
+  {#each [[`Gold cluster trajectory`, `flame-gold-cluster-55-atoms.h5`], [`VASP trajectory`, `vasp-XDATCAR-traj.gz`]] as [label, filename] (filename)}
+    <LazyDemo {label} height="600px">
+      <Trajectory
+        source="/trajectories/{filename}"
+        style={viewer_style}
+        on_file_load={handle_file_load}
+      />
+    </LazyDemo>
+  {/each}
 </div>
 
 <h2 id="bindable-visible_properties">Bindable <code>visible_properties</code></h2>
@@ -67,25 +67,31 @@
 >
   bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
 </strong>
-<Trajectory
-  source="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
-  bind:visible_properties={visible_props_cantor_qha}
-  class="full-bleed"
-  style="margin-top: 1em; {viewer_style}"
-  on_file_load={handle_file_load}
-/>
-<Trajectory
-  source="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
-  class="full-bleed"
-  style="margin-top: 5em; {viewer_style}"
-  on_file_load={handle_file_load}
-/>
-<Trajectory
-  class="full-bleed"
-  style="margin-top: 5em; {viewer_style}"
-  on_file_load={handle_file_load}
-  loading_options={lammps_loading_options}
-/>
+<LazyDemo label="Bindable visible_properties" height="600px">
+  <Trajectory
+    source="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
+    bind:visible_properties={visible_props_cantor_qha}
+    class="full-bleed"
+    style="margin-top: 1em; {viewer_style}"
+    on_file_load={handle_file_load}
+  />
+</LazyDemo>
+<LazyDemo label="Growing silver cluster trajectory" height="600px">
+  <Trajectory
+    source="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
+    class="full-bleed"
+    style="margin-top: 5em; {viewer_style}"
+    on_file_load={handle_file_load}
+  />
+</LazyDemo>
+<LazyDemo label="Load a trajectory" height="600px">
+  <Trajectory
+    class="full-bleed"
+    style="margin-top: 5em; {viewer_style}"
+    on_file_load={handle_file_load}
+    loading_options={lammps_loading_options}
+  />
+</LazyDemo>
 
 <p style="margin: 2em auto; text-align: center">
   Drag any of these trajectory files onto a viewer above to load them:
@@ -103,8 +109,5 @@
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
     gap: 1em;
     margin-top: 5em;
-    > :global(.trajectory) {
-      min-width: 0;
-    }
   }
 </style>

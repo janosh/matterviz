@@ -24,9 +24,6 @@ interface ParseInWorkerOptions {
   owns_content?: boolean
 }
 
-const default_worker_factory: WorkerFactory = () =>
-  new Worker(new URL(`./parse-worker.js`, import.meta.url), { type: `module` })
-
 let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
@@ -39,7 +36,8 @@ export const parse_in_worker = async (
 ): Promise<ParseResult> => {
   const {
     signal,
-    worker_factory = default_worker_factory,
+    worker_factory = () =>
+      new Worker(new URL(`./parse-worker.js`, import.meta.url), { type: `module` }),
     load_options,
     on_progress,
     owns_content = false,

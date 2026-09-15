@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test'
 
 test(`corner and interior markers use a shape-following focus border`, async ({ page }) => {
   await page.goto(`/plot/ternary`, { waitUntil: `networkidle` })
+  await page
+    .getByRole(`heading`, { name: `Composition path`, exact: true })
+    .scrollIntoViewIfNeeded()
   const plot = page.locator(`.ternary`).filter({ hasText: `Mixing path` })
   for (const point of [
     plot.locator(`[aria-label^="Endmembers:"]`).nth(1),

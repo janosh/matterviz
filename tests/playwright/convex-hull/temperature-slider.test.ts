@@ -7,9 +7,12 @@ import { IS_CI, wait_for_canvas_rendered } from '../helpers'
 test.describe(`Temperature-Dependent Free Energies`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Temperature slider tests timeout in CI`)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull#temperature-dependent-free-energies`, {
+      waitUntil: `networkidle`,
+    })
     // Wait for the temperature section to be visible (synthetic data loads immediately)
     await expect(page.locator(`.temp-grid`)).toBeVisible({ timeout: 30_000 })
+    await page.locator(`.temp-grid > .lazy-demo`).last().scrollIntoViewIfNeeded()
   })
 
   test.describe(`2D Binary (Li-Fe)`, () => {
@@ -47,7 +50,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const initial_temp = await temp_input.inputValue()
 
       // Move slider to a different position
-      await range_input.fill(`6`) // Index 6 = 900K (temperatures: 300-1500K in 100K steps)
+      await range_input.fill(`900`)
 
       // Temperature should update
       await expect(temp_input).toHaveValue(`900`)
@@ -101,15 +104,15 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
 
       // Verify slider has correct range
       const range_input = temp_slider.locator(`input[type="range"]`)
-      await expect(range_input).toHaveAttribute(`min`, `0`)
-      await expect(range_input).toHaveAttribute(`max`, `12`) // 13 temperatures: 0-12
+      await expect(range_input).toHaveAttribute(`min`, `300`)
+      await expect(range_input).toHaveAttribute(`max`, `1500`)
     })
 
     test(`canvas redraws when temperature changes`, async ({ page }) => {
       const diagram = page.locator(`.temp-grid .convex-hull-3d`).first()
       await expect(diagram).toBeVisible()
 
-      const canvas = diagram.locator(`canvas`)
+      const canvas = diagram.locator(`canvas[aria-label]`)
       await expect(canvas).toBeVisible()
       await wait_for_canvas_rendered(canvas)
 
@@ -117,7 +120,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Change temperature
-      await range_input.fill(`9`) // Index 9 = 1200K
+      await range_input.fill(`1200`)
 
       // Wait for redraw and verify canvas still renders
       await expect(canvas).toBeVisible()
@@ -168,13 +171,13 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Test first, middle, and last temperature values (sequential testing required)
-      await range_input.fill(`0`)
+      await range_input.fill(`300`)
       await expect(temp_input).toHaveValue(`300`)
 
-      await range_input.fill(`6`)
+      await range_input.fill(`900`)
       await expect(temp_input).toHaveValue(`900`)
 
-      await range_input.fill(`12`)
+      await range_input.fill(`1500`)
       await expect(temp_input).toHaveValue(`1500`)
     })
   })
@@ -183,11 +186,15 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
 test.describe(`Temperature and pressure controls`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Temperature slider tests timeout in CI`)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull#temperature-dependent-free-energies`, {
+      waitUntil: `networkidle`,
+    })
     await expect(page.locator(`.temp-grid`)).toBeVisible({ timeout: 30_000 })
+    await page.locator(`.temp-grid > .lazy-demo`).last().scrollIntoViewIfNeeded()
   })
 
   test(`gas pressure updates its chemical potential and rendered hull`, async ({ page }) => {
+    await page.locator(`#gas-atmosphere-control`).scrollIntoViewIfNeeded()
     const diagram = page.locator(`.gas-grid .scatter.convex-hull-2d`).first()
     await expect(diagram.locator(`path.marker`).first()).toBeVisible()
     const pressure = diagram.getByRole(`textbox`, { name: `O2 pressure (bar)` })
@@ -223,9 +230,8 @@ test.describe(`Temperature and pressure controls`, () => {
     await expect(diagram).toBeVisible()
 
     const range_input = diagram.locator(`.temperature-slider input[type="range"]`)
-    // 13 temperatures [300, 400, ..., 1500] → indices 0-12
-    await expect(range_input).toHaveAttribute(`min`, `0`)
-    await expect(range_input).toHaveAttribute(`max`, `12`)
+    await expect(range_input).toHaveAttribute(`min`, `300`)
+    await expect(range_input).toHaveAttribute(`max`, `1500`)
   })
 
   for (const dim of [`3d`, `4d`]) {
@@ -233,7 +239,7 @@ test.describe(`Temperature and pressure controls`, () => {
       const diagram = page.locator(`.temp-grid .convex-hull-${dim}`).first()
       await expect(diagram).toBeVisible()
 
-      const canvas = diagram.locator(`canvas`)
+      const canvas = diagram.locator(`canvas[aria-label]`)
       const aria_label = await canvas.getAttribute(`aria-label`)
       expect(aria_label).toBeTruthy()
     })
@@ -243,7 +249,7 @@ test.describe(`Temperature and pressure controls`, () => {
 test.describe(`Temperature Slider - Static Data`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Temperature slider tests timeout in CI`)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull#binary-chemical-systems`, { waitUntil: `networkidle` })
     // Wait for binary grid (static data without temperature)
     await expect(page.locator(`.binary-grid`)).toBeVisible({ timeout: 50_000 })
   })
@@ -254,6 +260,11 @@ test.describe(`Temperature Slider - Static Data`, () => {
     [`ternary-grid`, `.convex-hull-3d`],
   ]) {
     test(`${grid} has no temperature slider`, async ({ page }) => {
+      await page
+        .locator(
+          grid === `ternary-grid` ? `#ternary-chemical-systems` : `#binary-chemical-systems`,
+        )
+        .scrollIntoViewIfNeeded()
       const diagram = page.locator(`.${grid} ${selector}`).first()
       await expect(diagram).toBeVisible()
       await expect(diagram.locator(`.temperature-slider`)).toHaveCount(0)

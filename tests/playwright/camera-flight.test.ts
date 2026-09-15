@@ -144,14 +144,11 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(flight.getByLabel(`Space views evenly`)).toBeChecked()
     expect(
       await images.evaluateAll((nodes) =>
-        nodes.every(
-          (node) =>
-            node instanceof HTMLImageElement &&
-            node.naturalWidth === 160 &&
-            node.naturalHeight === 100,
+        nodes.map((node) =>
+          node instanceof HTMLImageElement ? [node.naturalWidth, node.naturalHeight] : null,
         ),
       ),
-    ).toBe(true)
+    ).toEqual(Array.from({ length: 9 }, () => [160, 100]))
     const thumbnails = await images.evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute(`src`)),
     )

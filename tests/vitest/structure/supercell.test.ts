@@ -9,7 +9,7 @@ import {
   supercell_grid_edges,
 } from '$lib/structure/supercell'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, type SimpleSite } from '../setup'
+import { make_crystal, type SimpleSite } from '../test-fixtures'
 
 // Sample structure for testing
 const sample_structure = make_crystal(

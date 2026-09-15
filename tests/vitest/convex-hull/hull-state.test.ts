@@ -4,7 +4,7 @@ import {
   type HullModel,
 } from '$lib/convex-hull/model'
 import { describe, expect, expectTypeOf, test } from 'vitest'
-import { make_phase } from '../setup'
+import { make_phase } from '../test-fixtures'
 
 const precomputed = { e_form_per_atom: -1, e_above_hull: 0 }
 const full_refs = [

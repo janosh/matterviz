@@ -3,7 +3,7 @@ import type { Crystal } from '$lib/structure'
 import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { describe, expect, test } from 'vitest'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const run_of = (structures: Crystal[]) =>
   trajectory_from_frames(structures.map((structure, step) => ({ step, structure })))

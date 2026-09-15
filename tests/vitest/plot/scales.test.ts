@@ -294,11 +294,12 @@ describe(`scales`, () => {
         )
         const positive_values = finite_values.filter((value) => value > 0)
         expect(acc).toEqual({
-          ...(finite_values.length > 0
-            ? { min: Math.min(...finite_values), max: Math.max(...finite_values) }
-            : {}),
+          ...(finite_values.length > 0 && {
+            min: Math.min(...finite_values),
+            max: Math.max(...finite_values),
+          }),
           n_finite: finite_values.length,
-          ...(positive_values.length ? { min_positive: Math.min(...positive_values) } : {}),
+          ...(positive_values.length && { min_positive: Math.min(...positive_values) }),
         })
       }
       const acc = accumulate_extent(empty_extent(), [4, 8], 5)
@@ -761,8 +762,7 @@ describe(`scales`, () => {
       ({ threshold, domain, values }) => {
         const scale = scale_arcsinh(threshold).domain(domain).range([0, 500])
         values.forEach((val) => {
-          const back = scale.invert(scale(val))
-          expect(back).toBeCloseTo(val, 8)
+          expect(scale.invert(scale(val))).toBeCloseTo(val, 8)
         })
       },
     )
@@ -984,9 +984,8 @@ describe(`scales`, () => {
     test(`domain setter returns same scale instance (D3-style mutation)`, () => {
       const scale = create_color_scale({ type: `arcsinh` }, [0, 1])
       const color_before = scale(0.5)
-      const returned_scale = scale.domain([0, 100])
       // Should return the same scale instance for chaining
-      expect(returned_scale).toBe(scale)
+      expect(scale.domain([0, 100])).toBe(scale)
       // Domain should be updated in place
       expect(scale.domain()).toEqual([0, 100])
       // Behavior should change after domain mutation

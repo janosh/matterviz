@@ -6,7 +6,7 @@ import {
 } from '$lib/trajectory/extract'
 import { open_trajectory } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
-import { make_trajectory_frame, read_binary_test_file } from '../setup'
+import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 
 describe(`trajectory data extractors`, () => {
   const forces = [

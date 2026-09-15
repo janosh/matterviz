@@ -550,64 +550,52 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   }
 }
 
+// Ordered by content-detection priority; a recognized filename selects exactly one parser.
+const FERMI_PARSERS = [
+  {
+    format: `BXSF`,
+    parse: parse_bxsf,
+    matches: (text: string) =>
+      text.includes(`BEGIN_BLOCK_BANDGRID_3D`) || text.includes(`BEGIN_BANDGRID_3D`),
+  },
+  {
+    format: `JSON`,
+    parse: parse_fermi_json,
+    matches: (text: string) => text.startsWith(`{`) || text.startsWith(`[`),
+  },
+  {
+    format: `FRMSF`,
+    parse: parse_frmsf,
+    matches: (text: string) => {
+      const tokens = text.split(/\r?\n/, 1)[0].split(/\s+/).filter(Boolean)
+      return tokens.length === 3 && tokens.every((token) => /^\d+$/.test(token))
+    },
+  },
+]
+
 // Auto-detect file format and parse; throws an Error aggregating per-format failure reasons when nothing parses
 export function parse_fermi_file(
   content: string,
   filename?: string,
 ): BandGridData | FermiSurfaceData {
-  const lower_name = filename?.toLowerCase() ?? ``
+  const lower_name = filename?.toLowerCase().replace(/\.gz$/, ``) ?? ``
+  const named_parser = FERMI_PARSERS.find(({ format }) =>
+    lower_name.endsWith(`.${format.toLowerCase()}`),
+  )
+  const trimmed = content.trim()
   const errors: string[] = []
-  const attempt = <T>(format: string, parse: () => T): T | null => {
+  for (const parser of FERMI_PARSERS) {
+    if (named_parser ? parser !== named_parser : !parser.matches(trimmed)) continue
+    const { format, parse } = parser
     try {
-      return parse()
+      return parse(content)
     } catch (error) {
       errors.push(`${format}: ${to_error(error).message}`)
       console.error(`${format} parse error:`, error)
-      return null
     }
   }
-  const fail = (): never => {
-    const detail = errors.length ? `: ${errors.join(`; `)}` : `: unrecognized format`
-    throw new Error(
-      `Failed to parse Fermi surface file${filename ? ` '${filename}'` : ``}${detail}`,
-    )
-  }
-
-  // Detect by filename extension (authoritative: parse failure throws immediately)
-  if (lower_name.endsWith(`.bxsf`) || lower_name.endsWith(`.bxsf.gz`)) {
-    return attempt(`BXSF`, () => parse_bxsf(content)) ?? fail()
-  }
-
-  if (lower_name.endsWith(`.frmsf`) || lower_name.endsWith(`.frmsf.gz`)) {
-    return attempt(`FRMSF`, () => parse_frmsf(content)) ?? fail()
-  }
-
-  if (lower_name.endsWith(`.json`) || lower_name.endsWith(`.json.gz`)) {
-    return attempt(`JSON`, () => parse_fermi_json(content)) ?? fail()
-  }
-
-  // Try auto-detection based on content
-  const trimmed = content.trim()
-
-  // BXSF format detection
-  if (trimmed.includes(`BEGIN_BLOCK_BANDGRID_3D`) || trimmed.includes(`BEGIN_BANDGRID_3D`)) {
-    const result = attempt(`BXSF`, () => parse_bxsf(content))
-    if (result) return result
-  }
-
-  // JSON format detection
-  if (trimmed.startsWith(`{`) || trimmed.startsWith(`[`)) {
-    const result = attempt(`JSON`, () => parse_fermi_json(content))
-    if (result) return result
-  }
-
-  // FRMSF format detection (starts with grid dimensions)
-  const first_line = trimmed.split(/\r?\n/)[0]
-  const first_tokens = first_line.split(/\s+/).filter(Boolean)
-  if (first_tokens.length === 3 && first_tokens.every((token) => /^\d+$/.test(token))) {
-    const result = attempt(`FRMSF`, () => parse_frmsf(content))
-    if (result) return result
-  }
-
-  return fail()
+  const detail = errors.length ? errors.join(`; `) : `unrecognized format`
+  throw new Error(
+    `Failed to parse Fermi surface file${filename ? ` '${filename}'` : ``}: ${detail}`,
+  )
 }

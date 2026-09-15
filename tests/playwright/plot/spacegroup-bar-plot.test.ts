@@ -116,6 +116,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {
+    await page.locator(`.lazy-demo`).nth(2).scrollIntoViewIfNeeded()
     // Find section with orientation controls
     const vertical_radio = page.locator(`input[value="vertical"]`).first()
     const horizontal_radio = page.locator(`input[value="horizontal"]`).first()
@@ -124,7 +125,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     await expect(horizontal_radio).toBeVisible()
 
     // Find the associated plot
-    const plot = page.locator(`.bar-plot`).nth(2) // Third plot has orientation controls
+    const plot = page.locator(`.lazy-demo`).nth(2).locator(`.bar-plot`)
     await expect(plot).toBeVisible()
 
     const bars = plot.locator(`svg path[role="button"]`)

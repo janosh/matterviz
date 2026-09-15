@@ -1,3 +1,4 @@
+import { make_site } from '$lib/structure/site'
 import {
   calc_trajectory_spectroscopy,
   collect_trajectory_spectroscopy_input,
@@ -17,13 +18,10 @@ const make_frame = (step: number): TrajectoryFrame => ({
   step,
   structure: {
     sites: [
-      {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        xyz: [0.01 * step, 0, 0],
-        abc: [0.01 * step, 0, 0],
-        label: `H1`,
-        properties: { velocity: [1, 0, 0], mass: 1.5 },
-      },
+      make_site(`H`, [0.01 * step, 0, 0], [0.01 * step, 0, 0], `H1`, {
+        velocity: [1, 0, 0],
+        mass: 1.5,
+      }),
     ],
   },
   metadata: {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import type { Crystal, FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
@@ -16,7 +17,6 @@
     XrdPlot,
   } from '$lib/xrd'
   import { structure_map, structures } from '$site/structures'
-  import { SvelteMap } from 'svelte/reactivity'
   import { to_error } from '$lib/utils'
   import { fixture_ext, site_file_info } from '$site/imports'
   import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
@@ -60,9 +60,8 @@
     return site_file_info(path, { type: ext, category, category_icon: icon })
   })
 
-  // Cache computed XRD patterns to avoid recomputation when navigating structures. Writing
-  // the cache is a side effect, so every caller runs inside an $effect, never a $derived.
-  const xrd_cache = new SvelteMap<string, XrdPattern>()
+  // Memoize fixture calculations; consumers stay lazy until their demo becomes visible.
+  const xrd_cache = new Map<string, XrdPattern>()
   const ensure_pattern = (struct_id: string): XrdPattern | null => {
     const cached = xrd_cache.get(struct_id)
     if (cached) return cached
@@ -77,15 +76,11 @@
   const compute_ids = structures.map((struct) => struct.id ?? ``)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<Crystal | null>(structure_map.get(compute_id) ?? null)
-  let compute_error = $state<string | null>(null)
-  let computed_pattern = $state<XrdPattern | null>(null)
-  $effect(() => {
+  const computed = $derived.by(() => {
     try {
-      computed_pattern = ensure_pattern(compute_id)
-      compute_error = null
+      return { pattern: ensure_pattern(compute_id), error: null }
     } catch (exc) {
-      compute_error = to_error(exc).message
-      computed_pattern = null
+      return { pattern: null, error: to_error(exc).message }
     }
   })
 
@@ -151,20 +146,15 @@
 
   // Multi-select demo: allow overlaying multiple structures
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
-  // Fill cache for all selected structures (side-effect done outside of $derived)
-  $effect(() => {
-    for (const struct_id of selected_ids) {
+  const selected_patterns = $derived(
+    selected_ids.flatMap((struct_id) => {
       try {
-        ensure_pattern(struct_id)
+        const pattern = ensure_pattern(struct_id)
+        return pattern ? [{ label: `${struct_id} ${formula_for(struct_id)}`, pattern }] : []
       } catch (exc) {
         console.error(`Failed to compute XRD for ${struct_id}`, exc)
+        return []
       }
-    }
-  })
-  let selected_patterns = $derived(
-    selected_ids.flatMap((struct_id) => {
-      const pattern = xrd_cache.get(struct_id)
-      return pattern ? [{ label: `${struct_id} ${formula_for(struct_id)}`, pattern }] : []
     }),
   )
 </script>
@@ -174,22 +164,22 @@
 <div class="bleed-1400">
   <StructurePicker bind:selected={compute_id} />
   <section>
-    <XrdPlot
-      patterns={computed_pattern
-        ? [
-            {
-              label: `${compute_id} ${formula_for(compute_id)}`,
-              pattern: computed_pattern,
-            },
-          ]
-        : []}
-      annotate_peaks={3}
-      hkl_format="compact"
-      style="height: 600px"
-    />
-    {#if compute_error}
-      <p>Compute error: {compute_error}</p>
-    {/if}
+    <LazyDemo label="xrd" height="600px">
+      <XrdPlot
+        patterns={computed.pattern
+          ? [
+              {
+                label: `${compute_id} ${formula_for(compute_id)}`,
+                pattern: computed.pattern,
+              },
+            ]
+          : []}
+        annotate_peaks={3}
+        hkl_format="compact"
+        style="height: 600px"
+      />
+      {#if computed.error}<p>Compute error: {computed.error}</p>{/if}
+    </LazyDemo>
     {#if computed_struct}
       <Structure structure={computed_struct} style="height: 600px" />
     {/if}
@@ -210,15 +200,17 @@
     <label><input type="checkbox" bind:checked={show_neutron} /> Neutron</label>
     <label><input type="checkbox" bind:checked={show_electron} /> Electron</label>
   </div>
-  {#each radiation_overlay.errors as message (message)}
-    <p class="error">{message}</p>
-  {/each}
-  <XrdPlot
-    patterns={radiation_overlay.entries}
-    annotate_peaks={4}
-    hkl_format="compact"
-    style="height: 420px"
-  />
+  <LazyDemo label="X-ray vs neutron vs electron" height="420px">
+    {#each radiation_overlay.errors as message (message)}
+      <p class="error">{message}</p>
+    {/each}
+    <XrdPlot
+      patterns={radiation_overlay.entries}
+      annotate_peaks={4}
+      hkl_format="compact"
+      style="height: 420px"
+    />
+  </LazyDemo>
 
   <h2 id="electron-diffraction-saed">Electron diffraction (SAED)</h2>
   <p>
@@ -245,47 +237,53 @@
       <button onclick={() => (zone_axis = [...preset])}>[{preset.join(``)}]</button>
     {/each}
   </div>
-  {#if saed.error}
-    <p class="error">SAED error: {saed.error}</p>
-  {:else if saed.pattern}
-    <section>
-      <SaedPattern pattern={saed.pattern} style="height: 520px" />
-      {#if computed_struct}
-        <Structure structure={computed_struct} style="height: 520px" />
-      {/if}
-    </section>
-  {/if}
+  <LazyDemo label="Electron diffraction" height="520px">
+    {#if saed.error}
+      <p class="error">SAED error: {saed.error}</p>
+    {:else if saed.pattern}
+      <section>
+        <SaedPattern pattern={saed.pattern} style="height: 520px" />
+        {#if computed_struct}
+          <Structure structure={computed_struct} style="height: 520px" />
+        {/if}
+      </section>
+    {/if}
+  </LazyDemo>
 
   <h2 id="overlay-multiple-structures">Overlay multiple structures</h2>
   <StructurePicker bind:selected={selected_ids} />
   <section>
-    <XrdPlot
-      patterns={selected_patterns}
-      annotate_peaks={3}
-      hkl_format="compact"
-      style="height: 400px"
-    />
-    <div class="selected-structures-grid">
-      {#each selected_ids as struct_id, idx (struct_id)}
-        {@const struct_obj = structure_map.get(struct_id)}
-        {@const series_color = plot_color(idx)}
-        {#if struct_obj}
-          <div
-            class="structure-tile"
-            style:background-color={hex_with_alpha(series_color, 0.15)}
-          >
-            <h3>{struct_id}</h3>
-            <Structure
-              structure={struct_obj}
-              style="height: 180px; width: 100%"
-              enable_info_pane={false}
-              enable_measure_mode={false}
-              scene_props={{ gizmo: false }}
-            />
-          </div>
-        {/if}
-      {/each}
-    </div>
+    <LazyDemo label="Overlay multiple structures" height="400px">
+      <XrdPlot
+        patterns={selected_patterns}
+        annotate_peaks={3}
+        hkl_format="compact"
+        style="height: 400px"
+      />
+    </LazyDemo>
+    <LazyDemo label="Overlay multiple structures" height="180px">
+      <div class="selected-structures-grid">
+        {#each selected_ids as struct_id, idx (struct_id)}
+          {@const struct_obj = structure_map.get(struct_id)}
+          {@const series_color = plot_color(idx)}
+          {#if struct_obj}
+            <div
+              class="structure-tile"
+              style:background-color={hex_with_alpha(series_color, 0.15)}
+            >
+              <h3>{struct_id}</h3>
+              <Structure
+                structure={struct_obj}
+                style="height: 180px; width: 100%"
+                enable_info_pane={false}
+                enable_measure_mode={false}
+                scene_props={{ gizmo: false }}
+              />
+            </div>
+          {/if}
+        {/each}
+      </div>
+    </LazyDemo>
   </section>
 
   <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>
@@ -306,12 +304,14 @@
       file_type_paints={xrd_file_paints}
       show_category_filters
     />
-    <XrdPlot
-      patterns={[]}
-      annotate_peaks={5}
-      hkl_format="compact"
-      style="height: 500px; width: 100%; min-width: 0"
-    />
+    <LazyDemo label="XRD File Drop Demo">
+      <XrdPlot
+        patterns={[]}
+        annotate_peaks={5}
+        hkl_format="compact"
+        style="height: 500px; width: 100%; min-width: 0"
+      />
+    </LazyDemo>
   </section>
 </div>
 
@@ -340,7 +340,7 @@
     color: var(--error-color, crimson);
     text-align: center;
   }
-  .bleed-1400 > section {
+  .bleed-1400 section {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1em;

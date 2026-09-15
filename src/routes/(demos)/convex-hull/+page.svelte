@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import type { ElementSymbol } from '$lib'
   import type {
@@ -24,14 +25,17 @@
     filter_by_elements,
     hull_system_name,
     quaternary_files,
+    quaternary_loader,
     quinary_files,
   } from '$site/convex-hull'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  // Dropped replacements per quaternary path, and every fixture loaded so far
+  // Dropped replacements stay separate from the fixtures used by the subset demos.
   const entries_map = new SvelteMap<string, PhaseData[]>()
-  const loaded_data = new SvelteMap<string, PhaseData[]>()
+  const primary_data = new SvelteMap<string, PhaseData[]>()
+  const primary_errors = new SvelteMap<string, string>()
+  const primary_systems = [`Na-Fe-P-O`, `Li-Co-Ni-O`]
 
   // State for the 3D example with stats display
   let stats_hull = $state<ReturnType<typeof ConvexHull>>()
@@ -42,84 +46,28 @@
   let side_hull = $state<ReturnType<typeof ConvexHull>>()
   const side_model = $derived(side_hull?.get_model())
   let clicked_entry_id = $state<string | undefined>(undefined)
-  let selected_quinary_path = $state<string>(``)
-  const deferred_sections = [
-    `stats`,
-    `highlight`,
-    `magnetic`,
-    `temperature`,
-    `gas`,
-    `quinary`,
-  ] as const
-  type DemoSection = (typeof deferred_sections)[number]
-  let mounted_demo_count = $state(0)
-  const section_mounted = (section: DemoSection): boolean =>
-    deferred_sections.indexOf(section) < mounted_demo_count
+  const quinary_paths = Object.keys(quinary_files).toSorted()
+  let selected_quinary_path = $state(quinary_paths[0])
 
-  async function load_data_file(
-    path: string,
-    loader: () => Promise<{ default: PhaseData[] }>,
-  ): Promise<void> {
-    if (loaded_data.has(path)) return
-    loaded_data.set(path, (await loader()).default)
-  }
-
-  function log_load_error(path: string, error: unknown): void {
-    console.error(`Failed to load convex hull data ${path}`, error)
-  }
-
-  onMount(async () => {
-    const quaternary_entries = Object.entries(quaternary_files)
-    const results = await Promise.allSettled(
-      quaternary_entries.map(([path, loader]) => load_data_file(path, loader)),
-    )
-    for (const [result_idx, result] of results.entries()) {
-      if (result.status === `rejected`) {
-        log_load_error(quaternary_entries[result_idx]?.[0] ?? `unknown`, result.reason)
-      }
-    }
-    const quinary_paths = Object.keys(quinary_files).toSorted()
-    if (quinary_paths.length > 0) selected_quinary_path = quinary_paths[0]
-
-    const mount_next_section = () => {
-      if (mounted_demo_count >= deferred_sections.length) return
-      mounted_demo_count += 1
-      setTimeout(mount_next_section, 80)
-    }
-    setTimeout(mount_next_section, 0)
-  })
-
-  $effect(() => {
-    const loader = quinary_files[selected_quinary_path]
-    if (loader && section_mounted(`quinary`)) {
-      void load_data_file(selected_quinary_path, loader).catch((error) =>
-        log_load_error(selected_quinary_path, error),
-      )
+  onMount(() => {
+    for (const system of primary_systems) {
+      void quaternary_loader(system)()
+        .then(({ default: entries }) => primary_data.set(system, entries))
+        .catch((error) => primary_errors.set(system, String(error)))
     }
   })
-
-  const handle_file_drop = (path: string) => (entries: PhaseData[]) =>
-    entries_map.set(path, entries)
 
   // Create ternary subsets from quaternary data
   const na_fe_o_entries = $derived(
-    filter_by_elements(
-      loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ?? [],
-      [`Na`, `Fe`, `O`],
-    ),
+    filter_by_elements(primary_data.get(`Na-Fe-P-O`) ?? [], [`Na`, `Fe`, `O`]),
   )
 
   const li_co_ni_o_data = $derived(
-    filter_by_elements(
-      loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
-      [`Li`, `Co`, `O`],
-    ),
+    filter_by_elements(primary_data.get(`Li-Co-Ni-O`) ?? [], [`Li`, `Co`, `O`]),
   )
 
   // Full quaternary data for Li-Co-Ni-O
-  const li_co_ni_o_quaternary = $derived(
-    loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
-  )
+  const li_co_ni_o_quaternary = $derived(primary_data.get(`Li-Co-Ni-O`) ?? [])
 
   // Helper to pick entries for highlighting demos
   const pick_entries = (
@@ -150,18 +98,17 @@
   )
 
   // Create four binary examples from the two quaternary datasets
-  const binary_examples = $derived.by(() => {
-    const na_fe_p_o = loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`)
-    const li_co_ni_o = loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`)
-    if (!na_fe_p_o || !li_co_ni_o) return []
-
-    return [
-      { title: `Na-O`, entries: filter_by_elements(na_fe_p_o, [`Na`, `O`]) },
-      { title: `Fe-O`, entries: filter_by_elements(na_fe_p_o, [`Fe`, `O`]) },
-      { title: `Co-O`, entries: filter_by_elements(li_co_ni_o, [`Co`, `O`]) },
-      { title: `Ni-O`, entries: filter_by_elements(li_co_ni_o, [`Ni`, `O`]) },
-    ]
-  })
+  const binary_examples = $derived(
+    [
+      [`Na-O`, `Na-Fe-P-O`],
+      [`Fe-O`, `Na-Fe-P-O`],
+      [`Co-O`, `Li-Co-Ni-O`],
+      [`Ni-O`, `Li-Co-Ni-O`],
+    ].map(([title, system]) => ({
+      title,
+      entries: filter_by_elements(primary_data.get(system) ?? [], title.split(`-`)),
+    })),
+  )
 
   // Highlight demo for 2D binary: highlight stable phases
   const highlighted_fe_o = $derived(
@@ -251,22 +198,6 @@
     `<b>Standalone stats</b>: use <code>ConvexHullStats</code> without rendering a hull`,
     `<b>High-dimensional support</b>: computed via <code>process_hull_for_stats()</code> for systems with 5+ elements`,
   ]
-  const quinary_options = $derived(
-    Object.keys(quinary_files)
-      .toSorted()
-      .map((path) => ({
-        path,
-        title: hull_system_name(path),
-      })),
-  )
-  const selected_quinary_entries = $derived(
-    selected_quinary_path ? (loaded_data.get(selected_quinary_path) ?? []) : [],
-  )
-  const quinary_stats_result = $derived(
-    selected_quinary_entries.length > 0
-      ? process_hull_for_stats(selected_quinary_entries)
-      : null,
-  )
 
   // === Temperature-dependent G(T) synthetic data ===
   // G(T) ≈ E_0K + entropy_coef * T * 0.0001 - 0.00005 * T * ln(T)
@@ -387,6 +318,13 @@
 </svelte:head>
 
 <h1 id="convex-hulls">Convex Hulls</h1>
+{#each primary_systems as system (system)}
+  {#if primary_errors.has(system)}
+    <p role="alert">Failed to load {system} subset examples: {primary_errors.get(system)}</p>
+  {:else if !primary_data.has(system)}
+    <p role="status">Loading {system} subset examples…</p>
+  {/if}
+{/each}
 
 <div class="full-bleed">
   {#snippet feature_list(feature_items: string[])}
@@ -402,24 +340,34 @@
 
   <section class="demo-section">
     <h2 id="ternary-chemical-systems">Ternary Chemical Systems</h2>
-    <div class="ternary-grid">
-      {#each ternary_examples as { title, entries } (title)}
-        <ConvexHull {entries} controls={{ title }} />
-      {/each}
-    </div>
+    <LazyDemo label="Ternary Chemical Systems">
+      <div class="ternary-grid">
+        {#each ternary_examples as { title, entries } (title)}
+          <ConvexHull {entries} controls={{ title }} />
+        {/each}
+      </div>
+    </LazyDemo>
   </section>
 
   <section class="demo-section">
     <h2 id="quaternary-chemical-systems">Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
-      {#each [...loaded_data.entries()].filter( ([point_value]) => point_value.includes(`quaternaries`) ) as [path, data] (path)}
+      {#each Object.entries(quaternary_files) as [path, loader] (path)}
         {@const title = hull_system_name(path)}
-        <ConvexHull
-          entries={entries_map.get(path) || data}
-          controls={{ title }}
-          on_file_drop={handle_file_drop(path)}
-        />
+        <LazyDemo label={title}>
+          {#await loader()}
+            <p role="status">Loading {title}…</p>
+          {:then { default: entries }}
+            <ConvexHull
+              entries={entries_map.get(path) ?? entries}
+              controls={{ title }}
+              on_file_drop={(dropped) => entries_map.set(path, dropped)}
+            />
+          {:catch error}
+            <p role="alert">Failed to load {title}: {String(error)}</p>
+          {/await}
+        </LazyDemo>
       {/each}
     </div>
   </section>
@@ -428,20 +376,24 @@
     <h2 id="binary-chemical-systems">Binary Chemical Systems</h2>
     <div class="binary-grid">
       {#each binary_examples as { title, entries } (title)}
-        <ConvexHull {entries} controls={{ title }} style="height: 500px" />
+        {#if entries.length}
+          <LazyDemo label={title}>
+            <ConvexHull {entries} controls={{ title }} style="height: 500px" />
+          </LazyDemo>
+        {/if}
       {/each}
     </div>
   </section>
 
-  {#if section_mounted(`stats`)}
-    <section class="demo-section">
-      <h2 id="statistics-panel">Statistics Panel</h2>
-      <p>
-        Use <code>bind:this</code> to access the renderer, then derive
-        <code>renderer?.get_model()</code> for an external statistics panel. The model contains all
-        phases; the built-in info pane follows the plot’s visibility threshold.
-      </p>
-      {@render feature_list(stats_features)}
+  <section class="demo-section">
+    <h2 id="statistics-panel">Statistics Panel</h2>
+    <p>
+      Use <code>bind:this</code> to access the renderer, then derive
+      <code>renderer?.get_model()</code> for an external statistics panel. The model contains all
+      phases; the built-in info pane follows the plot’s visibility threshold.
+    </p>
+    {@render feature_list(stats_features)}
+    <LazyDemo label="Statistics Panel">
       <div class="stats-example-grid">
         <ConvexHull
           entries={na_fe_o_entries}
@@ -460,9 +412,11 @@
           />
         {/if}
       </div>
+    </LazyDemo>
 
-      <h3 id="side-by-side-layout">Side-by-Side Layout</h3>
-      {@render feature_list(side_by_side_features)}
+    <h3 id="side-by-side-layout">Side-by-Side Layout</h3>
+    {@render feature_list(side_by_side_features)}
+    <LazyDemo label="Side-by-Side Layout">
       <div class="side-by-side-example">
         <ConvexHull
           entries={li_co_ni_o_data}
@@ -478,14 +432,14 @@
           />
         {/if}
       </div>
-    </section>
-  {/if}
+    </LazyDemo>
+  </section>
 
-  {#if section_mounted(`highlight`)}
-    <section class="demo-section">
-      <h2 id="highlighted-entries">Highlighted Entries</h2>
-      {@render feature_list(highlighted_features)}
-      <div class="highlight-grid">
+  <section class="demo-section">
+    <h2 id="highlighted-entries">Highlighted Entries</h2>
+    {@render feature_list(highlighted_features)}
+    <div class="highlight-grid">
+      <LazyDemo label="Highlighted Entries">
         <ConvexHull
           entries={binary_examples[1]?.entries ?? []}
           controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
@@ -497,6 +451,8 @@
             pulse_speed: 4,
           }}
         />
+      </LazyDemo>
+      <LazyDemo label="Highlighted Entries">
         <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
@@ -508,24 +464,26 @@
             pulse_speed: 3,
           }}
         />
+      </LazyDemo>
+      <LazyDemo label="Highlighted Entries">
         <ConvexHull
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
           highlighted_entries={highlighted_li_co_ni_o}
           highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
         />
-      </div>
-    </section>
-  {/if}
+      </LazyDemo>
+    </div>
+  </section>
 
-  {#if section_mounted(`magnetic`)}
-    <section class="demo-section">
-      <h2 id="magnetic-states-custom-categories">Magnetic States & Custom Categories</h2>
-      {@render feature_list(magnetic_features)}
-      <p class="section-note">
-        Synthetic orderings are assigned by entry-ID hash. Missing pure-element references are
-        added with E<sub>form</sub> = 0 eV/atom.
-      </p>
+  <section class="demo-section">
+    <h2 id="magnetic-states-custom-categories">Magnetic States & Custom Categories</h2>
+    {@render feature_list(magnetic_features)}
+    <p class="section-note">
+      Synthetic orderings are assigned by entry-ID hash. Missing pure-element references are
+      added with E<sub>form</sub> = 0 eV/atom.
+    </p>
+    <LazyDemo label="Magnetic States & Custom Categories">
       <div class="ternary-grid">
         <div>
           <div class="marker-legend">
@@ -548,41 +506,45 @@
           />
         </div>
       </div>
-    </section>
-  {/if}
+    </LazyDemo>
+  </section>
 
-  {#if section_mounted(`temperature`)}
-    <section class="demo-section">
-      <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
-      {@render feature_list(temp_features)}
-      <div class="temp-grid">
+  <section class="demo-section">
+    <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
+    {@render feature_list(temp_features)}
+    <div class="temp-grid">
+      <LazyDemo label="Temperature-Dependent Free Energies">
         <ConvexHull
           entries={temp_binary_entries}
           controls={{ title: `Li-Fe with G(T)` }}
           style="height: 500px"
         />
+      </LazyDemo>
+      <LazyDemo label="Temperature-Dependent Free Energies">
         <ConvexHull entries={temp_ternary_entries} controls={{ title: `Li-Fe-O with G(T)` }} />
+      </LazyDemo>
+      <LazyDemo label="Temperature-Dependent Free Energies">
         <ConvexHull
           entries={temp_quaternary_entries}
           controls={{ title: `Li-Fe-Ni-O with G(T)` }}
         />
-      </div>
-    </section>
-  {/if}
+      </LazyDemo>
+    </div>
+  </section>
 
-  {#if section_mounted(`gas`)}
-    <section class="demo-section">
-      <h2 id="gas-atmosphere-control">Gas Atmosphere Control</h2>
-      {@render feature_list(gas_features)}
-      <div class="gas-selector">
-        <label for="gas-select">Gas species:</label>
-        <select id="gas-select" bind:value={selected_demo_gas}>
-          {#each GAS_SPECIES as gas (gas)}
-            <option value={gas}>{gas}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="gas-grid">
+  <section class="demo-section">
+    <h2 id="gas-atmosphere-control">Gas Atmosphere Control</h2>
+    {@render feature_list(gas_features)}
+    <div class="gas-selector">
+      <label for="gas-select">Gas species:</label>
+      <select id="gas-select" bind:value={selected_demo_gas}>
+        {#each GAS_SPECIES as gas (gas)}
+          <option value={gas}>{gas}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="gas-grid">
+      <LazyDemo label="Gas Atmosphere Control">
         <ConvexHull
           entries={gas_demo_fe_o_entries}
           controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
@@ -590,37 +552,46 @@
           bind:gas_pressures={gas_demo_pressures}
           style="height: 500px"
         />
+      </LazyDemo>
+      <LazyDemo label="Gas Atmosphere Control">
         <ConvexHull
           entries={gas_demo_ternary_entries}
           controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}
           gas_config={gas_demo_config}
           bind:gas_pressures={gas_demo_pressures}
         />
-      </div>
-    </section>
-  {/if}
+      </LazyDemo>
+    </div>
+  </section>
 
-  {#if section_mounted(`quinary`)}
-    <section class="demo-section">
-      <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
-      {@render feature_list(quinary_stats_features)}
-      <div class="quinary-stats-controls">
-        <label for="quinary-select">Quinary dataset:</label>
-        <select id="quinary-select" bind:value={selected_quinary_path}>
-          {#each quinary_options as option (option.path)}
-            <option value={option.path}>{option.title}</option>
-          {/each}
-        </select>
-      </div>
-      {#if quinary_stats_result?.phase_stats}
-        <ConvexHullStats
-          model={quinary_stats_result}
-          layout="side-by-side"
-          style="width: min(100%, 980px); margin: 0 auto 2rem"
-        />
-      {/if}
-    </section>
-  {/if}
+  <section class="demo-section">
+    <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
+    {@render feature_list(quinary_stats_features)}
+    <div class="quinary-stats-controls">
+      <label for="quinary-select">Quinary dataset:</label>
+      <select id="quinary-select" bind:value={selected_quinary_path}>
+        {#each quinary_paths as path (path)}
+          <option value={path}>{hull_system_name(path)}</option>
+        {/each}
+      </select>
+    </div>
+    <LazyDemo label="Quinary statistics">
+      {#await quinary_files[selected_quinary_path]()}
+        <p role="status">Loading quinary data…</p>
+      {:then { default: entries }}
+        {@const quinary_model = process_hull_for_stats(entries)}
+        {#if quinary_model}
+          <ConvexHullStats
+            model={quinary_model}
+            layout="side-by-side"
+            style="width: min(100%, 980px); margin: 0 auto 2rem"
+          />
+        {/if}
+      {:catch error}
+        <p role="alert">Failed to load {selected_quinary_path}: {String(error)}</p>
+      {/await}
+    </LazyDemo>
+  </section>
 </div>
 
 <style>

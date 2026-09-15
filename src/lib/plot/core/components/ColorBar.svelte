@@ -10,7 +10,7 @@
   } from '$lib/plot/core/color-ramp'
   import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
   import { validate_log_range } from '$lib/plot/core/interactions'
-  import { generate_arcsinh_ticks } from '$lib/plot/core/scales'
+  import { generate_arcsinh_ticks, generate_log_ticks } from '$lib/plot/core/scales'
   import { observe_size } from '$lib/plot/core/utils'
   import {
     DEFAULT_FONT_SPEC,
@@ -83,7 +83,7 @@
     // 'inside' = centered within the bar, hiding the first/last tick
     tick_side?: `primary` | `secondary` | `inside`
     orientation?: Orientation
-    snap_ticks?: boolean // snap generated ticks to pretty values (nices `range`)
+    snap_ticks?: boolean // extend `range` to nice bounds; log/arcsinh ticks are always pretty
     steps?: number // number of gradient color stops sampled from the scale
     nice_range?: Vec2 // read-only binding: the niced range when snapping ticks, else `range`
     scale_type?: ScaleType // spacing of ticks, and of colors when `scale` names an interpolator
@@ -137,26 +137,19 @@
     const [lower, upper] = tick_domain
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [lower]
+    if (type_name === `log`) {
+      const values = generate_log_ticks(lower, upper, n_ticks)
+      return lower > upper ? values.toReversed() : values
+    }
     if (type_name === `arcsinh`) {
       const threshold = get_arcsinh_threshold(scale_type)
       const values = generate_arcsinh_ticks(lower, upper, threshold, n_ticks)
       return lower > upper ? values.toReversed() : values
     }
     if (!snap_ticks) {
-      // exactly n_ticks, evenly spaced in scale space
+      // Exactly n_ticks on a linear/time scale without expanding the range.
       const position = color_ramp_scale(scale_type, [lower, upper], [0, 1])
       return d3_range(n_ticks).map((idx) => position.invert(idx / (n_ticks - 1)))
-    }
-    if (type_name === `log`) {
-      // integer powers of ten inside the niced domain (tolerance absorbs log10 round-off);
-      // sub-decade domains with none fall back to the domain ends
-      const log_min = Math.log10(Math.min(lower, upper))
-      const log_max = Math.log10(Math.max(lower, upper))
-      const powers = d3_range(Math.ceil(log_min - 1e-10), Math.floor(log_max + 1e-10) + 1).map(
-        (exponent) => 10 ** exponent,
-      )
-      if (!powers.length) return [lower, upper]
-      return lower > upper ? powers.toReversed() : powers
     }
     return tick_scale.ticks(n_ticks)
   })

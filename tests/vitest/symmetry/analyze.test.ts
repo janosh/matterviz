@@ -7,7 +7,7 @@ import {
 } from '$lib/symmetry'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 // Helper to create a MoyoCell
 const make_moyo_cell = (

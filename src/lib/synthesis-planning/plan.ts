@@ -295,16 +295,13 @@ function two_step_routes(
   )
   // Intermediate searches keep their own counters so the plan's stay about direct candidates
   const sub_ctx: PlannerContext = { ...ctx, rejected: empty_rejections(), warnings: [] }
-  const best = (routes: SynthesisRoute[]) =>
-    routes.toSorted((route_a, route_b) => route_b.score - route_a.score)[0]
   const routes: SynthesisRoute[] = []
   on_progress?.({ stage: `two_step_routes`, current: 0, total: intermediates.length })
   for (const [intermediate_idx, intermediate] of intermediates.entries()) {
-    const step2 = best(
-      [[intermediate], ...pool.map((phase) => [intermediate, phase])]
-        .map((precursors) => evaluate_route(sub_ctx, precursors, target, `two_step`))
-        .filter((route): route is SynthesisRoute => route !== null),
-    )
+    const step2 = [[intermediate], ...pool.map((phase) => [intermediate, phase])]
+      .map((precursors) => evaluate_route(sub_ctx, precursors, target, `two_step`))
+      .filter((route): route is SynthesisRoute => route !== null)
+      .toSorted((route_a, route_b) => route_b.score - route_a.score)[0]
     const step1 =
       step2 &&
       direct_routes(sub_ctx, pool, intermediate, Math.min(max_precursors, 2)).routes[0]

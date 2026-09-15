@@ -7,7 +7,7 @@ import {
 import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
 import { reaction_paths } from '$site/neb'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const CELL = 4
 const cubic_structure = (x_frac: number) =>

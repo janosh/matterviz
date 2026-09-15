@@ -14,7 +14,7 @@ import { CNA_TYPE_COLORS, CNA_TYPE_NAMES, CNA_TYPE_PROPERTY } from '$lib/structu
 import type { WyckoffPos } from '$lib/symmetry'
 import { describe, expect, test } from 'vitest'
 import { rgb } from 'd3-color'
-import { make_crystal, make_rocksalt, make_struct } from '../setup'
+import { make_crystal, make_rocksalt, make_struct } from '../test-fixtures'
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (

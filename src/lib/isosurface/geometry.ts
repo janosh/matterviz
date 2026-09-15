@@ -39,14 +39,6 @@ export interface GeometryResult {
   volumes: GeometryVolumeResult[]
 }
 
-// Marching-cubes options for a finite display window in scene coordinates
-const finite_grid_options = (origin: Vec3) =>
-  ({
-    periodic: false,
-    normals: false, // BufferGeometry.computeVertexNormals() on the main thread
-    position_offset: origin,
-  }) as const
-
 export function compute_isosurface_geometries(input: GeometryInput): GeometryResult {
   const volumes = input.volumes.map((job): GeometryVolumeResult => {
     const prepare_start = performance.now()
@@ -55,12 +47,11 @@ export function compute_isosurface_geometries(input: GeometryInput): GeometryRes
     const prepare_geometry_ms = performance.now() - prepare_start
     const surfaces = job.surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
       const marching_start = performance.now()
-      const { positions, indices } = marching_cubes(
-        grid,
-        isovalue,
-        lattice,
-        finite_grid_options(origin),
-      )
+      const { positions, indices } = marching_cubes(grid, isovalue, lattice, {
+        periodic: false, // finite display window in scene coordinates
+        normals: false, // BufferGeometry.computeVertexNormals() on the main thread
+        position_offset: origin,
+      })
       return {
         token,
         positions,

@@ -163,8 +163,7 @@ export const row_matches_query = (
 ): boolean =>
   (keys ? keys.map((key) => row[key]) : Object.values(row)).some((val) => {
     if (val == null) return false
-    const clean_val = cell_text(val).toLowerCase()
-    return text_matches_query(clean_val, query, fuzzy)
+    return text_matches_query(cell_text(val).toLowerCase(), query, fuzzy)
   })
 
 export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
@@ -263,9 +262,6 @@ const normalize_timestamp = (val: number): number | null => {
   return null
 }
 
-const is_date_only_string = (val: unknown): boolean =>
-  typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim())
-
 const parse_datetime_string = (val: string): number | null => {
   const clean = strip_html(val).trim()
   if (!DATE_TIME_RE.test(clean)) return null
@@ -300,8 +296,7 @@ export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): num
   const parsed_text = parse_datetime_string(val)
   if (parsed_text !== null) return parsed_text
   if (!col.datetime_format) return null
-  const sort_attr = get_data_sort_value(val)
-  return normalize_timestamp(Number(sort_attr ?? strip_html(val).trim()))
+  return normalize_timestamp(Number(get_data_sort_value(val) ?? strip_html(val).trim()))
 }
 
 // A column's date/time kind from its config, else from a sample of its values: a single
@@ -317,7 +312,8 @@ export function infer_datetime_kind(
   let has_date_value = false
   for (const val of sample) {
     if (parse_datetime_val(val, col) === null) continue
-    if (is_date_only_string(val)) has_date_value = true
+    if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim()))
+      has_date_value = true
     else return `datetime`
   }
   return has_date_value ? `date` : null

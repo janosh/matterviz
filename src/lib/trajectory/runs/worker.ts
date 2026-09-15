@@ -5,6 +5,7 @@
 // MessagePort.postMessage takes no targetOrigin (that's window.postMessage).
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { to_error } from '$lib/utils'
+import type { AnyStructure, Site } from '$lib/structure'
 import { position_stream_transferables } from '../helpers'
 import type {
   ParseProgress,
@@ -15,8 +16,16 @@ import type {
 } from '../index'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
+import { atom_batch_transfers, type AtomBatch, type AtomReadOptions } from '../atom-batches'
+import type { HotspotOptions, HotspotRequest, HotspotResult } from '../hotspots'
 
-type RunPortMethod = `read_frame` | `collect_positions` | `abort` | `dispose`
+type RunPortMethod =
+  | `read_frame`
+  | `read_atoms`
+  | `compute_hotspots`
+  | `collect_positions`
+  | `abort`
+  | `dispose`
 
 interface RunPortRequest {
   id: number
@@ -31,6 +40,83 @@ type RunPortReply =
 
 const abort_error = (): DOMException => new DOMException(`Request aborted`, `AbortError`)
 
+// Transfer coordinates and dense vector properties in one buffer instead of cloning
+// millions of small arrays. Sparse/mixed properties and other metadata stay in the packet.
+type FramePacket = {
+  header: Omit<TrajectoryFrame, 'structure'>
+  structure: Omit<AnyStructure, 'sites'>
+  sites: Omit<Site, 'xyz' | 'abc'>[]
+  vector_keys: string[]
+  coordinates: Float64Array
+}
+
+const pack_frame = ({ structure, ...header }: TrajectoryFrame): FramePacket => {
+  const { sites, ...cell } = structure
+  const vector_keys = Object.keys(sites[0]?.properties ?? {}).filter(
+    (key) =>
+      key !== `__proto__` &&
+      sites.every(({ properties }) => {
+        const vector = properties?.[key]
+        return (
+          Array.isArray(vector) &&
+          vector.length === 3 &&
+          typeof vector[0] === `number` &&
+          typeof vector[1] === `number` &&
+          typeof vector[2] === `number` &&
+          Object.keys(vector).length === 3
+        )
+      }),
+  )
+  const width = 6 + vector_keys.length * 3
+  const coordinates = new Float64Array(sites.length * width)
+  const records = sites.map(({ xyz, abc, ...site }, idx) => {
+    const offset = idx * width
+    coordinates.set(xyz, offset)
+    coordinates.set(abc, offset + 3)
+    if (vector_keys.length) {
+      for (let vector_idx = 0; vector_idx < vector_keys.length; vector_idx++) {
+        const key = vector_keys[vector_idx]
+        coordinates.set(site.properties[key] as number[], offset + 6 + vector_idx * 3)
+      }
+      site.properties = Object.fromEntries(
+        Object.entries(site.properties).filter(([key]) => !vector_keys.includes(key)),
+      )
+    }
+    return site
+  })
+  return { header, structure: cell, sites: records, vector_keys, coordinates }
+}
+
+const unpack_frame = ({
+  header,
+  structure,
+  sites,
+  vector_keys,
+  coordinates,
+}: FramePacket): TrajectoryFrame => ({
+  ...header,
+  structure: {
+    ...structure,
+    sites: sites.map((site, idx) => {
+      const offset = idx * (6 + vector_keys.length * 3)
+      for (let vector_idx = 0; vector_idx < vector_keys.length; vector_idx++) {
+        const key = vector_keys[vector_idx]
+        const start = offset + 6 + vector_idx * 3
+        site.properties[key] = [
+          coordinates[start],
+          coordinates[start + 1],
+          coordinates[start + 2],
+        ]
+      }
+      return {
+        ...site,
+        xyz: [coordinates[offset], coordinates[offset + 1], coordinates[offset + 2]],
+        abc: [coordinates[offset + 3], coordinates[offset + 4], coordinates[offset + 5]],
+      }
+    }),
+  },
+})
+
 // Worker side. Returns the port to transfer to the client; the run is disposed when the
 // client sends `dispose` or the port becomes unusable.
 export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
@@ -39,6 +125,8 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   let served: TrajectoryRun | null = run
   const controllers = new Map<number, AbortController>()
   let queue = Promise.resolve()
+  let hotspot_queue = Promise.resolve()
+  let hotspot_controller: AbortController | undefined
   const unsubscribe = run.properties.subscribe((batch, complete) =>
     post({ properties: batch, complete }),
   )
@@ -74,7 +162,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
     if (method === `abort`) return controllers.get(Number(args[0]))?.abort(abort_error())
     const controller = new AbortController()
     controllers.set(identifier, controller)
-    queue = queue.then(async () => {
+    const execute = async () => {
       const active = served
       if (!active) return
       if (controller.signal.aborted) {
@@ -84,7 +172,25 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
       try {
         if (method === `read_frame`) {
           const frame = await active.read_frame(Number(args[0]), controller.signal)
-          post({ id: identifier, result: frame })
+          const packet = pack_frame(frame)
+          post({ id: identifier, result: packet }, [packet.coordinates.buffer])
+        } else if (method === `read_atoms`) {
+          if (!active.read_atoms) throw new Error(`Run cannot read atom batches`)
+          const batch = await active.read_atoms(args[0] as AtomReadOptions, controller.signal)
+          post({ id: identifier, result: batch }, atom_batch_transfers(batch))
+        } else if (method === `compute_hotspots`) {
+          if (!active.compute_hotspots) throw new Error(`Run cannot calculate hotspots`)
+          const result = await active.compute_hotspots({
+            ...(args[0] as HotspotOptions),
+            signal: controller.signal,
+            on_progress: (progress) => post({ id: identifier, progress }),
+          })
+          post({ id: identifier, result }, [
+            result.energy.buffer,
+            result.population.buffer,
+            result.dof.buffer,
+            result.occupied_frames.buffer,
+          ])
         } else if (method === `collect_positions`) {
           if (!active.collect_positions) throw new Error(`Run cannot collect positions`)
           const stream = await active.collect_positions({
@@ -99,7 +205,14 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
       } finally {
         controllers.delete(identifier)
       }
-    })
+    }
+    // Hotspot scans yield between numeric batches. They must not reserve the serial frame
+    // queue for the whole trajectory; interactive reads and cancellation get each next turn.
+    if (method === `compute_hotspots`) {
+      hotspot_controller?.abort(abort_error())
+      hotspot_controller = controller
+      hotspot_queue = hotspot_queue.then(execute)
+    } else queue = queue.then(execute)
   })
   port1.start()
   return channel.port2
@@ -225,6 +338,12 @@ export const worker_run = (
 
   return {
     ...fields,
+    ...(summary.has_read_atoms && {
+      read_atoms: (options: AtomReadOptions, signal?: AbortSignal) =>
+        rpc<AtomBatch>(`read_atoms`, [options], signal),
+      compute_hotspots: ({ signal, on_progress, ...options }: HotspotRequest) =>
+        rpc<HotspotResult>(`compute_hotspots`, [options], signal, on_progress),
+    }),
     // Keep the snapshot unproxied when Svelte binds the run to reactive state.
     get preview() {
       return summary.preview
@@ -233,17 +352,15 @@ export const worker_run = (
       assert_frame_idx(summary, frame_idx)
       if (disposed_reason) return Promise.reject(disposed_reason)
       if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
-      if (frame_idx === 0) return summary.preview
-      return rpc<TrajectoryFrame>(`read_frame`, [frame_idx], signal)
+      if (frame_idx === 0 && !summary.preview.metadata?.render_sample) return summary.preview
+      return rpc<FramePacket>(`read_frame`, [frame_idx], signal).then(unpack_frame)
     },
-    ...(summary.has_collect_positions
-      ? {
-          // Only the cloneable sweep options cross the port; progress and abort travel as
-          // port messages
-          collect_positions: ({ on_progress, signal, ...options } = {}) =>
-            rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
-        }
-      : {}),
+    ...(summary.has_collect_positions && {
+      // Only the cloneable sweep options cross the port; progress and abort travel as
+      // port messages
+      collect_positions: ({ on_progress, signal, ...options } = {}) =>
+        rpc<TrajectoryPositionStream>(`collect_positions`, [options], signal, on_progress),
+    }),
     dispose: () => dispose(),
   }
 }

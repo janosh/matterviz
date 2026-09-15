@@ -1,3 +1,4 @@
+import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import {
@@ -15,10 +16,7 @@ import type { ParsedTrajectory } from './shared'
 const MAX_ASE_HEADER_BYTES = 50 * 1024 * 1024
 
 const ASE_PLOT_SCALARS = [
-  `energy`,
-  `potential_energy`,
-  `kinetic_energy`,
-  `total_energy`,
+  ...TRAJECTORY_ENERGY_KEYS,
   `force_max`,
   `force_norm`,
   `stress_max`,

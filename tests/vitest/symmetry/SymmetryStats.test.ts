@@ -2,7 +2,8 @@ import type { SymmetryDataset } from '$lib/symmetry'
 import { SymmetryStats } from '$lib/symmetry'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, make_wyckoff_dataset } from '../setup'
+import { doc_query } from '../setup'
+import { make_wyckoff_dataset } from '../test-fixtures'
 
 // Mock dataset: one H atom on Wyckoff `a`, space group 225, plus the given overrides
 function create_mock_sym_data(overrides: Partial<SymmetryDataset> = {}): SymmetryDataset {

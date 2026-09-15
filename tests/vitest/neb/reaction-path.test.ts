@@ -14,7 +14,7 @@ import {
 } from '$lib/neb/reaction-path'
 import type { AnyStructure, Crystal } from '$lib/structure'
 import { describe, expect, test } from 'vitest'
-import { make_crystal as build_crystal } from '../setup'
+import { make_crystal as build_crystal } from '../test-fixtures'
 
 const as_li = (xyz: Vec3) => ({ element: `Li`, xyz })
 // Cubic cell used throughout; 10 Å keeps fractional↔Cartesian arithmetic exact in binary

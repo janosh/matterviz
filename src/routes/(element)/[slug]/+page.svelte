@@ -16,6 +16,7 @@
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
   import { normalize_static_url } from '$site/state.svelte'
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { error } from '@sveltejs/kit'
   import { Icon, PrevNext } from 'svelte-widgets'
   import {
@@ -46,6 +47,9 @@
       `Invalid element data: expected numeric number, string symbol, and string name`,
     )
   }
+
+  const photo_src = (elem: ChemicalElement) =>
+    `/elements/${elem.number}-${elem.name.toLowerCase()}.avif`
 
   let element = $derived.by(() => {
     const data = element_data.find((elem) => elem.name.toLowerCase() === page.params.slug)
@@ -154,7 +158,7 @@
   <ColorScaleSelect bind:value={color_scale} min_select={1} />
 </form>
 <section class="viz">
-  <ElementPhoto {element} />
+  <ElementPhoto {element} src={photo_src(element)} fetchpriority="high" />
 
   <!-- onmouseleave makes ElementScatter always show current element unless user actively hovers another element -->
   <ElementScatter
@@ -171,14 +175,16 @@
 <p>{@html sanitize_html(element.summary)}</p>
 
 <section class="flex-wrap">
-  <PeriodicTable
-    tile_props={{ show_name: false, show_number: false }}
-    show_photo={false}
-    disabled
-    style="width: 100%; max-width: 300px"
-    links="name"
-    active_element={element}
-  />
+  <LazyDemo label="Periodic table" height="180px" style="width: 100%; max-width: 300px">
+    <PeriodicTable
+      tile_props={{ show_name: false, show_number: false }}
+      show_photo={false}
+      disabled
+      style="--ptable-min-tile-size: 0"
+      links="name"
+      active_element={element}
+    />
+  </LazyDemo>
 
   <table>
     <thead>
@@ -207,16 +213,18 @@
     </tbody>
   </table>
 
-  <BohrAtom
-    symbol={element.symbol}
-    shells={element.shells}
-    name={element.name}
-    adapt_size
-    orbital_period={orbiting ? 3 : 0}
-    highlight_shell={active_shell}
-    onclick={() => (orbiting = !orbiting)}
-    style="max-width: 300px"
-  />
+  <LazyDemo label="Electron shells" height="300px" style="width: 100%; max-width: 300px">
+    <BohrAtom
+      symbol={element.symbol}
+      shells={element.shells}
+      name={element.name}
+      adapt_size
+      orbital_period={orbiting ? 3 : 0}
+      highlight_shell={active_shell}
+      onclick={() => (orbiting = !orbiting)}
+      style="max-width: 300px"
+    />
+  </LazyDemo>
 </section>
 
 <section class="properties">
@@ -243,12 +251,18 @@
     {@const element = assert_chemical_element(item[1])}
     <a
       href={element.name.toLowerCase()}
-      style="display: flex; flex-direction: column; position: relative"
+      style="display: flex; flex-direction: column; position: relative; width: min(200px, 40cqw)"
     >
       <h3>
         {kind == `next` ? `Next →` : `← Previous`}
       </h3>
-      <ElementPhoto {element} style="width: 200px; border-radius: 4pt" />
+      <ElementPhoto
+        {element}
+        src={photo_src(element)}
+        loading="lazy"
+        decoding="async"
+        style="aspect-ratio: auto 1; border-radius: 4pt"
+      />
       <ElementTile
         {element}
         style="width: 70px; position: absolute; bottom: 0"

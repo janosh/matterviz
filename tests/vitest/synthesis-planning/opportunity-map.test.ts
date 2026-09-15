@@ -4,7 +4,7 @@ import type { OpportunityRequest } from '$lib/synthesis-planning/opportunity-map
 import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import * as thermo from '$lib/synthesis-planning/thermo'
 import { expect, test, vi } from 'vitest'
-import { load_json } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
 const conditions = { temperature: 1000, open_species: [`O2`, `CO2`] as (`O2` | `CO2`)[] }

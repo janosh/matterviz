@@ -6,7 +6,7 @@ import {
   lattice_unavailable_reason,
 } from '$lib/structure/validation'
 import { describe, expect, test } from 'vitest'
-import { cubic_matrix } from '../setup'
+import { cubic_matrix } from '../test-fixtures'
 
 describe(`is_crystal`, () => {
   test.each([

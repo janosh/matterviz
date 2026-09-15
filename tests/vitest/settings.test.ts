@@ -310,6 +310,9 @@ describe(`Settings`, () => {
         camera_projection: `shared camera primitive; every scene passes its own schema value`,
         gizmo: `shared camera primitive; every scene passes its own schema value`,
       },
+      'structure/StructureScene': {
+        show_cell_vectors: `undefined selects the atom-count default; explicit booleans override it`,
+      },
       'trajectory/Trajectory': {
         show_controls: `ShowControlsProp: undefined normalises to the schema's shown state via normalize_show_controls(.., 'always')`,
       },
@@ -597,54 +600,63 @@ describe(`Structure viewer state serialization`, () => {
     expect(state.settings.structure).not.toHaveProperty(`camera_position`)
   })
 
-  test(`round-trips validated settings through the shared JSON format`, () => {
-    const state = create_structure_view_state({
-      scene_props: {
-        atom_radius: 1.25,
-        camera_projection: `perspective`,
-        vector_configs: { force: { visible: false } },
-        cell_edge_opacity: 0.8,
-      },
-      color_scheme: `Jmol`,
-      background_color: `#123456`,
-      background_opacity: 0.4,
-      show_image_atoms: false,
-      atom_color_config: {
-        mode: `coordination`,
-        scale: `interpolatePlasma`,
-        scale_type: `continuous`,
-      },
-      supercell_scaling: `2x3x1`,
-      cell_type: `conventional`,
-      multi_view: true,
-      controls_pane_size: { width: 520, height: 640 },
-    })
-
-    const round_tripped = parse_or_throw(serialize_structure_view_state(state))
-    expect(round_tripped).toMatchObject({
-      version: STRUCTURE_VIEW_STATE_VERSION,
-      settings: {
+  test.each([undefined, true, false])(
+    `round-trips validated settings with lattice-vector choice %s`,
+    (show_cell_vectors) => {
+      const state = create_structure_view_state({
+        scene_props: {
+          atom_radius: 1.25,
+          show_cell_vectors,
+          camera_projection: `perspective`,
+          vector_configs: { force: { visible: false } },
+          cell_edge_opacity: 0.8,
+        },
         color_scheme: `Jmol`,
         background_color: `#123456`,
         background_opacity: 0.4,
-        structure: {
-          atom_radius: 1.25,
-          camera_projection: `perspective`,
-          cell_edge_opacity: 0.8,
-          show_image_atoms: false,
-          atom_color_mode: `coordination`,
-          atom_color_scale: `interpolatePlasma`,
+        show_image_atoms: false,
+        atom_color_config: {
+          mode: `coordination`,
+          scale: `interpolatePlasma`,
+          scale_type: `continuous`,
         },
-      },
-      viewer: {
         supercell_scaling: `2x3x1`,
         cell_type: `conventional`,
         multi_view: true,
         controls_pane_size: { width: 520, height: 640 },
-      },
-    })
-    expect(round_tripped.settings.structure).not.toHaveProperty(`vector_configs`)
-  })
+      })
+
+      const round_tripped = parse_or_throw(serialize_structure_view_state(state))
+      expect(round_tripped).toMatchObject({
+        version: STRUCTURE_VIEW_STATE_VERSION,
+        settings: {
+          color_scheme: `Jmol`,
+          background_color: `#123456`,
+          background_opacity: 0.4,
+          structure: {
+            atom_radius: 1.25,
+            camera_projection: `perspective`,
+            cell_edge_opacity: 0.8,
+            show_image_atoms: false,
+            atom_color_mode: `coordination`,
+            atom_color_scale: `interpolatePlasma`,
+          },
+        },
+        viewer: {
+          supercell_scaling: `2x3x1`,
+          cell_type: `conventional`,
+          multi_view: true,
+          controls_pane_size: { width: 520, height: 640 },
+        },
+      })
+      const restored = round_tripped.settings.structure
+      expect(restored).not.toHaveProperty(`vector_configs`)
+      expect(restored.show_cell_vectors).toBe(show_cell_vectors)
+      expect(Object.hasOwn(restored, `show_cell_vectors`)).toBe(
+        show_cell_vectors !== undefined,
+      )
+    },
+  )
 
   test(`replaces unknown, wrong-type, and out-of-range values with schema defaults`, () => {
     const { settings, viewer } = parse_or_throw(

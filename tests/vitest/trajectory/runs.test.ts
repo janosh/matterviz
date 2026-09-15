@@ -15,8 +15,8 @@ import { host_run } from '$lib/trajectory/runs/host'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { describe, expect, it, test, vi } from 'vitest'
-import { max_abs_error } from '../numeric-helpers'
-import { make_trajectory_frame, read_binary_test_file } from '../setup'
+import { max_abs_error, max_rel_error } from '../numeric-helpers'
+import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
 
 const N_FRAMES = 40
@@ -130,12 +130,33 @@ const RUN_CASES: RunCase[] = [
   },
 ]
 
+it.each([27, 100_000])(
+  `uses the full %i atom count to gate frame-backed analysis`,
+  (atom_count) => {
+    const run = sync_run({
+      label: `sampled preview`,
+      atom_count,
+      frame_count: 1,
+      preview: reference_frames[0],
+      read: () => reference_frames[0],
+      properties: new TrajectoryProperties(),
+      provenance: {},
+      metadata: {},
+      warnings: [],
+    })
+    expect(run.atom_count).toBe(atom_count)
+    expect(run.read_atoms !== undefined).toBe(atom_count === 27)
+    run.dispose()
+  },
+)
+
 describe.each(RUN_CASES)(
   `$name run`,
   ({ make, sync_reads, has_collect, n_frames, n_atoms }) => {
     it(`exposes frame_count, a frame-0 preview and range-checked frame reads`, async () => {
       const run = await make()
       expect(run.frame_count).toBe(n_frames)
+      expect(run.atom_count).toBe(n_atoms)
       expect(run.preview.structure.sites).toHaveLength(n_atoms)
       // frame 0 is always served synchronously (it IS the preview)
       expect(run.read_frame(0)).toBe(run.preview)
@@ -294,6 +315,62 @@ describe(`collect_positions parity with the memory run`, () => {
 })
 
 describe(`worker-served run lifecycle`, () => {
+  it.each([1, 65_537])(
+    `transfers %i sites exactly without changing source frames`,
+    async (count) => {
+      const frame = make_trajectory_frame(1, count)
+      for (const [idx, site] of frame.structure.sites.entries()) {
+        site.xyz = [idx + 1 / 3, -0, Number.MIN_VALUE]
+        site.abc = [-idx - 1 / 7, Number.MAX_VALUE, -Number.MIN_VALUE]
+        site.properties = {
+          velocity: [0, NaN, Infinity],
+          force: [idx, 1 / 3, -0],
+          flag: undefined,
+          nested: { idx },
+        }
+      }
+      frame.structure.sites[0].properties.named = Object.assign([0, 1, 2], { unit: `eV/A` })
+      const source = structuredClone(frame)
+      const served = trajectory_from_frames([reference_frames[0], frame])
+      const port = serve_run_over_port(served)
+      const packets: unknown[] = []
+      port.addEventListener(`message`, (event) => packets.push(event.data))
+      const run = worker_run(port, summarize_run(served))
+      try {
+        const received = await run.read_frame(1)
+        expect(packets).toMatchObject([
+          {
+            result: {
+              coordinates: expect.any(Float64Array),
+              vector_keys: [`velocity`, `force`],
+            },
+          },
+        ])
+        expect(received).toEqual(source)
+        expect(received.structure.sites[0].properties.named).toHaveProperty(`unit`, `eV/A`)
+        const original_coords = source.structure.sites.flatMap(({ xyz, abc }) => [
+          ...xyz,
+          ...abc,
+        ])
+        const received_coords = received.structure.sites.flatMap(({ xyz, abc }) => [
+          ...xyz,
+          ...abc,
+        ])
+        expect(max_abs_error(original_coords, received_coords)).toBe(0)
+        expect(max_rel_error(received_coords, original_coords)).toBe(0)
+        const first = received.structure.sites[0]
+        if (first) {
+          first.xyz[0] = 99
+          first.properties.velocity = [99, 99, 99]
+        }
+        expect(frame).toEqual(source)
+        expect(await run.read_frame(1)).toEqual(source)
+      } finally {
+        run.dispose()
+      }
+    },
+  )
+
   it(`rejects a throwing progress callback, aborts its work and preserves other requests`, async () => {
     const served = trajectory_from_frames(reference_frames)
     let collect_signal: AbortSignal | undefined

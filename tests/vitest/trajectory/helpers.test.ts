@@ -2,7 +2,11 @@ import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import { columns_to_csv } from '$lib/trajectory/analysis'
 import { parse_float_token } from '$lib/structure/parsers/shared'
-import { convert_atomic_numbers, create_structure } from '$lib/trajectory/helpers'
+import {
+  convert_atomic_numbers,
+  create_sampled_frame,
+  create_structure,
+} from '$lib/trajectory/helpers'
 import { read_ndarray_from_view } from '$lib/trajectory/parse/ase'
 import { describe, expect, it } from 'vitest'
 
@@ -31,6 +35,20 @@ describe(`trajectory helpers`, () => {
       [1, 1, 1],
     ])
     expect(structure.sites.map((site) => site.species[0].element)).toEqual(elements)
+    expect(
+      create_sampled_frame(
+        new Float64Array([0, 0, 0, 1, 1, 1]),
+        [`H`, `Li`, `He`],
+        2,
+        undefined,
+        undefined,
+        42,
+      ),
+    ).toEqual({
+      structure,
+      step: 42,
+      metadata: { total_atoms: 3, render_sample: true, source_atom_indices: [0, 2] },
+    })
     expect(() =>
       create_structure(
         [
@@ -111,6 +129,8 @@ describe(`trajectory helpers`, () => {
   it.each([
     { atomic_numbers: [1, 2, 8], expected_symbols: [`H`, `He`, `O`] },
     { atomic_numbers: [26], expected_symbols: [`Fe`] },
+    { atomic_numbers: new Float64Array([1, 2, 8]), expected_symbols: [`H`, `He`, `O`] },
+    { atomic_numbers: new Float64Array(), expected_symbols: [] },
   ])(`converts known atomic numbers to symbols`, ({ atomic_numbers, expected_symbols }) => {
     expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
   })

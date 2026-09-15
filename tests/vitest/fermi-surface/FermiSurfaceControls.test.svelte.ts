@@ -2,7 +2,8 @@ import FermiSurfaceControls from '$lib/fermi-surface/FermiSurfaceControls.svelte
 import type { BandGridData, ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, make_fermi_isosurface, make_fermi_surface } from '../setup'
+import { bind_props, doc_query } from '../setup'
+import { make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // One single-vertex sheet per band, optionally carrying a per-vertex property
 const make_fermi_data = (band_indices = [0, 1], with_properties = false): FermiSurfaceData =>

@@ -8,7 +8,6 @@ import { values_per_sample } from '../helpers'
 import type {
   CollectPositionsOptions,
   FrameRange,
-  ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
   TrajectorySignal,
@@ -82,14 +81,6 @@ export function suggest_frame_stride(
     `suggest_frame_stride: a single frame of ${n_atoms} atoms`,
   )
 }
-
-const frame_lattice = (frame: TrajectoryFrame): Matrix3x3 | null =>
-  `lattice` in frame.structure ? frame.structure.lattice.matrix : null
-
-const make_reporter =
-  (on_progress: ((progress: ParseProgress) => void) | undefined, total: number) =>
-  (done: number, stage: string): void =>
-    on_progress?.({ current: (done / total) * 100, total: 100, stage })
 
 class PositionAccumulator {
   private readonly positions: Float64Array
@@ -218,7 +209,7 @@ class PositionAccumulator {
       )
     }
 
-    const lattice = frame_lattice(frame)
+    const lattice = `lattice` in frame.structure ? frame.structure.lattice.matrix : null
     this.check_step_plausibility(lattice, source_frame_number)
     this.lattice_matrices.push(lattice)
     this.steps.push(frame.step)
@@ -452,7 +443,8 @@ export async function accumulate_positions(
 
   const { start_frame, end_frame } = resolve_frame_range(total_frames, options)
   const selected_frames = end_frame - start_frame
-  const report = make_reporter(on_progress, selected_frames)
+  const report = (done: number, stage: string): void =>
+    on_progress?.({ current: (done / selected_frames) * 100, total: 100, stage })
   const first_frame = await load_frame(start_frame)
   signal?.throwIfAborted()
   if (!first_frame)

@@ -13,7 +13,7 @@ import {
 } from '$lib/symmetry'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_wyckoff_dataset } from '../setup'
+import { make_crystal, make_wyckoff_dataset } from '../test-fixtures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has

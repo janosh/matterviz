@@ -17,8 +17,8 @@ import {
   mock_fullscreen,
   bind_props,
   doc_query,
-  make_run as make_shared_run,
 } from '../setup'
+import { make_run as make_shared_run } from '../test-fixtures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -138,6 +138,34 @@ const axis_labels = (target: ParentNode): string[] =>
   )
 
 describe(`display modes`, () => {
+  test(`large runs use complete structure frames until hotspot analysis is requested`, async () => {
+    const backing = make_run()
+    const read_atoms = vi.fn(backing.read_atoms)
+    const read_frame = vi.fn(backing.read_frame)
+    const run = {
+      ...backing,
+      atom_count: 333_200,
+      preview: {
+        ...backing.preview,
+        metadata: { render_sample: true },
+        structure: { ...backing.preview.structure, sites: [] },
+      },
+      read_atoms,
+      read_frame,
+    }
+    const props = $state(default_props({ trajectory: run, current_step_idx: 0 }))
+    const target = mount_trajectory(props)
+    await tick()
+    expect(target.querySelector(`.structure`)).not.toBeNull()
+    expect(target.querySelector(`.particle-view`)).toBeNull()
+    expect(read_frame).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+    props.current_step_idx = 1
+    await tick()
+    expect(read_frame).toHaveBeenCalledWith(1, expect.any(AbortSignal))
+    expect(read_atoms).not.toHaveBeenCalled()
+    expect(target.querySelector(`.particle-view`)).toBeNull()
+  })
+
   test.each([
     [`structure`, true, false, false],
     [`structure+scatter`, true, true, false],
@@ -281,6 +309,7 @@ describe(`controls`, () => {
     expect(labels).toEqual([
       `Velocity autocorrelation & VDOS`,
       `Radial distribution function`,
+      `Thermal hotspots`,
       `Structure identification`,
       `Data inspector`,
     ])
@@ -293,6 +322,7 @@ describe(`controls`, () => {
             `vacf-pane`,
             `rdf-pane`,
             `spectroscopy-pane`,
+            `hotspots-pane`,
             `structure-id-pane`,
             `data-inspector-pane`,
           ],
@@ -335,13 +365,14 @@ describe(`controls`, () => {
   })
 
   test.each([
-    [`count`, 3, [`0`, `5`, `10`]],
-    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`]],
-    [`spacing`, -4, [`0`, `4`, `8`, `10`]],
-    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`]],
-    [`disabled`, 0, []],
-  ])(`step_labels %s`, (_kind, step_labels, expected) => {
-    const steps = Array.from({ length: 11 }, (_unused, idx) => idx * 5)
+    [`count`, 3, [`0`, `5`, `10`], 11],
+    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`], 11],
+    [`spacing`, -4, [`0`, `4`, `8`, `10`], 11],
+    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`], 11],
+    [`disabled`, 0, [], 11],
+    [`single frame`, 5, [], 1],
+  ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {
+    const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ steps }), step_labels }),
     )
@@ -354,13 +385,6 @@ describe(`controls`, () => {
       (element) => element.style.left,
     )
     expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
-  })
-
-  test(`step_labels vanish for a single frame`, () => {
-    const target = mount_trajectory(
-      default_props({ trajectory: make_run({ steps: [0] }), step_labels: 5 }),
-    )
-    expect(target.querySelector(`.step-label`)).toBeNull()
   })
 })
 
@@ -501,14 +525,50 @@ describe(`plot`, () => {
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`time`)
   })
 
-  test(`property_labels relabel axes and legend entries`, async () => {
-    const target = mount_trajectory(
-      default_props({ property_labels: { energy: `Total E`, force_max: `Max |F|` } }),
-    )
-    await tick()
-    expect(axis_labels(target)).toEqual([`Time (fs)`, `Total E (eV)`, `Max |F| (eV/Å)`])
-    expect(Object.keys(legend_state(target))).toEqual([`Total E`, `Max |F|`, `Volume`])
-  })
+  test.each([`scatter`, `histogram`] as const)(
+    `%s switches energy references with custom labels and preserves source data`,
+    async (display_mode) => {
+      const prepare_scatter = vi.spyOn(plotting, `prepare_trajectory_scatter_series`)
+      const extra_controls = createRawSnippet(() => ({ render: () => `<p>Host control</p>` }))
+      const run = make_run()
+      const read_frame = vi.spyOn(run, `read_frame`)
+      const props = $state(
+        default_props({
+          trajectory: run,
+          display_mode,
+          relative_energy: false,
+          property_labels: { energy: `Total E`, force_max: `Max |F|` },
+          scatter_props: { controls_open: true, controls_extra: extra_controls },
+          histogram_props: { controls_open: true, controls_extra: extra_controls },
+        }),
+      )
+      const target = mount_trajectory(props)
+      await tick()
+      const reads = read_frame.mock.calls.length
+      const toggle = doc_query<HTMLInputElement>(`input[name=relative_energy]`)
+      expect(document.body.textContent).toContain(`Host control`)
+      for (const relative of [false, true, false]) {
+        if (relative) toggle.click()
+        else props.relative_energy = false
+        await tick()
+        expect(props.relative_energy).toBe(relative)
+        expect(toggle.checked).toBe(relative)
+        const label = relative ? `Δ Total E` : `Total E`
+        expect(Object.keys(legend_state(target))).toEqual([label, `Max |F|`, `Volume`])
+        if (display_mode === `scatter`) {
+          expect(axis_labels(target)).toEqual([`Time (fs)`, `${label} (eV)`, `Max |F| (eV/Å)`])
+          expect(
+            prepare_scatter.mock.lastCall?.[0].find((srs) => srs.id === `energy`)?.y,
+          ).toEqual(relative ? [0, 1, 2] : [-3, -2, -1])
+        } else {
+          expect(target.querySelector(`.histogram .axis-label`)?.textContent).toContain(
+            `${label} (eV)`,
+          )
+        }
+      }
+      expect(read_frame).toHaveBeenCalledTimes(reads)
+    },
+  )
 })
 
 describe(`banners`, () => {

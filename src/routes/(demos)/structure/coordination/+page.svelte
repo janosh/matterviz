@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { type Crystal, SETTINGS_CONFIG } from '$lib'
   import { plot_color } from '$lib/colors'
   import type { CoordinationSplitMode } from '$lib/coordination'
@@ -77,12 +78,14 @@
 
   <section>
     {#if single_struct}
-      <CoordinationBarPlot
-        structures={single_struct}
-        strategy={single_strategy}
-        split_mode={single_split_mode}
-        style="height: 500px"
-      />
+      <LazyDemo label="Single Structure">
+        <CoordinationBarPlot
+          structures={single_struct}
+          strategy={single_strategy}
+          split_mode={single_split_mode}
+          style="height: 500px"
+        />
+      </LazyDemo>
       <Structure
         structure={single_struct}
         bind:atom_color_config={single_color_config}
@@ -105,44 +108,46 @@
 
   <StructurePicker bind:selected={selected_ids} />
 
-  <section class="multi-structure-layout" style="height: 400px">
-    <CoordinationBarPlot
-      structures={selected_structures}
-      strategy={multi_strategy}
-      split_mode={multi_split_mode}
-      padding={{ l: 50 }}
-      style="height: 100%"
-    />
-    <div class="selected-structures-grid">
-      {#each selected_ids as struct_id, idx (struct_id)}
-        {@const struct_obj = structure_map.get(struct_id)}
-        {@const series_color = plot_color(idx)}
-        {#if struct_obj}
-          <div
-            class="structure-tile"
-            style:background-color={hex_with_alpha(series_color, 0.15)}
-          >
-            <h3>{struct_id}</h3>
-            <Structure
-              structure={struct_obj}
-              atom_color_config={multi_color_config}
-              scene_props={multi_scene_props}
-              style="height: 100%"
-              enable_info_pane={false}
-              enable_measure_mode={false}
-            />
-          </div>
-        {/if}
-      {/each}
-    </div>
-  </section>
+  <LazyDemo label="Multiple Structures Overlay" height="400px">
+    <section class="multi-structure-layout" style="height: 400px">
+      <CoordinationBarPlot
+        structures={selected_structures}
+        strategy={multi_strategy}
+        split_mode={multi_split_mode}
+        padding={{ l: 50 }}
+        style="height: 100%"
+      />
+      <div class="selected-structures-grid">
+        {#each selected_ids as struct_id, idx (struct_id)}
+          {@const struct_obj = structure_map.get(struct_id)}
+          {@const series_color = plot_color(idx)}
+          {#if struct_obj}
+            <div
+              class="structure-tile"
+              style:background-color={hex_with_alpha(series_color, 0.15)}
+            >
+              <h3>{struct_id}</h3>
+              <Structure
+                structure={struct_obj}
+                atom_color_config={multi_color_config}
+                scene_props={multi_scene_props}
+                style="height: 100%"
+                enable_info_pane={false}
+                enable_measure_mode={false}
+              />
+            </div>
+          {/if}
+        {/each}
+      </div>
+    </section>
+  </LazyDemo>
 </div>
 
 <style>
   .bleed-1400 {
     container-type: inline-size;
   }
-  .bleed-1400 > section {
+  .bleed-1400 section {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1em;
@@ -159,7 +164,7 @@
     }
   }
   @container (max-width: 900px) {
-    .bleed-1400 > .multi-structure-layout {
+    .bleed-1400 .multi-structure-layout {
       --barplot-min-height: 0;
       grid-template:
         minmax(0, 1.1fr) minmax(0, 0.9fr) /

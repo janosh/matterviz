@@ -11,7 +11,7 @@ import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 import { flatten_grid } from '$lib/isosurface/grid'
-import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../setup'
+import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../test-fixtures'
 
 // Nested test grids flattened to the z-fastest storage the sampler reads
 const flat = (...args: Parameters<typeof make_grid>) => flatten_grid(make_grid(...args))

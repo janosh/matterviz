@@ -46,16 +46,17 @@ export const flat_frames = (
   frame: (frame_idx: number) => number[],
 ): number[] =>
   Array.from({ length: n_frames }, (_unused, frame_idx) => frame(frame_idx)).flat()
-// Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
-// return its bytes, for torn-file scenarios no checked-in fixture covers
+// Build an HDF5 fixture in h5wasm's in-memory FS, optionally extending a binary seed.
 export const h5_bytes = async (
   prefix: string,
   write: (file: H5File) => void,
+  seed?: Uint8Array,
 ): Promise<ArrayBuffer> => {
   const h5wasm = await import(`h5wasm`)
   const { FS: file_system } = await h5wasm.ready
   const temp_filename = `${prefix}-${Math.random().toString(36).slice(2)}.h5`
-  const file = new h5wasm.File(temp_filename, `w`)
+  if (seed) file_system.writeFile(temp_filename, seed)
+  const file = new h5wasm.File(temp_filename, seed ? `a` : `w`)
   let file_closed = false
   try {
     write(file)
@@ -77,6 +78,22 @@ export const h5_bytes = async (
     }
   }
 }
+
+export const make_ambiguous_hdf5 = (): Promise<ArrayBuffer> =>
+  h5_bytes(`ambiguous`, (file) => {
+    const molecules = file.create_group(`molecules`)
+    for (const [name, atomic_number, x_position] of [
+      [`h2o`, 79, 1],
+      [`nh3`, 1, 9],
+    ] satisfies [string, number, number][]) {
+      const replicas = molecules.create_group(name).create_group(`replicas`)
+      for (const replica_idx of [0, 1, 2, 10]) {
+        const group = replicas.create_group(`${replica_idx}`)
+        group.create_dataset({ name: `positions`, data: [x_position, 0, 0], shape: [1, 1, 3] })
+        group.create_dataset({ name: `atomic_numbers`, data: [atomic_number], shape: [1] })
+      }
+    }
+  })
 
 export type H5Spec = [name: string, data: number[], shape: number[]]
 export const make_h5_buffer = (datasets: H5Spec[]): Promise<ArrayBuffer> =>

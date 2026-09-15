@@ -14,7 +14,8 @@ import {
 import { to_error } from '$lib/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, make_frame, make_run, settle } from '../setup'
+import { bind_props, doc_query, settle } from '../setup'
+import { make_frame, make_run } from '../test-fixtures'
 
 const frame_only_run = (n_frames: number): TrajectoryRun => {
   const { collect_positions: _collect_positions, ...run } = make_run(n_frames)
@@ -507,45 +508,52 @@ describe(`trajectory state`, () => {
     expect(doc_query(`.stub-controls button`).textContent).toContain(`Compute stub`)
   })
 
-  test(`a collect that finishes after a trajectory swap is discarded, but re-enables the button`, async () => {
-    const pending = Promise.withResolvers<Collected>()
-    let report: ((progress: ParseProgress) => void) | undefined
-    let signal: AbortSignal | undefined
-    const state = $state<{ run: TrajectoryRun; input?: Collected }>({
-      run: make_run(20),
-      input: undefined,
-    })
-    mount_pane(
-      bind_props({}, state),
-      vi.fn<Collect>((_run, options) => {
-        report = options.on_progress
-        signal = options.signal
-        return pending.promise
-      }),
-    )
-    await settle()
-    const button = doc_query(`.stub-controls button`, HTMLButtonElement)
-    button.click()
-    await settle()
-    expect(button.disabled).toBe(true)
-    expect(signal?.aborted).toBe(false)
-    report?.({ current: 3, total: 20, stage: `frame 3 of 20` })
-    await settle()
-    expect(pane_text()).toContain(`frame 3 of 20`)
-    state.run = make_run(30)
-    await settle()
-    // the old run's progress is dropped with its trajectory, its collector is told to stop,
-    // and later reports are ignored
-    expect(signal?.aborted).toBe(true)
-    expect(pane_text()).not.toContain(`frame 3 of 20`)
-    report?.({ current: 4, total: 20, stage: `frame 4 of 20` })
-    await settle()
-    expect(pane_text()).not.toContain(`frame 4 of 20`)
-    pending.resolve({ frame_stride: 1, n: 99 })
-    await settle()
-    expect(state.input).toBeUndefined()
-    expect(button.disabled).toBe(false)
-  })
+  test.each([`resolve`, `reject`] as const)(
+    `a trajectory swap immediately re-enables collection and discards a late %s`,
+    async (settlement) => {
+      const pending = Promise.withResolvers<Collected>()
+      let report: ((progress: ParseProgress) => void) | undefined
+      let signal: AbortSignal | undefined
+      const state = $state<{ run: TrajectoryRun; input?: Collected; error_msg?: string }>({
+        run: make_run(20),
+        input: undefined,
+        error_msg: undefined,
+      })
+      mount_pane(
+        bind_props({}, state),
+        vi.fn<Collect>((_run, options) => {
+          report = options.on_progress
+          signal = options.signal
+          return pending.promise
+        }),
+      )
+      await settle()
+      const button = doc_query(`.stub-controls button`, HTMLButtonElement)
+      button.click()
+      await settle()
+      expect(button.disabled).toBe(true)
+      expect(signal?.aborted).toBe(false)
+      report?.({ current: 3, total: 20, stage: `frame 3 of 20` })
+      await settle()
+      expect(pane_text()).toContain(`frame 3 of 20`)
+      state.run = make_run(30)
+      await settle()
+      // the old run's progress is dropped with its trajectory, its collector is told to stop,
+      // and later reports are ignored
+      expect(signal?.aborted).toBe(true)
+      expect(button.disabled).toBe(false)
+      expect(pane_text()).not.toContain(`frame 3 of 20`)
+      report?.({ current: 4, total: 20, stage: `frame 4 of 20` })
+      await settle()
+      expect(pane_text()).not.toContain(`frame 4 of 20`)
+      if (settlement === `resolve`) pending.resolve({ frame_stride: 1, n: 99 })
+      else pending.reject(new Error(`stale collection failure`))
+      await settle()
+      expect(state.input).toBeUndefined()
+      expect(state.error_msg).toBeUndefined()
+      expect(button.disabled).toBe(false)
+    },
+  )
 
   test(`a superseding collect and unmount abort the collect in flight; its abort rejection is not reported`, async () => {
     const signals: AbortSignal[] = []
@@ -553,7 +561,7 @@ describe(`trajectory state`, () => {
       input: undefined,
       error_msg: undefined,
     })
-    mount_pane(
+    const collect = mount_pane(
       bind_props({}, state),
       vi.fn<Collect>(
         (_run, { signal }) =>
@@ -568,10 +576,16 @@ describe(`trajectory state`, () => {
     button.click()
     await settle()
     // the button is disabled while collecting, so a second run only starts programmatically
+    const end = doc_query(`input[aria-label="End frame (exclusive)"]`, HTMLInputElement)
+    end.value = `10`
+    end.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(signals[0].aborted).toBe(false)
     button.disabled = false
     button.click()
     await settle()
     expect(signals.map((signal) => signal.aborted)).toEqual([true, false])
+    expect(collect.mock.calls.map(([, options]) => options.end_frame)).toEqual([20, 10])
     expect(state.error_msg).toBeUndefined()
 
     if (mounted) await unmount(mounted)

@@ -12,12 +12,12 @@ import {
   doc_query,
   expect_plot_controls,
   keydown,
-  make_crystal,
   marker_position,
   mount_sized,
   mouse,
   plot_svg,
 } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const base_band_structure: BaseBandStructure = {
   type: `phonon`,

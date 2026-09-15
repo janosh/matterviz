@@ -8,14 +8,12 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
     y: coord_y,
     segment,
     font_scale,
-    text_color,
     label_opts,
   }: {
     x: number
     y: number
     segment: ChartSegment
     font_scale: number
-    text_color: string
     label_opts: ChartLabelOptions
   } = $props()
 
@@ -27,7 +25,7 @@ SVG. Plain SVG text (no foreignObject) so the label survives SVG and PNG export.
   y={coord_y}
   text-anchor="middle"
   dominant-baseline="central"
-  style:fill={text_color}
+  style:fill={segment.text_color}
 >
   <tspan style:font-size="{14 * font_scale}px" font-weight="700">{segment.element}</tspan>
   {#if suffix}

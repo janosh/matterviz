@@ -4,11 +4,12 @@
 import FermiSurfaceScene from '$lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { FermiHoverData, FermiIsosurface } from '$lib/fermi-surface/types'
 import type * as threlte_core from '@threlte/core'
-import { flushSync, mount, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { MeshStandardMaterial } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, make_fermi_surface } from '../setup'
+import { bind_props } from '../setup'
+import { make_fermi_surface } from '../test-fixtures'
 
 const invalidate = vi.hoisted(() => vi.fn())
 vi.mock(`@threlte/core`, async (original) => {
@@ -59,14 +60,7 @@ const sheet = (band_index: number, n_vertices = 3): FermiIsosurface => ({
 })
 const fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
 
-// Materials of the sheet meshes in mount order (surface-major, back pass before front pass)
-const mesh_materials = () =>
-  threlte_stub.nodes
-    .filter(({ tag }) => tag === `Mesh`)
-    .map(({ props }) => props.material as MeshStandardMaterial)
-
-test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () => {
-  const props = $state({ surface_opacity: 0.6 })
+const mount_scene = (props: ComponentProps<typeof FermiSurfaceScene>) => {
   const component = mount(FermiSurfaceScene, {
     target: document.body,
     props: bind_props(
@@ -76,6 +70,17 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   })
   teardown = () => void unmount(component)
   flushSync()
+}
+
+// Materials of the sheet meshes in mount order (surface-major, back pass before front pass)
+const mesh_materials = () =>
+  threlte_stub.nodes
+    .filter(({ tag }) => tag === `Mesh`)
+    .map(({ props }) => props.material as MeshStandardMaterial)
+
+test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () => {
+  const props = $state({ surface_opacity: 0.6 })
+  mount_scene(props)
 
   // Two renderable surfaces × (back, front) passes; the empty sheet gets no mesh
   const transparent = mesh_materials()
@@ -126,12 +131,7 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
 // lattice_point_group_matrices memoized into a module-level SvelteMap inside the `symmetry_ops`
 // $derived, which Svelte 5 rejects. Must stay the only tiled mount here: a warm cache hides it.
 test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
-  const component = mount(FermiSurfaceScene, {
-    target: document.body,
-    props: { fermi_data, tile_bz: true, show_bz: false, show_vectors: false, gizmo: false },
-  })
-  teardown = () => void unmount(component)
-  flushSync()
+  mount_scene({ tile_bz: true })
   // cubic (identity) k_lattice: 48 Oh operations × 2 renderable surfaces × (back, front) pass
   expect(mesh_materials()).toHaveLength(48 * 2 * 2)
 })
@@ -143,15 +143,7 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
   const props = $state<{ hover_data: FermiHoverData | null }>({
     hover_data: { band_index: 0 } as FermiHoverData,
   })
-  const component = mount(FermiSurfaceScene, {
-    target: document.body,
-    props: bind_props(
-      { fermi_data, tile_bz: false, show_bz: false, show_vectors: false, gizmo: false },
-      props,
-    ),
-  })
-  teardown = () => void unmount(component)
-  flushSync()
+  mount_scene(props)
 
   const orbit = threlte_stub.nodes.find(({ tag }) => tag === `OrbitControls`)
   if (!orbit) throw new Error(`OrbitControls not mounted`)

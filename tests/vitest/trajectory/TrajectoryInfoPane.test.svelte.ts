@@ -3,7 +3,8 @@ import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/tr
 import { trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal, with_property_rows } from '../setup'
+import { doc_query } from '../setup'
+import { make_crystal, with_property_rows } from '../test-fixtures'
 
 afterEach(() => {
   document.body.replaceChildren()

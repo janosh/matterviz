@@ -2,19 +2,22 @@
   import type { ChemicalElement } from '$lib/element'
   import { Icon } from 'svelte-widgets'
   import { NoImage } from 'svelte-widgets/icons'
-  import type { HTMLAttributes } from 'svelte/elements'
+  import type { HTMLAttributes, HTMLImgAttributes } from 'svelte/elements'
 
   let {
     element,
+    src: source,
     missing_msg = `No image for `,
     ...rest
-  }: HTMLAttributes<HTMLImageElement | HTMLDivElement> & {
-    element: ChemicalElement
-    missing_msg?: string
-  } = $props()
+  }: HTMLAttributes<HTMLImageElement | HTMLDivElement> &
+    Pick<HTMLImgAttributes, `src` | `loading` | `decoding` | `fetchpriority`> & {
+      element: ChemicalElement
+      missing_msg?: string
+    } = $props()
 
   const src = $derived(
-    `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
+    source ??
+      `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
   )
   // URL whose load failed; a new element (new URL) is shown again until it fails too
   let failed_src = $state<string | null>(null)

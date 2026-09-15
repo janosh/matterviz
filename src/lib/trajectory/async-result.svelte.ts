@@ -6,6 +6,24 @@
 import { to_error } from '$lib/utils'
 import type { TrajectoryPositionStream } from './index'
 
+// One pane owns one request across collection and computation. Aborting a settled request
+// is harmless, so its signal also remains the stale-result guard until the next request.
+export function create_request_owner() {
+  let controller: AbortController | undefined
+  const cancel = () => {
+    controller?.abort()
+    controller = undefined
+  }
+  return {
+    cancel,
+    start: (): AbortSignal => {
+      cancel()
+      controller = new AbortController()
+      return controller.signal
+    },
+  }
+}
+
 // Structured-cloneable copy of a position stream for a worker payload. Svelte proxies cannot
 // be cloned and `$state.snapshot(stream)` would deep-copy the buffer before postMessage copies
 // it again, so the typed array goes straight through and only the small plain parts are

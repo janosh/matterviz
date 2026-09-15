@@ -10,7 +10,7 @@ import { make_supercell } from '$lib/structure/supercell'
 import { test_molecules } from '$site/molecules'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
-import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../setup'
+import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
 
 const make_random_structure = (n_atoms: number, seed = 7): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]

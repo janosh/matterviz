@@ -10,7 +10,8 @@ import {
 import { create_volume_sampler, prepare_geometry_grid } from '$lib/isosurface/sampling'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '$lib/isosurface/types'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
-import { cubic_matrix, install_stub_worker, make_grid, make_volume } from '../setup'
+import { install_stub_worker } from '../setup'
+import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
 
 // Periodic Gaussian blob centred in a 10 A cubic cell
 const blob_volume = (n_pts = 16) =>

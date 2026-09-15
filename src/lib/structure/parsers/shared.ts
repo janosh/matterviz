@@ -1,5 +1,5 @@
 // Plumbing shared by parse.ts and the per-format parsers in this directory:
-// the parse-diagnostics collector, numeric/element coercion, and CIF tokenization.
+// numeric/element coercion, recoverable warnings, and CIF tokenization.
 // Lives here (not in parse.ts) so format parsers can use it without importing
 // their own dispatcher.
 import type { ElementSymbol } from '$lib/element'
@@ -16,37 +16,7 @@ import type {
   StructureBond,
 } from '$lib/structure'
 import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
-import { normalize_scientific_notation, to_error } from '$lib/utils'
-
-// === Parse diagnostics ===
-// See the parse error contract at the top of parse.ts: parsers record reasons here and
-// return null; only the top-level entry points read the collector and throw.
-let parse_errors: string[] = []
-
-export const reset_parse_diagnostics = (): void => {
-  parse_errors = []
-}
-// Record a failure reason; with `error` present, logs in `console.error('msg:', error)` form
-export const diag_error = (message: string, error?: unknown): void => {
-  const detail = error === undefined ? `` : `: ${to_error(error).message}`
-  parse_errors.push(`${message}${detail}`)
-  if (error === undefined) console.error(message)
-  else console.error(`${message}:`, error)
-}
-export const diag_warn = (message: string): void => console.warn(message)
-// Deduplicated failure reasons recorded since the last reset
-export const get_parse_errors = (): string[] => [...new Set(parse_errors)]
-
-// Run a format parser's body under the parse error contract: an unexpected throw becomes a
-// recorded reason plus null, so only the top-level entry points ever throw.
-export const guard_parse = <T>(format: string, parse: () => T | null): T | null => {
-  try {
-    return parse()
-  } catch (error) {
-    diag_error(`Error parsing ${format} file`, error)
-    return null
-  }
-}
+import { normalize_scientific_notation } from '$lib/utils'
 
 // === Numeric coercion ===
 
@@ -175,18 +145,13 @@ export const is_num_token = (token: string, integer = false): boolean => {
   return !integer || Number.isInteger(value)
 }
 
-// Split a whitespace-delimited record row, recording a reason and returning null when it
-// has fewer than `min_tokens` columns. `expected` names the layout, e.g.
+// Split a whitespace-delimited record row, rejecting fewer than `min_tokens` columns.
+// `expected` names the layout, e.g.
 // "MOL2 atom row (need 'id name x y z [type]')".
-export const row_tokens = (
-  row: string,
-  min_tokens: number,
-  expected: string,
-): string[] | null => {
+export const row_tokens = (row: string, min_tokens: number, expected: string): string[] => {
   const tokens = row.trim().split(/\s+/)
   if (tokens.length >= min_tokens) return tokens
-  diag_error(`Invalid ${expected}: '${row.trim()}'`)
-  return null
+  throw new Error(`Invalid ${expected}: '${row.trim()}'`)
 }
 
 // Arrays and typed arrays (HDF5 readers hand out Float64Array rows) both count as rows
@@ -195,17 +160,15 @@ const is_array_like = (value: unknown): value is ArrayLike<unknown> =>
 
 export const vec3_from_values = (values: unknown, context: string): Vec3 => {
   const array_like = is_array_like(values) ? values : undefined
-  if (array_like?.length !== 3) {
+  if (array_like?.length !== 3)
     throw new Error(
       `Invalid ${context}: expected 3 coordinates, got ${array_like?.length ?? 0}`,
     )
-  }
   const coords = math.finite_vec3_from_values(array_like)
-  if (!coords) {
+  if (!coords)
     throw new Error(
       `Invalid ${context}: expected 3 finite coordinates, got [${Array.from(array_like, String).join(`, `)}]`,
     )
-  }
   return coords
 }
 
@@ -260,16 +223,14 @@ export const read_cell_params = (
     const found = token_by_tag.get(tag_for(name))
     if (!found?.token || [`.`, `?`].includes(found.token)) return null
     const value = parse_cif_uncertain_number(found.token)
-    if (value === null) {
+    if (value === null)
       throw new Error(`Invalid ${dialect} cell parameter in line: ${found.line}`)
-    }
     return value
   })
   const params = values.filter((value): value is number => value !== null)
   if (params.length < tags.length) return null
-  if (params.slice(0, 3).some((length) => length <= 0)) {
+  if (params.slice(0, 3).some((length) => length <= 0))
     throw new Error(`${dialect} cell has non-positive edge lengths: [${params.join(`, `)}]`)
-  }
   return params
 }
 
@@ -292,7 +253,7 @@ export const drop_placeholder_cell = (
   cell_name: string,
 ): readonly number[] | null => {
   if (!is_placeholder_cell(params)) return params
-  diag_warn(
+  console.warn(
     `${format}: ignoring placeholder ${cell_name} (1 1 1 90 90 90), treating as molecule`,
   )
   return null
@@ -361,7 +322,7 @@ export function validate_element_symbol(symbol: string, index: number): ElementS
 
   // Fallback to default elements by atomic number
   const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length]
-  diag_warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
+  console.warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
   return fallback
 }
 
@@ -391,8 +352,8 @@ const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
 
 // cart→frac converter that falls back to per-axis-length division for singular lattices.
 // axis_lengths defaults to the row norms of the lattice matrix; naming the cell in
-// `context` makes the fallback warn on the caller's behalf (through `warn`, default the
-// parse-diagnostics channel; trajectory readers pass their collector).
+// `context` makes the fallback warn on the caller's behalf (through `warn`, default
+// console.warn; trajectory readers pass their collector).
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
   opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
@@ -408,7 +369,7 @@ export const cart_to_frac_with_fallback = (
     Math.hypot(...matrix[2]),
   ]
   if (opts.context) {
-    const warn = opts.warn ?? diag_warn
+    const warn = opts.warn ?? console.warn
     warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
   }
   return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
@@ -457,7 +418,7 @@ export const resolve_bonds = (
     bonds.set(key, normalize_structure_bond(site_idx_1, site_idx_2, order))
   }
   if (dropped > 0) {
-    diag_warn(
+    console.warn(
       `${context}: dropped ${dropped} bond(s) referencing unknown atom ids or bonding an atom to itself`,
     )
   }

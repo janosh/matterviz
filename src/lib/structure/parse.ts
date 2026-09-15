@@ -18,11 +18,7 @@ import {
   cell_params_to_matrix,
   cif_block_ids,
   count_elements,
-  diag_error,
-  diag_warn,
   element_from_candidates,
-  get_parse_errors,
-  guard_parse,
   is_cif_data_header,
   is_cif_loop_header,
   iter_cif_loops,
@@ -32,7 +28,6 @@ import {
   parse_coordinate,
   parse_float_token,
   read_cell_params,
-  reset_parse_diagnostics,
   split_cif_tokens,
   validate_element_symbol,
   vec3_from_values,
@@ -48,21 +43,13 @@ import { is_xyz_atom_line, line_end } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '$lib/trajectory/parse/xyz'
-import { parse_leading_num } from '$lib/utils'
+import { parse_leading_num, to_error } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '$lib/structure/format-detect'
 
-// === Parse error contract ===
-// Individual format parsers (parse_poscar, parse_cif, parse_xyz, parse_phonopy_yaml, ...)
-// return `AnyStructure | null` on failure and record failure reasons in a module-level
-// collector (mirrored to the console). The top-level entry point parse_structure_file
-// resets the collector on entry and THROWS a descriptive Error aggregating the recorded
-// reasons when nothing parses, so failure causes can reach the UI (callers surface
-// error.message). Warnings (element-symbol fallbacks, skipped atoms, ...) never fail a
-// parse and only go to the console. The collector itself and the shared coercion helpers
-// live in ./parsers/shared so the per-format parsers in ./parsers can record reasons
-// without importing this dispatcher.
+// Format parsers throw local errors describing the invalid input. The dispatcher adds
+// filename context; recoverable issues such as skipped atoms remain warnings.
 
 // Parse coordinates from a line, repairing malformed runs like "1.0-2.0-3.0"
 function parse_coordinate_line(line: string): number[] {
@@ -144,136 +131,127 @@ function resolve_optimade_element(
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1, spec }
 }
 
-export const parse_poscar = (content: string): Crystal | null =>
-  guard_parse(`POSCAR`, () => {
-    // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
-    const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
+export const parse_poscar = (content: string): Crystal => {
+  // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
+  const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
 
-    if (lines.length < 8) {
-      diag_error(`POSCAR file too short`)
-      return null
+  if (lines.length < 8) throw new Error(`POSCAR file too short`)
+
+  const cursor = lines_cursor(lines)
+  const parsed = parse_vasp_header(cursor, { format: `POSCAR` })
+  if (!parsed.ok) throw new Error(parsed.error)
+  const { scale, lattice: scaled_lattice, elements, counts } = parsed.header
+  const { has_selective_dynamics, is_direct } = parsed.header
+
+  const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
+  const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
+  if (!is_direct && !poscar_cart_to_frac.exact) {
+    console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
+  }
+  // The header cursor stops on the first coordinate line
+  const first_coord_line = cursor.position()
+  const sites: Site[] = []
+  let atom_index = 0
+
+  for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
+    const element = elements[elem_idx]
+    const count = counts[elem_idx]
+
+    for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
+      const coord_line_idx = first_coord_line + atom_index + atom_count_idx
+      if (coord_line_idx >= lines.length)
+        throw new Error(`Not enough coordinate lines in POSCAR`)
+
+      const coords = vec3_from_values(
+        parse_coordinate_line(lines[coord_line_idx]),
+        `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
+      )
+
+      // VASP reads the flags case-insensitively (`T`/`t`/`.TRUE.` all mean movable)
+      const flags = has_selective_dynamics ? lines[coord_line_idx].trim().split(/\s+/) : []
+      const is_true = (flag: string) => /^\.?t/i.test(flag)
+      const selective_dynamics: [boolean, boolean, boolean] | undefined =
+        flags.length >= 6
+          ? [is_true(flags[3]), is_true(flags[4]), is_true(flags[5])]
+          : undefined
+      // Cartesian input is scaled then converted to fractional (axis-length fallback
+      // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
+      // both stay consistent (singular Cartesian keeps the scaled input as xyz)
+      const cart = is_direct ? null : apply_axis_scale(coords, scale)
+      const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
+      const abc = wrap_to_unit_cell(raw_abc)
+      const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
+
+      sites.push(
+        make_site(
+          element,
+          abc,
+          xyz,
+          `${element}${atom_index + atom_count_idx + 1}`,
+          selective_dynamics ? { selective_dynamics } : {},
+        ),
+      )
     }
 
-    const cursor = lines_cursor(lines)
-    const parsed = parse_vasp_header(cursor, { format: `POSCAR` })
-    // Rethrow so guard_parse records the reason: header failures reach the collector the
-    // same way the inline lattice validation they replace always did
-    if (!parsed.ok) throw new Error(parsed.error)
-    const { scale, lattice: scaled_lattice, elements, counts } = parsed.header
-    const { has_selective_dynamics, is_direct } = parsed.header
+    atom_index += count
+  }
 
-    const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
-    const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
-    if (!is_direct && !poscar_cart_to_frac.exact) {
-      diag_warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
-    }
-    // The header cursor stops on the first coordinate line
-    const first_coord_line = cursor.position()
-    const sites: Site[] = []
-    let atom_index = 0
-
-    for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
-      const element = elements[elem_idx]
-      const count = counts[elem_idx]
-
-      for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
-        const coord_line_idx = first_coord_line + atom_index + atom_count_idx
-        if (coord_line_idx >= lines.length) {
-          diag_error(`Not enough coordinate lines in POSCAR`)
-          return null
-        }
-
-        const coords = vec3_from_values(
-          parse_coordinate_line(lines[coord_line_idx]),
-          `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
-        )
-
-        // VASP reads the flags case-insensitively (`T`/`t`/`.TRUE.` all mean movable)
-        const flags = has_selective_dynamics ? lines[coord_line_idx].trim().split(/\s+/) : []
-        const is_true = (flag: string) => /^\.?t/i.test(flag)
-        const selective_dynamics: [boolean, boolean, boolean] | undefined =
-          flags.length >= 6
-            ? [is_true(flags[3]), is_true(flags[4]), is_true(flags[5])]
-            : undefined
-        // Cartesian input is scaled then converted to fractional (axis-length fallback
-        // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
-        // both stay consistent (singular Cartesian keeps the scaled input as xyz)
-        const cart = is_direct ? null : apply_axis_scale(coords, scale)
-        const raw_abc = cart ? poscar_cart_to_frac.convert(cart) : coords
-        const abc = wrap_to_unit_cell(raw_abc)
-        const xyz = cart && !poscar_cart_to_frac.exact ? cart : poscar_frac_to_cart(abc)
-
-        sites.push(
-          make_site(
-            element,
-            abc,
-            xyz,
-            `${element}${atom_index + atom_count_idx + 1}`,
-            selective_dynamics ? { selective_dynamics } : {},
-          ),
-        )
-      }
-
-      atom_index += count
-    }
-
-    return { sites, lattice: make_lattice(scaled_lattice) }
-  })
+  return { sites, lattice: make_lattice(scaled_lattice) }
+}
 
 // Standard or extended XYZ through the trajectory reader, so both agree on what a file
 // means (Properties columns, Lattice, pbc, move flags). A multi-frame file yields its LAST
 // complete frame; a frame the writer was still appending (atom block past the end of the
 // file, or a half-written last line) is dropped with a warning by index_xyz_frames, and a
 // file with no complete frame at all is an error, not a silently empty structure.
-export const parse_xyz = (content: string): AnyStructure | null =>
-  guard_parse(`XYZ`, () => {
-    const text = content.trim()
-    const collector = create_warning_collector()
-    const frames = index_xyz_frames(text, collector.warn)
-    // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
-    // Tinker-style title after the count (`6 methane`) or a Properties layout with another
-    // leading column (`id:I:1:species:S:1:pos:R:3`) hides the frame from it. A file whose
-    // leading atom count accounts for exactly every remaining line is still one complete
-    // frame; a count larger than that is a torn frame and stays an error.
-    const count_end = line_end(text, 0)
-    const leading_count = Math.trunc(parse_leading_num(text.slice(0, count_end)))
-    if (frames.length === 0 && leading_count > 0) {
-      const comment_start = Math.min(count_end + 1, text.length)
-      const comment_end = line_end(text, comment_start)
-      const atoms_start = Math.min(comment_end + 1, text.length)
-      let remaining_lines = 0
-      for (let pos = atoms_start; pos < text.length; pos = line_end(text, pos) + 1) {
-        remaining_lines++
-      }
-      if (leading_count === remaining_lines) {
-        const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
-        frames.push({
-          start: 0,
-          line: 1,
-          num_atoms: leading_count,
-          comment,
-          atoms_start,
-          end: text.length,
-        })
-      }
+export const parse_xyz = (content: string): AnyStructure => {
+  const text = content.trim()
+  const collector = create_warning_collector()
+  const frames = index_xyz_frames(text, collector.warn)
+  // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
+  // Tinker-style title after the count (`6 methane`) or a Properties layout with another
+  // leading column (`id:I:1:species:S:1:pos:R:3`) hides the frame from it. A file whose
+  // leading atom count accounts for exactly every remaining line is still one complete
+  // frame; a count larger than that is a torn frame and stays an error.
+  const count_end = line_end(text, 0)
+  const leading_count = Math.trunc(parse_leading_num(text.slice(0, count_end)))
+  if (frames.length === 0 && leading_count > 0) {
+    const comment_start = Math.min(count_end + 1, text.length)
+    const comment_end = line_end(text, comment_start)
+    const atoms_start = Math.min(comment_end + 1, text.length)
+    let remaining_lines = 0
+    for (let pos = atoms_start; pos < text.length; pos = line_end(text, pos) + 1) {
+      remaining_lines++
     }
-    const last = frames.at(-1)
-    if (!last) {
-      const detail = collector.warnings.length ? ` (${collector.warnings.join(`; `)})` : ``
-      throw new Error(`XYZ file has no complete frame${detail}`)
+    if (leading_count === remaining_lines) {
+      const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
+      frames.push({
+        start: 0,
+        line: 1,
+        num_atoms: leading_count,
+        comment,
+        atoms_start,
+        end: text.length,
+      })
     }
-    const frame_idx = frames.length - 1
-    const { structure } = build_xyz_frame(
-      text,
-      last,
-      { frame_label: `frame ${frame_idx} (line ${last.line})`, default_step: frame_idx },
-      collector,
-    )
-    // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary
-    // cell. Aperiodic axes (ASE's pbc="F F F" molecules, a slab's vacuum direction) are left
-    // alone: folding them would tear the geometry apart.
-    return normalize_fractional_coords(structure)
-  })
+  }
+  const last = frames.at(-1)
+  if (!last) {
+    const detail = collector.warnings.length ? ` (${collector.warnings.join(`; `)})` : ``
+    throw new Error(`XYZ file has no complete frame${detail}`)
+  }
+  const frame_idx = frames.length - 1
+  const { structure } = build_xyz_frame(
+    text,
+    last,
+    { frame_label: `frame ${frame_idx} (line ${last.line})`, default_step: frame_idx },
+    collector,
+  )
+  // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary
+  // cell. Aperiodic axes (ASE's pbc="F F F" molecules, a slab's vacuum direction) are left
+  // alone: folding them would tear the geometry apart.
+  return normalize_fractional_coords(structure)
+}
 
 // Parse a single symmetry expression dimension (e.g., "x-y+1/3" or "-x+y")
 // Returns the numeric coefficient for each variable and the translation constant
@@ -303,13 +281,13 @@ const parse_symmetry_expression = (
     const parts = term.split(`/`)
     // skip malformed terms like "1/2/3"
     if (parts.length > 2) {
-      diag_warn(`Skipping malformed symmetry term '${term}'`)
+      console.warn(`Skipping malformed symmetry term '${term}'`)
       continue
     }
     const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
     if (!Number.isFinite(value)) {
-      diag_warn(`Rejecting symmetry op with unresolvable term '${term}'`)
+      console.warn(`Rejecting symmetry op with unresolvable term '${term}'`)
       return null
     }
     translation += sign * value
@@ -502,11 +480,10 @@ const cif_row_element = (
   // an all-caps label reads two letters first; `label_letters` is then its one-letter reading
   const { all_caps = ``, letters: label_letters = all_caps[0] ?? `` } =
     /(?<all_caps>[A-Z]{2})|(?<letters>[A-Z][a-z]*)/.exec(raw_label ?? ``)?.groups ?? {}
-  if (!symbol_letters && !label_letters) {
+  if (!symbol_letters && !label_letters)
     throw new Error(
       `Could not extract element symbol from type symbol '${raw_symbol}' / label '${raw_label}'`,
     )
-  }
   const two_letter = coerce_elem_symbol(capitalize_symbol(all_caps))
   if (two_letter) {
     if (!is_elem_symbol(label_letters)) return { element: two_letter }
@@ -646,230 +623,199 @@ const keep_one_disorder_group = (rows: string[][], disorder_col: number): string
   })
 }
 
-export const parse_cif = (content: string): Crystal | null =>
-  guard_parse(`CIF`, () => {
-    const text = content.trim()
-    if (!text) {
-      diag_error(`CIF file is empty`)
-      return null
+export const parse_cif = (content: string): Crystal => {
+  const text = content.trim()
+  if (!text) throw new Error(`CIF file is empty`)
+
+  const lines = text.split(`\n`)
+  const block_ids = cif_block_ids(lines)
+
+  // The first atom-site loop that has coordinates (fract or Cartn) and data rows
+  const find_atom_loop = () => {
+    for (const { headers, data_start } of iter_cif_loops(lines)) {
+      if (!headers.some((header) => header.includes(`_atom_site_`))) continue
+      const header_indices = build_cif_atom_site_header_indices(headers)
+      const coord_cols = cif_coord_columns(header_indices)
+      if (!coord_cols) continue
+      const atom_data_lines = cif_loop_lines(lines, data_start)
+      if (atom_data_lines.length === 0) continue
+      return { header_indices, coord_cols, atom_data_lines, block_id: block_ids[data_start] }
     }
+    return null
+  }
 
-    const lines = text.split(`\n`)
-    const block_ids = cif_block_ids(lines)
+  const atom_loop = find_atom_loop()
+  if (!atom_loop) throw new Error(`No valid atom site loop found in CIF file`)
+  const { header_indices, coord_cols, atom_data_lines, block_id } = atom_loop
+  // Everything else describing these atoms — cell, space group, symops, atom-type counts —
+  // is read from the data block the atom-site loop lives in. A multi-block file (a global
+  // block plus one per phase) declares a different cell and space group in each, so
+  // reading them file-wide picked whichever came first, not the one that applies.
+  const block_lines = lines.filter((_line, idx) => block_ids[idx] === block_id)
 
-    // The first atom-site loop that has coordinates (fract or Cartn) and data rows
-    const find_atom_loop = () => {
-      for (const { headers, data_start } of iter_cif_loops(lines)) {
-        if (!headers.some((header) => header.includes(`_atom_site_`))) continue
-        const header_indices = build_cif_atom_site_header_indices(headers)
-        const coord_cols = cif_coord_columns(header_indices)
-        if (!coord_cols) continue
-        const atom_data_lines = cif_loop_lines(lines, data_start)
-        if (atom_data_lines.length === 0) continue
-        return { header_indices, coord_cols, atom_data_lines, block_id: block_ids[data_start] }
-      }
-      return null
+  // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
+  // loop is as likely to follow the atom-site loop as to precede it
+  const symmetry_ops: string[] = []
+  for (const { headers, data_start } of iter_cif_loops(block_lines)) {
+    const symop_col = headers.findIndex((header) => CIF_SYMOP_TAG_RE.test(header))
+    if (symop_col === -1) continue
+    for (const line of cif_loop_lines(block_lines, data_start)) {
+      symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
     }
+  }
 
-    const atom_loop = find_atom_loop()
-    if (!atom_loop) {
-      diag_error(`No valid atom site loop found in CIF file`)
-      return null
-    }
-    const { header_indices, coord_cols, atom_data_lines, block_id } = atom_loop
-    // Everything else describing these atoms — cell, space group, symops, atom-type counts —
-    // is read from the data block the atom-site loop lives in. A multi-block file (a global
-    // block plus one per phase) declares a different cell and space group in each, so
-    // reading them file-wide picked whichever came first, not the one that applies.
-    const block_lines = lines.filter((_line, idx) => block_ids[idx] === block_id)
+  const max_required_idx = Math.max(...coord_cols.columns)
+  const { disorder } = header_indices
 
-    // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
-    // loop is as likely to follow the atom-site loop as to precede it
-    const symmetry_ops: string[] = []
-    for (const { headers, data_start } of iter_cif_loops(block_lines)) {
-      const symop_col = headers.findIndex((header) => CIF_SYMOP_TAG_RE.test(header))
-      if (symop_col === -1) continue
-      for (const line of cif_loop_lines(block_lines, data_start)) {
-        symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
-      }
-    }
-
-    const max_required_idx = Math.max(...coord_cols.columns)
-    const { disorder } = header_indices
-
-    // Rows too short to reach their coordinate columns wrapped a value onto a continuation
-    // line (multi-line records are not supported) and are dropped
-    const complete_rows = atom_data_lines
-      .map(split_cif_tokens)
-      .filter((tokens) => tokens.length > max_required_idx)
-    const rows =
-      disorder === undefined ? complete_rows : keep_one_disorder_group(complete_rows, disorder)
-    const atoms = rows
-      .map((tokens, atom_idx) => {
-        try {
-          return parse_cif_atom_data(
-            tokens,
-            header_indices,
-            coord_cols.coords_type,
-            coord_cols.columns,
-            atom_idx,
-          )
-        } catch (error) {
-          diag_warn(`Skipping invalid atom data: ${error}`)
-          return null
-        }
-      })
-      .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
-    const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
-    if (ambiguous_labels.size > 0) {
-      diag_warn(
-        `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
-      )
-    }
-
-    if (atoms.length === 0) {
-      diag_error(`No valid atoms found in CIF file`)
-      return null
-    }
-
-    const cell_params = read_cell_params(block_lines, `CIF`)
-    if (!cell_params) {
-      diag_error(`Insufficient cell parameters in CIF file`)
-      return null
-    }
-    const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = cell_params
-    const lattice_matrix = cell_params_to_matrix(cell_params)
-    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-    const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, {
-      axis_lengths: [lattice_a, lattice_b, lattice_c],
-    }).convert
-
-    // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
-    const atom_type_counts: Record<string, number> = {}
-    for (const { headers, data_start } of iter_cif_loops(block_lines)) {
-      const hdrs = headers.map((hdr) => hdr.toLowerCase())
-      const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
-      const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
-      if (sym_idx === -1 || num_idx === -1) continue
-      for (const line of cif_loop_lines(block_lines, data_start)) {
-        const toks = split_cif_tokens(line)
-        if (toks.length <= Math.max(sym_idx, num_idx)) continue
-        // Rows that normalize to the same element (Fe2+ and Fe3+) sum; the count drops a
-        // standard uncertainty (`8(0)`) like any CIF number and a non-element row is skipped
-        const sym = cif_type_symbol_element(toks[sym_idx])
-        const num = parse_cif_uncertain_number(toks[num_idx])
-        if (sym && num !== null) {
-          atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + Math.trunc(num)
-        }
-      }
-      break
-    }
-
-    const observed_counts = count_elements(atoms.map((atom) => atom.element))
-    const already_enumerated =
-      Object.keys(atom_type_counts).length > 0 &&
-      Object.entries(atom_type_counts).every(
-        ([element, exp]) => (observed_counts[element] ?? 0) >= exp,
-      )
-
-    const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops)
-
-    // Candidate lattice-centering translations from the space-group symbol (R
-    // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
-    // apply them is decided below by reconciling against _atom_type_number_in_cell.
-    const centering_letter = extract_cif_centering(block_lines)
-    const is_hexagonal_setting =
-      Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
-    const centering =
-      centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
-        ? CENTERING_VECTORS[centering_letter]
-        : []
-
-    // Build all sites by expanding each atom row via the symmetry ops (+ optional
-    // centering). Positions coincide at 6 dp (absorbs float error from compound ops) are
-    // ONE site: a symmetry image landing on an existing image of the same row is a
-    // duplicate and dropped, while another row at that position contributes its species
-    // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
-    // repeats (Fe2+ / Fe3+ rows). This is what pymatgen's CifParser does and is what lets
-    // a CIF written from a disordered structure read back with the same site count.
-    // Sites keep the row's _atom_site_label (refinement labels like `Fe1`/`OH2` survive a
-    // parse -> structure_to_cif_str round trip); without a label column they are named
-    // `${element}${site_idx + 1}` like every other parser's.
-    const build_sites = (extra_centering: Vec3[]): Site[] => {
-      const sites: Site[] = []
-      const site_idx_by_coords = new Map<string, number>()
-      const rows_at_site: Set<number>[] = [] // atom-row indices merged into each site
-      for (const [row_idx, atom] of atoms.entries()) {
-        const { element } = atom
-        const coords = wrap_to_unit_cell(
-          atom.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
+  // Rows too short to reach their coordinate columns wrapped a value onto a continuation
+  // line (multi-line records are not supported) and are dropped
+  const complete_rows = atom_data_lines
+    .map(split_cif_tokens)
+    .filter((tokens) => tokens.length > max_required_idx)
+  const rows =
+    disorder === undefined ? complete_rows : keep_one_disorder_group(complete_rows, disorder)
+  const atoms = rows
+    .map((tokens, atom_idx) => {
+      try {
+        return parse_cif_atom_data(
+          tokens,
+          header_indices,
+          coord_cols.coords_type,
+          coord_cols.columns,
+          atom_idx,
         )
-        const fractional_atom: CifAtom = { ...atom, coords, coords_type: `fract` }
-
-        const equiv_atoms = apply_symmetry_ops(fractional_atom, ops_to_use, extra_centering)
-        for (const equiv_atom of equiv_atoms) {
-          const abc = equiv_atom.coords
-          const key = cif_coords_key(abc)
-          const site_idx = site_idx_by_coords.get(key)
-          if (site_idx === undefined) {
-            site_idx_by_coords.set(key, sites.length)
-            rows_at_site.push(new Set([row_idx]))
-            const label = equiv_atom.id ?? `${element}${sites.length + 1}`
-            sites.push(
-              make_site(element, abc, frac_to_cart(abc), label, {}, equiv_atom.occupancy),
-            )
-            continue
-          }
-          if (rows_at_site[site_idx].has(row_idx)) continue // symmetry duplicate
-          rows_at_site[site_idx].add(row_idx)
-          const { species } = sites[site_idx]
-          const same_element = species.find((spec) => spec.element === element)
-          if (same_element) same_element.occu += equiv_atom.occupancy
-          else species.push({ element, occu: equiv_atom.occupancy, oxidation_state: 0 })
-        }
+      } catch (error) {
+        console.warn(`Skipping invalid atom data: ${error}`)
+        return null
       }
-      return sites
-    }
+    })
+    .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+  const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
+  if (ambiguous_labels.size > 0) {
+    console.warn(
+      `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
+    )
+  }
 
-    // Expand with point-group ops first. If the space group is centered and the
-    // result falls short of _atom_type_number_in_cell, retry with centering and
-    // adopt it only when it reconciles the expected total exactly — this fixes
-    // CIFs listing point-only ops for the asymmetric unit while avoiding
-    // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
-    // COD 7008984, where listed ops + atoms already total the cell contents).
-    let sites = build_sites([])
-    const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
-    if (centering.length > 0 && expected_total > sites.length) {
-      const centered_sites = build_sites(centering)
-      // Adopt centering only when per-element counts reconcile exactly. Checking
-      // the total alone is insufficient: it can coincide while individual element
-      // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
-      // species entries, not sites: a disordered site holds one entry per merged row
-      const species = centered_sites.flatMap((site) => site.species)
-      const counts = count_elements(species.map((spec) => spec.element))
-      const reconciles =
-        species.length === expected_total &&
-        Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
-      if (reconciles) sites = centered_sites
-    }
+  if (atoms.length === 0) throw new Error(`No valid atoms found in CIF file`)
 
-    return { sites, lattice: make_lattice(lattice_matrix) }
-  })
-
-function convert_phonopy_cell(cell: PhonopyCell): Crystal {
-  // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix = matrix3x3_from_rows(cell.lattice, `phonopy lattice`)
+  const cell_params = read_cell_params(block_lines, `CIF`)
+  if (!cell_params) throw new Error(`Insufficient cell parameters in CIF file`)
+  const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = cell_params
+  const lattice_matrix = cell_params_to_matrix(cell_params)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+  const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, {
+    axis_lengths: [lattice_a, lattice_b, lattice_c],
+  }).convert
 
-  const sites = cell.points.map((point, point_idx) => {
-    const element = element_from_candidates([point.symbol], point_idx)
-    const abc = vec3_from_values(point.coordinates, `phonopy point coordinates`)
-    const properties = {
-      mass: point.mass,
-      ...(point.reduced_to !== undefined && { reduced_to: point.reduced_to }),
+  // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
+  const atom_type_counts: Record<string, number> = {}
+  for (const { headers, data_start } of iter_cif_loops(block_lines)) {
+    const hdrs = headers.map((hdr) => hdr.toLowerCase())
+    const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
+    const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
+    if (sym_idx === -1 || num_idx === -1) continue
+    for (const line of cif_loop_lines(block_lines, data_start)) {
+      const toks = split_cif_tokens(line)
+      if (toks.length <= Math.max(sym_idx, num_idx)) continue
+      // Rows that normalize to the same element (Fe2+ and Fe3+) sum; the count drops a
+      // standard uncertainty (`8(0)`) like any CIF number and a non-element row is skipped
+      const sym = cif_type_symbol_element(toks[sym_idx])
+      const num = parse_cif_uncertain_number(toks[num_idx])
+      if (sym && num !== null) {
+        atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + Math.trunc(num)
+      }
     }
-    return make_site(element, abc, frac_to_cart(abc), `${element}${point_idx + 1}`, properties)
-  })
+    break
+  }
+
+  const observed_counts = count_elements(atoms.map((atom) => atom.element))
+  const already_enumerated =
+    Object.keys(atom_type_counts).length > 0 &&
+    Object.entries(atom_type_counts).every(
+      ([element, exp]) => (observed_counts[element] ?? 0) >= exp,
+    )
+
+  const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops)
+
+  // Candidate lattice-centering translations from the space-group symbol (R
+  // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
+  // apply them is decided below by reconciling against _atom_type_number_in_cell.
+  const centering_letter = extract_cif_centering(block_lines)
+  const is_hexagonal_setting =
+    Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
+  const centering =
+    centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
+      ? CENTERING_VECTORS[centering_letter]
+      : []
+
+  // Build all sites by expanding each atom row via the symmetry ops (+ optional
+  // centering). Positions coincide at 6 dp (absorbs float error from compound ops) are
+  // ONE site: a symmetry image landing on an existing image of the same row is a
+  // duplicate and dropped, while another row at that position contributes its species
+  // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
+  // repeats (Fe2+ / Fe3+ rows). This is what pymatgen's CifParser does and is what lets
+  // a CIF written from a disordered structure read back with the same site count.
+  // Sites keep the row's _atom_site_label (refinement labels like `Fe1`/`OH2` survive a
+  // parse -> structure_to_cif_str round trip); without a label column they are named
+  // `${element}${site_idx + 1}` like every other parser's.
+  const build_sites = (extra_centering: Vec3[]): Site[] => {
+    const sites: Site[] = []
+    const site_idx_by_coords = new Map<string, number>()
+    const rows_at_site: Set<number>[] = [] // atom-row indices merged into each site
+    for (const [row_idx, atom] of atoms.entries()) {
+      const { element } = atom
+      const coords = wrap_to_unit_cell(
+        atom.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
+      )
+      const fractional_atom: CifAtom = { ...atom, coords, coords_type: `fract` }
+
+      const equiv_atoms = apply_symmetry_ops(fractional_atom, ops_to_use, extra_centering)
+      for (const equiv_atom of equiv_atoms) {
+        const abc = equiv_atom.coords
+        const key = cif_coords_key(abc)
+        const site_idx = site_idx_by_coords.get(key)
+        if (site_idx === undefined) {
+          site_idx_by_coords.set(key, sites.length)
+          rows_at_site.push(new Set([row_idx]))
+          const label = equiv_atom.id ?? `${element}${sites.length + 1}`
+          sites.push(
+            make_site(element, abc, frac_to_cart(abc), label, {}, equiv_atom.occupancy),
+          )
+          continue
+        }
+        if (rows_at_site[site_idx].has(row_idx)) continue // symmetry duplicate
+        rows_at_site[site_idx].add(row_idx)
+        const { species } = sites[site_idx]
+        const same_element = species.find((spec) => spec.element === element)
+        if (same_element) same_element.occu += equiv_atom.occupancy
+        else species.push({ element, occu: equiv_atom.occupancy, oxidation_state: 0 })
+      }
+    }
+    return sites
+  }
+
+  // Expand with point-group ops first. If the space group is centered and the
+  // result falls short of _atom_type_number_in_cell, retry with centering and
+  // adopt it only when it reconciles the expected total exactly — this fixes
+  // CIFs listing point-only ops for the asymmetric unit while avoiding
+  // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
+  // COD 7008984, where listed ops + atoms already total the cell contents).
+  let sites = build_sites([])
+  const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
+  if (centering.length > 0 && expected_total > sites.length) {
+    const centered_sites = build_sites(centering)
+    // Adopt centering only when per-element counts reconcile exactly. Checking
+    // the total alone is insufficient: it can coincide while individual element
+    // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
+    // species entries, not sites: a disordered site holds one entry per merged row
+    const species = centered_sites.flatMap((site) => site.species)
+    const counts = count_elements(species.map((spec) => spec.element))
+    const reconciles =
+      species.length === expected_total &&
+      Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
+    if (reconciles) sites = centered_sites
+  }
 
   return { sites, lattice: make_lattice(lattice_matrix) }
 }
@@ -883,55 +829,55 @@ const PHONOPY_CELL_TYPES = [
   `primitive_cell`,
 ] as const
 
-const get_phonopy_cell = (
-  data: unknown,
-  cell_type: (typeof PHONOPY_CELL_TYPES)[number],
-): PhonopyCell | undefined => {
-  if (!data || typeof data !== `object`) return undefined
-  const cell: unknown = Reflect.get(data, cell_type)
-  if (!cell || typeof cell !== `object`) return undefined
-  const { lattice, points } = cell as Record<`lattice` | `points`, unknown>
-  return Array.isArray(lattice) && Array.isArray(points) ? (cell as PhonopyCell) : undefined
+// Phonopy YAML: the most detailed cell present (supercell before unit cell before primitive).
+export const parse_phonopy_yaml = (content: string): Crystal => {
+  // Drop the phonon_displacements block (huge, and never read) before handing the
+  // YAML to js-yaml: it runs from its key to the next top-level key
+  const filtered_lines: string[] = []
+  let skip_displacements = false
+  for (const line of content.split(`\n`)) {
+    if (line.trim().startsWith(`phonon_displacements:`)) skip_displacements = true
+    else if (!skip_displacements || /^[a-zA-Z_]/.test(line)) {
+      skip_displacements = false
+      filtered_lines.push(line)
+    }
+  }
+  const data = yaml_load(filtered_lines.join(`\n`))
+  if (!data) throw new Error(`Failed to parse phonopy YAML`)
+  for (const kind of PHONOPY_CELL_TYPES) {
+    const cell: unknown = typeof data === `object` ? Reflect.get(data, kind) : undefined
+    if (!cell || typeof cell !== `object`) continue
+    const { lattice, points } = cell as PhonopyCell
+    if (!Array.isArray(lattice) || !Array.isArray(points)) continue
+    // Phonopy stores lattice vectors as rows, use them directly.
+    const lattice_matrix = matrix3x3_from_rows(lattice, `phonopy lattice`)
+    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+    const sites = points.map((point, point_idx) => {
+      const element = element_from_candidates([point.symbol], point_idx)
+      const abc = vec3_from_values(point.coordinates, `phonopy point coordinates`)
+      const properties = {
+        mass: point.mass,
+        ...(point.reduced_to !== undefined && { reduced_to: point.reduced_to }),
+      }
+      return make_site(
+        element,
+        abc,
+        frac_to_cart(abc),
+        `${element}${point_idx + 1}`,
+        properties,
+      )
+    })
+    return { sites, lattice: make_lattice(lattice_matrix) }
+  }
+  throw new Error(`No valid cells found in phonopy YAML`)
 }
 
-// Phonopy YAML: the most detailed cell present (supercell before unit cell before primitive).
-export const parse_phonopy_yaml = (content: string): Crystal | null =>
-  guard_parse(`phonopy YAML`, () => {
-    // Drop the phonon_displacements block (huge, and never read) before handing the
-    // YAML to js-yaml: it runs from its key to the next top-level key
-    const filtered_lines: string[] = []
-    let skip_displacements = false
-    for (const line of content.split(`\n`)) {
-      if (line.trim().startsWith(`phonon_displacements:`)) skip_displacements = true
-      else if (!skip_displacements || /^[a-zA-Z_]/.test(line)) {
-        skip_displacements = false
-        filtered_lines.push(line)
-      }
-    }
-    const data = yaml_load(filtered_lines.join(`\n`))
-    if (!data) {
-      diag_error(`Failed to parse phonopy YAML`)
-      return null
-    }
-    const cell = PHONOPY_CELL_TYPES.map((kind) => get_phonopy_cell(data, kind)).find(Boolean)
-    if (cell) return convert_phonopy_cell(cell)
-    diag_error(`No valid cells found in phonopy YAML`)
-    return null
-  })
-
-// Recursively search for a valid structure object in nested JSON. `visited` guards
-// against the cycles a hand-built object graph can contain.
-function find_structure_in_json(obj: unknown, visited = new WeakSet()): StructureLike | null {
-  if (!obj || typeof obj !== `object` || visited.has(obj)) return null
-  visited.add(obj)
-  if (is_structure_like(obj)) return obj
-
-  // Object.values yields an array's elements, so both branches recurse the same way
-  for (const value of Object.values(obj)) {
-    const result = find_structure_in_json(value, visited)
-    if (result) return result
-  }
-  return null
+// Parsing and lightweight classification walk the same JSON envelopes and arrays in source
+// order. JSON.parse produces acyclic data; each caller decides which records are usable.
+function* json_structure_records(obj: unknown): Generator<Record<string, unknown>> {
+  if (!obj || typeof obj !== `object`) return
+  if (!Array.isArray(obj)) yield obj as Record<string, unknown>
+  for (const value of Object.values(obj)) yield* json_structure_records(value)
 }
 
 // A serialized structure as pymatgen (or a hand-built object graph) writes it: sites carry
@@ -976,9 +922,8 @@ export function structure_from_json(
   const { lattice: raw_lattice, sites: raw_sites, ...rest } = raw
   if (!raw_lattice) {
     const sites = raw_sites.map((site, idx) => {
-      if (!site.xyz) {
+      if (!site.xyz)
         throw new Error(`JSON site ${idx} has no xyz and the structure has no lattice`)
-      }
       return {
         ...site,
         properties: site.properties ?? {},
@@ -1015,6 +960,7 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   if (!(`lattice` in structure) || !pbc) return structure
   // Plain loop: this runs on every trajectory frame and nearly always finds nothing to wrap
   const [wrap_a, wrap_b, wrap_c] = pbc
+  if (!wrap_a && !wrap_b && !wrap_c) return structure
   const outside = (coord: number): boolean => coord < 0 || coord >= 1
   const needs_wrapping = structure.sites.some(
     ({ abc }) =>
@@ -1035,18 +981,20 @@ export function normalize_fractional_coords<T extends AnyStructure>(
 }
 
 // JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)
-const parse_json_structure: FormatParser = (content) =>
-  guard_parse(`JSON`, () => {
-    const parsed: unknown = JSON.parse(content)
-    const optimade = optimade_structure_from_raw(parsed)
+const parse_json_structure: FormatParser = (content) => {
+  const parsed: unknown = JSON.parse(content)
+  // A root OPTIMADE envelope is authoritative, including its missing-atom diagnostics.
+  const root_optimade = optimade_structure_from_raw(parsed)
+  if (root_optimade) return optimade_to_structure(root_optimade)
+  for (const record of json_structure_records(parsed)) {
+    const optimade = optimade_with_sites(record)
     if (optimade) return optimade_to_structure(optimade)
-    const structure = find_structure_in_json(parsed)
-    if (structure) return structure_from_json(structure)
-    diag_error(`JSON content does not contain a valid structure format`)
-    return null
-  })
+    if (is_structure_like(record)) return structure_from_json(record)
+  }
+  throw new Error(`JSON content does not contain a valid structure format`)
+}
 
-type FormatParser = (content: string) => AnyStructure | null
+type FormatParser = (content: string) => AnyStructure
 
 // mmCIF's dot-notation tags (_atom_site.Cartn_x) are invisible to parse_cif's
 // underscore-tag matching, so the whole CIF family is routed by content: that also
@@ -1140,18 +1088,20 @@ function parser_for_content(content: string): FormatParser | null {
 
 // Parse a structure from file content in any supported format. A filename's extension is
 // authoritative (it never falls through to content sniffing); without one, or with an
-// unknown one, the format is sniffed from the content. Throws an Error aggregating every
-// recorded failure reason when nothing parses.
+// unknown one, the format is sniffed from the content. Failures retain their local cause
+// and include the requested filename so callers can surface them directly.
 export function parse_structure_file(content: string, filename?: string): AnyStructure {
-  reset_parse_diagnostics()
-  const parser =
-    (filename ? parser_for_filename(filename, content) : null) ?? parser_for_content(content)
-  if (!parser) diag_error(`Unable to determine file format`)
-  const structure = parser?.(content)
-  if (structure) return structure
-  const reasons = get_parse_errors()
-  const detail = reasons.length ? `: ${reasons.join(`; `)}` : ``
-  throw new Error(`Failed to parse structure${filename ? ` from '${filename}'` : ``}${detail}`)
+  try {
+    const parser =
+      (filename ? parser_for_filename(filename, content) : null) ?? parser_for_content(content)
+    if (!parser) throw new Error(`Unable to determine file format`)
+    return parser(content)
+  } catch (error) {
+    throw new Error(
+      `Failed to parse structure${filename ? ` from '${filename}'` : ``}: ${to_error(error).message}`,
+      { cause: error },
+    )
+  }
 }
 
 // === OPTIMADE ===
@@ -1160,19 +1110,34 @@ export function parse_structure_file(content: string, filename?: string): AnyStr
 // either directly or as the first entry of a list
 export function optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {
   const payload = raw && typeof raw === `object` && `data` in raw ? raw.data : raw
-  const candidate = Array.isArray(payload) ? payload[0] : payload
-  if (!candidate || typeof candidate !== `object`) return null
+  return optimade_record_from_raw(Array.isArray(payload) ? payload[0] : payload)
+}
+
+// Recursive traversal examines only this record; unwrapping its `data` would skip siblings.
+function optimade_record_from_raw(raw: unknown): OptimadeStructure | null {
+  if (!raw || typeof raw !== `object`) return null
   const {
     type,
     id: identifier,
     attributes,
-  } = candidate as Record<`type` | `id` | `attributes`, unknown>
+  } = raw as Record<`type` | `id` | `attributes`, unknown>
   const is_structure =
     type === `structures` &&
     typeof identifier === `string` &&
     typeof attributes === `object` &&
     attributes !== null
-  return is_structure ? (candidate as OptimadeStructure) : null
+  return is_structure ? (raw as OptimadeStructure) : null
+}
+
+// Partial nested OPTIMADE records can be metadata preceding the actual structure.
+function optimade_with_sites(raw: unknown, allow_empty = false): OptimadeStructure | null {
+  const entry = optimade_record_from_raw(raw)
+  return entry &&
+    Array.isArray(entry.attributes.cartesian_site_positions) &&
+    (allow_empty || entry.attributes.cartesian_site_positions.length > 0) &&
+    Array.isArray(entry.attributes.species_at_sites)
+    ? entry
+    : null
 }
 
 // Convert an OPTIMADE structure entry to a Crystal (lattice_vectors present) or Molecule.
@@ -1188,16 +1153,14 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
     species, // excluded from the properties rest
     ...properties
   } = optimade.attributes
-  if (!Array.isArray(positions) || !Array.isArray(species_at_sites)) {
+  if (!Array.isArray(positions) || !Array.isArray(species_at_sites))
     throw new TypeError(
       `OPTIMADE structure is missing cartesian_site_positions or species_at_sites`,
     )
-  }
-  if (positions.length !== species_at_sites.length) {
+  if (positions.length !== species_at_sites.length)
     throw new Error(
       `OPTIMADE structure has ${positions.length} positions but ${species_at_sites.length} species_at_sites`,
     )
-  }
   const species_list = Array.isArray(species) ? species : undefined
 
   // OPTIMADE stores lattice vectors as rows, so use as-is
@@ -1210,9 +1173,8 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
 
   const sites = positions.map((position, idx) => {
     const species_name = species_at_sites[idx]
-    if (typeof species_name !== `string` || !species_name) {
+    if (typeof species_name !== `string` || !species_name)
       throw new Error(`OPTIMADE site ${idx} has no species name`)
-    }
     const xyz = vec3_from_values(position, `OPTIMADE atom position ${idx + 1}`)
     const {
       symbol: element,
@@ -1267,7 +1229,9 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
     // same shape parse_extxyz_lattice accepts; `includes('Lattice=')` called `lattice="..."` a
     // molecule while the parser still read its cell
     (content) =>
-      /\bLattice\s*=/i.test(content.trim().split(/\r?\n/)[1] ?? ``) ? `crystal` : `molecule`,
+      /\bLattice\s*=/i.test(content.trim().split(/\r?\n/, 2)[1] ?? ``)
+        ? `crystal`
+        : `molecule`,
   ],
 ]
 
@@ -1277,17 +1241,25 @@ export const detect_structure_type = (filename: string, content: string): Struct
 
   if (name.endsWith(`.json`)) {
     try {
-      const parsed = JSON.parse(content)
-      // Crystal indicators: lattice, lattice_vectors, or periodic dimensions
-      const dims = parsed.data?.attributes?.dimension_types
-      if (
-        parsed.lattice ||
-        parsed.data?.attributes?.lattice_vectors ||
-        (Array.isArray(dims) && dims.some((dim: number) => dim > 0)) ||
-        parsed.data?.attributes?.nperiodic_dimensions > 0
-      )
-        return `crystal`
-      return `molecule`
+      const parsed: unknown = JSON.parse(content)
+      if (!parsed || typeof parsed !== `object`) return `unknown`
+      const root_optimade = optimade_with_sites(optimade_structure_from_raw(parsed), true)
+      if (root_optimade)
+        return root_optimade.attributes.lattice_vectors ? `crystal` : `molecule`
+      let periodic_hint = false
+      for (const record of json_structure_records(parsed)) {
+        // Match the parser's first canonical structure before consulting metadata hints.
+        const optimade = optimade_with_sites(record)
+        if (optimade) return optimade.attributes.lattice_vectors ? `crystal` : `molecule`
+        if (is_structure_like(record)) return record.lattice ? `crystal` : `molecule`
+        const { lattice, lattice_vectors, dimension_types, nperiodic_dimensions } = record
+        periodic_hint ||=
+          Boolean(lattice) ||
+          Boolean(lattice_vectors) ||
+          (Array.isArray(dimension_types) && dimension_types.some((dim) => dim > 0)) ||
+          (typeof nperiodic_dimensions === `number` && nperiodic_dimensions > 0)
+      }
+      return periodic_hint ? `crystal` : `molecule`
     } catch {
       return `unknown`
     }

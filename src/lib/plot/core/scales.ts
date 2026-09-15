@@ -82,7 +82,6 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   let current_range: Vec2 = [0, 1]
 
   const arcsinh_transform = (coord_x: number): number => Math.asinh(coord_x / threshold)
-  const sinh_transform = (coord_y: number): number => Math.sinh(coord_y) * threshold
   const transformed_domain = (): Vec2 => [
     arcsinh_transform(current_domain[0]),
     arcsinh_transform(current_domain[1]),
@@ -120,7 +119,7 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
     const [t_min, t_max] = transformed_domain()
     const frac = (value - r_min) / (r_max - r_min)
-    return sinh_transform(t_min + frac * (t_max - t_min))
+    return Math.sinh(t_min + frac * (t_max - t_min)) * threshold
   }
 
   scale.ticks = (count = 10): number[] =>
@@ -245,8 +244,7 @@ export function create_scale(
       .range(output_range)
   }
   if (type_name === `arcsinh`) {
-    const threshold = get_arcsinh_threshold(scale_type)
-    return scale_arcsinh(threshold).domain(domain).range(output_range)
+    return scale_arcsinh(get_arcsinh_threshold(scale_type)).domain(domain).range(output_range)
   }
   return scaleLinear().domain(domain).range(output_range)
 }
@@ -362,8 +360,7 @@ export function generate_ticks(
   const tick_count =
     typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : default_count
 
-  const ticks = scale_fn.ticks(tick_count)
-  return ticks.map(Number)
+  return scale_fn.ticks(tick_count).map(Number)
 }
 
 // Finite raw-array extent with a count for padding and renderability checks.
@@ -701,8 +698,7 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0
   }
   if (type_name === `arcsinh`) {
     // Create arcsinh-based size scale
-    const threshold = get_arcsinh_threshold(config.type)
-    const arcsinh_scale = scale_arcsinh(threshold)
+    const arcsinh_scale = scale_arcsinh(get_arcsinh_threshold(config.type))
       .domain([safe_min, safe_max])
       .range([min_radius, max_radius])
 

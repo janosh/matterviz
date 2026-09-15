@@ -10,7 +10,7 @@ import {
 } from '$lib/phase-diagram/ternary/free-energy'
 import { G_ELEMENTS } from '$lib/phase-diagram/ternary/g-els-data'
 import { describe, expect, test } from 'vitest'
-import { make_phase } from '../../setup'
+import { make_phase } from '../../test-fixtures'
 
 const elements: ElementSymbol[] = [`Li`, `Co`, `O`]
 const lithium = make_phase({ Li: 1 }, -1.9, { entry_id: `Li` })

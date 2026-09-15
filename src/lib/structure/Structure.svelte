@@ -65,7 +65,7 @@
   import StructureEditToolbar from './StructureEditToolbar.svelte'
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
-  import type { StructureSettings } from './settings'
+  import { resolve_cell_vectors, type StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
@@ -113,7 +113,10 @@
     reference_structure = undefined,
 
     bonds = $bindable(),
-    scene_props = $bindable<StructureSettings>(structuredClone(DEFAULTS.structure)),
+    scene_props = $bindable<StructureSettings>({
+      ...structuredClone(DEFAULTS.structure),
+      show_cell_vectors: undefined,
+    }),
     active_pane = $bindable(null),
     multi_view = $bindable(false),
     views = DEFAULT_STRUCTURE_VIEWS,
@@ -767,6 +770,7 @@
     reference_structure,
     scene_props: {
       ...scene_props,
+      show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),
       trajectory_position_stream,
       trajectory_line_end_frame,
       defer_expensive_geometry,

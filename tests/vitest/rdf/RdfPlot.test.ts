@@ -5,7 +5,8 @@ import type { RadiationType } from '$lib/scattering'
 import { structure_map } from '$site/structures'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, make_crystal, mount_sized, resize_element } from '../setup'
+import { create_drop_event, mount_sized, resize_element } from '../setup'
+import { make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 
 const nacl_structure = structure_map.get(`mp-1234`)

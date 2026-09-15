@@ -6,7 +6,6 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import {
-  diag_warn,
   FALLBACK_ELEMENTS,
   parse_coordinate,
   parse_float_token,
@@ -204,7 +203,7 @@ export function parse_vasp_header(
         return fail(`${format}: element symbols are missing (VASP 4 header)`)
       }
       elements = counts.map((_count, idx) => FALLBACK_ELEMENTS[idx % FALLBACK_ELEMENTS.length])
-      diag_warn(
+      console.warn(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
     } else if (strict_species) {

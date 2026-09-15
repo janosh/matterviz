@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from './LazyDemo.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import type { CompositionType } from 'matterviz'
   import {
@@ -57,7 +58,9 @@
         <div class="composition-card">
           <h3>{name}</h3>
           <div class="card-formula">{@html sanitize_html(get_formula_display(formula))}</div>
-          <Composition composition={formula} {mode} />
+          <LazyDemo label={name} height={mode === `bar` ? `30px` : `200px`}>
+            <Composition composition={formula} {mode} />
+          </LazyDemo>
         </div>
       {/each}
     </div>
