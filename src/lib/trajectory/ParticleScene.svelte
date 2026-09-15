@@ -72,17 +72,19 @@
   let fitted = false
   let render_origin: Vec3 | undefined
   $effect(() => {
+    // Read the reactive prop once per frame instead of once per coordinate.
+    const xyz = positions
     const previous = untrack(() => geometry)
-    const same_size = previous?.getAttribute(`position`).array.length === positions.length
+    const same_size = previous?.getAttribute(`position`).array.length === xyz.length
     const next = same_size ? previous : new BufferGeometry()
     if (!same_size)
-      next.setAttribute(`position`, new BufferAttribute(new Float32Array(positions.length), 3))
+      next.setAttribute(`position`, new BufferAttribute(new Float32Array(xyz.length), 3))
     const position_buffer = next.getAttribute(`position`)
     // Keep a stable render origin across frames; subtract in Float64 so a distant device
     // does not lose interatomic separations when uploaded as Float32 coordinates.
-    render_origin ??= [positions[0], positions[1], positions[2]]
-    for (let idx = 0; idx < positions.length; idx++)
-      position_buffer.array[idx] = positions[idx] - render_origin[idx % 3]
+    render_origin ??= [xyz[0], xyz[1], xyz[2]]
+    for (let idx = 0; idx < xyz.length; idx++)
+      position_buffer.array[idx] = xyz[idx] - render_origin[idx % 3]
     position_buffer.needsUpdate = true
     next.computeBoundingSphere()
     if (next.boundingSphere && !fitted) {

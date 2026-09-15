@@ -103,16 +103,18 @@
     ),
   )
   const scalars = $derived.by(() => {
-    if (!positions) return new Float32Array()
-    const data = new Float32Array(positions.length / 3)
+    const xyz = positions
+    if (!xyz) return new Float32Array()
+    const bin_values = values
+    const data = new Float32Array(xyz.length / 3)
     const grid =
       result.options.coordinates === `cell` && current_grid
         ? { ...current_grid, dims: result.grid.dims }
         : result.grid
     const inverse = matrix_inverse_3x3(grid.cell)
     for (let idx = 0; idx < data.length; idx++) {
-      const bin = hotspot_bin(positions, idx * 3, grid, inverse)
-      data[idx] = bin >= 0 && Number.isFinite(values[bin]) ? values[bin] : -1
+      const bin = hotspot_bin(xyz, idx * 3, grid, inverse)
+      data[idx] = bin >= 0 && Number.isFinite(bin_values[bin]) ? bin_values[bin] : -1
     }
     return data
   })

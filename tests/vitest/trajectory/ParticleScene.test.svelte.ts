@@ -90,7 +90,7 @@ it.each([333_200, 1_000_000])(
       min_atoms: 1,
     })
     const component = mount(TrajectoryParticleView, { target: document.body, props })
-    const heat = () => {
+    const heat = (): Float32Array => {
       const geometry = threlte_stub.nodes.find(({ tag }) => tag === `Points`)?.props.geometry
       if (!(geometry instanceof BufferGeometry)) throw new Error(`Missing particle geometry`)
       return geometry.getAttribute(`heat`).array
@@ -98,6 +98,11 @@ it.each([333_200, 1_000_000])(
     try {
       await vi.waitFor(() => expect(heat()).toHaveLength(total_atoms))
       expect(heat().slice(0, 3)).toEqual(new Float32Array([2, -1, -1]))
+      expect(
+        heat()
+          .subarray(3)
+          .every((value) => value === 2),
+      ).toBe(true)
       expect(document.querySelector(`.particle-controls`)?.textContent).toContain(
         `${total_atoms} atoms`,
       )
@@ -129,7 +134,7 @@ it.each([333_200, 1_000_000])(
       expect(values).toHaveBeenCalledTimes(1)
       props.min_atoms = 3
       await tick()
-      expect(heat().slice(0, 3)).toEqual(new Float32Array([-1, -1, -1]))
+      expect(heat().every((value) => value === -1)).toBe(true)
       expect(values).toHaveBeenCalledTimes(2)
     } finally {
       await unmount(component)
