@@ -571,7 +571,10 @@ describe(`spatial kinetic hotspots`, () => {
       const positions = new Float32Array(n_atoms * 2 * 3)
       const velocities = new Float32Array(positions.length)
       for (let idx = 0; idx < n_atoms * 2; idx++) {
-        positions.set([idx % n_atoms < n_atoms / 2 ? 0.5 : 1.5, 0.5, 0.5], idx * 3)
+        positions.set(
+          [idx % n_atoms < n_atoms / 2 ? 0.5 : 1 + (idx % 8) / 8, 0.5, 0.5],
+          idx * 3,
+        )
         velocities[idx * 3] = idx % 2 ? 1 : -1
       }
       for (const [name, values] of [
@@ -610,6 +613,15 @@ describe(`spatial kinetic hotspots`, () => {
       expect(indices).toHaveLength(2000)
       if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
       expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
+      const tail = await run.read_atoms?.({
+        frame_idx: 1,
+        start: n_atoms - 5,
+        count: 8,
+        stride: 2,
+      })
+      expect(tail?.positions).toEqual(
+        Float64Array.of(1.375, 0.5, 0.5, 1.625, 0.5, 0.5, 1.875, 0.5, 0.5),
+      )
       if (!run.compute_hotspots) throw new Error(`Missing hotspot reader`)
       const result = await run.compute_hotspots({
         grid,

@@ -460,21 +460,22 @@ const parse_torch_sim_datasets = (
       Boolean(pbc_values?.[frame_idx * 3 + 1]),
       Boolean(pbc_values?.[frame_idx * 3 + 2]),
     ]
-  const read_positions = (start: number, end: number): Float64Array => {
-    const values = new Float64Array((end - start) * position_values_per_frame)
-    for (let frame_idx = start; frame_idx < end; frame_idx++) {
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE) {
-        const ranges: [number, number, number][] = positions_have_frame_axis
-          ? [[frame_idx, frame_idx + 1, 1]]
-          : []
-        ranges.push([atom_idx, Math.min(n_atoms, atom_idx + ATOM_BATCH_SIZE), 1])
-        const batch = read_numeric_buffer(positions_dataset, position_path, ranges)
-        const offset = (frame_idx - start) * position_values_per_frame + atom_idx * 3
-        values.set(batch, offset)
-      }
-    }
-    return values
-  }
+  const read_position_slice = (
+    frame_idx: number,
+    start: number,
+    end = Math.min(n_atoms, start + ATOM_BATCH_SIZE),
+    stride = 1,
+  ): Float64Array =>
+    read_numeric_buffer(
+      positions_dataset,
+      position_path,
+      positions_have_frame_axis
+        ? [
+            [frame_idx, frame_idx + 1, 1],
+            [start, end, stride],
+          ]
+        : [[start, end, stride]],
+    )
   const read_atomic_numbers = (start: number, end: number): number[] =>
     static_atomic_numbers ??
     read_numeric_hyperslab(atomic_numbers_dataset, atomic_number_path, [[start, end, 1]])
@@ -531,7 +532,7 @@ const parse_torch_sim_datasets = (
     return true
   }
   // Last frame in [start, end) with any non-zero position / atomic number / cell value, or
-  // null when the whole chunk is zero-filled. One hyperslab read per dataset per chunk.
+  // null when the whole chunk is zero-filled. Position reads stay bounded by atom batches.
   const last_non_zero_frame_in = (start: number, end: number): number | null => {
     const atomic_numbers = dynamic_atomic_numbers ? read_atomic_numbers(start, end) : null
     const cells = read_cells(start, end)
@@ -542,18 +543,9 @@ const parse_torch_sim_datasets = (
           range_is_zero(atomic_numbers, local_idx * n_atoms, (local_idx + 1) * n_atoms)) &&
         (!cells || range_is_zero(cells, local_idx * 9, (local_idx + 1) * 9))
       if (!frame_zero) return frame_idx
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE) {
-        const ranges: [number, number, number][] = positions_have_frame_axis
-          ? [[frame_idx, frame_idx + 1, 1]]
-          : []
-        ranges.push([atom_idx, Math.min(n_atoms, atom_idx + ATOM_BATCH_SIZE), 1])
-        if (
-          read_numeric_buffer(positions_dataset, position_path, ranges).some(
-            (value) => value !== 0,
-          )
-        )
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE)
+        if (read_position_slice(frame_idx, atom_idx).some((value) => value !== 0))
           return frame_idx
-      }
     }
     return null
   }
@@ -705,7 +697,9 @@ const parse_torch_sim_datasets = (
         `TorchSim HDF5 frame ${frame_idx} is outside 0..${valid_frame_count - 1}`,
       )
     }
-    const values = read_positions(frame_idx, frame_idx + 1)
+    const values = new Float64Array(position_values_per_frame)
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE)
+      values.set(read_position_slice(frame_idx, atom_idx), atom_idx * 3)
     const lattice = lattice_for_frame(frame_idx)
     const energy =
       energy_dataset && energy_path
@@ -778,11 +772,6 @@ const parse_torch_sim_datasets = (
       Math.min(n_atoms, start + count * stride),
       stride,
     ]
-    const positions = read_numeric_buffer(
-      positions_dataset,
-      position_path,
-      positions_have_frame_axis ? [[frame_idx, frame_idx + 1], atom_slice] : [atom_slice],
-    )
     const channel = (key: string, width: number): Float64Array => {
       const entry = signal_manifest[key]
       if (
@@ -807,7 +796,7 @@ const parse_torch_sim_datasets = (
       (_unused, idx) => first_atomic_numbers[start + idx * stride],
     )
     const batch: AtomBatch = {
-      positions,
+      positions: read_position_slice(frame_idx, ...atom_slice),
       atomic_numbers,
       total_atoms: n_atoms,
       start,
@@ -1000,33 +989,23 @@ const parse_torch_sim_datasets = (
       ...(signal_keys.length > 0 && { signals }),
     }
   }
+  let preview
+  if (n_atoms > ATOM_BATCH_SIZE) {
+    const stride = Math.ceil(n_atoms / 2000)
+    preview = create_sampled_frame(
+      read_position_slice(0, 0, n_atoms, stride),
+      elements,
+      stride,
+      lattice_for_frame(0),
+      pbc_for_frame(0),
+      steps[0],
+    )
+  }
   return {
     ...shared,
     atom_count: n_atoms,
     read_atoms,
-    ...(n_atoms > ATOM_BATCH_SIZE && {
-      preview: (() => {
-        const stride = Math.ceil(n_atoms / 2000)
-        const positions = read_numeric_buffer(
-          positions_dataset,
-          position_path,
-          positions_have_frame_axis
-            ? [
-                [0, 1],
-                [0, n_atoms, stride],
-              ]
-            : [[0, n_atoms, stride]],
-        )
-        return create_sampled_frame(
-          positions,
-          elements,
-          stride,
-          lattice_for_frame(0),
-          pbc_for_frame(0),
-          steps[0],
-        )
-      })(),
-    }),
+    ...(preview && { preview }),
     frame_count: valid_frame_count,
     read_frame: load_frame,
     properties: sampled_properties(),

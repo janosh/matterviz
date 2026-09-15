@@ -1,5 +1,5 @@
-import { expect, type Page, test } from '@playwright/test'
-import { IS_CI, require_bbox } from './helpers'
+import { expect, type Page } from '@playwright/test'
+import { decode_canvas_png, IS_CI, require_bbox, test_without_errors as test } from './helpers'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type * as IoExport from '$lib/io/export'
@@ -34,8 +34,10 @@ const load_page = async (page: Page, frames: number, atoms: number) => {
 test.describe(`Trajectory performance`, () => {
   test(`keeps 333k atoms in the structure viewer and confines points to hotspot analysis @source`, async ({
     page,
+    errors,
   }) => {
-    test.setTimeout(90_000)
+    // This checks full rendering, including on CI's CPU renderer; timing is covered below.
+    test.setTimeout(IS_CI ? 900_000 : 90_000)
     const { default: h5 } = await import(`h5wasm/node`)
     await h5.ready
     const directory = await mkdtemp(`${tmpdir()}/matterviz-hotspot-test-`)
@@ -98,14 +100,45 @@ test.describe(`Trajectory performance`, () => {
       await page.route(`**/hotspot-device.h5`, (route) =>
         route.fulfill({ body: bytes, contentType: `application/x-hdf5` }),
       )
-      const errors: string[] = []
-      page.on(`pageerror`, (error) => errors.push(error.message))
       await page.setViewportSize({ width: 1400, height: 1000 })
       await page.goto(`/test/trajectory?single-viewer`)
       await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
         timeout: 30_000,
       })
       const viewer = page.locator(`#loaded-trajectory`)
+      const expect_3d_pixels = async (selector: string): Promise<void> => {
+        const canvas = viewer.locator(`${selector} canvas`)
+        await canvas.scrollIntoViewIfNeeded()
+        await page.mouse.move(0, 0)
+        const box = await require_bbox(canvas)
+        // The center excludes controls/gizmos; color excludes the gray lattice and background.
+        const clip = {
+          x: box.x + box.width / 4,
+          y: box.y + box.height / 4,
+          width: box.width / 2,
+          height: box.height / 2,
+        }
+        await expect
+          .poll(
+            async () => {
+              const pixels = await decode_canvas_png(page, await page.screenshot({ clip }))
+              try {
+                return await pixels.evaluate(({ data }) => {
+                  let colored = 0
+                  for (let idx = 0; idx < data.length; idx += 4) {
+                    const [red, green, blue] = [data[idx], data[idx + 1], data[idx + 2]]
+                    if (Math.max(red, green, blue) - Math.min(red, green, blue) > 40) colored++
+                  }
+                  return colored
+                })
+              } finally {
+                await pixels.dispose()
+              }
+            },
+            { timeout: IS_CI ? 300_000 : 30_000 },
+          )
+          .toBeGreaterThan(1000)
+      }
       await viewer.evaluate((target) => {
         const transfer = new DataTransfer()
         transfer.setData(`application/json`, JSON.stringify({ url: `/hotspot-device.h5` }))
@@ -120,12 +153,13 @@ test.describe(`Trajectory performance`, () => {
           const canvas = element.querySelector<HTMLCanvasElement>(`.structure canvas`)
           const scene = canvas && scene_registry.get(canvas)?.scene
           let count = 0
-          scene?.traverse((object) => {
+          scene?.traverseVisible((object) => {
             if (object instanceof AtomInstances) count += object.count
           })
           return count
         })
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
+      await expect_3d_pixels(`.structure`)
       await expect(viewer.locator(`.particle-view`)).toHaveCount(0)
       await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
       await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
@@ -139,6 +173,7 @@ test.describe(`Trajectory performance`, () => {
       await expect(pane.locator(`.hotspot-slice canvas`)).toBeVisible({ timeout: 30_000 })
       await expect(pane.locator(`.hotspot-slice`)).toContainText(`eV/atom`)
       await expect(viewer.getByText(`${n_atoms} atoms`, { exact: true })).toBeVisible()
+      await expect_3d_pixels(`.particle-view`)
       await pane.getByLabel(`Hotspot threshold`).fill(`2`)
       await expect(pane).not.toContainText(`Settings changed`)
       await expect
@@ -191,7 +226,8 @@ test.describe(`Trajectory performance`, () => {
       await page.keyboard.press(`Escape`)
       await expect(viewer.locator(`.particle-view`)).toHaveCount(0)
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
-      expect(errors).toEqual([])
+      await expect_3d_pixels(`.structure`)
+      expect(errors).toEqual({ console: [], page: [] })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
