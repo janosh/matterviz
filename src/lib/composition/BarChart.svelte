@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { clamp } from '$lib/math'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
@@ -90,6 +93,14 @@
   />
   <g clip-path="url(#{clip_path_id})">
     {#each segments as segment (segment.element)}
+      {#snippet segment_tooltip()}
+        <TooltipValue
+          label={segment.element}
+          value={segment.amount}
+          unit={segment.amount === 1 ? 'atom' : 'atoms'}
+        />
+        (<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+      {/snippet}
       <rect
         x={segment.x}
         y={bar_y}
@@ -99,10 +110,10 @@
         stroke="white"
         role="img"
         aria-label={segment_title(segment)}
+        {@attach hover_tooltip(segment_tooltip)}
         stroke-width="1"
         class="bar-segment"
       >
-        <title>{segment_title(segment)}</title>
       </rect>
     {/each}
   </g>

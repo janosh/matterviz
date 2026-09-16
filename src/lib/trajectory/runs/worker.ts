@@ -1,3 +1,10 @@
+import { frame_transfers, type NumericFrame, type FrameChannels } from '../frame'
+import {
+  FramePreparer,
+  display_frame_transfers,
+  type DisplayFrame,
+  type FramePreparation,
+} from '../prepare'
 // A run served over a MessagePort: the worker keeps the real run (and with it the source
 // bytes or HDF5 handle) and answers read_frame / collect_positions requests; the client side
 // is itself a TrajectoryRun whose dispose() releases the port and terminates the worker.
@@ -5,12 +12,10 @@
 // MessagePort.postMessage takes no targetOrigin (that's window.postMessage).
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { to_error } from '$lib/utils'
-import type { AnyStructure, Site } from '$lib/structure'
 import { position_stream_transferables } from '../helpers'
 import type {
   ParseProgress,
   PositionStreamOptions,
-  TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
 } from '../index'
@@ -21,6 +26,7 @@ import type { HotspotOptions, HotspotRequest, HotspotResult } from '../hotspots'
 
 type RunPortMethod =
   | `read_frame`
+  | `prepare_frame`
   | `read_atoms`
   | `compute_hotspots`
   | `collect_positions`
@@ -39,84 +45,6 @@ type RunPortReply =
   | { properties: TrajectoryMetadata[]; complete: boolean }
 
 const abort_error = (): DOMException => new DOMException(`Request aborted`, `AbortError`)
-
-// Transfer coordinates and dense vector properties in one buffer instead of cloning
-// millions of small arrays. Sparse/mixed properties and other metadata stay in the packet.
-type FramePacket = {
-  header: Omit<TrajectoryFrame, 'structure'>
-  structure: Omit<AnyStructure, 'sites'>
-  sites: Omit<Site, 'xyz' | 'abc'>[]
-  vector_keys: string[]
-  coordinates: Float64Array
-}
-
-const pack_frame = ({ structure, ...header }: TrajectoryFrame): FramePacket => {
-  const { sites, ...cell } = structure
-  const vector_keys = Object.keys(sites[0]?.properties ?? {}).filter(
-    (key) =>
-      key !== `__proto__` &&
-      sites.every(({ properties }) => {
-        const vector = properties?.[key]
-        return (
-          Array.isArray(vector) &&
-          vector.length === 3 &&
-          typeof vector[0] === `number` &&
-          typeof vector[1] === `number` &&
-          typeof vector[2] === `number` &&
-          Object.keys(vector).length === 3
-        )
-      }),
-  )
-  const width = 6 + vector_keys.length * 3
-  const coordinates = new Float64Array(sites.length * width)
-  const records = sites.map(({ xyz, abc, ...site }, idx) => {
-    const offset = idx * width
-    coordinates.set(xyz, offset)
-    coordinates.set(abc, offset + 3)
-    if (vector_keys.length) {
-      for (let vector_idx = 0; vector_idx < vector_keys.length; vector_idx++) {
-        const key = vector_keys[vector_idx]
-        coordinates.set(site.properties[key] as number[], offset + 6 + vector_idx * 3)
-      }
-      site.properties = Object.fromEntries(
-        Object.entries(site.properties).filter(([key]) => !vector_keys.includes(key)),
-      )
-    }
-    return site
-  })
-  return { header, structure: cell, sites: records, vector_keys, coordinates }
-}
-
-const unpack_frame = ({
-  header,
-  structure,
-  sites,
-  vector_keys,
-  coordinates,
-}: FramePacket): TrajectoryFrame => ({
-  ...header,
-  structure: {
-    ...structure,
-    sites: sites.map((site, idx) => {
-      const offset = idx * (6 + vector_keys.length * 3)
-      for (let vector_idx = 0; vector_idx < vector_keys.length; vector_idx++) {
-        const key = vector_keys[vector_idx]
-        const start = offset + 6 + vector_idx * 3
-        site.properties[key] = [
-          coordinates[start],
-          coordinates[start + 1],
-          coordinates[start + 2],
-        ]
-      }
-      return {
-        ...site,
-        xyz: [coordinates[offset], coordinates[offset + 1], coordinates[offset + 2]],
-        abc: [coordinates[offset + 3], coordinates[offset + 4], coordinates[offset + 5]],
-      }
-    }),
-  },
-})
-
 // Worker side. Returns the port to transfer to the client; the run is disposed when the
 // client sends `dispose` or the port becomes unusable.
 export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
@@ -127,6 +55,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   let queue = Promise.resolve()
   let hotspot_queue = Promise.resolve()
   let hotspot_controller: AbortController | undefined
+  const preparer = new FramePreparer()
   const unsubscribe = run.properties.subscribe((batch, complete) =>
     post({ properties: batch, complete }),
   )
@@ -170,10 +99,40 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
         return post({ id: identifier, error: `Request aborted` })
       }
       try {
-        if (method === `read_frame`) {
-          const frame = await active.read_frame(Number(args[0]), controller.signal)
-          const packet = pack_frame(frame)
-          post({ id: identifier, result: packet }, [packet.coordinates.buffer])
+        if (method === `read_frame` || method === `prepare_frame`) {
+          const channels =
+            method === `prepare_frame`
+              ? (args[1] as FramePreparation).channels
+              : (args[1] as FrameChannels | undefined)
+          const frame = await active.read_frame(Number(args[0]), controller.signal, channels)
+          controller.signal.throwIfAborted()
+          const prepared =
+            method === `prepare_frame`
+              ? preparer.prepare(frame, args[1] as FramePreparation)
+              : undefined
+          const display = prepared?.frame ?? frame
+          // Runs may retain numeric snapshots (including memory frames and preview data).
+          // Transfer a copy rather than detach a buffer still owned by another consumer.
+          const packet = {
+            ...display,
+            coordinates:
+              display.coordinates === frame.coordinates
+                ? frame.coordinates.slice()
+                : display.coordinates,
+            sites: frame.sites instanceof Uint8Array ? frame.sites.slice() : frame.sites,
+            ...(frame.scalar_columns && {
+              scalar_columns: Object.fromEntries(
+                Object.entries(frame.scalar_columns).map(([key, column]) => [
+                  key,
+                  column.slice(),
+                ]),
+              ),
+            }),
+          }
+          if (prepared) {
+            prepared.frame = packet
+            post({ id: identifier, result: prepared }, display_frame_transfers(prepared))
+          } else post({ id: identifier, result: packet }, frame_transfers(packet))
         } else if (method === `read_atoms`) {
           if (!active.read_atoms) throw new Error(`Run cannot read atom batches`)
           const batch = await active.read_atoms(args[0] as AtomReadOptions, controller.signal)
@@ -348,12 +307,13 @@ export const worker_run = (
     get preview() {
       return summary.preview
     },
-    read_frame: (frame_idx, signal) => {
+    read_frame: (frame_idx, signal, channels) => {
       assert_frame_idx(summary, frame_idx)
-      if (disposed_reason) return Promise.reject(disposed_reason)
-      if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
-      if (frame_idx === 0 && !summary.preview.metadata?.render_sample) return summary.preview
-      return rpc<FramePacket>(`read_frame`, [frame_idx], signal).then(unpack_frame)
+      return rpc<NumericFrame>(`read_frame`, [frame_idx, channels], signal)
+    },
+    prepare_frame: (frame_idx, preparation, signal) => {
+      assert_frame_idx(summary, frame_idx)
+      return rpc<DisplayFrame>(`prepare_frame`, [frame_idx, preparation], signal)
     },
     ...(summary.has_collect_positions && {
       // Only the cloneable sweep options cross the port; progress and abort travel as

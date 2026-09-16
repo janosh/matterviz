@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import type * as ElementModule from '$lib/element/types'
 import type * as H5UtilsModule from '$lib/trajectory/parse/h5-utils'
 import type * as OpenTrajectoryModule from '$lib/trajectory/open'
+import type * as FrameModule from '$lib/trajectory/frame'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
 import { readFile } from 'node:fs/promises'
@@ -242,6 +243,10 @@ test.describe(`Trajectory Component`, () => {
       const open_module_path = `/src/lib/trajectory/open.ts`
       const h5_utils_module_path = `/src/lib/trajectory/parse/h5-utils.ts`
       const element_module_path = `/src/lib/element/types.ts`
+      const frame_module_path = `/src/lib/trajectory/frame.ts`
+      const { materialize_frame_result } = (await import(
+        frame_module_path
+      )) as typeof FrameModule
       const [{ parse_in_worker }, { open_trajectory }, { with_h5_file }, { ELEM_SYMBOLS }] =
         await Promise.all([
           import(worker_module_path) as Promise<typeof ParseWorkerModule>,
@@ -307,7 +312,7 @@ test.describe(`Trajectory Component`, () => {
         [memfs, workerfs].map((run) =>
           Promise.all(
             frame_indices.map(async (frame_idx) =>
-              serialize_frame(await run.read_frame(frame_idx)),
+              serialize_frame(await materialize_frame_result(run.read_frame(frame_idx))),
             ),
           ),
         ),
@@ -420,10 +425,9 @@ test.describe(`Trajectory Component`, () => {
       workerfs.dispose()
       memfs.dispose()
       // All reads reject after disposal; the stored preview remains available directly.
-      const disposed_error = await Promise.resolve(workerfs.read_frame(1)).then(
-        () => `missing error`,
-        String,
-      )
+      const disposed_error = await Promise.resolve(
+        materialize_frame_result(workerfs.read_frame(1)),
+      ).then(() => `missing error`, String)
       return {
         max_absolute_error: errors.reduce((maximum, error) => Math.max(maximum, error), 0),
         max_relative_error: relative_errors.reduce(

@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Trajectory acquisition: `source` as URL / File / bytes, drag-and-drop (OS drags
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
@@ -737,7 +738,7 @@ describe(`bindable re-exposure`, () => {
           : kind === `host`
             ? host_run(
                 summary,
-                async (frame_idx) => backing.read_frame(frame_idx),
+                async (frame_idx) => materialize_frame_result(backing.read_frame(frame_idx)),
                 () => backing.dispose(),
               )
             : backing

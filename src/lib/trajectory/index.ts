@@ -5,6 +5,7 @@ import type { FileLoadData } from '$lib/io'
 import type { Matrix3x3 } from '$lib/math'
 import type { AnyStructure, Pbc } from '$lib/structure/index'
 import type { TrajectoryRun } from './run'
+import type { NumericFrame } from './frame'
 
 export * from './analysis'
 export * from './positions'
@@ -21,6 +22,13 @@ export {
   VaspoutElectronicOnlyError,
 } from './open'
 export * from './run'
+export {
+  encode_frame,
+  materialize_frame,
+  materialize_frame_result,
+  type NumericFrame,
+  type FrameChannels,
+} from './frame'
 export type { MemoryRunExtras } from './runs/memory'
 export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryAnalysisPane } from './TrajectoryAnalysisPane.svelte'
@@ -133,7 +141,9 @@ export interface TrajHandlerData extends FileLoadData {
   trajectory?: TrajectoryRun
   step_idx?: number
   frame_count?: number
-  frame?: TrajectoryFrame
+  // Read-only numeric snapshot; prepared frames use display-wrapped coordinates.
+  // Use trajectory.read_frame() for source coordinates, materialize_frame() for editable sites.
+  frame?: NumericFrame
   error_msg?: string
   file_size?: number
   total_atoms?: number

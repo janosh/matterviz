@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
   import type { ScatterPlotOptions } from '$lib/plot'
   import { element_data } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import type { AxisConfig, InternalPoint } from '$lib/plot/core/types'
   import ScatterPlot from './ScatterPlot.svelte'
   import { selected } from '$lib/state.svelte'
@@ -62,9 +62,10 @@
     {@const elem = element_data[coord_x - 1]}
     <strong>{elem ? `${coord_x} ${elem.symbol} - ${elem.name}` : `Element ${coord_x}`}</strong
     ><br />
-    {@html sanitize_html(y_axis.label || `Value`)}: {format_num(
-      coord_y,
-      y_axis.format ?? `~s`,
-    )}{y_unit ?? ``}
+    <TooltipValue
+      label={y_axis.label || `Value`}
+      value={format_num(coord_y, y_axis.format ?? `~s`)}
+      unit={y_unit || y_axis.unit}
+    />
   {/snippet}
 </ScatterPlot>

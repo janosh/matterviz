@@ -5,12 +5,31 @@ import * as math from '$lib/math'
 import type { Vec3 } from '$lib/math'
 import type { ElementSymbol } from '$lib/element/types'
 import type { AnyStructure, Crystal } from './index'
-import { is_image_site } from './site'
+import { is_image_site, numeric_sites, site_count, snapshot_topologies } from './site'
+import { element_from_atomic_number } from '$lib/element/helpers'
+
+const topology_counts = new WeakMap<object, Partial<Record<ElementSymbol, number>>>()
 
 export const get_element_counts = (
   structure: AnyStructure,
 ): Partial<Record<ElementSymbol, number>> => {
+  const columns = numeric_sites.get(structure)
+  // Image provenance belongs to the frame, not its shared atom identities.
+  const topology = columns?.scalar_columns?.orig_site_idx
+    ? undefined
+    : snapshot_topologies.get(structure)
+  const cached = topology && topology_counts.get(topology)
+  if (cached) return { ...cached }
   const elements: Partial<Record<ElementSymbol, number>> = {}
+  if (columns) {
+    for (let idx = 0; idx < columns.length; idx++) {
+      if (columns.is_image(idx)) continue
+      const element = element_from_atomic_number(columns.numbers[idx])
+      if (element) elements[element] = (elements[element] ?? 0) + 1
+    }
+    if (topology) topology_counts.set(topology, elements)
+    return { ...elements }
+  }
   for (const site of structure.sites) {
     if (is_image_site(site)) continue
     for (const { element, occu } of site.species) {
@@ -63,8 +82,10 @@ const vacuum_fraction = (bins: Uint8Array, min_run: number): number => {
 // before taking the cube root; diagonal rods can still overestimate occupancy. A direct
 // nearest-neighbor query costs substantially more per trajectory frame and tracks short bonds.
 export function characteristic_atom_spacing(structure: AnyStructure): number {
-  const { sites } = structure
-  if (!sites?.length) return MIN_OCCUPIED_EXTENT
+  const columns = numeric_sites.get(structure)
+  if (columns?.display_metrics) return columns.display_metrics.characteristic_atom_spacing
+  const count = site_count(structure)
+  if (!count) return MIN_OCCUPIED_EXTENT
   const lattice = `lattice` in structure ? structure.lattice : null
   if (lattice && !(lattice.volume > 0)) return MIN_OCCUPIED_EXTENT // singular cell
 
@@ -75,14 +96,25 @@ export function characteristic_atom_spacing(structure: AnyStructure): number {
   const mins = [Infinity, Infinity, Infinity]
   const maxs = [-Infinity, -Infinity, -Infinity]
   if (lattice) for (const bins of occupancy) bins.fill(0)
-  for (const site of sites) {
-    if (is_image_site(site)) continue
+  const numeric_coords: Vec3 = [0, 0, 0]
+  for (let idx = 0; idx < count; idx++) {
+    const site = columns ? undefined : structure.sites[idx]
+    if (columns ? columns.is_image(idx) : is_image_site(site)) continue
     n_real += 1
-    const coords = !lattice
-      ? site.xyz
-      : site.abc?.every(Number.isFinite)
-        ? site.abc
-        : (to_frac ??= math.create_cart_to_frac(lattice.matrix))(site.xyz)
+    if (columns) {
+      const offset = idx * columns.stride + (lattice ? 3 : 0)
+      for (let axis = 0; axis < 3; axis++)
+        numeric_coords[axis] = columns.coordinates[offset + axis]
+    }
+    let coords = site ? (lattice ? site.abc : site.xyz) : numeric_coords
+    if (lattice && !coords?.every(Number.isFinite)) {
+      if (columns)
+        for (let axis = 0; axis < 3; axis++)
+          numeric_coords[axis] = columns.coordinates[idx * columns.stride + axis]
+      coords = (to_frac ??= math.create_cart_to_frac(lattice.matrix))(
+        site ? site.xyz : numeric_coords,
+      )
+    }
     for (let axis = 0; axis < 3; axis++) {
       const coord = coords[axis]
       if (!lattice?.pbc[axis]) {

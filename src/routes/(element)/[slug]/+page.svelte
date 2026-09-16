@@ -33,21 +33,6 @@
     Weight,
   } from 'svelte-widgets/icons'
 
-  const assert_chemical_element = (value: unknown): ChemicalElement => {
-    const elem = value as Partial<ChemicalElement> | null
-    if (
-      elem &&
-      typeof elem.number === `number` &&
-      typeof elem.symbol === `string` &&
-      typeof elem.name === `string`
-    ) {
-      return elem as ChemicalElement
-    }
-    throw new Error(
-      `Invalid element data: expected numeric number, string symbol, and string name`,
-    )
-  }
-
   const photo_src = (elem: ChemicalElement) =>
     `/elements/${elem.number}-${elem.name.toLowerCase()}.avif`
 
@@ -244,11 +229,15 @@
 </section>
 
 <PrevNext
-  items={element_data.map((elem) => [elem.name.toLowerCase(), elem])}
+  items={element_data.map((element) => ({
+    href: element.name.toLowerCase(),
+    label: element.name,
+    element,
+  }))}
   current={normalize_static_url(page.url.pathname).slice(1)}
 >
   {#snippet children({ item, kind })}
-    {@const element = assert_chemical_element(item[1])}
+    {@const { element } = item}
     <a
       href={element.name.toLowerCase()}
       style="display: flex; flex-direction: column; position: relative; width: min(200px, 40cqw)"

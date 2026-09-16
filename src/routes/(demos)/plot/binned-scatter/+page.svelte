@@ -218,8 +218,8 @@
   {#if data}
     <strong>{data.formula}</strong>
     <span>{data.family}</span>
-    <span>E<sub>form</sub> = {format_num(data.e_form, `.3~`)} eV/atom</span>
-    <span>Gap = {format_num(data.band_gap, `.2~`)} eV</span>
+    <span>E<sub>form</sub> = {format_num(data.e_form, `.3~`)} <small>eV/atom</small></span>
+    <span>Gap = {format_num(data.band_gap, `.2~`)} <small>eV</small></span>
     <span>{data.n_sites} sites</span>
   {/if}
 {/snippet}

@@ -45,6 +45,7 @@ describe(`PhaseDiagramTooltip`, () => {
     mount_tooltip({ hover_info, temperature_unit: unit })
 
     expect(tooltip_text()).toContain(expected)
+    expect(document.querySelector(`dd small`)?.textContent).toBe(unit)
   })
 
   test.each([
@@ -69,7 +70,7 @@ describe(`PhaseDiagramTooltip`, () => {
       composition: 0.3,
       components: [`Al`, `Cu`],
       contains: [`Weight`],
-      matches: /50\.\d% Cu/,
+      matches: /50\.\d % Cu/,
     },
     { composition: 0.5, components: [`A`, `B`], absent: [`Weight`] },
   ])(
@@ -148,7 +149,7 @@ describe(`PhaseDiagramTooltip`, () => {
       mount_tooltip({ hover_info, composition_unit: `at%` })
 
       expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
-      for (const part of [`α: 60%`, `at 20 at%`, `β: 40%`, `at 80 at%`]) {
+      for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
         expect(lever_text()).toContain(part)
       }
       expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])

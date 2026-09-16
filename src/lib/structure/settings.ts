@@ -1,17 +1,21 @@
+import { site_count } from './site'
 import type { ComponentProps } from 'svelte'
 import type StructureScene from './StructureScene.svelte'
 import type Structure from './Structure.svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import type { DefaultSettings } from '$lib/settings'
+import type { DefaultSettings, ShowBonds } from '$lib/settings'
 import type { AnyStructure } from './index'
 
 type SceneProps = ComponentProps<typeof StructureScene>
+
+export const applies_to_structure = (when: ShowBonds, crystal: boolean): boolean =>
+  when === `always` || when === (crystal ? `crystals` : `molecules`)
 
 // Count atoms in the input cell, excluding periodic images and display-only tiling.
 export const resolve_cell_vectors = (
   visible: boolean | undefined,
   structure: AnyStructure | undefined,
-): boolean => visible ?? (structure?.sites.length ?? 0) <= 100
+): boolean => visible ?? site_count(structure) <= 100
 
 // Persisted appearance settings plus scene-only configuration. Scene data, editing state
 // and computed outputs remain owned by Structure.

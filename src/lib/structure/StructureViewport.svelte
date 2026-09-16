@@ -173,7 +173,7 @@
   // Internal orbit controls are bound from StructureScene for pose tracking and recovery.
   let orbit_controls =
     $state<ComponentProps<typeof StructureScene>[`orbit_controls`]>(undefined)
-  let rotation_target_ref = $state<Vec3 | undefined>(undefined)
+  let get_reset_target = $state<(() => Vec3) | undefined>(undefined)
   let initial_computed_zoom = $state<number | undefined>(undefined)
   let camera_is_moving = $state(false)
 
@@ -209,12 +209,13 @@
 
   // Reset this pane's camera. The primary pane is given on_camera_reset, so it also emits.
   function reset_camera() {
+    const reset_target = get_reset_target?.()
     camera_position = undefined
-    camera_target = rotation_target_ref
+    camera_target = reset_target
     report_moved?.(false)
     if (orbit_controls && camera) {
       orbit_controls.reset()
-      if (rotation_target_ref) orbit_controls.target.set(...rotation_target_ref)
+      if (reset_target) orbit_controls.target.set(...reset_target)
       if (camera instanceof OrthographicCamera && initial_computed_zoom !== undefined) {
         camera.zoom = initial_computed_zoom
         camera.updateProjectionMatrix()
@@ -501,7 +502,7 @@
         bind:scene
         bind:camera
         bind:orbit_controls
-        bind:rotation_target_ref
+        bind:get_reset_target
         bind:initial_computed_zoom
         {hidden_elements}
         bind:hidden_prop_vals={

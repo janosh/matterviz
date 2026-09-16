@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import { StatusMessage } from 'svelte-widgets'
   import { format_value } from '$lib/labels'
   import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
@@ -544,13 +545,14 @@
         {#if tooltip}
           {@render tooltip(hover_info)}
         {:else if hover_info.type === `node`}
-          <strong>{hover_info.label ?? hover_info.id}</strong>: {format_value(
-            hover_info.value,
-            value_format,
-          )}
+          <strong>{hover_info.label ?? hover_info.id}</strong>: <TooltipValue
+            value={format_value(hover_info.value, value_format)}
+          />
         {:else}
           {hover_info.source_label ?? hover_info.source_idx} &rarr; {hover_info.target_label ??
-            hover_info.target_idx}: {format_value(hover_info.value, value_format)}
+            hover_info.target_idx}: <TooltipValue
+            value={format_value(hover_info.value, value_format)}
+          />
         {/if}
       </PlotTooltip>
     {/if}

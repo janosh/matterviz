@@ -1,3 +1,4 @@
+import type { NumericFrame, FrameChannels } from '../frame'
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
 import type { Matrix3x3 } from '$lib/math'
@@ -68,7 +69,7 @@ export interface LazyTrajectorySource extends ParsedRunFacts {
   read_atoms?: ReadAtoms
   preview?: TrajectoryFrame
   frame_count: number
-  read_frame: (frame_idx: number) => TrajectoryFrame
+  read_frame: (frame_idx: number, channels?: FrameChannels) => NumericFrame
   // Sampled per-frame scalars (at most ~1000 rows) for the plot pane
   properties: TrajectoryMetadata[]
   collect_positions: (options: PositionStreamOptions) => TrajectoryPositionStream

@@ -1,9 +1,14 @@
 // Trajectories reuse instance slots; a slot must repaint when its element changes.
-import type { InstancedAtom } from '$lib/structure/atom-instances'
+import type { AtomInstances, InstancedAtom } from '$lib/structure/atom-instances'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { flushSync, mount, unmount } from 'svelte'
 import { useThrelte } from '@threlte/core'
-import { Color, type InstancedMesh, PerspectiveCamera, SphereGeometry } from 'three/webgpu'
+import {
+  Color,
+  type InstancedBufferGeometry,
+  PerspectiveCamera,
+  SphereGeometry,
+} from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
@@ -68,7 +73,7 @@ const mount_atoms = (atoms: InstancedAtom[]) => {
   return props
 }
 
-const current_mesh = (): InstancedMesh => threlte_stub.nodes.at(-1)?.props.is as InstancedMesh
+const current_mesh = (): AtomInstances => threlte_stub.nodes.at(-1)?.props.is as AtomInstances
 
 const slot_color = (slot_idx: number): number[] => {
   const color = new Color()
@@ -79,8 +84,11 @@ const slot_color = (slot_idx: number): number[] => {
 test(`uploads changed color slots and preserves pending ranges mid-scrub`, () => {
   const props = mount_atoms(ch4())
   const mesh = current_mesh()
+  expect(`instanceColor` in mesh).toBe(false)
+  expect(`isInstancedMesh` in mesh).toBe(false)
+  expect(mesh.geometry.getAttribute(`atomColor`)).toBe(mesh.colors)
   expect(slot_color(0)).toEqual([0, 0, 0])
-  expect(mesh.instanceColor?.updateRanges).toEqual([{ start: 0, count: 15 }])
+  expect(mesh.colors?.updateRanges).toEqual([{ start: 0, count: 15 }])
 
   // scrub to a frame with fewer atoms: same mesh, slot 0 is a different element now
   props.atoms = h2o()
@@ -89,25 +97,25 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   expect(mesh.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])
   // A partial repaint before the first render must keep the earlier full-buffer upload.
-  expect(mesh.instanceColor?.updateRanges).toEqual([
+  expect(mesh.colors?.updateRanges).toEqual([
     { start: 0, count: 15 },
     { start: 0, count: 3 },
   ])
 
-  const color_version = mesh.instanceColor?.version
+  const color_version = mesh.colors?.version
   props.atoms = h2o(0.5)
   flushSync()
-  expect(mesh.instanceColor?.version).toBe(color_version)
-  expect(mesh.instanceMatrix.array[12]).toBe(0.5)
+  expect(mesh.colors?.version).toBe(color_version)
+  expect(mesh.positions.array[0]).toBe(0.5)
   props.atoms[0].radius = 1
   flushSync()
-  expect(mesh.instanceColor?.version).toBe(color_version)
-  expect(mesh.instanceMatrix.array[0]).toBe(1)
+  expect(mesh.colors?.version).toBe(color_version)
+  expect(mesh.positions.array[3]).toBe(1)
 
-  const instance_colors = mesh.instanceColor
+  const instance_colors = mesh.colors
   if (!instance_colors) throw new Error(`Expected atom color buffer`)
   instance_colors.clearUpdateRanges() // Simulate the renderer consuming the initial upload.
-  const matrix_version = mesh.instanceMatrix.version
+  const matrix_version = mesh.positions.version
   props.atoms[2].color = `blue`
   flushSync()
   expect(instance_colors.updateRanges).toEqual([{ start: 6, count: 3 }])
@@ -118,14 +126,14 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
     { start: 6, count: 3 },
     { start: 3, count: 3 },
   ])
-  expect(mesh.instanceMatrix.version).toBe(matrix_version)
+  expect(mesh.positions.version).toBe(matrix_version)
 
   // measure mode desaturates the same way mid-scrub
   props.ghost = true
   flushSync()
   expect(mesh.material).toMatchObject({ transparent: true, opacity: 0.5 })
   const ghosted = new Color(1, 0, 0).lerp(new Color(0x999999), 0.4)
-  // instanceColor is a f32 buffer, so the readback rounds the f64 expectation
+  // colors is a f32 buffer, so the readback rounds the f64 expectation
   expect(slot_color(0)).toEqual(ghosted.toArray().map(Math.fround))
 
   // A newly occupied slot with an omitted color must not reuse its retired color.
@@ -135,10 +143,10 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   flushSync()
   expect(current_mesh()).toBe(mesh)
   expect(slot_color(0)).toEqual(new Color(0x999999).toArray().map(Math.fround))
-  const default_color_version = mesh.instanceColor?.version
+  const default_color_version = mesh.colors?.version
   props.atoms[0].color = `#999999`
   flushSync()
-  expect(mesh.instanceColor?.version).toBe(default_color_version)
+  expect(mesh.colors?.version).toBe(default_color_version)
   props.ghost = false
   flushSync()
   expect(mesh.material).toMatchObject({ transparent: false, opacity: 1 })
@@ -170,16 +178,16 @@ test.each([
     const props = mount_atoms(
       Array.from({ length: 2000 }, () => ({ ...atom(`red`, x_pos), radius })),
     )
-    const segments = () => (current_mesh().geometry as SphereGeometry).parameters.widthSegments
+    const segments = () => Math.sqrt(current_mesh().geometry.attributes.position.count) - 1
     expect(segments()).toBe(distant_segments)
     const mesh = current_mesh()
-    const matrix_buffer = mesh.instanceMatrix.array
+    const matrix_buffer = mesh.positions.array
     const matrix_values = matrix_buffer.slice()
-    const matrix_version = mesh.instanceMatrix.version
-    const geometries = new Map<number, SphereGeometry>()
+    const matrix_version = mesh.positions.version
+    const geometries = new Map<number, InstancedBufferGeometry>()
     const remember_geometry = () => {
-      const geometry = current_mesh().geometry as SphereGeometry
-      const detail = geometry.parameters.widthSegments
+      const geometry = current_mesh().geometry
+      const detail = segments()
       const previous = geometries.get(detail)
       if (previous) expect(geometry).toBe(previous)
       else geometries.set(detail, geometry)
@@ -189,9 +197,9 @@ test.each([
     remember_geometry()
     const unchanged_atoms = () => {
       expect(current_mesh()).toBe(mesh)
-      expect(mesh.instanceMatrix.array).toBe(matrix_buffer)
-      expect(mesh.instanceMatrix.array).toEqual(matrix_values)
-      expect(mesh.instanceMatrix.version).toBe(matrix_version)
+      expect(mesh.positions.array).toBe(matrix_buffer)
+      expect(mesh.positions.array).toEqual(matrix_values)
+      expect(mesh.positions.version).toBe(matrix_version)
       remember_geometry()
     }
     for (const [depth, expected] of [
@@ -224,7 +232,7 @@ test.each([
     await teardown?.()
     teardown = undefined
     expect(dispose_geometry).toHaveBeenCalledTimes(geometries.size)
-    expect(new Set(dispose_geometry.mock.contexts)).toEqual(new Set(geometries.values()))
+    expect(new Set(dispose_geometry.mock.contexts).size).toBe(geometries.size)
   },
 )
 
@@ -237,7 +245,7 @@ test(`growing a trajectory reserves capacity without drawing spare slots`, () =>
   flushSync()
   const grown = current_mesh()
   expect(grown.count).toBe(6)
-  expect(grown.instanceMatrix.count).toBe(8)
+  expect(grown.positions.count).toBe(8)
   props.atoms = [...props.atoms, atom(`blue`, 6)]
   flushSync()
   expect(current_mesh()).toBe(grown)

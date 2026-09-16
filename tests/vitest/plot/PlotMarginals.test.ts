@@ -481,15 +481,17 @@ describe(`marginal hover tooltips`, () => {
   )
 
   // axis titles routinely carry markup (e.g. E<sub>hull</sub>); it must render, not show raw tags
-  test(`an axis title with HTML markup renders as markup, not literal tags`, async () => {
+  test(`an axis title renders markup and puts its unit after the value`, async () => {
     const root = await mount_scatter({
-      x_axis: { label: `E<sub>hull</sub>` },
+      x_axis: { label: `E<sub>hull</sub> (eV)` },
       marginals: { top: `kde` },
     })
     await hover_strip(root)
     const tip = root.querySelector(`.plot-tooltip`)
     expect(tip?.querySelector(`sub`)?.textContent).toBe(`hull`) // rendered element
     expect(tip?.textContent).not.toContain(`<sub>`) // no raw tags
+    expect(tip?.textContent).toMatch(/Ehull: [\d.]+ eV/)
+    expect(tip?.querySelector(`small`)?.textContent).toBe(`eV`)
   })
 
   // counterpart to the above: the value/category portion (head_value) is NOT @html, so markup in a

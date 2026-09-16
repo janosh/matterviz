@@ -1,14 +1,11 @@
+import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
 import { element_by_symbol } from '$lib/element/data'
 import { calc_lattice_params, det_3x3 } from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
-import {
-  convert_atomic_numbers,
-  create_sampled_frame,
-  create_trajectory_frame,
-} from '../helpers'
+import { convert_atomic_numbers, create_sampled_frame } from '../helpers'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '../index'
 import type { Dataset, File as H5File } from 'h5wasm'
 import {
@@ -23,6 +20,7 @@ import {
   trajectory_signal,
 } from './h5-utils'
 import type { LazyTrajectorySource } from './shared'
+import type { TrajectoryRunSummary } from '../run'
 
 const SCHEMA = `md-trajectory-v1`
 const FORMAT = `MD HDF5`
@@ -68,7 +66,11 @@ const attr = (file: H5File, key: string): unknown => attribute_value(file, [key]
 export const is_md_h5_file = (file: H5File): boolean =>
   string_value(attr(file, `schema`))?.startsWith(`md-trajectory-`) ?? false
 
-export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTrajectorySource => {
+export const parse_md_h5_file = (
+  file: H5File,
+  group_path?: string,
+  replica?: TrajectoryRunSummary,
+): LazyTrajectorySource => {
   if (string_value(attr(file, `schema`)) !== SCHEMA)
     throw new Error(`${FORMAT} requires schema ${SCHEMA}`)
   if (group_path !== undefined && group_path !== `/`)
@@ -116,11 +118,15 @@ export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTraject
   }
   const atomic_numbers = read_static(`atomic_numbers`)
   const elements = convert_atomic_numbers(atomic_numbers)
-  const atom_masses = Array.from(read_static(`masses`))
+  const numeric_elements = Uint8Array.from(atomic_numbers)
+  const masses = read_static(`masses`)
+  const atom_masses = Array.from(masses)
   if (atom_masses.some((mass) => mass <= 0))
     throw new Error(`${FORMAT} masses must be positive`)
-  if (read_static(`global_atom_ids`).some((value, idx) => value !== idx))
+  const global_atom_ids = read_static(`global_atom_ids`)
+  if (global_atom_ids.some((value, idx) => value !== idx))
     throw new Error(`${FORMAT} requires canonical global atom IDs`)
+  global_atom_ids[0] = 0 // IDs are row indices, including positive zero for the first atom.
   const region_labels = read_static(`region_labels`)
   const period_ids = read_static(`period_id`)
   if (
@@ -206,20 +212,38 @@ export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTraject
       for (let idx = 0; idx < values.length; idx++) values[idx] *= VELOCITY_FACTOR
     return values
   }
-  const steps = Array.from(read_samples(`md_step`, 0, frame_count))
-  const times = read_samples(`time_fs`, 0, frame_count)
-  const local_steps = read_samples(`local_step`, 0, frame_count)
+  // The primary validates all axes and plot samples once. Replicas open the same immutable
+  // File, so repeating thousands of compressed scalar reads only delays frame preparation.
   if (
-    steps.some(
-      (step, idx) =>
-        step !== initial_step + idx ||
-        local_steps[idx] !== idx ||
-        times[idx] !== step * timestep_fs,
-    )
+    replica &&
+    (replica.frame_count !== frame_count ||
+      replica.atom_count !== n_atoms ||
+      replica.preview.step !== initial_step ||
+      replica.time_step?.value !== timestep_fs ||
+      replica.time_step.unit !== `fs` ||
+      !replica.properties.complete)
   )
-    throw new Error(
-      `${FORMAT} committed step/time axes must be consecutive at ${timestep_fs} fs`,
+    throw new Error(`${FORMAT} replica metadata does not match its source`)
+  const steps = replica
+    ? Array.from({ length: frame_count }, (_unused, idx) => initial_step + idx)
+    : Array.from(read_samples(`md_step`, 0, frame_count))
+  const times = replica
+    ? Float64Array.from(steps, (step) => step * timestep_fs)
+    : read_samples(`time_fs`, 0, frame_count)
+  if (!replica) {
+    const local_steps = read_samples(`local_step`, 0, frame_count)
+    if (
+      steps.some(
+        (step, idx) =>
+          step !== initial_step + idx ||
+          local_steps[idx] !== idx ||
+          times[idx] !== step * timestep_fs,
+      )
     )
+      throw new Error(
+        `${FORMAT} committed step/time axes must be consecutive at ${timestep_fs} fs`,
+      )
+  }
   const check_frame = (frame_idx: number): void => {
     if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= frame_count)
       throw new Error(`${FORMAT} frame ${frame_idx} is outside the committed prefix`)
@@ -284,34 +308,42 @@ export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTraject
       }),
     }
   }
-  const load_frame = (frame_idx: number) => {
+  const load_frame = (frame_idx: number, requested?: FrameChannels) => {
     check_frame(frame_idx)
     const positions = read_samples(`positions`, frame_idx, frame_idx + 1)
     const atomic = Object.fromEntries(
       Object.entries(channels)
-        .filter(([, channel]) => channel.width)
+        .filter(
+          ([key, channel]) =>
+            channel.width &&
+            (channel.width !== 3 || !requested?.vectors || requested.vectors.includes(key)),
+        )
         .map(([key, channel]) => [key, read_samples(channel.name, frame_idx, frame_idx + 1)]),
     )
-    return create_trajectory_frame(
-      Array.from({ length: n_atoms }, (_unused, idx) =>
-        Array.from(positions.subarray(idx * 3, idx * 3 + 3)),
-      ),
-      elements,
+    const vector_keys = [`force`, `velocity`].filter(
+      (key) => !requested?.vectors || requested.vectors.includes(key),
+    )
+    const frame = create_numeric_md_frame(
+      positions,
+      numeric_elements,
       cell,
       pbc,
       steps[frame_idx],
       { ...frame_properties(frame_idx), coords_unwrapped: true },
-      Array.from({ length: n_atoms }, (_unused, idx) => ({
-        id: idx,
-        mass: atom_masses[idx],
-        region_label: region_labels[idx],
-        period_id: period_ids[idx],
-        force: Array.from(atomic.force.subarray(idx * 3, idx * 3 + 3)),
-        velocity: Array.from(atomic.velocity.subarray(idx * 3, idx * 3 + 3)),
-        charge: atomic.charge[idx],
-        spin: atomic.spin[idx],
-      })),
+      vector_keys,
     )
+    frame.available_vector_keys = [`force`, `velocity`]
+    for (const [column, key] of vector_keys.entries())
+      write_frame_vector(frame, column, atomic[key])
+    frame.scalar_columns = {
+      id: global_atom_ids,
+      mass: masses,
+      region_label: region_labels,
+      period_id: period_ids,
+      charge: atomic.charge,
+      spin: atomic.spin,
+    }
+    return frame
   }
   const collect_positions = (
     options: PositionStreamOptions = {},
@@ -365,8 +397,8 @@ export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTraject
       }),
     }
   }
-  let preview
-  if (n_atoms > ATOM_BATCH_SIZE) {
+  let preview = replica?.preview
+  if (!preview && n_atoms > ATOM_BATCH_SIZE) {
     const preview_stride = Math.ceil(n_atoms / 2000)
     const preview_values = read_numeric_buffer(datasets.positions, `/frames/positions`, [
       [0, 1],
@@ -403,11 +435,22 @@ export const parse_md_h5_file = (file: H5File, group_path?: string): LazyTraject
     read_atoms,
     collect_positions,
     preview,
-    properties: sampled_property_rows(
-      frame_count,
-      (idx) => steps[idx],
-      (indices) => indices.map(frame_properties),
-    ),
+    properties:
+      replica?.properties.rows ??
+      sampled_property_rows(
+        frame_count,
+        (idx) => steps[idx],
+        (indices, stride) => {
+          const scalars = SCALARS.map(
+            (name) => [name, read_samples(name, 0, frame_count, stride)] as const,
+          )
+          return indices.map((frame_idx, sample_idx) => ({
+            ...Object.fromEntries(scalars.map(([name, values]) => [name, values[sample_idx]])),
+            time: times[frame_idx],
+            volume,
+          }))
+        },
+      ),
     signals: Object.fromEntries(
       Object.entries(channels).map(([key, { width, unit }]) => [
         key,

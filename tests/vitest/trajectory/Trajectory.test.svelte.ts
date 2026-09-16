@@ -9,8 +9,15 @@ import type {
 } from '$lib/trajectory'
 import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
 import * as plotting from '$lib/trajectory/plotting'
+import type { Site } from '$lib/structure'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
+import { FrameView } from '$lib/trajectory/frame'
+import { FramePreparer, type DisplayFrame } from '$lib/trajectory/prepare'
+import {
+  get_colorable_property_keys,
+  get_property_colors,
+} from '$lib/structure/atom-properties'
 import {
   resize_element,
   trigger_resize_observer,
@@ -18,7 +25,7 @@ import {
   bind_props,
   doc_query,
 } from '../setup'
-import { make_run as make_shared_run } from '../test-fixtures'
+import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -139,12 +146,19 @@ const axis_labels = (target: ParentNode): string[] =>
 
 describe(`display modes`, () => {
   test(`large runs use complete structure frames until hotspot analysis is requested`, async () => {
-    const backing = make_run()
+    const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
+    for (const frame of frames)
+      for (const [idx, site] of frame.structure.sites.entries())
+        site.properties.force = [idx + 1, 0, 0]
+    const backing = trajectory_from_frames(frames)
     const read_atoms = vi.fn(backing.read_atoms)
     const read_frame = vi.fn(backing.read_frame)
-    const run = {
+    const preparer = new FramePreparer()
+    let prepared: DisplayFrame | undefined
+    const run: TrajectoryRun = {
       ...backing,
       atom_count: 333_200,
+      signals: { force: { sample_shape: [333_200, 3], sample_count: 3, frame_aligned: true } },
       preview: {
         ...backing.preview,
         metadata: { render_sample: true },
@@ -152,18 +166,103 @@ describe(`display modes`, () => {
       },
       read_atoms,
       read_frame,
+      prepare_frame: async (idx, preparation, signal) =>
+        (prepared = preparer.prepare(
+          await read_frame(idx, signal, preparation.channels),
+          preparation,
+        )),
     }
-    const props = $state(default_props({ trajectory: run, current_step_idx: 0 }))
+    const props = $state(
+      default_props({
+        trajectory: run,
+        current_step_idx: 0,
+        structure_props: {
+          scene_props: {
+            show_polyhedra: `always`,
+            vector_configs: { force: { visible: true } },
+          },
+        },
+      }),
+    )
     const target = mount_trajectory(props)
     await tick()
     expect(target.querySelector(`.structure`)).not.toBeNull()
     expect(target.querySelector(`.particle-view`)).toBeNull()
-    expect(read_frame).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+    expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(0)
+    props.structure_props = {
+      scene_props: { show_polyhedra: `always`, vector_configs: { force: { visible: false } } },
+    }
     props.current_step_idx = 1
     await tick()
-    expect(read_frame).toHaveBeenCalledWith(1, expect.any(AbortSignal))
+    await vi.waitFor(() => expect(prepared?.frame.header.step).toBe(10))
+    if (!prepared) throw new Error(`Expected a prepared frame`)
+    expect(prepared.preparation?.polyhedra).toBeDefined()
+    expect(prepared.polyhedra).toBeDefined()
+    const { structure } = new FrameView().update(prepared.frame)
+    expect(prepared.frame.vector_keys).toEqual([])
+    expect(get_colorable_property_keys(structure)).toContain(`force`)
+    props.structure_props.atom_color_config = {
+      mode: `property`,
+      property_key: `force`,
+      scale: `interpolateViridis`,
+      scale_type: `continuous`,
+    }
+    await vi.waitFor(() => expect(prepared?.frame.vector_keys).toEqual([`force`]))
+    expect(
+      get_property_colors(
+        new FrameView().update(prepared.frame).structure,
+        props.structure_props.atom_color_config,
+      )?.values,
+    ).toEqual([1, 2])
+    expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(1)
     expect(read_atoms).not.toHaveBeenCalled()
     expect(target.querySelector(`.particle-view`)).toBeNull()
+  })
+
+  test(`channel selection follows viewer controls, inspection and custom coloring`, async () => {
+    const frames = [0, 10].map((step) => make_trajectory_frame(step, 2))
+    for (const frame of frames)
+      for (const site of frame.structure.sites) {
+        site.properties.force = [1, 2, 3]
+        site.properties.velocity = [4, 5, 6]
+      }
+    const run = trajectory_from_frames(frames)
+    const read = vi.spyOn(run, `read_frame`)
+    const props = $state(default_props({ trajectory: run, active_pane: `controls` }))
+    const target = mount_trajectory(props)
+    const last_channels = () => read.mock.lastCall?.[2]?.vectors
+    await tick()
+    const toggle = (key: string) => {
+      const checkbox = target.querySelector<HTMLInputElement>(
+        `[data-key="vector_config:${key}"] input[type="checkbox"]`,
+      )
+      if (!checkbox) throw new Error(`Missing ${key} control`)
+      checkbox.click()
+    }
+    toggle(`force`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([`velocity`]))
+    toggle(`velocity`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([]))
+    // Hiding a channel must leave its toggle available so it can be loaded again.
+    toggle(`force`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
+    props.active_pane = `data-inspector`
+    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
+    props.active_pane = null
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
+    props.structure_props = {
+      scene_props: {
+        vector_configs: { force: { visible: false }, velocity: { visible: false } },
+      },
+      atom_color_config: {
+        mode: `custom`,
+        color_fn: (site: Site) =>
+          Array.isArray(site.properties.velocity) ? site.properties.velocity[0] : 0,
+        scale: `interpolateViridis`,
+        scale_type: `continuous`,
+      },
+    }
+    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
   })
 
   test.each([
@@ -213,7 +312,7 @@ describe(`display modes`, () => {
     expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith({
       step_idx: 0,
       frame_count: 3,
-      frame: expect.objectContaining({ step: 0 }),
+      frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
     expect(view_mode_button.title).toBe(`Histogram-only`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
@@ -792,7 +891,7 @@ describe(`events`, () => {
   const payload = (step_idx: number, step: number) => ({
     step_idx,
     frame_count: 3,
-    frame: expect.objectContaining({ step }),
+    frame: expect.objectContaining({ header: expect.objectContaining({ step }) }),
   })
 
   test(`playback events carry { step_idx, frame_count, frame }`, () => {

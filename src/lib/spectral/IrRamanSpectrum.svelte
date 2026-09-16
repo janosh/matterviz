@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
   import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import EmptyState from '$lib/EmptyState.svelte'
@@ -208,9 +209,12 @@
     bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted })}
-      Frequency: {x_formatted}
-      {frequency_unit_label(unit)}<br />
-      {intensity_label}: {y_formatted}
+      <TooltipValue
+        label="Frequency"
+        value={x_formatted}
+        unit={frequency_unit_label(unit)}
+      /><br />
+      <TooltipValue label={intensity_label} value={y_formatted} />
     {/snippet}
 
     {#snippet controls_extra()}

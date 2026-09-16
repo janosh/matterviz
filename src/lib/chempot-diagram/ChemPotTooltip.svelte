@@ -57,17 +57,23 @@
         · E/atom: {fmt(hover_info.min_energy_per_atom)} to {fmt(
           hover_info.max_energy_per_atom,
         )}
-        eV
+        <small>eV</small>
       {/if}
     </p>
   {/if}
   {#if detail_level === `detailed`}
     <h5>Axis ranges</h5>
     {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-      <p>{axis_range.element}: {fmt(axis_range.min_val)} to {fmt(axis_range.max_val)} eV</p>
+      <p>
+        {axis_range.element}: {fmt(axis_range.min_val)} to {fmt(axis_range.max_val)}
+        <small>eV</small>
+      </p>
     {/each}
     {#if hover_info.view === `3d`}
-      <p>Centroid: ({hover_info.ann_loc.map((val) => format_num(val, `.3~g`)).join(`, `)})</p>
+      <p>
+        Centroid: ({hover_info.ann_loc.map((val) => format_num(val, `.3~g`)).join(`, `)})
+        <small>eV</small>
+      </p>
       {#if hover_info.neighbors.length > 0}
         <h5>Neighbors ({hover_info.neighbors.length})</h5>
         <p>{hover_info.neighbors.map(label).join(`, `)}</p>

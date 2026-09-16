@@ -139,6 +139,7 @@ export interface MarginalAxis {
   format?: string // axis number format, surfaced in marginal hover tooltips
   tick_label?: (value: number) => string | undefined // map a position to a label (categorical axes)
   label?: string // axis title (e.g. `Error`), used as the position-row label in hover tooltips
+  unit?: string
 }
 export type MarginalAxes = {
   x: MarginalAxis
@@ -153,7 +154,7 @@ export type MarginalAxes = {
 export const marginal_axis = (
   scale: PlotScaleFn,
   range: Vec2,
-  axis: { scale_type?: ScaleType; format?: string; label?: string },
+  axis: { scale_type?: ScaleType; format?: string; label?: string; unit?: string },
   tick_label?: (value: number) => string | undefined,
 ): MarginalAxis => ({
   pixel_range: scale.range() as Vec2,
@@ -161,6 +162,7 @@ export const marginal_axis = (
   scale_type: axis.scale_type,
   format: axis.format,
   label: axis.label,
+  unit: axis.unit,
   tick_label,
 })
 

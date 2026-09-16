@@ -310,15 +310,6 @@
   )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
-  const windows_text = (phase: number) =>
-    (diagram_raw?.stability_windows[phase] ?? [])
-      .map(([lower, upper]) => `${format_num(lower, `.0f`)}–${format_num(upper, `.0f`)} K`)
-      .join(`, `) || `never stable in range`
-  const meV = (value: number) =>
-    Number.isFinite(value)
-      ? `${format_num(value * 1000, `.1f`)} meV/atom`
-      : `no data at this T`
-
   // === File drop ===
 
   let dragover = $state(false)
@@ -347,9 +338,8 @@
 {#snippet fractions(decomposition: Decomposition, digits: string)}
   {#each decomposition.phases as phase, idx (phase)}{#if idx > 0}
       +
-    {/if}{format_num(decomposition.fractions[idx] * 100, digits)}% {@html formula_html(
-      phase,
-    )}{/each}
+    {/if}{format_num(decomposition.fractions[idx] * 100, digits)} <small>%</small>
+    {@html formula_html(phase)}{/each}
 {/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the diagram itself handles arrow/space keys -->
@@ -554,9 +544,12 @@
       {#if hover.kind === `section` && hover.data.kind === `composition`}
         {@const { barycentric, decomposition } = hover.data}
         <div>
-          {model.elements
-            .map((element, idx) => `${element} ${format_num(barycentric[idx] * 100, `.1f`)}%`)
-            .join(` · `)}
+          {#each model.elements as element, idx (element)}
+            {#if idx > 0}
+              ·
+            {/if}{element}
+            {format_num(barycentric[idx] * 100, `.1f`)} <small>%</small>
+          {/each}
         </div>
         {#if decomposition}
           <div class="muted">{decomposition.phases.length}-phase region (atom fractions)</div>
@@ -571,17 +564,24 @@
           hover.kind === `section` ? decompose_phase(model, section, phase) : null}
         {@const entry_id = model.phases[phase].entry.entry_id}
         <strong>{@html formula_html(phase)}</strong>
-        {#if hover.kind === `phase_t`}at {format_num(at_t, `.0f`)} K{:else if entry_id && !entry_id.startsWith(`synthetic`)}<span
+        {#if hover.kind === `phase_t`}at {format_num(at_t, `.0f`)}
+          <small>K</small>{:else if entry_id && !entry_id.startsWith(`synthetic`)}<span
             class="muted">{entry_id}</span
           >{/if}
         <div>
-          E<sub>hull</sub>: {meV(e_hull)}
+          E<sub>hull</sub>: {#if Number.isFinite(e_hull)}{format_num(e_hull * 1000, `.1f`)}
+            <small>meV/atom</small>{:else}no data at this T{/if}
           {#if hover.kind === `section`}· ΔG<sub>f</sub>: {format_num(
               section.dg_form[phase],
               `.3f`,
-            )} eV/atom{/if}
+            )} <small>eV/atom</small>{/if}
         </div>
-        <div class="muted">Stable: {windows_text(phase)}</div>
+        <div class="muted">
+          Stable: {#each diagram_raw?.stability_windows[phase] ?? [] as [lower, upper], idx (idx)}
+            {#if idx > 0},
+            {/if}{format_num(lower, `.0f`)}–{format_num(upper, `.0f`)} <small>K</small>
+          {:else}never stable in range{/each}
+        </div>
         {#if decomposition && decomposition.phases[0] !== phase}
           <div>Decomposes to {@render fractions(decomposition, `.0f`)}</div>
         {/if}

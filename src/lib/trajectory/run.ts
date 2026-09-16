@@ -1,3 +1,10 @@
+import {
+  materialize_frame,
+  select_frame_channels,
+  type NumericFrame,
+  type FrameChannels,
+} from './frame'
+import type { DisplayFrame, FramePreparation } from './prepare'
 // The one runtime object every trajectory consumer sees. A run owns its resources (bytes,
 // worker port, HDF5 handle, frame index) and exposes exactly one frame-access path, so a
 // consumer never has to work out whether the frames it can see are all the frames there are.
@@ -136,7 +143,7 @@ const sort_rows = (rows: TrajectoryMetadata[], start = 1): TrajectoryMetadata[] 
   return rows
 }
 
-type FrameResult = TrajectoryFrame | Promise<TrajectoryFrame>
+type FrameResult = NumericFrame | Promise<NumericFrame>
 
 export interface TrajectoryRun {
   readonly atom_count: number
@@ -162,7 +169,16 @@ export interface TrajectoryRun {
   // needs no microtask; a Promise for worker/host runs. Rejects with the signal's reason when
   // aborted and throws/rejects after dispose(), including frame 0. The in-memory `preview`
   // remains readable without accessing disposed resources.
-  read_frame(frame_idx: number, signal?: AbortSignal): FrameResult
+  // Numeric snapshots are borrowed read-only: never mutate or transfer their buffers.
+  // Use materialize_frame() for independently editable Site records and rich metadata.
+  read_frame(frame_idx: number, signal?: AbortSignal, channels?: FrameChannels): FrameResult
+  // Source workers can prepare the next scene alongside decoding, before transferring it.
+  readonly preparation_concurrency?: number
+  prepare_frame?(
+    frame_idx: number,
+    preparation: FramePreparation,
+    signal?: AbortSignal,
+  ): Promise<DisplayFrame>
   // Present iff the run supports full-pass analyses (MSD/VACF/CNA/spectroscopy/trails)
   collect_positions?(options?: CollectPositionsOptions): Promise<TrajectoryPositionStream>
   // Releases bytes, worker + frame port, HDF5 handle, index. Idempotent.
@@ -247,7 +263,7 @@ export interface SyncRunSource extends SharedRunFields {
   // Names the run in the disposed error, e.g. `HDF5 trajectory`
   label: string
   frame_count: number
-  read: (frame_idx: number) => TrajectoryFrame
+  read: (frame_idx: number, channels?: FrameChannels) => NumericFrame
   collect_positions?: (options: CollectPositionsOptions) => Promise<TrajectoryPositionStream>
   release?: () => void
 }
@@ -279,7 +295,9 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
       `time_step needs a positive value and a unit, got ${JSON.stringify(time_step)}`,
     )
   }
-  const preview = source_preview ?? read(0)
+  const initial_frame = source_preview ? undefined : read(0)
+  const preview = source_preview ?? (initial_frame && materialize_frame(initial_frame))
+  if (!preview) throw new Error(`Missing trajectory preview`)
   const atom_count = source_atom_count ?? preview.structure.sites.length
   let disposed = false
   const live = (): void => {
@@ -309,12 +327,13 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     get preview() {
       return preview
     },
-    read_frame: (frame_idx, signal) => {
+    read_frame: (frame_idx, signal, channels) => {
       assert_frame_idx({ frame_count }, frame_idx)
       live()
       signal?.throwIfAborted()
-      if (frame_idx === 0 && !source_preview) return preview
-      return read(frame_idx)
+      if (frame_idx === 0 && initial_frame)
+        return select_frame_channels(initial_frame, channels)
+      return select_frame_channels(read(frame_idx, channels), channels)
     },
     ...(collect_positions && {
       collect_positions: async (options = {}) => {

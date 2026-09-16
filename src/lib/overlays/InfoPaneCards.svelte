@@ -4,6 +4,8 @@
   // cards via `card_attrs`.
   import type { InfoPaneCard, InfoPaneRow } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
+  import { strip_html } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -132,9 +134,14 @@
           </svelte:element>
         {/if}
         {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
+          {#snippet row_tooltip()}{@html sanitize_html(row.tooltip ?? ``)}{/snippet}
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
-            <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
+            <span
+              aria-label={row.tooltip ? strip_html(`${row.value}: ${row.tooltip}`) : undefined}
+              {@attach row.tooltip ? hover_tooltip(row_tooltip) : undefined}
+              >{@html sanitize_html(row.value)}</span
+            >
           </div>
         {/each}
       </section>

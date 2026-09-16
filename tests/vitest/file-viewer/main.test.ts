@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import { create_display } from '$lib/file-viewer/main'
 import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
 import type { ParseResult } from '$lib/file-viewer/parse'
@@ -120,7 +121,7 @@ test(`multi-frame XYZ text opens as a trajectory run`, async () => {
   const run = result.data as TrajectoryRun
   expect(run.frame_count).toBe(2)
   expect(run.provenance).toMatchObject({ filename: `h2.xyz`, format: `xyz` })
-  expect((await run.read_frame(1)).step).toBe(1)
+  expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
   run.dispose()
 })
 
@@ -543,7 +544,7 @@ describe(`LARGE_FILE markers`, () => {
         ? {
             command: `frame_response`,
             request_id: request.request_id,
-            frame: backing.read_frame(Number(request.frame_index)),
+            frame: materialize_frame_result(backing.read_frame(Number(request.frame_index))),
           }
         : {
             command: `large_file_response`,
@@ -564,10 +565,10 @@ describe(`LARGE_FILE markers`, () => {
     const run = result.data as TrajectoryRun
     expect(run.frame_count).toBe(3)
     expect(run.provenance).toMatchObject({ filename: `movie.extxyz`, format: `xyz` })
-    expect(run.read_frame(0)).toBe(run.preview)
+    expect(materialize_frame_result(run.read_frame(0))).toEqual(run.preview)
 
     // Frames past the preview are fetched from the host one request at a time
-    const frame = await run.read_frame(2)
+    const frame = await materialize_frame_result(run.read_frame(2))
     expect(post_message).toHaveBeenLastCalledWith({
       command: `request_frame`,
       request_id: expect.any(String),
@@ -595,7 +596,9 @@ describe(`LARGE_FILE markers`, () => {
     await run.properties.done
     expect(run.properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2])
     run.dispose()
-    await expect(Promise.resolve().then(() => run.read_frame(1))).rejects.toThrow(/disposed/)
+    await expect(
+      Promise.resolve().then(() => materialize_frame_result(run.read_frame(1))),
+    ).rejects.toThrow(/disposed/)
   })
 
   test(`surfaces a host-side error for the file`, async () => {

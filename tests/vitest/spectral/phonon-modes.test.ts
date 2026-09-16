@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { create_cart_to_frac, create_frac_to_cart, dot } from '$lib/math'
 import type { Complex, PhononModeData } from '$lib/spectral'
@@ -26,7 +27,7 @@ import { IDENTITY_MATRIX3 } from '../test-fixtures'
 const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
   const run = create_phonon_mode_run(...args)
   const frames = Array.from({ length: run.frame_count }, (_unused, frame_idx) => {
-    const frame = run.read_frame(frame_idx)
+    const frame = materialize_frame_result(run.read_frame(frame_idx))
     if (frame instanceof Promise) throw new Error(`Phonon mode runs must be synchronous`)
     return frame
   })
@@ -400,16 +401,16 @@ describe(`staged phonon runs`, () => {
     const long_run = phonon_mode_run(pattern_a, { amplitude: 0.5, n_frames: 4000 })
     expect(long_run.frame_count).toBe(4000)
     expect(long_run.properties.rows).toHaveLength(4000)
-    // Frame 1000 of 4000 is a quarter cycle, like frame 1 of 4; sites are the shared cell's
-    const quarter_a = short_run.read_frame(1)
-    const quarter_b = long_run.read_frame(1000)
+    // Frame 1000 of 4000 is a quarter cycle, like frame 1 of 4.
+    const quarter_a = materialize_frame_result(short_run.read_frame(1))
+    const quarter_b = materialize_frame_result(long_run.read_frame(1000))
     if (quarter_a instanceof Promise || quarter_b instanceof Promise) throw new Error(`sync`)
     for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries()) {
       xyz.forEach((coord, axis) =>
         expect(coord).toBeCloseTo(quarter_a.structure.sites[site_idx].xyz[axis], 12),
       )
     }
-    expect(quarter_a.structure.sites[0].species).toBe(cell.structure.sites[0].species)
+    expect(quarter_a.structure.sites[0].species).toEqual(cell.structure.sites[0].species)
     expect(
       Math.hypot(
         ...(quarter_a.structure.sites[0].xyz.map(
@@ -417,7 +418,7 @@ describe(`staged phonon runs`, () => {
         ) as Vec3),
       ),
     ).toBeLessThanOrEqual(0.5 + 1e-12)
-    expect(() => short_run.read_frame(4)).toThrow(RangeError)
+    expect(() => materialize_frame_result(short_run.read_frame(4))).toThrow(RangeError)
   })
 
   it(`reports mass-weighted mode character per element`, () => {

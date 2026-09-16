@@ -1,3 +1,4 @@
+import { encode_frame } from '../frame'
 // Lazily decoded run over a large in-memory XYZ/EXTXYZ text or ASE .traj buffer. Owns the
 // payload and a private frame index (line offsets for XYZ, the ULM offsets table for ASE);
 // frames are decoded on read and cached by the session, never all at once. Per-frame scalars
@@ -87,7 +88,7 @@ export const indexed_text_run = (
   const run = sync_run({
     label: `Indexed ${format} trajectory`,
     frame_count,
-    read: decode,
+    read: (frame_idx) => encode_frame(decode(frame_idx)),
     provenance: { ...provenance, format },
     properties,
     metadata: {},

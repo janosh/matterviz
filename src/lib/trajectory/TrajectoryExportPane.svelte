@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { materialize_frame_result } from '$lib/trajectory/frame'
+
   import { DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
   import { track_settings } from '$lib/controls'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
@@ -143,7 +145,11 @@
   })
 
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
-    resolve_frame ? resolve_frame(idx, signal) : (run?.read_frame(idx, signal) ?? null)
+    resolve_frame
+      ? resolve_frame(idx, signal)
+      : run
+        ? materialize_frame_result(run.read_frame(idx, signal))
+        : null
 
   async function prepare_frame(idx: number, signal: AbortSignal) {
     if (!prepare_display_frame) {

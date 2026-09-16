@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
@@ -103,16 +106,24 @@
 >
   <defs><PatternDefs patterns={segments.map((seg) => seg.pattern)} /></defs>
   {#each segments as segment (segment.element)}
+    {#snippet segment_tooltip()}
+      <TooltipValue
+        label={segment.element}
+        value={segment.amount}
+        unit={segment.amount === 1 ? 'atom' : 'atoms'}
+      />
+      (<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+    {/snippet}
     <path
       d={segment.path}
       fill={segment.pattern?.url ?? segment.color}
       stroke="white"
       role="img"
       aria-label={segment_title(segment)}
+      {@attach hover_tooltip(segment_tooltip)}
       stroke-width={segments.length === 1 ? 0 : stroke_width}
       class="pie-segment"
     >
-      <title>{segment_title(segment)}</title>
     </path>
   {/each}
 

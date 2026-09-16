@@ -3,7 +3,7 @@
 
   import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
-  import { ActionMenu, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, type CmdSection, Icon, type IconData } from 'svelte-widgets'
   import {
     Circle,
     ColorPalette,
@@ -77,7 +77,7 @@
     action: () => handle_export(identifier),
   }))
 
-  const context_menu_actions = $derived([
+  const context_menu_actions = $derived<CmdSection[]>([
     { title: `Display Mode`, selected: mode, actions: mode_actions },
     { title: `Color Scheme`, selected: color_scheme, actions: color_scheme_actions },
     { title: `Export`, actions: export_actions },

@@ -201,6 +201,9 @@ test.each([
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], [2, 3, 1], [11, 7, 28]],
 ])(`mat3x3_vec3_multiply case %#`, (matrix, vector, expected) => {
   expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, vector as Vec3)).toEqual(expected)
+  const aliased = [...vector] as Vec3
+  expect(math.mat3x3_vec3_multiply(matrix as math.Matrix3x3, aliased, aliased)).toBe(aliased)
+  expect(aliased).toEqual(expected)
 })
 
 // oxfmt-ignore
@@ -1141,6 +1144,9 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
   ])(`create_frac_to_cart: $desc`, ({ frac, lattice, expected }) => {
     const result = math.create_frac_to_cart(lattice)(frac as Vec3)
     result.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 2))
+    const target = [...frac] as Vec3
+    expect(math.create_frac_to_cart(lattice)(target, target)).toBe(target)
+    expect(target).toEqual(result)
   })
 
   test.each([
@@ -1155,6 +1161,10 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
       expect(val).toBeCloseTo(frac[idx], 10),
     )
     const cart: Vec3 = [2.5, 3.5, 1.5]
+    const fractional = cart_to_frac(cart)
+    const target = [...cart] as Vec3
+    expect(cart_to_frac(target, target)).toBe(target)
+    expect(target).toEqual(fractional)
     frac_to_cart(cart_to_frac(cart)).forEach((val, idx) =>
       expect(val).toBeCloseTo(cart[idx], 10),
     )

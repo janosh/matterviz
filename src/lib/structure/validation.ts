@@ -1,6 +1,7 @@
 import { det_3x3, EPS } from '$lib/math'
 import { is_plain_object } from '$lib/utils'
 import type { Crystal } from './index'
+import { numeric_sites } from './site'
 
 // Raw formats can carry the lattice itself as a 3x3 array.
 const has_lattice = (
@@ -9,7 +10,8 @@ const has_lattice = (
   is_plain_object(obj) && obj.lattice !== null && typeof obj.lattice === `object`
 
 export const is_crystal = (obj: unknown): obj is Crystal =>
-  has_lattice(obj) && Array.isArray(obj.sites) && obj.sites.length > 0
+  has_lattice(obj) &&
+  (numeric_sites.get(obj)?.length ?? (Array.isArray(obj.sites) ? obj.sites.length : 0)) > 0
 
 // At least one periodic axis. An aperiodic box can still be tiled (is_crystal), but has
 // no image atoms or primitive/conventional reduction. Missing pbc matches make_lattice.
@@ -21,7 +23,7 @@ export function is_periodic(obj: unknown): obj is Crystal {
 
 // Raw-format lattice presence (is_crystal) is intentionally looser than usable geometry.
 export function has_lattice_matrix(obj: unknown): obj is Crystal {
-  if (!has_lattice(obj) || !Array.isArray(obj.sites)) return false
+  if (!has_lattice(obj) || (!numeric_sites.has(obj) && !Array.isArray(obj.sites))) return false
   const { matrix } = obj.lattice
   return (
     Array.isArray(matrix) &&

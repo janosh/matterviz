@@ -137,6 +137,10 @@ Large fixed-topology TorchSim HDF5 trajectories use a sampled preview, bounded n
 
 `Trajectory` accepts a URL, `File` or `{ data, filename }` through `source`, handles drops and HDF5 group selection, and disposes runs it opens. To manage data yourself, pass a `TrajectoryRun` through `trajectory` and dispose it yourself; the viewer borrows supplied runs. Use `trajectory_from_frames(frames)` for existing frames or `open_trajectory(bytes, { filename })` for same-thread parsing. Set `allow_file_drop={false}` when the parent owns loading. Disposed runs reject every frame read, including frame zero; `run.preview` remains accessible.
 
+`run.read_frame()` returns a `NumericFrame` with source-precision coordinate buffers and a separate `header` for step, time, and metadata. These snapshots are read-only: do not mutate or transfer their buffers. Pass `{ vectors: [] }` as the third argument to request coordinates without vector channels, or list the vector keys you need. Use `materialize_frame(await run.read_frame(frame_idx))` when you need editable `TrajectoryFrame` objects with `structure.sites`.
+
+Trajectory event callbacks also receive numeric frames. Prepared playback frames use coordinates wrapped for display; read the frame through `run.read_frame()` when you need the original source coordinates.
+
 ## 🧪 &thinsp; Coverage
 
 | Statements                                                                                 | Branches                                                                          | Lines                                                                            |

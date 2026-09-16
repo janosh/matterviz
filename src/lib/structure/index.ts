@@ -5,6 +5,7 @@ import type { FileLoadData } from '$lib/io/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { CameraProjection } from '$lib/settings'
 import type { Pbc } from './pbc'
+import { numeric_sites } from './site'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
@@ -153,155 +154,42 @@ export const atomic_radii: CompositionType = Object.fromEntries(
   element_data.map((element) => [element.symbol, element.atomic_radius ?? 1]),
 )
 
+const atomic_masses = new Map(
+  element_data.map(({ number, atomic_mass }) => [number, atomic_mass]),
+)
+
 export function get_center_of_mass(structure: AnyStructure): Vec3 {
   let [sum_x, sum_y, sum_z, total_weight] = [0, 0, 0, 0]
-  for (const { species, xyz } of structure.sites) {
-    // a disordered site contributes every species, weighted by its occupancy
-    for (const { element, occu } of species) {
-      const weight = (element_by_symbol.get(element)?.atomic_mass ?? 1) * occu
-      sum_x += weight * xyz[0]
-      sum_y += weight * xyz[1]
-      sum_z += weight * xyz[2]
+  const columns = numeric_sites.get(structure)
+  if (columns) {
+    const { numbers, coordinates, stride } = columns
+    for (let idx = 0; idx < numbers.length; idx++) {
+      const weight = atomic_masses.get(numbers[idx])
+      if (weight === undefined)
+        throw new Error(`Invalid atomic number ${numbers[idx]} at site ${idx}`)
+      const offset = idx * stride
+      sum_x += weight * coordinates[offset]
+      sum_y += weight * coordinates[offset + 1]
+      sum_z += weight * coordinates[offset + 2]
       total_weight += weight
     }
-  }
+  } else
+    for (const { species, xyz } of structure.sites) {
+      // a disordered site contributes every species, weighted by its occupancy
+      for (const { element, occu } of species) {
+        const weight = (element_by_symbol.get(element)?.atomic_mass ?? 1) * occu
+        sum_x += weight * xyz[0]
+        sum_y += weight * xyz[1]
+        sum_z += weight * xyz[2]
+        total_weight += weight
+      }
+    }
   return [sum_x / total_weight, sum_y / total_weight, sum_z / total_weight]
 }
 
-// Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).
-// Both singular and plural forms are accepted. Keys matching exactly or starting
-// with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
-const VECTOR_KEY_PREFIXES = [
-  `force`,
-  `forces`,
-  `magmom`,
-  `magmoms`,
-  `spin`,
-  `spins`,
-  `velocity`,
-  `velocities`,
-  `phonon`,
-  `dipole`,
-] as const
-
-// Memoised: the scan below asks this for every property key of every site on every
-// trajectory frame, and the set of distinct key names in a session is tiny
-const vector_key_memo = new Map<string, boolean>()
-export const is_vector_key = (key: string): boolean => {
-  let is_vector = vector_key_memo.get(key)
-  if (is_vector === undefined) {
-    is_vector = VECTOR_KEY_PREFIXES.some(
-      (prefix) => key === prefix || key.startsWith(`${prefix}_`),
-    )
-    if (vector_key_memo.size >= 1024) vector_key_memo.clear()
-    vector_key_memo.set(key, is_vector)
-  }
-  return is_vector
-}
+export * from './vectors'
 
 export const RESET_VIEW_TITLE = `Reset view (r, or double-click)`
-
-// Default color palette for distinguishing multiple vector layers
-export const VECTOR_PALETTE = [
-  `#e74c3c`,
-  `#3498db`,
-  `#2ecc71`,
-  `#f39c12`,
-  `#9b59b6`,
-  `#1abc9c`,
-] as const
-
-// Same key shape as is_vector_key, restricted to the velocity prefixes
-const is_velocity_vector_key = (key: string): boolean =>
-  [`velocity`, `velocities`].some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
-
-// MD velocities are much larger than typical force-vector values in supported file units.
-// Shorter, thinner defaults keep velocity arrows from overwhelming the structure or cell.
-export const vector_display_defaults = (key: string) =>
-  is_velocity_vector_key(key)
-    ? { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 }
-    : { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }
-
-// Single key → null color (semantic coloring); multiple keys → palette colors.
-export const default_vector_configs = (keys: string[]) =>
-  Object.fromEntries(
-    keys.map((key, idx) => [
-      key,
-      {
-        visible: true,
-        color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
-        scale: vector_display_defaults(key).scale,
-      },
-    ]),
-  )
-
-export function try_parse_vec3(val: unknown): Vec3 | null {
-  if (
-    Array.isArray(val) &&
-    val.length === 3 &&
-    val.every((elem) => typeof elem === `number` && isFinite(elem))
-  )
-    return val as Vec3
-  if (typeof val === `number` && isFinite(val)) return [0, 0, val]
-  return null
-}
-
-// Priority index for ordering: bare names first in VECTOR_KEY_PREFIXES order,
-// then prefixed keys in the same prefix order, alphabetically within each prefix group.
-function vector_key_sort_order(key: string): [number, number, string] {
-  for (const [prefix_idx, prefix] of VECTOR_KEY_PREFIXES.entries()) {
-    if (key === prefix) return [prefix_idx, 0, ``]
-    if (key.startsWith(`${prefix}_`)) return [prefix_idx, 1, key]
-  }
-  return [VECTOR_KEY_PREFIXES.length, 0, key]
-}
-
-function compare_vector_keys(left: string, right: string): number {
-  const ord_l = vector_key_sort_order(left)
-  const ord_r = vector_key_sort_order(right)
-  return ord_l[0] - ord_r[0] || ord_l[1] - ord_r[1] || ord_l[2].localeCompare(ord_r[2])
-}
-
-// Extract ALL vector properties from a site (not just the first match).
-// Returns entries for every key that is_vector_key() and has a valid 3D vector value.
-// Ordered by VECTOR_KEY_PREFIXES priority by default; callers may skip sorting when order is unused.
-export function get_all_site_vectors(
-  site: Site,
-  ordered = true,
-): { vec: Vec3; key: string }[] {
-  const props = site.properties
-  if (!props) return []
-  const results: { vec: Vec3; key: string }[] = []
-  for (const key of Object.keys(props)) {
-    if (!is_vector_key(key)) continue
-    const vec = try_parse_vec3(props[key])
-    if (vec) results.push({ vec, key })
-  }
-  if (ordered) results.sort((left, right) => compare_vector_keys(left.key, right.key))
-  return results
-}
-
-// Collect the union of all vector property keys across all sites in a structure,
-// preserving VECTOR_KEY_PREFIXES priority order. Memoised per structure: Structure, its
-// controls and every scene pane ask for the same answer on every trajectory frame.
-const vector_keys_memo = new WeakMap<AnyStructure, string[]>()
-export function get_structure_vector_keys(structure: AnyStructure): string[] {
-  const memo = vector_keys_memo.get(structure)
-  if (memo) return memo
-  const seen = new Set<string>()
-  for (const site of structure.sites) {
-    const props = site.properties
-    if (!props) continue
-    // a key already seen skips its prefix and vector checks
-    for (const key of Object.keys(props)) {
-      if (!seen.has(key) && is_vector_key(key) && try_parse_vec3(props[key])) seen.add(key)
-    }
-  }
-  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- spread creates a fresh array
-  const keys = [...seen].sort(compare_vector_keys)
-  vector_keys_memo.set(structure, keys)
-  return keys
-}
 
 // Payload of Structure's file, fullscreen and camera callbacks; each emitter fills what it knows
 export interface StructureHandlerData extends FileLoadData {

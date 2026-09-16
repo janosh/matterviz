@@ -344,11 +344,16 @@ export const element_from_candidates = (
 
 // === Lattice conversion ===
 
-const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
-  Math.abs(axis_lengths[0]) > math.EPS ? xyz[0] / axis_lengths[0] : 0,
-  Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0,
-  Math.abs(axis_lengths[2]) > math.EPS ? xyz[2] / axis_lengths[2] : 0,
-]
+const approximate_cart_to_frac = (
+  xyz: Vec3,
+  axis_lengths: Vec3,
+  target: Vec3 = [0, 0, 0],
+): Vec3 => {
+  target[0] = Math.abs(axis_lengths[0]) > math.EPS ? xyz[0] / axis_lengths[0] : 0
+  target[1] = Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0
+  target[2] = Math.abs(axis_lengths[2]) > math.EPS ? xyz[2] / axis_lengths[2] : 0
+  return target
+}
 
 // cart→frac converter that falls back to per-axis-length division for singular lattices.
 // axis_lengths defaults to the row norms of the lattice matrix; naming the cell in
@@ -357,7 +362,7 @@ const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
   opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
-): { convert: (xyz: Vec3) => Vec3; exact: boolean } => {
+): { convert: (xyz: Vec3, target?: Vec3) => Vec3; exact: boolean } => {
   try {
     return { convert: math.create_cart_to_frac(matrix), exact: true }
   } catch {
@@ -372,7 +377,10 @@ export const cart_to_frac_with_fallback = (
     const warn = opts.warn ?? console.warn
     warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
   }
-  return { convert: (xyz: Vec3) => approximate_cart_to_frac(xyz, lengths), exact: false }
+  return {
+    convert: (xyz: Vec3, target?: Vec3) => approximate_cart_to_frac(xyz, lengths, target),
+    exact: false,
+  }
 }
 
 // === Explicit bond blocks ===

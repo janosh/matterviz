@@ -108,22 +108,10 @@
      content and anchors to the start edge, so page text shows beside the open menu; spanning
      the viewport fixes that. `max-width` clears its 90vw cap, which would re-narrow the panel. -->
 <Nav
-  routes={[[`/`, `Home`], ...nav_routes]}
-  route_labels={{
-    '/how-to/hook-up-to-external-api': `Hook up to external API`,
-    '/how-to/use-without-svelte': `Use without Svelte`,
-    '/neb': `NEB`,
-    '/structure/rdf': `RDF`,
-    '/structure/xrd': `XRD`,
-    '/reciprocal/dos': `DOS`,
-    '/reciprocal/bands-and-dos': `Bands + DOS`,
-    '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
-    '/reciprocal/ir-raman': `IR + Raman`,
-    '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
-  }}
+  routes={[{ href: `/`, label: `Home` }, ...nav_routes]}
   menu_props={{ style: `inset-inline: 0.5rem; max-width: none` }}
   aria-label="Main navigation"
-  {page}
+  pathname={page.url.pathname}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
   --text="var(--text-color)"
 >

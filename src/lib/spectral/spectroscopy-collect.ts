@@ -216,7 +216,7 @@ export async function collect_trajectory_spectroscopy_input(
   const end_step =
     needs_end_step && end_frame !== undefined && end_frame < run.frame_count
       ? (run.properties.rows.find(({ frame_number }) => frame_number === end_frame)?.step ??
-        (await run.read_frame(end_frame, signal)).step)
+        (await run.read_frame(end_frame, signal)).header.step)
       : Infinity
   signal?.throwIfAborted()
   const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {

@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
@@ -21,6 +22,7 @@ import {
   hdf5_frames_per_slice,
   read_dataset,
   read_numeric_1d,
+  read_numeric_buffer,
   read_numeric_hyperslab,
   read_numeric_samples,
   to_number_array,
@@ -70,7 +72,8 @@ const open = async (
 }
 const frames_of = async (run: TrajectoryRun): Promise<TrajectoryFrame[]> => {
   const frames: TrajectoryFrame[] = []
-  for (let idx = 0; idx < run.frame_count; idx++) frames.push(await run.read_frame(idx))
+  for (let idx = 0; idx < run.frame_count; idx++)
+    frames.push(await materialize_frame_result(run.read_frame(idx)))
   return frames
 }
 const steps_of = async (run: TrajectoryRun): Promise<number[]> =>
@@ -175,8 +178,8 @@ describe(`site fixtures`, () => {
     expect(run.warnings).toEqual([])
     expect(run.collect_positions).toBeDefined()
     if (fixture.metadata) expect(run.metadata).toMatchObject(fixture.metadata)
-    const first = await run.read_frame(0)
-    const last = await run.read_frame(frame_count - 1)
+    const first = await materialize_frame_result(run.read_frame(0))
+    const last = await materialize_frame_result(run.read_frame(frame_count - 1))
     expect([first.step, last.step]).toEqual(steps)
     expect(count_species(first)).toEqual(fixture.species)
     expect(last.structure.sites).toHaveLength(n_atoms)
@@ -437,7 +440,7 @@ describe(`vasprun.xml`, () => {
     const md_step = calculation(5, frac_si_o, zero_forces, -10, { md: true })
     const run = await open(vasprun([md_step], { ibrion: 0, potim: 2 }), `vasprun.xml`)
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
-    expect((await run.read_frame(0)).metadata).toMatchObject({
+    expect((await materialize_frame_result(run.read_frame(0))).metadata).toMatchObject({
       kinetic_energy: 0.5,
       total_energy: -9.5,
     })
@@ -453,7 +456,7 @@ describe(`vasprun.xml`, () => {
       `Dropping incomplete final vasprun.xml <calculation> block (ionic step 4)`,
     ])
     // the frame survives without forces, on neither the metadata nor the sites
-    const frame = await run.read_frame(2)
+    const frame = await materialize_frame_result(run.read_frame(2))
     expect(frame.metadata).not.toHaveProperty(`forces`)
     expect(frame.structure.sites[0].properties?.force).toBeUndefined()
   })
@@ -628,14 +631,16 @@ describe(`OUTCAR`, () => {
     ].join(`\n`)
     const run = await open(content, `md/OUTCAR`)
     expect(run.time_step).toEqual({ value: 1.5, unit: `fs` })
-    expect((await run.read_frame(0)).metadata).toMatchObject({
+    expect((await materialize_frame_result(run.read_frame(0))).metadata).toMatchObject({
       energy: -20,
       energy_wo_entropy: -19.999,
       kinetic_energy: 0.25,
       temperature: 300.5,
       total_energy: -19.75,
     })
-    expect((await run.read_frame(0)).metadata).not.toHaveProperty(`n_scf_steps`)
+    expect((await materialize_frame_result(run.read_frame(0))).metadata).not.toHaveProperty(
+      `n_scf_steps`,
+    )
   })
 
   it(`falls back to the POTCAR echo for species when VRHFIN lines are absent`, async () => {
@@ -643,7 +648,8 @@ describe(`OUTCAR`, () => {
       [header({ species: `POTCAR` }), ionic_step(1, 5, rows_1, -20)].join(`\n`),
       `OUTCAR`,
     )
-    expect(elements_of(await run.read_frame(0))).toEqual([`Si`, `O`, `O`])
+    const frame = await materialize_frame_result(run.read_frame(0))
+    expect(elements_of(frame)).toEqual([`Si`, `O`, `O`])
     expect(run.atom_masses).toBeUndefined()
   })
 
@@ -1301,7 +1307,7 @@ describe(`XYZ`, () => {
     const indexed = await open(content, `appending.xyz`, { index_above_bytes: 0 })
     expect(indexed.frame_count).toBe(2)
     expect(indexed.warnings).toEqual([warning])
-    expect(() => indexed.read_frame(2)).toThrow(RangeError)
+    expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
   })
@@ -1333,7 +1339,7 @@ describe(`XYZ`, () => {
     await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)
     const indexed = await open(content, `corrupt.xyz`, { index_above_bytes: 0 })
     expect(indexed.frame_count).toBe(2)
-    expect(() => indexed.read_frame(1)).toThrow(error.replace(`frame 1 (line 7)`, `indexed frame 1`))
+    expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error.replace(`frame 1 (line 7)`, `indexed frame 1`))
     await indexed.properties.done
     expect(indexed.warnings).not.toContainEqual(expect.stringContaining(`truncated`))
   })
@@ -1381,9 +1387,9 @@ describe(`ASE`, () => {
     await expect(open(buffer, `corrupt.traj`)).rejects.toThrow(error)
     const indexed = await open(buffer, `corrupt.traj`, { index_above_bytes: 0 })
     expect(indexed.frame_count).toBe(2)
-    expect((await indexed.read_frame(0)).step).toBe(0)
-    expect(() => indexed.read_frame(1)).toThrow(error)
-    expect(() => indexed.read_frame(2)).toThrow(RangeError)
+    expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)
+    expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error)
+    expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0])
     expect(indexed.warnings).toEqual([expect.stringMatching(/^Skipping plot data of frame 1/)])
@@ -1523,7 +1529,8 @@ describe(`JSON`, () => {
       { structure: { sites: [h_site, h_site] }, step: 1 },
     ]
     expect(
-      (await trajectory_from_json({ frames }).read_frame(1)).structure.sites,
+      (await materialize_frame_result(trajectory_from_json({ frames }).read_frame(1)))
+        .structure.sites,
     ).toHaveLength(2)
   })
 })
@@ -1563,6 +1570,17 @@ describe(`HDF5 slice budgets`, () => {
     expect(to_number_array([2n ** 60n])).toBeNull()
   })
 
+  it.each([NaN, Infinity, -Infinity])(`rejects Float64 channel value %s`, (invalid) => {
+    const dataset = {
+      metadata: { size: 8 },
+      shape: [3],
+      slice: () => Float64Array.of(-0, 1, invalid),
+    } as unknown as H5Dataset
+    expect(() => read_numeric_buffer(dataset, `/velocity`, [[]])).toThrow(
+      `HDF5 dataset /velocity hyperslab must contain finite numbers`,
+    )
+  })
+
   // The widest per-frame dataset bounds a shared slice
   it.each([[[1]], [[3]], [[9]], [[3000]], [[3, 1, 9]]])(
     `caps a frame slice over %j values/frame at 8 MiB of logical Float64 output`,
@@ -1580,9 +1598,14 @@ describe(`HDF5 slice budgets`, () => {
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application slice limit`,
     )
     const slice = vi.fn()
-    const dataset = { metadata: { size: 8 }, shape: [too_many], slice } as unknown as H5Dataset
+    const shape = [too_many]
+    const dataset = { metadata: { size: 8 }, shape, slice } as unknown as H5Dataset
     expect(() => read_numeric_hyperslab(dataset, `/large`, [[]])).toThrow(
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
+    )
+    shape[0] = HDF5_MAX_WHOLE_DATASET_BYTES / 8 + 1
+    expect(() => read_numeric_buffer(dataset, `/large`, [[]])).toThrow(
+      `above the ${HDF5_MAX_WHOLE_DATASET_BYTES}-byte application limit`,
     )
     expect(slice).not.toHaveBeenCalled()
     // an undecoded 2-byte [n_atoms] masses used to yield 2*n_atoms plausible byte values
@@ -1635,6 +1658,48 @@ describe(`HDF5 slice budgets`, () => {
     } as unknown as H5Dataset
     expect(read_numeric_samples(samples, `/direct-copy`, 3, 2)).toEqual(
       Float64Array.from([1, 2, 3, 4, 5, 6]),
+    )
+  })
+
+  it.each([1, 3])(`splits oversized numeric samples with stride %i`, (stride) => {
+    const sample_size = HDF5_MAX_LOGICAL_SLICE_BYTES / 8 + 3
+    const slice = vi.fn((ranges: number[][]) => {
+      const [start, end, sample_stride = 1] = ranges[0]
+      const [column_start = 0, column_end = sample_size, column_stride = 1] = ranges[1] ?? []
+      const columns = Math.ceil((column_end - column_start) / column_stride)
+      const length = Math.ceil((end - start) / sample_stride) * columns
+      expect(length * 8).toBeLessThanOrEqual(HDF5_MAX_LOGICAL_SLICE_BYTES)
+      return Float64Array.from(
+        { length },
+        (_unused, idx) =>
+          (start + Math.floor(idx / columns) * sample_stride) * sample_size +
+          column_start +
+          (idx % columns) * column_stride,
+      )
+    })
+    const dataset = {
+      metadata: { size: 8 },
+      shape: [5, sample_size],
+      slice,
+    } as unknown as H5Dataset
+    const values = read_numeric_samples(
+      dataset,
+      `/large-samples`,
+      5,
+      sample_size,
+      stride,
+      undefined,
+      1,
+      5,
+    )
+    for (let idx = 0; idx < values.length; idx++) {
+      const frame_idx = 1 + Math.floor(idx / sample_size) * stride
+      if (values[idx] !== frame_idx * sample_size + (idx % sample_size))
+        throw new Error(`Sample value changed at ${idx}`)
+    }
+    expect(values).toHaveLength(Math.ceil(4 / stride) * sample_size)
+    expect(read_numeric_buffer(dataset, `/large-samples`, [[1, 2]])).toEqual(
+      values.subarray(0, sample_size),
     )
   })
 
@@ -1773,10 +1838,40 @@ describe(`HDF5`, () => {
     expect(window.n_frames).toBe(1)
     expect(window.lattice_matrices?.[0]?.[0][0]).toBe(cells.at(-1)?.[0])
     for (const [frame_idx, edge] of edges.entries()) {
-      const { structure } = await run.read_frame(frame_idx)
+      const { structure } = await materialize_frame_result(run.read_frame(frame_idx))
       expect(`lattice` in structure ? structure.lattice.matrix[0][0] : undefined).toBe(edge)
       expect(structure.sites[1].xyz).toEqual([1.4, 1.4, 1.4])
     }
+  })
+
+  it(`reads full TorchSim frames larger than one native slice without losing atoms`, async () => {
+    const n_atoms = Math.floor(HDF5_MAX_LOGICAL_SLICE_BYTES / 24) + 1
+    const values = Float64Array.from({ length: n_atoms * 6 }, (_unused, idx) => idx / 8)
+    const content = await h5_bytes(`large-numeric-frame`, (file) => {
+      const data = file.create_group(`data`)
+      const steps = file.create_group(`steps`)
+      for (const name of [`positions`, `velocities`])
+        data.create_dataset({ name, data: values, shape: [2, n_atoms, 3] })
+      for (const name of [`positions`, `velocities`]) create_dataset(steps, name, [0, 1], [2])
+      data.create_dataset({
+        name: `atomic_numbers`,
+        data: new Uint8Array(n_atoms).fill(14),
+        shape: [n_atoms],
+      })
+    })
+    const run = await open(content, `large-numeric-frame.h5`)
+    const frame = await run.read_frame(1)
+    expect(frame.sites).toHaveLength(n_atoms)
+    expect(frame.vector_keys).toEqual([`velocity`])
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++)
+      for (let axis = 0; axis < 3; axis++) {
+        const expected = values[n_atoms * 3 + atom_idx * 3 + axis]
+        if (
+          frame.coordinates[atom_idx * 9 + axis] !== expected ||
+          frame.coordinates[atom_idx * 9 + 6 + axis] !== expected
+        )
+          throw new Error(`Atom ${atom_idx} axis ${axis} changed`)
+      }
   })
 
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
@@ -1803,7 +1898,7 @@ describe(`HDF5`, () => {
     expect(window.signals?.dipole.steps).toEqual([2])
     expect(window.positions).toHaveLength(12)
     expect(window.vectors?.velocity).toHaveLength(12)
-    const frame = await run.read_frame(3)
+    const frame = await materialize_frame_result(run.read_frame(3))
     expect(frame.structure.sites.map(({ properties }) => properties.velocity)).toEqual([
       [1.8, 1.9, 2],
       [2.1, 2.2, 2.3],
@@ -2039,7 +2134,7 @@ describe(`HDF5`, () => {
     const run = await open(content, `long-generic.h5`)
     expect(run.frame_count).toBe(n_frames)
     expect(run.properties.rows).toHaveLength(n_frames)
-    expect(await run.read_frame(11)).toMatchObject({
+    expect(await materialize_frame_result(run.read_frame(11))).toMatchObject({
       step: 22,
       structure: { sites: [{ xyz: [11, 0, 0] }], lattice: { matrix: cell_21 } },
     })
@@ -2094,7 +2189,10 @@ describe(`HDF5`, () => {
     expect(run.frame_count).toBe(12)
     expect(run.properties.rows).toHaveLength(12)
     for (const frame_idx of [0, 5, 7, 11]) {
-      const frame = await run.read_frame(frame_idx)
+      const numeric = await run.read_frame(frame_idx)
+      expect(numeric.sites).toEqual(Uint8Array.of(1, 8))
+      expect(numeric.topology).toEqual({ kind: `fixed-order`, revision: 0 })
+      const frame = materialize_frame_result(numeric)
       expect(frame.structure.sites.map(({ xyz }) => xyz)).toEqual(replica_xyz(frame_idx))
       expect(frame.structure.sites.map(({ properties }) => properties)).toEqual([
         { velocity: [1, 0, 0] },
@@ -2142,7 +2240,7 @@ describe(`HDF5`, () => {
     expect(Math.ceil(1500 / interval) * checkpoint_bytes).toBeLessThanOrEqual(budget_bytes)
     const run = await open_replica(258)
     for (const frame_idx of [255, 256, 257]) {
-      const frame = await run.read_frame(frame_idx)
+      const frame = await materialize_frame_result(run.read_frame(frame_idx))
       expect(frame.structure.sites.map(({ xyz }) => xyz)).toEqual(replica_xyz(frame_idx))
     }
     expect(Number(run.metadata.position_checkpoint_bytes)).toBeLessThanOrEqual(budget_bytes)

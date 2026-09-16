@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import type { Crystal } from '$lib/structure'
 import app_css from '$lib/app.css?inline'
 import type { Vec3 } from '$lib/math'
@@ -538,7 +539,9 @@ describe(`TrajectoryExportPane property export`, () => {
       const wrapper = document.createElement(`div`)
       const display_ready = Promise.withResolvers<undefined>()
       const prepare_display_frame = vi.fn(() => display_ready.promise)
-      const resolve_frame = vi.fn(trajectory.read_frame)
+      const resolve_frame = vi.fn((idx: number, signal?: AbortSignal) =>
+        materialize_frame_result(trajectory.read_frame(idx, signal)),
+      )
       const on_step_change = vi.fn()
       open_pane({
         run: trajectory,

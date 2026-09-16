@@ -1,7 +1,7 @@
 // CSS colour to linear-space RGB for three.js buffers. Shared by every scene that writes
 // colours into instanced or vertex attributes, which the renderer reads as Linear-sRGB.
 import { rgb as parse_rgb } from 'd3-color'
-import { Color, SRGBColorSpace } from 'three/webgpu'
+import { Color, SRGBColorSpace, type TypedArray } from 'three/webgpu'
 import { clamp } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 
@@ -51,7 +51,7 @@ export function set_linear_css_color(css_color: string, scratch_color: Color): v
 }
 
 export function write_linear_color_to_buffer(
-  buffer: Float32Array,
+  buffer: TypedArray,
   idx: number,
   css_color: string,
 ): void {

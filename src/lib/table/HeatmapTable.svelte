@@ -1965,7 +1965,7 @@
     trigger="none"
     bind:at={context_menu_at}
     actions={context_menu_actions}
-    on_select={() => (context_menu_col = null)}
+    on_execute={() => (context_menu_col = null)}
     style={[
       `--action-menu-bg: light-dark(#fff, #1e1e1e)`,
       `--action-menu-border: 1px solid light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,

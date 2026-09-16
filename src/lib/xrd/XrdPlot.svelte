@@ -285,7 +285,7 @@
 
 {#snippet readout(label: string, angle: number, intensity: number)}
   {@html sanitize_html(label)}<br />
-  2θ: {format_value(angle, `.2f`)}°<br />
+  2θ: {format_value(angle, `.2f`)} <small>°</small><br />
   Intensity: {format_value(intensity, `.1f`)}
 {/snippet}
 
@@ -406,7 +406,7 @@
         {@const hkl_text = join_hkls(info.metadata?.hkls)}
         {@render readout(info.metadata?.label ?? ``, info.x, info.y)}
         {#if hkl_text}<br />hkl: {hkl_text}{/if}
-        {#if d_spacing != null}<br />d: {format_value(d_spacing, `.3f`)} Å{/if}
+        {#if d_spacing != null}<br />d: {format_value(d_spacing, `.3f`)} <small>Å</small>{/if}
       {/snippet}
 
       <BarPlot

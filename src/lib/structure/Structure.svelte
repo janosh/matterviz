@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { site_count } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '$lib/colors'
@@ -109,6 +110,8 @@
   let {
     structure = $bindable(),
     structure_series_key = undefined,
+    render_token,
+    on_rendered,
     show_host_tool = true,
     reference_structure = undefined,
 
@@ -184,6 +187,9 @@
     // Stable identity for coordinate-only updates (trajectory playback): camera and selection
     // persist while it is unchanged and the topology is the same
     structure_series_key?: unknown
+    // Identifies a complete scene snapshot; acknowledged after its render submission.
+    render_token?: unknown
+    on_rendered?: (token: unknown) => void
     // Disable nested host tools in a host-owned preview.
     show_host_tool?: boolean
     // Comparison overlay: per-atom displacement arrows from this geometry to `structure`
@@ -287,7 +293,7 @@
       on_file_load?.({
         structure: loaded_structure,
         ...opened.provenance,
-        total_atoms: loaded_structure?.sites.length ?? 0,
+        total_atoms: site_count(loaded_structure),
       })
     },
     report_error: (message, metadata) => {
@@ -559,16 +565,14 @@
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
   let vector_keys = $derived(
-    Array.isArray(structure?.sites)
-      ? get_structure_vector_keys(tool_structure ?? structure)
-      : [],
+    structure !== undefined ? get_structure_vector_keys(tool_structure ?? structure) : [],
   )
   let vector_keys_signature = $derived(vector_keys.join(`\0`))
   let vectors_auto_populated_for = ``
   let last_auto_configs: Record<string, unknown> | undefined
   $effect(() => {
     const signature = vector_keys_signature
-    if (!structure?.sites || signature === vectors_auto_populated_for) return
+    if (!structure || signature === vectors_auto_populated_for) return
     // Drop the previous structure's auto configs; keep externally supplied ones
     const existing = scene_props.vector_configs
     if (last_auto_configs && existing === last_auto_configs) {
@@ -722,7 +726,7 @@
   // === scene inputs ===
   // Speed mode caps tessellation at render time rather than rewriting the user's setting
   let effective_sphere_segments = $derived(
-    performance_mode === `speed` && (session.supercell_structure?.sites.length ?? 0) > 200
+    performance_mode === `speed` && site_count(session.supercell_structure) > 200
       ? Math.min(scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments, 12)
       : (scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments),
   )
@@ -770,6 +774,8 @@
     reference_structure,
     scene_props: {
       ...scene_props,
+      render_token,
+      on_rendered,
       show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),
       trajectory_position_stream,
       trajectory_line_end_frame,
@@ -1029,7 +1035,7 @@
         {/if}
         <button onclick={tool_controller.clear}>Clear prediction</button>
       </p>{/if}
-    {#if (structure?.sites?.length ?? 0) > 0 || (volumetric_data?.length ?? 0) > 0}
+    {#if site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0}
       <ViewerChrome
         {controls_config}
         bind:fullscreen
@@ -1166,7 +1172,7 @@
         {@render top_right_controls?.()}
       </ViewerChrome>
 
-      {#if display_mode === `structure` && structure?.sites?.length}
+      {#if display_mode === `structure` && structure && site_count(structure)}
         <AtomLegend
           bind:atom_color_config
           property_colors={session.property_colors}

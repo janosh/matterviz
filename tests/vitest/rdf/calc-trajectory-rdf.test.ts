@@ -1,3 +1,4 @@
+import { encode_frame } from '$lib/trajectory/frame'
 import { collect_trajectory_rdf, rdf_shell } from '$lib/rdf'
 import type { Crystal } from '$lib/structure'
 import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
@@ -153,10 +154,14 @@ describe(`collect_trajectory_rdf`, () => {
     await expect(
       collect_trajectory_rdf(run_of([mixed, shifted]), { n_bins: 20 }),
     ).rejects.toThrow(/different composition/)
-    // Readers may reuse and mutate the same structure between frames. The reference must
-    // copy the original occupancies rather than retaining the first frame's species objects.
+    // A generated source snapshots its working structure at each read. The reference must
+    // compare all occupancies when that structure changes between frames.
+    const generated = {
+      ...run_of([mixed, mixed]),
+      read_frame: (step: number) => encode_frame({ step, structure: mixed }),
+    }
     await expect(
-      collect_trajectory_rdf(run_of([mixed, mixed]), {
+      collect_trajectory_rdf(generated, {
         n_bins: 20,
         on_progress: (done) => {
           if (done === 1) mixed.sites[0].species[0].occu = 0.6
@@ -170,11 +175,10 @@ describe(`collect_trajectory_rdf`, () => {
       (step) =>
         [
           `invalid step ${step}`,
-          () =>
-            ({
-              ...run_of([rocksalt()]),
-              read_frame: () => ({ structure: rocksalt(), step }),
-            }) as TrajectoryRun,
+          () => ({
+            ...run_of([rocksalt()]),
+            read_frame: () => encode_frame({ structure: rocksalt(), step: step as number }),
+          }),
           /frame 0 has invalid step/,
         ] as const,
     ),

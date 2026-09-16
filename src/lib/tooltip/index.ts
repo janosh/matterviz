@@ -14,3 +14,4 @@ export type TooltipProp<T, SnippetArgs extends unknown[] = [{ hover_data: T }]> 
 
 export { default as KCoords } from './KCoords.svelte'
 export { default as TooltipContent } from './TooltipContent.svelte'
+export { default as TooltipValue } from './TooltipValue.svelte'

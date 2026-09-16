@@ -4,24 +4,24 @@
   import { Code, Globe, Heart } from 'svelte-widgets/icons'
 
   const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
-    [
-      `Use Without Svelte`,
-      `/how-to/use-without-svelte`,
-      `Embed MatterViz in React, Vue, and plain HTML with custom elements.`,
-      Code,
-    ],
-    [
-      `Connect to External APIs`,
-      `/how-to/hook-up-to-external-api`,
-      `Fetch and visualize crystal structures from materials databases using OPTIMADE.`,
-      Globe,
-    ],
-    [
-      `Acknowledgements`,
-      `/acknowledgements`,
-      `The open-source projects, data sources, and contributors behind MatterViz.`,
-      Heart,
-    ],
+    {
+      label: `Use Without Svelte`,
+      href: `/how-to/use-without-svelte`,
+      description: `Embed MatterViz in React, Vue, and plain HTML with custom elements.`,
+      icon: Code,
+    },
+    {
+      label: `Connect to External APIs`,
+      href: `/how-to/hook-up-to-external-api`,
+      description: `Fetch and visualize crystal structures from materials databases using OPTIMADE.`,
+      icon: Globe,
+    },
+    {
+      label: `Acknowledgements`,
+      href: `/acknowledgements`,
+      description: `The open-source projects, data sources, and contributors behind MatterViz.`,
+      icon: Heart,
+    },
   ]
 </script>
 

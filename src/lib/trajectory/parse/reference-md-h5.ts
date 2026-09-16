@@ -1,16 +1,17 @@
+import {
+  create_numeric_md_frame,
+  materialize_frame,
+  write_frame_vector,
+  type FrameChannels,
+} from '../frame'
 import { calc_lattice_params, first_non_increasing_index } from '$lib/math'
 import type { Pbc } from '$lib/structure/pbc'
-import {
-  convert_atomic_numbers,
-  create_trajectory_frame,
-  values_per_sample,
-} from '$lib/trajectory/helpers'
+import { convert_atomic_numbers, values_per_sample } from '$lib/trajectory/helpers'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '$lib/trajectory/index'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {
   Hdf5GroupSelectionRequiredError,
-  attach_site_vectors,
   attribute_value,
   dataset_at,
   dataset_shape,
@@ -19,6 +20,8 @@ import {
   is_hdf5_group,
   lattice_from_values,
   read_numeric_hyperslab,
+  read_numeric_buffer,
+  HDF5_MAX_LOGICAL_SLICE_BYTES,
   read_numeric_samples,
   resolve_stream_channels,
   sampled_property_rows,
@@ -235,6 +238,7 @@ export const parse_reference_md_h5_file = (
     atomic_numbers_path,
   )
   const elements = convert_atomic_numbers(atomic_numbers)
+  const numeric_elements = Uint8Array.from(atomic_numbers)
   const n_atoms = elements.length
   const atom_masses = values_of(required_dataset(h5_file, masses_path), masses_path)
   if (atom_masses.length !== n_atoms || atom_masses.some((mass) => mass <= 0)) {
@@ -268,8 +272,8 @@ export const parse_reference_md_h5_file = (
     [replica_count, n_atoms, 3],
     positions_path,
   )
-  const read_replica = (dataset: Dataset, path: string): number[] =>
-    read_numeric_hyperslab(dataset, path, [[replica_idx, replica_idx + 1]])
+  const read_replica = (dataset: Dataset, path: string): Float64Array =>
+    read_numeric_buffer(dataset, path, [[replica_idx, replica_idx + 1]])
   const initial_positions = read_replica(initial_positions_dataset, positions_path)
   const cells_dataset = required_dataset(h5_file, cells_path)
   ensure_shape(shape_of(cells_dataset, cells_path), [replica_count, 3, 3], cells_path)
@@ -340,14 +344,16 @@ export const parse_reference_md_h5_file = (
     () => n_frames,
     () => true,
   )
-  const velocity_frames_per_slice = hdf5_frames_per_slice(velocity_sample_size)
+  const velocity_frames_per_slice = hdf5_frames_per_slice(
+    Math.min(velocity_sample_size, HDF5_MAX_LOGICAL_SLICE_BYTES / 8),
+  )
   const read_replica_frames = (
     manifest: ObservableManifest,
     start: number,
     end: number,
     stride = 1,
-  ): number[] =>
-    read_numeric_hyperslab(manifest.dataset, manifest.path, [
+  ): Float64Array =>
+    read_numeric_buffer(manifest.dataset, manifest.path, [
       [start, end, stride],
       [replica_idx, replica_idx + 1],
     ])
@@ -375,7 +381,7 @@ export const parse_reference_md_h5_file = (
   const integrate_velocity_sample = (
     positions: Float64Array,
     previous_velocity: Float64Array,
-    velocities: number[],
+    velocities: Float64Array,
     velocity_offset: number,
     time_delta_ps?: number,
   ): void => {
@@ -397,7 +403,7 @@ export const parse_reference_md_h5_file = (
     start_frame: number,
     end_frame: number,
     positions: Float64Array,
-    on_frame?: (frame_idx: number, chunk: number[], offset: number) => void,
+    on_frame?: (frame_idx: number, chunk: Float64Array, offset: number) => void,
   ): void => {
     const previous_velocity = new Float64Array(velocity_sample_size)
     let has_previous = false
@@ -456,20 +462,23 @@ export const parse_reference_md_h5_file = (
     ...(energy ? { energy: selected_scalar(energy, frame_number) } : {}),
     ...(temperature ? { temperature: selected_scalar(temperature, frame_number) } : {}),
   })
-  const load_frame = (frame_number: number) => {
+  const load_frame = (frame_number: number, requested?: FrameChannels) => {
     const positions = reconstruct_positions(frame_number)
-    const velocity = read_replica_frames(velocity_manifest, frame_number, frame_number + 1)
-    const frame = create_trajectory_frame(
-      Array.from({ length: n_atoms }, (_unused, atom_idx) =>
-        Array.from(positions.slice(atom_idx * 3, atom_idx * 3 + 3)),
-      ),
-      elements,
+    const velocity =
+      !requested?.vectors || requested.vectors.includes(`velocity`)
+        ? read_replica_samples(velocity_manifest, 1, frame_number, frame_number + 1)
+        : undefined
+    const frame = create_numeric_md_frame(
+      positions,
+      numeric_elements,
       lattice_matrix,
       pbc,
       production_steps[frame_number],
       metadata_for_frame(frame_number),
+      velocity ? [`velocity`] : [],
     )
-    attach_site_vectors(frame, `velocity`, velocity)
+    frame.available_vector_keys = [`velocity`]
+    if (velocity) write_frame_vector(frame, 0, velocity)
     return frame
   }
   const sampled_properties = () =>
@@ -510,7 +519,7 @@ export const parse_reference_md_h5_file = (
     )
     return {
       format: `reference-md-hdf5`,
-      frames: [load_frame(0)],
+      frames: [materialize_frame(load_frame(0))],
       time_step: { value: integration_timestep_ps, unit: `ps` },
       atom_masses,
       signals,

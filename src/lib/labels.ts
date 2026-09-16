@@ -55,6 +55,20 @@ export const capitalize = (text: string): string =>
 // Snake/kebab identifier to a display label: `bond_length` -> `Bond length`.
 export const humanize = (text: string): string => capitalize(text.replaceAll(/[_-]/g, ` `))
 
+// Separate a trailing unit, including nested denominators like states/(eV atom).
+// The separating space keeps function labels such as g(r) intact.
+export function parse_axis_label(label: string): { name: string; unit?: string } {
+  if (label.endsWith(`)`)) {
+    let depth = 0
+    for (let idx = label.length - 1; idx > 0; idx--) {
+      if (label[idx] === `)`) depth++
+      if (label[idx] === `(` && --depth === 0 && /\s/.test(label[idx - 1]))
+        return { name: label.slice(0, idx).trimEnd(), unit: label.slice(idx + 1, -1) }
+    }
+  }
+  return { name: label }
+}
+
 // d3-shape symbol names (`Circle`, `Cross`, ...) in d3's fill-then-stroke order, and the
 // matching SymbolType for each. `symbolX` aliases `symbolTimes`, so the first export
 // naming a symbol object wins.

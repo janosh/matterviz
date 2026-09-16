@@ -18,6 +18,7 @@
     collapsed_sections = $bindable<string[]>([]),
     on_toggle,
     trigger,
+    header,
   }: {
     columns: MenuColumn[]
     column_panel_open?: boolean
@@ -27,6 +28,8 @@
     on_toggle?: (col: MenuColumn, visible: boolean) => void
     // Replaces the default "Columns" button. The summary keeps owning the click.
     trigger?: Snippet<[{ open: boolean }]>
+    // Extra controls above the column choices.
+    header?: Snippet
   } = $props()
 
   const default_visible = (col: MenuColumn): boolean =>
@@ -221,6 +224,9 @@
       padding: 8,
     })}
   >
+    {#if header}
+      <div style="grid-column: 1 / -1">{@render header()}</div>
+    {/if}
     {#if show_column_filter}
       <input
         aria-label="Filter columns"

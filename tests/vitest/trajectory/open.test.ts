@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // open_trajectory: one entry point, one loading policy. The indexing threshold, progressive
 // plot rows, progress/abort, JSON run metadata and HDF5 handle lifetime. The per-format
 // parser behaviour (and the fixture table over every sample file) lives in parsers.test.ts.
@@ -31,8 +32,8 @@ describe(`loading policy`, () => {
       eager.properties.rows.map((row) => row.properties.energy),
     )
     for (const idx of [0, 7, 29]) {
-      const from_eager = await eager.read_frame(idx)
-      const from_lazy = await lazy.read_frame(idx)
+      const from_eager = await materialize_frame_result(eager.read_frame(idx))
+      const from_lazy = await materialize_frame_result(lazy.read_frame(idx))
       expect(from_lazy.step).toBe(from_eager.step)
       expect(from_lazy.structure.sites.map((site) => site.xyz)).toEqual(
         from_eager.structure.sites.map((site) => site.xyz),
@@ -153,9 +154,9 @@ describe(`loading policy`, () => {
       for (const run of [lazy, eager]) {
         expect(run.properties.rows[1].properties).toMatchObject(energies)
       }
-      expect((await lazy.read_frame(1)).structure.sites[0].xyz).toEqual(
-        (await eager.read_frame(1)).structure.sites[0].xyz,
-      )
+      expect(
+        (await materialize_frame_result(lazy.read_frame(1))).structure.sites[0].xyz,
+      ).toEqual((await materialize_frame_result(eager.read_frame(1))).structure.sites[0].xyz)
     },
   )
 
@@ -268,10 +269,10 @@ describe(`HDF5`, () => {
     const run = await open_trajectory(read_binary_test_file(`gold-nanoparticle-md.h5`), {
       filename: `gold.h5`,
     })
-    expect((await run.read_frame(99)).step).toBe(991)
+    expect((await materialize_frame_result(run.read_frame(99))).step).toBe(991)
     run.dispose()
-    expect(() => run.read_frame(5)).toThrow(/disposed/)
-    expect(() => run.read_frame(0)).toThrow(/disposed/)
+    expect(() => materialize_frame_result(run.read_frame(5))).toThrow(/disposed/)
+    expect(() => materialize_frame_result(run.read_frame(0))).toThrow(/disposed/)
     expect(run.preview.structure.sites).toHaveLength(55)
   })
 })

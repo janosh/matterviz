@@ -1,3 +1,4 @@
+import { encode_frame, materialize_frame_result } from '$lib/trajectory/frame'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   calculate_hotspots,
@@ -300,7 +301,7 @@ describe(`spatial kinetic hotspots`, () => {
     )
     if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
     const computation = run.compute_hotspots(velocity_options)
-    expect((await run.read_frame(1)).step).toBe(1)
+    expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
     expect(hotspot_mean(await computation, `energy`)).toBe(28 * conversion)
     const compute = backing.compute_hotspots
     if (!compute) throw new Error(`Missing backing computation`)
@@ -349,9 +350,8 @@ describe(`spatial kinetic hotspots`, () => {
       frame.structure.sites[0].properties.ke = step === 2 ? 10 : 0
       return frame
     })
-    expect(Array.from(frame_atom_batch(frames[1], { frame_idx: 1 }).positions)).toEqual([
-      1.5, 0.5, 0.5,
-    ])
+    const batch = frame_atom_batch(encode_frame(frames[1]), { frame_idx: 1 })
+    expect(Array.from(batch.positions)).toEqual([1.5, 0.5, 0.5])
     const run = trajectory_from_frames(frames)
     onTestFinished(() => run.dispose())
     if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
@@ -426,7 +426,7 @@ describe(`spatial kinetic hotspots`, () => {
       onTestFinished(() => run.dispose())
       if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
       if (sparse_time) {
-        expect((await run.read_frame(1)).step).toBe(1)
+        expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
         expect((await run.read_atoms?.({ frame_idx: 1 }))?.time).toBeUndefined()
       }
       const computation = run.compute_hotspots({

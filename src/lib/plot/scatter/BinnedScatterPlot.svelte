@@ -6,6 +6,7 @@
   // canvas markers once the visible count is small enough, with spatial-index picking,
   // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
   // pan/zoom, marginals and the title come from the shared Cartesian frame.
+  import { TooltipValue } from '$lib/tooltip'
   import { format_value } from '$lib/labels'
   import type { Point2D, Vec2 } from '$lib/math'
   import { create_pulse_animation } from '$lib/effects.svelte'
@@ -1000,8 +1001,16 @@
           />
         {/if}
         {hovered_bin.count.toLocaleString()} samples<br />
-        x: {fmt_x(hovered_bin.x_range[0])} - {fmt_x(hovered_bin.x_range[1])}<br />
-        y: {fmt_y(hovered_bin.y_range[0])} - {fmt_y(hovered_bin.y_range[1])}
+        <TooltipValue
+          label={x_axis.label || `x`}
+          unit={x_axis.unit}
+          value={`${fmt_x(hovered_bin.x_range[0])} - ${fmt_x(hovered_bin.x_range[1])}`}
+        /><br />
+        <TooltipValue
+          label={y_axis.label || `y`}
+          unit={y_axis.unit}
+          value={`${fmt_y(hovered_bin.y_range[0])} - ${fmt_y(hovered_bin.y_range[1])}`}
+        />
       </PlotTooltip>
     {:else if hovered_point}
       {@const props = point_payload(hovered_point)}
@@ -1016,8 +1025,16 @@
         {#if tooltip}
           {@render tooltip(props)}
         {:else}
-          {x_axis.label ?? `x`}: {props.x_formatted}<br />
-          {y_axis.label ?? `y`}: {props.y_formatted}
+          <TooltipValue
+            label={x_axis.label || `x`}
+            unit={x_axis.unit}
+            value={props.x_formatted}
+          /><br />
+          <TooltipValue
+            label={y_axis.label || `y`}
+            unit={y_axis.unit}
+            value={props.y_formatted}
+          />
         {/if}
       </PlotTooltip>
     {/if}

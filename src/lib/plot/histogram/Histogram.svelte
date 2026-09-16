@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
   import {
     chart_export_filename,
     create_chart_exporter,
@@ -619,10 +620,21 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
-          <div>Value: {format_value_or_num(value, hover_info.x_axis.format)}</div>
+          <div>
+            <TooltipValue
+              label={hover_info.x_axis.label || `Value`}
+              unit={hover_info.x_axis.unit}
+              value={format_value_or_num(value, hover_info.x_axis.format)}
+            />
+          </div>
           <div>Count: {format_value_or_num(count, `d`)}</div>
           {#if normalize !== `count`}
-            <div>{value_axis_defaults.label}: {format_value_or_num(coord_y, `.3~g`)}</div>
+            <div>
+              <TooltipValue
+                label={value_axis_defaults.label}
+                value={format_value_or_num(coord_y, `.3~g`)}
+              />
+            </div>
           {/if}
           {#if mode === `overlay`}<div>{property}</div>{/if}
         {/if}

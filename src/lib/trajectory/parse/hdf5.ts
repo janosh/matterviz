@@ -1,3 +1,9 @@
+import {
+  create_numeric_md_frame,
+  materialize_frame,
+  write_frame_vector,
+  type FrameChannels,
+} from '../frame'
 import type { Matrix3x3 } from '$lib/math'
 import { element_by_symbol } from '$lib/element/data'
 import { ATOM_BATCH_SIZE, atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
@@ -9,7 +15,6 @@ import type * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
-  create_trajectory_frame,
   is_supported_trajectory_signal_shape,
   values_per_sample,
 } from '$lib/trajectory/helpers'
@@ -43,6 +48,7 @@ import {
 import { is_reference_md_h5_file, parse_reference_md_h5_file } from './reference-md-h5'
 import { is_md_h5_file, parse_md_h5_file } from './md-h5'
 import type { LazyTrajectorySource, ParsedTrajectory, WarningCollector } from './shared'
+import type { TrajectoryRunSummary } from '../run'
 import { is_vaspout_h5_file, parse_vaspout_h5_file } from './vaspout-h5'
 
 type Hdf5TrajectoryResult =
@@ -58,12 +64,15 @@ export const open_hdf5_trajectory = async (
   collector: WarningCollector,
   filename?: string,
   hdf5_group_path?: string,
+  replica?: TrajectoryRunSummary,
 ): Promise<Hdf5TrajectoryResult> => {
   const opened = await open_h5_source(source, filename)
   let lazy: LazyTrajectorySource | undefined
   try {
+    if (replica && !is_md_h5_file(opened.h5_file))
+      throw new Error(`MD replica source schema changed`)
     const result = is_md_h5_file(opened.h5_file)
-      ? parse_md_h5_file(opened.h5_file, hdf5_group_path)
+      ? parse_md_h5_file(opened.h5_file, hdf5_group_path, replica)
       : is_vaspout_h5_file(opened.h5_file)
         ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
         : is_reference_md_h5_file(opened.h5_file)
@@ -685,53 +694,54 @@ const parse_torch_sim_datasets = (
     const values = read_cells(frame_idx, frame_idx + 1)
     return values ? lattice_or_none(lattice_from_values(values), `frame`) : undefined
   }
-  const load_frame = (frame_idx: number) => {
+  const numeric_elements = Uint8Array.from(first_atomic_numbers)
+  const available_vector_keys = Object.entries(signal_manifest)
+    .filter(([, signal]) => is_per_atom_vector(signal))
+    .map(([key]) => key)
+  const load_frame = (frame_idx: number, requested?: FrameChannels) => {
     if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count) {
       throw new Error(
         `TorchSim HDF5 frame ${frame_idx} is outside 0..${valid_frame_count - 1}`,
       )
     }
-    const values = new Float64Array(position_values_per_frame)
-    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx += ATOM_BATCH_SIZE)
-      values.set(read_position_slice(frame_idx, atom_idx), atom_idx * 3)
+    // The full display frame already needs all atoms. One hyperslab avoids decompressing
+    // the same large HDF5 chunk again for each atom batch; analysis keeps its bounded slices.
+    const values = read_position_slice(frame_idx, 0, n_atoms)
     const lattice = lattice_for_frame(frame_idx)
     const energy =
       energy_dataset && energy_path
         ? read_numeric_hyperslab(energy_dataset, energy_path, [[frame_idx, frame_idx + 1]])[0]
         : undefined
-    const frame = create_trajectory_frame(
-      Array.from({ length: n_atoms }, (_unused, atom_idx) => {
-        const offset = atom_idx * 3
-        return [values[offset], values[offset + 1], values[offset + 2]]
-      }),
-      elements,
+    const time = time_for_frame(frame_idx)
+    const vector_signals = Object.entries(signal_manifest).flatMap(([key, signal]) => {
+      if (
+        !is_per_atom_vector(signal) ||
+        (requested?.vectors && !requested.vectors.includes(key))
+      )
+        return []
+      const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
+      return signal.steps[signal_idx] === steps[frame_idx] ? [{ key, signal, signal_idx }] : []
+    })
+    const frame = create_numeric_md_frame(
+      values,
+      numeric_elements,
       lattice,
       pbc_for_frame(frame_idx),
       steps[frame_idx],
-      energy === undefined ? {} : { energy },
+      {
+        ...(energy === undefined ? {} : { energy }),
+        ...(time === undefined ? {} : { time }),
+      },
+      vector_signals.map(({ key }) => key),
     )
-    const time = time_for_frame(frame_idx)
-    if (time !== undefined) frame.metadata = { ...frame.metadata, time }
-    for (const [key, signal] of Object.entries(signal_manifest)) {
-      if (!is_per_atom_vector(signal)) continue
-      const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
-      if (signal.steps[signal_idx] !== steps[frame_idx]) continue
-      for (let start = 0; start < n_atoms; start += ATOM_BATCH_SIZE) {
-        const end = Math.min(n_atoms, start + ATOM_BATCH_SIZE)
-        const vectors = read_numeric_buffer(signal.dataset, signal.path, [
-          [signal_idx, signal_idx + 1],
-          [start, end],
-          [0, 3],
-        ])
-        for (let idx = start; idx < end; idx++) {
-          const offset = (idx - start) * 3
-          frame.structure.sites[idx].properties[key] = [
-            vectors[offset],
-            vectors[offset + 1],
-            vectors[offset + 2],
-          ]
-        }
-      }
+    frame.available_vector_keys = available_vector_keys
+    for (const [vector_idx, { signal, signal_idx }] of vector_signals.entries()) {
+      const vectors = read_numeric_buffer(signal.dataset, signal.path, [
+        [signal_idx, signal_idx + 1],
+        [0, n_atoms],
+        [0, 3],
+      ])
+      write_frame_vector(frame, vector_idx, vectors)
     }
     return frame
   }
@@ -855,7 +865,7 @@ const parse_torch_sim_datasets = (
     )
     return {
       ...shared,
-      frames: [load_frame(0)],
+      frames: [materialize_frame(load_frame(0))],
       ...(Object.keys(signals).length > 0 && { signals }),
     }
   }

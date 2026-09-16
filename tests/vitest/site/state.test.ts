@@ -59,9 +59,16 @@ describe(`group_nav_routes`, () => {
       {
         label: `Structure`,
         href: `/structure`,
-        children: [`/structure`, `/structure/slab`, `/neb`],
+        children: [
+          { href: `/structure/slab`, label: `Slab` },
+          { href: `/neb`, label: `NEB` },
+        ],
       },
-      { label: `Plots`, href: `/plot`, children: [`/plot`, `/plot/scatter`] },
+      {
+        label: `Plots`,
+        href: `/plot`,
+        children: [{ href: `/plot/scatter`, label: `Scatter` }],
+      },
     ])
     expect(group_nav_routes([`/neb`], groups)).toHaveLength(1)
     expect(group_nav_routes([], groups)).toEqual([])
@@ -77,22 +84,27 @@ describe(`group_nav_routes`, () => {
     const overlapping = [...groups, { label: `Again`, href: `/again`, prefixes: [`/neb`] }]
     const result = group_nav_routes([`/neb`, `/neb/demo`], overlapping)
     expect(result).toEqual([
-      { label: `Structure`, href: `/structure`, children: [`/neb`, `/neb/demo`] },
+      {
+        label: `Structure`,
+        children: [
+          { href: `/neb`, label: `NEB` },
+          { href: `/neb/demo`, label: `Demo` },
+        ],
+      },
     ])
   })
 
   test(`every real route is either hidden or in a group`, () => {
     // nav_routes is built at import time from the route glob and throws on unclaimed routes
-    const all_children = nav_routes.flatMap(({ children }) => children ?? [])
+    const all_children = nav_routes.flatMap(({ children }) => children.map(({ href }) => href))
     expect(all_children).toContain(`/structure/slab`)
     expect(all_children).toContain(`/acknowledgements`)
     expect(nav_routes.find(({ href }) => href === `/guides`)).toMatchObject({
       label: `Guides`,
       children: expect.arrayContaining([
-        `/guides`,
-        `/how-to/use-without-svelte`,
-        `/how-to/hook-up-to-external-api`,
-        `/acknowledgements`,
+        { href: `/how-to/use-without-svelte`, label: `Use without Svelte` },
+        { href: `/how-to/hook-up-to-external-api`, label: `Hook up to external API` },
+        { href: `/acknowledgements`, label: `Acknowledgements` },
       ]),
     })
     expect(all_children.some((route) => route.startsWith(`/layout`))).toBe(false)

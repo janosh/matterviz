@@ -558,7 +558,7 @@
       <strong>Spiral Point</strong><br />
       Position: ({format_num(coord_x, `.2~`)}, {format_num(coord_y, `.2~`)})<br />
       {#if metadata}
-        Angle: {format_num(metadata.angle as number, `.2~`)} rad<br />
+        Angle: {format_num(metadata.angle as number, `.2~`)} <small>rad</small><br />
         Value (Radius): {format_num(metadata.radius as number, `.2~`)}
       {/if}
     {/snippet}

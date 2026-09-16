@@ -1,3 +1,4 @@
+import { encode_frame } from '$lib/trajectory/frame'
 import type { Vec3 } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { calc_structure_id } from '$lib/structure-id'
@@ -22,7 +23,8 @@ const frame_run = (structures: AnyStructure[]): TrajectoryRun => {
   return {
     ...run,
     frame_count: structures.length,
-    read_frame: (frame_idx) => ({ step: frame_idx, structure: structures[frame_idx] }),
+    read_frame: (frame_idx) =>
+      encode_frame({ step: frame_idx, structure: structures[frame_idx] }),
   }
 }
 
@@ -34,7 +36,7 @@ const counting_run = (total_frames: number): TrajectoryRun & { requested: number
       requested,
       read_frame: (frame_idx: number) => {
         requested.push(frame_idx)
-        return { step: frame_idx, structure: make_fcc([2, 2, 2]) }
+        return encode_frame({ step: frame_idx, structure: make_fcc([2, 2, 2]) })
       },
     },
   )

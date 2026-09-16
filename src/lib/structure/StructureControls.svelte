@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { numeric_sites, snapshot_topologies } from './site'
+  import { element_from_atomic_number } from '$lib/element/helpers'
   import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
   import { resolve_cell_vectors, type StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
@@ -320,7 +322,10 @@
     label,
     step,
   })
-  const number_range_props = (schema: SettingType, step = schema.multipleOf ?? `any`) => {
+  const number_range_props = (
+    schema: SettingType,
+    step: number | `any` = schema.multipleOf ?? `any`,
+  ) => {
     const { minimum: min, maximum: max, description: title } = schema
     if (min === undefined || max === undefined)
       throw new Error(`Missing range bounds for "${title}": min=${min}, max=${max}`)
@@ -492,6 +497,7 @@
     const description = tip ?? description_for(key)
     return {
       'data-key': key,
+      'data-description': description,
       'aria-description': description,
       [setting_attachment_key]: tooltip({
         content: description,
@@ -647,13 +653,25 @@
   // Unique majority elements in the structure, for polyhedra center toggles.
   // Majority (not all) species so the list matches what compute_polyhedra can
   // actually use as centers - minority occupancies of disordered sites never are.
+  let previous_elements: { topology: object; elements: ElementSymbol[] } | undefined
   let structure_elements = $derived.by(() => {
+    const topology = structure && snapshot_topologies.get(structure)
+    if (topology && topology === previous_elements?.topology) return previous_elements.elements
     const elements = new Set<ElementSymbol>()
-    for (const site of structure?.sites ?? []) {
-      const element = get_majority_element(site)
-      if (element) elements.add(element)
-    }
-    return [...elements].toSorted()
+    const columns = structure && numeric_sites.get(structure)
+    if (columns) {
+      for (const number of new Set(columns.numbers)) {
+        const element = element_from_atomic_number(number)
+        if (element) elements.add(element)
+      }
+    } else
+      for (const site of structure?.sites ?? []) {
+        const element = get_majority_element(site)
+        if (element) elements.add(element)
+      }
+    const sorted = [...elements].toSorted()
+    previous_elements = topology ? { topology, elements: sorted } : undefined
+    return sorted
   })
 
   // An element counts as an enabled polyhedra center if it isn't excluded and is
@@ -890,7 +908,8 @@
       {@const set = (value: unknown) => set_row_value(current, value)}
       {#if typeof schema.value === `number`}
         <NumberRangeInput
-          setting={key}
+          data-key={key}
+          {label}
           {...number_range_props(schema, step)}
           bind:value={() => row_value(current) as number | undefined, set}
           >{label}</NumberRangeInput
@@ -1469,7 +1488,8 @@
           on_commit={(color) => (background_color = color)}
         />
         <NumberRangeInput
-          setting="background_opacity"
+          data-key="background_opacity"
+          label="Opacity"
           {...number_range_props(SETTINGS_CONFIG.background_opacity, 0.02)}
           bind:value={background_opacity}>Opacity</NumberRangeInput
         >
@@ -1536,7 +1556,8 @@
                 )}
               {/if}
               <NumberRangeInput
-                setting="trajectory_line_trail_frames"
+                data-key="trajectory_line_trail_frames"
+                label="Trail length"
                 {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
                 max={Math.max(1, trajectory_position_stream.n_frames)}
                 bind:value={

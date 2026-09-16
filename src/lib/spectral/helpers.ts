@@ -1,5 +1,5 @@
 // Helper utilities for band structure and DOS data processing
-import { SUBSCRIPT_MAP } from '$lib/labels'
+import { parse_axis_label, SUBSCRIPT_MAP } from '$lib/labels'
 import { is_plain_object } from '$lib/utils'
 import {
   array_extent,
@@ -930,14 +930,6 @@ export function compute_frequency_range(
   )
 }
 
-export function parse_axis_label(label: string): { name: string; unit?: string } {
-  const match = /^(?<name>.+?)\s*\((?<unit>[^)]+)\)$/.exec(label)
-  return match ? { name: match[1], unit: match[2] } : { name: label }
-}
-
-const format_tooltip_line = (name: string, value: string, unit?: string) =>
-  `${name}: ${value}${unit ? ` ${unit}` : ``}`
-
 // DOS tooltip content from the axis labels and the hovered point's formatted values. The
 // series label is the title only when several DOS are plotted.
 export function format_dos_tooltip(opts: {
@@ -950,17 +942,19 @@ export function format_dos_tooltip(opts: {
   x_axis_label: string
   y_axis_label: string
   num_series: number
-}): { title?: string; lines: string[] } {
+}): { title?: string; lines: { label: string; value: string; unit?: string }[] } {
   const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
-  const freq_line = (parsed: { name: string; unit?: string }, value: string) =>
-    format_tooltip_line(
-      parsed.name || (is_phonon ? `Frequency` : `Energy`),
-      value,
-      parsed.unit ?? (is_phonon ? units : `eV`),
-    )
-  const density_line = (parsed: { name: string }, value: string) =>
-    format_tooltip_line(parsed.name || `Density`, value)
+  const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
+    label: parsed.name || (is_phonon ? `Frequency` : `Energy`),
+    value,
+    unit: parsed.unit ?? (is_phonon ? units : `eV`),
+  })
+  const density_line = (parsed: { name: string; unit?: string }, value: string) => ({
+    label: parsed.name || `Density`,
+    value,
+    unit: parsed.unit,
+  })
   // the frequency/energy line always comes first
   const lines = is_horizontal
     ? [freq_line(y_parsed, y_formatted), density_line(x_parsed, x_formatted)]

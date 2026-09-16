@@ -20,6 +20,7 @@ import {
 } from '$lib/structure/atom-properties'
 import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
+import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -478,7 +479,7 @@ describe(`StructureControls schema rows`, () => {
     ).toBeGreaterThan(20)
 
     const sliders = [
-      [`Radius`, `atom_radius`, undefined, 0.05],
+      [`Radius (Å)`, `atom_radius`, undefined, 0.05],
       [`Auto-rotate speed`, `auto_rotate`, undefined, 0.01],
       [`Trail length`, `trajectory_line_trail_frames`, stream.n_frames, undefined],
       [`Frame stride`, `trajectory_line_frame_stride`, undefined, undefined],
@@ -495,7 +496,7 @@ describe(`StructureControls schema rows`, () => {
         const expected_step = step ?? config.multipleOf
         if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
       }
-      expect(inputs[1].getAttribute(`aria-label`)).toBe(config.description)
+      expect(inputs[1].getAttribute(`aria-label`)).toBe(label_text)
     }
     const opacity_inputs = target.querySelectorAll<HTMLInputElement>(
       `[data-key="background_opacity"] input`,
@@ -629,10 +630,12 @@ describe(`StructureControls layout`, () => {
     ])
     expect(groups[0]?.matches(`:first-of-type`)).toBe(true)
     expect(groups[3]?.matches(`:first-of-type`)).toBe(false)
-    const descriptions = target.querySelector<HTMLButtonElement>(`.description-toggle`)
-    descriptions?.click()
+    const descriptions = await vi.waitFor(() =>
+      query<HTMLButtonElement>(target, `.description-toggle`),
+    )
+    descriptions.click()
     await tick()
-    expect(descriptions?.getAttribute(`aria-expanded`)).toBe(`true`)
+    expect(descriptions.getAttribute(`aria-expanded`)).toBe(`true`)
 
     doc_query<HTMLButtonElement>(`.open-search`).click()
     await tick()
@@ -1090,6 +1093,41 @@ describe(`StructureControls reactive props`, () => {
     // no split-character artifacts from string iteration
     expect(center_label(`F`)).toBeUndefined()
     expect(center_label(`e`)).toBeUndefined()
+  })
+
+  test(`numeric center choices reuse fixed topology and update when species change`, async () => {
+    const view = new FrameView()
+    const frame = create_numeric_md_frame(
+      new Float64Array([0, 0, 0, 1, 0, 0]),
+      new Uint8Array([26, 8]),
+      undefined,
+      undefined,
+      0,
+      {},
+      [],
+    )
+    let structure = $state.raw(view.update(frame).structure)
+    const target = await mount_controls({
+      get structure() {
+        return structure
+      },
+      controls_open: true,
+    })
+    expect(find_label(target, `Fe`, true)).toBeDefined()
+    const iterate = vi.spyOn(frame.sites, Symbol.iterator)
+    structure = view.update({ ...frame, coordinates: frame.coordinates.slice() }).structure
+    await tick()
+    expect(iterate).not.toHaveBeenCalled()
+    expect(find_label(target, `Fe`, true)).toBeDefined()
+    iterate.mockRestore()
+    structure = view.update({
+      ...frame,
+      sites: new Uint8Array([14, 8]),
+      topology: { kind: `fixed-order`, revision: 1 },
+    }).structure
+    await tick()
+    expect(find_label(target, `Fe`, true)).toBeUndefined()
+    expect(find_label(target, `Si`, true)).toBeDefined()
   })
 
   test.each<Partial<StructureSettings>>([

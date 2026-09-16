@@ -149,7 +149,7 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
     }
     const lattice_matrix = basis as Matrix3x3
     const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-    const positions = frac_positions.map(frac_to_cart)
+    const positions = frac_positions.map((frac) => frac_to_cart(frac))
 
     const metadata: Record<string, unknown> = {}
     // Forces and stress sit after the structure; energies of the step are the last

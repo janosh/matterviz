@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
@@ -220,7 +221,7 @@ export async function sweep_frames<Result>(
   const results: Result[] = []
   for (const [done, frame_number] of frame_numbers.entries()) {
     signal?.throwIfAborted()
-    const frame = await run.read_frame(frame_number, signal)
+    const frame = await materialize_frame_result(run.read_frame(frame_number, signal))
     signal?.throwIfAborted()
     results.push(await visit(frame, frame_number))
     signal?.throwIfAborted()

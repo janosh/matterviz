@@ -13,8 +13,8 @@
 </script>
 
 <div class="k-coord-row">
-  <span class="k-coord-label"><span class="vec">k</span> (Å⁻¹):</span>
-  <span>{format_vec3(cartesian)}</span>
+  <span class="k-coord-label"><span class="vec">k</span>:</span>
+  <span>{format_vec3(cartesian)} <small>Å⁻¹</small></span>
 </div>
 {#if fractional}
   <div class="k-coord-row">

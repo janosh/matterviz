@@ -32,7 +32,7 @@
   import { create_scale } from '$lib/plot/core/scales'
   import { line_curve_factory } from '$lib/plot/core/fill-utils'
   import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import { sanitize_html } from '$lib/sanitize'
+  import { TooltipValue } from '$lib/tooltip'
   import { format_value } from '$lib/labels'
   import { ticks as d3_ticks } from 'd3-array'
   import { curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
@@ -98,11 +98,7 @@
     const { value, label, axis_title } = hovered
     const bg_color = color.trim().toLowerCase() === `currentcolor` ? null : color
     const pos_fmt = format || `.3~g`
-    // Position row = `<axis title>: <value>`. The title uses the host axis's markup convention
-    // (e.g. E<sub>hull</sub>), so it's sanitized HTML; the value/category portion stays literal
-    // text (matches how tick labels render, so a literal `<` in a bin label isn't mangled). `||`
-    // (not `??`) so an empty/whitespace axis title falls back to the generic `range`/`pos` label.
-    const head_label = sanitize_html(axis_title?.trim() || (kind === `bars` ? `range` : `pos`))
+    const head_label = axis_title?.trim() || (kind === `bars` ? `range` : `pos`)
     const head_value =
       kind === `bars`
         ? `${format_value(pos0 ?? pos, pos_fmt)}–${format_value(pos1 ?? pos, pos_fmt)}`
@@ -110,13 +106,17 @@
     const value_row =
       kind === `rug`
         ? null
-        : `${default_marginal_label(config)}: ${format_value(value ?? 0, marginal_value_format(config))}`
+        : {
+            label: default_marginal_label(config),
+            value: format_value(value ?? 0, marginal_value_format(config)),
+          }
     return {
       bg_color,
       snippet: config.tooltip,
       label,
       head_label,
       head_value,
+      unit: axis_props(config.axis ?? default_axis_for_side(hovered.side)).unit,
       value: value_row,
     }
   })
@@ -622,11 +622,11 @@
           {#if tip.snippet}
             {@render tip.snippet(hovered)}
           {:else}
-            <!-- contiguous (no source whitespace) so rows don't pick up stray leading spaces;
-                 head_label is pre-sanitized @html so an axis title with markup renders, while the
-                 value/category portion stays literal text -->
-            {#if tip.label}<strong>{tip.label}</strong><br />{/if}{@html tip.head_label}: {tip.head_value}{#if tip.value}<br
-              />{tip.value}{/if}
+            {#if tip.label}<strong>{tip.label}</strong><br />{/if}<TooltipValue
+              label={tip.head_label}
+              value={tip.head_value}
+              unit={tip.unit}
+            />{#if tip.value}<br /><TooltipValue {...tip.value} />{/if}
           {/if}
         </PlotTooltip>
       {/if}

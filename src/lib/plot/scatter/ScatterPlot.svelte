@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import { normalize_show_controls } from '$lib/controls'
   import { accumulate_error_extent } from '$lib/plot/core/error-bars'
   import {
@@ -1787,14 +1788,24 @@
           {#if has_multiple_series && tooltip_props.label}<strong>{tooltip_props.label}</strong
             ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
-          {@html sanitize_html(tooltip_props.x_axis.label || `x`)}: {tooltip_props.x_formatted}<br
+          <TooltipValue
+            label={tooltip_props.x_axis.label || `x`}
+            value={tooltip_props.x_formatted}
+            unit={tooltip_props.x_axis.unit}
+          /><br />
+          <TooltipValue
+            label={tooltip_props.y_axis.label || `y`}
+            value={tooltip_props.y_formatted}
+            unit={tooltip_props.y_axis.unit}
           />
-          {@html sanitize_html(tooltip_props.y_axis.label || `y`)}: {tooltip_props.y_formatted}
           {#if tooltip_props.color_bar?.value != null}
-            <br />{@html sanitize_html(tooltip_props.color_bar.title || `Color`)}: {format_value(
-              tooltip_props.color_bar.value,
-              tooltip_props.color_bar.tick_format || `.3~g`,
-            )}
+            <br /><TooltipValue
+              label={tooltip_props.color_bar.title || `Color`}
+              value={format_value(
+                tooltip_props.color_bar.value,
+                tooltip_props.color_bar.tick_format || `.3~g`,
+              )}
+            />
           {/if}
         {/if}
       </PlotTooltip>

@@ -2,7 +2,6 @@ import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type {
   PositionStreamOptions,
-  TrajectoryFrame,
   TrajectoryMetadata,
   TrajectorySignal,
   TrajectorySignalDescriptor,
@@ -92,18 +91,6 @@ export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matr
       `lattice matrix`,
     ),
   )
-
-// Write a per-atom vec3 channel (velocities) onto the sites of a freshly built frame
-export const attach_site_vectors = (
-  frame: TrajectoryFrame,
-  key: string,
-  values: ArrayLike<number>,
-): void => {
-  for (const [atom_idx, site] of frame.structure.sites.entries()) {
-    const off = atom_idx * 3
-    site.properties[key] = [values[off], values[off + 1], values[off + 2]]
-  }
-}
 
 // Plot rows for at most ~1000 evenly spaced frames: the plot is sampled, never the run.
 // `read_properties` receives the sampled frame indices and the stride to read them with.
@@ -242,15 +229,42 @@ export const read_numeric_hyperslab = (
     finite_or_throw(value, path),
   )
 
-// Retain the flat numeric representation for atom batches; no nested arrays or Site records.
+// Keep each native read bounded even when a full frame exceeds one slice. Split the first
+// varying dimension so concatenating the pieces preserves row-major order, including strides.
 export const read_numeric_buffer = (
   dataset: Dataset,
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
 ): Float64Array => {
+  const requested = requested_hyperslab_values(dataset, path, ranges)
+  if (requested * Float64Array.BYTES_PER_ELEMENT > HDF5_MAX_LOGICAL_SLICE_BYTES) {
+    assert_budget(path, requested, `numeric buffer requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
+    const selected = (dataset.shape ?? []).map((size, idx): [number, number, number] => {
+      const range = ranges[idx] ?? []
+      return [range[0] ?? 0, range[1] ?? size, range[2] ?? 1]
+    })
+    const axis = selected.findIndex(([start, end, stride]) => end - start > stride)
+    const [start, end, stride] = selected[axis]
+    const values_per_entry = requested / Math.ceil((end - start) / stride)
+    const entries_per_slice = Math.max(
+      1,
+      Math.floor(HDF5_MAX_LOGICAL_SLICE_BYTES / 8 / values_per_entry),
+    )
+    const values = new Float64Array(requested)
+    let offset = 0
+    for (let first = start; first < end; first += entries_per_slice * stride) {
+      selected[axis] = [first, Math.min(end, first + entries_per_slice * stride), stride]
+      const chunk = read_numeric_buffer(dataset, path, selected)
+      values.set(chunk, offset)
+      offset += chunk.length
+    }
+    return values
+  }
   const values = validated_numeric_hyperslab(dataset, path, ranges)
   if (values instanceof Float64Array) {
-    for (const value of values) finite_or_throw(value, path)
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of -- Measured faster for million-value frame reads.
+    for (let idx = 0; idx < values.length; idx++)
+      if (!Number.isFinite(values[idx])) not_numeric(path)
     return values
   }
   return Float64Array.from(values, (value) => finite_or_throw(value, path))
@@ -263,16 +277,14 @@ const copy_numeric_hyperslab = (
   destination: Float64Array,
   destination_offset: number,
 ): number => {
-  const values = validated_numeric_hyperslab(dataset, path, ranges)
+  const values = read_numeric_buffer(dataset, path, ranges)
   if (destination_offset + values.length > destination.length) {
     throw new Error(
       `HDF5 dataset ${path} returned ${values.length} values beyond its ` +
         `${destination.length}-value destination`,
     )
   }
-  for (let value_idx = 0; value_idx < values.length; value_idx++) {
-    destination[destination_offset + value_idx] = finite_or_throw(values[value_idx], path)
-  }
+  destination.set(values, destination_offset)
   return values.length
 }
 
@@ -459,7 +471,9 @@ export const read_numeric_samples = (
   const values = new Float64Array(
     Math.ceil((sample_end - sample_start) / stride) * sample_size,
   )
-  const samples_per_slice = hdf5_frames_per_slice(sample_size)
+  const samples_per_slice = hdf5_frames_per_slice(
+    Math.min(sample_size, HDF5_MAX_LOGICAL_SLICE_BYTES / 8),
+  )
   let output_offset = 0
   for (let start = sample_start; start < sample_end; start += samples_per_slice * stride) {
     const end = Math.min(start + samples_per_slice * stride, sample_end)

@@ -1,3 +1,4 @@
+import { numeric_sites } from './site'
 import type { OptimadeStructure } from '$lib/api/optimade'
 import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
@@ -958,6 +959,7 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   pbc: Pbc | undefined = `lattice` in structure ? structure.lattice.pbc : undefined,
 ): T {
   if (!(`lattice` in structure) || !pbc) return structure
+  if (numeric_sites.has(structure) && pbc === structure.lattice.pbc) return structure
   // Plain loop: this runs on every trajectory frame and nearly always finds nothing to wrap
   const [wrap_a, wrap_b, wrap_c] = pbc
   if (!wrap_a && !wrap_b && !wrap_c) return structure
@@ -972,9 +974,12 @@ export function normalize_fractional_coords<T extends AnyStructure>(
 
   const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
   const sites = structure.sites.map((site) => {
-    const abc = site.abc.map((coord, axis) =>
-      pbc[axis] ? wrap_frac_coord(coord) : coord,
-    ) as Vec3
+    const source = site.abc
+    const abc: Vec3 = [
+      wrap_a ? wrap_frac_coord(source[0]) : source[0],
+      wrap_b ? wrap_frac_coord(source[1]) : source[1],
+      wrap_c ? wrap_frac_coord(source[2]) : source[2],
+    ]
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
   return { ...structure, sites }

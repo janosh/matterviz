@@ -1,3 +1,5 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
+import * as preparation_module from '$lib/trajectory/prepare'
 import type { ParseResult } from '$lib/file-viewer/parse'
 import type {
   ParseWorkerRequest,
@@ -8,7 +10,11 @@ import { parse_in_worker } from '$lib/file-viewer/parse-in-worker'
 import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
 import { prediction_to_json } from '$lib/structure/prediction'
 import { make_grid, make_volume } from '../test-fixtures'
-import type { Hdf5GroupSelectionRequiredError, TrajectoryFrame } from '$lib/trajectory'
+import type {
+  Hdf5GroupSelectionRequiredError,
+  TrajectoryFrame,
+  TrajectoryRun,
+} from '$lib/trajectory'
 import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
 import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
@@ -40,6 +46,7 @@ const frame: TrajectoryFrame = {
 interface FakeWorker extends WorkerLike {
   emit: (type: string, event: Event) => void
   posted: { request: ParseWorkerRequest; transfer: readonly Transferable[] }[]
+  run_ports: MessagePort[]
   terminate: Mock<() => void>
 }
 
@@ -55,6 +62,7 @@ const make_fake_worker = (
   }
   const worker: FakeWorker = {
     posted: [],
+    run_ports: [],
     postMessage: (message: unknown, options?: StructuredSerializeOptions | Transferable[]) => {
       const transfer = Array.isArray(options) ? options : (options?.transfer ?? [])
       const request = structuredClone(message, {
@@ -66,6 +74,7 @@ const make_fake_worker = (
       const cloned = structuredClone(response, {
         transfer: response.run_port ? [response.run_port] : [],
       })
+      if (cloned.run_port) worker.run_ports.push(cloned.run_port)
       queueMicrotask(() => emit(`message`, new MessageEvent(`message`, { data: cloned })))
     },
     addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
@@ -91,9 +100,354 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   }
 }
 
-afterEach(() => vi.restoreAllMocks())
+const preparation = {
+  bonding_strategy: `electroneg_ratio` as const,
+  bonding_options: {},
+  bonds: false,
+}
+const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup = false) => {
+  const workers: FakeWorker[] = []
+  const pending: { worker_idx: number; idx: number; resolve: () => void }[] = []
+  const openings: (() => void)[] = []
+  const factory = () => {
+    const worker_idx = workers.length
+    const worker = make_fake_worker((request) => {
+      const run = trajectory_from_frames(
+        Array.from({ length: 12 }, (_, idx) => ({ ...frame, step: idx })),
+        {
+          provenance: { format, filename: request.filename, hdf5_group: `/device` },
+        },
+      )
+      const read_frame = run.read_frame
+      run.read_frame = (idx) =>
+        new Promise((resolve) => {
+          pending.push({ worker_idx, idx, resolve: () => resolve(read_frame(idx)) })
+        })
+      const response = {
+        id: request.id,
+        result: {
+          type: `trajectory` as const,
+          filename: request.filename,
+          data: { ...summarize_run(run), atom_count },
+        },
+        run_port: serve_run_over_port(run),
+      }
+      if (!defer_startup || worker_idx === 0) return response
+      openings.push(() => {
+        const cloned = structuredClone(response, { transfer: [response.run_port] })
+        worker.run_ports.push(cloned.run_port)
+        worker.emit(`message`, new MessageEvent(`message`, { data: cloned }))
+      })
+      return null
+    })
+    workers.push(worker)
+    return worker
+  }
+  const warm = async (run: TrajectoryRun) => {
+    if (!run.prepare_frame) throw new Error(`Expected frame preparer`)
+    const first = run.prepare_frame(0, preparation)
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    pending.shift()?.resolve()
+    await first
+  }
+  return { workers, pending, openings, factory, warm }
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 describe(`parse_in_worker`, () => {
+  it.each([3, 8])(
+    `keeps frames moving while replicas open together (%i cores), then shares work`,
+    async (cores) => {
+      vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(cores)
+      const { workers, pending, openings, factory, warm } = preparation_workers(
+        333_200,
+        `hdf5`,
+        true,
+      )
+      const result = await parse_in_worker(
+        new File([`HDF5`], `device.h5`),
+        `device.h5`,
+        false,
+        {
+          worker_factory: factory,
+        },
+      )
+      if (result.type !== `trajectory` || !result.data.prepare_frame)
+        throw new Error(`Expected prepared trajectory`)
+      const prepare = result.data.prepare_frame.bind(result.data)
+      const requests: Promise<unknown>[] = []
+      try {
+        await warm(result.data)
+        const frames = [1, 2, 3].map((idx) => prepare(idx, preparation))
+        requests.push(...frames)
+        for (const [idx, prepared] of frames.entries()) {
+          await vi.waitFor(() => expect(pending).toHaveLength(1))
+          // Replicas start together, bounded by CPU capacity and queued demand.
+          expect(workers.map(({ posted }) => posted.length)).toEqual(
+            Array(Math.min(cores - 1, 3)).fill(1),
+          )
+          expect(pending[0].worker_idx).toBe(0)
+          expect(pending[0].idx).toBe(idx + 1)
+          pending.shift()?.resolve()
+          expect((await prepared).frame.header.step).toBe(idx + 1)
+        }
+        openings.shift()?.()
+        const shared = [prepare(4, preparation), prepare(5, preparation)]
+        requests.push(...shared)
+        await vi.waitFor(() => expect(pending).toHaveLength(2))
+        expect(new Set(pending.map(({ worker_idx }) => worker_idx))).toEqual(new Set([0, 1]))
+        for (const request of pending.splice(0)) request.resolve()
+        expect(
+          (await Promise.all(shared)).map(({ frame: prepared }) => prepared.header.step),
+        ).toEqual([4, 5])
+      } finally {
+        result.data.dispose()
+        await Promise.allSettled(requests)
+        for (const open of openings) open()
+        for (const request of pending.splice(0)) request.resolve()
+      }
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+    },
+  )
+
+  it.each([
+    [333_200, 8, true, `hdf5`, 1, 4, undefined],
+    [333_200, 18, true, `hdf5`, 1, 10, 32],
+    [333_200, 18, true, `md-hdf5`, 1, 10, 32],
+    [333_200, 18, true, `hdf5`, 1, 4, 8],
+    [333_200, 18, true, `hdf5`, 1, 2, 4],
+    [1_000_000, 18, true, `hdf5`, 256 * 1024 ** 2, 4, 16],
+    [1_000_000, 18, true, `hdf5`, 1025 * 1024 ** 2, 1, 32],
+    [1_000_000, 8, true, `hdf5`, 256 * 1024 ** 2, 2, undefined],
+    [1_000_000, 8, true, `hdf5`, 513 * 1024 ** 2, 1, undefined],
+    [333_200, 2, true, `hdf5`, 1, 1, 32],
+    [100_000, 8, true, `hdf5`, 1, 1, 32],
+    [333_200, 8, false, `hdf5`, 1, 1, 32],
+    [333_200, 8, true, `xyz`, 1, 1, 32],
+  ])(
+    `bounds preparation: %i atoms, %i cores, File=%s, %s, %i bytes/frame, %i workers, memory=%s`,
+    async (atom_count, cores, is_file, format, frame_bytes, concurrency, memory) => {
+      vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(cores)
+      vi.stubGlobal(`navigator`, Object.create(navigator, { deviceMemory: { value: memory } }))
+      vi.spyOn(preparation_module, `display_frame_bytes`).mockReturnValue(frame_bytes)
+      const { workers, pending, factory, warm } = preparation_workers(atom_count, format)
+      const file = new File([`HDF5`], `device.h5`)
+      const result = await parse_in_worker(
+        is_file ? file : new ArrayBuffer(4),
+        file.name,
+        false,
+        {
+          worker_factory: factory,
+        },
+      )
+      if (result.type !== `trajectory` || !result.data.prepare_frame)
+        throw new Error(`Expected prepared trajectory`)
+      const prepare_frame = result.data.prepare_frame.bind(result.data)
+      try {
+        expect(workers).toHaveLength(1)
+        await warm(result.data)
+        const frames = Array.from({ length: 12 }, (_, idx) => prepare_frame(idx, preparation))
+        await vi.waitFor(() => expect(pending).toHaveLength(concurrency))
+        expect(workers).toHaveLength(concurrency)
+        expect(new Set(pending.map(({ worker_idx }) => worker_idx)).size).toBe(concurrency)
+        for (const worker of workers.slice(1)) {
+          expect(worker.posted[0].request.load_options).toEqual({ hdf5_group_path: `/device` })
+          expect(worker.posted[0].request.replica).toEqual(
+            format === `md-hdf5` ? summarize_run(result.data) : undefined,
+          )
+          expect(worker.posted[0].request.content).toEqual(
+            workers[0].posted[0].request.content,
+          )
+        }
+        let completed = 0
+        while (completed < frames.length) {
+          await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0))
+          for (const request of pending.splice(0)) {
+            request.resolve()
+            completed++
+          }
+        }
+        expect(
+          (await Promise.all(frames)).map(
+            ({ frame: prepared_frame }) => prepared_frame.header.step,
+          ),
+        ).toEqual(Array.from({ length: 12 }, (_, idx) => idx))
+      } finally {
+        result.data.dispose()
+      }
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+    },
+  )
+
+  it(`keeps an aborted primary occupied, terminates replica work, and rejects disposal`, async () => {
+    vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
+    const { workers, pending, factory, warm } = preparation_workers(333_200)
+    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
+      worker_factory: factory,
+    })
+    if (result.type !== `trajectory` || !result.data.prepare_frame)
+      throw new Error(`Expected prepared trajectory`)
+    const prepare_frame = result.data.prepare_frame.bind(result.data)
+    await warm(result.data)
+    const controllers = [new AbortController(), new AbortController()]
+    const first = prepare_frame(0, preparation, controllers[0].signal)
+    const first_failure = first.catch((error: unknown) => error)
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    controllers[0].abort()
+    expect(await first_failure).toMatchObject({ name: `AbortError` })
+    expect(workers[0].terminate).not.toHaveBeenCalled()
+    const second = prepare_frame(1, preparation, controllers[1].signal)
+    const second_failure = second.catch((error: unknown) => error)
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    expect(pending.map(({ worker_idx }) => worker_idx)).toEqual([0, 1])
+    controllers[1].abort()
+    expect(await second_failure).toMatchObject({ name: `AbortError` })
+    expect(workers[1].terminate).toHaveBeenCalledOnce()
+    const third = prepare_frame(2, preparation)
+    const third_failure = third.catch((error: unknown) => error)
+    result.data.dispose()
+    expect(await third_failure).toMatchObject({ message: expect.stringContaining(`disposed`) })
+    await expect(prepare_frame(3, preparation)).rejects.toThrow(`disposed`)
+    for (const request of pending.splice(0)) request.resolve()
+    expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+  })
+
+  it(`reuses warm replicas and expires them only after all actual work becomes idle`, async () => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(3)
+    const { workers, pending, factory, warm } = preparation_workers(333_200)
+    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
+      worker_factory: factory,
+    })
+    if (result.type !== `trajectory` || !result.data.prepare_frame)
+      throw new Error(`Expected prepared trajectory`)
+    const run = result.data
+    const prepare = result.data.prepare_frame.bind(result.data)
+    const settle = async (requests: Promise<unknown>[]) => {
+      await vi.waitFor(() => expect(pending).toHaveLength(requests.length))
+      for (const request of pending.splice(0)) request.resolve()
+      await Promise.all(requests)
+    }
+    try {
+      await warm(run)
+      await settle([prepare(1, preparation), prepare(2, preparation)])
+      const capacity = run.preparation_concurrency
+      expect(workers).toHaveLength(2)
+      await vi.advanceTimersByTimeAsync(9000)
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 0)).toBe(true)
+
+      const reused = [prepare(3, preparation), prepare(4, preparation)]
+      await vi.waitFor(() => expect(pending).toHaveLength(2))
+      await vi.advanceTimersByTimeAsync(2000) // Pass the original idle deadline while busy.
+      expect(workers).toHaveLength(2)
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 0)).toBe(true)
+      await settle(reused)
+
+      const controller = new AbortController()
+      const cancelled = prepare(5, preparation, controller.signal).catch(
+        (error: unknown) => error,
+      )
+      await vi.waitFor(() => expect(pending).toHaveLength(1))
+      controller.abort()
+      expect(await cancelled).toMatchObject({ name: `AbortError` })
+      await vi.advanceTimersByTimeAsync(11_000)
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 0)).toBe(true)
+      // Cancelling its caller does not finish the primary worker's actual RPC.
+      pending.shift()?.resolve()
+      await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(workers[0].terminate).not.toHaveBeenCalled()
+      expect(workers[1].terminate).toHaveBeenCalledOnce()
+      expect(run.preparation_concurrency).toBe(capacity)
+
+      await settle([prepare(6, preparation), prepare(7, preparation)])
+      expect(workers).toHaveLength(3) // Replicas reopen lazily after expiry.
+      run.dispose()
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+    } finally {
+      run.dispose()
+      for (const request of pending.splice(0)) request.resolve()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([`abort`, `error`, `mismatch`])(
+    `releases a replica on startup %s`,
+    async (failure) => {
+      vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
+      const { workers, pending, factory, warm } = preparation_workers(333_200)
+      const broken = make_fake_worker(
+        failure === `mismatch` ? trajectory_response : () => null,
+      )
+      const result = await parse_in_worker(
+        new File([`HDF5`], `device.h5`),
+        `device.h5`,
+        false,
+        {
+          worker_factory: () => (workers.length ? broken : factory()),
+        },
+      )
+      if (result.type !== `trajectory` || !result.data.prepare_frame)
+        throw new Error(`Expected prepared trajectory`)
+      await warm(result.data)
+      const current = result.data.prepare_frame(1, preparation)
+      const disposed = current.catch((error: unknown) => error)
+      const controller = new AbortController()
+      const replica = result.data.prepare_frame(2, preparation, controller.signal)
+      const rejected = replica.catch((error: unknown) => error)
+      if (failure === `abort`) controller.abort()
+      if (failure === `error`)
+        broken.emit(`error`, new ErrorEvent(`error`, { message: `startup failed` }))
+      try {
+        expect(await rejected).toMatchObject({
+          message: expect.stringMatching(
+            failure === `abort`
+              ? /abort/i
+              : failure === `error`
+                ? /startup failed/
+                : /does not match/,
+          ),
+        })
+        expect(broken.terminate).toHaveBeenCalledOnce()
+        expect(workers[0].terminate).not.toHaveBeenCalled()
+      } finally {
+        result.data.dispose()
+        expect(await disposed).toMatchObject({ message: expect.stringContaining(`disposed`) })
+        for (const request of pending.splice(0)) request.resolve()
+      }
+    },
+  )
+
+  it(`disposes every replica when the primary RPC port fails`, async () => {
+    vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
+    const { workers, pending, factory, warm } = preparation_workers(333_200)
+    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
+      worker_factory: factory,
+    })
+    if (result.type !== `trajectory` || !result.data.prepare_frame || !result.data.read_atoms)
+      throw new Error(`Expected numeric trajectory`)
+    await warm(result.data)
+    const requests = [1, 2].map((idx) =>
+      result.data.prepare_frame?.(idx, preparation)?.catch((error: unknown) => error),
+    )
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    vi.spyOn(workers[0].run_ports[0], `postMessage`).mockImplementationOnce(() => {
+      throw new Error(`port failed`)
+    })
+    await expect(result.data.read_atoms({ frame_idx: 0 })).rejects.toThrow(`port failed`)
+    for (const request of requests)
+      expect(await request).toMatchObject({ message: expect.stringContaining(`disposed`) })
+    expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+    await expect(result.data.prepare_frame(3, preparation)).rejects.toThrow(`disposed`)
+    for (const request of pending.splice(0)) request.resolve()
+  })
+
   it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {
     const worker = make_fake_worker()
     await expect(
@@ -163,7 +517,7 @@ describe(`parse_in_worker`, () => {
     if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
     const run = result.data
     expect(run.frame_count).toBe(1)
-    expect(run.read_frame(0)).toEqual(frame)
+    expect(await materialize_frame_result(run.read_frame(0))).toEqual(frame)
     expect(worker.terminate).not.toHaveBeenCalled()
     run.dispose()
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce())

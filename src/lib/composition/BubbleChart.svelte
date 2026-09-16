@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { hierarchy, pack } from 'd3-hierarchy'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
@@ -63,6 +66,14 @@
 >
   <defs><PatternDefs patterns={bubbles.map((bubble) => bubble.pattern)} /></defs>
   {#each bubbles as bubble (bubble.element)}
+    {#snippet segment_tooltip()}
+      <TooltipValue
+        label={bubble.element}
+        value={bubble.amount}
+        unit={bubble.amount === 1 ? 'atom' : 'atoms'}
+      />
+      (<TooltipValue value={format_num(bubble.fraction, '.1~%')} />)
+    {/snippet}
     <circle
       cx={bubble.x}
       cy={bubble.y}
@@ -71,10 +82,10 @@
       stroke="white"
       role="img"
       aria-label={segment_title(bubble)}
+      {@attach hover_tooltip(segment_tooltip)}
       stroke-width="1"
       class="bubble"
     >
-      <title>{segment_title(bubble)}</title>
     </circle>
   {/each}
 

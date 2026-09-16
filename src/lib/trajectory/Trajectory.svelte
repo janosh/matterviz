@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
+  import { webgpu_available } from '$lib/scene'
   import type {
     ScatterPlotOptions,
     HistogramOptions,
@@ -23,13 +25,17 @@
   } from 'svelte-widgets/icons'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { format_num, plural, trajectory_property_config } from '$lib/labels'
+  import {
+    parse_axis_label,
+    format_num,
+    plural,
+    trajectory_property_config,
+  } from '$lib/labels'
   import type { TrajPropertyConfig } from '$lib/labels'
   import { clamp } from '$lib/math'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
-  import { sanitize_html } from '$lib/sanitize'
   import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
@@ -40,6 +46,10 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { StructurePane, StructureOptions } from '$lib/structure'
+  import { applies_to_structure } from '$lib/structure/settings'
+  import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
+  import { is_vector_key } from '$lib/structure/vectors'
+  import type { FrameChannels } from './frame'
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
@@ -188,6 +198,7 @@
     extra_controls,
     active_pane = $bindable(null),
     on_step_change,
+    on_frame_rendered,
     on_play,
     on_pause,
     on_end,
@@ -255,6 +266,8 @@
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     on_step_change?: EventHandler
+    // Emitted after the complete scene is submitted, independently of requested navigation.
+    on_frame_rendered?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
     on_end?: EventHandler
@@ -451,11 +464,112 @@
   const event_data = (): TrajHandlerData => ({
     step_idx: current_step_idx,
     frame_count: session.frame_count,
-    frame: session.current_frame ?? undefined,
+    frame: session.numeric_frame ?? undefined,
   })
+  let structure_display_mode = $derived(structure_props.display_mode ?? `structure`)
+  let atom_color_config = $derived(
+    structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
+  )
+  const frame_channels = $derived.by((): FrameChannels | undefined => {
+    // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
+    // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
+    // own channels from the source, independently of this display packet.
+    if (
+      active_pane === `data-inspector` ||
+      structure_pane === `info` ||
+      structure_pane === `export` ||
+      structure_props.children ||
+      structure_props.on_camera_move ||
+      structure_props.on_camera_reset ||
+      on_frame_rendered ||
+      on_step_change ||
+      on_play ||
+      on_pause ||
+      on_end ||
+      on_loop ||
+      atom_color_config.mode === `custom`
+    )
+      return undefined
+    const frame =
+      session.scene_frame?.run === trajectory ? session.scene_frame?.frame : undefined
+    if (!frame) return undefined
+    const available = frame.available_vector_keys ?? frame.vector_keys
+    const vectors = available.filter(
+      (key) =>
+        key === `selective_dynamics` ||
+        (atom_color_config.mode === `property` && atom_color_config.property_key === key) ||
+        (show_structure &&
+          is_vector_key(key) &&
+          trail_scene_props.vector_configs?.[key]?.visible !== false),
+    )
+    return vectors.length === available.length ? undefined : { vectors }
+  })
+  const frame_preparation = $derived.by(() => {
+    if (
+      !show_structure ||
+      particle_view ||
+      !trajectory?.prepare_frame ||
+      trajectory.atom_count < 2000
+    )
+      return undefined
+    const props = trail_scene_props
+    const crystal = `lattice` in trajectory.preview.structure
+    const show_polyhedra = applies_to_structure(
+      props.show_polyhedra ?? DEFAULTS.structure.show_polyhedra,
+      crystal,
+    )
+    return {
+      bonds:
+        applies_to_structure(props.show_bonds ?? DEFAULTS.structure.show_bonds, crystal) ||
+        show_polyhedra,
+      bonding_strategy: props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+      bonding_options: $state.snapshot(props.bonding_options ?? {}),
+      auto_bond_order: props.auto_bond_order ?? DEFAULTS.structure.auto_bond_order,
+      ...(show_polyhedra && {
+        polyhedra: {
+          min_neighbors:
+            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
+          max_neighbors: Math.max(
+            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
+            props.polyhedra_max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
+          ),
+          excluded_center_elements: [...(props.polyhedra_excluded_elements ?? [])],
+          included_center_elements: [...(props.polyhedra_included_elements ?? [])],
+        },
+      }),
+      ...((props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap) === 0 && {
+        vector_geometry: {
+          vector_configs: Object.fromEntries(
+            Object.entries(props.vector_configs ?? {}).map(([key, { visible, scale }]) => [
+              key,
+              { visible, scale },
+            ]),
+          ),
+          vector_normalize: props.vector_normalize ?? DEFAULTS.structure.vector_normalize,
+          vector_scale: props.vector_scale ?? DEFAULTS.structure.vector_scale,
+          vector_uniform_thickness:
+            props.vector_uniform_thickness ?? DEFAULTS.structure.vector_uniform_thickness,
+          vector_shaft_radius:
+            props.vector_shaft_radius ?? DEFAULTS.structure.vector_shaft_radius,
+          vector_arrow_head_radius:
+            props.vector_arrow_head_radius ?? DEFAULTS.structure.vector_arrow_head_radius,
+          vector_arrow_head_length:
+            props.vector_arrow_head_length ?? DEFAULTS.structure.vector_arrow_head_length,
+        },
+      }),
+    }
+  })
+  const uses_structure_renderer = () =>
+    webgpu_available() &&
+    show_structure &&
+    !particle_view &&
+    structure_display_mode !== `slice`
   const session = create_trajectory_session({
     run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
     load_frames: () => !particle_view,
+    preparation: () => frame_preparation,
+    channels: () => frame_channels,
+    wait_for_render: uses_structure_renderer,
     index: () => current_step_idx,
     set_index: (idx) => (current_step_idx = idx),
     fps: () => fps,
@@ -484,6 +598,10 @@
     if (!particle_renderer) throw new Error(`Wait for the particle view to finish loading`)
     await particle_renderer.wait_for_frame(idx, signal)
     await flush_updates()
+  }
+  async function prepare_structure_frame(idx: number, signal: AbortSignal): Promise<void> {
+    await flush_updates()
+    await session.wait_for_frame(idx, signal)
   }
   let hotspot_metric = $state<HotspotMetric>(`energy`)
   let hotspot_min_atoms = $state(10)
@@ -1133,7 +1251,11 @@
                 session.commit(idx)
               }}
               resolve_frame={session.resolve_frame}
-              prepare_display_frame={particle_view ? prepare_particle_frame : undefined}
+              prepare_display_frame={particle_view
+                ? prepare_particle_frame
+                : uses_structure_renderer()
+                  ? prepare_structure_frame
+                  : undefined}
               on_flight_start={() => {
                 const was_playing = player.is_playing
                 player.pause()
@@ -1319,8 +1441,19 @@
             ? false
             : structure_props.show_controls}
           bind:scene_props={trail_scene_props}
+          bind:atom_color_config
           structure={session.current_structure}
+          render_token={session.scene_frame}
+          on_rendered={(snapshot) => {
+            if (session.mark_rendered(snapshot) && session.scene_frame)
+              on_frame_rendered?.({
+                step_idx: session.scene_frame.idx,
+                frame_count: session.frame_count,
+                frame: session.scene_frame.frame,
+              })
+          }}
           {structure_series_key}
+          bind:display_mode={structure_display_mode}
           trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
           trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
           defer_expensive_geometry={!spectroscopy_open && scrub_active}
@@ -1397,12 +1530,17 @@
               metadata,
               label,
             }: ScatterHandlerProps)}
-              {x_axis.label}: {format_num(coord_x, `~g`)}<br />
-              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
-                coord_y,
-              )}
+              <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
+              {@const value_label = String(metadata?.series_label || label || `Value`)}
+              <TooltipValue label={value_label} value={format_num(coord_y)} />
               {#if typeof raw_y === `number`}
-                <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
+                <span style="opacity: 0.65"
+                  >&nbsp;(<TooltipValue
+                    label="raw"
+                    value={format_num(raw_y)}
+                    unit={parse_axis_label(value_label).unit}
+                  />)</span
+                >
               {/if}
             {/snippet}
           </ScatterPlot>
@@ -1431,13 +1569,20 @@
               value,
               count,
               property,
+              series_idx,
             }: {
               value: number
               count: number
               property?: string
+              series_idx: number
             })}
-              {#if property}<div><strong>{property}</strong></div>{/if}
-              <div>Value: {format_num(value)}</div>
+              <div>
+                <TooltipValue
+                  label={property || `Value`}
+                  value={format_num(value)}
+                  unit={histogram_series[series_idx]?.unit}
+                />
+              </div>
               <div>Count: {count}</div>
             {/snippet}
           </Histogram>

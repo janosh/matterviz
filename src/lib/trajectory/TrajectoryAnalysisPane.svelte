@@ -1,4 +1,6 @@
 <script lang="ts" generics="Input">
+  import { materialize_frame_result } from '$lib/trajectory/frame'
+
   // Chrome shared by every whole-trajectory analysis pane (MSD, VACF, structure-id, ...):
   // the ViewerPane shell, indexed-trajectory warnings, frame-stride and timestep controls, the
   // size estimate, the collect button with progress, and the stale-state bookkeeping each pane
@@ -148,7 +150,7 @@
         const frame =
           start === 0
             ? requested.preview
-            : await requested.read_frame(start, controller.signal)
+            : await materialize_frame_result(requested.read_frame(start, controller.signal))
         if (!controller.signal.aborted)
           frame_check = { run: requested, start, reason: validate(frame) }
       } catch (error) {

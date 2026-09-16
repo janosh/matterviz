@@ -1462,7 +1462,8 @@ describe(`ScatterPlot`, () => {
         y_axis: { label: `Speed` },
         tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
       })
-      expect(text).toContain(`Time (s)`)
+      expect(text).toContain(`Time: 2 s`)
+      expect(document.querySelector(`.plot-tooltip small`)?.textContent).toBe(`s`)
       expect(text).toContain(`Speed`)
     })
 

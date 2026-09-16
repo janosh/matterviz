@@ -1,6 +1,12 @@
+import { FrameView, materialize_frame, materialize_frame_result } from '$lib/trajectory/frame'
+import { get_structure_vector_keys } from '$lib/structure/vectors'
 // Committed-prefix MD trajectories retain explicit units and static topology.
 import { open_trajectory } from '$lib/trajectory/open'
 import { open_h5_source } from '$lib/trajectory/parse/h5-utils'
+import { open_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
+import { create_warning_collector } from '$lib/trajectory/parse/shared'
+import { hdf5_run } from '$lib/trajectory/runs/hdf5'
+import { summarize_run } from '$lib/trajectory/run'
 import { Dataset, type File as H5File, type Group } from 'h5wasm'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
@@ -33,6 +39,7 @@ const cell = [
 const fixture = (
   options: {
     atoms?: number
+    frames?: number
     timestep_fs?: number
     committed?: number
     successful?: boolean
@@ -44,10 +51,11 @@ const fixture = (
     `md`,
     (file) => {
       const atoms = options.atoms ?? 4
-      const committed = options.committed ?? 3
+      const frame_count = options.frames ?? 3
+      const committed = options.committed ?? frame_count
       for (const [key, value] of Object.entries({
         schema: `md-trajectory-v1`,
-        expected_frames: 3,
+        expected_frames: frame_count,
         initial_step: 2300,
         timestep_fs: options.timestep_fs ?? 1,
         velocity_to_A_per_fs: VELOCITY_FACTOR,
@@ -62,7 +70,7 @@ const fixture = (
         shape: [],
       })
       file.create_hard_link(
-        (options.successful ?? committed === 3) ? `/true` : `/false`,
+        (options.successful ?? committed === frame_count) ? `/true` : `/false`,
         `successful`,
       )
       const topology = file.get(`static`) as Group
@@ -78,13 +86,13 @@ const fixture = (
       const frames = file.create_group(`frames`)
       for (const [name, width] of Object.entries(ATOMIC)) {
         const values = Float64Array.from(
-          { length: 3 * atoms * width },
+          { length: frame_count * atoms * width },
           (_unused, idx) => Math.floor(idx / (atoms * width)) + (idx % (atoms * width)) / 100,
         )
         const dataset = frames.create_dataset({
           name,
           data: options.float32 ? Float32Array.from(values) : values,
-          shape: width === 3 ? [3, atoms, 3] : [3, atoms],
+          shape: width === 3 ? [frame_count, atoms, 3] : [frame_count, atoms],
           chunks: width === 3 ? [1, Math.min(atoms, 8192), 3] : [1, Math.min(atoms, 8192)],
         })
         dataset.create_attribute(`units`, units[name])
@@ -97,7 +105,7 @@ const fixture = (
       }
       for (const name of Object.keys(units).filter((key) => !(key in ATOMIC))) {
         const values = Float64Array.from(
-          { length: 3 },
+          { length: frame_count },
           (_unused, idx) =>
             ((scalar_start[name] ?? -10) + idx) *
             (name === `time_fs` ? (options.timestep_fs ?? 1) : 1),
@@ -108,7 +116,7 @@ const fixture = (
             name === `md_step` || name === `local_step`
               ? BigInt64Array.from(values, BigInt)
               : values,
-          shape: [3],
+          shape: [frame_count],
           chunks: [1],
         })
         dataset.create_attribute(`units`, units[name])
@@ -126,6 +134,45 @@ const open = async (buffer: ArrayBuffer) => {
 }
 
 describe(`MD HDF5`, () => {
+  it.each([undefined, [], [`velocity`], [`force`]])(
+    `reads only requested dense vector channels: %j`,
+    async (vectors) => {
+      const run = await open(await fixture())
+      const full = await materialize_frame_result(run.read_frame(1))
+      const slices = vi.spyOn(Dataset.prototype, `slice`)
+      onTestFinished(() => slices.mockRestore())
+      const frame = await run.read_frame(1, undefined, { vectors })
+      const expected = vectors ?? [`force`, `velocity`]
+      expect(frame.vector_keys).toEqual(expected)
+      const paths = new Set(
+        slices.mock.instances.map((dataset) =>
+          dataset instanceof Dataset ? dataset.path : undefined,
+        ),
+      )
+      expect(paths.has(`/frames/forces`)).toBe(expected.includes(`force`))
+      expect(paths.has(`/frames/velocities`)).toBe(expected.includes(`velocity`))
+      const result = materialize_frame(frame)
+      for (const [idx, site] of result.structure.sites.entries()) {
+        const reference = full.structure.sites[idx]
+        expect(site.xyz).toEqual(reference.xyz)
+        expect(site.abc).toEqual(reference.abc)
+        expect(site.properties.spin).toBe(reference.properties.spin)
+        for (const key of expected)
+          expect(site.properties[key]).toEqual(reference.properties[key])
+        for (const key of [`force`, `velocity`].filter((name) => !expected.includes(name)))
+          expect(site.properties).not.toHaveProperty(key)
+      }
+      // Keep loaded scalar spins and hidden dense channels discoverable in the controls.
+      expect(get_structure_vector_keys(new FrameView().update(frame).structure)).toEqual([
+        `force`,
+        `spin`,
+        `velocity`,
+      ])
+      expect(() => run.read_frame(1, undefined, { vectors: [`unknown`] })).toThrow(
+        /Unknown trajectory vector channel: unknown/,
+      )
+    },
+  )
   it.each([`md-interrupted-committed.h5`, `md-interrupted-partial.h5`])(
     `opens the committed prefix after actual writer SIGKILL: %s`,
     async (filename) => {
@@ -135,9 +182,9 @@ describe(`MD HDF5`, () => {
       const run = await open(Uint8Array.from(bytes).buffer)
       expect(run.frame_count).toBe(1)
       expect(run.metadata).toMatchObject({ successful: false, committed_frames: 1 })
-      const frame = await run.read_frame(0)
+      const frame = await materialize_frame_result(run.read_frame(0))
       expect(frame.structure.sites[0].xyz).toEqual([-0, 0, 1])
-      expect(() => run.read_frame(1)).toThrow(/outside/)
+      expect(() => materialize_frame_result(run.read_frame(1))).toThrow(/outside/)
     },
   )
 
@@ -147,6 +194,7 @@ describe(`MD HDF5`, () => {
         atoms: 1,
         timestep_fs: 0.5,
         mutate: (file) => {
+          ;(file.get(`/static/global_atom_ids`) as Dataset).write_slice([[0, 1]], [-0])
           file.delete_attribute(`ensemble`)
           file.create_attribute(`ensemble`, `NVT`)
           file.delete_attribute(`active_thermostat`)
@@ -157,7 +205,11 @@ describe(`MD HDF5`, () => {
     expect(run.atom_count).toBe(1)
     expect(run.time_step).toEqual({ value: 0.5, unit: `fs` })
     expect(run.metadata).toMatchObject({ ensemble: `NVT`, active_thermostat: `Langevin` })
-    const frame = await run.read_frame(2)
+    const numeric = await run.read_frame(2)
+    const frame = materialize_frame_result(numeric)
+    expect(numeric.sites).toEqual(Uint8Array.of(14))
+    expect(numeric.topology).toEqual({ kind: `fixed-order`, revision: 0 })
+    expect(frame.structure.sites[0].properties.id).toBe(0)
     expect(frame.metadata?.time).toBe(1151)
     expect(`lattice` in frame.structure && frame.structure.lattice.pbc).toEqual([
       true,
@@ -189,7 +241,7 @@ describe(`MD HDF5`, () => {
       successful: true,
       committed_frames: 3,
     })
-    const frame = await run.read_frame(2)
+    const frame = await materialize_frame_result(run.read_frame(2))
     expect(frame.step).toBe(2302)
     expect(frame.metadata).toMatchObject({
       energy: -8,
@@ -216,6 +268,23 @@ describe(`MD HDF5`, () => {
       charge: 2.01,
       spin: 2.01,
     })
+    const numeric = await run.read_frame(2)
+    expect(numeric.sites).toEqual(Uint8Array.of(14, 32, 14, 32))
+    expect(numeric.scalar_columns?.charge).toEqual(Float64Array.of(2, 2.01, 2.02, 2.03))
+    const view = new FrameView()
+    view.update(numeric)
+    const previous = await run.read_frame(1)
+    expect(view.update(previous).structure.sites[1].properties).toEqual({
+      id: 1,
+      mass: 72.6308,
+      region_label: 1,
+      period_id: 0,
+      force: [1.03, 1.04, 1.05],
+      velocity: [1.03, 1.04, 1.05].map((value) => value * VELOCITY_FACTOR),
+      charge: 1.01,
+      spin: 1.01,
+    })
+    expect(numeric.scalar_columns?.charge).toEqual(Float64Array.of(2, 2.01, 2.02, 2.03))
     expect(run.signals?.velocity).toEqual({
       sample_count: 3,
       sample_shape: [4, 3],
@@ -274,15 +343,16 @@ describe(`MD HDF5`, () => {
     )
     expect(run.frame_count).toBe(2)
     expect(run.metadata?.successful).toBe(false)
-    expect((await run.read_frame(1)).step).toBe(2301)
-    expect(() => run.read_frame(2)).toThrow(/outside/)
+    expect((await materialize_frame_result(run.read_frame(1))).step).toBe(2301)
+    expect(() => materialize_frame_result(run.read_frame(2))).toThrow(/outside/)
   })
 
   it.each([
-    [4, 1, 1],
-    [70_003, 100, 3],
-  ])(`bounds frame/atom reads for %i atoms`, async (atoms, start, stride) => {
-    const buffer = await fixture({ atoms })
+    [4, 1, 1, 3],
+    [70_003, 100, 3, 3],
+    [4, 1, 1, 2003],
+  ])(`bounds frame/atom reads for %i atoms`, async (atoms, start, stride, frames) => {
+    const buffer = await fixture({ atoms, frames, timestep_fs: 0.5 })
     const original_to_array = Dataset.prototype.to_array
     const whole_reads: string[] = []
     const slices: { path: string; ranges: Parameters<Dataset[`slice`]>[0] }[] = []
@@ -299,6 +369,24 @@ describe(`MD HDF5`, () => {
       vi.restoreAllMocks()
     })
     const run = await open(buffer)
+    // One scalar read for the preview and one batched read for the entire sampled plot.
+    expect(slices.filter(({ path }) => path === `/frames/energy`)).toHaveLength(2)
+    const plot_stride = Math.ceil(frames / 1000)
+    expect(
+      run.properties.rows.map(({ frame_number, step, properties }) => [
+        frame_number,
+        step,
+        properties.energy,
+        properties.time,
+      ]),
+    ).toEqual(
+      Array.from({ length: Math.ceil(frames / plot_stride) }, (_unused, idx) => [
+        idx * plot_stride,
+        2300 + idx * plot_stride,
+        -10 + idx * plot_stride,
+        (2300 + idx * plot_stride) * 0.5,
+      ]),
+    )
     expect(run.preview.structure.sites.length).toBeLessThanOrEqual(2000)
     const sample_stride = Math.ceil(atoms / 2000)
     expect(
@@ -345,6 +433,43 @@ describe(`MD HDF5`, () => {
         ],
       })),
     )
+    slices.length = 0
+    const summary = summarize_run(run)
+    const opened = await open_hdf5_trajectory(
+      buffer,
+      create_warning_collector(),
+      `md.h5`,
+      undefined,
+      summary,
+    )
+    if (opened.kind !== `lazy`) throw new Error(`Expected lazy replica`)
+    const replica = hdf5_run(opened.lazy, run.provenance, run.warnings)
+    onTestFinished(() => replica.dispose())
+    // Replicas reuse validated axes, plot rows and preview without reading frame data.
+    expect(slices.every(({ path }) => !path.startsWith(`/frames/`))).toBe(true)
+    expect(summarize_run(replica)).toEqual(summary)
+    let max_absolute_error = 0
+    let max_relative_error = 0
+    for (const frame_idx of [0, 1, frames - 1]) {
+      const expected = await run.read_frame(frame_idx)
+      const actual = await replica.read_frame(frame_idx)
+      expect(actual).toEqual(expected)
+      for (const [idx, value] of expected.coordinates.entries()) {
+        const error = Math.abs(actual.coordinates[idx] - value)
+        max_absolute_error = Math.max(max_absolute_error, error)
+        max_relative_error = Math.max(
+          max_relative_error,
+          value === 0 ? error : error / Math.abs(value),
+        )
+      }
+    }
+    expect([max_absolute_error, max_relative_error]).toEqual([0, 0])
+    await expect(
+      open_hdf5_trajectory(buffer, create_warning_collector(), `md.h5`, undefined, {
+        ...summary,
+        frame_count: frames + 1,
+      }),
+    ).rejects.toThrow(/replica metadata does not match/)
   })
 
   it.each<readonly [string, Parameters<typeof fixture>[0]]>([
