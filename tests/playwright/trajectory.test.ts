@@ -122,14 +122,19 @@ test.describe(`Trajectory Component`, () => {
         const icons = trajectory_viewer.locator(
           `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button) > svg`,
         )
-        expect(await icons.count()).toBeGreaterThan(8)
-        const size = await page.evaluate(
-          () => getComputedStyle(document.documentElement).fontSize,
-        )
-        for (const icon of await icons.all()) {
-          await expect(icon).toHaveCSS(`width`, size)
-          await expect(icon).toHaveCSS(`height`, size)
-        }
+        // Resizing can unmount panes: read the current icons and sizes in one DOM snapshot.
+        await expect(async () => {
+          const sizes = await icons.evaluateAll((elements) => {
+            const size = getComputedStyle(document.documentElement).fontSize
+            return elements.map((icon) => {
+              const { width, height } = getComputedStyle(icon)
+              return { width, height, size }
+            })
+          })
+          expect(sizes.length).toBeGreaterThan(8)
+          for (const { width, height, size } of sizes)
+            expect([width, height]).toEqual([size, size])
+        }).toPass()
       }
       await check_icon_sizes()
       const fullscreen = controls.locator(`.fullscreen-button`)

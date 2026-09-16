@@ -70,10 +70,9 @@ test.describe(`RdfPlot Component Tests`, () => {
       await expect(tooltip).toBeVisible({ timeout: 1000 })
     }).toPass({ timeout: 5000 })
 
-    const text = await tooltip.textContent()
-    // Tooltip keys come from the axis labels: "r (Å): <number>" and "g(r): <number>"
-    expect(text ?? ``).toMatch(/r \(Å\):\s*-?\d+\.?\d*/)
-    expect(text ?? ``).toMatch(/g\(r\):\s*-?\d+\.?\d*/)
+    await expect(tooltip).toContainText(/r:\s*-?\d+\.?\d*\s+Å/)
+    await expect(tooltip).toContainText(/g\(r\):\s*-?\d+\.?\d*/)
+    await expect(tooltip.locator(`small`)).toHaveText([`Å`])
   })
 
   // Test reference line

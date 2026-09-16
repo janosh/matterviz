@@ -24,9 +24,10 @@ test.describe(`XrdPlot Component Tests`, () => {
 
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible()
-    await expect(tooltip).toContainText(`2θ: 30°`)
+    await expect(tooltip).toContainText(`2θ: 30 °`)
     await expect(tooltip).toContainText(`hkl: 110`)
     await expect(tooltip).toContainText(`d: 2.98 Å`)
+    await expect(tooltip.locator(`small`)).toHaveText([`°`, `Å`])
   })
 
   test(`broadening toggles the rendered profile and resets to sticks`, async ({ page }) => {
