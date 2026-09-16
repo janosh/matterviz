@@ -133,7 +133,7 @@ export function write_site_properties(
 
 export const numeric_sites = new WeakMap<object, NumericSites>()
 export const site_count = (structure: AnyStructure | null | undefined): number =>
-  structure ? (numeric_sites.get(structure)?.length ?? structure.sites.length) : 0
+  structure ? (numeric_sites.get(structure)?.length ?? structure.sites?.length ?? 0) : 0
 export const get_site = (
   structure: AnyStructure | null | undefined,
   idx: number,

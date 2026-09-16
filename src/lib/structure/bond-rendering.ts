@@ -263,6 +263,3 @@ export function write_bond_transform(
   matrix_buffer[matrix_offset + 9] = up_y * radius_scale
   matrix_buffer[matrix_offset + 10] = up_z * radius_scale
 }
-
-export const get_bond_instance_count = (bond: BondPair): number =>
-  instance_count_for_order(bond.bond_order)

@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { FrameView, materialize_frame, materialize_frame_result } from '$lib/trajectory/frame'
 import { get_structure_vector_keys } from '$lib/structure/vectors'
 // Committed-prefix MD trajectories retain explicit units and static topology.
@@ -453,7 +454,7 @@ describe(`MD HDF5`, () => {
     for (const frame_idx of [0, 1, frames - 1]) {
       const expected = await run.read_frame(frame_idx)
       const actual = await replica.read_frame(frame_idx)
-      expect(actual).toEqual(expected)
+      assert.deepStrictEqual(actual, expected)
       for (const [idx, value] of expected.coordinates.entries()) {
         const error = Math.abs(actual.coordinates[idx] - value)
         max_absolute_error = Math.max(max_absolute_error, error)

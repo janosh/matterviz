@@ -105,34 +105,42 @@ test(`large atom mesh keeps drawing across zoom detail transitions @source`, asy
     { show_bonds: `never`, show_image_atoms: false, sphere_segments: 20, auto_rotate: 0 },
   )
   const canvas = structure_canvas(page)
-  const detail = () =>
+  const vertex_counts = () =>
     canvas.evaluate(async (element) => {
       const module_path = `/src/lib/io/export.ts`
       const { scene_registry } = await import(/* @vite-ignore */ module_path)
       const scene = scene_registry.get(element)?.scene
       const levels: number[] = []
       scene?.traverse(
-        (node: { count?: number; geometry?: { parameters?: { widthSegments?: number } } }) => {
-          const segments = node.geometry?.parameters?.widthSegments
-          if (node.count === 2197 && segments !== undefined) levels.push(segments)
+        (node: {
+          count?: number
+          geometry?: { getAttribute: (name: string) => { count: number } | undefined }
+        }) => {
+          const vertices = node.geometry?.getAttribute(`position`)?.count
+          if (
+            node.count === 2197 &&
+            node.geometry?.getAttribute(`atomPositionRadius`) &&
+            vertices
+          )
+            levels.push(vertices)
         },
       )
       return levels
     })
-  await expect.poll(detail).toEqual([8])
+  await expect.poll(vertex_counts).toEqual([81]) // (8 + 1)^2 vertices per sphere
   await hover_canvas_center(canvas)
   await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
   await expect
     .poll(async () => {
-      const levels = await detail()
-      return levels.length === 1 && levels[0] > 8
+      const levels = await vertex_counts()
+      return levels.length === 1 && levels[0] > 81
     })
     .toBe(true)
   // Camera changes after the first detail switch must still produce pixels. A live rAF
   // loop alone misses WebGPU refusing draws against a destroyed instance buffer.
   await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
   await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, 2700))
-  await expect.poll(detail).toEqual([8])
+  await expect.poll(vertex_counts).toEqual([81])
   // Do not apply the general software-GPU noise filter to resource-lifetime errors.
   expect(console_errors).toEqual([])
 })

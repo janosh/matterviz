@@ -106,8 +106,11 @@ describe(`Sunburst`, () => {
     const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
-      /A › A1[\s\S]*20% of total[\s\S]*40% of parent/,
+      /A › A1[\s\S]*20 % of total[\s\S]*40 % of parent/,
     )
+    expect(
+      [...plot.querySelectorAll(`.plot-tooltip small`)].map((unit) => unit.textContent),
+    ).toEqual([`%`, `%`])
     expect(on_node_hover).toHaveBeenCalledOnce()
     expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -773,8 +776,9 @@ describe(`Sunburst display options`, () => {
     // 'Other' by itself cannot say how much it swallowed; the tooltip can.
     await fire(node_at(plot, 2), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
-      /Other[\s\S]*10% of total, 2 grouped/,
+      /Other[\s\S]*10 % of total, 2 grouped/,
     )
+    expect(plot.querySelector(`.plot-tooltip small`)?.textContent).toBe(`%`)
   })
 
   test(`max_children prop keeps the largest N arcs per parent`, async () => {

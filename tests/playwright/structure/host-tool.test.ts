@@ -20,21 +20,20 @@ const scene_state = (page: Page) =>
         count?: number
         geometry?: {
           type: string
-          getAttribute: (name: string) => { count: number } | undefined
+          getAttribute: (
+            name: string,
+          ) => { count: number; array: ArrayLike<number> } | undefined
         }
         material?: { metalness?: number; roughness?: number }
-        instanceColor?: { array: ArrayLike<number> }
       }) => {
-        if (node.isInstancedMesh && node.geometry?.type === `ConeGeometry`)
-          arrows += node.count ?? 0
         if (
-          node.isInstancedMesh &&
-          node.geometry?.type === `SphereGeometry` &&
-          node.instanceColor
+          node.geometry?.getAttribute(`arrowLength`) &&
+          node.geometry.type === `ConeGeometry`
         )
-          atom_colors.push(
-            ...Array.from(node.instanceColor.array).slice(0, (node.count ?? 0) * 3),
-          )
+          arrows += node.count ?? 0
+        const colors = node.geometry?.getAttribute(`atomColor`)
+        if (colors)
+          atom_colors.push(...Array.from(colors.array).slice(0, (node.count ?? 0) * 3))
         if (
           node.isMesh &&
           !node.isInstancedMesh &&

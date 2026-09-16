@@ -565,7 +565,9 @@
 
   // === vectors: auto-populate vector_configs for force/magmom/... site properties ===
   let vector_keys = $derived(
-    structure !== undefined ? get_structure_vector_keys(tool_structure ?? structure) : [],
+    structure && site_count(structure) > 0
+      ? get_structure_vector_keys(tool_structure ?? structure)
+      : [],
   )
   let vector_keys_signature = $derived(vector_keys.join(`\0`))
   let vectors_auto_populated_for = ``

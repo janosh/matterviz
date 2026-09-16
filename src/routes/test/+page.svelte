@@ -5,11 +5,11 @@
 
   const routes = all_routes
     .filter(({ filename }) => /\/test\/.+\/.+/.test(filename))
-    .map(({ route }) => route)
+    .map(({ route }) => ({ href: route, label: route }))
 </script>
 
 <h1 id="pages-for-end-to-end-testing">Pages for End-to-End Testing</h1>
 
 The files in this directory are used for end-to-end testing with Playwright.
 
-<Nav {routes} {page} />
+<Nav {routes} pathname={page.url.pathname} />

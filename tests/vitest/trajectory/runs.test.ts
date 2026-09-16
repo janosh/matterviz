@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { BondFrame, prepare_bond_placements } from '$lib/structure/bond-rendering'
 import {
   create_numeric_md_frame,
@@ -928,7 +929,7 @@ describe(`worker-served run lifecycle`, () => {
             },
           },
         ])
-        expect(received).toStrictEqual(source)
+        assert.deepStrictEqual(received, source)
         if (!compact)
           expect(received.structure.sites[0].properties.named).toHaveProperty(`unit`, `eV/A`)
         const original_coords = source.structure.sites.flatMap(({ xyz, abc }) => [
@@ -948,8 +949,8 @@ describe(`worker-served run lifecycle`, () => {
           first.species[0].element = `Og`
         }
         if (count > 1) expect(received.structure.sites[1]).toEqual(source.structure.sites[1])
-        expect(frame).toEqual(source)
-        expect(await materialize_frame_result(run.read_frame(1))).toEqual(source)
+        assert.deepStrictEqual(frame, source)
+        assert.deepStrictEqual(await materialize_frame_result(run.read_frame(1)), source)
       } finally {
         run.dispose()
       }

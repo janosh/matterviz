@@ -130,6 +130,7 @@ test.each([
       .mockReturnValueOnce(recomputation.promise)
       .mockResolvedValueOnce(make_result(`refresh`))
     const run = { ...make_run(), frame_count: 24_001 }
+    const collect_positions = vi.spyOn(run, `collect_positions`)
     const target = render_pane({ run })
 
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
@@ -148,10 +149,11 @@ test.each([
     expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
     const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
     expect(fieldset?.disabled).toBe(false)
-    // Parent identities stay unchanged; timing edits must still collect current atom data.
-    const site = run.preview.structure.sites[0]
-    site.xyz[0] = 9
-    site.properties.mass = 2
+    // The run identity stays unchanged while its source returns a fresh position stream.
+    const refreshed = structuredClone(mocks.compute.mock.calls[0][0].positions)
+    refreshed.positions[0] = 9
+    collect_positions.mockResolvedValue(refreshed)
+    run.preview.structure.sites[0].properties.mass = 2
     await set_timing(target, label, value)
 
     await vi.waitFor(() =>

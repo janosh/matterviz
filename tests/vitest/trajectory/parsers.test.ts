@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { materialize_frame_result } from '$lib/trajectory/frame'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
@@ -1698,7 +1699,8 @@ describe(`HDF5 slice budgets`, () => {
         throw new Error(`Sample value changed at ${idx}`)
     }
     expect(values).toHaveLength(Math.ceil(4 / stride) * sample_size)
-    expect(read_numeric_buffer(dataset, `/large-samples`, [[1, 2]])).toEqual(
+    assert.deepStrictEqual(
+      read_numeric_buffer(dataset, `/large-samples`, [[1, 2]]),
       values.subarray(0, sample_size),
     )
   })
