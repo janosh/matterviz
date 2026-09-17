@@ -106,19 +106,20 @@ test.describe(`Trajectory performance`, () => {
         timeout: 30_000,
       })
       const viewer = page.locator(`#loaded-trajectory`)
+      const atom_canvas = viewer.locator(`.structure canvas`)
       const pane = viewer.locator(`.hotspots-pane`)
       const open_hotspots = async () => {
         await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
         await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
       }
-      const expect_3d_pixels = async (selector: string, heat = false): Promise<void> => {
+      const expect_3d_pixels = async (heat = false): Promise<void> => {
         // Inspect the scene itself, regardless of the floating pane's width or position.
         const pane_was_open = await pane.isVisible()
         if (pane_was_open) await page.keyboard.press(`Escape`)
-        const canvas = viewer.locator(`${selector} canvas`)
-        await canvas.scrollIntoViewIfNeeded()
+        await expect(pane).toBeHidden()
+        await atom_canvas.scrollIntoViewIfNeeded()
         await page.mouse.move(0, 0)
-        const box = await require_bbox(canvas)
+        const box = await require_bbox(atom_canvas)
         // The center excludes controls/gizmos; color excludes the gray lattice and background.
         const clip = {
           x: box.x + box.width / 4,
@@ -174,9 +175,8 @@ test.describe(`Trajectory performance`, () => {
           return count
         })
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
-      await expect_3d_pixels(`.structure`)
+      await expect_3d_pixels()
       await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
-      const atom_canvas = viewer.locator(`.structure canvas`)
       await atom_canvas.evaluate((element) =>
         element.setAttribute(`data-test-mounted`, `true`),
       )
@@ -213,7 +213,7 @@ test.describe(`Trajectory performance`, () => {
       await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
       await expect.poll(atom_count).toBe(n_atoms)
       expect(await scene_snapshot()).toEqual(original_scene)
-      await expect_3d_pixels(`.structure`, true)
+      await expect_3d_pixels(true)
       const cloud_id = () =>
         atom_canvas.evaluate(async (canvas) => {
           if (!(canvas instanceof HTMLCanvasElement)) throw new Error(`Expected atom canvas`)
@@ -229,7 +229,7 @@ test.describe(`Trajectory performance`, () => {
       await pane.getByRole(`textbox`, { name: `Cloud base color hex` }).fill(`#ff0000`)
       await pane.getByRole(`textbox`, { name: `Hotspot color hex` }).fill(`#ff0000`)
       await viewer.getByLabel(`Heatmap on atoms`).uncheck()
-      await expect_3d_pixels(`.structure`, true)
+      await expect_3d_pixels(true)
       expect(await cloud_id()).toBe(cloud_mesh)
       expect(await scene_snapshot()).toEqual(original_scene)
       await pane.getByRole(`textbox`, { name: `Hotspot color hex` }).fill(`#00ff00`)
@@ -276,7 +276,7 @@ test.describe(`Trajectory performance`, () => {
       await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
       expect(await cloud_id()).toBe(cloud_mesh)
-      await expect_3d_pixels(`.structure`)
+      await expect_3d_pixels()
       expect(errors).toEqual({ console: [], page: [] })
     } finally {
       await rm(directory, { recursive: true, force: true })

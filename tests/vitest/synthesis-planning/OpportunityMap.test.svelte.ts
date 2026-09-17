@@ -55,8 +55,18 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   first?.focus()
   await tick()
   const tooltip = document.querySelector(`.plot-tooltip`)
-  expect(tooltip?.textContent).toContain(`Temperature: 300 K`)
-  expect(tooltip?.querySelector(`small`)?.textContent).toBe(`K`)
+  for (const label of [
+    `Temperature: 300 K`,
+    `O2:`,
+    `Target above hull:`,
+    `Route 1`,
+    `Driving force:`,
+    `Selectivity:`,
+  ])
+    expect(tooltip?.textContent).toContain(label)
+  expect(
+    [...(tooltip?.querySelectorAll(`small`) ?? [])].map((node) => node.textContent),
+  ).toEqual([`K`, `bar`, `meV/atom`, `meV/atom`, `meV/atom`])
   first?.blur()
   expect_module_worker(stub.instances, `src/lib/synthesis-planning/opportunity-map-worker.ts`)
   expect(stub.posted[0].message.input.entries.at(-1)?.e_form_per_atom).toBeNaN()

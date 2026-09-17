@@ -157,7 +157,8 @@ describe(`MD HDF5`, () => {
         const reference = full.structure.sites[idx]
         expect(site.xyz).toEqual(reference.xyz)
         expect(site.abc).toEqual(reference.abc)
-        expect(site.properties.spin).toBe(reference.properties.spin)
+        for (const key of [`charge`, `spin`])
+          expect(site.properties[key]).toBe(reference.properties[key])
         for (const key of expected)
           expect(site.properties[key]).toEqual(reference.properties[key])
         for (const key of [`force`, `velocity`].filter((name) => !expected.includes(name)))
@@ -419,8 +420,10 @@ describe(`MD HDF5`, () => {
       Object.keys(ATOMIC).some((key) => path === `/frames/${key}`),
     )
     expect(run.atom_count).toBe(atoms)
-    expect(atomic_reads.map(({ path }) => path)).toEqual(
-      (atoms > 2000 ? [`positions`] : Object.keys(ATOMIC)).map((name) => `/frames/${name}`),
+    expect(atomic_reads.map(({ path }) => path).toSorted()).toEqual(
+      (atoms > 2000 ? [`positions`] : Object.keys(ATOMIC))
+        .map((name) => `/frames/${name}`)
+        .toSorted(),
     )
     if (atoms > 2000)
       expect(atomic_reads[0].ranges).toEqual([

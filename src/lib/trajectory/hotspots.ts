@@ -8,7 +8,7 @@ import {
   type Vec3,
 } from '$lib/math'
 import type { SliceResult } from '$lib/isosurface/slice'
-import type { ParseProgress } from './index'
+import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
 export const BOLTZMANN_EV = 1.380649e-23 / 1.602176634e-19
@@ -27,9 +27,7 @@ export interface HotspotGrid {
   cell: Matrix3x3
   pbc: readonly [boolean, boolean, boolean]
 }
-export interface HotspotOptions {
-  start_frame?: number
-  end_frame?: number
+export interface HotspotOptions extends FrameRange {
   frame_stride?: number
   grid?: HotspotGrid
   bins?: number
@@ -90,6 +88,25 @@ export interface HotspotCoverage {
   preview_frame?: number
 }
 export type HotspotMetric = `energy` | `temperature`
+
+// Use the same source requirements for the form and the calculation entry point.
+export function hotspot_requirements(options: HotspotOptions): string {
+  const energy = options.energy_key !== undefined
+  const unit = energy ? options.energy_unit : options.velocity_unit
+  const units: Readonly<Record<string, number>> = energy ? ENERGY_UNITS : VELOCITY_UNITS
+  return [
+    !(energy ? options.energy_key : (options.velocity_key ?? `velocity`))?.trim() &&
+      `Enter the ${energy ? `energy` : `velocity`} property.`,
+    !Number.isFinite(unit && units[unit]) && `Select ${energy ? `energy` : `velocity`} units.`,
+    energy
+      ? !options.energy_reference?.trim() && `Describe the stored energy reference.`
+      : options.mass_source !== `standard` &&
+        !options.mass_unit &&
+        `Select mass units for recorded masses, or choose standard elemental masses.`,
+  ]
+    .filter(Boolean)
+    .join(` `)
+}
 
 // Prefer declared units. Otherwise sample atomic-scale masses, whose amu/kg magnitudes
 // are disjoint; leave reduced, mixed or unrecognized units for an explicit choice.
@@ -344,11 +361,13 @@ async function reduce_hotspots(
     batch_size = ATOM_BATCH_SIZE,
     max_bytes = 128 * 1024 ** 2,
   } = options
+  const required_bytes = (grid_bytes = 0, preview_bytes = 0) =>
+    grid_bytes + retained_bytes + preview_bytes + batch_size * 3 * 66 + 16 * 1024 ** 2
   if (
     !Number.isFinite(retained_bytes) ||
     retained_bytes < 0 ||
     !Number.isFinite(max_bytes) ||
-    max_bytes < retained_bytes + batch_size * 3 * 66 + 16 * 1024 ** 2
+    max_bytes < required_bytes()
   )
     throw new Error(
       `Hotspot batches exceed the ${max_bytes}-byte budget before grid allocation`,
@@ -383,14 +402,10 @@ async function reduce_hotspots(
     throw new Error(`Invalid hotspot motion/coordinate mode: ${motion}/${coordinates}`)
   if (options.energy_key && motion !== `device`)
     throw new Error(`Stored kinetic energy cannot remove motion; select velocities`)
-  if (options.energy_key && !options.energy_reference?.trim())
-    throw new Error(`Declare the original reference of the stored kinetic energy`)
+  const requirements = hotspot_requirements(options)
+  if (requirements) throw new Error(requirements)
   const velocity_factor = options.velocity_unit && VELOCITY_UNITS[options.velocity_unit]
   const energy_factor = options.energy_unit && ENERGY_UNITS[options.energy_unit]
-  if (!Number.isFinite(options.energy_key ? energy_factor : velocity_factor))
-    throw new Error(
-      `Declare ${options.energy_key ? `kinetic-energy` : `velocity`} units before calculating hotspots`,
-    )
   const mass_factor = options.mass_unit === `kg` ? 1 : AMU_KG
   if (
     (options.mass_unit !== undefined && ![`amu`, `kg`].includes(options.mass_unit)) ||
@@ -400,8 +415,6 @@ async function reduce_hotspots(
     throw new Error(
       `Invalid mass source or units: ${options.mass_source}/${options.mass_unit}`,
     )
-  if (!options.energy_key && options.mass_source !== `standard` && !options.mass_unit)
-    throw new Error(`Declare recorded mass units before calculating hotspots`)
   if (options.mass_source === `standard` && options.mass_unit === `kg`)
     throw new Error(`Standard elemental masses use amu`)
   let preview_bytes = 0
@@ -526,12 +539,7 @@ async function reduce_hotspots(
   // Reserve the caller's completed map during replacement, plus one 8 MiB
   // physical decoder chunk and 8 MiB for slice/display pixels. Streaming additionally
   // reserves the published map and an in-flight snapshot. No frame history is retained.
-  const buffer_bytes =
-    n_bins * (on_partial ? 160 : 104) +
-    retained_bytes +
-    preview_bytes +
-    batch_size * 3 * 66 +
-    16 * 1024 ** 2
+  const buffer_bytes = required_bytes(n_bins * (on_partial ? 160 : 104), preview_bytes)
   if (!Number.isFinite(max_bytes) || buffer_bytes > max_bytes)
     throw new Error(
       `Hotspot buffers require ${buffer_bytes} bytes, above budget ${max_bytes}; reduce grid or batch size`,

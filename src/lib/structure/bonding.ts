@@ -612,34 +612,6 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
   return bonds
 }
 
-export function apply_explicit_bond_metadata(
-  structure: AnyStructure,
-  bonds: BondPair[],
-): BondPair[] {
-  const explicit_bonds = get_explicit_bond_metadata(structure)
-  if (explicit_bonds.length === 0) return bonds
-
-  const explicit_by_key = new Map(
-    explicit_bonds.map((bond) => [
-      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-      bond,
-    ]),
-  )
-  const merged = bonds.map((bond) => {
-    const key = get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-    const explicit = explicit_by_key.get(key)
-    if (!explicit) return bond
-    explicit_by_key.delete(key)
-    return { ...bond, bond_order: explicit.order }
-  })
-
-  for (const explicit_bond of explicit_by_key.values()) {
-    merged.push(structure_bond_to_bond_pair(structure, explicit_bond))
-  }
-
-  return merged
-}
-
 // Render exactly the bonds declared in structure.properties.bonds, running no proximity
 // search. Formats like PDB/MOL/MOL2/SDF carry authoritative bond blocks, for which
 // covalent-radius perception both invents spurious bonds and misses coordination bonds.
@@ -1563,14 +1535,6 @@ export class BondSearch {
       perceive_bonds(structure, options, this.query, this.scratch),
     )
   }
-
-  compute(
-    structure: AnyStructure,
-    options: Parameters<typeof electroneg_ratio>[1] = {},
-    output: BondPair[] = [],
-  ): BondPair[] {
-    return electroneg_ratio(structure, options, this.query, output)
-  }
 }
 
 export function compute_bonds(
@@ -1625,56 +1589,12 @@ type PerceivedBonds = Omit<BondNeighborList, 'offsets'> & {
 export function electroneg_ratio(
   structure: AnyStructure,
   options: Parameters<typeof perceive_bonds>[1] = {},
-  query: BondNeighborQuery = query_bond_neighbors,
-  // Explicit output is mutable caller-owned scratch; default calls return independent records.
-  output: BondPair[] = [],
 ): BondPair[] {
-  const { sites } = structure
-  if (!sites.length) {
-    output.length = 0
-    return output
-  }
-  const { centers, slots, count, neighbors, image_geometry, distances } = perceive_bonds(
+  if (!site_count(structure)) return []
+  return new BondFrame(
     structure,
-    options,
-    query,
-  )
-  let bond_count = 0
-  for (let cand = 0; cand < count; cand++) {
-    const slot = slots[cand]
-    const site_idx_1 = centers[cand]
-    const site_idx_2 = neighbors[slot]
-    const pos_1 = sites[site_idx_1].xyz
-    const bond: BondPair = output[bond_count] ?? {
-      pos_1,
-      pos_2: sites[site_idx_2].xyz,
-      site_idx_1,
-      site_idx_2,
-      bond_length: distances[slot],
-    }
-    bond.pos_1 = pos_1
-    bond.pos_2 = sites[site_idx_2].xyz
-    bond.site_idx_1 = site_idx_1
-    bond.site_idx_2 = site_idx_2
-    bond.bond_length = distances[slot]
-    delete bond.cell_shift
-    delete bond.bond_order
-    const shift_a = image_geometry ? image_geometry.images[slot * 3] : 0
-    const shift_b = image_geometry ? image_geometry.images[slot * 3 + 1] : 0
-    const shift_c = image_geometry ? image_geometry.images[slot * 3 + 2] : 0
-    if (image_geometry && (shift_a !== 0 || shift_b !== 0 || shift_c !== 0)) {
-      // periodic partner: its image position is the center plus the query's displacement
-      bond.cell_shift = [shift_a, shift_b, shift_c]
-      bond.pos_2 = [
-        pos_1[0] + image_geometry.deltas[slot * 3],
-        pos_1[1] + image_geometry.deltas[slot * 3 + 1],
-        pos_1[2] + image_geometry.deltas[slot * 3 + 2],
-      ]
-    }
-    output[bond_count++] = bond
-  }
-  output.length = bond_count
-  return apply_explicit_bond_metadata(structure, output)
+    bond_columns(structure, perceive_bonds(structure, options)),
+  ).materialize()
 }
 
 // Both public records and worker columns consume the same accepted contacts in discovery order.

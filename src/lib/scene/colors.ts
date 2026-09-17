@@ -1,7 +1,7 @@
 // CSS colour to linear-space RGB for three.js buffers. Shared by every scene that writes
 // colours into instanced or vertex attributes, which the renderer reads as Linear-sRGB.
 import { rgb as parse_rgb } from 'd3-color'
-import { Color, SRGBColorSpace, type TypedArray } from 'three/webgpu'
+import { Color, SRGBColorSpace } from 'three/webgpu'
 import { clamp } from '$lib/math'
 import { clamp01 } from '$lib/utils'
 
@@ -42,23 +42,6 @@ export function css_to_linear_rgb(css_color: string): LinearRgb {
   if (linear_rgb_cache.size >= MAX_CACHED_COLORS) linear_rgb_cache.clear()
   linear_rgb_cache.set(css_color, rgb)
   return rgb
-}
-
-// Channels are already in the working color space, so no second conversion here.
-export function set_linear_css_color(css_color: string, scratch_color: Color): void {
-  const [red, green, blue] = css_to_linear_rgb(css_color)
-  scratch_color.setRGB(red, green, blue)
-}
-
-export function write_linear_color_to_buffer(
-  buffer: TypedArray,
-  idx: number,
-  css_color: string,
-): void {
-  const [red, green, blue] = css_to_linear_rgb(css_color)
-  buffer[idx * 3] = red
-  buffer[idx * 3 + 1] = green
-  buffer[idx * 3 + 2] = blue
 }
 
 const brighten_scratch = new Color()

@@ -283,7 +283,7 @@ export const parse_md_h5_file = (
     const batch_masses = mass_source ? new Float64Array(count) : undefined
     for (let idx = 0; idx < count; idx++) {
       const atom_idx = start + idx * stride
-      batch_numbers[idx] = atomic_numbers[atom_idx]
+      batch_numbers[idx] = numeric_elements[atom_idx]
       if (batch_masses) {
         const mass =
           mass_source === `recorded`
@@ -312,15 +312,6 @@ export const parse_md_h5_file = (
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {
     check_frame(frame_idx)
     const positions = read_samples(`positions`, frame_idx, frame_idx + 1)
-    const atomic = Object.fromEntries(
-      Object.entries(channels)
-        .filter(
-          ([key, channel]) =>
-            channel.width &&
-            (channel.width !== 3 || !requested?.vectors || requested.vectors.includes(key)),
-        )
-        .map(([key, channel]) => [key, read_samples(channel.name, frame_idx, frame_idx + 1)]),
-    )
     const vector_keys = [`force`, `velocity`].filter(
       (key) => !requested?.vectors || requested.vectors.includes(key),
     )
@@ -335,14 +326,18 @@ export const parse_md_h5_file = (
     )
     frame.available_vector_keys = [`force`, `velocity`]
     for (const [column, key] of vector_keys.entries())
-      write_frame_vector(frame, column, atomic[key])
+      write_frame_vector(
+        frame,
+        column,
+        read_samples(channels[key].name, frame_idx, frame_idx + 1),
+      )
     frame.scalar_columns = {
       id: global_atom_ids,
       mass: masses,
       region_label: region_labels,
       period_id: period_ids,
-      charge: atomic.charge,
-      spin: atomic.spin,
+      charge: read_samples(`charges`, frame_idx, frame_idx + 1),
+      spin: read_samples(`spins`, frame_idx, frame_idx + 1),
     }
     return frame
   }

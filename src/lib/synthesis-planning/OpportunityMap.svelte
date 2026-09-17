@@ -140,6 +140,10 @@
   }
 </script>
 
+{#snippet tooltip_row(label: string | undefined, value: number, unit: string, format = `.1f`)}
+  <div><TooltipValue {label} value={format_num(value, format)} {unit} /></div>
+{/snippet}
+
 <section class="opportunity-map" aria-label="Temperature–atmosphere opportunity map">
   <h3>Temperature–atmosphere opportunity map</h3>
   <p>
@@ -222,45 +226,19 @@
           {#each cells.slice(row_idx * 9, (row_idx + 1) * 9) as cell}
             {#snippet cell_tooltip()}
               {@const route = shown_route(cell)}
-              <div>
-                <TooltipValue
-                  label="Temperature"
-                  value={format_num(cell.temperature, `.0f`)}
-                  unit="K"
-                />
-              </div>
-              <div>
-                <TooltipValue
-                  label={scan_gas}
-                  value={format_num(cell.pressure, `.2g`)}
-                  unit="bar"
-                />
-              </div>
-              <div>
-                <TooltipValue
-                  label="Target above hull"
-                  value={format_num(cell.e_above_hull * 1000, `.1f`)}
-                  unit="meV/atom"
-                />
-              </div>
+              {@render tooltip_row(`Temperature`, cell.temperature, `K`, `.0f`)}
+              {@render tooltip_row(scan_gas, cell.pressure, `bar`, `.2g`)}
+              {@render tooltip_row(`Target above hull`, cell.e_above_hull * 1000, `meV/atom`)}
               {#if route}
                 <div>
                   Route {routes.findIndex(({ id: identifier }) => identifier === route.id) + 1}
                 </div>
-                <div>
-                  <TooltipValue
-                    label="Driving force"
-                    value={format_num(route.driving_force * 1000, `.1f`)}
-                    unit="meV/atom"
-                  />
-                </div>
-                <div>
-                  <TooltipValue
-                    label="Selectivity"
-                    value={format_num(route.selectivity_margin * 1000, `.1f`)}
-                    unit="meV/atom"
-                  />
-                </div>
+                {@render tooltip_row(`Driving force`, route.driving_force * 1000, `meV/atom`)}
+                {@render tooltip_row(
+                  `Selectivity`,
+                  route.selectivity_margin * 1000,
+                  `meV/atom`,
+                )}
               {:else}No downhill shortlisted route{/if}
             {/snippet}
             <button

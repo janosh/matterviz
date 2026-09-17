@@ -530,7 +530,7 @@ describe(`Explicit Bond Metadata`, () => {
     // matching site indices with opposite shifts must stay two distinct bonds
     const bonds_by_key = new Map(
       bonding
-        .apply_explicit_bond_metadata(structure, [])
+        .explicit_only(structure)
         .map((bond_pair) => [
           bonding.get_bond_key(
             bond_pair.site_idx_1,
@@ -1298,7 +1298,9 @@ describe(`compute_bonds memo`, () => {
     for (const position of [39.9, 0.1, 0.2, 0.3, 39.8, 0.4, 1, 2, 3]) {
       const structure = structuredClone(source)
       structure.sites[0].xyz[0] = position
-      const actual = canonical(search.compute(structure))
+      const actual = canonical(
+        new BondFrame(structure, search.compute_columns(structure)).materialize(),
+      )
       const expected = canonical(bonding.electroneg_ratio(structure))
       expect(actual).toEqual(expected)
       expect(actual.every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
@@ -1306,20 +1308,18 @@ describe(`compute_bonds memo`, () => {
     }
     const changed_cell = structuredClone(source)
     changed_cell.lattice.matrix[0][0] = 45
-    expect(canonical(search.compute(changed_cell))).toEqual(
-      canonical(bonding.electroneg_ratio(changed_cell)),
+    expect(search.compute_columns(changed_cell)).toEqual(
+      pack_bonds(bonding.electroneg_ratio(changed_cell)),
     )
     changed_cell.lattice.pbc = [false, false, false]
-    expect(canonical(search.compute(changed_cell))).toEqual(
-      canonical(bonding.electroneg_ratio(changed_cell)),
+    expect(search.compute_columns(changed_cell)).toEqual(
+      pack_bonds(bonding.electroneg_ratio(changed_cell)),
     )
   })
   test.each([7, 42, 123])(
     `reuses geometric candidates without losing bonds (seed %i)`,
     (seed) => {
       const search = new bonding.BondSearch()
-      const column_search = new bonding.BondSearch()
-      const scratch: BondPair[] = []
       const source = make_random_structure(200, seed)
       const rand = make_rng(seed)
       const canonical = (bonds: BondPair[]) =>
@@ -1344,18 +1344,16 @@ describe(`compute_bonds memo`, () => {
               ? { pbc: [true, true, true] as [boolean, boolean, boolean] }
               : {}
         const expected = canonical(bonding.electroneg_ratio(structure, options))
-        const result = search.compute(structure, options, scratch)
-        expect(result).toBe(scratch)
-        const columns = column_search.compute_columns(structure, options)
+        const columns = search.compute_columns(structure, options)
         if (frame_idx === 0) {
-          expect(Reflect.get(column_search, `candidates`)).toEqual({
+          expect(Reflect.get(search, `candidates`)).toEqual({
             offsets: expect.any(Int32Array),
             neighbors: expect.any(Int32Array),
             distances: expect.any(Float64Array),
           })
           const allocate = vi.spyOn(globalThis, `Int32Array`)
           try {
-            expect(column_search.compute_columns(structure, options)).toEqual(columns)
+            expect(search.compute_columns(structure, options)).toEqual(columns)
             expect(allocate.mock.calls.map((args) => Reflect.get(args, 0))).not.toContain(
               Math.max(256, structure.sites.length * 4),
             )
@@ -1363,22 +1361,14 @@ describe(`compute_bonds memo`, () => {
             allocate.mockRestore()
           }
         }
-        const packed = pack_bonds(result)
-        expect(columns).toEqual(packed)
-        for (const key of [`indices`, `lengths`, `orders`, `images`] as const) {
-          expect(max_abs_error(columns[key], packed[key])).toBe(0)
-          expect(max_rel_error(columns[key], packed[key])).toBe(0)
-        }
-        const actual = canonical(result)
+        const actual = canonical(new BondFrame(structure, columns).materialize())
         expect(actual).toEqual(expected)
         const values = (bonds: BondPair[]) =>
           bonds.flatMap(({ pos_1, pos_2, bond_length }) => [...pos_1, ...pos_2, bond_length])
         expect(max_abs_error(values(actual), values(expected))).toBe(0)
         expect(max_rel_error(values(actual), values(expected))).toBe(0)
       }
-      expect(search.compute({ sites: [] }, {}, scratch)).toBe(scratch)
-      expect(scratch).toEqual([])
-      expect(column_search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
+      expect(search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
     },
   )
 
@@ -1498,7 +1488,9 @@ describe(`compute_bonds memo`, () => {
         { xyz: [0, 0, 0], element: `Si` },
         { xyz: [separation, 0, 0], element: `Si` },
       ])
-      expect(search.compute(structure)).toEqual(bonding.electroneg_ratio(structure))
+      expect(search.compute_columns(structure)).toEqual(
+        pack_bonds(bonding.electroneg_ratio(structure)),
+      )
     }
   })
   const structure = make_struct([

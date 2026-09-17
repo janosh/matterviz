@@ -1010,6 +1010,12 @@
     default_dt: frame_time_step,
     default_time_unit: trajectory?.time_step?.unit,
   })
+  const analysis_panes = $derived([
+    [`msd`, TrajectoryMsdPane, correlation_pane_props],
+    [`vacf`, TrajectoryVacfPane, correlation_pane_props],
+    [`rdf`, TrajectoryRdfPane, analysis_pane_props],
+    [`structure-id`, TrajectoryStructureIdPane, analysis_pane_props],
+  ] as const)
   // oxfmt-ignore
   const ANALYSES = (
     [
@@ -1369,31 +1375,14 @@
                 </button>
               {/each}
               {#snippet trailing()}
-                <TrajectoryMsdPane
-                  {...correlation_pane_props}
-                  bind:pane_open={
-                    () => active_pane === `msd`, (open) => set_pane_open(`msd`, open)
-                  }
-                />
-                <TrajectoryVacfPane
-                  {...correlation_pane_props}
-                  bind:pane_open={
-                    () => active_pane === `vacf`, (open) => set_pane_open(`vacf`, open)
-                  }
-                />
-                <TrajectoryRdfPane
-                  {...analysis_pane_props}
-                  bind:pane_open={
-                    () => active_pane === `rdf`, (open) => set_pane_open(`rdf`, open)
-                  }
-                />
-                <TrajectoryStructureIdPane
-                  {...analysis_pane_props}
-                  bind:pane_open={
-                    () => active_pane === `structure-id`,
-                    (open) => set_pane_open(`structure-id`, open)
-                  }
-                />
+                {#each analysis_panes as [pane, AnalysisPane, props] (pane)}
+                  <AnalysisPane
+                    {...props}
+                    bind:pane_open={
+                      () => active_pane === pane, (open) => set_pane_open(pane, open)
+                    }
+                  />
+                {/each}
                 <TrajectoryHotspotPane
                   bind:cloud={hotspot_cloud}
                   persistent

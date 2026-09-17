@@ -150,7 +150,16 @@ const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup 
     pending.shift()?.resolve()
     await first
   }
-  return { workers, pending, openings, factory, warm }
+  const open = async (
+    content: File | ArrayBuffer = new File([`HDF5`], `device.h5`),
+    worker_factory = factory,
+  ) => {
+    const result = await parse_in_worker(content, `device.h5`, false, { worker_factory })
+    if (result.type !== `trajectory` || !result.data.prepare_frame)
+      throw new Error(`Expected prepared trajectory`)
+    return { run: result.data, prepare: result.data.prepare_frame.bind(result.data) }
+  }
+  return { workers, pending, openings, factory, warm, open }
 }
 
 afterEach(() => {
@@ -163,25 +172,15 @@ describe(`parse_in_worker`, () => {
     `keeps frames moving while replicas open together (%i cores), then shares work`,
     async (cores) => {
       vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(cores)
-      const { workers, pending, openings, factory, warm } = preparation_workers(
+      const { workers, pending, openings, warm, open } = preparation_workers(
         333_200,
         `hdf5`,
         true,
       )
-      const result = await parse_in_worker(
-        new File([`HDF5`], `device.h5`),
-        `device.h5`,
-        false,
-        {
-          worker_factory: factory,
-        },
-      )
-      if (result.type !== `trajectory` || !result.data.prepare_frame)
-        throw new Error(`Expected prepared trajectory`)
-      const prepare = result.data.prepare_frame.bind(result.data)
+      const { run, prepare } = await open()
       const requests: Promise<unknown>[] = []
       try {
-        await warm(result.data)
+        await warm(run)
         const frames = [1, 2, 3].map((idx) => prepare(idx, preparation))
         requests.push(...frames)
         for (const [idx, prepared] of frames.entries()) {
@@ -205,9 +204,9 @@ describe(`parse_in_worker`, () => {
           (await Promise.all(shared)).map(({ frame: prepared }) => prepared.header.step),
         ).toEqual([4, 5])
       } finally {
-        result.data.dispose()
+        run.dispose()
         await Promise.allSettled(requests)
-        for (const open of openings) open()
+        for (const finish_opening of openings) finish_opening()
         for (const request of pending.splice(0)) request.resolve()
       }
       expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
@@ -234,30 +233,20 @@ describe(`parse_in_worker`, () => {
       vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(cores)
       vi.stubGlobal(`navigator`, Object.create(navigator, { deviceMemory: { value: memory } }))
       vi.spyOn(preparation_module, `display_frame_bytes`).mockReturnValue(frame_bytes)
-      const { workers, pending, factory, warm } = preparation_workers(atom_count, format)
+      const { workers, pending, warm, open } = preparation_workers(atom_count, format)
       const file = new File([`HDF5`], `device.h5`)
-      const result = await parse_in_worker(
-        is_file ? file : new ArrayBuffer(4),
-        file.name,
-        false,
-        {
-          worker_factory: factory,
-        },
-      )
-      if (result.type !== `trajectory` || !result.data.prepare_frame)
-        throw new Error(`Expected prepared trajectory`)
-      const prepare_frame = result.data.prepare_frame.bind(result.data)
+      const { run, prepare } = await open(is_file ? file : new ArrayBuffer(4))
       try {
         expect(workers).toHaveLength(1)
-        await warm(result.data)
-        const frames = Array.from({ length: 12 }, (_, idx) => prepare_frame(idx, preparation))
+        await warm(run)
+        const frames = Array.from({ length: 12 }, (_, idx) => prepare(idx, preparation))
         await vi.waitFor(() => expect(pending).toHaveLength(concurrency))
         expect(workers).toHaveLength(concurrency)
         expect(new Set(pending.map(({ worker_idx }) => worker_idx)).size).toBe(concurrency)
         for (const worker of workers.slice(1)) {
           expect(worker.posted[0].request.load_options).toEqual({ hdf5_group_path: `/device` })
           expect(worker.posted[0].request.replica).toEqual(
-            format === `md-hdf5` ? summarize_run(result.data) : undefined,
+            format === `md-hdf5` ? summarize_run(run) : undefined,
           )
           expect(worker.posted[0].request.content).toEqual(
             workers[0].posted[0].request.content,
@@ -277,7 +266,7 @@ describe(`parse_in_worker`, () => {
           ),
         ).toEqual(Array.from({ length: 12 }, (_, idx) => idx))
       } finally {
-        result.data.dispose()
+        run.dispose()
       }
       expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
     },
@@ -285,33 +274,28 @@ describe(`parse_in_worker`, () => {
 
   it(`keeps an aborted primary occupied, terminates replica work, and rejects disposal`, async () => {
     vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
-    const { workers, pending, factory, warm } = preparation_workers(333_200)
-    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
-      worker_factory: factory,
-    })
-    if (result.type !== `trajectory` || !result.data.prepare_frame)
-      throw new Error(`Expected prepared trajectory`)
-    const prepare_frame = result.data.prepare_frame.bind(result.data)
-    await warm(result.data)
+    const { workers, pending, warm, open } = preparation_workers(333_200)
+    const { run, prepare } = await open()
+    await warm(run)
     const controllers = [new AbortController(), new AbortController()]
-    const first = prepare_frame(0, preparation, controllers[0].signal)
+    const first = prepare(0, preparation, controllers[0].signal)
     const first_failure = first.catch((error: unknown) => error)
     await vi.waitFor(() => expect(pending).toHaveLength(1))
     controllers[0].abort()
     expect(await first_failure).toMatchObject({ name: `AbortError` })
     expect(workers[0].terminate).not.toHaveBeenCalled()
-    const second = prepare_frame(1, preparation, controllers[1].signal)
+    const second = prepare(1, preparation, controllers[1].signal)
     const second_failure = second.catch((error: unknown) => error)
     await vi.waitFor(() => expect(pending).toHaveLength(2))
     expect(pending.map(({ worker_idx }) => worker_idx)).toEqual([0, 1])
     controllers[1].abort()
     expect(await second_failure).toMatchObject({ name: `AbortError` })
     expect(workers[1].terminate).toHaveBeenCalledOnce()
-    const third = prepare_frame(2, preparation)
+    const third = prepare(2, preparation)
     const third_failure = third.catch((error: unknown) => error)
-    result.data.dispose()
+    run.dispose()
     expect(await third_failure).toMatchObject({ message: expect.stringContaining(`disposed`) })
-    await expect(prepare_frame(3, preparation)).rejects.toThrow(`disposed`)
+    await expect(prepare(3, preparation)).rejects.toThrow(`disposed`)
     for (const request of pending.splice(0)) request.resolve()
     expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
   })
@@ -319,14 +303,8 @@ describe(`parse_in_worker`, () => {
   it(`reuses warm replicas and expires them only after all actual work becomes idle`, async () => {
     vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
     vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(3)
-    const { workers, pending, factory, warm } = preparation_workers(333_200)
-    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
-      worker_factory: factory,
-    })
-    if (result.type !== `trajectory` || !result.data.prepare_frame)
-      throw new Error(`Expected prepared trajectory`)
-    const run = result.data
-    const prepare = result.data.prepare_frame.bind(result.data)
+    const { workers, pending, warm, open } = preparation_workers(333_200)
+    const { run, prepare } = await open()
     const settle = async (requests: Promise<unknown>[]) => {
       await vi.waitFor(() => expect(pending).toHaveLength(requests.length))
       for (const request of pending.splice(0)) request.resolve()
@@ -381,25 +359,18 @@ describe(`parse_in_worker`, () => {
     `releases a replica on startup %s`,
     async (failure) => {
       vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
-      const { workers, pending, factory, warm } = preparation_workers(333_200)
+      const { workers, pending, factory, warm, open } = preparation_workers(333_200)
       const broken = make_fake_worker(
         failure === `mismatch` ? trajectory_response : () => null,
       )
-      const result = await parse_in_worker(
-        new File([`HDF5`], `device.h5`),
-        `device.h5`,
-        false,
-        {
-          worker_factory: () => (workers.length ? broken : factory()),
-        },
+      const { run, prepare } = await open(undefined, () =>
+        workers.length ? broken : factory(),
       )
-      if (result.type !== `trajectory` || !result.data.prepare_frame)
-        throw new Error(`Expected prepared trajectory`)
-      await warm(result.data)
-      const current = result.data.prepare_frame(1, preparation)
+      await warm(run)
+      const current = prepare(1, preparation)
       const disposed = current.catch((error: unknown) => error)
       const controller = new AbortController()
-      const replica = result.data.prepare_frame(2, preparation, controller.signal)
+      const replica = prepare(2, preparation, controller.signal)
       const rejected = replica.catch((error: unknown) => error)
       if (failure === `abort`) controller.abort()
       if (failure === `error`)
@@ -417,7 +388,7 @@ describe(`parse_in_worker`, () => {
         expect(broken.terminate).toHaveBeenCalledOnce()
         expect(workers[0].terminate).not.toHaveBeenCalled()
       } finally {
-        result.data.dispose()
+        run.dispose()
         expect(await disposed).toMatchObject({ message: expect.stringContaining(`disposed`) })
         for (const request of pending.splice(0)) request.resolve()
       }
@@ -426,25 +397,22 @@ describe(`parse_in_worker`, () => {
 
   it(`disposes every replica when the primary RPC port fails`, async () => {
     vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
-    const { workers, pending, factory, warm } = preparation_workers(333_200)
-    const result = await parse_in_worker(new File([`HDF5`], `device.h5`), `device.h5`, false, {
-      worker_factory: factory,
-    })
-    if (result.type !== `trajectory` || !result.data.prepare_frame || !result.data.read_atoms)
-      throw new Error(`Expected numeric trajectory`)
-    await warm(result.data)
+    const { workers, pending, warm, open } = preparation_workers(333_200)
+    const { run, prepare } = await open()
+    if (!run.read_atoms) throw new Error(`Expected numeric trajectory`)
+    await warm(run)
     const requests = [1, 2].map((idx) =>
-      result.data.prepare_frame?.(idx, preparation)?.catch((error: unknown) => error),
+      prepare(idx, preparation).catch((error: unknown) => error),
     )
     await vi.waitFor(() => expect(pending).toHaveLength(2))
     vi.spyOn(workers[0].run_ports[0], `postMessage`).mockImplementationOnce(() => {
       throw new Error(`port failed`)
     })
-    await expect(result.data.read_atoms({ frame_idx: 0 })).rejects.toThrow(`port failed`)
+    await expect(run.read_atoms({ frame_idx: 0 })).rejects.toThrow(`port failed`)
     for (const request of requests)
       expect(await request).toMatchObject({ message: expect.stringContaining(`disposed`) })
     expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
-    await expect(result.data.prepare_frame(3, preparation)).rejects.toThrow(`disposed`)
+    await expect(prepare(3, preparation)).rejects.toThrow(`disposed`)
     for (const request of pending.splice(0)) request.resolve()
   })
 

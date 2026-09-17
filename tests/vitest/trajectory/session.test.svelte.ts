@@ -75,6 +75,8 @@ type Host = {
   channels?: FrameChannels
 }
 
+const session_roots: (() => void)[] = []
+
 function make_session(initial: Partial<Host> = {}, options = {}) {
   const host = $state<Host>({
     run: undefined,
@@ -112,12 +114,17 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
       { cache_max_frames: 4, scrub_settle_ms: 50, prefetch_delay_ms: 10, ...options },
     )
   })
+  session_roots.push(destroy)
   flushSync()
-  return { host, session, events, errors, destroy }
+  return { host, session, events, errors }
 }
 
 beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  for (const destroy of session_roots.splice(0)) destroy()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 
 describe(`frame loading`, () => {
   it.each([`geometry`, `channels`])(
@@ -143,7 +150,7 @@ describe(`frame loading`, () => {
         bonding_options: {},
         polyhedra: {},
       } as const
-      const { host, session, destroy } = make_session({
+      const { host, session } = make_session({
         run,
         preparation: initial,
         wait_for_render: true,
@@ -154,44 +161,36 @@ describe(`frame loading`, () => {
         await Promise.resolve()
         flushSync()
       }
-      try {
-        await settle(0)
-        const first = session.scene_frame
-        const structure = session.current_structure
-        if (!structure || !first?.polyhedra) throw new Error(`Expected prepared polyhedra`)
-        const bonds = get_bond_data(
-          structure,
-          initial.bonding_strategy,
-          initial.bonding_options,
-        )
-        expect(compute_polyhedra(structure, bonds)).toBe(first.polyhedra)
-        expect(session.mark_rendered(first)).toBe(true)
-        session.player.play()
-        expect(pending.map(({ idx }) => idx)).toEqual([0, 1])
-        if (setting === `geometry`)
-          host.preparation = { ...initial, polyhedra: { min_neighbors: 10 } }
-        else host.channels = { vectors: [] }
-        flushSync()
-        expect(pending[1].signal?.aborted).toBe(true)
-        expect(session.mark_rendered(first)).toBe(false)
-        expect(session.current_frame).toBeNull()
-        const displayed = session.wait_for_frame(0, new AbortController().signal)
-        await settle(1) // A superseded prefetch may still finish in a decoder.
-        expect(session.scene_frame).toBe(first)
-        await settle(2)
-        expect(session.scene_frame?.preparation).toMatchObject(
-          setting === `geometry`
-            ? { polyhedra: { min_neighbors: 10 } }
-            : { channels: { vectors: [] } },
-        )
-        expect(compute_polyhedra(structure, bonds, { min_neighbors: 10 })).not.toBe(
-          first.polyhedra,
-        )
-        expect(session.mark_rendered(session.scene_frame)).toBe(true)
-        await displayed
-      } finally {
-        destroy()
-      }
+      await settle(0)
+      const first = session.scene_frame
+      const structure = session.current_structure
+      if (!structure || !first?.polyhedra) throw new Error(`Expected prepared polyhedra`)
+      const bonds = get_bond_data(structure, initial.bonding_strategy, initial.bonding_options)
+      expect(compute_polyhedra(structure, bonds)).toBe(first.polyhedra)
+      expect(session.mark_rendered(first)).toBe(true)
+      session.player.play()
+      expect(pending.map(({ idx }) => idx)).toEqual([0, 1])
+      if (setting === `geometry`)
+        host.preparation = { ...initial, polyhedra: { min_neighbors: 10 } }
+      else host.channels = { vectors: [] }
+      flushSync()
+      expect(pending[1].signal?.aborted).toBe(true)
+      expect(session.mark_rendered(first)).toBe(false)
+      expect(session.current_frame).toBeNull()
+      const displayed = session.wait_for_frame(0, new AbortController().signal)
+      await settle(1) // A superseded prefetch may still finish in a decoder.
+      expect(session.scene_frame).toBe(first)
+      await settle(2)
+      expect(session.scene_frame?.preparation).toMatchObject(
+        setting === `geometry`
+          ? { polyhedra: { min_neighbors: 10 } }
+          : { channels: { vectors: [] } },
+      )
+      expect(compute_polyhedra(structure, bonds, { min_neighbors: 10 })).not.toBe(
+        first.polyhedra,
+      )
+      expect(session.mark_rendered(session.scene_frame)).toBe(true)
+      await displayed
     },
   )
   it(`reloads cached synchronous frames when channels change and exports complete data`, async () => {
@@ -204,39 +203,35 @@ describe(`frame loading`, () => {
     for (const site of frame_list[2].structure.sites) delete site.properties.velocity
     const run = trajectory_from_frames(frame_list)
     const read = vi.spyOn(run, `read_frame`)
-    const { host, session, destroy } = make_session({ run, channels: { vectors: [] } })
-    try {
-      expect(session.numeric_frame?.vector_keys).toEqual([])
-      expect(session.numeric_frame?.available_vector_keys).toEqual([`force`, `velocity`])
-      session.commit(1)
-      flushSync()
-      session.commit(0)
-      flushSync()
-      const reads = read.mock.calls.length
-      host.channels = { vectors: [`velocity`] }
-      flushSync()
-      expect(read).toHaveBeenCalledTimes(reads + 1)
-      expect(session.numeric_frame?.vector_keys).toEqual([`velocity`])
-      const displayed = session.numeric_frame
-      const exported = await session.resolve_frame(0)
-      expect(exported?.structure.sites[0].properties).toMatchObject({
-        force: [1, 2, 3],
-        velocity: [4, 5, 6],
-      })
-      expect(session.numeric_frame).toBe(displayed)
-      session.commit(2)
-      flushSync()
-      // Selection allows a channel to be absent at a different step; mandatory analysis
-      // channels are validated by the accumulator instead.
-      expect(session.numeric_frame?.vector_keys).toEqual([])
-      session.commit(0)
-      flushSync()
-      host.channels = undefined
-      flushSync()
-      expect(session.numeric_frame?.vector_keys).toEqual([`force`, `velocity`])
-    } finally {
-      destroy()
-    }
+    const { host, session } = make_session({ run, channels: { vectors: [] } })
+    expect(session.numeric_frame?.vector_keys).toEqual([])
+    expect(session.numeric_frame?.available_vector_keys).toEqual([`force`, `velocity`])
+    session.commit(1)
+    flushSync()
+    session.commit(0)
+    flushSync()
+    const reads = read.mock.calls.length
+    host.channels = { vectors: [`velocity`] }
+    flushSync()
+    expect(read).toHaveBeenCalledTimes(reads + 1)
+    expect(session.numeric_frame?.vector_keys).toEqual([`velocity`])
+    const displayed = session.numeric_frame
+    const exported = await session.resolve_frame(0)
+    expect(exported?.structure.sites[0].properties).toMatchObject({
+      force: [1, 2, 3],
+      velocity: [4, 5, 6],
+    })
+    expect(session.numeric_frame).toBe(displayed)
+    session.commit(2)
+    flushSync()
+    // Selection allows a channel to be absent at a different step; mandatory analysis
+    // channels are validated by the accumulator instead.
+    expect(session.numeric_frame?.vector_keys).toEqual([])
+    session.commit(0)
+    flushSync()
+    host.channels = undefined
+    flushSync()
+    expect(session.numeric_frame?.vector_keys).toEqual([`force`, `velocity`])
   })
   it(`replaces topology when switching equal-size runs with sampled previews`, () => {
     const make_run = (numbers: number[]) =>
@@ -260,18 +255,14 @@ describe(`frame loading`, () => {
         warnings: [],
         properties: new TrajectoryProperties(),
       })
-    const { host, session, destroy } = make_session({ run: make_run([14, 32, 1]) })
-    try {
-      const first = session.current_structure?.sites
-      expect(first?.map(({ label }) => label)).toEqual([`Si1`, `Ge2`, `H3`])
-      host.run = make_run([1, 8, 6])
-      flushSync()
-      const second = session.current_structure?.sites
-      expect(second).not.toBe(first)
-      expect(second?.map(({ label }) => label)).toEqual([`H1`, `O2`, `C3`])
-    } finally {
-      destroy()
-    }
+    const { host, session } = make_session({ run: make_run([14, 32, 1]) })
+    const first = session.current_structure?.sites
+    expect(first?.map(({ label }) => label)).toEqual([`Si1`, `Ge2`, `H3`])
+    host.run = make_run([1, 8, 6])
+    flushSync()
+    const second = session.current_structure?.sites
+    expect(second).not.toBe(first)
+    expect(second?.map(({ label }) => label)).toEqual([`H1`, `O2`, `C3`])
   })
 
   it(`loads complete frame zero when the host supplies only a sampled preview`, async () => {
@@ -288,26 +279,22 @@ describe(`frame loading`, () => {
     const read = vi.fn(() => pending.promise)
     const run = host_run(summary, read)
     expect(run.atom_count).toBe(1_000_000)
-    const { session, destroy } = make_session({ run })
-    try {
-      expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal))
-      expect(session.current_structure).toBeUndefined()
-      pending.resolve(complete)
-      await pending.promise
-      await Promise.resolve()
-      flushSync()
-      expect(session.current_frame).toEqual(complete)
-      expect(session.current_structure?.sites).toHaveLength(3)
-      expect(await session.resolve_frame(0)).toEqual(complete)
-      expect(read).toHaveBeenCalledTimes(1)
-    } finally {
-      destroy()
-    }
+    const { session } = make_session({ run })
+    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+    expect(session.current_structure).toBeUndefined()
+    pending.resolve(complete)
+    await pending.promise
+    await Promise.resolve()
+    flushSync()
+    expect(session.current_frame).toEqual(complete)
+    expect(session.current_structure?.sites).toHaveLength(3)
+    expect(await session.resolve_frame(0)).toEqual(complete)
+    expect(read).toHaveBeenCalledTimes(1)
   })
 
   it(`serves sync runs immediately and clamps out-of-range indices with a notification`, () => {
     const run = trajectory_from_frames(frames(5))
-    const { host, session, events, destroy } = make_session({
+    const { host, session, events } = make_session({
       run,
       index: Number.MAX_SAFE_INTEGER,
     })
@@ -322,7 +309,6 @@ describe(`frame loading`, () => {
     flushSync()
     expect(host.index).toBe(0)
     expect(session.current_frame?.step).toBe(0)
-    destroy()
   })
 
   // Effects flush in creation order, so the request effect used to see the raw 2.6 and trip
@@ -334,7 +320,7 @@ describe(`frame loading`, () => {
     [`a non-finite`, Number.NaN, 0, []],
   ])(`corrects %s host index instead of erroring`, (_label, index, expected, want_reads) => {
     const { run, reads } = make_async_run(frames(5))
-    const { host, session, events, errors, destroy } = make_session({ run })
+    const { host, session, events, errors } = make_session({ run })
     host.index = index
     flushSync()
     expect(errors).toEqual([])
@@ -343,12 +329,11 @@ describe(`frame loading`, () => {
     expect(events).toEqual([`step:${expected}`])
     expect(session.current_structure).toBeDefined()
     expect(session.controller.set_step(3.9)).toBe(3)
-    destroy()
   })
 
   it(`latest request wins: a superseded async read is aborted and never displayed`, async () => {
     const { run, pending, reads, resolve_next } = make_async_run(frames(6))
-    const { host, session, errors, destroy } = make_session({ run })
+    const { host, session, errors } = make_session({ run })
     // frame 0 is the preview: shown synchronously
     expect(session.current_frame?.step).toBe(0)
     host.index = 3
@@ -367,7 +352,6 @@ describe(`frame loading`, () => {
     expect(session.current_frame?.step).toBe(50)
     expect(session.loading).toBe(false)
     expect(errors).toEqual([])
-    destroy()
   })
 
   it.each([false, true])(`reports current frame read failures (sync: %s)`, async (sync) => {
@@ -379,19 +363,18 @@ describe(`frame loading`, () => {
         return read_frame(idx, ...args)
       }
     }
-    const { host, session, errors, destroy } = make_session({ run })
+    const { host, session, errors } = make_session({ run })
     host.index = 2
     flushSync()
     if (!sync) pending[0].reject(new Error(`disk on fire`))
     await resolve_next()
     expect(errors).toEqual([`2:disk on fire`])
     expect(session.current_frame).toBeNull()
-    destroy()
   })
 
   it(`caches frames per run (LRU by count) and drops the cache on a run swap`, async () => {
     const first = make_async_run(frames(10))
-    const { host, session, destroy } = make_session({ run: first.run })
+    const { host, session } = make_session({ run: first.run })
     for (const idx of [1, 2, 3, 4]) {
       host.index = idx
       flushSync()
@@ -413,7 +396,6 @@ describe(`frame loading`, () => {
     await second.resolve_next()
     expect(session.current_frame?.structure.sites).toHaveLength(2)
     expect(session.cached_frames).toBe(1)
-    destroy()
   })
 
   it.each([false, true])(
@@ -424,16 +406,12 @@ describe(`frame loading`, () => {
         for (const frame of frame_list)
           for (const site of frame.structure.sites) site.properties.custom_label = site.label
       const run = trajectory_from_frames(frame_list)
-      const { host, session, destroy } = make_session({ run }, { cache_max_site_records: 3 })
-      try {
-        for (const idx of [1, 2, 3]) {
-          host.index = idx
-          flushSync()
-        }
-        expect(session.cached_frames).toBe(compact ? 4 : 1)
-      } finally {
-        destroy()
+      const { host, session } = make_session({ run }, { cache_max_site_records: 3 })
+      for (const idx of [1, 2, 3]) {
+        host.index = idx
+        flushSync()
       }
+      expect(session.cached_frames).toBe(compact ? 4 : 1)
     },
   )
 
@@ -445,23 +423,19 @@ describe(`frame loading`, () => {
       site.properties.velocity = [4, 5, 6]
     }
     const run = trajectory_from_frames(frame_list)
-    const { host, session, destroy } = make_session({ run }, { cache_max_bytes: bytes })
-    try {
-      expect(session.cached_bytes).toBe(bytes)
-      host.index = 1
-      flushSync()
-      expect(session.cached_frames).toBe(1)
-      expect(session.cached_bytes).toBeGreaterThan(bytes)
-      expect(session.current_frame?.step).toBe(10)
-      host.index = 2
-      flushSync()
-      expect(session.cached_frames).toBe(1)
-      expect(session.cached_bytes).toBe(bytes)
-      session.dispose()
-      expect(session.cached_bytes).toBe(0)
-    } finally {
-      destroy()
-    }
+    const { host, session } = make_session({ run }, { cache_max_bytes: bytes })
+    expect(session.cached_bytes).toBe(bytes)
+    host.index = 1
+    flushSync()
+    expect(session.cached_frames).toBe(1)
+    expect(session.cached_bytes).toBeGreaterThan(bytes)
+    expect(session.current_frame?.step).toBe(10)
+    host.index = 2
+    flushSync()
+    expect(session.cached_frames).toBe(1)
+    expect(session.cached_bytes).toBe(bytes)
+    session.dispose()
+    expect(session.cached_bytes).toBe(0)
   })
 
   it.each([
@@ -489,7 +463,7 @@ describe(`frame loading`, () => {
       const delayed = make_async_run(frame_list)
       const run = synchronous ? trajectory_from_frames(frame_list) : delayed.run
       const read_frame = vi.spyOn(run, `read_frame`)
-      const { host, session, destroy } = make_session(
+      const { host, session } = make_session(
         { run },
         {
           cache_max_site_records,
@@ -521,7 +495,6 @@ describe(`frame loading`, () => {
         expect(session.current_frame?.step).toBe(30)
         expect(read_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
       }
-      destroy()
     },
   )
 })
@@ -536,7 +509,7 @@ describe(`scrub vs commit`, () => {
         return raf_callbacks.length
       })
     const run = trajectory_from_frames(frames(20))
-    const { host, session, events, destroy } = make_session({ run })
+    const { host, session, events } = make_session({ run })
     session.scrub(4)
     session.scrub(7)
     session.scrub(9)
@@ -570,7 +543,6 @@ describe(`scrub vs commit`, () => {
     expect(host.index).toBe(19)
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
     raf.mockRestore()
-    destroy()
   })
 })
 
@@ -600,35 +572,30 @@ describe(`controller and playback`, () => {
         0,
       )
       const cache_max_bytes = total_bytes / (fits ? 1 : 2)
-      const { host, session, destroy } = make_session(
+      const { host, session } = make_session(
         { run, preparation: { bonding_strategy: `electroneg_ratio`, bonding_options: {} } },
         { cache_max_bytes },
       )
-      try {
+      await vi.advanceTimersByTimeAsync(0)
+      flushSync()
+      const first = session.numeric_frame
+      const coordinates = first?.coordinates.slice()
+      session.player.play()
+      for (let step = 0; step < frame_list.length * 3; step++) {
+        host.index = step % frame_list.length
+        flushSync()
         await vi.advanceTimersByTimeAsync(0)
         flushSync()
-        const first = session.numeric_frame
-        const coordinates = first?.coordinates.slice()
-        session.player.play()
-        for (let step = 0; step < frame_list.length * 3; step++) {
-          host.index = step % frame_list.length
-          flushSync()
-          await vi.advanceTimersByTimeAsync(0)
-          flushSync()
-          expect(session.current_frame?.step).toBe(host.index * 10)
-          expect(session.cached_bytes).toBeLessThanOrEqual(cache_max_bytes)
-        }
-        expect(first?.coordinates).toEqual(coordinates)
-        if (fits) {
-          expect(prepare.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2, 3])
-          expect(session.cached_frames).toBe(frame_list.length)
-        } else {
-          expect(prepare.mock.calls.length).toBeGreaterThan(frame_list.length)
-          expect(session.cached_frames).toBeLessThan(frame_list.length)
-        }
-      } finally {
-        destroy()
-        vi.restoreAllMocks()
+        expect(session.current_frame?.step).toBe(host.index * 10)
+        expect(session.cached_bytes).toBeLessThanOrEqual(cache_max_bytes)
+      }
+      expect(first?.coordinates).toEqual(coordinates)
+      if (fits) {
+        expect(prepare.mock.calls.map(([idx]) => idx)).toEqual([0, 1, 2, 3])
+        expect(session.cached_frames).toBe(frame_list.length)
+      } else {
+        expect(prepare.mock.calls.length).toBeGreaterThan(frame_list.length)
+        expect(session.cached_frames).toBeLessThan(frame_list.length)
       }
     },
   )
@@ -651,7 +618,7 @@ describe(`controller and playback`, () => {
         return pending.promise
       }
       const bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
-      const { host, session, destroy } = make_session(
+      const { host, session } = make_session(
         {
           run,
           preparation: { bonding_strategy: `electroneg_ratio`, bonding_options: {} },
@@ -663,30 +630,25 @@ describe(`controller and playback`, () => {
         await vi.advanceTimersByTimeAsync(0)
         flushSync()
       }
-      try {
-        await settle(0)
-        if (playing) {
-          session.player.play()
-          await settle(2)
-          await settle(3)
-          host.index = 1
-          flushSync()
-          await settle(1)
-          // The adopted oversized frame keeps only its nearest lookahead, including
-          // when the farther frames already finished before its size was known.
-          expect(requests.get(3)?.signal?.aborted).toBe(true)
-          expect(requests.get(2)?.signal?.aborted).toBe(false)
-          expect(session.current_frame?.step).toBe(10)
-        } else {
-          await vi.advanceTimersByTimeAsync(10)
-          await settle(1)
-          expect(requests.get(1)?.signal?.aborted).toBe(true)
-          expect(session.cached_bytes).toBe(bytes)
-          expect(session.current_frame?.step).toBe(0)
-        }
-      } finally {
-        destroy()
-        vi.restoreAllMocks()
+      await settle(0)
+      if (playing) {
+        session.player.play()
+        await settle(2)
+        await settle(3)
+        host.index = 1
+        flushSync()
+        await settle(1)
+        // The adopted oversized frame keeps only its nearest lookahead, including
+        // when the farther frames already finished before its size was known.
+        expect(requests.get(3)?.signal?.aborted).toBe(true)
+        expect(requests.get(2)?.signal?.aborted).toBe(false)
+        expect(session.current_frame?.step).toBe(10)
+      } else {
+        await vi.advanceTimersByTimeAsync(10)
+        await settle(1)
+        expect(requests.get(1)?.signal?.aborted).toBe(true)
+        expect(session.cached_bytes).toBe(bytes)
+        expect(session.current_frame?.step).toBe(0)
       }
     },
   )
@@ -702,7 +664,7 @@ describe(`controller and playback`, () => {
         preparation,
       })
       const bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
-      const { host, session, destroy } = make_session(
+      const { host, session } = make_session(
         {
           run,
           preparation: {
@@ -713,38 +675,33 @@ describe(`controller and playback`, () => {
         },
         { cache_max_bytes: bytes * capacity, cache_max_frames: capacity },
       )
-      try {
-        await vi.advanceTimersByTimeAsync(0)
-        flushSync()
-        session.player.play()
-        flushSync()
-        expect(reads).toEqual(Array.from({ length: capacity - 1 }, (_, idx) => idx + 1))
-        await resolve_next()
-        host.index = 1
-        flushSync()
-        // A completed prefetch is immediately displayable, without another loading cycle.
-        expect(session.loading).toBe(false)
-        expect(session.current_frame?.step).toBe(10)
-        await vi.advanceTimersByTimeAsync(0)
-        flushSync()
-        expect(session.current_frame?.step).toBe(10)
-        expect(reads).toEqual(Array.from({ length: capacity }, (_, idx) => idx + 1))
-        expect(session.cached_bytes).toBeLessThanOrEqual(bytes * capacity)
-        host.index = 6
-        flushSync()
-        expect(pending.map(({ idx }) => idx)).toEqual([6])
-        expect(session.current_frame).toBeNull()
-        expect(session.scene_frame?.idx).toBe(1)
-        await resolve_next()
-        await vi.advanceTimersByTimeAsync(0)
-        flushSync()
-        expect(session.current_frame?.step).toBe(60)
-        session.player.pause()
-        expect(pending).toHaveLength(0)
-      } finally {
-        destroy()
-        vi.restoreAllMocks()
-      }
+      await vi.advanceTimersByTimeAsync(0)
+      flushSync()
+      session.player.play()
+      flushSync()
+      expect(reads).toEqual(Array.from({ length: capacity - 1 }, (_, idx) => idx + 1))
+      await resolve_next()
+      host.index = 1
+      flushSync()
+      // A completed prefetch is immediately displayable, without another loading cycle.
+      expect(session.loading).toBe(false)
+      expect(session.current_frame?.step).toBe(10)
+      await vi.advanceTimersByTimeAsync(0)
+      flushSync()
+      expect(session.current_frame?.step).toBe(10)
+      expect(reads).toEqual(Array.from({ length: capacity }, (_, idx) => idx + 1))
+      expect(session.cached_bytes).toBeLessThanOrEqual(bytes * capacity)
+      host.index = 6
+      flushSync()
+      expect(pending.map(({ idx }) => idx)).toEqual([6])
+      expect(session.current_frame).toBeNull()
+      expect(session.scene_frame?.idx).toBe(1)
+      await resolve_next()
+      await vi.advanceTimersByTimeAsync(0)
+      flushSync()
+      expect(session.current_frame?.step).toBe(60)
+      session.player.pause()
+      expect(pending).toHaveLength(0)
     },
   )
 
@@ -758,29 +715,24 @@ describe(`controller and playback`, () => {
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
     const cache_max_bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
-    const { session, destroy } = make_session({ run, fps: 30 }, { cache_max_bytes })
-    try {
-      session.player.play()
-      flushSync()
-      await vi.advanceTimersByTimeAsync(0)
-      expect(reads).toEqual([1])
-      await resolve_next()
-      expect(session.current_frame?.step).toBe(0)
-      expect(session.cached_frames).toBe(1)
-      next_frame?.(34)
-      flushSync()
-      await Promise.resolve()
-      flushSync()
-      expect(session.current_frame?.step).toBe(10)
-      expect(reads).toEqual([1, 2])
-      session.player.pause()
-      flushSync()
-      expect(pending).toHaveLength(0)
-      expect(session.current_frame?.step).toBe(10)
-    } finally {
-      destroy()
-      vi.restoreAllMocks()
-    }
+    const { session } = make_session({ run, fps: 30 }, { cache_max_bytes })
+    session.player.play()
+    flushSync()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reads).toEqual([1])
+    await resolve_next()
+    expect(session.current_frame?.step).toBe(0)
+    expect(session.cached_frames).toBe(1)
+    next_frame?.(34)
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+    expect(session.current_frame?.step).toBe(10)
+    expect(reads).toEqual([1, 2])
+    session.player.pause()
+    flushSync()
+    expect(pending).toHaveLength(0)
+    expect(session.current_frame?.step).toBe(10)
   })
 
   it(`advances only after read and render, rejects stale acknowledgements and pauses on failure`, async () => {
@@ -792,7 +744,7 @@ describe(`controller and playback`, () => {
     vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
-    const { host, session, errors, destroy } = make_session({
+    const { host, session, errors } = make_session({
       run,
       fps: 30,
       wait_for_render: true,
@@ -801,60 +753,55 @@ describe(`controller and playback`, () => {
       next_frame?.(time)
       flushSync()
     }
-    try {
-      session.player.play()
-      flushSync()
-      const initial_snapshot = session.scene_frame
-      session.mark_rendered(initial_snapshot)
-      tick(34)
-      expect(reads).toEqual([1])
-      for (const time of [68, 102, 500]) tick(time)
-      expect(host.index).toBe(1)
-      expect(pending.map(({ idx }) => idx)).toEqual([1])
-      await resolve_next()
-      expect(session.current_frame?.step).toBe(10)
-      const exported = vi.fn()
-      const capture = session.wait_for_frame(1, new AbortController().signal).then(exported)
-      await Promise.resolve()
-      expect(exported).not.toHaveBeenCalled()
-      tick(520)
-      expect(host.index).toBe(1)
-      expect(session.mark_rendered(initial_snapshot)).toBe(false)
-      const submitted = session.scene_frame
-      expect(session.mark_rendered(submitted)).toBe(true)
-      expect(session.mark_rendered(submitted)).toBe(false)
-      await capture
-      expect(exported).toHaveBeenCalledOnce()
-      await session.wait_for_frame(1, new AbortController().signal)
-      tick(534)
-      expect(reads).toEqual([1, 2])
-      expect(host.index).toBe(2)
-      const failed_capture = session
-        .wait_for_frame(2, new AbortController().signal)
-        .catch((error: unknown) => error)
-      pending[0].reject(new Error(`Read failed`))
-      await resolve_next()
-      expect(await failed_capture).toMatchObject({ message: `Read failed` })
-      await expect(session.wait_for_frame(2, new AbortController().signal)).rejects.toThrow(
-        `Read failed`,
-      )
-      expect(errors).toEqual([`2:Read failed`])
-      expect(session.player.is_playing).toBe(false)
-      session.player.play()
-      flushSync()
-      expect(reads).toEqual([1, 2, 2])
-      await resolve_next()
-      expect(session.current_frame?.step).toBe(20)
-    } finally {
-      destroy()
-      vi.restoreAllMocks()
-    }
+    session.player.play()
+    flushSync()
+    const initial_snapshot = session.scene_frame
+    session.mark_rendered(initial_snapshot)
+    tick(34)
+    expect(reads).toEqual([1])
+    for (const time of [68, 102, 500]) tick(time)
+    expect(host.index).toBe(1)
+    expect(pending.map(({ idx }) => idx)).toEqual([1])
+    await resolve_next()
+    expect(session.current_frame?.step).toBe(10)
+    const exported = vi.fn()
+    const capture = session.wait_for_frame(1, new AbortController().signal).then(exported)
+    await Promise.resolve()
+    expect(exported).not.toHaveBeenCalled()
+    tick(520)
+    expect(host.index).toBe(1)
+    expect(session.mark_rendered(initial_snapshot)).toBe(false)
+    const submitted = session.scene_frame
+    expect(session.mark_rendered(submitted)).toBe(true)
+    expect(session.mark_rendered(submitted)).toBe(false)
+    await capture
+    expect(exported).toHaveBeenCalledOnce()
+    await session.wait_for_frame(1, new AbortController().signal)
+    tick(534)
+    expect(reads).toEqual([1, 2])
+    expect(host.index).toBe(2)
+    const failed_capture = session
+      .wait_for_frame(2, new AbortController().signal)
+      .catch((error: unknown) => error)
+    pending[0].reject(new Error(`Read failed`))
+    await resolve_next()
+    expect(await failed_capture).toMatchObject({ message: `Read failed` })
+    await expect(session.wait_for_frame(2, new AbortController().signal)).rejects.toThrow(
+      `Read failed`,
+    )
+    expect(errors).toEqual([`2:Read failed`])
+    expect(session.player.is_playing).toBe(false)
+    session.player.play()
+    flushSync()
+    expect(reads).toEqual([1, 2, 2])
+    await resolve_next()
+    expect(session.current_frame?.step).toBe(20)
   })
 
   it.each([`abort`, `seek`, `replace`, `dispose`] as const)(
     `rejects a pending capture on %s`,
     async (action) => {
-      const { session, host, destroy } = make_session({
+      const { session, host } = make_session({
         run: trajectory_from_frames(frames(3)),
         wait_for_render: true,
       })
@@ -862,22 +809,18 @@ describe(`controller and playback`, () => {
       const capture = session
         .wait_for_frame(0, controller.signal)
         .catch((error: unknown) => error)
-      try {
-        if (action === `abort`) controller.abort()
-        else if (action === `seek`) session.commit(1)
-        else if (action === `replace`) host.run = trajectory_from_frames(frames(3))
-        else session.dispose()
-        flushSync()
-        expect(await capture).toMatchObject({ name: `AbortError` })
-      } finally {
-        destroy()
-      }
+      if (action === `abort`) controller.abort()
+      else if (action === `seek`) session.commit(1)
+      else if (action === `replace`) host.run = trajectory_from_frames(frames(3))
+      else session.dispose()
+      flushSync()
+      expect(await capture).toMatchObject({ name: `AbortError` })
     },
   )
 
   it(`controller bounds the step, reports state and pauses playback on seek`, () => {
     const run = trajectory_from_frames(frames(5))
-    const { host, session, events, destroy } = make_session({ run })
+    const { host, session, events } = make_session({ run })
     expect(session.controller.set_step(99)).toBe(4)
     expect(host.index).toBe(4)
     expect(session.controller.set_step(-2.5)).toBe(0)
@@ -890,16 +833,14 @@ describe(`controller and playback`, () => {
     expect(session.player.is_playing).toBe(false)
     expect(session.controller.state()).toEqual({ current_step_idx: 2, total_frames: 5 })
     expect(events).toEqual([`step:4`, `step:0`, `play`, `pause`, `step:2`])
-    destroy()
   })
 
   it(`auto_play starts once a run with more than one frame is present`, () => {
-    const { host, session, destroy } = make_session({ auto_play: true })
+    const { host, session } = make_session({ auto_play: true })
     expect(session.player.is_playing).toBe(false)
     host.run = trajectory_from_frames(frames(3))
     flushSync()
     expect(session.player.is_playing).toBe(true)
-    destroy()
   })
 })
 
@@ -912,7 +853,7 @@ describe(`property mirroring`, () => {
       async (idx) => materialize_frame_result(backing.read_frame(idx)),
     )
     Object.defineProperty(run, `properties`, { value: progressive })
-    const { host, session, destroy } = make_session({ run })
+    const { host, session } = make_session({ run })
     expect(session.property_rows).toEqual([])
     expect(session.properties_complete).toBe(false)
     progressive.push([{ frame_number: 0, step: 0, properties: { energy: 1 } }])
@@ -925,7 +866,10 @@ describe(`property mirroring`, () => {
     flushSync()
     expect(session.property_rows).toHaveLength(2)
     expect(session.properties_complete).toBe(true)
-    destroy()
+    host.run = undefined
+    flushSync()
+    expect(session.property_rows).toEqual([])
+    expect(session.properties_complete).toBe(true)
   })
 })
 
@@ -943,7 +887,7 @@ describe(`resolve_frame`, () => {
       run.prepare_frame = async (idx, options, signal) =>
         prepare.prepare(await run.read_frame(idx, signal, options.channels), options)
       const read = vi.spyOn(run, `read_frame`)
-      const { session, destroy } = make_session({
+      const { session } = make_session({
         run,
         preparation: {
           bonding_strategy: `electroneg_ratio`,
@@ -952,34 +896,30 @@ describe(`resolve_frame`, () => {
           ...(hidden && { channels: { vectors: [] } }),
         },
       })
-      try {
-        await Promise.resolve()
-        await Promise.resolve()
-        flushSync()
-        const displayed = session.current_frame
-        expect(session.numeric_frame?.wrapped).toBe(true)
-        // Wrapping 1.2 fractional cells and scaling by 10 incurs 4.44e-16 absolute error.
-        expect(
-          Math.abs((session.numeric_frame?.coordinates[0] ?? NaN) - 2),
-        ).toBeLessThanOrEqual(4 * Number.EPSILON)
-        if (hidden)
-          expect(displayed?.structure.sites[0].properties).not.toHaveProperty(`velocity`)
-        const cached_bytes = session.cached_bytes
-        const exported = await session.resolve_frame(0)
-        expect(exported?.structure.sites[0].properties.velocity).toEqual([1, 2, 3])
-        expect(exported?.structure.sites[0].xyz).toEqual([12, 0, 0])
-        expect(exported?.structure.sites[0].abc).toEqual([1.2, 0, 0])
-        expect(read.mock.calls.at(-1)).toEqual([0, undefined])
-        expect(session.current_frame).toBe(displayed)
-        expect(session.cached_bytes).toBe(cached_bytes)
-      } finally {
-        destroy()
-      }
+      await Promise.resolve()
+      await Promise.resolve()
+      flushSync()
+      const displayed = session.current_frame
+      expect(session.numeric_frame?.wrapped).toBe(true)
+      // Wrapping 1.2 fractional cells and scaling by 10 incurs 4.44e-16 absolute error.
+      expect(Math.abs((session.numeric_frame?.coordinates[0] ?? NaN) - 2)).toBeLessThanOrEqual(
+        4 * Number.EPSILON,
+      )
+      if (hidden)
+        expect(displayed?.structure.sites[0].properties).not.toHaveProperty(`velocity`)
+      const cached_bytes = session.cached_bytes
+      const exported = await session.resolve_frame(0)
+      expect(exported?.structure.sites[0].properties.velocity).toEqual([1, 2, 3])
+      expect(exported?.structure.sites[0].xyz).toEqual([12, 0, 0])
+      expect(exported?.structure.sites[0].abc).toEqual([1.2, 0, 0])
+      expect(read.mock.calls.at(-1)).toEqual([0, undefined])
+      expect(session.current_frame).toBe(displayed)
+      expect(session.cached_bytes).toBe(cached_bytes)
     },
   )
   it(`forwards cancellation to frame reads and allows retry`, async () => {
     const { run, reads, pending, resolve_next } = make_async_run(frames(6))
-    const { session, destroy } = make_session({ run })
+    const { session } = make_session({ run })
     const controller = new AbortController()
     const cancelled = new Error(`cancelled`)
     const aborted = session.resolve_frame(4, controller.signal)
@@ -991,14 +931,13 @@ describe(`resolve_frame`, () => {
     await resolve_next()
     expect((await retried)?.step).toBe(40)
     expect(reads).toEqual([4, 4])
-    destroy()
   })
 
   it.each([`run swap`, `disposal`])(
     `returns cached source frames and rejects stale export after %s`,
     async (change) => {
       const { run, reads, resolve_next } = make_async_run(frames(6))
-      const { host, session, destroy } = make_session({ run })
+      const { host, session } = make_session({ run })
       const resolved = session.resolve_frame(4)
       await resolve_next()
       expect((await resolved)?.step).toBe(40)
@@ -1017,7 +956,6 @@ describe(`resolve_frame`, () => {
       await resolve_next()
       expect(await swapped).toBeNull()
       if (change === `disposal`) expect(await session.resolve_frame(0)).toBeNull()
-      destroy()
     },
   )
 })

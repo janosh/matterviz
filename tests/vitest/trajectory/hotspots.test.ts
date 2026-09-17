@@ -19,6 +19,7 @@ import {
   atom_batch_transfers,
   type ReadAtoms,
   type AtomBatch,
+  type AtomReadOptions,
 } from '$lib/trajectory/atom-batches'
 import { trajectory_from_frames } from '$lib/trajectory/runs/memory'
 import { summarize_run } from '$lib/trajectory/run'
@@ -38,10 +39,16 @@ const grid: HotspotGrid = {
   pbc: [false, false, false],
 }
 const velocity_options = { grid, mass_unit: `amu`, velocity_unit: `A/ps` } as const
+const energy_options = {
+  grid,
+  energy_key: `ke`,
+  energy_unit: `eV`,
+  energy_reference: `device`,
+} as const
 const conversion = (0.5 * 1.66053906892e-27 * 100 ** 2) / 1.602176634e-19
 
-function source(n_atoms = 8, steps = [0, 1, 2], drift = 0): ReadAtoms {
-  return (options): AtomBatch => {
+function source(n_atoms = 8, steps = [0, 1, 2], drift = 0) {
+  return (options: AtomReadOptions): AtomBatch => {
     const { start, count, stride } = atom_range(n_atoms, options)
     const positions = new Float64Array(count * 3)
     const velocities = new Float64Array(count * 3)
@@ -176,7 +183,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it(`weights irregular timestamps and changing occupancy by atom exposure`, async () => {
     const read: ReadAtoms = (options) => {
-      const batch = source(8, [0, 2, 5])(options) as AtomBatch
+      const batch = source(8, [0, 2, 5])(options)
       batch.energies = new Float64Array(batch.atomic_numbers.length).fill(
         options.frame_idx + 1,
       )
@@ -190,10 +197,7 @@ describe(`spatial kinetic hotspots`, () => {
       expect(hotspot_values(result, `energy`).every(Number.isNaN)).toBe(true)
     })
     const result = await calculate_hotspots(3, read, {
-      grid,
-      energy_key: `ke`,
-      energy_unit: `eV`,
-      energy_reference: `device`,
+      ...energy_options,
       selection_key: `mobile`,
       preview_frame: 1,
       on_preview: preview,
@@ -256,18 +260,21 @@ describe(`spatial kinetic hotspots`, () => {
   })
 
   it.each([
-    [{}, /Declare velocity units/],
-    [{ velocity_unit: `constructor` }, /Declare velocity units/],
+    [{}, /Select velocity units/],
+    [{ velocity_unit: `constructor` }, /Select velocity units/],
     [
       { energy_key: `ke`, energy_unit: `constructor`, energy_reference: `device` },
-      /Declare kinetic-energy units/,
+      /Select energy units/,
     ],
     [{ ...velocity_options, max_bytes: 1 }, /budget/],
     [{ ...velocity_options, retained_bytes: 128 * 1024 ** 2 }, /budget/],
     [{ ...velocity_options, frame_stride: 0 }, /Invalid hotspot frame/],
     [{ ...velocity_options, bins: 129, grid: undefined }, /Bins per axis/],
     [{ energy_key: `ke`, energy_unit: `eV`, motion: `local` }, /cannot remove motion/],
-    [{ velocity_unit: `m/s` }, /Declare recorded mass units/],
+    [{ velocity_unit: `m/s` }, /Select mass units for recorded masses/],
+    [{ ...velocity_options, velocity_key: ` ` }, /Enter the velocity property/],
+    [{ ...energy_options, energy_key: ` ` }, /Enter the energy property/],
+    [{ ...energy_options, energy_reference: `` }, /Describe the stored energy reference/],
     [{ ...velocity_options, selection_key: `mobile` }, /Missing or invalid selection/],
   ] as const)(`rejects invalid options %j`, async (options, message) => {
     await expect(
@@ -315,7 +322,7 @@ describe(`spatial kinetic hotspots`, () => {
     `rejects nonfinite position %s even on unselected atoms`,
     async (value) => {
       const read: ReadAtoms = (options) => {
-        const batch = source()(options) as AtomBatch
+        const batch = source()(options)
         batch.positions[0] = value
         batch.selected = new Uint8Array(batch.atomic_numbers.length)
         return batch
@@ -328,7 +335,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it(`rejects overflowing energy instead of publishing a map`, async () => {
     const read: ReadAtoms = (options) => ({
-      ...(source()(options) as AtomBatch),
+      ...source()(options),
       velocities: new Float64Array(24).fill(1e200),
     })
     await expect(
@@ -353,14 +360,11 @@ describe(`spatial kinetic hotspots`, () => {
       origin: [0, 0, 0],
       pbc: [true, false, false],
     })
-    const options = {
-      grid,
-      energy_key: `ke`,
-      energy_unit: `eV` as const,
-      energy_reference: `device`,
-    }
-    const fixed = await calculate_hotspots(2, read, options)
-    const following = await calculate_hotspots(2, read, { ...options, coordinates: `cell` })
+    const fixed = await calculate_hotspots(2, read, energy_options)
+    const following = await calculate_hotspots(2, read, {
+      ...energy_options,
+      coordinates: `cell`,
+    })
     expect([...fixed.population]).toEqual([0, 0.5])
     expect(fixed.excluded_atoms).toBe(1)
     expect([...following.population]).toEqual([0, 1])
@@ -521,12 +525,7 @@ describe(`spatial kinetic hotspots`, () => {
     const run = trajectory_from_frames(frames)
     onTestFinished(() => run.dispose())
     if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
-    const result = await run.compute_hotspots({
-      grid,
-      energy_key: `ke`,
-      energy_unit: `eV`,
-      energy_reference: `device`,
-    })
+    const result = await run.compute_hotspots(energy_options)
     expect(result.weighting).toBe(`recorded time`)
     expect(result.time_weight).toBe(10)
     expect(hotspot_mean(result, `energy`)).toBe(4.5)
@@ -535,7 +534,7 @@ describe(`spatial kinetic hotspots`, () => {
 
   it(`rejects changing periodic device grids`, async () => {
     const read: ReadAtoms = (options) => ({
-      ...(source()(options) as AtomBatch),
+      ...source()(options),
       cell:
         options.frame_idx === 0
           ? grid.cell
@@ -596,10 +595,7 @@ describe(`spatial kinetic hotspots`, () => {
         expect((await run.read_atoms?.({ frame_idx: 1 }))?.time).toBeUndefined()
       }
       const computation = run.compute_hotspots({
-        grid,
-        energy_key: `ke`,
-        energy_unit: `eV`,
-        energy_reference: `device`,
+        ...energy_options,
         selection_key: `mobile`,
       })
       if (sparse_time) {
@@ -615,15 +611,10 @@ describe(`spatial kinetic hotspots`, () => {
 
   it(`requires explicit post-reference DOF for stored-energy Kelvin`, async () => {
     const read: ReadAtoms = (options) => ({
-      ...(source()(options) as AtomBatch),
+      ...source()(options),
       energies: new Float64Array(8).fill(1),
     })
-    const options = {
-      grid,
-      energy_key: `ke`,
-      energy_unit: `eV` as const,
-      energy_reference: `COM removed`,
-    }
+    const options = { ...energy_options, energy_reference: `COM removed` }
     const unknown = await calculate_hotspots(1, read, options)
     expect(hotspot_mean(unknown, `temperature`)).toBeNaN()
     const declared = await calculate_hotspots(1, read, { ...options, dof_per_atom: 1.5 })

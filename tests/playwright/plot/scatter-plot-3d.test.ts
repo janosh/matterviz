@@ -1,6 +1,7 @@
 import type { Vec3 } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  canvas_screenshot,
   expect_canvas_changed,
   expect_gizmo_click_flies_camera,
   get_canvas_timeout,
@@ -268,10 +269,10 @@ test.describe(`ScatterPlot3D`, () => {
     await controls_pane
       .getByRole(`combobox`, { name: /Projection/ })
       .selectOption(`orthographic`)
+    await page.locator(`${CONTAINER_SELECTOR} button.pane-toggle`).click()
+    await expect(controls_pane).toBeHidden()
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
-    const initial = await canvas.screenshot()
-
     const initial_box = await canvas.boundingBox()
     if (!initial_box) throw new Error(`Canvas bounding box not found`)
 
@@ -279,6 +280,7 @@ test.describe(`ScatterPlot3D`, () => {
       initial_box.x + initial_box.width / 2,
       initial_box.y + initial_box.height / 2,
     )
+    const initial = await canvas_screenshot(canvas)
     await page.mouse.wheel(0, -200)
 
     await expect_canvas_changed(canvas, initial, get_canvas_timeout())
@@ -537,17 +539,15 @@ test.describe(`ScatterPlot3D Projections`, () => {
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       await get_projection_checkbox(pane, plane).click()
     }
-    await page.waitForTimeout(200)
-    const initial = await canvas.screenshot()
-
-    // Close pane and rotate camera
+    // Close the pane before the baseline so only scene changes count as rotation.
     await page.keyboard.press(`Escape`)
-    await page.waitForTimeout(100)
+    await expect(pane).toBeHidden()
 
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`Canvas bounding box not found`)
 
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    const initial = await canvas_screenshot(canvas)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 100, {
       steps: 10,

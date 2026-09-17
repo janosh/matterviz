@@ -20,7 +20,7 @@ import {
   Vector3,
 } from 'three/webgpu'
 import type { ArrowPlacements } from './vectors'
-import { write_linear_color_to_buffer } from '$lib/scene/colors'
+import { InstanceColors } from './instance-colors'
 
 // Both primitives share eight placement floats per arrow. Their dimensions are uniforms;
 // the vertex shader derives each center and scale without per-frame CPU transforms.
@@ -29,10 +29,8 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
   rotations: InstancedBufferAttribute
   lengths: InstancedBufferAttribute
   // `instanceColor` would enable Three's matrix-instancing color path on this custom mesh.
-  colors: InstancedBufferAttribute
+  colors: InstanceColors
   override count = 0
-  private readonly colored_css: string[] = []
-  private uniform_color: string | undefined
   part = 0
   dimensions: [number, number, number] = [0, 0, 0]
 
@@ -53,8 +51,7 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
       shared?.rotations ?? new InstancedBufferAttribute(new Float32Array(capacity * 4), 4)
     this.lengths =
       shared?.lengths ?? new InstancedBufferAttribute(new Float32Array(capacity), 1)
-    this.colors =
-      shared?.colors ?? new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
+    this.colors = shared?.colors ?? new InstanceColors(new Float32Array(capacity * 3), 3)
     geometry.setAttribute(`arrowOrigin`, this.origins)
     geometry.setAttribute(`arrowRotation`, this.rotations)
     geometry.setAttribute(`arrowLength`, this.lengths)
@@ -97,10 +94,8 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
     this.origins = this.geometry.getAttribute(`arrowOrigin`) as InstancedBufferAttribute
     this.rotations = this.geometry.getAttribute(`arrowRotation`) as InstancedBufferAttribute
     this.lengths = this.geometry.getAttribute(`arrowLength`) as InstancedBufferAttribute
-    this.colors = this.geometry.getAttribute(`arrowColor`) as InstancedBufferAttribute
+    this.colors = this.geometry.getAttribute(`arrowColor`) as InstanceColors
     this.count = source.count
-    this.colored_css.length = 0
-    this.uniform_color = undefined
     this.part = source.part
     this.dimensions = [...source.dimensions]
     return this
@@ -126,29 +121,9 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
     const count = this.count
     if (typeof css_colors !== `string` && css_colors.length !== count)
       throw new RangeError(`Expected ${count} arrow colors, received ${css_colors.length}`)
-    if (
-      typeof css_colors === `string` &&
-      css_colors === this.uniform_color &&
-      count <= this.colored_css.length
-    )
-      return false
-    this.uniform_color = typeof css_colors === `string` ? css_colors : undefined
-    let first_change = count
-    let last_change = -1
-    for (let idx = 0; idx < count; idx++) {
-      const color = typeof css_colors === `string` ? css_colors : css_colors[idx]
-      if (color === this.colored_css[idx]) continue
-      write_linear_color_to_buffer(this.colors.array, idx, color)
-      this.colored_css[idx] = color
-      first_change = Math.min(first_change, idx)
-      last_change = idx
-    }
-    this.colored_css.length = count
-    if (last_change < 0) return false
-    // Preserve pending ranges when several updates happen before the next GPU upload.
-    this.colors.addUpdateRange(first_change * 3, (last_change - first_change + 1) * 3)
-    this.colors.needsUpdate = true
-    return true
+    if (typeof css_colors === `string`) return this.colors.fill_color(css_colors, count)
+    for (let idx = 0; idx < count; idx++) this.colors.write_color(idx, css_colors[idx])
+    return this.colors.flush(count)
   }
 
   dispose(): void {

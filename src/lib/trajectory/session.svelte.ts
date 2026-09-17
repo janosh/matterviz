@@ -99,7 +99,7 @@ export function create_trajectory_session(
     const settings = inputs.preparation?.()
     return settings && channels ? { ...settings, channels } : settings
   })
-  const request_key = $derived(JSON.stringify({ preparation, channels }))
+  const request_key = $derived(JSON.stringify(preparation ?? { channels }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
   const read_display = (
     run: TrajectoryRun,
@@ -120,21 +120,17 @@ export function create_trajectory_session(
   }
 
   // === property rows mirrored into state (runs themselves are rune-free) ===
-  let property_rows = $state.raw<readonly TrajectoryMetadata[]>([])
-  let properties_complete = $state(true)
+  let properties = $state.raw<{ rows: readonly TrajectoryMetadata[]; complete: boolean }>({
+    rows: [],
+    complete: true,
+  })
   $effect(() => {
-    const run = inputs.run()
-    if (!run) {
-      property_rows = []
-      properties_complete = true
-      return undefined
+    const source = inputs.run()?.properties
+    const update = () => {
+      properties = { rows: source?.rows ?? [], complete: source?.complete ?? true }
     }
-    property_rows = run.properties.rows
-    properties_complete = run.properties.complete
-    return run.properties.subscribe((_batch, complete) => {
-      property_rows = run.properties.rows
-      properties_complete = complete || run.properties.complete
-    })
+    update()
+    return source?.subscribe(update)
   })
 
   // === frame cache (per run; swapping runs drops it) ===
@@ -206,12 +202,10 @@ export function create_trajectory_session(
   // Raw: frames can hold thousands of sites and deep-proxying each one makes scrubbing pay
   // proxy traps throughout structure normalization, bonding and scene-buffer updates.
   let loaded = $state.raw<(SessionFrame & { run: TrajectoryRun; idx: number }) | null>(null)
-  let loading = $state(false)
-  let in_flight: AbortController | undefined
+  let in_flight = $state.raw<AbortController>()
   let prefetch_timer: ReturnType<typeof setTimeout> | undefined
   type PrefetchRequest = {
     run: TrajectoryRun
-    idx: number
     key: string
     bytes: number
     records: number
@@ -223,7 +217,6 @@ export function create_trajectory_session(
   const cancel_in_flight = (): void => {
     in_flight?.abort(new DOMException(`Superseded by a newer frame request`, `AbortError`))
     in_flight = undefined
-    loading = false
   }
   const cancel_prefetch = (): void => {
     if (prefetch_timer !== undefined) clearTimeout(prefetch_timer)
@@ -248,9 +241,9 @@ export function create_trajectory_session(
   }
   const trim_prefetch = (limit = Infinity): void => {
     const minimum = Math.min(player.is_playing ? 1 : 0, limit)
-    for (const request of [...prefetched.values()].toReversed()) {
+    for (const [idx, request] of [...prefetched].toReversed()) {
       if (prefetched.size <= limit && (reserve_prefetch() || prefetched.size <= minimum)) break
-      prefetched.delete(request.idx)
+      prefetched.delete(idx)
       request.controller.abort(new DOMException(`Prefetch cache limit`, `AbortError`))
     }
   }
@@ -279,7 +272,7 @@ export function create_trajectory_session(
       candidate?.run === run && candidate?.key === request_key ? candidate : undefined
     const cached = frame_idx !== null && cache_owner === run ? cache_get(frame_idx) : undefined
     const cache_hit = cached && matches_request(cached)
-    if (next) prefetched.delete(next.idx)
+    if (next && frame_idx !== null) prefetched.delete(frame_idx)
     // Sequential playback retains the remainder of its pipeline. Seeks and settings/run
     // changes cancel it immediately, including work still opening a preparation worker.
     if (
@@ -318,7 +311,6 @@ export function create_trajectory_session(
       return fail_frame(frame_idx, error)
     }
     in_flight = controller
-    loading = true
     pending.then(
       (frame) => {
         // Cancelled preparation may still finish on the primary worker; never retain it.
@@ -326,14 +318,12 @@ export function create_trajectory_session(
           cache_put(run, frame_idx, frame)
         if (in_flight !== controller) return
         in_flight = undefined
-        loading = false
         loaded = { run, idx: frame_idx, ...frame }
         schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
         if (in_flight !== controller) return
         in_flight = undefined
-        loading = false
         fail_frame(frame_idx, error)
       },
     )
@@ -391,7 +381,6 @@ export function create_trajectory_session(
           }
           const request: PrefetchRequest = {
             run,
-            idx,
             key: request_key,
             controller,
             result,
@@ -600,7 +589,7 @@ export function create_trajectory_session(
       const run = inputs.run()
       if (!run) return
       if (current_frame) schedule_prefetch(run, inputs.index())
-      else if (!loading) request_frame(run, inputs.index())
+      else if (!in_flight) request_frame(run, inputs.index())
     },
     on_pause: () => {
       cancel_prefetch()
@@ -681,16 +670,16 @@ export function create_trajectory_session(
     mark_rendered,
     wait_for_frame,
     get loading() {
-      return loading
+      return in_flight !== undefined
     },
     get scrubbing() {
       return scrubbing
     },
     get property_rows() {
-      return property_rows
+      return properties.rows
     },
     get properties_complete() {
-      return properties_complete
+      return properties.complete
     },
     get cached_frames() {
       return cache.size

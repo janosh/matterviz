@@ -94,11 +94,8 @@ const mount_atoms = (atoms: InstancedAtom[]) => {
 
 const current_mesh = (): AtomInstances => threlte_stub.nodes.at(-1)?.props.is as AtomInstances
 
-const slot_color = (slot_idx: number): number[] => {
-  const color = new Color()
-  current_mesh().getColorAt(slot_idx, color)
-  return color.toArray()
-}
+const slot_color = (slot_idx: number): number[] =>
+  Array.from(current_mesh().colors.array.slice(slot_idx * 3, slot_idx * 3 + 3))
 
 test(`volume cloud reuses its mesh and texture across opacity and cell changes`, async () => {
   const update_texture = vi.spyOn(ColorFieldTexture.prototype, `update`)
@@ -293,6 +290,14 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   props.ghost = false
   flushSync()
   expect(mesh.material).toMatchObject({ transparent: false, opacity: 1 })
+  const captured = mesh.clone()
+  const blue = [atom(`blue`, 0)]
+  captured.update_colors(blue)
+  captured.colors.copy(mesh.colors)
+  captured.update_colors(blue)
+  expect(captured.colors.array.slice(0, 3)).toEqual(new Float32Array([0, 0, 1]))
+  expect(slot_color(0)).toEqual(new Color(0x999999).toArray().map(Math.fround))
+  captured.dispose()
 })
 
 test.each([

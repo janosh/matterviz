@@ -289,7 +289,7 @@ describe(`explicit bonds`, () => {
   }
 
   // Under a proximity strategy the same two bonds are also found as periodic contacts, with
-  // the same (site pair, cell_shift) keys, so apply_explicit_bond_metadata merges rather than
+  // the same (site pair, cell_shift) keys, so explicit metadata merges rather than
   // appending a second copy of each — which would put a bond vector against itself, i.e. a
   // spurious 0 degree angle.
   test.each([`explicit_only`, `electroneg_ratio`] as const)(

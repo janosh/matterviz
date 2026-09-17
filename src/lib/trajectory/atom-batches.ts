@@ -65,6 +65,7 @@ export function frame_atom_batch(
   signals?: Record<string, TrajectoryRunSignal>,
 ): AtomBatch {
   const { sites, coordinates, vector_keys, header } = frame
+  const { lattice } = frame.structure
   const { step, metadata } = header
   const box_origin = metadata?.box_origin
   const origin =
@@ -83,16 +84,10 @@ export function frame_atom_batch(
     start,
     stride,
     step,
-    cell:
-      `lattice` in frame.structure
-        ? structuredClone(frame.structure.lattice?.matrix)
-        : undefined,
+    cell: structuredClone(lattice?.matrix),
     origin: [...origin],
     ...(typeof time === `number` && { time }),
-    pbc:
-      `lattice` in frame.structure
-        ? ([...(frame.structure.lattice?.pbc ?? [false, false, false])] as Pbc)
-        : [false, false, false],
+    pbc: [...(lattice?.pbc ?? [false, false, false])],
     ...(velocity_key && { velocities: new Float64Array(count * 3) }),
     ...(energy_key && { energies: new Float64Array(count) }),
     ...(selection_key && { selected: new Uint8Array(count) }),

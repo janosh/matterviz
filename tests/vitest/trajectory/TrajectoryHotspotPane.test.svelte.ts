@@ -40,6 +40,14 @@ const make_run = (extras: MemoryRunExtras = {}) =>
     }),
     extras,
   )
+const calculate_run = (run: ReturnType<typeof make_run>, options: HotspotRequest = {}) => {
+  if (!run.read_atoms) throw new Error(`Missing atom reader`)
+  return calculate_hotspots(run.frame_count, run.read_atoms, {
+    velocity_unit: `A/ps`,
+    mass_unit: `amu`,
+    ...options,
+  })
+}
 const control = (label: string) => {
   const element = [...document.querySelectorAll(`label`)]
     .find((node) => node.textContent?.trim().startsWith(label))
@@ -63,6 +71,14 @@ const calculate_button = () => {
   if (!button) throw new Error(`Missing calculate button`)
   return button
 }
+const expect_requirements = (message?: string) => {
+  const button = calculate_button()
+  expect(button.disabled).toBe(Boolean(message))
+  const described_by = button.getAttribute(`aria-describedby`)
+  expect(
+    described_by ? document.querySelector(`[id="${described_by}"]`)?.textContent : undefined,
+  ).toBe(message)
+}
 
 it(`requires units, calculates a slice, and keeps display changes independent of analysis`, async () => {
   const run = make_run()
@@ -70,34 +86,26 @@ it(`requires units, calculates a slice, and keeps display changes independent of
   const props = $state({ run, pane_open: true, show_heatmap: true })
   await mount_pane(props)
   expect(getComputedStyle(doc_query(`h3`)).marginTop).toBe(`0px`)
-  expect(calculate_button().disabled).toBe(true)
-  const requirements = () =>
-    document.querySelector(`[id="${calculate_button().getAttribute(`aria-describedby`)}"]`)
-      ?.textContent
-  expect(requirements()).toContain(`Select velocity units.`)
+  expect_requirements(`Select velocity units.`)
   expect(control(`Mass units`).value).toBe(`amu`)
   expect(document.body.textContent).toContain(`Inferred from recorded masses`)
   await set_value(`Velocity units`, `A/ps`)
   expect(control(`Velocity units`).value).toBe(`A/ps`)
-  expect(calculate_button().disabled).toBe(false)
-  expect(requirements()).toBeUndefined()
+  expect_requirements()
   await set_value(`Mass units`, ``)
-  expect(calculate_button().disabled).toBe(true)
-  expect(requirements()).not.toContain(`velocity`)
-  expect(requirements()).toContain(`Select mass units for recorded masses`)
+  expect_requirements(
+    `Select mass units for recorded masses, or choose standard elemental masses.`,
+  )
   await set_value(`Mass units`, `kg`)
-  expect(calculate_button().disabled).toBe(false)
-  expect(requirements()).toBeUndefined()
+  expect_requirements()
   await set_value(`Velocity property`, ` `)
-  expect(calculate_button().disabled).toBe(true)
-  expect(requirements()).toBe(`Enter the velocity property.`)
+  expect_requirements(`Enter the velocity property.`)
   await set_value(`Velocity property`, `velocity`)
   await set_value(`Mass units`, ``)
   await set_value(`Masses`, `standard`)
   await set_value(`Dimensions`, `2`)
   expect(control(`Degrees of freedom`).value).toBe(`2`)
-  expect(calculate_button().disabled).toBe(false)
-  expect(requirements()).toBeUndefined()
+  expect_requirements()
   compute.mockRejectedValueOnce(new Error(`Missing velocity at frame 0`))
   calculate_button().click()
   await vi.waitFor(() =>
@@ -106,6 +114,11 @@ it(`requires units, calculates a slice, and keeps display changes independent of
   expect(calculate_button().disabled).toBe(false)
   calculate_button().click()
   await vi.waitFor(() => expect(document.querySelector(`.hotspot-slice`)).not.toBeNull())
+  doc_query(`[aria-label="Inspect hotspot bin"]`).dispatchEvent(
+    new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+  )
+  await tick()
+  expect(doc_query(`output`).textContent).toContain(`Bin 0:`)
   expect(document.body.textContent).not.toContain(`Missing velocity at frame 0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
   await set_value(`Minimum average atoms/bin`, `-1`)
@@ -143,6 +156,15 @@ it(`requires units, calculates a slice, and keeps display changes independent of
   expect(document.body.textContent).toContain(`Settings changed`)
   await set_value(`Grid resolution`, `0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
+  await set_value(`Start frame`, `1`)
+  await set_value(`End frame`, `2`)
+  await set_value(`Frame stride`, `2`)
+  calculate_button().click()
+  expect(compute.mock.lastCall?.[0]).toMatchObject({
+    start_frame: 1,
+    end_frame: 2,
+    frame_stride: 2,
+  })
 })
 
 it.each([`signal`, `metadata`])(
@@ -184,29 +206,20 @@ it(`explains all missing recorded-energy settings and clears them as they are su
   await mount_pane({ run: make_run(), pane_open: true })
   await set_value(`Source`, `energy`)
   await set_value(`Energy property`, ` `)
-  const requirements = () => document.querySelector(`[role="status"]`)?.textContent
-  expect(calculate_button().disabled).toBe(true)
-  expect(requirements()).toBe(
+  expect_requirements(
     `Enter the energy property. Select energy units. Describe the stored energy reference.`,
   )
   await set_value(`Energy property`, `kinetic_energy`)
   await set_value(`Energy units`, `eV`)
-  expect(calculate_button().disabled).toBe(true)
-  expect(requirements()).toBe(`Describe the stored energy reference.`)
+  expect_requirements(`Describe the stored energy reference.`)
   await set_value(`Stored energy reference`, `device frame`)
-  expect(calculate_button().disabled).toBe(false)
-  expect(requirements()).toBeUndefined()
+  expect_requirements()
+  expect(document.querySelector(`[role="status"]`)).toBeNull()
 })
 
 it(`shows the selected-frame preview and partial average before completion, retaining coverage on cancel`, async () => {
   const run = make_run()
-  if (!run.read_atoms) throw new Error(`Missing atom reader`)
-  const preview = await calculate_hotspots(2, run.read_atoms, {
-    start_frame: 1,
-    end_frame: 2,
-    velocity_unit: `A/ps`,
-    mass_unit: `amu`,
-  })
+  const preview = await calculate_run(run, { start_frame: 1, end_frame: 2 })
   const partial = { ...preview, first_step: 0, last_step: 0 }
   let request: HotspotRequest | undefined
   let pending = Promise.withResolvers<HotspotResult>()
@@ -317,13 +330,7 @@ it(`aborts an old computation when the source changes`, async () => {
   expect(control(`Dimensions`).value).toBe(`3`)
   expect(control(`Degrees of freedom`).value).toBe(`3`)
   expect(calculate_button().disabled).toBe(true)
-  if (!next.read_atoms) throw new Error(`Missing atom reader`)
-  pending.resolve(
-    await calculate_hotspots(next.frame_count, next.read_atoms, {
-      velocity_unit: `A/ps`,
-      mass_unit: `amu`,
-    }),
-  )
+  pending.resolve(await calculate_run(next))
   await tick()
   expect(document.querySelector(`.hotspot-slice`)).toBeNull()
 })

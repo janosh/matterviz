@@ -1779,6 +1779,10 @@ describe(`HDF5 slice budgets`, () => {
     expect(read_numeric_samples(samples, `/direct-copy`, 3, 2)).toEqual(
       Float64Array.from([1, 2, 3, 4, 5, 6]),
     )
+    for (const width of [1, 3])
+      expect(() => read_numeric_samples(samples, `/wrong-width`, 3, width)).toThrow(
+        `HDF5 dataset /wrong-width returned 6 values for ${3 * width} requested entries`,
+      )
   })
 
   it.each([1, 3])(`splits oversized numeric samples with stride %i`, (stride) => {

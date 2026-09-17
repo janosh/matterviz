@@ -698,9 +698,10 @@ const parse_torch_sim_datasets = (
     return values ? lattice_or_none(lattice_from_values(values), `frame`) : undefined
   }
   const numeric_elements = Uint8Array.from(first_atomic_numbers)
-  const available_vector_keys = Object.entries(signal_manifest)
-    .filter(([, signal]) => is_per_atom_vector(signal))
-    .map(([key]) => key)
+  const vector_channels = Object.entries(signal_manifest).filter(([, signal]) =>
+    is_per_atom_vector(signal),
+  )
+  const available_vector_keys = vector_channels.map(([key]) => key)
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {
     if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count) {
       throw new Error(
@@ -716,12 +717,8 @@ const parse_torch_sim_datasets = (
         ? read_numeric_hyperslab(energy_dataset, energy_path, [[frame_idx, frame_idx + 1]])[0]
         : undefined
     const time = time_for_frame(frame_idx)
-    const vector_signals = Object.entries(signal_manifest).flatMap(([key, signal]) => {
-      if (
-        !is_per_atom_vector(signal) ||
-        (requested?.vectors && !requested.vectors.includes(key))
-      )
-        return []
+    const vector_signals = vector_channels.flatMap(([key, signal]) => {
+      if (requested?.vectors && !requested.vectors.includes(key)) return []
       const signal_idx = partition_point(signal.steps, (step) => step < steps[frame_idx])
       return signal.steps[signal_idx] === steps[frame_idx] ? [{ key, signal, signal_idx }] : []
     })

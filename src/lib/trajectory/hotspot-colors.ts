@@ -62,7 +62,7 @@ export function hotspot_field_geometry(
     Array.isArray(box_origin) && box_origin.length === 3 && box_origin.every(Number.isFinite)
       ? (box_origin as Vec3)
       : [0, 0, 0]
-  const lattice = `lattice` in frame.structure ? frame.structure.lattice : undefined
+  const { lattice } = frame.structure
   const grid =
     result.options.coordinates === `cell` && lattice
       ? {

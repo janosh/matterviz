@@ -1,6 +1,6 @@
 <script lang="ts">
   import VolumeSlice from '$lib/isosurface/VolumeSlice.svelte'
-  import { matrix_inverse_3x3, type Vec3 } from '$lib/math'
+  import type { Vec3 } from '$lib/math'
   import { format_num } from '$lib/labels'
   import {
     hotspot_display_values,
@@ -53,8 +53,7 @@
       (value, idx) => value + slice.u_axis[idx] * coord_u + slice.v_axis[idx] * coord_v,
     ) as Vec3
     // The displayed parallelogram is a single cell even when its source is periodic.
-    const grid = { ...result.grid, pbc: [false, false, false] as const }
-    const bin = hotspot_bin(xyz, 0, grid, matrix_inverse_3x3(grid.cell))
+    const bin = hotspot_bin(xyz, 0, { ...result.grid, pbc: [false, false, false] })
     selected = bin < 0 ? undefined : bin
   }
 </script>
@@ -80,9 +79,15 @@
     >
     <label><input type="checkbox" bind:checked={only_hot} /> Only hotspots</label>
   </div>
-  <div
+  <VolumeSlice
+    {slice}
+    mode="filled"
+    colormap="interpolateInferno"
+    color_range={[0, Math.max(mean * 2, Number.EPSILON)]}
+    colorbar_title={unit}
+    symmetric={false}
     role="button"
-    tabindex="0"
+    tabindex={0}
     aria-label="Inspect hotspot bin"
     onclick={inspect}
     onkeydown={(event) => {
@@ -94,16 +99,7 @@
           coordinates[2]
       }
     }}
-  >
-    <VolumeSlice
-      {slice}
-      mode="filled"
-      colormap="interpolateInferno"
-      color_range={[0, Math.max(mean * 2, Number.EPSILON)]}
-      colorbar_title={unit}
-      symmetric={false}
-    />
-  </div>
+  />
   <p>
     Cell-aligned cross-section ({`abc`[axes[0]]}/{`abc`[axes[1]]}), preserving cell angles.
     Bins are piecewise constant; empty and undersampled bins are transparent. Atom-exposure

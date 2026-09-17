@@ -270,24 +270,6 @@ export const read_numeric_buffer = (
   return Float64Array.from(values, (value) => finite_or_throw(value, path))
 }
 
-const copy_numeric_hyperslab = (
-  dataset: Dataset,
-  path: string,
-  ranges: Parameters<Dataset[`slice`]>[0],
-  destination: Float64Array,
-  destination_offset: number,
-): number => {
-  const values = read_numeric_buffer(dataset, path, ranges)
-  if (destination_offset + values.length > destination.length) {
-    throw new Error(
-      `HDF5 dataset ${path} returned ${values.length} values beyond its ` +
-        `${destination.length}-value destination`,
-    )
-  }
-  destination.set(values, destination_offset)
-  return values.length
-}
-
 export const hdf5_frames_per_slice = (...values_per_frame: number[]): number => {
   if (
     values_per_frame.length === 0 ||
@@ -478,19 +460,14 @@ export const read_numeric_samples = (
   for (let start = sample_start; start < sample_end; start += samples_per_slice * stride) {
     const end = Math.min(start + samples_per_slice * stride, sample_end)
     const expected_count = Math.ceil((end - start) / stride) * sample_size
-    const copied_count = copy_numeric_hyperslab(
-      dataset,
-      path,
-      ranges_for_samples(start, end, stride),
-      values,
-      output_offset,
-    )
-    if (copied_count !== expected_count) {
+    const chunk = read_numeric_buffer(dataset, path, ranges_for_samples(start, end, stride))
+    if (chunk.length !== expected_count) {
       throw new Error(
-        `HDF5 dataset ${path} returned ${copied_count} values for ${expected_count} requested entries`,
+        `HDF5 dataset ${path} returned ${chunk.length} values for ${expected_count} requested entries`,
       )
     }
-    output_offset += copied_count
+    values.set(chunk, output_offset)
+    output_offset += chunk.length
   }
   return values
 }

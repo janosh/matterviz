@@ -42,7 +42,7 @@ import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { host_run } from '$lib/trajectory/runs/host'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
-import { describe, expect, it, test, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
@@ -402,9 +402,13 @@ const next_tick = (): Promise<void> => new Promise((resolve) => setTimeout(resol
 const ase_buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
 
 // A port pair in-process: worker side serves a memory run, client side is a worker_run
-const make_worker_run = (): TrajectoryRun => {
-  const served = trajectory_from_frames(reference_frames)
-  return worker_run(serve_run_over_port(served), summarize_run(served))
+const make_worker_run = (
+  served = trajectory_from_frames(reference_frames),
+  port = serve_run_over_port(served),
+): TrajectoryRun => {
+  const run = worker_run(port, summarize_run(served))
+  onTestFinished(() => run.dispose())
+  return run
 }
 
 const expect_listener_errors = (notify: () => void, failures: Error[]): void => {
@@ -440,10 +444,6 @@ const RUN_CASES: RunCase[] = [
   {
     name: `memory`,
     make: () => trajectory_from_frames(reference_frames),
-    sync_reads: true,
-    has_collect: true,
-    n_frames: N_FRAMES,
-    n_atoms: N_ATOMS,
   },
   {
     name: `indexed xyz`,
@@ -454,10 +454,6 @@ const RUN_CASES: RunCase[] = [
         { filename: `synthetic.extxyz` },
         create_warning_collector(),
       ),
-    sync_reads: true,
-    has_collect: true,
-    n_frames: N_FRAMES,
-    n_atoms: N_ATOMS,
   },
   {
     name: `indexed ase`,
@@ -468,8 +464,6 @@ const RUN_CASES: RunCase[] = [
         { filename: `relax.traj` },
         create_warning_collector(),
       ),
-    sync_reads: true,
-    has_collect: true,
     n_frames: 2,
     n_atoms: 8,
   },
@@ -479,8 +473,6 @@ const RUN_CASES: RunCase[] = [
       open_trajectory(read_binary_test_file(`gold-nanoparticle-md.h5`), {
         filename: `gold.h5`,
       }),
-    sync_reads: true,
-    has_collect: true,
     n_frames: 100,
     n_atoms: 55,
   },
@@ -488,19 +480,20 @@ const RUN_CASES: RunCase[] = [
     name: `worker port`,
     make: make_worker_run,
     sync_reads: false,
-    has_collect: true,
-    n_frames: N_FRAMES,
-    n_atoms: N_ATOMS,
   },
   {
     name: `host`,
     make: make_host_run,
     sync_reads: false,
     has_collect: false,
-    n_frames: N_FRAMES,
-    n_atoms: N_ATOMS,
   },
-]
+].map((entry) => ({
+  sync_reads: true,
+  has_collect: true,
+  n_frames: N_FRAMES,
+  n_atoms: N_ATOMS,
+  ...entry,
+}))
 
 it.each([27, 100_000])(
   `uses the full %i atom count to gate frame-backed analysis`,
@@ -643,7 +636,7 @@ describe(`collect_positions parity with the memory run`, () => {
       return deferred.promise
     }
     const prepare = vi.spyOn(FramePreparer.prototype, `prepare`)
-    const run = worker_run(serve_run_over_port(served), summarize_run(served))
+    const run = make_worker_run(served)
     try {
       if (!run.prepare_frame) throw new Error(`Missing worker preparation`)
       const controller = new AbortController()
@@ -689,7 +682,7 @@ describe(`collect_positions parity with the memory run`, () => {
         make_trajectory_frame(frame_idx, 1),
       ),
     )
-    const long_run = worker_run(serve_run_over_port(served), summarize_run(served), () => {})
+    const long_run = make_worker_run(served)
     const progress: ParseProgress[] = []
     const stream = await long_run.collect_positions?.({
       on_progress: (step) => progress.push(step),
@@ -753,17 +746,13 @@ describe(`worker-served run lifecycle`, () => {
         metadata: {},
         warnings: [],
       })
-      const run = worker_run(serve_run_over_port(served), summarize_run(served))
-      try {
-        const channels = { vectors: [`force`] }
-        const expected = await served.read_frame(0, undefined, channels)
-        expect(expected.topology).toEqual({ kind: `fixed-order`, revision: 0 })
-        const actual = await run.read_frame(0, undefined, channels)
-        expect(actual).toEqual(expected)
-        expect(actual.coordinates).not.toBe(expected.coordinates)
-      } finally {
-        run.dispose()
-      }
+      const run = make_worker_run(served)
+      const channels = { vectors: [`force`] }
+      const expected = await served.read_frame(0, undefined, channels)
+      expect(expected.topology).toEqual({ kind: `fixed-order`, revision: 0 })
+      const actual = await run.read_frame(0, undefined, channels)
+      expect(actual).toEqual(expected)
+      expect(actual.coordinates).not.toBe(expected.coordinates)
     },
   )
 
@@ -811,58 +800,54 @@ describe(`worker-served run lifecycle`, () => {
         metadata: {},
         warnings: [],
       })
-      const run = worker_run(serve_run_over_port(served), summarize_run(served))
-      try {
-        if (!run.prepare_frame) throw new Error(`Missing worker preparation`)
-        const preparation = {
-          bonding_strategy: `electroneg_ratio`,
-          bonding_options: {},
-          vector_geometry: { ...DEFAULTS.structure, vector_configs: {} },
-        } as const
-        const first = await run.prepare_frame(0, preparation)
-        const retained = structuredClone(first)
-        for (const [idx, original] of source.entries()) {
-          const received = await run.prepare_frame(idx, preparation)
-          const expected = new FrameView().update(original)
-          expect(received.frame).toEqual(wrap_frame_coordinates(original))
-          expect(await materialize_frame_result(run.read_frame(idx))).toEqual(
-            materialize_frame(original),
-          )
-          if (!received.bonds) throw new Error(`Missing prepared bonds`)
-          const bonds = new BondFrame(
-            new FrameView().update(received.frame).structure,
-            received.bonds,
-          ).materialize()
-          const reference = compute_bonds(expected.structure, preparation.bonding_strategy, {})
-          expect(bonds).toEqual(reference)
-          expect(received.bond_placements).toEqual(prepare_bond_placements(reference))
-          expect(received.vector_geometry).toEqual(
-            records
-              ? undefined
-              : prepare_vector_geometry(expected.structure, preparation.vector_geometry),
-          )
-          expect(received.metrics?.vector_magnitudes.force.values).toEqual(
-            Float64Array.from({ length: 3 }, (_unused, atom_idx) =>
-              Math.hypot(idx, atom_idx, -1),
-            ),
-          )
-          const numeric = (items: typeof bonds) =>
-            items.flatMap(({ pos_1, pos_2, bond_length }) => [...pos_1, ...pos_2, bond_length])
-          expect(max_abs_error(numeric(bonds), numeric(reference))).toBe(0)
-          expect(max_rel_error(numeric(bonds), numeric(reference))).toBe(0)
-          const explicit = await run.prepare_frame(idx, {
-            ...preparation,
-            bonding_strategy: `explicit_only`,
-          })
-          if (!explicit.bonds) throw new Error(`Missing explicit bonds`)
-          expect(new BondFrame(expected.structure, explicit.bonds).materialize()).toEqual(
-            compute_bonds(expected.structure, `explicit_only`, {}),
-          )
-        }
-        expect(first).toEqual(retained)
-      } finally {
-        run.dispose()
+      const run = make_worker_run(served)
+      if (!run.prepare_frame) throw new Error(`Missing worker preparation`)
+      const preparation = {
+        bonding_strategy: `electroneg_ratio`,
+        bonding_options: {},
+        vector_geometry: { ...DEFAULTS.structure, vector_configs: {} },
+      } as const
+      const first = await run.prepare_frame(0, preparation)
+      const retained = structuredClone(first)
+      for (const [idx, original] of source.entries()) {
+        const received = await run.prepare_frame(idx, preparation)
+        const expected = new FrameView().update(original)
+        expect(received.frame).toEqual(wrap_frame_coordinates(original))
+        expect(await materialize_frame_result(run.read_frame(idx))).toEqual(
+          materialize_frame(original),
+        )
+        if (!received.bonds) throw new Error(`Missing prepared bonds`)
+        const bonds = new BondFrame(
+          new FrameView().update(received.frame).structure,
+          received.bonds,
+        ).materialize()
+        const reference = compute_bonds(expected.structure, preparation.bonding_strategy, {})
+        expect(bonds).toEqual(reference)
+        expect(received.bond_placements).toEqual(prepare_bond_placements(reference))
+        expect(received.vector_geometry).toEqual(
+          records
+            ? undefined
+            : prepare_vector_geometry(expected.structure, preparation.vector_geometry),
+        )
+        expect(received.metrics?.vector_magnitudes.force.values).toEqual(
+          Float64Array.from({ length: 3 }, (_unused, atom_idx) =>
+            Math.hypot(idx, atom_idx, -1),
+          ),
+        )
+        const numeric = (items: typeof bonds) =>
+          items.flatMap(({ pos_1, pos_2, bond_length }) => [...pos_1, ...pos_2, bond_length])
+        expect(max_abs_error(numeric(bonds), numeric(reference))).toBe(0)
+        expect(max_rel_error(numeric(bonds), numeric(reference))).toBe(0)
+        const explicit = await run.prepare_frame(idx, {
+          ...preparation,
+          bonding_strategy: `explicit_only`,
+        })
+        if (!explicit.bonds) throw new Error(`Missing explicit bonds`)
+        expect(new BondFrame(expected.structure, explicit.bonds).materialize()).toEqual(
+          compute_bonds(expected.structure, `explicit_only`, {}),
+        )
       }
+      expect(first).toEqual(retained)
     },
   )
   it.each([
@@ -883,13 +868,9 @@ describe(`worker-served run lifecycle`, () => {
     Object.assign(frame.structure.sites[0], metadata)
     const source = structuredClone(frame)
     const served = trajectory_from_frames([frame])
-    const run = worker_run(serve_run_over_port(served), summarize_run(served))
-    try {
-      expect(await materialize_frame_result(run.read_frame(0))).toStrictEqual(source)
-      expect(frame).toStrictEqual(source)
-    } finally {
-      run.dispose()
-    }
+    const run = make_worker_run(served)
+    expect(await materialize_frame_result(run.read_frame(0))).toStrictEqual(source)
+    expect(frame).toStrictEqual(source)
   })
 
   it.each([
@@ -919,43 +900,39 @@ describe(`worker-served run lifecycle`, () => {
       const port = serve_run_over_port(served)
       const packets: unknown[] = []
       port.addEventListener(`message`, (event) => packets.push(event.data))
-      const run = worker_run(port, summarize_run(served))
-      try {
-        const received = await materialize_frame_result(run.read_frame(1))
-        expect(packets).toMatchObject([
-          {
-            result: {
-              coordinates: expect.any(Float64Array),
-              vector_keys: [`velocity`, `force`],
-              sites: expect.any(compact ? Uint8Array : Array),
-            },
+      const run = make_worker_run(served, port)
+      const received = await materialize_frame_result(run.read_frame(1))
+      expect(packets).toMatchObject([
+        {
+          result: {
+            coordinates: expect.any(Float64Array),
+            vector_keys: [`velocity`, `force`],
+            sites: expect.any(compact ? Uint8Array : Array),
           },
-        ])
-        assert.deepStrictEqual(received, source)
-        if (!compact)
-          expect(received.structure.sites[0].properties.named).toHaveProperty(`unit`, `eV/A`)
-        const original_coords = source.structure.sites.flatMap(({ xyz, abc }) => [
-          ...xyz,
-          ...abc,
-        ])
-        const received_coords = received.structure.sites.flatMap(({ xyz, abc }) => [
-          ...xyz,
-          ...abc,
-        ])
-        expect(max_abs_error(original_coords, received_coords)).toBe(0)
-        expect(max_rel_error(received_coords, original_coords)).toBe(0)
-        const first = received.structure.sites[0]
-        if (first) {
-          first.xyz[0] = 99
-          first.properties.velocity = [99, 99, 99]
-          first.species[0].element = `Og`
-        }
-        if (count > 1) expect(received.structure.sites[1]).toEqual(source.structure.sites[1])
-        assert.deepStrictEqual(frame, source)
-        assert.deepStrictEqual(await materialize_frame_result(run.read_frame(1)), source)
-      } finally {
-        run.dispose()
+        },
+      ])
+      assert.deepStrictEqual(received, source)
+      if (!compact)
+        expect(received.structure.sites[0].properties.named).toHaveProperty(`unit`, `eV/A`)
+      const original_coords = source.structure.sites.flatMap(({ xyz, abc }) => [
+        ...xyz,
+        ...abc,
+      ])
+      const received_coords = received.structure.sites.flatMap(({ xyz, abc }) => [
+        ...xyz,
+        ...abc,
+      ])
+      expect(max_abs_error(original_coords, received_coords)).toBe(0)
+      expect(max_rel_error(received_coords, original_coords)).toBe(0)
+      const first = received.structure.sites[0]
+      if (first) {
+        first.xyz[0] = 99
+        first.properties.velocity = [99, 99, 99]
+        first.species[0].element = `Og`
       }
+      if (count > 1) expect(received.structure.sites[1]).toEqual(source.structure.sites[1])
+      assert.deepStrictEqual(frame, source)
+      assert.deepStrictEqual(await materialize_frame_result(run.read_frame(1)), source)
     },
   )
 
@@ -970,7 +947,7 @@ describe(`worker-served run lifecycle`, () => {
         })
         on_progress?.({ current: 0, total: 1, stage: `read` })
       })
-    const run = worker_run(serve_run_over_port(served), summarize_run(served))
+    const run = make_worker_run(served)
     const controller = new AbortController()
     const remove_listener = vi.spyOn(controller.signal, `removeEventListener`)
     const failure = new Error(`Progress observer failed`)

@@ -11,6 +11,7 @@
     ENERGY_UNITS,
     VELOCITY_UNITS,
     infer_mass_unit,
+    hotspot_requirements,
     type HotspotMetric,
     type HotspotOptions,
     type HotspotResult,
@@ -43,10 +44,13 @@
     cloud?: HotspotCloudSettings
   } = $props()
   let preview_frame = $state<number>()
-  let start_frame = $state(0)
-  let end_frame = $state(1)
-  let frame_stride = $state(1)
-  let bins = $state(0)
+  let sampling = $state({ start_frame: 0, end_frame: 1, frame_stride: 1, bins: 0 })
+  const sampling_fields = $derived([
+    [`start_frame`, `Start frame (inclusive)`, 0, (run?.frame_count ?? 1) - 1],
+    [`end_frame`, `End frame (exclusive)`, 1, run?.frame_count ?? 1],
+    [`frame_stride`, `Frame stride`, 1, undefined],
+    [`bins`, `Grid resolution (0 = automatic)`, 0, 128],
+  ] as const)
   let source = $state(`velocity`)
   let velocity_key = $state(`velocity`)
   let energy_key = $state(`kinetic_energy`)
@@ -86,35 +90,14 @@
   let error = $state(``)
   let analyzed_options_json = $state(``)
   const requirements_id = $props.id()
-  const disabled_reason = $derived.by(() => {
-    if (!run?.compute_hotspots)
-      return `Hotspot analysis is unavailable for this trajectory reader. Open a local file with per-atom velocities or kinetic energies.`
-    const missing =
-      source === `energy`
-        ? [
-            !energy_key.trim() && `Enter the energy property.`,
-            !energy_unit && `Select energy units.`,
-            !energy_reference.trim() && `Describe the stored energy reference.`,
-          ]
-        : [
-            !velocity_key.trim() && `Enter the velocity property.`,
-            !velocity_unit && `Select velocity units.`,
-            mass_source === `recorded` &&
-              !mass_unit &&
-              `Select mass units for recorded masses, or choose standard elemental masses.`,
-          ]
-    return missing.filter(Boolean).join(` `)
-  })
   const requests = create_request_owner()
   const cancel = (): void => {
     requests.cancel()
     if (coverage) coverage.busy = false
   }
   const options = $derived<HotspotOptions>({
-    start_frame,
-    end_frame,
-    frame_stride,
-    ...(bins && { bins }),
+    ...sampling,
+    bins: sampling.bins || undefined,
     coordinates,
     motion: source === `energy` ? `device` : motion,
     ...(source === `energy`
@@ -133,6 +116,11 @@
     dimensions,
     ...((source === `velocity` || stored_dof_known) && { dof_per_atom }),
   })
+  const disabled_reason = $derived(
+    run?.compute_hotspots
+      ? hotspot_requirements(options)
+      : `Hotspot analysis is unavailable for this trajectory reader. Open a local file with per-atom velocities or kinetic energies.`,
+  )
   const options_json = $derived(JSON.stringify(options))
   $effect(() => {
     const next = run
@@ -144,8 +132,8 @@
       preview_frame = undefined
       analyzed_options_json = ``
       error = ``
-      start_frame = 0
-      end_frame = next?.frame_count ?? 1
+      sampling.start_frame = 0
+      sampling.end_frame = next?.frame_count ?? 1
       source = `velocity`
       velocity_key = `velocity`
       energy_key = `kinetic_energy`
@@ -295,34 +283,12 @@
           ></label
         >
       {/if}
-      <label
-        >Start frame (inclusive) <input
-          type="number"
-          min="0"
-          max={(run?.frame_count ?? 1) - 1}
-          bind:value={start_frame}
-        /></label
-      >
-      <label
-        >End frame (exclusive) <input
-          type="number"
-          min="1"
-          max={run?.frame_count ?? 1}
-          bind:value={end_frame}
-        /></label
-      >
-      <label
-        >Frame stride <input type="number" min="1" step="1" bind:value={frame_stride} /></label
-      >
-      <label
-        >Grid resolution (0 = automatic) <input
-          type="number"
-          min="0"
-          max="128"
-          step="1"
-          bind:value={bins}
-        /></label
-      >
+      {#each sampling_fields as [key, label, min, max]}
+        <label
+          >{label}
+          <input type="number" {min} {max} step="1" bind:value={sampling[key]} /></label
+        >
+      {/each}
       <label
         >Grid frame <select bind:value={coordinates}
           ><option value="device">Fixed device</option><option value="cell"

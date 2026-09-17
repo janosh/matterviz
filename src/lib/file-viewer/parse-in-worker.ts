@@ -220,7 +220,7 @@ export const parse_in_worker = async (
     finish: (outcome: DisplayFrame | Error) => void
   }
   const slots: Slot[] = [{ run: primary, busy: false }]
-  const waiting: Job[] = []
+  // Insertion order is the queue; assigning a slot marks a running job.
   const jobs = new Set<Job>()
   let disposed = false
   let idle_timer: ReturnType<typeof setTimeout> | undefined
@@ -242,7 +242,8 @@ export const parse_in_worker = async (
   const open_replica = (): void => {
     if (
       slots.length >= capacity() ||
-      slots.filter((slot) => slot.opening).length >= waiting.length
+      slots.filter((slot) => slot.opening).length >=
+        [...jobs].filter((job) => !job.slot).length
     )
       return
     const opening = new AbortController()
@@ -273,7 +274,7 @@ export const parse_in_worker = async (
         const cancelled = opening.signal.aborted
         release_slot(slot)
         if (cancelled) return
-        for (const job of waiting.splice(0)) job.finish(to_error(error))
+        for (const job of jobs) if (!job.slot) job.finish(to_error(error))
       })
       .finally(() => {
         slot.opening = undefined
@@ -282,7 +283,8 @@ export const parse_in_worker = async (
   }
   const pump = (): void => {
     if (disposed) return
-    while (waiting.length) {
+    for (const job of jobs) {
+      if (job.slot) continue
       if (slots.filter((slot) => slot.busy).length >= capacity()) return
       const slot = slots.find(
         (candidate) => candidate.run && !candidate.opening && !candidate.busy,
@@ -291,8 +293,6 @@ export const parse_in_worker = async (
         open_replica()
         return
       }
-      const job = waiting.shift()
-      if (!job || !jobs.has(job)) continue
       slot.busy = true
       job.slot = slot
       void (async () => {
@@ -323,8 +323,7 @@ export const parse_in_worker = async (
     ) {
       idle_timer = setTimeout(() => {
         idle_timer = undefined
-        if (disposed || waiting.length || slots.some((slot) => slot.busy || slot.opening))
-          return
+        if (disposed || jobs.size || slots.some((slot) => slot.busy || slot.opening)) return
         for (const slot of slots.slice()) release_slot(slot)
       }, 10_000)
     }
@@ -336,10 +335,8 @@ export const parse_in_worker = async (
     return new Promise((resolve, reject) => {
       const abort = (): void => {
         job.finish(to_error(signal?.reason ?? parse_abort_error()))
-        const pending_idx = waiting.indexOf(job)
-        if (pending_idx !== -1) waiting.splice(pending_idx, 1)
         if (job.slot) release_slot(job.slot)
-        if (!waiting.length)
+        if (![...jobs].some((pending) => !pending.slot))
           for (const slot of slots.slice()) if (slot.opening) release_slot(slot)
         pump()
       }
@@ -356,7 +353,6 @@ export const parse_in_worker = async (
       }
       signal?.addEventListener(`abort`, abort, { once: true })
       jobs.add(job)
-      waiting.push(job)
       pump()
     })
   }
@@ -367,7 +363,6 @@ export const parse_in_worker = async (
     clear_idle_timer()
     const error = new Error(`HDF5 preparation pool is disposed`)
     for (const job of jobs) job.finish(error)
-    waiting.length = 0
     for (const slot of slots.slice()) release_slot(slot)
     dispose_primary()
   }

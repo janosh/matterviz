@@ -25,7 +25,7 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import { InstancedBufferAttribute, InstancedMesh, Matrix4, Mesh } from 'three/webgpu'
+import { InstancedBufferAttribute, Matrix4, Mesh } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -580,20 +580,23 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
         directional_light: 0.3,
       })
     })
-    const meshes = new Map<
-      InstancedMesh | AtomInstances | ArrowMesh | BondMesh,
-      ReturnType<typeof vi.spyOn>
-    >()
+    type InstanceMesh = AtomInstances | ArrowMesh | BondMesh
+    const capacity = (mesh: InstanceMesh) =>
+      mesh instanceof AtomInstances
+        ? mesh.positions.count
+        : mesh instanceof ArrowMesh
+          ? mesh.origins.count
+          : mesh.centers.count
+    const meshes = new Map<InstanceMesh, ReturnType<typeof vi.spyOn>>()
     const resources = new Map<{ dispose: () => void }, ReturnType<typeof vi.spyOn>>()
-    let previous_active: (InstancedMesh | AtomInstances | ArrowMesh | BondMesh)[] = []
+    let previous_active: InstanceMesh[] = []
     try {
       for (const count of [2, 3, 4, 5, 6, 2, 0, 2]) {
         inputs.count = count
         inputs.offset += 1
         flushSync()
         const active = scene.children.filter(
-          (child): child is InstancedMesh | AtomInstances | ArrowMesh | BondMesh =>
-            child instanceof InstancedMesh ||
+          (child): child is InstanceMesh =>
             child instanceof AtomInstances ||
             child instanceof ArrowMesh ||
             child instanceof BondMesh,
@@ -605,17 +608,7 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
             throw new Error(`Expected shaft and head meshes`)
           expect(shafts.colors).toBe(heads.colors)
         }
-        if (
-          previous_active.length &&
-          count <=
-            (previous_active[0] instanceof AtomInstances
-              ? previous_active[0].positions.count
-              : previous_active[0] instanceof ArrowMesh
-                ? previous_active[0].origins.count
-                : previous_active[0] instanceof BondMesh
-                  ? previous_active[0].centers.count
-                  : previous_active[0].instanceMatrix.count)
-        ) {
+        if (previous_active.length && count <= capacity(previous_active[0])) {
           expect(active).toEqual(previous_active)
         }
         for (const mesh of active) {
@@ -648,17 +641,7 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
           }
           clone_buffer.mockRestore()
           captured.geometry.dispose()
-          if (count === 4) {
-            const capacity =
-              mesh instanceof AtomInstances
-                ? mesh.positions.count
-                : mesh instanceof ArrowMesh
-                  ? mesh.origins.count
-                  : mesh instanceof BondMesh
-                    ? mesh.centers.count
-                    : mesh.instanceMatrix.count
-            expect(capacity).toBe(5)
-          }
+          if (count === 4) expect(capacity(mesh)).toBe(5)
           if (count > 0) {
             const center_offset =
               kind === `atoms`

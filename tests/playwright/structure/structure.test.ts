@@ -627,7 +627,6 @@ test.describe(`Structure Component Tests`, () => {
     const screenshots: Record<string, Buffer> = {}
 
     for (const projection of [`perspective`, `orthographic`]) {
-      // Re-open the controls pane each iteration (canvas.click closes it via click-outside)
       const { pane_div } = await open_structure_control_pane(page)
       const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
       await expect(camera_projection_select).toBeVisible()
@@ -635,25 +634,20 @@ test.describe(`Structure Component Tests`, () => {
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
 
-      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
-      await canvas.hover({ force: true })
-      await canvas.click({ force: true })
+      // Close the pane before the baseline so its disappearance cannot count as zoom.
+      await page.keyboard.press(`Escape`)
+      await expect(pane_div).toBeHidden()
+      await canvas.hover({ position: { x: 60, y: 60 } })
+      const initial = await canvas_screenshot(canvas)
+      screenshots[projection] = initial
       // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
       await page.mouse.wheel(0, -250)
       await page.mouse.wheel(0, -250)
       // Wait for zoom to be applied (screenshot should differ from initial)
-      await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
-      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
+      await expect_canvas_changed(canvas, initial)
     }
 
-    // Verify zoom responsiveness and visual differences
-    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(false)
-    expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
-      false,
-    )
-    expect(screenshots.perspective_initial.equals(screenshots.orthographic_initial)).toBe(
-      false,
-    )
+    expect(screenshots.perspective.equals(screenshots.orthographic)).toBe(false)
   })
 })
 

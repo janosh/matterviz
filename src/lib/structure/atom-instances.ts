@@ -1,9 +1,8 @@
 import type { Vec3 } from '$lib/math'
 import type { Site } from './index'
 import { is_image_site } from './site'
-import { set_linear_css_color } from '$lib/scene/colors'
+import { InstanceColors } from './instance-colors'
 import {
-  Color,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
@@ -79,8 +78,6 @@ const scratch_matrix = new Matrix4()
 const candidate = new Mesh()
 const candidate_hits: Intersection[] = []
 const hit_point = new Vector3()
-const gray = new Color(0x999999)
-const scratch_color = new Color()
 
 // Invisible full-sphere targets need no triangle test (which can miss exactly at a pole).
 export function enable_atom_sphere_picking(mesh: Mesh): void {
@@ -102,11 +99,10 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
   positions: InstancedBufferAttribute
   // Do not name this instanceColor: Three multiplies that uninitialized varying into
   // custom materials even without the InstancedMesh machinery that populates it.
-  colors: InstancedBufferAttribute
+  colors: InstanceColors
   boundingSphere = new Sphere()
   max_radius = 0
   override count = 0
-  private readonly colored_css: string[] = []
   private ghost = false
   private readonly detail_geometries = new Map<SphereGeometry, InstancedBufferGeometry>()
 
@@ -116,7 +112,7 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
     this.positions = new InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(
       DynamicDrawUsage,
     )
-    this.colors = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
+    this.colors = new InstanceColors(new Float32Array(capacity * 3), 3)
     this.count = 0
     this.set_geometry(geometry)
   }
@@ -148,23 +144,14 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
       .setPosition(values[offset], values[offset + 1], values[offset + 2])
   }
 
-  setColorAt(idx: number, color: Color): void {
-    color.toArray(this.colors.array, idx * 3)
-  }
-
-  getColorAt(idx: number, target: Color): void {
-    target.fromBufferAttribute(this.colors, idx)
-  }
-
   override copy(source: this, recursive = true): this {
     super.copy(source, recursive)
     this.geometry = source.geometry.clone()
     this.positions = this.geometry.getAttribute(
       `atomPositionRadius`,
     ) as InstancedBufferAttribute
-    this.colors = this.geometry.getAttribute(`atomColor`) as InstancedBufferAttribute
+    this.colors = this.geometry.getAttribute(`atomColor`) as InstanceColors
     this.count = source.count
-    this.colored_css.length = 0
     this.boundingSphere.copy(source.boundingSphere)
     this.max_radius = source.max_radius
     this.detail_geometries.clear()
@@ -189,25 +176,11 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
   // Color loops run on plain data, outside Svelte's per-expression dev instrumentation.
   update_colors(atoms: readonly InstancedAtom[], ghost = false): boolean {
     const force = ghost !== this.ghost
-    let first_changed = atoms.length
-    let last_changed = -1
     for (let idx = 0; idx < atoms.length; idx++) {
-      const css_color = atoms[idx].color ?? `#999999`
-      if (!force && css_color === this.colored_css[idx]) continue
-      set_linear_css_color(css_color, scratch_color)
-      if (ghost) scratch_color.lerp(gray, 0.4)
-      this.setColorAt(idx, scratch_color)
-      this.colored_css[idx] = css_color
-      first_changed = Math.min(first_changed, idx)
-      last_changed = idx
+      this.colors.write_color(idx, atoms[idx].color ?? `#999999`, ghost, force)
     }
     this.ghost = ghost
-    this.colored_css.length = atoms.length
-    if (last_changed < 0) return false
-    // Preserve updates queued since the last GPU upload, including earlier changed slots.
-    this.colors.addUpdateRange(first_changed * 3, (last_changed - first_changed + 1) * 3)
-    this.colors.needsUpdate = true
-    return true
+    return this.colors.flush(atoms.length)
   }
 
   // Atom updates write transforms and read their bounds in one pass. Tessellation-only

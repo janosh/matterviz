@@ -22,7 +22,7 @@ import {
   type BondData,
   type BondPlacements,
 } from './bond-rendering'
-import { css_to_linear_rgb, write_linear_color_to_buffer } from '$lib/scene/colors'
+import { InstanceColors } from './instance-colors'
 
 // Center and displacement preserve short bonds far from the origin. Sending two rounded
 // endpoints instead would lose their separation. Radius/offset encode multiple bond orders.
@@ -30,11 +30,8 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   centers: InstancedBufferAttribute
   deltas: InstancedBufferAttribute
   sizes: InstancedBufferAttribute
-  colors_start: InstancedBufferAttribute
-  colors_end: InstancedBufferAttribute
-  private readonly colored_start: string[] = []
-  private readonly colored_end: string[] = []
-  private uniform_color: string | undefined
+  colors_start: InstanceColors
+  colors_end: InstanceColors
   readonly instanceColor = null
   override count = 0
   thickness = 1
@@ -47,8 +44,8 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     this.centers = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
     this.deltas = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
     this.sizes = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
-    this.colors_start = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
-    this.colors_end = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
+    this.colors_start = new InstanceColors(new Float32Array(capacity * 3), 3)
+    this.colors_end = new InstanceColors(new Float32Array(capacity * 3), 3)
     geometry.setAttribute(`bondCenter`, this.centers)
     geometry.setAttribute(`bondDelta`, this.deltas)
     geometry.setAttribute(`bondSize`, this.sizes)
@@ -124,15 +121,8 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     this.centers = this.geometry.getAttribute(`bondCenter`) as InstancedBufferAttribute
     this.deltas = this.geometry.getAttribute(`bondDelta`) as InstancedBufferAttribute
     this.sizes = this.geometry.getAttribute(`bondSize`) as InstancedBufferAttribute
-    this.colors_start = this.geometry.getAttribute(
-      `instanceColorStart`,
-    ) as InstancedBufferAttribute
-    this.colors_end = this.geometry.getAttribute(
-      `instanceColorEnd`,
-    ) as InstancedBufferAttribute
-    this.colored_start.length = 0
-    this.colored_end.length = 0
-    this.uniform_color = undefined
+    this.colors_start = this.geometry.getAttribute(`instanceColorStart`) as InstanceColors
+    this.colors_end = this.geometry.getAttribute(`instanceColorEnd`) as InstanceColors
     this.count = source.count
     this.thickness = source.thickness
     return this
@@ -145,14 +135,6 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     site_colors: readonly string[],
     uniform_color: string | undefined,
   ): boolean {
-    const colors_start = this.colors_start.array
-    const colors_end = this.colors_end.array
-    const capacity = this.centers.count
-    const instance_count = placements.instance_count
-
-    let first_changed_idx = instance_count
-    let last_changed_idx = -1
-    let instance_idx = 0
     // Packed endpoints are unsigned indices. A uniform palette covering its highest index
     // makes every cylinder color independent of topology and bond order between frames.
     if (
@@ -160,68 +142,31 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
       bonds instanceof BondFrame &&
       placements.max_site_idx < site_colors.length
     ) {
-      if (this.uniform_color !== uniform_color) {
-        const color = css_to_linear_rgb(uniform_color)
-        for (let idx = 0; idx < capacity; idx++) {
-          colors_start.set(color, idx * 3)
-          colors_end.set(color, idx * 3)
-        }
-        this.colored_start.length = capacity
-        this.colored_end.length = capacity
-        this.colored_start.fill(uniform_color)
-        this.colored_end.fill(uniform_color)
-        first_changed_idx = 0
-        last_changed_idx = capacity - 1
-      }
-      this.uniform_color = uniform_color
-    } else {
-      this.uniform_color = undefined
-      for (let idx = 0; idx < bonds.length; idx++) {
-        const site_idx_1 =
-          bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
-        const site_idx_2 =
-          bonds instanceof BondFrame
-            ? bonds.columns.indices[idx * 2 + 1]
-            : bonds[idx].site_idx_2
-        const instance_color_start = site_colors[site_idx_1]
-        const instance_color_end = site_colors[site_idx_2]
-        if (instance_color_start === undefined || instance_color_end === undefined) {
-          throw new RangeError(
-            `Missing bond endpoint color for site indices ${site_idx_1}, ${site_idx_2}`,
-          )
-        }
-        const bond_instance_count = instance_count_for_order(
-          bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order,
+      const changed = this.colors_start.fill_color(uniform_color)
+      return this.colors_end.fill_color(uniform_color) || changed
+    }
+    let instance_idx = 0
+    for (let idx = 0; idx < bonds.length; idx++) {
+      const site_idx_1 =
+        bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
+      const site_idx_2 =
+        bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+      const color_start = site_colors[site_idx_1]
+      const color_end = site_colors[site_idx_2]
+      if (color_start === undefined || color_end === undefined)
+        throw new RangeError(
+          `Missing bond endpoint color for site indices ${site_idx_1}, ${site_idx_2}`,
         )
-        for (let order_idx = 0; order_idx < bond_instance_count; order_idx++) {
-          if (this.colored_start[instance_idx] !== instance_color_start) {
-            write_linear_color_to_buffer(colors_start, instance_idx, instance_color_start)
-            this.colored_start[instance_idx] = instance_color_start
-            first_changed_idx = Math.min(first_changed_idx, instance_idx)
-            last_changed_idx = instance_idx
-          }
-          if (this.colored_end[instance_idx] !== instance_color_end) {
-            write_linear_color_to_buffer(colors_end, instance_idx, instance_color_end)
-            this.colored_end[instance_idx] = instance_color_end
-            first_changed_idx = Math.min(first_changed_idx, instance_idx)
-            last_changed_idx = instance_idx
-          }
-          instance_idx += 1
-        }
-      }
-      this.colored_start.length = instance_count
-      this.colored_end.length = instance_count
-    }
-
-    if (last_changed_idx < 0) return false
-    for (const buffer of [this.colors_start, this.colors_end]) {
-      buffer.addUpdateRange(
-        first_changed_idx * 3,
-        (last_changed_idx - first_changed_idx + 1) * 3,
+      const copies = instance_count_for_order(
+        bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order,
       )
-      buffer.needsUpdate = true
+      for (let order_idx = 0; order_idx < copies; order_idx++, instance_idx++) {
+        this.colors_start.write_color(instance_idx, color_start)
+        this.colors_end.write_color(instance_idx, color_end)
+      }
     }
-    return true
+    const changed = this.colors_start.flush(placements.instance_count)
+    return this.colors_end.flush(placements.instance_count) || changed
   }
 
   dispose(): void {
