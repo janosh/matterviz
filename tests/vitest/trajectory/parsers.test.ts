@@ -16,7 +16,13 @@ import {
 } from '$lib/trajectory/open'
 import { FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
 import { get_unsupported_format_message } from '$lib/trajectory/parse'
-import { ase_calculator_data, read_ase_header } from '$lib/trajectory/parse/ase'
+import {
+  ase_calculator_data,
+  parse_ase_trajectory,
+  read_ase_header,
+} from '$lib/trajectory/parse/ase'
+import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
+import { hotspot_mean } from '$lib/trajectory/hotspots'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   HDF5_MAX_WHOLE_DATASET_BYTES,
@@ -46,6 +52,7 @@ import {
   make_h5_buffer,
   make_reference_md_h5_buffer,
   make_torch_sim_signal_buffer,
+  make_ase_md_buffer,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
@@ -434,7 +441,7 @@ describe(`vasprun.xml`, () => {
     expect(run.atom_masses).toEqual([28.085, 15.999])
     // POTIM is only a time step for MD (IBRION = 0)
     expect(run.time_step).toBeUndefined()
-    expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `6.4.2` })
+    expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `6.4.2`, mass_unit: `amu` })
   })
 
   it(`treats POTIM as the MD time step and keeps thermostat energies for IBRION = 0`, async () => {
@@ -1349,6 +1356,106 @@ describe(`XYZ`, () => {
 // === ASE ULM trajectories ===
 
 describe(`ASE`, () => {
+  it.each([4, 70_000])(
+    `analyzes %i atoms in bounded batches using stored momenta and masses`,
+    async (n_atoms) => {
+      const run = await open(make_ase_md_buffer(n_atoms), `md.traj`)
+      assert(run.read_atoms && run.compute_hotspots)
+      expect(run.metadata).toMatchObject({ mass_unit: `amu`, velocity_unit: `A/fs` })
+      expect(run.atom_masses).toEqual(Array(n_atoms).fill(2))
+      const options = {
+        frame_idx: 1,
+        start: 1,
+        count: 3,
+        stride: 2,
+        velocity_key: `velocity`,
+        mass_source: `recorded`,
+        selection_key: `tags`,
+      } as const
+      const reads = vi.spyOn(DataView.prototype, `getFloat64`)
+      const batch = await run.read_atoms(options)
+      // Three requested atoms must not scan the rest of a 70k-atom frame.
+      expect(reads.mock.calls.length).toBeLessThanOrEqual(3 * 9)
+      reads.mockRestore()
+      expect(batch).toMatchObject({
+        start: 1,
+        stride: 2,
+        total_atoms: n_atoms,
+        time: 14,
+        pbc: [false, false, false],
+      })
+      const count = Math.min(3, Math.ceil((n_atoms - 1) / 2))
+      expect(batch.positions).toEqual(
+        Float64Array.from(
+          Array.from({ length: count }, (_, idx) => [
+            (1 + idx * 2) / n_atoms + 1,
+            1,
+            1,
+          ]).flat(),
+        ),
+      )
+      expect(batch.velocities).toEqual(
+        Float64Array.from(
+          Array.from({ length: count }, () => [2 * 0.09822694788464063, 0, 0]).flat(),
+        ),
+      )
+      expect(batch.masses).toEqual(new Float64Array(count).fill(2))
+      expect(batch.selected).toEqual(new Uint8Array(count).fill(1))
+      // Replacing the heat-capacity masses must not change p/m's original isotope masses.
+      const standard = await run.read_atoms({ ...options, mass_source: `standard` })
+      expect(standard.velocities).toEqual(batch.velocities)
+      expect(standard.masses?.[0]).toBe(1.008)
+      batch.positions.fill(-1)
+      expect((await run.read_atoms(options)).positions[0]).toBe(1 + 1 / n_atoms)
+      if (n_atoms > ATOM_BATCH_SIZE) {
+        const tail = await run.read_atoms({ frame_idx: 0, start: ATOM_BATCH_SIZE })
+        expect(tail.atomic_numbers).toHaveLength(n_atoms - ATOM_BATCH_SIZE)
+        expect(tail.positions[0]).toBe(1 + ATOM_BATCH_SIZE / n_atoms)
+      }
+      const result = await run.compute_hotspots({
+        velocity_unit: `A/fs`,
+        mass_unit: `amu`,
+        mass_source: `recorded`,
+        bins: 1,
+      })
+      expect(result.frames).toBe(2)
+      expect(result.weighting).toBe(`recorded time`)
+      expect(result.time_weight).toBe(4)
+      // Convert ASE's CODATA-2014 velocity to the reducer's declared SI constants.
+      const expected =
+        (2.5 * 0.09822694788464063 ** 2 * 1e10 * 1.66053906892e-27) / 1.602176634e-19
+      expect(Math.abs(hotspot_mean(result, `energy`) - expected)).toBeLessThan(
+        expected * 2e-12,
+      )
+      expect(() => run.read_atoms?.({ ...options, velocity_key: `missing` })).toThrow(
+        /Unknown ASE velocity property/,
+      )
+      expect(() => run.read_atoms?.({ frame_idx: 0, energy_key: `kinetic_energy` })).toThrow(
+        /frame totals cannot locate hotspots/,
+      )
+      expect(() => run.read_atoms?.({ ...options, selection_key: `absent` })).toThrow(
+        /no atom selection property/,
+      )
+      const controller = new AbortController()
+      controller.abort(new Error(`cancel analysis`))
+      expect(() => run.read_atoms?.(options, controller.signal)).toThrow(`cancel analysis`)
+      run.dispose()
+      expect(() => run.read_atoms?.(options)).toThrow(/disposed/)
+    },
+  )
+
+  it(`uses ASE's elemental mass convention when no isotope masses are stored`, async () => {
+    const run = await open(make_ase_md_buffer(2, false), `md.traj`)
+    expect(run.atom_masses).toBeUndefined()
+    const batch = await run.read_atoms?.({
+      frame_idx: 1,
+      mass_source: `standard`,
+      velocity_key: `velocity`,
+    })
+    expect(batch?.masses).toEqual(Float64Array.of(1.008, 1.008))
+    expect(batch?.velocities?.[0]).toBe((4 / 1.008) * 0.09822694788464063)
+    run.dispose()
+  })
   // Result keys lose their ULM trailing dot; malformed ndarray descriptors are skipped
   // without dropping the scalar results next to them
   // oxfmt-ignore
@@ -1375,26 +1482,38 @@ describe(`ASE`, () => {
     }
   })
 
-  it(`names the frame and byte offset of a corrupt ULM item in both readers`, async () => {
-    const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`).slice(0)
-    const view = new DataView(buffer)
-    const { offsets_pos } = read_ase_header(view)
-    const frame_1_offset = Number(view.getBigInt64(offsets_pos + 8, true))
-    new Uint8Array(buffer, frame_1_offset + 8, 4).fill(0xff) // smash frame 1's JSON header
-    const error = new RegExp(
-      `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
-    )
+  // oxfmt-ignore
+  it.each<[string, (view: DataView, offset: number) => void]>([
+    [`JSON`, (view, offset) => { new Uint8Array(view.buffer, offset + 8, 4).fill(0xff) }],
+    [`negative length`, (view, offset) => view.setBigInt64(offset, -1n, true)],
+    [`oversized header`, (view, offset) => view.setBigInt64(offset, 50n * 1024n ** 2n + 1n, true)],
+    [`truncated header`, (view, offset) => view.setBigInt64(offset, BigInt(view.byteLength), true)],
+  ])(
+    `names the frame and byte offset of corrupt %s in playback and analysis`,
+    async (_corruption, corrupt) => {
+      const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`).slice(0)
+      const view = new DataView(buffer)
+      const { offsets_pos } = read_ase_header(view)
+      const frame_1_offset = Number(view.getBigInt64(offsets_pos + 8, true))
+      corrupt(view, frame_1_offset)
+      const error = new RegExp(
+        `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
+      )
 
-    await expect(open(buffer, `corrupt.traj`)).rejects.toThrow(error)
-    const indexed = await open(buffer, `corrupt.traj`, { index_above_bytes: 0 })
-    expect(indexed.frame_count).toBe(2)
-    expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)
-    expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error)
-    expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
-    await indexed.properties.done
-    expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0])
-    expect(indexed.warnings).toEqual([expect.stringMatching(/^Skipping plot data of frame 1/)])
-  })
+      expect(() => parse_ase_trajectory(buffer)).toThrow(error)
+      const indexed = await open(buffer, `corrupt.traj`, { index_above_bytes: 0 })
+      expect(indexed.frame_count).toBe(2)
+      expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)
+      expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error)
+      expect(() => indexed.read_atoms?.({ frame_idx: 1 })).toThrow(error)
+      expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
+      await indexed.properties.done
+      expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0])
+      expect(indexed.warnings).toEqual([
+        expect.stringMatching(/^Skipping plot data of frame 1/),
+      ])
+    },
+  )
 })
 
 // === JSON (pymatgen Trajectory, frame arrays, single structures) ===
@@ -1881,6 +2000,7 @@ describe(`HDF5`, () => {
     expect(run.provenance.format).toBe(`hdf5`)
     expect(await steps_of(run)).toEqual([0, 1, 2, 3])
     expect(run.atom_masses).toEqual([1.008, 15.999])
+    expect(run.metadata.mass_unit).toBe(`amu`)
     // Lazy HDF5 signals are descriptors (no `values`) until collect_positions streams them;
     // only the velocity sits on the geometry's step axis
     expect(run.signals).toEqual({
@@ -2164,6 +2284,7 @@ describe(`HDF5`, () => {
     ])
     expect(run.time_step).toEqual({ value: 0.25, unit: `ps` })
     expect(run.atom_masses).toEqual([1.008, 15.999])
+    expect(run.metadata.mass_unit).toBe(`amu`)
     expect(run.signals).toEqual({
       velocity: { sample_shape: [2, 3], sample_count: 3, frame_aligned: true, unit: `A/ps` },
       dipole: { sample_shape: [3], sample_count: 3, frame_aligned: true, unit: `e*A` },

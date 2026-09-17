@@ -144,19 +144,10 @@ describe(`loading policy`, () => {
       const patched = new DataView(buffer)
       patched.setBigInt64(offsets_pos + 8, BigInt(original.byteLength), true)
       patched.setBigInt64(original.byteLength, BigInt(json.length), true)
-      const lazy = await open(buffer.slice(0), `relax.traj`, { index_above_bytes: 0 })
-      const eager = await open(buffer.slice(0), `relax.traj`)
-      expect(lazy.frame_count).toBe(2)
-      await lazy.properties.done
-      expect(lazy.properties.rows.map((row) => row.properties.energy)).toEqual(
-        eager.properties.rows.map((row) => row.properties.energy),
-      )
-      for (const run of [lazy, eager]) {
-        expect(run.properties.rows[1].properties).toMatchObject(energies)
-      }
-      expect(
-        (await materialize_frame_result(lazy.read_frame(1))).structure.sites[0].xyz,
-      ).toEqual((await materialize_frame_result(eager.read_frame(1))).structure.sites[0].xyz)
+      const run = await open(buffer, `relax.traj`)
+      expect(run.frame_count).toBe(2)
+      await run.properties.done
+      expect(run.properties.rows[1].properties).toMatchObject(energies)
     },
   )
 

@@ -1,10 +1,24 @@
 // Trajectories reuse instance slots; a slot must repaint when its element changes.
 import type { AtomInstances, InstancedAtom } from '$lib/structure/atom-instances'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
+import ColorFieldVolume from '$lib/structure/ColorFieldVolume.svelte'
+import {
+  AtomFieldMaterial,
+  ColorFieldTexture,
+  type AtomColorField,
+} from '$lib/structure/atom-color-field'
 import { flushSync, mount, unmount } from 'svelte'
 import { useThrelte } from '@threlte/core'
 import {
   Color,
+  Data3DTexture,
+  DataUtils,
+  FloatType,
+  HalfFloatType,
+  LinearFilter,
+  Matrix4,
+  Mesh,
+  MeshStandardNodeMaterial,
   type InstancedBufferGeometry,
   PerspectiveCamera,
   SphereGeometry,
@@ -66,7 +80,12 @@ afterEach(async () => {
 })
 
 const mount_atoms = (atoms: InstancedAtom[]) => {
-  const props = $state({ atoms, ghost: false, sphere_segments: 20 })
+  const props = $state({
+    atoms,
+    ghost: false,
+    sphere_segments: 20,
+    color_field: undefined as AtomColorField | undefined,
+  })
   const component = mount(InstancedAtoms, { target: document.body, props })
   teardown = () => unmount(component)
   flushSync()
@@ -80,6 +99,130 @@ const slot_color = (slot_idx: number): number[] => {
   current_mesh().getColorAt(slot_idx, color)
   return color.toArray()
 }
+
+test(`volume cloud reuses its mesh and texture across opacity and cell changes`, async () => {
+  const update_texture = vi.spyOn(ColorFieldTexture.prototype, `update`)
+  const encode = vi.spyOn(DataUtils, `toHalfFloat`)
+  const dispose_texture = vi.spyOn(Data3DTexture.prototype, `dispose`)
+  const colors = new Float32Array([1, 0, 0, 0.5, 0, 0, 0, 0])
+  const field: AtomColorField = {
+    colors,
+    dims: [2, 1, 1],
+    cartesian_to_fractional: new Matrix4(),
+    pbc: [true, false, false],
+  }
+  const props = $state({ field, opacity: 0.35 })
+  const component = mount(ColorFieldVolume, { target: document.body, props })
+  teardown = () => unmount(component)
+  flushSync()
+  const texture = update_texture.mock.contexts[0]
+  if (!(texture instanceof ColorFieldTexture)) throw new Error(`Expected color field texture`)
+  const texels = texture.image.data
+  const texture_version = texture.version
+  expect(texture).toMatchObject({
+    type: HalfFloatType,
+    minFilter: LinearFilter,
+    magFilter: LinearFilter,
+  })
+  const mesh = threlte_stub.nodes.at(-1)?.props.is
+  if (!(mesh instanceof Mesh)) throw new Error(`Expected cloud mesh`)
+  expect(mesh.name).toBe(`ColorFieldVolume`)
+  expect(mesh.geometry.index?.count).toBe(36)
+  expect(mesh.material).toMatchObject({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+  })
+  expect(encode.mock.calls.map(([value]) => value)).toEqual([0.5, 0, 0, 0.5, 0, 0, 0, 0])
+  encode.mockClear()
+  dispose_texture.mockClear()
+  props.opacity = 0
+  flushSync()
+  expect(mesh.visible).toBe(false)
+  props.opacity = 0.8
+  props.field = { ...field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) }
+  flushSync()
+  expect(mesh.visible).toBe(true)
+  expect(mesh.matrix.elements[0]).toBe(2)
+  expect(encode).not.toHaveBeenCalled()
+  expect(texture.version).toBe(texture_version)
+  props.field = { ...field, colors: new Float32Array(colors) }
+  flushSync()
+  expect(encode).toHaveBeenCalledTimes(8)
+  expect(dispose_texture).not.toHaveBeenCalled()
+  expect(texture.image.data).toBe(texels)
+  props.field = { ...props.field, dims: [1, 2, 1] }
+  flushSync()
+  expect(dispose_texture).toHaveBeenCalledTimes(1)
+  expect(texture.image).toMatchObject({ data: texels, width: 1, height: 2, depth: 1 })
+  props.field = { ...field, dims: [1, 3, 1], colors: new Float32Array(12) }
+  flushSync()
+  expect(texture.image.data).not.toBe(texels)
+  expect(texture.image.data).toHaveLength(12)
+  expect(threlte_stub.nodes.at(-1)?.props.is).toBe(mesh)
+  const dispose_geometry = vi.spyOn(mesh.geometry, `dispose`)
+  await teardown?.()
+  teardown = undefined
+  expect(dispose_texture).toHaveBeenCalledTimes(3)
+  expect(dispose_geometry).toHaveBeenCalledTimes(1)
+})
+
+test(`heatmap updates and toggles preserve atom meshes, buffers, and geometry`, async () => {
+  const update = vi.spyOn(AtomFieldMaterial.prototype, `update`)
+  const props = mount_atoms(ch4())
+  const mesh = current_mesh()
+  const geometry = mesh.geometry
+  const versions = [mesh.positions.version, mesh.colors.version]
+  expect(update).not.toHaveBeenCalled()
+  const field: AtomColorField = {
+    colors: new Float32Array([1, 0, 0, 1]),
+    dims: [1, 1, 1],
+    cartesian_to_fractional: new Matrix4(),
+    pbc: [true, true, true],
+  }
+  props.color_field = field
+  flushSync()
+  const controller = update.mock.contexts[0]
+  if (
+    !(controller instanceof AtomFieldMaterial) ||
+    !(mesh.material instanceof MeshStandardNodeMaterial)
+  )
+    throw new Error(`Expected atom field material`)
+  const texture = controller.texture
+  expect(texture.type).toBe(FloatType)
+  expect(texture.image.data).toBe(field.colors)
+  const version = texture.version
+  const color_node = mesh.material.colorNode
+  const material_version = mesh.material.version
+  // Frame changes only update the transform, not the texture or the shader program.
+  props.color_field = { ...field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) }
+  flushSync()
+  expect(texture.version).toBe(version)
+  expect(controller.transform.value.elements[0]).toBe(0.5)
+  expect(mesh.material.version).toBe(material_version)
+  const texture_dispose = vi.spyOn(texture, `dispose`)
+  props.color_field = { ...field, colors: new Float32Array([0, 1, 0, 1]) }
+  flushSync()
+  expect(texture.version).toBe(version + 1)
+  expect(texture_dispose).not.toHaveBeenCalled()
+  props.color_field = { ...field, dims: [2, 1, 1], colors: new Float32Array(8) }
+  flushSync()
+  expect(texture_dispose).toHaveBeenCalledTimes(1)
+  expect(texture.image).toMatchObject({ width: 1, height: 1, depth: 2 })
+  props.color_field = undefined
+  flushSync()
+  expect(mesh.material.colorNode).not.toBe(color_node)
+  props.color_field = field
+  flushSync()
+  expect(mesh.material.colorNode).toBe(color_node)
+  expect(current_mesh()).toBe(mesh)
+  expect(mesh.geometry).toBe(geometry)
+  expect([mesh.positions.version, mesh.colors.version]).toEqual(versions)
+  expect(mesh.count).toBe(5)
+  await teardown?.()
+  teardown = undefined
+  expect(texture_dispose).toHaveBeenCalledTimes(3)
+})
 
 test(`uploads changed color slots and preserves pending ranges mid-scrub`, () => {
   const props = mount_atoms(ch4())

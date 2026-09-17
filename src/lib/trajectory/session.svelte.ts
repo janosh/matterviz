@@ -29,11 +29,9 @@ import type { TrajectoryRun } from './run'
 // Playback inputs bind current_step_idx through index and set_index.
 interface TrajectorySessionInputs extends Omit<
   Parameters<typeof create_sequence_player>[0],
-  'count' | 'can_advance'
+  'count'
 > {
   run: () => TrajectoryRun | undefined
-  // Numeric renderers own their frame buffers; keep playback without decoding Site objects.
-  load_frames?: () => boolean
   // A visible renderer acknowledges complete scene submission before playback advances.
   wait_for_render?: () => boolean
   preparation?: () => FramePreparation | undefined
@@ -96,7 +94,6 @@ export function create_trajectory_session(
   const cancel_render_waiters = (error: Error): void => {
     for (const waiter of render_waiters) waiter.settle(error)
   }
-  const load_frames = $derived(inputs.load_frames?.() ?? true)
   const channels = $derived(inputs.channels?.())
   const preparation = $derived.by(() => {
     const settings = inputs.preparation?.()
@@ -446,9 +443,8 @@ export function create_trajectory_session(
   $effect(() => {
     const run = inputs.run()
     const frame_idx = inputs.index()
-    const frame_source = load_frames ? run : undefined
     void request_key
-    untrack(() => request_frame(frame_source, frame_idx))
+    untrack(() => request_frame(run, frame_idx))
   })
 
   let current_frame = $derived.by((): NumericFrame | null => {
@@ -469,9 +465,7 @@ export function create_trajectory_session(
         : null
     },
   )
-  let scene_frame = $derived(
-    load_frames ? (loaded?.run === inputs.run() ? loaded : preview_frame) : null,
-  )
+  let scene_frame = $derived(loaded?.run === inputs.run() ? loaded : preview_frame)
   let displayed_frame = $derived.by(() => {
     if (!scene_frame) return null
     const frame = frame_view.update(scene_frame.frame)
@@ -509,7 +503,7 @@ export function create_trajectory_session(
     signal.throwIfAborted()
     const run = inputs.run()
     if (frame_failure) return Promise.reject(frame_failure)
-    if (disposed || !load_frames || !run || idx !== inputs.index())
+    if (disposed || !run || idx !== inputs.index())
       return Promise.reject(new Error(`Frame ${idx} is not the requested display frame`))
     if (
       current_frame &&
@@ -598,12 +592,13 @@ export function create_trajectory_session(
     fps_range: inputs.fps_range,
     should_auto_play: () => inputs.should_auto_play() && inputs.run() !== undefined,
     can_advance: () =>
-      !load_frames ||
-      (current_frame !== null && (!inputs.wait_for_render?.() || rendered === scene_frame)),
+      inputs.can_advance?.() !== false &&
+      current_frame !== null &&
+      (!inputs.wait_for_render?.() || rendered === scene_frame),
     on_play: () => {
       inputs.on_play?.()
       const run = inputs.run()
-      if (!run || !load_frames) return
+      if (!run) return
       if (current_frame) schedule_prefetch(run, inputs.index())
       else if (!loading) request_frame(run, inputs.index())
     },

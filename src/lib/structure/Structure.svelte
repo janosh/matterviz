@@ -57,6 +57,7 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
+  import type { AtomColorField } from './atom-color-field'
   import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
@@ -138,6 +139,9 @@
     height = $bindable(0),
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
+    atom_color_field,
+    volume_color_field,
+    volume_opacity = 0.35,
 
     source,
     allow_file_drop = true,
@@ -231,6 +235,9 @@
     error_msg?: string
     dragover?: boolean
     prediction?: StructureToolPrediction
+    atom_color_field?: AtomColorField
+    volume_color_field?: AtomColorField
+    volume_opacity?: number
     trajectory_position_stream?: TrajectoryPositionStream | null
     trajectory_line_end_frame?: number
     defer_expensive_geometry?: boolean
@@ -776,6 +783,9 @@
     reference_structure,
     scene_props: {
       ...scene_props,
+      atom_color_field,
+      volume_color_field,
+      volume_opacity,
       render_token,
       on_rendered,
       show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),

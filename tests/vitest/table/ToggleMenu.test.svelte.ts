@@ -294,7 +294,7 @@ describe(`ToggleMenu`, () => {
       [31, 3], // capped at three columns
     ])(`lays out %i items in %i columns`, (count, expected) => {
       mount_menu(make_many_columns(count))
-      expect(doc_query(`.column-menu`).style.gridTemplateColumns).toBe(
+      expect(doc_query(`.column-items`).style.gridTemplateColumns).toBe(
         `repeat(${expected}, max-content)`,
       )
       expect(document.querySelector(`input[aria-label="Filter columns"]`) !== null).toBe(

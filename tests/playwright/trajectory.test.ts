@@ -500,6 +500,221 @@ test.describe(`Trajectory Component`, () => {
     await expect(play_button).toHaveText(`▶`)
   })
 
+  test(
+    `hotspot settings fit the pane and explain missing units`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      const trajectory_xyz = [0, 1]
+        .map(
+          (step) =>
+            `2\nProperties=species:S:1:pos:R:3:mass:R:1:velocity:R:3 step=${step}\nSi 0 0 0 28 1 0 0\nSi 1 0 0 28 0 1 0\n`,
+        )
+        .join(``)
+      await drop_file(page, trajectory_viewer, trajectory_xyz, `hotspot-settings.xyz`)
+      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `1`)
+      await controls.locator(`.analysis-button`).click()
+      await trajectory_viewer
+        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
+        .click()
+      const pane = trajectory_viewer.locator(`.hotspots-pane`)
+      const calculate = pane.getByRole(`button`, { name: `Calculate hotspots`, exact: true })
+      await expect(pane.getByText(`Inferred from recorded masses`)).toBeVisible()
+      await expect(calculate).toBeDisabled()
+      await expect(calculate).toHaveAccessibleDescription(/Select velocity units/)
+      await expect(pane.getByRole(`heading`, { name: `Thermal hotspots` })).toHaveCSS(
+        `margin-top`,
+        `0px`,
+      )
+      for (const width of [1200, 390]) {
+        await page.setViewportSize({ width, height: 844 })
+        await expect(async () => {
+          const overflow = await pane.locator(`.pane-content`).evaluate((content) => {
+            const bounds = content.getBoundingClientRect()
+            const style = getComputedStyle(content)
+            const left = bounds.left + Number(style.paddingLeft.slice(0, -2))
+            const right = bounds.right - Number(style.paddingRight.slice(0, -2))
+            return [...content.querySelectorAll(`input, select, .hotspot-controls label`)]
+              .filter((element) => {
+                const rect = element.getBoundingClientRect()
+                const label = element.closest(`label`)?.getBoundingClientRect()
+                return (
+                  rect.left < left - 1 ||
+                  rect.right > right + 1 ||
+                  (label && (rect.left < label.left - 1 || rect.right > label.right + 1))
+                )
+              })
+              .map((element) => element.outerHTML)
+          })
+          expect(overflow).toEqual([])
+        }).toPass()
+        if (width === 1200) {
+          for (const [left, right] of [
+            [`Mass units`, `Motion`],
+            [`Frame stride`, `Grid resolution`],
+            [`Grid frame`, `Mobile-atom selection property`],
+            [`Dimensions`, `Degrees of freedom per atom`],
+          ]) {
+            const left_bounds = await require_bbox(pane.getByLabel(new RegExp(`^${left}`)))
+            const right_bounds = await require_bbox(pane.getByLabel(new RegExp(`^${right}`)))
+            expect(Math.abs(left_bounds.y - right_bounds.y)).toBeLessThan(1)
+            expect(right_bounds.x).toBeGreaterThan(left_bounds.x)
+          }
+        }
+        await calculate.scrollIntoViewIfNeeded()
+        await expect(calculate).toBeInViewport()
+        await expect(pane.getByRole(`status`)).toBeInViewport()
+        const button_bounds = await require_bbox(calculate)
+        const pane_bounds = await require_bbox(pane)
+        expect(button_bounds.width).toBeLessThan(pane_bounds.width * 0.75)
+      }
+      await pane.getByLabel(/^Velocity units/).selectOption(`A/fs`)
+      await expect(calculate).toBeEnabled()
+      await expect(calculate).not.toHaveAttribute(`aria-describedby`)
+    },
+  )
+
+  for (const [mode, fullscreen] of [
+    [`Structure-only`, false],
+    [`Structure + Scatter`, true],
+  ] as const) {
+    test(
+      `floating panes cover embedded controls in ${mode}`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        await page.setViewportSize({ width: 1000, height: 900 })
+        await select_display_mode(trajectory_viewer, mode)
+        if (fullscreen) {
+          await controls.locator(`.fullscreen-button`).click()
+          await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
+            `aria-pressed`,
+            `true`,
+          )
+        }
+        const structure = trajectory_viewer.locator(`.structure`)
+        const toolbar = structure.locator(`.control-buttons`)
+        for (const label of [
+          `Thermal hotspots`,
+          `Mean squared displacement`,
+          `Data inspector`,
+        ]) {
+          await controls.locator(`.analysis-button`).click()
+          await controls.getByRole(`button`, { name: label, exact: true }).click()
+          const pane = controls.locator(`.viewer-pane-open`)
+          await expect(pane).toBeVisible()
+          // Focus keeps the underlying hover toolbar visible even though the pane covers it.
+          await structure.focus()
+          await expect(toolbar).toHaveCSS(`opacity`, `1`)
+          await expect(async () => {
+            const covered = await pane.evaluate((element) => {
+              const rect = element.getBoundingClientRect()
+              const viewer = element.closest(`.trajectory`)
+              if (!viewer) throw new Error(`Missing trajectory viewer`)
+              return [
+                ...viewer.querySelectorAll(`.structure .control-buttons button`),
+              ].flatMap((button) => {
+                const button_bounds = button.getBoundingClientRect()
+                const coord_x = button_bounds.x + button_bounds.width / 2
+                const coord_y = button_bounds.y + button_bounds.height / 2
+                if (
+                  !button_bounds.width ||
+                  !button_bounds.height ||
+                  coord_x <= rect.left ||
+                  coord_x >= rect.right ||
+                  coord_y <= rect.top ||
+                  coord_y >= rect.bottom
+                )
+                  return []
+                return [element.contains(document.elementFromPoint(coord_x, coord_y))]
+              })
+            })
+            expect(covered.length).toBeGreaterThan(0)
+            expect(covered.every(Boolean)).toBe(true)
+          }).toPass({ timeout: 5000 })
+        }
+      },
+    )
+  }
+
+  test(
+    `hotspot coverage preserves sampled gaps and leaves the slider usable`,
+    { tag: `@single-viewer` },
+    async ({ page }) => {
+      const content = [0, 1, 2, 3]
+        .map(
+          (step) =>
+            `2\nLattice="4 0 0 0 4 0 0 0 4" Properties=species:S:1:pos:R:3:velocities:R:3 step=${step}\nSi 1 1 1 ${step + 1} 0 0\nSi 2 2 2 0 1 0\n`,
+        )
+        .join(``)
+      await drop_file(page, trajectory_viewer, content, `hotspots.xyz`)
+      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `3`)
+      await controls.locator(`.step-input`).fill(`1`)
+      await controls.locator(`.step-input`).press(`Enter`)
+      await controls.locator(`.analysis-button`).click()
+      await trajectory_viewer
+        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
+        .click()
+      const pane = trajectory_viewer.locator(`.hotspots-pane`)
+      await pane.getByLabel(/^Velocity units/).selectOption(`A/ps`)
+      await pane.getByLabel(/^Masses/).selectOption(`standard`)
+      await pane.getByLabel(/^Frame stride/).fill(`2`)
+      // Heatmap results must keep the normal atom canvas and its camera mounted.
+      const atom_canvas = trajectory_viewer.locator(`.structure canvas`).first()
+      await expect(atom_canvas).toBeVisible()
+      await atom_canvas.evaluate((element) =>
+        element.setAttribute(`data-test-mounted`, `true`),
+      )
+      await pane.getByRole(`button`, { name: `Calculate hotspots`, exact: true }).click()
+      await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
+      const coverage = controls.locator(`.hotspot-coverage`)
+      await expect(coverage).toHaveAttribute(
+        `aria-label`,
+        `Hotspot analysis: 2/2 sampled frames complete`,
+      )
+      await expect(coverage.locator(`pattern`)).toHaveAttribute(`width`, `2`)
+      await expect(coverage.locator(`.completed`)).toHaveAttribute(`width`, `3`)
+      await expect(coverage.locator(`line`)).toHaveAttribute(`x1`, `1`)
+      await expect(coverage.locator(`.active`)).toHaveCount(0)
+      const slider = controls.locator(`.step-slider`)
+      expect(
+        await slider.evaluate((element) => Number(getComputedStyle(element).zIndex)),
+      ).toBeGreaterThan(
+        await coverage.evaluate((element) => Number(getComputedStyle(element).zIndex)),
+      )
+      const bounds = await require_bbox(slider, `frame slider`)
+      await slider.click({ position: { x: bounds.width - 2, y: bounds.height - 2 } })
+      await expect(controls.locator(`.step-input`)).toHaveValue(`3`)
+      await expect(trajectory_viewer.locator(`.hotspot-overlay`)).toHaveCount(0)
+      await controls.getByRole(`button`, { name: `Play`, exact: true }).click()
+      await expect(controls.locator(`.step-input`)).not.toHaveValue(`3`)
+      await controls.getByRole(`button`, { name: `Pause`, exact: true }).click()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      const heat_toggle = pane.getByLabel(`Heatmap on atoms`)
+      await expect(heat_toggle).toBeVisible()
+      await expect(heat_toggle).toBeChecked()
+      await heat_toggle.uncheck()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await heat_toggle.check()
+      await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
+      await pane.getByLabel(`Volume cloud`, { exact: true }).check()
+      const opacity = pane.getByLabel(/^Cloud opacity/).locator(`..`)
+      const base_color = pane.getByRole(`group`, { name: `Cloud base color`, exact: true })
+      const hot_color = pane.getByRole(`group`, { name: `Hotspot color`, exact: true })
+      const opacity_bounds = await require_bbox(opacity)
+      for (const color of [base_color, hot_color]) {
+        const color_bounds = await require_bbox(color)
+        expect(Math.abs(color_bounds.y - opacity_bounds.y)).toBeLessThan(1)
+      }
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect
+        .poll(() =>
+          pane
+            .locator(`.pane-content`)
+            .evaluate((element) => element.scrollWidth - element.clientWidth),
+        )
+        .toBeLessThanOrEqual(0)
+    },
+  )
+
   test(`spectroscopy settings remain usable after a failed calculation`, async ({ page }) => {
     const content = Array.from(
       { length: 8 },
@@ -922,20 +1137,32 @@ test.describe(`Trajectory Component`, () => {
       },
     )
 
-    test(`display mode menu updates the visible pane`, async ({ page }) => {
-      const trajectory = page.locator(`#auto-layout`)
+    test(`display mode menu overrides visually flat automatic plots`, async ({ page }) => {
+      const trajectory = page.locator(`#empty-state`)
       const content_area = trajectory.locator(`.content-area`)
       const display_button = trajectory.locator(
         `.view-mode-dropdown-wrapper .view-mode-button`,
       )
-      await expect(trajectory.locator(`.trajectory-controls`)).toBeVisible()
-      await expect(display_button).toBeVisible()
+      await expect(trajectory.locator(`.empty-state`)).toBeVisible()
+      const content = [0, 1, 2]
+        .map(
+          (step) =>
+            `2\nProperties=species:S:1:pos:R:3 energy=${-1_750_000 + step} kinetic_energy=${9500 + step} total_energy=${-1_740_500 + 2 * step}\nSi 0 0 0\nSi 1 1 ${1 + step / 10}\n`,
+        )
+        .join(``)
+      await drop_file(page, trajectory, content, `flat-energy-traces.xyz`)
+      await expect(content_area).toHaveClass(/show-structure-only/)
+      await expect(display_button).toHaveAttribute(`aria-label`, `Automatic: Structure-only`)
+      await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)
       await select_display_mode(trajectory, `Scatter-only`)
       await expect(content_area).toHaveClass(/show-plot-only/)
       await select_display_mode(trajectory, `Structure + Scatter`)
       await expect(content_area).toHaveClass(/show-both/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await select_display_mode(trajectory, `Automatic`)
+      await expect(content_area).toHaveClass(/show-structure-only/)
     })
 
     test(`mobile viewport forces vertical content layout for small screens`, async ({

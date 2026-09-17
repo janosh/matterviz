@@ -485,31 +485,36 @@ export function with_visible_properties(
   })
 }
 
-// A plot of one frame, or of nothing but flat lines, says nothing: hide it
-export function should_hide_plot(
-  frame_count: number,
-  plot_series: DataSeries[],
-  tolerance = 1e-10,
-): boolean {
+// Prefer structure-only when every visible trace looks flat at the default axis scales.
+// 0.5% of an axis span is about two pixels on a 400px plot. This is a display heuristic,
+// not a scientific tolerance: a tiny signal filling its own axis still earns a plot.
+export function should_hide_plot(frame_count: number, plot_series: DataSeries[]): boolean {
   if (frame_count <= 1 || plot_series.length === 0) return true
 
   const visible_series = plot_series.filter((srs) => srs.visible)
-  if (visible_series.length === 0) return false // Show empty plot with legend
+  if (visible_series.length === 0) return false // Keep the legend available to restore series
 
-  // Hide when every visible series is constant (ignoring NaN) or has nothing to plot
-  return visible_series.every((srs) => {
-    let first: number | undefined
-    for (const value of srs.y) {
-      if (isNaN(value)) continue
-      if (first === undefined) first = value
-      else if (
-        !Number.isFinite(first) ||
-        !Number.isFinite(value) ||
-        !(Math.abs(value - first) <= tolerance)
-      )
-        return false
+  const scale_types = generate_axis_scale_types(plot_series)
+  return ([`y`, `y2`] as const).every((axis) => {
+    let axis_min = Infinity
+    let axis_max = -Infinity
+    let largest_span = 0
+    for (const series of visible_series) {
+      if ((series.y_axis ?? `y`) !== axis) continue
+      let series_min = Infinity
+      let series_max = -Infinity
+      for (let idx = 0; idx < series.y.length; idx++) {
+        const value = series.y[idx]
+        if (!Number.isFinite(value) || !Number.isFinite(series.x[idx])) continue
+        const scaled = scale_types[axis] === `log` ? Math.log10(value) : value
+        series_min = Math.min(series_min, scaled)
+        series_max = Math.max(series_max, scaled)
+      }
+      axis_min = Math.min(axis_min, series_min)
+      axis_max = Math.max(axis_max, series_max)
+      largest_span = Math.max(largest_span, series_max - series_min)
     }
-    return true
+    return largest_span === 0 || largest_span < 0.005 * (axis_max - axis_min)
   })
 }
 

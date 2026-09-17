@@ -466,37 +466,46 @@ describe(`should_hide_plot`, () => {
     { name: `hidden varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0], { visible: false })], expected: false },
     { name: `single-frame trajectory`, frames: [{ energy: -10 }], series: [create_series([1.0, 2.0, 3.0])], expected: true },
     { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
-    { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: false },
+    { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: true },
     { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
     { name: `leading NaN values`, frames: multi, series: [create_series([NaN, 1, 2])], expected: false },
     { name: `only one Infinity sample`, frames: multi, series: [create_series([NaN, Infinity, NaN])], expected: true },
-    { name: `repeated Infinity samples`, frames: multi, series: [create_series([Infinity, Infinity, NaN])], expected: false },
-    { name: `near-constant under a loose tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 1e10, expected: true },
-    { name: `near-constant under zero tolerance`, frames: multi, series: [create_series([1.0, 1.0000001, 1.0])], tolerance: 0, expected: false },
-  ])(`$name → hide=$expected`, ({ frames, series, tolerance, expected }) => {
-    expect(should_hide_plot(frames.length, series, tolerance)).toBe(expected)
+    { name: `repeated Infinity samples`, frames: multi, series: [create_series([Infinity, Infinity, NaN])], expected: true },
+    { name: `tiny variation on its own axis`, frames: multi, series: [create_series([1e-20, 2e-20, 3e-20])], expected: false },
+    { name: `large offset on its own axis`, frames: multi, series: [create_series([-1e6, -1e6 + 1, -1e6])], expected: false },
+    { name: `energy offsets dwarf variations`, frames: multi, series: [create_series([-1_750_000, -1_749_999, -1_750_001]), create_series([9500, 9501, 9499])], expected: true },
+    { name: `meaningful second axis`, frames: multi, series: [create_series([-1e6, -1e6, -1e6]), create_series([4, 4.1, 4.2], { y_axis: `y2` })], expected: false },
+    { name: `hidden offsets do not flatten visible curves`, frames: multi, series: [create_series([-1e6, -1e6, -1e6], { visible: false }), create_series([4, 4.1, 4.2])], expected: false },
+    { name: `invalid x values cannot show variation`, frames: multi, series: [{ ...create_series([1, 2, 3]), x: [NaN, 1, Infinity] }], expected: true },
+    { name: `flat second axis`, frames: multi, series: [create_series([1, 1]), create_series([2, 2], { y_axis: `y2` })], expected: true },
+    { name: `logarithmic variation`, frames: multi, series: [create_series([1e-8, 1e-6, 1e-4], { axis_group: `eV (SCF)` }), create_series([1, 1, 1], { axis_group: `eV (SCF)` })], expected: false },
+  ])(`$name → hide=$expected`, ({ frames, series, expected }) => {
+    expect(should_hide_plot(frames.length, series)).toBe(expected)
   })
 
-  it.each([Infinity, -Infinity])(
-    `treats %s as varying in either order, even with infinite tolerance`,
-    (value) => {
-      for (const values of [
-        [value, 1],
-        [1, value],
-      ]) {
-        expect(should_hide_plot(2, [create_series(values)], Infinity)).toBe(false)
+  it.each([0, 0.004, 0.005, 0.006])(
+    `compares a %s axis fraction independently of units and series order`,
+    (fraction) => {
+      for (const scale of [1e-12, 1, 1e12]) {
+        const series = [create_series([0, fraction * scale]), create_series([scale, scale])]
+        expect(should_hide_plot(2, series)).toBe(fraction < 0.005)
+        expect(should_hide_plot(2, series.toReversed())).toBe(fraction < 0.005)
       }
     },
   )
 
-  it(`stops reading a large series once its first varying pair settles visibility`, () => {
-    const series = create_series([1, 2, 3])
-    Object.defineProperty(series.y, 2, {
-      get: () => {
-        throw new Error(`Visibility must not scan after a varying pair`)
-      },
-    })
-    expect(should_hide_plot(3, [series])).toBe(false)
+  it(`keeps energy changes visible after removing each series' initial offset`, () => {
+    const rows = create_rows(
+      [0, 1, 2].map((idx) => ({
+        energy: -1_750_000 + idx,
+        kinetic_energy: 9500 + idx,
+        total_energy: -1_740_500 + 2 * idx,
+      })),
+    )
+    expect(should_hide_plot(3, generate_plot_series(rows))).toBe(true)
+    expect(should_hide_plot(3, generate_plot_series(rows, { relative_energy: true }))).toBe(
+      false,
+    )
   })
 })
 

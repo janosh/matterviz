@@ -32,7 +32,7 @@ const load_page = async (page: Page, frames: number, atoms: number) => {
 }
 
 test.describe(`Trajectory performance`, () => {
-  test(`keeps 333k atoms in the structure viewer and confines points to hotspot analysis @source`, async ({
+  test(`overlays hotspots on all 333k atom spheres without replacing the scene @source`, async ({
     page,
     errors,
   }) => {
@@ -106,7 +106,7 @@ test.describe(`Trajectory performance`, () => {
         timeout: 30_000,
       })
       const viewer = page.locator(`#loaded-trajectory`)
-      const expect_3d_pixels = async (selector: string): Promise<void> => {
+      const expect_3d_pixels = async (selector: string, heat = false): Promise<void> => {
         const canvas = viewer.locator(`${selector} canvas`)
         await canvas.scrollIntoViewIfNeeded()
         await page.mouse.move(0, 0)
@@ -123,21 +123,27 @@ test.describe(`Trajectory performance`, () => {
             async () => {
               const pixels = await decode_canvas_png(page, await page.screenshot({ clip }))
               try {
-                return await pixels.evaluate(({ data }) => {
+                return await pixels.evaluate(({ data }, warm_colors) => {
                   let colored = 0
                   for (let idx = 0; idx < data.length; idx += 4) {
                     const [red, green, blue] = [data[idx], data[idx + 1], data[idx + 2]]
-                    if (Math.max(red, green, blue) - Math.min(red, green, blue) > 40) colored++
+                    if (
+                      warm_colors
+                        ? red - blue > 40
+                        : Math.max(red, green, blue) - Math.min(red, green, blue) > 40
+                    )
+                      colored++
                   }
                   return colored
-                })
+                }, heat)
               } finally {
                 await pixels.dispose()
               }
             },
             { timeout: IS_CI ? 300_000 : 30_000 },
           )
-          .toBeGreaterThan(1000)
+          // Only the exposed hot face contributes warm pixels; the rest stays cooler.
+          .toBeGreaterThan(heat ? 100 : 1000)
       }
       await viewer.evaluate((target) => {
         const transfer = new DataTransfer()
@@ -160,8 +166,33 @@ test.describe(`Trajectory performance`, () => {
         })
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
       await expect_3d_pixels(`.structure`)
-      await expect(viewer.locator(`.particle-view`)).toHaveCount(0)
       await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
+      const atom_canvas = viewer.locator(`.structure canvas`)
+      await atom_canvas.evaluate((element) =>
+        element.setAttribute(`data-test-mounted`, `true`),
+      )
+      const scene_snapshot = () =>
+        viewer.evaluate(async (element) => {
+          const export_path = `/src/lib/io/export.ts`
+          const atoms_path = `/src/lib/structure/atom-instances.ts`
+          const { scene_registry } = (await import(export_path)) as typeof IoExport
+          const { AtomInstances } = (await import(atoms_path)) as typeof AtomModule
+          const canvas = element.querySelector<HTMLCanvasElement>(`.structure canvas`)
+          const view = canvas && scene_registry.get(canvas)
+          if (!view) throw new Error(`Missing structure scene`)
+          const atoms: string[] = []
+          view.scene.traverseVisible((object) => {
+            if (object instanceof AtomInstances) atoms.push(object.uuid)
+            if (`isPoints` in object) throw new Error(`Heatmap replaced atoms with points`)
+          })
+          return {
+            atoms,
+            camera: view.camera.uuid,
+            position: view.camera.position.toArray(),
+            rotation: view.camera.quaternion.toArray(),
+          }
+        })
+      const original_scene = await scene_snapshot()
       await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
       await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
       const pane = viewer.locator(`.hotspots-pane`)
@@ -172,60 +203,73 @@ test.describe(`Trajectory performance`, () => {
       await pane.getByRole(`button`, { name: `Calculate hotspots` }).click()
       await expect(pane.locator(`.hotspot-slice canvas`)).toBeVisible({ timeout: 30_000 })
       await expect(pane.locator(`.hotspot-slice`)).toContainText(`eV/atom`)
-      await expect(viewer.getByText(`${n_atoms} atoms`, { exact: true })).toBeVisible()
-      await expect_3d_pixels(`.particle-view`)
+      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+      await expect.poll(atom_count).toBe(n_atoms)
+      expect(await scene_snapshot()).toEqual(original_scene)
+      await expect_3d_pixels(`.structure`, true)
+      const cloud_id = () =>
+        atom_canvas.evaluate(async (canvas) => {
+          if (!(canvas instanceof HTMLCanvasElement)) throw new Error(`Expected atom canvas`)
+          const export_path = `/src/lib/io/export.ts`
+          const { scene_registry } = (await import(export_path)) as typeof IoExport
+          return scene_registry.get(canvas)?.scene.getObjectByName(`ColorFieldVolume`)?.uuid
+        })
+      expect(await cloud_id()).toBeUndefined()
+      await pane.getByLabel(`Volume cloud`, { exact: true }).check()
+      await expect.poll(cloud_id).toEqual(expect.any(String))
+      const cloud_mesh = await cloud_id()
+      await pane.getByLabel(`Cloud opacity`).fill(`0.8`)
+      await pane.getByRole(`textbox`, { name: `Cloud base color hex` }).fill(`#ff0000`)
+      await pane.getByRole(`textbox`, { name: `Hotspot color hex` }).fill(`#ff0000`)
+      await viewer.getByLabel(`Heatmap on atoms`).uncheck()
+      await expect_3d_pixels(`.structure`, true)
+      expect(await cloud_id()).toBe(cloud_mesh)
+      expect(await scene_snapshot()).toEqual(original_scene)
+      await pane.getByRole(`textbox`, { name: `Hotspot color hex` }).fill(`#00ff00`)
+      expect(await cloud_id()).toBe(cloud_mesh)
+      await expect(pane).not.toContainText(`Settings changed`)
+      await viewer.getByLabel(`Heatmap on atoms`).check()
       await pane.getByLabel(`Hotspot threshold`).fill(`2`)
       await expect(pane).not.toContainText(`Settings changed`)
-      await expect
-        .poll(() =>
-          page.evaluate(async (depth) => {
-            const module_path = `/src/lib/io/export.ts`
-            const { scene_registry } = (await import(module_path)) as typeof IoExport
-            const canvas = document.querySelector<HTMLCanvasElement>(`.particle-view canvas`)
-            const view = canvas && scene_registry.get(canvas)
-            if (!view) return Infinity
-            const extent: number[] = []
-            // The renderer subtracts the first atom's [1.5, 1.5, 1.5] origin.
-            for (const coord_x of [0, 297])
-              for (const coord_y of [0, 297])
-                for (const coord_z of [0, 3 * (depth - 1)]) {
-                  const projected = view.camera.position
-                    .clone()
-                    .set(coord_x, coord_y, coord_z)
-                    .project(view.camera)
-                  extent.push(Math.abs(projected.x), Math.abs(projected.y))
-                }
-            return Math.max(...extent)
-          }, cell_depth),
-        )
-        .toBeLessThan(0.95)
       await page.setViewportSize({ width: 390, height: 900 })
       await expect(viewer).toHaveClass(/vertical/)
       await expect(viewer).toHaveCSS(`height`, `500px`)
-      const [particles, plot] = await Promise.all(
-        [`.particle-view`, `.scatter`].map((selector) =>
-          require_bbox(viewer.locator(selector)),
-        ),
+      const [structure, plot] = await Promise.all(
+        [`.structure`, `.scatter`].map((selector) => require_bbox(viewer.locator(selector))),
       )
-      // Both panes must fit their equal grid rows; a particle min-height used to overlap the plot.
-      expect(Math.abs(particles.height - plot.height)).toBeLessThan(1)
-      expect(particles.y + particles.height).toBeLessThanOrEqual(plot.y + 1)
+      // Both panes must fit their equal grid rows while heatmap analysis is open.
+      expect(Math.abs(structure.height - plot.height)).toBeLessThan(1)
+      expect(structure.y + structure.height).toBeLessThanOrEqual(plot.y + 1)
       await page.setViewportSize({ width: 1400, height: 1000 })
       await viewer.locator(`.step-input`).fill(`1`)
       await viewer.locator(`.step-input`).press(`Enter`)
-      await expect(viewer.getByText(`${n_atoms} atoms`, { exact: true })).toBeVisible()
+      await expect.poll(atom_count).toBe(n_atoms)
       await viewer.locator(`.trajectory-export-toggle`).click()
-      await expect(viewer.locator(`.export-pane`)).toBeVisible()
-      await expect(viewer.locator(`.particle-view`)).toBeVisible()
-      await viewer.getByRole(`button`, { name: `Plan camera flight` }).click()
+      await expect(viewer.locator(`.export-pane.pane-open`)).toBeVisible()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+      await viewer
+        .locator(`.export-pane.pane-open`)
+        .getByRole(`button`, { name: `Plan camera flight` })
+        .click()
       await expect(viewer.locator(`.trajectory-flight-pane`)).toBeVisible()
-      await expect(viewer.locator(`.particle-view`)).toBeVisible()
-      await viewer.getByRole(`button`, { name: `Export options →` }).click()
-      await expect(viewer.locator(`.export-pane`)).toBeVisible()
-      await expect(viewer.locator(`.particle-view`)).toBeVisible()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+      await viewer
+        .locator(`.trajectory-flight-pane`)
+        .getByRole(`button`, { name: `Export options →` })
+        .click()
+      await expect(viewer.locator(`.export-pane.pane-open`)).toBeVisible()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
       await page.keyboard.press(`Escape`)
-      await expect(viewer.locator(`.particle-view`)).toHaveCount(0)
+      await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
+      await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
+      await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
+      await pane.getByLabel(`Heatmap on atoms`).uncheck()
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
+      expect(await cloud_id()).toBe(cloud_mesh)
       await expect_3d_pixels(`.structure`)
       expect(errors).toEqual({ console: [], page: [] })
     } finally {

@@ -22,13 +22,14 @@ import type {
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 import { atom_batch_transfers, type AtomBatch, type AtomReadOptions } from '../atom-batches'
-import type { HotspotOptions, HotspotRequest, HotspotResult } from '../hotspots'
+import type { HotspotProgress, HotspotRequest, HotspotResult } from '../hotspots'
 
 type RunPortMethod =
   | `read_frame`
   | `prepare_frame`
   | `read_atoms`
   | `compute_hotspots`
+  | `hotspot_ack`
   | `collect_positions`
   | `abort`
   | `dispose`
@@ -41,10 +42,14 @@ interface RunPortRequest {
 
 type RunPortReply =
   | { id: number; result?: unknown; error?: string; progress?: ParseProgress }
+  | { id: number; hotspot: { kind: `preview` | `partial`; result: HotspotResult } }
   // Unsolicited: progressive property rows from the served run
   | { properties: TrajectoryMetadata[]; complete: boolean }
 
 const abort_error = (): DOMException => new DOMException(`Request aborted`, `AbortError`)
+const hotspot_transfers = ({ energy, population, dof, occupied_frames }: HotspotResult) =>
+  [energy, population, dof, occupied_frames].map(({ buffer }) => buffer)
+
 // Worker side. Returns the port to transfer to the client; the run is disposed when the
 // client sends `dispose` or the port becomes unusable.
 export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
@@ -52,6 +57,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   const { port1 } = channel
   let served: TrajectoryRun | null = run
   const controllers = new Map<number, AbortController>()
+  const hotspot_receipts = new Map<number, () => void>()
   let queue = Promise.resolve()
   let hotspot_queue = Promise.resolve()
   let hotspot_controller: AbortController | undefined
@@ -89,6 +95,7 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
     const { id: identifier, method, args } = event.data
     if (method === `dispose` || !served) return dispose()
     if (method === `abort`) return controllers.get(Number(args[0]))?.abort(abort_error())
+    if (method === `hotspot_ack`) return hotspot_receipts.get(identifier)?.()
     const controller = new AbortController()
     controllers.set(identifier, controller)
     const execute = async () => {
@@ -139,17 +146,38 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
           post({ id: identifier, result: batch }, atom_batch_transfers(batch))
         } else if (method === `compute_hotspots`) {
           if (!active.compute_hotspots) throw new Error(`Run cannot calculate hotspots`)
+          // Only one snapshot can be in flight, even when the viewer is busy or hidden.
+          const update = (
+            kind: `preview` | `partial`,
+            snapshot: HotspotResult,
+          ): Promise<void> => {
+            controller.signal.throwIfAborted()
+            return new Promise((resolve, reject) => {
+              const finish = (error?: DOMException): void => {
+                hotspot_receipts.delete(identifier)
+                controller.signal.removeEventListener(`abort`, abort)
+                if (error) reject(error)
+                else resolve()
+              }
+              const abort = () => finish(abort_error())
+              hotspot_receipts.set(identifier, finish)
+              controller.signal.addEventListener(`abort`, abort, { once: true })
+              post(
+                { id: identifier, hotspot: { kind, result: snapshot } },
+                hotspot_transfers(snapshot),
+              )
+            })
+          }
           const result = await active.compute_hotspots({
-            ...(args[0] as HotspotOptions),
+            ...(args[0] as HotspotRequest),
             signal: controller.signal,
             on_progress: (progress) => post({ id: identifier, progress }),
+            on_preview:
+              args[1] === true ? (snapshot) => update(`preview`, snapshot) : undefined,
+            on_partial:
+              args[2] === true ? (snapshot) => update(`partial`, snapshot) : undefined,
           })
-          post({ id: identifier, result }, [
-            result.energy.buffer,
-            result.population.buffer,
-            result.dof.buffer,
-            result.occupied_frames.buffer,
-          ])
+          post({ id: identifier, result }, hotspot_transfers(result))
         } else if (method === `collect_positions`) {
           if (!active.collect_positions) throw new Error(`Run cannot collect positions`)
           const stream = await active.collect_positions({
@@ -202,6 +230,10 @@ export const worker_run = (
   type Pending = {
     settle: (value?: unknown, error?: Error) => void
     on_progress?: (progress: ParseProgress) => void
+    on_hotspot?: (update: {
+      kind: `preview` | `partial`
+      result: HotspotResult
+    }) => void | Promise<void>
     cancel: (reason: Error) => void
   }
   const pending = new Map<number, Pending>()
@@ -240,15 +272,23 @@ export const worker_run = (
     }
     const request = pending.get(reply.id)
     if (!request) return
-    if (reply.progress) {
-      try {
-        request.on_progress?.(reply.progress)
-      } catch (error) {
-        request.cancel(to_error(error))
-      }
-      return
+    try {
+      if (`hotspot` in reply) {
+        void Promise.resolve(request.on_hotspot?.(reply.hotspot))
+          .then(() => {
+            if (pending.has(reply.id))
+              port.postMessage({
+                id: reply.id,
+                method: `hotspot_ack`,
+                args: [],
+              } satisfies RunPortRequest)
+          })
+          .catch((error: unknown) => request.cancel(to_error(error)))
+      } else if (reply.progress) request.on_progress?.(reply.progress)
+      else request.settle(reply.result, reply.error ? new Error(reply.error) : undefined)
+    } catch (error) {
+      request.cancel(to_error(error))
     }
-    request.settle(reply.result, reply.error ? new Error(reply.error) : undefined)
   })
   port.addEventListener(`messageerror`, () =>
     dispose(new Error(`Worker-served trajectory reply failed to deserialize`)),
@@ -260,6 +300,7 @@ export const worker_run = (
     args: unknown[],
     signal?: AbortSignal,
     on_progress?: (progress: ParseProgress) => void,
+    on_hotspot?: Pending[`on_hotspot`],
   ): Promise<Result> => {
     if (disposed_reason) return Promise.reject(disposed_reason)
     if (signal?.aborted) return Promise.reject(to_error(signal.reason ?? abort_error()))
@@ -285,7 +326,7 @@ export const worker_run = (
         settle(undefined, reason)
       }
       const on_abort = (): void => cancel(to_error(signal?.reason ?? abort_error()))
-      pending.set(identifier, { settle, on_progress, cancel })
+      pending.set(identifier, { settle, on_progress, on_hotspot, cancel })
       signal?.addEventListener(`abort`, on_abort, { once: true })
       try {
         port.postMessage({ id: identifier, method, args } satisfies RunPortRequest)
@@ -300,8 +341,20 @@ export const worker_run = (
     ...(summary.has_read_atoms && {
       read_atoms: (options: AtomReadOptions, signal?: AbortSignal) =>
         rpc<AtomBatch>(`read_atoms`, [options], signal),
-      compute_hotspots: ({ signal, on_progress, ...options }: HotspotRequest) =>
-        rpc<HotspotResult>(`compute_hotspots`, [options], signal, on_progress),
+      compute_hotspots: ({
+        signal,
+        on_progress,
+        on_preview,
+        on_partial,
+        ...options
+      }: HotspotRequest) =>
+        rpc<HotspotResult>(
+          `compute_hotspots`,
+          [options, Boolean(on_preview), Boolean(on_partial)],
+          signal,
+          (progress) => on_progress?.(progress as HotspotProgress),
+          ({ kind, result }) => (kind === `preview` ? on_preview : on_partial)?.(result),
+        ),
     }),
     // Keep the snapshot unproxied when Svelte binds the run to reactive state.
     get preview() {

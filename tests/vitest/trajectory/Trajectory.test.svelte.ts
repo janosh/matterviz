@@ -6,6 +6,7 @@ import type {
   TrajectoryRun,
   TrajectoryXQuantity,
   TrajHandlerData,
+  HotspotRequest,
 } from '$lib/trajectory'
 import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
 import * as plotting from '$lib/trajectory/plotting'
@@ -24,6 +25,7 @@ import {
   mock_fullscreen,
   bind_props,
   doc_query,
+  set_select,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -145,7 +147,7 @@ const axis_labels = (target: ParentNode): string[] =>
   )
 
 describe(`display modes`, () => {
-  test(`large runs use complete structure frames until hotspot analysis is requested`, async () => {
+  test(`large runs use complete structure frames`, async () => {
     const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
     for (const frame of frames)
       for (const [idx, site] of frame.structure.sites.entries())
@@ -187,7 +189,6 @@ describe(`display modes`, () => {
     const target = mount_trajectory(props)
     await tick()
     expect(target.querySelector(`.structure`)).not.toBeNull()
-    expect(target.querySelector(`.particle-view`)).toBeNull()
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(0)
     props.structure_props = {
       scene_props: { show_polyhedra: `always`, vector_configs: { force: { visible: false } } },
@@ -216,7 +217,6 @@ describe(`display modes`, () => {
     ).toEqual([1, 2])
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(1)
     expect(read_atoms).not.toHaveBeenCalled()
-    expect(target.querySelector(`.particle-view`)).toBeNull()
   })
 
   test(`channel selection follows viewer controls, inspection and custom coloring`, async () => {
@@ -274,7 +274,13 @@ describe(`display modes`, () => {
   ] as const)(
     `%s renders structure=%s scatter=%s histogram=%s`,
     async (display_mode, structure, scatter, histogram) => {
-      const target = mount_trajectory(default_props({ display_mode }))
+      // Even a flat plot must remain available when explicitly requested.
+      const target = mount_trajectory(
+        default_props({
+          display_mode,
+          trajectory: make_run({ properties: () => ({ energy: -1 }) }),
+        }),
+      )
       await tick()
       expect(target.querySelector(`.structure`) !== null).toBe(structure)
       expect(target.querySelector(`.scatter`) !== null).toBe(scatter)
@@ -289,11 +295,96 @@ describe(`display modes`, () => {
   test.each([
     [`single-frame`, make_run({ steps: [0] })],
     [`constant-value`, make_run({ properties: () => ({ energy: -1 }) })],
-  ])(`hides the plot of a %s run`, async (_kind, trajectory) => {
-    const target = mount_trajectory(default_props({ trajectory }))
+    [`no-properties`, make_run({ properties: () => ({}) })],
+    [
+      `visually-flat`,
+      make_run({
+        properties: (idx) => ({
+          energy: -1_750_000 + idx,
+          kinetic_energy: 9500 + idx,
+          total_energy: -1_740_500 + 2 * idx,
+        }),
+      }),
+    ],
+  ])(`defaults to structure-only for a %s run`, async (_kind, trajectory) => {
+    const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
     await tick()
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
+    if (_kind === `constant-value` || _kind === `visually-flat`)
+      expect(
+        target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
+      ).toBe(`Automatic: Structure-only`)
+  })
+
+  test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
+    const visibility_check = vi.spyOn(plotting, `should_hide_plot`)
+    const flat_run = make_run({ properties: () => ({ energy: -1 }) })
+    const trajectory = {
+      ...flat_run,
+      get preview() {
+        return flat_run.preview
+      },
+      properties: new TrajectoryProperties(flat_run.properties.rows.slice(0, 1)),
+    }
+    const props = $state(default_props({ trajectory, display_mode: `auto` }))
+    const target = mount_trajectory(props)
+    await tick()
+    expect(target.querySelector(`.content-area`)?.classList.contains(`show-both`)).toBe(true)
+    expect(target.textContent).toContain(`Sampling trajectory plot data`)
+    trajectory.properties.push(flat_run.properties.rows.slice(1))
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    trajectory.properties.finish()
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+    const checks = visibility_check.mock.calls.length
+    props.current_step_idx = 1
+    await tick()
+    expect(visibility_check).toHaveBeenCalledTimes(checks)
+
+    props.trajectory = make_run()
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    props.trajectory = make_run({ properties: () => ({ energy: -1 }) })
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+
+    const display_button = target.querySelector<HTMLButtonElement>(
+      `${CONTROLS} .view-mode-button`,
+    )
+    display_button?.click()
+    await tick()
+    menu_option(target, `Structure + Scatter`).click()
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    props.trajectory = make_run({ properties: () => ({ energy: 5 }) })
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+
+    display_button?.click()
+    await tick()
+    menu_option(target, `Automatic`).click()
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+  })
+
+  test(`legend interactions keep the plot open when only flat traces remain`, async () => {
+    const props = $state(
+      default_props({
+        display_mode: `auto`,
+        trajectory: make_run({ properties: (idx) => ({ energy: -1, force_max: idx }) }),
+      }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    target
+      .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for Fmax"]`)
+      ?.click()
+    await tick()
+    expect(props.display_mode).toBe(`structure+scatter`)
+    expect(legend_state(target)).toEqual({ Energy: true, Fmax: false })
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
   })
 
   test(`view-mode menu switches display_mode and reports the change`, async () => {
@@ -385,6 +476,100 @@ describe(`controls`, () => {
     for (const [hidden, selector] of HIDEABLE_CONTROLS) {
       expect(target.querySelector(`${CONTROLS} ${selector}`), hidden).not.toBeNull()
     }
+  })
+
+  test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {
+    const run = trajectory_from_frames(
+      [0, 10, 20].map((step) => {
+        const frame = make_trajectory_frame(step, 3)
+        for (const site of frame.structure.sites) site.properties.velocity = [1, 0, 0]
+        return frame
+      }),
+    )
+    if (!run.compute_hotspots) throw new Error(`Missing hotspot computation`)
+    const preview = await run.compute_hotspots({
+      start_frame: 1,
+      end_frame: 2,
+      mass_source: `standard`,
+      velocity_unit: `A/ps`,
+    })
+    let request: HotspotRequest | undefined
+    run.compute_hotspots = (options) => {
+      request = options
+      return new Promise((_resolve, reject) => {
+        options.signal?.addEventListener(`abort`, () => reject(new Error(`Cancelled`)), {
+          once: true,
+        })
+      })
+    }
+    const props = $state(
+      default_props({
+        trajectory: run,
+        active_pane: `hotspots`,
+        current_step_idx: 1,
+        display_mode: `structure+scatter`,
+      }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    const structure = target.querySelector(`.structure`)
+    expect(structure).not.toBeNull()
+    const pane = doc_query(`.hotspots-pane`)
+    for (const [label, value] of [
+      [`Velocity units`, `A/ps`],
+      [`Frame stride`, `2`],
+    ]) {
+      const input = [...pane.querySelectorAll(`label`)]
+        .find((node) => node.textContent?.startsWith(label))
+        ?.querySelector(`input, select`)
+      if (input instanceof HTMLSelectElement) set_select(input, value)
+      else if (input instanceof HTMLInputElement) {
+        input.value = value
+        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      } else throw new Error(`Missing ${label}`)
+    }
+    await tick()
+    const button = (text: string) =>
+      [...pane.querySelectorAll(`button`)].find((node) => node.textContent === text)
+    button(`Calculate hotspots`)?.click()
+    await tick()
+    expect(request?.preview_frame).toBe(1)
+    await request?.on_preview?.(preview)
+    await vi.waitFor(() => expect(pane.querySelector(`.hotspot-map-status`)).not.toBeNull())
+    const heat_status = pane.querySelector(`.hotspot-map-status`)
+    expect(target.querySelector(`.hotspot-overlay`)).toBeNull()
+    expect(pane.textContent).toContain(`Heatmap on atoms`)
+    expect(target.querySelector(`.structure`)).toBe(structure)
+    props.current_step_idx = 2
+    await tick()
+    expect(pane.querySelector(`.hotspot-map-status`)).toBe(heat_status)
+    expect(target.querySelector(`.structure`)).toBe(structure)
+    expect(heat_status?.textContent).toContain(`Frame 1 preview`)
+    request?.on_progress?.({
+      current: 1.8,
+      completed: 1,
+      total: 2,
+      stage: `Binning kinetic energy`,
+    })
+    await tick()
+    const coverage = target.querySelector(`.hotspot-coverage`)
+    const slider = target.querySelector(`.step-slider`)
+    if (!coverage || !slider) throw new Error(`Missing hotspot coverage or frame slider`)
+    expect(Number(getComputedStyle(slider).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(coverage).zIndex),
+    )
+    expect(coverage.getAttribute(`aria-label`)).toContain(`1/2 sampled frames complete`)
+    expect(coverage.querySelector(`pattern`)?.getAttribute(`width`)).toBe(`2`)
+    expect(coverage.querySelector(`.completed`)?.getAttribute(`width`)).toBe(`1`)
+    expect(coverage.querySelector(`.active`)?.getAttribute(`x1`)).toBe(`2`)
+    button(`Cancel`)?.click()
+    await tick()
+    expect(request?.signal?.aborted).toBe(true)
+    expect(coverage.querySelector(`.active`)).toBeNull()
+    expect(coverage.getAttribute(`aria-label`)).not.toContain(`calculating`)
+    props.trajectory = make_run()
+    await tick()
+    expect(target.querySelector(`.hotspot-coverage`)).toBeNull()
   })
 
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {

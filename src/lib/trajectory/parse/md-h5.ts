@@ -279,12 +279,24 @@ export const parse_md_h5_file = (
         for (let idx = 0; idx < values.length; idx++) values[idx] *= VELOCITY_FACTOR
       return values
     }
+    const batch_numbers = new Uint8Array(count)
+    const batch_masses = mass_source ? new Float64Array(count) : undefined
+    for (let idx = 0; idx < count; idx++) {
+      const atom_idx = start + idx * stride
+      batch_numbers[idx] = atomic_numbers[atom_idx]
+      if (batch_masses) {
+        const mass =
+          mass_source === `recorded`
+            ? atom_masses[atom_idx]
+            : element_by_symbol.get(elements[atom_idx])?.atomic_mass
+        if (mass === undefined || mass <= 0)
+          throw new Error(`${FORMAT} missing ${mass_source} mass for atom ${atom_idx}`)
+        batch_masses[idx] = mass
+      }
+    }
     return {
       positions: read_atomic(`positions`),
-      atomic_numbers: Uint8Array.from(
-        { length: count },
-        (_unused, idx) => atomic_numbers[start + idx * stride],
-      ),
+      atomic_numbers: batch_numbers,
       total_atoms: n_atoms,
       start,
       stride,
@@ -294,18 +306,7 @@ export const parse_md_h5_file = (
       origin: [0, 0, 0],
       pbc,
       ...(velocity_key && { velocities: read_atomic(`velocities`) }),
-      ...(mass_source && {
-        masses: Float64Array.from({ length: count }, (_unused, idx) => {
-          const atom_idx = start + idx * stride
-          const mass =
-            mass_source === `recorded`
-              ? atom_masses[atom_idx]
-              : element_by_symbol.get(elements[atom_idx])?.atomic_mass
-          if (mass === undefined || mass <= 0)
-            throw new Error(`${FORMAT} missing ${mass_source} mass for atom ${atom_idx}`)
-          return mass
-        }),
-      }),
+      ...(batch_masses && { masses: batch_masses }),
     }
   }
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {
@@ -429,6 +430,7 @@ export const parse_md_h5_file = (
       ensemble: string_value(attr(file, `ensemble`)),
       active_thermostat: string_value(attr(file, `active_thermostat`)),
       velocity_source_unit: `sqrt(eV/amu)`,
+      mass_unit: `amu`,
       velocity_to_A_per_fs: VELOCITY_FACTOR,
     },
     read_frame: load_frame,

@@ -198,6 +198,26 @@ test.describe(`StructureScene Component Tests`, () => {
       await wait_frames(page, 1)
       expect(await tooltip.isVisible()).toBe(true)
     }
+
+    // Container-relative typography must stay compact when the viewer fills the screen.
+    await expect(tooltip).toHaveCSS(`font-size`, `14px`)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    const viewer = page.locator(`#test-structure`)
+    const fullscreen_button = viewer.locator(`> section.control-buttons > .fullscreen-btn`)
+    await fullscreen_button.click()
+    await expect(viewer).toHaveCSS(`height`, `1080px`)
+    await hover_canvas_center(canvas)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveCSS(`font-size`, `14px`)
+    // The public CSS override remains available for intentional custom sizing.
+    await viewer.evaluate((element) =>
+      element.style.setProperty(`--canvas-tooltip-font-size`, `18px`),
+    )
+    await expect(tooltip).toHaveCSS(`font-size`, `18px`)
+    await viewer.evaluate((element) =>
+      element.style.removeProperty(`--canvas-tooltip-font-size`),
+    )
+    await fullscreen_button.click()
     await hover_canvas_corner(canvas)
     await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
 

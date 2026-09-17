@@ -463,7 +463,7 @@ describe(`writeback wiring`, () => {
     [`structure`, `display_mode`, `structure`, `slice`, `structure`],
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
-    [`trajectory`, `display_mode`, `structure+scatter`, `scatter`, `structure`],
+    [`trajectory`, `display_mode`, `auto`, `scatter`, `structure`],
     [`scatter_plot`, `controls_open`, false, true, false],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],

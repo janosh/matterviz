@@ -240,6 +240,7 @@ describe(`MD HDF5`, () => {
     expect(run.metadata).toMatchObject({
       schema: `md-trajectory-v1`,
       successful: true,
+      mass_unit: `amu`,
       committed_frames: 3,
     })
     const frame = await materialize_frame_result(run.read_frame(2))
@@ -305,6 +306,17 @@ describe(`MD HDF5`, () => {
       [1.03, 1.04, 1.05, 1.06, 1.07, 1.08].map((value) => value * VELOCITY_FACTOR),
     )
     expect(Array.from(batch.masses ?? [])).toEqual([72.6308, 28.085])
+    // Returned static columns belong to the caller; editing them must not poison later reads.
+    batch.atomic_numbers.fill(1)
+    batch.masses?.fill(1)
+    const repeated = await run.read_atoms({
+      frame_idx: 1,
+      start: 1,
+      count: 2,
+      mass_source: `recorded`,
+    })
+    expect(repeated.atomic_numbers).toEqual(Uint8Array.of(32, 14))
+    expect(repeated.masses).toEqual(Float64Array.of(72.6308, 28.085))
     if (!run.collect_positions) throw new Error(`missing collect_positions`)
     const stream = await run.collect_positions({
       start_frame: 1,

@@ -499,6 +499,7 @@ export const parse_reference_md_h5_file = (
       },
     )
   const trajectory_metadata = {
+    mass_unit: `amu`,
     molecule: molecule_name,
     replica_idx,
     global_id,

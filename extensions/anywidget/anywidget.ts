@@ -371,7 +371,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       }),
       // current_step_idx links widgets; display_mode changes from the view-mode menu.
       writeback_prop(`current_step_idx`, 0),
-      writeback_prop(`display_mode`, `structure+scatter`),
+      writeback_prop(`display_mode`, DEFAULTS.trajectory.display_mode),
       derived_prop(
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],

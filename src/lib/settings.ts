@@ -792,9 +792,10 @@ export const SETTINGS_CONFIG = define_settings({
       },
     }),
     display_mode: {
-      value: `structure+scatter` as const,
+      value: `auto` as const,
       description: `Visualization mode for trajectory data`,
       enum: {
+        auto: `Automatic (hide visually flat plots)`,
         'structure+scatter': `Structure + Scatter`,
         structure: `Structure`,
         scatter: `Scatter`,

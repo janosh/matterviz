@@ -116,11 +116,16 @@ describe(`trajectory helpers`, () => {
   // oxfmt-ignore
   it.each<[string, number, (view: DataView, offset: number, value: number) => void]>([
     [`float64`, 8, (view, offset, value) => view.setFloat64(offset, value, true)],
+    [`float32`, 4, (view, offset, value) => view.setFloat32(offset, value, true)],
+    [`int64`, 8, (view, offset, value) => view.setBigInt64(offset, BigInt(value), true)],
     [`int32`, 4, (view, offset, value) => view.setInt32(offset, value, true)],
-  ])(`reads a 2x2 %s ndarray that exactly fits its buffer`, (dtype, bytes_per_element, set_value) => {
+  ])(`reads 1D and 2D %s arrays with absolute and rebased offsets`, (dtype, bytes_per_element, set_value) => {
     const view = new DataView(new ArrayBuffer(4 * bytes_per_element))
     for (const idx of [0, 1, 2, 3]) set_value(view, idx * bytes_per_element, idx + 1)
     expect(read_ndarray_from_view(view, { ndarray: [[2, 2], dtype, 0] })).toEqual([[1, 2], [3, 4]])
+    expect(read_ndarray_from_view(view, { ndarray: [[4], dtype, 0] })).toEqual([[1, 2, 3, 4]])
+    expect(read_ndarray_from_view(view, { ndarray: [[2, 2], dtype, 48] }, 48)).toEqual([[1, 2], [3, 4]])
+    expect(() => read_ndarray_from_view(view, { ndarray: [[1, 2, 2], dtype, 0] })).toThrow(`Unsupported shape`)
     expect(() => read_ndarray_from_view(view, { ndarray: [[2, 3], dtype, 0] })).toThrow(
       /Out-of-bounds read/,
     )

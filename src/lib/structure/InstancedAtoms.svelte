@@ -2,6 +2,7 @@
   import { grow_capacity } from '$lib/math'
   // One draw call per visual class; instanceId maps pointer events back to atoms.
   import { AtomInstances, atom_sphere_segments, type InstancedAtom } from './atom-instances'
+  import { AtomFieldMaterial, type AtomColorField } from './atom-color-field'
   import { attribute, normalView, positionGeometry } from 'three/tsl'
   import { T, useTask, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
@@ -16,12 +17,14 @@
     atoms,
     sphere_segments = 20,
     ghost = false,
+    color_field,
     ...pointer_props
   }: {
     atoms: InstancedAtom[]
     sphere_segments?: number
     // edit-mode PBC image atoms: desaturated + translucent
     ghost?: boolean
+    color_field?: AtomColorField
     // threlte interactivity handlers (onpointerenter, onclick, ...) forwarded to the mesh
     [key: string]: unknown
   } = $props()
@@ -37,6 +40,13 @@
   material.positionNode = positionGeometry.mul(placement.w).add(placement.xyz)
   material.normalNode = normalView.mul(placement.w.sign())
   material.colorNode = attribute(`atomColor`, `vec3`)
+
+  let field_material: AtomFieldMaterial | undefined
+  $effect(() => {
+    if (field_material) field_material.update(color_field)
+    else if (color_field) field_material = new AtomFieldMaterial(material, color_field)
+    invalidate()
+  })
 
   let mesh = $state.raw<AtomInstances | null>(null)
   // Three's WebGPU geometry disposal also frees the mesh's instance attributes. Keep
@@ -73,6 +83,7 @@
     for (const geometry of detail_geometries.values()) geometry.dispose()
     detail_geometries.clear()
     material.dispose()
+    field_material?.texture.dispose()
   })
 
   const view_center = new Vector3()

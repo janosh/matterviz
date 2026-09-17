@@ -1,7 +1,7 @@
 // The one way to turn bytes into a TrajectoryRun. Format detection stays direct (no plugin
-// registry); the only policy here is the single size threshold above which text/ASE payloads
-// are indexed lazily instead of materialised. Decompression and HDF5 group choice belong to
-// the caller (the file viewer): an ambiguous HDF5 file throws Hdf5GroupSelectionRequiredError.
+// registry); large text files and all ASE files are indexed lazily instead of materialised.
+// Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
+// HDF5 file throws Hdf5GroupSelectionRequiredError.
 import { HDF5_EXT_REGEX } from '$lib/constants'
 import { DEFAULTS } from '$lib/settings'
 import { is_plain_object, to_error } from '$lib/utils'
@@ -15,7 +15,6 @@ import type {
   TrajectoryFrame,
   TrajectorySource,
 } from './index'
-import { parse_ase_trajectory } from './parse/ase'
 import { open_hdf5_trajectory } from './parse/hdf5'
 import { parse_lammps_trajectory } from './parse/lammps'
 import { parse_vasp_outcar } from './parse/outcar'
@@ -41,7 +40,7 @@ export interface OpenTrajectoryOptions {
   hdf5_group_path?: string
   // Map LAMMPS atom types to element symbols, e.g. { 1: 'Na', 2: 'Cl' }
   atom_type_mapping?: AtomTypeMapping
-  // Index (decode on demand) XYZ/ASE payloads above this many bytes instead of parsing every
+  // Index (decode on demand) XYZ payloads above this many bytes instead of parsing every
   // frame up front. Defaults to DEFAULTS.trajectory.index_above_bytes.
   index_above_bytes?: number
 }
@@ -242,10 +241,7 @@ export async function open_trajectory(
   } else if (source instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(source, filename)) {
       report(10, `Parsing ASE trajectory…`)
-      run =
-        source_bytes > index_above_bytes
-          ? indexed_text_run(source, `ase`, provenance, collector)
-          : run_from_parsed(parse_ase_trajectory(source), provenance, collector)
+      run = indexed_text_run(source, `ase`, provenance, collector)
     } else if (FORMAT_PATTERNS.hdf5(source, filename)) {
       run = await open_hdf5(source)
     } else throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)

@@ -16,6 +16,8 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
+  import { atom_field_color, type AtomColorField } from './atom-color-field'
+  import ColorFieldVolume from './ColorFieldVolume.svelte'
   import {
     bind_renderer,
     brighten_hex,
@@ -256,6 +258,9 @@
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     property_colors = null,
+    atom_color_field,
+    volume_color_field,
+    volume_opacity = 0.35,
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
@@ -391,6 +396,9 @@
     // Per-site colors/values for the active non-element coloring mode, indexed by the sites of
     // `structure` (see StructureSession.property_colors). Null = color atoms by element.
     property_colors?: AtomPropertyColors | null
+    atom_color_field?: AtomColorField
+    volume_color_field?: AtomColorField
+    volume_opacity?: number
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -1955,6 +1963,7 @@
         {#if atom_groups.base.length > 0}
           <InstancedAtoms
             atoms={atom_groups.base}
+            color_field={atom_color_field}
             {sphere_segments}
             {...atom_instance_events(atom_groups.base, false)}
           />
@@ -1963,6 +1972,7 @@
           {@const edit_mode_image = measure_mode === `edit-atoms`}
           <InstancedAtoms
             atoms={atom_groups.image}
+            color_field={atom_color_field}
             {sphere_segments}
             ghost={edit_mode_image}
             {...atom_instance_events(atom_groups.image, edit_mode_image)}
@@ -1976,7 +1986,10 @@
           <!-- Visual only: pointer interaction handled by the invisible full-sphere
             hit targets below (wedge meshes leave gaps at the poles). -->
           <T.Group position={atom.position} scale={atom.radius}>
-            {@const partial_color = partial_edit_image ? desaturate(atom.color) : atom.color}
+            {@const partial_base = partial_edit_image ? desaturate(atom.color) : atom.color}
+            {@const partial_color = atom_color_field
+              ? atom_field_color(atom_color_field, atom.position, partial_base)
+              : partial_base}
             <T.Mesh>
               <T.SphereGeometry
                 args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
@@ -2377,6 +2390,9 @@
         </T.Mesh>
       {/if}
 
+      {#if volume_color_field}
+        <ColorFieldVolume field={volume_color_field} opacity={volume_opacity} />
+      {/if}
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
         <Isosurface
@@ -2551,7 +2567,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 14px));
     box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .bond-context-menu {

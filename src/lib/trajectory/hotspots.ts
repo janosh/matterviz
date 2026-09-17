@@ -71,9 +71,53 @@ export interface HotspotRequest extends HotspotOptions {
   // Buffers the caller retains while replacing a previous result.
   retained_bytes?: number
   signal?: AbortSignal
-  on_progress?: (progress: ParseProgress) => void
+  on_progress?: (progress: HotspotProgress) => void
+  // An instantaneous preview precedes the time average without changing its sampling.
+  preview_frame?: number
+  on_preview?: (result: HotspotResult) => void | Promise<void>
+  on_partial?: (result: HotspotResult) => void | Promise<void>
+}
+export interface HotspotProgress extends ParseProgress {
+  // Completed reductions only; current can include a partly read frame.
+  completed: number
+}
+export interface HotspotCoverage {
+  start: number
+  stride: number
+  total: number
+  completed: number
+  busy: boolean
+  preview_frame?: number
 }
 export type HotspotMetric = `energy` | `temperature`
+
+// Prefer declared units. Otherwise sample atomic-scale masses, whose amu/kg magnitudes
+// are disjoint; leave reduced, mixed or unrecognized units for an explicit choice.
+export function infer_mass_unit(
+  masses: readonly unknown[],
+  declared?: unknown,
+): HotspotOptions[`mass_unit`] {
+  if (declared !== undefined) {
+    const unit = typeof declared === `string` ? declared.trim().toLowerCase() : ``
+    if ([`amu`, `u`, `da`, `dalton`, `daltons`].includes(unit)) return `amu`
+    return unit === `kg` ? `kg` : undefined
+  }
+  let inferred: HotspotOptions[`mass_unit`]
+  const samples = Math.min(masses.length, 64)
+  for (let idx = 0; idx < samples; idx++) {
+    const mass = masses[Math.floor((idx * masses.length) / samples)]
+    if (typeof mass !== `number`) return undefined
+    const unit =
+      mass >= 0.5 && mass <= 1000
+        ? `amu`
+        : mass >= 0.5 * AMU_KG && mass <= 1000 * AMU_KG
+          ? `kg`
+          : undefined
+    if (!unit || (inferred && inferred !== unit)) return undefined
+    inferred = unit
+  }
+  return inferred
+}
 
 export function hotspot_values(
   result: HotspotResult,
@@ -104,6 +148,26 @@ export const hotspot_mean = (result: HotspotResult, metric: HotspotMetric): numb
     ? (energy / denominator) * (metric === `temperature` ? 2 / BOLTZMANN_EV : 1)
     : NaN
 }
+
+export interface HotspotDisplayValues {
+  values: Float32Array
+  mean: number
+}
+
+// Display controls can be empty mid-edit; keep that normalization out of the strict
+// analysis API and share these values between renderers instead of recomputing them.
+export const hotspot_display_values = (
+  result: HotspotResult,
+  metric: HotspotMetric,
+  min_atoms: number,
+): HotspotDisplayValues => ({
+  values: hotspot_values(
+    result,
+    metric,
+    Number.isFinite(min_atoms) && min_atoms >= 0 ? min_atoms : 0,
+  ),
+  mean: hotspot_mean(result, metric),
+})
 
 export function validate_hotspot_grid(grid: HotspotGrid): number {
   if (grid.dims.length !== 3 || grid.dims.some((size) => !Number.isInteger(size) || size < 1))
@@ -146,7 +210,19 @@ export function hotspot_bin(
   return index
 }
 
-const yield_turn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+// Message tasks yield to cancellation and interactive reads without the browser's nested
+// timer clamp adding 4 ms to every atom batch in a long scan.
+const yield_turn = (): Promise<void> =>
+  new Promise((resolve) => {
+    const { port1, port2 } = new MessageChannel()
+    port1.addEventListener(`message`, () => {
+      port1.close()
+      port2.close()
+      resolve()
+    })
+    port1.start()
+    port2.postMessage(null)
+  })
 
 // Rasterize a cell-aligned plane in an orthonormal physical basis. Samples select a bin
 // directly: there is no interpolation across bin boundaries or into unoccupied cells.
@@ -236,7 +312,27 @@ export async function calculate_hotspots(
   read_atoms: ReadAtoms,
   request: HotspotRequest,
 ): Promise<HotspotResult> {
-  const { signal, on_progress, retained_bytes = 0, ...options } = request
+  const result = await reduce_hotspots(frame_count, read_atoms, request)
+  if (!result.population.some((value) => value > 0))
+    throw new Error(`No selected atoms lie inside the hotspot grid`)
+  return result
+}
+
+// An empty preview is valid: the selection can be populated in later frames.
+async function reduce_hotspots(
+  frame_count: number,
+  read_atoms: ReadAtoms,
+  request: HotspotRequest,
+): Promise<HotspotResult> {
+  const {
+    signal,
+    on_progress,
+    preview_frame,
+    on_preview,
+    on_partial,
+    retained_bytes = 0,
+    ...options
+  } = request
   const {
     start_frame = 0,
     end_frame = frame_count,
@@ -269,6 +365,11 @@ export async function calculate_hotspots(
     throw new Error(
       `Invalid hotspot frame range or batch size: ${start_frame}:${end_frame}:${frame_stride}, batch=${batch_size}`,
     )
+  if (
+    preview_frame !== undefined &&
+    (!Number.isInteger(preview_frame) || preview_frame < 0 || preview_frame >= frame_count)
+  )
+    throw new Error(`Invalid hotspot preview frame ${preview_frame}`)
   if (
     ![2, 3].includes(dimensions) ||
     (!(dof_per_atom > 0 && dof_per_atom <= dimensions) &&
@@ -303,6 +404,23 @@ export async function calculate_hotspots(
     throw new Error(`Declare recorded mass units before calculating hotspots`)
   if (options.mass_source === `standard` && options.mass_unit === `kg`)
     throw new Error(`Standard elemental masses use amu`)
+  let preview_bytes = 0
+  if (preview_frame !== undefined && on_preview) {
+    const preview = await reduce_hotspots(frame_count, read_atoms, {
+      ...options,
+      start_frame: preview_frame,
+      end_frame: preview_frame + 1,
+      frame_stride: 1,
+      retained_bytes,
+      signal,
+    })
+    signal?.throwIfAborted()
+    preview_bytes = preview.energy.byteLength * 3 + preview.occupied_frames.byteLength
+    await on_preview(preview)
+    // Deliver the preview before allocating the average and reading further frames.
+    await yield_turn()
+    signal?.throwIfAborted()
+  }
   const kinetic_factor = 0.5 * mass_factor * (velocity_factor ?? 1) ** 2 * JOULE_EV
   const frames = Math.ceil((end_frame - start_frame) / frame_stride)
   const channels = options.energy_key
@@ -325,12 +443,16 @@ export async function calculate_hotspots(
     )
     signal?.throwIfAborted()
     if (
-      !batch.positions.every(Number.isFinite) ||
       !Number.isInteger(batch.total_atoms) ||
       batch.total_atoms < 1 ||
       batch.start + batch.atomic_numbers.length > batch.total_atoms
     )
       throw new Error(`Invalid coordinates or atom count at frame ${frame_idx}, atom ${start}`)
+    for (const position of batch.positions)
+      if (!Number.isFinite(position))
+        throw new Error(
+          `Invalid coordinates or atom count at frame ${frame_idx}, atom ${start}`,
+        )
     if (
       batch.positions.length !== batch.atomic_numbers.length * 3 ||
       batch.start !== start ||
@@ -402,8 +524,14 @@ export async function calculate_hotspots(
   const n_bins = validate_hotspot_grid(grid)
   // First batch, next-frame lookahead and current batch can coexist during a frame.
   // Reserve the caller's completed map during replacement, plus one 8 MiB
-  // physical decoder chunk and 8 MiB for slice/display pixels. No window cache is retained.
-  const buffer_bytes = n_bins * 104 + retained_bytes + batch_size * 3 * 66 + 16 * 1024 ** 2
+  // physical decoder chunk and 8 MiB for slice/display pixels. Streaming additionally
+  // reserves the published map and an in-flight snapshot. No frame history is retained.
+  const buffer_bytes =
+    n_bins * (on_partial ? 160 : 104) +
+    retained_bytes +
+    preview_bytes +
+    batch_size * 3 * 66 +
+    16 * 1024 ** 2
   if (!Number.isFinite(max_bytes) || buffer_bytes > max_bytes)
     throw new Error(
       `Hotspot buffers require ${buffer_bytes} bytes, above budget ${max_bytes}; reduce grid or batch size`,
@@ -437,6 +565,7 @@ export async function calculate_hotspots(
   let previous_time = timestamp(first)
   let next_first: AtomBatch | undefined
   let deadline = performance.now() + 8
+  let last_partial = performance.now()
   for (let sample_idx = 0; sample_idx < frames; sample_idx++) {
     const frame_idx = start_frame + sample_idx * frame_stride
     if (next_first) first = next_first
@@ -535,6 +664,7 @@ export async function calculate_hotspots(
         on_progress?.({
           current: sample_idx + next / batch.total_atoms,
           total: frames,
+          completed: sample_idx,
           stage: `Binning kinetic energy`,
         })
         await yield_turn()
@@ -598,11 +728,29 @@ export async function calculate_hotspots(
         )
       result.occupied_frames[bin]++
     }
-    on_progress?.({ current: sample_idx + 1, total: frames, stage: `Binning kinetic energy` })
-    await yield_turn()
+    on_progress?.({
+      current: sample_idx + 1,
+      total: frames,
+      completed: sample_idx + 1,
+      stage: `Binning kinetic energy`,
+    })
+    if (on_partial && sample_idx + 1 < frames && performance.now() - last_partial >= 250) {
+      // Own each snapshot: neither a callback nor a worker transfer may mutate the reducer.
+      await on_partial({
+        ...result,
+        frames: sample_idx + 1,
+        energy: result.energy.slice(),
+        population: result.population.slice(),
+        dof: result.dof.slice(),
+        occupied_frames: result.occupied_frames.slice(),
+      })
+      last_partial = performance.now()
+    }
+    if (performance.now() >= deadline) {
+      await yield_turn()
+      deadline = performance.now() + 8
+    }
     signal?.throwIfAborted()
   }
-  if (!result.population.some((value) => value > 0))
-    throw new Error(`No selected atoms lie inside the hotspot grid`)
   return result
 }

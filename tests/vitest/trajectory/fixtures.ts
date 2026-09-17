@@ -4,6 +4,63 @@
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { make_rng } from '../numeric-helpers'
 
+// Two ASE frames sharing topology, with isotope masses and unequal physical timestamps.
+export function make_ase_md_buffer(n_atoms: number, recorded_masses = true): ArrayBuffer {
+  let offset = 64
+  const chunks: Uint8Array[] = []
+  const array = (shape: number[], value: (idx: number) => number) => {
+    const data = Float64Array.from(
+      { length: shape.reduce((total, size) => total * size, 1) },
+      (_, idx) => value(idx),
+    )
+    const ref = { ndarray: [shape, `float64`, offset] }
+    chunks.push(new Uint8Array(data.buffer))
+    offset += data.byteLength
+    return ref
+  }
+  const offsets: number[] = []
+  for (let frame_idx = 0; frame_idx < 2; frame_idx++) {
+    const header = {
+      ...(frame_idx === 0 && {
+        [`numbers.`]: array([n_atoms], () => 1),
+        ...(recorded_masses && { [`masses.`]: array([n_atoms], () => 2) }),
+        pbc: [false, false, false],
+      }),
+      [`positions.`]: array([n_atoms, 3], (idx) =>
+        idx % 3 === 0 ? Math.floor(idx / 3) / n_atoms + 1 : 1,
+      ),
+      [`momenta.`]: array([n_atoms, 3], (idx) => (idx % 3 === 0 ? 2 * (frame_idx + 1) : 0)),
+      [`tags.`]: array([n_atoms], (idx) => idx % 2),
+      cell: [
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      info: { time_fs: frame_idx ? 14 : 10 },
+    }
+    const json = new TextEncoder().encode(JSON.stringify(header))
+    const entry = new Uint8Array(8 + Math.ceil(json.length / 8) * 8)
+    new DataView(entry.buffer).setBigInt64(0, BigInt(json.length), true)
+    entry.set(json, 8)
+    offsets.push(offset)
+    chunks.push(entry)
+    offset += entry.byteLength
+  }
+  const buffer = new ArrayBuffer(offset)
+  const bytes = new Uint8Array(buffer)
+  bytes.set(new TextEncoder().encode(`- of Ulm`))
+  const view = new DataView(buffer)
+  view.setBigInt64(32, 2n, true)
+  view.setBigInt64(40, 48n, true)
+  offsets.forEach((value, idx) => view.setBigInt64(48 + idx * 8, BigInt(value), true))
+  offset = 64
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return buffer
+}
+
 // Deterministic EXTXYZ: a cubic cell that breathes, atoms jittering around a grid, an energy
 // that drifts with the frame index.
 export function synthetic_extxyz(n_frames: number, n_atoms: number, seed = 7): string {
@@ -142,7 +199,7 @@ export const make_torch_sim_signal_buffer = ({
       [4, 2, 3],
     )
     create_dataset(data, `atomic_numbers`, [1, 8], [2])
-    create_dataset(data, `masses`, [1.008, 15.999], [2])
+    create_dataset(data, `masses`, [1.008, 15.999], [2]).create_attribute(`units`, `amu`)
     create_dataset(
       data,
       `velocities`,

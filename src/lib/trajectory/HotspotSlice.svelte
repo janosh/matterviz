@@ -3,10 +3,9 @@
   import { matrix_inverse_3x3, type Vec3 } from '$lib/math'
   import { format_num } from '$lib/labels'
   import {
-    hotspot_mean,
+    hotspot_display_values,
     hotspot_bin,
     hotspot_slice,
-    hotspot_values,
     type HotspotMetric,
     type HotspotResult,
   } from './hotspots'
@@ -26,14 +25,7 @@
   let position = $state(0)
   let selected = $state<number>()
   let only_hot = $state(false)
-  const values = $derived(
-    hotspot_values(
-      result,
-      metric,
-      Number.isFinite(min_atoms) && min_atoms >= 0 ? min_atoms : 0,
-    ),
-  )
-  const mean = $derived(hotspot_mean(result, metric))
+  const { values, mean } = $derived(hotspot_display_values(result, metric, min_atoms))
   const unit = $derived(metric === `energy` ? `eV/atom` : `K`)
   const layer = $derived(Math.min(position, result.grid.dims[axis] - 1))
   const axes = $derived([0, 1, 2].filter((value) => value !== axis))
@@ -142,5 +134,8 @@
   p,
   output {
     font-size: 0.85em;
+  }
+  p {
+    margin: 0.25em 0;
   }
 </style>

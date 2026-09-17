@@ -529,7 +529,7 @@ describe(`Settings`, () => {
       [
         `empty $bindable()`,
         `display_mode = $bindable()`,
-        `display_mode = undefined (schema: "structure+scatter")`,
+        `display_mode = undefined (schema: "auto")`,
       ],
       [`no default`, `fps`, `fps = undefined (schema: 10)`],
       [

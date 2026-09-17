@@ -69,8 +69,8 @@ type Host = {
   index: number
   fps: number
   auto_play: boolean
-  load_frames: boolean
   wait_for_render: boolean
+  can_advance: boolean
   preparation?: FramePreparation
   channels?: FrameChannels
 }
@@ -81,8 +81,8 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
     index: 0,
     fps: 10,
     auto_play: false,
-    load_frames: true,
     wait_for_render: false,
+    can_advance: true,
     ...initial,
   })
   const events: string[] = []
@@ -92,8 +92,8 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
     session = create_trajectory_session(
       {
         run: () => host.run,
-        load_frames: () => host.load_frames,
         wait_for_render: () => host.wait_for_render,
+        can_advance: () => host.can_advance,
         preparation: () => host.preparation,
         channels: () => host.channels,
         index: () => host.index,
@@ -269,38 +269,6 @@ describe(`frame loading`, () => {
       const second = session.current_structure?.sites
       expect(second).not.toBe(first)
       expect(second?.map(({ label }) => label)).toEqual([`H1`, `O2`, `C3`])
-    } finally {
-      destroy()
-    }
-  })
-  it(`releases object frames while a numeric renderer owns playback`, async () => {
-    const frame_list = frames(3)
-    const { run, reads, resolve_next } = make_async_run(frame_list)
-    const { host, session, destroy } = make_session({ run, index: 1 })
-    try {
-      await resolve_next()
-      expect(session.current_structure).toEqual(frame_list[1].structure)
-      const submitted = session.scene_frame
-      expect(session.mark_rendered(submitted)).toBe(true)
-      host.load_frames = false
-      flushSync()
-      // The removed Structure branch stops reading the lazy current_structure derived.
-      expect(session.cached_frames).toBe(0)
-      host.index = 2
-      flushSync()
-      await vi.advanceTimersByTimeAsync(100)
-      expect(reads).toEqual([1])
-      expect(session.frame_count).toBe(3)
-      expect(session.current_frame).toBeNull()
-      expect(session.scene_frame).toBeNull()
-      expect(session.mark_rendered(submitted)).toBe(false)
-      host.load_frames = true
-      flushSync()
-      // Resume from the preview while loading, without retaining the previous full frame.
-      expect(session.current_structure).toEqual(frame_list[0].structure)
-      expect(reads).toEqual([1, 2])
-      await resolve_next()
-      expect(session.current_frame?.step).toBe(20)
     } finally {
       destroy()
     }

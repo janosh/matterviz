@@ -200,6 +200,7 @@ type TorchSimSignalManifest = {
 type TorchSimSignalDiscovery = {
   signal_manifest: Record<string, TorchSimSignalManifest>
   atom_masses?: number[]
+  mass_unit?: string
   mass_path?: string
   signal_paths: Record<string, string>
 }
@@ -218,6 +219,7 @@ const discover_torch_sim_signals = (
   const signal_manifest: Record<string, TorchSimSignalManifest> = {}
   const signal_paths: Record<string, string> = {}
   let atom_masses: number[] | undefined
+  let mass_unit: string | undefined
   let mass_path: string | undefined
 
   for (const name of data_group.keys()) {
@@ -242,6 +244,7 @@ const discover_torch_sim_signals = (
         )
       }
       atom_masses = mass_values
+      mass_unit = string_value(attribute_value(dataset, [`unit`, `units`])) ?? undefined
       mass_path = path
       continue
     }
@@ -288,7 +291,7 @@ const discover_torch_sim_signals = (
     }
     signal_paths[key] = path
   }
-  return { signal_manifest, atom_masses, mass_path, signal_paths }
+  return { signal_manifest, atom_masses, mass_unit, mass_path, signal_paths }
 }
 
 const read_torch_sim_signal = (
@@ -658,7 +661,7 @@ const parse_torch_sim_datasets = (
         { total: n_frames, valid: valid_frame_count },
       )
     : { signal_manifest: {}, signal_paths: {} }
-  const { atom_masses, mass_path, signal_paths } = discovered_signals
+  const { atom_masses, mass_unit, mass_path, signal_paths } = discovered_signals
   const signal_manifest = Object.fromEntries(
     Object.entries(discovered_signals.signal_manifest).map(([key, signal]) => {
       if (dropped_steps === 0) return [key, signal]
@@ -853,6 +856,7 @@ const parse_torch_sim_datasets = (
       },
       total_groups_found,
       ...source_metadata,
+      ...(mass_unit && { mass_unit }),
       ...(dropped_steps > 0 && { dropped_steps }),
     },
   }

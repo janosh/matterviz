@@ -54,7 +54,18 @@
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
   import TrajectoryHotspotPane from './TrajectoryHotspotPane.svelte'
-  import type { HotspotResult, HotspotMetric } from './hotspots'
+  import {
+    hotspot_display_values,
+    type HotspotResult,
+    type HotspotMetric,
+    type HotspotCoverage,
+  } from './hotspots'
+  import {
+    hotspot_colors,
+    hotspot_field_geometry,
+    hotspot_cloud_colors,
+    DEFAULT_HOTSPOT_CLOUD,
+  } from './hotspot-colors'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
@@ -122,6 +133,7 @@
     | `export`
     | `flight`
   export type TrajectoryDisplayMode =
+    | `auto`
     | `structure+scatter`
     | `structure`
     | `scatter`
@@ -153,6 +165,7 @@
   type EventHandler = (data: TrajHandlerData) => void
 
   const DISPLAY_MODES = [
+    { mode: `auto`, icon: TwoColumns, label: `Automatic` },
     { mode: `structure`, icon: Atom, label: `Structure-only` },
     { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
     { mode: `structure+histogram`, icon: TwoColumns, label: `Structure + Histogram` },
@@ -228,6 +241,7 @@
     fps?: number
     fps_range?: Readonly<Vec2>
     auto_play?: boolean
+    // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
@@ -505,12 +519,7 @@
     return vectors.length === available.length ? undefined : { vectors }
   })
   const frame_preparation = $derived.by(() => {
-    if (
-      !show_structure ||
-      particle_view ||
-      !trajectory?.prepare_frame ||
-      trajectory.atom_count < 2000
-    )
+    if (!show_structure || !trajectory?.prepare_frame || trajectory.atom_count < 2000)
       return undefined
     const props = trail_scene_props
     const crystal = `lattice` in trajectory.preview.structure
@@ -560,13 +569,9 @@
     }
   })
   const uses_structure_renderer = () =>
-    webgpu_available() &&
-    show_structure &&
-    !particle_view &&
-    structure_display_mode !== `slice`
+    webgpu_available() && show_structure && structure_display_mode !== `slice`
   const session = create_trajectory_session({
     run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
-    load_frames: () => !particle_view,
     preparation: () => frame_preparation,
     channels: () => frame_channels,
     wait_for_render: uses_structure_renderer,
@@ -589,16 +594,8 @@
   })
   const { player, controller } = session
   let hotspot_result = $state.raw<HotspotResult>()
-  let particle_renderer = $state<{
-    wait_for_frame: (idx: number, signal: AbortSignal) => Promise<void>
-  }>()
-  async function prepare_particle_frame(idx: number, signal: AbortSignal): Promise<void> {
-    await flush_updates()
-    signal.throwIfAborted()
-    if (!particle_renderer) throw new Error(`Wait for the particle view to finish loading`)
-    await particle_renderer.wait_for_frame(idx, signal)
-    await flush_updates()
-  }
+  let hotspot_coverage = $state<HotspotCoverage>()
+  const hotspot_pattern_id = $props.id()
   async function prepare_structure_frame(idx: number, signal: AbortSignal): Promise<void> {
     await flush_updates()
     await session.wait_for_frame(idx, signal)
@@ -606,17 +603,37 @@
   let hotspot_metric = $state<HotspotMetric>(`energy`)
   let hotspot_min_atoms = $state(10)
   let hotspot_threshold = $state(1.25)
-  let export_particles = $state(false)
-  const particle_view = $derived.by(() => {
-    // Track pane changes even before a result exists, including locally bound pane props.
-    const pane = active_pane
-    const exporting = export_particles
-    return Boolean(
-      trajectory?.read_atoms &&
-      hotspot_result &&
-      (pane === `hotspots` || (exporting && (pane === `export` || pane === `flight`))),
-    )
-  })
+  let show_heatmap = $state(true)
+  let hotspot_cloud = $state({ ...DEFAULT_HOTSPOT_CLOUD })
+  const hotspot_values = $derived(
+    hotspot_result
+      ? hotspot_display_values(hotspot_result, hotspot_metric, hotspot_min_atoms)
+      : undefined,
+  )
+  const field_geometry = $derived(
+    hotspot_result && session.scene_frame
+      ? hotspot_field_geometry(hotspot_result, session.scene_frame.frame)
+      : undefined,
+  )
+  const heatmap_colors = $derived(hotspot_values ? hotspot_colors(hotspot_values) : undefined)
+  const atom_color_field = $derived(
+    show_heatmap && field_geometry && heatmap_colors
+      ? { ...field_geometry, colors: heatmap_colors }
+      : undefined,
+  )
+  const cloud_colors = $derived(
+    hotspot_cloud.visible && hotspot_values
+      ? hotspot_cloud_colors(
+          hotspot_values,
+          hotspot_threshold,
+          hotspot_cloud.base_color,
+          hotspot_cloud.hot_color,
+        )
+      : undefined,
+  )
+  const volume_color_field = $derived(
+    field_geometry && cloud_colors ? { ...field_geometry, colors: cloud_colors } : undefined,
+  )
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)
   let scrub_active = $derived(session.scrubbing)
@@ -671,10 +688,8 @@
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
     if (open) {
-      export_particles = (pane === `export` || pane === `flight`) && particle_view
       active_pane = pane
     } else if (active_pane === pane) {
-      export_particles = false
       active_pane = null
     }
   }
@@ -838,6 +853,8 @@
   const hidden_plot_series = () =>
     plot_series.filter((srs) => !srs.visible).map((srs) => srs.id)
   const set_hidden_plot_series = (hidden: readonly (string | number)[] | undefined) => {
+    // A legend interaction is an explicit request to keep working with the plot.
+    if (display_mode === `auto`) display_mode = effective_display_mode
     const hidden_ids = new Set(hidden)
     const present_ids = new Set(plot_series.map((srs) => srs.id))
     visible_properties = [
@@ -888,14 +905,18 @@
     scale_type: y_axis_scale_types.y2,
   })
   let plot_loading = $derived(!session.properties_complete && plot_series.length === 0)
-  // Spectroscopy owns the plot region while open; otherwise hide a constant-value plot
-  let show_plot = $derived(
-    spectroscopy_open ||
-      (display_mode !== `structure` &&
-        (plot_loading || !should_hide_plot(total_frames, plot_series))),
+  // Wait for scalar sampling before choosing the default; explicit modes always win.
+  let effective_display_mode = $derived(
+    display_mode === `auto`
+      ? session.properties_complete && should_hide_plot(total_frames, plot_series)
+        ? `structure`
+        : `structure+scatter`
+      : display_mode,
   )
+  // Spectroscopy owns the plot region while open.
+  let show_plot = $derived(spectroscopy_open || effective_display_mode !== `structure`)
   let show_structure = $derived(
-    spectroscopy_open || ![`scatter`, `histogram`].includes(display_mode),
+    spectroscopy_open || ![`scatter`, `histogram`].includes(effective_display_mode),
   )
   let has_y2_series = $derived(
     plot_series.some(
@@ -932,7 +953,7 @@
     session.commit(x_map.to_frame(data.x))
 
   let current_display_mode = $derived.by(() => {
-    const option = DISPLAY_MODES.find((entry) => entry.mode === display_mode)
+    const option = DISPLAY_MODES.find((entry) => entry.mode === effective_display_mode)
     if (option) return option
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
@@ -1214,7 +1235,61 @@
           play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
           next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
           on_index_input={session.scrub}
-        />
+        >
+          {#snippet slider_overlay()}
+            {#snippet marker(frame: number, active = false)}
+              <line
+                class:active
+                x1={frame}
+                x2={frame}
+                y1="0"
+                y2="1"
+                stroke="currentColor"
+                stroke-width={active ? 4 : 2}
+                vector-effect="non-scaling-stroke"
+              />
+            {/snippet}
+            {#if hotspot_coverage}
+              {@const coverage = hotspot_coverage}
+              {@const label = `Hotspot analysis: ${coverage.completed}/${coverage.total} sampled frames complete${coverage.busy ? ` · calculating` : ``}`}
+              <svg
+                class="hotspot-coverage"
+                viewBox="0 0 {Math.max(total_frames - 1, 1)} 1"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label={label}
+              >
+                <title>{label}</title>
+                <defs>
+                  <pattern
+                    id={hotspot_pattern_id}
+                    width={coverage.stride}
+                    height="1"
+                    patternUnits="userSpaceOnUse"
+                    x={coverage.start - 0.5}
+                  >
+                    <rect width="1" height="1" fill="currentColor" />
+                  </pattern>
+                </defs>
+                <rect
+                  class="completed"
+                  x={coverage.start - 0.5}
+                  width={coverage.completed
+                    ? (coverage.completed - 1) * coverage.stride + 1
+                    : 0}
+                  height="1"
+                  fill="url(#{hotspot_pattern_id})"
+                />
+                {#if coverage.preview_frame !== undefined}
+                  {@render marker(coverage.preview_frame)}
+                {/if}
+                {#if coverage.busy && coverage.completed < coverage.total}
+                  {@render marker(coverage.start + coverage.completed * coverage.stride, true)}
+                {/if}
+              </svg>
+            {/if}
+          {/snippet}
+        </SequenceControls>
 
         <div class="info-section">
           {@render extra_controls?.()}
@@ -1251,11 +1326,9 @@
                 session.commit(idx)
               }}
               resolve_frame={session.resolve_frame}
-              prepare_display_frame={particle_view
-                ? prepare_particle_frame
-                : uses_structure_renderer()
-                  ? prepare_structure_frame
-                  : undefined}
+              prepare_display_frame={uses_structure_renderer()
+                ? prepare_structure_frame
+                : undefined}
               on_flight_start={() => {
                 const was_playing = player.is_playing
                 player.pause()
@@ -1322,9 +1395,14 @@
                   }
                 />
                 <TrajectoryHotspotPane
+                  bind:cloud={hotspot_cloud}
+                  persistent
                   max_width="42em"
                   run={trajectory}
+                  current_frame_idx={current_step_idx}
                   bind:result={hotspot_result}
+                  bind:coverage={hotspot_coverage}
+                  bind:show_heatmap
                   bind:metric={hotspot_metric}
                   bind:min_atoms={hotspot_min_atoms}
                   bind:threshold={hotspot_threshold}
@@ -1364,7 +1442,7 @@
           {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={current_display_mode.label}
+              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`}
               class="view-mode-dropdown-wrapper"
             >
               {#snippet button()}
@@ -1412,21 +1490,7 @@
         ? `calc(${controls_height}px + 1ex)`
         : undefined}
     >
-      {#if show_structure && particle_view && trajectory && hotspot_result}
-        {#key trajectory}
-          {#await import('./TrajectoryParticleView.svelte') then { default: ParticleView }}
-            <ParticleView
-              bind:this={particle_renderer}
-              run={trajectory}
-              frame_idx={current_step_idx}
-              result={hotspot_result}
-              metric={hotspot_metric}
-              min_atoms={hotspot_min_atoms}
-              threshold={hotspot_threshold}
-            />
-          {/await}
-        {/key}
-      {:else if show_structure}
+      {#if show_structure}
         <Structure
           allow_file_drop={false}
           style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
@@ -1442,6 +1506,9 @@
             : structure_props.show_controls}
           bind:scene_props={trail_scene_props}
           bind:atom_color_config
+          {atom_color_field}
+          {volume_color_field}
+          volume_opacity={hotspot_cloud.opacity}
           structure={session.current_structure}
           render_token={session.scene_frame}
           on_rendered={(snapshot) => {
@@ -1497,7 +1564,7 @@
             text="Sampling trajectory plot data..."
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
-        {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
+        {:else if effective_display_mode === `scatter` || effective_display_mode === `structure+scatter`}
           <ScatterPlot
             {...scatter_props}
             show_controls={controls_config.mode === `never`
@@ -1623,6 +1690,39 @@
 </div>
 
 <style>
+  .hotspot-coverage {
+    position: absolute;
+    top: calc(50% + 3px);
+    left: calc(var(--range-thumb-size, 0.9rem) / 2);
+    width: calc(100% - var(--range-thumb-size, 0.9rem));
+    height: 3px;
+    color: var(--hotspot-progress-color, #e8932f);
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+    .completed {
+      transition: width 0.15s linear;
+    }
+    .active {
+      animation: hotspot-pulse 0.8s ease-in-out infinite alternate;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .completed {
+        transition: none;
+      }
+      .active {
+        animation: none;
+      }
+    }
+  }
+  @keyframes hotspot-pulse {
+    from {
+      opacity: 0.3;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   .trajectory-loading {
     width: min(24em, calc(100% - 2em));
     margin: auto;
@@ -1677,6 +1777,8 @@
   .content-area {
     display: grid;
     position: relative;
+    /* Nested viewer chrome stays below the sequence bar and its floating panes. */
+    isolation: isolate;
     flex: 1;
     min-height: 0; /* important for tall structure viewers not to overflow */
     /* The panes share this box, so a plot's own floor (350px for scatter, 300px for

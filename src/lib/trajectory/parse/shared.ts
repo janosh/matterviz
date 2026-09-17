@@ -110,6 +110,7 @@ export const vasp_run = (
   { ibrion, potim, version }: VaspRunTags,
 ): ParsedTrajectory => {
   const metadata: Record<string, unknown> = {}
+  if (atom_masses) metadata.mass_unit = `amu`
   if (ibrion !== null) metadata.ibrion = ibrion
   if (version) metadata.vasp_version = version
   return {

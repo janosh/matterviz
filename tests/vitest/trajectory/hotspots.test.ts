@@ -6,9 +6,12 @@ import {
   hotspot_values,
   hotspot_mean,
   hotspot_slice,
+  infer_mass_unit,
   BOLTZMANN_EV,
   type HotspotGrid,
   type HotspotRequest,
+  type HotspotResult,
+  type HotspotProgress,
 } from '$lib/trajectory/hotspots'
 import {
   atom_range,
@@ -67,6 +70,79 @@ function source(n_atoms = 8, steps = [0, 1, 2], drift = 0): ReadAtoms {
 }
 
 describe(`spatial kinetic hotspots`, () => {
+  it.each([
+    [[28.085, 72.63], undefined, `amu`],
+    [[28.085 * 1.66053906892e-27, 72.63 * 1.66053906892e-27], undefined, `kg`],
+    [[28], `kg`, `kg`],
+    [[], `Dalton`, `amu`],
+    [[28], `reduced`, undefined],
+    [[28, 4.6e-26], undefined, undefined],
+    [[NaN], undefined, undefined],
+    [[-1], undefined, undefined],
+    [[1e-10], undefined, undefined],
+    [[], undefined, undefined],
+  ])(`infers mass units from %j with declaration %s`, (masses, declared, expected) => {
+    expect(infer_mass_unit(masses, declared)).toBe(expected)
+  })
+  it.each([`device`, `translation`, `local`] as const)(
+    `previews the selected frame and streams isolated partial maps with %s motion`,
+    async (motion) => {
+      const options = { ...velocity_options, motion, frame_stride: 2, batch_size: 3 }
+      const expected = await calculate_hotspots(3, source(8, [0, 2, 5]), options)
+      const read = vi.fn(source(8, [0, 2, 5]))
+      const previews: HotspotResult[] = []
+      const partials: HotspotResult[] = []
+      const progress: HotspotProgress[] = []
+      let clock = 0
+      const timer = vi.spyOn(performance, `now`).mockImplementation(() => (clock += 300))
+      onTestFinished(() => timer.mockRestore())
+      const result = await calculate_hotspots(3, read, {
+        ...options,
+        preview_frame: 1,
+        on_preview: (preview) => {
+          expect(read.mock.calls.map(([batch]) => batch.frame_idx)).toEqual([1, 1, 1])
+          expect(preview.frames).toBe(1)
+          expect(preview.first_step).toBe(2)
+          expect(preview.time_weight).toBe(1)
+          previews.push(preview)
+          preview.energy.fill(123)
+        },
+        on_partial: (partial) => {
+          expect(partial.frames).toBe(1)
+          expect(partial.first_step).toBe(0)
+          expect(partial.last_step).toBe(0)
+          partials.push(partial)
+          partial.population.fill(999)
+        },
+        on_progress: (update) => progress.push(update),
+      })
+      expect(previews).toHaveLength(1)
+      expect(partials).toHaveLength(1)
+      expect(progress.some(({ current, completed }) => current > completed)).toBe(true)
+      expect(progress.every(({ completed }) => Number.isInteger(completed))).toBe(true)
+      expect(progress.at(-1)).toMatchObject({ current: 2, completed: 2, total: 2 })
+      for (const key of [`energy`, `population`, `dof`, `occupied_frames`] as const)
+        expect(result[key]).toEqual(expected[key])
+      expect(result.options).toEqual(options)
+      expect(result.time_weight).toBe(expected.time_weight)
+      expect(result.reserved_buffer_bytes).toBeGreaterThan(expected.reserved_buffer_bytes)
+    },
+  )
+
+  it(`cancels after the preview without reading the average`, async () => {
+    const read = vi.fn(source())
+    const controller = new AbortController()
+    await expect(
+      calculate_hotspots(3, read, {
+        ...velocity_options,
+        preview_frame: 2,
+        signal: controller.signal,
+        on_preview: () => controller.abort(new Error(`Preview cancelled`)),
+      }),
+    ).rejects.toThrow(`Preview cancelled`)
+    expect(read.mock.calls.map(([options]) => options.frame_idx)).toEqual([2])
+  })
+
   it.each([1, 3, 8])(`preserves energies across batch size %s`, async (batch_size) => {
     const result = await calculate_hotspots(3, source(), {
       ...velocity_options,
@@ -109,18 +185,32 @@ describe(`spatial kinetic hotspots`, () => {
       )
       return batch
     }
+    const preview = vi.fn((result: HotspotResult) => {
+      expect(result.population).toEqual(new Float64Array(2))
+      expect(hotspot_values(result, `energy`).every(Number.isNaN)).toBe(true)
+    })
     const result = await calculate_hotspots(3, read, {
       grid,
       energy_key: `ke`,
       energy_unit: `eV`,
       energy_reference: `device`,
       selection_key: `mobile`,
+      preview_frame: 1,
+      on_preview: preview,
     })
+    expect(preview).toHaveBeenCalledOnce()
     expect(result.time_weight).toBe(5)
     expect(Array.from(result.population)).toEqual([10, 10])
     expect(Array.from(result.energy)).toEqual([22, 22])
     expect(hotspot_mean(result, `energy`)).toBe(2.2)
     expect(Array.from(result.occupied_frames)).toEqual([2, 2])
+    await expect(
+      calculate_hotspots(3, read, {
+        ...result.options,
+        start_frame: 1,
+        end_frame: 2,
+      }),
+    ).rejects.toThrow(`No selected atoms lie inside the hotspot grid`)
   })
 
   it.each([2 ** 30, 2 ** 50])(`removes independent bin drift of %s`, async (drift) => {
@@ -221,6 +311,21 @@ describe(`spatial kinetic hotspots`, () => {
     expect(read.mock.calls.length).toBeLessThan(6)
   })
 
+  it.each([NaN, Infinity])(
+    `rejects nonfinite position %s even on unselected atoms`,
+    async (value) => {
+      const read: ReadAtoms = (options) => {
+        const batch = source()(options) as AtomBatch
+        batch.positions[0] = value
+        batch.selected = new Uint8Array(batch.atomic_numbers.length)
+        return batch
+      }
+      await expect(
+        calculate_hotspots(3, read, { ...velocity_options, selection_key: `mobile` }),
+      ).rejects.toThrow(`Invalid coordinates or atom count at frame 0, atom 0`)
+    },
+  )
+
   it(`rejects overflowing energy instead of publishing a map`, async () => {
     const read: ReadAtoms = (options) => ({
       ...(source()(options) as AtomBatch),
@@ -262,80 +367,141 @@ describe(`spatial kinetic hotspots`, () => {
     expect([...following.energy]).toEqual([0, 2])
   })
 
-  it(`runs through the worker port while allowing frame navigation`, async () => {
-    const frames = [0, 1, 2].map((step) => {
-      const frame = create_trajectory_frame(
-        [
-          [0.5, 0.5, 0.5],
-          [1.5, 0.5, 0.5],
-        ],
-        [`Si`, `Si`],
-        grid.cell,
-        grid.pbc,
-        step,
-        {},
-      )
-      for (const site of frame.structure.sites)
-        site.properties = { mass: 28, velocity: [1, 0, 0] }
-      return frame
-    })
-    const backing = trajectory_from_frames(frames)
-    const read_atoms = backing.read_atoms
-    if (!read_atoms) throw new Error(`Missing numeric reader`)
-    backing.read_atoms = async (options, signal) => {
-      const batch = await read_atoms(options, signal)
-      const packed = new Float64Array(batch.positions.length + batch.atomic_numbers.length)
-      packed.set(batch.positions)
-      const packed_batch = {
-        ...batch,
-        positions: packed.subarray(0, batch.positions.length),
-        energies: packed.subarray(batch.positions.length),
-      }
-      expect(atom_batch_transfers(packed_batch)).toHaveLength(2)
-      return packed_batch
-    }
-    const run = worker_run(serve_run_over_port(backing), summarize_run(backing))
-    onTestFinished(() => run.dispose())
-    expect((await run.read_atoms?.({ frame_idx: 1 }))?.positions).toEqual(
-      new Float64Array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5]),
-    )
-    if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
-    const computation = run.compute_hotspots(velocity_options)
-    expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
-    expect(hotspot_mean(await computation, `energy`)).toBe(28 * conversion)
-    const compute = backing.compute_hotspots
-    if (!compute) throw new Error(`Missing backing computation`)
-    const started = Promise.withResolvers<undefined>()
-    let active = 0
-    let peak_active = 0
-    let calls = 0
-    backing.compute_hotspots = async (options) => {
-      active++
-      peak_active = Math.max(active, peak_active)
-      try {
-        if (calls++ === 0) {
-          const signal = options.signal
-          if (!signal) throw new Error(`Missing worker cancellation signal`)
-          started.resolve(undefined)
-          // Retain the first job through another turn after cancellation, like a reducer
-          // unwinding its buffers. A replacement must not allocate alongside it.
-          await new Promise((resolve) =>
-            signal.addEventListener(`abort`, () => setTimeout(resolve, 0), { once: true }),
-          )
-          signal.throwIfAborted()
+  it.each([false, true])(
+    `runs through the worker port and recovers from async=%s callback errors`,
+    async (async_error) => {
+      const frames = [0, 1, 2].map((step) => {
+        const frame = create_trajectory_frame(
+          [
+            [0.5, 0.5, 0.5],
+            [1.5, 0.5, 0.5],
+          ],
+          [`Si`, `Si`],
+          grid.cell,
+          grid.pbc,
+          step,
+          {},
+        )
+        for (const site of frame.structure.sites)
+          site.properties = { mass: 28, velocity: [1, 0, 0] }
+        return frame
+      })
+      const backing = trajectory_from_frames(frames)
+      const read_atoms = backing.read_atoms
+      if (!read_atoms) throw new Error(`Missing numeric reader`)
+      backing.read_atoms = async (options, signal) => {
+        const batch = await read_atoms(options, signal)
+        const packed = new Float64Array(batch.positions.length + batch.atomic_numbers.length)
+        packed.set(batch.positions)
+        const packed_batch = {
+          ...batch,
+          positions: packed.subarray(0, batch.positions.length),
+          energies: packed.subarray(batch.positions.length),
         }
-        return await compute(options)
-      } finally {
-        active--
+        expect(atom_batch_transfers(packed_batch)).toHaveLength(2)
+        return packed_batch
       }
-    }
-    const superseded = run.compute_hotspots(velocity_options).catch((error: unknown) => error)
-    await started.promise
-    const replacement = run.compute_hotspots(velocity_options)
-    expect(await superseded).toBeInstanceOf(Error)
-    expect(hotspot_mean(await replacement, `energy`)).toBe(28 * conversion)
-    expect(peak_active).toBe(1)
-  })
+      const run = worker_run(serve_run_over_port(backing), summarize_run(backing))
+      onTestFinished(() => run.dispose())
+      expect((await run.read_atoms?.({ frame_idx: 1 }))?.positions).toEqual(
+        new Float64Array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5]),
+      )
+      if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
+      let clock = 0
+      const timer = vi.spyOn(performance, `now`).mockImplementation(() => (clock += 300))
+      onTestFinished(() => timer.mockRestore())
+      const preview = vi.fn()
+      const partial_seen = Promise.withResolvers<undefined>()
+      const partial_receipt = Promise.withResolvers<undefined>()
+      const partial = vi.fn((snapshot: HotspotResult) => {
+        expect(snapshot.energy).toHaveLength(2)
+        partial_seen.resolve(undefined)
+        return partial_receipt.promise
+      })
+      const computation = run.compute_hotspots({
+        ...velocity_options,
+        preview_frame: 2,
+        on_preview: preview,
+        on_partial: partial,
+      })
+      await partial_seen.promise
+      expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
+      expect(partial).toHaveBeenCalledOnce()
+      partial_receipt.resolve(undefined)
+      expect(hotspot_mean(await computation, `energy`)).toBe(28 * conversion)
+      expect(preview).toHaveBeenCalledOnce()
+      expect(preview.mock.calls[0][0]).toMatchObject({ frames: 1, first_step: 2 })
+      expect(partial.mock.calls.map(([result]) => result.frames)).toEqual([1, 2])
+      for (const [result] of [...preview.mock.calls, ...partial.mock.calls])
+        expect(hotspot_mean(result, `energy`)).toBe(28 * conversion)
+      timer.mockRestore()
+      const preview_seen = Promise.withResolvers<undefined>()
+      const preview_receipt = Promise.withResolvers<undefined>()
+      const controller = new AbortController()
+      const stalled = run.compute_hotspots({
+        ...velocity_options,
+        preview_frame: 1,
+        signal: controller.signal,
+        on_preview: () => {
+          preview_seen.resolve(undefined)
+          return preview_receipt.promise
+        },
+      })
+      await preview_seen.promise
+      controller.abort()
+      await expect(stalled).rejects.toThrow(`aborted`)
+      expect(hotspot_mean(await run.compute_hotspots(velocity_options), `energy`)).toBe(
+        28 * conversion,
+      )
+      preview_receipt.resolve(undefined)
+      const failure = new Error(`Preview callback failed`)
+      await expect(
+        run.compute_hotspots({
+          ...velocity_options,
+          preview_frame: 0,
+          on_preview: () => {
+            if (async_error) return Promise.reject(failure)
+            throw failure
+          },
+        }),
+      ).rejects.toBe(failure)
+      expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
+      const compute = backing.compute_hotspots
+      if (!compute) throw new Error(`Missing backing computation`)
+      const started = Promise.withResolvers<undefined>()
+      let active = 0
+      let peak_active = 0
+      let calls = 0
+      backing.compute_hotspots = async (options) => {
+        active++
+        peak_active = Math.max(active, peak_active)
+        try {
+          if (calls++ === 0) {
+            const signal = options.signal
+            if (!signal) throw new Error(`Missing worker cancellation signal`)
+            started.resolve(undefined)
+            // Retain the first job through another turn after cancellation, like a reducer
+            // unwinding its buffers. A replacement must not allocate alongside it.
+            await new Promise((resolve) =>
+              signal.addEventListener(`abort`, () => setTimeout(resolve, 0), { once: true }),
+            )
+            signal.throwIfAborted()
+          }
+          return await compute(options)
+        } finally {
+          active--
+        }
+      }
+      const superseded = run
+        .compute_hotspots(velocity_options)
+        .catch((error: unknown) => error)
+      await started.promise
+      const replacement = run.compute_hotspots(velocity_options)
+      expect(await superseded).toBeInstanceOf(Error)
+      expect(hotspot_mean(await replacement, `energy`)).toBe(28 * conversion)
+      expect(peak_active).toBe(1)
+    },
+  )
 
   it(`restores box origins and weights recorded physical timestamps`, async () => {
     const frames = [0, 1, 2].map((step) => {
