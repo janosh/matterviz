@@ -1,4 +1,4 @@
-// Numeric atom access shared by spatial analysis and compact trajectory rendering.
+// Bounded numeric atom reads for spatial analysis.
 import { element_by_symbol } from '$lib/element/data'
 import { partition_point, type Matrix3x3, type Vec3 } from '$lib/math'
 import type { Pbc } from '$lib/structure'
@@ -11,7 +11,6 @@ export interface AtomReadOptions {
   frame_idx: number
   start?: number
   count?: number
-  stride?: number
   velocity_key?: string
   energy_key?: string
   selection_key?: string
@@ -26,7 +25,6 @@ export interface AtomBatch {
   atomic_numbers: Uint8Array
   total_atoms: number
   start: number
-  stride: number
   step: number
   time?: number
   cell?: Matrix3x3
@@ -42,20 +40,17 @@ export type ReadAtoms = (
 
 export function atom_range(
   total: number,
-  { start = 0, count = ATOM_BATCH_SIZE, stride = 1 }: AtomReadOptions,
+  { start = 0, count = ATOM_BATCH_SIZE }: AtomReadOptions,
 ) {
   if (
-    ![start, count, stride].every(Number.isInteger) ||
+    ![start, count].every(Number.isInteger) ||
     start < 0 ||
     start >= total ||
     count < 1 ||
-    count > ATOM_BATCH_SIZE ||
-    stride < 1
+    count > ATOM_BATCH_SIZE
   )
-    throw new Error(
-      `Invalid atom range: start=${start}, count=${count}, stride=${stride}, total=${total}`,
-    )
-  return { start, stride, count: Math.min(count, Math.ceil((total - start) / stride)) }
+    throw new Error(`Invalid atom range: start=${start}, count=${count}, total=${total}`)
+  return { start, count: Math.min(count, total - start) }
 }
 
 export function frame_atom_batch(
@@ -75,14 +70,13 @@ export function frame_atom_batch(
   const time = metadata?.time ?? metadata?.time_ps
   if (time !== undefined && (typeof time !== `number` || !Number.isFinite(time)))
     throw new Error(`Invalid time at step ${step}: ${JSON.stringify(time)}`)
-  const { start, count, stride } = atom_range(sites.length, options)
+  const { start, count } = atom_range(sites.length, options)
   const { velocity_key, energy_key, selection_key, mass_source } = options
   const batch: AtomBatch = {
     positions: new Float64Array(count * 3),
     atomic_numbers: new Uint8Array(count),
     total_atoms: sites.length,
     start,
-    stride,
     step,
     cell: structuredClone(lattice?.matrix),
     origin: [...origin],
@@ -122,7 +116,7 @@ export function frame_atom_batch(
     frame.scalar_columns?.[key]?.[idx] ??
     (sites instanceof Uint8Array ? undefined : sites[idx].properties[key])
   for (let idx = 0; idx < count; idx++) {
-    const atom_idx = start + idx * stride
+    const atom_idx = start + idx
     const symbol =
       sites instanceof Uint8Array
         ? element_from_atomic_number(sites[atom_idx])
@@ -182,11 +176,3 @@ export function frame_atom_batch(
   }
   return batch
 }
-
-export const atom_batch_transfers = (batch: AtomBatch): ArrayBuffer[] => [
-  ...new Set(
-    Object.values(batch).flatMap((value) =>
-      ArrayBuffer.isView(value) ? [value.buffer as ArrayBuffer] : [],
-    ),
-  ),
-]

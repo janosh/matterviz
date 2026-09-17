@@ -19,6 +19,7 @@ import { get_unsupported_format_message } from '$lib/trajectory/parse'
 import {
   ase_calculator_data,
   parse_ase_trajectory,
+  open_ase_frames,
   read_ase_header,
 } from '$lib/trajectory/parse/ase'
 import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
@@ -1359,39 +1360,36 @@ describe(`ASE`, () => {
   it.each([4, 70_000])(
     `analyzes %i atoms in bounded batches using stored momenta and masses`,
     async (n_atoms) => {
-      const run = await open(make_ase_md_buffer(n_atoms), `md.traj`)
-      assert(run.read_atoms && run.compute_hotspots)
+      const buffer = make_ase_md_buffer(n_atoms)
+      const source = open_ase_frames(buffer)
+      onTestFinished(() => source.release())
+      const run = await open(buffer, `md.traj`)
+      assert(source.read_atoms && run.compute_hotspots)
       expect(run.metadata).toMatchObject({ mass_unit: `amu`, velocity_unit: `A/fs` })
       expect(run.atom_masses).toEqual(Array(n_atoms).fill(2))
       const options = {
         frame_idx: 1,
         start: 1,
         count: 3,
-        stride: 2,
         velocity_key: `velocity`,
         mass_source: `recorded`,
         selection_key: `tags`,
       } as const
       const reads = vi.spyOn(DataView.prototype, `getFloat64`)
-      const batch = await run.read_atoms(options)
+      const batch = await source.read_atoms(options)
       // Three requested atoms must not scan the rest of a 70k-atom frame.
       expect(reads.mock.calls.length).toBeLessThanOrEqual(3 * 9)
       reads.mockRestore()
       expect(batch).toMatchObject({
         start: 1,
-        stride: 2,
         total_atoms: n_atoms,
         time: 14,
         pbc: [false, false, false],
       })
-      const count = Math.min(3, Math.ceil((n_atoms - 1) / 2))
+      const count = Math.min(3, n_atoms - 1)
       expect(batch.positions).toEqual(
         Float64Array.from(
-          Array.from({ length: count }, (_, idx) => [
-            (1 + idx * 2) / n_atoms + 1,
-            1,
-            1,
-          ]).flat(),
+          Array.from({ length: count }, (_, idx) => [(1 + idx) / n_atoms + 1, 1, 1]).flat(),
         ),
       )
       expect(batch.velocities).toEqual(
@@ -1400,15 +1398,17 @@ describe(`ASE`, () => {
         ),
       )
       expect(batch.masses).toEqual(new Float64Array(count).fill(2))
-      expect(batch.selected).toEqual(new Uint8Array(count).fill(1))
+      expect(batch.selected).toEqual(
+        Uint8Array.from({ length: count }, (_, idx) => (idx + 1) % 2),
+      )
       // Replacing the heat-capacity masses must not change p/m's original isotope masses.
-      const standard = await run.read_atoms({ ...options, mass_source: `standard` })
+      const standard = await source.read_atoms({ ...options, mass_source: `standard` })
       expect(standard.velocities).toEqual(batch.velocities)
       expect(standard.masses?.[0]).toBe(1.008)
       batch.positions.fill(-1)
-      expect((await run.read_atoms(options)).positions[0]).toBe(1 + 1 / n_atoms)
+      expect((await source.read_atoms(options)).positions[0]).toBe(1 + 1 / n_atoms)
       if (n_atoms > ATOM_BATCH_SIZE) {
-        const tail = await run.read_atoms({ frame_idx: 0, start: ATOM_BATCH_SIZE })
+        const tail = await source.read_atoms({ frame_idx: 0, start: ATOM_BATCH_SIZE })
         expect(tail.atomic_numbers).toHaveLength(n_atoms - ATOM_BATCH_SIZE)
         expect(tail.positions[0]).toBe(1 + ATOM_BATCH_SIZE / n_atoms)
       }
@@ -1427,34 +1427,36 @@ describe(`ASE`, () => {
       expect(Math.abs(hotspot_mean(result, `energy`) - expected)).toBeLessThan(
         expected * 2e-12,
       )
-      expect(() => run.read_atoms?.({ ...options, velocity_key: `missing` })).toThrow(
+      expect(() => source.read_atoms?.({ ...options, velocity_key: `missing` })).toThrow(
         /Unknown ASE velocity property/,
       )
-      expect(() => run.read_atoms?.({ frame_idx: 0, energy_key: `kinetic_energy` })).toThrow(
-        /frame totals cannot locate hotspots/,
-      )
-      expect(() => run.read_atoms?.({ ...options, selection_key: `absent` })).toThrow(
+      expect(() =>
+        source.read_atoms?.({ frame_idx: 0, energy_key: `kinetic_energy` }),
+      ).toThrow(/frame totals cannot locate hotspots/)
+      expect(() => source.read_atoms?.({ ...options, selection_key: `absent` })).toThrow(
         /no atom selection property/,
       )
       const controller = new AbortController()
       controller.abort(new Error(`cancel analysis`))
-      expect(() => run.read_atoms?.(options, controller.signal)).toThrow(`cancel analysis`)
+      expect(() => source.read_atoms?.(options, controller.signal)).toThrow(`cancel analysis`)
       run.dispose()
-      expect(() => run.read_atoms?.(options)).toThrow(/disposed/)
+      await expect(run.compute_hotspots({})).rejects.toThrow(/disposed/)
+      source.release()
+      expect(() => source.read_atoms?.(options)).toThrow(/released/)
     },
   )
 
   it(`uses ASE's elemental mass convention when no isotope masses are stored`, async () => {
-    const run = await open(make_ase_md_buffer(2, false), `md.traj`)
-    expect(run.atom_masses).toBeUndefined()
-    const batch = await run.read_atoms?.({
+    const source = open_ase_frames(make_ase_md_buffer(2, false))
+    onTestFinished(() => source.release())
+    expect(source.atom_masses).toBeUndefined()
+    const batch = await source.read_atoms?.({
       frame_idx: 1,
       mass_source: `standard`,
       velocity_key: `velocity`,
     })
     expect(batch?.masses).toEqual(Float64Array.of(1.008, 1.008))
     expect(batch?.velocities?.[0]).toBe((4 / 1.008) * 0.09822694788464063)
-    run.dispose()
   })
   // Result keys lose their ULM trailing dot; malformed ndarray descriptors are skipped
   // without dropping the scalar results next to them
@@ -1505,7 +1507,8 @@ describe(`ASE`, () => {
       expect(indexed.frame_count).toBe(2)
       expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)
       expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error)
-      expect(() => indexed.read_atoms?.({ frame_idx: 1 })).toThrow(error)
+      assert(indexed.compute_hotspots)
+      await expect(indexed.compute_hotspots({ start_frame: 1, end_frame: 2, velocity_unit: `A/fs`, mass_unit: `amu` })).rejects.toThrow(error)
       expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
       await indexed.properties.done
       expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0])

@@ -775,12 +775,8 @@ const parse_torch_sim_datasets = (
     const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
     if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count)
       throw new Error(`Invalid HDF5 frame ${frame_idx}`)
-    const { start, count, stride } = atom_range(n_atoms, options)
-    const atom_slice: [number, number, number] = [
-      start,
-      Math.min(n_atoms, start + count * stride),
-      stride,
-    ]
+    const { start, count } = atom_range(n_atoms, options)
+    const atom_slice: [number, number] = [start, start + count]
     const channel = (key: string, width: number): Float64Array => {
       const entry = signal_manifest[key]
       if (
@@ -802,14 +798,13 @@ const parse_torch_sim_datasets = (
     }
     const atomic_numbers = Uint8Array.from(
       { length: count },
-      (_unused, idx) => first_atomic_numbers[start + idx * stride],
+      (_unused, idx) => first_atomic_numbers[start + idx],
     )
     const batch: AtomBatch = {
       positions: read_position_slice(frame_idx, ...atom_slice),
       atomic_numbers,
       total_atoms: n_atoms,
       start,
-      stride,
       step: steps[frame_idx],
       time: time_for_frame(frame_idx, Boolean(velocity_key) || Boolean(energy_key)),
       cell: lattice_for_frame(frame_idx),
@@ -820,7 +815,7 @@ const parse_torch_sim_datasets = (
     }
     if (mass_source)
       batch.masses = Float64Array.from({ length: count }, (_unused, idx) => {
-        const atom_idx = start + idx * stride
+        const atom_idx = start + idx
         const mass =
           mass_source === `standard`
             ? element_by_symbol.get(elements[atom_idx])?.atomic_mass

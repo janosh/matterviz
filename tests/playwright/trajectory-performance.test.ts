@@ -115,10 +115,12 @@ test.describe(`Trajectory performance`, () => {
       const expect_3d_pixels = async (heat = false): Promise<void> => {
         // Inspect the scene itself, regardless of the floating pane's width or position.
         const pane_was_open = await pane.isVisible()
-        if (pane_was_open) await page.keyboard.press(`Escape`)
-        await expect(pane).toBeHidden()
         await atom_canvas.scrollIntoViewIfNeeded()
         await page.mouse.move(0, 0)
+        // Hover tooltips consume Escape before the pane underneath them.
+        await expect(page.getByRole(`tooltip`)).toHaveCount(0)
+        if (pane_was_open) await page.keyboard.press(`Escape`)
+        await expect(pane).toBeHidden()
         const box = await require_bbox(atom_canvas)
         // The center excludes controls/gizmos; color excludes the gray lattice and background.
         const clip = {
@@ -208,8 +210,8 @@ test.describe(`Trajectory performance`, () => {
       await pane.getByLabel(`Mass units`).selectOption(`amu`)
       await pane.getByLabel(`Grid resolution`).fill(`5`)
       await pane.getByRole(`button`, { name: `Calculate hotspots` }).click()
-      await expect(pane.locator(`.hotspot-slice canvas`)).toBeVisible({ timeout: 30_000 })
-      await expect(pane.locator(`.hotspot-slice`)).toContainText(`eV/atom`)
+      await expect(pane.locator(`.hotspot-map-status`)).toBeVisible({ timeout: 30_000 })
+      await expect(pane.getByLabel(/^Display/)).toHaveValue(`energy`)
       await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
       await expect.poll(atom_count).toBe(n_atoms)
       expect(await scene_snapshot()).toEqual(original_scene)

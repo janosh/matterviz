@@ -399,7 +399,6 @@ describe(`parse_in_worker`, () => {
     vi.spyOn(navigator, `hardwareConcurrency`, `get`).mockReturnValue(8)
     const { workers, pending, warm, open } = preparation_workers(333_200)
     const { run, prepare } = await open()
-    if (!run.read_atoms) throw new Error(`Expected numeric trajectory`)
     await warm(run)
     const requests = [1, 2].map((idx) =>
       prepare(idx, preparation).catch((error: unknown) => error),
@@ -408,7 +407,7 @@ describe(`parse_in_worker`, () => {
     vi.spyOn(workers[0].run_ports[0], `postMessage`).mockImplementationOnce(() => {
       throw new Error(`port failed`)
     })
-    await expect(run.read_atoms({ frame_idx: 0 })).rejects.toThrow(`port failed`)
+    await expect(run.read_frame(0)).rejects.toThrow(`port failed`)
     for (const request of requests)
       expect(await request).toMatchObject({ message: expect.stringContaining(`disposed`) })
     expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)

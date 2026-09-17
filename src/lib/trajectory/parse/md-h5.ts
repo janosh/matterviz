@@ -264,7 +264,7 @@ export const parse_md_h5_file = (
   const read_atoms: ReadAtoms = (options, signal) => {
     signal?.throwIfAborted()
     check_frame(options.frame_idx)
-    const { start, count, stride } = atom_range(n_atoms, options)
+    const { start, count } = atom_range(n_atoms, options)
     const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
     if ((velocity_key && velocity_key !== `velocity`) || energy_key || selection_key)
       throw new Error(
@@ -273,7 +273,7 @@ export const parse_md_h5_file = (
     const read_atomic = (name: string): Float64Array => {
       const values = read_numeric_buffer(datasets[name], `/frames/${name}`, [
         [frame_idx, frame_idx + 1],
-        [start, Math.min(n_atoms, start + count * stride), stride],
+        [start, start + count],
       ])
       if (name === `velocities`)
         for (let idx = 0; idx < values.length; idx++) values[idx] *= VELOCITY_FACTOR
@@ -282,7 +282,7 @@ export const parse_md_h5_file = (
     const batch_numbers = new Uint8Array(count)
     const batch_masses = mass_source ? new Float64Array(count) : undefined
     for (let idx = 0; idx < count; idx++) {
-      const atom_idx = start + idx * stride
+      const atom_idx = start + idx
       batch_numbers[idx] = numeric_elements[atom_idx]
       if (batch_masses) {
         const mass =
@@ -299,7 +299,6 @@ export const parse_md_h5_file = (
       atomic_numbers: batch_numbers,
       total_atoms: n_atoms,
       start,
-      stride,
       step: steps[frame_idx],
       time: times[frame_idx],
       cell,

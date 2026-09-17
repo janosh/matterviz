@@ -147,7 +147,6 @@ type FrameResult = NumericFrame | Promise<NumericFrame>
 
 export interface TrajectoryRun {
   readonly atom_count: number
-  read_atoms?: ReadAtoms
   compute_hotspots?: (options: HotspotRequest) => Promise<HotspotResult>
   // Mandatory and >= 1: an electronic-only vaspout.h5 is a spectral result, never a run
   readonly frame_count: number
@@ -189,7 +188,7 @@ export interface TrajectoryRun {
 // VS Code host). Everything except frames and collect_positions, which travel over a port.
 export interface TrajectoryRunSummary {
   atom_count: number
-  has_read_atoms?: boolean
+  has_compute_hotspots?: boolean
   frame_count: number
   preview: TrajectoryFrame
   provenance: TrajectoryProvenance
@@ -204,7 +203,7 @@ export interface TrajectoryRunSummary {
 
 export const summarize_run = (run: TrajectoryRun): TrajectoryRunSummary => ({
   atom_count: run.atom_count,
-  has_read_atoms: run.read_atoms !== undefined,
+  has_compute_hotspots: run.compute_hotspots !== undefined,
   frame_count: run.frame_count,
   preview: run.preview,
   provenance: run.provenance,
@@ -315,7 +314,6 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     ...fields,
     atom_count,
     ...((Boolean(source_atoms) || atom_count <= ATOM_BATCH_SIZE) && {
-      read_atoms,
       compute_hotspots: async (options: HotspotRequest) => {
         live()
         const { calculate_hotspots } = await import('./hotspots')

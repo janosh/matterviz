@@ -510,7 +510,7 @@ it.each([27, 100_000])(
       warnings: [],
     })
     expect(run.atom_count).toBe(atom_count)
-    expect(run.read_atoms !== undefined).toBe(atom_count === 27)
+    expect(run.compute_hotspots !== undefined).toBe(atom_count === 27)
     run.dispose()
   },
 )

@@ -153,7 +153,7 @@ describe(`display modes`, () => {
       for (const [idx, site] of frame.structure.sites.entries())
         site.properties.force = [idx + 1, 0, 0]
     const backing = trajectory_from_frames(frames)
-    const read_atoms = vi.fn(backing.read_atoms)
+    const compute_hotspots = vi.fn(backing.compute_hotspots)
     const read_frame = vi.fn(backing.read_frame)
     const preparer = new FramePreparer()
     let prepared: DisplayFrame | undefined
@@ -166,7 +166,7 @@ describe(`display modes`, () => {
         metadata: { render_sample: true },
         structure: { ...backing.preview.structure, sites: [] },
       },
-      read_atoms,
+      compute_hotspots,
       read_frame,
       prepare_frame: async (idx, preparation, signal) =>
         (prepared = preparer.prepare(
@@ -216,7 +216,7 @@ describe(`display modes`, () => {
       )?.values,
     ).toEqual([1, 2])
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(1)
-    expect(read_atoms).not.toHaveBeenCalled()
+    expect(compute_hotspots).not.toHaveBeenCalled()
   })
 
   test(`channel selection follows viewer controls, inspection and custom coloring`, async () => {

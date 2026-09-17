@@ -5,7 +5,6 @@ import {
   hotspot_bin,
   hotspot_values,
   hotspot_mean,
-  hotspot_slice,
   infer_mass_unit,
   BOLTZMANN_EV,
   type HotspotGrid,
@@ -16,7 +15,6 @@ import {
 import {
   atom_range,
   frame_atom_batch,
-  atom_batch_transfers,
   type ReadAtoms,
   type AtomBatch,
   type AtomReadOptions,
@@ -27,6 +25,9 @@ import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
 import { h5_bytes } from './fixtures'
 import { open_trajectory } from '$lib/trajectory/open'
+import { open_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
+import { create_warning_collector } from '$lib/trajectory/parse/shared'
+import { hdf5_run } from '$lib/trajectory/runs/hdf5'
 
 const grid: HotspotGrid = {
   dims: [2, 1, 1],
@@ -49,12 +50,12 @@ const conversion = (0.5 * 1.66053906892e-27 * 100 ** 2) / 1.602176634e-19
 
 function source(n_atoms = 8, steps = [0, 1, 2], drift = 0) {
   return (options: AtomReadOptions): AtomBatch => {
-    const { start, count, stride } = atom_range(n_atoms, options)
+    const { start, count } = atom_range(n_atoms, options)
     const positions = new Float64Array(count * 3)
     const velocities = new Float64Array(count * 3)
     const masses = new Float64Array(count)
     for (let idx = 0; idx < count; idx++) {
-      const atom_idx = start + idx * stride
+      const atom_idx = start + idx
       positions.set([atom_idx < n_atoms / 2 ? 0.5 : 1.5, 0.5, 0.5], idx * 3)
       const speed = atom_idx < n_atoms / 2 ? 1 : 2
       velocities[idx * 3] = drift + (atom_idx % 2 ? speed : -speed)
@@ -67,7 +68,6 @@ function source(n_atoms = 8, steps = [0, 1, 2], drift = 0) {
       atomic_numbers: new Uint8Array(count).fill(14),
       total_atoms: n_atoms,
       start,
-      stride,
       step: steps[options.frame_idx],
       cell: grid.cell,
       origin: grid.origin,
@@ -232,7 +232,6 @@ describe(`spatial kinetic hotspots`, () => {
       atomic_numbers: new Uint8Array(5).fill(1),
       total_atoms: 5,
       start: 0,
-      stride: 1,
       step: 0,
       origin: grid.origin,
       cell: grid.cell,
@@ -350,7 +349,6 @@ describe(`spatial kinetic hotspots`, () => {
       atomic_numbers: new Uint8Array([14]),
       total_atoms: 1,
       start: 0,
-      stride: 1,
       step: frame_idx,
       cell: [
         [frame_idx ? 4 : 2, 0, 0],
@@ -391,25 +389,10 @@ describe(`spatial kinetic hotspots`, () => {
         return frame
       })
       const backing = trajectory_from_frames(frames)
-      const read_atoms = backing.read_atoms
-      if (!read_atoms) throw new Error(`Missing numeric reader`)
-      backing.read_atoms = async (options, signal) => {
-        const batch = await read_atoms(options, signal)
-        const packed = new Float64Array(batch.positions.length + batch.atomic_numbers.length)
-        packed.set(batch.positions)
-        const packed_batch = {
-          ...batch,
-          positions: packed.subarray(0, batch.positions.length),
-          energies: packed.subarray(batch.positions.length),
-        }
-        expect(atom_batch_transfers(packed_batch)).toHaveLength(2)
-        return packed_batch
-      }
       const run = worker_run(serve_run_over_port(backing), summarize_run(backing))
       onTestFinished(() => run.dispose())
-      expect((await run.read_atoms?.({ frame_idx: 1 }))?.positions).toEqual(
-        new Float64Array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5]),
-      )
+      expect(backing).not.toHaveProperty(`read_atoms`)
+      expect(run).not.toHaveProperty(`read_atoms`)
       if (!run.compute_hotspots) throw new Error(`Missing worker hotspot capability`)
       let clock = 0
       const timer = vi.spyOn(performance, `now`).mockImplementation(() => (clock += 300))
@@ -592,7 +575,7 @@ describe(`spatial kinetic hotspots`, () => {
       if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
       if (sparse_time) {
         expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
-        expect((await run.read_atoms?.({ frame_idx: 1 }))?.time).toBeUndefined()
+        expect((await run.read_frame(1)).header.metadata?.time).toBeUndefined()
       }
       const computation = run.compute_hotspots({
         ...energy_options,
@@ -623,39 +606,6 @@ describe(`spatial kinetic hotspots`, () => {
     expect(Math.abs(hotspot_mean(declared, `temperature`) - expected)).toBeLessThanOrEqual(
       2 * Number.EPSILON * expected,
     )
-  })
-
-  it(`preserves bin values and empty cells in physical orthogonal and triclinic slices`, () => {
-    const orthogonal = hotspot_slice(grid, new Float32Array([10, NaN]), 2, 0)
-    expect([...orthogonal.data]).toEqual([10, NaN])
-    expect([...orthogonal.mask]).toEqual([1, 0])
-    expect(orthogonal.point).toEqual([0, 0, 0.5])
-    const skewed = hotspot_slice(
-      {
-        ...grid,
-        cell: [
-          [2, 0, 0],
-          [1, 2, 0],
-          [0.2, 0.4, 2],
-        ],
-      },
-      new Float32Array([10, 20]),
-      2,
-      0,
-    )
-    expect(skewed.point).toEqual([0.1, 0.2, 1])
-    expect(skewed.normal).toEqual([0, 0, 1])
-    expect(skewed.polygon).toEqual([
-      [0, 0],
-      [2, 0],
-      [3, 2],
-      [1, 2],
-    ])
-    expect(new Set(skewed.data.filter(Number.isFinite))).toEqual(new Set([10, 20]))
-    expect(skewed.mask[skewed.width - 1]).toBe(0)
-    expect(skewed.mask[(skewed.height - 1) * skewed.width]).toBe(0)
-    const masked = hotspot_slice(grid, new Float32Array([10, 20]), 2, 0, 15)
-    expect([...masked.data]).toEqual([NaN, 20])
   })
 
   it(`rejects oversized physical chunks before reading structural HDF5 data`, async () => {
@@ -724,7 +674,10 @@ describe(`spatial kinetic hotspots`, () => {
       data.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
     })
     const started = performance.now()
-    const run = await open_trajectory(bytes, { filename: `million.h5` })
+    const opened = await open_hdf5_trajectory(bytes, create_warning_collector(), `million.h5`)
+    if (opened.kind !== `lazy` || !opened.lazy.read_atoms)
+      throw new Error(`Missing numeric source`)
+    const run = hdf5_run(opened.lazy, { filename: `million.h5`, format: `hdf5` }, [])
     onTestFinished(() => run.dispose())
     expect(run.atom_count).toBe(n_atoms)
     expect(run.preview.structure.sites.length).toBeLessThanOrEqual(2000)
@@ -734,14 +687,15 @@ describe(`spatial kinetic hotspots`, () => {
     expect(indices).toHaveLength(2000)
     if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
     expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
-    const tail = await run.read_atoms?.({
+    const tail = await opened.lazy.read_atoms({
       frame_idx: 1,
       start: n_atoms - 5,
       count: 8,
-      stride: 2,
     })
-    expect(tail?.positions).toEqual(
-      Float64Array.of(1.375, 0.5, 0.5, 1.625, 0.5, 0.5, 1.875, 0.5, 0.5),
+    expect(tail.positions).toEqual(
+      Float64Array.from(
+        [1.375, 1.5, 1.625, 1.75, 1.875].flatMap((value) => [value, 0.5, 0.5]),
+      ),
     )
     if (!run.compute_hotspots) throw new Error(`Missing hotspot reader`)
     const result = await run.compute_hotspots({

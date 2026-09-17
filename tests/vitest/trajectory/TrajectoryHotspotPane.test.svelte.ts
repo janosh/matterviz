@@ -3,11 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import TrajectoryHotspotPane from '$lib/trajectory/TrajectoryHotspotPane.svelte'
 import { trajectory_from_frames, type MemoryRunExtras } from '$lib/trajectory/runs/memory'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
-import {
-  calculate_hotspots,
-  type HotspotRequest,
-  type HotspotResult,
-} from '$lib/trajectory/hotspots'
+import type { HotspotRequest, HotspotResult } from '$lib/trajectory/hotspots'
 import { doc_query, set_select } from '../setup'
 
 let mounted: ReturnType<typeof mount> | undefined
@@ -41,8 +37,8 @@ const make_run = (extras: MemoryRunExtras = {}) =>
     extras,
   )
 const calculate_run = (run: ReturnType<typeof make_run>, options: HotspotRequest = {}) => {
-  if (!run.read_atoms) throw new Error(`Missing atom reader`)
-  return calculate_hotspots(run.frame_count, run.read_atoms, {
+  if (!run.compute_hotspots) throw new Error(`Missing hotspot calculation`)
+  return run.compute_hotspots({
     velocity_unit: `A/ps`,
     mass_unit: `amu`,
     ...options,
@@ -80,7 +76,7 @@ const expect_requirements = (message?: string) => {
   ).toBe(message)
 }
 
-it(`requires units, calculates a slice, and keeps display changes independent of analysis`, async () => {
+it(`requires units, calculates a map, and keeps display changes independent of analysis`, async () => {
   const run = make_run()
   const compute = vi.spyOn(run, `compute_hotspots`)
   const props = $state({ run, pane_open: true, show_heatmap: true })
@@ -113,12 +109,7 @@ it(`requires units, calculates a slice, and keeps display changes independent of
   )
   expect(calculate_button().disabled).toBe(false)
   calculate_button().click()
-  await vi.waitFor(() => expect(document.querySelector(`.hotspot-slice`)).not.toBeNull())
-  doc_query(`[aria-label="Inspect hotspot bin"]`).dispatchEvent(
-    new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-  )
-  await tick()
-  expect(doc_query(`output`).textContent).toContain(`Bin 0:`)
+  await vi.waitFor(() => expect(document.querySelector(`.hotspot-map-status`)).not.toBeNull())
   expect(document.body.textContent).not.toContain(`Missing velocity at frame 0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
   await set_value(`Minimum average atoms/bin`, `-1`)
@@ -150,7 +141,7 @@ it(`requires units, calculates a slice, and keeps display changes independent of
     dimensions: 2,
     dof_per_atom: 2,
   })
-  expect(document.querySelector(`.hotspot-slice`)).not.toBeNull()
+  expect(document.querySelector(`.hotspot-map-status`)).not.toBeNull()
   expect(document.body.textContent).not.toContain(`Settings changed`)
   await set_value(`Grid resolution`, `2`)
   expect(document.body.textContent).toContain(`Settings changed`)
@@ -237,7 +228,6 @@ it(`shows the selected-frame preview and partial average before completion, reta
   expect(document.querySelector(`.hotspot-map-status`)?.textContent).toContain(
     `Frame 1 preview`,
   )
-  expect(document.querySelector(`.hotspot-slice`)).not.toBeNull()
   expect(document.body.textContent).not.toContain(`Settings changed`)
   request?.on_progress?.({
     current: 1.5,
@@ -332,5 +322,5 @@ it(`aborts an old computation when the source changes`, async () => {
   expect(calculate_button().disabled).toBe(true)
   pending.resolve(await calculate_run(next))
   await tick()
-  expect(document.querySelector(`.hotspot-slice`)).toBeNull()
+  expect(document.querySelector(`.hotspot-map-status`)).toBeNull()
 })

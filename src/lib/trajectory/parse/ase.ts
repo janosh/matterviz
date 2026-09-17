@@ -280,7 +280,7 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       if (!positions || !elements || positions.shape[0] !== elements.shape[0])
         throw new Error(`ASE positions and atomic numbers must have matching atom counts`)
       const total_atoms = positions.shape[0]
-      const { start, count, stride } = atom_range(total_atoms, options)
+      const { start, count } = atom_range(total_atoms, options)
       const column = (name: string, width: number, source_header = header) => {
         const values = array_column(source_header, name, width)
         if (values && values.shape[0] !== total_atoms)
@@ -320,7 +320,6 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
         atomic_numbers: new Uint8Array(count),
         total_atoms,
         start,
-        stride,
         step: frame_idx,
         cell: header.cell ? matrix3x3_from_rows(header.cell, `ASE cell`) : undefined,
         origin: [0, 0, 0],
@@ -332,7 +331,7 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
         ...(selection && { selected: new Uint8Array(count) }),
       }
       for (let idx = 0; idx < count; idx++) {
-        const atom_idx = start + idx * stride
+        const atom_idx = start + idx
         const atomic_number = elements.value(atom_idx)
         const symbol = element_from_atomic_number(atomic_number)
         const standard_mass = symbol && element_by_symbol.get(symbol)?.atomic_mass

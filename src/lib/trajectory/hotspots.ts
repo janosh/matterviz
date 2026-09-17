@@ -1,13 +1,5 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
-import {
-  cross_3d,
-  dot,
-  matrix_inverse_3x3,
-  normalize_vec,
-  type Matrix3x3,
-  type Vec3,
-} from '$lib/math'
-import type { SliceResult } from '$lib/isosurface/slice'
+import { matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
@@ -241,89 +233,6 @@ const yield_turn = (): Promise<void> =>
     port2.postMessage(null)
   })
 
-// Rasterize a cell-aligned plane in an orthonormal physical basis. Samples select a bin
-// directly: there is no interpolation across bin boundaries or into unoccupied cells.
-export function hotspot_slice(
-  grid: HotspotGrid,
-  values: Float32Array,
-  axis: number,
-  layer: number,
-  minimum = -Infinity,
-): SliceResult {
-  const n_bins = validate_hotspot_grid(grid)
-  if (
-    ![0, 1, 2].includes(axis) ||
-    !Number.isInteger(layer) ||
-    layer < 0 ||
-    layer >= grid.dims[axis] ||
-    values.length !== n_bins
-  )
-    throw new Error(
-      `Invalid hotspot slice: axis=${axis}, layer=${layer}, values=${values.length}`,
-    )
-  const [axis_u, axis_v] = [0, 1, 2].filter((value) => value !== axis)
-  const { cell, dims, origin } = grid
-  const u_axis = normalize_vec(cell[axis_u])
-  const normal = normalize_vec(cross_3d(cell[axis_u], cell[axis_v]))
-  const v_axis = cross_3d(normal, u_axis)
-  const span_u = Math.hypot(...cell[axis_u])
-  const shear = dot(cell[axis_v], u_axis)
-  const span_v = dot(cell[axis_v], v_axis)
-  const low_u = Math.min(0, shear)
-  const high_u = span_u + Math.max(0, shear)
-  const orthogonal = Math.abs(shear) <= Number.EPSILON * span_u * 8
-  const width = orthogonal
-    ? dims[axis_u]
-    : Math.min(512, Math.max(64, Math.ceil((dims[axis_u] * 4 * (high_u - low_u)) / span_u)))
-  const height = orthogonal ? dims[axis_v] : Math.max(64, Math.min(512, dims[axis_v] * 4))
-  const data = new Float64Array(width * height).fill(NaN)
-  const mask = new Uint8Array(data.length)
-  const coordinates = [0, 0, 0]
-  coordinates[axis] = layer
-  let min = Infinity
-  let max = -Infinity
-  for (let row = 0; row < height; row++) {
-    const fraction_v = (row + 0.5) / height
-    coordinates[axis_v] = Math.min(dims[axis_v] - 1, Math.floor(fraction_v * dims[axis_v]))
-    for (let col = 0; col < width; col++) {
-      const coord_u = low_u + ((col + 0.5) / width) * (high_u - low_u)
-      const fraction_u = (coord_u - shear * fraction_v) / span_u
-      if (fraction_u < 0 || fraction_u >= 1) continue
-      coordinates[axis_u] = Math.floor(fraction_u * dims[axis_u])
-      const bin = (coordinates[0] * dims[1] + coordinates[1]) * dims[2] + coordinates[2]
-      const value = values[bin]
-      if (!Number.isFinite(value) || value < minimum) continue
-      const pixel = row * width + col
-      data[pixel] = value
-      mask[pixel] = 1
-      min = Math.min(min, value)
-      max = Math.max(max, value)
-    }
-  }
-  return {
-    data,
-    mask,
-    width,
-    height,
-    min: Number.isFinite(min) ? min : 0,
-    max: Number.isFinite(max) ? max : 1,
-    point: origin.map(
-      (value, idx) => value + (cell[axis][idx] * (layer + 0.5)) / dims[axis],
-    ) as Vec3,
-    normal,
-    u_axis,
-    v_axis,
-    u_range: [low_u, high_u],
-    v_range: [0, span_v],
-    polygon: [
-      [0, 0],
-      [span_u, 0],
-      [span_u + shear, span_v],
-      [shear, span_v],
-    ],
-  }
-}
-
 export async function calculate_hotspots(
   frame_count: number,
   read_atoms: ReadAtoms,
@@ -469,7 +378,6 @@ async function reduce_hotspots(
     if (
       batch.positions.length !== batch.atomic_numbers.length * 3 ||
       batch.start !== start ||
-      batch.stride !== 1 ||
       !batch.atomic_numbers.length ||
       batch.atomic_numbers.length > batch_size
     )
@@ -537,7 +445,7 @@ async function reduce_hotspots(
   const n_bins = validate_hotspot_grid(grid)
   // First batch, next-frame lookahead and current batch can coexist during a frame.
   // Reserve the caller's completed map during replacement, plus one 8 MiB
-  // physical decoder chunk and 8 MiB for slice/display pixels. Streaming additionally
+  // physical decoder chunk and 8 MiB for display buffers. Streaming additionally
   // reserves the published map and an in-flight snapshot. No frame history is retained.
   const buffer_bytes = required_bytes(n_bins * (on_partial ? 160 : 104), preview_bytes)
   if (!Number.isFinite(max_bytes) || buffer_bytes > max_bytes)

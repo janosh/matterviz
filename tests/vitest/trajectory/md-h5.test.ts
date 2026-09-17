@@ -234,7 +234,10 @@ describe(`MD HDF5`, () => {
   })
 
   it(`maps every scientific channel, row-vector cell, units and static identities`, async () => {
-    const run = await open(await fixture())
+    const opened = await open_hdf5_trajectory(await fixture(), create_warning_collector())
+    assert(opened.kind === `lazy` && opened.lazy.read_atoms)
+    const run = hdf5_run(opened.lazy, { format: `md-hdf5` }, [])
+    onTestFinished(() => run.dispose())
     expect(run.provenance.format).toBe(`md-hdf5`)
     expect(run.frame_count).toBe(3)
     expect(run.atom_masses).toEqual([28.085, 72.6308, 28.085, 72.6308])
@@ -294,8 +297,7 @@ describe(`MD HDF5`, () => {
       frame_aligned: true,
       unit: `A/fs`,
     })
-    if (!run.read_atoms) throw new Error(`missing read_atoms`)
-    const batch = await run.read_atoms({
+    const batch = await opened.lazy.read_atoms({
       frame_idx: 1,
       start: 1,
       count: 2,
@@ -310,7 +312,7 @@ describe(`MD HDF5`, () => {
     // Returned static columns belong to the caller; editing them must not poison later reads.
     batch.atomic_numbers.fill(1)
     batch.masses?.fill(1)
-    const repeated = await run.read_atoms({
+    const repeated = await opened.lazy.read_atoms({
       frame_idx: 1,
       start: 1,
       count: 2,
@@ -362,10 +364,10 @@ describe(`MD HDF5`, () => {
   })
 
   it.each([
-    [4, 1, 1, 3],
-    [70_003, 100, 3, 3],
-    [4, 1, 1, 2003],
-  ])(`bounds frame/atom reads for %i atoms`, async (atoms, start, stride, frames) => {
+    [4, 1, 3],
+    [70_003, 100, 3],
+    [4, 1, 2003],
+  ])(`bounds frame/atom reads for %i atoms`, async (atoms, start, frames) => {
     const buffer = await fixture({ atoms, frames, timestep_fs: 0.5 })
     const original_to_array = Dataset.prototype.to_array
     const whole_reads: string[] = []
@@ -382,7 +384,10 @@ describe(`MD HDF5`, () => {
     onTestFinished(() => {
       vi.restoreAllMocks()
     })
-    const run = await open(buffer)
+    const source = await open_hdf5_trajectory(buffer, create_warning_collector())
+    assert(source.kind === `lazy` && source.lazy.read_atoms)
+    const run = hdf5_run(source.lazy, { format: `md-hdf5` }, [])
+    onTestFinished(() => run.dispose())
     // One scalar read for the preview and one batched read for the entire sampled plot.
     expect(slices.filter(({ path }) => path === `/frames/energy`)).toHaveLength(2)
     const plot_stride = Math.ceil(frames / 1000)
@@ -431,12 +436,10 @@ describe(`MD HDF5`, () => {
         [0, atoms, sample_stride],
       ])
     slices.length = 0
-    if (!run.read_atoms) throw new Error(`missing read_atoms`)
-    await run.read_atoms({
+    await source.lazy.read_atoms({
       frame_idx: 2,
       start,
       count: 2,
-      stride,
       velocity_key: `velocity`,
       mass_source: `recorded`,
     })
@@ -445,7 +448,7 @@ describe(`MD HDF5`, () => {
         path: `/frames/${name}`,
         ranges: [
           [2, 3],
-          [start, start + 2 * stride, stride],
+          [start, start + 2],
         ],
       })),
     )

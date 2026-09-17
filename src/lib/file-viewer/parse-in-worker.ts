@@ -176,7 +176,7 @@ export const parse_in_worker = async (
     result.type !== `trajectory` ||
     !(content instanceof File) ||
     result.data.atom_count <= 100_000 ||
-    !result.data.read_atoms ||
+    !result.data.compute_hotspots ||
     ![`hdf5`, `md-hdf5`, `reference-md-hdf5`].includes(result.data.provenance.format ?? ``)
   )
     return result
@@ -265,7 +265,7 @@ export const parse_in_worker = async (
           slot.run.frame_count !== primary.frame_count ||
           slot.run.provenance.format !== primary.provenance.format ||
           slot.run.provenance.hdf5_group !== primary.provenance.hdf5_group ||
-          !slot.run.read_atoms ||
+          !slot.run.compute_hotspots ||
           !slot.run.prepare_frame
         )
           throw new Error(`HDF5 preparation replica does not match ${filename}`)

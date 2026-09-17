@@ -21,13 +21,11 @@ import type {
 } from '../index'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
-import { atom_batch_transfers, type AtomBatch, type AtomReadOptions } from '../atom-batches'
 import type { HotspotProgress, HotspotRequest, HotspotResult } from '../hotspots'
 
 type RunPortMethod =
   | `read_frame`
   | `prepare_frame`
-  | `read_atoms`
   | `compute_hotspots`
   | `hotspot_ack`
   | `collect_positions`
@@ -140,10 +138,6 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
             prepared.frame = packet
             post({ id: identifier, result: prepared }, display_frame_transfers(prepared))
           } else post({ id: identifier, result: packet }, frame_transfers(packet))
-        } else if (method === `read_atoms`) {
-          if (!active.read_atoms) throw new Error(`Run cannot read atom batches`)
-          const batch = await active.read_atoms(args[0] as AtomReadOptions, controller.signal)
-          post({ id: identifier, result: batch }, atom_batch_transfers(batch))
         } else if (method === `compute_hotspots`) {
           if (!active.compute_hotspots) throw new Error(`Run cannot calculate hotspots`)
           // Only one snapshot can be in flight, even when the viewer is busy or hidden.
@@ -338,9 +332,7 @@ export const worker_run = (
 
   return {
     ...fields,
-    ...(summary.has_read_atoms && {
-      read_atoms: (options: AtomReadOptions, signal?: AbortSignal) =>
-        rpc<AtomBatch>(`read_atoms`, [options], signal),
+    ...(summary.has_compute_hotspots && {
       compute_hotspots: ({
         signal,
         on_progress,

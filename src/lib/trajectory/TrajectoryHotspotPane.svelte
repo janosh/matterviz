@@ -17,7 +17,6 @@
     type HotspotResult,
     type HotspotCoverage,
   } from './hotspots'
-  import HotspotSlice from './HotspotSlice.svelte'
 
   let {
     run,
@@ -423,7 +422,6 @@
         through atoms; it smooths the bins for display.
       </p>
     {/if}
-    <HotspotSlice {result} {metric} {min_atoms} {threshold} />
     <p>
       {result.frames} frames, steps {result.first_step}–{result.last_step}; grid {result.grid.dims.join(
         `×`,

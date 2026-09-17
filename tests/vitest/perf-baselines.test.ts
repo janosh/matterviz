@@ -543,7 +543,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       velocities[offset] = atom_idx % 2 ? 1 : -1
     }
     const read_atoms: ReadAtoms = (options) => {
-      const { start, count, stride } = atom_range(n_atoms, options)
+      const { start, count } = atom_range(n_atoms, options)
       return {
         positions: positions.slice(start * 3, (start + count) * 3),
         velocities: velocities.slice(start * 3, (start + count) * 3),
@@ -551,7 +551,6 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
         atomic_numbers: new Uint8Array(count).fill(14),
         total_atoms: n_atoms,
         start,
-        stride,
         step: options.frame_idx,
         origin: [0, 0, 0],
         cell: [
