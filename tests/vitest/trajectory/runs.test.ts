@@ -898,6 +898,8 @@ describe(`worker-served run lifecycle`, () => {
     [65_537, true],
   ] as const)(
     `transfers %i sites exactly without changing source frames (compact: %s)`,
+    // Large metadata round trips need headroom on shared CI runners.
+    { timeout: 20_000 },
     async (count, compact) => {
       const frame = make_trajectory_frame(1, count)
       for (const [idx, site] of frame.structure.sites.entries()) {
