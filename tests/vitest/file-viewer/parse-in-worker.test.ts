@@ -118,6 +118,8 @@ const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup 
           provenance: { format, filename: request.filename, hdf5_group: `/device` },
         },
       )
+      // Preparation must work without hotspot analysis, including on replicas.
+      delete run.compute_hotspots
       const read_frame = run.read_frame
       run.read_frame = (idx) =>
         new Promise((resolve) => {
@@ -157,6 +159,7 @@ const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup 
     const result = await parse_in_worker(content, `device.h5`, false, { worker_factory })
     if (result.type !== `trajectory` || !result.data.prepare_frame)
       throw new Error(`Expected prepared trajectory`)
+    expect(result.data.compute_hotspots).toBeUndefined()
     return { run: result.data, prepare: result.data.prepare_frame.bind(result.data) }
   }
   return { workers, pending, openings, factory, warm, open }
@@ -215,6 +218,7 @@ describe(`parse_in_worker`, () => {
 
   it.each([
     [333_200, 8, true, `hdf5`, 1, 4, undefined],
+    [333_200, 8, true, `reference-md-hdf5`, 1, 4, undefined],
     [333_200, 18, true, `hdf5`, 1, 10, 32],
     [333_200, 18, true, `md-hdf5`, 1, 10, 32],
     [333_200, 18, true, `hdf5`, 1, 4, 8],

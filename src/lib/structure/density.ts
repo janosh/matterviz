@@ -10,25 +10,24 @@ import { element_from_atomic_number } from '$lib/element/helpers'
 
 const topology_counts = new WeakMap<object, Partial<Record<ElementSymbol, number>>>()
 
-export const get_element_counts = (
-  structure: AnyStructure,
-): Partial<Record<ElementSymbol, number>> => {
+const count_elements = (structure: AnyStructure): Partial<Record<ElementSymbol, number>> => {
   const columns = numeric_sites.get(structure)
   // Image provenance belongs to the frame, not its shared atom identities.
   const topology = columns?.scalar_columns?.orig_site_idx
     ? undefined
     : snapshot_topologies.get(structure)
   const cached = topology && topology_counts.get(topology)
-  if (cached) return { ...cached }
+  if (cached) return cached
   const elements: Partial<Record<ElementSymbol, number>> = {}
   if (columns) {
     for (let idx = 0; idx < columns.length; idx++) {
-      if (columns.is_image(idx)) continue
       const element = element_from_atomic_number(columns.numbers[idx])
-      if (element) elements[element] = (elements[element] ?? 0) + 1
+      if (!element)
+        throw new Error(`Invalid atomic number ${columns.numbers[idx]} at site ${idx}`)
+      if (!columns.is_image(idx)) elements[element] = (elements[element] ?? 0) + 1
     }
     if (topology) topology_counts.set(topology, elements)
-    return { ...elements }
+    return elements
   }
   for (const site of structure.sites) {
     if (is_image_site(site)) continue
@@ -39,18 +38,20 @@ export const get_element_counts = (
   return elements
 }
 
+// Callers may edit composition counts; density can read the internal cache directly.
+export const get_element_counts = (structure: AnyStructure) => ({
+  ...count_elements(structure),
+})
+
 // unified atomic mass units (u) per cubic angstrom (Å^3) to g/cm^3
 const AMU_PER_A3_TO_G_PER_CM3 = 1.66053907
 
-// One pass over the sites (no intermediate composition object): runs per frame of a trajectory
+// Reuse cached numeric topology counts without materializing trajectory sites.
 export const get_density = (structure: Crystal): number => {
   let mass = 0
-  for (const site of structure.sites) {
-    if (is_image_site(site)) continue
-    for (const { element, occu } of site.species) {
-      const weight = element_by_symbol.get(element)?.atomic_mass
-      if (weight !== undefined) mass += occu * weight
-    }
+  for (const [element, count] of Object.entries(count_elements(structure))) {
+    const weight = element_by_symbol.get(element as ElementSymbol)?.atomic_mass
+    if (weight !== undefined) mass += count * weight
   }
   return (AMU_PER_A3_TO_G_PER_CM3 * mass) / structure.lattice.volume
 }

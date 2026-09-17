@@ -1,4 +1,4 @@
-import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
+import type { AnyStructure, Crystal, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import type { StructureFitOpts } from '$lib/structure'
 import {
@@ -131,19 +131,10 @@ test.each([
   expect(applies_to_structure(when, false)).toBe(molecule)
 })
 
-test(`element counts exclude periodic image sites`, () => {
-  const structure = structures[0]
-  const image_site = {
-    ...structure.sites[0],
-    properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
-  }
-  expect(
-    struct_utils.get_element_counts({ ...structure, sites: [...structure.sites, image_site] }),
-  ).toEqual(struct_utils.get_element_counts(structure))
-
+describe(`numeric composition`, () => {
   const frame = create_numeric_md_frame(
     Float64Array.of(0, 0, 0, 1, 1, 1),
-    Uint8Array.of(14, 14),
+    Uint8Array.of(14, 32),
     [
       [20, 0, 0],
       [0, 20, 0],
@@ -154,30 +145,56 @@ test(`element counts exclude periodic image sites`, () => {
     {},
     [],
   )
-  const view = new FrameView()
-  const identity = snapshot_topologies.get(view.update(frame).structure)
-  // Provenance can change while atom identities stay fixed. A short column marks only its
-  // present rows; NaN and negative numbers follow the same image semantics as rich sites.
-  for (const indices of [undefined, [1], [NaN, -1], [], undefined]) {
-    const snapshot = {
-      ...frame,
-      scalar_columns: indices ? { orig_site_idx: Float64Array.from(indices) } : undefined,
+
+  test(`element counts and density exclude periodic images without materializing sites`, () => {
+    const structure = materialize_frame(frame).structure
+    structure.sites.push({
+      ...structure.sites[0],
+      properties: { orig_site_idx: 0 },
+    })
+    expect(struct_utils.get_element_counts(structure)).toEqual({ Si: 1, Ge: 1 })
+
+    const view = new FrameView()
+    const identity = snapshot_topologies.get(view.update(frame).structure)
+    // Provenance can change while atom identities stay fixed. A short column marks only its
+    // present rows; NaN and negative numbers follow the same image semantics as rich sites.
+    for (const indices of [undefined, [1], [NaN, -1], [], undefined]) {
+      const snapshot = {
+        ...frame,
+        scalar_columns: indices ? { orig_site_idx: Float64Array.from(indices) } : undefined,
+      }
+      const numeric = view.update(snapshot).structure as Crystal
+      const columns = numeric_sites.get(numeric)
+      if (!columns) throw new Error(`Expected numeric sites`)
+      const materialize = vi.spyOn(columns, `materialize`)
+      const reference = materialize_frame(snapshot).structure as Crystal
+      expect(snapshot_topologies.get(numeric)).toBe(identity)
+      for (const calculate of [
+        struct_utils.get_density,
+        struct_utils.get_element_counts,
+        struct_utils.characteristic_atom_spacing,
+      ])
+        expect(calculate(numeric)).toEqual(calculate(reference))
+      expect(materialize).not.toHaveBeenCalled()
     }
-    const numeric = view.update(snapshot).structure
-    const columns = numeric_sites.get(numeric)
-    if (!columns) throw new Error(`Expected numeric sites`)
-    const materialize = vi.spyOn(columns, `materialize`)
-    const reference = materialize_frame(snapshot).structure
-    expect(snapshot_topologies.get(numeric)).toBe(identity)
-    expect(struct_utils.get_element_counts(numeric)).toEqual(
-      struct_utils.get_element_counts(reference),
-    )
-    const actual = [struct_utils.characteristic_atom_spacing(numeric)]
-    const expected = [struct_utils.characteristic_atom_spacing(reference)]
-    expect(max_abs_error(actual, expected)).toBe(0)
-    expect(max_rel_error(actual, expected)).toBe(0)
-    expect(materialize).not.toHaveBeenCalled()
-  }
+  })
+
+  test.each([0, 119, 255])(
+    `rejects invalid atomic number %i, including image sites`,
+    (atomic_number) => {
+      for (const scalar_columns of [undefined, { orig_site_idx: Float64Array.of(0, 0) }]) {
+        const structure = new FrameView().update({
+          ...frame,
+          sites: Uint8Array.of(14, atomic_number),
+          scalar_columns,
+        }).structure as Crystal
+        for (const calculate of [struct_utils.get_element_counts, struct_utils.get_density])
+          expect(() => calculate(structure)).toThrow(
+            `Invalid atomic number ${atomic_number} at site 1`,
+          )
+      }
+    },
+  )
 })
 
 describe(`get_center_of_mass`, () => {
