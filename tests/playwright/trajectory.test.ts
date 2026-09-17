@@ -504,6 +504,10 @@ test.describe(`Trajectory Component`, () => {
     `hotspot settings fit the pane and explain missing units`,
     { tag: `@single-viewer` },
     async ({ page }) => {
+      // Reserve scrollbar space on macOS too, matching Linux's narrower pane content.
+      await page.addStyleTag({
+        content: `.pane-content { scrollbar-gutter: stable; } ::-webkit-scrollbar { width: 15px; }`,
+      })
       const trajectory_xyz = [0, 1]
         .map(
           (step) =>

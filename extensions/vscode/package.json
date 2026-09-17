@@ -873,9 +873,10 @@
         },
         "matterviz.trajectory.display_mode": {
           "type": "string",
-          "default": "structure+scatter",
+          "default": "auto",
           "description": "Visualization mode for trajectory data",
           "enum": [
+            "auto",
             "structure+scatter",
             "structure",
             "scatter",

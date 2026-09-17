@@ -499,7 +499,7 @@
   }
   .hotspot-controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13em), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr));
     align-items: start;
     gap: 0.5em;
     label {

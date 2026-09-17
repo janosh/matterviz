@@ -106,7 +106,15 @@ test.describe(`Trajectory performance`, () => {
         timeout: 30_000,
       })
       const viewer = page.locator(`#loaded-trajectory`)
+      const pane = viewer.locator(`.hotspots-pane`)
+      const open_hotspots = async () => {
+        await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
+        await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
+      }
       const expect_3d_pixels = async (selector: string, heat = false): Promise<void> => {
+        // Inspect the scene itself, regardless of the floating pane's width or position.
+        const pane_was_open = await pane.isVisible()
+        if (pane_was_open) await page.keyboard.press(`Escape`)
         const canvas = viewer.locator(`${selector} canvas`)
         await canvas.scrollIntoViewIfNeeded()
         await page.mouse.move(0, 0)
@@ -144,6 +152,7 @@ test.describe(`Trajectory performance`, () => {
           )
           // Only the exposed hot face contributes warm pixels; the rest stays cooler.
           .toBeGreaterThan(heat ? 100 : 1000)
+        if (pane_was_open) await open_hotspots()
       }
       await viewer.evaluate((target) => {
         const transfer = new DataTransfer()
@@ -193,9 +202,7 @@ test.describe(`Trajectory performance`, () => {
           }
         })
       const original_scene = await scene_snapshot()
-      await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
-      await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
-      const pane = viewer.locator(`.hotspots-pane`)
+      await open_hotspots()
       await expect(viewer.locator(`.structure`)).toBeVisible()
       await pane.getByLabel(`Velocity units`).selectOption(`A/ps`)
       await pane.getByLabel(`Mass units`).selectOption(`amu`)
@@ -264,8 +271,7 @@ test.describe(`Trajectory performance`, () => {
       await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
       await page.keyboard.press(`Escape`)
       await expect(viewer.getByLabel(`Heatmap on atoms`)).toBeChecked()
-      await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
-      await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
+      await open_hotspots()
       await pane.getByLabel(`Heatmap on atoms`).uncheck()
       await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)

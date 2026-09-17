@@ -1410,7 +1410,7 @@
                     () => active_pane === `hotspots`, (open) => set_pane_open(`hotspots`, open)
                   }
                   pane_props={{
-                    style: `--pane-max-height: var(--traj-pane-max-height); width: min(42em, calc(100vw - 3em))`,
+                    style: `--pane-max-height: var(--traj-pane-max-height); --pane-width: min(42em, calc(100vw - 3em))`,
                   }}
                   toggle_props={analysis_pane_props.toggle_props}
                 />
