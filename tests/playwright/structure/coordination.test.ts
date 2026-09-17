@@ -19,6 +19,9 @@ test(`structure picker selects one structure and toggles many`, async ({ page })
   await expect(single_picker.locator(`button.selected`)).toHaveCount(1)
 
   // multi-select adds on click and removes on a second click
+  await page
+    .getByRole(`region`, { name: `Multiple Structures Overlay` })
+    .scrollIntoViewIfNeeded()
   const tiles = page.locator(`.selected-structures-grid .structure-tile`)
   const multi_target = multi_picker.getByTitle(`mp-1`, { exact: true })
   await expect(tiles).toHaveCount(3)
@@ -32,9 +35,11 @@ test(`structure picker selects one structure and toggles many`, async ({ page })
 })
 
 test(`keeps the multi-structure layout bounded and responsive`, async ({ page }) => {
-  await page.goto(`/structure/coordination`, { waitUntil: `networkidle` })
+  await page.goto(`/structure/coordination#multiple-structures-overlay`, {
+    waitUntil: `networkidle`,
+  })
 
-  const plot = page.locator(`.bar-plot`).nth(1)
+  const plot = page.locator(`.multi-structure-layout .bar-plot`)
   const structure_grid = page.locator(`.selected-structures-grid`)
   const structure_tiles = structure_grid.locator(`.structure-tile`)
   await expect(plot).toBeVisible()

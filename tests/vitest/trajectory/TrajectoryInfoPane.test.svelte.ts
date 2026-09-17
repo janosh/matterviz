@@ -3,7 +3,8 @@ import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/tr
 import { trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal, with_property_rows } from '../setup'
+import { doc_query } from '../setup'
+import { make_crystal, with_property_rows } from '../test-fixtures'
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -108,9 +109,10 @@ test(`labels ranges from sampled property rows honestly`, async () => {
   // energy leads, then volume; force comes last
   expect(text.indexOf(`Energy Range`)).toBeLessThan(text.indexOf(`Volume Range`))
   expect(text.indexOf(`Volume Range`)).toBeLessThan(text.indexOf(`Fmax Range`))
-  expect(
-    document.body.querySelector(`[data-testid="energy-range"] [title]`)?.getAttribute(`title`),
-  ).toBe(
+  const range = doc_query(`[data-testid="energy-range"] [aria-label]`)
+  range.dispatchEvent(new MouseEvent(`pointerenter`))
+  await tick()
+  expect(doc_query(`[role="tooltip"]`).textContent).toBe(
     `Min/max over 3 sampled frames of 1k total, so the true extremum may lie outside this range`,
   )
 })

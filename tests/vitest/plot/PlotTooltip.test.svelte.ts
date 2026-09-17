@@ -1,4 +1,5 @@
 import { PlotTooltip } from '$lib/plot'
+import { TooltipValue } from '$lib/tooltip'
 import { DEFAULT_CURSOR_SIZE } from '$lib/plot/core/decorations'
 import { color as d3_color } from 'd3-color'
 import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
@@ -9,6 +10,39 @@ const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
     render: () => `<span>${text}</span>`,
   }))
+
+test.each([
+  { label: `Energy (eV)`, value: `−789`, expected: `Energy: −789 eV`, units: `eV` },
+  {
+    label: `Heat capacity (J/(mol·K))`,
+    value: `1.23`,
+    expected: `Heat capacity: 1.23 J/(mol·K)`,
+    units: `J/(mol·K)`,
+  },
+  { label: `Time (ms)`, value: `2.00`, unit: `ms`, expected: `Time: 2.00 ms`, units: `ms` },
+  {
+    label: `ρ residual (rms)`,
+    value: `0.02`,
+    unit: `a.u.`,
+    expected: `ρ residual (rms): 0.02 a.u.`,
+    units: `a.u.`,
+  },
+  { label: `Fraction`, value: `25%`, expected: `Fraction: 25 %`, units: `%` },
+  { label: `g(r)`, value: 2, expected: `g(r): 2`, units: undefined },
+  {
+    label: `F<sub>max</sub> (eV/Å)`,
+    value: `0.35`,
+    expected: `Fmax: 0.35 eV/Å`,
+    units: `eV/Å`,
+  },
+])(`renders $label units after the value in small text`, ({ expected, units, ...props }) => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  mount(TooltipValue, { target, props })
+  flushSync()
+  expect(target.textContent).toBe(expected)
+  expect(target.querySelector(`small`)?.textContent).toBe(units)
+})
 
 // avoid_cursor defaults to true on the component (most anchors are the pointer), which
 // widens offset.x to the glyph's width. These tests are about offset/flip/clamp

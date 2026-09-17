@@ -101,7 +101,8 @@
 >
   {#snippet tooltip(info: BarHandlerProps<BondAngleMetadata>)}
     {@const half_width = (info.metadata?.bin_width ?? bin_width) / 2}
-    {format_num(info.x - half_width, `.1f`)}–{format_num(info.x + half_width, `.1f`)}°
+    {format_num(info.x - half_width, `.1f`)}–{format_num(info.x + half_width, `.1f`)}
+    <small>°</small>
     <br />
     {normalize === `density` ? `Density` : `Angles`}: {format_num(
       info.y,

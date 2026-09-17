@@ -654,7 +654,10 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Unwrap paths across periodic boundaries (real diffusion paths, may leave the cell) or keep them wrapped and break the line where an atom crosses a cell face`,
       enum: { unwrap: `Unwrap (continuous)`, break: `Break at cell crossings` },
     },
-    show_cell_vectors: { value: true, description: `Display cell vectors` },
+    show_cell_vectors: {
+      value: true,
+      description: `Display cell vectors. When omitted, show them only for input cells with at most 100 atoms`,
+    },
     cell_edge_opacity: opacity_setting(0.3, `Opacity of cell edge lines`),
     cell_surface_opacity: opacity_setting(0.1, `Opacity of cell surfaces`),
     cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
@@ -789,9 +792,10 @@ export const SETTINGS_CONFIG = define_settings({
       },
     }),
     display_mode: {
-      value: `structure+scatter` as const,
+      value: `auto` as const,
       description: `Visualization mode for trajectory data`,
       enum: {
+        auto: `Automatic (hide visually flat plots)`,
         'structure+scatter': `Structure + Scatter`,
         structure: `Structure`,
         scatter: `Scatter`,

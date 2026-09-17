@@ -159,25 +159,7 @@ const get_col = (columns: Map<string, ColumnInfo>, key?: string): ColumnInfo | u
 const optional_numbers = (col?: ColumnInfo): number[] | undefined =>
   col ? to_numbers(col.values) : undefined
 
-// Filter N axis arrays to only include indices where all axes are finite,
-// keeping optional color/size arrays aligned
-function filter_finite(
-  axes: number[][],
-  color?: number[],
-  size?: number[],
-): { axes: number[][]; color_values?: number[]; size_values?: number[] } {
-  const out = axes.map(() => [] as number[])
-  const color_values = color ? ([] as number[]) : undefined
-  const size_values = size ? ([] as number[]) : undefined
-  for (let idx = 0; idx < axes[0].length; idx++) {
-    if (axes.some((arr) => !isFinite(arr[idx]))) continue
-    for (let dim = 0; dim < axes.length; dim++) out[dim].push(axes[dim][idx])
-    if (color && color_values) color_values.push(color[idx])
-    if (size && size_values) size_values.push(size[idx])
-  }
-  return { axes: out, color_values, size_values }
-}
-
+// Resolve the point axes and filter non-finite coordinates, keeping color/size aligned.
 const build_point_axes = (
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
@@ -185,11 +167,19 @@ const build_point_axes = (
 ) => {
   const cols = axis_keys.map((key) => get_col(columns, mapping[key]))
   if (!cols.every((col) => col !== undefined)) return null
-  return filter_finite(
-    cols.map((col) => to_numbers(col.values)),
-    optional_numbers(get_col(columns, mapping.color)),
-    optional_numbers(get_col(columns, mapping.size)),
-  )
+  const axes = cols.map((col) => col.values)
+  const color = optional_numbers(get_col(columns, mapping.color))
+  const size = optional_numbers(get_col(columns, mapping.size))
+  const out = axes.map(() => [] as number[])
+  const color_values = color ? ([] as number[]) : undefined
+  const size_values = size ? ([] as number[]) : undefined
+  for (let idx = 0; idx < axes[0].length; idx++) {
+    if (axes.some((arr) => !Number.isFinite(arr[idx]))) continue
+    for (let dim = 0; dim < axes.length; dim++) out[dim].push(axes[dim][idx] as number)
+    if (color && color_values) color_values.push(color[idx])
+    if (size && size_values) size_values.push(size[idx])
+  }
+  return { axes: out, color_values, size_values }
 }
 
 export function build_scatter_series(
@@ -231,13 +221,12 @@ export function build_bar_series(
   const y_col = get_col(columns, mapping.y)
   if (!x_col || !y_col) return { x: [], y: [] }
 
-  const raw_y = to_numbers(y_col.values)
   const coord_x: string[] = []
   const coord_y: number[] = []
-  for (let idx = 0; idx < raw_y.length; idx++) {
-    if (!isFinite(raw_y[idx])) continue
+  for (const [idx, value] of y_col.values.entries()) {
+    if (typeof value !== `number` || !Number.isFinite(value)) continue
     coord_x.push(to_label(x_col.values[idx]))
-    coord_y.push(raw_y[idx])
+    coord_y.push(value)
   }
   return { x: coord_x, y: coord_y, color: `#4c6ef5` }
 }
@@ -247,6 +236,7 @@ export function build_histogram_series(
   mapping: AxisMapping,
 ): HistogramSeries {
   const col = get_col(columns, mapping.x ?? mapping.y)
-  if (!col) return { values: [] }
-  return { values: to_numbers(col.values).filter(isFinite) }
+  return {
+    values: col?.values.filter((value): value is number => Number.isFinite(value)) ?? [],
+  }
 }

@@ -8,6 +8,10 @@ export type Point3D = Point2D & { z: number }
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 
+// Grow buffers geometrically to absorb small increases without reallocating on every frame.
+export const grow_capacity = (capacity: number, required: number): number =>
+  required > capacity ? Math.max(required, Math.ceil(capacity * 1.5)) : capacity
+
 // Any array-like (Array, typed array, arguments) holding exactly three finite numbers
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false
@@ -339,14 +343,17 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 }
 
 // Multiply a 3x3 matrix by a 3D vector
-export function mat3x3_vec3_multiply(matrix: Matrix3x3, vector: Vec3): Vec3 {
+export function mat3x3_vec3_multiply(
+  matrix: Matrix3x3,
+  vector: Vec3,
+  target: Vec3 = [0, 0, 0],
+): Vec3 {
   const [row_a, row_b, row_c] = matrix
   const [coord_x, coord_y, coord_z] = vector
-  return [
-    row_a[0] * coord_x + row_a[1] * coord_y + row_a[2] * coord_z,
-    row_b[0] * coord_x + row_b[1] * coord_y + row_b[2] * coord_z,
-    row_c[0] * coord_x + row_c[1] * coord_y + row_c[2] * coord_z,
-  ]
+  target[0] = row_a[0] * coord_x + row_a[1] * coord_y + row_a[2] * coord_z
+  target[1] = row_b[0] * coord_x + row_b[1] * coord_y + row_b[2] * coord_z
+  target[2] = row_c[0] * coord_x + row_c[1] * coord_y + row_c[2] * coord_z
+  return target
 }
 
 // Add up any number of same-length vectors
@@ -490,13 +497,13 @@ export function reciprocal_lattice(
 // Curried fractional→Cartesian converter: cart = frac · lattice (row-vector convention)
 export const create_frac_to_cart = (lattice: Matrix3x3) => {
   const transposed = transpose_3x3_matrix(lattice)
-  return (frac: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac)
+  return (frac: Vec3, target?: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac, target)
 }
 
 // Curried Cartesian→fractional converter: frac_i = b_i · cart with b_i the reciprocal rows
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
   const reciprocal = reciprocal_lattice(lattice)
-  return (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart)
+  return (cart: Vec3, target?: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart, target)
 }
 
 // Paired converters for a lattice, built once and reused across every site or frame.

@@ -1,6 +1,7 @@
 // Bonding algorithms for structure visualization
 
 import { element_by_symbol } from '../element/data'
+import { element_from_atomic_number } from '../element/helpers'
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
@@ -12,7 +13,15 @@ import type {
   Site,
   StructureBond,
 } from '$lib/structure'
-import { get_image_source_idx, get_orig_site_idx } from '$lib/structure/site'
+import {
+  get_image_source_idx,
+  get_orig_site_idx,
+  get_site,
+  numeric_sites,
+  NumericSites,
+  site_count,
+} from '$lib/structure/site'
+import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-rendering'
 
 // Expected bond length of an element pair in Angstrom, or null when a radius is unknown.
 // Two metals measure against their 12-coordinate metallic radii: covalent radii are fit to
@@ -47,7 +56,7 @@ export const get_majority_element = (site: Site | undefined): ElementSymbol | nu
 // and element data resolves once per element, not per site (a 10k-atom MD frame has a handful
 // of elements and this runs every frame). `unknown_label` stands in for unresolvable.
 export function intern_site_elements(
-  sites: readonly Site[],
+  sites: readonly Site[] | NumericSites,
   unknown_label = ``,
 ): {
   symbols: string[]
@@ -59,7 +68,13 @@ export function intern_site_elements(
   const elem_id_of = new Map<string, number>()
   const site_elem_ids = new Int32Array(sites.length)
   for (let idx = 0; idx < sites.length; idx++) {
-    const symbol = get_majority_element(sites[idx]) ?? unknown_label
+    let symbol: string
+    if (sites instanceof NumericSites) {
+      const element = element_from_atomic_number(sites.numbers[idx])
+      if (element === undefined)
+        throw new Error(`Invalid atomic number ${sites.numbers[idx]} at site ${idx}`)
+      symbol = element
+    } else symbol = get_majority_element(sites[idx]) ?? unknown_label
     let elem_id = elem_id_of.get(symbol)
     if (elem_id === undefined) {
       elem_id = symbols.length
@@ -479,8 +494,8 @@ export function structure_bond_to_bond_pair(
   bond: StructureBond,
 ): BondPair {
   const { site_idx_1, site_idx_2, order, cell_shift } = bond
-  const site_1 = structure.sites[site_idx_1]
-  const site_2 = structure.sites[site_idx_2]
+  const site_1 = get_site(structure, site_idx_1)
+  const site_2 = get_site(structure, site_idx_2)
   if (!site_1 || !site_2) {
     throw new Error(
       `Cannot create bond pair for invalid site indices ${site_idx_1}, ${site_idx_2}`,
@@ -518,7 +533,7 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
     console.warn(`Ignoring structure.properties.bonds because it is not an array`)
     return []
   }
-  const n_sites = structure.sites.length
+  const n_sites = site_count(structure)
   const has_lattice = `lattice` in structure
   const memo = explicit_bond_memo.get(raw_bonds)
   if (memo?.n_sites === n_sites && memo.has_lattice === has_lattice) return memo.bonds
@@ -544,16 +559,11 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       )
       continue
     }
-    if (
-      site_idx_1 < 0 ||
-      site_idx_2 < 0 ||
-      site_idx_1 >= structure.sites.length ||
-      site_idx_2 >= structure.sites.length
-    ) {
+    if (site_idx_1 < 0 || site_idx_2 < 0 || site_idx_1 >= n_sites || site_idx_2 >= n_sites) {
       console.warn(
         `Ignoring invalid explicit bond at index ${entry_idx}: site indices ${
           site_idx_1
-        }, ${site_idx_2} are out of range for ${structure.sites.length} sites`,
+        }, ${site_idx_2} are out of range for ${n_sites} sites`,
       )
       continue
     }
@@ -600,34 +610,6 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
   const bonds = [...explicit_bonds.values()]
   explicit_bond_memo.set(raw_bonds, { n_sites, has_lattice, bonds })
   return bonds
-}
-
-export function apply_explicit_bond_metadata(
-  structure: AnyStructure,
-  bonds: BondPair[],
-): BondPair[] {
-  const explicit_bonds = get_explicit_bond_metadata(structure)
-  if (explicit_bonds.length === 0) return bonds
-
-  const explicit_by_key = new Map(
-    explicit_bonds.map((bond) => [
-      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-      bond,
-    ]),
-  )
-  const merged = bonds.map((bond) => {
-    const key = get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-    const explicit = explicit_by_key.get(key)
-    if (!explicit) return bond
-    explicit_by_key.delete(key)
-    return { ...bond, bond_order: explicit.order }
-  })
-
-  for (const explicit_bond of explicit_by_key.values()) {
-    merged.push(structure_bond_to_bond_pair(structure, explicit_bond))
-  }
-
-  return merged
 }
 
 // Render exactly the bonds declared in structure.properties.bonds, running no proximity
@@ -803,8 +785,11 @@ function neighbor_query_cutoff(
   unique_pairs = false,
   visit?: NeighborDistanceVisitor,
 ): NeighborList | void {
-  const { sites } = structure
-  const n_sites = sites.length
+  const columns = numeric_sites.get(structure)
+  const sites = columns ? [] : structure.sites
+  const n_sites = columns?.length ?? sites.length
+  const coordinates = columns?.coordinates
+  const stride = columns?.stride ?? 0
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
     throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
   }
@@ -822,15 +807,17 @@ function neighbor_query_cutoff(
   let cloud_src: Int32Array = new Int32Array(n_sites)
   let cloud_shift: Int32Array = new Int32Array(n_sites * 3)
   for (let idx = 0; idx < n_sites; idx++) {
-    const { xyz } = sites[idx]
-    if (!(Number.isFinite(xyz[0]) && Number.isFinite(xyz[1]) && Number.isFinite(xyz[2]))) {
+    const coord_x = coordinates ? coordinates[idx * stride] : sites[idx].xyz[0]
+    const coord_y = coordinates ? coordinates[idx * stride + 1] : sites[idx].xyz[1]
+    const coord_z = coordinates ? coordinates[idx * stride + 2] : sites[idx].xyz[2]
+    if (!(Number.isFinite(coord_x) && Number.isFinite(coord_y) && Number.isFinite(coord_z))) {
       throw new Error(
-        `neighbor_query: site ${idx} has a non-finite position (${xyz.join(`, `)})`,
+        `neighbor_query: site ${idx} has a non-finite position (${coord_x}, ${coord_y}, ${coord_z})`,
       )
     }
-    cloud_pos[idx * 3] = xyz[0]
-    cloud_pos[idx * 3 + 1] = xyz[1]
-    cloud_pos[idx * 3 + 2] = xyz[2]
+    cloud_pos[idx * 3] = coord_x
+    cloud_pos[idx * 3 + 1] = coord_y
+    cloud_pos[idx * 3 + 2] = coord_z
     cloud_src[idx] = idx
   }
   if (lattice && pbc.some(Boolean)) {
@@ -845,7 +832,7 @@ function neighbor_query_cutoff(
       [basis_x, basis_y, basis_z],
       [center_x, center_y, center_z],
     ] = lattice
-    const { cart_to_frac } = math.create_lattice_converters(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
     // An image shifted by s along a periodic axis can reach the cell only if frac + s lands
     // within pad = cutoff / height of [0, 1]
     const pad: Vec3 = [0, 0, 0]
@@ -864,10 +851,13 @@ function neighbor_query_cutoff(
     const wrap = new Int32Array(n_sites * 3)
     const shift_lo = new Int32Array(n_sites * 3)
     const shift_hi = new Int32Array(n_sites * 3)
+    const xyz: Vec3 = [0, 0, 0]
+    const site_frac: Vec3 = [0, 0, 0]
     // exact image count = product over axes of the shifts in reach, minus the site itself
     let n_images = 0
     for (let idx = 0; idx < n_sites; idx++) {
-      const site_frac = cart_to_frac(sites[idx].xyz)
+      for (let axis = 0; axis < 3; axis++) xyz[axis] = cloud_pos[idx * 3 + axis]
+      cart_to_frac(xyz, site_frac)
       let n_site_images = 1
       for (let axis = 0; axis < 3; axis++) {
         const offset = idx * 3 + axis
@@ -1380,13 +1370,187 @@ export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 // per-signature (strategy + JSON options) map of results. The multi-side view's 4 panes share one
 // search (identical inputs, one flush); the per-signature map also lets alternating
 // strategies/options on the same structure reuse earlier results instead of thrashing one slot.
-const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[]>>()
+const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[] | BondFrame>>()
+
+// Install geometry computed by the source worker for this exact displayed structure.
+export function cache_prepared_bonds(
+  structure: AnyStructure,
+  strategy: BondingStrategy,
+  options: Record<string, unknown>,
+  bonds: BondPair[] | BondFrame,
+): void {
+  let by_sig = bond_memo.get(structure)
+  if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
+  by_sig.set(`${strategy}:${JSON.stringify(options)}`, bonds)
+}
+
+type BondNeighborList = Pick<NeighborList, 'offsets' | 'neighbors' | 'distances'> & {
+  image_geometry?: Pick<NeighborList, 'images' | 'deltas'>
+}
+type BondNeighborQuery = (
+  structure: AnyStructure,
+  cutoff: number,
+  pbc: Pbc,
+  sorted: boolean,
+  unique_pairs: boolean,
+) => BondNeighborList
+
+const query_bond_neighbors: BondNeighborQuery = (...args) => {
+  const { offsets, neighbors, distances, images, deltas } = neighbor_query_cutoff(...args)
+  return { offsets, neighbors, distances, image_geometry: { images, deltas } }
+}
+
+// A Verlet list for finite displayed sites. Keep geometric candidates, including contacts
+// rejected by chemistry, and rebuild when either endpoint could cross the extra skin.
+// Queries that explicitly request periodic image bonds retain their complete image search.
+export class BondSearch {
+  private readonly scratch = create_bond_scratch()
+  private candidates: BondNeighborList | undefined
+  private reference = new Float64Array(0)
+  private cutoff = 0
+  private skin = 0
+  private cell_key = ``
+
+  private readonly query: BondNeighborQuery = (structure, cutoff, pbc, sorted, unique) => {
+    if (pbc.some(Boolean) || sorted || !unique) {
+      this.candidates = undefined
+      return query_bond_neighbors(structure, cutoff, pbc, sorted, unique)
+    }
+    const columns = numeric_sites.get(structure)
+    const sites = columns ? [] : structure.sites
+    const n_sites = columns?.length ?? sites.length
+    const coordinates = columns?.coordinates
+    const stride = columns?.stride ?? 0
+    // Inline column reads avoid millions of accessor calls during candidate reuse.
+    const lattice = `lattice` in structure ? structure.lattice : undefined
+    const cell_key = JSON.stringify(lattice)
+    const skin = Math.min(1.5, cutoff / 2)
+    // A periodic candidate superset survives wrapping. Use it only when each source pair
+    // has at most one image inside the search radius; the output still bonds finite sites.
+    const periodic =
+      lattice?.pbc.some(Boolean) &&
+      math
+        .cell_heights(lattice.matrix)
+        .every((height, axis) => !lattice.pbc[axis] || height > 2 * (cutoff + skin))
+        ? lattice
+        : undefined
+    const to_frac = periodic ? math.create_cart_to_frac(periodic.matrix) : undefined
+    const to_cart = periodic ? math.create_frac_to_cart(periodic.matrix) : undefined
+    const delta: Vec3 = [0, 0, 0]
+    const fractional: Vec3 = [0, 0, 0]
+    let rebuild =
+      !this.candidates ||
+      cutoff !== this.cutoff ||
+      cell_key !== this.cell_key ||
+      n_sites * 3 !== this.reference.length
+    // This box fits strictly inside the skin/2 sphere (sqrt(3)/4 < 1/2), so
+    // ordinary small MD displacements need no square root.
+    const small_move = this.skin / 4
+    for (let idx = 0; idx < n_sites && !rebuild; idx++) {
+      for (let axis = 0; axis < 3; axis++)
+        delta[axis] =
+          (coordinates ? coordinates[idx * stride + axis] : sites[idx].xyz[axis]) -
+          this.reference[idx * 3 + axis]
+      if (
+        Math.abs(delta[0]) < small_move &&
+        Math.abs(delta[1]) < small_move &&
+        Math.abs(delta[2]) < small_move
+      )
+        continue
+      if (Math.hypot(delta[0], delta[1], delta[2]) < this.skin / 2) continue
+      if (periodic && to_frac && to_cart) {
+        to_frac(delta, fractional)
+        for (let axis = 0; axis < 3; axis++)
+          if (periodic.pbc[axis]) fractional[axis] -= Math.round(fractional[axis])
+        to_cart(fractional, delta)
+      }
+      // Compare against the rebuild frame, not the last frame; cumulative drift counts.
+      if (!(Math.hypot(delta[0], delta[1], delta[2]) < this.skin / 2)) rebuild = true
+    }
+    if (rebuild) {
+      this.cutoff = cutoff
+      this.skin = skin
+      this.cell_key = cell_key
+      const list = neighbor_query_cutoff(
+        structure,
+        cutoff + skin,
+        periodic?.pbc ?? pbc,
+        false,
+        true,
+      )
+      if (periodic) {
+        let read_start = 0
+        let write_slot = 0
+        for (let center = 0; center < n_sites; center++) {
+          const read_end = list.offsets[center + 1]
+          list.offsets[center] = write_slot
+          for (let slot = read_start; slot < read_end; slot++)
+            if (list.neighbors[slot] > center)
+              list.neighbors[write_slot++] = list.neighbors[slot]
+          read_start = read_end
+        }
+        list.offsets[n_sites] = write_slot
+      }
+      // Finite candidates need only pair identity and distance. Image displacements from
+      // the periodic superset are discarded before recomputing finite-site distances.
+      const { offsets, neighbors, distances } = list
+      this.candidates = { offsets, neighbors, distances }
+      this.reference = new Float64Array(n_sites * 3)
+      for (let idx = 0; idx < n_sites; idx++)
+        for (let axis = 0; axis < 3; axis++)
+          this.reference[idx * 3 + axis] = coordinates
+            ? coordinates[idx * stride + axis]
+            : sites[idx].xyz[axis]
+    }
+    const list = this.candidates
+    if (!list) throw new Error(`Missing bond candidates for cutoff ${cutoff}`)
+    const { offsets, neighbors, distances } = list
+    for (let center = 0; center < n_sites; center++) {
+      const origin_x = coordinates ? coordinates[center * stride] : sites[center].xyz[0]
+      const origin_y = coordinates ? coordinates[center * stride + 1] : sites[center].xyz[1]
+      const origin_z = coordinates ? coordinates[center * stride + 2] : sites[center].xyz[2]
+      for (let slot = offsets[center]; slot < offsets[center + 1]; slot++) {
+        const partner = neighbors[slot]
+        const delta_x =
+          (coordinates ? coordinates[partner * stride] : sites[partner].xyz[0]) - origin_x
+        const delta_y =
+          (coordinates ? coordinates[partner * stride + 1] : sites[partner].xyz[1]) - origin_y
+        const delta_z =
+          (coordinates ? coordinates[partner * stride + 2] : sites[partner].xyz[2]) - origin_z
+        // Match the full finite query's arithmetic, including its subnormal-distance path.
+        // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- same arithmetic as full query
+        distances[slot] = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z)
+      }
+    }
+    return list
+  }
+
+  compute_columns(
+    structure: AnyStructure,
+    options: Parameters<typeof electroneg_ratio>[1] = {},
+  ): BondColumns {
+    if (!site_count(structure)) return pack_bonds([])
+    return bond_columns(
+      structure,
+      perceive_bonds(structure, options, this.query, this.scratch),
+    )
+  }
+}
 
 export function compute_bonds(
   structure: AnyStructure,
   strategy: BondingStrategy,
   options: Record<string, unknown> = {},
 ): BondPair[] {
+  const data = get_bond_data(structure, strategy, options)
+  return data instanceof BondFrame ? data.materialize() : data
+}
+
+export function get_bond_data(
+  structure: AnyStructure,
+  strategy: BondingStrategy,
+  options: Record<string, unknown> = {},
+): BondPair[] | BondFrame {
   const sig = `${strategy}:${JSON.stringify(options)}`
   let by_sig = bond_memo.get(structure)
   const cached = by_sig?.get(sig)
@@ -1416,7 +1580,122 @@ export function compute_bonds(
 //             environment, so a contact longer than the radii sum is a second-shell
 //             contact across that environment, not a bond.
 // Bonds are only created if the computed strength exceeds strength_threshold.
+type PerceivedBonds = Omit<BondNeighborList, 'offsets'> & {
+  centers: Int32Array
+  slots: Int32Array
+  count: number
+}
+
 export function electroneg_ratio(
+  structure: AnyStructure,
+  options: Parameters<typeof perceive_bonds>[1] = {},
+): BondPair[] {
+  if (!site_count(structure)) return []
+  return new BondFrame(
+    structure,
+    bond_columns(structure, perceive_bonds(structure, options)),
+  ).materialize()
+}
+
+// Both public records and worker columns consume the same accepted contacts in discovery order.
+function bond_columns(
+  structure: AnyStructure,
+  { centers, slots, count, neighbors, image_geometry, distances }: PerceivedBonds,
+): BondColumns {
+  const explicit = new Map(
+    get_explicit_bond_metadata(structure).map((bond) => [
+      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+      bond,
+    ]),
+  )
+  const indices = new Uint32Array((count + explicit.size) * 2)
+  const lengths = new Float64Array(count + explicit.size)
+  const orders = new Uint8Array(count + explicit.size)
+  let image_count = 0
+  if (image_geometry)
+    for (let idx = 0; idx < count; idx++) {
+      const slot = slots[idx] * 3
+      const { images } = image_geometry
+      if (images[slot] || images[slot + 1] || images[slot + 2]) image_count++
+    }
+  for (const bond of explicit.values()) if (bond.cell_shift) image_count++
+  const image_columns = new Float64Array(image_count * 7)
+  let image_offset = 0
+  let bond_count = 0
+  for (; bond_count < count; bond_count++) {
+    const slot = slots[bond_count]
+    const site_idx_1 = centers[bond_count]
+    const site_idx_2 = neighbors[slot]
+    indices[bond_count * 2] = site_idx_1
+    indices[bond_count * 2 + 1] = site_idx_2
+    lengths[bond_count] = distances[slot]
+    const shift_a = image_geometry ? image_geometry.images[slot * 3] : 0
+    const shift_b = image_geometry ? image_geometry.images[slot * 3 + 1] : 0
+    const shift_c = image_geometry ? image_geometry.images[slot * 3 + 2] : 0
+    const shifted = shift_a !== 0 || shift_b !== 0 || shift_c !== 0
+    if (image_geometry && shifted) {
+      const origin =
+        numeric_sites.get(structure)?.position(site_idx_1) ?? structure.sites[site_idx_1].xyz
+      image_columns[image_offset++] = bond_count
+      image_columns[image_offset++] = origin[0] + image_geometry.deltas[slot * 3]
+      image_columns[image_offset++] = origin[1] + image_geometry.deltas[slot * 3 + 1]
+      image_columns[image_offset++] = origin[2] + image_geometry.deltas[slot * 3 + 2]
+      image_columns[image_offset++] = shift_a
+      image_columns[image_offset++] = shift_b
+      image_columns[image_offset++] = shift_c
+    }
+    if (explicit.size) {
+      const key = get_bond_key(
+        site_idx_1,
+        site_idx_2,
+        shifted ? [shift_a, shift_b, shift_c] : undefined,
+      )
+      const metadata = explicit.get(key)
+      if (metadata) {
+        orders[bond_count] = BOND_ORDERS.indexOf(metadata.order)
+        explicit.delete(key)
+      }
+    }
+  }
+  for (const metadata of explicit.values()) {
+    const bond = structure_bond_to_bond_pair(structure, metadata)
+    indices[bond_count * 2] = bond.site_idx_1
+    indices[bond_count * 2 + 1] = bond.site_idx_2
+    lengths[bond_count] = bond.bond_length
+    orders[bond_count] = BOND_ORDERS.indexOf(bond.bond_order)
+    if (bond.cell_shift) {
+      image_columns.set([bond_count, ...bond.pos_2, ...bond.cell_shift], image_offset)
+      image_offset += 7
+    }
+    bond_count++
+  }
+  // Only explicit overrides leave spare capacity; each result owns new backing buffers.
+  return {
+    indices: indices.subarray(0, bond_count * 2),
+    lengths: lengths.subarray(0, bond_count),
+    orders: orders.subarray(0, bond_count),
+    images: image_columns.subarray(0, image_offset),
+  }
+}
+
+type BondScratch = {
+  slots: Int32Array
+  centers: Int32Array
+  normalized: Float64Array
+  metallic: Int32Array
+  strengths: Float64Array
+}
+// Private candidates are overwritten on each preparation. Public columns copy their
+// selected results, so retaining this workspace cannot mutate previously displayed frames.
+const create_bond_scratch = (capacity = 0): BondScratch => ({
+  slots: new Int32Array(capacity),
+  centers: new Int32Array(capacity),
+  normalized: new Float64Array(capacity),
+  metallic: new Int32Array(capacity),
+  strengths: new Float64Array(capacity),
+})
+
+function perceive_bonds(
   structure: AnyStructure,
   {
     electronegativity_threshold = 1.7, // Max electronegativity difference for bonding
@@ -1440,21 +1719,34 @@ export function electroneg_ratio(
     // to periodic images with `cell_shift` set and `pos_2` at the image position.
     pbc = NO_PBC,
   } = {},
-): BondPair[] {
-  const { sites } = structure
+  query: BondNeighborQuery = query_bond_neighbors,
+  scratch = create_bond_scratch(),
+): PerceivedBonds {
+  const columns = numeric_sites.get(structure)
+  const sites = columns ?? structure.sites
   const n_sites = sites.length
-  if (n_sites === 0) return []
-
   // Per-site properties in flat typed arrays - the candidate loop below visits every
   // contact within reach in large supercells, so object property chains and Map lookups
   // are replaced with indexed array reads.
   const { symbols, site_elem_ids: elem_ids, elem_data } = intern_site_elements(sites)
   const orig_idxs = new Int32Array(n_sites)
+  const scalar_columns = columns?.scalar_columns
+  const unit_cell_indices =
+    scalar_columns && Object.hasOwn(scalar_columns, `orig_unit_cell_idx`)
+      ? scalar_columns.orig_unit_cell_idx
+      : undefined
+  const image_indices =
+    scalar_columns && Object.hasOwn(scalar_columns, `orig_site_idx`)
+      ? scalar_columns.orig_site_idx
+      : undefined
   for (let idx = 0; idx < n_sites; idx++) {
     // Valid orig indices always reference a site in this structure; fall back to
     // the site's own index on out-of-range orig_*_idx properties so the typed
     // `closest` array below stays bounded by n_sites
-    const orig_idx = get_orig_site_idx(sites[idx], idx)
+    const orig_idx =
+      sites instanceof NumericSites
+        ? (unit_cell_indices?.[idx] ?? image_indices?.[idx] ?? idx)
+        : get_orig_site_idx(sites[idx], idx)
     orig_idxs[idx] = orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
   }
   const n_elem = symbols.length
@@ -1520,7 +1812,7 @@ export function electroneg_ratio(
   // A zero/non-finite reach (no known radius, or a degenerate ratio) still needs a
   // positive cutoff for the query to be well-formed.
   // Finite bonds use each pair once; avoid allocating the discarded reverse neighbors.
-  const { offsets, neighbors, images, deltas, distances } = neighbor_query_cutoff(
+  const { offsets, neighbors, image_geometry, distances } = query(
     structure,
     max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1,
     pbc,
@@ -1531,11 +1823,15 @@ export function electroneg_ratio(
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
   // distance, metallic-pair flag, strength): no per-candidate object in the hot loop, and
   // passes 2-4 read the pair's class and normalized distance instead of recomputing them
-  let cand_slot: Int32Array = new Int32Array(Math.max(256, n_sites * 4))
-  let cand_center: Int32Array = new Int32Array(cand_slot.length)
-  let cand_norm: Float64Array = new Float64Array(cand_slot.length)
-  let cand_metallic: Int32Array = new Int32Array(cand_slot.length)
-  let cand_strength: Float64Array = new Float64Array(cand_slot.length)
+  if (scratch.slots.length < n_sites * 4)
+    Object.assign(scratch, create_bond_scratch(Math.max(256, n_sites * 4)))
+  let {
+    slots: cand_slot,
+    centers: cand_center,
+    normalized: cand_norm,
+    metallic: cand_metallic,
+    strengths: cand_strength,
+  } = scratch
   let n_cand = 0
   // Closest normalized contact per ORIGINAL atom, so image atoms and their originals see
   // the same shell. Metal-metal contacts have their own tracker: their normalization
@@ -1553,7 +1849,11 @@ export function electroneg_ratio(
       // lower site index. A site's own periodic image shows up twice (shift s and -s),
       // so only the shift normalize_bond_endpoints calls canonical is kept.
       if (partner < center) continue
-      if (partner === center && !is_canonical_self_image(images, slot)) continue
+      if (
+        partner === center &&
+        (!image_geometry || !is_canonical_self_image(image_geometry.images, slot))
+      )
+        continue
       const dist = distances[slot]
       if (dist < min_bond_dist) continue
       // Two table reads replace the radius sum, the ratio cutoff and the whole
@@ -1616,95 +1916,90 @@ export function electroneg_ratio(
   //              a hydride). Contacts to it use the lenient ionic distance window.
   //   n_anion  - anion-former partners of a metal (its coordination shell), for the
   //              metallic gate. Counted from the final non-metallic bonds in pass 3.
-  const has_upper = new Uint8Array(n_sites) // per orig: bonded to a more electronegative anion-former
+  // A single nonmetallic anion-former has neither unequal-electronegativity partners
+  // nor metal contacts: every atom is terminal, so all role-dependent penalties are 1.
+  if (n_elem !== 1 || !elem_anion_former[0] || elem_metal[0]) {
+    const has_upper = new Uint8Array(n_sites) // per orig: bonded to a more electronegative anion-former
+    for (let cand = 0; cand < n_cand; cand++) {
+      if (cand_strength[cand] <= strength_threshold) continue
+      const site_a = cand_center[cand]
+      const site_b = neighbors[cand_slot[cand]]
+      const id_a = elem_ids[site_a]
+      const id_b = elem_ids[site_b]
+      if (!elem_anion_former[id_a] || !elem_anion_former[id_b]) continue
+      if (elem_en[id_b] > elem_en[id_a]) has_upper[orig_idxs[site_a]] = 1
+      else if (elem_en[id_a] > elem_en[id_b]) has_upper[orig_idxs[site_b]] = 1
+    }
+    const is_terminal = (site: number): boolean =>
+      elem_anion_former[elem_ids[site]] === 1 && has_upper[orig_idxs[site]] === 0
+
+    // Pass 3: tighten contacts between two inner atoms, then count each metal's anion shell.
+    // Per SITE first: unlike `closest` (a min, idempotent under duplication) a count
+    // aggregated over every periodic image of an atom would multiply by the copy count.
+    const site_n_anion = new Int32Array(n_sites)
+    for (let cand = 0; cand < n_cand; cand++) {
+      if (cand_metallic[cand]) continue
+      const site_a = cand_center[cand]
+      const site_b = neighbors[cand_slot[cand]]
+      if (!is_terminal(site_a) && !is_terminal(site_b)) {
+        cand_strength[cand] *= stretch(cand_norm[cand])
+      }
+      if (cand_strength[cand] <= strength_threshold) continue
+      if (elem_anion_former[elem_ids[site_b]]) site_n_anion[site_a]++
+      if (elem_anion_former[elem_ids[site_a]]) site_n_anion[site_b]++
+    }
+    const n_anion = new Int32Array(n_sites)
+    for (let idx = 0; idx < n_sites; idx++) {
+      const orig = orig_idxs[idx]
+      if (site_n_anion[idx] > n_anion[orig]) n_anion[orig] = site_n_anion[idx]
+    }
+
+    // Pass 4: metallic contacts. Kept while it lies in the first metal-metal shell of at
+    // least one end (min over the two ends: a big atom's first shell may be the small atom's
+    // second); then, for metals that carry any anion, the second-shell gate
+    // (see cation_cation_penalty) or, for unsaturated d/p-block metals, the same "no longer
+    // than in the element" test as pass 3 (Ti-Ti in Ti2O is 1.01x the metallic sum and
+    // bonds, Cu-Cu in Cu2O is 1.18x and does not).
+    for (let cand = 0; cand < n_cand; cand++) {
+      if (!cand_metallic[cand]) continue
+      const site_a = cand_center[cand]
+      const site_b = neighbors[cand_slot[cand]]
+      const orig_a = orig_idxs[site_a]
+      const orig_b = orig_idxs[site_b]
+      const norm_dist = cand_norm[cand]
+      let strength = cand_strength[cand]
+      const shell_a = norm_dist / closest_metallic[orig_a] - 1
+      const shell_b = norm_dist / closest_metallic[orig_b] - 1
+      strength *= Math.exp(-((Math.min(shell_a, shell_b) / METAL_SHELL_WIDTH) ** 2))
+      const max_anion = Math.max(n_anion[orig_a], n_anion[orig_b])
+      if (max_anion > 0) {
+        const spectator = elem_spectator[elem_ids[site_a]] || elem_spectator[elem_ids[site_b]]
+        if (max_anion >= MIN_ANION_SHELL || spectator) strength *= cation_cation_penalty
+        else strength *= stretch(norm_dist)
+      }
+      cand_strength[cand] = strength
+    }
+  }
+
+  let count = 0
   for (let cand = 0; cand < n_cand; cand++) {
     if (cand_strength[cand] <= strength_threshold) continue
-    const site_a = cand_center[cand]
-    const site_b = neighbors[cand_slot[cand]]
-    const id_a = elem_ids[site_a]
-    const id_b = elem_ids[site_b]
-    if (!elem_anion_former[id_a] || !elem_anion_former[id_b]) continue
-    if (elem_en[id_b] > elem_en[id_a]) has_upper[orig_idxs[site_a]] = 1
-    else if (elem_en[id_a] > elem_en[id_b]) has_upper[orig_idxs[site_b]] = 1
+    cand_center[count] = cand_center[cand]
+    cand_slot[count++] = cand_slot[cand]
   }
-  const is_terminal = (site: number): boolean =>
-    elem_anion_former[elem_ids[site]] === 1 && has_upper[orig_idxs[site]] === 0
-
-  // Pass 3: tighten contacts between two inner atoms, then count each metal's anion shell.
-  // Per SITE first: unlike `closest` (a min, idempotent under duplication) a count
-  // aggregated over every periodic image of an atom would multiply by the copy count.
-  const site_n_anion = new Int32Array(n_sites)
-  for (let cand = 0; cand < n_cand; cand++) {
-    if (cand_metallic[cand]) continue
-    const site_a = cand_center[cand]
-    const site_b = neighbors[cand_slot[cand]]
-    if (!is_terminal(site_a) && !is_terminal(site_b)) {
-      cand_strength[cand] *= stretch(cand_norm[cand])
-    }
-    if (cand_strength[cand] <= strength_threshold) continue
-    if (elem_anion_former[elem_ids[site_b]]) site_n_anion[site_a]++
-    if (elem_anion_former[elem_ids[site_a]]) site_n_anion[site_b]++
+  Object.assign(scratch, {
+    slots: cand_slot,
+    centers: cand_center,
+    normalized: cand_norm,
+    metallic: cand_metallic,
+    strengths: cand_strength,
+  })
+  return {
+    centers: cand_center,
+    slots: cand_slot,
+    count,
+    neighbors,
+    image_geometry,
+    distances,
   }
-  const n_anion = new Int32Array(n_sites)
-  for (let idx = 0; idx < n_sites; idx++) {
-    const orig = orig_idxs[idx]
-    if (site_n_anion[idx] > n_anion[orig]) n_anion[orig] = site_n_anion[idx]
-  }
-
-  // Pass 4: metallic contacts. Kept while it lies in the first metal-metal shell of at
-  // least one end (min over the two ends: a big atom's first shell may be the small atom's
-  // second); then, for metals that carry any anion, the second-shell gate
-  // (see cation_cation_penalty) or, for unsaturated d/p-block metals, the same "no longer
-  // than in the element" test as pass 3 (Ti-Ti in Ti2O is 1.01x the metallic sum and
-  // bonds, Cu-Cu in Cu2O is 1.18x and does not).
-  for (let cand = 0; cand < n_cand; cand++) {
-    if (!cand_metallic[cand]) continue
-    const site_a = cand_center[cand]
-    const site_b = neighbors[cand_slot[cand]]
-    const orig_a = orig_idxs[site_a]
-    const orig_b = orig_idxs[site_b]
-    const norm_dist = cand_norm[cand]
-    let strength = cand_strength[cand]
-    const shell_a = norm_dist / closest_metallic[orig_a] - 1
-    const shell_b = norm_dist / closest_metallic[orig_b] - 1
-    strength *= Math.exp(-((Math.min(shell_a, shell_b) / METAL_SHELL_WIDTH) ** 2))
-    const max_anion = Math.max(n_anion[orig_a], n_anion[orig_b])
-    if (max_anion > 0) {
-      const spectator = elem_spectator[elem_ids[site_a]] || elem_spectator[elem_ids[site_b]]
-      if (max_anion >= MIN_ANION_SHELL || spectator) strength *= cation_cation_penalty
-      else strength *= stretch(norm_dist)
-    }
-    cand_strength[cand] = strength
-  }
-
-  const bonds: BondPair[] = []
-  for (let cand = 0; cand < n_cand; cand++) {
-    if (cand_strength[cand] <= strength_threshold) continue
-    const slot = cand_slot[cand]
-    const site_idx_1 = cand_center[cand]
-    const site_idx_2 = neighbors[slot]
-    const pos_1 = sites[site_idx_1].xyz
-    const bond: BondPair = {
-      pos_1,
-      pos_2: sites[site_idx_2].xyz,
-      site_idx_1,
-      site_idx_2,
-      bond_length: distances[slot],
-    }
-    const shift_a = images[slot * 3]
-    const shift_b = images[slot * 3 + 1]
-    const shift_c = images[slot * 3 + 2]
-    if (shift_a !== 0 || shift_b !== 0 || shift_c !== 0) {
-      // periodic partner: its image position is the center plus the query's displacement
-      bond.cell_shift = [shift_a, shift_b, shift_c]
-      bond.pos_2 = [
-        pos_1[0] + deltas[slot * 3],
-        pos_1[1] + deltas[slot * 3 + 1],
-        pos_1[2] + deltas[slot * 3 + 2],
-      ]
-    }
-    bonds.push(bond)
-  }
-
-  return apply_explicit_bond_metadata(structure, bonds)
 }

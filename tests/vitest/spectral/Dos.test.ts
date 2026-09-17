@@ -312,7 +312,10 @@ describe(`format_dos_tooltip`, () => {
         num_series: 2,
       },
       title: `DOS 1`,
-      lines: [`Density: 0.50`, `Frequency: 5.00 THz`],
+      lines: [
+        { label: `Density`, value: `0.50`, unit: undefined },
+        { label: `Frequency`, value: `5.00`, unit: `THz` },
+      ],
     },
     {
       opts: {
@@ -321,12 +324,15 @@ describe(`format_dos_tooltip`, () => {
         label: null,
         is_horizontal: true,
         is_phonon: false,
-        x_axis_label: `Density`,
+        x_axis_label: `Density (states/(eV atom))`,
         y_axis_label: `Energy (eV)`,
         num_series: 1,
       },
       title: undefined,
-      lines: [`Energy: -2.00 eV`, `Density: 0.50`],
+      lines: [
+        { label: `Energy`, value: `-2.00`, unit: `eV` },
+        { label: `Density`, value: `0.50`, unit: `states/(eV atom)` },
+      ],
     },
     // bare axis labels fall back to the quantity name and the display unit
     {
@@ -341,7 +347,10 @@ describe(`format_dos_tooltip`, () => {
         num_series: 1,
       },
       title: undefined,
-      lines: [`Density: 2`, `Frequency: 1 cm^-1`],
+      lines: [
+        { label: `Density`, value: `2`, unit: undefined },
+        { label: `Frequency`, value: `1`, unit: `cm^-1` },
+      ],
     },
   ])(`$opts.label / horizontal=$opts.is_horizontal`, ({ opts, title, lines }) => {
     const result = format_dos_tooltip({ units: `cm^-1`, ...opts })

@@ -2,7 +2,6 @@ import type { StructureIdResult } from '$lib/structure-id'
 import { calc_structure_id, StructureTypePlot } from '$lib/structure-id'
 import * as async_compute from '$lib/structure-id/async-compute.svelte'
 import type { StructureInput } from '$lib/plot/core/structure-input'
-import { to_error } from '$lib/utils'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, mount_sized } from '../setup'
@@ -21,6 +20,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   const mount_plot = (props: ComponentProps<typeof StructureTypePlot>) =>
     mount_sized(StructureTypePlot, props, {
       selector: `.bar-plot, .status-message, section`,
+      on_mount: (component) => mounted.push(component),
     })
   // Mount with every prop bound to `state`; returns an early unmount, else afterEach unmounts
   const mount_bound = (state: Partial<ComponentProps<typeof StructureTypePlot>>) => {
@@ -94,17 +94,15 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     },
   )
 
-  test(`shows the empty state when there is nothing to plot`, async () => {
-    const root = await mount_plot({ id_results: [], allow_file_drop: false })
-    expect(root.textContent).toContain(`No structure-type data to display`)
-  })
-
   // Results-only mode (no `structures`): the parent drives `loading` one-way while it collects
   // results, and the compute effect must not reset it to false
-  test(`results-only mount keeps the parent's loading state`, async () => {
-    const root = await mount_plot({ id_results: [], loading: true })
-    expect(root.textContent).toContain(`Identifying structure types`)
-    expect(root.textContent).not.toContain(`No structure-type data to display`)
+  test.each([
+    [false, `No structure-type data to display`, `Identifying structure types`],
+    [true, `Identifying structure types`, `No structure-type data to display`],
+  ] as const)(`results-only mount preserves loading=%s`, async (loading, visible, absent) => {
+    const root = await mount_plot({ id_results: [], loading, allow_file_drop: false })
+    expect(root.textContent).toContain(visible)
+    expect(root.textContent).not.toContain(absent)
   })
 
   test.each<[string, StructureInput, string[]]>([
@@ -118,72 +116,67 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
   ])(
     `computes from a %s and labels the x axis by entry`,
     async (_name, structures, labels) => {
-      const target = document.createElement(`div`)
-      document.body.append(target)
-      const component = mount(StructureTypePlot, { target, props: { structures } })
-      try {
-        flushSync()
-        // Mount catches the component mid-flight: no results yet, so the loading state shows
-        const loading_status = target.querySelector<HTMLElement>(`.status-message`)
-        expect(loading_status?.isConnected).toBe(true)
-        expect(loading_status?.textContent).toContain(`Identifying structure types`)
-        // The status message is replaced by the plot once the promise settles, so the assertion
-        // has to re-query this mount target rather than hold on to the detached status element.
-        await vi.waitFor(() => {
-          for (const text of [`FCC`, ...labels]) expect(target.textContent).toContain(text)
-        })
-      } finally {
-        await unmount(component)
-      }
+      mount_bound({ structures })
+      flushSync()
+      // The loading message is replaced by the plot once the promise settles.
+      const loading_status = document.querySelector<HTMLElement>(`.status-message`)
+      expect(loading_status?.isConnected).toBe(true)
+      expect(loading_status?.textContent).toContain(`Identifying structure types`)
+      await vi.waitFor(() => {
+        for (const text of [`FCC`, ...labels])
+          expect(document.body.textContent).toContain(text)
+      })
     },
   )
 
-  test(`discards a pending compute when structures are cleared, and aborts it on unmount`, async () => {
-    const pending_compute = Promise.withResolvers<StructureIdResult>()
-    const signals: (AbortSignal | undefined)[] = []
-    vi.spyOn(async_compute, `calc_structure_id_async`).mockImplementation(
-      (_structure, _options, request_options) => {
-        const signal = request_options?.signal
-        signals.push(signal)
-        // like the worker client: settle with the shared result, or reject once aborted
-        return new Promise((resolve, reject) => {
-          signal?.addEventListener(`abort`, () => reject(to_error(signal.reason)))
-          void pending_compute.promise.then(resolve)
-        })
-      },
-    )
-    const state = $state({
-      structures: [{ label: `a`, structure: make_fcc([1, 1, 1]) }] as
-        | StructureInput
-        | undefined,
-      id_results: [] as StructureIdResult[],
-      loading: false,
-      error_msg: undefined as string | undefined,
-    })
-    const unmount_plot = mount_bound(state)
-    flushSync()
-    expect(state.loading).toBe(true)
-    expect(signals[0]?.aborted).toBe(false)
-    state.structures = undefined
-    flushSync()
-    expect(state.loading).toBe(false)
-    expect(signals[0]?.aborted).toBe(true)
+  test.each([`resolve`, `reject`] as const)(
+    `ignores late %s after inputs clear or unmount`,
+    async (settlement) => {
+      const pending_compute = Promise.withResolvers<StructureIdResult>()
+      const signals: (AbortSignal | undefined)[] = []
+      vi.spyOn(async_compute, `calc_structure_id_async`).mockImplementation(
+        (_structure, _options, request_options) => {
+          const signal = request_options?.signal
+          signals.push(signal)
+          // A computation may finish despite cancellation; its settlement must stay stale.
+          return pending_compute.promise
+        },
+      )
+      const state = $state({
+        structures: [{ label: `a`, structure: make_fcc([1, 1, 1]) }] as
+          | StructureInput
+          | undefined,
+        id_results: [] as StructureIdResult[],
+        loading: false,
+        error_msg: undefined as string | undefined,
+      })
+      const unmount_plot = mount_bound(state)
+      flushSync()
+      expect(state.loading).toBe(true)
+      expect(signals[0]?.aborted).toBe(false)
+      state.structures = undefined
+      flushSync()
+      expect(state.loading).toBe(false)
+      expect(signals[0]?.aborted).toBe(true)
 
-    pending_compute.resolve(fcc_result)
-    await tick()
-    await Promise.resolve()
-    expect(state.id_results).toEqual([])
+      if (settlement === `resolve`) pending_compute.resolve(fcc_result)
+      else pending_compute.reject(new Error(`late failure`))
+      await tick()
+      await Promise.resolve()
+      expect(state.id_results).toEqual([])
+      expect(state.error_msg).toBeUndefined()
 
-    state.structures = [{ label: `a`, structure: make_fcc([1, 1, 1]) }]
-    flushSync()
-    expect(signals).toHaveLength(2)
-    expect(signals[1]?.aborted).toBe(false)
-    await unmount_plot()
-    // unmount aborts the worker request without reporting the abort as an error
-    expect(signals[1]?.aborted).toBe(true)
-    await tick()
-    expect(state.error_msg).toBeUndefined()
-  })
+      state.structures = [{ label: `a`, structure: make_fcc([1, 1, 1]) }]
+      flushSync()
+      expect(signals).toHaveLength(2)
+      expect(signals[1]?.aborted).toBe(false)
+      await unmount_plot()
+      // unmount aborts the worker request without reporting the abort as an error
+      expect(signals[1]?.aborted).toBe(true)
+      await tick()
+      expect(state.error_msg).toBeUndefined()
+    },
+  )
 
   // A failed compute used to leave its message behind once `structures` was emptied, because
   // the reset sat after the early return for empty input

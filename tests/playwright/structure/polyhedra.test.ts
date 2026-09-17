@@ -34,6 +34,9 @@ test.describe(`Coordination Polyhedra Demo`, () => {
     page,
   }) => {
     await expect(page.locator(`h1`)).toContainText(`Coordination Polyhedra`)
+    await page
+      .getByRole(`region`, { name: `Molecular polyhedra`, exact: true })
+      .scrollIntoViewIfNeeded()
     // Two Structure viewers on the page: crystal demo + SF6 molecule
     await expect(page.locator(`.structure canvas`)).toHaveCount(2)
     expect(console_errors).toEqual([])

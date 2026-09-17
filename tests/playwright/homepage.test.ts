@@ -1,6 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect } from '@playwright/test'
+import { test_without_errors as test } from './helpers'
 
-test(`installation icon fits the command line`, async ({ page }) => {
+test(`landing page hydrates with correctly sized icons and defers offscreen demos`, async ({
+  page,
+}) => {
   test.slow()
   await page.goto(`/`, { waitUntil: `commit` })
   const npm_icon = page.locator(
@@ -15,18 +18,33 @@ test(`installation icon fits the command line`, async ({ page }) => {
     return svg.getBoundingClientRect().height / font_px
   })
   expect(icon_to_font_ratio).toBeLessThanOrEqual(1.1)
+
+  // Navigation must hydrate before the expensive demos and datasets farther down the page.
+  await expect
+    .poll(async () => {
+      await page.getByRole(`button`, { name: `Open search`, exact: true }).click()
+      return page.getByRole(`dialog`, { name: `Search the MatterViz site` }).isVisible()
+    })
+    .toBe(true)
+  await page.keyboard.press(`Escape`)
+  await expect(page.locator(`.structure canvas`)).toHaveCount(2)
+  await expect(
+    page.locator(`.trajectory, .fermi-surface, .hull-grid, .periodic-table`),
+  ).toHaveCount(0)
 })
 
 // A plot in the table inset sits inside the table, so the tint that makes a standalone plot
 // read as its own panel shows up as a stray grey box, and full-size axis labels dwarf a plot
 // that small. Asserted on the inset, which hands both to whatever it holds: putting a plot in
-// there means picking a heatmap from a dropdown, and this page streams a trajectory, so it
-// never reaches the settled state Playwright needs to drive one.
+// there means picking a heatmap from a dropdown.
 test(`periodic table inset neutralises the plot panel tint and shrinks its labels`, async ({
   page,
 }) => {
   test.slow()
   await page.goto(`/`, { waitUntil: `commit` })
+  await page
+    .getByRole(`region`, { name: `Periodic table`, exact: true })
+    .scrollIntoViewIfNeeded()
 
   const inset = page.locator(`.table-inset`).first()
   await expect(inset).toBeVisible()
@@ -39,4 +57,20 @@ test(`periodic table inset neutralises the plot panel tint and shrinks its label
   )
   expect(fullscreen_bg).not.toBe(``)
   expect(fullscreen_bg).not.toBe(`transparent`)
+
+  // The anchor exists before loading and remains unique after the demo mounts.
+  const heatmap_heading = page.getByRole(`heading`, {
+    name: `Multi-value Heatmap`,
+    exact: true,
+  })
+  await page.goto(`/#2-fold-split-diagonal`, { waitUntil: `commit` })
+  await expect(
+    page
+      .getByRole(`region`, { name: `Multi-value heatmap`, exact: true })
+      .locator(`.periodic-table`),
+  ).toBeVisible()
+  await expect(heatmap_heading).toHaveCount(1)
+  await expect(
+    page.getByRole(`heading`, { name: `2-fold Split (Diagonal)`, exact: true }),
+  ).toHaveCount(1)
 })

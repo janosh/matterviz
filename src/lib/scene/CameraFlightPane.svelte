@@ -129,47 +129,35 @@
   const frame_at_time = (time: number, duration: number, steps?: FlightTimeline) =>
     steps ? camera_flight_frame(time / duration, steps.start, steps.end) : undefined
 
-  function capture_view(mode: `append` | `insert` | `update` = `append`) {
-    return attempt(() =>
-      session?.run(
-        `thumbnails`,
-        async ({ pose, signal }) => {
-          const image = await thumbnail()
+  const capture_view = (mode: `append` | `insert` | `update` = `append`) =>
+    attempt(() =>
+      session?.run(`thumbnails`, async ({ pose, signal }) => {
+        const image = await thumbnail()
+        signal.throwIfAborted()
+        if (mode === `update`) editor.update(selected, pose, image)
+        else editor.add(pose, image, mode === `insert` ? selected : frames.length - 1)
+        time_errors = {}
+      }),
+    )
+
+  const replace_path = (make: (pose: CameraPose) => unknown, automatic = false) =>
+    attempt(() =>
+      session?.run(`thumbnails`, async ({ pose, signal, show, timeline: steps }) => {
+        const path = await make(pose)
+        validate_camera_flight(path)
+        const duration = path.keyframes[path.keyframes.length - 1].time
+        const images: string[] = []
+        for (const frame of path.keyframes) {
+          await show(frame, frame_at_time(frame.time, duration, steps))
+          images.push(await thumbnail())
           signal.throwIfAborted()
-          if (mode === `update`) editor.update(selected, pose, image)
-          else editor.add(pose, image, mode === `insert` ? selected : frames.length - 1)
-          time_errors = {}
-        },
-        true,
-      ),
+        }
+        editor.load(path, images, automatic)
+        movie_time = 0
+        time_errors = {}
+        duration_error = ``
+      }),
     )
-  }
-
-  function replace_path(make: (pose: CameraPose) => unknown, automatic = false) {
-    return attempt(() =>
-      session?.run(
-        `thumbnails`,
-        async ({ pose, signal, show, timeline: steps }) => {
-          const path = await make(pose)
-          validate_camera_flight(path)
-          const duration = path.keyframes[path.keyframes.length - 1].time
-          const images: string[] = []
-          for (const frame of path.keyframes) {
-            await show(frame, frame_at_time(frame.time, duration, steps))
-            images.push(await thumbnail())
-            signal.throwIfAborted()
-          }
-          editor.load(path, images, automatic)
-          movie_time = 0
-          time_errors = {}
-          duration_error = ``
-        },
-        true,
-      ),
-    )
-  }
-
-  const orbit = () => replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)
 
   async function import_flight(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -350,7 +338,8 @@
         </button>
         <button
           type="button"
-          onclick={orbit}
+          onclick={() =>
+            replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)}
           disabled={!canvas}
           title="Create a complete orbit; Undo keeps your previous path">360° orbit</button
         >

@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
 test(`gallery scrolls and centres vertical cards while tooltips cross horizontal cards`, async ({
   page,
 }) => {
+  await page.locator(`.code-example`).nth(3).scrollIntoViewIfNeeded()
   const gallery = page.locator(`.structure-gallery.vertical`)
   const track = gallery.locator(`.structure-gallery-track`)
   const canvas = gallery.locator(`.structure-card canvas`).first()
@@ -45,6 +46,7 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
 
   // the horizontal strip, not the grid above it: only this layout puts cards side
   // by side, so only here can a tooltip escape one sideways
+  await page.locator(`.code-example`).nth(2).scrollIntoViewIfNeeded()
   const cards = page
     .locator(`.structure-gallery.horizontal`)
     .first()
@@ -122,6 +124,7 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
 test(`grid fills its host with virtualized rows and a capped live-viewer count`, async ({
   page,
 }) => {
+  await page.locator(`.code-example`).first().scrollIntoViewIfNeeded()
   const measure = () =>
     page.evaluate(() => {
       const root = document.querySelector(`.structure-gallery.grid`)
@@ -186,6 +189,7 @@ test(`grid fills its host with virtualized rows and a capped live-viewer count`,
 // floated its caption to the top, under the label chip. Shells are transient here,
 // so the row assignment is asserted directly alongside a live card's geometry.
 test(`property captions sit under the viewer, in a row of their own`, async ({ page }) => {
+  await page.locator(`.code-example`).nth(1).scrollIntoViewIfNeeded()
   const measure = () =>
     page.evaluate(() => {
       const card = document.querySelector(`.property-host .structure-card`)

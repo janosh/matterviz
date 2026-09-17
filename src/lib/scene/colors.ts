@@ -44,23 +44,6 @@ export function css_to_linear_rgb(css_color: string): LinearRgb {
   return rgb
 }
 
-// Channels are already in the working color space, so no second conversion here.
-export function set_linear_css_color(css_color: string, scratch_color: Color): void {
-  const [red, green, blue] = css_to_linear_rgb(css_color)
-  scratch_color.setRGB(red, green, blue)
-}
-
-export function write_linear_color_to_buffer(
-  buffer: Float32Array,
-  idx: number,
-  css_color: string,
-): void {
-  const [red, green, blue] = css_to_linear_rgb(css_color)
-  buffer[idx * 3] = red
-  buffer[idx * 3 + 1] = green
-  buffer[idx * 3 + 2] = blue
-}
-
 const brighten_scratch = new Color()
 const brighten_white = new Color(0xffffff)
 

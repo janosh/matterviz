@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import { format_num } from '$lib/labels'
   import type { Vec2, Vec3 } from '$lib/math'
   import type {
@@ -706,9 +707,27 @@
         {@render tooltip(data)}
       {:else}
         <div class="tooltip">
-          <div>x: {data.x_formatted}</div>
-          <div>y: {data.y_formatted}</div>
-          <div>z: {data.z_formatted}</div>
+          <div>
+            <TooltipValue
+              label={x_axis.label || `x`}
+              value={data.x_formatted}
+              unit={x_axis.unit}
+            />
+          </div>
+          <div>
+            <TooltipValue
+              label={y_axis.label || `y`}
+              value={data.y_formatted}
+              unit={y_axis.unit}
+            />
+          </div>
+          <div>
+            <TooltipValue
+              label={z_axis.label || `z`}
+              value={data.z_formatted}
+              unit={z_axis.unit}
+            />
+          </div>
           {#if data.color_value != null}
             <div>value: {format_num(data.color_value, `.3~g`)}</div>
           {/if}

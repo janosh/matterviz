@@ -215,14 +215,6 @@ export const parse_composition = (
   return composition
 }
 
-const atomic_mass_of = (element: string): number => {
-  const mass = is_elem_symbol(element)
-    ? element_by_symbol.get(element)?.atomic_mass
-    : undefined
-  if (mass === undefined) throw new Error(`Unknown element: ${element}`)
-  return mass
-}
-
 // Atomic (default) or mass fractions of each element; zero/negative amounts are skipped
 export const fractional_composition = (
   composition: CompositionType,
@@ -231,7 +223,11 @@ export const fractional_composition = (
   const weighted: [string, number][] = []
   for (const [element, amount] of Object.entries(composition)) {
     if (!(amount > 0)) continue
-    const mass = atomic_mass_of(element) // validates the symbol in both modes
+    // Validate the symbol in both modes.
+    const mass = is_elem_symbol(element)
+      ? element_by_symbol.get(element)?.atomic_mass
+      : undefined
+    if (mass === undefined) throw new Error(`Unknown element: ${element}`)
     weighted.push([element, by_weight ? amount * mass : amount])
   }
   const total = weighted.reduce((sum, [, weight]) => sum + weight, 0)

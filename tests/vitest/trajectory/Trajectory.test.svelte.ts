@@ -6,20 +6,38 @@ import type {
   TrajectoryRun,
   TrajectoryXQuantity,
   TrajHandlerData,
+  HotspotRequest,
 } from '$lib/trajectory'
 import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
 import * as plotting from '$lib/trajectory/plotting'
+import type { Site } from '$lib/structure'
+import * as structure_component from '$lib/structure/Structure.svelte'
 import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
 import { host_run } from '$lib/trajectory/runs/host'
+import { FrameView } from '$lib/trajectory/frame'
+import { FramePreparer, type DisplayFrame } from '$lib/trajectory/prepare'
+import {
+  get_colorable_property_keys,
+  get_property_colors,
+} from '$lib/structure/atom-properties'
 import {
   resize_element,
   trigger_resize_observer,
   mock_fullscreen,
   bind_props,
   doc_query,
-  make_run as make_shared_run,
+  form_controls,
 } from '../setup'
-import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
+import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
+import {
+  type Component,
+  type ComponentProps,
+  createRawSnippet,
+  flushSync,
+  mount,
+  tick,
+  unmount,
+} from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$app/environment`, () => ({ browser: false }))
@@ -138,6 +156,124 @@ const axis_labels = (target: ParentNode): string[] =>
   )
 
 describe(`display modes`, () => {
+  test(`large runs use complete structure frames`, async () => {
+    const frames = [0, 10, 20].map((step) => make_trajectory_frame(step, 2))
+    for (const frame of frames)
+      for (const [idx, site] of frame.structure.sites.entries())
+        site.properties.force = [idx + 1, 0, 0]
+    const backing = trajectory_from_frames(frames)
+    const compute_hotspots = vi.fn(backing.compute_hotspots)
+    const read_frame = vi.fn(backing.read_frame)
+    const preparer = new FramePreparer()
+    let prepared: DisplayFrame | undefined
+    const run: TrajectoryRun = {
+      ...backing,
+      atom_count: 333_200,
+      signals: { force: { sample_shape: [333_200, 3], sample_count: 3, frame_aligned: true } },
+      preview: {
+        ...backing.preview,
+        metadata: { render_sample: true },
+        structure: { ...backing.preview.structure, sites: [] },
+      },
+      compute_hotspots,
+      read_frame,
+      prepare_frame: async (idx, preparation, signal) =>
+        (prepared = preparer.prepare(
+          await read_frame(idx, signal, preparation.channels),
+          preparation,
+        )),
+    }
+    const props = $state(
+      default_props({
+        trajectory: run,
+        current_step_idx: 0,
+        structure_props: {
+          scene_props: {
+            show_polyhedra: `always`,
+            vector_configs: { force: { visible: true } },
+          },
+        },
+      }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    expect(target.querySelector(`.structure`)).not.toBeNull()
+    expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(0)
+    props.structure_props = {
+      scene_props: { show_polyhedra: `always`, vector_configs: { force: { visible: false } } },
+    }
+    props.current_step_idx = 1
+    await tick()
+    await vi.waitFor(() => expect(prepared?.frame.header.step).toBe(10))
+    if (!prepared) throw new Error(`Expected a prepared frame`)
+    expect(prepared.preparation?.polyhedra).toBeDefined()
+    expect(prepared.polyhedra).toBeDefined()
+    const { structure } = new FrameView().update(prepared.frame)
+    expect(prepared.frame.vector_keys).toEqual([])
+    expect(get_colorable_property_keys(structure)).toContain(`force`)
+    props.structure_props.atom_color_config = {
+      mode: `property`,
+      property_key: `force`,
+      scale: `interpolateViridis`,
+      scale_type: `continuous`,
+    }
+    await vi.waitFor(() => expect(prepared?.frame.vector_keys).toEqual([`force`]))
+    expect(
+      get_property_colors(
+        new FrameView().update(prepared.frame).structure,
+        props.structure_props.atom_color_config,
+      )?.values,
+    ).toEqual([1, 2])
+    expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(1)
+    expect(compute_hotspots).not.toHaveBeenCalled()
+  })
+
+  test(`channel selection follows viewer controls, inspection and custom coloring`, async () => {
+    const frames = [0, 10].map((step) => make_trajectory_frame(step, 2))
+    for (const frame of frames)
+      for (const site of frame.structure.sites) {
+        site.properties.force = [1, 2, 3]
+        site.properties.velocity = [4, 5, 6]
+      }
+    const run = trajectory_from_frames(frames)
+    const read = vi.spyOn(run, `read_frame`)
+    const props = $state(default_props({ trajectory: run, active_pane: `controls` }))
+    const target = mount_trajectory(props)
+    const last_channels = () => read.mock.lastCall?.[2]?.vectors
+    await tick()
+    const toggle = (key: string) => {
+      const checkbox = target.querySelector<HTMLInputElement>(
+        `[data-key="vector_config:${key}"] input[type="checkbox"]`,
+      )
+      if (!checkbox) throw new Error(`Missing ${key} control`)
+      checkbox.click()
+    }
+    toggle(`force`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([`velocity`]))
+    toggle(`velocity`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([]))
+    // Hiding a channel must leave its toggle available so it can be loaded again.
+    toggle(`force`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
+    props.active_pane = `data-inspector`
+    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
+    props.active_pane = null
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
+    props.structure_props = {
+      scene_props: {
+        vector_configs: { force: { visible: false }, velocity: { visible: false } },
+      },
+      atom_color_config: {
+        mode: `custom`,
+        color_fn: (site: Site) =>
+          Array.isArray(site.properties.velocity) ? site.properties.velocity[0] : 0,
+        scale: `interpolateViridis`,
+        scale_type: `continuous`,
+      },
+    }
+    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
+  })
+
   test.each([
     [`structure`, true, false, false],
     [`structure+scatter`, true, true, false],
@@ -147,7 +283,13 @@ describe(`display modes`, () => {
   ] as const)(
     `%s renders structure=%s scatter=%s histogram=%s`,
     async (display_mode, structure, scatter, histogram) => {
-      const target = mount_trajectory(default_props({ display_mode }))
+      // Even a flat plot must remain available when explicitly requested.
+      const target = mount_trajectory(
+        default_props({
+          display_mode,
+          trajectory: make_run({ properties: () => ({ energy: -1 }) }),
+        }),
+      )
       await tick()
       expect(target.querySelector(`.structure`) !== null).toBe(structure)
       expect(target.querySelector(`.scatter`) !== null).toBe(scatter)
@@ -162,11 +304,96 @@ describe(`display modes`, () => {
   test.each([
     [`single-frame`, make_run({ steps: [0] })],
     [`constant-value`, make_run({ properties: () => ({ energy: -1 }) })],
-  ])(`hides the plot of a %s run`, async (_kind, trajectory) => {
-    const target = mount_trajectory(default_props({ trajectory }))
+    [`no-properties`, make_run({ properties: () => ({}) })],
+    [
+      `visually-flat`,
+      make_run({
+        properties: (idx) => ({
+          energy: -1_750_000 + idx,
+          kinetic_energy: 9500 + idx,
+          total_energy: -1_740_500 + 2 * idx,
+        }),
+      }),
+    ],
+  ])(`defaults to structure-only for a %s run`, async (_kind, trajectory) => {
+    const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
     await tick()
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
+    if (_kind === `constant-value` || _kind === `visually-flat`)
+      expect(
+        target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
+      ).toBe(`Automatic: Structure-only`)
+  })
+
+  test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
+    const visibility_check = vi.spyOn(plotting, `should_hide_plot`)
+    const flat_run = make_run({ properties: () => ({ energy: -1 }) })
+    const trajectory = {
+      ...flat_run,
+      get preview() {
+        return flat_run.preview
+      },
+      properties: new TrajectoryProperties(flat_run.properties.rows.slice(0, 1)),
+    }
+    const props = $state(default_props({ trajectory, display_mode: `auto` }))
+    const target = mount_trajectory(props)
+    await tick()
+    expect(target.querySelector(`.content-area`)?.classList.contains(`show-both`)).toBe(true)
+    expect(target.textContent).toContain(`Sampling trajectory plot data`)
+    trajectory.properties.push(flat_run.properties.rows.slice(1))
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    trajectory.properties.finish()
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+    const checks = visibility_check.mock.calls.length
+    props.current_step_idx = 1
+    await tick()
+    expect(visibility_check).toHaveBeenCalledTimes(checks)
+
+    props.trajectory = make_run()
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    props.trajectory = make_run({ properties: () => ({ energy: -1 }) })
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+
+    const display_button = target.querySelector<HTMLButtonElement>(
+      `${CONTROLS} .view-mode-button`,
+    )
+    display_button?.click()
+    await tick()
+    menu_option(target, `Structure + Scatter`).click()
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+    props.trajectory = make_run({ properties: () => ({ energy: 5 }) })
+    await tick()
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
+
+    display_button?.click()
+    await tick()
+    menu_option(target, `Automatic`).click()
+    await tick()
+    expect(target.querySelector(`.scatter`)).toBeNull()
+  })
+
+  test(`legend interactions keep the plot open when only flat traces remain`, async () => {
+    const props = $state(
+      default_props({
+        display_mode: `auto`,
+        trajectory: make_run({ properties: (idx) => ({ energy: -1, force_max: idx }) }),
+      }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    target
+      .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for Fmax"]`)
+      ?.click()
+    await tick()
+    expect(props.display_mode).toBe(`structure+scatter`)
+    expect(legend_state(target)).toEqual({ Energy: true, Fmax: false })
+    expect(target.querySelector(`.scatter`)).not.toBeNull()
   })
 
   test(`view-mode menu switches display_mode and reports the change`, async () => {
@@ -185,7 +412,7 @@ describe(`display modes`, () => {
     expect(on_display_mode_change).toHaveBeenCalledExactlyOnceWith({
       step_idx: 0,
       frame_count: 3,
-      frame: expect.objectContaining({ step: 0 }),
+      frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
     expect(view_mode_button.title).toBe(`Histogram-only`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
@@ -260,6 +487,117 @@ describe(`controls`, () => {
     }
   })
 
+  test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {
+    const render_structure = vi.spyOn(
+      structure_component as unknown as {
+        default: Component<{ atom_opacity?: number; volume_color_field?: unknown }>
+      },
+      `default`,
+    )
+    const run = trajectory_from_frames(
+      [0, 10, 20].map((step) => {
+        const frame = make_trajectory_frame(step, 3)
+        for (const site of frame.structure.sites) site.properties.velocity = [1, 0, 0]
+        return frame
+      }),
+    )
+    if (!run.compute_hotspots) throw new Error(`Missing hotspot computation`)
+    const preview = await run.compute_hotspots({
+      start_frame: 1,
+      end_frame: 2,
+      mass_source: `standard`,
+      velocity_unit: `A/ps`,
+    })
+    let request: HotspotRequest | undefined
+    run.compute_hotspots = (options) => {
+      request = options
+      return new Promise((_resolve, reject) => {
+        options.signal?.addEventListener(`abort`, () => reject(new Error(`Cancelled`)), {
+          once: true,
+        })
+      })
+    }
+    const props = $state(
+      default_props({
+        trajectory: run,
+        active_pane: `hotspots`,
+        current_step_idx: 1,
+        display_mode: `structure+scatter`,
+      }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    const structure = target.querySelector(`.structure`)
+    expect(structure).not.toBeNull()
+    const pane = doc_query(`.hotspots-pane`)
+    const { control, set_value } = form_controls(pane)
+    await set_value(`Velocity units`, `A/ps`)
+    await set_value(`Frame stride`, `2`)
+    const button = (text: string) =>
+      [...pane.querySelectorAll(`button`)].find((node) => node.textContent === text)
+    button(`Calculate hotspots`)?.click()
+    await tick()
+    expect(request?.preview_frame).toBe(1)
+    await request?.on_preview?.(preview)
+    await vi.waitFor(() => expect(pane.querySelector(`.hotspot-map-status`)).not.toBeNull())
+    const heat_status = pane.querySelector(`.hotspot-map-status`)
+    expect(target.querySelector(`.hotspot-overlay`)).toBeNull()
+    expect(pane.textContent).toContain(`Heatmap on atoms`)
+    expect(target.querySelector(`.structure`)).toBe(structure)
+    const structure_props = render_structure.mock.lastCall?.[1]
+    expect(structure_props?.atom_opacity).toBe(1)
+    control(`Volume cloud`).click()
+    await tick()
+    // The default occupancy filter hides this tiny fixture's bins: an empty cloud must
+    // leave atoms opaque. Restore usable bins without re-running the analysis.
+    expect(structure_props?.atom_opacity).toBe(1)
+    for (const minimum of [`1`, `10`, `1`]) {
+      await set_value(`Minimum average atoms/bin`, minimum)
+      expect(structure_props?.atom_opacity).toBe(minimum === `10` ? 1 : 0.5)
+      expect(Boolean(structure_props?.volume_color_field)).toBe(minimum !== `10`)
+    }
+    for (const value of [`0`, `0.8`]) {
+      await set_value(`Cloud opacity`, value)
+      expect(structure_props?.atom_opacity).toBe(value === `0` ? 1 : 0.5)
+    }
+    for (const opacity of [1, 0.5]) {
+      control(`Volume cloud`).click()
+      await tick()
+      expect(structure_props?.atom_opacity).toBe(opacity)
+    }
+    props.current_step_idx = 2
+    await tick()
+    expect(pane.querySelector(`.hotspot-map-status`)).toBe(heat_status)
+    expect(target.querySelector(`.structure`)).toBe(structure)
+    expect(heat_status?.textContent).toContain(`Frame 1 preview`)
+    request?.on_progress?.({
+      current: 1.8,
+      completed: 1,
+      total: 2,
+      stage: `Binning kinetic energy`,
+    })
+    await tick()
+    const coverage = target.querySelector(`.hotspot-coverage`)
+    const slider = target.querySelector(`.step-slider`)
+    if (!coverage || !slider) throw new Error(`Missing hotspot coverage or frame slider`)
+    expect(Number(getComputedStyle(slider).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(coverage).zIndex),
+    )
+    expect(coverage.getAttribute(`aria-label`)).toContain(`1/2 sampled frames complete`)
+    expect(coverage.querySelector(`pattern`)?.getAttribute(`width`)).toBe(`2`)
+    expect(coverage.querySelector(`.completed`)?.getAttribute(`width`)).toBe(`1`)
+    expect(coverage.querySelector(`.active`)?.getAttribute(`x1`)).toBe(`2`)
+    button(`Cancel`)?.click()
+    await tick()
+    expect(request?.signal?.aborted).toBe(true)
+    expect(coverage.querySelector(`.active`)).toBeNull()
+    expect(coverage.getAttribute(`aria-label`)).not.toContain(`calculating`)
+    props.trajectory = make_run()
+    await tick()
+    expect(target.querySelector(`.hotspot-coverage`)).toBeNull()
+    expect(structure_props?.atom_opacity).toBe(1)
+  })
+
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
     const target = mount_trajectory(default_props({ show_controls: { hidden: [hidden] } }))
     await tick()
@@ -281,6 +619,7 @@ describe(`controls`, () => {
     expect(labels).toEqual([
       `Velocity autocorrelation & VDOS`,
       `Radial distribution function`,
+      `Thermal hotspots`,
       `Structure identification`,
       `Data inspector`,
     ])
@@ -293,6 +632,7 @@ describe(`controls`, () => {
             `vacf-pane`,
             `rdf-pane`,
             `spectroscopy-pane`,
+            `hotspots-pane`,
             `structure-id-pane`,
             `data-inspector-pane`,
           ],
@@ -335,13 +675,14 @@ describe(`controls`, () => {
   })
 
   test.each([
-    [`count`, 3, [`0`, `5`, `10`]],
-    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`]],
-    [`spacing`, -4, [`0`, `4`, `8`, `10`]],
-    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`]],
-    [`disabled`, 0, []],
-  ])(`step_labels %s`, (_kind, step_labels, expected) => {
-    const steps = Array.from({ length: 11 }, (_unused, idx) => idx * 5)
+    [`count`, 3, [`0`, `5`, `10`], 11],
+    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`], 11],
+    [`spacing`, -4, [`0`, `4`, `8`, `10`], 11],
+    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`], 11],
+    [`disabled`, 0, [], 11],
+    [`single frame`, 5, [], 1],
+  ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {
+    const steps = Array.from({ length: frame_count }, (_unused, idx) => idx * 5)
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ steps }), step_labels }),
     )
@@ -354,13 +695,6 @@ describe(`controls`, () => {
       (element) => element.style.left,
     )
     expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
-  })
-
-  test(`step_labels vanish for a single frame`, () => {
-    const target = mount_trajectory(
-      default_props({ trajectory: make_run({ steps: [0] }), step_labels: 5 }),
-    )
-    expect(target.querySelector(`.step-label`)).toBeNull()
   })
 })
 
@@ -501,14 +835,50 @@ describe(`plot`, () => {
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`time`)
   })
 
-  test(`property_labels relabel axes and legend entries`, async () => {
-    const target = mount_trajectory(
-      default_props({ property_labels: { energy: `Total E`, force_max: `Max |F|` } }),
-    )
-    await tick()
-    expect(axis_labels(target)).toEqual([`Time (fs)`, `Total E (eV)`, `Max |F| (eV/Å)`])
-    expect(Object.keys(legend_state(target))).toEqual([`Total E`, `Max |F|`, `Volume`])
-  })
+  test.each([`scatter`, `histogram`] as const)(
+    `%s switches energy references with custom labels and preserves source data`,
+    async (display_mode) => {
+      const prepare_scatter = vi.spyOn(plotting, `prepare_trajectory_scatter_series`)
+      const extra_controls = createRawSnippet(() => ({ render: () => `<p>Host control</p>` }))
+      const run = make_run()
+      const read_frame = vi.spyOn(run, `read_frame`)
+      const props = $state(
+        default_props({
+          trajectory: run,
+          display_mode,
+          relative_energy: false,
+          property_labels: { energy: `Total E`, force_max: `Max |F|` },
+          scatter_props: { controls_open: true, controls_extra: extra_controls },
+          histogram_props: { controls_open: true, controls_extra: extra_controls },
+        }),
+      )
+      const target = mount_trajectory(props)
+      await tick()
+      const reads = read_frame.mock.calls.length
+      const toggle = doc_query<HTMLInputElement>(`input[name=relative_energy]`)
+      expect(document.body.textContent).toContain(`Host control`)
+      for (const relative of [false, true, false]) {
+        if (relative) toggle.click()
+        else props.relative_energy = false
+        await tick()
+        expect(props.relative_energy).toBe(relative)
+        expect(toggle.checked).toBe(relative)
+        const label = relative ? `Δ Total E` : `Total E`
+        expect(Object.keys(legend_state(target))).toEqual([label, `Max |F|`, `Volume`])
+        if (display_mode === `scatter`) {
+          expect(axis_labels(target)).toEqual([`Time (fs)`, `${label} (eV)`, `Max |F| (eV/Å)`])
+          expect(
+            prepare_scatter.mock.lastCall?.[0].find((srs) => srs.id === `energy`)?.y,
+          ).toEqual(relative ? [0, 1, 2] : [-3, -2, -1])
+        } else {
+          expect(target.querySelector(`.histogram .axis-label`)?.textContent).toContain(
+            `${label} (eV)`,
+          )
+        }
+      }
+      expect(read_frame).toHaveBeenCalledTimes(reads)
+    },
+  )
 })
 
 describe(`banners`, () => {
@@ -732,7 +1102,7 @@ describe(`events`, () => {
   const payload = (step_idx: number, step: number) => ({
     step_idx,
     frame_count: 3,
-    frame: expect.objectContaining({ step }),
+    frame: expect.objectContaining({ header: expect.objectContaining({ step }) }),
   })
 
   test(`playback events carry { step_idx, frame_count, frame }`, () => {
@@ -837,23 +1207,6 @@ describe(`events`, () => {
     expect(document.fullscreenElement).toBe(target)
     expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
   })
-
-  test(`on_controller hands out the controller and nulls it on unmount`, async () => {
-    const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    const component = mount(Trajectory, {
-      target,
-      props: default_props({ show_controls: `never`, on_controller }),
-    })
-    flushSync()
-    expect(on_controller).toHaveBeenCalledOnce()
-    const controller = on_controller.mock.calls[0][0]
-    expect(controller?.state()).toEqual({ current_step_idx: 0, total_frames: 3 })
-    expect(controller?.set_step(99)).toBe(2)
-    await unmount(component)
-    expect(on_controller).toHaveBeenLastCalledWith(null)
-  })
 })
 
 describe(`bindings`, () => {
@@ -900,27 +1253,36 @@ describe(`bindings`, () => {
     expect(state.hovered).toBe(false)
   })
 
-  test(`controller navigation updates the bound index and the rendered step`, async () => {
-    const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
-    const controllers: TrajectoryController[] = []
-    const props = $state(
-      default_props({
-        current_step_idx: 0,
-        on_step_change,
-        on_controller: (next: TrajectoryController | null) => {
-          if (next) controllers.push(next)
-        },
-      }),
-    )
-    mount_trajectory(props)
-    expect(controllers).toHaveLength(1)
-    controllers[0].set_step(2)
-    await tick()
-    expect(props.current_step_idx).toBe(2)
-    expect(on_step_change).toHaveBeenLastCalledWith({ step_idx: 2, frame_count: 3 })
-    expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`2`)
-    expect(controllers[0].state()).toEqual({ current_step_idx: 2, total_frames: 3 })
-  })
+  test.each([`always`, `never`] as const)(
+    `the controller navigates with %s controls and clears on unmount`,
+    async (show_controls) => {
+      const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
+      const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
+      const props = $state(
+        default_props({ current_step_idx: 0, on_step_change, on_controller, show_controls }),
+      )
+      const target = document.createElement(`div`)
+      document.body.append(target)
+      const component = mount(Trajectory, { target, props })
+      mounted.push(component)
+      flushSync()
+      expect(on_controller).toHaveBeenCalledOnce()
+      const controller = on_controller.mock.calls[0][0]
+      expect(controller?.state()).toEqual({ current_step_idx: 0, total_frames: 3 })
+      expect(controller?.set_step(2)).toBe(2)
+      await tick()
+      expect(props.current_step_idx).toBe(2)
+      expect(on_step_change).toHaveBeenLastCalledWith({ step_idx: 2, frame_count: 3 })
+      expect(target.querySelector<HTMLInputElement>(`.step-input`)?.value).toBe(
+        show_controls === `never` ? undefined : `2`,
+      )
+      expect(controller?.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
+      expect(controller?.set_step(99)).toBe(2)
+      await unmount(component)
+      mounted.splice(mounted.indexOf(component), 1)
+      expect(on_controller).toHaveBeenLastCalledWith(null)
+    },
+  )
 
   test(`never disposes the caller's runs, replaced or unmounted`, async () => {
     const first = make_run({ filename: `first.xyz` })
@@ -951,41 +1313,31 @@ describe(`panes track progressively loaded property rows`, () => {
       properties: { energy: -1 - idx },
     }))
 
-  test(`the info pane follows rows pushed and finished after mount`, async () => {
-    const properties = new TrajectoryProperties(rows_for([0, 1]), false)
-    const trajectory = { ...make_shared_run([0, 10, 20, 30, 40]), frame_count: 5, properties }
-    const target = mount_trajectory(default_props({ trajectory, active_pane: `info` }))
-    await tick()
-    const row_count = () =>
-      /Property Rows\s*(?<count>\d+(?: loaded)?)/.exec(target.textContent ?? ``)?.groups?.count
-
-    expect(row_count()).toBe(`2 loaded`)
-    properties.push(rows_for([2, 3, 4]))
-    flushSync()
-    await tick()
-    expect(row_count()).toBe(`5 loaded`) // used to stay at 2 for the life of the run
-
-    // finish() flips completeness, which the pane reports by dropping the `loaded` suffix
-    properties.finish()
-    flushSync()
-    await tick()
-    expect(row_count()).toBe(`5`)
-  })
-
-  test(`the data inspector follows them too`, async () => {
-    const properties = new TrajectoryProperties(rows_for([0, 1]), false)
-    const trajectory = { ...make_shared_run([0, 10, 20, 30, 40]), frame_count: 5, properties }
-    const target = mount_trajectory(
-      default_props({ trajectory, active_pane: `data-inspector` }),
-    )
-    await tick()
-    const frames_tab = () =>
-      /Frames \((?<count>\d+)\)/.exec(target.textContent ?? ``)?.groups?.count
-
-    expect(frames_tab()).toBe(`2`)
-    properties.push(rows_for([2, 3, 4]))
-    flushSync()
-    await tick()
-    expect(frames_tab()).toBe(`5`) // used to stay at 2
-  })
+  test.each([
+    [`info`, /Property Rows\s*(?<count>\d+(?: loaded)?)/, [`2 loaded`, `5 loaded`, `5`]],
+    [`data-inspector`, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
+  ] as const)(
+    `%s follows rows pushed and finished after mount`,
+    async (active_pane, pattern, expected) => {
+      const properties = new TrajectoryProperties(rows_for([0, 1]), false)
+      const trajectory = {
+        ...make_shared_run([0, 10, 20, 30, 40]),
+        frame_count: 5,
+        properties,
+      }
+      const target = mount_trajectory(default_props({ trajectory, active_pane }))
+      await tick()
+      const row_count = () => pattern.exec(target.textContent ?? ``)?.groups?.count
+      expect(row_count()).toBe(expected[0])
+      properties.push(rows_for([2, 3, 4]))
+      flushSync()
+      await tick()
+      expect(row_count()).toBe(expected[1]) // used to stay at 2 for the life of the run
+      // Completion removes the info pane's `loaded` suffix without dropping inspector rows.
+      properties.finish()
+      flushSync()
+      await tick()
+      expect(row_count()).toBe(expected[2])
+    },
+  )
 })

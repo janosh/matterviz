@@ -1,13 +1,18 @@
 // Three.js scene → STL / OBJ+MTL / GLB download, shared by the Fermi surface, structure and
 // chemical potential exporters. The exporters are lazy-imported so viewers that never export
 // don't ship them.
+import { AtomInstances } from '$lib/structure/atom-instances'
+import { ArrowMesh } from '$lib/structure/arrow-mesh'
+import { BondMesh } from '$lib/structure/bond-mesh'
 import { download } from '$lib/io/fetch'
 import type { FileSaver } from '$lib/io/file-export.svelte'
 import { clamp01, to_error } from '$lib/utils'
-import type { BufferGeometry, InstancedMesh, Material, Object3D } from 'three/webgpu'
+import type { InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {
+  BufferGeometry,
   Color,
   Group,
+  InstancedBufferAttribute,
   Matrix4,
   Mesh,
   MeshStandardMaterial,
@@ -57,6 +62,7 @@ function clean_geometry_for_export(geometry: BufferGeometry): void {
   for (const attr_name of Object.keys(geometry.attributes)) {
     const lower_name = attr_name.toLowerCase()
     if (
+      geometry.attributes[attr_name] instanceof InstancedBufferAttribute ||
       lower_name.includes(`instance`) ||
       (lower_name.includes(`color`) && lower_name !== `color`)
     )
@@ -118,28 +124,36 @@ export function generate_mtl_content(scene: Object3D): string {
 
 // Type guard for InstancedMesh (Three.js uses isInstancedMesh property, not exposed in
 // Object3D type). Threlte's InstancedMesh sets isInstancedMesh=true but type stays "Mesh".
-const is_instanced_mesh = (obj: Object3D): obj is InstancedMesh =>
-  (obj as InstancedMesh).isInstancedMesh || obj.type === `InstancedMesh`
+type ExportInstances = InstancedMesh | AtomInstances | ArrowMesh | BondMesh
+const is_instanced_mesh = (obj: Object3D): obj is ExportInstances =>
+  obj instanceof AtomInstances ||
+  obj instanceof ArrowMesh ||
+  obj instanceof BondMesh ||
+  (obj as InstancedMesh).isInstancedMesh ||
+  obj.type === `InstancedMesh`
 
 // Copy of `scene` with every InstancedMesh expanded into a Group of plain Meshes (one per
 // instance, carrying its resolved color), since the GLB/OBJ exporters don't handle instancing
 export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T): T {
   const cloned_scene = scene.clone()
-  const cloned_meshes: InstancedMesh[] = []
+  const cloned_meshes: ExportInstances[] = []
   cloned_scene.traverse((object) => {
     if (is_instanced_mesh(object)) cloned_meshes.push(object)
   })
 
   for (const [mesh_idx, instanced_mesh] of cloned_meshes.entries()) {
     const parent = instanced_mesh.parent
-    if (!parent || !instanced_mesh.instanceMatrix) continue
+    if (!parent) continue
 
     // Create a group to hold all the individual meshes
     const group = new Group()
     group.name = instanced_mesh.name
 
     const has_bond_gradient = has_bond_gradient_attributes(instanced_mesh.geometry)
-    const { instanceColor: instance_color_attr } = instanced_mesh
+    const instance_color_attr =
+      instanced_mesh instanceof AtomInstances || instanced_mesh instanceof ArrowMesh
+        ? instanced_mesh.colors
+        : instanced_mesh.instanceColor
     const source_material = Array.isArray(instanced_mesh.material)
       ? instanced_mesh.material[0]
       : instanced_mesh.material
@@ -150,21 +164,26 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
     // buffers; a 10k-atom scene must not clone 10k geometries). Instance color attributes
     // have one entry per bond, not per vertex, so they break GLTF accessor-count validation
     // once instances become standalone meshes — strip them from the clone once.
-    const shared_geometry = instanced_mesh.geometry.clone()
-    if (has_bond_gradient) clean_geometry_for_export(shared_geometry)
+    const shared_geometry = new BufferGeometry().copy(instanced_mesh.geometry)
+    clean_geometry_for_export(shared_geometry)
 
-    // Materials: fresh MeshStandardMaterial for reliability, one per instance only when a
-    // per-instance colour resolves, otherwise one shared material in the base colour
-    const make_material = (name: string, color: Color | null): MeshStandardMaterial => {
+    // Share exact resolved colors: one material per atom would dwarf the geometry.
+    const materials = new Map<string, MeshStandardMaterial>()
+    const get_material = (color: Color | null): MeshStandardMaterial => {
+      const key = color
+        ? color
+            .toArray()
+            .map((value) => (Object.is(value, -0) ? `-0` : value))
+            .join(`,`)
+        : ``
+      const cached = materials.get(key)
+      if (cached) return cached
       const material = new MeshStandardMaterial({ metalness: 0.1, roughness: 0.5 })
-      material.name = name
+      material.name = `material_${mesh_idx}_${materials.size}`
       if (color) material.color.copy(color)
+      materials.set(key, material)
       return material
     }
-    const per_instance_color = has_bond_gradient || instance_color_attr !== null
-    const shared_material = per_instance_color
-      ? null
-      : make_material(`material_${mesh_idx}`, material_color)
 
     // Create individual meshes for each instance
     const instance_color = new Color()
@@ -180,14 +199,16 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
               .fromBufferAttribute(instance_color_attr, idx)
               .multiply(material_tint)
           : material_color
-      const material =
-        shared_material ?? make_material(`material_${mesh_idx}_${idx}`, resolved_color)
+      const material = get_material(resolved_color)
 
       const mesh = new Mesh(shared_geometry, material)
 
       // Combine base transform with instance transform
       combined_matrix.multiplyMatrices(instanced_mesh.matrix, instance_matrix)
-      mesh.applyMatrix4(combined_matrix)
+      // Keep the captured matrix directly: decomposing a collapsed (zero-radius) instance
+      // creates NaN rotations, and recomposition needlessly perturbs ordinary transforms.
+      mesh.matrix.copy(combined_matrix)
+      mesh.matrixAutoUpdate = false
 
       group.add(mesh)
     }

@@ -9,8 +9,8 @@ import {
   expect_module_worker,
   expect_worker_safe_import_graph,
   install_stub_worker,
-  load_json,
 } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
 const stub = install_stub_worker<{

@@ -40,7 +40,7 @@ import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hul
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { load_json, make_phase } from '../setup'
+import { load_json, make_phase } from '../test-fixtures'
 
 // n-D points written as one flat list, so geometry fixtures stay on a single line
 const chunk = (size: number, flat: number[]): number[][] =>

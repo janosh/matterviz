@@ -29,10 +29,10 @@ export function create_camera_flight_editor() {
     interpolation: draft.interpolation,
     keyframes: draft.views.map(({ thumbnail: _thumbnail, ...frame }) => frame),
   })
-  const commit = (next: FlightDraft) => {
-    history = [...history.slice(0, cursor + 1), next].slice(-50)
+  const commit = (changes: Partial<FlightDraft>) => {
+    history = [...history.slice(0, cursor + 1), { ...draft, ...changes }].slice(-50)
     cursor = history.length - 1
-    selected = Math.min(selected, next.views.length - 1)
+    selected = Math.min(selected, draft.views.length - 1)
   }
   const space_evenly = (views: FlightDraft[`views`], duration: number) =>
     views.map((view, idx) => ({
@@ -41,7 +41,6 @@ export function create_camera_flight_editor() {
     }))
   const set_views = (views: FlightDraft[`views`]) =>
     commit({
-      ...draft,
       views: draft.automatic ? space_evenly(views, draft.duration) : views,
       duration:
         !draft.automatic && views.length > 1 ? views[views.length - 1].time : draft.duration,
@@ -87,7 +86,6 @@ export function create_camera_flight_editor() {
     },
     update(idx: number, pose: CameraPose, thumbnail: string) {
       commit({
-        ...draft,
         views: draft.views.map((view, view_idx) =>
           view_idx === idx ? { ...structuredClone(pose), time: view.time, thumbnail } : view,
         ),
@@ -103,7 +101,6 @@ export function create_camera_flight_editor() {
       const views = [...draft.views]
       views.splice(to, 0, ...views.splice(from, 1))
       commit({
-        ...draft,
         views: views.map((view, idx) => ({ ...view, time: draft.views[idx].time })),
       })
       selected = to
@@ -113,7 +110,6 @@ export function create_camera_flight_editor() {
         throw new Error(`Duration must be greater than zero`)
       if (duration === draft.duration) return
       commit({
-        ...draft,
         duration,
         views: draft.automatic
           ? space_evenly(draft.views, duration)
@@ -124,7 +120,7 @@ export function create_camera_flight_editor() {
       })
     },
     set_time(idx: number, time: number) {
-      const views = draft.views
+      const { views } = draft
       if (
         idx === 0 ||
         !Number.isFinite(time) ||
@@ -134,7 +130,6 @@ export function create_camera_flight_editor() {
         throw new Error(`View ${idx + 1} must come after view ${idx} and before the next view`)
       if (time === views[idx].time) return
       commit({
-        ...draft,
         automatic: false,
         duration: idx === views.length - 1 ? time : draft.duration,
         views: views.map((view, view_idx) => (view_idx === idx ? { ...view, time } : view)),
@@ -142,13 +137,12 @@ export function create_camera_flight_editor() {
     },
     set_automatic(automatic: boolean) {
       commit({
-        ...draft,
         automatic,
         views: automatic ? space_evenly(draft.views, draft.duration) : draft.views,
       })
     },
     set_interpolation(interpolation: CameraFlight[`interpolation`]) {
-      commit({ ...draft, interpolation })
+      commit({ interpolation })
     },
     load(path: CameraFlight, thumbnails: string[], automatic = false) {
       validate_camera_flight(path)

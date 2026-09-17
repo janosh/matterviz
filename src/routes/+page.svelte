@@ -1,16 +1,7 @@
 <script lang="ts">
-  import FilePicker from '$lib/FilePicker.svelte'
-  import Structure from '$lib/structure/Structure.svelte'
-  import { Trajectory } from '$lib/trajectory'
-  import {
-    ConvexHullDemo,
-    FermiSurfaceDemo,
-    MultiValueHeatmapDemo,
-    PeriodicTableDemo,
-    PhononSpectraDemo,
-  } from '$site'
-  import { molecule_files } from '$site/molecules'
-  import { structure_files } from '$site/structures'
+  import LazyDemo from '$site/LazyDemo.svelte'
+  import MultiValueHeatmapDemo from '$site/MultiValueHeatmapDemo.svelte'
+  import type { TrajHandlerData } from '$lib/trajectory'
   import { trajectory_files } from '$site/trajectories'
   import { CopyButton, Icon } from 'svelte-widgets'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
@@ -22,6 +13,23 @@
   let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
   let vscode_ext_url = `https://marketplace.visualstudio.com/items?itemName=Janosh.matterviz`
   let open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
+
+  const load_structure_picker = async () => {
+    const [{ default: FilePicker }, { structure_files }, { molecule_files }] =
+      await Promise.all([
+        import('$lib/FilePicker.svelte'),
+        import('$site/structures'),
+        import('$site/molecules'),
+      ])
+    return {
+      default: FilePicker,
+      props: {
+        files: [...structure_files, ...molecule_files],
+        show_category_filters: true,
+        style: `margin: 2em auto`,
+      },
+    }
+  }
 </script>
 
 <h1 id="matterviz" style="font-size: clamp(20pt, 5.5vw, 42pt)">MatterViz</h1>
@@ -76,11 +84,14 @@
       <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
         {structure_filenames[idx]}
       </h3>
-      <Structure
-        source="/structures/{file_name}"
-        style="flex: 1"
-        on_file_load={(data) => {
-          if (data.filename) structure_filenames[idx] = data.filename
+      <LazyDemo
+        label="Structure viewer: {structure_filenames[idx]}"
+        load={() => import('$lib/structure/Structure.svelte')}
+        props={{
+          source: `/structures/${file_name}`,
+          on_file_load: (data) => {
+            if (data.filename) structure_filenames[idx] = data.filename
+          },
         }}
       />
     </div>
@@ -98,10 +109,11 @@
   Compressed variants (e.g.&nbsp;<code>.gz</code>, <code>.bz2</code>) are supported as well.
 </p>
 
-<FilePicker
-  files={[...structure_files, ...molecule_files]}
-  show_category_filters
-  style="margin: 2em auto"
+<LazyDemo
+  label="Structure example files"
+  height="180px"
+  load={load_structure_picker}
+  props={{}}
 />
 
 <p>
@@ -119,12 +131,16 @@
 
 <h2 id="trajectory-viewer"><a href="/trajectory">Trajectory Viewer</a></h2>
 
-<Trajectory
-  source="/trajectories/{default_trajectory_file}"
+<LazyDemo
+  label="Trajectory viewer"
+  load={() => import('$lib/trajectory/Trajectory.svelte')}
   class="full-bleed"
-  style="max-height: 700px"
-  on_file_load={({ source_filename }) => {
-    if (source_filename) active_trajectory_file = source_filename
+  props={{
+    source: `/trajectories/${default_trajectory_file}`,
+    style: `max-height: 700px`,
+    on_file_load: ({ source_filename }: TrajHandlerData) => {
+      if (source_filename) active_trajectory_file = source_filename
+    },
   }}
 />
 
@@ -132,15 +148,20 @@
   Drag any of these trajectory files onto a viewer above to load them:
 </p>
 
-<FilePicker
-  files={trajectory_files}
-  show_category_filters={false}
-  active_files={[active_trajectory_file]}
+<LazyDemo
+  label="Trajectory example files"
+  height="120px"
+  load={() => import('$lib/FilePicker.svelte')}
+  props={{ files: trajectory_files, active_files: [active_trajectory_file] }}
 />
 
 <h2 id="periodic-table"><a href="/periodic-table">Periodic Table</a></h2>
 
-<PeriodicTableDemo />
+<LazyDemo
+  label="Periodic table"
+  load={() => import('$site/PeriodicTableDemo.svelte')}
+  props={{}}
+/>
 
 <h2 id="phonon-spectra-brillouin-zone-bands-dos">
   <a href="/reciprocal/brillouin-bands-dos">Phonon Spectra: Brillouin Zone · Bands · DOS</a>
@@ -152,7 +173,12 @@
   density of states. Pick a material below to switch systems.
 </p>
 
-<PhononSpectraDemo class="full-bleed" style="min-height: 480px; margin-block: 1em" />
+<LazyDemo
+  label="Phonon spectra"
+  height="560px"
+  load={() => import('$site/PhononSpectraDemo.svelte')}
+  props={{ class: `full-bleed`, style: `min-height: 480px; margin-block: 1em` }}
+/>
 
 <h2 id="fermi-surface"><a href="/reciprocal/fermi-surface">Fermi Surface</a></h2>
 
@@ -162,7 +188,12 @@
   Pick an example below or drag your own file onto the viewer.
 </p>
 
-<FermiSurfaceDemo class="bleed-1400" />
+<LazyDemo
+  label="Fermi surface"
+  height="600px"
+  load={() => import('$site/FermiSurfaceDemo.svelte')}
+  props={{ class: `bleed-1400` }}
+/>
 
 <h2 id="convex-hull"><a href="/convex-hull">Convex Hull</a></h2>
 
@@ -173,7 +204,12 @@
   chemical system below to switch.
 </p>
 
-<ConvexHullDemo class="full-bleed" />
+<LazyDemo
+  label="Convex hull"
+  height="600px"
+  load={() => import('$site/ConvexHullDemo.svelte')}
+  props={{ class: `full-bleed` }}
+/>
 
 <MultiValueHeatmapDemo />
 

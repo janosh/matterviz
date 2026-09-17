@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // VS Code's webview postMessage API takes a single argument (no targetOrigin),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
@@ -377,7 +378,7 @@ export const handle_msg = async (
       }
       const run = active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
-      const frame = await run.read_frame(frame_index)
+      const frame = await materialize_frame_result(run.read_frame(frame_index))
       webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message

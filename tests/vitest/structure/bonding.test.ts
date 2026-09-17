@@ -3,14 +3,22 @@ import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondEditState } from '$lib/structure/bonding'
 import { element_by_symbol } from '$lib/element/data'
 import * as bonding from '$lib/structure/bonding'
+import { BondFrame, pack_bonds } from '$lib/structure/bond-rendering'
+import { numeric_sites } from '$lib/structure/site'
+import {
+  create_numeric_md_frame,
+  FrameView,
+  materialize_frame,
+  wrap_frame_coordinates,
+} from '$lib/trajectory/frame'
 import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { test_molecules } from '$site/molecules'
 import { describe, expect, test, vi } from 'vitest'
-import { make_rng } from '../numeric-helpers'
-import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../setup'
+import { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
+import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
 
 const make_random_structure = (n_atoms: number, seed = 7): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
@@ -522,7 +530,7 @@ describe(`Explicit Bond Metadata`, () => {
     // matching site indices with opposite shifts must stay two distinct bonds
     const bonds_by_key = new Map(
       bonding
-        .apply_explicit_bond_metadata(structure, [])
+        .explicit_only(structure)
         .map((bond_pair) => [
           bonding.get_bond_key(
             bond_pair.site_idx_1,
@@ -1207,6 +1215,284 @@ describe(`remap_bonds_after_deletion`, () => {
 })
 
 describe(`compute_bonds memo`, () => {
+  test.each([false, true])(
+    `rebuilds after cumulative diagonal motion exceeds the skin (numeric: %s)`,
+    (numeric) => {
+      const search = new bonding.BondSearch()
+      for (const displacement of [0, 0.1, 0.2, 0.3, 0.6]) {
+        const source = make_struct([
+          { element: `Si`, xyz: [displacement, displacement, displacement] },
+          { element: `Si`, xyz: Array(3).fill(3 - displacement) as Vec3 },
+        ])
+        const frame = create_numeric_md_frame(
+          Float64Array.from(source.sites.flatMap(({ xyz }) => xyz)),
+          Uint8Array.of(14, 14),
+          undefined,
+          [false, false, false],
+          0,
+          {},
+          [],
+        )
+        const structure = numeric ? new FrameView().update(frame).structure : source
+        const actual = search.compute_columns(structure)
+        const expected = pack_bonds(bonding.electroneg_ratio(structure))
+        expect(actual).toEqual(expected)
+        // The initial pair lies beyond the candidate skin. Both atoms approach by
+        // 0.6 A on each axis: below skin/2 per axis, but above it in total distance.
+        expect(actual.lengths).toHaveLength(displacement === 0.6 ? 1 : 0)
+      }
+    },
+  )
+  test.each([`Si`, `Ge`, `C`, `O`, `Fe`] as const)(
+    `homogeneous %s keeps the complete chemistry result`,
+    (element) => {
+      const source = make_random_structure(100, 9)
+      for (const [idx, site] of source.sites.entries()) {
+        site.species = [{ element, occu: 1, oxidation_state: 0 }]
+        site.xyz = site.xyz.map((coord) => coord / 2) as Vec3
+        if (idx % 7 === 0) site.properties.orig_unit_cell_idx = 0
+      }
+      // A disconnected second element forces the full role calculation, without changing
+      // any original contact. Compare several reach/strength boundaries, not just a lattice.
+      const mixed = structuredClone(source)
+      mixed.sites.push(
+        make_struct([{ element: element === `Fe` ? `O` : `Fe`, xyz: [1e6, 1e6, 1e6] }])
+          .sites[0],
+      )
+      const canonical = (bonds: BondPair[]) =>
+        bonds.toSorted(
+          (left, right) =>
+            left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
+        )
+      for (const strength_threshold of [0, 0.1, 0.3, 0.8, 1.2]) {
+        const actual = canonical(bonding.electroneg_ratio(source, { strength_threshold }))
+        const expected = canonical(bonding.electroneg_ratio(mixed, { strength_threshold }))
+        expect(actual).toEqual(expected)
+      }
+    },
+  )
+  test.each([
+    [
+      [40, 0, 0],
+      [0, 40, 0],
+      [0, 0, 40],
+    ],
+    [
+      [40, 0, 0],
+      [8, 40, 0],
+      [3, 4, 40],
+    ],
+  ])(`keeps finite bonds exact across wrapping in cell %j`, (...matrix) => {
+    const search = new bonding.BondSearch()
+    const source = make_crystal(40, [
+      { element: `Si`, xyz: [39.9, 0, 0] },
+      { element: `Si`, xyz: [1.8, 0, 0] },
+      { element: `Si`, xyz: [4, 0, 0] },
+    ])
+    source.lattice.matrix = matrix as math.Matrix3x3
+    const canonical = (bonds: BondPair[]) =>
+      bonds.toSorted(
+        (left, right) =>
+          left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
+      )
+    for (const position of [39.9, 0.1, 0.2, 0.3, 39.8, 0.4, 1, 2, 3]) {
+      const structure = structuredClone(source)
+      structure.sites[0].xyz[0] = position
+      const actual = canonical(
+        new BondFrame(structure, search.compute_columns(structure)).materialize(),
+      )
+      const expected = canonical(bonding.electroneg_ratio(structure))
+      expect(actual).toEqual(expected)
+      expect(actual.every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
+      if (position === 0.1) expect(find_bond(actual, 0, 1)).toBeDefined()
+    }
+    const changed_cell = structuredClone(source)
+    changed_cell.lattice.matrix[0][0] = 45
+    expect(search.compute_columns(changed_cell)).toEqual(
+      pack_bonds(bonding.electroneg_ratio(changed_cell)),
+    )
+    changed_cell.lattice.pbc = [false, false, false]
+    expect(search.compute_columns(changed_cell)).toEqual(
+      pack_bonds(bonding.electroneg_ratio(changed_cell)),
+    )
+  })
+  test.each([7, 42, 123])(
+    `reuses geometric candidates without losing bonds (seed %i)`,
+    (seed) => {
+      const search = new bonding.BondSearch()
+      const source = make_random_structure(200, seed)
+      const rand = make_rng(seed)
+      const canonical = (bonds: BondPair[]) =>
+        bonds.toSorted(
+          (left, right) =>
+            left.site_idx_1 - right.site_idx_1 ||
+            left.site_idx_2 - right.site_idx_2 ||
+            JSON.stringify(left.cell_shift).localeCompare(JSON.stringify(right.cell_shift)),
+        )
+      for (let frame_idx = 0; frame_idx < 16; frame_idx++) {
+        const structure = structuredClone(source)
+        for (const site of structure.sites) {
+          for (let axis = 0; axis < 3; axis++)
+            site.xyz[axis] += ((rand() - 0.5) * frame_idx) / 10
+        }
+        if (frame_idx === 5) structure.sites[0].species[0].element = `Si`
+        if (frame_idx === 8) structure.sites.pop()
+        const options =
+          frame_idx === 10
+            ? { max_distance_ratio: 1.1 }
+            : frame_idx === 12
+              ? { pbc: [true, true, true] as [boolean, boolean, boolean] }
+              : {}
+        const expected = canonical(bonding.electroneg_ratio(structure, options))
+        const columns = search.compute_columns(structure, options)
+        if (frame_idx === 0) {
+          expect(Reflect.get(search, `candidates`)).toEqual({
+            offsets: expect.any(Int32Array),
+            neighbors: expect.any(Int32Array),
+            distances: expect.any(Float64Array),
+          })
+          const allocate = vi.spyOn(globalThis, `Int32Array`)
+          try {
+            expect(search.compute_columns(structure, options)).toEqual(columns)
+            expect(allocate.mock.calls.map((args) => Reflect.get(args, 0))).not.toContain(
+              Math.max(256, structure.sites.length * 4),
+            )
+          } finally {
+            allocate.mockRestore()
+          }
+        }
+        const actual = canonical(new BondFrame(structure, columns).materialize())
+        expect(actual).toEqual(expected)
+        const values = (bonds: BondPair[]) =>
+          bonds.flatMap(({ pos_1, pos_2, bond_length }) => [...pos_1, ...pos_2, bond_length])
+        expect(max_abs_error(values(actual), values(expected))).toBe(0)
+        expect(max_rel_error(values(actual), values(expected))).toBe(0)
+      }
+      expect(search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
+    },
+  )
+
+  test.each(
+    [false, true].flatMap((periodic) =>
+      [false, true].map((numeric) => ({ periodic, numeric })),
+    ),
+  )(
+    `direct columns preserve explicit bonds and images (periodic: $periodic, numeric: $numeric)`,
+    ({ periodic, numeric }) => {
+      const source = make_crystal(4, [
+        { element: `Si`, xyz: [0.1, 0, 0] },
+        { element: `O`, xyz: [1.8, 0, 0] },
+        { element: `Si`, xyz: [3.9, 0, 0] },
+        { element: `Fe`, xyz: [0.1, 2, 0] },
+      ])
+      source.sites[2].properties.orig_unit_cell_idx = 0
+      source.properties = {
+        bonds: [
+          { site_idx_1: 0, site_idx_2: 1, order: 2 },
+          { site_idx_1: 0, site_idx_2: 2, order: 1.5 },
+          { site_idx_1: 1, site_idx_2: 3, order: 3 },
+          { site_idx_1: 0, site_idx_2: 2, order: `aromatic`, cell_shift: [-1, 0, 0] },
+          { site_idx_1: 0, site_idx_2: 0, order: 1, cell_shift: [1, 0, 0] },
+        ],
+      }
+      const frame = create_numeric_md_frame(
+        Float64Array.from(source.sites.flatMap(({ xyz }) => xyz)),
+        Uint8Array.of(14, 8, 14, 26),
+        source.lattice.matrix,
+        source.lattice.pbc,
+        0,
+        {},
+        [],
+      )
+      frame.scalar_columns = { orig_unit_cell_idx: Float64Array.of(0, 1, 0, 3) }
+      frame.structure.properties = source.properties
+      const structure = numeric ? new FrameView().update(frame).structure : source
+      const search = new bonding.BondSearch()
+      const options = { pbc: [periodic, periodic, periodic] as [boolean, boolean, boolean] }
+      const first = search.compute_columns(structure, options)
+      const retained = structuredClone(first)
+      for (const strength_threshold of [0, 0.3, 0.8, 2]) {
+        const settings = { ...options, strength_threshold }
+        const result = search.compute_columns(structure, settings)
+        const expected = bonding.electroneg_ratio(structure, settings)
+        expect(result).toEqual(pack_bonds(expected))
+        expect(new BondFrame(structure, result).materialize()).toEqual(expected)
+      }
+      expect(first).toEqual(retained)
+    },
+  )
+
+  test.each([`none`, `unit`, `image`, `both`, `short`])(
+    `bonds numeric snapshots without materializing sites (%s provenance)`,
+    (provenance) => {
+      const view = new FrameView()
+      const search = new bonding.BondSearch()
+      const reference_search = new bonding.BondSearch()
+      for (let step = 0; step < 4; step++) {
+        const frame = create_numeric_md_frame(
+          Float64Array.of(0.1 + step / 100, 0, 0, 1.8, 0, 0, 3.9, 0, 0, 0.1, 2, 0, 2, 2, 0),
+          Uint8Array.of(14, 8, 14, 26, 6),
+          [
+            [30, 0, 0],
+            [0, 30, 0],
+            [0, 0, 30],
+          ],
+          [true, true, true],
+          step,
+          {},
+          [`force`, `velocity`],
+        )
+        frame.scalar_columns = { charge: Float64Array.of(0, 0.5, 1, -1, 2) }
+        if (provenance === `unit` || provenance === `both` || provenance === `short`)
+          frame.scalar_columns.orig_unit_cell_idx =
+            provenance === `short`
+              ? Float64Array.of(step % 2, NaN)
+              : Float64Array.of(step % 2, 0.5, NaN, Infinity, -1)
+        if (provenance === `image` || provenance === `both` || provenance === `short`)
+          frame.scalar_columns.orig_site_idx = Float64Array.of(0, step % 2, 0, 1, 1)
+        const reference = materialize_frame(wrap_frame_coordinates(frame)).structure
+        const { structure } = view.update(frame)
+        const sites = numeric_sites.get(structure)
+        if (!sites) throw new Error(`Missing numeric sites`)
+        const materialize = vi.spyOn(sites, `materialize`)
+        const get = vi.spyOn(sites, `get`)
+        const actual = search.compute_columns(structure)
+        const expected = reference_search.compute_columns(reference)
+        expect(actual).toEqual(expected)
+        for (const key of [`indices`, `lengths`, `orders`, `images`] as const) {
+          expect(max_abs_error(actual[key], expected[key])).toBe(0)
+          expect(max_rel_error(actual[key], expected[key])).toBe(0)
+        }
+        expect(materialize).not.toHaveBeenCalled()
+        expect(get).not.toHaveBeenCalled()
+      }
+      const invalid = create_numeric_md_frame(
+        Float64Array.of(0, 0, 0),
+        Uint8Array.of(0),
+        undefined,
+        undefined,
+        0,
+        {},
+        [],
+      )
+      expect(() => search.compute_columns(view.update(invalid).structure)).toThrow(
+        `Invalid atomic number 0 at site 0`,
+      )
+    },
+  )
+
+  test(`captures newly entering contacts and cumulative motion beyond the skin`, () => {
+    const search = new bonding.BondSearch()
+    for (const separation of [2.5, 2.4, 2.3, 2.2, 2.1, 2, 1.9, 1.8, 1.7, 1.6, 1.5]) {
+      const structure = make_struct([
+        { xyz: [0, 0, 0], element: `Si` },
+        { xyz: [separation, 0, 0], element: `Si` },
+      ])
+      expect(search.compute_columns(structure)).toEqual(
+        pack_bonds(bonding.electroneg_ratio(structure)),
+      )
+    }
+  })
   const structure = make_struct([
     { xyz: [0, 0, 0], element: `Fe` },
     { xyz: [2, 0, 0], element: `O` },
@@ -1517,6 +1803,32 @@ describe(`neighbor_query`, () => {
     ],
   ] as const)(`matches brute force over ±3 images: %s`, (_label, structure, pbc, cutoff) => {
     const list = bonding.neighbor_query(structure, { cutoff, pbc })
+    const frame = create_numeric_md_frame(
+      Float64Array.from(structure.sites.flatMap(({ xyz }) => xyz)),
+      new Uint8Array(structure.sites.length).fill(14),
+      structure.lattice.matrix,
+      [false, false, false], // Keep source positions; the query supplies its own PBC.
+      0,
+      {},
+      [],
+    )
+    const numeric = new FrameView().update(frame).structure
+    const columns = numeric_sites.get(numeric)
+    if (!columns) throw new Error(`Missing numeric sites`)
+    const materialize = vi.spyOn(columns, `materialize`)
+    const get = vi.spyOn(columns, `get`)
+    const original = frame.coordinates.slice()
+    for (const sorted of [false, true]) {
+      const expected = sorted
+        ? list
+        : bonding.neighbor_query(structure, { cutoff, pbc, sorted })
+      const actual = bonding.neighbor_query(numeric, { cutoff, pbc, sorted })
+      expect(actual).toEqual(expected)
+      for (const key of [`offsets`, `neighbors`, `images`, `deltas`, `distances`] as const) {
+        expect(max_abs_error(actual[key], expected[key])).toBe(0)
+        expect(max_rel_error(actual[key], expected[key])).toBe(0)
+      }
+    }
     const actual = as_map(list)
     const expected = brute_force(structure, cutoff, pbc)
     expect([...actual.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
@@ -1545,6 +1857,14 @@ describe(`neighbor_query`, () => {
     bonding.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
       streamed.push([center, neighbor, dist])
     })
+    const numeric_streamed: typeof streamed = []
+    bonding.visit_neighbor_distances(numeric, { cutoff, pbc }, (center, neighbor, dist) => {
+      numeric_streamed.push([center, neighbor, dist])
+    })
+    expect(numeric_streamed).toEqual(streamed)
+    expect(materialize).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+    expect(frame.coordinates).toStrictEqual(original)
     const listed: typeof streamed = []
     for (let center = 0; center < list.n_centers; center++) {
       for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {

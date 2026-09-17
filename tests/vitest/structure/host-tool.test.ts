@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import { parse_file_content } from '$lib/file-viewer/parse'
 import {
   create_structure_tool_controller,
@@ -14,7 +15,7 @@ import { auto_volume_layer } from '$lib/isosurface'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import type { AnyStructure } from '$lib/structure'
-import { fcc_primitive_matrix, make_crystal, make_grid, make_volume } from '../setup'
+import { fcc_primitive_matrix, make_crystal, make_grid, make_volume } from '../test-fixtures'
 
 const provenance: StructureToolProvenance = {
   model: `example`,
@@ -244,7 +245,7 @@ test(`demo trajectory keeps fractional and Cartesian coordinates consistent`, as
   ])
   const trajectory = make_demo_trajectory(crystal)
   for (const frame_idx of [0, 1, 5]) {
-    const frame = await trajectory.read_frame(frame_idx)
+    const frame = await materialize_frame_result(trajectory.read_frame(frame_idx))
     const { abc, xyz } = frame.structure.sites[0]
     const expected = [
       1.805 * abc[1] + 1.805 * abc[2],

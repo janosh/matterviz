@@ -1,6 +1,8 @@
+import type { NumericFrame, FrameChannels } from '../frame'
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
 import type { Matrix3x3 } from '$lib/math'
+import type { ReadAtoms } from '../atom-batches'
 import { to_error } from '$lib/utils'
 import type {
   PositionStreamOptions,
@@ -63,8 +65,11 @@ export interface ParsedTrajectory extends ParsedRunFacts {
 // A parser that keeps its source open (HDF5 handle) and decodes frames on demand instead of
 // materialising them. open_trajectory wraps it in an hdf5_run that owns `dispose`.
 export interface LazyTrajectorySource extends ParsedRunFacts {
+  atom_count?: number
+  read_atoms?: ReadAtoms
+  preview?: TrajectoryFrame
   frame_count: number
-  read_frame: (frame_idx: number) => TrajectoryFrame
+  read_frame: (frame_idx: number, channels?: FrameChannels) => NumericFrame
   // Sampled per-frame scalars (at most ~1000 rows) for the plot pane
   properties: TrajectoryMetadata[]
   collect_positions: (options: PositionStreamOptions) => TrajectoryPositionStream
@@ -105,15 +110,16 @@ export const vasp_run = (
   { ibrion, potim, version }: VaspRunTags,
 ): ParsedTrajectory => {
   const metadata: Record<string, unknown> = {}
+  if (atom_masses) metadata.mass_unit = `amu`
   if (ibrion !== null) metadata.ibrion = ibrion
   if (version) metadata.vasp_version = version
   return {
     format,
     frames,
     metadata,
-    ...(ibrion === 0 && potim !== null && potim > 0
-      ? { time_step: { value: potim, unit: `fs` } }
-      : {}),
-    ...(atom_masses ? { atom_masses } : {}),
+    ...(ibrion === 0 &&
+      potim !== null &&
+      potim > 0 && { time_step: { value: potim, unit: `fs` } }),
+    ...(atom_masses && { atom_masses }),
   }
 }

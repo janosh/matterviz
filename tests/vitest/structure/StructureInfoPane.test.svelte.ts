@@ -9,7 +9,8 @@ import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, get_dummy_structure, make_wyckoff_dataset } from '../setup'
+import { bind_props, doc_query } from '../setup'
+import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 
 describe(`StructureInfoPane`, () => {
   beforeEach(() => {

@@ -14,9 +14,6 @@ import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
-  diag_error,
-  diag_warn,
-  guard_parse,
   is_num_token,
   make_lattice,
   parsed_result,
@@ -65,7 +62,7 @@ const STYLES_BY_COLUMN_COUNT: Record<number, string[]> = {
 // its type column on every row; if that stays ambiguous the file is rejected rather than
 // guessed at, because reading the wrong column relabels every atom (a molecule id
 // silently becomes the atom type).
-const infer_atom_style = (rows: string[][], num_atom_types: number): string | null => {
+const infer_atom_style = (rows: string[][], num_atom_types: number): string => {
   let count = rows[0].length
   if (
     count >= 8 &&
@@ -83,14 +80,13 @@ const infer_atom_style = (rows: string[][], num_atom_types: number): string | nu
   )
   if (valid.length === 1) return valid[0]
 
-  diag_error(
+  throw new Error(
     `Cannot infer the LAMMPS atom style of an Atoms section with ${count} columns: ${
       valid.length > 1
         ? `both ${candidates.join(` and `)} put a valid atom type in their type column`
         : `none of [${candidates.join(`, `)}] puts an integer atom type in 1..${num_atom_types} in every row`
     }. Declare it with an 'Atoms # <style>' comment.`,
   )
-  return null
 }
 
 // Element per atom type, preferring an explicit trailing comment in the Masses section
@@ -105,253 +101,221 @@ const element_for_mass = (mass: number): ElementSymbol | null => {
   return best && best.diff <= 0.5 ? best.symbol : null
 }
 
-export const parse_lammps_data = (content: string): Crystal | null =>
-  guard_parse(`LAMMPS data`, () => {
-    // Line 1 of a data file is always a comment, even if it doesn't start with '#'
-    const lines = content.split(/\r?\n/).slice(1)
+export const parse_lammps_data = (content: string): Crystal => {
+  // Line 1 of a data file is always a comment, even if it doesn't start with '#'
+  const lines = content.split(/\r?\n/).slice(1)
 
-    const sections = new Map<string, { style: string; rows: string[] }>()
-    let current: { style: string; rows: string[] } | undefined
-    // Every header line precedes the first section, so the header searches below scan
-    // only this prefix instead of walking the whole (potentially 200k-row) Atoms section
-    const header_lines: string[] = []
-    for (const line of lines) {
-      const name = section_name_of(line)
-      if (name) {
-        current = { style: comment_of(line).trim().split(/\s+/)[0] ?? ``, rows: [] }
-        sections.set(name, current)
-        continue
-      }
-      const stripped = strip_comment(line)
-      if (stripped.trim() === ``) continue
-      if (current) current.rows.push(line)
-      else header_lines.push(stripped)
+  const sections = new Map<string, { style: string; rows: string[] }>()
+  let current: { style: string; rows: string[] } | undefined
+  // Every header line precedes the first section, so the header searches below scan
+  // only this prefix instead of walking the whole (potentially 200k-row) Atoms section
+  const header_lines: string[] = []
+  for (const line of lines) {
+    const name = section_name_of(line)
+    if (name) {
+      current = { style: comment_of(line).trim().split(/\s+/)[0] ?? ``, rows: [] }
+      sections.set(name, current)
+      continue
     }
+    const stripped = strip_comment(line)
+    if (stripped.trim() === ``) continue
+    if (current) current.rows.push(line)
+    else header_lines.push(stripped)
+  }
 
-    // Header lookups yield NaN when the keyword is absent, which the callers check for
-    const header_groups = (pattern: RegExp): Record<string, string> | undefined =>
-      header_lines.map((line) => pattern.exec(line)?.groups).find(Boolean)
-    const header_value = (suffix: string): number =>
-      Number(
-        header_groups(new RegExp(`^\\s*(?<value>-?[\\d.eE+-]+)\\s+${suffix}\\s*$`, `i`))
-          ?.value,
-      )
-    const box_bounds = (axis: string): [number, number] => {
-      const groups = header_groups(
-        new RegExp(`^\\s*(?<lo>\\S+)\\s+(?<hi>\\S+)\\s+${axis}lo\\s+${axis}hi\\s*$`, `i`),
-      )
-      return [Number(groups?.lo), Number(groups?.hi)]
-    }
+  // Header lookups yield NaN when the keyword is absent, which the callers check for
+  const header_groups = (pattern: RegExp): Record<string, string> | undefined =>
+    header_lines.map((line) => pattern.exec(line)?.groups).find(Boolean)
+  const header_value = (suffix: string): number =>
+    Number(
+      header_groups(new RegExp(`^\\s*(?<value>-?[\\d.eE+-]+)\\s+${suffix}\\s*$`, `i`))?.value,
+    )
+  const box_bounds = (axis: string): [number, number] => {
+    const groups = header_groups(
+      new RegExp(`^\\s*(?<lo>\\S+)\\s+(?<hi>\\S+)\\s+${axis}lo\\s+${axis}hi\\s*$`, `i`),
+    )
+    return [Number(groups?.lo), Number(groups?.hi)]
+  }
 
-    const atoms_section = sections.get(`Atoms`)
-    if (!atoms_section || atoms_section.rows.length === 0) {
-      diag_error(`LAMMPS data file has no Atoms section (or it is empty)`)
-      return null
-    }
+  const atoms_section = sections.get(`Atoms`)
+  if (!atoms_section || atoms_section.rows.length === 0)
+    throw new Error(`LAMMPS data file has no Atoms section (or it is empty)`)
 
-    const num_atoms = header_value(`atoms`)
-    if (Number.isFinite(num_atoms) && num_atoms !== atoms_section.rows.length) {
-      diag_error(
-        `LAMMPS data file declares ${num_atoms} atoms but its Atoms section has ${atoms_section.rows.length} rows`,
-      )
-      return null
-    }
+  const num_atoms = header_value(`atoms`)
+  if (Number.isFinite(num_atoms) && num_atoms !== atoms_section.rows.length)
+    throw new Error(
+      `LAMMPS data file declares ${num_atoms} atoms but its Atoms section has ${atoms_section.rows.length} rows`,
+    )
 
-    const general_box_keywords = [`avec`, `bvec`, `cvec`, `abc origin`] as const
-    const general_box = general_box_keywords.map((keyword) => {
-      const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
-      const groups = header_groups(
-        new RegExp(
-          `^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword_pattern}\\s*$`,
-          `i`,
-        ),
-      )
-      return groups ? ([Number(groups.x), Number(groups.y), Number(groups.z)] as Vec3) : null
-    })
-    const has_general_box = general_box.some(Boolean)
-    let lattice_matrix: math.Matrix3x3
-    let box_origin: Vec3
-    if (has_general_box) {
-      if (
-        general_box.some(
-          (row) => row === null || !row.every((coordinate) => Number.isFinite(coordinate)),
-        )
-      ) {
-        diag_error(
-          `LAMMPS general triclinic data requires finite avec, bvec, cvec, and abc origin rows`,
-        )
-        return null
-      }
-      const [avec, bvec, cvec, origin] = general_box as [Vec3, Vec3, Vec3, Vec3]
-      lattice_matrix = [avec, bvec, cvec]
-      box_origin = origin
-    } else {
-      const [xlo, xhi] = box_bounds(`x`)
-      const [ylo, yhi] = box_bounds(`y`)
-      const [zlo, zhi] = box_bounds(`z`)
-      if (![xlo, xhi, ylo, yhi, zlo, zhi].every(Number.isFinite)) {
-        diag_error(
-          `LAMMPS data file is missing or has invalid xlo/xhi, ylo/yhi or zlo/zhi box bounds`,
-        )
-        return null
-      }
-      // Optional restricted-triclinic tilt factors: `xy xz yz` on one line
-      const tilt = header_groups(
-        /^\s*(?<xy>\S+)\s+(?<xz>\S+)\s+(?<yz>\S+)\s+xy\s+xz\s+yz\s*$/i,
-      )
-      const [tilt_xy, tilt_xz, tilt_yz] = tilt
-        ? [Number(tilt.xy), Number(tilt.xz), Number(tilt.yz)]
-        : [0, 0, 0]
-      if (![tilt_xy, tilt_xz, tilt_yz].every(Number.isFinite)) {
-        diag_error(
-          `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.xy} ${tilt?.xz} ${tilt?.yz}'`,
-        )
-        return null
-      }
-      // Restricted-triclinic lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
-      lattice_matrix = [
-        [xhi - xlo, 0, 0],
-        [tilt_xy, yhi - ylo, 0],
-        [tilt_xz, tilt_yz, zhi - zlo],
-      ]
-      box_origin = [xlo, ylo, zlo]
-    }
-    const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, { context: `LAMMPS box` })
-
-    // Masses map atom types to elements; without them types fall back to atomic number
-    const element_by_type = new Map<number, ElementSymbol>()
-    for (const row of sections.get(`Masses`)?.rows ?? []) {
-      const tokens = strip_comment(row).trim().split(/\s+/)
-      const atom_type = Number(tokens[0])
-      const mass = Number(tokens[1])
-      if (!Number.isInteger(atom_type) || !Number.isFinite(mass)) continue
-      const from_comment = coerce_elem_symbol(
-        capitalize_symbol(comment_of(row).split(/\s+/)[0]),
-      )
-      const element = from_comment ?? element_for_mass(mass)
-      if (element) element_by_type.set(atom_type, element)
-      else diag_warn(`LAMMPS data: mass ${mass} of atom type ${atom_type} matches no element`)
-    }
-
-    const num_atom_types = header_value(`atom types`)
-    const declared_style = atoms_section.style.toLowerCase()
-    const atom_rows = atoms_section.rows.map((row) => strip_comment(row).trim().split(/\s+/))
-    if (declared_style && !(declared_style in ATOM_STYLE_COLUMNS)) {
-      diag_error(
-        `Unsupported LAMMPS atom style '${declared_style}'. Supported: ${Object.keys(
-          ATOM_STYLE_COLUMNS,
-        ).join(`, `)}`,
-      )
-      return null
-    }
-    // infer_atom_style records its own failure reason
-    const style =
-      declared_style ||
-      infer_atom_style(atom_rows, Number.isFinite(num_atom_types) ? num_atom_types : Infinity)
-    if (!style) return null
-    if (!declared_style) {
-      diag_warn(
-        `LAMMPS data: Atoms section has no style comment, assuming '${style}' from its ${
-          atom_rows[0].length
-        } columns`,
-      )
-    }
-    const { type_col, coord_col } = ATOM_STYLE_COLUMNS[style]
-
-    const sites: Site[] = []
-    const site_idx_by_atom_id = new Map<number, number>()
-    for (const [row_idx, tokens] of atom_rows.entries()) {
-      const row_suffix = `for style '${style}': '${atoms_section.rows[row_idx].trim()}'`
-      if (tokens.length < coord_col + 3) {
-        diag_error(
-          `LAMMPS Atoms row ${row_idx + 1} has ${tokens.length} columns, need at least ${
-            coord_col + 3
-          } ${row_suffix}`,
-        )
-        return null
-      }
-      const atom_type = Number(tokens[type_col])
-      if (!Number.isInteger(atom_type) || atom_type < 1) {
-        diag_error(
-          `LAMMPS Atoms row ${row_idx + 1} has a non-integer atom type '${
-            tokens[type_col]
-          }' in column ${type_col + 1} ${row_suffix}`,
-        )
-        return null
-      }
-      const element = element_by_type.get(atom_type) ?? element_from_lammps_type(atom_type)
-      if (!element_by_type.has(atom_type)) {
-        diag_warn(
-          `LAMMPS data: no mass for atom type ${atom_type}, falling back to element '${element}' by atomic number`,
-        )
-        element_by_type.set(atom_type, element)
-      }
-
-      // Coordinates are absolute; shift them so the box origin sits at the cell origin.
-      // They are NOT wrapped into the cell: explicit Bonds would otherwise be stretched
-      // across the box by atoms of a molecule landing on opposite sides.
-      const absolute = vec3_from_values(
-        tokens.slice(coord_col, coord_col + 3).map(parse_coordinate),
-        `LAMMPS Atoms row ${row_idx + 1} coordinates`,
-      )
-      const xyz = math.subtract(absolute, box_origin)
-      sites.push(
-        make_site(element, cart_to_frac.convert(xyz), xyz, `${element}${row_idx + 1}`),
-      )
-      record_atom_id(site_idx_by_atom_id, Number(tokens[0]), row_idx)
-    }
-
-    const raw_bonds: RawBond[] = []
-    for (const row of sections.get(`Bonds`)?.rows ?? []) {
-      // bond_id bond_type atom_1 atom_2
-      const expected = `LAMMPS Bonds row (need 'id type atom_1 atom_2')`
-      const tokens = row_tokens(strip_comment(row), 4, expected)
-      if (!tokens) return null
-      raw_bonds.push({ atom_id_1: Number(tokens[2]), atom_id_2: Number(tokens[3]), order: 1 })
-    }
-    if (raw_bonds.length > 0) {
-      diag_warn(
-        `LAMMPS data: bond types are force-field types, not bond orders, so all ${raw_bonds.length} bonds are recorded as single`,
-      )
-    }
-    const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`)
-
-    return { ...parsed_result(sites, bonds), lattice: make_lattice(lattice_matrix) }
+  const general_box_keywords = [`avec`, `bvec`, `cvec`, `abc origin`] as const
+  const general_box = general_box_keywords.map((keyword) => {
+    const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
+    const groups = header_groups(
+      new RegExp(
+        `^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword_pattern}\\s*$`,
+        `i`,
+      ),
+    )
+    return groups ? ([Number(groups.x), Number(groups.y), Number(groups.z)] as Vec3) : null
   })
+  const has_general_box = general_box.some(Boolean)
+  let lattice_matrix: math.Matrix3x3
+  let box_origin: Vec3
+  if (has_general_box) {
+    if (
+      general_box.some(
+        (row) => row === null || !row.every((coordinate) => Number.isFinite(coordinate)),
+      )
+    )
+      throw new Error(
+        `LAMMPS general triclinic data requires finite avec, bvec, cvec, and abc origin rows`,
+      )
+    const [avec, bvec, cvec, origin] = general_box as [Vec3, Vec3, Vec3, Vec3]
+    lattice_matrix = [avec, bvec, cvec]
+    box_origin = origin
+  } else {
+    const [xlo, xhi] = box_bounds(`x`)
+    const [ylo, yhi] = box_bounds(`y`)
+    const [zlo, zhi] = box_bounds(`z`)
+    if (![xlo, xhi, ylo, yhi, zlo, zhi].every(Number.isFinite))
+      throw new Error(
+        `LAMMPS data file is missing or has invalid xlo/xhi, ylo/yhi or zlo/zhi box bounds`,
+      )
+    // Optional restricted-triclinic tilt factors: `xy xz yz` on one line
+    const tilt = header_groups(/^\s*(?<xy>\S+)\s+(?<xz>\S+)\s+(?<yz>\S+)\s+xy\s+xz\s+yz\s*$/i)
+    const [tilt_xy, tilt_xz, tilt_yz] = tilt
+      ? [Number(tilt.xy), Number(tilt.xz), Number(tilt.yz)]
+      : [0, 0, 0]
+    if (![tilt_xy, tilt_xz, tilt_yz].every(Number.isFinite))
+      throw new Error(
+        `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.xy} ${tilt?.xz} ${tilt?.yz}'`,
+      )
+    // Restricted-triclinic lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
+    lattice_matrix = [
+      [xhi - xlo, 0, 0],
+      [tilt_xy, yhi - ylo, 0],
+      [tilt_xz, tilt_yz, zhi - zlo],
+    ]
+    box_origin = [xlo, ylo, zlo]
+  }
+  const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, { context: `LAMMPS box` })
+
+  // Masses map atom types to elements; without them types fall back to atomic number
+  const element_by_type = new Map<number, ElementSymbol>()
+  for (const row of sections.get(`Masses`)?.rows ?? []) {
+    const tokens = strip_comment(row).trim().split(/\s+/)
+    const atom_type = Number(tokens[0])
+    const mass = Number(tokens[1])
+    if (!Number.isInteger(atom_type) || !Number.isFinite(mass)) continue
+    const from_comment = coerce_elem_symbol(capitalize_symbol(comment_of(row).split(/\s+/)[0]))
+    const element = from_comment ?? element_for_mass(mass)
+    if (element) element_by_type.set(atom_type, element)
+    else console.warn(`LAMMPS data: mass ${mass} of atom type ${atom_type} matches no element`)
+  }
+
+  const num_atom_types = header_value(`atom types`)
+  const declared_style = atoms_section.style.toLowerCase()
+  const atom_rows = atoms_section.rows.map((row) => strip_comment(row).trim().split(/\s+/))
+  if (declared_style && !(declared_style in ATOM_STYLE_COLUMNS))
+    throw new Error(
+      `Unsupported LAMMPS atom style '${declared_style}'. Supported: ${Object.keys(
+        ATOM_STYLE_COLUMNS,
+      ).join(`, `)}`,
+    )
+  const style =
+    declared_style ||
+    infer_atom_style(atom_rows, Number.isFinite(num_atom_types) ? num_atom_types : Infinity)
+  if (!declared_style) {
+    console.warn(
+      `LAMMPS data: Atoms section has no style comment, assuming '${style}' from its ${
+        atom_rows[0].length
+      } columns`,
+    )
+  }
+  const { type_col, coord_col } = ATOM_STYLE_COLUMNS[style]
+
+  const sites: Site[] = []
+  const site_idx_by_atom_id = new Map<number, number>()
+  for (const [row_idx, tokens] of atom_rows.entries()) {
+    const row_suffix = `for style '${style}': '${atoms_section.rows[row_idx].trim()}'`
+    if (tokens.length < coord_col + 3)
+      throw new Error(
+        `LAMMPS Atoms row ${row_idx + 1} has ${tokens.length} columns, need at least ${
+          coord_col + 3
+        } ${row_suffix}`,
+      )
+    const atom_type = Number(tokens[type_col])
+    if (!Number.isInteger(atom_type) || atom_type < 1)
+      throw new Error(
+        `LAMMPS Atoms row ${row_idx + 1} has a non-integer atom type '${
+          tokens[type_col]
+        }' in column ${type_col + 1} ${row_suffix}`,
+      )
+    const element = element_by_type.get(atom_type) ?? element_from_lammps_type(atom_type)
+    if (!element_by_type.has(atom_type)) {
+      console.warn(
+        `LAMMPS data: no mass for atom type ${atom_type}, falling back to element '${element}' by atomic number`,
+      )
+      element_by_type.set(atom_type, element)
+    }
+
+    // Coordinates are absolute; shift them so the box origin sits at the cell origin.
+    // They are NOT wrapped into the cell: explicit Bonds would otherwise be stretched
+    // across the box by atoms of a molecule landing on opposite sides.
+    const absolute = vec3_from_values(
+      tokens.slice(coord_col, coord_col + 3).map(parse_coordinate),
+      `LAMMPS Atoms row ${row_idx + 1} coordinates`,
+    )
+    const xyz = math.subtract(absolute, box_origin)
+    sites.push(make_site(element, cart_to_frac.convert(xyz), xyz, `${element}${row_idx + 1}`))
+    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), row_idx)
+  }
+
+  const raw_bonds: RawBond[] = []
+  for (const row of sections.get(`Bonds`)?.rows ?? []) {
+    // bond_id bond_type atom_1 atom_2
+    const expected = `LAMMPS Bonds row (need 'id type atom_1 atom_2')`
+    const tokens = row_tokens(strip_comment(row), 4, expected)
+    raw_bonds.push({ atom_id_1: Number(tokens[2]), atom_id_2: Number(tokens[3]), order: 1 })
+  }
+  if (raw_bonds.length > 0) {
+    console.warn(
+      `LAMMPS data: bond types are force-field types, not bond orders, so all ${raw_bonds.length} bonds are recorded as single`,
+    )
+  }
+  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`)
+
+  return { ...parsed_result(sites, bonds), lattice: make_lattice(lattice_matrix) }
+}
 
 // First frame of a LAMMPS text dump as a structure.
-export const parse_lammps_dump = (content: string): AnyStructure | null =>
-  guard_parse(`LAMMPS dump`, () => {
-    // Character offsets of the first two frame headers, so only the first frame's text is
-    // handed to the trajectory reader (which splits it into lines itself). Stops after the
-    // second hit: a long dump has thousands of headers and only two matter here.
-    const header_regex = /^[ \t]*ITEM:[ \t]*TIMESTEP/gim
-    const frame_starts: number[] = []
-    let match = header_regex.exec(content)
-    while (match && frame_starts.length < 2) {
-      frame_starts.push(match.index)
-      match = header_regex.exec(content)
-    }
-    if (frame_starts.length === 0) {
-      diag_error(
-        `LAMMPS dump has no 'ITEM: TIMESTEP' section (binary dumps must be converted to text first)`,
-      )
-      return null
-    }
-    if (frame_starts.length > 1) {
-      diag_warn(
-        `LAMMPS dump contains more than one frame; parsed the first as a structure — open it as a trajectory to see the rest`,
-      )
-    }
+export const parse_lammps_dump = (content: string): AnyStructure => {
+  // Character offsets of the first two frame headers, so only the first frame's text is
+  // handed to the trajectory reader (which splits it into lines itself). Stops after the
+  // second hit: a long dump has thousands of headers and only two matter here.
+  const header_regex = /^[ \t]*ITEM:[ \t]*TIMESTEP/gim
+  const frame_starts: number[] = []
+  let match = header_regex.exec(content)
+  while (match && frame_starts.length < 2) {
+    frame_starts.push(match.index)
+    match = header_regex.exec(content)
+  }
+  if (frame_starts.length === 0)
+    throw new Error(
+      `LAMMPS dump has no 'ITEM: TIMESTEP' section (binary dumps must be converted to text first)`,
+    )
+  if (frame_starts.length > 1) {
+    console.warn(
+      `LAMMPS dump contains more than one frame; parsed the first as a structure — open it as a trajectory to see the rest`,
+    )
+  }
 
-    // The trajectory reader's warnings (unknown columns, dropped atoms) are this parser's
-    // warnings too. It has already translated absolute dump coordinates from the LAMMPS box
-    // origin into MatterViz's zero-origin lattice, and a dump frame always carries its box.
-    const frame_text = content.slice(frame_starts[0], frame_starts[1])
-    const structure = parse_lammps_trajectory(frame_text, diag_warn).frames[0]?.structure
-    if (!structure || structure.sites.length === 0) {
-      diag_error(`LAMMPS dump frame contains no atoms`)
-      return null
-    }
-    return structure
-  })
+  // The trajectory reader's warnings (unknown columns, dropped atoms) are this parser's
+  // warnings too. It has already translated absolute dump coordinates from the LAMMPS box
+  // origin into MatterViz's zero-origin lattice, and a dump frame always carries its box.
+  const frame_text = content.slice(frame_starts[0], frame_starts[1])
+  const structure = parse_lammps_trajectory(frame_text, console.warn).frames[0]?.structure
+  if (!structure || structure.sites.length === 0)
+    throw new Error(`LAMMPS dump frame contains no atoms`)
+  return structure
+}

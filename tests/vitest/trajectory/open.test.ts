@@ -1,11 +1,13 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // open_trajectory: one entry point, one loading policy. The indexing threshold, progressive
 // plot rows, progress/abort, JSON run metadata and HDF5 handle lifetime. The per-format
 // parser behaviour (and the fixture table over every sample file) lives in parsers.test.ts.
 import type { TrajectoryRun } from '$lib/trajectory'
 import { open_trajectory, trajectory_from_json } from '$lib/trajectory/open'
+import { read_ase_header } from '$lib/trajectory/parse/ase'
 import { DEFAULTS } from '$lib/settings'
 import { describe, expect, it, onTestFinished, test } from 'vitest'
-import { read_binary_test_file } from '../setup'
+import { read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
 
 const open = async (
@@ -30,8 +32,8 @@ describe(`loading policy`, () => {
       eager.properties.rows.map((row) => row.properties.energy),
     )
     for (const idx of [0, 7, 29]) {
-      const from_eager = await eager.read_frame(idx)
-      const from_lazy = await lazy.read_frame(idx)
+      const from_eager = await materialize_frame_result(eager.read_frame(idx))
+      const from_lazy = await materialize_frame_result(lazy.read_frame(idx))
       expect(from_lazy.step).toBe(from_eager.step)
       expect(from_lazy.structure.sites.map((site) => site.xyz)).toEqual(
         from_eager.structure.sites.map((site) => site.xyz),
@@ -105,19 +107,49 @@ describe(`loading policy`, () => {
     expect(run.properties.complete).toBe(true)
   })
 
-  it(`indexes a large ASE buffer too`, async () => {
-    const buffer = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
-    const lazy = await open(buffer.slice(0), `relax.traj`, { index_above_bytes: 0 })
-    const eager = await open(buffer.slice(0), `relax.traj`)
-    expect(lazy.frame_count).toBe(2)
-    await lazy.properties.done
-    expect(lazy.properties.rows.map((row) => row.properties.energy)).toEqual(
-      eager.properties.rows.map((row) => row.properties.energy),
-    )
-    expect((await lazy.read_frame(1)).structure.sites[0].xyz).toEqual(
-      (await eager.read_frame(1)).structure.sites[0].xyz,
-    )
-  })
+  it.each([undefined, `frame.xyz`, `blob-id`])(
+    `opens a single XYZ frame named %s`,
+    async (filename) => {
+      const run = await open(`1\ncomment\nHe 0.5 0 0\n`, filename)
+      expect(run.frame_count).toBe(1)
+      expect(run.provenance.format).toBe(`xyz`)
+      expect(run.preview.structure.sites[0].xyz).toEqual([0.5, 0, 0])
+    },
+  )
+
+  it.each([`info`, `calculator.`])(
+    `indexes ASE energy fields stored in %s`,
+    async (section) => {
+      const original = read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
+      const view = new DataView(original)
+      const { offsets_pos } = read_ase_header(view)
+      const frame_offset = Number(view.getBigInt64(offsets_pos + 8, true))
+      const json_length = Number(view.getBigInt64(frame_offset, true))
+      const header: Record<string, unknown> = JSON.parse(
+        new TextDecoder().decode(new Uint8Array(original, frame_offset + 8, json_length)),
+      )
+      const energies = {
+        energy_per_atom: -0.5,
+        potential_energy: -4,
+        kinetic_energy: 0,
+        total_energy: -4,
+      }
+      header[section] = { ...(header[section] as Record<string, unknown>), ...energies }
+      // Append a replacement header so every ndarray keeps its original byte offset.
+      const json = new TextEncoder().encode(JSON.stringify(header))
+      const bytes = new Uint8Array(original.byteLength + 8 + json.length)
+      bytes.set(new Uint8Array(original))
+      bytes.set(json, original.byteLength + 8)
+      const { buffer } = bytes
+      const patched = new DataView(buffer)
+      patched.setBigInt64(offsets_pos + 8, BigInt(original.byteLength), true)
+      patched.setBigInt64(original.byteLength, BigInt(json.length), true)
+      const run = await open(buffer, `relax.traj`)
+      expect(run.frame_count).toBe(2)
+      await run.properties.done
+      expect(run.properties.rows[1].properties).toMatchObject(energies)
+    },
+  )
 
   it(`reports progress and the final stage`, async () => {
     const stages: string[] = []
@@ -182,6 +214,19 @@ describe(`JSON runs`, () => {
       /Failed to parse broken.xyz as XYZ/,
     ],
     [
+      `truncated XYZ`,
+      `2\ncomment\nHe 0 0 0`,
+      `broken.xyz`,
+      /Failed to parse broken.xyz as XYZ: XYZ file has no complete frame/,
+    ],
+    [
+      `invalid XYZ coordinate`,
+      `1\ncomment\nHe invalid 0 0`,
+      `broken.xyz`,
+      /Failed to parse broken.xyz as XYZ:.*frame 0/,
+    ],
+    [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
+    [
       `blob without an hdf5 name`,
       new Blob([`x`]),
       `data.xyz`,
@@ -215,10 +260,10 @@ describe(`HDF5`, () => {
     const run = await open_trajectory(read_binary_test_file(`gold-nanoparticle-md.h5`), {
       filename: `gold.h5`,
     })
-    expect((await run.read_frame(99)).step).toBe(991)
+    expect((await materialize_frame_result(run.read_frame(99))).step).toBe(991)
     run.dispose()
-    expect(() => run.read_frame(5)).toThrow(/disposed/)
-    expect(() => run.read_frame(0)).toThrow(/disposed/)
+    expect(() => materialize_frame_result(run.read_frame(5))).toThrow(/disposed/)
+    expect(() => materialize_frame_result(run.read_frame(0))).toThrow(/disposed/)
     expect(run.preview.structure.sites).toHaveLength(55)
   })
 })

@@ -141,7 +141,10 @@ describe(`TernaryPlot`, () => {
     }
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
     await hover(markers(plot)[1], 100, 100)
-    expect(tooltip()?.textContent).toMatch(/Oxides\s*Fe: 20%\s*Ni: 30%\s*Cr: 50%/)
+    expect(tooltip()?.textContent).toMatch(/Oxides\s*Fe: 20 %\s*Ni: 30 %\s*Cr: 50 %/)
+    expect(
+      [...(tooltip()?.querySelectorAll(`small`) ?? [])].map((node) => node.textContent),
+    ).toEqual([`%`, `%`, `%`])
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0] as TernaryPointProps).toMatchObject({
       series_idx: 0,

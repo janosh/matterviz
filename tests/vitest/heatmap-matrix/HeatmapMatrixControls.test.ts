@@ -54,12 +54,14 @@ describe(`HeatmapMatrixControls`, () => {
       elements_to_axis(symbols ?? [`H`, `Li`, `Be`, `Co`, `Ni`, `Cu`], ordering),
     )
     mount(HeatmapDemo, { target: document.body })
-    await tick()
+    const orderings = await vi.waitFor(() => {
+      const selects = [
+        ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
+      ].filter((select) => select.querySelector(`option[value="atomic_number"]`))
+      expect(selects).toHaveLength(2)
+      return selects
+    })
     const matrices = document.querySelectorAll(`.heatmap-controls-anchor .heatmap`)
-    const orderings = [
-      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
-    ].filter((select) => select.querySelector(`option[value="atomic_number"]`))
-    expect(orderings).toHaveLength(2)
     // Svelte reads :checked on options, which happy-dom doesn't match.
     for (const select of orderings) {
       vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])

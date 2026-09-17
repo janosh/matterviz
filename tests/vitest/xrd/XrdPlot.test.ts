@@ -1,16 +1,18 @@
 import XrdPlot from '$lib/xrd/XrdPlot.svelte'
 import type { XrdPattern } from '$lib/xrd'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import * as xrd from '$lib/xrd'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   create_drop_event,
   expect_plot_controls,
-  gzip_bytes,
   query,
   resize_element,
 } from '../setup'
+import { gzip_bytes } from '../test-fixtures'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
+import { trigger_intersection } from '../environment'
 
 const pattern: XrdPattern = {
   x: [10, 20, 30, 40, 50],
@@ -65,6 +67,57 @@ const empty: XrdPattern = { x: [], y: [], hkls: [], d_hkls: [] }
 const both_empty = { A: { pattern: empty }, B: { pattern: empty } }
 const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
 const all_hkl_labels = [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`]
+
+test(`XRD demos defer calculation, reuse cached patterns and display calculation errors`, async () => {
+  const { default: Page } = await import('$root/src/routes/(demos)/structure/xrd/+page.svelte')
+  const compute = vi.spyOn(xrd, `compute_xrd_pattern`).mockReturnValue(pattern)
+  const saed = vi.spyOn(xrd, `compute_saed_pattern`).mockImplementation(() => {
+    throw new Error(`SAED unavailable`)
+  })
+  const component = mount(Page, { target: document.body })
+  try {
+    flushSync()
+    for (const region of document.querySelectorAll(`.lazy-demo`))
+      trigger_intersection(region, false)
+    await tick()
+    expect(compute).not.toHaveBeenCalled()
+    expect(saed).not.toHaveBeenCalled()
+    const show = async (label: string) => {
+      const region = document.querySelector(`.lazy-demo[aria-label="${label}"]`)
+      if (!region) throw new Error(`Missing ${label} demo`)
+      trigger_intersection(region, true)
+      await tick()
+      return region
+    }
+    const main = await show(`xrd`)
+    expect(compute).toHaveBeenCalledOnce()
+    await show(`Overlay multiple structures`)
+    expect(compute).toHaveBeenCalledTimes(4)
+    const buttons = document.querySelectorAll<HTMLButtonElement>(
+      `.structure-picker:first-child button`,
+    )
+    compute.mockImplementationOnce(() => {
+      throw new Error(`XRD unavailable`)
+    })
+    buttons[4].click()
+    await tick()
+    expect(main.textContent).toContain(`Compute error: XRD unavailable`)
+    buttons[0].click()
+    await tick()
+    expect(main.textContent).not.toContain(`Compute error`)
+    expect(compute).toHaveBeenCalledTimes(5)
+    await show(`X-ray vs neutron vs electron`)
+    expect(compute).toHaveBeenCalledTimes(7)
+    expect((await show(`Electron diffraction`)).textContent).toContain(
+      `SAED error: SAED unavailable`,
+    )
+    expect(saed).toHaveBeenCalledOnce()
+  } finally {
+    await unmount(component)
+    compute.mockRestore()
+    saed.mockRestore()
+  }
+})
 
 describe(`XrdPlot`, () => {
   test.each([

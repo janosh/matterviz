@@ -3,7 +3,6 @@
 // at build time and each glob entry becomes its own chunk. Do NOT use query:'?url' here:
 // Rolldown doesn't emit .json.gz as assets for globs.
 import type { PhaseData } from '$lib/convex-hull/types'
-import { SvelteSet } from 'svelte/reactivity'
 
 export const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
   `$site/convex-hull/quaternaries/*.json.gz`,
@@ -32,7 +31,7 @@ export const hull_system_name = (path: string): string =>
 // Sub-system of a hull: the entries whose composition only spans `elements` (a ternary or
 // binary cut of a quaternary dataset)
 export const filter_by_elements = (entries: PhaseData[], elements: string[]): PhaseData[] => {
-  const element_set = new SvelteSet(elements)
+  const element_set = new Set(elements)
   return entries.filter((entry) =>
     Object.entries(entry.composition).every(
       ([element, amt]) => !amt || element_set.has(element),

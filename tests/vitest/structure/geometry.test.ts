@@ -2,7 +2,11 @@ import type { Vec3 } from '$lib/math'
 import type { BondOrder, BondPair } from '$lib/structure'
 import {
   count_bond_instances,
-  write_bond_instance_matrices,
+  bond_neighbors,
+  instance_count_for_order,
+  BondFrame,
+  pack_bonds,
+  prepare_bond_placements,
   write_bond_transform,
 } from '$lib/structure/bond-rendering'
 import {
@@ -13,7 +17,99 @@ import {
 } from '$lib/structure/geometry'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
 import { SvelteSet } from 'svelte/reactivity'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
+import { BondMesh } from '$lib/structure/bond-mesh'
+
+const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
+
+test.each([
+  [0, [1, 1, 0]],
+  [1, [0, 0, 2]],
+  [2, [1]],
+  [3, []],
+] as const)(
+  `reads atom %i's neighbors without expanding packed bonds`,
+  (site_idx, expected) => {
+    const bonds: BondPair[] = [
+      [0, 1],
+      [1, 0],
+      [0, 0],
+      [1, 2],
+    ].map(([first, second]) => ({
+      site_idx_1: first,
+      site_idx_2: second,
+      pos_1: [0, 0, 0],
+      pos_2: [1, 0, 0],
+      bond_length: 1,
+    }))
+    const packed = new BondFrame({ sites: [] }, pack_bonds(bonds))
+    const materialize = vi.spyOn(packed, `materialize`)
+    expect(bond_neighbors(bonds, site_idx)).toEqual(expected)
+    expect(bond_neighbors(packed, site_idx)).toEqual(expected)
+    expect(materialize).not.toHaveBeenCalled()
+  },
+)
+
+const scale_and_offset_matrix = (
+  matrix_buffer: Float32Array,
+  instance_idx: number,
+  offset: number,
+  radius_scale: number,
+): void => {
+  const matrix_offset = instance_idx * 16
+  for (const component_idx of RADIAL_MATRIX_COMPONENTS) {
+    matrix_buffer[matrix_offset + component_idx] *= radius_scale
+  }
+
+  const right_x = matrix_buffer[matrix_offset]
+  const right_z = matrix_buffer[matrix_offset + 2]
+  const right_length = Math.hypot(right_x, right_z) || 1
+  matrix_buffer[matrix_offset + 12] += (right_x / right_length) * offset
+  matrix_buffer[matrix_offset + 14] += (right_z / right_length) * offset
+}
+
+// Reference placement from the previous matrix renderer, including multiple-bond offsets.
+function write_reference_bonds(
+  matrix_buffer: Float32Array,
+  bonds: readonly BondPair[],
+  bond_thickness: number,
+  required_count: number,
+): void {
+  if (matrix_buffer.length < required_count * 16) {
+    throw new RangeError(
+      `Bond matrix buffer has ${matrix_buffer.length} floats, needs ${required_count * 16}`,
+    )
+  }
+
+  let instance_idx = 0
+  const gap = bond_thickness * 1.8
+  for (const { pos_1, pos_2, bond_order } of bonds) {
+    write_bond_transform(matrix_buffer, instance_idx, pos_1, pos_2, bond_thickness)
+    const instance_count = instance_count_for_order(bond_order)
+    const source_offset = instance_idx * 16
+    for (let copy_idx = 1; copy_idx < instance_count; copy_idx++) {
+      matrix_buffer.copyWithin(
+        (instance_idx + copy_idx) * 16,
+        source_offset,
+        source_offset + 16,
+      )
+    }
+
+    if (bond_order === 2) {
+      scale_and_offset_matrix(matrix_buffer, instance_idx, -gap / 2, 0.65)
+      scale_and_offset_matrix(matrix_buffer, instance_idx + 1, gap / 2, 0.65)
+    } else if (bond_order === 3) {
+      scale_and_offset_matrix(matrix_buffer, instance_idx, -gap, 0.55)
+      scale_and_offset_matrix(matrix_buffer, instance_idx + 1, 0, 0.55)
+      scale_and_offset_matrix(matrix_buffer, instance_idx + 2, gap, 0.55)
+    } else if (bond_order === 1.5 || bond_order === `aromatic`) {
+      scale_and_offset_matrix(matrix_buffer, instance_idx, -gap / 2, 0.75)
+      scale_and_offset_matrix(matrix_buffer, instance_idx + 1, gap / 2, 0.4)
+    }
+    instance_idx += instance_count
+  }
+}
 
 describe(`quaternion_from_direction`, () => {
   test.each([
@@ -182,7 +278,51 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       const matrix_buffer = new Float32Array(3 * 16).fill(Number.NaN)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
-      write_bond_instance_matrices(matrix_buffer, [bond], 0.1, expected_count)
+      write_reference_bonds(matrix_buffer, [bond], 0.1, expected_count)
+      const structure = new FrameView().update(
+        create_numeric_md_frame(
+          new Float64Array([...bond.pos_1, ...bond.pos_2]),
+          new Uint8Array([6, 6]),
+          undefined,
+          undefined,
+          0,
+          {},
+          [],
+        ),
+      ).structure
+      for (const cell_shift of [undefined, [1, -2, 3] as Vec3]) {
+        const source = cell_shift ? { ...bond, cell_shift, pos_2: [5, 6, 7] as Vec3 } : bond
+        const packed = new BondFrame(structure, pack_bonds([source]))
+        const materialize = vi.spyOn(packed, `materialize`)
+        const expected = new Float32Array(expected_count * 16)
+        expect(count_bond_instances(packed)).toBe(expected_count)
+        write_reference_bonds(expected, [source], 0.1, expected_count)
+        const mesh = new BondMesh(undefined, undefined, expected_count)
+        const placements = prepare_bond_placements(packed)
+        const prepared = new BondFrame(structure, packed.columns, placements)
+        expect(count_bond_instances(prepared)).toBe(expected_count)
+        expect(placements.max_site_idx).toBe(1)
+        mesh.update(placements)
+        mesh.thickness = 0.1
+        const matrix = new Matrix4()
+        for (let idx = 0; idx < expected_count; idx++) {
+          mesh.getMatrixAt(idx, matrix)
+          for (let component = 0; component < 16; component++) {
+            const reference = expected[idx * 16 + component]
+            // f32 center, displacement and radius are rounded before the basis is rebuilt.
+            expect(Math.abs(matrix.elements[component] - reference)).toBeLessThanOrEqual(
+              8 * 2 ** -23 * Math.max(1, Math.abs(reference)),
+            )
+          }
+        }
+        const captured = mesh.clone()
+        mesh.centers.setXYZ(0, 99, 99, 99)
+        expect(captured.centers.array).not.toEqual(mesh.centers.array)
+        captured.dispose()
+        mesh.dispose()
+        expect(materialize).not.toHaveBeenCalled()
+        expect(packed.materialize()).toEqual([source])
+      }
       expect(Math.hypot(matrix_buffer[0], matrix_buffer[1], matrix_buffer[2])).toBeCloseTo(
         expected_radius,
         7,
@@ -206,8 +346,57 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       bond_length: 1,
       bond_order: 3,
     }
-    expect(() => write_bond_instance_matrices(new Float32Array(32), [bond], 0.1, 3)).toThrow(
-      `Bond matrix buffer has 32 floats, needs 48`,
-    )
+    expect(() =>
+      new BondMesh(undefined, undefined, 2).update(prepare_bond_placements([bond])),
+    ).toThrow(`Bond capacity 2 cannot hold 3 instances`)
+  })
+  test.each([
+    [0, 0, 0],
+    [0, -2, 0],
+    [1e-6, 2, 0],
+    [1e-4, 2, 0],
+    [1, -2, 3],
+  ] as Vec3[])(`keeps compact bond basis for displacement %j`, (...delta) => {
+    const pos_1: Vec3 = [1024, -2048, 4096]
+    const bond: BondPair = {
+      pos_1,
+      pos_2: delta.map((value, axis) => pos_1[axis] + value) as Vec3,
+      site_idx_1: 0,
+      site_idx_2: 1,
+      bond_length: Math.hypot(...delta),
+    }
+    for (const order of [undefined, 1, 1.5, 2, 3, `aromatic`] as const) {
+      const source = { ...bond, bond_order: order }
+      const placements = prepare_bond_placements([source])
+      const mesh = new BondMesh(undefined, undefined, placements.instance_count)
+      mesh.update(placements)
+      const captured_sizes = mesh.sizes.array.slice()
+      const expected = new Float32Array(placements.instance_count * 16)
+      const matrix = new Matrix4()
+      for (const thickness of [-0.1, 0, 0.1]) {
+        mesh.thickness = thickness
+        write_reference_bonds(expected, [source], thickness, placements.instance_count)
+        for (let idx = 0; idx < placements.instance_count; idx++) {
+          mesh.getMatrixAt(idx, matrix)
+          for (let component = 0; component < 16; component++) {
+            const reference = expected[idx * 16 + component]
+            // Eight f32 eps cover stored center/delta/unit sizes, uniform scaling and the
+            // reconstructed basis; absolute tolerance handles zero/near-zero components.
+            expect(Math.abs(matrix.elements[component] - reference)).toBeLessThanOrEqual(
+              8 * 2 ** -23 * Math.max(1, Math.abs(reference)),
+            )
+          }
+        }
+        expect(mesh.sizes.array).toEqual(captured_sizes)
+        const captured = mesh.clone()
+        mesh.thickness = 9
+        expect(captured.thickness).toBe(thickness)
+        captured.dispose()
+      }
+      expect(Array.from(mesh.deltas.array.slice(0, 3))).toEqual(
+        bond.pos_2.map((value, axis) => Math.fround(value - pos_1[axis])),
+      )
+      mesh.dispose()
+    }
   })
 })

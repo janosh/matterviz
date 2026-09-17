@@ -28,9 +28,6 @@ type SpectroscopyCollectOptions = AnalysisStreamOptions & {
   preprocessing?: SpectroscopyPreprocessing
 }
 
-const has_site_velocities = (run: TrajectoryRun, key: string): boolean =>
-  is_finite_vec3_like(run.preview.structure.sites[0]?.properties?.[key])
-
 // Response-signal vocabulary for the IR/Raman candidate filter. Dipole and polarizability
 // names vary freely across writers (`electronic_dipole`, `dipole_debye`, LAMMPS `c_dipole`,
 // `polarizability_tensor`), so any key mentioning them counts; `current` stays anchored so
@@ -52,10 +49,12 @@ export const infrared_kind_from_key = (key: string): InfraredSignal[`kind`] => {
 // HDF5 parser
 const velocity_channel = (run: TrajectoryRun, key: string): `vector` | `signal` | null => {
   const signal = run.signals?.[key]
-  if (!signal) return has_site_velocities(run, key) ? `vector` : null
+  if (!signal)
+    return is_finite_vec3_like(run.preview.structure.sites[0]?.properties?.[key])
+      ? `vector`
+      : null
   if (is_loaded_signal(signal)) return null
-  const n_atoms = run.preview.structure.sites.length
-  return signal.frame_aligned && arrays_equal(signal.sample_shape, [n_atoms, 3])
+  return signal.frame_aligned && arrays_equal(signal.sample_shape, [run.atom_count, 3])
     ? `vector`
     : `signal`
 }
@@ -131,12 +130,13 @@ export const trajectory_signal_keys = (
   )
   // Frame metadata is only a response signal when it is named like one: LAMMPS box origins
   // and other vec3 bookkeeping would otherwise show up as IR candidates
-  const metadata = run.preview.metadata ?? {}
-  const n_atoms = run.preview.structure.sites.length
-  const metadata_keys = Object.entries(metadata).flatMap(([key, value]) =>
+  const metadata_keys = Object.entries(run.preview.metadata ?? {}).flatMap(([key, value]) =>
     RESPONSE_SIGNAL_KEY.test(key) &&
     (!expected_shape ||
-      arrays_equal(parse_frame_signal(value, key, n_atoms)?.sample_shape, expected_shape))
+      arrays_equal(
+        parse_frame_signal(value, key, run.atom_count)?.sample_shape,
+        expected_shape,
+      ))
       ? [key]
       : [],
   )
@@ -146,12 +146,13 @@ export const trajectory_signal_keys = (
 const recorded_masses = (run: TrajectoryRun): number[] | null => {
   const { sites } = run.preview.structure
   const masses = run.atom_masses ?? sites.map(({ properties }) => properties?.mass)
-  if (masses.length !== sites.length) {
+  if (masses.every((mass) => mass === undefined)) return null
+  const n_atoms = run.atom_count
+  if (masses.length !== n_atoms) {
     throw new Error(
-      `Recorded masses have ${masses.length} entries for ${sites.length} trajectory atoms`,
+      `Recorded masses have ${masses.length} entries for ${n_atoms} trajectory atoms`,
     )
   }
-  if (masses.every((mass) => mass === undefined)) return null
   return masses.map((mass, atom_idx) => {
     if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0) {
       throw new Error(`Recorded mass ${atom_idx} must be finite and > 0, got ${mass}`)
@@ -194,8 +195,8 @@ export async function collect_trajectory_spectroscopy_input(
     start_frame,
     end_frame,
     max_bytes,
-    ...(vector_keys.length > 0 ? { vector_keys } : {}),
-    ...(signal_keys.length > 0 ? { signal_keys } : {}),
+    ...(vector_keys.length > 0 && { vector_keys }),
+    ...(signal_keys.length > 0 && { signal_keys }),
     on_progress,
     signal,
     analysis_name: `Spectroscopy`,
@@ -215,7 +216,7 @@ export async function collect_trajectory_spectroscopy_input(
   const end_step =
     needs_end_step && end_frame !== undefined && end_frame < run.frame_count
       ? (run.properties.rows.find(({ frame_number }) => frame_number === end_frame)?.step ??
-        (await run.read_frame(end_frame, signal)).step)
+        (await run.read_frame(end_frame, signal)).header.step)
       : Infinity
   signal?.throwIfAborted()
   const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {
@@ -260,7 +261,7 @@ export async function collect_trajectory_spectroscopy_input(
           values: site_velocities,
           sample_shape: [stream.n_atoms, 3],
           steps: [...stream.steps],
-          ...(declared_velocity?.unit ? { unit: declared_velocity.unit } : {}),
+          ...(declared_velocity?.unit && { unit: declared_velocity.unit }),
         }
       : null)
   // Provenance label for the metadata, distinct from calc_trajectory_spectroscopy's

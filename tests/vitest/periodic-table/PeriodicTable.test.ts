@@ -10,7 +10,8 @@ import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { CATEGORY_COUNTS, doc_query, keydown, mouse } from '../setup'
+import { doc_query, keydown, mouse } from '../setup'
+import { CATEGORY_COUNTS } from '../test-fixtures'
 
 const { page, replace_url } = vi.hoisted(() => ({
   page: { url: new URL(`http://localhost/periodic-table`) },

@@ -1,7 +1,7 @@
 import { browser } from '$app/environment'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
-import type { NavRouteObject } from 'svelte-widgets'
+import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
 export const normalize_static_url = (url: string): string =>
@@ -28,6 +28,19 @@ export const set_file_param = (filename: string | null): void => {
   if (filename) url.searchParams.set(`file`, filename)
   else url.searchParams.delete(`file`)
   void replace_url(url)
+}
+
+const ROUTE_LABELS: Record<string, string> = {
+  '/how-to/hook-up-to-external-api': `Hook up to external API`,
+  '/how-to/use-without-svelte': `Use without Svelte`,
+  '/neb': `NEB`,
+  '/structure/rdf': `RDF`,
+  '/structure/xrd': `XRD`,
+  '/reciprocal/dos': `DOS`,
+  '/reciprocal/bands-and-dos': `Bands + DOS`,
+  '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
+  '/reciprocal/ir-raman': `IR + Raman`,
+  '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
 }
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))
@@ -67,7 +80,7 @@ const has_prefix = (route: string, prefix: string) =>
 export function group_nav_routes(
   nav_routes: string[],
   groups: NavGroup[] = NAV_GROUPS,
-): NavRouteObject[] {
+): WidgetNavGroup[] {
   const prefix_idx = (route: string, { prefixes }: NavGroup) =>
     prefixes.findIndex((prefix) => has_prefix(route, prefix))
   const unclaimed = nav_routes.filter((route) =>
@@ -87,7 +100,25 @@ export function group_nav_routes(
           radius_1.localeCompare(radius),
       )
     if (children.length === 0) return []
-    return [{ label: group.label, href: group.href, children }]
+    return [
+      {
+        label: group.label,
+        ...(children.includes(group.href) ? { href: group.href } : {}),
+        children: children
+          .filter((href) => href !== group.href)
+          .map((href) => ({
+            href,
+            label:
+              ROUTE_LABELS[href] ??
+              href
+                .split(`/`)
+                .at(-1)
+                ?.replaceAll(`-`, ` `)
+                .replaceAll(/\b\w/g, (char) => char.toUpperCase()) ??
+              href,
+          })),
+      },
+    ]
   })
 }
 

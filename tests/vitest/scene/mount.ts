@@ -8,6 +8,7 @@ export function mount_scene(render: Component) {
   const noop = () => {}
   const Harness: Component = (anchor) => {
     const canvas = document.createElement(`canvas`)
+    const info = { render: { calls: 0 } }
     contexts.push(
       createThrelteContext({
         dom: document.body,
@@ -15,12 +16,16 @@ export function mount_scene(render: Component) {
         createRenderer: () =>
           ({
             domElement: canvas,
+            info,
+            initialized: true,
             xr: {},
             shadowMap: {},
             setSize: noop,
             setPixelRatio: noop,
             setAnimationLoop: noop,
-            render: noop,
+            render: () => {
+              info.render.calls++
+            },
             dispose: noop,
           }) as unknown as WebGLRenderer,
       }),
@@ -29,5 +34,14 @@ export function mount_scene(render: Component) {
   }
   const component = mount(Harness, { target: document.body })
   const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
-  return { scene, camera, disposable_objects, unmount_scene: () => unmount(component) }
+  return {
+    scene,
+    camera,
+    disposable_objects,
+    render_frame: () => {
+      contexts[0].scheduler.run(performance.now())
+      contexts[0].resetFrameInvalidation()
+    },
+    unmount_scene: () => unmount(component),
+  }
 }

@@ -1,3 +1,7 @@
+import { BondFrame, type BondData } from './bond-rendering'
+import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'
+import { element_from_atomic_number } from '$lib/element/helpers'
+import { get_element_counts } from './density'
 // Coordination polyhedra detection and mesh generation.
 // Self-contained: vertices come from the rendered bond graph, hulls from a custom
 // quickhull tailored to small point sets (CN 4-12), output as merged typed arrays
@@ -9,12 +13,15 @@ import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
 import { array_extent, array_max } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
-import type { AnyStructure, BondPair } from '$lib/structure'
+import type { AnyStructure } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
-import { Line2NodeMaterial } from 'three/webgpu'
+import {
+  DynamicDrawUsage,
+  type InterleavedBufferAttribute,
+  Line2NodeMaterial,
+} from 'three/webgpu'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
-import { get_orig_site_idx } from './site'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
@@ -37,12 +44,63 @@ export function create_polyhedra_edges(
   return edges
 }
 
-interface PolyhedraOptions {
+// Keep the mesh/material and GPU attributes across frames. Only growth replaces geometry;
+// shrinking changes instanceCount so unused capacity never appears in the rendered outline.
+export function update_polyhedra_edges(
+  edges: LineSegments2,
+  positions: Float32Array,
+  colors: Float32Array,
+): void {
+  const capacity = edges.geometry.getAttribute(`instanceStart`).count * 6
+  if (positions.length > capacity) {
+    const length = Math.max(positions.length, Math.ceil((capacity / 6) * 1.5) * 6)
+    const geometry = new LineSegmentsGeometry()
+      .setPositions(new Float32Array(length))
+      .setColors(new Float32Array(length))
+    edges.geometry.dispose()
+    edges.geometry = geometry
+  }
+  for (const [name, values] of [
+    [`instanceStart`, positions],
+    [`instanceColorStart`, colors],
+  ] as const) {
+    const { data } = edges.geometry.getAttribute(name) as InterleavedBufferAttribute
+    data.setUsage(DynamicDrawUsage)
+    data.array.set(values)
+    data.clearUpdateRanges()
+    data.addUpdateRange(0, values.length)
+    data.needsUpdate = true
+  }
+  edges.geometry.instanceCount = positions.length / 6
+  edges.geometry.computeBoundingBox()
+  edges.geometry.computeBoundingSphere()
+}
+
+export interface PolyhedraOptions {
   min_neighbors?: number // min coordination number to form a polyhedron
   max_neighbors?: number // max CN - skips e.g. CN-12 cuboctahedra around A-site cations
   excluded_center_elements?: readonly string[] // per-element off-toggles
   included_center_elements?: readonly string[] // force-include (bypasses spectator/weak hiding + max_neighbors cap)
   electronegativity_margin?: number // vertex must be > center EN + margin
+}
+
+// Worker results belong to one immutable bond snapshot. Filters or bond edits create a
+// different graph; appearance changes leave this geometry reusable.
+const polyhedra_options_key = (options: PolyhedraOptions): string =>
+  JSON.stringify([
+    options.min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
+    options.max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
+    options.excluded_center_elements ?? [],
+    options.included_center_elements ?? [],
+    options.electronegativity_margin ?? 0,
+  ])
+const prepared_polyhedra = new WeakMap<BondFrame, { key: string; polyhedra: Polyhedron[] }>()
+export const cache_prepared_polyhedra = (
+  bonds: BondFrame,
+  options: PolyhedraOptions,
+  polyhedra: Polyhedron[],
+): void => {
+  prepared_polyhedra.set(bonds, { key: polyhedra_options_key(options), polyhedra })
 }
 
 // Species whose mean bond dist / covalent-radii sum exceeds this are hidden when a
@@ -376,7 +434,8 @@ interface PolyhedronNeighbor {
 // even a periodic one (an image of the center itself) shares the center's element and so
 // can never clear the strictly-higher-electronegativity test in is_anion_vertex.
 export function build_adjacency(
-  bonds: readonly BondPair[],
+  bonds: BondData,
+  accepts: (center: number, neighbor: number) => boolean = () => true,
 ): Map<number, PolyhedronNeighbor[]> {
   const adjacency = new Map<number, PolyhedronNeighbor[]>()
   const link = (from: number, target: number, offset: Vec3 | null) => {
@@ -397,22 +456,36 @@ export function build_adjacency(
     )
     if (!is_dup) neighbors.push({ site_idx: target, offset })
   }
-  for (const { site_idx_1, site_idx_2, pos_1, pos_2, cell_shift } of bonds) {
+  const start: Vec3 = [0, 0, 0]
+  const end: Vec3 = [0, 0, 0]
+  for (let idx = 0; idx < bonds.length; idx++) {
+    const site_idx_1 =
+      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
+    const site_idx_2 =
+      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
     if (site_idx_1 === site_idx_2) continue
-    if (cell_shift === undefined || cell_shift.every((val) => val === 0)) {
-      link(site_idx_1, site_idx_2, null)
-      link(site_idx_2, site_idx_1, null)
+    const forward = accepts(site_idx_1, site_idx_2)
+    const reverse = accepts(site_idx_2, site_idx_1)
+    if (!forward && !reverse) continue
+    const cell_shift =
+      bonds instanceof BondFrame ? bonds.cell_shift(idx) : bonds[idx].cell_shift
+    if (!cell_shift?.some((value) => value !== 0)) {
+      if (forward) link(site_idx_1, site_idx_2, null)
+      if (reverse) link(site_idx_2, site_idx_1, null)
     } else {
       // pos_2 already carries the lattice translation (structure_bond_to_bond_pair), so
       // the bond vector is the center -> neighbor displacement; the reverse is its negation
+      if (bonds instanceof BondFrame) bonds.write_endpoints(idx, start, end)
+      const pos_1 = bonds instanceof BondFrame ? start : bonds[idx].pos_1
+      const pos_2 = bonds instanceof BondFrame ? end : bonds[idx].pos_2
       const [delta_x, delta_y, delta_z] = [
         pos_2[0] - pos_1[0],
         pos_2[1] - pos_1[1],
         pos_2[2] - pos_1[2],
       ]
       const flip = (val: number) => (val === 0 ? 0 : -val) // no -0, matching negate_cell_shift
-      link(site_idx_1, site_idx_2, [delta_x, delta_y, delta_z])
-      link(site_idx_2, site_idx_1, [flip(delta_x), flip(delta_y), flip(delta_z)])
+      if (forward) link(site_idx_1, site_idx_2, [delta_x, delta_y, delta_z])
+      if (reverse) link(site_idx_2, site_idx_1, [flip(delta_x), flip(delta_y), flip(delta_z)])
     }
   }
   return adjacency
@@ -456,7 +529,7 @@ function is_anion_vertex(
 // carrying a cell_shift put the corner at the lattice image the bond points to.
 export function compute_polyhedra(
   structure: AnyStructure,
-  bonds: readonly BondPair[],
+  bond_data: BondData,
   options: PolyhedraOptions = {},
 ): Polyhedron[] {
   const {
@@ -468,15 +541,24 @@ export function compute_polyhedra(
     included_center_elements = [],
     electronegativity_margin = 0,
   } = options
-  const { sites } = structure
-  if (sites.length === 0 || bonds.length === 0) return []
+  const cached =
+    bond_data instanceof BondFrame && bond_data.structure === structure
+      ? prepared_polyhedra.get(bond_data)
+      : undefined
+  if (cached?.key === polyhedra_options_key(options)) return cached.polyhedra
+  if (site_count(structure) === 0 || bond_data.length === 0) return []
 
   const excluded = new Set(excluded_center_elements)
   const included = new Set(included_center_elements)
-  const site_elements = sites.map((site) => get_majority_element(site))
-  const unique_elements = [
-    ...new Set(site_elements.filter((element): element is ElementSymbol => element !== null)),
-  ]
+  const columns = numeric_sites.get(structure)
+  const rich_elements = columns ? undefined : structure.sites.map(get_majority_element)
+  const unique_elements = columns
+    ? (Object.keys(get_element_counts(structure)) as ElementSymbol[])
+    : [
+        ...new Set(
+          rich_elements?.filter((element): element is ElementSymbol => element !== null),
+        ),
+      ]
 
   // Per-center-element caches: which neighbor elements qualify as vertices and
   // their covalent-radii sums. Avoids repeated element-data lookups in the hot
@@ -515,9 +597,30 @@ export function compute_polyhedra(
     )
   )
     return []
+  const site_elements =
+    rich_elements ??
+    Array.from(columns?.numbers ?? [], (number) => element_from_atomic_number(number) ?? null)
+  const position = (idx: number): Vec3 =>
+    columns ? columns.position(idx) : structure.sites[idx].xyz
   // Only shifted bonds can reach the same physical neighbor through different site indices.
-  const has_shifted_bonds = bonds.some((bond) => bond.cell_shift?.some((val) => val !== 0))
-  const adjacency = build_adjacency(bonds)
+  const has_shifted_bonds =
+    bond_data instanceof BondFrame
+      ? bond_data.columns.images.some((value, idx) => idx % 7 >= 4 && value !== 0)
+      : bond_data.some((bond) => bond.cell_shift?.some((val) => val !== 0))
+  // Reject ineligible edges before allocating neighbor records, especially in large alloys
+  // where only interface atoms can have an anion shell. Numeric playback stays columnar.
+  const accepted_elements = site_elements.map((element) =>
+    element && !excluded.has(element) ? center_info(element).accepts : undefined,
+  )
+  // Preserve first bond encounter order: it decides which coincident periodic copy wins
+  // hull deduplication, even when that center's first edge cannot be a polyhedron vertex.
+  const center_order = new Uint32Array(site_elements.length)
+  let next_order = 1
+  const adjacency = build_adjacency(bond_data, (center, neighbor) => {
+    if (!center_order[center]) center_order[center] = next_order++
+    const element = site_elements[neighbor]
+    return Boolean(element && accepted_elements[center]?.has(element))
+  })
 
   // Pass 1: candidate centers with their anion-vertex sets
   type Candidate = {
@@ -529,13 +632,15 @@ export function compute_polyhedra(
     mean_norm_dist: number | null // mean bond dist / covalent-radii sum (bond softness)
   }
   const candidates: Candidate[] = []
-  for (const [site_idx, neighbors] of adjacency) {
+  for (const [site_idx, neighbors] of [...adjacency].toSorted(
+    ([first], [second]) => center_order[first] - center_order[second],
+  )) {
     if (neighbors.length < min_neighbors) continue
     const element = site_elements[site_idx]
     if (!element || excluded.has(element)) continue
     const { accepts, radii_sums } = center_info(element)
     if (accepts.size === 0) continue
-    const [center_x, center_y, center_z] = sites[site_idx].xyz
+    const [center_x, center_y, center_z] = position(site_idx)
 
     // Every bonded anion is a vertex, deliberately without a distance trim (see the shell
     // penalties in electroneg_ratio): the 2.39 A Ti-O bond of tetragonal BaTiO3 (1.31x the
@@ -548,7 +653,7 @@ export function compute_polyhedra(
       if (!n_elem || !accepts.has(n_elem)) continue
       const pos: Vec3 =
         offset === null
-          ? sites[idx].xyz
+          ? position(idx)
           : [center_x + offset[0], center_y + offset[1], center_z + offset[2]]
       // One physical neighbor reached twice would inflate the coordination number that
       // gates max_neighbors and the boundary-completeness check (the hull dedupes the
@@ -578,7 +683,7 @@ export function compute_polyhedra(
 
     candidates.push({
       site_idx,
-      orig_idx: get_orig_site_idx(sites[site_idx], site_idx),
+      orig_idx: get_orig_site_idx(get_site(structure, site_idx), site_idx),
       element,
       vertex_site_idxs,
       vertex_positions,
@@ -644,7 +749,7 @@ export function compute_polyhedra(
     if (vertex_site_idxs.length !== max_cn_by_orig.get(orig_idx)) continue
     if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
 
-    const [pixel_x, pixel_y, pixel_z] = sites[site_idx].xyz
+    const [pixel_x, pixel_y, pixel_z] = position(site_idx)
     const pos_key = `${Math.round(pixel_x * 1e3)},${Math.round(pixel_y * 1e3)},${Math.round(pixel_z * 1e3)}`
     if (seen_positions.has(pos_key)) continue
     seen_positions.add(pos_key)

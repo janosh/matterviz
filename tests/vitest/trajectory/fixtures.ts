@@ -4,6 +4,63 @@
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { make_rng } from '../numeric-helpers'
 
+// Two ASE frames sharing topology, with isotope masses and unequal physical timestamps.
+export function make_ase_md_buffer(n_atoms: number, recorded_masses = true): ArrayBuffer {
+  let offset = 64
+  const chunks: Uint8Array[] = []
+  const array = (shape: number[], value: (idx: number) => number) => {
+    const data = Float64Array.from(
+      { length: shape.reduce((total, size) => total * size, 1) },
+      (_, idx) => value(idx),
+    )
+    const ref = { ndarray: [shape, `float64`, offset] }
+    chunks.push(new Uint8Array(data.buffer))
+    offset += data.byteLength
+    return ref
+  }
+  const offsets: number[] = []
+  for (let frame_idx = 0; frame_idx < 2; frame_idx++) {
+    const header = {
+      ...(frame_idx === 0 && {
+        [`numbers.`]: array([n_atoms], () => 1),
+        ...(recorded_masses && { [`masses.`]: array([n_atoms], () => 2) }),
+        pbc: [false, false, false],
+      }),
+      [`positions.`]: array([n_atoms, 3], (idx) =>
+        idx % 3 === 0 ? Math.floor(idx / 3) / n_atoms + 1 : 1,
+      ),
+      [`momenta.`]: array([n_atoms, 3], (idx) => (idx % 3 === 0 ? 2 * (frame_idx + 1) : 0)),
+      [`tags.`]: array([n_atoms], (idx) => idx % 2),
+      cell: [
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+      ],
+      info: { time_fs: frame_idx ? 14 : 10 },
+    }
+    const json = new TextEncoder().encode(JSON.stringify(header))
+    const entry = new Uint8Array(8 + Math.ceil(json.length / 8) * 8)
+    new DataView(entry.buffer).setBigInt64(0, BigInt(json.length), true)
+    entry.set(json, 8)
+    offsets.push(offset)
+    chunks.push(entry)
+    offset += entry.byteLength
+  }
+  const buffer = new ArrayBuffer(offset)
+  const bytes = new Uint8Array(buffer)
+  bytes.set(new TextEncoder().encode(`- of Ulm`))
+  const view = new DataView(buffer)
+  view.setBigInt64(32, 2n, true)
+  view.setBigInt64(40, 48n, true)
+  offsets.forEach((value, idx) => view.setBigInt64(48 + idx * 8, BigInt(value), true))
+  offset = 64
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return buffer
+}
+
 // Deterministic EXTXYZ: a cubic cell that breathes, atoms jittering around a grid, an energy
 // that drifts with the frame index.
 export function synthetic_extxyz(n_frames: number, n_atoms: number, seed = 7): string {
@@ -46,16 +103,17 @@ export const flat_frames = (
   frame: (frame_idx: number) => number[],
 ): number[] =>
   Array.from({ length: n_frames }, (_unused, frame_idx) => frame(frame_idx)).flat()
-// Build a minimal torch-sim-layout HDF5 file in h5wasm's in-memory FS and
-// return its bytes, for torn-file scenarios no checked-in fixture covers
+// Build an HDF5 fixture in h5wasm's in-memory FS, optionally extending a binary seed.
 export const h5_bytes = async (
   prefix: string,
   write: (file: H5File) => void,
+  seed?: Uint8Array,
 ): Promise<ArrayBuffer> => {
   const h5wasm = await import(`h5wasm`)
   const { FS: file_system } = await h5wasm.ready
   const temp_filename = `${prefix}-${Math.random().toString(36).slice(2)}.h5`
-  const file = new h5wasm.File(temp_filename, `w`)
+  if (seed) file_system.writeFile(temp_filename, seed)
+  const file = new h5wasm.File(temp_filename, seed ? `a` : `w`)
   let file_closed = false
   try {
     write(file)
@@ -77,6 +135,22 @@ export const h5_bytes = async (
     }
   }
 }
+
+export const make_ambiguous_hdf5 = (): Promise<ArrayBuffer> =>
+  h5_bytes(`ambiguous`, (file) => {
+    const molecules = file.create_group(`molecules`)
+    for (const [name, atomic_number, x_position] of [
+      [`h2o`, 79, 1],
+      [`nh3`, 1, 9],
+    ] satisfies [string, number, number][]) {
+      const replicas = molecules.create_group(name).create_group(`replicas`)
+      for (const replica_idx of [0, 1, 2, 10]) {
+        const group = replicas.create_group(`${replica_idx}`)
+        group.create_dataset({ name: `positions`, data: [x_position, 0, 0], shape: [1, 1, 3] })
+        group.create_dataset({ name: `atomic_numbers`, data: [atomic_number], shape: [1] })
+      }
+    }
+  })
 
 export type H5Spec = [name: string, data: number[], shape: number[]]
 export const make_h5_buffer = (datasets: H5Spec[]): Promise<ArrayBuffer> =>
@@ -125,7 +199,7 @@ export const make_torch_sim_signal_buffer = ({
       [4, 2, 3],
     )
     create_dataset(data, `atomic_numbers`, [1, 8], [2])
-    create_dataset(data, `masses`, [1.008, 15.999], [2])
+    create_dataset(data, `masses`, [1.008, 15.999], [2]).create_attribute(`units`, `amu`)
     create_dataset(
       data,
       `velocities`,

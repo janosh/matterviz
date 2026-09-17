@@ -14,7 +14,7 @@ import { detect_layers } from '$lib/slab/terminations'
 import type { Crystal, Pbc, Site } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_rocksalt } from '../setup'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 
 // Conventional cubic cells: exact fractional coordinates, so every expectation below can
 // be compared against a hand-derived analytic value rather than a stored number.

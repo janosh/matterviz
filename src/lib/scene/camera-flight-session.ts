@@ -40,7 +40,7 @@ export function create_camera_flight_session(hooks: {
 }) {
   const lifetime = new AbortController()
   let operation: AbortController | undefined
-  let queue = Promise.resolve()
+  let queue: Promise<unknown> = Promise.resolve()
   let activity: FlightActivity = null
   let origin:
     | {
@@ -60,8 +60,8 @@ export function create_camera_flight_session(hooks: {
   const run = (
     kind: Exclude<FlightActivity, null>,
     task: (context: FlightTask) => Promise<void>,
-    temporary = false,
   ): Promise<boolean> => {
+    const temporary = kind === `thumbnails`
     operation?.abort()
     const requested = new AbortController()
     operation = requested
@@ -120,10 +120,7 @@ export function create_camera_flight_session(hooks: {
         }
       })
     // The caller handles its error; the queue must remain usable after a failed read.
-    queue = result.then(
-      () => {},
-      () => {},
-    )
+    queue = result.catch(() => {})
     return result
   }
 

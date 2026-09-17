@@ -12,7 +12,7 @@ import type {
 import type { AtomColorConfig } from '$lib/structure/atom-properties'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
 import { MAX_HISTORY, StructureSession } from '$lib/structure/session.svelte'
-import { is_image_site } from '$lib/structure/site'
+import { is_image_site, snapshot_topologies } from '$lib/structure/site'
 import { make_supercell } from '$lib/structure/supercell'
 import type { CellType, SymmetryDataset } from '$lib/symmetry'
 import { analyze_structure_symmetry } from '$lib/symmetry'
@@ -23,7 +23,7 @@ import {
   get_dummy_structure,
   init_moyo_for_tests,
   make_crystal,
-} from '../setup'
+} from '../test-fixtures'
 
 type Host = {
   structure: AnyStructure | undefined
@@ -47,7 +47,7 @@ type Host = {
 
 const crystal = (atoms = 3): AnyStructure => get_dummy_structure(`H`, atoms, true)
 
-function make_session(initial: Partial<Host> = {}) {
+function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStructure) {
   const host = $state<Host>({
     structure: crystal(),
     bonds: undefined,
@@ -71,7 +71,7 @@ function make_session(initial: Partial<Host> = {}) {
   let session!: StructureSession
   const destroy = $effect.root(() => {
     session = new StructureSession({
-      structure: () => host.structure,
+      structure: read_structure ?? (() => host.structure),
       site_properties: () => host.site_properties,
       set_structure: (value) => (host.structure = value),
       bonds: () => host.bonds,
@@ -373,6 +373,29 @@ describe(`selection validity`, () => {
       expect(host.selected_sites).toEqual([])
     },
   )
+
+  it(`uses explicit snapshot identity without rescanning labels and notices revision changes`, () => {
+    const first = crystal()
+    const identity = {}
+    snapshot_topologies.set(first, identity)
+    let displayed = $state.raw(first)
+    const { host } = make_session({ series_key: {} }, () => displayed)
+    host.selected_sites = [0]
+    flushSync()
+    const next = structuredClone(first)
+    const label_read = vi.fn(() => first.sites[0].label)
+    Object.defineProperty(next.sites[0], `label`, { get: label_read })
+    snapshot_topologies.set(next, identity)
+    displayed = next
+    flushSync()
+    expect(host.selected_sites).toEqual([0])
+    expect(label_read).not.toHaveBeenCalled()
+    const reordered = { ...first, sites: first.sites.toReversed() }
+    snapshot_topologies.set(reordered, {})
+    displayed = reordered
+    flushSync()
+    expect(host.selected_sites).toEqual([])
+  })
 
   it(`preserves the selection through transforms in edit-atoms mode only`, () => {
     const { host } = make_session({ measure_mode: `edit-atoms` })

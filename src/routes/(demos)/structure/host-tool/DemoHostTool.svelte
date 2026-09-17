@@ -19,7 +19,7 @@
   let run = $state.raw<StructureToolRun>()
   let status = $state(`Ready`)
   let current_step_idx = $state(0)
-  const trajectory = $derived(make_demo_trajectory(structure))
+  const trajectory = $derived(make_demo_trajectory($state.snapshot(structure)))
 
   let delay_ms = $state(100)
   let fail = $state(false)

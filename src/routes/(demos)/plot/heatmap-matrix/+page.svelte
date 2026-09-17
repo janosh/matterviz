@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import type { ChemicalElement, ElementSymbol } from '$lib/element'
   import type { AxisItem, CellContext, ElementAxisOrderingKey } from '$lib/heatmap-matrix'
   import {
@@ -115,36 +116,38 @@
 
 <div class="heatmap-controls-anchor bleed-1400" role="group">
   <div class="scroll-container">
-    <HeatmapMatrix
-      x_items={axis_items}
-      y_items={axis_items}
-      values={en_diff_values}
-      color_scale="interpolateViridis"
-      show_color_bar
-      show_controls="hover"
-      controls_props={{ children: full_controls }}
-      hide_empty={hide_mode}
-      virtualize
-      selection_mode="multi"
-      bind:selected_cells
-      bind:pinned_cell
-      tooltip_mode="both"
-      enable_brush
-      on_brush={(payload) =>
-        (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
-          payload.x_range[1]
-        }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-      on_export={async (format_name, payload, { filename, save }) => {
-        await save(
-          typeof payload === `string` ? payload : JSON.stringify(payload, null, 2),
-          `${filename}.${format_name}`,
-          format_name === `csv` ? `text/csv;charset=utf-8` : `application/json`,
-        )
-        last_export_status = `Exported ${format_name.toUpperCase()}`
-      }}
-      tooltip
-      on_click={(cell: CellContext) => (clicked_cell = cell)}
-    />
+    <LazyDemo label="Element Pair Electronegativity Difference">
+      <HeatmapMatrix
+        x_items={axis_items}
+        y_items={axis_items}
+        values={en_diff_values}
+        color_scale="interpolateViridis"
+        show_color_bar
+        show_controls="hover"
+        controls_props={{ children: full_controls }}
+        hide_empty={hide_mode}
+        virtualize
+        selection_mode="multi"
+        bind:selected_cells
+        bind:pinned_cell
+        tooltip_mode="both"
+        enable_brush
+        on_brush={(payload) =>
+          (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
+            payload.x_range[1]
+          }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
+        on_export={async (format_name, payload, { filename, save }) => {
+          await save(
+            typeof payload === `string` ? payload : JSON.stringify(payload, null, 2),
+            `${filename}.${format_name}`,
+            format_name === `csv` ? `text/csv;charset=utf-8` : `application/json`,
+          )
+          last_export_status = `Exported ${format_name.toUpperCase()}`
+        }}
+        tooltip
+        on_click={(cell: CellContext) => (clicked_cell = cell)}
+      />
+    </LazyDemo>
   </div>
 </div>
 {#if clicked_cell}
@@ -178,31 +181,33 @@
 </p>
 
 <div class="heatmap-controls-anchor" role="group">
-  <HeatmapMatrix
-    x_items={small_axis}
-    y_items={small_axis}
-    values={small_values}
-    color_scale="interpolatePlasma"
-    symmetric="lower"
-    show_controls="hover"
-    controls_props={{ children: subset_controls }}
-    tile_size="20px"
-    gap="1px"
-    on_double_click={(cell: CellContext) =>
-      (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
-        cell.value,
-      )}`)}
-    style="margin: 1em auto"
-  >
-    {#snippet tooltip(ctx)}
-      {@const x_el = ctx.x_item.data as ChemicalElement}
-      {@const y_el = ctx.y_item.data as ChemicalElement}
-      <strong>{x_el.name}</strong> &ndash; <strong>{y_el.name}</strong><br />
-      EN: {x_el.electronegativity_pauling ?? `?`} vs {y_el.electronegativity_pauling ?? `?`}<br
-      />
-      |&Delta;EN| = {format_cell_value(ctx.value)}
-    {/snippet}
-  </HeatmapMatrix>
+  <LazyDemo label="Symmetric Subset with Custom Tooltip">
+    <HeatmapMatrix
+      x_items={small_axis}
+      y_items={small_axis}
+      values={small_values}
+      color_scale="interpolatePlasma"
+      symmetric="lower"
+      show_controls="hover"
+      controls_props={{ children: subset_controls }}
+      tile_size="20px"
+      gap="1px"
+      on_double_click={(cell: CellContext) =>
+        (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
+          cell.value,
+        )}`)}
+      style="margin: 1em auto"
+    >
+      {#snippet tooltip(ctx)}
+        {@const x_el = ctx.x_item.data as ChemicalElement}
+        {@const y_el = ctx.y_item.data as ChemicalElement}
+        <strong>{x_el.name}</strong> &ndash; <strong>{y_el.name}</strong><br />
+        EN: {x_el.electronegativity_pauling ?? `?`} vs {y_el.electronegativity_pauling ??
+          `?`}<br />
+        |&Delta;EN| = {format_cell_value(ctx.value)}
+      {/snippet}
+    </HeatmapMatrix>
+  </LazyDemo>
 </div>
 {#if dblclick_info}
   <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
@@ -218,23 +223,25 @@
   cell snippet that renders the value inside each tile.
 </p>
 
-<HeatmapMatrix
-  x_items={property_bins}
-  y_items={property_bins}
-  values={bin_values}
-  color_scale="interpolateYlOrRd"
-  tile_size="50px"
-  gap="2px"
-  label_style="font-size: 0.85em;"
-  tooltip
-  style="margin: 1em auto"
->
-  {#snippet cell(ctx)}
-    {#if typeof ctx.value === `number` && ctx.value > 0}
-      <span style="font-size: 0.7em">{ctx.value}</span>
-    {/if}
-  {/snippet}
-</HeatmapMatrix>
+<LazyDemo label="Arbitrary Axis Items">
+  <HeatmapMatrix
+    x_items={property_bins}
+    y_items={property_bins}
+    values={bin_values}
+    color_scale="interpolateYlOrRd"
+    tile_size="50px"
+    gap="2px"
+    label_style="font-size: 0.85em;"
+    tooltip
+    style="margin: 1em auto"
+  >
+    {#snippet cell(ctx)}
+      {#if typeof ctx.value === `number` && ctx.value > 0}
+        <span style="font-size: 0.7em">{ctx.value}</span>
+      {/if}
+    {/snippet}
+  </HeatmapMatrix>
+</LazyDemo>
 
 <style>
   h2 {

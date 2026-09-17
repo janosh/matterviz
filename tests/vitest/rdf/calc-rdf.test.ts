@@ -7,7 +7,7 @@ import { neighbor_query } from '$lib/structure/bonding'
 import { is_crystal } from '$lib/structure/validation'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const fixture = (identifier: string): Crystal => {
   const structure = structure_map.get(identifier)

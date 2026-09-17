@@ -2,7 +2,6 @@ import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type {
   PositionStreamOptions,
-  TrajectoryFrame,
   TrajectoryMetadata,
   TrajectorySignal,
   TrajectorySignalDescriptor,
@@ -92,18 +91,6 @@ export const lattice_from_values = (values: ArrayLike<number>, offset = 0): Matr
       `lattice matrix`,
     ),
   )
-
-// Write a per-atom vec3 channel (velocities) onto the sites of a freshly built frame
-export const attach_site_vectors = (
-  frame: TrajectoryFrame,
-  key: string,
-  values: ArrayLike<number>,
-): void => {
-  for (const [atom_idx, site] of frame.structure.sites.entries()) {
-    const off = atom_idx * 3
-    site.properties[key] = [values[off], values[off + 1], values[off + 2]]
-  }
-}
 
 // Plot rows for at most ~1000 evenly spaced frames: the plot is sampled, never the run.
 // `read_properties` receives the sampled frame indices and the stride to read them with.
@@ -213,6 +200,12 @@ const validated_numeric_hyperslab = (
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
 ): ArrayLike<unknown> => {
+  const { chunks, size } = dataset.metadata
+  const physical_bytes = chunks?.reduce((count, dimension) => count * dimension, size) ?? 0
+  if (physical_bytes > HDF5_MAX_LOGICAL_SLICE_BYTES)
+    throw new Error(
+      `HDF5 ${path} uses ${physical_bytes}-byte storage chunks, above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte interactive decoder limit; rechunk this dataset`,
+    )
   const requested = requested_hyperslab_values(dataset, path, ranges)
   assert_budget(path, requested, `hyperslab requests`, HDF5_MAX_LOGICAL_SLICE_BYTES)
   const values = numeric_values(dataset.slice(ranges))
@@ -236,24 +229,45 @@ export const read_numeric_hyperslab = (
     finite_or_throw(value, path),
   )
 
-const copy_numeric_hyperslab = (
+// Keep each native read bounded even when a full frame exceeds one slice. Split the first
+// varying dimension so concatenating the pieces preserves row-major order, including strides.
+export const read_numeric_buffer = (
   dataset: Dataset,
   path: string,
   ranges: Parameters<Dataset[`slice`]>[0],
-  destination: Float64Array,
-  destination_offset: number,
-): number => {
-  const values = validated_numeric_hyperslab(dataset, path, ranges)
-  if (destination_offset + values.length > destination.length) {
-    throw new Error(
-      `HDF5 dataset ${path} returned ${values.length} values beyond its ` +
-        `${destination.length}-value destination`,
+): Float64Array => {
+  const requested = requested_hyperslab_values(dataset, path, ranges)
+  if (requested * Float64Array.BYTES_PER_ELEMENT > HDF5_MAX_LOGICAL_SLICE_BYTES) {
+    assert_budget(path, requested, `numeric buffer requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
+    const selected = (dataset.shape ?? []).map((size, idx): [number, number, number] => {
+      const range = ranges[idx] ?? []
+      return [range[0] ?? 0, range[1] ?? size, range[2] ?? 1]
+    })
+    const axis = selected.findIndex(([start, end, stride]) => end - start > stride)
+    const [start, end, stride] = selected[axis]
+    const values_per_entry = requested / Math.ceil((end - start) / stride)
+    const entries_per_slice = Math.max(
+      1,
+      Math.floor(HDF5_MAX_LOGICAL_SLICE_BYTES / 8 / values_per_entry),
     )
+    const values = new Float64Array(requested)
+    let offset = 0
+    for (let first = start; first < end; first += entries_per_slice * stride) {
+      selected[axis] = [first, Math.min(end, first + entries_per_slice * stride), stride]
+      const chunk = read_numeric_buffer(dataset, path, selected)
+      values.set(chunk, offset)
+      offset += chunk.length
+    }
+    return values
   }
-  for (let value_idx = 0; value_idx < values.length; value_idx++) {
-    destination[destination_offset + value_idx] = finite_or_throw(values[value_idx], path)
+  const values = validated_numeric_hyperslab(dataset, path, ranges)
+  if (values instanceof Float64Array) {
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of -- Measured faster for million-value frame reads.
+    for (let idx = 0; idx < values.length; idx++)
+      if (!Number.isFinite(values[idx])) not_numeric(path)
+    return values
   }
-  return values.length
+  return Float64Array.from(values, (value) => finite_or_throw(value, path))
 }
 
 export const hdf5_frames_per_slice = (...values_per_frame: number[]): number => {
@@ -351,7 +365,7 @@ export const trajectory_signal = (
   values: Float64Array,
   { sample_shape, unit }: { sample_shape: number[]; unit?: string },
   steps: number[],
-): TrajectorySignal => ({ values, sample_shape, steps, ...(unit ? { unit } : {}) })
+): TrajectorySignal => ({ values, sample_shape, steps, ...(unit && { unit }) })
 
 // `frame_aligned_of` says whether the signal's step axis is the geometry's (see
 // `TrajectorySignalDescriptor.frame_aligned`); the parser knows both axes, consumers don't
@@ -367,7 +381,7 @@ export const signal_descriptors = <Manifest extends { sample_shape: number[]; un
         sample_shape: signal.sample_shape,
         sample_count: sample_count_of(signal),
         frame_aligned: frame_aligned_of(signal),
-        ...(signal.unit ? { unit: signal.unit } : {}),
+        ...(signal.unit && { unit: signal.unit }),
       },
     ]),
   )
@@ -439,24 +453,21 @@ export const read_numeric_samples = (
   const values = new Float64Array(
     Math.ceil((sample_end - sample_start) / stride) * sample_size,
   )
-  const samples_per_slice = hdf5_frames_per_slice(sample_size)
+  const samples_per_slice = hdf5_frames_per_slice(
+    Math.min(sample_size, HDF5_MAX_LOGICAL_SLICE_BYTES / 8),
+  )
   let output_offset = 0
   for (let start = sample_start; start < sample_end; start += samples_per_slice * stride) {
     const end = Math.min(start + samples_per_slice * stride, sample_end)
     const expected_count = Math.ceil((end - start) / stride) * sample_size
-    const copied_count = copy_numeric_hyperslab(
-      dataset,
-      path,
-      ranges_for_samples(start, end, stride),
-      values,
-      output_offset,
-    )
-    if (copied_count !== expected_count) {
+    const chunk = read_numeric_buffer(dataset, path, ranges_for_samples(start, end, stride))
+    if (chunk.length !== expected_count) {
       throw new Error(
-        `HDF5 dataset ${path} returned ${copied_count} values for ${expected_count} requested entries`,
+        `HDF5 dataset ${path} returned ${chunk.length} values for ${expected_count} requested entries`,
       )
     }
-    output_offset += copied_count
+    values.set(chunk, output_offset)
+    output_offset += chunk.length
   }
   return values
 }
@@ -545,7 +556,9 @@ export async function open_h5_source(
       cleanup_source = () => best_effort(() => file_system.unlink(source_path))
       file_system.writeFile(source_path, new Uint8Array(source))
     }
-    h5_file = new hdf5_2.File(source_path, `r`)
+    // SWMR read access also opens ordinary files and preserves readable committed prefixes
+    // after an interrupted writer leaves the superblock's write-consistency flag set.
+    h5_file = new hdf5_2.File(source_path, `Sr`)
   } catch (error) {
     cleanup_source()
     throw error

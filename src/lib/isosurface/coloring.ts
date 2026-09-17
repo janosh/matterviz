@@ -69,12 +69,6 @@ export function build_colormap_lut<Lut extends Float32Array | Uint8ClampedArray>
 // Private so the mutable cached arrays cannot be corrupted by consumers
 const linear_lut_cache = new Map<D3InterpolateName, Float32Array>()
 
-// Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. parse_linear_rgb is
-// uncached on purpose: the finished LUT is the cache, and 256 one-shot keys per colormap
-// would evict the shared memo's element colors for nothing.
-const get_colormap_lut = (colormap: D3InterpolateName): Float32Array =>
-  build_colormap_lut(colormap, linear_lut_cache, Float32Array, parse_linear_rgb)
-
 // Range for a colormap over values in [min, max]. `true` forces a range symmetric about
 // zero, `false` keeps [min, max] as is, and `auto` (the default) symmetrises only when the
 // values straddle zero so diverging colormaps keep zero at their centre.
@@ -107,7 +101,9 @@ export function scalars_to_vertex_colors(
   { colormap, color_range, fallback_color = `#808080` }: VertexColorOptions,
   out?: Float32Array,
 ): Float32Array {
-  const lut = get_colormap_lut(colormap)
+  // Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. parse_linear_rgb
+  // is uncached: the LUT is the cache; 256 one-shot keys would evict shared element colors.
+  const lut = build_colormap_lut(colormap, linear_lut_cache, Float32Array, parse_linear_rgb)
   const [range_min, range_max] = color_range
   const span = range_max - range_min
   const inv_span = span !== 0 ? 1 / span : 0

@@ -6,6 +6,7 @@
   // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
   // handling, tooltip, legend and color bar. Each chart renders its geometry into the
   // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
+  import { TooltipValue } from '$lib/tooltip'
   import { format_value } from '$lib/labels'
   import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
@@ -138,13 +139,13 @@
     {:else}
       <!-- A bucket's own label can only say what fits inside a thin outer ring, so
       the count of what it folded away belongs here, where there is room for it. -->
-      <strong>{info.label_path.join(` › `)}</strong>: {format_value(
-        info.value,
-        chart_state.value_format,
-      )}
-      ({format_value(info.fraction, `.1%`)} of total{info.depth > 1
-        ? `, ${format_value(info.parent_fraction, `.1%`)} of parent`
-        : ``}{info.other_count ? `, ${info.other_count} grouped` : ``})
+      <strong>{info.label_path.join(` › `)}</strong>: <TooltipValue
+        value={format_value(info.value, chart_state.value_format)}
+      />
+      (<TooltipValue value={format_value(info.fraction, `.1%`)} /> of total{#if info.depth > 1},
+        <TooltipValue value={format_value(info.parent_fraction, `.1%`)} /> of parent{/if}{info.other_count
+        ? `, ${info.other_count} grouped`
+        : ``})
     {/if}
   </PlotTooltip>
 {/if}

@@ -73,7 +73,20 @@ describe(`InfoPaneCards`, () => {
     mount(InfoPaneCards, {
       target: document.body,
       props: {
-        cards: [{ ...card(0), subtitle: `sub`, key: `k0` }],
+        cards: [
+          {
+            ...card(0),
+            subtitle: `sub`,
+            key: `k0`,
+            rows: [
+              {
+                label: `Force`,
+                value: `Value 0`,
+                tooltip: `Force vector: 1, 2, 3 <small>eV/Å</small>`,
+              },
+            ],
+          },
+        ],
         empty_label: `cards`,
         card_attrs: (item: InfoPaneCard) => ({ class: `custom`, 'data-key': item.key }),
       },
@@ -83,5 +96,10 @@ describe(`InfoPaneCards`, () => {
     expect(section.getAttribute(`data-key`)).toBe(`k0`)
     expect(doc_query(`.info-card h4 .subtitle`).textContent).toBe(`sub`)
     expect(doc_query(`.info-row span:nth-child(2)`).textContent).toBe(`Value 0`)
+    flushSync()
+    doc_query(`.info-row span:nth-child(2)`).dispatchEvent(new MouseEvent(`pointerenter`))
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).textContent).toBe(`Force vector: 1, 2, 3 eV/Å`)
+    expect(doc_query(`.plot-tooltip small`).textContent).toBe(`eV/Å`)
   })
 })

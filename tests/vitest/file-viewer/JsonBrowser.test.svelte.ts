@@ -29,22 +29,35 @@ afterEach(() => vi.useRealTimers())
 const table_rows = (start: number, count: number) =>
   Array.from({ length: count }, (_, idx) => ({ x: start + idx, y: start + idx + 1 }))
 
-const drag_event = (type: `dragover` | `drop`, payload = ``): DragEvent => {
+const drag_event = (
+  type: `dragover` | `drop`,
+  payload = ``,
+  position = [5, 50],
+): DragEvent => {
   const event = new DragEvent(type, {
     bubbles: true,
     cancelable: true,
   })
   Object.defineProperties(event, {
-    clientX: { value: 5 },
-    clientY: { value: 50 },
+    clientX: { value: position[0] },
+    clientY: { value: position[1] },
     dataTransfer: { value: { dropEffect: `none`, getData: () => payload } },
   })
   return event
 }
 
-const pointer = (element: Element, type: `pointerdown` | `pointerup`): void => {
+const pointer = (
+  element: Element,
+  type: `pointerdown` | `pointermove` | `pointerup`,
+  client_x = 5,
+): void => {
   element.dispatchEvent(
-    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, clientX: 5 }),
+    new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      clientX: client_x,
+    }),
   )
   flushSync()
 }
@@ -72,34 +85,53 @@ const click_first_chip = async (): Promise<void> => {
 }
 
 // Drop a tree node's table onto the edge of the first panel, splitting it
-const drop_table_onto_panel = async (data_path: string): Promise<void> => {
+const drop_table_onto_panel = async (data_path: string, position = [5, 50]): Promise<void> => {
   const panel = await vi.waitFor(() => doc_query(`.viz-panel`))
   vi.spyOn(panel, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 100, 100))
   const canvas = doc_query(`.canvas`)
-  canvas.dispatchEvent(drag_event(`dragover`))
+  canvas.dispatchEvent(drag_event(`dragover`, ``, position))
   canvas.dispatchEvent(
-    drag_event(`drop`, JSON.stringify({ data_path, detected_type: `table` })),
+    drag_event(`drop`, JSON.stringify({ data_path, detected_type: `table` }), position),
   )
 }
 
-test(`split divider drag activates and terminates on pointer release`, async () => {
-  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
-  await click_first_chip()
-  await drop_table_onto_panel(`second`)
+test.each([
+  [`horizontal`, [5, 50], [50, 5]],
+  [`vertical`, [50, 5], [5, 50]],
+] as const)(
+  `%s splits preserve their axis until only one panel remains`,
+  async (direction, position, cross_axis) => {
+    mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 4) } })
+    await click_first_chip()
+    await drop_table_onto_panel(`second`, [...position])
 
-  const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
-  pointer(split_divider, `pointerdown`)
-  const browser = doc_query(`.json-browser`)
-  expect(split_divider.classList.contains(`active`)).toBe(true)
-  expect(browser.classList.contains(`dragging`)).toBe(true)
+    const split_divider = await vi.waitFor(() => doc_query(`.split-divider`))
+    expect(split_divider.classList.contains(direction)).toBe(true)
+    pointer(split_divider, `pointerdown`)
+    const browser = doc_query(`.json-browser`)
+    expect(split_divider.classList.contains(`active`)).toBe(true)
+    expect(browser.classList.contains(`dragging`)).toBe(true)
 
-  // the divider captures the pointer, so the release is delivered to it, not the window
-  pointer(split_divider, `pointerup`)
-  expect(split_divider.classList.contains(`active`)).toBe(false)
-  expect(browser.classList.contains(`dragging`)).toBe(false)
-  // the sidebar is resized by the shared PaneDivider, not a bespoke mouse handler
-  expect(doc_query(`.pane-divider`).getAttribute(`aria-orientation`)).toBe(`vertical`)
-})
+    // the divider captures the pointer, so the release is delivered to it, not the window
+    pointer(split_divider, `pointerup`)
+    expect(split_divider.classList.contains(`active`)).toBe(false)
+    expect(browser.classList.contains(`dragging`)).toBe(false)
+    // the sidebar is resized by the shared PaneDivider, not a bespoke mouse handler
+    expect(doc_query(`.pane-divider`).getAttribute(`aria-orientation`)).toBe(`vertical`)
+
+    // A perpendicular edge replaces the first panel rather than introducing a mixed axis.
+    await drop_table_onto_panel(`first`, [...cross_axis])
+    flushSync()
+    expect(document.querySelectorAll(`.viz-panel`)).toHaveLength(2)
+    expect(doc_query(`.split-divider`).classList.contains(direction)).toBe(true)
+    vi.mocked(mount_viewer).mock.lastCall?.[3]?.on_close?.()
+    flushSync()
+    expect(document.querySelectorAll(`.viz-panel`)).toHaveLength(1)
+    await drop_table_onto_panel(`second`, [...cross_axis])
+    flushSync()
+    expect(doc_query(`.split-divider`).classList.contains(direction)).toBe(false)
+  },
+)
 
 // Regression: the root node is labelled with the verbatim filename, and `data.json` used
 // to be split at its dot, so no badge matched its tree node and clicking nodes never
@@ -115,10 +147,23 @@ test.each([
   async (filename, value, tree_path, data_path) => {
     mount_browser({ value, filename })
 
-    const badge = await vi.waitFor(() => doc_query(`.renderable-badge`))
+    const badge = await vi.waitFor(() =>
+      doc_query(`.renderable-badge[data-renderable_type="table"]`),
+    )
     const node = badge.closest<HTMLElement>(`[data-path]`)
     expect(node?.dataset.path).toBe(tree_path)
     expect(node?.draggable).toBe(true)
+    const transfer = { setData: vi.fn(), effectAllowed: `none` }
+    for (const origin of [node, badge]) {
+      const event = new DragEvent(`dragstart`, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, `dataTransfer`, { value: transfer })
+      origin?.dispatchEvent(event)
+      expect(transfer.setData).toHaveBeenLastCalledWith(
+        `text/plain`,
+        JSON.stringify({ data_path, detected_type: `table` }),
+      )
+      expect(transfer.effectAllowed).toBe(`copy`)
+    }
 
     // Badge injection mutates the observed subtree; it must settle instead of re-applying
     // (and replacing every badge) on each animation frame
@@ -155,37 +200,13 @@ test(`rapid tree selections render only the last one after a 150 ms debounce`, a
   expect(doc_query(`.panel-label`).textContent).toBe(`Table: third`)
 })
 
-// Viewers are mounted imperatively into each panel; a panel's viewer must be unmounted when
-// the panel is replaced by a click, closed with Escape, or the browser itself is destroyed
-test(`replacing, closing and destroying panels unmounts their viewers`, async () => {
+// Re-selecting a panel keeps its viewer; replacement, Escape and destruction release it.
+test(`reselecting, replacing, closing and destroying panels manage viewer lifetimes`, async () => {
   const browser = mount(JsonBrowser, {
     target: document.body,
     props: { value: { first: table_rows(1, 3), second: table_rows(4, 3) } },
   })
   const viewer_apps = () => vi.mocked(mount_viewer).mock.results.map(({ value }) => value)
-  await click_first_chip()
-  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
-
-  // Click replaces the single panel: the old viewer goes, a new one comes
-  doc_query(`[data-path="second"]`).click()
-  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
-  expect(unmount).toHaveBeenCalledExactlyOnceWith(viewer_apps()[0])
-  expect(doc_query(`.panel-label`).textContent).toBe(`Table: second`)
-
-  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(2))
-  expect(unmount).toHaveBeenLastCalledWith(viewer_apps()[1])
-  expect(document.querySelector(`.viz-panel`)).toBeNull()
-
-  await click_first_chip()
-  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
-  await unmount(browser)
-  expect(unmount).toHaveBeenCalledWith(viewer_apps()[2])
-})
-
-// Re-selecting what the first panel already shows must not tear down and rebuild its viewer
-test(`re-rendering the same path and value into the first panel is a no-op`, async () => {
-  mount_browser({ value: { first: table_rows(1, 3), second: table_rows(4, 3) } })
   const badges = await vi.waitFor(() => {
     const found = document.querySelectorAll<HTMLElement>(
       `.renderable-badge[data-renderable_type="table"]`,
@@ -195,20 +216,35 @@ test(`re-rendering the same path and value into the first panel is a no-op`, asy
   })
   badges[0].click()
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(1))
-
   badges[0].click()
   await next_frames(2)
   expect(mount_viewer).toHaveBeenCalledTimes(1)
   expect(unmount).not.toHaveBeenCalled()
 
-  badges[1].click()
+  // Both tree-node and badge clicks replace the viewer when selecting a different path.
+  doc_query(`[data-path="second"]`).click()
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(2))
-  expect(unmount).toHaveBeenCalledTimes(1)
+  expect(unmount).toHaveBeenCalledExactlyOnceWith(viewer_apps()[0])
   expect(doc_query(`.panel-label`).textContent).toBe(`Table: second`)
+  // Tree selection can rebuild badges; query the live one before switching back.
+  doc_query(`.renderable-badge[data-renderable_path="first"]`).click()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
+  expect(unmount).toHaveBeenCalledTimes(2)
+  expect(unmount).toHaveBeenLastCalledWith(viewer_apps()[1])
+  expect(doc_query(`.panel-label`).textContent).toBe(`Table: first`)
+
+  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+  await vi.waitFor(() => expect(unmount).toHaveBeenCalledTimes(3))
+  expect(unmount).toHaveBeenLastCalledWith(viewer_apps()[2])
+  expect(document.querySelector(`.viz-panel`)).toBeNull()
+
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(4))
+  await unmount(browser)
+  expect(unmount).toHaveBeenCalledWith(viewer_apps()[3])
 })
 
-// PanelInfo.val captures the subtree, so a new document left open panels showing the previous
-// one and a never-reset auto_rendered suppressed auto-render of the new root
+// A new document replaces captured panel data and can auto-render its own root.
 test(`a replaced value closes the panels rendering the previous document`, async () => {
   const { props } = mount_browser({ value: { first: table_rows(1, 3) } })
   await click_first_chip()
@@ -224,6 +260,13 @@ test(`a replaced value closes the panels rendering the previous document`, async
   await vi.waitFor(() =>
     expect(doc_query(`.panel-label`).textContent).toBe(`Table: replacement`),
   )
+  // Root tables open automatically on document change, but stay closed after Escape.
+  props.value = table_rows(12, 3)
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(3))
+  globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+  await next_frames(2)
+  expect(document.querySelector(`.viz-panel`)).toBeNull()
+  expect(mount_viewer).toHaveBeenCalledTimes(3)
 })
 
 // A viewer that throws while mounting must say so inside its panel (a blank panel reads as an
@@ -262,18 +305,24 @@ test(`a failing viewer mount renders an error in its panel and a failing unmount
   )
 })
 
-test(`a selection pending when the browser unmounts never renders`, async () => {
-  vi.useFakeTimers()
-  const component = mount(JsonBrowser, {
-    target: document.body,
-    props: { value: { first: table_rows(1, 3) } },
-  })
-  flushSync()
-  doc_query(`[data-path="first"]`).click()
-  await unmount(component)
-  await vi.advanceTimersByTimeAsync(300)
-  expect(mount_viewer).not.toHaveBeenCalled()
-})
+test.each([`unmount`, `replace`])(
+  `a pending selection never renders after %s`,
+  async (change) => {
+    vi.useFakeTimers()
+    const props = $state({ value: { first: table_rows(1, 3) } })
+    const component = mount(JsonBrowser, {
+      target: document.body,
+      props,
+    })
+    flushSync()
+    doc_query(`[data-path="first"]`).click()
+    if (change === `replace`) props.value = { first: table_rows(9, 3) }
+    else await unmount(component)
+    await vi.advanceTimersByTimeAsync(300)
+    if (change === `replace`) await unmount(component)
+    expect(mount_viewer).not.toHaveBeenCalled()
+  },
+)
 
 // The tree wants ~320 px whatever the editor width (the divider runs in pixel mode, clamped to
 // the browser), and dragging can shrink neither the tree below 150 px nor the viewer below 200 px
@@ -291,15 +340,11 @@ test.each([
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(seeded)
 
     const divider = doc_query(`.pane-divider`)
-    const fire_pointer = (type: string, clientX: number) =>
-      divider.dispatchEvent(
-        new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, clientX }),
-      )
-    fire_pointer(`pointerdown`, width / 2)
-    fire_pointer(`pointermove`, min_client_x)
+    pointer(divider, `pointerdown`, width / 2)
+    pointer(divider, `pointermove`, min_client_x)
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(min_size)
-    fire_pointer(`pointermove`, max_client_x)
+    pointer(divider, `pointermove`, max_client_x)
     expect(browser.style.getPropertyValue(`--split-pane-size`)).toBe(max_size)
-    fire_pointer(`pointerup`, max_client_x)
+    pointer(divider, `pointerup`, max_client_x)
   },
 )

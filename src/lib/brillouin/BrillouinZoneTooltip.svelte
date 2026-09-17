@@ -31,12 +31,12 @@
     />
     <div style="display: flex; gap: 4px">
       <span style="opacity: 0.8; min-width: 75px">BZ Volume:</span>
-      <span>{format_num(hover_data.bz_volume, `.4~`)} Å⁻³</span>
+      <span>{format_num(hover_data.bz_volume, `.4~`)} <small>Å⁻³</small></span>
     </div>
     {#if hover_data.is_ibz && hover_data.ibz_volume != null}
       <div style="display: flex; gap: 4px">
         <span style="opacity: 0.8; min-width: 75px">IBZ Volume:</span>
-        <span>{format_num(hover_data.ibz_volume, `.4~`)} Å⁻³</span>
+        <span>{format_num(hover_data.ibz_volume, `.4~`)} <small>Å⁻³</small></span>
       </div>
       {#if hover_data.symmetry_multiplicity != null}
         <div class="bz-tooltip-symmetry">

@@ -20,7 +20,7 @@ import {
 } from '$lib/math'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
-import { load_json, make_phase } from '../setup'
+import { load_json, make_phase } from '../test-fixtures'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
 
 const make_elem = (element: string, energy = -1.0) =>

@@ -25,25 +25,22 @@ beforeAll(async () => {
 afterEach(stub.reset)
 
 describe(`worker code path`, () => {
-  it(`round-trips through one module worker and matches the sync result`, async () => {
-    const positions = drift_positions()
-    const result = await compute_msd_async(positions)
-    await compute_msd_async(drift_positions(20))
-    expect(stub.posted).toHaveLength(2)
-    expect(result.curves[0].msd).toEqual(calc_msd(positions).curves[0].msd)
-    expect_module_worker(stub.instances, `src/lib/msd/msd-worker.ts`)
-  })
-
-  it(`sends a structured-cloneable flat payload, never transferring the caller's buffer`, async () => {
-    const positions = drift_positions(15)
-    await compute_msd_async(positions)
-    const { input } = stub.posted[0].message
-    expect(input.positions).toBeInstanceOf(Float64Array)
-    expect(input.positions).toHaveLength(15 * 2 * 3)
-    expect(Array.isArray(input.elements)).toBe(true)
-    // Transferring would detach the caller's buffer, which breaks the dedupe cache on a
-    // repeat request for the same input, so the buffer is always copied.
-    expect(stub.posted[0].transfer).toHaveLength(0)
-    expect(positions.positions).toHaveLength(15 * 2 * 3)
-  })
+  it.each([30, 15])(
+    `round-trips %i frames through one worker without transferring buffers`,
+    async (n_frames) => {
+      const positions = drift_positions(n_frames)
+      const result = await compute_msd_async(positions)
+      await compute_msd_async(drift_positions(20))
+      expect(stub.posted).toHaveLength(2)
+      expect(result.curves[0].msd).toEqual(calc_msd(positions).curves[0].msd)
+      expect_module_worker(stub.instances, `src/lib/msd/msd-worker.ts`)
+      const { input } = stub.posted[0].message
+      expect(input.positions).toBeInstanceOf(Float64Array)
+      expect(input.positions).toHaveLength(n_frames * 2 * 3)
+      expect(Array.isArray(input.elements)).toBe(true)
+      // Transferring would detach the caller's buffer and break repeat requests.
+      expect(stub.posted[0].transfer).toHaveLength(0)
+      expect(positions.positions).toHaveLength(n_frames * 2 * 3)
+    },
+  )
 })

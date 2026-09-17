@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
@@ -23,14 +24,14 @@ export type AnalysisStreamOptions = Pick<
 >
 
 // Frame stride that keeps `buffers` position-sized arrays per frame inside `max_bytes`, or
-// null while the atom count is unknown (no frame read yet)
+// null for an empty topology
 export function suggest_analysis_frame_stride(
   run: TrajectoryRun,
   max_bytes = DEFAULT_POSITION_STREAM_MAX_BYTES,
   buffers = 1,
   frame_count = run.frame_count,
 ): number | null {
-  const n_atoms = run.preview.structure.sites.length
+  const n_atoms = run.atom_count
   return n_atoms ? suggest_frame_stride(frame_count, n_atoms * buffers, max_bytes) : null
 }
 
@@ -166,7 +167,7 @@ export function analysis_pane_setup(
   const selected_frames = end_frame - start_frame
   return {
     total_frames,
-    n_atoms: run?.preview.structure.sites.length ?? 0,
+    n_atoms: run?.atom_count ?? 0,
     safe_stride,
     collected_frames: Math.ceil(selected_frames / safe_stride),
     suggested_stride: run ? (suggest_stride?.(run, selected_frames) ?? null) : null,
@@ -220,7 +221,7 @@ export async function sweep_frames<Result>(
   const results: Result[] = []
   for (const [done, frame_number] of frame_numbers.entries()) {
     signal?.throwIfAborted()
-    const frame = await run.read_frame(frame_number, signal)
+    const frame = await materialize_frame_result(run.read_frame(frame_number, signal))
     signal?.throwIfAborted()
     results.push(await visit(frame, frame_number))
     signal?.throwIfAborted()

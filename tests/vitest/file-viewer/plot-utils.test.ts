@@ -77,158 +77,69 @@ describe(`col_keys`, () => {
 })
 
 describe(`suggest_mapping`, () => {
-  test(`assigns x and y to first two numeric columns`, () => {
-    const cols = extract_columns({ a: [1, 2], b: [3, 4], c: [5, 6] })
-    const { plot_type, mapping } = suggest_mapping(cols)
-    expect(plot_type).toBe(`scatter`)
-    expect(mapping.x).toBe(`a`)
-    expect(mapping.y).toBe(`b`)
-    expect(mapping.color).toBe(`c`)
-  })
-
-  test(`prefers well-known names for x/y`, () => {
-    const cols = extract_columns({ energy: [1, 2], time: [3, 4], force: [5, 6] })
-    const { mapping } = suggest_mapping(cols)
-    expect(mapping.x).toBe(`time`)
-    expect(mapping.y).toBe(`energy`)
-  })
-
+  // oxfmt-ignore
   test.each([
-    [
-      `bar (string + 2 numeric)`,
-      `bar`,
-      `material`,
-      {
-        material: [`Si`, `Ge`, `C`],
-        energy: [-5.4, -4.6, -7.4],
-        volume: [20.5, 22.7, 11.2],
-      },
-    ],
-    [
-      `bar (string + 1 numeric)`,
-      `bar`,
-      `name`,
-      {
-        name: [`Si`, `Ge`, `C`],
-        energy: [-5.4, -4.6, -7.4],
-      },
-    ],
-    [
-      `scatter3d (x/y/z columns)`,
-      `scatter3d`,
-      `x`,
-      {
-        x: [1, 2],
-        y: [3, 4],
-        z: [5, 6],
-      },
-    ],
-  ] as const)(`suggests %s`, (_, expected_type, expected_x, data) => {
-    const { plot_type, mapping } = suggest_mapping(extract_columns(data))
-    expect(plot_type).toBe(expected_type)
-    expect(mapping.x).toBe(expected_x)
-  })
-
-  test(`assigns color to first unassigned numeric column`, () => {
-    const cols = extract_columns({ x: [1, 2], y: [3, 4], temp: [5, 6], sz: [7, 8] })
-    const { mapping } = suggest_mapping(cols)
-    expect(mapping.color).toBe(`temp`)
-  })
-
-  test(`single numeric column falls back to histogram`, () => {
-    const cols = extract_columns({ a: [1, 2, 3] })
-    expect(cols.size).toBe(1)
-    const { plot_type, mapping } = suggest_mapping(cols)
-    expect(plot_type).toBe(`histogram`)
-    expect(mapping.x).toBe(`a`)
-  })
-
-  test(`empty columns map falls back to table`, () => {
-    const { plot_type, mapping } = suggest_mapping(new Map())
-    expect(plot_type).toBe(`table`)
-    expect(mapping.x).toBeUndefined()
-    expect(mapping.y).toBeUndefined()
+    [`first numeric columns`, { a: [1, 2], b: [3, 4], c: [5, 6] },
+      { plot_type: `scatter`, mapping: { x: `a`, y: `b`, color: `c` } }],
+    [`well-known axis names`, { energy: [1, 2], time: [3, 4], force: [5, 6] },
+      { mapping: { x: `time`, y: `energy` } }],
+    [`bar (string + 2 numeric)`, { material: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4], volume: [20.5, 22.7, 11.2] },
+      { plot_type: `bar`, mapping: { x: `material` } }],
+    [`bar (string + 1 numeric)`, { name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] },
+      { plot_type: `bar`, mapping: { x: `name` } }],
+    [`scatter3d (x/y/z columns)`, { x: [1, 2], y: [3, 4], z: [5, 6] },
+      { plot_type: `scatter3d`, mapping: { x: `x` } }],
+    [`first unused numeric color`, { x: [1, 2], y: [3, 4], temp: [5, 6], sz: [7, 8] },
+      { mapping: { color: `temp` } }],
+    [`single numeric column`, { a: [1, 2, 3] },
+      { plot_type: `histogram`, mapping: { x: `a` } }],
+    [`empty columns`, {}, { plot_type: `table`, mapping: { x: undefined, y: undefined } }],
+  ])(`suggests mapping for %s`, (_label, data, expected) => {
+    const columns = extract_columns(data)
+    expect(columns.size).toBe(Object.keys(data).length)
+    expect(suggest_mapping(columns)).toMatchObject(expected)
   })
 })
 
-describe(`build_scatter_series`, () => {
-  test(`builds series from columns`, () => {
-    const cols = extract_columns({ x: [1, 2, 3], y: [4, 5, 6] })
-    const series = build_scatter_series(cols, { x: `x`, y: `y` })
-    expect(series.x).toEqual([1, 2, 3])
-    expect(series.y).toEqual([4, 5, 6])
-    expect(series.point_style).toEqual({ fill: `#4c6ef5` })
-  })
-
+describe(`build scatter series`, () => {
+  // oxfmt-ignore
   test.each([
-    [`color`, { x: `x`, y: `y`, color: `extra` }, `color_values`],
-    [`size`, { x: `x`, y: `y`, size: `extra` }, `size_values`],
-  ] as const)(`includes %s_values when mapped`, (_, axis_mapping, prop) => {
-    const cols = extract_columns({ x: [1, 2], y: [3, 4], extra: [5, 6] })
-    const series = build_scatter_series(cols, axis_mapping)
-    expect(series[prop]).toEqual([5, 6])
-  })
-
-  test(`filters out points with non-finite x or y`, () => {
-    const cols = extract_columns({ x: [1, null, 3], y: [4, 5, 6], c: [10, 20, 30] })
-    const series = build_scatter_series(cols, { x: `x`, y: `y`, color: `c` })
-    expect(series.x).toEqual([1, 3])
-    expect(series.y).toEqual([4, 6])
-    expect(series.color_values).toEqual([10, 30])
-  })
-})
-
-describe(`build_scatter3d_series`, () => {
-  test(`builds 3d series with color and size values when mapped`, () => {
-    const cols = extract_columns({
-      x: [1, 2],
-      y: [3, 4],
-      z: [5, 6],
-      c: [7, 8],
-      sz: [9, 10],
-    })
-    const series = build_scatter3d_series(cols, {
-      x: `x`,
-      y: `y`,
-      z: `z`,
-      color: `c`,
-      size: `sz`,
-    })
-    expect(series.x).toEqual([1, 2])
-    expect(series.y).toEqual([3, 4])
-    expect(series.z).toEqual([5, 6])
-    expect(series.color_values).toEqual([7, 8])
-    expect(series.size_values).toEqual([9, 10])
-  })
-
-  test(`filters non-finite x/y/z with aligned color and size`, () => {
-    const cols = extract_columns({
-      x: [1, null, 3, 4],
-      y: [5, 6, 7, 8],
-      z: [9, 10, null, 12],
-      c: [100, 200, 300, 400],
-      sz: [10, 20, 30, 40],
-    })
-    const series = build_scatter3d_series(cols, {
-      x: `x`,
-      y: `y`,
-      z: `z`,
-      color: `c`,
-      size: `sz`,
-    })
-    expect(series.x).toEqual([1, 4])
-    expect(series.y).toEqual([5, 8])
-    expect(series.z).toEqual([9, 12])
-    expect(series.color_values).toEqual([100, 400])
-    expect(series.size_values).toEqual([10, 40])
+    [`2d`, build_scatter_series,
+      { x: [1, 2, 3], y: [4, 5, 6] }, { x: `x`, y: `y` },
+      { x: [1, 2, 3], y: [4, 5, 6] }],
+    [`2d with color only`, build_scatter_series,
+      { x: [1, 2], y: [3, 4], extra: [5, 6] }, { x: `x`, y: `y`, color: `extra` },
+      { x: [1, 2], y: [3, 4], color_values: [5, 6] }],
+    [`2d with size only`, build_scatter_series,
+      { x: [1, 2], y: [3, 4], extra: [5, 6] }, { x: `x`, y: `y`, size: `extra` },
+      { x: [1, 2], y: [3, 4], size_values: [5, 6] }],
+    [`2d with non-finite coordinates`, build_scatter_series,
+      { x: [1, null, 3], y: [4, 5, 6], c: [10, 20, 30] }, { x: `x`, y: `y`, color: `c` },
+      { x: [1, 3], y: [4, 6], color_values: [10, 30] }],
+    [`2d without coercing mixed values`, build_scatter_series,
+      { x: [1, `2`, true, null, undefined, NaN, Infinity, -Infinity, -0], y: Array(9).fill(4), c: [10, 20, 30, 40, 50, 60, 70, 80, 90] },
+      { x: `x`, y: `y`, color: `c` }, { x: [1, -0], y: [4, 4], color_values: [10, 90] }],
+    [`3d with color and size`, build_scatter3d_series,
+      { x: [1, 2], y: [3, 4], z: [5, 6], c: [7, 8], sz: [9, 10] },
+      { x: `x`, y: `y`, z: `z`, color: `c`, size: `sz` },
+      { x: [1, 2], y: [3, 4], z: [5, 6], color_values: [7, 8], size_values: [9, 10] }],
+    [`3d with non-finite coordinates`, build_scatter3d_series,
+      { x: [1, null, 3, 4], y: [5, 6, 7, 8], z: [9, 10, null, 12], c: [100, 200, 300, 400], sz: [10, 20, 30, 40] },
+      { x: `x`, y: `y`, z: `z`, color: `c`, size: `sz` },
+      { x: [1, 4], y: [5, 8], z: [9, 12], color_values: [100, 400], size_values: [10, 40] }],
+  ])(`builds %s, keeping color and size aligned`, (_label, build, data, mapping, expected) => {
+    const series = build(extract_columns(data), mapping)
+    expect(series).toMatchObject(expected)
+    if (build === build_scatter_series)
+      expect(series).toHaveProperty(`point_style`, { fill: `#4c6ef5` })
   })
 })
 
 describe(`build_bar_series`, () => {
   test(`builds bar series with string x`, () => {
     const cols = extract_columns({
-      material: [`Si`, `Ge`],
-      energy: [-5.4, -4.6],
+      material: [`Si`, `Ge`, `null`, `boolean`, `numeric string`, `NaN`, `Infinity`],
+      energy: [-5.4, -4.6, null, true, `2`, NaN, Infinity],
     })
     const series = build_bar_series(cols, { x: `material`, y: `energy` })
     expect(series.x).toEqual([`Si`, `Ge`])
@@ -239,41 +150,24 @@ describe(`build_bar_series`, () => {
 describe(`build functions return empty on missing columns`, () => {
   const cols = extract_columns({ x: [1, 2], y: [3, 4] })
 
+  // oxfmt-ignore
   test.each([
-    [`scatter`, () => build_scatter_series(cols, { x: `x`, y: `missing` })],
-    [`scatter3d`, () => build_scatter3d_series(cols, { x: `x`, y: `y`, z: `missing` })],
-    [`bar`, () => build_bar_series(cols, { x: `missing`, y: `y` })],
-  ])(`%s returns empty arrays`, (name, build) => {
-    const series = build()
-    expect(series.x).toEqual([])
-    expect(series.y).toEqual([])
-    if (name === `scatter3d`) expect((series as unknown as { z: number[] }).z).toEqual([])
-  })
-
-  test(`histogram returns no values`, () => {
-    expect(build_histogram_series(cols, { y: `missing` })).toEqual({ values: [] })
+    [`scatter`, () => build_scatter_series(cols, { x: `x`, y: `missing` }), { x: [], y: [] }],
+    [`scatter3d`, () => build_scatter3d_series(cols, { x: `x`, y: `y`, z: `missing` }), { x: [], y: [], z: [] }],
+    [`bar`, () => build_bar_series(cols, { x: `missing`, y: `y` }), { x: [], y: [] }],
+    [`histogram`, () => build_histogram_series(cols, { y: `missing` }), { values: [] }],
+  ] as const)(`%s returns empty arrays`, (_name, build, expected) => {
+    expect(build()).toEqual(expected)
   })
 })
 
 describe(`build_histogram_series`, () => {
-  test(`builds histogram from y column`, () => {
-    const cols = extract_columns({ values: [1.5, 2.3, 3.1, 4.7], idx: [0, 1, 2, 3] })
-    const series = build_histogram_series(cols, { y: `values` })
-    expect(series.values).toEqual([1.5, 2.3, 3.1, 4.7])
-  })
-
-  test(`falls back to x mapping when y is absent`, () => {
-    const cols = extract_columns({ energy: [1.5, 2.3, 3.1], idx: [0, 1, 2] })
-    const series = build_histogram_series(cols, { x: `energy` })
-    expect(series.values).toEqual([1.5, 2.3, 3.1])
-  })
-
-  test(`filters non-numeric values`, () => {
-    const cols = extract_columns({
-      values: [1, null, 3, `bad`, 5, NaN],
-      idx: [0, 1, 2, 3, 4, 5],
-    })
-    const series = build_histogram_series(cols, { y: `values` })
-    expect(series.values).toEqual([1, 3, 5])
+  // oxfmt-ignore
+  test.each([
+    [`y column`, { values: [1.5, 2.3, 3.1, 4.7], idx: [0, 1, 2, 3] }, { y: `values` }, [1.5, 2.3, 3.1, 4.7]],
+    [`x column`, { energy: [1.5, 2.3, 3.1], idx: [0, 1, 2] }, { x: `energy` }, [1.5, 2.3, 3.1]],
+    [`non-numeric values`, { values: [1, null, 3, `2`, 5, NaN, true, Infinity, -Infinity, -0] }, { y: `values` }, [1, 3, 5, -0]],
+  ])(`builds histogram from %s`, (_label, data, mapping, expected) => {
+    expect(build_histogram_series(extract_columns(data), mapping).values).toEqual(expected)
   })
 })

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
   import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
@@ -6,7 +7,6 @@
   import { plot_color } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
   import { clamp, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
@@ -552,9 +552,6 @@
     children={frame_children}
   >
     {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
-      {@const { name: y_label, unit: y_unit } = helpers.parse_axis_label(
-        internal_y_axis.label ?? ``,
-      )}
       {@const segment = Object.entries(internal_x_positions).find(
         ([, [start, end]]) => coord_x >= start && coord_x <= end,
       )}
@@ -578,8 +575,11 @@
         slope,
       } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
       {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
-      {@html sanitize_html(y_label || `Value`)}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br
-      />
+      <TooltipValue
+        label={internal_y_axis.label || `Value`}
+        value={y_formatted}
+        unit={internal_y_axis.unit}
+      /><br />
       {#if path}Path: {path}<br />{/if}
       {#if typeof band_idx === `number`}
         Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{nb_bands}{/if}

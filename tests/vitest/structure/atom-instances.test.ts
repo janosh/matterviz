@@ -2,6 +2,7 @@ import {
   AtomInstances,
   atom_sphere_segments,
   enable_atom_sphere_picking,
+  update_atom_coordinates,
   update_ordered_atom_positions,
 } from '$lib/structure/atom-instances'
 import { make_site } from '$lib/structure/site'
@@ -48,6 +49,7 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     [1.25, 0, 0],
   ])
   expect(sites[0].xyz).toEqual([0, 0, 0])
+  expect(atoms[0].position).not.toBe(moved[0].xyz)
   const [first, last] = moved
   for (const changed of [
     { ...last, species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }] },
@@ -80,6 +82,17 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     ),
   ).toBeNull()
   expect(atoms[0].position).toEqual([0.25, 0, 0])
+  const coordinates = Float64Array.of(1e12 + 0.25, -0, 1e-12, 99, -1e12 - 0.5, 2, -3, 99)
+  const original_coordinates = coordinates.slice()
+  const previous_positions = atoms.map(({ position }) => position)
+  const numeric_updated = update_atom_coordinates(atoms, coordinates, 4)
+  expect(numeric_updated).not.toBe(atoms)
+  for (const [idx, atom] of numeric_updated.entries()) {
+    expect(atom).toBe(atoms[idx])
+    expect(atom.position).toBe(previous_positions[idx])
+    expect(atom.position).toEqual(Array.from(coordinates.slice(idx * 4, idx * 4 + 3)))
+  }
+  expect(coordinates).toEqual(original_coordinates)
 })
 
 test.each([8, 15, 20])(
@@ -108,7 +121,16 @@ test.each([8, 15, 20])(
           matrix.makeScale(radius, radius, radius).setPosition(...position),
         )
       }
-      expect(actual.instanceMatrix.array).toEqual(native.instanceMatrix.array)
+      expect(`instanceMatrix` in actual).toBe(false)
+      expect(actual.positions.array.byteLength).toBe(
+        native.instanceMatrix.array.byteLength / 4,
+      )
+      for (let idx = 0; idx < count; idx++) {
+        actual.getMatrixAt(idx, matrix)
+        expect(matrix.elements).toEqual(
+          Array.from(native.instanceMatrix.array.slice(idx * 16, (idx + 1) * 16)),
+        )
+      }
       native.computeBoundingSphere()
       for (const scale of [
         [1, 1, 1],
@@ -144,14 +166,15 @@ test.each([8, 15, 20])(
       }
     }
     // Tessellation/geometry edits must update bounds without rewriting atom transforms.
-    const uploaded = actual.instanceMatrix.array.slice()
-    geometry.translate(0.2, -0.3, 0.1)
-    actual.update_bounds()
+    const uploaded = actual.positions.array.slice()
+    const translated = geometry.clone().translate(0.2, -0.3, 0.1)
+    actual.set_geometry(translated)
     const bounds = actual.boundingSphere?.clone()
-    expect(actual.instanceMatrix.array).toEqual(uploaded)
+    expect(actual.positions.array).toEqual(uploaded)
     actual.update_atoms(atoms)
     expect(actual.boundingSphere).toEqual(bounds)
     actual.dispose()
+    translated.dispose()
     native.dispose()
     geometry.dispose()
     material.dispose()

@@ -9,7 +9,7 @@ import {
   segment_suffix,
   segment_title,
 } from '$lib/composition'
-import { type Component, type ComponentProps, mount } from 'svelte'
+import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -20,6 +20,45 @@ const mount_chart = <T extends Component<{ composition: CompositionType }>>(
 ) => mount(component, { target: document.body, props })
 
 describe(`shared segment helpers`, () => {
+  test.each([
+    [PieChart, `path.pie-segment`],
+    [BarChart, `rect.bar-segment`],
+    [BubbleChart, `circle.bubble`],
+  ] as const)(
+    `%o shows rich unit tooltips and cleans up hover state`,
+    async (chart, selector) => {
+      const component = mount_chart(chart, { composition: { Fe: 2, O: 3 } })
+      flushSync()
+      const mark = doc_query(selector)
+      expect(mark.querySelector(`title`)).toBeNull()
+      expect(mark.getAttribute(`aria-label`)).toBe(`Fe: 2 atoms (40%)`)
+      mark.dispatchEvent(new MouseEvent(`pointerenter`, { clientX: 20, clientY: 30 }))
+      flushSync()
+      const tip = doc_query(`.plot-tooltip`)
+      expect(tip.textContent?.trim()).toBe(`Fe: 2 atoms (40 %)`)
+      expect([...tip.querySelectorAll(`small`)].map((node) => node.textContent)).toEqual([
+        `atoms`,
+        `%`,
+      ])
+      mark.dispatchEvent(new MouseEvent(`pointermove`, { clientX: 40, clientY: 50 }))
+      flushSync()
+      expect(tip.style.top).toBe(`50px`)
+      mark.dispatchEvent(new Event(`pointerleave`))
+      flushSync()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+      mark.dispatchEvent(new FocusEvent(`focus`))
+      flushSync()
+      expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+      document.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+      flushSync()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+      mark.dispatchEvent(new MouseEvent(`pointerenter`))
+      flushSync()
+      await unmount(component)
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    },
+  )
+
   test(`composition_segments keeps insertion order with fractions and scheme colors`, () => {
     const segments = composition_segments({ Fe: 2, O: 3, N: 0 }, `Jmol`, {}, `p`)
     expect(segments.map((seg) => [seg.element, seg.amount, seg.fraction])).toEqual([
@@ -241,13 +280,17 @@ describe(`BarChart`, () => {
     expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(expected)
   })
 
-  test(`thin segments alternate external labels above and below the bar`, () => {
-    mount_chart(BarChart, { composition: { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }, size: 300 })
+  // oxfmt-ignore
+  test.each([
+    [`thin segments`, { H: 1, C: 1, N: 1, O: 1, Ca: 1, Mg: 1 }, [10, 64, 10, 64, 10, 64], 0],
+    [`thin, inside and hidden labels`, { H: 10, C: 1, N: 0.01, O: 1, F: 0.01, Na: 1, Cl: 1 }, [10, 64, 10, 64], 1],
+  ] as const)(`alternates external labels for %s`, (_label, composition, expected_y, n_inside) => {
+    mount_chart(BarChart, { composition, size: 300 })
     const y_values = [...document.querySelectorAll(`text.external-label`)].map((label) =>
       Number(label.getAttribute(`y`)),
     )
-    expect(y_values).toEqual([10, 64, 10, 64, 10, 64]) // LABEL_HEIGHT/2 and below-row center
-    expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(0)
+    expect(y_values).toEqual(expected_y) // LABEL_HEIGHT/2 and below-row center
+    expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(n_inside)
   })
 
   test(`shows amount and percentage tspans when enabled`, () => {

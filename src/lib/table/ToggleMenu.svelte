@@ -18,6 +18,7 @@
     collapsed_sections = $bindable<string[]>([]),
     on_toggle,
     trigger,
+    header,
   }: {
     columns: MenuColumn[]
     column_panel_open?: boolean
@@ -27,6 +28,8 @@
     on_toggle?: (col: MenuColumn, visible: boolean) => void
     // Replaces the default "Columns" button. The summary keeps owning the click.
     trigger?: Snippet<[{ open: boolean }]>
+    // Extra controls beside the column filter, above the column choices.
+    header?: Snippet
   } = $props()
 
   const default_visible = (col: MenuColumn): boolean =>
@@ -207,9 +210,6 @@
     data-toggle-menu-id={toggle_menu_id}
     hidden={!column_panel_open}
     role="group"
-    style:grid-template-columns={has_sections
-      ? undefined
-      : grid_template(filtered_columns.length)}
     {@attach portal(dropdown_target)}
     {@attach float({
       anchor: trigger_el,
@@ -221,14 +221,19 @@
       padding: 8,
     })}
   >
-    {#if show_column_filter}
-      <input
-        aria-label="Filter columns"
-        bind:value={column_filter}
-        class="column-filter"
-        placeholder="Filter columns…"
-        type="search"
-      />
+    {#if header || show_column_filter}
+      <div class="column-menu-header">
+        {#if show_column_filter}
+          <input
+            aria-label="Filter columns"
+            bind:value={column_filter}
+            class="column-filter"
+            placeholder="Filter columns…"
+            type="search"
+          />
+        {/if}
+        {@render header?.()}
+      </div>
     {/if}
     {#if has_sections}
       {#each filtered_sections as section (section.name)}
@@ -275,9 +280,14 @@
         </div>
       {/each}
     {:else}
-      {#each filtered_columns as col (col.id)}
-        {@render toggle_item(col)}
-      {/each}
+      <div
+        class="column-items"
+        style:grid-template-columns={grid_template(filtered_columns.length)}
+      >
+        {#each filtered_columns as col (col.id)}
+          {@render toggle_item(col)}
+        {/each}
+      </div>
     {/if}
     {#if filtered_columns.length === 0}
       <span class="no-matching-columns">No matching columns</span>
@@ -328,7 +338,7 @@
     overflow: auto;
     z-index: var(--tgl-dropdown-z-index, 10000);
   }
-  .column-menu,
+  .column-items,
   .section-items {
     display: grid;
     column-gap: var(--tgl-column-gap, 8px);
@@ -346,16 +356,26 @@
   .sections-container[hidden] {
     display: none;
   }
-  .column-filter {
+  .column-menu-header {
     position: sticky;
     z-index: 2;
     top: 0;
-    grid-column: 1 / -1;
+    display: flex;
+    gap: 0.65rem;
+    min-width: 0;
+    min-height: 1.35rem;
+    margin-bottom: 4px;
+    background: var(--tgl-dropdown-bg, var(--page-bg));
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+  .column-filter {
     box-sizing: border-box;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     height: 1.35rem;
     min-height: 0;
-    margin: 0 0 4px;
+    margin: 0;
     padding: 0 0.35rem;
     border: 1px solid
       var(--tgl-dropdown-border, color-mix(in srgb, currentColor 18%, transparent));
@@ -364,8 +384,6 @@
     background: var(--tgl-dropdown-bg, var(--page-bg));
     color: inherit;
     font: inherit;
-    font-size: 0.72rem;
-    line-height: 1.2;
     &:focus {
       border-color: var(--active-color, #6ea8ff);
     }

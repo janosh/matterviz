@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { numeric_sites, get_site, site_count, snapshot_topologies } from './site'
+  import { element_from_atomic_number } from '$lib/element/helpers'
   import {
     enable_atom_sphere_picking,
+    update_atom_coordinates,
     update_ordered_atom_positions,
     type InstancedAtom,
   } from './atom-instances'
@@ -13,6 +16,8 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
+  import { atom_field_color, type AtomColorField } from './atom-color-field'
+  import ColorFieldVolume from './ColorFieldVolume.svelte'
   import {
     bind_renderer,
     brighten_hex,
@@ -27,6 +32,7 @@
   import type { SceneControlProps } from '$lib/scene'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import { applies_to_structure, resolve_cell_vectors } from './settings'
   import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
   import { colors, theme_state } from '$lib/state.svelte'
   import type {
@@ -52,7 +58,7 @@
     site_base_radius,
     structure_fit_frame,
   } from '$lib/structure'
-  import { build_vector_layers, type VectorLayer } from './arrow-instances'
+  import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import type { LatticePlane } from './lattice-planes'
@@ -71,7 +77,7 @@
     CAP_ARC_LENGTH,
     CAP_ARC_START,
   } from '$lib/structure/partial-occupancy'
-  import { T, useTask } from '@threlte/core'
+  import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -86,15 +92,20 @@
     SphereGeometry,
     Vector3,
   } from 'three/webgpu'
-  import type { Mesh, Object3D } from 'three/webgpu'
+  import type { Mesh, Object3D, WebGPURenderer } from 'three/webgpu'
   import Bond from './Bond.svelte'
-  import { write_bond_transform } from './bond-rendering'
+  import {
+    write_bond_transform,
+    bond_neighbors,
+    bond_records,
+    type BondData,
+  } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
     BOND_ORDER_OPTIONS,
     canonicalize_bond_target,
-    compute_bonds,
+    get_bond_data,
     delete_bond as apply_delete_bond,
     get_bond_key,
     get_explicit_bond_metadata,
@@ -109,6 +120,7 @@
   import {
     compute_polyhedra,
     create_polyhedra_edges,
+    update_polyhedra_edges,
     merge_polyhedra_buffers,
   } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
@@ -145,7 +157,10 @@
   let {
     structure = undefined,
     base_structure = undefined,
+    render_token,
+    on_rendered,
     atom_radius = DEFAULTS.structure.atom_radius,
+    atom_opacity = 1,
     same_size_atoms = false,
     // bindable: the auto-placement effect below assigns the position it computes, which a
     // plain prop would strand here, leaving the parent to re-push its stale value
@@ -211,7 +226,7 @@
     cell_edge_width = DEFAULTS.structure.cell_edge_width,
     cell_edge_opacity = DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity = DEFAULTS.structure.cell_surface_opacity,
-    show_cell_vectors = DEFAULTS.structure.show_cell_vectors,
+    show_cell_vectors = undefined,
     lattice_planes = [],
     symmetry_elements = [],
     symmetry_elements_props = {},
@@ -237,13 +252,16 @@
     scene = $bindable(),
     camera = $bindable(),
     orbit_controls = $bindable(),
-    rotation_target_ref = $bindable(),
+    get_reset_target = $bindable(),
     initial_computed_zoom = $bindable(),
     hidden_elements = new SvelteSet(),
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     property_colors = null,
+    atom_color_field,
+    volume_color_field,
+    volume_opacity = 0.35,
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
@@ -276,6 +294,8 @@
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
+    render_token?: unknown
+    on_rendered?: (token: unknown) => void
     base_structure?: AnyStructure // untransformed cell: supplies the drawn lattice and the displacement reference
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
@@ -368,7 +388,7 @@
     active_highlight_color?: string
     rotation?: Vec3 // rotation control prop
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`] // OrbitControls instance
-    rotation_target_ref?: Vec3 // Expose rotation target for reset
+    get_reset_target?: () => Vec3 // Compute bounds only when a reset needs them.
     initial_computed_zoom?: number // Expose initial zoom for reset
     hidden_elements?: Set<ElementSymbol>
     hidden_prop_vals?: Set<number | string> // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
@@ -377,6 +397,10 @@
     // Per-site colors/values for the active non-element coloring mode, indexed by the sites of
     // `structure` (see StructureSession.property_colors). Null = color atoms by element.
     property_colors?: AtomPropertyColors | null
+    atom_color_field?: AtomColorField
+    atom_opacity?: number
+    volume_color_field?: AtomColorField
+    volume_opacity?: number
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -421,6 +445,21 @@
     trajectory_line_wrap_mode?: TrajectoryLineWrapMode
     trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
+
+  const { autoRenderTask, renderer } = useThrelte<WebGPURenderer>()
+  let submitted_token: unknown
+  let render_calls = renderer.info.render.calls
+  useTask(
+    () => {
+      const calls = renderer.info.render.calls
+      if (calls === render_calls) return
+      render_calls = calls
+      if (!renderer.initialized || !render_token || submitted_token === render_token) return
+      submitted_token = render_token
+      on_rendered?.(render_token)
+    },
+    { after: autoRenderTask, autoInvalidate: false },
+  )
 
   // Tooltip / measurement readout precision (coordinates in Å, angles in degrees)
   const FLOAT_FMT = `.3~f`
@@ -474,15 +513,14 @@
   let has_target_structure = $state(false)
   $effect(() => {
     const current_structure = structure
-    const current_fit_target = fit_frame.center
     if (has_target_structure && current_structure === target_structure) return
     const is_initial_structure = !has_target_structure
     target_structure = current_structure
     has_target_structure = true
-    rotation_target_ref =
-      is_initial_structure && camera_position !== undefined
-        ? (camera_target ?? rotation_target)
-        : current_fit_target
+    if (is_initial_structure && camera_position !== undefined) {
+      const initial_target = camera_target ?? rotation_target
+      get_reset_target = () => initial_target
+    } else get_reset_target = () => fit_frame.center
   })
 
   let atom_tooltip_active = $state(false)
@@ -536,7 +574,7 @@
           : `not-allowed`
       }
       if (measure_mode === `edit-atoms`) {
-        if (is_image_site(structure?.sites?.[hovered_idx])) return `not-allowed`
+        if (is_image_site(get_site(structure, hovered_idx ?? -1))) return `not-allowed`
       }
       return `pointer`
     }
@@ -609,10 +647,10 @@
   }
 
   const is_image_bond_site = (site_idx: number): boolean =>
-    is_image_site(structure?.sites?.[site_idx])
+    is_image_site(get_site(structure, site_idx))
 
   const can_select_bond_site = (site_idx: number): boolean =>
-    bond_edits_enabled && structure?.sites?.[site_idx] != null
+    bond_edits_enabled && get_site(structure, site_idx) != null
 
   const can_edit_bond = (bond: BondKeyTarget): boolean => {
     const target = canonical_bond_target(bond)
@@ -633,7 +671,7 @@
       find_added_bond_by_rendered_key(key)?.order ??
       bond_order_overrides.find((bond) => matches_bond_key(bond, key))?.order ??
       added_bonds.find((bond) => matches_bond_key(bond, key))?.order ??
-      filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))?.bond_order
+      bond_records(filtered_bond_pairs).find((bond) => matches_bond_key(bond, key))?.bond_order
     )
   }
 
@@ -675,7 +713,7 @@
     world_position: Vector3,
     parent: Object3D,
   ): number {
-    if (!structure?.sites) return site_idx
+    if (!structure) return site_idx
     const site = structure.sites[site_idx]
     if (!site) return site_idx
 
@@ -791,8 +829,10 @@
         bond_key_for(target),
       ]
       const bond =
-        filtered_bond_pairs.find((pair) => rendered_bond_key_for(pair) === rendered_key) ??
-        filtered_bond_pairs.find((pair) => bond_key_for(pair) === canonical_key)
+        bond_records(filtered_bond_pairs).find(
+          (pair) => rendered_bond_key_for(pair) === rendered_key,
+        ) ??
+        bond_records(filtered_bond_pairs).find((pair) => bond_key_for(pair) === canonical_key)
       if (bond) open_bond_context_menu(bond)
       return
     }
@@ -966,7 +1006,7 @@
       // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
       if (!interactive) return
       // Block image atoms (detected by orig_site_idx property from PBC)
-      if (is_image_site(structure?.sites?.[site_index])) return
+      if (is_image_site(get_site(structure, site_index))) return
 
       const is_selected = selected_sites.includes(site_index)
       // threlte dispatches plain objects wrapping the DOM event, so read shift
@@ -1025,7 +1065,7 @@
   // Pre-effect: drop out-of-range indices before the measurement overlays below index
   // structure.sites with them, not after that render has already run against stale picks.
   $effect.pre(() => {
-    const count = structure?.sites?.length ?? 0
+    const count = site_count(structure)
     if (count <= 0) {
       if (untrack(() => measured_sites.length) > 0) measured_sites = []
       return
@@ -1044,7 +1084,7 @@
   })
 
   const { enabled: hover_enabled } = extras.interactivity()
-  let hovered_site = $derived(structure?.sites?.[hovered_idx ?? -1] ?? null)
+  let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
 
   let visual_lattice = $derived(
@@ -1064,14 +1104,20 @@
   // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
   let structure_size = $derived.by(() => {
     if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
-    if (!structure?.sites?.length) return 10
+    const count = site_count(structure)
+    if (!structure || !count) return 10
     // One pass, no spread: Math.max(...coords) overflows the argument limit past ~1e5 sites
     const min = [Infinity, Infinity, Infinity]
     const max = [-Infinity, -Infinity, -Infinity]
-    for (const { xyz } of structure.sites) {
+    const columns = numeric_sites.get(structure)
+    const stride = columns?.stride ?? 0
+    for (let idx = 0; idx < count; idx++) {
+      const values = columns ? columns.coordinates : structure.sites[idx].xyz
+      const offset = columns ? idx * stride : 0
       for (let axis = 0; axis < 3; axis++) {
-        if (xyz[axis] < min[axis]) min[axis] = xyz[axis]
-        if (xyz[axis] > max[axis]) max[axis] = xyz[axis]
+        const value = values[offset + axis]
+        if (value < min[axis]) min[axis] = value
+        if (value > max[axis]) max[axis] = value
       }
     }
     return Math.max(1, max[0] - min[0], max[1] - min[1], max[2] - min[2])
@@ -1200,18 +1246,12 @@
           : Math.max(1, fit_extent) * 2
       const target = view_changed ? fit_frame.center : (camera_target ?? fit_frame.center)
       if (view_changed || camera_target === undefined) camera_target = target
-      rotation_target_ref = target
+      get_reset_target = () => target
       camera_position = camera_position_for_target(target, distance, camera_direction)
       // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
       clear_pan_offset(untrack(() => camera))
     }
   })
-  // Whether a never|always|crystals|molecules setting applies to the current structure
-  const applies_to_structure = (when: ShowBonds): boolean =>
-    when === `always` ||
-    (when === `crystals` && Boolean(lattice)) ||
-    (when === `molecules` && !lattice)
-
   // Declutter while a symmetry-element overlay actually draws something (elements present
   // AND an enabled kind among them): hide coordination polyhedra/bonds and shrink atoms so
   // axes/planes/centers stay readable. Gating on visibility (not just `symmetry_elements`)
@@ -1239,11 +1279,11 @@
   // bonds_to_render, but tooltips + manually added bonds still need the data),
   // while EFFECTIVE show_polyhedra skips computing bonds whose only consumer —
   // the polyhedra $derived below, gated on the same effective value — won't run.
-  let bond_pairs: BondPair[] = $derived.by(() => {
-    const want_bonds = applies_to_structure(show_bonds)
-    const want_polyhedra = applies_to_structure(effective_show_polyhedra)
+  let bond_pairs: BondData = $derived.by(() => {
+    const want_bonds = applies_to_structure(show_bonds, Boolean(lattice))
+    const want_polyhedra = applies_to_structure(effective_show_polyhedra, Boolean(lattice))
     return structure && (want_bonds || want_polyhedra)
-      ? compute_bonds(structure, bonding_strategy, bonding_options)
+      ? get_bond_data(structure, bonding_strategy, bonding_options)
       : []
   })
 
@@ -1270,8 +1310,20 @@
     image: RenderAtom[]
     partial: RenderAtom[]
   }
-  const atom_appearance = $derived({ palette, radius_options, effective_atom_radius })
-  let previous_atoms: { appearance: object; groups: AtomGroups; colored: boolean } | undefined
+  // Function bindings can invalidate equal override objects on every trajectory frame.
+  // Compare their values so coordinate updates keep the existing atom records.
+  const atom_appearance = $derived(
+    JSON.stringify([
+      palette,
+      radius_options.same_size_atoms,
+      radius_options.element_radius_overrides,
+      [...(radius_options.site_radius_overrides ?? [])],
+      effective_atom_radius,
+    ]),
+  )
+  let previous_atoms:
+    | { appearance: string; groups: AtomGroups; colored: boolean; topology?: object }
+    | undefined
 
   // Build render groups and site anchors together. Frames with the same ordered atoms
   // reuse records and lookup; fresh base arrays still invalidate child instance buffers.
@@ -1288,21 +1340,38 @@
     const filter_prop_vals = hidden_prop_vals.size > 0
     const filter_elements = hidden_elements.size > 0
     const hide_completion_images =
-      !applies_to_structure(effective_show_bonds) &&
-      !applies_to_structure(effective_show_polyhedra)
+      !applies_to_structure(effective_show_bonds, Boolean(lattice)) &&
+      !applies_to_structure(effective_show_polyhedra, Boolean(lattice))
     // Props arrive through two spread layers (Structure → Viewport → here), so every read
     // inside the loop would walk that proxy chain per site: read them once
     const radius_scale = effective_atom_radius
     const radius_opts = radius_options
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
-    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers
+    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers?.size
     const appearance = atom_appearance
     if (reusable && previous_atoms?.appearance === appearance && structure) {
-      const updated = update_ordered_atom_positions(
-        previous_atoms.groups.base,
-        structure.sites,
-      )
+      const columns = numeric_sites.get(structure)
+      const topology = snapshot_topologies.get(structure)
+      let updated: RenderAtom[] | null
+      // Row identity permits coordinate reuse only for complete, original-atom groups.
+      // Image/completion flags can change independently in per-frame scalar columns.
+      if (
+        columns &&
+        topology &&
+        topology === previous_atoms.topology &&
+        previous_atoms.groups.base.length === columns.length &&
+        !columns.scalar_columns?.orig_site_idx &&
+        !columns.scalar_columns?.completion_image
+      ) {
+        updated = update_atom_coordinates(
+          previous_atoms.groups.base,
+          columns.coordinates,
+          columns.stride,
+        )
+      } else
+        updated = update_ordered_atom_positions(previous_atoms.groups.base, structure.sites)
       if (updated) {
+        previous_atoms.topology = topology
         if (prop_colors || previous_atoms.colored) {
           for (const atom of updated) {
             atom.color = prop_colors?.[atom.site_idx] ?? element_colors?.[atom.element]
@@ -1344,7 +1413,7 @@
           ...slice_data,
           site_idx,
           species: site.species,
-          position: site.xyz,
+          position: [...site.xyz] as Vec3,
           radius,
           color: site_property_color ?? element_colors?.[slice_data.element],
           has_partial_occupancy: slice_data.occupancy < 1,
@@ -1358,7 +1427,12 @@
     }
     previous_atoms =
       reusable && groups.image.length === 0 && groups.partial.length === 0
-        ? { appearance, groups, colored: Boolean(prop_colors) }
+        ? {
+            appearance,
+            groups,
+            colored: Boolean(prop_colors),
+            topology: structure && snapshot_topologies.get(structure),
+          }
         : undefined
     return groups
   })
@@ -1366,7 +1440,7 @@
   // Shared visibility check: site has at least one non-hidden element and
   // its property value (if any) isn't hidden. Used by both bond and vector filtering.
   const is_site_visible = (site_idx: number): boolean => {
-    const site = structure?.sites?.[site_idx]
+    const site = get_site(structure, site_idx)
     if (!site) return false
     // `.size` guards first: with nothing hidden (the default) this skips the per-species
     // SvelteSet lookups, which would otherwise run for every bond endpoint in a supercell
@@ -1381,12 +1455,12 @@
   // Perception layer: bond_pairs with optional bond-order perception applied.
   // Off by default (pass-through). Manual overrides are applied downstream in
   // filtered_bond_pairs, so they still win over perceived orders.
-  let perceived_bond_pairs: BondPair[] = $derived.by(() => {
-    if (!auto_bond_order || !structure?.sites || bond_pairs.length === 0) {
+  let perceived_bond_pairs: BondData = $derived.by(() => {
+    if (!auto_bond_order || !structure || bond_pairs.length === 0) {
       return bond_pairs
     }
     const total_charge = (`charge` in structure ? structure.charge : 0) ?? 0
-    const perceived = perceive_bond_orders(structure.sites, bond_pairs, {
+    const perceived = perceive_bond_orders(structure.sites, bond_records(bond_pairs), {
       total_charge,
     })
     // Explicit structure.properties.bonds are user-authoritative and must
@@ -1403,12 +1477,15 @@
   // canonicalisation pass a trajectory would otherwise pay on every frame
   let editable_perceived_bond_pairs = $derived(
     interactive && bond_edits_enabled && measure_mode === `edit-bonds`
-      ? perceived_bond_pairs.map((bond) => ({ ...bond, ...canonical_bond_target(bond) }))
+      ? bond_records(perceived_bond_pairs).map((bond) => ({
+          ...bond,
+          ...canonical_bond_target(bond),
+        }))
       : [],
   )
 
   let filtered_bond_pairs = $derived.by(() => {
-    if (!structure?.sites) return perceived_bond_pairs
+    if (!structure) return perceived_bond_pairs
 
     // Default state (nothing hidden, no manual edits) keeps every calculated bond as-is.
     // Returning the input array skips building a canonical key per bond, which was the
@@ -1431,7 +1508,7 @@
     // one bond_key_for per bond: canonicalizing costs two image-shift lookups and a Vec3
     const needs_key = removed_keys.size > 0 || added_keys.size > 0 || order_overrides.size > 0
     const calculated: BondPair[] = []
-    for (const bond of perceived_bond_pairs) {
+    for (const bond of bond_records(perceived_bond_pairs)) {
       if (!is_site_visible(bond.site_idx_1) || !is_site_visible(bond.site_idx_2)) continue
       if (!needs_key) {
         calculated.push(bond)
@@ -1458,14 +1535,17 @@
   // hidden but manually added bonds stay visible (bond_pairs may still be computed
   // for polyhedra, so this can't rely on bond_pairs being empty).
   let bonds_to_render = $derived.by(() => {
-    if (applies_to_structure(effective_show_bonds)) return filtered_bond_pairs
+    if (applies_to_structure(effective_show_bonds, Boolean(lattice)))
+      return filtered_bond_pairs
     const added_keys = new Set(added_bonds.map(bond_key_for))
-    return filtered_bond_pairs.filter((bond) => added_keys.has(bond_key_for(bond)))
+    return bond_records(filtered_bond_pairs).filter((bond) =>
+      added_keys.has(bond_key_for(bond)),
+    )
   })
 
   let editable_bond_pairs = $derived(
     interactive && bond_edits_enabled && measure_mode === `edit-bonds`
-      ? bonds_to_render.filter(can_edit_bond)
+      ? bond_records(bonds_to_render).filter(can_edit_bond)
       : [],
   )
 
@@ -1477,9 +1557,9 @@
   let polyhedra: Polyhedron[] = $derived.by(() => {
     if (defer_expensive_geometry) return last_polyhedra
     if (
-      !structure?.sites ||
+      !structure ||
       dragging_atoms ||
-      !applies_to_structure(effective_show_polyhedra) ||
+      !applies_to_structure(effective_show_polyhedra, Boolean(lattice)) ||
       filtered_bond_pairs.length === 0
     ) {
       last_polyhedra = []
@@ -1497,26 +1577,24 @@
     return last_polyhedra
   })
 
-  // Color of a site: property color (coordination/Wyckoff modes) or element color
-  const polyhedra_site_color = (site_idx: number): string => {
-    const element = get_majority_element(structure?.sites[site_idx])
-    return (
-      property_colors?.colors[site_idx] ?? (element && colors.element?.[element]) ?? `#808080`
-    )
-  }
-
   // Face opacity and edge visibility don't rebuild buffers; recoloring doesn't rebuild hulls.
   let polyhedra_buffers = $derived.by(() => {
     if (polyhedra.length === 0) return null
-    const get_vertex_color = (poly: Polyhedron, vertex_idx: number): string => {
-      if (polyhedra_color_mode === `uniform`) return polyhedra_color
-      if (polyhedra_color_mode === `center`) {
-        return polyhedra_site_color(poly.center_site_idx)
-      }
-      // 'vertex' (default): each corner takes the color of the atom that forms it
-      return polyhedra_site_color(poly.vertex_site_idxs[vertex_idx])
-    }
-    return merge_polyhedra_buffers(polyhedra, get_vertex_color)
+    const source = structure
+    const columns = source && numeric_sites.get(source)
+    const prop_colors = property_colors?.colors
+    const element_colors = palette
+    const mode = polyhedra_color_mode
+    const uniform_color = polyhedra_color
+    return merge_polyhedra_buffers(polyhedra, (poly, vertex_idx) => {
+      if (mode === `uniform`) return uniform_color
+      const site_idx =
+        mode === `center` ? poly.center_site_idx : poly.vertex_site_idxs[vertex_idx]
+      const element = columns
+        ? element_from_atomic_number(columns.numbers[site_idx])
+        : get_majority_element(get_site(source, site_idx))
+      return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
+    })
   })
 
   let polyhedra_center_site_idxs = $derived(
@@ -1533,40 +1611,32 @@
     }
   })
 
-  // Geometries with proper disposal on dependency change (same pattern as ReferencePlane)
-  const buffer_geometry = (attrs: Record<string, Float32Array>): BufferGeometry => {
-    const geo = new BufferGeometry()
-    for (const [name, array] of Object.entries(attrs)) {
-      geo.setAttribute(name, new BufferAttribute(array, 3))
-    }
-    return geo
-  }
   let polyhedra_geometry: BufferGeometry | null = $state(null)
   $effect(() => {
     let geo: BufferGeometry | null = null
     if (polyhedra_buffers && polyhedra_buffers.triangle_count > 0) {
-      const { positions: position, colors: color } = polyhedra_buffers
-      geo = buffer_geometry({ position, color })
+      const { positions, colors: vertex_colors } = polyhedra_buffers
+      geo = new BufferGeometry()
+        .setAttribute(`position`, new BufferAttribute(positions, 3))
+        .setAttribute(`color`, new BufferAttribute(vertex_colors, 3))
       geo.computeVertexNormals() // non-indexed -> per-face normals (flat shading)
     }
     polyhedra_geometry = geo
     return () => geo?.dispose()
   })
 
-  let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state(null)
+  let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state.raw(null)
   $effect(() => {
-    const edges =
-      polyhedra_show_edges && polyhedra_buffers && polyhedra_buffers.edge_count > 0
-        ? create_polyhedra_edges(
-            polyhedra_buffers.edge_positions,
-            polyhedra_buffers.edge_colors,
-          )
-        : null
-    polyhedra_edges = edges
-    return () => {
-      edges?.geometry.dispose()
-      edges?.material.dispose()
-    }
+    if (!polyhedra_show_edges || !polyhedra_buffers?.edge_count) return
+    const current = untrack(() => polyhedra_edges)
+    const { edge_positions, edge_colors } = polyhedra_buffers
+    if (current) update_polyhedra_edges(current, edge_positions, edge_colors)
+    else polyhedra_edges = create_polyhedra_edges(edge_positions, edge_colors)
+    threlte.invalidate()
+  })
+  $effect(() => () => {
+    polyhedra_edges?.geometry.dispose()
+    polyhedra_edges?.material.dispose()
   })
 
   let smart_site_label_offsets = $derived.by(() => {
@@ -1586,7 +1656,7 @@
       else bond_directions_by_site.set(site_idx, [direction])
     }
 
-    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds_to_render) {
+    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bond_records(bonds_to_render)) {
       add_bond_direction(site_idx_1, pos_1, pos_2)
       add_bond_direction(site_idx_2, pos_2, pos_1)
     }
@@ -1596,16 +1666,39 @@
     return offsets
   })
 
+  let previous_bond_colors:
+    | { topology: object; appearance: string; colors: string[] }
+    | undefined
+  const bond_appearance = $derived(JSON.stringify([palette, bond_color]))
   let bond_site_colors = $derived.by(() => {
-    if (!structure?.sites || bonds_to_render.length === 0) return []
+    if (!structure || bonds_to_render.length === 0) return []
+
+    const topology = snapshot_topologies.get(structure)
+    const appearance = bond_appearance
+    if (
+      topology &&
+      previous_bond_colors?.topology === topology &&
+      previous_bond_colors.appearance === appearance
+    )
+      return previous_bond_colors.colors
 
     // Resolve once per site, not once per bond endpoint. Bond writes these values directly
     // into its persistent instance-color buffers without allocating per-cylinder objects.
     const [element_colors, fallback_color] = [palette, bond_color]
-    return structure.sites.map((site) => {
-      const element = get_majority_element(site)
-      return (element && element_colors?.[element]) || fallback_color
-    })
+    const columns = numeric_sites.get(structure)
+    const resolved_colors = columns
+      ? Array.from(columns.numbers, (number) => {
+          const element = element_from_atomic_number(number)
+          return (element && element_colors?.[element]) || fallback_color
+        })
+      : structure.sites.map((site) => {
+          const element = get_majority_element(site)
+          return (element && element_colors?.[element]) || fallback_color
+        })
+    previous_bond_colors = topology
+      ? { topology, appearance, colors: resolved_colors }
+      : undefined
+    return resolved_colors
   })
 
   const site_anchor = ({ site_idx, position, radius }: RenderAtom) => ({
@@ -1655,7 +1748,7 @@
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
-      const site = structure?.sites?.[site_idx]
+      const site = get_site(structure, site_idx)
       if (!site) return
       const radius =
         atom_groups.first_by_site.get(site_idx)?.radius ?? get_site_radius(site, site_idx)
@@ -1689,9 +1782,10 @@
         vector_origin_gap,
         get_site_radius,
         vector_color_scale,
-        eff_shaft_radius,
-        eff_head_radius,
-        eff_head_length,
+        vector_uniform_thickness,
+        vector_shaft_radius,
+        vector_arrow_head_radius,
+        vector_arrow_head_length,
       },
       previous_vector_layers,
     )),
@@ -1733,12 +1827,14 @@
 
   // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
   let trajectory_line_anchors = $derived(
-    trajectory_trail_anchors(structure?.sites, trajectory_position_stream?.n_atoms),
+    trajectory_position_stream
+      ? trajectory_trail_anchors(structure?.sites, trajectory_position_stream.n_atoms)
+      : undefined,
   )
 
   let displacement_arrows = $derived.by(() => {
     const vectors = displacement_field?.vectors
-    if (!vectors || !show_displacement_arrows || !structure?.sites) return []
+    if (!vectors || !show_displacement_arrows || !structure) return pack_arrows([], 0, 0, 0)
     // Accumulate the largest magnitude over VISIBLE sites only (as vector_layers does), so
     // hiding the element carrying the biggest displacement doesn't shrink every other arrow.
     let max_mag = 0
@@ -1749,7 +1845,7 @@
       const magnitude = Math.hypot(vector[0], vector[1], vector[2])
       if (magnitude < math.EPS) return []
       max_mag = Math.max(max_mag, magnitude)
-      return [{ position: site.xyz, vector }]
+      return [{ position: site.xyz, vector, magnitude }]
     })
     // Auto-scale the largest displacement to a fixed fraction of the characteristic atom
     // spacing, as the site-vector layers do. Relaxation displacements are typically well under
@@ -1758,7 +1854,12 @@
     // displacement_arrow_scale multiplies on top of this.
     const auto_scale = max_mag > math.EPS ? (char_atom_spacing * 0.9) / max_mag : 1
     const scale = auto_scale * displacement_arrow_scale
-    return visible.map((arrow) => ({ ...arrow, scale, color: displacement_arrow_color }))
+    return pack_arrows(
+      visible.map((arrow) => ({ ...arrow, scale, color: displacement_arrow_color })),
+      eff_shaft_radius,
+      eff_head_radius,
+      eff_head_length,
+    )
   })
 
   // One label anchor per visible site
@@ -1768,28 +1869,13 @@
       : [],
   )
 
-  // Build lazily on the first tooltip after a topology change, then visit only its neighbors.
-  let bond_neighbors = $derived.by(() => {
-    const neighbors = new Map<number, number[]>()
-    const add = (from: number, target: number) => {
-      const entries = neighbors.get(from)
-      if (entries) entries.push(target)
-      else neighbors.set(from, [target])
-    }
-    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
-      add(site_idx_1, site_idx_2)
-      if (site_idx_1 !== site_idx_2) add(site_idx_2, site_idx_1)
-    }
-    return neighbors
-  })
-
   // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
   let hovered_bond_summary = $derived.by((): string | null => {
-    if (hovered_idx === null || !structure?.sites) return null
+    if (hovered_idx === null || !structure) return null
     const counts: Record<string, number> = {}
     let total = 0
-    for (const neighbor_idx of bond_neighbors.get(hovered_idx) ?? []) {
-      const element = structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
+    for (const neighbor_idx of bond_neighbors(filtered_bond_pairs, hovered_idx)) {
+      const element = get_site(structure, neighbor_idx)?.species[0]?.element ?? `?`
       counts[element] = (counts[element] ?? 0) + 1
       total += 1
     }
@@ -1811,7 +1897,7 @@
 </script>
 
 {#snippet site_label_snippet(site_idx: number)}
-  {@const site = structure?.sites[site_idx]}
+  {@const site = get_site(structure, site_idx)}
   {#if site}
     {#if atom_label}
       {@render atom_label({ site, site_idx })}
@@ -1876,39 +1962,41 @@
         <!-- Instanced rendering for full-occupancy atoms: one InstancedMesh for
           base atoms and one for PBC image atoms (which ghost + lose interaction
           in edit-atoms mode). Pointer events are resolved via raycast instanceId. -->
-        {#if atom_groups.base.length > 0}
-          <InstancedAtoms
-            atoms={atom_groups.base}
-            {sphere_segments}
-            {...atom_instance_events(atom_groups.base, false)}
-          />
-        {/if}
-        {#if atom_groups.image.length > 0}
-          {@const edit_mode_image = measure_mode === `edit-atoms`}
-          <InstancedAtoms
-            atoms={atom_groups.image}
-            {sphere_segments}
-            ghost={edit_mode_image}
-            {...atom_instance_events(atom_groups.image, edit_mode_image)}
-          />
-        {/if}
+        {#each [`base`, `image`] as const as group (group)}
+          {@const atoms = atom_groups[group]}
+          {@const ghost = group === `image` && measure_mode === `edit-atoms`}
+          {#if atoms.length > 0}
+            <InstancedAtoms
+              {atoms}
+              opacity={atom_opacity}
+              color_field={atom_color_field}
+              {sphere_segments}
+              {ghost}
+              {...atom_instance_events(atoms, ghost)}
+            />
+          {/if}
+        {/each}
 
         <!-- Regular rendering for partial occupancy atoms -->
         {#each atom_groups.partial as atom (atom.site_idx + atom.element + atom.occupancy)}
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
-          {@const ghost_opacity = partial_edit_image ? 0.5 : 1}
+          {@const opacity = atom_opacity * (partial_edit_image ? 0.5 : 1)}
           <!-- Visual only: pointer interaction handled by the invisible full-sphere
             hit targets below (wedge meshes leave gaps at the poles). -->
           <T.Group position={atom.position} scale={atom.radius}>
-            {@const partial_color = partial_edit_image ? desaturate(atom.color) : atom.color}
+            {@const partial_base = partial_edit_image ? desaturate(atom.color) : atom.color}
+            {@const partial_color = atom_color_field
+              ? atom_field_color(atom_color_field, atom.position, partial_base)
+              : partial_base}
             <T.Mesh>
               <T.SphereGeometry
                 args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
               />
               <T.MeshStandardMaterial
                 color={partial_color}
-                opacity={ghost_opacity}
-                transparent={partial_edit_image}
+                {opacity}
+                transparent={opacity < 1}
+                visible={opacity > 0}
               />
             </T.Mesh>
 
@@ -1922,8 +2010,9 @@
                   <T.MeshStandardMaterial
                     color={partial_color}
                     side={2}
-                    opacity={ghost_opacity}
-                    transparent={partial_edit_image}
+                    {opacity}
+                    transparent={opacity < 1}
+                    visible={opacity > 0}
                   />
                 </T.Mesh>
               {/if}
@@ -1965,23 +2054,13 @@
       <!-- Per-site vector arrows (forces, magmoms, ...) as instanced meshes:
         2 draw calls per layer instead of 2 meshes per site -->
       {#each vector_layers as layer (layer.key)}
-        <ArrowInstances
-          arrows={layer.arrows}
-          shaft_radius={layer.shaft_radius}
-          arrow_head_radius={layer.arrow_head_radius}
-          arrow_head_length={layer.arrow_head_length}
-        />
+        <ArrowInstances arrows={layer.arrows} />
       {/each}
 
       <!-- Displacement overlay: a sibling arrow layer, kept off the force/magmom vector path
         so the legend never mislabels relaxation displacements as forces -->
-      {#if displacement_arrows.length > 0}
-        <ArrowInstances
-          arrows={displacement_arrows}
-          shaft_radius={eff_shaft_radius}
-          arrow_head_radius={eff_head_radius}
-          arrow_head_length={eff_head_length}
-        />
+      {#if displacement_arrows.placements.count > 0}
+        <ArrowInstances arrows={displacement_arrows} />
       {/if}
 
       {#if bonds_to_render.length > 0}
@@ -2027,7 +2106,11 @@
           />
         </T.Mesh>
         {#if polyhedra_edges}
-          <T is={polyhedra_edges} />
+          <T
+            is={polyhedra_edges}
+            visible={polyhedra_show_edges && Boolean(polyhedra_buffers?.edge_count)}
+            dispose={false}
+          />
         {/if}
       {/if}
 
@@ -2157,7 +2240,7 @@
       {/each}
 
       <!-- selection order labels (1, 2, 3, ...) for measurements and bond editing -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0 && (measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral` || measure_mode === `edit-bonds`)}
+      {#if structure && (measured_sites?.length ?? 0) > 0 && (measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral` || measure_mode === `edit-bonds`)}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -2195,7 +2278,7 @@
             {/each}
           </div>
           <div class="coordinates">abc: ({abc})</div>
-          <div class="coordinates">xyz: ({xyz}) Å</div>
+          <div class="coordinates">xyz: ({xyz}) <small>Å</small></div>
           {#if hovered_bond_summary}
             <div class="coordinates">Bonds: {hovered_bond_summary}</div>
           {/if}
@@ -2211,7 +2294,7 @@
           {cell_edge_width}
           {cell_edge_opacity}
           {cell_surface_opacity}
-          {show_cell_vectors}
+          show_cell_vectors={resolve_cell_vectors(show_cell_vectors, structure)}
         />
         {#if lattice_planes.length > 0}
           <LatticePlanes
@@ -2307,6 +2390,9 @@
         </T.Mesh>
       {/if}
 
+      {#if volume_color_field}
+        <ColorFieldVolume field={volume_color_field} opacity={volume_opacity} />
+      {/if}
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
         <Isosurface
@@ -2317,7 +2403,7 @@
       {/if}
 
       <!-- Measurement overlays for measured sites -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+      {#if structure && (measured_sites?.length ?? 0) > 0}
         {#if measure_mode === `distance`}
           {#each measured_sites as idx_i, loop_idx (idx_i)}
             {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
@@ -2481,7 +2567,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 14px));
     box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .bond-context-menu {

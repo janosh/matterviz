@@ -2,13 +2,14 @@
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
 import type { ElementSymbol } from '$lib/element'
+import { element_from_atomic_number } from '$lib/element/helpers'
 import { type Matrix3x3, reciprocal_lattice } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
 import { values_per_sample } from '../helpers'
+import type { NumericFrame } from '../frame'
 import type {
   CollectPositionsOptions,
   FrameRange,
-  ParseProgress,
   TrajectoryFrame,
   TrajectoryPositionStream,
   TrajectorySignal,
@@ -21,6 +22,7 @@ type StreamChannels = {
   signal_keys: string[]
 }
 const NO_CHANNELS: StreamChannels = { vector_keys: [], signal_keys: [] }
+type PositionFrame = TrajectoryFrame | NumericFrame
 
 const bytes_per_frame = (
   n_atoms: number,
@@ -49,18 +51,6 @@ const suggested_stride = (
   return Math.max(1, Math.ceil(n_frames / affordable_frames))
 }
 
-const missing_channel = (
-  frame: number,
-  atom_idx: number,
-  kind: string,
-  key: string,
-  value: unknown,
-): TypeError =>
-  new TypeError(
-    `Frame ${frame} site ${atom_idx} has no finite ${kind} property "${key}" (got ` +
-      `${JSON.stringify(value)}); every collected frame must carry every requested channel`,
-  )
-
 // A minimum-image unwrap is only meaningful while a one-step displacement stays under half
 // a cell, and real MD stays far below that. An unsorted dump instead pairs atom index i
 // with an unrelated atom, whose folded separation is uniform over the cell, so 1 - 0.5^3 =
@@ -82,14 +72,6 @@ export function suggest_frame_stride(
     `suggest_frame_stride: a single frame of ${n_atoms} atoms`,
   )
 }
-
-const frame_lattice = (frame: TrajectoryFrame): Matrix3x3 | null =>
-  `lattice` in frame.structure ? frame.structure.lattice.matrix : null
-
-const make_reporter =
-  (on_progress: ((progress: ParseProgress) => void) | undefined, total: number) =>
-  (done: number, stage: string): void =>
-    on_progress?.({ current: (done / total) * 100, total: 100, stage })
 
 class PositionAccumulator {
   private readonly positions: Float64Array
@@ -151,13 +133,31 @@ class PositionAccumulator {
     }
   }
 
-  add_frame(frame: TrajectoryFrame, source_frame_number: number): void {
+  add_frame(frame: PositionFrame, source_frame_number: number): void {
     if (this.frame_count >= this.n_frames) {
       throw new Error(
         `PositionAccumulator: got more than the ${this.n_frames} frames it was sized for`,
       )
     }
-    const { sites } = frame.structure
+    const numeric = `header` in frame ? frame : undefined
+    const sites = `header` in frame ? frame.sites : frame.structure.sites
+    const header = `header` in frame ? frame.header : frame
+    const lattice = `lattice` in frame.structure ? frame.structure.lattice : undefined
+    const width = 6 + (numeric?.vector_keys.length ?? 0) * 3
+    const scalar_columns = numeric?.scalar_columns ?? {}
+    const id_column = Object.hasOwn(scalar_columns, `id`) ? scalar_columns.id : undefined
+    const vector_id = numeric?.vector_keys.includes(`id`)
+    const vector_sources = this.channels.vector_keys.map((key) => {
+      const column = numeric?.vector_keys.indexOf(key) ?? -1
+      const scalar = Object.hasOwn(scalar_columns, key) ? scalar_columns[key] : undefined
+      return {
+        key,
+        scalar,
+        target: this.vectors[key],
+        offset: 6 + column * 3,
+        source: column >= 0 && !scalar ? numeric?.coordinates : undefined,
+      }
+    })
     if (sites.length !== this.n_atoms) {
       throw new Error(
         `Atom count changed at frame ${source_frame_number}: expected ${this.n_atoms} ` +
@@ -168,19 +168,21 @@ class PositionAccumulator {
 
     const is_first_frame = this.frame_count === 0
     if (is_first_frame) {
-      this.pbc = `lattice` in frame.structure ? frame.structure.lattice.pbc : null
+      this.pbc = lattice ? [...lattice.pbc] : null
     }
 
     const base = this.frame_count * this.n_atoms * 3
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
       const site = sites[atom_idx]
-      const element = site.species[0]?.element
+      const element =
+        typeof site === `number` ? element_from_atomic_number(site) : site.species[0]?.element
       if (!element) {
         throw new Error(
           `Frame ${source_frame_number} site ${atom_idx} has no species; cannot identify the atom`,
         )
       }
-      const atom_id = site.properties?.id
+      const properties = typeof site === `number` ? undefined : site.properties
+      const atom_id = id_column ? id_column[atom_idx] : vector_id ? null : properties?.id
       const identifier = typeof atom_id === `number` ? atom_id : null
       if (is_first_frame) {
         this.elements.push(element)
@@ -202,14 +204,36 @@ class PositionAccumulator {
         )
       }
       const off = base + atom_idx * 3
-      this.positions[off] = site.xyz[0]
-      this.positions[off + 1] = site.xyz[1]
-      this.positions[off + 2] = site.xyz[2]
-      this.add_channels(site.properties, atom_idx, source_frame_number)
+      const xyz = `header` in frame ? frame.coordinates : frame.structure.sites[atom_idx].xyz
+      const xyz_offset = numeric ? atom_idx * width : 0
+      this.positions[off] = xyz[xyz_offset]
+      this.positions[off + 1] = xyz[xyz_offset + 1]
+      this.positions[off + 2] = xyz[xyz_offset + 2]
+      for (const { key, source, offset, scalar, target } of vector_sources) {
+        const value = scalar ? scalar[atom_idx] : properties?.[key]
+        const values =
+          source ?? (Array.isArray(value) && value.length === 3 ? value : undefined)
+        const start = source ? atom_idx * width + offset : 0
+        if (
+          !values ||
+          !Number.isFinite(values[start]) ||
+          !Number.isFinite(values[start + 1]) ||
+          !Number.isFinite(values[start + 2])
+        ) {
+          const invalid_value = source ? Array.from(source.subarray(start, start + 3)) : value
+          throw new TypeError(
+            `Frame ${source_frame_number} site ${atom_idx} has no finite vec3 property "${key}" (got ` +
+              `${JSON.stringify(invalid_value)}); every collected frame must carry every requested channel`,
+          )
+        }
+        target[off] = values[start]
+        target[off + 1] = values[start + 1]
+        target[off + 2] = values[start + 2]
+      }
     }
-    this.add_signals(frame.metadata, source_frame_number)
+    this.add_signals(header.metadata, source_frame_number)
 
-    const frame_unwrapped = frame.metadata?.coords_unwrapped === true
+    const frame_unwrapped = header.metadata?.coords_unwrapped === true
     if (is_first_frame) this.coords_unwrapped = frame_unwrapped
     else if (this.coords_unwrapped !== frame_unwrapped) {
       throw new Error(
@@ -218,10 +242,10 @@ class PositionAccumulator {
       )
     }
 
-    const lattice = frame_lattice(frame)
-    this.check_step_plausibility(lattice, source_frame_number)
-    this.lattice_matrices.push(lattice)
-    this.steps.push(frame.step)
+    this.check_step_plausibility(lattice?.matrix ?? null, source_frame_number)
+    // Numeric source snapshots are borrowed; analysis results own their cell metadata.
+    this.lattice_matrices.push(lattice ? structuredClone(lattice.matrix) : null)
+    this.steps.push(header.step)
     this.frame_count++
   }
 
@@ -230,13 +254,12 @@ class PositionAccumulator {
     source_frame_number: number,
   ): void {
     for (const key of this.channels.signal_keys) {
-      const parsed = parse_frame_signal(metadata?.[key], key, this.n_atoms)
-      if (!parsed) {
-        throw new TypeError(
-          `Frame ${source_frame_number} has no supported finite numeric metadata ` +
-            `signal "${key}" (got ${JSON.stringify(metadata?.[key])})`,
-        )
-      }
+      const parsed = require_frame_signal(
+        metadata?.[key],
+        key,
+        this.n_atoms,
+        source_frame_number,
+      )
       const expected_shape = this.signal_shapes[key]
       if (expected_shape.join(`,`) !== parsed.sample_shape.join(`,`)) {
         throw new Error(
@@ -245,27 +268,6 @@ class PositionAccumulator {
         )
       }
       this.signal_values[key].set(parsed.values, this.frame_count * parsed.values.length)
-    }
-  }
-
-  private add_channels(
-    properties: Record<string, unknown> | undefined,
-    atom_idx: number,
-    source_frame_number: number,
-  ): void {
-    for (const key of this.channels.vector_keys) {
-      const value = properties?.[key]
-      if (
-        !Array.isArray(value) ||
-        value.length !== 3 ||
-        !value.every((comp) => typeof comp === `number` && Number.isFinite(comp))
-      ) {
-        throw missing_channel(source_frame_number, atom_idx, `vec3`, key, value)
-      }
-      const off = (this.frame_count * this.n_atoms + atom_idx) * 3
-      this.vectors[key][off] = value[0]
-      this.vectors[key][off + 1] = value[1]
-      this.vectors[key][off + 2] = value[2]
     }
   }
 
@@ -313,40 +315,26 @@ class PositionAccumulator {
   }
 
   finish(): TrajectoryPositionStream {
-    if (this.frame_count === 0) throw new Error(`PositionAccumulator: no frames collected`)
-    const has_lattice = this.lattice_matrices.some((matrix) => matrix != null)
-    const trim = (buffer: Float64Array, values_per_frame: number): Float64Array =>
-      this.frame_count === this.n_frames
-        ? buffer
-        : buffer.slice(0, this.frame_count * values_per_frame)
-    const vectors = Object.fromEntries(
-      Object.entries(this.vectors).map(([key, buffer]) => [
+    // Only called after every selected frame succeeds; failures never return partial data.
+    const vectors = { ...this.vectors }
+    const signals = Object.fromEntries(
+      Object.entries(this.signal_values).map(([key, values]) => [
         key,
-        trim(buffer, this.n_atoms * 3),
+        {
+          values,
+          sample_shape: this.signal_shapes[key],
+          steps: [...this.steps],
+        } satisfies TrajectorySignal,
       ]),
     )
-    const signals = Object.fromEntries(
-      Object.entries(this.signal_values).map(([key, values]) => {
-        const sample_shape = this.signal_shapes[key]
-        const sample_size = values_per_sample(sample_shape)
-        return [
-          key,
-          {
-            values: trim(values, sample_size),
-            sample_shape,
-            steps: [...this.steps],
-          } satisfies TrajectorySignal,
-        ]
-      }),
-    )
     return {
-      positions: trim(this.positions, this.n_atoms * 3),
-      vectors: Object.keys(vectors).length > 0 ? vectors : undefined,
+      positions: this.positions,
+      vectors: Object.keys(vectors).length ? vectors : undefined,
       signals: Object.keys(signals).length > 0 ? signals : undefined,
       n_frames: this.frame_count,
       n_atoms: this.n_atoms,
       elements: this.elements,
-      lattice_matrices: has_lattice ? this.lattice_matrices : null,
+      lattice_matrices: this.lattice_matrices.some(Boolean) ? this.lattice_matrices : null,
       pbc: this.pbc,
       coords_unwrapped: this.coords_unwrapped,
       frame_stride: this.frame_stride,
@@ -405,6 +393,20 @@ export const parse_frame_signal = (
   return null
 }
 
+const require_frame_signal = (
+  value: unknown,
+  key: string,
+  n_atoms: number,
+  frame_number: number,
+) => {
+  const parsed = parse_frame_signal(value, key, n_atoms)
+  if (!parsed)
+    throw new TypeError(
+      `Frame ${frame_number} has no supported finite numeric metadata signal "${key}" (got ${JSON.stringify(value)})`,
+    )
+  return parsed
+}
+
 export function resolve_frame_range(
   total_frames: number,
   { start_frame = 0, end_frame = total_frames }: FrameRange = {},
@@ -425,9 +427,7 @@ export function resolve_frame_range(
 
 export async function accumulate_positions(
   total_frames: number,
-  load_frame: (
-    frame_number: number,
-  ) => TrajectoryFrame | null | Promise<TrajectoryFrame | null>,
+  load_frame: (frame_number: number) => PositionFrame | null | Promise<PositionFrame | null>,
   options: CollectPositionsOptions = {},
 ): Promise<TrajectoryPositionStream> {
   const {
@@ -452,24 +452,21 @@ export async function accumulate_positions(
 
   const { start_frame, end_frame } = resolve_frame_range(total_frames, options)
   const selected_frames = end_frame - start_frame
-  const report = make_reporter(on_progress, selected_frames)
+  const report = (done: number, stage: string): void =>
+    on_progress?.({ current: (done / selected_frames) * 100, total: 100, stage })
   const first_frame = await load_frame(start_frame)
   signal?.throwIfAborted()
   if (!first_frame)
     throw new Error(`accumulate_positions: could not read frame ${start_frame}`)
   const collected = Math.ceil(selected_frames / frame_stride)
-  const n_atoms = first_frame.structure.sites.length
+  const n_atoms =
+    `header` in first_frame ? first_frame.sites.length : first_frame.structure.sites.length
+  const { metadata } = `header` in first_frame ? first_frame.header : first_frame
   const signal_shapes = Object.fromEntries(
-    channels.signal_keys.map((key) => {
-      const parsed = parse_frame_signal(first_frame.metadata?.[key], key, n_atoms)
-      if (!parsed) {
-        throw new TypeError(
-          `Frame ${start_frame} has no supported finite numeric metadata signal "${key}" (got ` +
-            `${JSON.stringify(first_frame.metadata?.[key])})`,
-        )
-      }
-      return [key, parsed.sample_shape]
-    }),
+    channels.signal_keys.map((key) => [
+      key,
+      require_frame_signal(metadata?.[key], key, n_atoms, start_frame).sample_shape,
+    ]),
   )
   const accumulator = new PositionAccumulator(
     collected,

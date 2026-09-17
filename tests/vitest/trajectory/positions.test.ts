@@ -9,8 +9,9 @@ import {
 } from '$lib/trajectory/positions'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
+import { encode_frame, materialize_frame, type NumericFrame } from '$lib/trajectory/frame'
 import { describe, expect, it } from 'vitest'
-import { make_frame, make_position_stream } from '../setup'
+import { make_frame, make_position_stream } from '../test-fixtures'
 
 describe(`curve_slots`, () => {
   it.each([
@@ -117,7 +118,7 @@ describe(`validate_position_stream_layout`, () => {
   })
 })
 
-describe(`accumulate_positions step plausibility`, () => {
+describe(`accumulate_positions validation`, () => {
   it.each([`read`, `progress`])(`rejects cancellation during the final %s`, async (phase) => {
     const controller = new AbortController()
     const frame = make_frame(0, [[0, 0, 0]])
@@ -152,6 +153,9 @@ describe(`accumulate_positions step plausibility`, () => {
       `Frame range`,
     )
   })
+})
+
+describe.each([false, true])(`step plausibility (numeric: %s)`, (numeric) => {
   // 10 A cubic cell, four atoms; `shift` moves every atom by the same vector between frames
   const frames_with_shift = (shift: number, coords_unwrapped?: boolean) => {
     const start = [1, 2, 3, 4].map((val) => [val, val, val])
@@ -161,7 +165,11 @@ describe(`accumulate_positions step plausibility`, () => {
     )
   }
   const collect = (frames: ReturnType<typeof make_frame>[], frame_stride = 1) =>
-    accumulate_positions(frames.length, (idx) => frames[idx] ?? null, { frame_stride })
+    accumulate_positions(
+      frames.length,
+      (idx) => (numeric ? encode_frame(frames[idx]) : frames[idx]),
+      { frame_stride },
+    )
 
   it.each([
     { label: `half-cell jump of wrapped coords`, shift: 5, unwrapped: false, stride: 1 },
@@ -181,5 +189,133 @@ describe(`accumulate_positions step plausibility`, () => {
   ])(`accepts a $label`, async ({ shift, unwrapped, stride }) => {
     const stream = await collect(frames_with_shift(shift, unwrapped), stride)
     expect(stream.n_frames).toBe(Math.ceil(3 / stride))
+  })
+})
+
+describe(`numeric position input`, () => {
+  it.each([
+    [false, 1, [10, 20, 30, 40, 50]],
+    [false, 2, [10, 30, 50]],
+    [true, 1, [10, 20, 30, 40, 50]],
+    [true, 2, [10, 30, 50]],
+    [true, 10, [10]],
+  ] as const)(
+    `matches record input (rich: %s, stride: %s)`,
+    async (rich, frame_stride, steps) => {
+      const frames = Array.from({ length: 6 }, (_unused, idx) => {
+        const frame = make_frame(
+          idx * 10,
+          [
+            [(9 + idx) % 10, 1, 2],
+            [2, 3, 4],
+          ],
+          {
+            elements: [`Si`, `Ge`],
+            box_length: 10 + idx / 10,
+            velocities: [
+              [idx, 2, 3],
+              [4, 5, 6],
+            ],
+          },
+        )
+        if (`lattice` in frame.structure) frame.structure.lattice.pbc = [true, false, true]
+        frame.metadata = { dipole: [idx, 0, 1], temperature: 300 + idx }
+        frame.structure.sites.forEach((site, site_idx) => {
+          site.label = `${site.species[0].element}${site_idx + 1}`
+          if (rich) site.properties.id = site_idx + 1
+        })
+        return encode_frame(frame)
+      })
+      expect(frames[0].sites instanceof Uint8Array).toBe(!rich)
+      const options = {
+        start_frame: 1,
+        end_frame: 6,
+        frame_stride,
+        vector_keys: [`velocity`],
+        signal_keys: [`dipole`, `temperature`],
+      }
+      const numeric = await accumulate_positions(frames.length, (idx) => frames[idx], options)
+      const records = await accumulate_positions(
+        frames.length,
+        (idx) => materialize_frame(frames[idx]),
+        options,
+      )
+      expect(numeric).toEqual(records)
+      expect(numeric.steps).toEqual(steps)
+      expect(numeric.positions).toHaveLength(steps.length * 6)
+      // Returning an analysis result must not expose a source snapshot for mutation.
+      expect(numeric.pbc).not.toBe(frames[1].structure.lattice?.pbc)
+      const matrix = numeric.lattice_matrices?.[0]
+      if (matrix) matrix[0][0] = 0
+      expect(frames[1].structure.lattice?.pbc[0]).toBe(true)
+      expect(frames[1].structure.lattice?.matrix[0][0]).toBe(10.1)
+    },
+  )
+
+  it.each([
+    [
+      `species`,
+      (frame: NumericFrame) => {
+        frame.sites = new Uint8Array([8, 1])
+      },
+      /Atom ordering changed/,
+    ],
+    [
+      `ID`,
+      (frame: NumericFrame) => {
+        frame.scalar_columns = { id: new Float64Array([2, 1]) }
+      },
+      /Atom identity changed/,
+    ],
+    [
+      `invalid vector`,
+      (frame: NumericFrame) => {
+        frame.coordinates[6] = Infinity
+      },
+      /no finite vec3 property "velocity"/,
+    ],
+    [
+      `scalar override`,
+      (frame: NumericFrame) => {
+        frame.scalar_columns = {
+          id: new Float64Array([1, 2]),
+          velocity: new Float64Array([1, 2]),
+        }
+      },
+      /no finite vec3 property "velocity"/,
+    ],
+    [
+      `wrapping convention`,
+      (frame: NumericFrame) => {
+        frame.header.metadata = { coords_unwrapped: true }
+      },
+      /coords_unwrapped flipped/,
+    ],
+  ] as const)(`preserves rejection of changed %s`, async (_label, mutate, error) => {
+    const frames = [0, 1].map((step) => {
+      const frame = encode_frame(
+        make_frame(
+          step,
+          [
+            [1, 2, 3],
+            [3, 4, 5],
+          ],
+          {
+            velocities: [
+              [1, 2, 3],
+              [4, 5, 6],
+            ],
+          },
+        ),
+      )
+      frame.scalar_columns = { id: new Float64Array([1, 2]) }
+      return frame
+    })
+    mutate(frames[1])
+    const options = { vector_keys: [`velocity`] }
+    await expect(accumulate_positions(2, (idx) => frames[idx], options)).rejects.toThrow(error)
+    await expect(
+      accumulate_positions(2, (idx) => materialize_frame(frames[idx]), options),
+    ).rejects.toThrow(error)
   })
 })

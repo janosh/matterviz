@@ -110,6 +110,22 @@ jobs:
         # Built-output checks run once in publint; the remaining tests import source files.
         run: pnpm exec vitest run --exclude=tests/vitest/package-exports.test.ts --shard=${{ matrix.shard }}/4 --maxWorkers=100% --fsModuleCache --fsModuleCachePath=.cache/vitest
 
+  # Calibrate timing stability on main/manual runs before making this a PR or release gate.
+  performance:
+    name: Performance baselines
+    if: github.workflow == 'CI' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        with:
+          test-cache: performance
+      - name: Run isolated performance baselines
+        env:
+          MATTERVIZ_PERF: '1'
+        run: pnpm exec vitest run tests/vitest/perf-baselines.test.ts --maxWorkers=1 --no-file-parallelism --fsModuleCache --fsModuleCachePath=.cache/vitest --reporter=verbose --silent=false
+
   # Keep the required check name and fail if any shard fails or is cancelled/skipped.
   unit-tests:
     name: Unit tests

@@ -10,15 +10,20 @@ import { DEFAULTS } from '$lib/settings'
 import {
   build_adjacency,
   compute_polyhedra,
+  cache_prepared_polyhedra,
   create_polyhedra_edges,
+  update_polyhedra_edges,
   convex_hull_3d,
   merge_polyhedra_buffers,
 } from '$lib/structure/polyhedra'
 import type { Polyhedron } from '$lib/structure/polyhedra'
 import { make_supercell } from '$lib/structure/supercell'
-import { Color, Vector3 } from 'three/webgpu'
+import { BondFrame, pack_bonds } from '$lib/structure/bond-rendering'
+import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
+import { numeric_sites } from '$lib/structure/site'
+import { Color, InterleavedBufferAttribute, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { make_crystal, make_rocksalt } from '../setup'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
 
@@ -50,6 +55,33 @@ test.each([`#222222`, `#ff8800`])(
           ),
         )
         expect(endpoints).toEqual(Array.from(expected))
+      }
+      const material = edges.material
+      let geometry = edges.geometry
+      let retired = vi.spyOn(geometry, `dispose`)
+      // Growth, shrink, empty and regrowth keep the material and reuse allocated buffers.
+      for (const count of [3, 2, 0, 3]) {
+        const moved = new Float32Array(count * 6).fill(count + 0.5)
+        const recolored = new Float32Array(count * 6).fill(0.25)
+        update_polyhedra_edges(edges, moved, recolored)
+        expect(edges.material).toBe(material)
+        expect(edges.geometry.instanceCount).toBe(count)
+        if (count > geometry.getAttribute(`instanceStart`).count) {
+          expect(retired).toHaveBeenCalledOnce()
+          geometry = edges.geometry
+          retired = vi.spyOn(geometry, `dispose`)
+        } else expect(edges.geometry).toBe(geometry)
+        for (const [name, expected] of [
+          [`instanceStart`, moved],
+          [`instanceColorStart`, recolored],
+        ] as const) {
+          const attribute = edges.geometry.getAttribute(name)
+          if (!(attribute instanceof InterleavedBufferAttribute))
+            throw new Error(`Expected interleaved outline buffer`)
+          expect(attribute.data.array.slice(0, count * 6)).toEqual(expected)
+          expect(attribute.data.updateRanges).toEqual([{ start: 0, count: count * 6 }])
+        }
+        expect(retired).not.toHaveBeenCalled()
       }
     } finally {
       edges.geometry.dispose()
@@ -356,28 +388,25 @@ describe(`compute_polyhedra`, () => {
     expect(compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))).toHaveLength(0)
   })
 
-  test(`min_neighbors threshold filters low-coordination centers`, () => {
-    const structure = make_nacl_cluster()
-    const count = (min_neighbors: number) =>
-      compute_polyhedra(structure, octahedral_bonds, { min_neighbors }).length
-    expect(count(7)).toBe(0)
-    expect(count(6)).toBe(1)
-  })
-
-  test(`excluded_center_elements removes matching centers`, () => {
-    const polyhedra = compute_polyhedra(make_nacl_cluster(), octahedral_bonds, {
-      excluded_center_elements: [`Na`],
-    })
-    expect(polyhedra).toHaveLength(0)
-  })
-
-  test(`electronegativity_margin tightens the cation test`, () => {
+  test.each([
+    [{ min_neighbors: 7 }, 0],
+    [{ min_neighbors: 6 }, 1],
+    [{ max_neighbors: 5 }, 0],
+    [{ max_neighbors: 5, included_center_elements: [`Na`] }, 1],
+    [{ excluded_center_elements: [`Na`] }, 0],
     // Na (0.93) vs Cl (3.16): margin of 3 exceeds the EN gap, so Na no longer qualifies
-    const polyhedra = compute_polyhedra(make_nacl_cluster(), octahedral_bonds, {
-      electronegativity_margin: 3,
-    })
-    expect(polyhedra).toHaveLength(0)
-  })
+    [{ electronegativity_margin: 3 }, 0],
+  ] satisfies [Parameters<typeof compute_polyhedra>[2], number][])(
+    `NaCl center filters %j leave %i polyhedra`,
+    (options, expected) => {
+      const structure = make_nacl_cluster()
+      const bonds = new BondFrame(structure, pack_bonds(octahedral_bonds))
+      const prepared = compute_polyhedra(structure, bonds)
+      cache_prepared_polyhedra(bonds, {}, prepared)
+      expect(compute_polyhedra(structure, bonds)).toBe(prepared)
+      expect(compute_polyhedra(structure, bonds, options)).toHaveLength(expected)
+    },
+  )
 
   test(`boundary completeness: truncated supercell copies are skipped`, () => {
     // Rocksalt NaCl conventional cell -> real bonding -> 3x3x3 supercell without
@@ -453,6 +482,31 @@ describe(`compute_polyhedra`, () => {
     expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12) // regular octahedron
     // the 6th corner sits at the -x image of site 6, not at its in-cell position
     expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
+
+    // Playback must produce the same periodic hull without expanding all atoms or bonds.
+    const positions = new Float64Array(structure.sites.flatMap((site) => site.xyz))
+    const numeric = new FrameView().update(
+      create_numeric_md_frame(
+        positions,
+        new Uint8Array([22, 8, 8, 8, 8, 8, 8]),
+        structure.lattice.matrix,
+        undefined,
+        0,
+        {},
+        [],
+      ),
+    ).structure
+    const columns = numeric_sites.get(numeric)
+    if (!columns) throw new Error(`Expected numeric sites`)
+    const packed = new BondFrame(numeric, pack_bonds(bonds))
+    vi.spyOn(columns, `materialize`).mockImplementation(() => {
+      throw new Error(`Expanded all atoms`)
+    })
+    vi.spyOn(packed, `materialize`).mockImplementation(() => {
+      throw new Error(`Expanded all bonds`)
+    })
+    expect(build_adjacency(packed)).toEqual(build_adjacency(bonds))
+    expect(compute_polyhedra(numeric, packed)).toEqual([poly])
   })
 
   // Degeneracy is a fraction of the hull's own extent cubed, not an absolute A^3 volume, so it

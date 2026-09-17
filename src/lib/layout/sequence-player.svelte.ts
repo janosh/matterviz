@@ -13,6 +13,8 @@ type SequencePlayerInputs = {
   set_fps: (fps: number) => void
   fps_range: () => readonly [number, number]
   should_auto_play: () => boolean
+  // Async viewers must finish the requested frame before playback requests another.
+  can_advance?: () => boolean
   on_play?: () => void
   on_pause?: () => void
   on_end?: () => void
@@ -130,6 +132,10 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
       const step_ms = 1000 / playback_fps
       while (accumulated_ms >= step_ms) {
         if (!is_playing || !can_play) break
+        if (inputs.can_advance?.() === false) {
+          accumulated_ms = step_ms
+          break
+        }
         accumulated_ms -= step_ms
         advance()
       }

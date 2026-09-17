@@ -39,6 +39,12 @@ describe(`ConvexHullTooltip`, () => {
       mount_tooltip({ entry: mock_entry({ e_above_hull, e_form_per_atom }) })
       const text = document.body.textContent ?? ``
       for (const val of expected) expect(text).toContain(val)
+      expect(
+        Array.from(
+          document.querySelectorAll(`.tooltip-content small`),
+          (node) => node.textContent,
+        ),
+      ).toEqual([`eV/atom`, `eV/atom`])
     },
   )
 

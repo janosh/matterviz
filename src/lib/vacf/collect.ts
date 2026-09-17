@@ -31,13 +31,11 @@ export const suggest_vacf_frame_stride = (
     frame_count,
   )
 
-const site_velocity = (frame: TrajectoryFrame, atom_idx: number): unknown =>
-  frame.structure.sites[atom_idx]?.properties?.[VELOCITY_SITE_PROPERTY]
-
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.
 const has_velocities = (frame?: TrajectoryFrame): boolean =>
-  frame !== undefined && is_finite_vec3_like(site_velocity(frame, 0))
+  frame !== undefined &&
+  is_finite_vec3_like(frame.structure.sites[0]?.properties?.[VELOCITY_SITE_PROPERTY])
 
 // Velocity channel of a streamed position sweep, if one was requested and produced.
 //
@@ -69,7 +67,7 @@ export async function collect_vacf_input(
 ): Promise<VacfInput> {
   const stream = await collect_trajectory_positions(run, {
     ...options,
-    ...(has_velocities(run.preview) ? { vector_keys: [VELOCITY_SITE_PROPERTY] } : {}),
+    ...(has_velocities(run.preview) && { vector_keys: [VELOCITY_SITE_PROPERTY] }),
     analysis_name: `VACF`,
     // 3 rather than MSD's 2: central differences drop the first and last frame, so a
     // 2-frame run leaves no velocity at all

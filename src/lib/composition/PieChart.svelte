@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '$lib/colors'
-  import type { CompositionType } from '$lib/composition'
+  import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import type { SVGAttributes } from 'svelte/elements'
-  import type { ElementPatterns } from './chart'
+  import type { CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
@@ -24,17 +24,9 @@
     patterns = {},
     svg_node = $bindable(null),
     ...rest
-  }: SVGAttributes<SVGSVGElement> & {
-    composition: CompositionType
-    size?: number
+  }: CompositionChartProps & {
     stroke_width?: number
     inner_radius?: number
-    show_labels?: boolean
-    show_percentages?: boolean
-    show_amounts?: boolean
-    color_scheme?: ColorSchemeName
-    patterns?: ElementPatterns // hatch/texture fill per element symbol
-    svg_node?: SVGSVGElement | null
   } = $props()
 
   const uid = $props.id()
@@ -114,16 +106,24 @@
 >
   <defs><PatternDefs patterns={segments.map((seg) => seg.pattern)} /></defs>
   {#each segments as segment (segment.element)}
+    {#snippet segment_tooltip()}
+      <TooltipValue
+        label={segment.element}
+        value={segment.amount}
+        unit={segment.amount === 1 ? 'atom' : 'atoms'}
+      />
+      (<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+    {/snippet}
     <path
       d={segment.path}
       fill={segment.pattern?.url ?? segment.color}
       stroke="white"
       role="img"
       aria-label={segment_title(segment)}
+      {@attach hover_tooltip(segment_tooltip)}
       stroke-width={segments.length === 1 ? 0 : stroke_width}
       class="pie-segment"
     >
-      <title>{segment_title(segment)}</title>
     </path>
   {/each}
 
@@ -134,7 +134,6 @@
         y={segment.label_y}
         {segment}
         font_scale={segment.font_scale}
-        text_color={segment.text_color}
         {label_opts}
       />
     {/each}

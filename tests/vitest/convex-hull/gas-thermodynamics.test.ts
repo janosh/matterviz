@@ -15,7 +15,7 @@ import {
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
-import { make_phase } from '../setup'
+import { make_phase } from '../test-fixtures'
 
 describe(`gas-thermodynamics: physical data tables`, () => {
   // pin the stoichiometry/gas-mapping tables — a typo here silently skews all corrections

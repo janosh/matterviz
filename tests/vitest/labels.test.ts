@@ -10,6 +10,7 @@ import {
   format_tick_values,
   format_value,
   format_vec3,
+  parse_axis_label,
   superscript_digits,
   symbol_map,
   symbol_names,
@@ -17,6 +18,17 @@ import {
 } from '$lib/labels'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
+
+test.each([
+  [`Energy (eV)`, { name: `Energy`, unit: `eV` }],
+  [`Heat capacity (J/(mol·K))`, { name: `Heat capacity`, unit: `J/(mol·K)` }],
+  [`Energy (relative) (eV/atom)`, { name: `Energy (relative)`, unit: `eV/atom` }],
+  [`g(r)`, { name: `g(r)` }],
+  [`Energy`, { name: `Energy` }],
+  [`Energy (eV`, { name: `Energy (eV` }],
+])(`separates units in %s`, (label, expected) => {
+  expect(parse_axis_label(label)).toEqual(expected)
+})
 
 test(`ELEM_HEATMAP_LABELS maps each heatmap key to exactly one label`, () => {
   const by_text = (left: unknown, right: unknown) => String(left).localeCompare(String(right))

@@ -2,7 +2,11 @@ import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import { columns_to_csv } from '$lib/trajectory/analysis'
 import { parse_float_token } from '$lib/structure/parsers/shared'
-import { convert_atomic_numbers, create_structure } from '$lib/trajectory/helpers'
+import {
+  convert_atomic_numbers,
+  create_sampled_frame,
+  create_structure,
+} from '$lib/trajectory/helpers'
 import { read_ndarray_from_view } from '$lib/trajectory/parse/ase'
 import { describe, expect, it } from 'vitest'
 
@@ -31,6 +35,20 @@ describe(`trajectory helpers`, () => {
       [1, 1, 1],
     ])
     expect(structure.sites.map((site) => site.species[0].element)).toEqual(elements)
+    expect(
+      create_sampled_frame(
+        new Float64Array([0, 0, 0, 1, 1, 1]),
+        [`H`, `Li`, `He`],
+        2,
+        undefined,
+        undefined,
+        42,
+      ),
+    ).toEqual({
+      structure,
+      step: 42,
+      metadata: { total_atoms: 3, render_sample: true, source_atom_indices: [0, 2] },
+    })
     expect(() =>
       create_structure(
         [
@@ -98,11 +116,16 @@ describe(`trajectory helpers`, () => {
   // oxfmt-ignore
   it.each<[string, number, (view: DataView, offset: number, value: number) => void]>([
     [`float64`, 8, (view, offset, value) => view.setFloat64(offset, value, true)],
+    [`float32`, 4, (view, offset, value) => view.setFloat32(offset, value, true)],
+    [`int64`, 8, (view, offset, value) => view.setBigInt64(offset, BigInt(value), true)],
     [`int32`, 4, (view, offset, value) => view.setInt32(offset, value, true)],
-  ])(`reads a 2x2 %s ndarray that exactly fits its buffer`, (dtype, bytes_per_element, set_value) => {
+  ])(`reads 1D and 2D %s arrays with absolute and rebased offsets`, (dtype, bytes_per_element, set_value) => {
     const view = new DataView(new ArrayBuffer(4 * bytes_per_element))
     for (const idx of [0, 1, 2, 3]) set_value(view, idx * bytes_per_element, idx + 1)
     expect(read_ndarray_from_view(view, { ndarray: [[2, 2], dtype, 0] })).toEqual([[1, 2], [3, 4]])
+    expect(read_ndarray_from_view(view, { ndarray: [[4], dtype, 0] })).toEqual([[1, 2, 3, 4]])
+    expect(read_ndarray_from_view(view, { ndarray: [[2, 2], dtype, 48] }, 48)).toEqual([[1, 2], [3, 4]])
+    expect(() => read_ndarray_from_view(view, { ndarray: [[1, 2, 2], dtype, 0] })).toThrow(`Unsupported shape`)
     expect(() => read_ndarray_from_view(view, { ndarray: [[2, 3], dtype, 0] })).toThrow(
       /Out-of-bounds read/,
     )
@@ -111,6 +134,8 @@ describe(`trajectory helpers`, () => {
   it.each([
     { atomic_numbers: [1, 2, 8], expected_symbols: [`H`, `He`, `O`] },
     { atomic_numbers: [26], expected_symbols: [`Fe`] },
+    { atomic_numbers: new Float64Array([1, 2, 8]), expected_symbols: [`H`, `He`, `O`] },
+    { atomic_numbers: new Float64Array(), expected_symbols: [] },
   ])(`converts known atomic numbers to symbols`, ({ atomic_numbers, expected_symbols }) => {
     expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
   })

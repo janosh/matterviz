@@ -40,26 +40,21 @@ const make_mock_canvas = (
     height: 600,
   }) as unknown as HTMLCanvasElement
 
-const make_mock_renderer = () => ({
-  // Capture paths await init() before rendering, since WebGPURenderer.render() throws
-  // while the GPU device is still being acquired.
-  init: vi.fn().mockResolvedValue(undefined),
-  render: vi.fn(),
-  getPixelRatio: vi.fn().mockReturnValue(1),
-  setDrawingBufferSize: vi.fn(),
-  getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
-  getContext: vi.fn().mockReturnValue({
-    getConfiguration: vi.fn().mockReturnValue({
-      device: { limits: { maxTextureDimension2D: 8192 } },
+function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => void) {
+  const renderer = {
+    // Capture paths await init() before rendering, since WebGPURenderer.render() throws
+    // while the GPU device is still being acquired.
+    init: vi.fn().mockResolvedValue(undefined),
+    render: vi.fn(),
+    getPixelRatio: vi.fn().mockReturnValue(1),
+    setDrawingBufferSize: vi.fn(),
+    getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
+    getContext: vi.fn().mockReturnValue({
+      getConfiguration: vi.fn().mockReturnValue({
+        device: { limits: { maxTextureDimension2D: 8192 } },
+      }),
     }),
-  }),
-})
-
-function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => void): {
-  canvas: HTMLCanvasElement
-  renderer: ReturnType<typeof make_mock_renderer>
-} {
-  const renderer = make_mock_renderer()
+  }
   const canvas = make_mock_canvas(toBlob_impl)
   renderer_registry.set(canvas, renderer as unknown as WebGPURenderer)
   return { canvas, renderer }
@@ -261,26 +256,31 @@ describe(`canvas_to_png_blob`, () => {
 })
 
 describe(`svg_to_svg_string`, () => {
-  test(`emits a standalone SVG document without mutating the source element`, async () => {
-    const svg = make_svg(`0 0 200 150`)
-    const original_attrs = svg.attributes.length
-    const result = svg_to_svg_string(svg)
-    for (const expected of [
-      `<?xml version="1.0"`,
-      `<!DOCTYPE svg`,
-      `xmlns="http://www.w3.org/2000/svg"`,
-      `font-family`,
-      `viewBox="0 0 200 150"`,
-    ])
-      expect(result).toContain(expected)
-    expect(svg.attributes).toHaveLength(original_attrs)
-    await export_svg_as_svg(svg, `output.svg`)
-    expect(download).toHaveBeenCalledExactlyOnceWith(
-      result,
-      `output.svg`,
-      `image/svg+xml;charset=utf-8`,
-    )
-  })
+  test.each([
+    [undefined, false],
+    [`0 0 200 150`, false],
+    [`0 0 100 100`, true],
+  ])(
+    `emits standalone SVG with viewBox=%s, xmlns=%s without mutation`,
+    async (viewbox, xmlns) => {
+      const svg = make_svg(viewbox)
+      if (xmlns) svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+      const original_attrs = svg.attributes.length
+      const result = svg_to_svg_string(svg)
+      expect(result).toContain(`font-family`)
+      expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!DOCTYPE svg /)
+      expect(result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g)).toHaveLength(1)
+      if (viewbox) expect(result).toContain(`viewBox="${viewbox}"`)
+      else expect(result).not.toContain(`viewBox=`)
+      expect(svg.attributes).toHaveLength(original_attrs)
+      await export_svg_as_svg(svg, `output.svg`)
+      expect(download).toHaveBeenCalledExactlyOnceWith(
+        result,
+        `output.svg`,
+        `image/svg+xml;charset=utf-8`,
+      )
+    },
+  )
 
   test.each([
     { name: `pads the export`, padding: 2, expected: `-2 -2 104 54` },
@@ -308,23 +308,6 @@ describe(`svg_to_svg_string`, () => {
       expect(result).toContain(`viewBox="${expected}"`)
     },
   )
-
-  test(`preserves xmlns if already set`, () => {
-    const svg = make_svg(`0 0 100 100`)
-    svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
-    const result = svg_to_svg_string(svg)
-    // Should not have duplicate xmlns
-    const xmlns_count = (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) ?? [])
-      .length
-    expect(xmlns_count).toBe(1)
-  })
-
-  test(`works with SVG that has no viewBox and does not invent one`, () => {
-    const result = svg_to_svg_string(make_svg())
-    expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!DOCTYPE svg /)
-    expect(result).toContain(`xmlns="http://www.w3.org/2000/svg"`)
-    expect(result).not.toContain(`viewBox=`)
-  })
 })
 
 describe(`svg_to_png_blob`, () => {
@@ -337,20 +320,17 @@ describe(`svg_to_png_blob`, () => {
     mock_image(`load`)
   })
 
-  test(`rejects when both viewBox and viewport dimensions are missing`, async () => {
-    await expect(svg_to_png_blob(make_svg())).rejects.toThrow(
-      `Invalid SVG dimensions for PNG export`,
-    )
-  })
-
   // one row per svg_viewbox() rejection branch: length !== 4, non-finite, width/height <= 0
-  test.each([
+  test.each<[string | undefined, string]>([
+    [undefined, `missing dimensions`],
     [`0 0`, `too few values`],
     [`0 0 foo 100`, `NaN width`],
     [`0 0 0 100`, `zero width`],
     [`0 0 100 -50`, `negative height`],
-  ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
-    await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(`Invalid SVG dimensions`)
+  ])(`rejects for invalid viewBox %s (%s)`, async (viewbox, _reason) => {
+    await expect(svg_to_png_blob(make_svg(viewbox))).rejects.toThrow(
+      `Invalid SVG dimensions for PNG export`,
+    )
   })
 
   test.each([
@@ -628,14 +608,13 @@ describe(`export_trajectory_video`, () => {
         on_progress: () => {
           if (phase === `progress`) cancel()
         },
-      })
-      const rejected = result.catch((error: unknown) => error)
+      }).catch((error: unknown) => error)
       if (phase === `render-wait`) {
         await vi.waitFor(() => expect(request_frame).toHaveBeenCalledOnce())
         cancel()
         expect(cancel_frame).toHaveBeenCalledWith(123)
       }
-      expect(await rejected).toEqual(new Error(`cancelled`))
+      expect(await result).toEqual(new Error(`cancelled`))
       expect(on_step).toHaveBeenCalledTimes(phase === `render-wait` ? 1 : 0)
       expect(renderer.init).toHaveBeenCalledTimes(phase === `before-start` ? 0 : 1)
       expect(download).not.toHaveBeenCalled()

@@ -135,7 +135,9 @@
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
   // survives mode and amplitude changes and keys the camera framing, the displacement pattern
   // survives amplitude changes, and frames are synthesised on read
-  let supercell_result = $derived(try_generate(() => phonon_supercell(mode_data, supercell)))
+  let supercell_result = $derived(
+    try_generate(() => phonon_supercell($state.snapshot(mode_data), supercell)),
+  )
   let pattern_result = $derived.by(() => {
     const [cell, selected] = [supercell_result.value, selection]
     if (!cell || !selected) return { value: null, error: null }

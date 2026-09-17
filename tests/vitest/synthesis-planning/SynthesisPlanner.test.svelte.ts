@@ -10,7 +10,8 @@ import type {
 } from '$lib/synthesis-planning/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, install_stub_worker, load_json } from '../setup'
+import { bind_props, doc_query, install_stub_worker } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
 const mount_planner = (props: Partial<ComponentProps<typeof SynthesisPlanner>> = {}): void => {

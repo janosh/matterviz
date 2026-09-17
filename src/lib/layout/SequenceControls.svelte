@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '$lib/controls'
   import { format_num } from '$lib/labels'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -18,6 +19,7 @@
     aria_valuetext,
     disable_step_while_playing = true,
     on_index_input = playback.go_to,
+    slider_overlay,
   }: {
     controls_config: ShowControlsState
     index: number
@@ -32,6 +34,7 @@
     aria_valuetext?: string
     disable_step_while_playing?: boolean
     on_index_input?: (index: number) => void
+    slider_overlay?: Snippet
   } = $props()
 
   let resume_after_slider_scrub = false
@@ -98,6 +101,7 @@
     />
     <span aria-label={`${formatted_count} total ${item_name}s`}>/ {formatted_count}</span>
     <div class="slider-container">
+      {@render slider_overlay?.()}
       <input
         type="range"
         min="0"
@@ -218,7 +222,7 @@
   }
   .step-slider {
     position: relative;
-    z-index: 1;
+    z-index: 3; /* Keep the thumb above analysis progress overlays. */
     width: 100%;
   }
   .step-labels {

@@ -9,7 +9,8 @@ import type {
 import { suggest_analysis_frame_stride, trajectory_from_frames } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { doc_query, make_frame } from '../setup'
+import { doc_query } from '../setup'
+import { make_frame } from '../test-fixtures'
 import { drift_positions, max_rel_error, on_x_axis } from './helpers'
 
 const drift_per_frame = 0.13

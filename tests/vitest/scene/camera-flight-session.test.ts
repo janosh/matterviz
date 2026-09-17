@@ -111,16 +111,12 @@ it.each([false, true])(
   async (failure) => {
     const { controller, original, moved, timeline, session, active, playing, on_change } =
       setup()
-    const result = session.run(
-      `thumbnails`,
-      async ({ pose, show }) => {
-        expect(pose).toEqual(original)
-        await show(moved, 2)
-        expect(playing()).toBe(false)
-        if (failure) throw new Error(`thumbnail failed`)
-      },
-      true,
-    )
+    const result = session.run(`thumbnails`, async ({ pose, show }) => {
+      expect(pose).toEqual(original)
+      await show(moved, 2)
+      expect(playing()).toBe(false)
+      if (failure) throw new Error(`thumbnail failed`)
+    })
     if (failure) await expect(result).rejects.toThrow(`thumbnail failed`)
     else expect(await result).toBe(true)
     expect(controller.capture()).toEqual(original)

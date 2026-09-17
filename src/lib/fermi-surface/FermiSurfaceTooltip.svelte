@@ -2,7 +2,7 @@
   // Tooltip component for Fermi surface hover information
   // Displays band index, spin, k-coordinates, and optional property values
   import { format_num } from '$lib/labels'
-  import { KCoords, TooltipContent } from '$lib/tooltip'
+  import { KCoords, TooltipContent, TooltipValue } from '$lib/tooltip'
   import { SPIN_COLORS } from './constants'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 
@@ -33,10 +33,10 @@
 
     {#if hover_data.property_value != null}
       <div style="margin-top: 4px; font-size: 0.9em">
-        {hover_data.property_name || `Property`}: {format_num(
-          hover_data.property_value,
-          `.4~`,
-        )}
+        <TooltipValue
+          label={hover_data.property_name || `Property`}
+          value={format_num(hover_data.property_value, `.4~`)}
+        />
         <span class="nearest-note">(nearest)</span>
       </div>
     {/if}

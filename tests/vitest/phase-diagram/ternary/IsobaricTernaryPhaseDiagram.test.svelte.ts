@@ -14,7 +14,8 @@ import {
 import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, make_phase } from '../../setup'
+import { bind_props, doc_query } from '../../setup'
+import { make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries } from './fixtures'
 
 // Toy system transitions: 400 K (ABC appears), 850 K (two tie-line flips), 1300 K (AB vanishes)

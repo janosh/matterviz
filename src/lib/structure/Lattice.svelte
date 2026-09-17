@@ -238,7 +238,7 @@
       {@const tooltip_position = math.add(VECTOR_ORIGIN, hovered_vec)}
       <CanvasTooltip position={tooltip_position}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
-        ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) Å
+        ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) <small>Å</small>
       </CanvasTooltip>
     {/if}
   {/if}

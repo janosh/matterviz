@@ -33,7 +33,13 @@ import type {
 import { normalize_fractional_coords } from './parse'
 import { capitalize_symbol } from './parsers/shared'
 import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
-import { get_image_source_idx, get_orig_site_idx, is_image_site } from './site'
+import {
+  get_image_source_idx,
+  get_orig_site_idx,
+  is_image_site,
+  snapshot_topologies,
+  site_count,
+} from './site'
 import { make_supercell, parse_supercell_scaling } from './supercell'
 
 // State the component owns as (bindable) props, read and written through these accessors so
@@ -294,7 +300,7 @@ export class StructureSession {
       ? get_pbc_image_sites(struct)
       : struct
   })
-  private readonly displayed_site_count = $derived(this.displayed_structure?.sites.length ?? 0)
+  private readonly displayed_site_count = $derived(site_count(this.displayed_structure))
   // True while the rendered cell is the analyzed (moyo input) cell, i.e. no conventional/
   // primitive transform applies. Overlays expressed in the input frame (symmetry elements) are
   // only placed correctly then; a supercell of the input cell still qualifies.
@@ -344,7 +350,10 @@ export class StructureSession {
   // frames reuse it, so invalidation needs neither serialization nor per-frame allocations.
   private last_topology: readonly SiteTopology[] | undefined
   private readonly topology = $derived.by(() => {
-    const sites = this.inputs.structure()?.sites ?? []
+    const structure = this.inputs.structure()
+    const snapshot = structure && snapshot_topologies.get(structure)
+    if (snapshot) return snapshot
+    const sites = structure?.sites ?? []
     const last = this.last_topology
     if (last && same_topology(sites, last)) return last
     return (this.last_topology = sites.map(({ label, species }) => ({

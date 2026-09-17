@@ -1,4 +1,5 @@
-// In-memory run: every frame materialised. Built by the eager parsers, from JSON payloads
+import { encode_frame, type NumericFrame } from '../frame'
+// In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
 import { first_non_increasing_index } from '$lib/math'
 import { full_data_extractor } from '../extract'
@@ -12,6 +13,7 @@ import type {
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
+import { frame_atom_batch, type ReadAtoms } from '../atom-batches'
 
 export interface MemoryRunExtras {
   provenance?: TrajectoryProvenance
@@ -119,8 +121,18 @@ export function trajectory_from_frames(
   extras: MemoryRunExtras = {},
 ): TrajectoryRun {
   validate_frames(frames, extras)
-  return trajectory_from_frame_source(frames.length, (frame_idx) => frames[frame_idx], {
+  const snapshots = frames.map(encode_frame)
+  return numeric_run(snapshots.length, (frame_idx) => snapshots[frame_idx], {
     ...extras,
+    read_atoms: (options, signal) => {
+      signal?.throwIfAborted()
+      return frame_atom_batch(
+        snapshots[options.frame_idx],
+        options,
+        extras.atom_masses,
+        extras.signals,
+      )
+    },
     properties: extras.properties ?? rows_from_frames(frames, extras.data_extractor),
   })
 }
@@ -131,7 +143,21 @@ export function trajectory_from_frames(
 export function trajectory_from_frame_source(
   frame_count: number,
   read: (frame_idx: number) => TrajectoryFrame,
-  extras: Omit<MemoryRunExtras, `data_extractor`> & { properties: TrajectoryMetadata[] },
+  extras: Omit<MemoryRunExtras, `data_extractor`> & {
+    properties: TrajectoryMetadata[]
+    read_atoms?: ReadAtoms
+  },
+): TrajectoryRun {
+  return numeric_run(frame_count, (frame_idx) => encode_frame(read(frame_idx)), extras)
+}
+
+function numeric_run(
+  frame_count: number,
+  read: (frame_idx: number) => NumericFrame,
+  extras: Omit<MemoryRunExtras, `data_extractor`> & {
+    properties: TrajectoryMetadata[]
+    read_atoms?: ReadAtoms
+  },
 ): TrajectoryRun {
   const { provenance = {}, metadata = {}, warnings = [], properties, ...fields } = extras
   return sync_run({

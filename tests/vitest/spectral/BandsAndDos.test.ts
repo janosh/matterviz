@@ -4,7 +4,8 @@ import type { BaseBandStructure, ElectronicDos, PhononDos } from '$lib/spectral/
 import { flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
-import { fire, clip_rect, make_crystal, mount_sized, plot_svg, translate_of } from '../setup'
+import { fire, clip_rect, mount_sized, plot_svg, translate_of } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 const band_structs: BaseBandStructure = {
   type: `phonon`,

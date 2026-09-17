@@ -10,7 +10,7 @@ import {
   read_ase_header,
 } from '$lib/trajectory/parse/ase'
 import { describe, expect, test } from 'vitest'
-import { read_binary_test_file } from '../setup'
+import { read_binary_test_file } from '../test-fixtures'
 
 const FIXTURE = `ase-LiMnO2-chgnet-relax.traj`
 

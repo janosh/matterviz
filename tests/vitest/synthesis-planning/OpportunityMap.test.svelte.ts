@@ -7,7 +7,8 @@ import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import type { SynthesisConditions } from '$lib/synthesis-planning/types'
 import { mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { expect_module_worker, install_stub_worker, load_json } from '../setup'
+import { expect_module_worker, install_stub_worker } from '../setup'
+import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
 
@@ -51,6 +52,22 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
     expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(81),
   )
   const first = document.querySelector<HTMLButtonElement>(`.map-grid button`)
+  first?.focus()
+  await tick()
+  const tooltip = document.querySelector(`.plot-tooltip`)
+  for (const label of [
+    `Temperature: 300 K`,
+    `O2:`,
+    `Target above hull:`,
+    `Route 1`,
+    `Driving force:`,
+    `Selectivity:`,
+  ])
+    expect(tooltip?.textContent).toContain(label)
+  expect(
+    [...(tooltip?.querySelectorAll(`small`) ?? [])].map((node) => node.textContent),
+  ).toEqual([`K`, `bar`, `meV/atom`, `meV/atom`, `meV/atom`])
+  first?.blur()
   expect_module_worker(stub.instances, `src/lib/synthesis-planning/opportunity-map-worker.ts`)
   expect(stub.posted[0].message.input.entries.at(-1)?.e_form_per_atom).toBeNaN()
   expect(document.querySelector(`.opportunity-map`)?.textContent).toContain(

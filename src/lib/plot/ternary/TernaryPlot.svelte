@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import type { FileExportContext } from '$lib/io/file-export.svelte'
   import { plot_color } from '$lib/colors'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
@@ -511,10 +512,16 @@
         {:else}
           <strong>{hover_info.series_label}</strong>
           {#each labels as label, idx (idx)}
-            <br />{label}: {format_value(hover_info.fractions[idx], tick_format)}
+            <br /><TooltipValue
+              {label}
+              value={format_value(hover_info.fractions[idx], tick_format)}
+            />
           {/each}
           {#if hover_info.color_value !== null}
-            <br />{color_bar?.title ?? `value`}: {format_value(hover_info.color_value)}
+            <br /><TooltipValue
+              label={color_bar?.title ?? `value`}
+              value={format_value(hover_info.color_value)}
+            />
           {/if}
         {/if}
       </PlotTooltip>

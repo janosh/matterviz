@@ -1,4 +1,4 @@
-import type { AnyStructure, ElementSymbol, Site, Species, Vec3 } from '$lib'
+import type { AnyStructure, Crystal, ElementSymbol, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import type { StructureFitOpts } from '$lib/structure'
 import {
@@ -18,11 +18,23 @@ import {
   VECTOR_PALETTE,
 } from '$lib/structure'
 import { neighbor_query } from '$lib/structure/bonding'
-import { make_site as create_site } from '$lib/structure/site'
+import { applies_to_structure } from '$lib/structure/settings'
+import {
+  make_site as create_site,
+  numeric_sites,
+  snapshot_topologies,
+} from '$lib/structure/site'
 import { generate_lattice_points } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { describe, expect, test, vi } from 'vitest'
+import { make_crystal } from '../test-fixtures'
+import {
+  create_numeric_md_frame,
+  encode_frame,
+  FrameView,
+  materialize_frame,
+} from '$lib/trajectory/frame'
+import { max_abs_error, max_rel_error } from '../numeric-helpers'
 
 const ref_data: Record<
   string,
@@ -109,18 +121,112 @@ describe.each(structures)(`structure-utils`, (structure) => {
   })
 })
 
-test(`element counts exclude periodic image sites`, () => {
-  const structure = structures[0]
-  const image_site = {
-    ...structure.sites[0],
-    properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
-  }
-  expect(
-    struct_utils.get_element_counts({ ...structure, sites: [...structure.sites, image_site] }),
-  ).toEqual(struct_utils.get_element_counts(structure))
+test.each([
+  [`always`, true, true],
+  [`never`, false, false],
+  [`crystals`, true, false],
+  [`molecules`, false, true],
+] as const)(`resolves %s visibility for crystals and molecules`, (when, crystal, molecule) => {
+  expect(applies_to_structure(when, true)).toBe(crystal)
+  expect(applies_to_structure(when, false)).toBe(molecule)
+})
+
+describe(`numeric composition`, () => {
+  const frame = create_numeric_md_frame(
+    Float64Array.of(0, 0, 0, 1, 1, 1),
+    Uint8Array.of(14, 32),
+    [
+      [20, 0, 0],
+      [0, 20, 0],
+      [0, 0, 20],
+    ],
+    [false, false, false],
+    0,
+    {},
+    [],
+  )
+
+  test(`element counts and density exclude periodic images without materializing sites`, () => {
+    const structure = materialize_frame(frame).structure
+    structure.sites.push({
+      ...structure.sites[0],
+      properties: { orig_site_idx: 0 },
+    })
+    expect(struct_utils.get_element_counts(structure)).toEqual({ Si: 1, Ge: 1 })
+
+    const view = new FrameView()
+    const identity = snapshot_topologies.get(view.update(frame).structure)
+    // Provenance can change while atom identities stay fixed. A short column marks only its
+    // present rows; NaN and negative numbers follow the same image semantics as rich sites.
+    for (const indices of [undefined, [1], [NaN, -1], [], undefined]) {
+      const snapshot = {
+        ...frame,
+        scalar_columns: indices ? { orig_site_idx: Float64Array.from(indices) } : undefined,
+      }
+      const numeric = view.update(snapshot).structure as Crystal
+      const columns = numeric_sites.get(numeric)
+      if (!columns) throw new Error(`Expected numeric sites`)
+      const materialize = vi.spyOn(columns, `materialize`)
+      const reference = materialize_frame(snapshot).structure as Crystal
+      expect(snapshot_topologies.get(numeric)).toBe(identity)
+      for (const calculate of [
+        struct_utils.get_density,
+        struct_utils.get_element_counts,
+        struct_utils.characteristic_atom_spacing,
+      ])
+        expect(calculate(numeric)).toEqual(calculate(reference))
+      expect(materialize).not.toHaveBeenCalled()
+    }
+  })
+
+  test.each([0, 119, 255])(
+    `rejects invalid atomic number %i, including image sites`,
+    (atomic_number) => {
+      for (const scalar_columns of [undefined, { orig_site_idx: Float64Array.of(0, 0) }]) {
+        const structure = new FrameView().update({
+          ...frame,
+          sites: Uint8Array.of(14, atomic_number),
+          scalar_columns,
+        }).structure as Crystal
+        for (const calculate of [struct_utils.get_element_counts, struct_utils.get_density])
+          expect(() => calculate(structure)).toThrow(
+            `Invalid atomic number ${atomic_number} at site 1`,
+          )
+      }
+    },
+  )
 })
 
 describe(`get_center_of_mass`, () => {
+  test.each([0, 1, 128])(`reads %i numeric sites without materializing records`, (count) => {
+    const positions = Float64Array.from(
+      { length: count * 3 },
+      (_unused, idx) => Math.sin(idx) * (idx % 2 ? 1e8 : 1e-8),
+    )
+    const frame = create_numeric_md_frame(
+      positions,
+      Uint8Array.from({ length: count }, (_unused, idx) => [1, 8, 14][idx % 3]),
+      undefined,
+      undefined,
+      0,
+      {},
+      [],
+    )
+    const expected = struct_utils.get_center_of_mass(materialize_frame(frame).structure)
+    const structure = new FrameView().update(frame).structure
+    Object.defineProperty(structure, `sites`, {
+      get: () => {
+        throw new Error(`Unexpected materialization`)
+      },
+    })
+    const actual = struct_utils.get_center_of_mass(structure)
+    expect(actual).toEqual(expected)
+    if (count) {
+      expect(max_abs_error(actual, expected)).toBe(0)
+      expect(max_rel_error(actual, expected)).toBe(0)
+    }
+  })
+
   const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
     sites: sites.map((site, idx) => ({
       species: [{ element: site.element, occu: site.occu, oxidation_state: 0 }],
@@ -711,27 +817,49 @@ describe(`characteristic_atom_spacing`, () => {
 
   // Hand-built sites may omit abc or contain NaN; both must derive from xyz.
   test.each([
-    [`NaN`, [Number.NaN, Number.NaN, Number.NaN]],
-    [`missing`, undefined],
-  ])(`falls back to xyz when a site's fractional coords are %s`, (_name, abc) => {
-    const cube = 25.8
-    const good = make_crystal(cube, [
-      [`Au`, [0.45, 0.45, 0.45]],
-      [`Au`, [0.55, 0.45, 0.45]],
-      [`Au`, [0.45, 0.55, 0.45]],
-      [`Au`, [0.45, 0.45, 0.55]],
-    ])
-    const expected = characteristic_atom_spacing(good)
-    const damaged = {
-      ...good,
-      sites: good.sites.map((site) => ({ ...site, abc: abc as unknown as Vec3 })),
-    }
-    expect(characteristic_atom_spacing(damaged)).toBeCloseTo(expected, 6)
-    // and specifically not the vacuum-blind cell density it exists to replace
-    expect(characteristic_atom_spacing(damaged)).toBeLessThan(
-      Math.cbrt(good.lattice.volume / good.sites.length) / 2,
-    )
-  })
+    [`NaN (periodic)`, [NaN, NaN, NaN], true],
+    [`NaN (open)`, [NaN, NaN, NaN], false],
+    [`missing`, undefined, true],
+  ] as const)(
+    `falls back to xyz when a site's fractional coords are %s`,
+    (_name, abc, periodic) => {
+      const cube = 25.8
+      const good = make_crystal(cube, [
+        [`Au`, [0.45, 0.45, 0.45]],
+        [`Au`, [0.55, 0.45, 0.45]],
+        [`Au`, [0.45, 0.55, 0.45]],
+        [`Au`, [0.45, 0.45, 0.55]],
+      ])
+      good.lattice.pbc = [periodic, periodic, periodic]
+      const expected = characteristic_atom_spacing(good)
+      const damaged = {
+        ...good,
+        sites: good.sites.map((site, idx) => ({
+          ...site,
+          label: `Au${idx + 1}`,
+          abc: abc as unknown as Vec3,
+        })),
+      }
+      expect(characteristic_atom_spacing(damaged)).toBeCloseTo(expected, 6)
+      if (abc) {
+        const numeric = new FrameView().update(
+          encode_frame({ step: 0, structure: damaged }),
+        ).structure
+        const columns = numeric_sites.get(numeric)
+        if (!columns) throw new Error(`Expected numeric sites`)
+        const materialize = vi.spyOn(columns, `materialize`)
+        const actual = [characteristic_atom_spacing(numeric)]
+        const reference = [characteristic_atom_spacing(damaged)]
+        expect(max_abs_error(actual, reference)).toBe(0)
+        expect(max_rel_error(actual, reference)).toBe(0)
+        expect(materialize).not.toHaveBeenCalled()
+      }
+      // and specifically not the vacuum-blind cell density it exists to replace
+      expect(characteristic_atom_spacing(damaged)).toBeLessThan(
+        Math.cbrt(good.lattice.volume / good.sites.length) / 2,
+      )
+    },
+  )
 
   test(`ignores PBC image sites, so toggling them cannot resize arrows`, () => {
     const structure = structures[0]

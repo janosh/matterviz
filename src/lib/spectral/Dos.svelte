@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
   import { track_settings } from '$lib/controls'
   import type { ScatterPlotOptions } from '$lib/plot'
   import { plot_color } from '$lib/colors'
@@ -340,7 +341,7 @@
       })}
       {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
       {#each tooltip_data.lines as line, line_idx (line_idx)}
-        {line}{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
+        <TooltipValue {...line} />{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
       {/each}
     {/snippet}
 

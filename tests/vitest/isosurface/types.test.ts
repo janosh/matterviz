@@ -16,7 +16,7 @@ import {
 import type { VolumetricData } from '$lib/isosurface/types'
 import { flatten_grid } from '$lib/isosurface/grid'
 import { describe, expect, test } from 'vitest'
-import { grid_value, make_grid, make_volume as make_volume_fixture } from '../setup'
+import { grid_value, make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
 test.each([
   { active: undefined, ids: [`a`, `b`], expected: `a` },

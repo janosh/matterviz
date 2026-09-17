@@ -21,7 +21,8 @@ import {
   type WebGPURenderer,
 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, mock_canvas_context, simple_structure } from '../setup'
+import { doc_query, mock_canvas_context } from '../setup'
+import { simple_structure } from '../test-fixtures'
 
 const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
   mount(StructureExportPane, {

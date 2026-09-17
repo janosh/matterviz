@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
-  expect_canvas_changed_by,
+  canvas_screenshot,
+  expect_canvas_changed,
   goto_structure_test,
   IS_CI,
   set_input_value,
@@ -11,7 +12,7 @@ test.describe(`Atom Radius Controls`, () => {
   let page: Page
   let legend: Locator
 
-  // Opens remap dropdown and returns fresh locator (always re-query to avoid stale refs)
+  // Open the remap dropdown.
   // Uses dispatchEvent('contextmenu') instead of mouse right-click for better CI stability
   // (avoids potential browser context menu interference in headless environments)
   const open_remap_dropdown = async (item: Locator) => {
@@ -32,36 +33,35 @@ test.describe(`Atom Radius Controls`, () => {
   test(`element radius: change shows reset, affects canvas, reset restores`, async () => {
     const canvas = structure_canvas(page)
     const item = legend.locator(`.legend-item`).first()
-    let dropdown = await open_remap_dropdown(item)
-    let radius_input = dropdown.locator(`.radius-control input[type="number"]`)
-    let reset_btn = dropdown.locator(`.radius-control .reset-btn`)
+    // Both screenshots exclude the dropdown so closing it cannot count as a radius change.
+    await page.mouse.click(10, 10)
+    const initial = await canvas_screenshot(canvas)
+    const dropdown = await open_remap_dropdown(item)
+    const radius_input = dropdown.locator(`.radius-control input[type="number"]`)
+    const reset_btn = dropdown.locator(`.radius-control .reset-btn`)
     await expect(dropdown.locator(`.radius-control .unit`)).toContainText(`Å`)
     await expect(reset_btn).toHaveCount(0)
     const initial_value = await radius_input.inputValue()
 
     const new_value = Number(initial_value) < 1 ? `1.5` : `0.5`
     // radius propagates to the rendering once the dropdown closes
-    await expect_canvas_changed_by(canvas, async () => {
-      await set_input_value(radius_input, new_value)
-      await expect(reset_btn).toBeVisible()
-      await expect(radius_input).toHaveValue(new_value)
-      await page.mouse.click(10, 10)
-      await expect(dropdown).not.toBeVisible()
-    })
+    await set_input_value(radius_input, new_value)
+    await expect(reset_btn).toBeVisible()
+    await expect(radius_input).toHaveValue(new_value)
+    await page.mouse.click(10, 10)
+    await expect(dropdown).not.toBeVisible()
+    await expect_canvas_changed(canvas, initial)
+    const changed = await canvas_screenshot(canvas)
 
-    // Reopen dropdown and re-query locators (DOM may be recreated, avoiding stale refs)
-    dropdown = await open_remap_dropdown(item)
-    radius_input = dropdown.locator(`.radius-control input[type="number"]`)
-    reset_btn = dropdown.locator(`.radius-control .reset-btn`)
+    await open_remap_dropdown(item)
     await expect(radius_input).toHaveValue(new_value)
 
-    await expect_canvas_changed_by(canvas, async () => {
-      await reset_btn.click()
-      await expect(radius_input).toHaveValue(initial_value)
-      await expect(reset_btn).toHaveCount(0)
-      await page.mouse.click(10, 10)
-      await expect(dropdown).not.toBeVisible()
-    })
+    await reset_btn.click()
+    await expect(radius_input).toHaveValue(initial_value)
+    await expect(reset_btn).toHaveCount(0)
+    await page.mouse.click(10, 10)
+    await expect(dropdown).not.toBeVisible()
+    await expect_canvas_changed(canvas, changed)
   })
 
   test(`site radius: control appears on single selection in edit-atoms mode`, async () => {

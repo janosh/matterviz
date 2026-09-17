@@ -638,7 +638,7 @@
         "matterviz.structure.show_cell_vectors": {
           "type": "boolean",
           "default": true,
-          "description": "Display cell vectors"
+          "description": "Display cell vectors. When omitted, show them only for input cells with at most 100 atoms"
         },
         "matterviz.structure.cell_edge_opacity": {
           "type": "number",
@@ -873,9 +873,10 @@
         },
         "matterviz.trajectory.display_mode": {
           "type": "string",
-          "default": "structure+scatter",
+          "default": "auto",
           "description": "Visualization mode for trajectory data",
           "enum": [
+            "auto",
             "structure+scatter",
             "structure",
             "scatter",

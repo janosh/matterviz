@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import type { Crystal } from '$lib'
   import { SETTINGS_CONFIG } from '$lib'
   import type { BondAngleNormalizeMode, BondAngleSplitMode } from '$lib/bond-angles'
@@ -64,22 +65,24 @@
 
   <StructurePicker bind:selected={single_id} />
 
-  <section class="demo-2col">
-    {#if single_struct}
-      <BondAnglePlot
-        structures={single_struct}
-        strategy={single_strategy}
-        split_mode={single_split_mode}
-        {bin_width}
-        style="height: 500px"
-      />
-      <Structure
-        structure={single_struct}
-        scene_props={single_scene_props}
-        style="height: 500px"
-      />
-    {/if}
-  </section>
+  <LazyDemo label="Single Structure">
+    <section class="demo-2col">
+      {#if single_struct}
+        <BondAnglePlot
+          structures={single_struct}
+          strategy={single_strategy}
+          split_mode={single_split_mode}
+          {bin_width}
+          style="height: 500px"
+        />
+        <Structure
+          structure={single_struct}
+          scene_props={single_scene_props}
+          style="height: 500px"
+        />
+      {/if}
+    </section>
+  </LazyDemo>
 
   <h2 id="compare-structures">Compare Structures</h2>
   <p>
@@ -97,18 +100,22 @@
 
   <StructurePicker bind:selected={selected_ids} />
 
-  <BondAnglePlot
-    structures={selected_structures}
-    strategy={multi_strategy}
-    split_mode="by_structure"
-    normalize={multi_normalize}
-    {bin_width}
-    style="height: 500px"
-  />
+  <LazyDemo label="Compare Structures">
+    <BondAnglePlot
+      structures={selected_structures}
+      strategy={multi_strategy}
+      split_mode="by_structure"
+      normalize={multi_normalize}
+      {bin_width}
+      style="height: 500px"
+    />
+  </LazyDemo>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>
   <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
-  <BondAnglePlot structures={{}} split_mode="by_triplet" style="height: 500px" />
+  <LazyDemo label="Try Your Own Structure">
+    <BondAnglePlot structures={{}} split_mode="by_triplet" style="height: 500px" />
+  </LazyDemo>
 </div>
 
 <style>

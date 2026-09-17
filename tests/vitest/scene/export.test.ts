@@ -1,3 +1,7 @@
+import { AtomInstances } from '$lib/structure/atom-instances'
+import { ArrowMesh } from '$lib/structure/arrow-mesh'
+import { BondMesh } from '$lib/structure/bond-mesh'
+import { prepare_bond_placements } from '$lib/structure/bond-rendering'
 import {
   convert_instanced_meshes_to_regular,
   export_scene_as,
@@ -8,9 +12,11 @@ import type { MeshPhongMaterial } from 'three/webgpu'
 import {
   BufferGeometry,
   Color,
+  ConeGeometry,
   Float32BufferAttribute,
   InstancedBufferAttribute,
   InstancedMesh,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   Scene,
@@ -169,25 +175,30 @@ describe(`export_scene_as`, () => {
     expect(instanced_scene.children[0]).toBe(atoms)
   })
 
-  it(`shares one material across instances when no per-instance colour resolves`, () => {
-    const instanced_scene = new Scene()
-    const spheres = new InstancedMesh(
-      new SphereGeometry(0.5, 4, 4),
-      new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
-      3,
-    )
-    instanced_scene.add(spheres)
-    const converted = convert_instanced_meshes_to_regular(instanced_scene)
-    const meshes: Mesh[] = []
-    converted.traverse((obj) => {
-      if (obj instanceof Mesh) meshes.push(obj)
-    })
-    expect(meshes).toHaveLength(3)
-    expect(new Set(meshes.map((mesh) => mesh.material)).size).toBe(1)
-    expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1)
-    const material = meshes[0].material as MeshStandardMaterial
-    expect([material.color.r, material.color.g, material.color.b]).toEqual([0, 1, 0])
-  })
+  it.each([false, true])(
+    `shares one material for identical colors (instance colors: %s)`,
+    (instance_colors) => {
+      const instanced_scene = new Scene()
+      const spheres = new InstancedMesh(
+        new SphereGeometry(0.5, 4, 4),
+        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
+        3,
+      )
+      if (instance_colors)
+        for (let idx = 0; idx < 3; idx++) spheres.setColorAt(idx, new Color(1, 1, 1))
+      instanced_scene.add(spheres)
+      const converted = convert_instanced_meshes_to_regular(instanced_scene)
+      const meshes: Mesh[] = []
+      converted.traverse((obj) => {
+        if (obj instanceof Mesh) meshes.push(obj)
+      })
+      expect(meshes).toHaveLength(3)
+      expect(new Set(meshes.map((mesh) => mesh.material)).size).toBe(1)
+      expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1)
+      const material = meshes[0].material as MeshStandardMaterial
+      expect([material.color.r, material.color.g, material.color.b]).toEqual([0, 1, 0])
+    },
+  )
 })
 
 // Tests for 3D export color preservation (Issue #203)
@@ -246,37 +257,55 @@ describe(`3D Export Color Preservation`, () => {
 
     // Gradient bonds carry two colors per instance in geometry attributes; the export takes
     // their per-channel midpoint and ignores both the shader material and instanceColor
-    test(`shader-material bond gradients win over instance colors, per instance`, () => {
-      const scene = new Scene()
-      const bond_geometry = new SphereGeometry(0.5, 4, 4)
-      bond_geometry.setAttribute(
-        `instanceColorStart`,
-        new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0.2, 0.4, 0.6, 0, 0, 1]), 3),
-      )
-      bond_geometry.setAttribute(
-        `instanceColorEnd`,
-        new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0.8, 0.2, 0.4, 0, 1, 0]), 3),
-      )
-      const bonds = new InstancedMesh(
-        bond_geometry,
-        new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
-        3,
-      )
-      bonds.name = `bonds`
-      for (let idx = 0; idx < 3; idx++) bonds.setColorAt(idx, new Color(0, 1, 0))
-      scene.add(bonds)
+    test.each([false, true])(
+      `shader-material bond gradients win over instance colors (compact: %s)`,
+      (compact) => {
+        const scene = new Scene()
+        const bond_geometry = new SphereGeometry(0.5, 4, 4)
+        bond_geometry.setAttribute(
+          `instanceColorStart`,
+          new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0.2, 0.4, 0.6, 0, 0, 1]), 3),
+        )
+        bond_geometry.setAttribute(
+          `instanceColorEnd`,
+          new InstancedBufferAttribute(new Float32Array([0, 0, 1, 0.8, 0.2, 0.4, 0, 1, 0]), 3),
+        )
+        const bonds = new (compact ? BondMesh : InstancedMesh)(
+          bond_geometry,
+          new ShaderMaterial({ vertexShader: ``, fragmentShader: `` }),
+          3,
+        )
+        bonds.name = `bonds`
+        if (bonds instanceof BondMesh) {
+          bonds.colors_start.array.set(bond_geometry.getAttribute(`instanceColorStart`).array)
+          bonds.colors_end.array.set(bond_geometry.getAttribute(`instanceColorEnd`).array)
+          bonds.thickness = 0.1
+          bonds.update(
+            prepare_bond_placements(
+              [0, 1, 2].map((idx) => ({
+                pos_1: [idx, 0, 0],
+                pos_2: [idx, 1, 0],
+                site_idx_1: idx,
+                site_idx_2: idx + 1,
+                bond_length: 1,
+              })),
+            ),
+          )
+        } else for (let idx = 0; idx < 3; idx++) bonds.setColorAt(idx, new Color(0, 1, 0))
+        scene.add(bonds)
 
-      const colors = converted_group_colors(scene, `bonds`)
-      expect(colors).toHaveLength(3)
-      for (const [idx, expected] of [
-        [0.5, 0, 0.5],
-        [0.5, 0.3, 0.5],
-        [0, 0.5, 0.5],
-      ].entries()) {
-        for (const channel of [0, 1, 2])
-          expect(colors[idx][channel]).toBeCloseTo(expected[channel], 5)
-      }
-    })
+        const colors = converted_group_colors(scene, `bonds`)
+        expect(colors).toHaveLength(3)
+        for (const [idx, expected] of [
+          [0.5, 0, 0.5],
+          [0.5, 0.3, 0.5],
+          [0, 0.5, 0.5],
+        ].entries()) {
+          for (const channel of [0, 1, 2])
+            expect(colors[idx][channel]).toBeCloseTo(expected[channel], 5)
+        }
+      },
+    )
 
     // Per-instance and non-standard color attributes break GLTF accessor-count validation,
     // so the clone is stripped of them while the standard `position`/`color` stay and the
@@ -418,3 +447,71 @@ describe(`3D Export Color Preservation`, () => {
     })
   })
 })
+
+// Export captures uploaded placements and colors, even as playback advances.
+test.each([`atoms`, `arrows`])(
+  `packed %s export captured transforms and colors without instance attributes`,
+  (kind) => {
+    const atoms =
+      kind === `atoms`
+        ? new AtomInstances(new SphereGeometry(0.5, 8, 8), new MeshStandardMaterial(), 3)
+        : new ArrowMesh(new ConeGeometry(1, 1, 12), new MeshStandardMaterial(), 3)
+    const positions = [
+      [1.25, 2.5, -3.75],
+      [1e8 + 0.1, -2e8, 3e8],
+      [-2, 0, 1],
+    ] as [number, number, number][]
+    if (atoms instanceof AtomInstances)
+      atoms.update_atoms(
+        positions.map((position, idx) => ({ position, radius: [0.7, -2, 0][idx] })),
+      )
+    else {
+      for (const [idx, position] of positions.entries()) {
+        atoms.origins.array.set(position, idx * 3)
+        atoms.lengths.setX(idx, idx)
+        atoms.rotations.setXYZW(idx, 0, Math.SQRT1_2, 0, Math.SQRT1_2)
+      }
+      atoms.part = 1
+      atoms.dimensions = [0.1, -0.2, -0.3]
+      atoms.count = 3
+      atoms.geometry.instanceCount = 3
+    }
+    // Identical colors share a material; nearby float colors must not be quantized together.
+    atoms.colors.array.set([0.2, 0.3, 0.4, 0.2000001, 0.3, 0.4, 0.2, 0.3, 0.4])
+    atoms.position.set(3, -1, 2)
+    atoms.updateMatrixWorld(true)
+    const scene = new Scene().add(atoms)
+    const captured = convert_instanced_meshes_to_regular(scene)
+    const meshes = captured.children[0].children as Mesh[]
+    expect(meshes).toHaveLength(3)
+    expect(meshes[0].material).toBe(meshes[2].material)
+    expect(meshes[0].material).not.toBe(meshes[1].material)
+    const local = new Matrix4()
+    for (let idx = 0; idx < 3; idx++) {
+      atoms.getMatrixAt(idx, local)
+      expect(meshes[idx].matrix.elements).toEqual(
+        new Matrix4().multiplyMatrices(atoms.matrix, local).elements,
+      )
+      expect(Object.keys(meshes[idx].geometry.attributes).toSorted()).toEqual([
+        `normal`,
+        `position`,
+        `uv`,
+      ])
+      expect(meshes[idx].geometry.type).toBe(`BufferGeometry`)
+      expect(meshes[idx].material).toMatchObject({
+        color: new Color().fromBufferAttribute(atoms.colors, idx),
+      })
+    }
+    const captured_matrix = meshes[0].matrix.clone()
+    if (atoms instanceof AtomInstances)
+      atoms.update_atoms([{ position: [9, 8, 7], radius: 2 }])
+    else atoms.origins.setXYZ(0, 9, 8, 7)
+    expect(meshes[0].matrix).toEqual(captured_matrix)
+    expect(
+      atoms.geometry.getAttribute(
+        atoms instanceof AtomInstances ? `atomPositionRadius` : `arrowOrigin`,
+      ),
+    ).toBe(atoms instanceof AtomInstances ? atoms.positions : atoms.origins)
+    atoms.dispose()
+  },
+)

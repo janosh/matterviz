@@ -2,11 +2,12 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import {
     chart_export_filename,
     create_chart_exporter,
   } from '$lib/plot/core/utils/chart-export'
-  import { format_value_or_num } from '$lib/labels'
+  import { parse_axis_label, format_value_or_num } from '$lib/labels'
   import { array_max, type Vec2 } from '$lib/math'
   import type {
     AxisConfig,
@@ -937,8 +938,9 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
-          {@const fmt =
-            orientation === `vertical` ? hover_info.y_axis.format : hover_info.x_axis.format}
+          {@const value_axis =
+            orientation === `vertical` ? hover_info.y_axis : hover_info.x_axis}
+          {@const fmt = value_axis.format}
           {@const stat = hover_info.stats}
           {@const rows = [
             [`whisker high`, stat.whisker_high],
@@ -952,7 +954,13 @@
             <div><strong>{hover_info.category_label}</strong></div>
           {/if}
           {#each rows as [label, value] (label)}
-            <div>{label}: {format_value_or_num(value, fmt)}</div>
+            <div>
+              <TooltipValue
+                {label}
+                value={format_value_or_num(value, fmt)}
+                unit={value_axis.unit ?? parse_axis_label(value_axis.label ?? ``).unit}
+              />
+            </div>
           {/each}
           {#if show_outliers && stat.outliers.length > 0}
             <div>outliers: {stat.outliers.length}</div>

@@ -1,43 +1,21 @@
-import {
-  brighten_hex,
-  css_to_linear_rgb,
-  parse_linear_rgb,
-  write_linear_color_to_buffer,
-} from '$lib/scene/colors'
+import { brighten_hex, css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import { Color } from 'three/webgpu'
 import { expect, test } from 'vitest'
 
-test(`write_linear_color_to_buffer converts CSS once without stale scratch colors`, () => {
-  // Vertex and instance buffers are read raw, so these must hold exactly what three's own
-  // sRGB→working conversion produces — the space InstancedAtoms and ArrowInstances write.
-  // Asserting against `new Color(css)` rather than pinned numbers catches drift in either
-  // direction: a dropped conversion (values ~2x too bright) or a doubled one (~4x too dark).
-  const buffer = new Float32Array(9 * 3)
-  const write_at = (idx: number, css_color: string): number[] => {
-    write_linear_color_to_buffer(buffer, idx, css_color)
-    return Array.from(buffer.slice(idx * 3, (idx + 1) * 3))
-  }
-  // f32 storage, so compare at f32 resolution (eps 1.2e-7); both failure modes are ~1e-1
-  const expect_rgb = (written: number[], expected: number[], label: string) => {
-    for (const [channel_idx, value] of written.entries()) {
-      expect(value, `${label} channel ${channel_idx}`).toBeCloseTo(expected[channel_idx], 6)
-    }
-  }
-  for (const [idx, css] of [`#57178f`, `rebeccapurple`, `rgb(0, 128, 255)`].entries()) {
-    expect_rgb(write_at(idx + 1, css), new Color(css).toArray(), css)
-  }
-  // d3 also parses spellings three rejects — three warns and leaves the scratch on its
-  // previous value — which is why the helper delegates to it rather than to Color.set()
-  expect_rgb(write_at(4, `RGBA(0, 128, 255, 1)`), write_at(5, `rgb(0, 128, 255)`), `RGBA`)
-  // and an unparsable color must land on grey, not repaint with whatever came before
-  expect(write_at(6, `not-a-color`)).toEqual([0.5, 0.5, 0.5])
-  // grey also covers fully transparent input: d3 blanks the channels of any alpha-0 color, so
-  // the red of `rgba(255, 0, 0, 0)` is unrecoverable — and unused, since these meshes are opaque
-  expect(write_at(7, `rgba(255, 0, 0, 0)`)).toEqual([0.5, 0.5, 0.5])
-  // out-of-gamut channels come back from d3 unclamped; CSS clamps them, so we must too
-  expect_rgb(write_at(8, `rgb(300, -20, 0)`), new Color(`rgb(255, 0, 0)`).toArray(), `gamut`)
-  expect(Array.from(buffer.slice(0, 3))).toEqual([0, 0, 0])
-})
+test.each([parse_linear_rgb, css_to_linear_rgb])(
+  `%s converts CSS to linear RGB without stale scratch colors`,
+  (parse) => {
+    // Compare directly with Three's conversion to catch missing or doubled sRGB conversion.
+    for (const css of [`#57178f`, `rebeccapurple`, `rgb(0, 128, 255)`])
+      expect(parse(css)).toEqual(new Color(css).toArray())
+    // D3 accepts uppercase RGBA and preserves out-of-gamut channels; CSS clamps the latter.
+    expect(parse(`RGBA(0, 128, 255, 1)`)).toEqual(parse(`rgb(0, 128, 255)`))
+    expect(parse(`rgb(300, -20, 0)`)).toEqual(new Color(`rgb(255, 0, 0)`).toArray())
+    // Invalid/transparent colors have no usable hue, even after a valid scratch color.
+    expect(parse(`not-a-color`)).toEqual([0.5, 0.5, 0.5])
+    expect(parse(`rgba(255, 0, 0, 0)`)).toEqual([0.5, 0.5, 0.5])
+  },
+)
 
 test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   const source = `#57178f` // deep purple (Cs-like)

@@ -2,13 +2,8 @@ import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { trajectory_from_frames } from '$lib/trajectory'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
-import {
-  assertHoverScopedShortcut,
-  bind_props,
-  doc_query,
-  make_trajectory_frame,
-  press_window_key,
-} from '../setup'
+import { assertHoverScopedShortcut, bind_props, doc_query, press_window_key } from '../setup'
+import { make_trajectory_frame } from '../test-fixtures'
 
 // 5 frames gives headroom so a leaked ArrowRight visibly advances the step
 // instead of no-opping at the last frame (which would mask a missing guard).

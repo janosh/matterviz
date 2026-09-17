@@ -15,7 +15,7 @@ import type {
   TernaryPhaseDiagramOptions,
 } from '$lib/phase-diagram/ternary/types'
 import { beforeAll, describe, expect, test, vi } from 'vitest'
-import { load_json, make_phase } from '../../setup'
+import { load_json, make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries, toy_temps } from './fixtures'
 
 const labels = (diagram: Pick<TernaryPhaseDiagram, `phases`>, idxs: number[]) =>

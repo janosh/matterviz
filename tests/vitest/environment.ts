@@ -1,4 +1,4 @@
-// Automatic browser-environment setup. Domain fixtures belong in setup.ts and are only
+// Automatic browser-environment setup. Domain fixtures belong in test-fixtures.ts and are only
 // loaded by tests that explicitly import them.
 import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
 import { beforeEach, vi } from 'vitest'

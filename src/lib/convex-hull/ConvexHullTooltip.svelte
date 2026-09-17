@@ -65,11 +65,13 @@
 
     {#if entry.e_above_hull != null}
       <div>
-        E<sub>above hull</sub>: {format_num(entry.e_above_hull, `.3~`)} eV/atom
+        E<sub>above hull</sub>: {format_num(entry.e_above_hull, `.3~`)} <small>eV/atom</small>
       </div>
     {/if}
     {#if entry.e_form_per_atom != null}
-      <div>E<sub>form</sub>: {format_num(entry.e_form_per_atom, `.3~`)} eV/atom</div>
+      <div>
+        E<sub>form</sub>: {format_num(entry.e_form_per_atom, `.3~`)} <small>eV/atom</small>
+      </div>
     {/if}
     {#if entry_category && category_value}
       <div title={entry_category.labels?.[category_value]}>

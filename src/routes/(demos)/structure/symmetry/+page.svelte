@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
   import {
@@ -201,31 +202,35 @@
     <!-- Example 3: Two Column - Stats Left, Structure Right -->
     <div class="example-section">
       <h3 id="two-column-stats-structure">Two Column - Stats + Structure</h3>
-      <div class="two-column-layout">
-        <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-        <Structure
-          source="/structures/{source_filename}"
-          show_controls={true}
-          bind:this={two_col_viewer}
-          bind:symmetry_settings={two_col_sym_settings}
-          style="height: 300px; border-radius: 8pt"
-        />
-      </div>
+      <LazyDemo label="Two Column - Stats + Structure" height="300px">
+        <div class="two-column-layout">
+          <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
+          <Structure
+            source="/structures/{source_filename}"
+            show_controls={true}
+            bind:this={two_col_viewer}
+            bind:symmetry_settings={two_col_sym_settings}
+            style="height: 300px; border-radius: 8pt"
+          />
+        </div>
+      </LazyDemo>
     </div>
 
     <!-- Example 5: Grid Layout - Stats Above, Structure Below -->
     <div class="example-section">
       <h3 id="stacked-layout-stats-above-structure">Stacked Layout - Stats Above Structure</h3>
-      <div class="stacked-layout">
-        <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
-        <Structure
-          source="/structures/{source_filename}"
-          show_controls={true}
-          bind:this={stacked_viewer}
-          bind:symmetry_settings={stacked_sym_settings}
-          style="height: 400px; border-radius: 8pt; margin-top: 1em"
-        />
-      </div>
+      <LazyDemo label="Stacked Layout - Stats Above Structure" height="400px">
+        <div class="stacked-layout">
+          <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
+          <Structure
+            source="/structures/{source_filename}"
+            show_controls={true}
+            bind:this={stacked_viewer}
+            bind:symmetry_settings={stacked_sym_settings}
+            style="height: 400px; border-radius: 8pt; margin-top: 1em"
+          />
+        </div>
+      </LazyDemo>
     </div>
   {:else}
     <p style="text-align: center; color: var(--text-muted, #666)">

@@ -9,7 +9,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     // Extend the default 30s test timeout: it would kill the 50s data-load wait below
     // before it can succeed when parallel workers load this heavy page simultaneously
     test.setTimeout(90_000)
-    await page.goto(`/convex-hull`, { waitUntil: `networkidle` })
+    await page.goto(`/convex-hull#binary-chemical-systems`, { waitUntil: `networkidle` })
     // Wait for data to load - the binary-grid only renders after loaded_data.size > 0
     // The 50s timeout accounts for downloading ~2MB of gzipped JSON files that decompress
     // to ~20MB, plus parsing and rendering multiple 2D/3D/4D convex hull visualizations

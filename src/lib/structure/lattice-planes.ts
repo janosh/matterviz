@@ -109,7 +109,8 @@ export function clip_frac_plane_to_cell(
     }
   }
   if (frac_points.length < 3) return []
-  const cart_points = frac_points.map(math.create_frac_to_cart(lattice))
+  const to_cart = math.create_frac_to_cart(lattice)
+  const cart_points = frac_points.map((point) => to_cart(point))
 
   // Order vertices by angle around the centroid within the plane; only the direction of the
   // plane normal matters here

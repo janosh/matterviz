@@ -8,7 +8,7 @@ import { flatten_grid } from '$lib/isosurface/grid'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { add, cross_3d, dot, subtract } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-import { cubic_matrix, make_grid } from './setup'
+import { cubic_matrix, make_grid } from './test-fixtures'
 
 const IDENTITY = cubic_matrix(1)
 const NON_PERIODIC = { periodic: false }

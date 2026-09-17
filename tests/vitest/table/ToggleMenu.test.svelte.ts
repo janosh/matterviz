@@ -1,6 +1,6 @@
 import type { Column } from '$lib/table'
 import ToggleMenu from '$lib/table/ToggleMenu.svelte'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, fire, doc_query } from '../setup'
 
@@ -104,7 +104,12 @@ describe(`ToggleMenu`, () => {
     )
 
     it(`keeps panel open on presses inside the portaled dropdown`, async () => {
-      mount_menu()
+      mount_menu(make_columns(), {
+        header: createRawSnippet(() => ({
+          render: () =>
+            `<label><input type="checkbox" aria-label="Extra setting" />Extra setting</label>`,
+        })),
+      })
       await tick()
 
       const details = doc_query<HTMLDetailsElement>(`details`)
@@ -117,8 +122,13 @@ describe(`ToggleMenu`, () => {
       const press = (element: Element) =>
         element.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
 
-      press(menu.querySelectorAll(`input[type="checkbox"]`)[0])
+      const extra_setting = doc_query<HTMLInputElement>(`[aria-label="Extra setting"]`)
+      expect(menu.contains(extra_setting)).toBe(true)
+      expect(menu.firstElementChild?.contains(extra_setting)).toBe(true)
+      press(extra_setting)
+      extra_setting.click()
       await tick()
+      expect(extra_setting.checked).toBe(true)
       expect(details.open).toBe(true)
 
       press(summary)
@@ -284,7 +294,7 @@ describe(`ToggleMenu`, () => {
       [31, 3], // capped at three columns
     ])(`lays out %i items in %i columns`, (count, expected) => {
       mount_menu(make_many_columns(count))
-      expect(doc_query(`.column-menu`).style.gridTemplateColumns).toBe(
+      expect(doc_query(`.column-items`).style.gridTemplateColumns).toBe(
         `repeat(${expected}, max-content)`,
       )
       expect(document.querySelector(`input[aria-label="Filter columns"]`) !== null).toBe(

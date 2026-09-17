@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { TooltipValue } from '$lib/tooltip'
+  import { webgpu_available } from '$lib/scene'
   import type {
     ScatterPlotOptions,
     HistogramOptions,
@@ -23,14 +25,18 @@
   } from 'svelte-widgets/icons'
   import { handle_and_prevent, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { format_num, plural, trajectory_property_config } from '$lib/labels'
+  import {
+    parse_axis_label,
+    format_num,
+    plural,
+    trajectory_property_config,
+  } from '$lib/labels'
   import type { TrajPropertyConfig } from '$lib/labels'
   import { clamp } from '$lib/math'
   import type { Vec2 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
-  import { sanitize_html } from '$lib/sanitize'
-  import { FullscreenButton } from '$lib/layout'
+  import { FullscreenButton, SettingsSection } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
@@ -40,14 +46,31 @@
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { StructurePane, StructureOptions } from '$lib/structure'
+  import { applies_to_structure } from '$lib/structure/settings'
+  import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
+  import { is_vector_key } from '$lib/structure/vectors'
+  import type { FrameChannels } from './frame'
   import Structure from '$lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
   import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
+  import TrajectoryHotspotPane from './TrajectoryHotspotPane.svelte'
+  import {
+    hotspot_display_values,
+    type HotspotResult,
+    type HotspotMetric,
+    type HotspotCoverage,
+  } from './hotspots'
+  import {
+    hotspot_colors,
+    hotspot_field_geometry,
+    hotspot_cloud_colors,
+    DEFAULT_HOTSPOT_CLOUD,
+  } from './hotspot-colors'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
   import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { tick as flush_updates, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -72,6 +95,7 @@
     generate_axis_labels,
     generate_axis_scale_types,
     generate_plot_series,
+    is_energy_property,
     with_visible_properties,
     get_frame_step_samples,
     get_frame_time_step,
@@ -103,11 +127,13 @@
     | `vacf`
     | `rdf`
     | `spectroscopy`
+    | `hotspots`
     | `structure-id`
     | `data-inspector`
     | `export`
     | `flight`
   export type TrajectoryDisplayMode =
+    | `auto`
     | `structure+scatter`
     | `structure`
     | `scatter`
@@ -124,6 +150,7 @@
     | `vacf-pane`
     | `rdf-pane`
     | `spectroscopy-pane`
+    | `hotspots-pane`
     | `structure-id-pane`
     | `data-inspector-pane`
     | `x-axis`
@@ -138,6 +165,7 @@
   type EventHandler = (data: TrajHandlerData) => void
 
   const DISPLAY_MODES = [
+    { mode: `auto`, icon: TwoColumns, label: `Automatic` },
     { mode: `structure`, icon: Atom, label: `Structure-only` },
     { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
     { mode: `structure+histogram`, icon: TwoColumns, label: `Structure + Histogram` },
@@ -171,6 +199,7 @@
     property_labels,
     x_quantity = $bindable(),
     visible_properties = $bindable(),
+    relative_energy = $bindable(false),
     step_labels = DEFAULTS.trajectory.step_labels,
     plot_skimming = true,
     show_controls,
@@ -182,6 +211,7 @@
     extra_controls,
     active_pane = $bindable(null),
     on_step_change,
+    on_frame_rendered,
     on_play,
     on_pause,
     on_end,
@@ -211,6 +241,7 @@
     fps?: number
     fps_range?: Readonly<Vec2>
     auto_play?: boolean
+    // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
@@ -230,6 +261,8 @@
     x_quantity?: TrajectoryXQuantity
     // Bindable exact property keys (independent of display labels); [] hides every series.
     visible_properties?: string[]
+    // Plot each energy relative to its first finite recorded value; source data is unchanged.
+    relative_energy?: boolean
     // Slider labels: n evenly spaced ticks (n > 0), every |n|th step (n < 0), or exact indices
     step_labels?: number | number[]
     // Clicking the plot moves the playhead
@@ -247,6 +280,8 @@
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     on_step_change?: EventHandler
+    // Emitted after the complete scene is submitted, independently of requested navigation.
+    on_frame_rendered?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
     on_end?: EventHandler
@@ -369,7 +404,7 @@
       on_file_load?.({
         trajectory: run,
         frame_count: run.frame_count,
-        total_atoms: run.preview.structure.sites.length,
+        total_atoms: run.atom_count,
         ...opened.provenance,
       })
     } catch (error) {
@@ -443,10 +478,103 @@
   const event_data = (): TrajHandlerData => ({
     step_idx: current_step_idx,
     frame_count: session.frame_count,
-    frame: session.current_frame ?? undefined,
+    frame: session.numeric_frame ?? undefined,
   })
+  let structure_display_mode = $derived(structure_props.display_mode ?? `structure`)
+  let atom_color_config = $derived(
+    structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
+  )
+  const frame_channels = $derived.by((): FrameChannels | undefined => {
+    // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
+    // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
+    // own channels from the source, independently of this display packet.
+    if (
+      active_pane === `data-inspector` ||
+      structure_pane === `info` ||
+      structure_pane === `export` ||
+      structure_props.children ||
+      structure_props.on_camera_move ||
+      structure_props.on_camera_reset ||
+      on_frame_rendered ||
+      on_step_change ||
+      on_play ||
+      on_pause ||
+      on_end ||
+      on_loop ||
+      atom_color_config.mode === `custom`
+    )
+      return undefined
+    const frame =
+      session.scene_frame?.run === trajectory ? session.scene_frame?.frame : undefined
+    if (!frame) return undefined
+    const available = frame.available_vector_keys ?? frame.vector_keys
+    const vectors = available.filter(
+      (key) =>
+        key === `selective_dynamics` ||
+        (atom_color_config.mode === `property` && atom_color_config.property_key === key) ||
+        (show_structure &&
+          is_vector_key(key) &&
+          trail_scene_props.vector_configs?.[key]?.visible !== false),
+    )
+    return vectors.length === available.length ? undefined : { vectors }
+  })
+  const frame_preparation = $derived.by(() => {
+    if (!show_structure || !trajectory?.prepare_frame || trajectory.atom_count < 2000)
+      return undefined
+    const props = trail_scene_props
+    const crystal = `lattice` in trajectory.preview.structure
+    const show_polyhedra = applies_to_structure(
+      props.show_polyhedra ?? DEFAULTS.structure.show_polyhedra,
+      crystal,
+    )
+    return {
+      bonds:
+        applies_to_structure(props.show_bonds ?? DEFAULTS.structure.show_bonds, crystal) ||
+        show_polyhedra,
+      bonding_strategy: props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+      bonding_options: $state.snapshot(props.bonding_options ?? {}),
+      auto_bond_order: props.auto_bond_order ?? DEFAULTS.structure.auto_bond_order,
+      ...(show_polyhedra && {
+        polyhedra: {
+          min_neighbors:
+            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
+          max_neighbors: Math.max(
+            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
+            props.polyhedra_max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
+          ),
+          excluded_center_elements: [...(props.polyhedra_excluded_elements ?? [])],
+          included_center_elements: [...(props.polyhedra_included_elements ?? [])],
+        },
+      }),
+      ...((props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap) === 0 && {
+        vector_geometry: {
+          vector_configs: Object.fromEntries(
+            Object.entries(props.vector_configs ?? {}).map(([key, { visible, scale }]) => [
+              key,
+              { visible, scale },
+            ]),
+          ),
+          vector_normalize: props.vector_normalize ?? DEFAULTS.structure.vector_normalize,
+          vector_scale: props.vector_scale ?? DEFAULTS.structure.vector_scale,
+          vector_uniform_thickness:
+            props.vector_uniform_thickness ?? DEFAULTS.structure.vector_uniform_thickness,
+          vector_shaft_radius:
+            props.vector_shaft_radius ?? DEFAULTS.structure.vector_shaft_radius,
+          vector_arrow_head_radius:
+            props.vector_arrow_head_radius ?? DEFAULTS.structure.vector_arrow_head_radius,
+          vector_arrow_head_length:
+            props.vector_arrow_head_length ?? DEFAULTS.structure.vector_arrow_head_length,
+        },
+      }),
+    }
+  })
+  const uses_structure_renderer = () =>
+    webgpu_available() && show_structure && structure_display_mode !== `slice`
   const session = create_trajectory_session({
     run: () => (loading || error_msg || hdf5_picker_open ? undefined : trajectory),
+    preparation: () => frame_preparation,
+    channels: () => frame_channels,
+    wait_for_render: uses_structure_renderer,
     index: () => current_step_idx,
     set_index: (idx) => (current_step_idx = idx),
     fps: () => fps,
@@ -465,6 +593,47 @@
     },
   })
   const { player, controller } = session
+  let hotspot_result = $state.raw<HotspotResult>()
+  let hotspot_coverage = $state<HotspotCoverage>()
+  const hotspot_pattern_id = $props.id()
+  async function prepare_structure_frame(idx: number, signal: AbortSignal): Promise<void> {
+    await flush_updates()
+    await session.wait_for_frame(idx, signal)
+  }
+  let hotspot_metric = $state<HotspotMetric>(`energy`)
+  let hotspot_min_atoms = $state(10)
+  let hotspot_threshold = $state(1.25)
+  let show_heatmap = $state(true)
+  let hotspot_cloud = $state({ ...DEFAULT_HOTSPOT_CLOUD })
+  const hotspot_values = $derived(
+    hotspot_result
+      ? hotspot_display_values(hotspot_result, hotspot_metric, hotspot_min_atoms)
+      : undefined,
+  )
+  const field_geometry = $derived(
+    hotspot_result && session.scene_frame
+      ? hotspot_field_geometry(hotspot_result, session.scene_frame.frame)
+      : undefined,
+  )
+  const heatmap_colors = $derived(hotspot_values ? hotspot_colors(hotspot_values) : undefined)
+  const atom_color_field = $derived(
+    show_heatmap && field_geometry && heatmap_colors
+      ? { ...field_geometry, colors: heatmap_colors }
+      : undefined,
+  )
+  const cloud_colors = $derived(
+    hotspot_cloud.visible && hotspot_values
+      ? hotspot_cloud_colors(
+          hotspot_values,
+          hotspot_threshold,
+          hotspot_cloud.base_color,
+          hotspot_cloud.hot_color,
+        )
+      : undefined,
+  )
+  const volume_color_field = $derived(
+    field_geometry && cloud_colors ? { ...field_geometry, colors: cloud_colors } : undefined,
+  )
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)
   let scrub_active = $derived(session.scrubbing)
@@ -517,10 +686,12 @@
       : undefined,
   )
 
-  const is_pane_open = (pane: TrajectoryPane): boolean => active_pane === pane
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
-    if (open) active_pane = pane
-    else if (active_pane === pane) active_pane = null
+    if (open) {
+      active_pane = pane
+    } else if (active_pane === pane) {
+      active_pane = null
+    }
   }
 
   // === trails ===
@@ -548,7 +719,7 @@
     const collect_trails = async () => {
       const frame_stride = suggest_frame_stride(
         owner.frame_count,
-        owner.preview.structure.sites.length,
+        owner.atom_count,
         TRAIL_POSITION_MAX_BYTES,
       )
       return collect_trajectory_positions(owner, {
@@ -669,6 +840,7 @@
   let base_plot_series = $derived(
     generate_plot_series(session.property_rows, {
       property_config: extended_config,
+      relative_energy,
       x_map,
     }),
   )
@@ -681,6 +853,8 @@
   const hidden_plot_series = () =>
     plot_series.filter((srs) => !srs.visible).map((srs) => srs.id)
   const set_hidden_plot_series = (hidden: readonly (string | number)[] | undefined) => {
+    // A legend interaction is an explicit request to keep working with the plot.
+    if (display_mode === `auto`) display_mode = effective_display_mode
     const hidden_ids = new Set(hidden)
     const present_ids = new Set(plot_series.map((srs) => srs.id))
     visible_properties = [
@@ -731,14 +905,18 @@
     scale_type: y_axis_scale_types.y2,
   })
   let plot_loading = $derived(!session.properties_complete && plot_series.length === 0)
-  // Spectroscopy owns the plot region while open; otherwise hide a constant-value plot
-  let show_plot = $derived(
-    spectroscopy_open ||
-      (display_mode !== `structure` &&
-        (plot_loading || !should_hide_plot(total_frames, plot_series))),
+  // Wait for scalar sampling before choosing the default; explicit modes always win.
+  let effective_display_mode = $derived(
+    display_mode === `auto`
+      ? session.properties_complete && should_hide_plot(total_frames, plot_series)
+        ? `structure`
+        : `structure+scatter`
+      : display_mode,
   )
+  // Spectroscopy owns the plot region while open.
+  let show_plot = $derived(spectroscopy_open || effective_display_mode !== `structure`)
   let show_structure = $derived(
-    spectroscopy_open || ![`scatter`, `histogram`].includes(display_mode),
+    spectroscopy_open || ![`scatter`, `histogram`].includes(effective_display_mode),
   )
   let has_y2_series = $derived(
     plot_series.some(
@@ -775,7 +953,7 @@
     session.commit(x_map.to_frame(data.x))
 
   let current_display_mode = $derived.by(() => {
-    const option = DISPLAY_MODES.find((entry) => entry.mode === display_mode)
+    const option = DISPLAY_MODES.find((entry) => entry.mode === effective_display_mode)
     if (option) return option
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
@@ -832,6 +1010,12 @@
     default_dt: frame_time_step,
     default_time_unit: trajectory?.time_step?.unit,
   })
+  const analysis_panes = $derived([
+    [`msd`, TrajectoryMsdPane, correlation_pane_props],
+    [`vacf`, TrajectoryVacfPane, correlation_pane_props],
+    [`rdf`, TrajectoryRdfPane, analysis_pane_props],
+    [`structure-id`, TrajectoryStructureIdPane, analysis_pane_props],
+  ] as const)
   // oxfmt-ignore
   const ANALYSES = (
     [
@@ -839,6 +1023,7 @@
       [`vacf`, `Velocity autocorrelation & VDOS`, Graph],
       [`rdf`, `Radial distribution function`, Graph],
       [`spectroscopy`, `Trajectory IR/Raman & VDOS`, Graph],
+      [`hotspots`, `Thermal hotspots`, Graph],
       [`structure-id`, `Structure identification`, Atom],
       [`data-inspector`, `Data inspector`, Database],
     ] as const
@@ -853,6 +1038,25 @@
   )
   let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
 </script>
+
+{#snippet energy_controls()}
+  {#if base_plot_series.some((srs) => is_energy_property(srs.id))}
+    <SettingsSection
+      title="Energy"
+      changed_keys={relative_energy ? [`relative_energy`] : []}
+      on_reset={() => (relative_energy = false)}
+    >
+      <label
+        {@attach tooltip({
+          content: `Subtract each energy series' first finite recorded value. Δ marks the change; other quantities are unchanged.`,
+        })}
+      >
+        <input type="checkbox" name="relative_energy" bind:checked={relative_energy} />
+        Change from initial value
+      </label>
+    </SettingsSection>
+  {/if}
+{/snippet}
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
@@ -875,7 +1079,6 @@
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
-  class:show-both-views={show_plot && show_structure && !spectroscopy_open}
   class:spectroscopy-mode={spectroscopy_open}
   {@attach file_io.raw_file_drop_zone({
     allow: () => allow_file_drop,
@@ -1038,7 +1241,61 @@
           play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
           next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
           on_index_input={session.scrub}
-        />
+        >
+          {#snippet slider_overlay()}
+            {#snippet marker(frame: number, active = false)}
+              <line
+                class:active
+                x1={frame}
+                x2={frame}
+                y1="0"
+                y2="1"
+                stroke="currentColor"
+                stroke-width={active ? 4 : 2}
+                vector-effect="non-scaling-stroke"
+              />
+            {/snippet}
+            {#if hotspot_coverage}
+              {@const coverage = hotspot_coverage}
+              {@const label = `Hotspot analysis: ${coverage.completed}/${coverage.total} sampled frames complete${coverage.busy ? ` · calculating` : ``}`}
+              <svg
+                class="hotspot-coverage"
+                viewBox="0 0 {Math.max(total_frames - 1, 1)} 1"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label={label}
+              >
+                <title>{label}</title>
+                <defs>
+                  <pattern
+                    id={hotspot_pattern_id}
+                    width={coverage.stride}
+                    height="1"
+                    patternUnits="userSpaceOnUse"
+                    x={coverage.start - 0.5}
+                  >
+                    <rect width="1" height="1" fill="currentColor" />
+                  </pattern>
+                </defs>
+                <rect
+                  class="completed"
+                  x={coverage.start - 0.5}
+                  width={coverage.completed
+                    ? (coverage.completed - 1) * coverage.stride + 1
+                    : 0}
+                  height="1"
+                  fill="url(#{hotspot_pattern_id})"
+                />
+                {#if coverage.preview_frame !== undefined}
+                  {@render marker(coverage.preview_frame)}
+                {/if}
+                {#if coverage.busy && coverage.completed < coverage.total}
+                  {@render marker(coverage.start + coverage.completed * coverage.stride, true)}
+                {/if}
+              </svg>
+            {/if}
+          {/snippet}
+        </SequenceControls>
 
         <div class="info-section">
           {@render extra_controls?.()}
@@ -1053,7 +1310,7 @@
               property_rows={session.property_rows}
               properties_complete={session.properties_complete}
               bind:pane_open={
-                () => is_pane_open(`info`), (open) => set_pane_open(`info`, open)
+                () => active_pane === `info`, (open) => set_pane_open(`info`, open)
               }
               pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
             />
@@ -1061,10 +1318,10 @@
           {#if controls_config.visible(`export-pane`)}
             <TrajectoryExportPane
               bind:export_pane_open={
-                () => is_pane_open(`export`), (open) => set_pane_open(`export`, open)
+                () => active_pane === `export`, (open) => set_pane_open(`export`, open)
               }
               bind:flight_pane_open={
-                () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
+                () => active_pane === `flight`, (open) => set_pane_open(`flight`, open)
               }
               run={trajectory}
               {wrapper}
@@ -1075,6 +1332,9 @@
                 session.commit(idx)
               }}
               resolve_frame={session.resolve_frame}
+              prepare_display_frame={uses_structure_renderer()
+                ? prepare_structure_frame
+                : undefined}
               on_flight_start={() => {
                 const was_playing = player.is_playing
                 player.pause()
@@ -1115,37 +1375,40 @@
                 </button>
               {/each}
               {#snippet trailing()}
-                <TrajectoryMsdPane
-                  {...correlation_pane_props}
+                {#each analysis_panes as [pane, AnalysisPane, props] (pane)}
+                  <AnalysisPane
+                    {...props}
+                    bind:pane_open={
+                      () => active_pane === pane, (open) => set_pane_open(pane, open)
+                    }
+                  />
+                {/each}
+                <TrajectoryHotspotPane
+                  bind:cloud={hotspot_cloud}
+                  persistent
+                  max_width="42em"
+                  run={trajectory}
+                  current_frame_idx={current_step_idx}
+                  bind:result={hotspot_result}
+                  bind:coverage={hotspot_coverage}
+                  bind:show_heatmap
+                  bind:metric={hotspot_metric}
+                  bind:min_atoms={hotspot_min_atoms}
+                  bind:threshold={hotspot_threshold}
                   bind:pane_open={
-                    () => is_pane_open(`msd`), (open) => set_pane_open(`msd`, open)
+                    () => active_pane === `hotspots`, (open) => set_pane_open(`hotspots`, open)
                   }
-                />
-                <TrajectoryVacfPane
-                  {...correlation_pane_props}
-                  bind:pane_open={
-                    () => is_pane_open(`vacf`), (open) => set_pane_open(`vacf`, open)
-                  }
-                />
-                <TrajectoryRdfPane
-                  {...analysis_pane_props}
-                  bind:pane_open={
-                    () => is_pane_open(`rdf`), (open) => set_pane_open(`rdf`, open)
-                  }
-                />
-                <TrajectoryStructureIdPane
-                  {...analysis_pane_props}
-                  bind:pane_open={
-                    () => is_pane_open(`structure-id`),
-                    (open) => set_pane_open(`structure-id`, open)
-                  }
+                  pane_props={{
+                    style: `--pane-max-height: var(--traj-pane-max-height); --pane-width: min(42em, calc(100vw - 3em))`,
+                  }}
+                  toggle_props={analysis_pane_props.toggle_props}
                 />
                 <TrajectoryDataInspectorPane
                   {...analysis_pane_props}
                   {current_step_idx}
                   {current_frame}
                   bind:pane_open={
-                    () => is_pane_open(`data-inspector`),
+                    () => active_pane === `data-inspector`,
                     (open) => set_pane_open(`data-inspector`, open)
                   }
                   on_step_change={session.commit}
@@ -1168,7 +1431,7 @@
           {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={current_display_mode.label}
+              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`}
               class="view-mode-dropdown-wrapper"
             >
               {#snippet button()}
@@ -1231,8 +1494,25 @@
             ? false
             : structure_props.show_controls}
           bind:scene_props={trail_scene_props}
+          bind:atom_color_config
+          {atom_color_field}
+          {volume_color_field}
+          volume_opacity={hotspot_cloud.opacity}
+          atom_opacity={volume_color_field && hotspot_cloud.opacity > 0
+            ? hotspot_cloud.atom_opacity
+            : 1}
           structure={session.current_structure}
+          render_token={session.scene_frame}
+          on_rendered={(snapshot) => {
+            if (session.mark_rendered(snapshot) && session.scene_frame)
+              on_frame_rendered?.({
+                step_idx: session.scene_frame.idx,
+                frame_count: session.frame_count,
+                frame: session.scene_frame.frame,
+              })
+          }}
           {structure_series_key}
+          bind:display_mode={structure_display_mode}
           trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
           trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
           defer_expensive_geometry={!spectroscopy_open && scrub_active}
@@ -1266,7 +1546,7 @@
         inline
         run={trajectory}
         bind:pane_open={
-          () => is_pane_open(`spectroscopy`), (open) => set_pane_open(`spectroscopy`, open)
+          () => active_pane === `spectroscopy`, (open) => set_pane_open(`spectroscopy`, open)
         }
       />
 
@@ -1276,7 +1556,7 @@
             text="Sampling trajectory plot data..."
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
-        {:else if display_mode === `scatter` || display_mode === `structure+scatter`}
+        {:else if effective_display_mode === `scatter` || effective_display_mode === `structure+scatter`}
           <ScatterPlot
             {...scatter_props}
             show_controls={controls_config.mode === `never`
@@ -1298,6 +1578,10 @@
             padding={trajectory_scatter_padding}
             hover_config={trajectory_hover_config}
           >
+            {#snippet controls_extra(config)}
+              {@render energy_controls()}
+              {@render scatter_props.controls_extra?.(config)}
+            {/snippet}
             {#snippet tooltip({
               x: coord_x,
               y: coord_y,
@@ -1305,12 +1589,17 @@
               metadata,
               label,
             }: ScatterHandlerProps)}
-              {x_axis.label}: {format_num(coord_x, `~g`)}<br />
-              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {format_num(
-                coord_y,
-              )}
+              <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
+              {@const value_label = String(metadata?.series_label || label || `Value`)}
+              <TooltipValue label={value_label} value={format_num(coord_y)} />
               {#if typeof raw_y === `number`}
-                <small style="opacity: 0.65">&nbsp;(raw: {format_num(raw_y)})</small>
+                <span style="opacity: 0.65"
+                  >&nbsp;(<TooltipValue
+                    label="raw"
+                    value={format_num(raw_y)}
+                    unit={parse_axis_label(value_label).unit}
+                  />)</span
+                >
               {/if}
             {/snippet}
           </ScatterPlot>
@@ -1331,17 +1620,28 @@
             mode={histogram_props.mode ?? `overlay`}
             style="height: 100%"
           >
+            {#snippet controls_extra(config)}
+              {@render energy_controls()}
+              {@render histogram_props.controls_extra?.(config)}
+            {/snippet}
             {#snippet tooltip({
               value,
               count,
               property,
+              series_idx,
             }: {
               value: number
               count: number
               property?: string
+              series_idx: number
             })}
-              {#if property}<div><strong>{property}</strong></div>{/if}
-              <div>Value: {format_num(value)}</div>
+              <div>
+                <TooltipValue
+                  label={property || `Value`}
+                  value={format_num(value)}
+                  unit={histogram_series[series_idx]?.unit}
+                />
+              </div>
               <div>Count: {count}</div>
             {/snippet}
           </Histogram>
@@ -1382,18 +1682,50 @@
 </div>
 
 <style>
+  .hotspot-coverage {
+    position: absolute;
+    top: calc(50% + 3px);
+    left: calc(var(--range-thumb-size, 0.9rem) / 2);
+    width: calc(100% - var(--range-thumb-size, 0.9rem));
+    height: 3px;
+    color: var(--hotspot-progress-color, #e8932f);
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+    .completed {
+      transition: width 0.15s linear;
+    }
+    .active {
+      animation: hotspot-pulse 0.8s ease-in-out infinite alternate;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .completed {
+        transition: none;
+      }
+      .active {
+        animation: none;
+      }
+    }
+  }
+  @keyframes hotspot-pulse {
+    from {
+      opacity: 0.3;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   .trajectory-loading {
     width: min(24em, calc(100% - 2em));
     margin: auto;
     padding-block: 1em;
   }
   .trajectory {
-    --min-height: 500px;
     display: flex;
     flex-direction: column;
     height: var(--traj-height, 100%);
     position: relative;
-    min-height: var(--traj-min-height, var(--min-height));
+    min-height: var(--traj-min-height, 500px);
     --traj-surface-bg: var(
       --traj-bg,
       color-mix(in srgb, var(--page-bg, Canvas) 97%, var(--text-color, CanvasText) 3%)
@@ -1437,6 +1769,8 @@
   .content-area {
     display: grid;
     position: relative;
+    /* Nested viewer chrome stays below the sequence bar and its floating panes. */
+    isolation: isolate;
     flex: 1;
     min-height: 0; /* important for tall structure viewers not to overflow */
     /* The panes share this box, so a plot's own floor (350px for scatter, 300px for
@@ -1494,17 +1828,6 @@
       background: var(--btn-disabled-bg);
       color: var(--text-color-muted);
       cursor: not-allowed;
-    }
-  }
-  @media (orientation: portrait) {
-    .trajectory {
-      &.show-both-views:not(.spectroscopy-mode) {
-        min-height: calc(var(--min-height) * 2);
-      }
-      &.vertical .content-area.show-both:not(.hide-plot):not(.hide-structure) {
-        grid-template-columns: minmax(0, 1fr) !important;
-        grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr) !important;
-      }
     }
   }
   .x-quantity-select {

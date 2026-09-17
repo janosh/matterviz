@@ -7,14 +7,16 @@ import type { Crystal, Site } from '$lib/structure'
 import * as atom_properties from '$lib/structure/atom-properties'
 import { parse_poscar } from '$lib/structure/parse'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
-import { get_orig_site_idx } from '$lib/structure/site'
+import { get_orig_site_idx, numeric_sites } from '$lib/structure/site'
+import { compute_display_metrics } from '$lib/structure/vectors'
+import { create_numeric_md_frame, FrameView, materialize_frame } from '$lib/trajectory/frame'
 import selective_dynamics_poscar from '$site/structures/selective-dynamics.poscar?raw'
 import { make_supercell } from '$lib/structure/supercell'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES, CNA_TYPE_PROPERTY } from '$lib/structure-id'
 import type { WyckoffPos } from '$lib/symmetry'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { rgb } from 'd3-color'
-import { make_crystal, make_rocksalt, make_struct } from '../setup'
+import { make_crystal, make_rocksalt, make_struct } from '../test-fixtures'
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (
@@ -591,6 +593,60 @@ describe(`Site property coloring`, () => {
     expect(result.values).toEqual([5, 1, 3])
     expect([result.min_value, result.max_value]).toEqual([1, 5])
   })
+
+  test.each(
+    [0, 4].flatMap((count) => [
+      { count, key: `charge`, override: false },
+      { count, key: `force`, override: false },
+      { count, key: `force`, override: true },
+      { count, key: `displacement`, override: false },
+      { count, key: `constructor`, override: false },
+      { count, key: `missing`, override: false },
+    ]),
+  )(
+    `colors numeric $key without materializing $count sites (override: $override)`,
+    ({ count, key, override }) => {
+      const frame = create_numeric_md_frame(
+        new Float64Array(count * 3),
+        new Uint8Array(count).fill(14),
+        undefined,
+        undefined,
+        0,
+        {},
+        [`force`, `displacement`, `constructor`],
+      )
+      const vectors = [
+        [3, 4, 0],
+        [0, 0, 0],
+        [NaN, 1, 2],
+        [1, 2, 2],
+      ]
+      for (let idx = 0; idx < count; idx++)
+        frame.coordinates.set(
+          [...vectors[idx], ...vectors[idx], ...vectors[idx]],
+          idx * 15 + 6,
+        )
+      const charge = Float64Array.of(-2, -0, NaN, 4).slice(0, count)
+      frame.scalar_columns = { charge, ...(override && { force: charge }) }
+      const expected = atom_properties.get_site_property_colors(
+        materialize_frame(frame).structure,
+        key,
+      )
+      const structure = new FrameView().update(frame).structure
+      const columns = numeric_sites.get(structure)
+      if (!columns) throw new Error(`Expected numeric sites`)
+      const materialize = vi.spyOn(columns, `materialize`)
+      try {
+        for (const cached of [false, true]) {
+          columns.display_metrics = cached ? compute_display_metrics(structure) : undefined
+          expect(atom_properties.get_site_property_colors(structure, key)).toEqual(expected)
+        }
+        expect(materialize).not.toHaveBeenCalled()
+      } finally {
+        materialize.mockRestore()
+      }
+    },
+  )
 
   test(`grays out sites missing the property and keeps them out of the range`, () => {
     const structure = with_props([{ charge: 2 }, {}, { charge: 4 }, { charge: `n/a` }])

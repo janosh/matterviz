@@ -9,7 +9,7 @@ import type { Crystal } from '$lib/structure'
 import { calc_structure_id } from '$lib/structure-id'
 import { make_site } from '$lib/structure/site'
 import { describe, expect, test } from 'vitest'
-import { load_json } from '../setup'
+import { load_json } from '../test-fixtures'
 
 interface OvitoCase {
   label: string

@@ -343,6 +343,8 @@
   .panes {
     display: grid;
     position: relative;
+    /* Keep embedded viewer controls below the sequence bar. */
+    isolation: isolate;
     grid-template-columns: minmax(0, var(--split-pane-size, 60%)) minmax(0, 1fr);
     @media (max-width: 900px) {
       grid-template-columns: 1fr;

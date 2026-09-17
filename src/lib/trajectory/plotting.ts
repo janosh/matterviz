@@ -1,5 +1,6 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '$lib/colors'
+import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { humanize, SCF_AXIS_GROUP, trajectory_property_config } from '$lib/labels'
 import type { TrajPropertyConfig } from '$lib/labels'
 import { first_non_increasing_index, get_coefficient_of_variation, mean } from '$lib/math'
@@ -16,9 +17,9 @@ import type { TrajectoryMetadata } from './index'
 
 // Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
-const ENERGY_PROPERTIES = [`energy`, `total_energy`, `potential_energy`]
-const ENERGY_KEYS = new Set(ENERGY_PROPERTIES.map(normalize_property_key))
-const FORCE_PROPERTIES = [`force`, `fmax`, `f`]
+const ENERGY_KEYS = new Set(TRAJECTORY_ENERGY_KEYS.map(normalize_property_key))
+export const is_energy_property = (key: string): boolean =>
+  ENERGY_KEYS.has(normalize_property_key(key))
 // scf_energy_delta lives in its own axis group (see trajectory_property_config), so
 // listing it here only surfaces it when higher-priority groups (energy/force/stress)
 // don't fill both axes — i.e. single-point SCF convergence views.
@@ -54,6 +55,8 @@ const AXIS_COORDINATE_PROPERTIES = new Set([
 export interface PlotSeriesOptions {
   property_config?: Record<string, TrajPropertyConfig>
   default_visible_properties?: Set<string>
+  // Subtract each energy series' first finite recorded value, before smoothing or sampling.
+  relative_energy?: boolean
   // Maps frame index to x coordinate. Defaults to the frame index itself.
   x_map?: TrajectoryXMap
 }
@@ -279,8 +282,7 @@ function cached_property_statistics(rows: readonly TrajectoryMetadata[]): Proper
     const { values, frame_indices } = stat
     const keep =
       values.length > 1 &&
-      (ENERGY_KEYS.has(normalize_property_key(key)) ||
-        get_coefficient_of_variation(values) >= 1e-6)
+      (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
     if (!keep) {
       stats.delete(key)
       continue
@@ -377,13 +379,10 @@ function calculate_priority(unit: string, group_series: readonly DataSeries[]): 
   const unit_priority = ENERGY_UNITS.indexOf(unit)
   if (unit_priority !== -1) return unit_priority
 
-  const has_property = (properties: readonly string[]): boolean =>
-    group_series.some((srs) => {
-      const label = srs.label?.toLowerCase() ?? ``
-      return properties.some((property) => label.includes(property))
-    })
-  if (has_property(ENERGY_PROPERTIES)) return 10
-  if (has_property(FORCE_PROPERTIES)) return 100
+  const has_label = (text: string): boolean =>
+    group_series.some(({ label }) => label?.toLowerCase().includes(text))
+  if (has_label(`energy`)) return 10
+  if (has_label(`f`)) return 100
 
   return 1000 // Default low priority
 }
@@ -401,12 +400,16 @@ export function generate_plot_series(
   const {
     property_config = trajectory_property_config,
     default_visible_properties,
+    relative_energy = false,
     x_map = FRAME_X_MAP,
   } = options
   const series: PropertySeries[] = []
   const x_grids = new Map<readonly number[], number[]>()
   for (const [key, { values, frame_indices }] of cached_property_statistics(rows)) {
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
+    const reference =
+      relative_energy && is_energy_property(key) ? values.find(Number.isFinite) : undefined
+    const label = reference === undefined ? clean_label : `Δ ${clean_label}`
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
     // Dense properties share one frame grid; interpolate its step/time coordinates once.
     let x_values = x_map.to_x === FRAME_X_MAP.to_x ? frame_indices : x_grids.get(frame_indices)
@@ -417,16 +420,16 @@ export function generate_plot_series(
     series.push({
       id: key,
       x: x_values,
-      y: values,
-      label: clean_label,
+      y: reference === undefined ? values : values.map((value) => value - reference),
+      label,
       unit,
       visible: false,
       y_axis: `y`,
-      ...(axis_group ? { axis_group } : {}),
+      ...(axis_group && { axis_group }),
       markers: values.length < 30 ? `line+points` : `line`,
       // Series-level (not per point): every consumer resolves a scalar metadata object
       metadata: {
-        series_label: unit ? `${clean_label} (${unit})` : clean_label,
+        series_label: unit ? `${label} (${unit})` : label,
         property_key: key, // original property key for robust lookups
       },
       line_style: { stroke: color, stroke_width: 2 },
@@ -482,31 +485,36 @@ export function with_visible_properties(
   })
 }
 
-// A plot of one frame, or of nothing but flat lines, says nothing: hide it
-export function should_hide_plot(
-  frame_count: number,
-  plot_series: DataSeries[],
-  tolerance = 1e-10,
-): boolean {
+// Prefer structure-only when every visible trace looks flat at the default axis scales.
+// 0.5% of an axis span is about two pixels on a 400px plot. This is a display heuristic,
+// not a scientific tolerance: a tiny signal filling its own axis still earns a plot.
+export function should_hide_plot(frame_count: number, plot_series: DataSeries[]): boolean {
   if (frame_count <= 1 || plot_series.length === 0) return true
 
   const visible_series = plot_series.filter((srs) => srs.visible)
-  if (visible_series.length === 0) return false // Show empty plot with legend
+  if (visible_series.length === 0) return false // Keep the legend available to restore series
 
-  // Hide when every visible series is constant (ignoring NaN) or has nothing to plot
-  return visible_series.every((srs) => {
-    let first: number | undefined
-    for (const value of srs.y) {
-      if (isNaN(value)) continue
-      if (first === undefined) first = value
-      else if (
-        !Number.isFinite(first) ||
-        !Number.isFinite(value) ||
-        !(Math.abs(value - first) <= tolerance)
-      )
-        return false
+  const scale_types = generate_axis_scale_types(plot_series)
+  return ([`y`, `y2`] as const).every((axis) => {
+    let axis_min = Infinity
+    let axis_max = -Infinity
+    let largest_span = 0
+    for (const series of visible_series) {
+      if ((series.y_axis ?? `y`) !== axis) continue
+      let series_min = Infinity
+      let series_max = -Infinity
+      for (let idx = 0; idx < series.y.length; idx++) {
+        const value = series.y[idx]
+        if (!Number.isFinite(value) || !Number.isFinite(series.x[idx])) continue
+        const scaled = scale_types[axis] === `log` ? Math.log10(value) : value
+        series_min = Math.min(series_min, scaled)
+        series_max = Math.max(series_max, scaled)
+      }
+      axis_min = Math.min(axis_min, series_min)
+      axis_max = Math.max(axis_max, series_max)
+      largest_span = Math.max(largest_span, series_max - series_min)
     }
-    return true
+    return largest_span === 0 || largest_span < 0.005 * (axis_max - axis_min)
   })
 }
 

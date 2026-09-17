@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Trajectory acquisition: `source` as URL / File / bytes, drag-and-drop (OS drags
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
@@ -15,14 +16,17 @@ import {
   mock_parse_worker,
   create_drop_event,
   doc_query,
-  gzip_bytes,
   hdf5_group_option,
-  make_ambiguous_hdf5,
+  query,
+} from '../setup'
+import {
+  gzip_bytes,
   make_run as make_shared_run,
   MULTI_FRAME_XYZ,
-  query,
   read_binary_test_file,
-} from '../setup'
+} from '../test-fixtures'
+
+import { make_ambiguous_hdf5 } from './fixtures'
 
 beforeEach(mock_parse_worker)
 
@@ -734,7 +738,7 @@ describe(`bindable re-exposure`, () => {
           : kind === `host`
             ? host_run(
                 summary,
-                async (frame_idx) => backing.read_frame(frame_idx),
+                async (frame_idx) => materialize_frame_result(backing.read_frame(frame_idx)),
                 () => backing.dispose(),
               )
             : backing

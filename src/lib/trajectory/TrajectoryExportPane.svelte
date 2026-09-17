@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { materialize_frame_result } from '$lib/trajectory/frame'
+
   import { DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
   import { track_settings } from '$lib/controls'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
@@ -48,6 +50,7 @@
     current_step_idx = 0,
     on_step_change = undefined,
     resolve_frame = undefined,
+    prepare_display_frame,
     on_flight_start,
     pane_props = {},
     toggle_props = {},
@@ -68,6 +71,8 @@
     // Loads one frame by index. Indexed trajectories keep only a few frames in `frames`, so
     // without this the data exports below would silently write a truncated file.
     resolve_frame?: TrajectoryFrameResolver
+    // Numeric renderers own their display buffers; wait for them before camera/video capture.
+    prepare_display_frame?: (idx: number, signal: AbortSignal) => Promise<void>
     // Pause playback for deterministic stepping; returns a callback to restore playback.
     on_flight_start?: () => () => void
     pane_props?: PaneProps
@@ -140,13 +145,20 @@
   })
 
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
-    resolve_frame ? resolve_frame(idx, signal) : (run?.read_frame(idx, signal) ?? null)
+    resolve_frame
+      ? resolve_frame(idx, signal)
+      : run
+        ? materialize_frame_result(run.read_frame(idx, signal))
+        : null
 
   async function prepare_frame(idx: number, signal: AbortSignal) {
-    const frame = await frame_at(idx, signal)
-    signal.throwIfAborted()
-    if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
+    if (!prepare_display_frame) {
+      const frame = await frame_at(idx, signal)
+      signal.throwIfAborted()
+      if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
+    }
     await on_step_change?.(idx)
+    await prepare_display_frame?.(idx, signal)
   }
 
   const on_progress = (done: number, total: number) => {
@@ -392,8 +404,8 @@
       disabled={running !== null}
       style="display: inline-flex; align-items: center; gap: 0.5em; justify-self: start"
       onclick={() => {
-        export_pane_open = false
         flight_pane_open = true
+        export_pane_open = false
       }}
     >
       <Icon icon={Camera} /> Plan camera flight
@@ -491,8 +503,8 @@
       'aria-hidden': true,
     }}
     on_export={() => {
-      flight_pane_open = false
       export_pane_open = true
+      flight_pane_open = false
     }}
     timeline={{
       start: start_frame,

@@ -29,6 +29,15 @@ export const THZ_TO_INVERSE_CM = 1e12 / (SPEED_OF_LIGHT_M_S * 100)
 export const DEFAULT_FPS_RANGE = [0, 300] as const
 export const FPS_STEP = 0.1
 
+// Shared by trajectory extraction, lazy parsers and energy-reference plotting.
+export const TRAJECTORY_ENERGY_KEYS = [
+  `energy`,
+  `energy_per_atom`,
+  `potential_energy`,
+  `kinetic_energy`,
+  `total_energy`,
+] as const
+
 // Default resolution for PNG export, shared by every viewer's export pane and the export helpers
 export const DEFAULT_PNG_DPI = 150
 // Scale both video dimensions relative to the viewer's drawing buffer.

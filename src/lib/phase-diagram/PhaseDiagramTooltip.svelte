@@ -2,7 +2,7 @@
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num, humanize } from '$lib/labels'
   import { sanitize_formula, sanitize_html } from '$lib/sanitize'
-  import { TooltipContent } from '$lib/tooltip'
+  import { TooltipContent, TooltipValue } from '$lib/tooltip'
   import type {
     CompUnit,
     PhaseBoundary,
@@ -14,7 +14,6 @@
   import {
     convert_temp,
     format_composition,
-    format_temperature,
     get_phase_color,
     get_phase_stability_range,
     lever_rule_rows,
@@ -78,23 +77,23 @@
     if (!hover_info.special_point) return null
     const { type, position } = hover_info.special_point
     const [x_pos, temp_raw] = position
-    const temp = format_temperature(to_display(temp_raw), temperature_unit)
+    const temperature = format_num(to_display(temp_raw), `.0f`)
 
     // Melting/congruent points at a composition edge belong to one pure component
     const is_at_edge = x_pos <= 0.01 || x_pos >= 0.99
     if ((type === `melting_point` || type === `congruent`) && is_at_edge) {
       const element = x_pos <= 0.01 ? component_a : component_b
-      return { badge: `Melting Point`, description: `${element} melts at ${temp}` }
+      return { badge: `Melting Point`, description: `${element} melts at`, temperature }
     }
     const type_descriptions: Record<string, string> = {
-      eutectic: `Liquid → two solid phases at ${temp}`,
-      peritectic: `Liquid + solid → different solid at ${temp}`,
-      eutectoid: `Solid → two solid phases at ${temp}`,
-      peritectoid: `Two solids → different solid at ${temp}`,
-      congruent: `Congruent phase change at ${temp}`,
+      eutectic: `Liquid → two solid phases at`,
+      peritectic: `Liquid + solid → different solid at`,
+      eutectoid: `Solid → two solid phases at`,
+      peritectoid: `Two solids → different solid at`,
+      congruent: `Congruent phase change at`,
     }
     const badge = humanize(type)
-    return { badge, description: type_descriptions[type] ?? null }
+    return { badge, description: type_descriptions[type] ?? null, temperature }
   })
 
   // Calculate distance to nearest phase boundary (liquidus/solidus)
@@ -137,38 +136,50 @@
     </header>
 
     {#if special_point_info?.description}
-      <div class="special-point-description">{special_point_info.description}</div>
+      <div class="special-point-description">
+        {special_point_info.description}
+        <TooltipValue value={special_point_info.temperature} unit={temperature_unit} />
+      </div>
     {/if}
 
     <dl>
       <dt>Temperature</dt>
       <dd>
-        {format_temperature(to_display(hover_info.temperature), temperature_unit)}
+        <TooltipValue
+          value={format_num(to_display(hover_info.temperature), `.0f`)}
+          unit={temperature_unit}
+        />
         {#if temperature_unit !== `°C`}
           <small
-            >({format_temperature(
-              convert_temp(hover_info.temperature, data_unit, `°C`),
-              `°C`,
-            )})</small
+            >(<TooltipValue
+              value={format_num(convert_temp(hover_info.temperature, data_unit, `°C`), `.0f`)}
+              unit="°C"
+            />)</small
           >
         {/if}
       </dd>
       <dt>Composition</dt>
       <dd>
-        {format_composition(hover_info.composition, composition_unit)}
+        <TooltipValue
+          value={format_composition(hover_info.composition, composition_unit, false)}
+          unit={composition_unit === `fraction` ? `` : composition_unit}
+        />
         {@html safe_formula(component_b)}
         <small
-          >({format_composition(1 - hover_info.composition, composition_unit)}
+          >(<TooltipValue
+            value={format_composition(1 - hover_info.composition, composition_unit, false)}
+            unit={composition_unit === `fraction` ? `` : composition_unit}
+          />
           {@html safe_formula(component_a)})</small
         >
       </dd>
       {#if alt_composition}
         <dt>{alt_composition.label}</dt>
         <dd>
-          {format_num(alt_composition.fraction_b * 100, `.1f`)}%
+          {format_num(alt_composition.fraction_b * 100, `.1f`)} <small>%</small>
           {@html safe_formula(component_b)}
           <small
-            >({format_num((1 - alt_composition.fraction_b) * 100, `.1f`)}%
+            >({format_num((1 - alt_composition.fraction_b) * 100, `.1f`)} <small>%</small>
             {@html safe_formula(component_a)})</small
           >
         </dd>
@@ -180,13 +191,13 @@
             to_display(stability.t_max),
             `.0f`,
           )}
-          {temperature_unit}
+          <small>{temperature_unit}</small>
           {#if temperature_unit !== `°C`}
             <small
               >({format_num(convert_temp(stability.t_min, data_unit, `°C`), `.0f`)} – {format_num(
                 convert_temp(stability.t_max, data_unit, `°C`),
                 `.0f`,
-              )} °C)</small
+              )} <small>°C</small>)</small
             >
           {/if}
         </dd>
@@ -201,16 +212,17 @@
             <div
               style:width="{fraction * 100}%"
               style:background={get_phase_color(phase, `hex`)}
-              title="{phase}: {format_num(fraction * 100, `.1f`)}%"
             ></div>
           {/each}
           <i style:left="{lever_rows[0][1] * 100}%"></i>
         </div>
         <div class="phase-info">
           {#each lever_rows as [phase, fraction, location], idx (idx)}
+            {@const [value, unit] = location.split(` `)}
             <span
-              >{@html safe_formula(phase)}: {format_num(fraction * 100, `.0f`)}%
-              <small>at {location}</small></span
+              >{@html safe_formula(phase)}: {format_num(fraction * 100, `.0f`)}
+              <small>%</small>
+              <span>at <TooltipValue {value} {unit} /></span></span
             >
           {/each}
         </div>
@@ -225,7 +237,7 @@
       )}
       <div class="boundary-info">
         {Math.round(display_delta)}
-        {temperature_unit}
+        <small>{temperature_unit}</small>
         {label}
         {type}
       </div>

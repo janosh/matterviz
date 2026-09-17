@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { TooltipValue } from '$lib/tooltip'
   import { normalize_show_controls } from '$lib/controls'
   import { accumulate_error_extent } from '$lib/plot/core/error-bars'
   import {
@@ -104,7 +105,7 @@
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
-  import { resolve_line_tween } from '$lib/plot/core/utils'
+  import { attach_canvas, prepare_canvas, resolve_line_tween } from '$lib/plot/core/utils'
   import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { color as d3_color } from 'd3-color'
   import {
@@ -903,29 +904,10 @@
     })
   })
 
-  let canvas_element = $state<HTMLCanvasElement | null>(null)
-  const attach_marker_canvas = (foreign_object: SVGForeignObjectElement) => {
-    const canvas = document.createElement(`canvas`)
-    canvas.className = `marker-canvas`
-    Object.assign(canvas.style, { display: `block`, pointerEvents: `none` })
-    foreign_object.append(canvas)
-    canvas_element = canvas
-    return () => {
-      if (canvas_element === canvas) canvas_element = null
-      canvas.remove()
-    }
-  }
+  let canvas_element = $state<HTMLCanvasElement>()
   $effect(() => {
-    const canvas = canvas_element
-    if (!canvas || !width || !height) return
-    const pixel_ratio = globalThis.devicePixelRatio ?? 1
-    const [bw, bh] = [width * pixel_ratio, height * pixel_ratio]
-    if (canvas.width !== bw) canvas.width = bw
-    if (canvas.height !== bh) canvas.height = bh
-    canvas.style.width = `${width}px`
-    canvas.style.height = `${height}px`
-    const ctx = canvas.getContext(`2d`)
-    if (ctx) draw_markers(ctx, canvas_markers ?? [], { width, height, pixel_ratio })
+    const surface = prepare_canvas(canvas_element, width, height)
+    if (surface) draw_markers(surface.ctx, canvas_markers ?? [], surface)
   })
 
   const fill_hover_key = (
@@ -1692,7 +1674,7 @@
         {width}
         {height}
         pointer-events="none"
-        {@attach attach_marker_canvas}
+        {@attach attach_canvas(`marker-canvas`, (canvas) => (canvas_element = canvas))}
       ></foreignObject>
     {/if}
 
@@ -1806,14 +1788,24 @@
           {#if has_multiple_series && tooltip_props.label}<strong>{tooltip_props.label}</strong
             ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
-          {@html sanitize_html(tooltip_props.x_axis.label || `x`)}: {tooltip_props.x_formatted}<br
+          <TooltipValue
+            label={tooltip_props.x_axis.label || `x`}
+            value={tooltip_props.x_formatted}
+            unit={tooltip_props.x_axis.unit}
+          /><br />
+          <TooltipValue
+            label={tooltip_props.y_axis.label || `y`}
+            value={tooltip_props.y_formatted}
+            unit={tooltip_props.y_axis.unit}
           />
-          {@html sanitize_html(tooltip_props.y_axis.label || `y`)}: {tooltip_props.y_formatted}
           {#if tooltip_props.color_bar?.value != null}
-            <br />{@html sanitize_html(tooltip_props.color_bar.title || `Color`)}: {format_value(
-              tooltip_props.color_bar.value,
-              tooltip_props.color_bar.tick_format || `.3~g`,
-            )}
+            <br /><TooltipValue
+              label={tooltip_props.color_bar.title || `Color`}
+              value={format_value(
+                tooltip_props.color_bar.value,
+                tooltip_props.color_bar.tick_format || `.3~g`,
+              )}
+            />
           {/if}
         {/if}
       </PlotTooltip>

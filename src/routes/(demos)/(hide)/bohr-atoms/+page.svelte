@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LazyDemo from '$site/LazyDemo.svelte'
   import { BohrAtom, element_data } from 'matterviz/element'
 
   let orbital_period = $state(2)
@@ -47,7 +48,9 @@
       <strong>
         <a href={name.toLowerCase()}>{number}</a>
       </strong>
-      <BohrAtom {shells} {symbol} {name} {orbital_period} --border-radius="1ex" />
+      <LazyDemo label={name} height="auto" style="aspect-ratio: 1">
+        <BohrAtom {shells} {symbol} {name} {orbital_period} --border-radius="1ex" />
+      </LazyDemo>
     </li>
   {/each}
 </ol>
@@ -61,6 +64,7 @@
     margin: 0 calc((-95vw + 100cqw) / 2);
   }
   li {
+    width: 300px;
     display: inline-block;
     background-color: rgba(255, 255, 255, 0.04);
     margin: 1ex;

@@ -19,7 +19,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
-import { make_crystal, read_maybe_gz } from '../setup'
+import { make_crystal, read_maybe_gz } from '../test-fixtures'
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 

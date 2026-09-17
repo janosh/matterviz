@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import type { Crystal } from '$lib/structure'
 import app_css from '$lib/app.css?inline'
 import type { Vec3 } from '$lib/math'
@@ -23,7 +24,8 @@ import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, make_crystal, with_property_rows } from '../setup'
+import { doc_query } from '../setup'
+import { make_crystal, with_property_rows } from '../test-fixtures'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
@@ -535,12 +537,20 @@ describe(`TrajectoryExportPane property export`, () => {
       style.textContent = app_css
       document.body.append(style)
       const wrapper = document.createElement(`div`)
+      const display_ready = Promise.withResolvers<undefined>()
+      const prepare_display_frame = vi.fn(() => display_ready.promise)
+      const resolve_frame = vi.fn((idx: number, signal?: AbortSignal) =>
+        materialize_frame_result(trajectory.read_frame(idx, signal)),
+      )
+      const on_step_change = vi.fn()
       open_pane({
         run: trajectory,
         wrapper,
         video_fps: 45,
         resolution_multiplier: 2,
-        on_step_change: can_navigate ? vi.fn() : undefined,
+        on_step_change: can_navigate ? on_step_change : undefined,
+        prepare_display_frame: can_navigate ? prepare_display_frame : undefined,
+        resolve_frame,
       })
       await tick()
       for (const section of document.querySelectorAll(`.settings-section`)) {
@@ -592,6 +602,14 @@ describe(`TrajectoryExportPane property export`, () => {
           expect(resolution_buttons[idx].classList.contains(`active`)).toBe(true)
           for (const label of [`WebM`, `MP4`]) {
             vi.mocked(io_export.export_trajectory_video).mockClear()
+            let captured = false
+            if (idx === 0 && label === `WebM`)
+              vi.mocked(io_export.export_trajectory_video).mockImplementationOnce(
+                async (_canvas, _filename, options) => {
+                  await options?.on_step?.(0)
+                  captured = true
+                },
+              )
             const format = label.toLowerCase()
             await click(`Download ${label}`)
             await vi.waitFor(() =>
@@ -607,6 +625,14 @@ describe(`TrajectoryExportPane property export`, () => {
               ),
             )
             expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
+            if (idx === 0 && label === `WebM`) {
+              expect(on_step_change).toHaveBeenCalledWith(0)
+              expect(prepare_display_frame).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+              expect(resolve_frame).not.toHaveBeenCalled()
+              expect(captured).toBe(false)
+              display_ready.resolve(undefined)
+              await vi.waitFor(() => expect(captured).toBe(true))
+            }
           }
         }
         replacement.remove()

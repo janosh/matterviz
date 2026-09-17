@@ -2,6 +2,8 @@
   import type { GasSpecies, PhaseData } from '$lib/convex-hull/types'
   import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
   import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { compute_opportunity_map_async } from './opportunity-map-async.svelte'
   import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
   import type { SynthesisConditions, SynthesisRoute } from './types'
@@ -138,6 +140,10 @@
   }
 </script>
 
+{#snippet tooltip_row(label: string | undefined, value: number, unit: string, format = `.1f`)}
+  <div><TooltipValue {label} value={format_num(value, format)} {unit} /></div>
+{/snippet}
+
 <section class="opportunity-map" aria-label="Temperature–atmosphere opportunity map">
   <h3>Temperature–atmosphere opportunity map</h3>
   <p>
@@ -218,10 +224,27 @@
         {#each temperatures as temperature, row_idx}
           <span>{format_num(temperature, `.0f`)}</span>
           {#each cells.slice(row_idx * 9, (row_idx + 1) * 9) as cell}
+            {#snippet cell_tooltip()}
+              {@const route = shown_route(cell)}
+              {@render tooltip_row(`Temperature`, cell.temperature, `K`, `.0f`)}
+              {@render tooltip_row(scan_gas, cell.pressure, `bar`, `.2g`)}
+              {@render tooltip_row(`Target above hull`, cell.e_above_hull * 1000, `meV/atom`)}
+              {#if route}
+                <div>
+                  Route {routes.findIndex(({ id: identifier }) => identifier === route.id) + 1}
+                </div>
+                {@render tooltip_row(`Driving force`, route.driving_force * 1000, `meV/atom`)}
+                {@render tooltip_row(
+                  `Selectivity`,
+                  route.selectivity_margin * 1000,
+                  `meV/atom`,
+                )}
+              {:else}No downhill shortlisted route{/if}
+            {/snippet}
             <button
               type="button"
               style:background={cell_color(cell)}
-              title={cell_label(cell)}
+              {@attach hover_tooltip(cell_tooltip)}
               aria-label={cell_label(cell)}
               aria-pressed={cell.temperature === conditions.temperature &&
                 Math.abs(

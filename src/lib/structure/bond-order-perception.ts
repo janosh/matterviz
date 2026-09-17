@@ -264,7 +264,7 @@ const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 // with no valence-consistent assignment fall back to single + not perceived.
 export function perceive_bond_orders(
   sites: Site[],
-  bonds: BondPair[],
+  bonds: readonly BondPair[],
   opts: PerceptionOptions = {},
 ): PerceivedBond[] {
   const max_atoms = opts.max_atoms ?? 5000

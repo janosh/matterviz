@@ -5,7 +5,7 @@ import { get_text_metrics_revision } from '$lib/plot/core/text-metrics'
 import { TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { mock_text_measurement } from '../setup'
+import { mock_text_measurement, query } from '../setup'
 
 // Plot geometry shared across cases: plot area is x∈[40,180], y∈[10,70]
 const pad = { t: 10, b: 30, l: 40, r: 20 }
@@ -28,12 +28,6 @@ const mount_axis = async (props: Record<string, unknown>): Promise<SVGElement> =
   mount(PlotAxis, { target: svg, props: all_props })
   await tick()
   return svg
-}
-
-const query = (root: Element, selector: string): Element => {
-  const element = root.querySelector(selector)
-  if (!element) throw new Error(`missing element: ${selector}`)
-  return element
 }
 
 afterEach(() => {

@@ -3,6 +3,7 @@
   import { format_num } from '$lib/labels'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
   import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
+  import { create_request_owner } from '$lib/trajectory/async-result.svelte'
   import {
     DEFAULT_POSITION_STREAM_MAX_BYTES,
     suggest_frame_stride,
@@ -20,7 +21,6 @@
   import { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
   import type {
     SpectroscopyPreprocessing,
-    TrajectorySpectroscopyInput,
     TrajectorySpectroscopyOptions,
     TrajectorySpectroscopyResult,
   } from './trajectory-spectroscopy'
@@ -74,7 +74,7 @@
     run
       ? suggest_frame_stride(
           run.frame_count,
-          run.preview.structure.sites.length,
+          run.atom_count,
           DEFAULT_POSITION_STREAM_MAX_BYTES,
           spectroscopy_stream_channels(run, {
             infrared_key: infrared_key || null,
@@ -83,46 +83,37 @@
         )
       : 1,
   )
-  let options = $derived<TrajectorySpectroscopyOptions>({
-    frequency_unit: has_physical_time ? `cm^-1` : `1/step`,
-    preprocessing,
-  })
   const settings_snapshot = () => ({
-    infrared_key,
+    infrared_key: infrared_key || null,
     infrared_kind,
     polarization_branch_continuous,
-    raman_key,
+    raman_key: raman_key || null,
     time_step: has_physical_time ? analysis_time_step : undefined,
     time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
-    options: $state.snapshot(options),
+    options: {
+      frequency_unit: has_physical_time ? `cm^-1` : `1/step`,
+      preprocessing,
+    } satisfies TrajectorySpectroscopyOptions,
   })
-  let completed_settings = $state.raw<ReturnType<typeof settings_snapshot> | undefined>(
-    undefined,
-  )
-  const settings_key = (settings: ReturnType<typeof settings_snapshot>): string =>
-    JSON.stringify(settings)
-  let current_settings_key = $derived(settings_key(settings_snapshot()))
+  let completed_settings_key = $state<string>()
+  let current_settings_key = $derived(JSON.stringify(settings_snapshot()))
   let settings_dirty = $derived(
     Boolean(
-      result &&
-      completed_settings &&
-      settings_key(completed_settings) !== current_settings_key,
+      result && completed_settings_key && completed_settings_key !== current_settings_key,
     ),
   )
 
   let previous_run: TrajectoryRun | undefined
-  let auto_calculation_owner: TrajectoryRun | undefined
-  // Aborts the in-flight collect AND compute of the superseded request; a request whose
-  // signal is aborted is exactly one whose result nobody will read
-  let request_controller: AbortController | undefined
+  let auto_calculation_attempted = false
+  const requests = create_request_owner()
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
-    request_controller?.abort()
+    requests.cancel()
     result = undefined
-    auto_calculation_owner = undefined
+    auto_calculation_attempted = false
     error_msg = undefined
-    completed_settings = undefined
+    completed_settings_key = undefined
     calculation_phase = `idle`
     progress = null
     details_open = false
@@ -151,41 +142,33 @@
     if (!run) return
     const request_run = run
     const request_settings = settings_snapshot()
-    request_controller?.abort()
-    const controller = new AbortController()
-    request_controller = controller
-    const request_is_current = () => !controller.signal.aborted
+    const { options, time_step, time_unit, ...collection_settings } = request_settings
+    const signal = requests.start()
+    const request_is_current = () => run === request_run && !signal.aborted
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
     try {
+      // Nested run data can change in place, so each request needs fresh inputs.
       const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
+        ...collection_settings,
         frame_stride,
-        infrared_key: request_settings.infrared_key || null,
-        infrared_kind: request_settings.infrared_kind,
-        polarization_branch_continuous: request_settings.polarization_branch_continuous,
-        raman_key: request_settings.raman_key || null,
-        preprocessing: request_settings.options.preprocessing,
-        signal: controller.signal,
+        preprocessing: options.preprocessing,
+        signal,
         on_progress: (next_progress) => {
           if (request_is_current()) progress = next_progress
         },
       })
       if (!request_is_current()) return
-      const calculation_input: TrajectorySpectroscopyInput = {
-        ...collected_input,
-        time_step: request_settings.time_step,
-        time_unit: request_settings.time_unit,
-      }
       calculation_phase = `computing`
       const calculation_result = await compute_trajectory_spectroscopy_async(
-        calculation_input,
-        request_settings.options,
-        { signal: controller.signal },
+        { ...collected_input, time_step, time_unit },
+        options,
+        { signal },
       )
       if (request_is_current()) {
         result = calculation_result
-        completed_settings = request_settings
+        completed_settings_key = JSON.stringify(request_settings)
       }
     } catch (error) {
       if (request_is_current()) {
@@ -193,7 +176,6 @@
         error_msg = to_error(error).message
       }
     } finally {
-      if (request_controller === controller) request_controller = undefined
       if (request_is_current()) {
         calculation_phase = `idle`
         progress = null
@@ -204,11 +186,11 @@
   // Unmount: abort this pane's request and release an idle worker. Other mounted panes'
   // requests share the client and must survive.
   $effect(() => () => {
-    request_controller?.abort()
+    requests.cancel()
     compute_trajectory_spectroscopy_async.release()
   })
 
-  // The inline trajectory analysis is ready on first entry. Remember attempted owners so
+  // The inline trajectory analysis is ready on first entry. Attempt it once per run so
   // invalid data reports once instead of retrying after the handled error clears busy state.
   $effect(() => {
     if (
@@ -217,11 +199,11 @@
       !run ||
       result ||
       calculation_busy ||
-      auto_calculation_owner === run
+      auto_calculation_attempted
     ) {
       return
     }
-    auto_calculation_owner = run
+    auto_calculation_attempted = true
     void calculate()
   })
 </script>

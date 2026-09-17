@@ -138,7 +138,7 @@
         label: prop_key,
         key: prop_key,
         value: `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`,
-        tooltip: `Force vector: ${force_values.map((force) => format_num(force, `.3~f`)).join(`, `)} eV/Å`,
+        tooltip: `Force vector: ${force_values.map((force) => format_num(force, `.3~f`)).join(`, `)} <small>eV/Å</small>`,
       }
     }
     if (prop_key === `magmom` || prop_key.includes(`magnet`)) {

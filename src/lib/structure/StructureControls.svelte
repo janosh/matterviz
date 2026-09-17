@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { numeric_sites, snapshot_topologies } from './site'
+  import { element_from_atomic_number } from '$lib/element/helpers'
   import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
-  import type { StructureSettings } from './settings'
+  import { resolve_cell_vectors, type StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
@@ -144,33 +146,46 @@
   // Single funnel for every mode/property switch. next_atom_color_config derives the
   // dependent fields and returns the current object untouched when nothing would change,
   // so assigning unconditionally is safe even from an effect.
-  const set_atom_color_mode = (mode: AtomColorMode, preferred_key?: string): void => {
-    atom_color_config = next_atom_color_config(
+  const set_atom_coloring = ({
+    mode,
+    property_key,
+    scale_type,
+  }: {
+    mode: AtomColorMode
+    property_key?: string
+    scale_type?: AtomColorConfig[`scale_type`]
+  }): void => {
+    const next = next_atom_color_config(
       atom_color_config,
       mode,
       colorable_property_keys,
-      preferred_key,
+      property_key,
     )
+    atom_color_config = scale_type ? { ...next, scale_type } : next
   }
 
   const apply_view_state = (state: StructureViewState): void => {
     const structure_settings = structuredClone(state.settings.structure)
-    update_scene(structure_settings)
+    update_scene({ show_cell_vectors: undefined, ...structure_settings })
     show_image_atoms =
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
     show_trajectory_lines =
       structure_settings.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines
-    atom_color_config = {
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
-      scale_type:
-        structure_settings.atom_color_scale_type ?? DEFAULTS.structure.atom_color_scale_type,
-    }
     // `custom` needs a runtime color_fn that no saved blob can carry, so a stored value
     // that claims it is treated as unset rather than restored into an invalid config.
     const stored_mode =
       structure_settings.atom_color_mode ?? DEFAULTS.structure.atom_color_mode
-    set_atom_color_mode(stored_mode === `custom` ? `element` : stored_mode)
+    const resolved = next_atom_color_config(
+      DEFAULT_ATOM_COLOR_CONFIG,
+      stored_mode === `custom` ? `element` : stored_mode,
+      colorable_property_keys,
+      structure_settings.atom_color_property_key,
+    )
+    atom_color_config = {
+      ...resolved,
+      scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
+      scale_type: structure_settings.atom_color_scale_type ?? resolved.scale_type,
+    }
     color_scheme = state.settings.color_scheme
     background_color = state.settings.background_color
     background_opacity = state.settings.background_opacity
@@ -307,7 +322,10 @@
     label,
     step,
   })
-  const number_range_props = (schema: SettingType, step = schema.multipleOf ?? `any`) => {
+  const number_range_props = (
+    schema: SettingType,
+    step: number | `any` = schema.multipleOf ?? `any`,
+  ) => {
     const { minimum: min, maximum: max, description: title } = schema
     if (min === undefined || max === undefined)
       throw new Error(`Missing range bounds for "${title}": min=${min}, max=${max}`)
@@ -353,7 +371,11 @@
     },
     row(`show_site_labels`, `Site labels`),
     row(`show_site_indices`, `Site indices`),
-    { ...row(`show_cell_vectors`, `Lattice vectors`), when: () => periodic },
+    {
+      ...row(`show_cell_vectors`, `Lattice vectors`),
+      when: () => periodic,
+      get: () => resolve_cell_vectors(scene_props.show_cell_vectors, structure),
+    },
   ]
   // Enum pickers rendered below the toggle grid, same section
   const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
@@ -475,6 +497,7 @@
     const description = tip ?? description_for(key)
     return {
       'data-key': key,
+      'data-description': description,
       'aria-description': description,
       [setting_attachment_key]: tooltip({
         content: description,
@@ -494,6 +517,16 @@
     get,
     set: (value) => set(value as T),
   })
+  // Mode and property resets restore the selected field and its saved scale type together.
+  const atom_coloring = local(
+    () => ({
+      mode: atom_color_config.mode,
+      property_key:
+        `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
+      scale_type: atom_color_config.scale_type,
+    }),
+    set_atom_coloring,
+  )
   // One row driving two scene props (a mode plus its color, say). Sharing a key means the row's
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
@@ -574,8 +607,11 @@
   // A newly loaded structure may not carry the property being colored by, in which case
   // the mode drops back to element colors.
   $effect(() => {
-    if (atom_color_config.mode === `property`) {
-      set_atom_color_mode(`property`, atom_color_config.property_key)
+    if (
+      atom_color_config.mode === `property` &&
+      !colorable_property_keys.includes(atom_color_config.property_key)
+    ) {
+      set_atom_coloring({ mode: `property`, property_key: atom_color_config.property_key })
     }
   })
 
@@ -617,11 +653,26 @@
   // Unique majority elements in the structure, for polyhedra center toggles.
   // Majority (not all) species so the list matches what compute_polyhedra can
   // actually use as centers - minority occupancies of disordered sites never are.
-  let structure_elements = $derived(
-    [
-      ...new Set((structure?.sites ?? []).flatMap((site) => get_majority_element(site) ?? [])),
-    ].toSorted(),
-  )
+  let previous_elements: { topology: object; elements: ElementSymbol[] } | undefined
+  let structure_elements = $derived.by(() => {
+    const topology = structure && snapshot_topologies.get(structure)
+    if (topology && topology === previous_elements?.topology) return previous_elements.elements
+    const elements = new Set<ElementSymbol>()
+    const columns = structure && numeric_sites.get(structure)
+    if (columns) {
+      for (const number of new Set(columns.numbers)) {
+        const element = element_from_atomic_number(number)
+        if (element) elements.add(element)
+      }
+    } else
+      for (const site of structure?.sites ?? []) {
+        const element = get_majority_element(site)
+        if (element) elements.add(element)
+      }
+    const sorted = [...elements].toSorted()
+    previous_elements = topology ? { topology, elements: sorted } : undefined
+    return sorted
+  })
 
   // An element counts as an enabled polyhedra center if it isn't excluded and is
   // either force-included or currently rendered. Using configured intent (not just
@@ -857,7 +908,8 @@
       {@const set = (value: unknown) => set_row_value(current, value)}
       {#if typeof schema.value === `number`}
         <NumberRangeInput
-          setting={key}
+          data-key={key}
+          {label}
           {...number_range_props(schema, step)}
           bind:value={() => row_value(current) as number | undefined, set}
           >{label}</NumberRangeInput
@@ -1009,20 +1061,12 @@
             () => color_scheme,
             (value) => (color_scheme = value),
           ),
-          // scale_type is derived from the mode, so the two travel as one row
-          atom_color_mode: local(
-            () => ({ mode: atom_color_config.mode, scale_type: atom_color_config.scale_type }),
-            (reference) => set_atom_color_mode(reference.mode),
-          ),
+          atom_color_mode: atom_coloring,
           atom_color_scale: local(
             () => atom_color_config.scale,
             (scale) => (atom_color_config = { ...atom_color_config, scale }),
           ),
-          atom_color_property_key: local(
-            () =>
-              `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
-            (value) => set_atom_color_mode(value ? `property` : `element`, value),
-          ),
+          atom_color_property_key: atom_coloring,
         })}
       >
         {@render setting_rows(atom_rows)}
@@ -1057,7 +1101,7 @@
           <select
             value={atom_color_config.mode}
             onchange={(event) =>
-              set_atom_color_mode(event.currentTarget.value as AtomColorMode)}
+              set_atom_coloring({ mode: event.currentTarget.value as AtomColorMode })}
           >
             {#each color_mode_options as [value, label, unavailable] (value)}
               <option
@@ -1082,7 +1126,11 @@
             <span>Property</span>
             <select
               value={atom_color_config.property_key}
-              onchange={(event) => set_atom_color_mode(`property`, event.currentTarget.value)}
+              onchange={(event) =>
+                set_atom_coloring({
+                  mode: `property`,
+                  property_key: event.currentTarget.value,
+                })}
             >
               {#each colorable_property_keys as key (key)}
                 <option value={key}>{key}</option>
@@ -1440,7 +1488,8 @@
           on_commit={(color) => (background_color = color)}
         />
         <NumberRangeInput
-          setting="background_opacity"
+          data-key="background_opacity"
+          label="Opacity"
           {...number_range_props(SETTINGS_CONFIG.background_opacity, 0.02)}
           bind:value={background_opacity}>Opacity</NumberRangeInput
         >
@@ -1507,7 +1556,8 @@
                 )}
               {/if}
               <NumberRangeInput
-                setting="trajectory_line_trail_frames"
+                data-key="trajectory_line_trail_frames"
+                label="Trail length"
                 {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
                 max={Math.max(1, trajectory_position_stream.n_frames)}
                 bind:value={

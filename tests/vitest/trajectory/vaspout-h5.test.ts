@@ -9,7 +9,8 @@ import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
 import { is_trajectory_file } from '$lib/trajectory/format-detect'
 import type * as h5wasm from 'h5wasm'
 import { describe, expect, it, vi } from 'vitest'
-import { read_binary_test_file, rejection_of } from '../setup'
+import { rejection_of } from '../setup'
+import { read_binary_test_file } from '../test-fixtures'
 
 const VASPOUT_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_vaspout = (filename: string): ArrayBuffer =>

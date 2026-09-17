@@ -1,4 +1,5 @@
 import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+import { svg_to_svg_string } from '$lib/io/export'
 import type { Vec2 } from '$lib/math'
 import type {
   AxisConfig,
@@ -422,20 +423,35 @@ describe(`ScatterPlot`, () => {
       expect(canvas_clip).not.toHaveBeenCalled()
       expect(overlaid.querySelector(`text.label-text`)?.textContent).toBe(`tagged`)
       expect(overlaid.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
-      const canvas = overlaid.querySelector(`canvas.marker-canvas`)
-      expect(canvas?.parentElement?.tagName.toLowerCase()).toBe(`foreignobject`)
+      const canvas = query<HTMLCanvasElement>(overlaid, `canvas.marker-canvas`)
+      expect(canvas.parentElement?.tagName.toLowerCase()).toBe(`foreignobject`)
       const ratio = globalThis.devicePixelRatio ?? 1
-      expect(canvas?.getAttribute(`width`)).toBe(String(400 * ratio))
-      expect(canvas?.getAttribute(`height`)).toBe(String(300 * ratio))
-      expect((canvas as HTMLCanvasElement).style.width).toBe(`400px`)
+      expect([canvas.width, canvas.height]).toEqual([
+        Math.round(400 * ratio),
+        Math.round(300 * ratio),
+      ])
+      expect(canvas.style.width).toBe(`400px`)
+      vi.spyOn(canvas, `toDataURL`).mockReturnValue(`data:image/png;base64,cGxvdA==`)
+      const exported = new DOMParser().parseFromString(
+        svg_to_svg_string(plot_svg(overlaid)),
+        `image/svg+xml`,
+      )
+      const image = query(exported, `image[href="data:image/png;base64,cGxvdA=="]`)
+      expect(
+        query(exported, `g[clip-path] path`).compareDocumentPosition(image) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(
+        image.compareDocumentPosition(query(exported, `path.marker`)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
         selected_points: { series_idx: number; point_idx: number }[]
-      }>({ tooltip_point: null, selected_points: [] })
-      const hover_plot = await mount_sized_scatter_plot(
-        bind_props({ series: [dense], marker_renderer: `canvas` as const }, state),
-      )
+        marker_renderer: `canvas` | `svg`
+      }>({ tooltip_point: null, selected_points: [], marker_renderer: `canvas` })
+      const hover_plot = await mount_sized_scatter_plot(bind_props({ series: [dense] }, state))
       const draws_before_hover = clear_rect.mock.calls.length
       state.tooltip_point = {
         x: dense.x[4],
@@ -461,6 +477,16 @@ describe(`ScatterPlot`, () => {
           selected_points.length || 1,
         )
       }
+      const removed_canvas = query(hover_plot, `canvas`)
+      state.marker_renderer = `svg`
+      flushSync()
+      await tick()
+      expect(removed_canvas.parentNode).toBeNull()
+      expect(hover_plot.querySelector(`canvas`)).toBeNull()
+      state.marker_renderer = `canvas`
+      flushSync()
+      await tick()
+      expect(query(hover_plot, `canvas`)).not.toBe(removed_canvas)
     })
 
     test(`disables point tweening for canvas overlays`, async () => {
@@ -1436,7 +1462,8 @@ describe(`ScatterPlot`, () => {
         y_axis: { label: `Speed` },
         tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
       })
-      expect(text).toContain(`Time (s)`)
+      expect(text).toContain(`Time: 2 s`)
+      expect(document.querySelector(`.plot-tooltip small`)?.textContent).toBe(`s`)
       expect(text).toContain(`Speed`)
     })
 

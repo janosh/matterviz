@@ -4,7 +4,8 @@
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { is_d3_interpolate_name } from '$lib/colors'
-  import { ELEM_PROPERTY_LABELS } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table'
   import { TableInset } from '$lib/periodic-table'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
@@ -90,13 +91,23 @@
     <br />
     <small>{element.symbol} • {element.number}</small>
     <br />
-    <em>{heatmap_key}: {Array.isArray(value) ? value.join(`, `) : (value ?? `N/A`)}</em>
+    <em
+      ><TooltipValue
+        label={y_label}
+        value={Array.isArray(value) ? value.join(`, `) : (value ?? `N/A`)}
+        unit={y_unit}
+      /></em
+    >
     <br />
     <small>Position: {element.column},{element.row}</small>
     {#if heatmap_key && value != null}
       <br />
       <small>
-        Range: {scale_context.min.toFixed(1)} - {scale_context.max.toFixed(1)}
+        <TooltipValue
+          label="Range"
+          value={`${format_num(scale_context.min, `.1f`)} – ${format_num(scale_context.max, `.1f`)}`}
+          unit={y_unit}
+        />
       </small>
     {/if}
   </div>

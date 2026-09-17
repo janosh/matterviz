@@ -37,6 +37,9 @@ export default {
               `--use-vulkan=swiftshader`,
               `--use-angle=swiftshader`,
               `--disable-vulkan-surface`,
+              // Large instanced draws on a CPU can outlast Chromium's GPU watchdog.
+              // Playwright's test timeout still bounds a genuinely stuck renderer.
+              `--disable-gpu-watchdog`,
             ]
           : []),
       ],

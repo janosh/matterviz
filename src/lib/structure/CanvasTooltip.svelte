@@ -76,7 +76,7 @@
     padding: var(--canvas-tooltip-padding, 1pt 5pt);
     color: var(--canvas-tooltip-text-color, light-dark(#0f172a, #f8fafc));
     font-family: var(--canvas-tooltip-font-family);
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 3cqmin, 18pt));
+    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 3cqmin, 14px));
     line-height: var(--canvas-tooltip-line-height);
     pointer-events: none;
   }

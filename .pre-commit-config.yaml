@@ -16,7 +16,7 @@ repos:
         name: Format, lint and type-check staged files (vp staged)
         # Task list lives in vite.config.ts `staged`. vp receives the staged set from git
         # itself, so pass_filenames stays off and the hook only needs to fire once per commit.
-        entry: env PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vp staged
+        entry: env PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vp staged --no-stash
         language: system
         pass_filenames: false
         stages: [pre-commit]

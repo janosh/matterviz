@@ -12,7 +12,7 @@ import {
 import { neutron_scattering_length } from '$lib/scattering'
 import type { Crystal } from '$lib/structure'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, type SimpleSite } from '../setup'
+import { make_crystal, type SimpleSite } from '../test-fixtures'
 
 // Cubic lattice constant shared by the sc/bcc/fcc reference cells. 3.615 Å is chosen so none of
 // the analytic shell distances land on a 0.01 Å bin edge, where round-off could split one

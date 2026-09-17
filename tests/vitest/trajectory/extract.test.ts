@@ -1,3 +1,4 @@
+import { materialize_frame_result } from '$lib/trajectory/frame'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
@@ -6,7 +7,7 @@ import {
 } from '$lib/trajectory/extract'
 import { open_trajectory } from '$lib/trajectory/open'
 import { describe, expect, it } from 'vitest'
-import { make_trajectory_frame, read_binary_test_file } from '../setup'
+import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 
 describe(`trajectory data extractors`, () => {
   const forces = [
@@ -96,7 +97,7 @@ describe(`trajectory data extractors`, () => {
     try {
       const rows = await Promise.all(
         Array.from({ length: run.frame_count }, async (_unused, frame_idx) =>
-          full_data_extractor(await run.read_frame(frame_idx)),
+          full_data_extractor(await materialize_frame_result(run.read_frame(frame_idx))),
         ),
       )
       // 20 frames written every 25 steps in a fixed 25.8165 A cubic box

@@ -3,8 +3,11 @@ import type { Site } from '$lib/structure'
 import { trajectory_from_frames, type TrajectoryFrame } from '$lib/trajectory'
 import TrajectoryDataInspectorPane from '$lib/trajectory/TrajectoryDataInspectorPane.svelte'
 import { mount, tick, unmount } from 'svelte'
+import { derived, fromStore, writable } from 'svelte/store'
+import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, make_run as make_shared_run, with_property_rows } from '../setup'
+import { doc_query } from '../setup'
+import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -80,6 +83,56 @@ test(`frames tab renders every property row with units`, async () => {
   expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`0`, `0`])
   expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`3`, `30`])
   expect(document.body.textContent).not.toContain(`Sampled frames`)
+})
+
+test(`sampled atom rows retain source indices and identify exported samples`, async () => {
+  const run = make_run()
+  const current_frame = {
+    ...run.preview,
+    metadata: { render_sample: true, total_atoms: 1500, source_atom_indices: [0, 500, 1000] },
+  }
+  await mount_pane({ run, current_frame })
+  await open_atoms()
+  expect(document.body.textContent).toContain(`Sampled atoms: 3 of 1500`)
+  expect(cell_texts(body_rows()[1])[0]).toBe(`500`)
+})
+
+test(`atom rows refresh coordinates and scalar values during fixed-topology playback`, async () => {
+  const make_frame = (value: number) => ({
+    ...create_numeric_md_frame(
+      Float64Array.of(value, 2, 3),
+      Uint8Array.of(14),
+      undefined,
+      undefined,
+      value,
+      {},
+      [],
+    ),
+    scalar_columns: { charge: Float64Array.of(value * 10) },
+  })
+  const view = new FrameView()
+  const frames = writable(make_frame(1))
+  const display = fromStore(derived(frames, (frame) => view.update(frame)))
+  mounted_pane = mount(TrajectoryDataInspectorPane, {
+    target: document.body,
+    props: {
+      pane_open: true,
+      run: make_run(),
+      get current_frame() {
+        return display.current
+      },
+    },
+  })
+  await tick()
+  await open_atoms()
+  const before = cell_texts(body_rows()[0])
+  expect(before).toContain(`10`)
+  frames.set(make_frame(9))
+  await tick()
+  const after = cell_texts(body_rows()[0])
+  expect(after).toContain(`90`)
+  expect(after).not.toEqual(before)
+  expect(after[5]).toBe(`9`)
 })
 
 test(`sampled property rows keep their real frame numbers and disclose sampling`, async () => {

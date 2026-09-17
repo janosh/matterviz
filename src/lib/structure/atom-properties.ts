@@ -1,3 +1,5 @@
+import { available_site_vector_keys, numeric_sites } from './site'
+import { vector_reader } from './vectors'
 // Utility functions for computing atom properties and applying color scales
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
@@ -200,8 +202,15 @@ export function categorize_selective_dynamics(value: unknown): SelectiveDynamics
 
 export const structure_has_selective_dynamics = (
   structure: AnyStructure | undefined | null,
-): boolean =>
-  structure?.sites.some((site) => site.properties?.selective_dynamics !== undefined) ?? false
+): boolean => {
+  if (!structure) return false
+  const columns = numeric_sites.get(structure)
+  return columns
+    ? columns.length > 0 &&
+        (columns.vector_keys.includes(`selective_dynamics`) ||
+          Object.hasOwn(columns.scalar_columns ?? {}, `selective_dynamics`))
+    : structure.sites.some((site) => site.properties?.selective_dynamics !== undefined)
+}
 
 export function get_selective_dynamics_colors(
   structure: AnyStructure,
@@ -240,19 +249,25 @@ function site_property_scalar(site: Site, property_key: string): number | null {
   return is_vec3 ? Math.hypot(value[0], value[1], value[2]) : null
 }
 
-// Union of the site property keys that `property` color mode can actually use, i.e. those
-// carrying a finite number or vec3 on at least one site. Sorted for a stable picker order.
+// Loaded finite numbers/vec3s and source-advertised channels, sorted for a stable picker.
+// Unloaded channels stay selectable so choosing a coloring property can request its data.
 export function get_colorable_property_keys(
   structure: AnyStructure | undefined | null,
 ): string[] {
-  const keys = new Set<string>()
-  for (const site of structure?.sites ?? []) {
-    for (const key of Object.keys(site.properties ?? {})) {
-      if (INTERNAL_SITE_PROPS.has(key) || keys.has(key)) continue
-      if (site_property_scalar(site, key) !== null) keys.add(key)
+  const keys = new Set(structure ? available_site_vector_keys.get(structure) : [])
+  const columns = structure && numeric_sites.get(structure)
+  if (columns) {
+    for (const key of columns.property_keys()) if (!INTERNAL_SITE_PROPS.has(key)) keys.add(key)
+  } else
+    for (const site of structure?.sites ?? []) {
+      for (const key of Object.keys(site.properties ?? {})) {
+        if (INTERNAL_SITE_PROPS.has(key) || keys.has(key)) continue
+        if (site_property_scalar(site, key) !== null) keys.add(key)
+      }
     }
-  }
-  return [...keys].toSorted((key_a, key_b) => key_a.localeCompare(key_b))
+  return [...keys]
+    .filter((key) => !INTERNAL_SITE_PROPS.has(key))
+    .toSorted((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
 const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean =>
@@ -353,7 +368,24 @@ export function get_site_property_colors(
   scale: D3InterpolateName = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const scalars = structure.sites.map((site) => site_property_scalar(site, property_key))
+  const columns = numeric_sites.get(structure)
+  const scalar_column = Object.hasOwn(columns?.scalar_columns ?? {}, property_key)
+    ? columns?.scalar_columns?.[property_key]
+    : undefined
+  const metrics = columns?.display_metrics?.vector_magnitudes
+  const magnitudes =
+    metrics && Object.hasOwn(metrics, property_key) ? metrics[property_key].values : undefined
+  const read_vector = columns && vector_reader(structure, property_key)
+  const scalars = columns
+    ? Array.from({ length: columns.length }, (_unused, idx) => {
+        // Scalars retain their sign and override vectors, even when the scalar is missing.
+        if (scalar_column)
+          return Number.isFinite(scalar_column[idx]) ? scalar_column[idx] : null
+        if (magnitudes) return Number.isNaN(magnitudes[idx]) ? null : magnitudes[idx]
+        const vector = read_vector?.(idx)
+        return vector ? Math.hypot(...vector) : null
+      })
+    : structure.sites.map((site) => site_property_scalar(site, property_key))
   const present = scalars.filter((val) => val !== null)
   if (present.length === 0) return { colors: [], values: [] }
 

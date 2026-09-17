@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '$lib/colors'
-  import type { CompositionType } from '$lib/composition'
+  import { format_num } from '$lib/labels'
+  import { TooltipValue } from '$lib/tooltip'
+  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { hierarchy, pack } from 'd3-hierarchy'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import type { SVGAttributes } from 'svelte/elements'
-  import type { ChartSegment, ElementPatterns } from './chart'
+  import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
 
@@ -19,16 +19,8 @@
     patterns = {},
     svg_node = $bindable(null),
     ...rest
-  }: SVGAttributes<SVGSVGElement> & {
-    composition: CompositionType
-    size?: number
+  }: CompositionChartProps & {
     padding?: number
-    show_labels?: boolean
-    show_amounts?: boolean
-    show_percentages?: boolean
-    color_scheme?: ColorSchemeName
-    patterns?: ElementPatterns // hatch/texture fill per element symbol
-    svg_node?: SVGSVGElement | null
   } = $props()
 
   const uid = $props.id()
@@ -74,6 +66,14 @@
 >
   <defs><PatternDefs patterns={bubbles.map((bubble) => bubble.pattern)} /></defs>
   {#each bubbles as bubble (bubble.element)}
+    {#snippet segment_tooltip()}
+      <TooltipValue
+        label={bubble.element}
+        value={bubble.amount}
+        unit={bubble.amount === 1 ? 'atom' : 'atoms'}
+      />
+      (<TooltipValue value={format_num(bubble.fraction, '.1~%')} />)
+    {/snippet}
     <circle
       cx={bubble.x}
       cy={bubble.y}
@@ -82,10 +82,10 @@
       stroke="white"
       role="img"
       aria-label={segment_title(bubble)}
+      {@attach hover_tooltip(segment_tooltip)}
       stroke-width="1"
       class="bubble"
     >
-      <title>{segment_title(bubble)}</title>
     </circle>
   {/each}
 
@@ -96,7 +96,6 @@
         y={bubble.y}
         segment={bubble}
         font_scale={bubble.font_scale}
-        text_color={bubble.text_color}
         {label_opts}
       />
     {/each}

@@ -563,6 +563,18 @@ test.describe(`Structure Component Tests`, () => {
     const labels = page.locator(`.selection-label`)
     await expect(labels).toHaveText([`1`, `2`, `3`])
 
+    const measurement = page.locator(`#test-structure .measure-label`).first()
+    await expect(measurement).toBeVisible()
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    const fullscreen_button = page.locator(
+      `#test-structure > section.control-buttons > .fullscreen-btn`,
+    )
+    await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
+    await fullscreen_button.click()
+    await expect(page.locator(`#test-structure`)).toHaveCSS(`height`, `1080px`)
+    await expect(measurement).toHaveCSS(`font-size`, `14px`)
+    await fullscreen_button.click()
+
     await page.locator(`[data-testid="btn-clear-measured"]`).click()
     await expect(labels).toHaveCount(0)
   })
@@ -615,7 +627,6 @@ test.describe(`Structure Component Tests`, () => {
     const screenshots: Record<string, Buffer> = {}
 
     for (const projection of [`perspective`, `orthographic`]) {
-      // Re-open the controls pane each iteration (canvas.click closes it via click-outside)
       const { pane_div } = await open_structure_control_pane(page)
       const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
       await expect(camera_projection_select).toBeVisible()
@@ -623,25 +634,20 @@ test.describe(`Structure Component Tests`, () => {
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
 
-      screenshots[`${projection}_initial`] = await canvas_screenshot(canvas)
-      await canvas.hover({ force: true })
-      await canvas.click({ force: true })
+      // Close the pane before the baseline so its disappearance cannot count as zoom.
+      await page.keyboard.press(`Escape`)
+      await expect(pane_div).toBeHidden()
+      await canvas.hover({ position: { x: 60, y: 60 } })
+      const initial = await canvas_screenshot(canvas)
+      screenshots[projection] = initial
       // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
       await page.mouse.wheel(0, -250)
       await page.mouse.wheel(0, -250)
       // Wait for zoom to be applied (screenshot should differ from initial)
-      await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
-      screenshots[`${projection}_zoomed`] = await canvas_screenshot(canvas)
+      await expect_canvas_changed(canvas, initial)
     }
 
-    // Verify zoom responsiveness and visual differences
-    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(false)
-    expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
-      false,
-    )
-    expect(screenshots.perspective_initial.equals(screenshots.orthographic_initial)).toBe(
-      false,
-    )
+    expect(screenshots.perspective.equals(screenshots.orthographic)).toBe(false)
   })
 })
 

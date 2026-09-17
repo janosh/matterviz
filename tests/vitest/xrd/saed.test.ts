@@ -9,7 +9,7 @@ import {
   saed_pattern_radius,
 } from '$lib/xrd'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal } from '../test-fixtures'
 
 // Angle in degrees between two spots as seen from the direct beam
 const saed_spot_angle = (spot_a: Vec2, spot_b: Vec2): number => {

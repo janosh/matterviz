@@ -54,10 +54,7 @@
   // results came in through the prop instead
   let computed_labels = $state<string[]>([])
 
-  // Async compute can't be a $derived; a request id drops results of superseded inputs. The
-  // cleanup also aborts them so the worker stops on a superseded input or unmount, and bumps
-  // the id so the abort rejection of an unmounted plot never lands in error_msg.
-  let request_id = 0
+  // Cleanup aborts superseded inputs and guards every settlement, including after unmount.
   // Whether the previous run had inputs to compute. Only then does a run without inputs reset
   // loading/error_msg: in results-only mode (id_results from the parent, no `structures`) those
   // are the parent's one-way props and must not be clobbered
@@ -65,7 +62,6 @@
   $effect(() => {
     const inputs = entries
     const options: StructureIdOptions = JSON.parse(id_options_snapshot)
-    const this_request = ++request_id
     if (inputs.length === 0) {
       computed_labels = []
       // A failure of the previous inputs must not outlive them: clear so an empty `structures`
@@ -86,12 +82,12 @@
       inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
     )
       .then((computed) => {
-        if (this_request !== request_id) return
+        if (signal.aborted) return
         id_results = computed
         computed_labels = inputs.map(({ label }) => label)
       })
       .catch((err) => {
-        if (this_request !== request_id) return
+        if (signal.aborted) return
         // drop the stale populations, else `series` stays non-empty and the plot keeps
         // showing the previous inputs next to the error
         id_results = []
@@ -99,12 +95,9 @@
         error_msg = to_error(err).message
       })
       .finally(() => {
-        if (this_request === request_id) loading = false
+        if (!signal.aborted) loading = false
       })
-    return () => {
-      request_id++
-      controller.abort()
-    }
+    return () => controller.abort()
   })
 
   const value_of = (result: StructureIdResult, name: CnaTypeName) =>

@@ -17,7 +17,7 @@
   } from '$lib/structure/parse'
   import { to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { type mount, onDestroy, unmount } from 'svelte'
+  import { type mount, unmount } from 'svelte'
   import {
     detect_view_type,
     scan_renderable_paths,
@@ -39,9 +39,8 @@
   } = $props()
 
   // === Panel state ===
-  // Panels are a flat list with a split direction between consecutive panels and a parallel
-  // array of flex weights. Each panel's viewer is mounted by the attach_viewer attachment on
-  // its element, so a panel lives exactly as long as its DOM node (the list is keyed by id).
+  // Panels share one split axis and a parallel array of flex weights. The attach_viewer
+  // attachment ties each viewer's lifetime to its DOM node (the list is keyed by id).
   interface PanelSpec {
     data_path: string
     detected_type: RenderableType
@@ -57,7 +56,7 @@
   // slow every viewer that reads them
   let panels = $state.raw<PanelInfo[]>([])
   let panel_sizes = $state<number[]>([]) // flex weight per panel (parallel to panels[])
-  let split_directions = $state<SplitDirection[]>([]) // direction between panels[i] and panels[i+1]
+  let layout_direction = $state<SplitDirection>(`vertical`)
 
   // Debounce timer for rapid tree selections (see handle_select)
   let select_timer: ReturnType<typeof setTimeout> | undefined
@@ -65,28 +64,23 @@
   // Scan for renderable paths after the tree has rendered so large JSON files don't block
   // the first paint (setTimeout rather than requestIdleCallback, which Safari lacks).
   let renderable_paths = $state(new Map<string, RenderableType>())
-  let auto_rendered = false
-  let last_scanned_value: unknown
   $effect(() => {
     const current_value = value
-    // PanelInfo.val captures the subtree, so a replaced document would leave open panels
-    // showing the old one and a sticky auto_rendered would suppress auto-render of the new root
-    if (current_value !== last_scanned_value) {
-      last_scanned_value = current_value
-      auto_rendered = false
-      close_all_panels()
-    }
+    // This effect tracks only the document: closing a panel must not reopen its root viewer.
+    close_all_panels()
     const scan_handle = setTimeout(() => {
       renderable_paths = scan_renderable_paths(current_value)
       // Auto-render if the root value itself is a single renderable type
       // (avoids forcing the user to click for single-type JSON files)
       const root_type = renderable_paths.get(``)
-      if (root_type && !auto_rendered) {
-        auto_rendered = true
+      if (root_type) {
         replace_or_add_panel({ data_path: ``, detected_type: root_type, val: current_value })
       }
     }, 0)
-    return () => clearTimeout(scan_handle)
+    return () => {
+      clearTimeout(scan_handle)
+      clearTimeout(select_timer)
+    }
   })
 
   // Sidebar width in px (PaneDivider writes it to --split-pane-size): the tree wants ~320 px
@@ -95,9 +89,6 @@
   const SIDEBAR_MIN_PX = 150
   const CANVAS_MIN_PX = 200
   let sidebar_px = $state(320)
-
-  // a pending selection must not render into a dead browser
-  onDestroy(() => clearTimeout(select_timer))
 
   // === Drag-and-drop from tree ===
   let drop_zone = $state<`top` | `bottom` | `left` | `right` | `center` | null>(null)
@@ -150,36 +141,31 @@
   )
 
   // Single delegated dragstart handler on sidebar (no per-node listeners needed)
-  $effect(() => {
-    if (!sidebar_element) return
-    function on_dragstart(event: DragEvent): void {
-      if (!event.dataTransfer) {
-        event.preventDefault()
-        return
-      }
-      const origin = event.target
-      if (!(origin instanceof HTMLElement)) return
-      // A badge carries its own path/type; a tree node is looked up by its tree path
-      const badge = origin.closest<HTMLElement>(`.renderable-badge`)
-      const node = badge ? null : origin.closest<HTMLElement>(`[data-path]`)
-      if (!badge && !node) return
-      const info = badge
-        ? {
-            data_path: badge.dataset.renderable_path ?? ``,
-            type: badge.dataset.renderable_type,
-          }
-        : renderable_tree_paths.get(node?.dataset.path ?? ``)
-      if (!info) {
-        event.preventDefault()
-        return
-      }
-      const payload = { data_path: info.data_path, detected_type: info.type ?? `` }
-      event.dataTransfer.setData(`text/plain`, JSON.stringify(payload))
-      event.dataTransfer.effectAllowed = `copy`
+  function on_dragstart(event: DragEvent): void {
+    if (!event.dataTransfer) {
+      event.preventDefault()
+      return
     }
-    sidebar_element.addEventListener(`dragstart`, on_dragstart)
-    return () => sidebar_element?.removeEventListener(`dragstart`, on_dragstart)
-  })
+    const origin = event.target
+    if (!(origin instanceof HTMLElement)) return
+    // A badge carries its own path/type; a tree node is looked up by its tree path
+    const badge = origin.closest<HTMLElement>(`.renderable-badge`)
+    const node = badge ? null : origin.closest<HTMLElement>(`[data-path]`)
+    if (!badge && !node) return
+    const info = badge
+      ? {
+          data_path: badge.dataset.renderable_path ?? ``,
+          type: badge.dataset.renderable_type,
+        }
+      : renderable_tree_paths.get(node?.dataset.path ?? ``)
+    if (!info) {
+      event.preventDefault()
+      return
+    }
+    const payload = { data_path: info.data_path, detected_type: info.type ?? `` }
+    event.dataTransfer.setData(`text/plain`, JSON.stringify(payload))
+    event.dataTransfer.effectAllowed = `copy`
+  }
 
   // === Badge injection ===
   // One pass over the tree's nodes: mark renderable ones draggable (no per-node listeners)
@@ -214,22 +200,17 @@
 
   // Delegated click handler for badges (avoids per-badge listeners that leak on re-render)
   // Uses capture phase to intercept before tree node fold/select handlers
-  $effect(() => {
-    if (!sidebar_element) return
-    function on_badge_click(event: MouseEvent): void {
-      const origin = event.target
-      if (!(origin instanceof HTMLElement)) return
-      const badge = origin.closest<HTMLElement>(`.renderable-badge`)
-      if (!badge) return
-      event.stopPropagation()
-      event.preventDefault()
-      const { renderable_path, renderable_type } = badge.dataset
-      const spec = resolve_renderable(renderable_path ?? ``, renderable_type)
-      if (spec) replace_or_add_panel(spec)
-    }
-    sidebar_element.addEventListener(`click`, on_badge_click, true)
-    return () => sidebar_element?.removeEventListener(`click`, on_badge_click, true)
-  })
+  function on_badge_click(event: MouseEvent): void {
+    const origin = event.target
+    if (!(origin instanceof HTMLElement)) return
+    const badge = origin.closest<HTMLElement>(`.renderable-badge`)
+    if (!badge) return
+    event.stopPropagation()
+    event.preventDefault()
+    const { renderable_path, renderable_type } = badge.dataset
+    const spec = resolve_renderable(renderable_path ?? ``, renderable_type)
+    if (spec) replace_or_add_panel(spec)
+  }
 
   // Escape key closes all panels, returning to the overview
   $effect(() => {
@@ -299,48 +280,37 @@
     target_idx: number,
     zone: `top` | `bottom` | `left` | `right`,
   ): void {
-    const direction: SplitDirection =
-      zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
+    layout_direction = zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
     const insert_idx = zone === `top` || zone === `left` ? target_idx : target_idx + 1
     const new_panels = [...panels]
     const new_sizes = [...panel_sizes]
-    const new_dirs = [...split_directions]
     // Split the target panel's size in half: new panel gets half, target keeps half
     const target_size = new_sizes[target_idx] ?? 1
     new_sizes[target_idx] = target_size / 2
     new_panels.splice(insert_idx, 0, make_panel(spec))
     new_sizes.splice(insert_idx, 0, target_size / 2)
-    // Add direction between the two panels
-    new_dirs.splice(target_idx, 0, direction)
     panels = new_panels
     panel_sizes = new_sizes
-    split_directions = new_dirs
   }
 
   function close_panel(idx: number): void {
     const new_panels = [...panels]
     const new_sizes = [...panel_sizes]
-    const new_dirs = [...split_directions]
     // Give the closed panel's size to its neighbor
     const closed_size = new_sizes[idx] ?? 0
     const neighbor_idx = idx > 0 ? idx - 1 : idx + 1
     if (neighbor_idx < new_sizes.length) new_sizes[neighbor_idx] += closed_size
     new_panels.splice(idx, 1)
     new_sizes.splice(idx, 1)
-    // Remove the adjacent split direction
-    if (new_dirs.length > 0) {
-      const dir_idx = Math.min(idx, new_dirs.length - 1)
-      new_dirs.splice(dir_idx, 1)
-    }
     panels = new_panels
     panel_sizes = new_sizes
-    split_directions = new_dirs
+    if (panels.length < 2) layout_direction = `vertical`
   }
 
   function close_all_panels(): void {
     panels = []
     panel_sizes = []
-    split_directions = []
+    layout_direction = `vertical`
   }
 
   // === Component mounting ===
@@ -456,9 +426,8 @@
       }
     }
     // Prevent mixed-axis splits until nested layouts are supported
-    const cross_axis =
-      split_directions[0] === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
-    if (split_directions.length > 0 && cross_axis.includes(drop_zone ?? ``)) {
+    const cross_axis = layout_direction === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
+    if (panels.length > 1 && cross_axis.includes(drop_zone ?? ``)) {
       drop_zone = `center`
     }
   }
@@ -508,13 +477,12 @@
     event: PointerEvent & { currentTarget: HTMLElement },
     split_idx: number,
   ): void {
-    const direction = split_directions[split_idx]
     const panel_container = event.currentTarget.parentElement
-    if (split_drag || event.button !== 0 || !direction || !panel_container) return
+    if (split_drag || event.button !== 0 || !panels[split_idx + 1] || !panel_container) return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     const container_rect = panel_container.getBoundingClientRect()
-    const is_vertical = direction === `vertical`
+    const is_vertical = layout_direction === `vertical`
     const total_flex = (panel_sizes[split_idx] ?? 1) + (panel_sizes[split_idx + 1] ?? 1)
     split_drag = {
       idx: split_idx,
@@ -529,7 +497,7 @@
     if (!split_drag || event.pointerId !== split_drag.pointer_id) return
     const { idx, start_pos, container_size, total_flex, start_left } = split_drag
     if (container_size <= 0) return
-    const current_pos = split_directions[idx] === `vertical` ? event.clientY : event.clientX
+    const current_pos = layout_direction === `vertical` ? event.clientY : event.clientX
     const moved_flex = ((current_pos - start_pos) / container_size) * total_flex
     const new_left = clamp(start_left + moved_flex, total_flex * 0.1, total_flex * 0.9)
     panel_sizes[idx] = new_left
@@ -553,11 +521,6 @@
     }, 150)
   }
 
-  // The first split direction determines the flex layout direction
-  let layout_direction = $derived(
-    split_directions.length > 0 ? split_directions[0] : `vertical`,
-  )
-
   const type_color = (key: string) => TYPE_COLORS[key as RenderableType]
 </script>
 
@@ -575,7 +538,13 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="json-browser" class:dragging={split_drag !== null}>
-  <aside class="sidebar" bind:this={sidebar_element}>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <aside
+    class="sidebar"
+    bind:this={sidebar_element}
+    ondragstart={on_dragstart}
+    onclickcapture={on_badge_click}
+  >
     <JsonTree {value} root_label={filename} default_fold_level={1} on_select={handle_select} />
   </aside>
 
@@ -642,12 +611,12 @@
       >
         {#each panels as panel, idx (panel.id)}
           {@const panel_background = `${TYPE_COLORS[panel.detected_type]}cc`}
-          {#if idx > 0 && split_directions[idx - 1]}
+          {#if idx > 0}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="split-divider"
-              class:vertical={split_directions[idx - 1] === `vertical`}
-              class:horizontal={split_directions[idx - 1] === `horizontal`}
+              class:vertical={layout_direction === `vertical`}
+              class:horizontal={layout_direction === `horizontal`}
               class:active={split_drag?.idx === idx - 1}
               onpointerdown={(event) => start_split_drag(event, idx - 1)}
               onpointermove={move_split_drag}
