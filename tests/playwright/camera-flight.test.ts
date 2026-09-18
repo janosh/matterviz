@@ -20,17 +20,16 @@ for (const kind of [`structure`, `trajectory`] as const) {
     const toggle = viewer.locator(`.${kind}-flight-toggle`).first()
     const export_toggle = viewer.locator(`.${kind}-export-toggle`).first()
     const export_pane = viewer.locator(`.export-pane`).first()
-    await expect(kind === `trajectory` ? export_toggle : toggle).toBeVisible({
+    await expect(export_toggle).toBeVisible({
       timeout: 30_000,
     })
-    if (kind === `trajectory`) await expect(toggle).toBeHidden()
+    await expect(toggle).toBeHidden()
     const open_planner = async () => {
-      if (kind === `trajectory`) {
-        if (!(await export_pane.isVisible())) await export_toggle.click()
-        await export_pane
-          .getByRole(`button`, { name: `Plan camera flight`, exact: true })
-          .click()
-      } else await toggle.click()
+      if (!(await export_pane.isVisible())) await export_toggle.click()
+      await export_pane
+        .getByRole(`button`, { name: `Plan camera flight`, exact: true })
+        .click()
+      await expect(export_pane).toBeHidden()
     }
     const read_pose = () =>
       page.evaluate(async (viewer_selector) => {
@@ -88,7 +87,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
         const styles = getComputedStyle(node)
         return { 'font-size': styles.fontSize, width: styles.width, height: styles.height }
       })
-    if (kind === `structure`) await export_toggle.click()
     await open_planner()
     const pane = viewer.locator(`.${kind}-flight-pane`)
     const flight = pane.locator(`.camera-flight`)
@@ -247,12 +245,9 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(flight.getByRole(`alert`)).toHaveCount(0)
     await flight.getByRole(`button`, { name: `Go to view 3`, exact: true }).click()
     await expect(home).toBeEnabled()
-    await (
-      kind === `trajectory`
-        ? flight.getByRole(`button`, { name: `Export options →`, exact: true })
-        : toggle
-    ).click()
+    await flight.getByRole(`button`, { name: `Export options →`, exact: true }).click()
     await expect(pane).toBeHidden()
+    await expect(export_pane).toBeVisible()
     await expect_original_pose()
     await open_planner()
     await expect(images).toHaveCount(9)

@@ -987,9 +987,12 @@ describe(`panes`, () => {
     props.active_pane = `export`
     await tick()
     expect(open_panes()).toEqual([`export-pane`])
-    const flight_anchor = doc_query<HTMLButtonElement>(`.trajectory-flight-toggle`)
-    expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
-    expect(flight_anchor.tabIndex).toBe(-1)
+    for (const kind of [`structure`, `trajectory`]) {
+      const flight_anchor = doc_query<HTMLButtonElement>(`.${kind}-flight-toggle`)
+      expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
+      expect(flight_anchor.tabIndex).toBe(-1)
+      expect(flight_anchor.getAttribute(`aria-hidden`)).toBe(`true`)
+    }
     const launch_flight = [...doc_query(`.export-pane`).querySelectorAll(`button`)].find(
       (button) => button.textContent?.includes(`Plan camera flight`),
     )
@@ -1033,7 +1036,14 @@ describe(`panes`, () => {
     expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
     props.active_pane = null
     await tick()
-    doc_query<HTMLButtonElement>(`.structure-flight-toggle`).click()
+    doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
+    await tick()
+    const structure_export = doc_query(`.structure .export-pane`)
+    const structure_flight = [...structure_export.querySelectorAll(`button`)].find((button) =>
+      button.textContent?.includes(`Plan camera flight`),
+    )
+    expect(structure_flight).toBeDefined()
+    structure_flight?.click()
     await tick()
     expect(props.active_pane).toBe(`flight`)
     expect(open_panes()).toEqual([`trajectory-flight-pane`])

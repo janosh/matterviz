@@ -1710,6 +1710,7 @@ describe(`Structure`, () => {
     const fullscreen_button = doc_query<HTMLButtonElement>(
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
+    expect(fullscreen_button.parentElement?.lastElementChild).toBe(fullscreen_button)
 
     fullscreen_button.click()
     // the flag flips on click and reverts once the browser rejects the request

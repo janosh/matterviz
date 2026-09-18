@@ -4,7 +4,7 @@
   import { FileExportState } from '$lib/io/file-export.svelte'
   import { format_num } from '$lib/labels'
   import { clamp } from '$lib/math'
-  import { ViewerPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { ViewerPane, type PaneProps } from '$lib/overlays'
   import { to_error } from '$lib/utils'
   import { tick, type Snippet } from 'svelte'
   import { NumberRangeInput } from 'svelte-widgets'
@@ -37,7 +37,6 @@
     on_export,
     class_prefix = `camera-flight`,
     pane_props = {},
-    toggle_props = {},
   }: {
     open?: boolean
     canvas?: HTMLCanvasElement | null
@@ -50,7 +49,6 @@
     on_export?: () => void
     class_prefix?: string
     pane_props?: PaneProps
-    toggle_props?: PaneToggleProps
   } = $props()
 
   const editor = create_camera_flight_editor()
@@ -281,9 +279,10 @@
   max_width="540px"
   persistent
   toggle_props={{
-    title: `Plan camera flight`,
-    'aria-label': `Plan camera flight`,
-    ...toggle_props,
+    // Launch from the export pane; retain a hidden toolbar anchor for positioning.
+    style: `position: absolute; visibility: hidden`,
+    tabindex: -1,
+    'aria-hidden': true,
   }}
   pane_props={{
     ...pane_props,

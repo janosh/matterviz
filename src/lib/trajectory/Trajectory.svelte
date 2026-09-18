@@ -1540,7 +1540,7 @@
           bind:active_pane={
             () => (active_pane === `controls` ? `controls` : structure_pane),
             (pane) => {
-              // Both camera buttons plan the same flight, synchronized to MD playback.
+              // Both export panes plan the same flight, synchronized to MD playback.
               if (pane === `flight`) {
                 active_pane = `flight`
                 structure_pane = null

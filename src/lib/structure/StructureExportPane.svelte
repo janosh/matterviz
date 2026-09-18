@@ -12,6 +12,8 @@
   import * as exports from '$lib/structure/export'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
+  import { Icon } from 'svelte-widgets'
+  import { Camera as CameraIcon } from 'svelte-widgets/icons'
   import type { Camera, Scene } from 'three/webgpu'
 
   let {
@@ -226,6 +228,19 @@
       {/if}
     </div>
   {/if}
+  {#if enable_3d_export}
+    <button
+      type="button"
+      disabled={export_state.busy}
+      style="display: inline-flex; align-items: center; gap: 0.5em; justify-self: start"
+      onclick={() => {
+        flight_pane_open = true
+        export_pane_open = false
+      }}
+    >
+      <Icon icon={CameraIcon} /> Plan camera flight
+    </button>
+  {/if}
 </ExportPane>
 
 {#if enable_3d_export}
@@ -235,6 +250,7 @@
     source_key={structure}
     filename={image_filename ?? `structure`}
     bind:busy={flight_running}
+    disabled={export_state.busy}
     class_prefix="structure-flight"
     {pane_props}
     on_export={() => {

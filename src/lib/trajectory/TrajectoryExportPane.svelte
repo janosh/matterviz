@@ -496,12 +496,6 @@
     bind:busy={flight_running}
     class_prefix="trajectory-flight"
     {pane_props}
-    toggle_props={{
-      // Keep an anchor in the toolbar without occupying space or exposing a second button.
-      style: `position: absolute; visibility: hidden`,
-      tabindex: -1,
-      'aria-hidden': true,
-    }}
     on_export={() => {
       export_pane_open = true
       flight_pane_open = false
