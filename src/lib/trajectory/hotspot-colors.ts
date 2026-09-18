@@ -31,18 +31,26 @@ export function hotspot_scale(
   metric: HotspotMetric,
   threshold: number,
 ): HotspotScale | undefined {
-  if (!Number.isFinite(mean) || mean < 0) return undefined
-  const peak = Number.isFinite(threshold) ? Math.max(0, threshold) : 1.25
+  if (!Number.isFinite(mean) || mean < 0 || !Number.isFinite(threshold)) return undefined
+  const peak = Math.max(0, threshold)
   const onset = Math.min(1, peak * 0.8)
-  return {
+  const scale: HotspotScale = {
     metric,
     unit: metric === `temperature` ? `K` : `eV/atom`,
-    atom_max: Math.max(mean * 2, Number.EPSILON),
+    atom_max: Math.max(mean * 2, Number.MIN_VALUE),
     cloud_min: mean * onset,
     cloud_max: mean * (onset + Math.max(0.01, peak - onset)),
     density_reference: mean,
     threshold: mean * peak,
   }
+  if (
+    ![scale.atom_max, scale.cloud_min, scale.cloud_max, scale.threshold].every(
+      Number.isFinite,
+    ) ||
+    (mean > 0 && scale.cloud_max <= scale.cloud_min)
+  )
+    return undefined
+  return scale
 }
 
 export function hotspot_probe(

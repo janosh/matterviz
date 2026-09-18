@@ -51,30 +51,63 @@ const scale_for = (mean: number, threshold = 1.25) => {
   return scale
 }
 
-it.each([0, 0.5, 300])(`heatmap palette matches D3 at every boundary for mean=%s`, (mean) => {
-  const scale = Math.max(mean * 2, Number.EPSILON)
-  const values = Float32Array.from([
-    -1,
-    0,
-    scale,
-    scale * 2,
-    NaN,
-    Infinity,
-    -Infinity,
-    ...Array.from({ length: 256 }, (_, idx) =>
-      [-1e-6, 0, 1e-6].map((offset) => (idx / 256 + offset) * scale),
-    ).flat(),
-  ])
-  const colors = hotspot_colors({ values, mean }, scale_for(mean))
-  for (let idx = 0; idx < values.length; idx++) {
-    const scaled = Math.min(1, Math.max(0, values[idx] / scale))
-    const expected = Number.isFinite(values[idx])
-      ? [...parse_linear_rgb(interpolateInferno(scaled)), 1]
-      : [0, 0, 0, 0]
-    expect(colors.slice(idx * 4, idx * 4 + 4)).toEqual(new Float32Array(expected))
-  }
-  expect(hotspot_scale(NaN, `energy`, 1.25)).toBeUndefined()
-})
+it.each([0, 1e-20, 0.5, 300])(
+  `heatmap palette matches D3 at every boundary for mean=%s`,
+  (mean) => {
+    const scale = Math.max(mean * 2, Number.MIN_VALUE)
+    const values = Float32Array.from([
+      -1,
+      0,
+      scale,
+      scale * 2,
+      NaN,
+      Infinity,
+      -Infinity,
+      ...Array.from({ length: 256 }, (_, idx) =>
+        [-1e-6, 0, 1e-6].map((offset) => (idx / 256 + offset) * scale),
+      ).flat(),
+    ])
+    const colors = hotspot_colors({ values, mean }, scale_for(mean))
+    for (let idx = 0; idx < values.length; idx++) {
+      const scaled = Math.min(1, Math.max(0, values[idx] / scale))
+      const expected = Number.isFinite(values[idx])
+        ? [...parse_linear_rgb(interpolateInferno(scaled)), 1]
+        : [0, 0, 0, 0]
+      expect(colors.slice(idx * 4, idx * 4 + 4)).toEqual(new Float32Array(expected))
+    }
+  },
+)
+
+it.each([2 ** -140, 2 ** -80, 2 ** 120])(
+  `preserves relative atom and cloud colors for mean=%s`,
+  (mean) => {
+    // Binary powers keep these ratios exact, including subnormal float32 values.
+    const reference = { values: new Float32Array([0, 0.5, 1, 1.25, 2]), mean: 1 }
+    const display = { values: reference.values.map((value) => value * mean), mean }
+    const scale = scale_for(mean)
+    expect(scale.atom_max).toBe(mean * 2)
+    expect(hotspot_colors(display, scale)).toEqual(hotspot_colors(reference, scale_for(1)))
+    expect(hotspot_cloud_colors(display, scale, `blue`, `red`)).toEqual(
+      hotspot_cloud_colors(reference, scale_for(1), `blue`, `red`),
+    )
+  },
+)
+
+it.each([
+  [NaN, 1.25],
+  [Infinity, 1.25],
+  [-1, 1.25],
+  [1, NaN],
+  [1, Infinity],
+  [Number.MAX_VALUE, 1.25],
+  [1e100, 1e300],
+  [Number.MIN_VALUE, 1.25],
+])(
+  `rejects invalid or unrepresentable scales for mean=%s, threshold=%s`,
+  (mean, threshold) => {
+    expect(hotspot_scale(mean, `energy`, threshold)).toBeUndefined()
+  },
+)
 
 it(`cloud density grows with heat, honors colors and leaves absent data transparent`, () => {
   const data = result()
