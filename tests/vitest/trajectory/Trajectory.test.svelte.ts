@@ -28,6 +28,8 @@ import {
   doc_query,
   query,
   form_controls,
+  fire,
+  keydown,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import {
@@ -1111,9 +1113,8 @@ describe(`events`, () => {
     )
     const target = mount_trajectory(props)
     const sibling_props = $state(default_props())
-    const sibling = mount_trajectory(sibling_props).querySelector<HTMLElement>(`.trajectory`)
-    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
-    if (!viewer || !sibling) throw new Error(`Missing trajectory viewers`)
+    const sibling = query(mount_trajectory(sibling_props), `.trajectory`)
+    const viewer = query(target, `.trajectory`)
     const view_button = query<HTMLButtonElement>(viewer, `${CONTROLS} .view-mode-button`)
     const sibling_button = query<HTMLButtonElement>(sibling, `${CONTROLS} .view-mode-button`)
     expect(viewer.getAttribute(`role`)).toBe(`application`)
@@ -1137,10 +1138,8 @@ describe(`events`, () => {
         // Descendant focus must survive modes that remove the structure viewer entirely.
         const focused = viewer.querySelector<HTMLElement>(`.structure`) ?? viewer
         focused.focus()
-        const event = new KeyboardEvent(`keydown`, {
-          key: shift_key ? `V` : `v`,
+        const event = keydown(shift_key ? `V` : `v`, {
           shiftKey: shift_key,
-          bubbles: true,
           cancelable: true,
         })
         focused.dispatchEvent(event)
@@ -1176,8 +1175,7 @@ describe(`events`, () => {
   ])(`view shortcut ignores $name`, async ({ init, tag, hover_only }) => {
     const changed = vi.fn()
     const props = $state(default_props({ on_display_mode_change: changed }))
-    const viewer = mount_trajectory(props).querySelector<HTMLElement>(`.trajectory`)
-    if (!viewer) throw new Error(`Missing trajectory viewer`)
+    const viewer = query(mount_trajectory(props), `.trajectory`)
     const target = tag ? document.createElement(tag) : viewer
     if (tag) {
       if (tag === `div`) target.contentEditable = `true`
@@ -1185,12 +1183,7 @@ describe(`events`, () => {
     }
     if (hover_only) viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     else target.focus()
-    const event = new KeyboardEvent(`keydown`, {
-      key: `v`,
-      bubbles: true,
-      cancelable: true,
-      ...init,
-    })
+    const event = keydown(`v`, { cancelable: true, ...init })
     if (hover_only) window.dispatchEvent(event)
     else target.dispatchEvent(event)
     await tick()
@@ -1290,26 +1283,26 @@ describe(`events`, () => {
     expect(document.querySelector(`.trajectory > .sequence-control-bar`)).toBeNull()
   })
 
-  test(`Escape closes the open menu and leaves parent-owned fullscreen alone`, async () => {
-    mock_fullscreen()
-    const target = mount_trajectory(default_props())
-    await tick()
-    // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
-    await target.requestFullscreen()
-    const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
-    const toggle = doc_query<HTMLButtonElement>(`${CONTROLS} .analysis-button`)
-    toggle.click()
-    await tick()
-    expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+  test.each([`analysis-button`, `view-mode-button`])(
+    `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,
+    async (button_class) => {
+      mock_fullscreen()
+      const target = mount_trajectory(default_props())
+      await tick()
+      // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
+      await target.requestFullscreen()
+      const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
+      const toggle = doc_query<HTMLButtonElement>(`${CONTROLS} .${button_class}`)
+      await fire(toggle)
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
-    doc_query(`.trajectory`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-    )
-    await tick()
-    expect(exit_fullscreen).not.toHaveBeenCalled()
-    expect(document.fullscreenElement).toBe(target)
-    expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
-  })
+      await fire(doc_query(`.trajectory`), keydown(`Escape`))
+      expect(exit_fullscreen).not.toHaveBeenCalled()
+      expect(document.fullscreenElement).toBe(target)
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
+      expect(toggle.style.boxShadow).toBe(``)
+    },
+  )
 })
 
 describe(`bindings`, () => {

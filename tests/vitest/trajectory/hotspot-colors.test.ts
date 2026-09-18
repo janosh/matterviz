@@ -311,24 +311,21 @@ it.each([`device`, `cell`] as const)(
     ])
     expect(first_color.toArray()).toEqual(first_components)
     expect(hotspot_probe(data, display, field, [0, -100, 0])).toBeUndefined()
-    data.occupied_frames[8] = 0
-    expect(
-      hotspot_probe(
-        data,
-        hotspot_display_values(data, `energy`, 1),
-        field,
-        endpoint.toArray(),
-      ),
-    ).toBeUndefined()
-    data.occupied_frames[8] = 1
-    expect(
-      hotspot_probe(
-        data,
-        hotspot_display_values(data, `energy`, 3),
-        field,
-        endpoint.toArray(),
-      ),
-    ).toBeUndefined()
+    for (const { name, occupied_frames, min_population } of [
+      { name: `unoccupied bin`, occupied_frames: 0, min_population: 1 },
+      { name: `undersampled bin`, occupied_frames: 1, min_population: 3 },
+    ]) {
+      data.occupied_frames[8] = occupied_frames
+      expect(
+        hotspot_probe(
+          data,
+          hotspot_display_values(data, `energy`, min_population),
+          field,
+          endpoint.toArray(),
+        ),
+        name,
+      ).toBeUndefined()
+    }
   },
 )
 

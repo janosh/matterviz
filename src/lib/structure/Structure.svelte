@@ -892,10 +892,20 @@
     // first and prevents the default, which makes the window pass a no-op.
     if (event.defaultPrevented) return false
     const is_input_focused = is_editable_event_target(event.target)
-    // Escape leaves add-atom mode even from its element input
-    if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
-      session.add_atom_mode = false
-      shortcut_flash.show(`measure`)
+    const editing_bonds = measure_mode === `edit-bonds`
+    const editing_atoms = measure_mode === `edit-atoms`
+    // Escape unwinds fields, selection, panes, then edit mode, without shortcut flashes.
+    if (event.key === `Escape`) {
+      // Add-atom mode also closes from its element input; other fields own their keys.
+      if (editing_atoms && session.add_atom_mode) session.add_atom_mode = false
+      else if (is_input_focused) return false
+      else if (editing_atoms && session.change_element_mode)
+        session.change_element_mode = false
+      else if ((editing_bonds || editing_atoms) && selected_sites.length > 0)
+        session.clear_selection()
+      else if (active_pane !== null) active_pane = null
+      else if (editing_bonds || editing_atoms) measure_mode = `distance`
+      else return false
       return true
     }
     if (is_input_focused) return false
@@ -906,8 +916,6 @@
     const plain_press = plain && !event.repeat
     const is_undo = has_modifier && key === `z` && !event.shiftKey
     const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
-    const editing_bonds = measure_mode === `edit-bonds`
-    const editing_atoms = measure_mode === `edit-atoms`
 
     if ((editing_bonds || editing_atoms) && (is_undo || is_redo)) {
       const [step, history, what] = editing_bonds
@@ -942,19 +950,6 @@
         return true
       }
       if (key === `d` && has_modifier) return session.duplicate_selected()
-      if (event.key === `Escape` && session.change_element_mode) {
-        session.change_element_mode = false
-        shortcut_flash.show(`measure`)
-        return true
-      }
-    }
-    if (
-      (editing_bonds || editing_atoms) &&
-      event.key === `Escape` &&
-      selected_sites.length > 0
-    ) {
-      session.clear_selection()
-      return true
     }
     // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free)
     if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
@@ -979,17 +974,6 @@
     ) {
       multi_view = !multi_view
       shortcut_flash.show(`layout`)
-      return true
-    }
-    if (event.key === `Escape`) {
-      // Close panes first, then leave edit modes
-      if (active_pane !== null) {
-        if (active_pane === `info`) shortcut_flash.show(`info`)
-        active_pane = null
-      } else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
-        measure_mode = `distance`
-        shortcut_flash.show(`measure`)
-      } else return false
       return true
     }
     return false

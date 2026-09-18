@@ -975,7 +975,7 @@
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
-  const shortcut_flash = create_shortcut_flash<`view` | `analysis`>()
+  const shortcut_flash = create_shortcut_flash<`view`>()
   function select_display_mode(mode: TrajectoryDisplayMode): void {
     display_mode = mode
     on_display_mode_change?.(event_data())
@@ -1024,13 +1024,9 @@
     // fullscreenchange — exiting here would steal it from a host that owns it (a slide
     // deck embedding the viewer) and swallow the key.
     if (key !== `Escape`) return false
-    if (view_mode_dropdown_open) {
-      view_mode_dropdown_open = false
-      shortcut_flash.show(`view`)
-    } else if (analysis_menu_open) {
-      analysis_menu_open = false
-      shortcut_flash.show(`analysis`)
-    } else return false
+    if (view_mode_dropdown_open) view_mode_dropdown_open = false
+    else if (analysis_menu_open) analysis_menu_open = false
+    else return false
     return true
   }
 
@@ -1399,7 +1395,6 @@
               label="Analysis"
               active={analysis_menu_open || any_analysis_open}
               button_class="analysis-button"
-              button_style={shortcut_flash.style(`analysis`)}
               menu_class="analysis-dropdown"
               class="analysis-dropdown-wrapper"
             >

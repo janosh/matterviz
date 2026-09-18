@@ -100,6 +100,7 @@ afterEach(() => {
   scene_stub.props = undefined
   for (const component of mounted.splice(0)) void unmount(component)
   structure_host_tool.component = original_host_component
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
@@ -1141,6 +1142,7 @@ describe(`Structure`, () => {
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
     const state = { active_pane: null as StructurePane | null }
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
@@ -1150,7 +1152,13 @@ describe(`Structure`, () => {
       trigger: () => press_window_key({ key: `i` }),
       read_state: () => state.active_pane === `info`,
     })
+    await fire(doc_query(`.structure`), keydown(`i`))
+    expect(state.active_pane).toBe(`info`)
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
+    vi.advanceTimersByTime(400)
+    await fire(doc_query(`.structure`), keydown(`Escape`))
+    expect(state.active_pane).toBeNull()
+    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
   })
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
@@ -1170,22 +1178,42 @@ describe(`Structure`, () => {
     expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
   })
 
-  test(`edit-atoms A opens the element input and Escape closes it, even while that input has focus`, async () => {
-    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
-    mount_structure(bind_props(edit_props, { structure: structures[0] }))
-    await tick()
-    const press = (target: Element, key: string) =>
-      target.dispatchEvent(keydown(key, { cancelable: true }))
-    press(doc_query(`.structure`), `a`)
-    await tick()
-    expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toContain(`1px`)
-    const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
-    // the autofocused element input is where the next keystroke lands
-    press(add_input, `Escape`)
-    await tick()
-    expect(document.querySelector(`.add-atom-input`)).toBeNull()
-    expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toContain(`1px`)
-  })
+  test.each([
+    [`a`, true],
+    [`a`, false],
+    [`e`, true],
+    [`e`, false],
+  ] as const)(
+    `edit-atoms %s opens a field; Escape closes quietly (from input: %s)`,
+    async (key, from_input) => {
+      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+      const state = $state<{ measure_mode: MeasureMode; selected_sites: number[] }>({
+        measure_mode: `edit-atoms`,
+        selected_sites: [],
+      })
+      mount_structure(bind_props({ structure }, state))
+      await tick()
+      state.selected_sites = [0]
+      const viewer = doc_query(`.structure`)
+      await fire(viewer, keydown(key, { cancelable: true }))
+      const toggle = doc_query(`.measure-mode-dropdown > button`)
+      expect(toggle.style.boxShadow).toContain(`1px`)
+      // Let the opening flash expire so it cannot hide a new flash on Escape.
+      vi.advanceTimersByTime(400)
+      const input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+      await fire(from_input ? input : viewer, keydown(`Escape`, { cancelable: true }))
+      expect(document.querySelector(`.add-atom-input`)).toBeNull()
+      expect(toggle.style.boxShadow).toBe(``)
+      expect(state.selected_sites).toEqual([0])
+      // Selection clears before edit mode exits.
+      for (const mode of [`edit-atoms`, `distance`]) {
+        await fire(viewer, keydown(`Escape`, { cancelable: true }))
+        expect(state.selected_sites).toEqual([])
+        expect(state.measure_mode).toBe(mode)
+        expect(toggle.style.boxShadow).toBe(``)
+      }
+    },
+  )
 
   test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
     // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
@@ -1229,6 +1257,7 @@ describe(`Structure`, () => {
   test.each([`add`, `delete`] as const)(
     `bond shortcut highlights the %s toggle`,
     async (mode) => {
+      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
       mount_structure({
         structure,
         measure_mode: `edit-bonds`,
@@ -1238,6 +1267,10 @@ describe(`Structure`, () => {
       const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
       expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
       expect(selected.style.boxShadow).toContain(`1px`)
+      vi.advanceTimersByTime(400)
+      await fire(doc_query(`.structure`), keydown(`Escape`))
+      expect(document.querySelector(`.bond-edit-toolbar`)).toBeNull()
+      expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toBe(``)
     },
   )
 
@@ -1464,29 +1497,20 @@ describe(`Structure`, () => {
       await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
       flushSync()
       expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
-      if (thermal) {
-        expect(scene_stub.props?.atom_color_field).toBe(props.atom_color_field)
-        expect(scene_stub.props?.volume_color_field).toBe(props.volume_color_field)
-        expect(scene_stub.props?.cutaway).toBe(props.cutaway)
-        expect(scene_stub.props?.atom_opacity).toBe(0)
-      }
-
-      props.cell_type = `conventional`
-      flushSync()
-      expect(scene_stub.props?.atom_color_field).toBeUndefined()
-      expect(scene_stub.props?.volume_color_field).toBeUndefined()
-      expect(scene_stub.props?.cutaway).toBeUndefined()
-      expect(scene_stub.props?.atom_opacity).toBe(1)
-      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
-        OVERLAYS_INPUT_FRAME_NOTE,
-      )
-      props.cell_type = `original`
-      flushSync()
-      if (thermal) {
-        expect(scene_stub.props?.atom_color_field).toBe(props.atom_color_field)
-        expect(scene_stub.props?.volume_color_field).toBe(props.volume_color_field)
-        expect(scene_stub.props?.cutaway).toBe(props.cutaway)
-        expect(scene_stub.props?.atom_opacity).toBe(0)
+      for (const cell_type of [`original`, `conventional`, `original`] as const) {
+        props.cell_type = cell_type
+        flushSync()
+        const show_thermal = thermal && cell_type === `original`
+        for (const prop of [`atom_color_field`, `volume_color_field`, `cutaway`] as const) {
+          expect(scene_stub.props?.[prop], `${cell_type}: ${prop}`).toBe(
+            show_thermal ? props[prop] : undefined,
+          )
+        }
+        expect(scene_stub.props?.atom_opacity, cell_type).toBe(show_thermal ? 0 : 1)
+        if (cell_type === `conventional`)
+          expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+            OVERLAYS_INPUT_FRAME_NOTE,
+          )
       }
     },
   )

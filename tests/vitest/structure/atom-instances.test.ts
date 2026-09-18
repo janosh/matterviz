@@ -34,6 +34,9 @@ import {
 } from 'three/webgpu'
 import { expect, test, vi } from 'vitest'
 
+const cell_point = (cell: Matrix4, axis: StructureCutaway[`axis`], depth: number) =>
+  new Vector3(0.5, 0.5, 0.5).setComponent(axis, depth).applyMatrix4(cell)
+
 test.each([1, 2, 3] as const)(
   `enlarged edit targets cannot pick fully clipped atoms or order-%i bonds`,
   (bond_order) => {
@@ -156,10 +159,7 @@ test.each(
     const geometry = new SphereGeometry(0.5, 20, 20)
     const material = new MeshBasicMaterial({ side: DoubleSide })
     const atoms = [0.15, 0.5, 0.85].map((depth) => ({
-      position: new Vector3(0.5, 0.5, 0.5)
-        .setComponent(axis, depth)
-        .applyMatrix4(cell)
-        .toArray(),
+      position: cell_point(cell, axis, depth).toArray(),
       radius: 0.7,
     }))
     const mesh = new AtomInstances(geometry, material, atoms.length)
@@ -174,10 +174,7 @@ test.each(
     group.set_cutaway(cutaway)
     group.updateMatrixWorld(true)
     const world_point = (depth: number) =>
-      new Vector3(0.5, 0.5, 0.5)
-        .setComponent(axis, depth)
-        .applyMatrix4(cell)
-        .applyMatrix4(group.matrixWorld)
+      cell_point(cell, axis, depth).applyMatrix4(group.matrixWorld)
     const camera =
       projection === `orthographic`
         ? new OrthographicCamera(-5, 5, 5, -5, 0.1, 100)
@@ -246,24 +243,19 @@ test.each([0, 1, 2] as const)(
       cartesian_to_fractional: cell.clone().invert(),
     }
     expect(cutaway_bounds(cutaway)).toEqual([0.4, 0.6])
-    for (const [coordinate, visible] of [
-      [0.1, false],
-      [0.41, true],
-      [0.59, true],
-      [0.9, false],
+    for (const [mode, coordinate, visible] of [
+      [`slab`, 0.1, false],
+      [`slab`, 0.41, true],
+      [`slab`, 0.59, true],
+      [`slab`, 0.9, false],
+      [`plane`, -0.1, true],
+      [`off`, -0.1, true],
+      [undefined, -0.1, true],
     ] as const) {
-      const position = new Vector3(0.5, 0.5, 0.5)
-        .setComponent(axis, coordinate)
-        .applyMatrix4(cell)
-      expect(cutaway_contains(cutaway, position.toArray())).toBe(visible)
+      const settings = mode === undefined ? undefined : { ...cutaway, mode }
+      const position = cell_point(cell, axis, coordinate).toArray()
+      expect(cutaway_contains(settings, position), `${mode} at ${coordinate}`).toBe(visible)
     }
-    const lower = new Vector3(0.5, 0.5, 0.5)
-      .setComponent(axis, -0.1)
-      .applyMatrix4(cell)
-      .toArray()
-    expect(cutaway_contains({ ...cutaway, mode: `plane` }, lower)).toBe(true)
-    expect(cutaway_contains({ ...cutaway, mode: `off` }, lower)).toBe(true)
-    expect(cutaway_contains(undefined, lower)).toBe(true)
   },
 )
 
