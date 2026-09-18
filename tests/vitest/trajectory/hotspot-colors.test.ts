@@ -100,12 +100,39 @@ it.each([
   [1, NaN],
   [1, Infinity],
   [Number.MAX_VALUE, 1.25],
+  [2 ** 128, 1.25],
+  [2 ** 127, 1.25],
+  [1, 2 ** 128],
   [1e100, 1e300],
   [Number.MIN_VALUE, 1.25],
+  [2 ** -150, 1.25],
+  [2 ** -150, 4],
+  [2 ** -149, 1.25],
+  [3 * 2 ** -150, 1.25],
+  [2 ** -148, 1.25],
 ])(
   `rejects invalid or unrepresentable scales for mean=%s, threshold=%s`,
   (mean, threshold) => {
     expect(hotspot_scale(mean, `energy`, threshold)).toBeUndefined()
+  },
+)
+
+it.each([2 ** -149, 2 ** -148])(
+  `preserves a representable subnormal scale for mean=%s`,
+  (mean) => {
+    const data = result()
+    data.energy.fill(mean)
+    data.population.fill(1)
+    const display = hotspot_display_values(data, `energy`, 1)
+    expect(display.mean).toBe(mean)
+    expect(display.values).toEqual(new Float32Array(24).fill(mean))
+    const scale = scale_for(display.mean, 2)
+    expect(scale).toMatchObject({ atom_max: mean * 2, cloud_min: mean, cloud_max: mean * 2 })
+    const reference = { values: new Float32Array(24).fill(1), mean: 1 }
+    expect(hotspot_colors(display, scale)).toEqual(hotspot_colors(reference, scale_for(1, 2)))
+    expect(hotspot_cloud_colors(display, scale, `blue`, `red`)).toEqual(
+      hotspot_cloud_colors(reference, scale_for(1, 2), `blue`, `red`),
+    )
   },
 )
 

@@ -14,7 +14,7 @@ import {
   InstancedBufferGeometry,
   Mesh,
   type Material,
-  Matrix4,
+  type Matrix4,
   type MeshBasicNodeMaterial,
   type Node,
   type Raycaster,
@@ -179,10 +179,10 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   }
 }
 
-let bond_picker: { instances: BondMesh; candidate: Mesh; matrix: Matrix4 } | undefined
+let bond_picker: { instances: BondMesh; candidate: Mesh } | undefined
 
 // Enlarged edit targets must not resurrect a clipped bond. Raycast the actual rendered
-// cylinders (including multiple-bond offsets/radii) only after a broad target hit.
+// cylinders, including multiple-bond offsets/radii, whenever cutaways are active.
 export function raycast_bond(
   target: Mesh,
   bond: BondPair,
@@ -196,16 +196,15 @@ export function raycast_bond(
     bond_picker = {
       instances: new BondMesh(geometry, undefined, 3),
       candidate: new Mesh(geometry),
-      matrix: new Matrix4(),
     }
   }
-  const { instances, candidate, matrix } = bond_picker
+  const { instances, candidate } = bond_picker
   instances.update(prepare_bond_placements([bond]))
   instances.thickness = thickness
   candidate.material = target.material
   for (let idx = 0; idx < instances.count; idx++) {
-    instances.getMatrixAt(idx, matrix)
-    candidate.matrixWorld.multiplyMatrices(target.parent.matrixWorld, matrix)
+    instances.getMatrixAt(idx, candidate.matrixWorld)
+    candidate.matrixWorld.premultiply(target.parent.matrixWorld)
     const first_hit = hits.length
     candidate.raycast(raycaster, hits)
     for (let hit_idx = first_hit; hit_idx < hits.length; hit_idx++)

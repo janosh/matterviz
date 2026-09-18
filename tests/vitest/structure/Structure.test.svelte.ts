@@ -1150,6 +1150,7 @@ describe(`Structure`, () => {
       trigger: () => press_window_key({ key: `i` }),
       read_state: () => state.active_pane === `info`,
     })
+    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
   })
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
@@ -1177,11 +1178,13 @@ describe(`Structure`, () => {
       target.dispatchEvent(keydown(key, { cancelable: true }))
     press(doc_query(`.structure`), `a`)
     await tick()
+    expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toContain(`1px`)
     const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
     // the autofocused element input is where the next keystroke lands
     press(add_input, `Escape`)
     await tick()
     expect(document.querySelector(`.add-atom-input`)).toBeNull()
+    expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toContain(`1px`)
   })
 
   test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
@@ -1203,26 +1206,40 @@ describe(`Structure`, () => {
     const n_before = state.structure.sites.length
 
     // dispatch on the viewer (focused/element path) — handle_and_prevent should run
-    const press = (init: KeyboardEventInit) => {
-      const event = new KeyboardEvent(`keydown`, {
-        cancelable: true,
-        bubbles: true,
-        ...init,
-      })
+    const press = (key: string, init: KeyboardEventInit = {}) => {
+      const event = keydown(key, { cancelable: true, ...init })
       doc_query(`.structure`).dispatchEvent(event)
       return event
     }
-    const delete_event = press({ key: `Delete` })
+    const delete_event = press(`Delete`)
     await tick()
     expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
     expect(state.structure.sites).toHaveLength(n_before - 1)
     expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
 
-    press({ key: `z`, ctrlKey: true })
+    press(`z`, { ctrlKey: true })
     await tick()
     expect(state.structure.sites).toHaveLength(n_before)
     expect(state.bonds).toEqual(orig_bonds)
+    expect(doc_query(`button[aria-label="Undo (Cmd/Ctrl+Z)"]`).style.boxShadow).toContain(
+      `1px`,
+    )
   })
+
+  test.each([`add`, `delete`] as const)(
+    `bond shortcut highlights the %s toggle`,
+    async (mode) => {
+      mount_structure({
+        structure,
+        measure_mode: `edit-bonds`,
+        bond_edit_mode: mode === `add` ? `delete` : `add`,
+      })
+      await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
+      const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
+      expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
+      expect(selected.style.boxShadow).toContain(`1px`)
+    },
+  )
 
   test.each([
     [{ supercell_scaling: `2x1x1` }, true],
@@ -1475,6 +1492,7 @@ describe(`Structure`, () => {
   )
 
   test(`shows safe bond editing controls by default`, async () => {
+    mock_gpu()
     mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
     await tick()
 
@@ -1487,10 +1505,24 @@ describe(`Structure`, () => {
     await tick()
     expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
     expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
-    expect(
-      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`)
-        .disabled,
-    ).toBe(true)
+    const undo_button = doc_query<HTMLButtonElement>(
+      `button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`,
+    )
+    expect(undo_button.disabled).toBe(true)
+    const scene = scene_stub.props
+    if (!scene?.on_bond_edit_start) throw new Error(`Missing bond-edit callback`)
+    scene.on_bond_edit_start()
+    scene.added_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    await tick()
+    for (const label of [`Undo`, `Redo`]) {
+      const button = doc_query<HTMLButtonElement>(`button[aria-label^="${label} bond edit"]`)
+      expect(button.disabled).toBe(false)
+      expect(button.textContent?.trim()).toBe(`1`)
+      button.click()
+      await tick()
+      expect(scene.added_bonds).toHaveLength(label === `Undo` ? 0 : 1)
+      expect(button.disabled).toBe(true)
+    }
   })
 
   // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed

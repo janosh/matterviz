@@ -9,7 +9,7 @@
     Orientation,
   } from '$lib/plot'
   // Playback and acquisition share one viewer; only runs opened here are disposed here.
-  import { create_flash } from '$lib/effects.svelte'
+  import { create_flash, create_shortcut_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
@@ -975,6 +975,13 @@
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
+  const shortcut_flash = create_shortcut_flash<`view` | `analysis`>()
+  function select_display_mode(mode: TrajectoryDisplayMode): void {
+    display_mode = mode
+    on_display_mode_change?.(event_data())
+    view_mode_dropdown_open = false
+  }
+
   // === keyboard ===
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
@@ -995,14 +1002,35 @@
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
+    if (
+      key === `v` &&
+      !event.altKey &&
+      !event.repeat &&
+      !event.isComposing &&
+      plot_series.length > 0 &&
+      wrapper?.contains(wrapper.ownerDocument.activeElement)
+    ) {
+      const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
+      const next =
+        (index + (event.shiftKey ? -1 : 1) + DISPLAY_MODES.length) % DISPLAY_MODES.length
+      select_display_mode(DISPLAY_MODES[next].mode)
+      shortcut_flash.show(`view`)
+      // A mode change may unmount the focused plot/structure; keep subsequent shortcuts here.
+      wrapper.focus({ preventScroll: true })
+      return true
+    }
     // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
     // leaves fullscreen to the browser, which exits on its own and lets the flag follow
     // fullscreenchange — exiting here would steal it from a host that owns it (a slide
     // deck embedding the viewer) and swallow the key.
     if (key !== `Escape`) return false
-    if (view_mode_dropdown_open) view_mode_dropdown_open = false
-    else if (analysis_menu_open) analysis_menu_open = false
-    else return false
+    if (view_mode_dropdown_open) {
+      view_mode_dropdown_open = false
+      shortcut_flash.show(`view`)
+    } else if (analysis_menu_open) {
+      analysis_menu_open = false
+      shortcut_flash.show(`analysis`)
+    } else return false
     return true
   }
 
@@ -1087,6 +1115,7 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
+  aria-keyshortcuts={plot_series.length > 0 ? `V Shift+V` : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
@@ -1370,6 +1399,7 @@
               label="Analysis"
               active={analysis_menu_open || any_analysis_open}
               button_class="analysis-button"
+              button_style={shortcut_flash.style(`analysis`)}
               menu_class="analysis-dropdown"
               class="analysis-dropdown-wrapper"
             >
@@ -1450,8 +1480,9 @@
           {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`}
+              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
               class="view-mode-dropdown-wrapper"
+              button_style={shortcut_flash.style(`view`)}
             >
               {#snippet button()}
                 <Icon icon={current_display_mode.icon} />
@@ -1459,11 +1490,7 @@
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
                   class={['view-mode-option', { selected: display_mode === option.mode }]}
-                  onclick={() => {
-                    display_mode = option.mode
-                    on_display_mode_change?.(event_data())
-                    view_mode_dropdown_open = false
-                  }}
+                  onclick={() => select_display_mode(option.mode)}
                 >
                   <Icon icon={option.icon} />
                   <span>{option.label}</span>

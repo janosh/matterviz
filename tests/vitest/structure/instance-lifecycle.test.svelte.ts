@@ -34,12 +34,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 test.each([`plane`, `slab`] as const)(
   `%s cutaway keeps a visible partial-occupancy cap pickable behind the clipped sphere surface`,
   (mode) => {
-    const interactivity = extras.interactivity
-    let context: ReturnType<typeof interactivity> | undefined
-    const capture = vi.spyOn(extras, `interactivity`).mockImplementation((options) => {
-      context = interactivity(options)
-      return context
-    })
+    const capture = vi.spyOn(extras, `interactivity`)
     onTestFinished(() => capture.mockRestore())
     const settings: StructureCutaway = {
       mode,
@@ -62,8 +57,9 @@ test.each([`plane`, `slab`] as const)(
     )
     onTestFinished(unmount_scene)
     flushSync()
-    if (!context) throw new Error(`Missing scene interactivity`)
-    const { interactiveObjects: targets } = context
+    const captured = capture.mock.results[0]
+    if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
+    const { interactiveObjects: targets } = captured.value
     const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
     const hits = () => ray.intersectObjects(targets, true)
     expect(hits()[0]?.distance).toBeLessThan(2)

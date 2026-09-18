@@ -2011,16 +2011,17 @@
             {@const partial_color = atom_color_field
               ? atom_field_color(atom_color_field, atom.position, partial_base)
               : partial_base}
+            {@const material_props = {
+              color: partial_color,
+              opacity,
+              transparent: opacity < 1,
+              visible: opacity > 0,
+            }}
             <T.Mesh oncreate={enable_cutaway_picking}>
               <T.SphereGeometry
                 args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
               />
-              <T.MeshStandardMaterial
-                color={partial_color}
-                {opacity}
-                transparent={opacity < 1}
-                visible={opacity > 0}
-              />
+              <T.MeshStandardMaterial {...material_props} />
             </T.Mesh>
 
             <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
@@ -2030,13 +2031,7 @@
                   <T.CircleGeometry
                     args={[0.5, sphere_segments, CAP_ARC_START, CAP_ARC_LENGTH]}
                   />
-                  <T.MeshStandardMaterial
-                    color={partial_color}
-                    side={2}
-                    {opacity}
-                    transparent={opacity < 1}
-                    visible={opacity > 0}
-                  />
+                  <T.MeshStandardMaterial {...material_props} side={2} />
                 </T.Mesh>
               {/if}
             {/each}

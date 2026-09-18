@@ -26,6 +26,7 @@ import {
   mock_fullscreen,
   bind_props,
   doc_query,
+  query,
   form_controls,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
@@ -84,6 +85,7 @@ const make_run = ({
 const mounted: ReturnType<typeof mount>[] = []
 afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -323,7 +325,7 @@ describe(`display modes`, () => {
     if (_kind === `constant-value` || _kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
-      ).toBe(`Automatic: Structure-only`)
+      ).toBe(`Automatic: Structure-only (V: next, Shift+V: previous)`)
   })
 
   test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
@@ -414,7 +416,7 @@ describe(`display modes`, () => {
       frame_count: 3,
       frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
-    expect(view_mode_button.title).toBe(`Histogram-only`)
+    expect(view_mode_button.title).toBe(`Histogram-only (V: next, Shift+V: previous)`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
     expect(target.querySelector(`.histogram`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()
@@ -1098,15 +1100,106 @@ describe(`panes`, () => {
 })
 
 describe(`events`, () => {
-  test(`the viewer is a focusable application whose arrow keys step frames`, () => {
-    const state = $state({ current_step_idx: 0 })
-    mount_trajectory(bind_props(default_props(), state))
-    const viewer = doc_query(`.trajectory`)
+  test(`focused viewer shortcuts step frames and cycle views without affecting a hovered sibling`, async () => {
+    const changed = vi.fn()
+    const props = $state(
+      default_props({
+        current_step_idx: 0,
+        display_mode: `auto`,
+        on_display_mode_change: changed,
+      }),
+    )
+    const target = mount_trajectory(props)
+    const sibling_props = $state(default_props())
+    const sibling = mount_trajectory(sibling_props).querySelector<HTMLElement>(`.trajectory`)
+    const viewer = target.querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer || !sibling) throw new Error(`Missing trajectory viewers`)
+    const view_button = query<HTMLButtonElement>(viewer, `${CONTROLS} .view-mode-button`)
+    const sibling_button = query<HTMLButtonElement>(sibling, `${CONTROLS} .view-mode-button`)
     expect(viewer.getAttribute(`role`)).toBe(`application`)
     expect(viewer.getAttribute(`tabindex`)).toBe(`0`)
+    expect(viewer.getAttribute(`aria-keyshortcuts`)).toBe(`V Shift+V`)
+    sibling.dispatchEvent(new PointerEvent(`pointerenter`))
+    viewer.focus()
     viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
     flushSync()
-    expect(state.current_step_idx).toBe(1)
+    expect(props.current_step_idx).toBe(1)
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    const modes: Props[`display_mode`][] = [
+      `structure`,
+      `structure+scatter`,
+      `structure+histogram`,
+      `scatter`,
+      `histogram`,
+    ]
+    for (const shift_key of [false, true]) {
+      for (const mode of [...(shift_key ? modes.toReversed() : modes), `auto`]) {
+        // Descendant focus must survive modes that remove the structure viewer entirely.
+        const focused = viewer.querySelector<HTMLElement>(`.structure`) ?? viewer
+        focused.focus()
+        const event = new KeyboardEvent(`keydown`, {
+          key: shift_key ? `V` : `v`,
+          shiftKey: shift_key,
+          bubbles: true,
+          cancelable: true,
+        })
+        focused.dispatchEvent(event)
+        await tick()
+        expect(event.defaultPrevented).toBe(true)
+        expect(props.display_mode).toBe(mode)
+        expect(document.activeElement).toBe(viewer)
+        expect(sibling_props.display_mode).toBe(`structure+scatter`)
+        expect(view_button.style.transition).toBe(`none`)
+        expect(sibling_button.style.boxShadow).toBe(``)
+        vi.advanceTimersByTime(250)
+        await tick()
+        expect(view_button.style.transition).toBe(`none`)
+      }
+    }
+    expect(changed).toHaveBeenCalledTimes(12)
+    vi.advanceTimersByTime(150)
+    await tick()
+    expect(view_button.style.boxShadow).toBe(``)
+  })
+
+  test.each([
+    { name: `Ctrl`, init: { ctrlKey: true } },
+    { name: `Meta`, init: { metaKey: true } },
+    { name: `Alt`, init: { altKey: true } },
+    { name: `autorepeat`, init: { repeat: true } },
+    { name: `composition`, init: { isComposing: true } },
+    { name: `input`, tag: `input` },
+    { name: `textarea`, tag: `textarea` },
+    { name: `select`, tag: `select` },
+    { name: `editable text`, tag: `div` },
+    { name: `hover without focus`, hover_only: true },
+  ])(`view shortcut ignores $name`, async ({ init, tag, hover_only }) => {
+    const changed = vi.fn()
+    const props = $state(default_props({ on_display_mode_change: changed }))
+    const viewer = mount_trajectory(props).querySelector<HTMLElement>(`.trajectory`)
+    if (!viewer) throw new Error(`Missing trajectory viewer`)
+    const target = tag ? document.createElement(tag) : viewer
+    if (tag) {
+      if (tag === `div`) target.contentEditable = `true`
+      viewer.append(target)
+    }
+    if (hover_only) viewer.dispatchEvent(new PointerEvent(`pointerenter`))
+    else target.focus()
+    const event = new KeyboardEvent(`keydown`, {
+      key: `v`,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    })
+    if (hover_only) window.dispatchEvent(event)
+    else target.dispatchEvent(event)
+    await tick()
+    expect(props.display_mode).toBe(`structure+scatter`)
+    expect(changed).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+    expect(
+      viewer.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`style`),
+    ).not.toContain(`transition: none`)
   })
 
   const payload = (step_idx: number, step: number) => ({

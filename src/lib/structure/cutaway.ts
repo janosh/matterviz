@@ -132,12 +132,9 @@ export function enable_cutaway_picking(
   const candidates: Intersection[] = []
   mesh.raycast = (raycaster, hits) => {
     mesh.updateWorldMatrix(true, false)
-    raycast(raycaster, candidates)
     const planes = cutaway_planes(mesh)
-    if (candidates.length && raycast_surface && planes.length) {
-      candidates.length = 0
-      raycast_surface(raycaster, candidates)
-    }
+    if (planes.length && raycast_surface) raycast_surface(raycaster, candidates)
+    else raycast(raycaster, candidates)
     for (const hit of candidates) if (!cutaway_excludes(planes, hit.point)) hits.push(hit)
     candidates.length = 0
   }

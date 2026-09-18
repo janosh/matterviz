@@ -14,6 +14,7 @@
     label,
     active,
     button_class = `view-mode-button`,
+    button_style,
     menu_class,
     button,
     trailing,
@@ -24,6 +25,7 @@
     label: string // aria-label and tooltip of the toggle
     active?: boolean // highlights the toggle; defaults to open (Trajectory also lights it while a pane is open)
     button_class?: string // tests target `.view-mode-button`; the analysis menu uses `analysis-button`
+    button_style?: string
     menu_class?: string // extra class on the floating menu (e.g. `analysis-dropdown`)
     button: Snippet // toggle content (icons)
     trailing?: Snippet // extra wrapper children after the toggle: inline buttons, anchored panes
@@ -39,6 +41,7 @@
   <button
     type="button"
     class={[button_class, { active: active ?? open }]}
+    style={button_style}
     aria-label={label}
     title={label}
     aria-expanded={open}

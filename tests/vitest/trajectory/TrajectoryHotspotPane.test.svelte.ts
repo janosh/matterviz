@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import TrajectoryHotspotPane from '$lib/trajectory/TrajectoryHotspotPane.svelte'
 import { trajectory_from_frames, type MemoryRunExtras } from '$lib/trajectory/runs/memory'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
-import type { HotspotRequest, HotspotResult } from '$lib/trajectory/hotspots'
+import type { HotspotCoverage, HotspotRequest, HotspotResult } from '$lib/trajectory/hotspots'
 import type { HotspotScale } from '$lib/trajectory/hotspot-colors'
 import { doc_query, form_controls } from '../setup'
 
@@ -240,6 +240,8 @@ it.each([`signal`, `metadata`])(
 
 it(`explains all missing recorded-energy settings and clears them as they are supplied`, async () => {
   await mount_pane({ run: make_run(), pane_open: true })
+  await set_value(`Velocity units`, `m/s`)
+  await set_value(`Velocity property`, `velocities`)
   await set_value(`Source`, `energy`)
   const settings = doc_query<HTMLDetailsElement>(`.analysis-settings`)
   const advanced = doc_query<HTMLDetailsElement>(`.advanced-settings`)
@@ -258,6 +260,8 @@ it(`explains all missing recorded-energy settings and clears them as they are su
     `Enter the energy property. Select energy units. Describe the stored energy reference.`,
   )
   await set_value(`Source`, `velocity`)
+  expect(control(`Velocity units`).value).toBe(`m/s`)
+  expect(control(`Velocity property`).value).toBe(`velocities`)
   doc_query(`.advanced-settings > summary`).click()
   await tick()
   expect(advanced.open).toBe(false)
@@ -272,6 +276,10 @@ it(`explains all missing recorded-energy settings and clears them as they are su
   await set_value(`Stored energy reference`, `device frame`)
   expect_requirements()
   expect(document.querySelector(`[role="status"]`)).toBeNull()
+  await set_value(`Source`, `velocity`)
+  await set_value(`Source`, `energy`)
+  expect(control(`Energy units`).value).toBe(`eV`)
+  expect(control(`Energy property`).value).toBe(`kinetic_energy`)
 })
 
 it(`shows the selected-frame preview and partial average before completion, retaining coverage on cancel`, async () => {
@@ -384,7 +392,11 @@ it(`aborts an old computation when the source changes`, async () => {
     on_progress = options.on_progress
     return pending.promise
   }
-  const props = $state({ run: old_run, pane_open: true })
+  const props = $state({
+    run: old_run,
+    pane_open: true,
+    coverage: undefined as HotspotCoverage | undefined,
+  })
   await mount_pane(props)
   await set_value(`Velocity units`, `A/ps`)
   await set_value(`Mass units`, `kg`)
@@ -406,7 +418,12 @@ it(`aborts an old computation when the source changes`, async () => {
   }
   clock.mockRestore()
   const next = make_run()
+  const old_coverage = props.coverage
+  expect(old_coverage?.completed).toBe(4)
   props.run = next
+  // Source identity changes before the reset effect aborts the request.
+  on_progress?.({ current: 1, completed: 1, total: 4, stage: `Binning kinetic energy` })
+  expect(old_coverage?.completed).toBe(4)
   await tick()
   expect(signal?.aborted).toBe(true)
   on_progress?.({ current: 1, completed: 1, total: 4, stage: `Binning kinetic energy` })

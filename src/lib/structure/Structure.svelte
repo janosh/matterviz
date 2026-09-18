@@ -55,6 +55,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import { create_shortcut_flash } from '$lib/effects.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -882,6 +883,7 @@
   })
 
   // === keyboard ===
+  const shortcut_flash = create_shortcut_flash()
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
     if (active_tool_view) return false
@@ -893,6 +895,7 @@
     // Escape leaves add-atom mode even from its element input
     if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
       session.add_atom_mode = false
+      shortcut_flash.show(`measure`)
       return true
     }
     if (is_input_focused) return false
@@ -917,25 +920,31 @@
       if (!step()) return false
       const left = (is_undo ? history.undo_stack : history.redo_stack).length
       show_toast(`${is_undo ? `Undo` : `Redo`}${what} (${left} left)`)
+      shortcut_flash.show(is_undo ? `undo` : `redo`)
       return true
     }
     if (editing_bonds && plain && (key === `a` || key === `d`)) {
-      bond_edit_mode = key === `a` ? `add` : `delete`
+      const next_mode = key === `a` ? `add` : `delete`
+      if (bond_edit_mode !== next_mode) shortcut_flash.show(`bond-${next_mode}`)
+      bond_edit_mode = next_mode
       return true
     }
     if (editing_atoms) {
       if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
       if (key === `a` && plain_press) {
         session.add_atom_mode = !session.add_atom_mode
+        shortcut_flash.show(`measure`)
         return true
       }
       if (key === `e` && plain_press && selected_sites.length > 0) {
         session.change_element_mode = !session.change_element_mode
+        shortcut_flash.show(`measure`)
         return true
       }
       if (key === `d` && has_modifier) return session.duplicate_selected()
       if (event.key === `Escape` && session.change_element_mode) {
         session.change_element_mode = false
+        shortcut_flash.show(`measure`)
         return true
       }
     }
@@ -950,6 +959,7 @@
     // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free)
     if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
       session.reset_all_cameras()
+      shortcut_flash.show(`layout`)
       return true
     }
     // View toggles are plain letters everywhere; typing is already excluded by the editable
@@ -957,6 +967,7 @@
     // viewers. Chords stay the browser's and the host's.
     if (key === `i` && plain_press && display_mode === `structure` && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
+      shortcut_flash.show(`info`)
       return true
     }
     if (
@@ -967,13 +978,17 @@
       (multi_view_available || multi_view)
     ) {
       multi_view = !multi_view
+      shortcut_flash.show(`layout`)
       return true
     }
     if (event.key === `Escape`) {
       // Close panes first, then leave edit modes
-      if (active_pane !== null) active_pane = null
-      else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
+      if (active_pane !== null) {
+        if (active_pane === `info`) shortcut_flash.show(`info`)
+        active_pane = null
+      } else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
         measure_mode = `distance`
+        shortcut_flash.show(`measure`)
       } else return false
       return true
     }
@@ -1077,6 +1092,7 @@
             bind:open={view_layout_menu_open}
             label="View layout: {current_layout.label}"
             class="view-layout-dropdown"
+            button_style={shortcut_flash.style(`layout`)}
           >
             {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
             {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
@@ -1113,7 +1129,7 @@
         {/if}
 
         {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
-          <StructureEditToolbar {session} />
+          <StructureEditToolbar {session} shortcut_style={shortcut_flash.style} />
         {/if}
 
         {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
@@ -1127,6 +1143,7 @@
             bind:selected_sites
             {sym_data}
             wyckoff_positions={session.wyckoff_rows}
+            toggle_props={{ style: shortcut_flash.style(`info`) }}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}

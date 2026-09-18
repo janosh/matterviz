@@ -3,6 +3,7 @@ import type { Vec3 } from '$lib/math'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import { atom_field_bin, type AtomColorField } from '$lib/structure/atom-color-field'
 import { Matrix4 } from 'three/webgpu'
+import { clamp01 } from '$lib/utils'
 import type { NumericFrame } from './frame'
 import type { HotspotDisplayValues, HotspotMetric, HotspotResult } from './hotspots'
 
@@ -34,23 +35,22 @@ export function hotspot_scale(
   if (!Number.isFinite(mean) || mean < 0 || !Number.isFinite(threshold)) return undefined
   const peak = Math.max(0, threshold)
   const onset = Math.min(1, peak * 0.8)
-  const scale: HotspotScale = {
-    metric,
-    unit: metric === `temperature` ? `K` : `eV/atom`,
+  const domain = {
     atom_max: Math.max(mean * 2, Number.MIN_VALUE),
     cloud_min: mean * onset,
     cloud_max: mean * (onset + Math.max(0.01, peak - onset)),
     density_reference: mean,
     threshold: mean * peak,
   }
+  // Display values are Float32: reject ranges that vanish, collapse or overflow there.
   if (
-    ![scale.atom_max, scale.cloud_min, scale.cloud_max, scale.threshold].every(
-      Number.isFinite,
-    ) ||
-    (mean > 0 && scale.cloud_max <= scale.cloud_min)
+    !Object.values(domain).every((value) => Number.isFinite(Math.fround(value))) ||
+    (mean > 0 &&
+      (Math.fround(mean) === 0 ||
+        Math.fround(domain.cloud_max) <= Math.fround(domain.cloud_min)))
   )
     return undefined
-  return scale
+  return { ...domain, metric, unit: metric === `temperature` ? `K` : `eV/atom` }
 }
 
 export function hotspot_probe(
@@ -88,11 +88,11 @@ export function hotspot_cloud_colors(
   // settings never change the accumulated energies, temperatures, or hotspot threshold.
   for (let idx = 0; idx < values.length; idx++) {
     if (!Number.isFinite(values[idx])) continue
-    const ratio = Math.max(0, values[idx] / density_reference)
-    const heat = Math.min(1, Math.max(0, (values[idx] - cloud_min) / (cloud_max - cloud_min)))
+    const ratio = clamp01(values[idx] / density_reference)
+    const heat = clamp01((values[idx] - cloud_min) / (cloud_max - cloud_min))
     for (let channel = 0; channel < 3; channel++)
       colors[idx * 4 + channel] = low[channel] + (high[channel] - low[channel]) * heat
-    colors[idx * 4 + 3] = 0.03 * Math.min(1, ratio) + 0.97 * heat ** 2 * (3 - 2 * heat)
+    colors[idx * 4 + 3] = 0.03 * ratio + 0.97 * heat ** 2 * (3 - 2 * heat)
     visible ||= colors[idx * 4 + 3] > 0
   }
   // No cloud means no ray marching or atom fading for an empty/undersampled heatmap.
@@ -114,10 +114,7 @@ export function hotspot_colors(
   )
   for (let idx = 0; idx < values.length; idx++) {
     if (!Number.isFinite(values[idx])) continue
-    const color_idx = Math.min(
-      255,
-      Math.max(0, Math.floor((values[idx] / scale.atom_max) * 256)),
-    )
+    const color_idx = Math.min(255, Math.floor(clamp01(values[idx] / scale.atom_max) * 256))
     colors.set(inferno_rgb[color_idx], idx * 4)
     colors[idx * 4 + 3] = 1
   }

@@ -343,8 +343,13 @@ test.describe(`Structure Component Tests`, () => {
       dispatch_cancelable_keydown(structure_div, init).then((not_prevented) => !not_prevented)
 
     // view toggles are plain letters; the same key as a chord is left to browser and host
-    for (const key of [`f`, `i`, `g`]) {
+    for (const [key, selector] of [
+      [`f`, `.fullscreen-btn`],
+      [`i`, `.structure-info-toggle`],
+      [`g`, `.view-layout-dropdown > button`],
+    ]) {
       await expect(handles({ key }), `plain ${key}`).resolves.toBe(true)
+      await expect(structure_div.locator(selector)).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
       await expect(handles({ key, [primary_modifier]: true }), `mod+${key}`).resolves.toBe(
         false,
       )
@@ -974,6 +979,10 @@ test.describe(`Structure Event Handler Tests`, () => {
     await page.keyboard.press(`Shift+R`)
     expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
     await page.keyboard.press(`r`)
+    await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
+      `box-shadow`,
+      /0px 0px 0px 1px$/,
+    )
     await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
   })
 })

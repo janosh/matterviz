@@ -3,7 +3,7 @@
   // inputs, bond order and add/delete toggle). Every action goes through the session;
   // Structure.svelte keeps the keyboard shortcuts that drive the same operations.
   import { ToolbarMenu } from '$lib/overlays'
-  import { Icon, type IconData } from 'svelte-widgets'
+  import { Icon } from 'svelte-widgets'
   import { Angle, Edit, Link, Orbit, Redo, Reset, Ruler, Undo } from 'svelte-widgets/icons'
   import { BOND_ORDER_OPTIONS } from './bonding'
   import { MAX_SELECTED_SITES } from './measure'
@@ -22,7 +22,18 @@
     { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
   ] as const
 
-  let { session }: { session: StructureSession } = $props()
+  const HISTORY_ACTIONS = [
+    { action: `undo`, icon: Undo, label: `Undo`, shortcut: `Cmd/Ctrl+Z` },
+    { action: `redo`, icon: Redo, label: `Redo`, shortcut: `Cmd/Ctrl+Y or Cmd+Shift+Z` },
+  ] as const
+
+  let {
+    session,
+    shortcut_style,
+  }: {
+    session: StructureSession
+    shortcut_style: (control: string) => string
+  } = $props()
 
   // Modes are the viewer's bindable props, read and written through the session's accessors
   let measure_mode = $derived(session.inputs.measure_mode())
@@ -42,6 +53,7 @@
   bind:open={measure_menu_open}
   label="Measure / Edit"
   class="measure-mode-dropdown"
+  button_style={shortcut_style(`measure`)}
 >
   {#snippet button()}
     {#if measure_mode === `distance` && measured_count >= MAX_SELECTED_SITES}
@@ -84,18 +96,20 @@
   {/each}
 </ToolbarMenu>
 
-{#snippet undo_redo_snippet(
-  buttons: { icon: IconData; title: string; count: number; action: () => void }[],
-)}
+{#snippet undo_redo_snippet(bond_edit = false)}
+  {@const history = bond_edit ? session.bond_history : session.history}
   <div class="undo-redo-container" style="display: flex">
-    {#each buttons as { icon, title, count, action } (icon)}
+    {#each HISTORY_ACTIONS as { action, icon, label, shortcut } (action)}
+      {@const title = `${label}${bond_edit ? ` bond edit` : ``} (${shortcut})`}
+      {@const count = history[`${action}_stack`].length}
       <button
         type="button"
         aria-label={title}
         disabled={count === 0}
-        onclick={action}
+        onclick={bond_edit ? session[`${action}_bond_edit`] : session[action]}
         {title}
         class="undo-redo-btn"
+        style={shortcut_style(action)}
       >
         <Icon {icon} />
         {#if count > 0}
@@ -108,20 +122,7 @@
 
 {#if measure_mode === `edit-atoms` && !measure_menu_open}
   <div class="edit-mode-toolbar" aria-label="Atom editing controls">
-    {@render undo_redo_snippet([
-      {
-        icon: Undo,
-        title: `Undo (Cmd/Ctrl+Z)`,
-        count: session.history.undo_stack.length,
-        action: session.undo,
-      },
-      {
-        icon: Redo,
-        title: `Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-        count: session.history.redo_stack.length,
-        action: session.redo,
-      },
-    ])}
+    {@render undo_redo_snippet()}
     {#if session.add_atom_mode}
       <div class="add-atom-input">
         <label>
@@ -187,6 +188,7 @@
         <button
           type="button"
           class:selected={bond_edit_mode === mode}
+          style={shortcut_style(`bond-${mode}`)}
           aria-pressed={bond_edit_mode === mode}
           title="{title} ({label[0]})"
           onclick={() => session.inputs.set_bond_edit_mode(mode)}
@@ -195,20 +197,7 @@
         </button>
       {/each}
     </div>
-    {@render undo_redo_snippet([
-      {
-        icon: Undo,
-        title: `Undo bond edit (Cmd/Ctrl+Z)`,
-        count: session.bond_history.undo_stack.length,
-        action: session.undo_bond_edit,
-      },
-      {
-        icon: Redo,
-        title: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
-        count: session.bond_history.redo_stack.length,
-        action: session.redo_bond_edit,
-      },
-    ])}
+    {@render undo_redo_snippet(true)}
   </div>
 {/if}
 

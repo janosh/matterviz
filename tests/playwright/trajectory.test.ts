@@ -1144,6 +1144,7 @@ test.describe(`Trajectory Component`, () => {
 
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
+      await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
       await step_input.focus()
       await expect(step_input).toHaveValue(`0`)
@@ -1153,7 +1154,75 @@ test.describe(`Trajectory Component`, () => {
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
       await expect(play_button).toHaveText(`▶`)
+      await page.keyboard.press(`v`)
+      await expect(trajectory.locator(`.content-area`)).toHaveClass(/show-structure-only/)
     })
+
+    test(`V cycles only the focused viewer and keeps focus when its structure disappears`, async ({
+      page,
+    }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const sibling = page.locator(`#vertical-layout`)
+      const content = await select_display_mode(trajectory, `Structure + Histogram`)
+      const view_button = trajectory.locator(`.trajectory-controls .view-mode-button`)
+      await trajectory.locator(`.structure`).focus()
+      await sibling.hover()
+      const resting_background = await view_button.evaluate(
+        (button) => getComputedStyle(button).backgroundColor,
+      )
+      const icon_box = await require_bbox(view_button.locator(`svg`))
+      await page.keyboard.press(`v`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(view_button).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+      expect(await require_bbox(view_button.locator(`svg`))).toMatchObject({
+        width: icon_box.width,
+        height: icon_box.height,
+      })
+      await expect(content).toHaveClass(/show-plot-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(view_button).toHaveCSS(`background-color`, resting_background)
+      await page.keyboard.press(`v`)
+      await expect(trajectory.locator(`.histogram`)).toBeVisible()
+      await page.keyboard.press(`Shift+V`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(sibling.locator(`.trajectory-controls .view-mode-button`)).toHaveAttribute(
+        `aria-label`,
+        /^Automatic:/,
+      )
+      await sibling.focus()
+      await page.keyboard.press(`v`)
+      await expect(sibling.locator(`.content-area`)).toHaveClass(/show-structure-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+    })
+
+    test(
+      `playback shortcuts flash their controls without resizing them`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        const trajectory = page.locator(`#loaded-trajectory`)
+        await trajectory.focus()
+        for (const [key, selector] of [
+          [`ArrowRight`, `.nav-section button:last-child`],
+          [`ArrowLeft`, `.nav-section button:first-child`],
+          [`End`, `.step-input`],
+          [`Home`, `.step-input`],
+          [`+`, `.fps-section input`],
+          [`-`, `.fps-section input`],
+          [`Space`, `.play-button`],
+          [`Space`, `.play-button`],
+        ]) {
+          const control = trajectory.locator(selector)
+          await page.keyboard.press(key)
+          await expect(control, key).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+          const { width, height } = await require_bbox(control)
+          await expect(control, key).toHaveCSS(`box-shadow`, `none`)
+          expect(await require_bbox(control), key).toMatchObject({ width, height })
+        }
+      },
+    )
 
     test(`FPS input uses 0.1 increments and shared bounds`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
@@ -1217,7 +1286,10 @@ test.describe(`Trajectory Component`, () => {
         .join(``)
       await drop_file(page, trajectory, content, `flat-energy-traces.xyz`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await expect(display_button).toHaveAttribute(`aria-label`, `Automatic: Structure-only`)
+      await expect(display_button).toHaveAttribute(
+        `aria-label`,
+        `Automatic: Structure-only (V: next, Shift+V: previous)`,
+      )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)

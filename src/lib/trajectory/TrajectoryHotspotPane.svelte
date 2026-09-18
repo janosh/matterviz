@@ -11,6 +11,7 @@
   import HotspotLegend from './HotspotLegend.svelte'
   import { Graph } from 'svelte-widgets/icons'
   import { format_num } from '$lib/labels'
+  import { clamp01 } from '$lib/utils'
   import { DEFAULT_CUTAWAY, type CutawaySettings } from '$lib/structure/cutaway'
   import type { TrajectoryRun } from './run'
   import { create_request_owner } from './async-result.svelte'
@@ -68,12 +69,14 @@
     [`frame_stride`, `Frame stride`, 1, undefined],
     [`bins`, `Grid resolution (0 = automatic)`, 0, 128],
   ] as const)
-  let source = $state(`velocity`)
-  let velocity_key = $state(`velocity`)
-  let energy_key = $state(`kinetic_energy`)
+  let source = $state<`velocity` | `energy`>(`velocity`)
+  let property_keys = $state({ velocity: `velocity`, energy: `kinetic_energy` })
   let energy_reference = $state(``)
-  let velocity_unit = $state<keyof typeof VELOCITY_UNITS | ``>(``)
-  let energy_unit = $state<keyof typeof ENERGY_UNITS | ``>(``)
+  let units = $state({
+    velocity: `` as keyof typeof VELOCITY_UNITS | ``,
+    energy: `` as keyof typeof ENERGY_UNITS | ``,
+  })
+  const source_label = $derived(source === `velocity` ? `Velocity` : `Energy`)
   let mass_source = $state<`recorded` | `standard`>(`recorded`)
   let mass_unit = $state<`amu` | `kg` | ``>(``)
   const recorded_masses = $derived(
@@ -97,7 +100,7 @@
   let settings_open = $state(true)
   let advanced_open = $state(false)
   $effect(() => {
-    if (!(source === `energy` ? energy_key : velocity_key).trim()) advanced_open = true
+    if (!property_keys[source].trim()) advanced_open = true
   })
   let progress = $state(0)
   let eta_seconds = $state<number>()
@@ -123,13 +126,13 @@
     motion: source === `energy` ? `device` : motion,
     ...(source === `energy`
       ? {
-          energy_key: energy_key.trim(),
-          energy_unit: energy_unit || undefined,
+          energy_key: property_keys.energy.trim(),
+          energy_unit: units.energy || undefined,
           energy_reference,
         }
       : {
-          velocity_key: velocity_key.trim(),
-          velocity_unit: velocity_unit || undefined,
+          velocity_key: property_keys.velocity.trim(),
+          velocity_unit: units.velocity || undefined,
           mass_source,
           mass_unit: mass_source === `standard` ? `amu` : mass_unit || undefined,
         }),
@@ -159,8 +162,7 @@
       sampling.start_frame = 0
       sampling.end_frame = next?.frame_count ?? 1
       source = `velocity`
-      velocity_key = `velocity`
-      energy_key = `kinetic_energy`
+      property_keys = { velocity: `velocity`, energy: `kinetic_energy` }
       energy_reference = ``
       selection_key = ``
       mass_source = recorded_masses.length ? `recorded` : `standard`
@@ -169,11 +171,13 @@
       dof_per_atom = 3
       stored_dof_known = false
       const unit = next?.signals?.velocity?.unit ?? next?.metadata.velocity_unit
-      velocity_unit =
-        typeof unit === `string` && unit in VELOCITY_UNITS
-          ? (unit as keyof typeof VELOCITY_UNITS)
-          : ``
-      energy_unit = ``
+      units = {
+        velocity:
+          typeof unit === `string` && unit in VELOCITY_UNITS
+            ? (unit as keyof typeof VELOCITY_UNITS)
+            : ``,
+        energy: ``,
+      }
     })
   })
   $effect(() => cancel)
@@ -182,6 +186,7 @@
     const compute = active?.compute_hotspots
     if (!active || !compute) return
     const signal = requests.start()
+    const is_current = () => active === run && !signal.aborted
     progress = 0
     eta_seconds = undefined
     const started = performance.now()
@@ -201,7 +206,7 @@
     })
     coverage = status
     const publish = (computed: HotspotResult, frame?: number): void => {
-      if (signal.aborted || active !== run) return
+      if (!is_current()) return
       result = computed
       preview_frame = frame
       if (frame !== undefined) status.preview_frame = frame
@@ -217,22 +222,21 @@
         on_preview: (preview) => publish(preview, initial_frame),
         on_partial: publish,
         on_progress: ({ current, total, completed }) => {
-          if (signal.aborted) return
+          if (!is_current()) return
           status.completed = completed
-          progress = Math.min(1, Math.max(0, current / total))
+          progress = clamp01(current / total)
           eta_seconds =
             current > 0
               ? Math.ceil((((performance.now() - started) / 1000) * (1 - progress)) / progress)
               : undefined
         },
       })
-      if (signal.aborted || active !== run) return
+      if (!is_current()) return
       publish(computed)
       status.completed = status.total
       if (!computed.dof.some((value) => value > 0)) metric = `energy`
     } catch (failure) {
-      if (!signal.aborted && active === run)
-        error = failure instanceof Error ? failure.message : String(failure)
+      if (is_current()) error = failure instanceof Error ? failure.message : String(failure)
     } finally {
       status.busy = false
     }
@@ -257,14 +261,16 @@
           ></select
         ></label
       >
+      <label>
+        {source_label} units
+        <select bind:value={units[source]}>
+          <option value="">Select units</option>
+          {#each Object.keys(source === `velocity` ? VELOCITY_UNITS : ENERGY_UNITS) as unit}
+            <option value={unit}>{unit}</option>
+          {/each}
+        </select>
+      </label>
       {#if source === `velocity`}
-        <label
-          >Velocity units <select bind:value={velocity_unit}
-            ><option value="">Select units</option
-            >{#each Object.keys(VELOCITY_UNITS) as unit}<option value={unit}>{unit}</option
-              >{/each}</select
-          ></label
-        >
         <label
           >Masses <select bind:value={mass_source}
             ><option value="recorded">Recorded</option><option value="standard"
@@ -284,13 +290,6 @@
               >{/if}</label
           >{/if}
       {:else}
-        <label
-          >Energy units <select bind:value={energy_unit}
-            ><option value="">Select units</option
-            >{#each Object.keys(ENERGY_UNITS) as unit}<option value={unit}>{unit}</option
-              >{/each}</select
-          ></label
-        >
         <label style="grid-column: 1 / -1"
           >Stored energy reference <input
             placeholder="e.g. device frame, mobile-group COM removed"
@@ -310,8 +309,8 @@
     <details class="advanced-settings" bind:open={advanced_open}>
       <summary>Advanced</summary>
       <div class="hotspot-controls">
+        <label>{source_label} property <input bind:value={property_keys[source]} /></label>
         {#if source === `velocity`}
-          <label>Velocity property <input bind:value={velocity_key} /></label>
           <label
             >Motion <select bind:value={motion}
               ><option value="device">Stationary device</option><option value="translation"
@@ -319,8 +318,6 @@
               ><option value="local">Per-bin COM removed</option></select
             ></label
           >
-        {:else}
-          <label>Energy property <input bind:value={energy_key} /></label>
         {/if}
         <label
           >Grid frame <select bind:value={coordinates}

@@ -94,6 +94,43 @@ test.each([1, 2, 3] as const)(
     // Placement buffers use f32; keep the surface-distance error below one f32 epsilon.
     expect(Math.abs(visible_hits[0].distance - (1 - nearest_surface))).toBeLessThan(1e-7)
     expect(visible_hits.every((hit) => hit.object === target)).toBe(true)
+    // The target shell is not a conservative hit test: its front can be behind the
+    // camera/near plane, and outer multiple-bond cylinders can extend beyond it.
+    for (const transformed of [false, true]) {
+      if (transformed) {
+        group.rotation.set(0.3, -0.4, 0.7)
+        group.scale.set(1.2, 0.8, 1.1)
+        group.position.set(-7, 5, 2)
+      }
+      for (const [origin, direction, near, radius] of [
+        [[0, 0, 1], [0, 0, -1], 0.5, 0.05],
+        [[0, 0, 0.5], [0, 0, -1], 0, 0.05],
+        [[0, 1, [0.47, 0.484, 0.49][bond_order - 1]], [0, -1, 0], 0, 0.0125],
+      ] as const) {
+        write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, radius)
+        target.matrix.fromArray(matrix)
+        group.updateMatrixWorld(true)
+        const world_origin = new Vector3(...origin).applyMatrix4(group.matrixWorld)
+        const local_direction = new Vector3(...direction)
+        raycaster.set(
+          world_origin,
+          local_direction.clone().transformDirection(group.matrixWorld),
+        )
+        raycaster.near = new Vector3(...origin)
+          .addScaledVector(local_direction, near)
+          .applyMatrix4(group.matrixWorld)
+          .distanceTo(world_origin)
+        const expected: Intersection[] = []
+        raycast_bond(target, bond, 0.01, raycaster, expected)
+        expected.sort((left, right) => left.distance - right.distance)
+        expect(expected.length).toBeGreaterThan(0)
+        const actual = raycaster.intersectObject(target)
+        expect(actual.map(({ distance }) => distance)).toEqual(
+          expected.map(({ distance }) => distance),
+        )
+        expect(actual.every((hit) => hit.object === target)).toBe(true)
+      }
+    }
     atom.geometry.dispose()
     atom.material.dispose()
     target.geometry.dispose()
@@ -180,21 +217,17 @@ test.each(
     expect(mesh.positions.array).toEqual(original_buffer)
     expect(mesh.positions.version).toBe(original_version)
     expect(mesh.count).toBe(3)
-    // The same clipping also applies to native mesh hit targets (editable bonds).
+    // Native mesh targets and partial-occupancy analytic spheres share clipping behavior.
     const target = new Mesh(geometry, material)
     target.position.fromArray(atoms[2].position)
-    enable_cutaway_picking(target)
     group.add(target)
-    group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
-    expect(raycaster.intersectObject(target)).toEqual([])
-    group.set_cutaway(undefined)
-    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
-    // Partial-occupancy atoms use an invisible analytic sphere target.
-    enable_atom_sphere_picking(target)
-    group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
-    expect(raycaster.intersectObject(target)).toEqual([])
-    group.set_cutaway(undefined)
-    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    for (const enable_picking of [enable_cutaway_picking, enable_atom_sphere_picking]) {
+      enable_picking(target)
+      group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
+      expect(raycaster.intersectObject(target)).toEqual([])
+      group.set_cutaway(undefined)
+      expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    }
     mesh.dispose()
     geometry.dispose()
     material.dispose()
