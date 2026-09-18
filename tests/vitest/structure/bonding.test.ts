@@ -482,7 +482,7 @@ describe(`Explicit Bond Metadata`, () => {
     ])
     const structure_with_images = get_pbc_image_sites(structure)
     const image_site_idx = structure_with_images.sites.findIndex(
-      (site) => site.properties?.orig_site_idx === 1 && site.abc[0] > 1,
+      (site) => site.provenance?.image_of === 1 && site.abc[0] > 1,
     )
 
     expect(image_site_idx).toBeGreaterThan(1)
@@ -1097,7 +1097,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   // its original's `closest` distance and penalized bonds the original had accepted.
 
   // Two copies of identical local geometry (a Na with a "Long" 3.0 A and a "Short" 2.0 A Cl
-  // neighbor): sites 0-2 are originals, 3-5 are images (orig_site_idx 0,1,2) placed 100 A away.
+  // neighbor): sites 0-2 are originals, 3-5 are images (image_of 0,1,2) placed 100 A away.
   const structure = make_crystal(1000, [
     { element: `Na`, xyz: [0, 0, 0], properties: { orig_site_idx: 0 } },
     { element: `Cl`, xyz: [3, 0, 0], properties: { orig_site_idx: 1 } }, // Long (3.0 A)
@@ -1106,6 +1106,8 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
     { element: `Cl`, xyz: [103, 0, 0], properties: { orig_site_idx: 1 } }, // Long image
     { element: `Cl`, xyz: [100, 2, 0], properties: { orig_site_idx: 2 } }, // Short image
   ])
+  for (let idx = 3; idx < structure.sites.length; idx++)
+    structure.sites[idx].provenance = { image_of: idx - 3 }
 
   // Threshold tuned so the Long-bond penalty (applied once closest=2.0 is known) drops it below
   // threshold. Pre-fix the original kept 2 bonds (it saw Long before Short set closest) while the
@@ -1250,7 +1252,7 @@ describe(`compute_bonds memo`, () => {
       for (const [idx, site] of source.sites.entries()) {
         site.species = [{ element, occu: 1, oxidation_state: 0 }]
         site.xyz = site.xyz.map((coord) => coord / 2) as Vec3
-        if (idx % 7 === 0) site.properties.orig_unit_cell_idx = 0
+        if (idx % 7 === 0) site.provenance = { unit_cell_idx: 0 }
       }
       // A disconnected second element forces the full role calculation, without changing
       // any original contact. Compare several reach/strength boundaries, not just a lattice.
@@ -1423,7 +1425,7 @@ describe(`compute_bonds memo`, () => {
   )
 
   test.each([`none`, `unit`, `image`, `both`, `short`])(
-    `bonds numeric snapshots without materializing sites (%s provenance)`,
+    `bonds numeric snapshots without materializing sites (%s source provenance properties)`,
     (provenance) => {
       const view = new FrameView()
       const search = new bonding.BondSearch()

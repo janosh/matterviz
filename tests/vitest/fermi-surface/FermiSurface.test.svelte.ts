@@ -263,7 +263,9 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
   await tick()
   expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
   expect(on_error).toHaveBeenCalledWith({ error_msg: props.error_msg })
-  expect(document.body.textContent).toContain(`Invalid Fermi surface data`)
+  expect(doc_query(`.fermi-surface > .viewer-error [role="alert"]`).textContent).toContain(
+    `Invalid Fermi surface data`,
+  )
 
   props.fermi_data = typed_data
   await tick()

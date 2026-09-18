@@ -642,7 +642,7 @@ export class StructureSession {
 
   // Index into base_structure of a displayed site: image atoms name the site they mirror and
   // sites of a session-built supercell name the base site they tile. A caller-supplied structure
-  // may itself carry orig_unit_cell_idx from a supercell built outside the viewer (phonon mode
+  // may itself carry unit_cell_idx from a supercell built outside the viewer (phonon mode
   // supercells); those index a cell that is not displayed, so they are only followed while the
   // session's own supercell is on screen.
   private readonly to_base_site_idx = (site: Site, site_idx: number): number => {

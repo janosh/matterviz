@@ -5,6 +5,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { type Spinner, StatusMessage } from 'svelte-widgets'
   import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback, FileLoadData } from '$lib/io'
   import { ViewerChrome } from '$lib/layout'
@@ -279,7 +280,7 @@
   {#if loading}
     <LoadingStatus overlay label="Loading structure..." {...spinner_props} />
   {:else if error_msg}
-    <StatusMessage bind:message={error_msg} type="error" dismissible />
+    <ViewerError bind:message={error_msg} dismissible />
   {:else if zone || structure?.lattice}
     <!-- A caller-supplied zone renders on its own (the file viewer hands over {k_lattice,
          vertices, faces} with no structure) -->

@@ -8,21 +8,26 @@ import {
 } from 'three/tsl'
 import {
   BufferGeometry,
+  CylinderGeometry,
+  type Intersection,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   Mesh,
   type Material,
-  type Matrix4,
+  Matrix4,
   type MeshBasicNodeMaterial,
   type Node,
+  type Raycaster,
 } from 'three/webgpu'
 import {
   BondFrame,
   instance_count_for_order,
+  prepare_bond_placements,
   type BondData,
   type BondPlacements,
 } from './bond-rendering'
 import { InstanceColors } from './instance-colors'
+import type { BondPair } from './index'
 
 // Center and displacement preserve short bonds far from the origin. Sending two rounded
 // endpoints instead would lose their separation. Radius/offset encode multiple bond orders.
@@ -171,6 +176,40 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
 
   dispose(): void {
     this.geometry.dispose()
+  }
+}
+
+let bond_picker: { instances: BondMesh; candidate: Mesh; matrix: Matrix4 } | undefined
+
+// Enlarged edit targets must not resurrect a clipped bond. Raycast the actual rendered
+// cylinders (including multiple-bond offsets/radii) only after a broad target hit.
+export function raycast_bond(
+  target: Mesh,
+  bond: BondPair,
+  thickness: number,
+  raycaster: Raycaster,
+  hits: Intersection[],
+): void {
+  if (!target.parent) return
+  if (!bond_picker) {
+    const geometry = new CylinderGeometry(1, 1, 1, 8)
+    bond_picker = {
+      instances: new BondMesh(geometry, undefined, 3),
+      candidate: new Mesh(geometry),
+      matrix: new Matrix4(),
+    }
+  }
+  const { instances, candidate, matrix } = bond_picker
+  instances.update(prepare_bond_placements([bond]))
+  instances.thickness = thickness
+  candidate.material = target.material
+  for (let idx = 0; idx < instances.count; idx++) {
+    instances.getMatrixAt(idx, matrix)
+    candidate.matrixWorld.multiplyMatrices(target.parent.matrixWorld, matrix)
+    const first_hit = hits.length
+    candidate.raycast(raycaster, hits)
+    for (let hit_idx = first_hit; hit_idx < hits.length; hit_idx++)
+      hits[hit_idx].object = target
   }
 }
 

@@ -317,7 +317,7 @@ export function build_trajectory_lines(
 // structure, so without these anchors a trail head sits whole lattice vectors from its atom.
 // get_pbc_image_sites keeps the base sites at [0, n_atoms) in stream order and appends the
 // image copies, so those leading sites still anchor. A supercell instead renumbers every
-// atom (every site carries `orig_unit_cell_idx`), leaving nothing to anchor one-to-one.
+// atom (every site carries unit-cell provenance), leaving nothing to anchor one-to-one.
 export function trajectory_trail_anchors(
   sites: readonly Site[] | undefined,
   n_atoms: number | undefined,
@@ -326,8 +326,8 @@ export function trajectory_trail_anchors(
   const anchors = new Float64Array(n_atoms * 3)
   for (let site_idx = 0; site_idx < n_atoms; site_idx++) {
     const site = sites[site_idx]
-    const { orig_site_idx, orig_unit_cell_idx } = site.properties ?? {}
-    if (orig_site_idx !== undefined || orig_unit_cell_idx !== undefined) return null
+    const { image_of, unit_cell_idx } = site.provenance ?? {}
+    if (image_of !== undefined || unit_cell_idx !== undefined) return null
     anchors.set(site.xyz, site_idx * 3)
   }
   return anchors

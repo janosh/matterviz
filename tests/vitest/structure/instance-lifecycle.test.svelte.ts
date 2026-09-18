@@ -1,6 +1,8 @@
 import type { Vec3 } from '$lib/math'
-import type { BondPair } from '$lib/structure'
+import type { BondPair, Site } from '$lib/structure'
 import type { AtomPropertyColors } from '$lib/structure/atom-properties'
+import type { StructureCutaway } from '$lib/structure/cutaway'
+import * as extras from '@threlte/extras'
 import { AtomInstances } from '$lib/structure/atom-instances'
 import * as camera_fit from '$lib/structure/camera-fit'
 import { make_site, numeric_sites } from '$lib/structure/site'
@@ -25,9 +27,59 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import { InstancedBufferAttribute, Matrix4, Mesh } from 'three/webgpu'
+import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
+
+test.each([`plane`, `slab`] as const)(
+  `%s cutaway keeps a visible partial-occupancy cap pickable behind the clipped sphere surface`,
+  (mode) => {
+    const interactivity = extras.interactivity
+    let context: ReturnType<typeof interactivity> | undefined
+    const capture = vi.spyOn(extras, `interactivity`).mockImplementation((options) => {
+      context = interactivity(options)
+      return context
+    })
+    onTestFinished(() => capture.mockRestore())
+    const settings: StructureCutaway = {
+      mode,
+      axis: 2,
+      position: mode === `plane` ? 0.1 : 0,
+      thickness: 0.2,
+      cartesian_to_fractional: new Matrix4(),
+    }
+    let cutaway = $state<StructureCutaway | undefined>()
+    const { unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, 0.5)] },
+        get cutaway() {
+          return cutaway
+        },
+        show_bonds: `never`,
+        show_polyhedra: `never`,
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    flushSync()
+    if (!context) throw new Error(`Missing scene interactivity`)
+    const { interactiveObjects: targets } = context
+    const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
+    const hits = () => ray.intersectObjects(targets, true)
+    expect(hits()[0]?.distance).toBeLessThan(2)
+    cutaway = settings
+    flushSync()
+    // The rendered vacancy cap lies exactly at z=0. The sphere's nearer surface is clipped.
+    expect(hits()[0]?.distance).toBe(2)
+    cutaway = { ...settings, position: -0.3 }
+    flushSync()
+    expect(hits()).toEqual([])
+    // Disabling clipping restores the full-sphere target, including its pole-safe hover.
+    cutaway = undefined
+    flushSync()
+    expect(hits()[0]?.distance).toBeLessThan(2)
+  },
+)
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {
   // Vitest's TS loader sees the legacy *.svelte declaration; this is a Svelte 5 component.
@@ -335,40 +387,34 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
   flushSync()
   expect(atoms.colors.array).toEqual(element_colors)
 
-  // Fixed row identities do not make per-frame image/completion flags immutable.
+  // Source properties with image/completion names must not change rendered atom identity.
   const view = new FrameView()
   property_colors = null
   carbon_radius = 3 // Start a numeric render group with its own topology identity.
   const cases: {
     scalar_columns?: Record<string, Float64Array>
-    shown: number[]
-    image: boolean
+    shown?: number[]
+    image?: boolean
     generic?: boolean
+    provenance?: Site[`provenance`]
   }[] = [
-    { scalar_columns: undefined, shown: [0, 1, 2], image: false },
-    { scalar_columns: undefined, shown: [0, 1, 2], image: false },
-    {
-      scalar_columns: { completion_image: new Float64Array([1, 0, 0]) },
-      shown: [1, 2],
-      image: false,
-    },
-    {
-      scalar_columns: { completion_image: new Float64Array([1, 0, 0]) },
-      shown: [1, 2],
-      image: false,
-    },
-    { scalar_columns: undefined, shown: [0, 1, 2], image: false },
-    {
-      scalar_columns: { orig_site_idx: new Float64Array([0, 1, 2]) },
-      shown: [0, 1, 2],
-      image: true,
-    },
-    { scalar_columns: undefined, shown: [0, 1, 2], image: false },
-    { shown: [0, 1, 2], image: false, generic: true },
-    { shown: [0, 1, 2], image: false },
-    { shown: [0, 1, 2], image: false },
+    {},
+    {},
+    { scalar_columns: { completion_image: new Float64Array([1, 0, 0]) } },
+    { scalar_columns: { completion_image: new Float64Array([1, 0, 0]) } },
+    {},
+    { scalar_columns: { orig_site_idx: new Float64Array([0, 1, 2]) } },
+    {},
+    { provenance: { image_of: 0, completion: true }, shown: [1, 2] },
+    { provenance: { image_of: 0 }, image: true },
+    { generic: true },
+    {},
+    {},
   ]
-  for (const [frame_idx, { scalar_columns, shown, image, generic }] of cases.entries()) {
+  for (const [
+    frame_idx,
+    { scalar_columns, shown = [0, 1, 2], image = false, generic, provenance },
+  ] of cases.entries()) {
     const frame = create_numeric_md_frame(
       new Float64Array([0, frame_idx, 0, 2, frame_idx, 0, 3, frame_idx, 0]),
       new Uint8Array([6, 8, 1]),
@@ -383,6 +429,11 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     const next = view.update(frame).structure
     // An editable copy drops snapshot identity; the next validated frame adopts it again.
     structure = generic ? { ...next, sites: next.sites } : next
+    if (provenance) {
+      structure = { ...next, sites: next.sites.map((site) => ({ ...site })) }
+      if (provenance.completion) structure.sites[0].provenance = provenance
+      else for (const site of structure.sites) site.provenance = provenance
+    }
     const columns = numeric_sites.get(next)
     if (!columns) throw new Error(`Expected numeric sites`)
     const materialize = vi.spyOn(columns, `materialize`)

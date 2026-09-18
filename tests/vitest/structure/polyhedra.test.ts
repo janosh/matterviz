@@ -585,7 +585,7 @@ describe(`compute_polyhedra`, () => {
   test(`duplicate center positions are deduped`, () => {
     // Two sites at the same position (base + fake image) must yield one polyhedron
     const structure = make_nacl_cluster()
-    structure.sites.push({ ...structure.sites[0], properties: { orig_site_idx: 0 } })
+    structure.sites.push({ ...structure.sites[0], provenance: { image_of: 0 } })
     const bonds = [...octahedral_bonds, ...bonds_from(7, [1, 2, 3, 4, 5, 6])]
     expect(compute_polyhedra(structure, bonds)).toHaveLength(1)
   })

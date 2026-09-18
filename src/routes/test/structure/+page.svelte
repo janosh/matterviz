@@ -128,41 +128,29 @@
 </section>
 
 <div class:comparison={comparison_mode} class="structure-test-layout">
-  {#if source || url_params.has(`files`)}
-    <Structure
-      id="test-structure"
-      bind:structure
-      {source}
-      {background_color}
-      {show_controls}
-      bind:scene_props
-      on_file_load={create_event_handler(`on_file_load`)}
-      on_error={create_event_handler(`on_error`)}
-      on_camera_move={create_event_handler(`on_camera_move`)}
-      on_camera_reset={create_event_handler(`on_camera_reset`)}
-    />
-  {:else}
-    <Structure
-      id="test-structure"
-      bind:structure
-      bind:active_pane
-      {background_color}
-      {show_controls}
-      bind:scene_props
-      on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
-      on_camera_move={create_event_handler(`on_camera_move`)}
-      on_camera_reset={create_event_handler(`on_camera_reset`)}
-      bind:selected_sites
-      bind:measured_sites
-      {enable_measure_mode}
-      bind:measure_mode
-      bind:bond_edit_mode
-      bind:bond_edit_order
-      bind:supercell_scaling
-      bind:show_image_atoms
-      bind:bonds
-    />
-  {/if}
+  <Structure
+    id="test-structure"
+    bind:structure
+    bind:active_pane
+    {source}
+    {background_color}
+    {show_controls}
+    bind:scene_props
+    on_file_load={create_event_handler(`on_file_load`)}
+    on_error={create_event_handler(`on_error`)}
+    on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
+    on_camera_move={create_event_handler(`on_camera_move`)}
+    on_camera_reset={create_event_handler(`on_camera_reset`)}
+    bind:selected_sites
+    bind:measured_sites
+    {enable_measure_mode}
+    bind:measure_mode
+    bind:bond_edit_mode
+    bind:bond_edit_order
+    bind:supercell_scaling
+    bind:show_image_atoms
+    bind:bonds
+  />
   {#if comparison_mode}
     <Structure
       id="comparison-structure"

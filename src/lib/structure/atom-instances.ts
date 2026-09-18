@@ -2,6 +2,7 @@ import type { Vec3 } from '$lib/math'
 import type { Site } from './index'
 import { is_image_site } from './site'
 import { InstanceColors } from './instance-colors'
+import { cutaway_excludes, cutaway_planes } from './cutaway'
 import {
   DynamicDrawUsage,
   InstancedBufferAttribute,
@@ -56,7 +57,7 @@ export function update_ordered_atom_positions<
       atom.is_image_atom ||
       atom.occupancy !== 1 ||
       is_image_site(site) ||
-      site.properties?.completion_image ||
+      site.provenance?.completion ||
       site.species.length !== 1 ||
       site.species[0].occu !== 1 ||
       atom.element !== site.species[0].element
@@ -77,16 +78,21 @@ const local_ray = new Ray()
 const scratch_matrix = new Matrix4()
 const candidate = new Mesh()
 const candidate_hits: Intersection[] = []
+const candidate_indices: number[] = []
 const hit_point = new Vector3()
 
 // Invisible full-sphere targets need no triangle test (which can miss exactly at a pole).
-export function enable_atom_sphere_picking(mesh: Mesh): void {
+export function enable_atom_sphere_picking(mesh: Mesh, visible_scale = 1): void {
   mesh.raycast = (raycaster, hits) => {
     // Invisible objects may not have been visited by the renderer since their transform changed.
     mesh.updateWorldMatrix(true, false)
     local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(mesh.matrixWorld).invert())
+    const planes = cutaway_planes(mesh)
+    // Enlarged edit targets shrink to the visible atom when clipping is active.
+    hit_sphere.radius = 0.5 * (planes.length ? visible_scale : 1)
     if (!local_ray.intersectSphere(hit_sphere, hit_point)) return
     hit_point.applyMatrix4(mesh.matrixWorld)
+    if (cutaway_excludes(planes, hit_point)) return
     const distance = raycaster.ray.origin.distanceTo(hit_point)
     if (distance < raycaster.near || distance > raycaster.far) return
     hits.push({ distance, point: hit_point.clone(), object: mesh })
@@ -230,15 +236,20 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
   }
 
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
+    this.updateWorldMatrix(true, false)
     if (!this.geometry.boundingSphere) this.geometry.computeBoundingSphere()
     const sphere = this.geometry.boundingSphere
     if (!sphere || this.count === 0) return
     local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(this.matrixWorld).invert())
     if (this.boundingSphere && !local_ray.intersectsSphere(this.boundingSphere)) return
+    const planes = cutaway_planes(this)
+    // Local-space planes let sphere bounds stay conservative under nonuniform transforms.
+    const local_planes = planes.map((plane) => plane.clone().applyMatrix4(scratch_matrix))
     const { origin, direction } = local_ray
     const values = this.positions.array
     candidate.geometry = this.geometry
     candidate.material = this.material
+    candidate_indices.length = 0
     for (let idx = 0; idx < this.count; idx++) {
       const offset = idx * 4
       const scale = values[offset + 3]
@@ -252,11 +263,27 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
       const perp_y = delta_y - along * direction.y
       const perp_z = delta_z - along * direction.z
       if (along < -radius || perp_x ** 2 + perp_y ** 2 + perp_z ** 2 > radius ** 2) continue
+      candidate_indices.push(idx)
+    }
+    // Keep the full-trajectory scan separate from clipping and triangle intersection work.
+    for (const idx of candidate_indices) {
+      if (local_planes.length) {
+        const offset = idx * 4
+        const scale = values[offset + 3]
+        hit_point.set(
+          values[offset] + scale * sphere.center.x,
+          values[offset + 1] + scale * sphere.center.y,
+          values[offset + 2] + scale * sphere.center.z,
+        )
+        if (cutaway_excludes(local_planes, hit_point, Math.abs(scale) * sphere.radius))
+          continue
+      }
       this.getMatrixAt(idx, scratch_matrix)
       candidate.matrixWorld.multiplyMatrices(this.matrixWorld, scratch_matrix)
       // Preserve triangle-accurate hits, face/UV data, near/far clipping and instance IDs.
       candidate.raycast(raycaster, candidate_hits)
       for (const hit of candidate_hits) {
+        if (cutaway_excludes(planes, hit.point)) continue
         hit.instanceId = idx
         hit.object = this
         intersects.push(hit)

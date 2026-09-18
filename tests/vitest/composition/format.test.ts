@@ -272,7 +272,7 @@ describe(`formula functions handle structure objects`, () => {
 
   structure.sites.push({
     ...structure.sites[0],
-    properties: { orig_site_idx: 0 },
+    provenance: { image_of: 0 },
   })
 
   test.each([

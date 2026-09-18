@@ -159,7 +159,7 @@ describe(`Coordination`, () => {
 
     describe(`periodic bonding vs brute-force imaging`, () => {
       // Brute-force coordination ground truth: image every atom by a full `shells`-cell
-      // shell (no cutoff approximation), tagging orig_site_idx so the competitive
+      // shell (no cutoff approximation), tagging image provenance so the competitive
       // electroneg_ratio strategy treats images as their original atom, then bond that
       // finite cloud. `shells` must exceed the cell's real bond reach in cells.
       const brute_force_cn = (structure: Crystal, shells = 3): number[] => {
@@ -178,8 +178,8 @@ describe(`Coordination`, () => {
         const images = structure.sites.flatMap((site, src) =>
           offsets.map((off) => {
             const abc = site.abc.map((coord, axis) => coord + off[axis]) as Vec3
-            const properties = { ...site.properties, orig_site_idx: src }
-            return { ...site, abc, xyz: frac_to_cart(abc), properties }
+            const provenance = { ...site.provenance, image_of: src }
+            return { ...site, abc, xyz: frac_to_cart(abc), provenance }
           }),
         )
         return calc_coordination_nums(
@@ -252,19 +252,14 @@ describe(`Coordination`, () => {
   })
 
   // get_orig_site_idx is how property colors follow supercell/image atoms back to the
-  // unit-cell site they came from (orig_unit_cell_idx beats orig_site_idx beats site_idx).
+  // unit-cell site they came from (unit_cell_idx beats image_of beats site_idx).
   test.each([
-    [
-      `orig_unit_cell_idx wins over orig_site_idx`,
-      { orig_unit_cell_idx: 2, orig_site_idx: 9 },
-      0,
-      2,
-    ],
-    [`orig_site_idx for image atoms`, { orig_site_idx: 3 }, 7, 3],
+    [`unit_cell_idx wins over image_of`, { unit_cell_idx: 2, image_of: 9 }, 0, 2],
+    [`image_of for image atoms`, { image_of: 3 }, 7, 3],
     [`falls back to site_idx`, {}, 5, 5],
     [`undefined site falls back to site_idx`, undefined, 4, 4],
-  ])(`get_orig_site_idx: %s`, (_name, properties, site_idx, expected) => {
-    const site = properties === undefined ? undefined : ({ properties } as Site)
+  ])(`get_orig_site_idx: %s`, (_name, provenance, site_idx, expected) => {
+    const site = provenance === undefined ? undefined : ({ provenance } as Site)
     expect(get_orig_site_idx(site, site_idx)).toBe(expected)
   })
 
@@ -657,7 +652,7 @@ describe(`Site property coloring`, () => {
     expect(result.colors[3]).toBe(`#808080`)
   })
 
-  // A caller-supplied supercell (make_supercell stamps orig_unit_cell_idx) carrying its own
+  // A caller-supplied supercell (make_supercell stamps unit_cell_idx) carrying its own
   // per-site data must color by that data, not by the ancestor site's value
   test(`indexes per-site data by displayed site even when provenance properties are present`, () => {
     const supercell = make_supercell(
@@ -696,11 +691,11 @@ describe(`Site property coloring`, () => {
     [`skips non-numeric`, { tag: `core`, frozen: true, charge: 1 }, [`charge`]],
     [`skips non-finite`, { charge: NaN, c_pe: 2 }, [`c_pe`]],
     [`skips vec3s with a bad component`, { velocity: [1, `x`, 0], charge: 0 }, [`charge`]],
-    // Viewer-internal provenance keys are numeric but meaningless to color by
+    // Source properties with formerly reserved names remain available to the user.
     [
-      `skips viewer bookkeeping`,
+      `preserves source provenance properties`,
       { orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 },
-      [`charge`],
+      [`charge`, `orig_site_idx`, `orig_unit_cell_idx`],
     ],
   ])(`get_colorable_property_keys: %s`, (_desc, properties, expected) => {
     expect(atom_properties.get_colorable_property_keys(with_props([properties]))).toEqual(

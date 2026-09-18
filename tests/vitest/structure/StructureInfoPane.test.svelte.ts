@@ -223,6 +223,11 @@ describe(`StructureInfoPane`, () => {
         orig_unit_cell_idx: 0,
         completion_image: true,
       }
+      displayed_structure.sites[atom_count - 1].provenance = {
+        image_of: 0,
+        unit_cell_idx: 0,
+        completion: true,
+      }
       const state = $state({ selected_sites: [atom_count - 1], displayed_structure })
       mount_info_pane(bind_props({ structure, pane_open: true }, state))
       const cards = document.querySelectorAll(`.site-card`)
@@ -230,9 +235,9 @@ describe(`StructureInfoPane`, () => {
       expect(cards[0].textContent).toContain(`O${atom_count}`)
       expect(cards[0].textContent).toContain(`5 eV/Å`)
       expect(cards[0].textContent).toContain(`2 μB`)
-      expect(cards[0].textContent).not.toMatch(
-        /orig_site_idx|orig_unit_cell_idx|completion_image/,
-      )
+      for (const key of [`orig_site_idx`, `orig_unit_cell_idx`, `completion_image`])
+        expect(cards[0].textContent).toContain(key)
+      expect(cards[0].textContent).not.toContain(`image_of`)
       expect(document.body.textContent).toContain(`(1 sites)`)
       const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
       search.value = `O`

@@ -101,6 +101,12 @@ export type Site = {
   xyz: Vec3
   label: string
   properties: Record<string, unknown>
+  // Viewer-generated copies. Kept outside imported properties and preserved by cloning.
+  provenance?: {
+    image_of?: number
+    unit_cell_idx?: number
+    completion?: boolean
+  }
 }
 
 export type LatticeParams = Record<`a` | `b` | `c` | `alpha` | `beta` | `gamma`, number>

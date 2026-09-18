@@ -3,6 +3,8 @@ import {
   hotspot_field_geometry,
   hotspot_colors,
   hotspot_cloud_colors,
+  hotspot_scale,
+  hotspot_probe,
 } from '$lib/trajectory/hotspot-colors'
 import {
   hotspot_bin,
@@ -43,6 +45,12 @@ const result = (): HotspotResult => ({
   options: {},
 })
 
+const scale_for = (mean: number, threshold = 1.25) => {
+  const scale = hotspot_scale(mean, `energy`, threshold)
+  if (!scale) throw new Error(`Invalid test mean ${mean}`)
+  return scale
+}
+
 it.each([0, 0.5, 300])(`heatmap palette matches D3 at every boundary for mean=%s`, (mean) => {
   const scale = Math.max(mean * 2, Number.EPSILON)
   const values = Float32Array.from([
@@ -57,7 +65,7 @@ it.each([0, 0.5, 300])(`heatmap palette matches D3 at every boundary for mean=%s
       [-1e-6, 0, 1e-6].map((offset) => (idx / 256 + offset) * scale),
     ).flat(),
   ])
-  const colors = hotspot_colors({ values, mean })
+  const colors = hotspot_colors({ values, mean }, scale_for(mean))
   for (let idx = 0; idx < values.length; idx++) {
     const scaled = Math.min(1, Math.max(0, values[idx] / scale))
     const expected = Number.isFinite(values[idx])
@@ -65,7 +73,7 @@ it.each([0, 0.5, 300])(`heatmap palette matches D3 at every boundary for mean=%s
       : [0, 0, 0, 0]
     expect(colors.slice(idx * 4, idx * 4 + 4)).toEqual(new Float32Array(expected))
   }
-  expect(hotspot_colors({ values, mean: NaN })).toEqual(new Float32Array(values.length * 4))
+  expect(hotspot_scale(NaN, `energy`, 1.25)).toBeUndefined()
 })
 
 it(`cloud density grows with heat, honors colors and leaves absent data transparent`, () => {
@@ -77,7 +85,7 @@ it(`cloud density grows with heat, honors colors and leaves absent data transpar
   data.occupied_frames = new Uint32Array(4).fill(1)
   const before = structuredClone(data)
   const display = hotspot_display_values(data, `energy`, 1)
-  const colors = hotspot_cloud_colors(display, 2, `blue`, `red`)
+  const colors = hotspot_cloud_colors(display, scale_for(display.mean, 2), `blue`, `red`)
   if (!colors) throw new Error(`Expected a populated cloud`)
   expect([colors[3], colors[7], colors[11], colors[15]]).toEqual([
     0,
@@ -87,26 +95,41 @@ it(`cloud density grows with heat, honors colors and leaves absent data transpar
   ])
   expect(colors.slice(8, 11)).toEqual(new Float32Array([0, 0, 1]))
   expect(colors.slice(12, 15)).toEqual(new Float32Array([1, 0, 0]))
-  const raised = hotspot_cloud_colors(display, 4, `blue`, `#00ff00`)
+  const raised = hotspot_cloud_colors(display, scale_for(display.mean, 4), `blue`, `#00ff00`)
   if (!raised) throw new Error(`Expected a populated cloud`)
   expect(raised[15]).toBeLessThan(colors[15])
   expect(raised[15]).toBe(Math.fround(0.515))
   expect(raised.slice(12, 15)).toEqual(new Float32Array([0, 0.5, 0.5]))
-  expect(hotspot_cloud_colors(display, 1, `blue`, `red`)?.[11]).toBe(1)
+  expect(hotspot_cloud_colors(display, scale_for(display.mean, 1), `blue`, `red`)?.[11]).toBe(
+    1,
+  )
   expect(display).toEqual({ values: new Float32Array([0, 1, 2, 5]), mean: 2 })
   expect(data).toEqual(before)
   data.occupied_frames[3] = 0
   expect(
-    hotspot_cloud_colors(hotspot_display_values(data, `energy`, 1), 2, `blue`, `red`)?.slice(
-      12,
-    ),
+    hotspot_cloud_colors(
+      hotspot_display_values(data, `energy`, 1),
+      scale_for(display.mean, 2),
+      `blue`,
+      `red`,
+    )?.slice(12),
   ).toEqual(new Float32Array(4))
   expect(
-    hotspot_cloud_colors(hotspot_display_values(data, `energy`, 2), 2, `blue`, `red`),
+    hotspot_cloud_colors(
+      hotspot_display_values(data, `energy`, 2),
+      scale_for(display.mean, 2),
+      `blue`,
+      `red`,
+    ),
   ).toBeUndefined()
   data.energy.fill(0)
   expect(
-    hotspot_cloud_colors(hotspot_display_values(data, `energy`, 1), 2, `blue`, `red`),
+    hotspot_cloud_colors(
+      hotspot_display_values(data, `energy`, 1),
+      scale_for(0, 2),
+      `blue`,
+      `red`,
+    ),
   ).toBeUndefined()
 })
 
@@ -116,13 +139,13 @@ it.each([`energy`, `temperature`] as const)(
     const data = result()
     data.occupied_frames[1] = 0
     data.population[2] = 0.5
-    const colors = hotspot_colors(hotspot_display_values(data, metric, 1))
+    const display = hotspot_display_values(data, metric, 1)
+    const colors = hotspot_colors(display, scale_for(display.mean))
     expect(colors).toHaveLength(24 * 4)
     expect(Array.from(colors).every(Number.isFinite)).toBe(true)
     expect([colors[3], colors[7], colors[11], colors[15]]).toEqual([1, 0, 0, 1])
     expect(colors.slice(0, 3)).not.toEqual(colors.slice(12, 15))
-    const display = hotspot_display_values(data, metric, 1)
-    const cloud = hotspot_cloud_colors(display, 1.25, `blue`, `red`)
+    const cloud = hotspot_cloud_colors(display, scale_for(display.mean), `blue`, `red`)
     if (!cloud) throw new Error(`Expected a populated cloud`)
     const alphas = [...cloud].filter((_value, idx) => idx % 4 === 3)
     expect(alphas.slice(0, 3)).toEqual([0, 0, 0])
@@ -142,6 +165,25 @@ it.each([`energy`, `temperature`] as const)(
     expect(atom_field_color(field, empty_position.toArray(), `blue`)).toEqual(
       new Color(`blue`),
     )
+    data.energy.fill(0)
+    data.time_weight = 2
+    data.frames = 4
+    const populated_position = new Vector3(0.1, 0.1, 0.1).applyMatrix4(
+      field.cartesian_to_fractional.clone().invert(),
+    )
+    expect(
+      hotspot_probe(
+        data,
+        hotspot_display_values(data, metric, 1),
+        field,
+        populated_position.toArray(),
+      ),
+    ).toEqual({
+      value: 0,
+      ratio: NaN,
+      average_atoms: 1,
+      occupied_frames: 1,
+    })
   },
 )
 
@@ -168,6 +210,7 @@ it.each([`device`, `cell`] as const)(
         ? { ...data.grid, cell: lattice.matrix, origin: [8, -21, 31] as Vec3 }
         : data.grid
     const field = { ...hotspot_field_geometry(data, frame), colors }
+    const display = hotspot_display_values(data, `energy`, 1)
     const first_color = atom_field_color(field, [0, 0, 0], `blue`)
     const first_components = first_color.toArray()
     for (let idx = 0; idx < 24; idx++) {
@@ -184,6 +227,12 @@ it.each([`device`, `cell`] as const)(
         ) as Vec3
         const relative = absolute.map((value, axis) => value - [8, -21, 31][axis]) as Vec3
         expect(hotspot_bin(absolute, 0, grid)).toBe(idx)
+        expect(hotspot_probe(data, display, field, relative)).toEqual({
+          value: idx / 2,
+          ratio: idx / 11.5,
+          average_atoms: 2,
+          occupied_frames: 1,
+        })
         expect(atom_field_color(field, relative, `blue`).toArray()).toEqual([
           idx / 32,
           idx / 32,
@@ -201,5 +250,50 @@ it.each([`device`, `cell`] as const)(
       8 / 32,
     ])
     expect(first_color.toArray()).toEqual(first_components)
+    expect(hotspot_probe(data, display, field, [0, -100, 0])).toBeUndefined()
+    data.occupied_frames[8] = 0
+    expect(
+      hotspot_probe(
+        data,
+        hotspot_display_values(data, `energy`, 1),
+        field,
+        endpoint.toArray(),
+      ),
+    ).toBeUndefined()
+    data.occupied_frames[8] = 1
+    expect(
+      hotspot_probe(
+        data,
+        hotspot_display_values(data, `energy`, 3),
+        field,
+        endpoint.toArray(),
+      ),
+    ).toBeUndefined()
   },
 )
+
+it(`locked numeric domains keep atom and cloud colors fixed as the mean changes`, () => {
+  const values = new Float32Array([0, 1, 2, 3, 4, NaN])
+  const scale = scale_for(2)
+  const initial = { values, mean: 2 }
+  const updated = { values, mean: 4 }
+  expect(scale).toMatchObject({
+    atom_max: 4,
+    cloud_min: 2,
+    cloud_max: 2.5,
+    threshold: 2.5,
+    unit: `eV/atom`,
+  })
+  expect(hotspot_colors(initial, scale)).toEqual(hotspot_colors(updated, scale))
+  expect(hotspot_cloud_colors(initial, scale, `blue`, `red`)).toEqual(
+    hotspot_cloud_colors(updated, scale, `blue`, `red`),
+  )
+  expect(hotspot_colors(updated, scale_for(4))).not.toEqual(hotspot_colors(updated, scale))
+  expect(hotspot_scale(300, `temperature`, 1.25)).toMatchObject({
+    unit: `K`,
+    atom_max: 600,
+    cloud_min: 300,
+    cloud_max: 375,
+    threshold: 375,
+  })
+})

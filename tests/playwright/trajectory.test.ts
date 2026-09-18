@@ -530,6 +530,11 @@ test.describe(`Trajectory Component`, () => {
         `margin-top`,
         `0px`,
       )
+      const advanced = pane.locator(`.advanced-settings`)
+      await expect(advanced).not.toHaveAttribute(`open`)
+      await expect(pane.getByLabel(/^Velocity units/)).toBeVisible()
+      await expect(pane.getByLabel(/^Motion/)).not.toBeVisible()
+      await advanced.locator(`summary`).first().click()
       for (const width of [1200, 390]) {
         await page.setViewportSize({ width, height: 844 })
         await expect(async () => {
@@ -541,6 +546,7 @@ test.describe(`Trajectory Component`, () => {
             return [...content.querySelectorAll(`input, select, .hotspot-controls label`)]
               .filter((element) => {
                 const rect = element.getBoundingClientRect()
+                if (!rect.width || !rect.height) return false
                 const label = element.closest(`label`)?.getBoundingClientRect()
                 return (
                   rect.left < left - 1 ||
@@ -554,8 +560,10 @@ test.describe(`Trajectory Component`, () => {
         }).toPass()
         if (width === 1200) {
           for (const [left, right] of [
-            [`Mass units`, `Motion`],
+            [`Source`, `Velocity units`],
+            [`Masses`, `Mass units`],
             [`Frame stride`, `Grid resolution`],
+            [`Velocity property`, `Motion`],
             [`Grid frame`, `Mobile-atom selection property`],
             [`Dimensions`, `Degrees of freedom per atom`],
           ]) {
@@ -572,6 +580,7 @@ test.describe(`Trajectory Component`, () => {
         const pane_bounds = await require_bbox(pane)
         expect(button_bounds.width).toBeLessThan(pane_bounds.width * 0.75)
       }
+      await advanced.locator(`summary`).first().click()
       await pane.getByLabel(/^Velocity units/).selectOption(`A/fs`)
       await expect(calculate).toBeEnabled()
       await expect(calculate).not.toHaveAttribute(`aria-describedby`)
@@ -702,6 +711,16 @@ test.describe(`Trajectory Component`, () => {
       await heat_toggle.check()
       await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await pane.getByLabel(/^Minimum average atoms\/bin/).fill(`1`)
+      const legend = pane.getByLabel(`Thermal color legend`)
+      await expect(legend).toContainText(`eV/atom`)
+      const scale_lock = pane.getByLabel(`Lock numeric color ranges`)
+      await scale_lock.check()
+      await expect(legend).toContainText(`Ranges locked`)
+      await pane.getByLabel(/^Display/).selectOption(`temperature`)
+      await expect(scale_lock).not.toBeChecked()
+      await expect(legend).toContainText(`kinetic temperature`)
+      await expect(legend.locator(`small`).filter({ hasText: /^K$/ }).first()).toBeVisible()
+      await pane.getByLabel(/^Display/).selectOption(`energy`)
       await pane.getByLabel(`Volume cloud`, { exact: true }).check()
       const opacity = pane.getByLabel(/^Cloud opacity/).locator(`..`)
       const atom_opacity = pane.getByLabel(/^Atom opacity/)
@@ -719,6 +738,15 @@ test.describe(`Trajectory Component`, () => {
         const right_bounds = await require_bbox(right)
         expect(Math.abs(left_bounds.y - right_bounds.y)).toBeLessThan(1)
       }
+      const cutaway_mode = pane.getByLabel(/^Cutaway mode/)
+      await expect(cutaway_mode).toHaveValue(`off`)
+      await cutaway_mode.selectOption(`slab`)
+      await pane.getByLabel(/^Cutaway axis/).selectOption(`0`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveValue(`0.25`)
+      await pane.getByLabel(/^Cutaway position/).press(`ArrowRight`)
+      await expect(pane.getByLabel(/^Cutaway position/)).toHaveValue(`0.51`)
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await page.setViewportSize({ width: 390, height: 844 })
       await expect
         .poll(() =>
@@ -727,6 +755,30 @@ test.describe(`Trajectory Component`, () => {
             .evaluate((element) => element.scrollWidth - element.clientWidth),
         )
         .toBeLessThanOrEqual(0)
+      await cutaway_mode.selectOption(`off`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveCount(0)
+      await page.keyboard.press(`Escape`)
+      await page.setViewportSize({ width: 1500, height: 1400 })
+      await expect(pane).not.toBeVisible()
+      const atom_bounds = await require_bbox(atom_canvas)
+      const thermal_tooltip = page.getByRole(`tooltip`).filter({ hasText: `Bin-average` })
+      // Probe the canvas itself: the volume must not intercept the underlying atom hover.
+      for (const row of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+        for (const col of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+          await page.mouse.move(
+            atom_bounds.x + col * atom_bounds.width,
+            atom_bounds.y + row * atom_bounds.height,
+          )
+          if (await thermal_tooltip.isVisible()) break
+        }
+        if (await thermal_tooltip.isVisible()) break
+      }
+      await expect(thermal_tooltip).toContainText(`Bin-average kinetic energy:`)
+      await expect(
+        thermal_tooltip.locator(`small`).filter({ hasText: `eV/atom` }),
+      ).toBeVisible()
+      await expect(thermal_tooltip).toContainText(`Analysis: 2 frames`)
+      await expect(thermal_tooltip).toContainText(`average atoms/bin`)
       expect(console_errors).toEqual([])
     },
   )

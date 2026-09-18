@@ -28,7 +28,9 @@ import type StructureScene from '$lib/structure/StructureScene.svelte'
 import { structures } from '$site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { OrthographicCamera } from 'three/webgpu'
+import { Matrix4, OrthographicCamera } from 'three/webgpu'
+import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
+import type { AtomColorField } from '$lib/structure/atom-color-field'
 import {
   fire,
   assertHoverScopedShortcut,
@@ -332,7 +334,14 @@ test.each([
         (has_atoms ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
       ),
     )
-    if (has_atoms) expect(document.body.textContent).toContain(`Added 1 volume from B`)
+    if (has_atoms) {
+      const notice = doc_query(`.import-notice`)
+      expect(notice.textContent).toContain(`Added 1 volume from B`)
+      doc_query<HTMLButtonElement>(`.import-notice button`).click()
+      await tick()
+      expect(document.querySelector(`.import-notice`)).toBeNull()
+      expect(state.structure).toBe(original)
+    }
     drop(content.replace(before, after), `C`)
     await vi.waitFor(() =>
       expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
@@ -411,6 +420,7 @@ test.each([
 })
 
 test(`multi-file drops continue after failures and report one batch error`, async () => {
+  mock_gpu()
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
   const state = $state<{ error_msg?: string }>({ error_msg: undefined })
   mount_structure(bind_props({ on_file_load }, state))
@@ -427,6 +437,14 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
   expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ filename: `good.poscar`, total_atoms: 5 }),
   )
+  const viewport = doc_query(`.viewport-stage`)
+  const alert = doc_query(`.structure > .viewer-error [role="alert"]`)
+  expect(alert.textContent).toContain(state.error_msg)
+  doc_query<HTMLButtonElement>(`.viewer-error button`).click()
+  await tick()
+  expect(state.error_msg).toBeUndefined()
+  expect(document.querySelector(`.viewer-error`)).toBeNull()
+  expect(doc_query(`.viewport-stage`)).toBe(viewport)
 })
 
 const volumetric_data = [
@@ -1384,11 +1402,12 @@ describe(`Structure`, () => {
     expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
   })
 
-  // The symmetry-element and lattice-plane overlays only exist in the analyzed (input) cell and
+  // Cell-aligned overlays only exist in the analyzed (input) cell and
   // are blanked for conventional/primitive views; that must be said (toast), not happen silently
-  test.each([`symmetry`, `lattice planes`])(
+  test.each([`symmetry`, `lattice planes`, `thermal`])(
     `toasts why the %s overlay vanishes when the cell leaves the input frame`,
     async (overlay) => {
+      mock_gpu()
       await init_moyo_for_tests()
       const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
         { element: `Cu`, abc: [0, 0, 0] },
@@ -1396,12 +1415,31 @@ describe(`Structure`, () => {
       const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
       const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
       expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
+      const field: AtomColorField = {
+        dims: [1, 1, 1],
+        colors: new Float32Array([1, 0, 0, 1]),
+        pbc: [true, true, true],
+        cartesian_to_fractional: new Matrix4(),
+      }
+      const thermal = overlay === `thermal`
       const props = $state<ComponentProps<typeof Structure>>({
         structure: prim_fcc_cu,
+        ...(thermal && {
+          atom_color_field: field,
+          volume_color_field: field,
+          atom_opacity: 0,
+          cutaway: {
+            ...DEFAULT_CUTAWAY,
+            mode: `plane`,
+            cartesian_to_fractional: new Matrix4(),
+          },
+        }),
         scene_props:
           overlay === `symmetry`
             ? { symmetry_elements }
-            : { lattice_planes: [{ hkl: [1, 1, 1] }] },
+            : overlay === `lattice planes`
+              ? { lattice_planes: [{ hkl: [1, 1, 1] }] }
+              : {},
         cell_type: `original`,
       })
       vi.stubEnv(`VITEST`, ``)
@@ -1409,12 +1447,30 @@ describe(`Structure`, () => {
       await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
       flushSync()
       expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
+      if (thermal) {
+        expect(scene_stub.props?.atom_color_field).toBe(props.atom_color_field)
+        expect(scene_stub.props?.volume_color_field).toBe(props.volume_color_field)
+        expect(scene_stub.props?.cutaway).toBe(props.cutaway)
+        expect(scene_stub.props?.atom_opacity).toBe(0)
+      }
 
       props.cell_type = `conventional`
       flushSync()
+      expect(scene_stub.props?.atom_color_field).toBeUndefined()
+      expect(scene_stub.props?.volume_color_field).toBeUndefined()
+      expect(scene_stub.props?.cutaway).toBeUndefined()
+      expect(scene_stub.props?.atom_opacity).toBe(1)
       expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
         OVERLAYS_INPUT_FRAME_NOTE,
       )
+      props.cell_type = `original`
+      flushSync()
+      if (thermal) {
+        expect(scene_stub.props?.atom_color_field).toBe(props.atom_color_field)
+        expect(scene_stub.props?.volume_color_field).toBe(props.volume_color_field)
+        expect(scene_stub.props?.cutaway).toBe(props.cutaway)
+        expect(scene_stub.props?.atom_opacity).toBe(0)
+      }
     },
   )
 

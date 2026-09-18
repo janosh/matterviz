@@ -312,6 +312,9 @@ describe(`anchoring trails to the displayed atoms`, () => {
 
     const anchors = trajectory_trail_anchors(imaged.sites, nacl.sites.length)
     expect(anchors).toEqual(new Float64Array([0, 0, 0, 2.5, 2.5, 2.5]))
+    for (const site of imaged.sites)
+      site.properties = { orig_site_idx: 0, orig_unit_cell_idx: 0, completion_image: true }
+    expect(trajectory_trail_anchors(imaged.sites, nacl.sites.length)).toEqual(anchors)
   })
 
   test.each([

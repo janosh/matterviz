@@ -7,9 +7,8 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 
-// Like symmetry elements, planes are indexed in the input cell and blanked in other frames;
-// the structure viewer toasts this whenever either overlay is on and the cell leaves that frame
-export const OVERLAYS_INPUT_FRAME_NOTE = `Symmetry elements and lattice planes are drawn only in the original (input) cell`
+// Cell-aligned overlays cannot follow standardized cells without a coordinate transformation.
+export const OVERLAYS_INPUT_FRAME_NOTE = `Cell-aligned overlays and cutaways are shown only in the original (input) cell`
 
 export interface LatticePlane {
   hkl: Vec3

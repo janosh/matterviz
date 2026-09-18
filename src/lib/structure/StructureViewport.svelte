@@ -474,6 +474,15 @@
         base_structure={session.base_structure}
         {reference_structure}
         {...scene_props}
+        atom_tooltip={session.shows_input_frame ? scene_props.atom_tooltip : undefined}
+        atom_color_field={session.shows_input_frame ? scene_props.atom_color_field : undefined}
+        volume_color_field={session.shows_input_frame
+          ? scene_props.volume_color_field
+          : undefined}
+        atom_opacity={!session.shows_input_frame && scene_props.volume_color_field
+          ? 1
+          : scene_props.atom_opacity}
+        cutaway={session.shows_input_frame ? scene_props.cutaway : undefined}
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}

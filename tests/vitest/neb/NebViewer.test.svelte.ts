@@ -373,6 +373,15 @@ describe(`NebViewer`, () => {
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
     )
+    const plot = query(viewer, `.scatter`)
+    expect(query(viewer, `.viewer-error [role="alert"]`).textContent).toContain(
+      state.error_msg,
+    )
+    query<HTMLButtonElement>(viewer, `.viewer-error button`).click()
+    await tick()
+    expect(state.error_msg).toBeUndefined()
+    expect(viewer.querySelector(`.viewer-error`)).toBeNull()
+    expect(query(viewer, `.scatter`)).toBe(plot)
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {

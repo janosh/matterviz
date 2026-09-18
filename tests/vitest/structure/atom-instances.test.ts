@@ -6,10 +6,22 @@ import {
   update_ordered_atom_positions,
 } from '$lib/structure/atom-instances'
 import { make_site } from '$lib/structure/site'
+import { raycast_bond } from '$lib/structure/bond-mesh'
+import { write_bond_transform } from '$lib/structure/bond-rendering'
+import type { BondPair } from '$lib/structure'
+import {
+  cutaway_bounds,
+  cutaway_contains,
+  enable_cutaway_picking,
+  StructureCutawayGroup,
+  type StructureCutaway,
+} from '$lib/structure/cutaway'
 import {
   DoubleSide,
+  CylinderGeometry,
   Euler,
   OrthographicCamera,
+  PerspectiveCamera,
   InstancedMesh,
   type Intersection,
   Matrix4,
@@ -18,8 +30,209 @@ import {
   Raycaster,
   SphereGeometry,
   Vector3,
+  Vector2,
 } from 'three/webgpu'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
+
+test.each([1, 2, 3] as const)(
+  `enlarged edit targets cannot pick fully clipped atoms or order-%i bonds`,
+  (bond_order) => {
+    const group = new StructureCutawayGroup()
+    const cutaway: StructureCutaway = {
+      mode: `plane`,
+      axis: 2,
+      position: 0.5,
+      thickness: 0.25,
+      cartesian_to_fractional: new Matrix4(),
+    }
+    const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, 1))
+    const atom = new Mesh(new SphereGeometry(0.5), new MeshBasicMaterial())
+    atom.position.set(0, 0, 0.5105)
+    atom.scale.setScalar(0.02 * 1.15)
+    enable_atom_sphere_picking(atom, 1 / 1.15)
+    group.add(atom)
+    group.set_cutaway(cutaway)
+    expect(raycaster.intersectObject(atom)).toEqual([])
+    group.set_cutaway(undefined)
+    expect(raycaster.intersectObject(atom).length).toBeGreaterThan(0)
+    const bond: BondPair = {
+      pos_1: [-0.2, 0, 0.53],
+      pos_2: [0.2, 0, 0.53],
+      site_idx_1: 0,
+      site_idx_2: 1,
+      bond_length: 0.4,
+      bond_order,
+    }
+    const target = new Mesh(new CylinderGeometry(1, 1, 1, 6), new MeshBasicMaterial())
+    const matrix = new Float32Array(16)
+    write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, 0.05)
+    target.matrix.fromArray(matrix)
+    target.matrixAutoUpdate = false
+    group.add(target)
+    // The expanded cylinder overlaps the retained half-space even though every actual
+    // cylinder, including triple-bond offsets, lies beyond the clipping plane.
+    group.set_cutaway(cutaway)
+    group.updateMatrixWorld(true)
+    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    enable_cutaway_picking(target, (ray, hits) => raycast_bond(target, bond, 0.01, ray, hits))
+    expect(raycaster.intersectObject(target)).toEqual([])
+    group.set_cutaway(undefined)
+    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    group.set_cutaway({ ...cutaway, position: 0.6 })
+    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    // From the discarded side, the expanded target surface is clipped but the actual
+    // cylinders remain visible. Picking must return their surface distances, not the shell.
+    bond.pos_1[2] = 0.47
+    bond.pos_2[2] = 0.47
+    write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, 0.05)
+    target.matrix.fromArray(matrix)
+    raycaster.set(new Vector3(0, 0, 1), new Vector3(0, 0, -1))
+    group.set_cutaway(cutaway)
+    const visible_hits = raycaster.intersectObject(target)
+    expect(visible_hits.length).toBeGreaterThan(0)
+    const nearest_surface = [0.48, 0.4855, 0.4935][bond_order - 1]
+    // Placement buffers use f32; keep the surface-distance error below one f32 epsilon.
+    expect(Math.abs(visible_hits[0].distance - (1 - nearest_surface))).toBeLessThan(1e-7)
+    expect(visible_hits.every((hit) => hit.object === target)).toBe(true)
+    atom.geometry.dispose()
+    atom.material.dispose()
+    target.geometry.dispose()
+    target.material.dispose()
+  },
+)
+
+test.each(
+  ([`orthographic`, `perspective`] as const).flatMap((projection) =>
+    ([0, 1, 2] as const).map((axis) => [projection, axis] as const),
+  ),
+)(
+  `%s cutaway axis %i preserves atom buffers and rejects hidden surface hits in a rotated triclinic cell`,
+  (projection, axis) => {
+    const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
+    const cutaway: StructureCutaway = {
+      mode: `slab`,
+      axis,
+      position: 0.5,
+      thickness: 0.3,
+      cartesian_to_fractional: cell.clone().invert(),
+    }
+    const geometry = new SphereGeometry(0.5, 20, 20)
+    const material = new MeshBasicMaterial({ side: DoubleSide })
+    const atoms = [0.15, 0.5, 0.85].map((depth) => ({
+      position: new Vector3(0.5, 0.5, 0.5)
+        .setComponent(axis, depth)
+        .applyMatrix4(cell)
+        .toArray(),
+      radius: 0.7,
+    }))
+    const mesh = new AtomInstances(geometry, material, atoms.length)
+    mesh.update_atoms(atoms)
+    const original_buffer = mesh.positions.array.slice()
+    const original_version = mesh.positions.version
+    const group = new StructureCutawayGroup()
+    group.add(mesh)
+    group.rotation.set(0.3, -0.4, 0.7)
+    group.position.set(-7, 5, 2)
+    group.scale.set(1.2, 0.8, 1.1)
+    group.set_cutaway(cutaway)
+    group.updateMatrixWorld(true)
+    const world_point = (depth: number) =>
+      new Vector3(0.5, 0.5, 0.5)
+        .setComponent(axis, depth)
+        .applyMatrix4(cell)
+        .applyMatrix4(group.matrixWorld)
+    const camera =
+      projection === `orthographic`
+        ? new OrthographicCamera(-5, 5, 5, -5, 0.1, 100)
+        : new PerspectiveCamera(50, 1, 0.1, 100)
+    camera.position.copy(world_point(2))
+    camera.lookAt(world_point(0.5))
+    camera.updateMatrixWorld(true)
+    const raycaster = new Raycaster()
+    raycaster.setFromCamera(new Vector2(), camera)
+    const hits = () => raycaster.intersectObject(mesh)
+    const triangles = vi.spyOn(Mesh.prototype, `raycast`)
+    const middle_hits = hits()
+    const triangle_calls = triangles.mock.calls.length
+    triangles.mockRestore()
+    expect(middle_hits.length).toBeGreaterThan(0)
+    expect(new Set(middle_hits.map(({ instanceId }) => instanceId))).toEqual(new Set([1]))
+    expect(triangle_calls).toBe(1)
+    raycaster.far = middle_hits[0].distance - 0.01
+    expect(hits()).toEqual([])
+    raycaster.far = 100
+    raycaster.near = middle_hits.at(-1)?.distance ?? 0
+    raycaster.near += 0.01
+    expect(hits()).toEqual([])
+    raycaster.near = 0
+    for (const [position, expected_idx] of [
+      [0.15, 0],
+      [0.85, 2],
+    ] as const) {
+      cutaway.position = position
+      group.set_cutaway(cutaway)
+      expect(new Set(hits().map(({ instanceId }) => instanceId))).toEqual(
+        new Set([expected_idx]),
+      )
+    }
+    group.set_cutaway(undefined)
+    expect(new Set(hits().map(({ instanceId }) => instanceId))).toEqual(new Set([0, 1, 2]))
+    expect(mesh.positions.array).toEqual(original_buffer)
+    expect(mesh.positions.version).toBe(original_version)
+    expect(mesh.count).toBe(3)
+    // The same clipping also applies to native mesh hit targets (editable bonds).
+    const target = new Mesh(geometry, material)
+    target.position.fromArray(atoms[2].position)
+    enable_cutaway_picking(target)
+    group.add(target)
+    group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
+    expect(raycaster.intersectObject(target)).toEqual([])
+    group.set_cutaway(undefined)
+    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    // Partial-occupancy atoms use an invisible analytic sphere target.
+    enable_atom_sphere_picking(target)
+    group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
+    expect(raycaster.intersectObject(target)).toEqual([])
+    group.set_cutaway(undefined)
+    expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
+    mesh.dispose()
+    geometry.dispose()
+    material.dispose()
+  },
+)
+
+test.each([0, 1, 2] as const)(
+  `cutaway axis %i retains the requested fractional interval including a shifted cell origin`,
+  (axis) => {
+    const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
+    const cutaway: StructureCutaway = {
+      mode: `slab`,
+      axis,
+      position: 0.5,
+      thickness: 0.2,
+      cartesian_to_fractional: cell.clone().invert(),
+    }
+    expect(cutaway_bounds(cutaway)).toEqual([0.4, 0.6])
+    for (const [coordinate, visible] of [
+      [0.1, false],
+      [0.41, true],
+      [0.59, true],
+      [0.9, false],
+    ] as const) {
+      const position = new Vector3(0.5, 0.5, 0.5)
+        .setComponent(axis, coordinate)
+        .applyMatrix4(cell)
+      expect(cutaway_contains(cutaway, position.toArray())).toBe(visible)
+    }
+    const lower = new Vector3(0.5, 0.5, 0.5)
+      .setComponent(axis, -0.1)
+      .applyMatrix4(cell)
+      .toArray()
+    expect(cutaway_contains({ ...cutaway, mode: `plane` }, lower)).toBe(true)
+    expect(cutaway_contains({ ...cutaway, mode: `off` }, lower)).toBe(true)
+    expect(cutaway_contains(undefined, lower)).toBe(true)
+  },
+)
 
 test(`coordinate-only frames reuse atom records, but appearance topology changes rebuild them`, () => {
   const sites = [
@@ -35,7 +248,6 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     radius: 0.7,
     color: `blue`,
     is_image_atom: false,
-    has_partial_occupancy: false,
   }))
   const moved = sites.map((site) => ({
     ...site,
@@ -54,8 +266,8 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
   for (const changed of [
     { ...last, species: [{ element: `C` as const, occu: 1, oxidation_state: 0 }] },
     { ...last, species: [{ ...last.species[0], occu: 0.5 }] },
-    { ...last, properties: { orig_site_idx: 1 } },
-    { ...last, properties: { completion_image: true } },
+    { ...last, provenance: { image_of: 1 } },
+    { ...last, provenance: { completion: true } },
   ]) {
     expect(
       update_ordered_atom_positions(atoms, [{ ...first, xyz: [9, 0, 0] }, changed]),
@@ -72,7 +284,6 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     ...atoms[1],
     species: partial_site.species,
     occupancy: 0.5,
-    has_partial_occupancy: true,
   }
   partial_site.species[0].occu = 1
   expect(

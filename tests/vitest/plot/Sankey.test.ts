@@ -80,7 +80,7 @@ describe(`Sankey`, () => {
         ],
       },
     })
-    expect(plot.querySelector(`.status-message.error`)?.textContent).toContain(
+    expect(plot.querySelector(`.viewer-error [role="alert"]`)?.textContent).toContain(
       `cycle A -> B -> A`,
     )
     expect(plot.querySelectorAll(`.nodes rect`)).toHaveLength(0)
@@ -269,6 +269,7 @@ describe(`Sankey`, () => {
     { data: { nodes: [{ label: `solo` }], links: [] } },
   ])(`renders without error for empty/degenerate data %#`, async (props) => {
     const plot = await mount_sized_sankey(props)
+    expect(plot.querySelector(`.viewer-error`)).toBeNull()
     expect(plot.querySelectorAll(`.links path`)).toHaveLength(0)
   })
 })
