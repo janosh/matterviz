@@ -80,11 +80,15 @@ describe(`StructureExportPane`, () => {
     return matches[0]
   }
 
-  test(`displays text export actions and linked format descriptions`, async () => {
+  test(`text export actions and camera planning share the export pane`, async () => {
     const validate = vi.spyOn(export_funcs, `xyz_export_unavailable_reason`)
     mount_pane({ structure: simple_structure, export_pane_open: false })
     expect(validate).not.toHaveBeenCalled()
     expect(document.querySelector(`.export-item`)).toBeNull()
+    const flight_anchor = doc_query<HTMLButtonElement>(`.structure-flight-toggle`)
+    expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
+    expect(flight_anchor.tabIndex).toBe(-1)
+    expect(flight_anchor.getAttribute(`aria-hidden`)).toBe(`true`)
     doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
     await tick()
     expect(validate).toHaveBeenCalledOnce()
@@ -107,6 +111,19 @@ describe(`StructureExportPane`, () => {
         `https://pymatgen.org`,
       ),
     )
+    const launch_flight = [...doc_query(`.export-pane`).querySelectorAll(`button`)].find(
+      (button) => button.textContent?.includes(`Plan camera flight`),
+    )
+    expect(launch_flight).toBeDefined()
+    launch_flight?.click()
+    await tick()
+    expect(document.querySelector(`.export-pane.viewer-pane-open`)).toBeNull()
+    doc_query<HTMLButtonElement>(
+      `.structure-flight-pane.viewer-pane-open footer button`,
+    ).click()
+    await tick()
+    expect(document.querySelector(`.structure-flight-pane.viewer-pane-open`)).toBeNull()
+    expect(document.querySelector(`.export-pane.viewer-pane-open`)).not.toBeNull()
   })
 
   test.each([
@@ -347,6 +364,8 @@ describe(`StructureExportPane`, () => {
       )
     })
     expect(document.body.textContent).not.toContain(`Export as 3D model`)
+    expect(document.body.textContent).not.toContain(`Plan camera flight`)
+    expect(document.querySelector(`.structure-flight-toggle`)).toBeNull()
   })
 
   test.each([

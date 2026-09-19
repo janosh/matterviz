@@ -30,7 +30,7 @@ export type NumericFrame = {
   header: Omit<TrajectoryFrame, 'structure'>
   structure: Omit<AnyStructure, 'sites'> & { lattice?: LatticeType }
   // Standard ordered MD sites need only atomic numbers; preserve arbitrary site metadata
-  // in records for every other structure.
+  // in records for every other structure, including viewer-generated site provenance.
   sites: Omit<Site, 'xyz' | 'abc'>[] | Uint8Array
   // Set only by sources whose schema fixes atom identity to its row for the entire run.
   // Generic structure sequences make no identity claim based on equal counts or species.
@@ -308,38 +308,39 @@ export function create_numeric_md_frame(
 // species and labels; coordinates/properties get fresh references so Svelte invalidates
 // tooltips, measurements and tables and retained display frames never change underneath them.
 export class FrameView {
-  private topology: { revision: number; count: number } | undefined
-  private topology_identity = {}
-  private identities: Pick<Site, 'species' | 'label'>[] = []
+  private topology:
+    | { revision?: number; count: number; identities: Pick<Site, 'species' | 'label'>[] }
+    | undefined
 
   clear(): void {
     this.topology = undefined
-    this.topology_identity = {}
-    this.identities = []
   }
 
   update(data: NumericFrame): TrajectoryFrame {
     data = wrap_frame_coordinates(data)
     const topology =
       data.topology?.kind === `fixed-order` && data.sites instanceof Uint8Array
-        ? { revision: data.topology.revision, count: data.sites.length }
+        ? data.topology
         : undefined
     if (
+      !this.topology ||
       !topology ||
-      topology.revision !== this.topology?.revision ||
-      topology.count !== this.topology?.count
+      topology.revision !== this.topology.revision ||
+      data.sites.length !== this.topology.count
     ) {
-      this.topology_identity = {}
-      this.identities = []
+      this.topology = {
+        revision: topology?.revision,
+        count: data.sites.length,
+        identities: [],
+      }
     }
-    this.topology = topology
     let frame: TrajectoryFrame
     if (data.sites instanceof Uint8Array) {
       const columns = new NumericSites(
         data.sites,
         data.coordinates,
         data.vector_keys,
-        this.identities,
+        this.topology.identities,
         data.scalar_columns,
       )
       const structure: AnyStructure = {
@@ -349,7 +350,7 @@ export class FrameView {
         },
       }
       numeric_sites.set(structure, columns)
-      if (data.topology) snapshot_topologies.set(structure, this.topology_identity)
+      if (data.topology) snapshot_topologies.set(structure, this.topology)
       frame = { ...structuredClone(data.header), structure }
     } else frame = materialize_frame(data)
     if (data.available_vector_keys)

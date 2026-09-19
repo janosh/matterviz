@@ -316,11 +316,12 @@ export function get_pbc_image_sites(structure: AnyStructure): AnyStructure {
       ...orig_site,
       abc: img_abc,
       xyz: img_xyz,
-      properties: {
-        ...orig_site.properties,
-        orig_site_idx: site_idx,
+      properties: { ...orig_site.properties },
+      provenance: {
+        ...orig_site.provenance,
+        image_of: site_idx,
         // phase-2 images only complete bonds/polyhedra - hidden when neither renders
-        ...(is_completion ? { completion_image: true } : {}),
+        ...(is_completion ? { completion: true } : {}),
       },
     })
   }

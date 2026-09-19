@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ShowControlsState } from '$lib/controls'
-  // Shared control-buttons row (filename chip + fullscreen toggle + snippet buttons/panes) that
+  // Shared control-buttons row (filename chip + snippet buttons/panes + fullscreen toggle) that
   // viewers render as a direct child of their root; themed via neutral --viewer-* CSS vars.
   // Full-width sequence viewers use SequenceControlBar instead.
   import type { Snippet } from 'svelte'
@@ -27,7 +27,7 @@
     fullscreen_bg_css_var?: string
     on_fullscreen_change?: (fullscreen: boolean) => void
     wrapper?: HTMLDivElement
-    children?: Snippet // rendered after the fullscreen toggle (panes, controls, ...)
+    children?: Snippet // viewer-specific panes and controls, before the fullscreen toggle
   } = $props()
 
   // Styled tooltip (reads the button's title attr), forwarded as a spreadable attachment
@@ -43,6 +43,8 @@
     <span class="filename">{filename}</span>
   {/if}
 
+  {#if controls_config.mode !== `never`}{@render children?.()}{/if}
+
   {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
     <FullscreenButton
       bind:fullscreen
@@ -53,8 +55,6 @@
       {...tooltip_attachment}
     />
   {/if}
-
-  {#if controls_config.mode !== `never`}{@render children?.()}{/if}
 </section>
 
 <style>

@@ -530,6 +530,11 @@ test.describe(`Trajectory Component`, () => {
         `margin-top`,
         `0px`,
       )
+      const advanced = pane.locator(`.advanced-settings`)
+      await expect(advanced).not.toHaveAttribute(`open`)
+      await expect(pane.getByLabel(/^Velocity units/)).toBeVisible()
+      await expect(pane.getByLabel(/^Motion/)).not.toBeVisible()
+      await advanced.locator(`summary`).first().click()
       for (const width of [1200, 390]) {
         await page.setViewportSize({ width, height: 844 })
         await expect(async () => {
@@ -541,6 +546,7 @@ test.describe(`Trajectory Component`, () => {
             return [...content.querySelectorAll(`input, select, .hotspot-controls label`)]
               .filter((element) => {
                 const rect = element.getBoundingClientRect()
+                if (!rect.width || !rect.height) return false
                 const label = element.closest(`label`)?.getBoundingClientRect()
                 return (
                   rect.left < left - 1 ||
@@ -554,8 +560,10 @@ test.describe(`Trajectory Component`, () => {
         }).toPass()
         if (width === 1200) {
           for (const [left, right] of [
-            [`Mass units`, `Motion`],
+            [`Source`, `Velocity units`],
+            [`Masses`, `Mass units`],
             [`Frame stride`, `Grid resolution`],
+            [`Velocity property`, `Motion`],
             [`Grid frame`, `Mobile-atom selection property`],
             [`Dimensions`, `Degrees of freedom per atom`],
           ]) {
@@ -572,6 +580,7 @@ test.describe(`Trajectory Component`, () => {
         const pane_bounds = await require_bbox(pane)
         expect(button_bounds.width).toBeLessThan(pane_bounds.width * 0.75)
       }
+      await advanced.locator(`summary`).first().click()
       await pane.getByLabel(/^Velocity units/).selectOption(`A/fs`)
       await expect(calculate).toBeEnabled()
       await expect(calculate).not.toHaveAttribute(`aria-describedby`)
@@ -702,6 +711,16 @@ test.describe(`Trajectory Component`, () => {
       await heat_toggle.check()
       await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await pane.getByLabel(/^Minimum average atoms\/bin/).fill(`1`)
+      const legend = pane.getByLabel(`Thermal color legend`)
+      await expect(legend).toContainText(`eV/atom`)
+      const scale_lock = pane.getByLabel(`Lock numeric color ranges`)
+      await scale_lock.check()
+      await expect(legend).toContainText(`Ranges locked`)
+      await pane.getByLabel(/^Display/).selectOption(`temperature`)
+      await expect(scale_lock).not.toBeChecked()
+      await expect(legend).toContainText(`kinetic temperature`)
+      await expect(legend.locator(`small`).filter({ hasText: /^K$/ }).first()).toBeVisible()
+      await pane.getByLabel(/^Display/).selectOption(`energy`)
       await pane.getByLabel(`Volume cloud`, { exact: true }).check()
       const opacity = pane.getByLabel(/^Cloud opacity/).locator(`..`)
       const atom_opacity = pane.getByLabel(/^Atom opacity/)
@@ -719,6 +738,15 @@ test.describe(`Trajectory Component`, () => {
         const right_bounds = await require_bbox(right)
         expect(Math.abs(left_bounds.y - right_bounds.y)).toBeLessThan(1)
       }
+      const cutaway_mode = pane.getByLabel(/^Cutaway mode/)
+      await expect(cutaway_mode).toHaveValue(`off`)
+      await cutaway_mode.selectOption(`slab`)
+      await pane.getByLabel(/^Cutaway axis/).selectOption(`0`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveValue(`0.25`)
+      await pane.getByLabel(/^Cutaway position/).press(`ArrowRight`)
+      await expect(pane.getByLabel(/^Cutaway position/)).toHaveValue(`0.51`)
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await page.setViewportSize({ width: 390, height: 844 })
       await expect
         .poll(() =>
@@ -727,6 +755,30 @@ test.describe(`Trajectory Component`, () => {
             .evaluate((element) => element.scrollWidth - element.clientWidth),
         )
         .toBeLessThanOrEqual(0)
+      await cutaway_mode.selectOption(`off`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveCount(0)
+      await page.keyboard.press(`Escape`)
+      await page.setViewportSize({ width: 1500, height: 1400 })
+      await expect(pane).not.toBeVisible()
+      const atom_bounds = await require_bbox(atom_canvas)
+      const thermal_tooltip = page.getByRole(`tooltip`).filter({ hasText: `Bin-average` })
+      // Probe the canvas itself: the volume must not intercept the underlying atom hover.
+      for (const row of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+        for (const col of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+          await page.mouse.move(
+            atom_bounds.x + col * atom_bounds.width,
+            atom_bounds.y + row * atom_bounds.height,
+          )
+          if (await thermal_tooltip.isVisible()) break
+        }
+        if (await thermal_tooltip.isVisible()) break
+      }
+      await expect(thermal_tooltip).toContainText(`Bin-average kinetic energy:`)
+      await expect(
+        thermal_tooltip.locator(`small`).filter({ hasText: `eV/atom` }),
+      ).toBeVisible()
+      await expect(thermal_tooltip).toContainText(`Analysis: 2 frames`)
+      await expect(thermal_tooltip).toContainText(`average atoms/bin`)
       expect(console_errors).toEqual([])
     },
   )
@@ -796,12 +848,14 @@ test.describe(`Trajectory Component`, () => {
         ])
         await expect(pane.locator(`.resolution-buttons .active`)).toHaveText(`1x`)
         await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
+        await expect(trajectory_viewer).toHaveClass(/\bhorizontal\b/)
         const expected_size = await trajectory_viewer
-          .locator(`canvas`)
+          .locator(`.viewport-cell`)
           .first()
-          .evaluate((canvas) => {
-            // The renderer scales fractional CSS dimensions before flooring to whole pixels.
-            const { width, height } = canvas.getBoundingClientRect()
+          .evaluate((viewport) => {
+            // Canvas CSS sizes lag responsive layout until Threlte's next resize update.
+            // Export scales the settled viewport before flooring to whole pixels.
+            const { width, height } = viewport.getBoundingClientRect()
             return {
               width: Math.floor(width * devicePixelRatio * 3),
               height: Math.floor(height * devicePixelRatio * 3),
@@ -1092,6 +1146,7 @@ test.describe(`Trajectory Component`, () => {
 
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
+      await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
       await step_input.focus()
       await expect(step_input).toHaveValue(`0`)
@@ -1101,7 +1156,75 @@ test.describe(`Trajectory Component`, () => {
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
       await expect(play_button).toHaveText(`▶`)
+      await page.keyboard.press(`v`)
+      await expect(trajectory.locator(`.content-area`)).toHaveClass(/show-structure-only/)
     })
+
+    test(`V cycles only the focused viewer and keeps focus when its structure disappears`, async ({
+      page,
+    }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const sibling = page.locator(`#vertical-layout`)
+      const content = await select_display_mode(trajectory, `Structure + Histogram`)
+      const view_button = trajectory.locator(`.trajectory-controls .view-mode-button`)
+      await trajectory.locator(`.structure`).focus()
+      await sibling.hover()
+      const resting_background = await view_button.evaluate(
+        (button) => getComputedStyle(button).backgroundColor,
+      )
+      const icon_box = await require_bbox(view_button.locator(`svg`))
+      await page.keyboard.press(`v`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(view_button).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+      expect(await require_bbox(view_button.locator(`svg`))).toMatchObject({
+        width: icon_box.width,
+        height: icon_box.height,
+      })
+      await expect(content).toHaveClass(/show-plot-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(view_button).toHaveCSS(`background-color`, resting_background)
+      await page.keyboard.press(`v`)
+      await expect(trajectory.locator(`.histogram`)).toBeVisible()
+      await page.keyboard.press(`Shift+V`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(sibling.locator(`.trajectory-controls .view-mode-button`)).toHaveAttribute(
+        `aria-label`,
+        /^Automatic:/,
+      )
+      await sibling.focus()
+      await page.keyboard.press(`v`)
+      await expect(sibling.locator(`.content-area`)).toHaveClass(/show-structure-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+    })
+
+    test(
+      `playback shortcuts flash their controls without resizing them`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        const trajectory = page.locator(`#loaded-trajectory`)
+        await trajectory.focus()
+        for (const [key, selector] of [
+          [`ArrowRight`, `.nav-section button:last-child`],
+          [`ArrowLeft`, `.nav-section button:first-child`],
+          [`End`, `.step-input`],
+          [`Home`, `.step-input`],
+          [`+`, `.fps-section input`],
+          [`-`, `.fps-section input`],
+          [`Space`, `.play-button`],
+          [`Space`, `.play-button`],
+        ]) {
+          const control = trajectory.locator(selector)
+          await page.keyboard.press(key)
+          await expect(control, key).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+          const { width, height } = await require_bbox(control)
+          await expect(control, key).toHaveCSS(`box-shadow`, `none`)
+          expect(await require_bbox(control), key).toMatchObject({ width, height })
+        }
+      },
+    )
 
     test(`FPS input uses 0.1 increments and shared bounds`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
@@ -1165,7 +1288,10 @@ test.describe(`Trajectory Component`, () => {
         .join(``)
       await drop_file(page, trajectory, content, `flat-energy-traces.xyz`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await expect(display_button).toHaveAttribute(`aria-label`, `Automatic: Structure-only`)
+      await expect(display_button).toHaveAttribute(
+        `aria-label`,
+        `Automatic: Structure-only (V: next, Shift+V: previous)`,
+      )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)

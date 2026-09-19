@@ -460,6 +460,7 @@ export function phonon_mode_run(
       return {
         species: site.species,
         label: site.label,
+        provenance: site.provenance,
         xyz: [xyz[0] + delta_x, xyz[1] + delta_y, xyz[2] + delta_z] as Vec3,
         abc: [
           abc[0] + delta_x * index_a + delta_y * inverse_ja + delta_z * ambient_color,

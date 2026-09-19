@@ -125,7 +125,7 @@ describe(`TernaryPlot`, () => {
         },
       ],
     })
-    const message = plot.querySelector(`.status-message.error`)?.textContent
+    const message = plot.querySelector(`.viewer-error [role="alert"]`)?.textContent
     expect(message).toContain(`Bad point 1 has a negative amount`)
     expect(markers(plot)).toHaveLength(0)
   })
@@ -337,6 +337,7 @@ describe(`TernaryPlot`, () => {
 
   test(`renders without error for empty series`, async () => {
     const plot = await mount_ternary({ series: [] })
+    expect(plot.querySelector(`.viewer-error`)).toBeNull()
     expect(markers(plot)).toHaveLength(0)
     expect(plot.querySelectorAll(`.corner-labels text`)).toHaveLength(3)
   })

@@ -103,3 +103,16 @@ export function create_flash<T>(resting: T, duration_ms: number): Flash<T> {
     },
   }
 }
+
+// Inline styles reach controls inside child components without changing their icon or hit area.
+export function create_shortcut_flash<T extends string>() {
+  const flash = create_flash<T | undefined>(undefined, 400)
+  const color = `color-mix(in srgb, var(--accent-color, #4a9eff) 35%, transparent)`
+  return {
+    show: flash.show,
+    style: (control: T): string =>
+      flash.value === control
+        ? `background: ${color}; box-shadow: 0 0 0 1px ${color}; transition: none`
+        : `transition: background-color 0.2s ease-out, box-shadow 0.2s ease-out`,
+  }
+}

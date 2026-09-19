@@ -232,7 +232,9 @@ test(`reports a singular lattice instead of computing a zone`, async () => {
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
   expect(on_error.mock.calls[0][0].error_msg).toMatch(/BZ computation failed: .*singular/)
   expect(props.error_msg).toMatch(/singular/)
-  expect(document.body.querySelector(`.brillouin-zone`)?.textContent).toMatch(/singular/)
+  expect(doc_query(`.brillouin-zone > .viewer-error [role="alert"]`).textContent).toMatch(
+    /singular/,
+  )
 })
 
 // The zone the component renders, observed through its `children` snippet (the derived zone

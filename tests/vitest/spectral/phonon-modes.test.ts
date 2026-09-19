@@ -91,7 +91,7 @@ describe(`phonon_mode_trajectory`, () => {
     expect(trajectory.metadata).toMatchObject({ amplitude: 0.3, supercell: [3, 3, 2] })
     expect(
       trajectory.frames[0].structure.sites.filter(
-        ({ properties }) => properties.orig_site_idx === undefined,
+        ({ provenance }) => provenance?.image_of === undefined,
       ),
     ).toHaveLength(18)
     expect(Math.hypot(...displacement)).toBeCloseTo(0.3, 14)
@@ -154,8 +154,8 @@ describe(`phonon_mode_trajectory`, () => {
       { amplitude: 1, supercell: [3, 1, 1], n_frames: 4 },
     )
     const positive_x_image = trajectory.frames[0].structure.sites.find(
-      ({ abc, properties }) =>
-        typeof properties.orig_site_idx === `number` &&
+      ({ abc, provenance }) =>
+        provenance?.image_of !== undefined &&
         abc[0] > 1 &&
         abc.slice(1).every((coordinate) => coordinate === 0),
     )
@@ -291,16 +291,18 @@ describe(`phonon_mode_trajectory`, () => {
       }
       expect(degrees.every((degree) => degree > 0)).toBe(true)
       for (const [site_idx, site] of first_structure.sites.entries()) {
-        if (site.properties.completion_image) continue
+        if (site.provenance?.completion) continue
         expect(degrees[site_idx], `${site.label} coordination`).toBe(coordination)
       }
       const image_sites = first_structure.sites.filter(
-        ({ properties }) => typeof properties.orig_site_idx === `number`,
+        ({ provenance }) => provenance?.image_of !== undefined,
       )
       expect(image_sites.length).toBeGreaterThan(0)
       for (const site of image_sites) {
         const abc = equilibrium_abc(site)
-        const source = first_structure.sites[site.properties.orig_site_idx as number]
+        const source_idx = site.provenance?.image_of
+        if (source_idx === undefined) throw new Error(`Expected an image source`)
+        const source = first_structure.sites[source_idx]
         const source_abc = equilibrium_abc(source)
         const shift = abc.map((coordinate, axis) => coordinate - source_abc[axis])
         expect(shift.some((coordinate) => Math.abs(coordinate) > 0.5)).toBe(true)
@@ -471,7 +473,7 @@ describe(`phonon band helpers`, () => {
       [-3.7333168018089856e-16, 0.7797043412834651, -2.203338894676433e-16],
     ]
     const actual = trajectory.frames[0].structure.sites
-      .filter(({ properties }) => properties.orig_site_idx === undefined)
+      .filter(({ provenance }) => provenance?.image_of === undefined)
       .map((site) => site.properties.phonon_displacement as Vec3)
     const absolute_errors = actual.flatMap((vector, site_idx) =>
       vector.map((value, axis) => Math.abs(value - expected[site_idx][axis])),

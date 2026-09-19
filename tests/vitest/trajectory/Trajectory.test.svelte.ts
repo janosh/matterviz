@@ -26,7 +26,10 @@ import {
   mock_fullscreen,
   bind_props,
   doc_query,
+  query,
   form_controls,
+  fire,
+  keydown,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import {
@@ -84,6 +87,7 @@ const make_run = ({
 const mounted: ReturnType<typeof mount>[] = []
 afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -323,7 +327,7 @@ describe(`display modes`, () => {
     if (_kind === `constant-value` || _kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
-      ).toBe(`Automatic: Structure-only`)
+      ).toBe(`Automatic: Structure-only (V: next, Shift+V: previous)`)
   })
 
   test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
@@ -414,7 +418,7 @@ describe(`display modes`, () => {
       frame_count: 3,
       frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
-    expect(view_mode_button.title).toBe(`Histogram-only`)
+    expect(view_mode_button.title).toBe(`Histogram-only (V: next, Shift+V: previous)`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
     expect(target.querySelector(`.histogram`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()
@@ -987,9 +991,12 @@ describe(`panes`, () => {
     props.active_pane = `export`
     await tick()
     expect(open_panes()).toEqual([`export-pane`])
-    const flight_anchor = doc_query<HTMLButtonElement>(`.trajectory-flight-toggle`)
-    expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
-    expect(flight_anchor.tabIndex).toBe(-1)
+    for (const kind of [`structure`, `trajectory`]) {
+      const flight_anchor = doc_query<HTMLButtonElement>(`.${kind}-flight-toggle`)
+      expect(getComputedStyle(flight_anchor).visibility).toBe(`hidden`)
+      expect(flight_anchor.tabIndex).toBe(-1)
+      expect(flight_anchor.getAttribute(`aria-hidden`)).toBe(`true`)
+    }
     const launch_flight = [...doc_query(`.export-pane`).querySelectorAll(`button`)].find(
       (button) => button.textContent?.includes(`Plan camera flight`),
     )
@@ -1033,7 +1040,14 @@ describe(`panes`, () => {
     expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
     props.active_pane = null
     await tick()
-    doc_query<HTMLButtonElement>(`.structure-flight-toggle`).click()
+    doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
+    await tick()
+    const structure_export = doc_query(`.structure .export-pane`)
+    const structure_flight = [...structure_export.querySelectorAll(`button`)].find((button) =>
+      button.textContent?.includes(`Plan camera flight`),
+    )
+    expect(structure_flight).toBeDefined()
+    structure_flight?.click()
     await tick()
     expect(props.active_pane).toBe(`flight`)
     expect(open_panes()).toEqual([`trajectory-flight-pane`])
@@ -1088,15 +1102,97 @@ describe(`panes`, () => {
 })
 
 describe(`events`, () => {
-  test(`the viewer is a focusable application whose arrow keys step frames`, () => {
-    const state = $state({ current_step_idx: 0 })
-    mount_trajectory(bind_props(default_props(), state))
-    const viewer = doc_query(`.trajectory`)
+  test(`focused viewer shortcuts step frames and cycle views without affecting a hovered sibling`, async () => {
+    const changed = vi.fn()
+    const props = $state(
+      default_props({
+        current_step_idx: 0,
+        display_mode: `auto`,
+        on_display_mode_change: changed,
+      }),
+    )
+    const target = mount_trajectory(props)
+    const sibling_props = $state(default_props())
+    const sibling = query(mount_trajectory(sibling_props), `.trajectory`)
+    const viewer = query(target, `.trajectory`)
+    const view_button = query<HTMLButtonElement>(viewer, `${CONTROLS} .view-mode-button`)
+    const sibling_button = query<HTMLButtonElement>(sibling, `${CONTROLS} .view-mode-button`)
     expect(viewer.getAttribute(`role`)).toBe(`application`)
     expect(viewer.getAttribute(`tabindex`)).toBe(`0`)
+    expect(viewer.getAttribute(`aria-keyshortcuts`)).toBe(`V Shift+V`)
+    sibling.dispatchEvent(new PointerEvent(`pointerenter`))
+    viewer.focus()
     viewer.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
     flushSync()
-    expect(state.current_step_idx).toBe(1)
+    expect(props.current_step_idx).toBe(1)
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    const modes: Props[`display_mode`][] = [
+      `structure`,
+      `structure+scatter`,
+      `structure+histogram`,
+      `scatter`,
+      `histogram`,
+    ]
+    for (const shift_key of [false, true]) {
+      for (const mode of [...(shift_key ? modes.toReversed() : modes), `auto`]) {
+        // Descendant focus must survive modes that remove the structure viewer entirely.
+        const focused = viewer.querySelector<HTMLElement>(`.structure`) ?? viewer
+        focused.focus()
+        const event = keydown(shift_key ? `V` : `v`, {
+          shiftKey: shift_key,
+          cancelable: true,
+        })
+        focused.dispatchEvent(event)
+        await tick()
+        expect(event.defaultPrevented).toBe(true)
+        expect(props.display_mode).toBe(mode)
+        expect(document.activeElement).toBe(viewer)
+        expect(sibling_props.display_mode).toBe(`structure+scatter`)
+        expect(view_button.style.transition).toBe(`none`)
+        expect(sibling_button.style.boxShadow).toBe(``)
+        vi.advanceTimersByTime(250)
+        await tick()
+        expect(view_button.style.transition).toBe(`none`)
+      }
+    }
+    expect(changed).toHaveBeenCalledTimes(12)
+    vi.advanceTimersByTime(150)
+    await tick()
+    expect(view_button.style.boxShadow).toBe(``)
+  })
+
+  test.each([
+    { name: `Ctrl`, init: { ctrlKey: true } },
+    { name: `Meta`, init: { metaKey: true } },
+    { name: `Alt`, init: { altKey: true } },
+    { name: `autorepeat`, init: { repeat: true } },
+    { name: `composition`, init: { isComposing: true } },
+    { name: `input`, tag: `input` },
+    { name: `textarea`, tag: `textarea` },
+    { name: `select`, tag: `select` },
+    { name: `editable text`, tag: `div` },
+    { name: `hover without focus`, hover_only: true },
+  ])(`view shortcut ignores $name`, async ({ init, tag, hover_only }) => {
+    const changed = vi.fn()
+    const props = $state(default_props({ on_display_mode_change: changed }))
+    const viewer = query(mount_trajectory(props), `.trajectory`)
+    const target = tag ? document.createElement(tag) : viewer
+    if (tag) {
+      if (tag === `div`) target.contentEditable = `true`
+      viewer.append(target)
+    }
+    if (hover_only) viewer.dispatchEvent(new PointerEvent(`pointerenter`))
+    else target.focus()
+    const event = keydown(`v`, { cancelable: true, ...init })
+    if (hover_only) window.dispatchEvent(event)
+    else target.dispatchEvent(event)
+    await tick()
+    expect(props.display_mode).toBe(`structure+scatter`)
+    expect(changed).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+    expect(
+      viewer.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`style`),
+    ).not.toContain(`transition: none`)
   })
 
   const payload = (step_idx: number, step: number) => ({
@@ -1187,26 +1283,26 @@ describe(`events`, () => {
     expect(document.querySelector(`.trajectory > .sequence-control-bar`)).toBeNull()
   })
 
-  test(`Escape closes the open menu and leaves parent-owned fullscreen alone`, async () => {
-    mock_fullscreen()
-    const target = mount_trajectory(default_props())
-    await tick()
-    // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
-    await target.requestFullscreen()
-    const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
-    const toggle = doc_query<HTMLButtonElement>(`${CONTROLS} .analysis-button`)
-    toggle.click()
-    await tick()
-    expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+  test.each([`analysis-button`, `view-mode-button`])(
+    `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,
+    async (button_class) => {
+      mock_fullscreen()
+      const target = mount_trajectory(default_props())
+      await tick()
+      // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
+      await target.requestFullscreen()
+      const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
+      const toggle = doc_query<HTMLButtonElement>(`${CONTROLS} .${button_class}`)
+      await fire(toggle)
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
-    doc_query(`.trajectory`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-    )
-    await tick()
-    expect(exit_fullscreen).not.toHaveBeenCalled()
-    expect(document.fullscreenElement).toBe(target)
-    expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
-  })
+      await fire(doc_query(`.trajectory`), keydown(`Escape`))
+      expect(exit_fullscreen).not.toHaveBeenCalled()
+      expect(document.fullscreenElement).toBe(target)
+      expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
+      expect(toggle.style.boxShadow).toBe(``)
+    },
+  )
 })
 
 describe(`bindings`, () => {

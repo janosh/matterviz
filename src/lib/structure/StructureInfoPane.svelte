@@ -289,8 +289,6 @@
         rows.push({ label, key, value })
       }
       for (const [prop_key, prop_value] of Object.entries(site.properties ?? {})) {
-        if ([`orig_site_idx`, `orig_unit_cell_idx`, `completion_image`].includes(prop_key))
-          continue
         const row = format_site_property(prop_key, prop_value)
         if (row) rows.push(row)
       }

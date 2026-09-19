@@ -193,7 +193,14 @@ describe(`make_supercell`, () => {
   )
 
   test(`preserves site properties and updates labels`, () => {
-    const supercell = make_supercell(sample_structure, [2, 1, 1])
+    const source = structuredClone(sample_structure)
+    for (const site of source.sites)
+      site.properties = { orig_site_idx: 7, orig_unit_cell_idx: 9, completion_image: true }
+    const supercell = structuredClone(make_supercell(source, [2, 1, 1]))
+    for (const [idx, site] of supercell.sites.entries()) {
+      expect(site.properties).toEqual(source.sites[idx % source.sites.length].properties)
+      expect(site.provenance).toEqual({ unit_cell_idx: idx % source.sites.length })
+    }
 
     const ba_sites = supercell.sites.filter((site) => site.species[0].element === `Ba`)
     const ti_sites = supercell.sites.filter((site) => site.species[0].element === `Ti`)

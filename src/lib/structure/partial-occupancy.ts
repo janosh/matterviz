@@ -155,18 +155,15 @@ export const compute_slice_geometry = (visible_species: Site[`species`]): SliceG
   // Preserve total angular coverage at one full turn for invalid overfull inputs.
   const occupancy_scale_factor =
     total_visible_occupancy > 1 + OCCUPANCY_EPS ? 1 / total_visible_occupancy : 1
-  const normalized_species = visible_species.map(({ element, occu }) => ({
-    element,
-    occu: occu * occupancy_scale_factor,
-  }))
   // Sum of scaled occupancies equals total * scale (avoids a second O(n) pass)
   const normalized_total_occupancy = total_visible_occupancy * occupancy_scale_factor
   const has_vacancy_gap = normalized_total_occupancy < 1 - OCCUPANCY_EPS
-  const last_visible_species_idx = normalized_species.length - 1
+  const last_visible_species_idx = visible_species.length - 1
   let start_angle = 0
-  return normalized_species.map(({ element, occu }, species_idx) => {
+  return visible_species.map(({ element, occu }, species_idx) => {
+    const occupancy = occu * occupancy_scale_factor
     const start_phi_raw = 2 * Math.PI * start_angle
-    const end_phi_raw = 2 * Math.PI * (start_angle += occu)
+    const end_phi_raw = 2 * Math.PI * (start_angle += occupancy)
     // Keep neighboring wedges from sharing the exact same plane (z-fighting).
     const phi_span_raw = Math.max(0, end_phi_raw - start_phi_raw)
     const max_safe_gap = Math.max(0, phi_span_raw - MIN_PHI_LENGTH)
@@ -179,7 +176,7 @@ export const compute_slice_geometry = (visible_species: Site[`species`]): SliceG
     const end_phi = end_phi_raw - phi_gap / 2
     return {
       element,
-      occupancy: occu,
+      occupancy,
       start_phi,
       end_phi,
       phi_length: Math.max(MIN_PHI_LENGTH, end_phi - start_phi),

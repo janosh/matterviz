@@ -9,6 +9,7 @@
   import type { ElementSymbol } from '$lib/element'
   import { Icon, StatusMessage, Toast } from 'svelte-widgets'
   import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '$lib/utils'
@@ -38,6 +39,7 @@
     StructureHandlerData,
     StructurePane,
     StructureView,
+    Site,
   } from '$lib/structure'
   import {
     DEFAULT_STRUCTURE_VIEWS,
@@ -53,11 +55,13 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import { create_shortcut_flash } from '$lib/effects.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import type { AtomColorField } from './atom-color-field'
+  import type { StructureCutaway } from './cutaway'
   import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
@@ -140,9 +144,11 @@
     color_scheme = $bindable(`Vesta`),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     atom_color_field,
+    atom_tooltip,
     atom_opacity = 1,
     volume_color_field,
     volume_opacity = 0.35,
+    cutaway,
 
     source,
     allow_file_drop = true,
@@ -237,9 +243,11 @@
     dragover?: boolean
     prediction?: StructureToolPrediction
     atom_color_field?: AtomColorField
+    atom_tooltip?: Snippet<[{ site: Site; site_idx: number }]>
     atom_opacity?: number
     volume_color_field?: AtomColorField
     volume_opacity?: number
+    cutaway?: StructureCutaway
     trajectory_position_stream?: TrajectoryPositionStream | null
     trajectory_line_end_frame?: number
     defer_expensive_geometry?: boolean
@@ -662,7 +670,7 @@
     }
   })
 
-  // The symmetry-element and lattice-plane overlays are blanked outside the input frame
+  // Cell-aligned overlays are blanked outside the input frame
   // (StructureViewport), which would otherwise look like the overlay silently vanished: say
   // why whenever an overlay is on and the rendered cell stops being the input cell (cell
   // switch, or overlay enabled while a conventional/primitive cell is shown)
@@ -673,7 +681,10 @@
       scene_props.symmetry_elements_props?.show_kinds,
     )
     const planes_on = (scene_props.lattice_planes?.length ?? 0) > 0
-    const hidden = (symmetry_on || planes_on) && !session.shows_input_frame
+    const thermal_on =
+      atom_color_field || volume_color_field || (cutaway && cutaway.mode !== `off`)
+    const hidden =
+      Boolean(symmetry_on || planes_on || thermal_on) && !session.shows_input_frame
     if (hidden && !overlay_hidden_by_frame)
       untrack(() => show_toast(OVERLAYS_INPUT_FRAME_NOTE))
     overlay_hidden_by_frame = hidden
@@ -786,9 +797,11 @@
     scene_props: {
       ...scene_props,
       atom_color_field,
+      atom_tooltip,
       atom_opacity,
       volume_color_field,
       volume_opacity,
+      cutaway,
       render_token,
       on_rendered,
       show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),
@@ -870,20 +883,28 @@
   })
 
   // === keyboard ===
+  const shortcut_flash = create_shortcut_flash()
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
     if (active_tool_view) return false
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented) return false
-    const is_input_focused = is_editable_event_target(event.target)
-    // Escape leaves add-atom mode even from its element input
-    if (event.key === `Escape` && measure_mode === `edit-atoms` && session.add_atom_mode) {
-      session.add_atom_mode = false
+    if (event.defaultPrevented || is_editable_event_target(event.target)) return false
+    const editing_bonds = measure_mode === `edit-bonds`
+    const editing_atoms = measure_mode === `edit-atoms`
+    // Escape unwinds fields, selection, panes, then edit mode, without shortcut flashes.
+    if (event.key === `Escape`) {
+      if (editing_atoms && session.add_atom_mode) session.add_atom_mode = false
+      else if (editing_atoms && session.change_element_mode)
+        session.change_element_mode = false
+      else if ((editing_bonds || editing_atoms) && selected_sites.length > 0)
+        session.clear_selection()
+      else if (active_pane !== null) active_pane = null
+      else if (editing_bonds || editing_atoms) measure_mode = `distance`
+      else return false
       return true
     }
-    if (is_input_focused) return false
     const key = event.key.toLowerCase()
     const has_modifier = event.ctrlKey || event.metaKey
     const plain = !has_modifier && !event.altKey
@@ -891,8 +912,6 @@
     const plain_press = plain && !event.repeat
     const is_undo = has_modifier && key === `z` && !event.shiftKey
     const is_redo = has_modifier && (key === `y` || (key === `z` && event.shiftKey))
-    const editing_bonds = measure_mode === `edit-bonds`
-    const editing_atoms = measure_mode === `edit-atoms`
 
     if ((editing_bonds || editing_atoms) && (is_undo || is_redo)) {
       const [step, history, what] = editing_bonds
@@ -905,39 +924,33 @@
       if (!step()) return false
       const left = (is_undo ? history.undo_stack : history.redo_stack).length
       show_toast(`${is_undo ? `Undo` : `Redo`}${what} (${left} left)`)
+      shortcut_flash.show(is_undo ? `undo` : `redo`)
       return true
     }
     if (editing_bonds && plain && (key === `a` || key === `d`)) {
-      bond_edit_mode = key === `a` ? `add` : `delete`
+      const next_mode = key === `a` ? `add` : `delete`
+      if (bond_edit_mode !== next_mode) shortcut_flash.show(`bond-${next_mode}`)
+      bond_edit_mode = next_mode
       return true
     }
     if (editing_atoms) {
       if (event.key === `Delete` || event.key === `Backspace`) return session.delete_selected()
       if (key === `a` && plain_press) {
         session.add_atom_mode = !session.add_atom_mode
+        shortcut_flash.show(`measure`)
         return true
       }
       if (key === `e` && plain_press && selected_sites.length > 0) {
         session.change_element_mode = !session.change_element_mode
+        shortcut_flash.show(`measure`)
         return true
       }
       if (key === `d` && has_modifier) return session.duplicate_selected()
-      if (event.key === `Escape` && session.change_element_mode) {
-        session.change_element_mode = false
-        return true
-      }
-    }
-    if (
-      (editing_bonds || editing_atoms) &&
-      event.key === `Escape` &&
-      selected_sites.length > 0
-    ) {
-      session.clear_selection()
-      return true
     }
     // Plain `r` (Cmd/Ctrl+R is browser reload; Shift+R left free)
     if (key === `r` && plain && !event.shiftKey && reset_camera_available) {
       session.reset_all_cameras()
+      shortcut_flash.show(`layout`)
       return true
     }
     // View toggles are plain letters everywhere; typing is already excluded by the editable
@@ -945,6 +958,7 @@
     // viewers. Chords stay the browser's and the host's.
     if (key === `i` && plain_press && display_mode === `structure` && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
+      shortcut_flash.show(`info`)
       return true
     }
     if (
@@ -955,14 +969,7 @@
       (multi_view_available || multi_view)
     ) {
       multi_view = !multi_view
-      return true
-    }
-    if (event.key === `Escape`) {
-      // Close panes first, then leave edit modes
-      if (active_pane !== null) active_pane = null
-      else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
-        measure_mode = `distance`
-      } else return false
+      shortcut_flash.show(`layout`)
       return true
     }
     return false
@@ -1013,8 +1020,7 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
-  {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
-  {#if notice_message}<StatusMessage bind:message={notice_message} dismissible />{/if}
+  <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
     <div style:display={active_tool_view ? `none` : `contents`}>
       <structure_host_tool.component
@@ -1066,6 +1072,7 @@
             bind:open={view_layout_menu_open}
             label="View layout: {current_layout.label}"
             class="view-layout-dropdown"
+            button_style={shortcut_flash.style(`layout`)}
           >
             {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
             {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
@@ -1102,7 +1109,7 @@
         {/if}
 
         {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
-          <StructureEditToolbar {session} />
+          <StructureEditToolbar {session} shortcut_style={shortcut_flash.style} />
         {/if}
 
         {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
@@ -1116,6 +1123,7 @@
             bind:selected_sites
             {sym_data}
             wyckoff_positions={session.wyckoff_rows}
+            toggle_props={{ style: shortcut_flash.style(`info`) }}
             {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
@@ -1306,6 +1314,7 @@
       <p class="warn">No structure provided</p>
     {/if}
   {/if}
+  <ViewerError bind:message={error_msg} dismissible />
 </div>
 
 <style>
@@ -1329,6 +1338,17 @@
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
+  }
+  .structure > :global(.viewer-error) {
+    z-index: var(--z-index-overlay-controls, 100000000);
+  }
+  .structure > :global(.import-notice) {
+    position: absolute;
+    bottom: 0.5em;
+    inset-inline: 0.5em;
+    z-index: var(--z-index-viewer-tooltip, 1000);
+    padding: 0.5em 1em;
+    overflow-wrap: anywhere;
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));

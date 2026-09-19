@@ -54,6 +54,7 @@
     <button
       type="button"
       onclick={playback.previous}
+      style={playback.shortcut_flash.style(`previous`)}
       disabled={index === 0 || (playback.is_playing && disable_step_while_playing)}
       title={previous_title ?? `Previous ${item_name}`}
       aria-label={`Previous ${item_name}`}
@@ -63,6 +64,7 @@
     <button
       type="button"
       onclick={playback.toggle}
+      style={playback.shortcut_flash.style(`play`)}
       disabled={count <= 1}
       title={play_title ?? (playback.is_playing ? `Pause` : `Play`)}
       aria-label={playback.is_playing ? `Pause` : `Play`}
@@ -73,6 +75,7 @@
     <button
       type="button"
       onclick={playback.next}
+      style={playback.shortcut_flash.style(`next`)}
       disabled={index === count - 1 || (playback.is_playing && disable_step_while_playing)}
       title={next_title ?? `Next ${item_name}`}
       aria-label={`Next ${item_name}`}
@@ -95,6 +98,7 @@
       onchange={({ currentTarget }) =>
         queueMicrotask(() => (currentTarget.value = String(index)))}
       class="step-input"
+      style={playback.shortcut_flash.style(`step`)}
       title={`Enter ${item_name} number to jump to`}
       aria-label={`${item_name} input`}
       {@attach tooltip()}
@@ -149,6 +153,7 @@
       max={playback.fps_limits[1]}
       step={playback.fps_step}
       value={playback.fps}
+      style={playback.shortcut_flash.style(`fps`)}
       oninput={(event) => {
         const value = event.currentTarget.valueAsNumber
         if (Number.isFinite(value)) playback.fps = value

@@ -633,6 +633,7 @@ describe(`spatial kinetic hotspots`, () => {
     )
   })
 
+  // Keep the million-atom boundary under CI contention; throughput has separate perf tests.
   it(`opens a million-atom TorchSim file through the first result with a bounded preview`, async () => {
     // Cross the old 8 MiB whole-species/mass ceiling as well as one million positions.
     const n_atoms = 1_050_000
@@ -707,5 +708,5 @@ describe(`spatial kinetic hotspots`, () => {
     console.info(
       `Million-atom HDF5 open-to-result: ${Math.round(performance.now() - started)} ms; analysis buffer reservation ${result.reserved_buffer_bytes} bytes`,
     )
-  })
+  }, 30_000)
 })

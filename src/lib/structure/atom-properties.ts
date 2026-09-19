@@ -1,5 +1,5 @@
 import { available_site_vector_keys, numeric_sites } from './site'
-import { vector_reader } from './vectors'
+import { try_parse_vec3, vector_reader } from './vectors'
 // Utility functions for computing atom properties and applying color scales
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
@@ -232,21 +232,14 @@ export function get_selective_dynamics_colors(
   return { colors, values: categories, unique_values }
 }
 
-// Bookkeeping properties the viewer attaches to sites itself (supercell / periodic-image
-// provenance). They are numeric but carry no physics, so they stay out of the picker.
-const INTERNAL_SITE_PROPS = new Set([`orig_site_idx`, `orig_unit_cell_idx`])
-
 // Read one site property as a color-coding scalar: numbers pass through, vec3s (force,
 // velocity, ...) contribute their magnitude. null = this site has nothing colorable under
 // that key (absent, non-numeric, or non-finite).
 function site_property_scalar(site: Site, property_key: string): number | null {
   const value = site.properties?.[property_key]
   if (typeof value === `number`) return Number.isFinite(value) ? value : null
-  const is_vec3 =
-    Array.isArray(value) &&
-    value.length === 3 &&
-    value.every((comp) => typeof comp === `number` && Number.isFinite(comp))
-  return is_vec3 ? Math.hypot(value[0], value[1], value[2]) : null
+  const vector = try_parse_vec3(value)
+  return vector ? Math.hypot(...vector) : null
 }
 
 // Loaded finite numbers/vec3s and source-advertised channels, sorted for a stable picker.
@@ -257,17 +250,15 @@ export function get_colorable_property_keys(
   const keys = new Set(structure ? available_site_vector_keys.get(structure) : [])
   const columns = structure && numeric_sites.get(structure)
   if (columns) {
-    for (const key of columns.property_keys()) if (!INTERNAL_SITE_PROPS.has(key)) keys.add(key)
+    for (const key of columns.property_keys()) keys.add(key)
   } else
     for (const site of structure?.sites ?? []) {
       for (const key of Object.keys(site.properties ?? {})) {
-        if (INTERNAL_SITE_PROPS.has(key) || keys.has(key)) continue
+        if (keys.has(key)) continue
         if (site_property_scalar(site, key) !== null) keys.add(key)
       }
     }
-  return [...keys]
-    .filter((key) => !INTERNAL_SITE_PROPS.has(key))
-    .toSorted((key_a, key_b) => key_a.localeCompare(key_b))
+  return [...keys].toSorted((key_a, key_b) => key_a.localeCompare(key_b))
 }
 
 const configs_equal = (first: AtomColorConfig, second: AtomColorConfig): boolean =>
@@ -431,8 +422,8 @@ export type AtomColorSources = {
   // through its supercell/image provenance. Defaults to the displayed structure itself.
   base?: AnyStructure
   // Index into `base` of a displayed site. Defaults to following both provenance properties
-  // (orig_unit_cell_idx, then orig_site_idx); a caller whose input structure already carries
-  // orig_unit_cell_idx from a supercell built elsewhere must not follow it (see
+  // (unit_cell_idx, then image_of); a caller whose input structure already carries
+  // unit_cell_idx from a supercell built elsewhere must not follow it (see
   // StructureSession.to_base_site_idx).
   to_base_idx?: (site: Site, site_idx: number) => number
   bonding_strategy?: BondingStrategy

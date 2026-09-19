@@ -208,7 +208,7 @@ describe(`numeric frames`, () => {
     if (!columns) throw new Error(`Expected numeric display columns`)
     const materialize = vi.spyOn(columns, `materialize`)
     expect(get_colorable_property_keys(structure)).toEqual(
-      count ? [`charge`, `magmom`, `selective_dynamics`] : [],
+      count ? [`charge`, `magmom`, `orig_site_idx`, `selective_dynamics`] : [],
     )
     expect(get_structure_vector_keys(structure)).toEqual(count ? [`magmom`] : [])
     expect(structure_has_selective_dynamics(structure)).toBe(count > 0)
@@ -787,7 +787,10 @@ describe(`worker-served run lifecycle`, () => {
         frame.structure.properties = {
           bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
         }
-        return records ? encode_frame(materialize_frame(frame)) : frame
+        if (!records) return frame
+        const materialized = materialize_frame(frame)
+        materialized.structure.sites[2].provenance = { image_of: 0, unit_cell_idx: 0 }
+        return encode_frame(materialized)
       })
       const served = sync_run({
         label: `prepared MD`,
@@ -862,6 +865,7 @@ describe(`worker-served run lifecycle`, () => {
     },
     { properties: { force: Object.assign([1, 2, 3], { unit: `eV/A` }) } },
     { properties: { empty: undefined } },
+    { provenance: { image_of: 0, unit_cell_idx: 0, completion: true } },
     { magnetic_order: `up` },
   ])(`preserves nonstandard atom metadata %j`, async (metadata) => {
     const frame = make_trajectory_frame(0, 1)

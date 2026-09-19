@@ -9,7 +9,7 @@
     Orientation,
   } from '$lib/plot'
   // Playback and acquisition share one viewer; only runs opened here are disposed here.
-  import { create_flash } from '$lib/effects.svelte'
+  import { create_flash, create_shortcut_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
@@ -48,6 +48,7 @@
   import type { StructurePane, StructureOptions } from '$lib/structure'
   import { applies_to_structure } from '$lib/structure/settings'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
+  import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
   import { is_vector_key } from '$lib/structure/vectors'
   import type { FrameChannels } from './frame'
   import Structure from '$lib/structure/Structure.svelte'
@@ -64,6 +65,8 @@
     hotspot_colors,
     hotspot_field_geometry,
     hotspot_cloud_colors,
+    hotspot_probe,
+    type HotspotScale,
     DEFAULT_HOTSPOT_CLOUD,
   } from './hotspot-colors'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
@@ -605,6 +608,11 @@
   let hotspot_threshold = $state(1.25)
   let show_heatmap = $state(true)
   let hotspot_cloud = $state({ ...DEFAULT_HOTSPOT_CLOUD })
+  let hotspot_numeric_scale = $state<HotspotScale>()
+  const hotspot_scale = $derived(
+    hotspot_numeric_scale?.metric === hotspot_metric ? hotspot_numeric_scale : undefined,
+  )
+  let hotspot_cutaway = $state({ ...DEFAULT_CUTAWAY })
   const hotspot_values = $derived(
     hotspot_result
       ? hotspot_display_values(hotspot_result, hotspot_metric, hotspot_min_atoms)
@@ -615,17 +623,21 @@
       ? hotspot_field_geometry(hotspot_result, session.scene_frame.frame)
       : undefined,
   )
-  const heatmap_colors = $derived(hotspot_values ? hotspot_colors(hotspot_values) : undefined)
+  const heatmap_colors = $derived(
+    hotspot_values && hotspot_scale
+      ? hotspot_colors(hotspot_values, hotspot_scale)
+      : undefined,
+  )
   const atom_color_field = $derived(
     show_heatmap && field_geometry && heatmap_colors
       ? { ...field_geometry, colors: heatmap_colors }
       : undefined,
   )
   const cloud_colors = $derived(
-    hotspot_cloud.visible && hotspot_values
+    hotspot_cloud.visible && hotspot_values && hotspot_scale
       ? hotspot_cloud_colors(
           hotspot_values,
-          hotspot_threshold,
+          hotspot_scale,
           hotspot_cloud.base_color,
           hotspot_cloud.hot_color,
         )
@@ -633,6 +645,11 @@
   )
   const volume_color_field = $derived(
     field_geometry && cloud_colors ? { ...field_geometry, colors: cloud_colors } : undefined,
+  )
+  const cutaway = $derived(
+    field_geometry && hotspot_cutaway.mode !== `off`
+      ? { ...hotspot_cutaway, cartesian_to_fractional: field_geometry.cartesian_to_fractional }
+      : undefined,
   )
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)
@@ -958,6 +975,13 @@
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
+  const shortcut_flash = create_shortcut_flash<`view`>()
+  function select_display_mode(mode: TrajectoryDisplayMode): void {
+    display_mode = mode
+    on_display_mode_change?.(event_data())
+    view_mode_dropdown_open = false
+  }
+
   // === keyboard ===
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
@@ -978,6 +1002,23 @@
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
+    if (
+      key === `v` &&
+      !event.altKey &&
+      !event.repeat &&
+      !event.isComposing &&
+      plot_series.length > 0 &&
+      wrapper?.contains(wrapper.ownerDocument.activeElement)
+    ) {
+      const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
+      const next =
+        (index + (event.shiftKey ? -1 : 1) + DISPLAY_MODES.length) % DISPLAY_MODES.length
+      select_display_mode(DISPLAY_MODES[next].mode)
+      shortcut_flash.show(`view`)
+      // A mode change may unmount the focused plot/structure; keep subsequent shortcuts here.
+      wrapper.focus({ preventScroll: true })
+      return true
+    }
     // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
     // leaves fullscreen to the browser, which exits on its own and lets the flag follow
     // fullscreenchange — exiting here would steal it from a host that owns it (a slide
@@ -1070,6 +1111,7 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
+  aria-keyshortcuts={plot_series.length > 0 ? `V Shift+V` : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
@@ -1384,6 +1426,8 @@
                   />
                 {/each}
                 <TrajectoryHotspotPane
+                  bind:scale={hotspot_numeric_scale}
+                  bind:cutaway={hotspot_cutaway}
                   bind:cloud={hotspot_cloud}
                   persistent
                   max_width="42em"
@@ -1431,8 +1475,9 @@
           {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`}
+              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
               class="view-mode-dropdown-wrapper"
+              button_style={shortcut_flash.style(`view`)}
             >
               {#snippet button()}
                 <Icon icon={current_display_mode.icon} />
@@ -1440,11 +1485,7 @@
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
                   class={['view-mode-option', { selected: display_mode === option.mode }]}
-                  onclick={() => {
-                    display_mode = option.mode
-                    on_display_mode_change?.(event_data())
-                    view_mode_dropdown_open = false
-                  }}
+                  onclick={() => select_display_mode(option.mode)}
                 >
                   <Icon icon={option.icon} />
                   <span>{option.label}</span>
@@ -1497,6 +1538,7 @@
           bind:atom_color_config
           {atom_color_field}
           {volume_color_field}
+          {cutaway}
           volume_opacity={hotspot_cloud.opacity}
           atom_opacity={volume_color_field && hotspot_cloud.opacity > 0
             ? hotspot_cloud.atom_opacity
@@ -1520,7 +1562,7 @@
           bind:active_pane={
             () => (active_pane === `controls` ? `controls` : structure_pane),
             (pane) => {
-              // Both camera buttons plan the same flight, synchronized to MD playback.
+              // Both export panes plan the same flight, synchronized to MD playback.
               if (pane === `flight`) {
                 active_pane = `flight`
                 structure_pane = null
@@ -1531,7 +1573,52 @@
             }
           }
           bind:hidden_elements
-        />
+        >
+          {#snippet atom_tooltip({ site, site_idx })}
+            {@render structure_props.atom_tooltip?.({ site, site_idx })}
+            {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
+              {@const probe = hotspot_probe(
+                hotspot_result,
+                hotspot_values,
+                field_geometry,
+                site.xyz,
+              )}
+              <div
+                style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
+              >
+                {#if probe}
+                  <div>
+                    Bin-average {hotspot_metric === `energy`
+                      ? `kinetic energy`
+                      : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
+                    <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
+                  </div>
+                  <div>
+                    {Number.isFinite(probe.ratio)
+                      ? `${format_num(probe.ratio, `.3~g`)}× mean`
+                      : `Ratio to mean unavailable (zero mean)`}
+                  </div>
+                  <div>
+                    {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
+                    frames
+                  </div>
+                {:else}
+                  <div>
+                    Bin-average heat unavailable (outside grid, missing or underpopulated bin)
+                  </div>
+                {/if}
+                <div>
+                  Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
+                  · {hotspot_result.weighting} weighting
+                </div>
+                <div>
+                  Viewing frame {session.scene_frame?.idx} · {hotspot_result.options
+                    .coordinates ?? `device`} grid
+                </div>
+              </div>
+            {/if}
+          {/snippet}
+        </Structure>
       {/if}
 
       {#if show_structure && show_plot}

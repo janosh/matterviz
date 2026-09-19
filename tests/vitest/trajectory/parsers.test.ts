@@ -6,6 +6,7 @@ import { materialize_frame_result } from '$lib/trajectory/frame'
 // open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
 import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
+import { get_element_counts } from '$lib/structure/density'
 import { parse_xyz } from '$lib/structure/parse'
 import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
 import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory'
@@ -1185,6 +1186,9 @@ describe(`XYZ`, () => {
     // no second copy under the declared name
     [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true] }],
     [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false] }],
+    // Source metadata must not masquerade as viewer-generated image/supercell provenance.
+    [`orig_site_idx:I:1:orig_unit_cell_idx:I:1:completion_image:L:1`, `H 0 0 0 7 2 T`,
+      { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }],
     // A column too short on the line is dropped for that atom rather than stored as NaN
     [`charge:R:1:extra:R:1`, `H 0 0 0 0.5`, { charge: 0.5 }],
     // Non-finite numeric tokens are dropped the same way
@@ -1193,8 +1197,11 @@ describe(`XYZ`, () => {
     [`charge:R:1`, `H 1.0D3 0 0 -2.5d-1`, { charge: -0.25 }],
   ])(`extXYZ column handling for Properties=...:%s`, async (tail, atom_line, expected) => {
     const frame = xyz_frame([atom_line], `Properties=species:S:1:pos:R:3:${tail}`)
-    const [site] = (await open(`${frame}\n${frame}`, `test.extxyz`)).preview.structure.sites
+    const { structure } = (await open(`${frame}\n${frame}`, `test.extxyz`)).preview
+    const [site] = structure.sites
     expect(site.properties).toEqual(expected)
+    expect(site.provenance).toBeUndefined()
+    expect(get_element_counts(structure)).toEqual({ H: 1 })
     if (atom_line.includes(`1.0D3`)) expect(site.xyz).toEqual([1000, 0, 0])
   })
 

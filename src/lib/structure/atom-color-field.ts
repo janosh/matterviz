@@ -98,17 +98,23 @@ export class AtomFieldMaterial {
 // keeps those uncommon meshes consistent without rebuilding the large instance buffers.
 const field_coords = new Vector3()
 const field_color = new Color()
-export function atom_field_color(field: AtomColorField, position: Vec3, base?: string): Color {
+export function atom_field_bin(field: Omit<AtomColorField, `colors`>, position: Vec3): number {
   field_coords.fromArray(position).applyMatrix4(field.cartesian_to_fractional)
   let bin = 0
   for (let axis = 0; axis < 3; axis++) {
     let fraction = field_coords.getComponent(axis)
     if (field.pbc[axis]) fraction -= Math.floor(fraction)
-    if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) return new Color(base)
+    if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) return -1
     bin =
       bin * field.dims[axis] +
       Math.min(field.dims[axis] - 1, Math.floor(fraction * field.dims[axis]))
   }
+  return bin
+}
+
+export function atom_field_color(field: AtomColorField, position: Vec3, base?: string): Color {
+  const bin = atom_field_bin(field, position)
+  if (bin < 0) return new Color(base)
   const offset = bin * 4
   return new Color(base).lerp(
     field_color.fromArray(field.colors, offset),

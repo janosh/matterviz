@@ -229,9 +229,9 @@ export function make_supercell(
 
   // Identical for every image of a base site, so build once and share the reference —
   // supercell sites already share their base site's `species` array the same way.
-  const site_properties = sites.map((site, site_idx) => ({
-    ...site.properties,
-    orig_unit_cell_idx: site_idx,
+  const site_metadata = sites.map((site, site_idx) => ({
+    properties: { ...site.properties },
+    provenance: { ...site.provenance, unit_cell_idx: site_idx },
   }))
 
   const needs_label_separator = supercell_scaling.some((scale) => scale > 10)
@@ -281,7 +281,7 @@ export function make_supercell(
               wrapped_frac[2][depth_index * n_sites + site_idx],
             ],
             label: `${site.label}${label_suffix}`,
-            properties: site_properties[site_idx],
+            ...site_metadata[site_idx],
           }
         }
       }

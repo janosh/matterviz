@@ -12,10 +12,8 @@ const topology_counts = new WeakMap<object, Partial<Record<ElementSymbol, number
 
 const count_elements = (structure: AnyStructure): Partial<Record<ElementSymbol, number>> => {
   const columns = numeric_sites.get(structure)
-  // Image provenance belongs to the frame, not its shared atom identities.
-  const topology = columns?.scalar_columns?.orig_site_idx
-    ? undefined
-    : snapshot_topologies.get(structure)
+  // Generated copies carry Site.provenance and therefore use the record-backed path.
+  const topology = snapshot_topologies.get(structure)
   const cached = topology && topology_counts.get(topology)
   if (cached) return cached
   const elements: Partial<Record<ElementSymbol, number>> = {}
@@ -24,7 +22,7 @@ const count_elements = (structure: AnyStructure): Partial<Record<ElementSymbol, 
       const element = element_from_atomic_number(columns.numbers[idx])
       if (!element)
         throw new Error(`Invalid atomic number ${columns.numbers[idx]} at site ${idx}`)
-      if (!columns.is_image(idx)) elements[element] = (elements[element] ?? 0) + 1
+      elements[element] = (elements[element] ?? 0) + 1
     }
     if (topology) topology_counts.set(topology, elements)
     return elements
@@ -100,7 +98,7 @@ export function characteristic_atom_spacing(structure: AnyStructure): number {
   const numeric_coords: Vec3 = [0, 0, 0]
   for (let idx = 0; idx < count; idx++) {
     const site = columns ? undefined : structure.sites[idx]
-    if (columns ? columns.is_image(idx) : is_image_site(site)) continue
+    if (is_image_site(site)) continue
     n_real += 1
     if (columns) {
       const offset = idx * columns.stride + (lattice ? 3 : 0)

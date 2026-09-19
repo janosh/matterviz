@@ -19,6 +19,12 @@
   import { atom_field_color, type AtomColorField } from './atom-color-field'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
   import {
+    cutaway_contains,
+    enable_cutaway_picking,
+    StructureCutawayGroup,
+    type StructureCutaway,
+  } from './cutaway'
+  import {
     bind_renderer,
     brighten_hex,
     clear_pan_offset,
@@ -94,6 +100,7 @@
   } from 'three/webgpu'
   import type { Mesh, Object3D, WebGPURenderer } from 'three/webgpu'
   import Bond from './Bond.svelte'
+  import { raycast_bond } from './bond-mesh'
   import {
     write_bond_transform,
     bond_neighbors,
@@ -232,6 +239,7 @@
     symmetry_elements_props = {},
     symmetry_declutter = true,
     atom_label,
+    atom_tooltip,
     camera_is_moving = $bindable(false),
     width = 0,
     height = 0,
@@ -262,6 +270,7 @@
     atom_color_field,
     volume_color_field,
     volume_opacity = 0.35,
+    cutaway,
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
@@ -364,6 +373,7 @@
     // configured appearance.
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
+    atom_tooltip?: Snippet<[{ site: Site; site_idx: number }]>
     site_label_size?: number
     site_label_offset?: Vec3
     site_label_bg_color?: string
@@ -401,6 +411,7 @@
     atom_opacity?: number
     volume_color_field?: AtomColorField
     volume_opacity?: number
+    cutaway?: StructureCutaway
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -728,7 +739,7 @@
 
     const image_site_idx = structure.sites.findIndex(
       (candidate_site) =>
-        candidate_site.properties?.orig_site_idx === site_idx &&
+        candidate_site.provenance?.image_of === site_idx &&
         matches_world_position(candidate_site),
     )
     return image_site_idx === -1 ? site_idx : image_site_idx
@@ -1005,7 +1016,7 @@
     if (measure_mode === `edit-atoms`) {
       // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
       if (!interactive) return
-      // Block image atoms (detected by orig_site_idx property from PBC)
+      // Block viewer-generated image atoms.
       if (is_image_site(get_site(structure, site_index))) return
 
       const is_selected = selected_sites.includes(site_index)
@@ -1301,7 +1312,6 @@
     ReturnType<typeof compute_slice_geometry>[number] & {
       site_idx: number
       species: Site[`species`]
-      has_partial_occupancy: boolean
       is_image_atom: boolean
     }
   type AtomGroups = {
@@ -1354,14 +1364,12 @@
       const topology = snapshot_topologies.get(structure)
       let updated: RenderAtom[] | null
       // Row identity permits coordinate reuse only for complete, original-atom groups.
-      // Image/completion flags can change independently in per-frame scalar columns.
+      // Generated copies carry provenance and use record-backed frames.
       if (
         columns &&
         topology &&
         topology === previous_atoms.topology &&
-        previous_atoms.groups.base.length === columns.length &&
-        !columns.scalar_columns?.orig_site_idx &&
-        !columns.scalar_columns?.completion_image
+        previous_atoms.groups.base.length === columns.length
       ) {
         updated = update_atom_coordinates(
           previous_atoms.groups.base,
@@ -1396,7 +1404,7 @@
       // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at
       // cell faces. When neither renders (polyhedra toggled off, symmetry declutter,
       // …) they'd float disconnected outside the cell — hide them.
-      if (site.properties?.completion_image && hide_completion_images) continue
+      if (site.provenance?.completion && hide_completion_images) continue
 
       // All radii scale uniformly with atom_radius for consistent slider behavior
       const radius = site_base_radius(site, site_idx, radius_opts) * radius_scale
@@ -1416,12 +1424,11 @@
           position: [...site.xyz] as Vec3,
           radius,
           color: site_property_color ?? element_colors?.[slice_data.element],
-          has_partial_occupancy: slice_data.occupancy < 1,
           is_image_atom,
         }
         // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
         if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
-        if (atom.has_partial_occupancy) groups.partial.push(atom)
+        if (atom.occupancy < 1) groups.partial.push(atom)
         else (is_image_atom ? groups.image : groups.base).push(atom)
       }
     }
@@ -1714,7 +1721,7 @@
   let partial_hit_targets = $derived(
     interactive && atom_groups.partial.length > 0
       ? [...atom_groups.first_by_site.values()]
-          .filter((atom) => atom.has_partial_occupancy)
+          .filter((atom) => atom.occupancy < 1)
           .map((atom) => ({ ...site_anchor(atom), is_image_atom: atom.is_image_atom }))
       : [],
   )
@@ -1865,9 +1872,19 @@
   // One label anchor per visible site
   let label_entries = $derived(
     show_site_labels || show_site_indices
-      ? [...atom_groups.first_by_site.values()].map(site_anchor)
+      ? [...atom_groups.first_by_site.values()]
+          .filter((atom) => cutaway_contains(cutaway, atom.position))
+          .map(site_anchor)
       : [],
   )
+
+  const cutaway_group = new StructureCutawayGroup()
+  $effect(() => {
+    cutaway_group.set_cutaway(cutaway)
+    // Pointer position has not moved when a slider hides the currently hovered atom.
+    if (cutaway && cutaway.mode !== `off`) hovered_idx = null
+    threlte.invalidate()
+  })
 
   // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
   let hovered_bond_summary = $derived.by((): string | null => {
@@ -1957,7 +1974,7 @@
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
   <T.Group {rotation}>
-    <T.Group position={neg_rotation_target}>
+    <T is={cutaway_group} position={neg_rotation_target}>
       {#if show_atoms}
         <!-- Instanced rendering for full-occupancy atoms: one InstancedMesh for
           base atoms and one for PBC image atoms (which ghost + lose interaction
@@ -1981,39 +1998,40 @@
         {#each atom_groups.partial as atom (atom.site_idx + atom.element + atom.occupancy)}
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
           {@const opacity = atom_opacity * (partial_edit_image ? 0.5 : 1)}
-          <!-- Visual only: pointer interaction handled by the invisible full-sphere
-            hit targets below (wedge meshes leave gaps at the poles). -->
-          <T.Group position={atom.position} scale={atom.radius}>
+          <!-- Clipping can expose a cap behind the rejected sphere-front hit.
+            Keep the sphere target below for pole-safe hover, and pick retained surfaces too. -->
+          <T.Group
+            position={atom.position}
+            scale={atom.radius}
+            {...cutaway && cutaway.mode !== `off`
+              ? atom_pointer_props(atom.site_idx, partial_edit_image)
+              : {}}
+          >
             {@const partial_base = partial_edit_image ? desaturate(atom.color) : atom.color}
             {@const partial_color = atom_color_field
               ? atom_field_color(atom_color_field, atom.position, partial_base)
               : partial_base}
-            <T.Mesh>
+            {@const material_props = {
+              color: partial_color,
+              opacity,
+              transparent: opacity < 1,
+              visible: opacity > 0,
+            }}
+            <T.Mesh oncreate={enable_cutaway_picking}>
               <T.SphereGeometry
                 args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
               />
-              <T.MeshStandardMaterial
-                color={partial_color}
-                {opacity}
-                transparent={opacity < 1}
-                visible={opacity > 0}
-              />
+              <T.MeshStandardMaterial {...material_props} />
             </T.Mesh>
 
             <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
             {#each [[atom.render_start_cap, atom.start_phi], [atom.render_end_cap, atom.end_phi]] as const as [render_cap, phi], cap_idx (cap_idx)}
               {#if render_cap}
-                <T.Mesh rotation={[0, phi, 0]}>
+                <T.Mesh rotation={[0, phi, 0]} oncreate={enable_cutaway_picking}>
                   <T.CircleGeometry
                     args={[0.5, sphere_segments, CAP_ARC_START, CAP_ARC_LENGTH]}
                   />
-                  <T.MeshStandardMaterial
-                    color={partial_color}
-                    side={2}
-                    {opacity}
-                    transparent={opacity < 1}
-                    visible={opacity > 0}
-                  />
+                  <T.MeshStandardMaterial {...material_props} side={2} />
                 </T.Mesh>
               {/if}
             {/each}
@@ -2127,7 +2145,12 @@
             material={hit_material}
             visible={false}
             matrixAutoUpdate={false}
-            oncreate={(ref) => apply_bond_transform(ref, bond, bond_hit_radius)}
+            oncreate={(ref) => {
+              apply_bond_transform(ref, bond, bond_hit_radius)
+              enable_cutaway_picking(ref, (raycaster, hits) =>
+                raycast_bond(ref, bond, bond_thickness, raycaster, hits),
+              )
+            }}
             onpointerdown={(event: BondPointerEvent) => {
               if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
@@ -2176,7 +2199,8 @@
         {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
           <T.Mesh
             geometry={atom_hit_geometry}
-            oncreate={enable_atom_sphere_picking}
+            oncreate={(ref) =>
+              enable_atom_sphere_picking(ref, 1 / EDITABLE_ATOM_HIT_RADIUS_SCALE)}
             material={hit_material}
             visible={false}
             position={atom_hit.position}
@@ -2282,6 +2306,7 @@
           {#if hovered_bond_summary}
             <div class="coordinates">Bonds: {hovered_bond_summary}</div>
           {/if}
+          {@render atom_tooltip?.({ site: hovered_site, site_idx: hovered_idx ?? -1 })}
         </CanvasTooltip>
       {/if}
 
@@ -2390,9 +2415,6 @@
         </T.Mesh>
       {/if}
 
-      {#if volume_color_field}
-        <ColorFieldVolume field={volume_color_field} opacity={volume_opacity} />
-      {/if}
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
       {#if volumetric_data && isosurface_settings}
         <Isosurface
@@ -2520,7 +2542,12 @@
           {/if}
         {/if}
       {/if}
-    </T.Group>
+    </T>
+    {#if volume_color_field}
+      <T.Group position={neg_rotation_target}>
+        <ColorFieldVolume field={volume_color_field} opacity={volume_opacity} {cutaway} />
+      </T.Group>
+    {/if}
   </T.Group>
 </T.Group>
 

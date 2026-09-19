@@ -6,7 +6,7 @@
   import type { FileExportContext } from '$lib/io/file-export.svelte'
   import { plot_color } from '$lib/colors'
   import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-  import { StatusMessage } from 'svelte-widgets'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import { format_value } from '$lib/labels'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { BasePlotProps, ColorBarScale, LegendConfig, PointStyle } from '$lib/plot'
@@ -400,9 +400,7 @@
   {/snippet}
 
   {#snippet body()}
-    {#if placed.error}
-      <StatusMessage message={placed.error} type="error" style="margin: auto 1em" />
-    {/if}
+    <ViewerError message={placed.error} />
     <svg
       bind:this={svg_element}
       role="application"
