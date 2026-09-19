@@ -848,12 +848,14 @@ test.describe(`Trajectory Component`, () => {
         ])
         await expect(pane.locator(`.resolution-buttons .active`)).toHaveText(`1x`)
         await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
+        await expect(trajectory_viewer).toHaveClass(/\bhorizontal\b/)
         const expected_size = await trajectory_viewer
-          .locator(`canvas`)
+          .locator(`.viewport-cell`)
           .first()
-          .evaluate((canvas) => {
-            // The renderer scales fractional CSS dimensions before flooring to whole pixels.
-            const { width, height } = canvas.getBoundingClientRect()
+          .evaluate((viewport) => {
+            // Canvas CSS sizes lag responsive layout until Threlte's next resize update.
+            // Export scales the settled viewport before flooring to whole pixels.
+            const { width, height } = viewport.getBoundingClientRect()
             return {
               width: Math.floor(width * devicePixelRatio * 3),
               height: Math.floor(height * devicePixelRatio * 3),
