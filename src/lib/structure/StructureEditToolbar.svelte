@@ -135,6 +135,11 @@
             maxlength="2"
             placeholder="C"
             style="width: 3em; text-align: center"
+            onkeydown={(event) => {
+              if (event.key !== `Escape` || event.defaultPrevented) return
+              session.add_atom_mode = false
+              event.preventDefault()
+            }}
           />
         </label>
         <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>

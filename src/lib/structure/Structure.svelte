@@ -890,15 +890,12 @@
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented) return false
-    const is_input_focused = is_editable_event_target(event.target)
+    if (event.defaultPrevented || is_editable_event_target(event.target)) return false
     const editing_bonds = measure_mode === `edit-bonds`
     const editing_atoms = measure_mode === `edit-atoms`
     // Escape unwinds fields, selection, panes, then edit mode, without shortcut flashes.
     if (event.key === `Escape`) {
-      // Add-atom mode also closes from its element input; other fields own their keys.
       if (editing_atoms && session.add_atom_mode) session.add_atom_mode = false
-      else if (is_input_focused) return false
       else if (editing_atoms && session.change_element_mode)
         session.change_element_mode = false
       else if ((editing_bonds || editing_atoms) && selected_sites.length > 0)
@@ -908,7 +905,6 @@
       else return false
       return true
     }
-    if (is_input_focused) return false
     const key = event.key.toLowerCase()
     const has_modifier = event.ctrlKey || event.metaKey
     const plain = !has_modifier && !event.altKey
