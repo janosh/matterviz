@@ -798,8 +798,8 @@ describe(`controller and playback`, () => {
     expect(session.current_frame?.step).toBe(20)
   })
 
-  it.each([`abort`, `seek`, `replace`, `dispose`] as const)(
-    `rejects a pending capture on %s`,
+  it.each([`abort`, `seek`, `replace`, `dispose`, `settings`] as const)(
+    `settles a pending capture on %s`,
     async (action) => {
       const { session, host } = make_session({
         run: trajectory_from_frames(frames(3)),
@@ -812,9 +812,13 @@ describe(`controller and playback`, () => {
       if (action === `abort`) controller.abort()
       else if (action === `seek`) session.commit(1)
       else if (action === `replace`) host.run = trajectory_from_frames(frames(3))
+      else if (action === `settings`) host.channels = { vectors: [] }
       else session.dispose()
       flushSync()
-      expect(await capture).toMatchObject({ name: `AbortError` })
+      if (action === `settings`) {
+        expect(session.mark_rendered(session.scene_frame)).toBe(true)
+        expect(await capture).toBeUndefined()
+      } else expect(await capture).toMatchObject({ name: `AbortError` })
     },
   )
 

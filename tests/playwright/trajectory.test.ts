@@ -840,27 +840,13 @@ test.describe(`Trajectory Component`, () => {
             for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(7.5)
           }
         }
-        await expect(pane.locator(`.resolution-buttons button`)).toHaveText([
-          `0.5x`,
-          `1x`,
-          `2x`,
-          `4x`,
-        ])
-        await expect(pane.locator(`.resolution-buttons .active`)).toHaveText(`1x`)
+        await expect(pane.getByRole(`spinbutton`, { name: `Width (px)` })).toHaveValue(`1920`)
+        await expect(pane.getByRole(`spinbutton`, { name: `Height (px)` })).toHaveValue(`1080`)
+        await pane.getByRole(`spinbutton`, { name: `Width (px)` }).fill(`640`)
+        await pane.getByRole(`spinbutton`, { name: `Height (px)` }).fill(`360`)
+        await pane.getByRole(`spinbutton`, { name: `Bitrate (Mbps)` }).fill(`4`)
         await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
-        await expect(trajectory_viewer).toHaveClass(/\bhorizontal\b/)
-        const expected_size = await trajectory_viewer
-          .locator(`.viewport-cell`)
-          .first()
-          .evaluate((viewport) => {
-            // Canvas CSS sizes lag responsive layout until Threlte's next resize update.
-            // Export scales the settled viewport before flooring to whole pixels.
-            const { width, height } = viewport.getBoundingClientRect()
-            return {
-              width: Math.floor(width * devicePixelRatio * 3),
-              height: Math.floor(height * devicePixelRatio * 3),
-            }
-          })
+        const expected_size = { width: 640, height: 360 }
         const export_button = pane.getByRole(`button`, {
           name: `Download ${label}`,
           exact: true,

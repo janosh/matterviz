@@ -4,8 +4,17 @@ import type { FileSaver } from './file-export.svelte'
 import { clamp } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
-import { to_error } from '$lib/utils'
-import { type Camera, type Scene, Vector2, type WebGPURenderer } from 'three/webgpu'
+import { abortable, to_error } from '$lib/utils'
+import {
+  type Camera,
+  type Scene,
+  Vector2,
+  type WebGPURenderer,
+  PerspectiveCamera,
+  OrthographicCamera,
+} from 'three/webgpu'
+import { create_camera_flight_sampler, type CameraFlight } from '$lib/scene/camera-flight'
+import { set_pan_offset } from '$lib/scene/pan'
 
 // Maps a Threlte canvas to its renderer so PNG export can look up the renderer for a
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
@@ -523,7 +532,164 @@ function wait_for_video_tick(signal?: AbortSignal, duration?: number): Promise<v
   })
 }
 
-// Export AV1 video while advancing through the requested trajectory frames.
+// Resolution and frame preparation shared by realtime and offline video sinks.
+export type VideoFrameOptions = {
+  fps?: number
+  total_frames?: number
+  width?: number
+  height?: number
+  background?: string
+  camera_flight?: CameraFlight
+  camera_viewport_height?: number
+  resolution_multiplier?: number
+  on_step?: (step_idx: number, signal?: AbortSignal) => void | Promise<void>
+  on_progress?: (progress: number) => void
+  signal?: AbortSignal
+}
+
+// One bounded-memory frame producer for browser downloads, previews and offline encoding.
+// The sink owns timing: offline sinks encode idx/fps regardless of how long a read takes.
+// The capture canvas is reused, so sinks must consume it before their promise resolves.
+export async function render_video_frames(
+  canvas: HTMLCanvasElement,
+  {
+    fps = 30,
+    total_frames = 100,
+    width,
+    height,
+    background,
+    camera_flight,
+    camera_viewport_height,
+    resolution_multiplier = DEFAULT_VIDEO_RESOLUTION,
+    on_step,
+    on_progress,
+    signal = new AbortController().signal,
+  }: VideoFrameOptions,
+  sink: {
+    start?: (canvas: HTMLCanvasElement) => Promise<void>
+    frame: (canvas: HTMLCanvasElement, idx: number, signal: AbortSignal) => Promise<void>
+    finish?: () => Promise<void>
+  },
+): Promise<void> {
+  signal?.throwIfAborted()
+  if (
+    !Number.isFinite(fps) ||
+    fps <= 0 ||
+    !Number.isSafeInteger(total_frames) ||
+    total_frames < 0
+  )
+    throw new RangeError(`Invalid video timing: ${total_frames} frames at ${fps} fps`)
+  if (
+    (width !== undefined || height !== undefined) &&
+    ![width, height].every((value) => Number.isInteger(value) && Number(value) > 0)
+  )
+    throw new RangeError(`Invalid video dimensions: ${width}×${height}`)
+  if (!Number.isFinite(resolution_multiplier) || resolution_multiplier <= 0)
+    throw new RangeError(`Invalid resolution multiplier: ${resolution_multiplier}`)
+  const sample = camera_flight && create_camera_flight_sampler(camera_flight)
+  const renderer = renderer_registry.get(canvas)
+  if (renderer) await wait_for_renderer(renderer)
+  signal?.throwIfAborted()
+  let restore_renderer: (() => void) | undefined
+  try {
+    const prepare = async (idx: number) => {
+      signal?.throwIfAborted()
+      on_progress?.((idx / Math.max(1, total_frames)) * 100)
+      signal?.throwIfAborted()
+      await abortable(() => on_step?.(idx, signal), signal)
+      await wait_for_video_tick(signal)
+      await wait_for_video_tick(signal)
+    }
+    if (total_frames > 0) await prepare(0)
+    const view = scene_registry.get(canvas)
+    const export_camera =
+      view && (sample || width !== undefined) ? view.camera.clone() : view?.camera
+    if (
+      sample &&
+      !(
+        export_camera instanceof PerspectiveCamera ||
+        export_camera instanceof OrthographicCamera
+      )
+    )
+      throw new Error(`A registered 3D camera is required to render a camera flight`)
+    if (renderer && (width !== undefined || resolution_multiplier !== 1)) {
+      const size = renderer.getSize(new Vector2())
+      const ratio = renderer.getPixelRatio()
+      const output_size =
+        width !== undefined && height !== undefined ? new Vector2(width, height) : size
+      const output_ratio = width !== undefined ? 1 : ratio * resolution_multiplier
+      validate_capture_size(renderer, output_size, output_ratio)
+      restore_renderer = () => renderer.setDrawingBufferSize(size.width, size.height, ratio)
+      renderer.setDrawingBufferSize(output_size.width, output_size.height, output_ratio)
+    }
+    const capture_canvas = document.createElement(`canvas`)
+    capture_canvas.width = width ?? canvas.width
+    capture_canvas.height = height ?? canvas.height
+    const context = capture_canvas.getContext(`2d`)
+    if (!context) throw new Error(`Canvas 2D context not available for video export`)
+    const aspect = capture_canvas.width / capture_canvas.height
+    const capture = (idx: number) => {
+      signal?.throwIfAborted()
+      if (
+        export_camera instanceof PerspectiveCamera ||
+        export_camera instanceof OrthographicCamera
+      ) {
+        const duration = camera_flight?.keyframes.at(-1)?.time ?? 0
+        const pose = sample?.(total_frames <= 1 ? 0 : (duration * idx) / (total_frames - 1))
+        if (pose) {
+          if (
+            export_camera instanceof PerspectiveCamera !==
+            (pose.projection === `perspective`)
+          )
+            throw new Error(`Select ${pose.projection} projection before rendering this movie`)
+          export_camera.position.set(...pose.position)
+          export_camera.quaternion.set(...pose.quaternion)
+          export_camera.zoom = pose.zoom
+          if (export_camera instanceof PerspectiveCamera) export_camera.fov = pose.fov
+          set_pan_offset(
+            export_camera,
+            [pose.pan[0] * capture_canvas.width, pose.pan[1] * capture_canvas.height],
+            capture_canvas.width,
+            capture_canvas.height,
+          )
+        }
+        if (export_camera !== view?.camera) {
+          if (export_camera instanceof PerspectiveCamera) export_camera.aspect = aspect
+          else {
+            const half_height =
+              (camera_viewport_height ?? export_camera.top - export_camera.bottom) / 2
+            const center = (export_camera.left + export_camera.right) / 2
+            export_camera.top = half_height
+            export_camera.bottom = -half_height
+            export_camera.left = center - half_height * aspect
+            export_camera.right = center + half_height * aspect
+          }
+          export_camera.updateProjectionMatrix()
+          export_camera.updateMatrixWorld()
+        }
+      }
+      if (renderer && view && export_camera) renderer.render(view.scene, export_camera)
+      context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
+      if (background) {
+        context.fillStyle = background
+        context.fillRect(0, 0, capture_canvas.width, capture_canvas.height)
+      }
+      context.drawImage(canvas, 0, 0, capture_canvas.width, capture_canvas.height)
+    }
+    if (total_frames > 0) capture(0)
+    await abortable(() => sink.start?.(capture_canvas), signal)
+    for (let idx = 0; idx < total_frames; idx++) {
+      if (idx > 0) await prepare(idx)
+      if (idx > 0) capture(idx)
+      await abortable(() => sink.frame(capture_canvas, idx, signal), signal)
+      signal?.throwIfAborted()
+    }
+    await abortable(() => sink.finish?.(), signal)
+  } finally {
+    restore_renderer?.()
+  }
+}
+
 export async function export_trajectory_video(
   canvas: HTMLCanvasElement | null,
   filename: string,
@@ -531,27 +697,21 @@ export async function export_trajectory_video(
     format = `webm`,
     fps = 30,
     total_frames = 100,
-    on_progress,
-    on_step,
     on_finish,
     on_save,
-    resolution_multiplier = DEFAULT_VIDEO_RESOLUTION,
+    bitrate,
     stop_timeout_ms,
     signal,
-  }: {
+    ...frame_options
+  }: VideoFrameOptions & {
     format?: VideoFormat
-    fps?: number
-    total_frames?: number
-    on_progress?: (progress: number) => void
-    on_step?: (step_idx: number, signal?: AbortSignal) => void | Promise<void>
     // Restore caller-owned state after recording cleanup, before any download.
     on_finish?: () => void | Promise<void>
     // Save the completed video to a caller-selected destination instead of downloading it.
     on_save?: (blob: Blob) => void | Promise<void>
-    resolution_multiplier?: number
+    bitrate?: number
     // Finalization deadline in ms (1–2^31-1). Default: 30s + 1s per estimated MB, capped at 5min.
     stop_timeout_ms?: number
-    signal?: AbortSignal
   } = {},
 ): Promise<void> {
   signal?.throwIfAborted()
@@ -565,114 +725,67 @@ export async function export_trajectory_video(
   if (!is_video_export_supported(format))
     throw new Error(`AV1 recording (${mime_type}) is not supported in this browser`)
 
-  const renderer = renderer_registry.get(canvas)
-  // Recording captures the canvas stream while Threlte drives frames, but resizing the
-  // renderer below touches GPU resources, so make sure the device exists first.
-  if (renderer) await wait_for_renderer(renderer)
-  signal?.throwIfAborted()
-
-  let restore_renderer: (() => void) | undefined
+  if (bitrate !== undefined && (!Number.isFinite(bitrate) || bitrate <= 0))
+    throw new RangeError(`Invalid video bitrate: ${bitrate}`)
   let recorder: MediaRecorder | undefined
   let stream: MediaStream | undefined
+  let recording_start = 0
+  let frame_start = 0
+  let actual_bitrate = 0
   const chunks: Blob[] = []
   const stop_recorder = () => {
     if (recorder && recorder.state !== `inactive`) recorder.stop()
   }
-  // Stop capturing immediately even when a custom frame callback is still settling.
   signal?.addEventListener(`abort`, stop_recorder, { once: true })
-
   try {
-    const prepare_step = async (idx: number): Promise<void> => {
-      signal?.throwIfAborted()
-      on_progress?.((idx / total_frames) * 100)
-      signal?.throwIfAborted()
-      await on_step?.(idx, signal)
-      // Threlte resizes the canvas and updates the scene in its animation loop.
-      await wait_for_video_tick(signal)
-      await wait_for_video_tick(signal)
-    }
-    // Snapshot the mounted dimensions, not the canvas's initial 300 x 150 drawing buffer.
-    if (total_frames > 0) await prepare_step(0)
-    if (resolution_multiplier !== 1 && renderer) {
-      const size = renderer.getSize(new Vector2())
-      const orig_pixel_ratio = renderer.getPixelRatio()
-      const pixel_ratio = orig_pixel_ratio * resolution_multiplier
-      validate_capture_size(renderer, size, pixel_ratio)
-      restore_renderer = () =>
-        renderer.setDrawingBufferSize(size.width, size.height, orig_pixel_ratio)
-      renderer.setDrawingBufferSize(size.width, size.height, pixel_ratio)
-    }
-
-    // Calculate bitrate based on actual video dimensions
-    // (canvas dimensions include device pixel ratio and any resolution_multiplier)
-    const bitrate = estimate_video_bitrate(canvas.width * canvas.height, fps)
-
-    // Record a stable 2D surface: direct WebGPU streams can contain no frames, and restoring
-    // the renderer's resolution must not resize the recording before its encoder finishes.
-    const capture_canvas = document.createElement(`canvas`)
-    capture_canvas.width = canvas.width
-    capture_canvas.height = canvas.height
-    const context = capture_canvas.getContext(`2d`)
-    if (!context) throw new Error(`Canvas 2D context not available for video export`)
-    const copy_frame = (): void => {
-      signal?.throwIfAborted()
-      const view = scene_registry.get(canvas)
-      if (renderer && view) renderer.render(view.scene, view.camera)
-      context.clearRect(0, 0, capture_canvas.width, capture_canvas.height)
-      context.drawImage(canvas, 0, 0)
-    }
-    // A stream captures its initial canvas too; never give it an unpainted first frame.
-    if (total_frames > 0) copy_frame()
-    stream = capture_canvas.captureStream(fps)
-    recorder = new MediaRecorder(stream, {
-      mimeType: mime_type,
-      videoBitsPerSecond: bitrate,
-    })
-
-    recorder.addEventListener(`dataavailable`, (event) => {
-      if (event.data.size > 0) chunks.push(event.data)
-    })
-
-    const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
-      requestFrame?: () => void
-    }
-
-    // Repaint once the stream is listening, then wait for the encoder's first frame. A cold
-    // encoder can otherwise start after a short trajectory has already called stop().
-    await run_recorder_action(recorder, `start`, 5000, signal, () => {
-      if (total_frames > 0) {
-        copy_frame()
-        track.requestFrame?.()
-      }
-    })
-
-    const recording_start = performance.now()
-    const frame_duration = 1000 / fps
-
-    // Advance frames sequentially, allowing rendering time between steps.
-    for (let idx = 0; idx < total_frames; idx++) {
-      const frame_start = performance.now()
-
-      if (idx > 0) {
-        await prepare_step(idx)
-        copy_frame()
-        track.requestFrame?.()
-      }
-
-      // Wait for remaining frame time to maintain consistent FPS
-      const elapsed = performance.now() - frame_start
-      const remaining = Math.max(0, frame_duration - elapsed)
-      if (remaining > 0) {
-        await wait_for_video_tick(signal, remaining)
-      }
-    }
-    // Include time spent rendering/reading frames when estimating the encoded size.
-    const estimated_megabytes = (bitrate * (performance.now() - recording_start)) / 8e9
-    await run_recorder_action(
-      recorder,
-      `stop`,
-      stop_timeout_ms ?? export_timeout_ms(estimated_megabytes),
-      signal,
+    await render_video_frames(
+      canvas,
+      { ...frame_options, fps, total_frames, signal },
+      {
+        start: async (capture_canvas) => {
+          actual_bitrate =
+            bitrate ??
+            estimate_video_bitrate(capture_canvas.width * capture_canvas.height, fps)
+          stream = capture_canvas.captureStream(fps)
+          recorder = new MediaRecorder(stream, {
+            mimeType: mime_type,
+            videoBitsPerSecond: actual_bitrate,
+          })
+          recorder.addEventListener(`dataavailable`, (event) => {
+            if (event.data.size > 0) chunks.push(event.data)
+          })
+          await run_recorder_action(recorder, `start`, 5000, signal, () => {
+            const track = stream?.getVideoTracks()[0] as
+              | CanvasCaptureMediaStreamTrack
+              | undefined
+            if (total_frames > 0) track?.requestFrame?.()
+          })
+          recording_start = performance.now()
+          frame_start = recording_start
+        },
+        frame: async (_canvas, idx) => {
+          const track = stream?.getVideoTracks()[0] as
+            | CanvasCaptureMediaStreamTrack
+            | undefined
+          if (idx > 0) track?.requestFrame?.()
+          await wait_for_video_tick(
+            signal,
+            Math.max(0, 1000 / fps - (performance.now() - frame_start)),
+          )
+          frame_start = performance.now()
+        },
+        finish: async () => {
+          if (!recorder) throw new Error(`Video recorder was not initialized`)
+          const estimated_megabytes =
+            (actual_bitrate * (performance.now() - recording_start)) / 8e9
+          await run_recorder_action(
+            recorder,
+            `stop`,
+            stop_timeout_ms ?? export_timeout_ms(estimated_megabytes),
+            signal,
+          )
+        },
+      },
     )
   } catch (error) {
     stop_recorder()
@@ -680,14 +793,9 @@ export async function export_trajectory_video(
   } finally {
     signal?.removeEventListener(`abort`, stop_recorder)
     try {
-      // Restore original renderer settings after the encoder has finished reading frames.
-      restore_renderer?.()
+      for (const track of stream?.getTracks() ?? []) track.stop()
     } finally {
-      try {
-        for (const track of stream?.getTracks() ?? []) track.stop()
-      } finally {
-        await on_finish?.()
-      }
+      await on_finish?.()
     }
   }
   signal?.throwIfAborted()
@@ -695,5 +803,5 @@ export async function export_trajectory_video(
   const blob = new Blob(chunks, { type: container_mime })
   if (on_save) await on_save(blob)
   else download(blob, `${filename.replace(/\.(?:mp4|webm)$/i, ``)}.${format}`, container_mime)
-  on_progress?.(100)
+  frame_options.on_progress?.(100)
 }

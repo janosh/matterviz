@@ -1,6 +1,19 @@
 <script lang="ts">
   import { TooltipValue } from '$lib/tooltip'
   import { webgpu_available } from '$lib/scene'
+  import { camera_flight_registry } from '$lib/scene/camera-flight'
+  import {
+    export_trajectory_video,
+    render_video_frames,
+    type VideoFrameOptions,
+  } from '$lib/io/export'
+  import {
+    plan_movie,
+    movie_frame,
+    type MoviePlan,
+    type MovieRenderOptions,
+    type TrajectoryViewerController,
+  } from './movie'
   import type {
     ScatterPlotOptions,
     HistogramOptions,
@@ -32,7 +45,7 @@
   } from '$lib/labels'
   import type { TrajPropertyConfig } from '$lib/labels'
   import { clamp } from '$lib/math'
-  import type { Vec2 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
   import { FullscreenButton, SettingsSection } from '$lib/layout'
@@ -77,7 +90,6 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type {
     ParseProgress,
-    TrajectoryController,
     TrajectoryPositionStream,
     TrajectoryXQuantity,
     TrajHandlerData,
@@ -291,7 +303,7 @@
     on_frame_rate_change?: EventHandler
     on_display_mode_change?: EventHandler
     on_fullscreen_change?: EventHandler
-    on_controller?: (controller: TrajectoryController | null) => void
+    on_controller?: (controller: TrajectoryViewerController | null) => void
   } = $props()
 
   let loading = $state(false)
@@ -595,12 +607,155 @@
     },
   })
   const { player, controller } = session
+  let movie_abort: AbortController | undefined
+  let movie_generation = 0
+  $effect(() => {
+    void trajectory
+    return () => {
+      movie_generation++
+      movie_abort?.abort(new DOMException(`Trajectory replaced or unmounted`, `AbortError`))
+    }
+  })
   let hotspot_result = $state.raw<HotspotResult>()
   let hotspot_coverage = $state<HotspotCoverage>()
   const hotspot_pattern_id = $props.id()
   async function prepare_structure_frame(idx: number, signal: AbortSignal): Promise<void> {
     await flush_updates()
     await session.wait_for_frame(idx, signal)
+  }
+  const prepare_movie_frame = async (idx: number, cancellation?: AbortSignal) => {
+    const timeout = AbortSignal.timeout(120_000)
+    const signal = cancellation ? AbortSignal.any([cancellation, timeout]) : timeout
+    if (!trajectory || !Number.isInteger(idx) || idx < 0 || idx >= trajectory.frame_count)
+      throw new RangeError(`Movie source frame ${idx} is unavailable`)
+    if (!uses_structure_renderer())
+      throw new Error(`Select a view mode containing the structure before rendering a movie`)
+    signal.throwIfAborted()
+    player.pause()
+    session.commit(idx)
+    await prepare_structure_frame(idx, signal)
+  }
+  const movie_canvas = () => {
+    const canvas = wrapper?.querySelector<HTMLCanvasElement>(`.structure canvas`)
+    if (!canvas) throw new Error(`Trajectory canvas is not ready`)
+    return canvas
+  }
+  const inspect_movie = async () => {
+    const was_playing = player.is_playing
+    try {
+      await prepare_movie_frame(current_step_idx)
+      const camera = camera_flight_registry.get(movie_canvas())
+      if (!camera || !trajectory) throw new Error(`Trajectory camera is not ready`)
+      const min: Vec3 = [Infinity, Infinity, Infinity]
+      const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+      const frame = session.numeric_frame
+      if (!frame) throw new Error(`Trajectory display frame is not ready`)
+      const stride = 6 + frame.vector_keys.length * 3
+      for (let atom_idx = 0; atom_idx < frame.sites.length; atom_idx++) {
+        for (let axis = 0; axis < 3; axis++) {
+          const value = frame.coordinates[atom_idx * stride + axis]
+          min[axis] = Math.min(min[axis], value)
+          max[axis] = Math.max(max[axis], value)
+        }
+      }
+      return {
+        frame_count: trajectory.frame_count,
+        atom_count: trajectory.atom_count,
+        filename: trajectory.provenance.filename,
+        camera: camera.capture(),
+        viewport_height: movie_canvas().clientHeight,
+        bounds: { min, max },
+        warnings: trajectory.warnings,
+      }
+    } finally {
+      if (was_playing) player.play()
+    }
+  }
+  const run_movie = async (
+    plan: MoviePlan,
+    options: MovieRenderOptions,
+    render: (canvas: HTMLCanvasElement, options: VideoFrameOptions) => Promise<void>,
+  ) => {
+    if (movie_abort) throw new Error(`A movie is already rendering in this viewer`)
+    const run = trajectory
+    if (!run) throw new Error(`No trajectory loaded`)
+    // Revalidate saved plans against this source before changing the viewer.
+    const checked = plan_movie(plan, run.frame_count, plan.camera.keyframes[0])
+    const original_idx = current_step_idx
+    const was_playing = player.is_playing
+    const generation = movie_generation
+    const request = new AbortController()
+    movie_abort = request
+    const signal = options.signal
+      ? AbortSignal.any([request.signal, options.signal])
+      : request.signal
+    try {
+      await render(movie_canvas(), {
+        ...checked.video,
+        total_frames: checked.video.frame_count,
+        camera_flight: checked.camera,
+        camera_viewport_height: checked.camera_viewport_height,
+        resolution_multiplier: 1,
+        signal,
+        on_progress: options.on_progress,
+        on_step: (idx) => prepare_movie_frame(movie_frame(checked, idx).source_frame, signal),
+      })
+      signal.throwIfAborted()
+      options.on_progress?.(100)
+    } finally {
+      try {
+        if (trajectory === run && generation === movie_generation) {
+          await prepare_movie_frame(original_idx)
+          if (was_playing) player.play()
+        }
+      } finally {
+        if (movie_abort === request) movie_abort = undefined
+      }
+    }
+  }
+  const viewer_controller: TrajectoryViewerController = {
+    ...controller,
+    async load(input, options = {}) {
+      options.signal?.throwIfAborted()
+      const request = begin_load()
+      const abort = () => request.abort(options.signal?.reason)
+      options.signal?.addEventListener(`abort`, abort, { once: true })
+      try {
+        await open_source({ input }, request, options.hdf5_group_path)
+        request.signal.throwIfAborted()
+        if (hdf5_selection) throw new Hdf5GroupSelectionRequiredError(hdf5_selection.groups)
+        if (error_msg) throw new Error(error_msg)
+        await prepare_movie_frame(0, options.signal)
+      } finally {
+        options.signal?.removeEventListener(`abort`, abort)
+      }
+    },
+    prepare_frame: prepare_movie_frame,
+    inspect: inspect_movie,
+    async plan_movie(request) {
+      const info = await inspect_movie()
+      return plan_movie(
+        {
+          ...request,
+          camera_viewport_height: request.camera_viewport_height ?? info.viewport_height,
+        },
+        info.frame_count,
+        info.camera,
+      )
+    },
+    render_movie: (plan, on_frame, options = {}) =>
+      run_movie(plan, options, (canvas, settings) =>
+        render_video_frames(canvas, settings, { frame: on_frame }),
+      ),
+    export_movie: (plan, options = {}) =>
+      run_movie(plan, options, (canvas, settings) =>
+        export_trajectory_video(canvas, trajectory?.provenance.filename ?? `trajectory`, {
+          ...options,
+          ...settings,
+          bitrate: plan.video.bitrate,
+        }),
+      ),
+    cancel_movie: () => movie_abort?.abort(new DOMException(`Movie cancelled`, `AbortError`)),
   }
   let hotspot_metric = $state<HotspotMetric>(`energy`)
   let hotspot_min_atoms = $state(10)
@@ -666,7 +821,7 @@
       : undefined,
   )
   $effect(() => {
-    on_controller?.(controller)
+    on_controller?.(viewer_controller)
     return () => on_controller?.(null)
   })
   $effect(() => {

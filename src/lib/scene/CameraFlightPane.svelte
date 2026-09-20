@@ -35,6 +35,7 @@
     timeline,
     timeline_controls,
     on_export,
+    on_change,
     class_prefix = `camera-flight`,
     pane_props = {},
   }: {
@@ -47,6 +48,7 @@
     timeline?: FlightTimeline
     timeline_controls?: Snippet
     on_export?: () => void
+    on_change?: (flight: CameraFlight | undefined) => void
     class_prefix?: string
     pane_props?: PaneProps
   } = $props()
@@ -55,6 +57,7 @@
   const draft = $derived(editor.draft)
   const flight = $derived(editor.flight)
   const frames = $derived(draft.views)
+  $effect(() => on_change?.(frames.length >= 2 ? flight : undefined))
   const selected = $derived(editor.selected)
   let session = $state.raw<ReturnType<typeof create_camera_flight_session>>()
   let activity = $state<FlightActivity>(null)

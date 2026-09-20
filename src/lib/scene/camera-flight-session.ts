@@ -1,4 +1,5 @@
 import type { CameraFlightController, CameraPose } from './camera-flight'
+import { abortable } from '$lib/utils'
 
 export type FlightTimeline = {
   start: number
@@ -13,23 +14,6 @@ type FlightTask = {
   signal: AbortSignal
   timeline?: FlightTimeline
   show: (pose: CameraPose, frame?: number) => Promise<void>
-}
-
-// A custom frame resolver need not honor its signal. Cancellation must still release the
-// camera and let the newest scrub request run; stale completions never reach show().
-const abortable = async <Value>(
-  promise: Promise<Value>,
-  signal: AbortSignal,
-): Promise<Value> => {
-  signal.throwIfAborted()
-  const stopped = Promise.withResolvers<never>()
-  const abort = () => stopped.reject(signal.reason)
-  signal.addEventListener(`abort`, abort, { once: true })
-  try {
-    return await Promise.race([promise, stopped.promise])
-  } finally {
-    signal.removeEventListener(`abort`, abort)
-  }
 }
 
 export function create_camera_flight_session(hooks: {
@@ -91,7 +75,7 @@ export function create_camera_flight_session(hooks: {
             show: async (view, idx) => {
               signal.throwIfAborted()
               if (timeline && idx !== undefined)
-                await abortable(timeline.prepare(idx, signal), signal)
+                await abortable(() => timeline.prepare(idx, signal), signal)
               await hooks.settle()
               signal.throwIfAborted()
               lease.apply(view)
@@ -104,7 +88,7 @@ export function create_camera_flight_session(hooks: {
         } finally {
           try {
             if (temporary && timeline && frame !== undefined && !lifetime.signal.aborted)
-              await abortable(timeline.prepare(frame, lifetime.signal), lifetime.signal)
+              await abortable(() => timeline.prepare(frame, lifetime.signal), lifetime.signal)
           } finally {
             if (temporary) lease.restore()
             else lease.commit()

@@ -1,11 +1,9 @@
 <script lang="ts">
   import { materialize_frame_result } from '$lib/trajectory/frame'
 
-  import { DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
   import { track_settings } from '$lib/controls'
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import {
-    estimate_video_bitrate,
     export_trajectory_video,
     is_video_export_supported,
     observe_canvas_presence,
@@ -33,11 +31,12 @@
     trajectory_export_basename,
   } from '$lib/trajectory/file-export'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { to_error } from '$lib/utils'
+  import { abortable, to_error } from '$lib/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '$lib/scene/CameraFlightPane.svelte'
   import { Icon } from 'svelte-widgets'
   import { Camera } from 'svelte-widgets/icons'
+  import { camera_flight_frame, type CameraFlight } from '$lib/scene/camera-flight'
 
   let {
     export_pane_open = $bindable(false),
@@ -46,7 +45,9 @@
     wrapper = undefined,
     filename = `trajectory`,
     video_fps = $bindable(30),
-    resolution_multiplier = $bindable(DEFAULT_VIDEO_RESOLUTION),
+    video_width = $bindable(1920),
+    video_height = $bindable(1080),
+    bitrate_mbps = $bindable(20),
     current_step_idx = 0,
     on_step_change = undefined,
     resolve_frame = undefined,
@@ -64,7 +65,9 @@
     wrapper?: HTMLDivElement
     filename?: string
     video_fps?: number
-    resolution_multiplier?: number
+    video_width?: number
+    video_height?: number
+    bitrate_mbps?: number
     current_step_idx?: number
     // Function to change trajectory step during export
     on_step_change?: (step_idx: number) => Promise<void> | void
@@ -91,6 +94,7 @@
   } | null>(null)
   let export_error = $state<string | null>(null)
   let flight_running = $state(false)
+  let camera_flight = $state.raw<CameraFlight>()
   let run_signal: AbortSignal
   $effect(() => {
     if (!run) return
@@ -108,6 +112,10 @@
     end_frame = clamp(end_frame, start_frame, last_frame_idx)
   })
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
+  const flight_duration = $derived(camera_flight?.keyframes.at(-1)?.time ?? 0)
+  const video_frame_count = $derived(
+    camera_flight ? Math.max(1, Math.round(flight_duration * video_fps)) : export_frame_count,
+  )
   let range = $derived(`${start_frame}-${end_frame}`)
   let data_export_disabled = $derived(
     running !== null || flight_running || !run || export_frame_count === 0,
@@ -139,9 +147,7 @@
   // Estimated file size in MB
   let file_size_mb = $derived.by(() => {
     if (!canvas) return 0
-    const pixels = canvas.width * canvas.height * resolution_multiplier ** 2
-    const bitrate = estimate_video_bitrate(pixels, video_fps)
-    return (bitrate * export_frame_count) / video_fps / 8 / 1024 / 1024
+    return (bitrate_mbps * 1e6 * video_frame_count) / video_fps / 8 / 1024 / 1024
   })
 
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
@@ -236,6 +242,9 @@
     const export_run = run
     const lifetime_signal = run_signal
     const first_frame = start_frame
+    const last_frame = end_frame
+    const flight = camera_flight && structuredClone(camera_flight)
+    const frame_count = video_frame_count
     await run_export(format.toUpperCase(), async (signal) => {
       const output_name = `${context.filename}.${format}`
       const save = await context.prepare(output_name, signal)
@@ -244,30 +253,38 @@
       await export_trajectory_video(canvas, output_name, {
         format,
         fps: video_fps,
-        total_frames: export_frame_count,
-        resolution_multiplier,
+        total_frames: frame_count,
+        width: video_width,
+        height: video_height,
+        bitrate: bitrate_mbps * 1e6,
+        camera_flight: flight,
         signal,
         on_save: (blob) => save(blob, blob.type),
         on_progress: (progress) => {
           if (running) running.progress = progress
         },
-        on_step: (idx) => prepare_frame(first_frame + idx, signal),
+        on_step: (idx) =>
+          prepare_frame(
+            flight
+              ? camera_flight_frame(
+                  frame_count <= 1 ? 0 : idx / (frame_count - 1),
+                  first_frame,
+                  last_frame,
+                )
+              : first_frame + idx,
+            signal,
+          ),
         on_finish: async () => {
           if (run !== export_run || lifetime_signal.aborted) return
           // Cancel still restores the mounted viewer; teardown must also release a read
           // from a custom resolver that ignores its signal.
-          const stopped = Promise.withResolvers<null>()
-          const on_abort = () => stopped.resolve(null)
-          lifetime_signal.addEventListener(`abort`, on_abort, { once: true })
           try {
-            const frame = await Promise.race([
-              frame_at(original_step, lifetime_signal),
-              stopped.promise,
-            ])
-            if (!lifetime_signal.aborted && !frame)
-              throw new Error(`Trajectory frame ${original_step} is unavailable`)
+            const frame = await abortable(
+              () => frame_at(original_step, lifetime_signal),
+              lifetime_signal,
+            )
+            if (!frame) throw new Error(`Trajectory frame ${original_step} is unavailable`)
           } finally {
-            lifetime_signal.removeEventListener(`abort`, on_abort)
             if (run === export_run && !lifetime_signal.aborted)
               await on_step_change(original_step)
           }
@@ -346,10 +363,12 @@
     }),
   )
   const video_settings_settings = track_settings(
-    () => ({ video_fps, resolution_multiplier }),
+    () => ({ video_fps, video_width, video_height, bitrate_mbps }),
     {
       video_fps: 30,
-      resolution_multiplier: DEFAULT_VIDEO_RESOLUTION,
+      video_width: 1920,
+      video_height: 1080,
+      bitrate_mbps: 20,
     },
   )
 </script>
@@ -419,31 +438,25 @@
       title="Video Settings"
       changed_keys={video_settings_settings.changed_keys}
       on_reset={() =>
-        ({ video_fps, resolution_multiplier } = video_settings_settings.snapshot())}
+        ({ video_fps, video_width, video_height, bitrate_mbps } =
+          video_settings_settings.snapshot())}
     >
       <NumberRangeInput min={10} max={60} step={1} bind:value={video_fps}
         >Frame Rate (FPS)</NumberRangeInput
       >
 
-      <span class="field-label">
-        Resolution
-        <div class="resolution-buttons">
-          {#each [0.5, 1, 2, 4] as scale (scale)}
-            {@const multiplier = scale * DEFAULT_VIDEO_RESOLUTION}
-            {@const size = canvas
-              ? ` (${Math.round(canvas.width * multiplier)}×${Math.round(canvas.height * multiplier)})`
-              : ``}
-            <button
-              type="button"
-              class:active={resolution_multiplier === multiplier}
-              onclick={() => (resolution_multiplier = multiplier)}
-              {@attach tooltip({ content: `${scale}x${size}` })}
-            >
-              {scale}x
-            </button>
-          {/each}
-        </div>
-      </span>
+      <NumberRangeInput min={2} max={7680} step={2} bind:value={video_width}
+        >Width (px)</NumberRangeInput
+      >
+      <NumberRangeInput min={2} max={4320} step={2} bind:value={video_height}
+        >Height (px)</NumberRangeInput
+      >
+      <NumberRangeInput min={1} max={200} step={1} bind:value={bitrate_mbps}
+        >Bitrate (Mbps)</NumberRangeInput
+      >
+      {#if camera_flight}<small
+          >Includes camera flight · {video_frame_count} video frames</small
+        >{/if}
     </SettingsSection>
 
     <div class="export-buttons">
@@ -487,54 +500,52 @@
 </ExportPane>
 
 {#if run && on_step_change}
-  <CameraFlightPane
-    bind:open={flight_pane_open}
-    {canvas}
-    {filename}
-    source_key={run}
-    disabled={running !== null}
-    bind:busy={flight_running}
-    class_prefix="trajectory-flight"
-    {pane_props}
-    on_export={() => {
-      export_pane_open = true
-      flight_pane_open = false
-    }}
-    timeline={{
-      start: start_frame,
-      end: end_frame,
-      current: current_step_idx,
-      begin: on_flight_start,
-      prepare: prepare_frame,
-    }}
-  >
-    {#snippet timeline_controls()}
-      <NumberRangeInput
-        min={0}
-        max={last_frame_idx}
-        step={1}
-        bind:value={start_frame}
-        range_props={{ 'aria-label': `First MD frame slider` }}
-        >First MD frame</NumberRangeInput
-      >
-      <NumberRangeInput
-        min={start_frame}
-        max={last_frame_idx}
-        step={1}
-        bind:value={end_frame}
-        range_props={{ 'aria-label': `Last MD frame slider` }}>Last MD frame</NumberRangeInput
-      >
-    {/snippet}
-  </CameraFlightPane>
+  {#key run}
+    <CameraFlightPane
+      bind:open={flight_pane_open}
+      {canvas}
+      {filename}
+      source_key={run}
+      disabled={running !== null}
+      bind:busy={flight_running}
+      class_prefix="trajectory-flight"
+      {pane_props}
+      on_export={() => {
+        export_pane_open = true
+        flight_pane_open = false
+      }}
+      on_change={(flight) => (camera_flight = flight)}
+      timeline={{
+        start: start_frame,
+        end: end_frame,
+        current: current_step_idx,
+        begin: on_flight_start,
+        prepare: prepare_frame,
+      }}
+    >
+      {#snippet timeline_controls()}
+        <NumberRangeInput
+          min={0}
+          max={last_frame_idx}
+          step={1}
+          bind:value={start_frame}
+          range_props={{ 'aria-label': `First MD frame slider` }}
+          >First MD frame</NumberRangeInput
+        >
+        <NumberRangeInput
+          min={start_frame}
+          max={last_frame_idx}
+          step={1}
+          bind:value={end_frame}
+          range_props={{ 'aria-label': `Last MD frame slider` }}
+          >Last MD frame</NumberRangeInput
+        >
+      {/snippet}
+    </CameraFlightPane>
+  {/key}
 {/if}
 
 <style>
-  .field-label {
-    display: flex;
-    align-items: center;
-    gap: 6pt;
-    white-space: nowrap;
-  }
   .warning,
   .error-message {
     padding: 1ex;
@@ -564,29 +575,5 @@
     border-radius: 4px;
     font-size: 0.9em;
     color: var(--text-color-muted);
-  }
-  .resolution-buttons {
-    display: inline-flex;
-    gap: 3pt;
-    margin-left: auto;
-    white-space: nowrap;
-    button {
-      flex: 0 0 auto;
-      min-width: 2.8em;
-      padding: 1pt 3pt;
-      border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
-      background: var(--btn-bg, rgba(255, 255, 255, 0.1));
-      color: var(--text-color);
-      cursor: pointer;
-      transition: all 0.2s;
-      &:hover {
-        background: var(--btn-bg-hover, rgba(255, 255, 255, 0.2));
-      }
-      &.active {
-        background: var(--accent-color, #4a9eff);
-        border-color: var(--accent-color, #4a9eff);
-        color: white;
-      }
-    }
   }
 </style>

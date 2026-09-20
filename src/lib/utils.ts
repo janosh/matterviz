@@ -49,6 +49,22 @@ export function to_error(value: unknown): Error {
   }
 }
 
+// Release the caller even when a frame reader or consumer ignores cancellation.
+export async function abortable<Value>(
+  task: () => Value | Promise<Value>,
+  signal: AbortSignal,
+): Promise<Value> {
+  signal.throwIfAborted()
+  const stopped = Promise.withResolvers<never>()
+  const abort = () => stopped.reject(to_error(signal.reason))
+  signal.addEventListener(`abort`, abort, { once: true })
+  try {
+    return await Promise.race([Promise.resolve().then(task), stopped.promise])
+  } finally {
+    signal.removeEventListener(`abort`, abort)
+  }
+}
+
 export function make_change_detector(): (value: unknown) => boolean {
   const unset = Symbol(`unset`)
   let prev: unknown = unset

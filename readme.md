@@ -141,6 +141,54 @@ Large fixed-topology MD HDF5 (`md-trajectory-v1`), TorchSim HDF5, and ASE ULM tr
 
 Trajectory event callbacks also receive numeric frames. Prepared playback frames use coordinates wrapped for display; read the frame through `run.read_frame()` when you need the original source coordinates.
 
+#### Scripted camera movies
+
+`Trajectory.on_controller` exposes an awaitable `load(source, { hdf5_group_path, signal })`, `prepare_frame(idx)`, `inspect()`, `plan_movie(request)`, `render_movie(plan, on_frame, { signal, on_progress })`, `export_movie(plan, options)` and `cancel_movie()`. Loading resolves after the first scene is rendered; inspection returns atom/frame counts, displayed atom bounds and the interactive camera, which is separate from the export camera. Keep a structure-containing display mode selected. Each render restores the original frame and playback state, including cancellation. `render_movie` calls `on_frame(canvas, idx, signal)` with one reusable canvas at a time: inspect or consume its pixels before resolving your callback, and stop consuming it when the signal aborts. Cancellation releases the viewer even when a consumer remains pending. `movie_frame(plan, idx)` supplies the source-frame index and microsecond timestamp. Source frames are held or skipped to fit the requested duration; atomic coordinates are not interpolated.
+
+From a repository checkout with Playwright Chromium and FFmpeg installed, run:
+
+```sh
+pnpm movie inspect /path/to/trajectory.h5
+pnpm movie preview movie.json --output storyboard.png
+pnpm movie render movie.json --output movie.mp4
+```
+
+The CLI starts a private local viewer automatically; `--url http://localhost:3000` uses an existing server. Its dedicated `/trajectory/render` page exposes the same controller as `window.matterviz_movie`, plus `configure(structure_props)`. Files selected through `#movie-source` stay browser `File` objects, so indexed HDF5 loading does not copy an entire large file into JavaScript memory. Results are JSON on stdout; progress and errors go to stderr. Ctrl+C cancels the job. Existing output files are never overwritten.
+
+```json
+{
+  "source": { "path": "./trajectory.h5" },
+  "camera": {
+    "preset": "orbit",
+    "turns": 0.75,
+    "elevation_deg": 25,
+    "azimuth_deg": 35,
+    "distance_scale": 1.1,
+    "up": [0, 0, 1]
+  },
+  "visuals": {
+    "color_scheme": "Jmol",
+    "scene_props": { "show_bonds": "never", "gizmo": false }
+  },
+  "video": {
+    "width": 1920,
+    "height": 1080,
+    "duration_s": 12,
+    "fps": 30,
+    "background": "#111827",
+    "codec": "h264",
+    "crf": 18,
+    "preset": "slow"
+  }
+}
+```
+
+Local source paths resolve relative to the JSON file; a `source.url` or `source.hdf5_group_path` can also be supplied. Omit `frames` to cover the whole trajectory or provide `{ "start": 0, "end": 100 }` with an exclusive end. Omit `camera` to hold the fitted view, use the orbit preset, or provide an explicit `CameraFlight` with timed keyframes. Orbit fitting starts from the current frame; inspect a storyboard for expanding cells or moving atoms before committing to a long render. A completed job saves the resolved camera path, reference viewport and encoding settings beside the output as `<output>.json`; edit its FPS or duration and render it again to produce a new frame schedule while retaining camera framing.
+
+During rendering, `<output>.review/plan.json` records the plan and `<output>.review/latest.png` is atomically replaced with sampled frames from the actual encoder input. JSON `sample` events identify the image path, video frame, source frame and timestamp. Inspect that image while the command runs; Ctrl+C or SIGTERM cancels a bad render. `encoding` and `verifying` events distinguish finalization from validation. The final `<output>.review/storyboard.png` is decoded from the encoded video, and validation checks decoding errors, frame count, dimensions and duration. Review artifacts remain available after cancellation or failure. `--samples` controls the sample count for previews and render inspection (default six). Output, manifest and review-path collisions are rejected before loading.
+
+The offline CLI encodes exact frame timestamps through FFmpeg, supports H.264, VP9 and AV1, and accepts `video.bitrate` in bits/s instead of `video.crf`. Pixel dimensions are exact and independent of device pixel ratio. Browser `export_movie` and the export pane use the same frame producer with AV1 MediaRecorder encoding: their elapsed duration can grow with slow frame reads. For exact timing, use the offline CLI. Video captures the 3D canvas; DOM legends, plots and floating controls are not included.
+
 ## 🧪 &thinsp; Coverage
 
 | Statements                                                                                 | Branches                                                                          | Lines                                                                            |

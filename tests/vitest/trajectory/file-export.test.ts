@@ -547,7 +547,7 @@ describe(`TrajectoryExportPane property export`, () => {
         run: trajectory,
         wrapper,
         video_fps: 45,
-        resolution_multiplier: 2,
+        video_width: 1280,
         on_step_change: can_navigate ? on_step_change : undefined,
         prepare_display_frame: can_navigate ? prepare_display_frame : undefined,
         resolve_frame,
@@ -563,20 +563,15 @@ describe(`TrajectoryExportPane property export`, () => {
       doc_query<HTMLButtonElement>(reset_selector).click()
       await tick()
       expect(document.querySelector(reset_selector)).toBeNull()
-      expect(doc_query(`.resolution-buttons .active`).textContent).toBe(`1x`)
-      const resolution_buttons = [
-        ...document.querySelectorAll<HTMLButtonElement>(`.resolution-buttons button`),
-      ]
-      expect(resolution_buttons.map((button) => button.textContent)).toEqual([
-        `0.5x`,
-        `1x`,
-        `2x`,
-        `4x`,
-      ])
       const number_inputs = document.querySelectorAll<HTMLInputElement>(
         `.settings-section input[type="number"]`,
       )
-      expect(number_inputs[2].value).toBe(`30`)
+      expect([...number_inputs].slice(2).map((input) => input.value)).toEqual([
+        `30`,
+        `1920`,
+        `1080`,
+        `20`,
+      ])
       expect(doc_query<HTMLButtonElement>(`button[aria-label="Download WebM"]`).disabled).toBe(
         true,
       )
@@ -594,12 +589,17 @@ describe(`TrajectoryExportPane property export`, () => {
         replacement.height = 1000
         canvas.replaceWith(replacement)
         await vi.waitFor(() =>
-          expect(doc_query(`.export-info`).textContent).not.toBe(initial_info),
+          expect(doc_query(`.export-info`).textContent).toBe(initial_info),
         )
-        for (const [idx, resolution_multiplier] of [1.5, 3, 6, 12].entries()) {
-          resolution_buttons[idx].click()
+        for (const [idx, [width, height, bitrate_mbps]] of [
+          [640, 360, 8],
+          [2560, 1440, 40],
+        ].entries()) {
+          for (const [offset, value] of [width, height, bitrate_mbps].entries()) {
+            number_inputs[3 + offset].value = String(value)
+            number_inputs[3 + offset].dispatchEvent(new Event(`input`, { bubbles: true }))
+          }
           await tick()
-          expect(resolution_buttons[idx].classList.contains(`active`)).toBe(true)
           for (const label of [`WebM`, `MP4`]) {
             vi.mocked(io_export.export_trajectory_video).mockClear()
             let captured = false
@@ -620,7 +620,9 @@ describe(`TrajectoryExportPane property export`, () => {
                   format,
                   total_frames: 3,
                   fps: 30,
-                  resolution_multiplier,
+                  width,
+                  height,
+                  bitrate: bitrate_mbps * 1e6,
                 }),
               ),
             )
@@ -663,7 +665,6 @@ describe(`TrajectoryExportPane property export`, () => {
     open_pane({ run: trajectory, wrapper, on_step_change: vi.fn() })
     await tick()
     if (enabled_label) {
-      expect(doc_query(`.resolution-buttons .active`).textContent).toBe(`1x`)
       for (const label of [`WebM`, `MP4`]) {
         expect(
           doc_query<HTMLButtonElement>(`button[aria-label="Download ${label}"]`).disabled,
