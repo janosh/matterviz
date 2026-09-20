@@ -589,7 +589,7 @@ test.describe(`Trajectory Component`, () => {
 
   for (const [mode, fullscreen] of [
     [`Structure-only`, false],
-    [`Structure + Scatter`, true],
+    [`Structure + Plot`, true],
   ] as const) {
     test(
       `floating panes cover embedded controls in ${mode}`,
@@ -967,6 +967,72 @@ test.describe(`Trajectory Component`, () => {
     )
 
   test.describe(`layout and configuration options`, () => {
+    test(
+      `distribution selection stays independent of layout and fits narrow panes`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        const content = await select_display_mode(trajectory_viewer, `Plot-only`)
+        const plot_type = trajectory_viewer.getByLabel(`Plot type`, { exact: true })
+        await plot_type.selectOption(`distribution`)
+        const property = trajectory_viewer.getByLabel(`Distribution property`, { exact: true })
+        await expect(property).toHaveValue(`energy`)
+        await expect(trajectory_viewer.locator(`.histogram-series`)).toHaveCount(1)
+        const coverage = trajectory_viewer.locator(
+          `.plot-controls-pane .distribution-coverage`,
+        )
+        await expect(coverage).toBeHidden()
+        const plot_toggle = trajectory_viewer.locator(`.histogram .control-pane-toggle`)
+        await plot_toggle.click()
+        await expect(coverage).toBeVisible()
+        await expect(coverage).toHaveText(`Frames with values: 3 / 3`)
+        await plot_toggle.click()
+        await expect(coverage).toBeHidden()
+        await property.selectOption(`force_max`)
+        await expect(property.locator(`option:checked`)).toHaveText(`Fmax (eV/Å)`)
+        await expect(trajectory_viewer.locator(`.histogram .axis-label`).first()).toHaveText(
+          `Fmax (eV/Å)`,
+        )
+        for (const width of [1200, 750, 500]) {
+          await page.setViewportSize({ width, height: 1000 })
+          const plot = trajectory_viewer.locator(`.content-area`)
+          await expect(async () => {
+            const bounds = await require_bbox(controls)
+            for (const element of [plot_type, property]) {
+              const box = await require_bbox(element)
+              expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1)
+              expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1)
+              expect(box.y).toBeGreaterThanOrEqual(bounds.y - 1)
+              expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height + 1)
+            }
+          }).toPass()
+          for (const type of [`time-series`, `distribution`]) {
+            await plot_type.selectOption(type)
+            await expect(async () => {
+              const bounds = await require_bbox(plot)
+              const chart = await require_bbox(plot.locator(`.plot-frame`))
+              expect(Math.abs(chart.y - bounds.y)).toBeLessThan(1)
+              expect(Math.abs(chart.height - bounds.height)).toBeLessThan(1)
+              const gear = await require_bbox(plot.locator(`.control-pane-toggle > svg`))
+              const fullscreen = await require_bbox(plot.locator(`.fullscreen-btn > svg`))
+              expect_centered(gear, fullscreen, `y`)
+              expect(gear.height).toBe(fullscreen.height)
+            }).toPass()
+          }
+          await expect(content).toHaveClass(/show-plot-only/)
+        }
+        await page.setViewportSize({ width: 1200, height: 1000 })
+        await select_display_mode(trajectory_viewer, `Structure + Plot`)
+        await expect(plot_type).toHaveValue(`distribution`)
+        await expect(property).toHaveValue(`force_max`)
+        await plot_type.selectOption(`time-series`)
+        await expect(content).toHaveClass(/show-both/)
+        await expect(trajectory_viewer.locator(`.scatter`)).toBeVisible()
+        await expect(trajectory_viewer.locator(`.scatter .legend-item`)).toHaveCount(2)
+        await plot_type.selectOption(`distribution`)
+        await expect(property).toHaveValue(`force_max`)
+      },
+    )
+
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
@@ -1165,7 +1231,7 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const sibling = page.locator(`#vertical-layout`)
-      const content = await select_display_mode(trajectory, `Structure + Histogram`)
+      const content = await select_display_mode(trajectory, `Structure + Plot`)
       const view_button = trajectory.locator(`.trajectory-controls .view-mode-button`)
       await trajectory.locator(`.structure`).focus()
       await sibling.hover()
@@ -1185,7 +1251,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory).toBeFocused()
       await expect(view_button).toHaveCSS(`background-color`, resting_background)
       await page.keyboard.press(`v`)
-      await expect(trajectory.locator(`.histogram`)).toBeVisible()
+      await expect(content).toHaveClass(/show-both/)
       await page.keyboard.press(`Shift+V`)
       await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
       await expect(trajectory.locator(`.scatter`)).toBeVisible()
@@ -1295,9 +1361,9 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await select_display_mode(trajectory, `Scatter-only`)
+      await select_display_mode(trajectory, `Plot-only`)
       await expect(content_area).toHaveClass(/show-plot-only/)
-      await select_display_mode(trajectory, `Structure + Scatter`)
+      await select_display_mode(trajectory, `Structure + Plot`)
       await expect(content_area).toHaveClass(/show-both/)
       await expect(trajectory.locator(`.scatter`)).toBeVisible()
       await select_display_mode(trajectory, `Automatic`)

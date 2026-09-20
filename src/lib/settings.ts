@@ -793,15 +793,18 @@ export const SETTINGS_CONFIG = define_settings({
     }),
     display_mode: {
       value: `auto` as const,
-      description: `Visualization mode for trajectory data`,
+      description: `Visible trajectory panes, independent of plot type`,
       enum: {
         auto: `Automatic (hide visually flat plots)`,
-        'structure+scatter': `Structure + Scatter`,
+        'structure+plot': `Structure + Plot`,
         structure: `Structure`,
-        scatter: `Scatter`,
-        histogram: `Histogram`,
-        'structure+histogram': `Structure + Histogram`,
+        plot: `Plot`,
       },
+    },
+    plot_type: {
+      value: `time-series` as const,
+      description: `Trajectory scalar plot type`,
+      enum: { 'time-series': `Time series`, distribution: `Distribution` },
     },
     show_controls: { value: true, description: `Show playback controls` },
     fullscreen_toggle: fullscreen_toggle_setting(),

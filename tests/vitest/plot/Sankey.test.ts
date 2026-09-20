@@ -175,7 +175,7 @@ describe(`Sankey`, () => {
     ).toEqual([`0.3`, `1`, `1`, `0.3`])
   })
 
-  test(`click handlers make marks focusable buttons and fire with node/link props`, async () => {
+  test.each([`Enter`, ` `])(`click and %j activate marks`, async (key) => {
     const [on_node_click, on_link_click] = [vi.fn(), vi.fn()]
     const plot = await mount_sized_sankey({ data, on_node_click, on_link_click })
     const rect = plot.querySelector<SVGRectElement>(`.nodes rect`)
@@ -198,7 +198,18 @@ describe(`Sankey`, () => {
       color: `#e15759`,
     })
     // Enter/Space on a focused mark activates it like a click; other keys are ignored
-    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    const canceled_event = new KeyboardEvent(`keydown`, {
+      key,
+      bubbles: true,
+      cancelable: true,
+    })
+    canceled_event.preventDefault()
+    rect?.dispatchEvent(canceled_event)
+    rect?.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key, bubbles: true, isComposing: true }),
+    )
+    expect(on_node_click).toHaveBeenCalledOnce()
+    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
     rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Tab`, bubbles: true }))
     await tick()
     expect(on_node_click).toHaveBeenCalledTimes(2)

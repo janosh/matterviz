@@ -771,7 +771,7 @@ describe(`bindable re-exposure`, () => {
       await tick()
       expect(props.current_step_idx).toBe(0)
 
-      props.display_mode = `scatter`
+      props.display_mode = `plot`
       await tick()
       expect(target.querySelector(`.structure`)).toBeNull()
 

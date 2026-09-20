@@ -267,7 +267,24 @@ describe(`cartesian frame`, () => {
     async (chart) => {
       mock_fullscreen()
       const state = $state<{ show_controls: ShowControlsProp }>({ show_controls: `hover` })
-      const plot = await mount_chart(chart, bind_props(chart.props(), state))
+      const plot = await mount_chart(
+        chart,
+        bind_props(
+          {
+            ...chart.props(),
+            controls_toggle_props: { class: `custom-controls`, style: `color: tomato` },
+          },
+          state,
+        ),
+      )
+      const gear = query<HTMLButtonElement>(plot, `.header-controls > .control-pane-toggle`)
+      expect(gear.style.position).toBe(`static`)
+      expect(gear.style.color).toBe(`tomato`)
+      expect(gear.classList.contains(`custom-controls`)).toBe(true)
+      gear.click()
+      await tick()
+      expect(gear.getAttribute(`aria-expanded`)).toBe(`true`)
+      expect(plot.querySelector(`.plot-controls-pane.pane-open`)).not.toBeNull()
       const toggle = query<HTMLButtonElement>(plot, `.fullscreen-btn`)
       expect(plot.classList.contains(`fullscreen`)).toBe(false)
       expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
@@ -280,7 +297,7 @@ describe(`cartesian frame`, () => {
         )
       }
       expect(query(plot, `.header-controls`).classList.contains(`hover-visible`)).toBe(true)
-      expect(query(plot, `.control-pane-toggle`).classList.contains(`hover-visible`)).toBe(
+      expect(query(plot, `.control-pane-toggle`).classList.contains(`always-visible`)).toBe(
         true,
       )
       state.show_controls = { mode: `always`, hidden: [`controls`] }

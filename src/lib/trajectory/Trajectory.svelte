@@ -19,11 +19,10 @@
     Check,
     Database,
     Graph,
-    Histogram as HistogramIcon,
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { handle_and_prevent, strip_html, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
     parse_axis_label,
@@ -41,7 +40,6 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import { first_point_style } from '$lib/plot/core/data-transform'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
@@ -135,13 +133,8 @@
     | `data-inspector`
     | `export`
     | `flight`
-  export type TrajectoryDisplayMode =
-    | `auto`
-    | `structure+scatter`
-    | `structure`
-    | `scatter`
-    | `histogram`
-    | `structure+histogram`
+  export type TrajectoryDisplayMode = `auto` | `structure+plot` | `structure` | `plot`
+  export type TrajectoryPlotType = `time-series` | `distribution`
   export type TrajectoryControlName =
     | `filename`
     | `nav`
@@ -170,10 +163,8 @@
   const DISPLAY_MODES = [
     { mode: `auto`, icon: TwoColumns, label: `Automatic` },
     { mode: `structure`, icon: Atom, label: `Structure-only` },
-    { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
-    { mode: `structure+histogram`, icon: TwoColumns, label: `Structure + Histogram` },
-    { mode: `scatter`, icon: ScatterPlotIcon, label: `Scatter-only` },
-    { mode: `histogram`, icon: HistogramIcon, label: `Histogram-only` },
+    { mode: `structure+plot`, icon: TwoColumns, label: `Structure + Plot` },
+    { mode: `plot`, icon: ScatterPlotIcon, label: `Plot-only` },
   ] as const
   // Trails get a 64 MB position budget; larger runs trade smoothness for frame stride
   const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
@@ -193,6 +184,8 @@
     fps_range = DEFAULTS.trajectory.fps_range,
     auto_play = DEFAULTS.trajectory.auto_play,
     display_mode = $bindable(DEFAULTS.trajectory.display_mode),
+    plot_type = $bindable(DEFAULTS.trajectory.plot_type),
+    distribution_property = $bindable(),
     layout = DEFAULTS.trajectory.layout,
     pane_ratio = $bindable(0.5),
     structure_props = {},
@@ -246,6 +239,9 @@
     auto_play?: boolean
     // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
+    plot_type?: TrajectoryPlotType
+    // Independent of time-series visibility; uses the highest-priority property if unset.
+    distribution_property?: string | null
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
     pane_ratio?: number
@@ -255,7 +251,10 @@
       ScatterPlotOptions,
       `tooltip` | `x_axis` | `y_axis` | `y2_axis` | `hidden_series`
     >
-    histogram_props?: Omit<HistogramOptions, `tooltip` | `hidden_series`>
+    histogram_props?: Omit<
+      HistogramOptions,
+      `series` | `hidden_series` | `mode` | `selected_series_idx` | `x2_axis` | `y2_axis`
+    >
     // Display labels per property key, merged with trajectory_property_config
     property_labels?: Record<string, string>
     // What the plot's x axis counts: 'frame' (position in the run), 'step' (the MD step
@@ -890,20 +889,43 @@
       y_axis: plot_series[idx].y_axis,
     })),
   )
-  // Both plot modes carry the same property IDs.
-  let histogram_series = $derived<HistogramSeries[]>(
-    plot_series.map((srs) => ({
-      id: srs.id,
-      values: srs.y,
-      label: srs.label,
-      visible: srs.visible,
-      legend_group: srs.legend_group,
-      unit: srs.unit,
-      axis_group: srs.axis_group,
-      color: srs.line_style?.stroke ?? first_point_style(srs)?.fill,
-      y_axis: srs.y_axis,
-    })),
+  // A distribution has one value axis. Keep its selection separate from the time plot's
+  // multi-property visibility so switching plots cannot mix units or discard that selection.
+  const distribution_properties = $derived(
+    generate_plot_series(session.property_rows, {
+      property_config: extended_config,
+      relative_energy,
+      include_all_properties: true,
+    }),
   )
+  // Do not prepare distributions just to show the layout menu for an existing time plot.
+  const has_plot_properties = $derived(
+    base_plot_series.length > 0 || distribution_properties.length > 0,
+  )
+  const distribution_series = $derived(
+    distribution_properties.find((srs) => srs.id === distribution_property) ??
+      distribution_properties[0],
+  )
+  let histogram_series = $derived.by((): HistogramSeries[] => {
+    if (!distribution_series) return []
+    const { id, y: values, label, unit, line_style } = distribution_series
+    return [{ id, values, label, unit, color: line_style?.stroke }]
+  })
+  const distribution_count = $derived(
+    distribution_series?.y.reduce(
+      (count, value) => count + (Number.isFinite(value) ? 1 : 0),
+      0,
+    ) ?? 0,
+  )
+  let distribution_axis = $derived({
+    format: `.3~s`,
+    ...histogram_props.x_axis,
+    label: distribution_series?.unit
+      ? `${distribution_series.label} (${distribution_series.unit})`
+      : (distribution_series?.label ?? `Value`),
+    unit: distribution_series?.unit,
+  })
+  let distribution_count_axis = $derived({ format: `.3~g`, ...histogram_props.y_axis })
   let x_axis = $derived({
     label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
     // step_label_positions are frame indices; the axis is drawn in x units
@@ -921,20 +943,23 @@
     label_shift: { y: 80 },
     scale_type: y_axis_scale_types.y2,
   })
-  let plot_loading = $derived(!session.properties_complete && plot_series.length === 0)
-  // Wait for scalar sampling before choosing the default; explicit modes always win.
-  let effective_display_mode = $derived(
-    display_mode === `auto`
-      ? session.properties_complete && should_hide_plot(total_frames, plot_series)
-        ? `structure`
-        : `structure+scatter`
-      : display_mode,
+  let plot_loading = $derived(
+    !session.properties_complete &&
+      (plot_type === `time-series` ? plot_series.length === 0 : !distribution_series),
   )
+  // Wait for scalar sampling before choosing the default; explicit modes always win.
+  let effective_display_mode = $derived.by(() => {
+    if (display_mode !== `auto`) return display_mode
+    if (!session.properties_complete) return `structure+plot`
+    const hide_plot =
+      plot_type === `time-series`
+        ? should_hide_plot(total_frames, plot_series)
+        : !distribution_series
+    return hide_plot ? `structure` : `structure+plot`
+  })
   // Spectroscopy owns the plot region while open.
   let show_plot = $derived(spectroscopy_open || effective_display_mode !== `structure`)
-  let show_structure = $derived(
-    spectroscopy_open || ![`scatter`, `histogram`].includes(effective_display_mode),
-  )
+  let show_structure = $derived(spectroscopy_open || effective_display_mode !== `plot`)
   let has_y2_series = $derived(
     plot_series.some(
       ({ y: coord_y, y_axis: axis_name, visible }) =>
@@ -988,7 +1013,7 @@
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented) return false
+    if (event.defaultPrevented || event.isComposing) return false
     // Leave form fields alone; sequence controls handle their own navigation keys and let
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
@@ -1006,8 +1031,7 @@
       key === `v` &&
       !event.altKey &&
       !event.repeat &&
-      !event.isComposing &&
-      plot_series.length > 0 &&
+      has_plot_properties &&
       wrapper?.contains(wrapper.ownerDocument.activeElement)
     ) {
       const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
@@ -1080,8 +1104,8 @@
   let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
 </script>
 
-{#snippet energy_controls()}
-  {#if base_plot_series.some((srs) => is_energy_property(srs.id))}
+{#snippet energy_controls(has_energy: boolean)}
+  {#if has_energy}
     <SettingsSection
       title="Energy"
       changed_keys={relative_energy ? [`relative_energy`] : []}
@@ -1111,7 +1135,7 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
-  aria-keyshortcuts={plot_series.length > 0 ? `V Shift+V` : undefined}
+  aria-keyshortcuts={has_plot_properties ? `V Shift+V` : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
@@ -1243,6 +1267,29 @@
       {fullscreen}
       bind:height={controls_height}
     >
+      {#if show_plot && !spectroscopy_open && controls_config.mode !== `never`}
+        <div class="plot-toolbar">
+          <select aria-label="Plot type" bind:value={plot_type}>
+            <option value="time-series">Time series</option>
+            <option value="distribution">Distribution</option>
+          </select>
+          {#if plot_type === `distribution`}
+            <select
+              aria-label="Distribution property"
+              disabled={!distribution_series}
+              bind:value={
+                () => distribution_series?.id ?? ``, (value) => (distribution_property = value)
+              }
+            >
+              {#each distribution_properties as srs (srs.id)}
+                <option value={srs.id}
+                  >{strip_html(srs.label ?? srs.id)}{srs.unit ? ` (${srs.unit})` : ``}</option
+                >
+              {/each}
+            </select>
+          {/if}
+        </div>
+      {/if}
       {#if trajectory_controls}
         {@render trajectory_controls({
           trajectory,
@@ -1388,7 +1435,7 @@
             />
           {/if}
           <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
-          cannot share the step-linked scatter/histogram display modes -->
+          cannot share the trajectory's scalar plots -->
           {#if visible_analyses.length > 0}
             <ToolbarMenu
               bind:open={analysis_menu_open}
@@ -1460,7 +1507,7 @@
               {/snippet}
             </ToolbarMenu>
           {/if}
-          {#if !spectroscopy_open && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+          {#if show_plot && !spectroscopy_open && plot_type === `time-series` && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
             <select
               bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
               class="x-quantity-select"
@@ -1472,7 +1519,7 @@
               {/each}
             </select>
           {/if}
-          {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
+          {#if has_plot_properties && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
               label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
@@ -1643,7 +1690,7 @@
             text="Sampling trajectory plot data..."
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
-        {:else if effective_display_mode === `scatter` || effective_display_mode === `structure+scatter`}
+        {:else if plot_type === `time-series`}
           <ScatterPlot
             {...scatter_props}
             show_controls={controls_config.mode === `never`
@@ -1666,7 +1713,9 @@
             hover_config={trajectory_hover_config}
           >
             {#snippet controls_extra(config)}
-              {@render energy_controls()}
+              {@render energy_controls(
+                base_plot_series.some((srs) => is_energy_property(srs.id)),
+              )}
               {@render scatter_props.controls_extra?.(config)}
             {/snippet}
             {#snippet tooltip({
@@ -1697,39 +1746,31 @@
               ? false
               : histogram_props.show_controls}
             series={histogram_series}
-            bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
-            x_axis={{
-              label: String(histogram_props.x_axis?.label ?? y_axis_labels.y),
-              format: `.3~s`,
-              ...histogram_props.x_axis,
-            }}
-            y_axis={{ label: `Count`, format: `.3~s`, ...histogram_props.y_axis }}
-            mode={histogram_props.mode ?? `overlay`}
+            x_axis={distribution_axis}
+            y_axis={distribution_count_axis}
+            mode="single"
+            show_legend={histogram_props.show_legend ?? false}
             style="height: 100%"
           >
             {#snippet controls_extra(config)}
-              {@render energy_controls()}
+              <small
+                class="distribution-coverage"
+                style="color: var(--text-muted, currentColor)"
+                title="Each sample counts one frame with a finite property value; counts are not time-weighted."
+              >
+                Frames with values: {format_num(distribution_count, `,.0f`)} / {format_num(
+                  total_frames,
+                  `,.0f`,
+                )}{!session.properties_complete
+                  ? ` · loading…`
+                  : session.property_rows.length < total_frames
+                    ? ` · sampled`
+                    : ``}
+              </small>
+              {@render energy_controls(
+                Boolean(distribution_series && is_energy_property(distribution_series.id)),
+              )}
               {@render histogram_props.controls_extra?.(config)}
-            {/snippet}
-            {#snippet tooltip({
-              value,
-              count,
-              property,
-              series_idx,
-            }: {
-              value: number
-              count: number
-              property?: string
-              series_idx: number
-            })}
-              <div>
-                <TooltipValue
-                  label={property || `Value`}
-                  value={format_num(value)}
-                  unit={histogram_series[series_idx]?.unit}
-                />
-              </div>
-              <div>Count: {count}</div>
             {/snippet}
           </Histogram>
         {/if}
@@ -1868,6 +1909,15 @@
     &:is(.hide-plot, .hide-structure) {
       grid-template-columns: minmax(0, 1fr) !important;
       grid-template-rows: minmax(0, 1fr) !important;
+    }
+  }
+  .plot-toolbar {
+    display: flex;
+    gap: 0.5em;
+    min-width: 0;
+    select {
+      min-width: 0;
+      max-width: min(12em, 30cqw);
     }
   }
   button.filename {

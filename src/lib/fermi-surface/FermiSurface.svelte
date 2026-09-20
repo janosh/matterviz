@@ -290,6 +290,7 @@
   })
 
   function handle_keydown(event: KeyboardEvent) {
+    if (event.defaultPrevented || event.isComposing) return
     if (is_editable_event_target(event.target)) return
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return

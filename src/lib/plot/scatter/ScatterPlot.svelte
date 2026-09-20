@@ -1557,6 +1557,7 @@
     on_point_hover?.(null)
   }}
   {header_controls}
+  {controls_toggle_props}
   {user_content}
   {children}
   {...rest}
@@ -1761,6 +1762,33 @@
     {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
+  {#snippet controls(toggle_props, show_controls)}
+    <ScatterPlotControls
+      on_export={handle_export}
+      export_filename={chart_export_filename(frame)}
+      {toggle_props}
+      pane_props={controls_pane_props}
+      {show_controls}
+      bind:controls_open
+      bind:x_axis
+      bind:x2_axis
+      bind:y_axis
+      bind:y2_axis
+      bind:display
+      bind:styles
+      auto_ranges={{
+        ...intrinsic_ranges,
+        x2: has_x2_points ? intrinsic_ranges.x2 : undefined,
+        y2: has_y2_points ? intrinsic_ranges.y2 : undefined,
+      }}
+      bind:selected_series_idx={
+        () => active_series_idx, (value) => (selected_series_idx = value)
+      }
+      series={assigned_series}
+      children={controls_extra}
+    />
+  {/snippet}
+
   {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
     {#if handler_props && hovered && tooltip_point}
@@ -1810,31 +1838,6 @@
         {/if}
       </PlotTooltip>
     {/if}
-
-    <ScatterPlotControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
-      toggle_props={controls_toggle_props}
-      pane_props={controls_pane_props}
-      bind:show_controls
-      bind:controls_open
-      bind:x_axis
-      bind:x2_axis
-      bind:y_axis
-      bind:y2_axis
-      bind:display
-      bind:styles
-      auto_ranges={{
-        ...intrinsic_ranges,
-        x2: has_x2_points ? intrinsic_ranges.x2 : undefined,
-        y2: has_y2_points ? intrinsic_ranges.y2 : undefined,
-      }}
-      bind:selected_series_idx={
-        () => active_series_idx, (value) => (selected_series_idx = value)
-      }
-      series={assigned_series}
-      children={controls_extra}
-    />
 
     {#if color_bar && show_colorbar}
       {@const color_domain = [

@@ -136,7 +136,7 @@
             placeholder="C"
             style="width: 3em; text-align: center"
             onkeydown={(event) => {
-              if (event.key !== `Escape` || event.defaultPrevented) return
+              if (event.defaultPrevented || event.isComposing || event.key !== `Escape`) return
               session.add_atom_mode = false
               event.preventDefault()
             }}
@@ -156,6 +156,7 @@
             placeholder="Fe"
             style="width: 3em; text-align: center"
             onkeydown={(event: KeyboardEvent) => {
+              if (event.defaultPrevented || event.isComposing) return
               if (event.key === `Enter`) {
                 if (session.change_element(change_element_value)) {
                   change_element_value = ``

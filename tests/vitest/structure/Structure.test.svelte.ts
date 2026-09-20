@@ -1179,28 +1179,47 @@ describe(`Structure`, () => {
   })
 
   test.each([
-    [`a`, true],
-    [`a`, false],
-    [`e`, true],
-    [`e`, false],
+    [`a`, true, `Escape`],
+    [`a`, false, `Escape`],
+    [`e`, true, `Escape`],
+    [`e`, false, `Escape`],
+    [`e`, true, `Enter`],
   ] as const)(
-    `edit-atoms %s opens a field; Escape closes quietly (from input: %s)`,
-    async (key, from_input) => {
+    `edit-atoms %s opens a field (from input: %s); %s closes quietly`,
+    async (key, from_input, dismiss_key) => {
       vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-      const state = $state<{ measure_mode: MeasureMode; selected_sites: number[] }>({
+      const state = $state<{
+        structure: AnyStructure
+        measure_mode: MeasureMode
+        selected_sites: number[]
+      }>({
+        structure,
         measure_mode: `edit-atoms`,
         selected_sites: [],
       })
-      mount_structure(bind_props({ structure }, state))
+      mount_structure(state)
       await tick()
       state.selected_sites = [0]
       const viewer = doc_query(`.structure`)
+      await fire(viewer, keydown(key, { isComposing: true }))
+      expect(document.querySelector(`.add-atom-input`)).toBeNull()
       await fire(viewer, keydown(key, { cancelable: true }))
       const toggle = doc_query(`.measure-mode-dropdown > button`)
       expect(toggle.style.boxShadow).toContain(`1px`)
       // Let the opening flash expire so it cannot hide a new flash on Escape.
       vi.advanceTimersByTime(400)
       const input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+      input.value = `H`
+      await fire(input, new Event(`input`, { bubbles: true }))
+      const dismiss_target = from_input ? input : viewer
+      for (const is_composing of [true, false]) {
+        const ignored = keydown(dismiss_key, { isComposing: is_composing, cancelable: true })
+        if (!is_composing) ignored.preventDefault()
+        await fire(dismiss_target, ignored)
+        expect(document.querySelector(`.add-atom-input input`)).toBe(input)
+        expect(state.selected_sites).toEqual([0])
+        expect(state.structure.sites[0].species).toEqual(structure.sites[0].species)
+      }
       // Other editable fields own Escape, even while atom placement is active.
       const other_input = document.createElement(`input`)
       viewer.append(other_input)
@@ -1211,12 +1230,15 @@ describe(`Structure`, () => {
       expect(document.querySelector(`.add-atom-input input`)).toBe(input)
       expect(state.selected_sites).toEqual([0])
       other_input.remove()
-      const dismiss = keydown(`Escape`, { cancelable: true })
-      await fire(from_input ? input : viewer, dismiss)
+      const dismiss = keydown(dismiss_key, { cancelable: true })
+      await fire(dismiss_target, dismiss)
       expect(dismiss.defaultPrevented).toBe(key === `a` || !from_input)
       expect(document.querySelector(`.add-atom-input`)).toBeNull()
       expect(toggle.style.boxShadow).toBe(``)
       expect(state.selected_sites).toEqual([0])
+      expect(state.structure.sites[0].species[0].element).toBe(
+        dismiss_key === `Enter` ? `H` : structure.sites[0].species[0].element,
+      )
       // Selection clears before edit mode exits.
       for (const mode of [`edit-atoms`, `distance`]) {
         await fire(viewer, keydown(`Escape`, { cancelable: true }))

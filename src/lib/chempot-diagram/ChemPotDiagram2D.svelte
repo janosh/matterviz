@@ -266,7 +266,6 @@
     toggle_props={{
       class: `chempot-export-toggle`,
       title: `Export chemical potential diagram`,
-      style: `position: absolute; top: var(--ctrl-btn-top, 5pt); right: 36px; z-index: 10`,
     }}
   />
 {/snippet}
@@ -316,7 +315,6 @@
       }
     }}
   >
-    {@render export_toggle()}
     <ScatterPlot
       bind:wrapper
       {series}
@@ -324,11 +322,12 @@
       bind:y_axis
       legend={null}
       show_controls
+      header_controls={export_toggle}
       controls_extra={chempot_controls}
       user_content={domain_labels}
       on_point_hover={handle_hover}
       on_point_click={handle_click}
-      style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
+      style="--scatter-width: 100%; --scatter-height: {render_height}px"
     />
     <ChemPotLegend
       {color_mode}

@@ -269,6 +269,18 @@ describe(`create_sequence_player`, () => {
   ])(`handle_keydown(%j) -> %j, handled=%s`, (init, expected, handled, control) => {
     stub_animation_frames()
     const { host, player } = make_player({ count: 10, index: 2 })
+    // Child controls and IME composition own these keys before the player can act.
+    for (const is_composing of [true, false]) {
+      const ignored = new KeyboardEvent(`keydown`, {
+        ...init,
+        isComposing: is_composing,
+        cancelable: true,
+      })
+      if (!is_composing) ignored.preventDefault()
+      expect(player.handle_keydown(ignored)).toBe(false)
+      expect([host.index, host.fps, player.is_playing]).toEqual([2, 10, false])
+      expect(flashed_controls(player)).toEqual([])
+    }
     expect(player.handle_keydown(new KeyboardEvent(`keydown`, init))).toBe(handled)
     flushSync()
     expect(host.index).toBe(expected.index)

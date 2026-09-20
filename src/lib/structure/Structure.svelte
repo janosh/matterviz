@@ -886,7 +886,7 @@
   const shortcut_flash = create_shortcut_flash()
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    if (active_tool_view) return false
+    if (active_tool_view || event.isComposing) return false
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.

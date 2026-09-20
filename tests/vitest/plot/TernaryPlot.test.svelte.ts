@@ -193,7 +193,7 @@ describe(`TernaryPlot`, () => {
     expect(tooltip()).toBeNull()
   })
 
-  test(`click and Enter fire on_point_click with the point payload`, async () => {
+  test.each([`Enter`, ` `])(`click and %j activate points`, async (key) => {
     const on_point_click = vi.fn()
     const plot = await mount_ternary({ series, on_point_click })
     const [first] = markers(plot)
@@ -205,7 +205,18 @@ describe(`TernaryPlot`, () => {
     expect(marker_style.strokeWidth).toBe(`1.5px`)
     expect(marker_style.vectorEffect).toBe(`non-scaling-stroke`)
     first.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    first.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    const canceled_event = new KeyboardEvent(`keydown`, {
+      key,
+      bubbles: true,
+      cancelable: true,
+    })
+    canceled_event.preventDefault()
+    first.dispatchEvent(canceled_event)
+    first.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key, bubbles: true, isComposing: true }),
+    )
+    expect(on_point_click).toHaveBeenCalledOnce()
+    first.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
     await tick()
     expect(on_point_click).toHaveBeenCalledTimes(2)
     expect(on_point_click.mock.calls[0][0] as TernaryPointProps).toMatchObject({

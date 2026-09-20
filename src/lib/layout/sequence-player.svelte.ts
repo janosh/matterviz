@@ -92,6 +92,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   }
 
   function handle_keydown(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented || event.isComposing) return false
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
     if (is_cmd_or_ctrl && key !== `ArrowLeft` && key !== `ArrowRight`) return false

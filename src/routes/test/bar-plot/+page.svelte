@@ -222,10 +222,7 @@
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y`, range: [0, 50] }}
     controls_open={false}
-    controls_toggle_props={{
-      class: `bar-controls-toggle`,
-      style: `--fullscreen-btn-offset: 77px`,
-    }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />
 </section>

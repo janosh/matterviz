@@ -57,6 +57,8 @@ export interface PlotSeriesOptions {
   default_visible_properties?: Set<string>
   // Subtract each energy series' first finite recorded value, before smoothing or sampling.
   relative_energy?: boolean
+  // Distributions keep constant/single-frame properties and order them by group priority.
+  include_all_properties?: boolean
   // Maps frame index to x coordinate. Defaults to the frame index itself.
   x_map?: TrajectoryXMap
 }
@@ -247,8 +249,11 @@ function normalize_property_key(key: string): string {
 
 // Per-property value lists from the rows, keyed by property. Rows arrive sorted and
 // deduplicated (TrajectoryProperties). Cache by rows array so label/visibility changes reuse it.
-const stats_cache = new WeakMap<readonly TrajectoryMetadata[], PropertyStats>()
-function cached_property_statistics(rows: readonly TrajectoryMetadata[]): PropertyStats {
+const stats_cache = new WeakMap<
+  readonly TrajectoryMetadata[],
+  Record<`all` | `time_series`, PropertyStats>
+>()
+function cached_properties(rows: readonly TrajectoryMetadata[]) {
   const cached = stats_cache.get(rows)
   if (cached) return cached
   const stats: PropertyStats = new Map()
@@ -277,23 +282,24 @@ function cached_property_statistics(rows: readonly TrajectoryMetadata[]): Proper
       if (stat.frame_indices !== frame_numbers) stat.frame_indices.push(frame_number)
     }
   }
-  // Keep varying properties (plus flat energy for converged runs) seen in at least two frames.
+  const time_series: PropertyStats = new Map()
   for (const [key, stat] of stats) {
     const { values, frame_indices } = stat
-    const keep =
-      values.length > 1 &&
-      (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
-    if (!keep) {
-      stats.delete(key)
-      continue
-    }
     // A property missing only at the tail never encountered a later row to detect its gap.
     if (frame_indices === frame_numbers && values.length < rows.length) {
       stat.frame_indices = frame_numbers.slice(0, values.length)
     }
+    // Filter once per row batch; labels and energy references do not change eligibility.
+    // Flat energy still matters for converged runs; distributions keep every property.
+    if (
+      values.length > 1 &&
+      (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
+    )
+      time_series.set(key, stat)
   }
-  stats_cache.set(rows, stats)
-  return stats
+  const result = { all: stats, time_series }
+  stats_cache.set(rows, result)
+  return result
 }
 
 export interface PropertySummary {
@@ -322,7 +328,7 @@ export function summarize_properties(
   // Dense properties share their frame grid. Map and center each grid once per summary,
   // rather than repeating millions of Map lookups for the same x samples in every column.
   const axes = new Map<readonly number[], { deltas: number[]; sxx: number; span: number }>()
-  return [...cached_property_statistics(rows)].map(([key, { values, frame_indices }]) => {
+  return [...cached_properties(rows).time_series].map(([key, { values, frame_indices }]) => {
     const n_samples = values.length
     let axis = axes.get(frame_indices)
     if (!axis) {
@@ -401,11 +407,13 @@ export function generate_plot_series(
     property_config = trajectory_property_config,
     default_visible_properties,
     relative_energy = false,
+    include_all_properties = false,
     x_map = FRAME_X_MAP,
   } = options
   const series: PropertySeries[] = []
   const x_grids = new Map<readonly number[], number[]>()
-  for (const [key, { values, frame_indices }] of cached_property_statistics(rows)) {
+  const { all, time_series } = cached_properties(rows)
+  for (const [key, { values, frame_indices }] of include_all_properties ? all : time_series) {
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
     const reference =
       relative_energy && is_energy_property(key) ? values.find(Number.isFinite) : undefined
@@ -456,7 +464,9 @@ export function generate_plot_series(
       srs.y_axis = idx === 0 ? `y` : `y2`
     }
   })
-  return series.toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
+  return include_all_properties
+    ? groups.flatMap((group) => group.series)
+    : series.toSorted((srs_a, srs_b) => Number(srs_b.visible) - Number(srs_a.visible))
 }
 
 // Visibility changes reuse data arrays and keep legend order stable. Hidden series join
