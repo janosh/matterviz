@@ -7,6 +7,7 @@
   import { normalize_show_controls } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
   import { StatGrid, StatusMessage } from 'svelte-widgets'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import { as_text, file_drop_zone } from '$lib/io'
   import { format_num } from '$lib/labels'
   import { FullscreenButton } from '$lib/layout'
@@ -179,8 +180,6 @@
   class={[`neb-viewer sequence-viewer`, rest.class]}
   {@attach drop_zone}
 >
-  <StatusMessage bind:message={error_msg} type="error" dismissible />
-
   {#if !active || !profile}
     <div class="empty">
       <StatusMessage
@@ -283,6 +282,7 @@
 
     <StatGrid items={barrier_stats} class="barrier-summary" aria-label="Reaction barriers" />
   {/if}
+  <ViewerError bind:message={error_msg} dismissible />
 </div>
 
 <style>

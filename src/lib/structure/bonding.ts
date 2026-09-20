@@ -259,8 +259,8 @@ export const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
 
 const site_image_shift = (sites: Site[] | undefined, site_idx: number): Vec3 => {
   const site = sites?.[site_idx]
-  const orig_site_idx = site?.properties?.orig_site_idx
-  if (typeof orig_site_idx !== `number`) return [0, 0, 0]
+  const orig_site_idx = site?.provenance?.image_of
+  if (orig_site_idx === undefined) return [0, 0, 0]
   const orig_site = sites?.[orig_site_idx]
   if (!site?.abc || !orig_site?.abc) return [0, 0, 0]
   return [
@@ -1730,23 +1730,11 @@ function perceive_bonds(
   // are replaced with indexed array reads.
   const { symbols, site_elem_ids: elem_ids, elem_data } = intern_site_elements(sites)
   const orig_idxs = new Int32Array(n_sites)
-  const scalar_columns = columns?.scalar_columns
-  const unit_cell_indices =
-    scalar_columns && Object.hasOwn(scalar_columns, `orig_unit_cell_idx`)
-      ? scalar_columns.orig_unit_cell_idx
-      : undefined
-  const image_indices =
-    scalar_columns && Object.hasOwn(scalar_columns, `orig_site_idx`)
-      ? scalar_columns.orig_site_idx
-      : undefined
   for (let idx = 0; idx < n_sites; idx++) {
     // Valid orig indices always reference a site in this structure; fall back to
-    // the site's own index on out-of-range orig_*_idx properties so the typed
+    // the site's own index on out-of-range provenance so the typed
     // `closest` array below stays bounded by n_sites
-    const orig_idx =
-      sites instanceof NumericSites
-        ? (unit_cell_indices?.[idx] ?? image_indices?.[idx] ?? idx)
-        : get_orig_site_idx(sites[idx], idx)
+    const orig_idx = sites instanceof NumericSites ? idx : get_orig_site_idx(sites[idx], idx)
     orig_idxs[idx] = orig_idx >= 0 && orig_idx < n_sites ? orig_idx : idx
   }
   const n_elem = symbols.length

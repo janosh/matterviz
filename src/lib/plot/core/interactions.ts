@@ -23,7 +23,7 @@ export const pointer_pos = (
 ): Point2D | null => (event instanceof MouseEvent ? get_relative_coords(event, element) : null)
 
 export const is_activation_key = (evt: KeyboardEvent): boolean =>
-  evt.key === `Enter` || evt.key === ` `
+  !evt.defaultPrevented && !evt.isComposing && (evt.key === `Enter` || evt.key === ` `)
 
 // True when focus is leaving `root` entirely rather than moving between marks inside it.
 // Charts treat focus as the keyboard's hover, so a focusout that lands on the next mark is

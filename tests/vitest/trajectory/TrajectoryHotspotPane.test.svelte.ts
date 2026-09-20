@@ -3,8 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import TrajectoryHotspotPane from '$lib/trajectory/TrajectoryHotspotPane.svelte'
 import { trajectory_from_frames, type MemoryRunExtras } from '$lib/trajectory/runs/memory'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
-import type { HotspotRequest, HotspotResult } from '$lib/trajectory/hotspots'
-import { doc_query, form_controls } from '../setup'
+import type { HotspotCoverage, HotspotRequest, HotspotResult } from '$lib/trajectory/hotspots'
+import type { HotspotScale } from '$lib/trajectory/hotspot-colors'
+import { doc_query, fire, form_controls } from '../setup'
 
 let mounted: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -68,6 +69,30 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   const props = $state({ run, pane_open: true, show_heatmap: true })
   await mount_pane(props)
   expect(getComputedStyle(doc_query(`h3`)).marginTop).toBe(`0px`)
+  const settings = doc_query<HTMLDetailsElement>(`.analysis-settings`)
+  const advanced = doc_query<HTMLDetailsElement>(`.advanced-settings`)
+  expect(settings.open).toBe(true)
+  expect(advanced.open).toBe(false)
+  for (const label of [
+    `Source`,
+    `Velocity units`,
+    `Masses`,
+    `Mass units`,
+    `Start frame`,
+    `End frame`,
+    `Frame stride`,
+    `Grid resolution`,
+  ])
+    expect(control(label).closest(`details`)).toBe(settings)
+  for (const label of [
+    `Velocity property`,
+    `Motion`,
+    `Grid frame`,
+    `Mobile-atom selection property`,
+    `Dimensions`,
+    `Degrees of freedom`,
+  ])
+    expect(control(label).closest(`details`)).toBe(advanced)
   expect_requirements(`Select velocity units.`)
   expect(control(`Mass units`).value).toBe(`amu`)
   expect(document.body.textContent).toContain(`Inferred from recorded masses`)
@@ -80,6 +105,8 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   )
   await set_value(`Mass units`, `kg`)
   expect_requirements()
+  await fire(doc_query(`.advanced-settings > summary`))
+  expect(advanced.open).toBe(true)
   await set_value(`Velocity property`, ` `)
   expect_requirements(`Enter the velocity property.`)
   await set_value(`Velocity property`, `velocity`)
@@ -87,6 +114,8 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   await set_value(`Masses`, `standard`)
   await set_value(`Dimensions`, `2`)
   expect(control(`Degrees of freedom`).value).toBe(`2`)
+  await fire(doc_query(`.advanced-settings > summary`))
+  expect(advanced.open).toBe(false)
   expect_requirements()
   compute.mockRejectedValueOnce(new Error(`Missing velocity at frame 0`))
   calculate_button().click()
@@ -100,17 +129,22 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   expect(document.body.textContent).not.toContain(`Settings changed`)
   await set_value(`Minimum average atoms/bin`, `-1`)
   await set_value(`Hotspot threshold`, `2`)
+  const legend = doc_query(`.thermal-legend`)
+  const atom_range = legend.querySelector(`.endpoints`)?.textContent
   const heatmap_toggle = control(`Heatmap on atoms`)
-  heatmap_toggle.click()
-  await tick()
+  await fire(heatmap_toggle)
   expect(props.show_heatmap).toBe(false)
-  heatmap_toggle.click()
-  await tick()
+  expect(legend.querySelectorAll(`.ramp`)).toHaveLength(0)
+  await fire(heatmap_toggle)
   expect(props.show_heatmap).toBe(true)
   const cloud_toggle = control(`Volume cloud`)
   expect(cloud_toggle).toBeInstanceOf(HTMLInputElement)
-  cloud_toggle.click()
-  await tick()
+  await fire(cloud_toggle)
+  expect(legend.querySelectorAll(`.ramp`)).toHaveLength(2)
+  expect(legend.querySelector(`.endpoints`)?.textContent).toBe(atom_range)
+  expect(
+    [...legend.querySelectorAll(`.endpoints small`)].map((unit) => unit.textContent),
+  ).toEqual([`eV/atom`, `eV/atom`, `eV/atom`, `eV/atom`])
   for (const [label, initial, value] of [
     [`Cloud opacity`, `0.8`, `0.6`],
     [`Atom opacity`, `0.5`, `0.25`],
@@ -129,6 +163,21 @@ it(`requires units, calculates a map, and keeps display changes independent of a
     await tick()
     expect(doc_query<HTMLInputElement>(`[aria-label="${label}"]`).value).toBe(value)
   }
+  expect(compute).toHaveBeenCalledTimes(2)
+  expect(control(`Cutaway mode`).value).toBe(`off`)
+  await set_value(`Cutaway mode`, `plane`)
+  await set_value(`Cutaway axis`, `0`)
+  await set_value(`Cutaway position`, `0.7`)
+  expect(document.querySelector(`.cutaway-controls`)?.textContent).toContain(
+    `Keeps the lower side`,
+  )
+  await set_value(`Cutaway mode`, `slab`)
+  expect(control(`Cutaway position`).getAttribute(`min`)).toBe(`0`)
+  expect(control(`Slab thickness`).getAttribute(`min`)).toBe(`0.01`)
+  await set_value(`Slab thickness`, `0.15`)
+  expect(control(`Cutaway position`).value).toBe(`0.7`)
+  expect(control(`Slab thickness`).value).toBe(`0.15`)
+  await set_value(`Cutaway mode`, `off`)
   expect(compute).toHaveBeenCalledTimes(2)
   expect(compute.mock.calls[0][0]).toMatchObject({
     mass_source: `standard`,
@@ -186,30 +235,67 @@ it.each([`signal`, `metadata`])(
 
 it(`explains all missing recorded-energy settings and clears them as they are supplied`, async () => {
   await mount_pane({ run: make_run(), pane_open: true })
+  await set_value(`Velocity units`, `m/s`)
+  await set_value(`Velocity property`, `velocities`)
   await set_value(`Source`, `energy`)
+  const settings = doc_query<HTMLDetailsElement>(`.analysis-settings`)
+  const advanced = doc_query<HTMLDetailsElement>(`.advanced-settings`)
+  expect(settings.open).toBe(true)
+  expect(advanced.open).toBe(false)
+  for (const label of [`Energy units`, `Stored energy reference`])
+    expect(control(label).closest(`details`)).toBe(settings)
+  expect_requirements(`Select energy units. Describe the stored energy reference.`)
+  await fire(doc_query(`.advanced-settings > summary`))
+  expect(advanced.open).toBe(true)
+  expect(control(`Energy property`).closest(`details`)).toBe(advanced)
+  expect(control(`Specify post-reference DOF`).closest(`details`)).toBe(advanced)
   await set_value(`Energy property`, ` `)
   expect_requirements(
     `Enter the energy property. Select energy units. Describe the stored energy reference.`,
   )
+  await set_value(`Source`, `velocity`)
+  expect(control(`Velocity units`).value).toBe(`m/s`)
+  expect(control(`Velocity property`).value).toBe(`velocities`)
+  await fire(doc_query(`.advanced-settings > summary`))
+  expect(advanced.open).toBe(false)
+  await set_value(`Source`, `energy`)
+  expect(advanced.open).toBe(true)
   await set_value(`Energy property`, `kinetic_energy`)
+  await fire(doc_query(`.advanced-settings > summary`))
+  expect(advanced.open).toBe(false)
   await set_value(`Energy units`, `eV`)
   expect_requirements(`Describe the stored energy reference.`)
   await set_value(`Stored energy reference`, `device frame`)
   expect_requirements()
   expect(document.querySelector(`[role="status"]`)).toBeNull()
+  await set_value(`Source`, `velocity`)
+  await set_value(`Source`, `energy`)
+  expect(control(`Energy units`).value).toBe(`eV`)
+  expect(control(`Energy property`).value).toBe(`kinetic_energy`)
 })
 
 it(`shows the selected-frame preview and partial average before completion, retaining coverage on cancel`, async () => {
   const run = make_run()
   const preview = await calculate_run(run, { start_frame: 1, end_frame: 2 })
-  const partial = { ...preview, first_step: 0, last_step: 0 }
+  const partial = {
+    ...preview,
+    energy: preview.energy.map((value) => value * 2),
+    first_step: 0,
+    last_step: 0,
+  }
   let request: HotspotRequest | undefined
   let pending = Promise.withResolvers<HotspotResult>()
   run.compute_hotspots = (options) => {
     request = options
     return pending.promise
   }
-  await mount_pane({ run, current_frame_idx: 1, pane_open: true })
+  const props = $state({
+    run,
+    current_frame_idx: 1,
+    pane_open: true,
+    scale: undefined as HotspotScale | undefined,
+  })
+  await mount_pane(props)
   await set_value(`Velocity units`, `A/ps`)
   await set_value(`Mass units`, `amu`)
   calculate_button().click()
@@ -217,6 +303,17 @@ it(`shows the selected-frame preview and partial average before completion, reta
   await request?.on_preview?.(preview)
   await tick()
   expect(map_status()).toContain(`Frame 1 preview`)
+  const preview_scale = structuredClone($state.snapshot(props.scale))
+  expect(preview_scale?.unit).toBe(`eV/atom`)
+  await fire(control(`Lock numeric color ranges`))
+  expect(control(`Lock numeric color ranges`).matches(`:checked`)).toBe(true)
+  const locked_scale = props.scale
+  expect(control(`Hotspot threshold`).disabled).toBe(true)
+  const legend_threshold = () =>
+    document.querySelector(`.thermal-legend`)?.textContent?.match(/Threshold\s+(?<value>\S+)/)
+      ?.groups?.value
+  const locked_threshold = legend_threshold()
+  expect(locked_threshold).toMatch(/^[0-9]/)
   expect(document.body.textContent).not.toContain(`Settings changed`)
   request?.on_progress?.({
     current: 1.5,
@@ -227,6 +324,8 @@ it(`shows the selected-frame preview and partial average before completion, reta
   await set_value(`Grid resolution`, `2`)
   await request?.on_partial?.(partial)
   await tick()
+  expect(props.scale).toBe(locked_scale)
+  expect(legend_threshold()).toBe(locked_threshold)
   expect(document.body.textContent).toContain(`Settings changed`)
   await set_value(`Grid resolution`, `0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
@@ -257,6 +356,18 @@ it(`shows the selected-frame preview and partial average before completion, reta
   await tick()
   expect(document.querySelector(`.hotspot-progress`)).toBeNull()
   expect(map_status()).toContain(`Time average · 2 frames`)
+  expect(props.scale).toEqual(preview_scale)
+  await fire(control(`Lock numeric color ranges`))
+  expect(props.scale?.atom_max).toBe((preview_scale?.atom_max ?? 0) * 2)
+  expect(legend_threshold()).not.toBe(locked_threshold)
+  expect(control(`Hotspot threshold`).disabled).toBe(false)
+  await fire(control(`Lock numeric color ranges`))
+  await set_value(`Display`, `temperature`)
+  expect(control(`Lock numeric color ranges`).matches(`:checked`)).toBe(false)
+  expect(props.scale?.unit).toBe(`K`)
+  expect(document.querySelector(`.thermal-legend`)?.textContent).toContain(
+    `Bin-average kinetic temperature`,
+  )
 })
 
 it(`aborts an old computation when the source changes`, async () => {
@@ -270,7 +381,11 @@ it(`aborts an old computation when the source changes`, async () => {
     on_progress = options.on_progress
     return pending.promise
   }
-  const props = $state({ run: old_run, pane_open: true })
+  const props = $state({
+    run: old_run,
+    pane_open: true,
+    coverage: undefined as HotspotCoverage | undefined,
+  })
   await mount_pane(props)
   await set_value(`Velocity units`, `A/ps`)
   await set_value(`Mass units`, `kg`)
@@ -292,7 +407,12 @@ it(`aborts an old computation when the source changes`, async () => {
   }
   clock.mockRestore()
   const next = make_run()
+  const old_coverage = props.coverage
+  expect(old_coverage?.completed).toBe(4)
   props.run = next
+  // Source identity changes before the reset effect aborts the request.
+  on_progress?.({ current: 1, completed: 1, total: 4, stage: `Binning kinetic energy` })
+  expect(old_coverage?.completed).toBe(4)
   await tick()
   expect(signal?.aborted).toBe(true)
   on_progress?.({ current: 1, completed: 1, total: 4, stage: `Binning kinetic energy` })

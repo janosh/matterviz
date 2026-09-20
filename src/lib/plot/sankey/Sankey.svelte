@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '$lib/tooltip'
-  import { StatusMessage } from 'svelte-widgets'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import { format_value } from '$lib/labels'
   import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
   import { plot_color } from '$lib/colors'
@@ -422,9 +422,7 @@
   {/snippet}
 
   {#snippet body()}
-    {#if layout.error}
-      <StatusMessage message={layout.error} type="error" style="margin: auto 1em" />
-    {/if}
+    <ViewerError message={layout.error} />
     <svg
       bind:this={svg_element}
       role="application"

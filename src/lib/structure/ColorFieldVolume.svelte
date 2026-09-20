@@ -1,12 +1,21 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import { BackSide, BoxGeometry, Mesh, MeshBasicNodeMaterial } from 'three/webgpu'
+  import {
+    BackSide,
+    BoxGeometry,
+    Matrix4,
+    Mesh,
+    MeshBasicNodeMaterial,
+    Vector2,
+    Vector4,
+  } from 'three/webgpu'
   import {
     cameraProjectionMatrixInverse,
     cameraWorldMatrix,
     float,
     Fn,
     getViewPosition,
+    If,
     Loop,
     max,
     min,
@@ -18,8 +27,13 @@
     vec4,
   } from 'three/tsl'
   import { ColorFieldTexture, type AtomColorField } from './atom-color-field'
+  import { cutaway_bounds, type StructureCutaway } from './cutaway'
 
-  let { field, opacity = 0.35 }: { field: AtomColorField; opacity?: number } = $props()
+  let {
+    field,
+    opacity = 0.35,
+    cutaway,
+  }: { field: AtomColorField; opacity?: number; cutaway?: StructureCutaway } = $props()
   const { invalidate } = useThrelte()
   // A single proxy box, independent of atom count. Transparent projection deliberately
   // includes heat behind atoms; maximum opacity keeps the underlying geometry readable.
@@ -34,6 +48,9 @@
   const density_texture = texture3D(texture)
   const alpha = uniform(0.35)
   const steps = uniform(48, `int`)
+  const clip_enabled = uniform(false)
+  const clip_coordinate = uniform(new Vector4())
+  const clip_bounds = uniform(new Vector2())
   material.fragmentNode = Fn(() => {
     // Unproject the near/far planes instead of assuming a perspective camera. The
     // model inverse includes the triclinic cell, box origin and manual scene rotation.
@@ -54,6 +71,19 @@
     const upper = max(first, last)
     const entry = max(max(lower.x, lower.y), max(lower.z, 0)).toVar()
     const exit = min(min(upper.x, upper.y), upper.z).toVar()
+    If(clip_enabled, () => {
+      const coordinate = clip_coordinate.xyz.dot(origin).add(clip_coordinate.w)
+      const slope = clip_coordinate.xyz.dot(direction)
+      // Parallel rays either miss the whole slab or keep the original box interval.
+      If(slope.abs().lessThan(1e-7), () => {
+        coordinate.lessThan(clip_bounds.x).or(coordinate.greaterThan(clip_bounds.y)).discard()
+      }).Else(() => {
+        const clip_first = clip_bounds.x.sub(coordinate).div(slope)
+        const clip_last = clip_bounds.y.sub(coordinate).div(slope)
+        entry.assign(max(entry, min(clip_first, clip_last)))
+        exit.assign(min(exit, max(clip_first, clip_last)))
+      })
+    })
     exit.lessThanEqual(entry).discard()
     const step_length = exit.sub(entry).div(float(steps)).toVar()
     const accumulated = vec4(0).toVar()
@@ -91,6 +121,26 @@
   $effect(() => {
     alpha.value = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 0
     mesh.visible = visible
+    invalidate()
+  })
+  $effect(() => {
+    clip_enabled.value = Boolean(cutaway && cutaway.mode !== `off`)
+    if (cutaway && clip_enabled.value) {
+      // Convert the shared Cartesian cutaway to this volume's local fractional box.
+      const transform = new Matrix4()
+        .copy(cutaway.cartesian_to_fractional)
+        .multiply(field.cartesian_to_fractional.clone().invert())
+      const values = transform.elements
+      const { axis } = cutaway
+      clip_coordinate.value.set(
+        values[axis],
+        values[axis + 4],
+        values[axis + 8],
+        values[axis + 12],
+      )
+      const [lower, upper] = cutaway_bounds(cutaway)
+      clip_bounds.value.set(Number.isFinite(lower) ? lower : -1e20, upper)
+    }
     invalidate()
   })
   $effect(() => () => {

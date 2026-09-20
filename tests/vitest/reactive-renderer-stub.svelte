@@ -13,6 +13,8 @@
     current_step_idx = $bindable(),
     active_volume_id = $bindable(),
     display_mode = $bindable(),
+    plot_type = $bindable(),
+    distribution_property = $bindable(),
     slice_settings = $bindable(),
     zoom_root_id = $bindable(),
     controls_open = $bindable(),
@@ -26,6 +28,8 @@
     else if (key === `current_step_idx`) current_step_idx = value
     else if (key === `active_volume_id`) active_volume_id = value
     else if (key === `display_mode`) display_mode = value
+    else if (key === `plot_type`) plot_type = value
+    else if (key === `distribution_property`) distribution_property = value
     else if (key === `slice_settings`) slice_settings = value
     else if (key === `zoom_root_id`) zoom_root_id = value
     else if (key === `controls_open`) controls_open = value
@@ -39,6 +43,8 @@
     current_step_idx,
     active_volume_id,
     display_mode,
+    plot_type,
+    distribution_property,
     slice_settings,
     zoom_root_id,
     controls_open,

@@ -462,11 +462,9 @@ describe(`slab geometry`, () => {
     expect(out_of_range).toThrow(/termination_idx 5 is out of range/)
   })
 
-  test(`slab sites carry no index properties and the slab carries no bonds`, () => {
-    // orig_unit_cell_idx and orig_site_idx mean "index into the pre-supercell structure"
-    // to the renderer (atom-properties.ts, bonding.ts, Structure.svelte read them
-    // unguarded). A slab's sites index a different array — the oriented, possibly
-    // in-plane-reduced cell — so stamping either silently mis-colours the whole slab.
+  test(`slab sites carry no viewer provenance and the slab carries no bonds`, () => {
+    // A slab's sites index a different array from the parent cell, so retaining
+    // viewer provenance into that cell would silently mis-colour the slab.
     const with_bonds: Crystal = {
       ...rocksalt(),
       properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }], source: `test` },
@@ -475,11 +473,7 @@ describe(`slab geometry`, () => {
     expect(slab.properties?.bonds).toBeUndefined()
     // unrelated properties survive
     expect(slab.properties?.source).toBe(`test`)
-    for (const atom of slab.sites) {
-      for (const key of [`orig_unit_cell_idx`, `orig_site_idx`, `repeat_idx`]) {
-        expect(atom.properties?.[key]).toBeUndefined()
-      }
-    }
+    for (const atom of slab.sites) expect(atom.provenance).toBeUndefined()
   })
 
   test(`layer spacings are re-based at the chosen termination`, () => {

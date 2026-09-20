@@ -874,14 +874,21 @@
         "matterviz.trajectory.display_mode": {
           "type": "string",
           "default": "auto",
-          "description": "Visualization mode for trajectory data",
+          "description": "Visible trajectory panes, independent of plot type",
           "enum": [
             "auto",
-            "structure+scatter",
+            "structure+plot",
             "structure",
-            "scatter",
-            "histogram",
-            "structure+histogram"
+            "plot"
+          ]
+        },
+        "matterviz.trajectory.plot_type": {
+          "type": "string",
+          "default": "time-series",
+          "description": "Trajectory scalar plot type",
+          "enum": [
+            "time-series",
+            "distribution"
           ]
         },
         "matterviz.trajectory.show_controls": {

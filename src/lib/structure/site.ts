@@ -41,9 +41,6 @@ export class NumericSites {
   get stride(): number {
     return 6 + this.vector_keys.length * 3
   }
-  is_image(idx: number): boolean {
-    return typeof this.scalar_columns?.orig_site_idx?.[idx] === `number`
-  }
   property_keys(): readonly string[] {
     if (this.keys) return this.keys
     const keys: string[] = []
@@ -152,21 +149,17 @@ export const make_site = (
   occu = 1,
 ): Site => ({ species: [{ element, occu, oxidation_state: 0 }], abc, xyz, label, properties })
 
-// PBC image copies carry the index of the site they mirror; every other site is an original
+// Only viewer-generated provenance identifies copies; source properties are ordinary data.
 export const is_image_site = (site: Site | undefined): boolean =>
-  typeof site?.properties?.orig_site_idx === `number`
+  site?.provenance?.image_of !== undefined
 
 // Index of the site a PBC image copies; every other site is its own source
 export const get_image_source_idx = (site: Site | undefined, site_idx: number): number =>
-  typeof site?.properties?.orig_site_idx === `number`
-    ? site.properties.orig_site_idx
-    : site_idx
+  site?.provenance?.image_of ?? site_idx
 
 // Index of the unit-cell site a displayed site descends from: make_supercell stamps
-// `orig_unit_cell_idx` (into the cell it tiled), get_pbc_image_sites stamps `orig_site_idx`
-// (into the structure it imaged, inheriting any `orig_unit_cell_idx`). Sites with neither are
+// `unit_cell_idx` (into the cell it tiled), get_pbc_image_sites stamps `image_of`
+// (into the structure it imaged, inheriting any `unit_cell_idx`). Sites with neither are
 // their own ancestor.
 export const get_orig_site_idx = (site: Site | undefined, site_idx: number): number =>
-  typeof site?.properties?.orig_unit_cell_idx === `number`
-    ? site.properties.orig_unit_cell_idx
-    : get_image_source_idx(site, site_idx)
+  site?.provenance?.unit_cell_idx ?? get_image_source_idx(site, site_idx)

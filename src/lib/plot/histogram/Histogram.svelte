@@ -510,6 +510,7 @@
     clear_hover()
   }}
   {header_controls}
+  {controls_toggle_props}
   {user_content}
   {children}
   {...rest}
@@ -594,6 +595,38 @@
     {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
+  {#snippet controls(toggle_props, show_controls)}
+    <HistogramControls
+      on_export={handle_export}
+      export_filename={chart_export_filename(frame)}
+      {toggle_props}
+      pane_props={controls_pane_props}
+      {show_controls}
+      bind:controls_open
+      bind:bins
+      bind:normalize
+      bind:mode
+      bind:show_legend
+      resolved_show_legend={should_show_legend}
+      bind:selected_series_idx={
+        () => active_series_idx, (value) => (selected_series_idx = value)
+      }
+      bind:display
+      bind:bar
+      bind:x_axis
+      bind:x2_axis
+      bind:y_axis
+      bind:y2_axis
+      auto_ranges={{
+        ...auto_ranges,
+        x2: has_x2_points ? auto_ranges.x2 : undefined,
+        y2: has_y2_points ? auto_ranges.y2 : undefined,
+      }}
+      {series}
+      children={controls_extra}
+    />
+  {/snippet}
+
   {#snippet overlays()}
     <!-- Tooltip (outside SVG for proper HTML rendering) -->
     {#if hover_info && hovered}
@@ -640,36 +673,6 @@
         {/if}
       </PlotTooltip>
     {/if}
-
-    <HistogramControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
-      toggle_props={controls_toggle_props}
-      pane_props={controls_pane_props}
-      bind:show_controls
-      bind:controls_open
-      bind:bins
-      bind:normalize
-      bind:mode
-      bind:show_legend
-      resolved_show_legend={should_show_legend}
-      bind:selected_series_idx={
-        () => active_series_idx, (value) => (selected_series_idx = value)
-      }
-      bind:display
-      bind:bar
-      bind:x_axis
-      bind:x2_axis
-      bind:y_axis
-      bind:y2_axis
-      auto_ranges={{
-        ...auto_ranges,
-        x2: has_x2_points ? auto_ranges.x2 : undefined,
-        y2: has_y2_points ? auto_ranges.y2 : undefined,
-      }}
-      {series}
-      children={controls_extra}
-    />
 
     <PlotLegendLayer
       {frame}

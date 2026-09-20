@@ -530,6 +530,11 @@ test.describe(`Trajectory Component`, () => {
         `margin-top`,
         `0px`,
       )
+      const advanced = pane.locator(`.advanced-settings`)
+      await expect(advanced).not.toHaveAttribute(`open`)
+      await expect(pane.getByLabel(/^Velocity units/)).toBeVisible()
+      await expect(pane.getByLabel(/^Motion/)).not.toBeVisible()
+      await advanced.locator(`summary`).first().click()
       for (const width of [1200, 390]) {
         await page.setViewportSize({ width, height: 844 })
         await expect(async () => {
@@ -541,6 +546,7 @@ test.describe(`Trajectory Component`, () => {
             return [...content.querySelectorAll(`input, select, .hotspot-controls label`)]
               .filter((element) => {
                 const rect = element.getBoundingClientRect()
+                if (!rect.width || !rect.height) return false
                 const label = element.closest(`label`)?.getBoundingClientRect()
                 return (
                   rect.left < left - 1 ||
@@ -554,8 +560,10 @@ test.describe(`Trajectory Component`, () => {
         }).toPass()
         if (width === 1200) {
           for (const [left, right] of [
-            [`Mass units`, `Motion`],
+            [`Source`, `Velocity units`],
+            [`Masses`, `Mass units`],
             [`Frame stride`, `Grid resolution`],
+            [`Velocity property`, `Motion`],
             [`Grid frame`, `Mobile-atom selection property`],
             [`Dimensions`, `Degrees of freedom per atom`],
           ]) {
@@ -572,6 +580,7 @@ test.describe(`Trajectory Component`, () => {
         const pane_bounds = await require_bbox(pane)
         expect(button_bounds.width).toBeLessThan(pane_bounds.width * 0.75)
       }
+      await advanced.locator(`summary`).first().click()
       await pane.getByLabel(/^Velocity units/).selectOption(`A/fs`)
       await expect(calculate).toBeEnabled()
       await expect(calculate).not.toHaveAttribute(`aria-describedby`)
@@ -580,7 +589,7 @@ test.describe(`Trajectory Component`, () => {
 
   for (const [mode, fullscreen] of [
     [`Structure-only`, false],
-    [`Structure + Scatter`, true],
+    [`Structure + Plot`, true],
   ] as const) {
     test(
       `floating panes cover embedded controls in ${mode}`,
@@ -702,6 +711,16 @@ test.describe(`Trajectory Component`, () => {
       await heat_toggle.check()
       await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await pane.getByLabel(/^Minimum average atoms\/bin/).fill(`1`)
+      const legend = pane.getByLabel(`Thermal color legend`)
+      await expect(legend).toContainText(`eV/atom`)
+      const scale_lock = pane.getByLabel(`Lock numeric color ranges`)
+      await scale_lock.check()
+      await expect(legend).toContainText(`Ranges locked`)
+      await pane.getByLabel(/^Display/).selectOption(`temperature`)
+      await expect(scale_lock).not.toBeChecked()
+      await expect(legend).toContainText(`kinetic temperature`)
+      await expect(legend.locator(`small`).filter({ hasText: /^K$/ }).first()).toBeVisible()
+      await pane.getByLabel(/^Display/).selectOption(`energy`)
       await pane.getByLabel(`Volume cloud`, { exact: true }).check()
       const opacity = pane.getByLabel(/^Cloud opacity/).locator(`..`)
       const atom_opacity = pane.getByLabel(/^Atom opacity/)
@@ -719,6 +738,15 @@ test.describe(`Trajectory Component`, () => {
         const right_bounds = await require_bbox(right)
         expect(Math.abs(left_bounds.y - right_bounds.y)).toBeLessThan(1)
       }
+      const cutaway_mode = pane.getByLabel(/^Cutaway mode/)
+      await expect(cutaway_mode).toHaveValue(`off`)
+      await cutaway_mode.selectOption(`slab`)
+      await pane.getByLabel(/^Cutaway axis/).selectOption(`0`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveValue(`0.25`)
+      await pane.getByLabel(/^Cutaway position/).press(`ArrowRight`)
+      await expect(pane.getByLabel(/^Cutaway position/)).toHaveValue(`0.51`)
+      await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
+      await expect(pane.locator(`.hotspot-map-status`)).toHaveText(`Time average · 2 frames`)
       await page.setViewportSize({ width: 390, height: 844 })
       await expect
         .poll(() =>
@@ -727,6 +755,30 @@ test.describe(`Trajectory Component`, () => {
             .evaluate((element) => element.scrollWidth - element.clientWidth),
         )
         .toBeLessThanOrEqual(0)
+      await cutaway_mode.selectOption(`off`)
+      await expect(pane.getByLabel(/^Slab thickness/)).toHaveCount(0)
+      await page.keyboard.press(`Escape`)
+      await page.setViewportSize({ width: 1500, height: 1400 })
+      await expect(pane).not.toBeVisible()
+      const atom_bounds = await require_bbox(atom_canvas)
+      const thermal_tooltip = page.getByRole(`tooltip`).filter({ hasText: `Bin-average` })
+      // Probe the canvas itself: the volume must not intercept the underlying atom hover.
+      for (const row of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+        for (const col of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+          await page.mouse.move(
+            atom_bounds.x + col * atom_bounds.width,
+            atom_bounds.y + row * atom_bounds.height,
+          )
+          if (await thermal_tooltip.isVisible()) break
+        }
+        if (await thermal_tooltip.isVisible()) break
+      }
+      await expect(thermal_tooltip).toContainText(`Bin-average kinetic energy:`)
+      await expect(
+        thermal_tooltip.locator(`small`).filter({ hasText: `eV/atom` }),
+      ).toBeVisible()
+      await expect(thermal_tooltip).toContainText(`Analysis: 2 frames`)
+      await expect(thermal_tooltip).toContainText(`average atoms/bin`)
       expect(console_errors).toEqual([])
     },
   )
@@ -788,25 +840,13 @@ test.describe(`Trajectory Component`, () => {
             for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(7.5)
           }
         }
-        await expect(pane.locator(`.resolution-buttons button`)).toHaveText([
-          `0.5x`,
-          `1x`,
-          `2x`,
-          `4x`,
-        ])
-        await expect(pane.locator(`.resolution-buttons .active`)).toHaveText(`1x`)
+        await expect(pane.getByRole(`spinbutton`, { name: `Width (px)` })).toHaveValue(`1920`)
+        await expect(pane.getByRole(`spinbutton`, { name: `Height (px)` })).toHaveValue(`1080`)
+        await pane.getByRole(`spinbutton`, { name: `Width (px)` }).fill(`640`)
+        await pane.getByRole(`spinbutton`, { name: `Height (px)` }).fill(`360`)
+        await pane.getByRole(`spinbutton`, { name: `Bitrate (Mbps)` }).fill(`4`)
         await pane.getByRole(`spinbutton`, { name: `Frame Rate (FPS)` }).fill(`10`)
-        const expected_size = await trajectory_viewer
-          .locator(`canvas`)
-          .first()
-          .evaluate((canvas) => {
-            // The renderer scales fractional CSS dimensions before flooring to whole pixels.
-            const { width, height } = canvas.getBoundingClientRect()
-            return {
-              width: Math.floor(width * devicePixelRatio * 3),
-              height: Math.floor(height * devicePixelRatio * 3),
-            }
-          })
+        const expected_size = { width: 640, height: 360 }
         const export_button = pane.getByRole(`button`, {
           name: `Download ${label}`,
           exact: true,
@@ -913,6 +953,72 @@ test.describe(`Trajectory Component`, () => {
     )
 
   test.describe(`layout and configuration options`, () => {
+    test(
+      `distribution selection stays independent of layout and fits narrow panes`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        const content = await select_display_mode(trajectory_viewer, `Plot-only`)
+        const plot_type = trajectory_viewer.getByLabel(`Plot type`, { exact: true })
+        await plot_type.selectOption(`distribution`)
+        const property = trajectory_viewer.getByLabel(`Distribution property`, { exact: true })
+        await expect(property).toHaveValue(`energy`)
+        await expect(trajectory_viewer.locator(`.histogram-series`)).toHaveCount(1)
+        const coverage = trajectory_viewer.locator(
+          `.plot-controls-pane .distribution-coverage`,
+        )
+        await expect(coverage).toBeHidden()
+        const plot_toggle = trajectory_viewer.locator(`.histogram .control-pane-toggle`)
+        await plot_toggle.click()
+        await expect(coverage).toBeVisible()
+        await expect(coverage).toHaveText(`Frames with values: 3 / 3`)
+        await plot_toggle.click()
+        await expect(coverage).toBeHidden()
+        await property.selectOption(`force_max`)
+        await expect(property.locator(`option:checked`)).toHaveText(`Fmax (eV/Å)`)
+        await expect(trajectory_viewer.locator(`.histogram .axis-label`).first()).toHaveText(
+          `Fmax (eV/Å)`,
+        )
+        for (const width of [1200, 750, 500]) {
+          await page.setViewportSize({ width, height: 1000 })
+          const plot = trajectory_viewer.locator(`.content-area`)
+          await expect(async () => {
+            const bounds = await require_bbox(controls)
+            for (const element of [plot_type, property]) {
+              const box = await require_bbox(element)
+              expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1)
+              expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1)
+              expect(box.y).toBeGreaterThanOrEqual(bounds.y - 1)
+              expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height + 1)
+            }
+          }).toPass()
+          for (const type of [`time-series`, `distribution`]) {
+            await plot_type.selectOption(type)
+            await expect(async () => {
+              const bounds = await require_bbox(plot)
+              const chart = await require_bbox(plot.locator(`.plot-frame`))
+              expect(Math.abs(chart.y - bounds.y)).toBeLessThan(1)
+              expect(Math.abs(chart.height - bounds.height)).toBeLessThan(1)
+              const gear = await require_bbox(plot.locator(`.control-pane-toggle > svg`))
+              const fullscreen = await require_bbox(plot.locator(`.fullscreen-btn > svg`))
+              expect_centered(gear, fullscreen, `y`)
+              expect(gear.height).toBe(fullscreen.height)
+            }).toPass()
+          }
+          await expect(content).toHaveClass(/show-plot-only/)
+        }
+        await page.setViewportSize({ width: 1200, height: 1000 })
+        await select_display_mode(trajectory_viewer, `Structure + Plot`)
+        await expect(plot_type).toHaveValue(`distribution`)
+        await expect(property).toHaveValue(`force_max`)
+        await plot_type.selectOption(`time-series`)
+        await expect(content).toHaveClass(/show-both/)
+        await expect(trajectory_viewer.locator(`.scatter`)).toBeVisible()
+        await expect(trajectory_viewer.locator(`.scatter .legend-item`)).toHaveCount(2)
+        await plot_type.selectOption(`distribution`)
+        await expect(property).toHaveValue(`force_max`)
+      },
+    )
+
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
@@ -1092,6 +1198,7 @@ test.describe(`Trajectory Component`, () => {
 
     test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
+      await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
       await step_input.focus()
       await expect(step_input).toHaveValue(`0`)
@@ -1101,7 +1208,75 @@ test.describe(`Trajectory Component`, () => {
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
       await expect(play_button).toHaveText(`▶`)
+      await page.keyboard.press(`v`)
+      await expect(trajectory.locator(`.content-area`)).toHaveClass(/show-structure-only/)
     })
+
+    test(`V cycles only the focused viewer and keeps focus when its structure disappears`, async ({
+      page,
+    }) => {
+      const trajectory = page.locator(`#loaded-trajectory`)
+      const sibling = page.locator(`#vertical-layout`)
+      const content = await select_display_mode(trajectory, `Structure + Plot`)
+      const view_button = trajectory.locator(`.trajectory-controls .view-mode-button`)
+      await trajectory.locator(`.structure`).focus()
+      await sibling.hover()
+      const resting_background = await view_button.evaluate(
+        (button) => getComputedStyle(button).backgroundColor,
+      )
+      const icon_box = await require_bbox(view_button.locator(`svg`))
+      await page.keyboard.press(`v`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(view_button).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+      expect(await require_bbox(view_button.locator(`svg`))).toMatchObject({
+        width: icon_box.width,
+        height: icon_box.height,
+      })
+      await expect(content).toHaveClass(/show-plot-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(view_button).toHaveCSS(`background-color`, resting_background)
+      await page.keyboard.press(`v`)
+      await expect(content).toHaveClass(/show-both/)
+      await page.keyboard.press(`Shift+V`)
+      await expect(view_button).not.toHaveCSS(`background-color`, resting_background)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+      await expect(trajectory).toBeFocused()
+      await expect(sibling.locator(`.trajectory-controls .view-mode-button`)).toHaveAttribute(
+        `aria-label`,
+        /^Automatic:/,
+      )
+      await sibling.focus()
+      await page.keyboard.press(`v`)
+      await expect(sibling.locator(`.content-area`)).toHaveClass(/show-structure-only/)
+      await expect(trajectory.locator(`.scatter`)).toBeVisible()
+    })
+
+    test(
+      `playback shortcuts flash their controls without resizing them`,
+      { tag: `@single-viewer` },
+      async ({ page }) => {
+        const trajectory = page.locator(`#loaded-trajectory`)
+        await trajectory.focus()
+        for (const [key, selector] of [
+          [`ArrowRight`, `.nav-section button:last-child`],
+          [`ArrowLeft`, `.nav-section button:first-child`],
+          [`End`, `.step-input`],
+          [`Home`, `.step-input`],
+          [`+`, `.fps-section input`],
+          [`-`, `.fps-section input`],
+          [`Space`, `.play-button`],
+          [`Space`, `.play-button`],
+        ]) {
+          const control = trajectory.locator(selector)
+          await page.keyboard.press(key)
+          await expect(control, key).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
+          const { width, height } = await require_bbox(control)
+          await expect(control, key).toHaveCSS(`box-shadow`, `none`)
+          expect(await require_bbox(control), key).toMatchObject({ width, height })
+        }
+      },
+    )
 
     test(`FPS input uses 0.1 increments and shared bounds`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
@@ -1165,13 +1340,16 @@ test.describe(`Trajectory Component`, () => {
         .join(``)
       await drop_file(page, trajectory, content, `flat-energy-traces.xyz`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await expect(display_button).toHaveAttribute(`aria-label`, `Automatic: Structure-only`)
+      await expect(display_button).toHaveAttribute(
+        `aria-label`,
+        `Automatic: Structure-only (V: next, Shift+V: previous)`,
+      )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-      await select_display_mode(trajectory, `Scatter-only`)
+      await select_display_mode(trajectory, `Plot-only`)
       await expect(content_area).toHaveClass(/show-plot-only/)
-      await select_display_mode(trajectory, `Structure + Scatter`)
+      await select_display_mode(trajectory, `Structure + Plot`)
       await expect(content_area).toHaveClass(/show-both/)
       await expect(trajectory.locator(`.scatter`)).toBeVisible()
       await select_display_mode(trajectory, `Automatic`)

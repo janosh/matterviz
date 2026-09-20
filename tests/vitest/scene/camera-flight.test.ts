@@ -8,6 +8,7 @@ import {
   type CameraPose,
 } from '$lib/scene/camera-flight'
 import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
+import { plan_movie, movie_frame, type MovieRequest } from '$lib/trajectory/movie'
 import { OrthographicCamera, PerspectiveCamera, Quaternion, Vector3 } from 'three/webgpu'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +35,78 @@ const path = (): CameraFlight => ({
     },
     { ...structuredClone(pose), position: [10, 0, 10], time: 5 },
   ],
+})
+
+describe(`movie plans`, () => {
+  const video = { width: 1920, height: 1080, fps: 30, duration_s: 12 }
+  it.each([1, 6, 5001])(`samples %s source frames independently of video FPS`, (count) => {
+    const plan = plan_movie({ video, camera: path() }, count, pose)
+    expect(plan.video.frame_count).toBe(360)
+    expect(movie_frame(plan, 0)).toEqual({ source_frame: 0, camera_time: 0, timestamp_us: 0 })
+    expect(movie_frame(plan, 359)).toEqual({
+      source_frame: count - 1,
+      camera_time: 12,
+      timestamp_us: 11_966_667,
+    })
+    expect(plan.camera.keyframes.map(({ time }) => time)).toEqual([0, 4.8, 12])
+    // A saved explicit path reproduces the resolved plan, including its frame schedule.
+    const serialized = JSON.stringify(plan)
+    expect(plan_movie(JSON.parse(serialized), count, pose)).toEqual(plan)
+    const edited = JSON.parse(serialized)
+    edited.video.fps = 60
+    edited.video.duration_s = 4
+    edited.camera_viewport_height = 720
+    const replanned = plan_movie(edited, count, pose)
+    expect(replanned.video.frame_count).toBe(240)
+    expect(replanned.camera_viewport_height).toBe(720)
+    expect(replanned.camera.keyframes.at(-1)?.time).toBe(4)
+    expect(() => movie_frame(plan, 360)).toThrow(`outside`)
+  })
+  it(`keeps a selected range and holds the initial pose for a single output frame`, () => {
+    const plan = plan_movie(
+      { video: { ...video, duration_s: 1 / 30 }, frames: { start: 5, end: 8 } },
+      10,
+      pose,
+    )
+    expect(movie_frame(plan, 0).source_frame).toBe(5)
+    expect(plan.camera.keyframes[0]).toEqual({ ...pose, time: 0 })
+    expect(plan.frames).toEqual({ start: 5, end: 8 })
+  })
+  it.each([`perspective`, `orthographic`] as const)(
+    `builds a serializable %s orbit`,
+    (projection) => {
+      const plan = plan_movie(
+        {
+          video,
+          camera: { preset: `orbit`, turns: 0.5, elevation_deg: 30, distance_scale: 2 },
+        },
+        3,
+        { ...pose, projection },
+      )
+      validate_camera_flight(plan.camera)
+      expect(plan.camera.keyframes[0].zoom).toBe(projection === `orthographic` ? 0.5 : 1)
+      for (const frame of plan.camera.keyframes) {
+        // Trig and vector products at a radius of 20: allow 16 f64 eps relative.
+        expect(Math.abs(Math.hypot(...frame.position) - 20)).toBeLessThan(
+          16 * Number.EPSILON * 20,
+        )
+      }
+      expect(plan.camera.keyframes[0].position).not.toEqual(
+        plan.camera.keyframes.at(-1)?.position,
+      )
+    },
+  )
+  it.each([
+    { video: { ...video, width: 1919 } },
+    { video: { ...video, fps: 0 } },
+    { video: { ...video, duration_s: NaN } },
+    { video: { ...video, bitrate: -1 } },
+    { video, frames: { start: 3, end: 3 } },
+    { video, frames: { start: 0, end: 11 } },
+    { video, camera: { preset: `orbit`, distance_scale: 0 } },
+  ] satisfies MovieRequest[])(`rejects invalid movie settings: %j`, (request) => {
+    expect(() => plan_movie(request, 10, pose)).toThrow(/movie|Movie|orbit/)
+  })
 })
 
 describe(`camera flight sampling`, () => {

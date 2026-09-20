@@ -369,9 +369,11 @@ export const WIDGETS: Record<string, WidgetSpec> = {
           is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0
         return is_set ? { atom_type_mapping } : undefined
       }),
-      // current_step_idx links widgets; display_mode changes from the view-mode menu.
+      // Keep playback, layout and plot selection synchronized with the notebook.
       writeback_prop(`current_step_idx`, 0),
       writeback_prop(`display_mode`, DEFAULTS.trajectory.display_mode),
+      writeback_prop(`plot_type`, DEFAULTS.trajectory.plot_type),
+      writeback_prop(`distribution_property`),
       derived_prop(
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],

@@ -150,14 +150,13 @@ describe(`numeric composition`, () => {
     const structure = materialize_frame(frame).structure
     structure.sites.push({
       ...structure.sites[0],
-      properties: { orig_site_idx: 0 },
+      provenance: { image_of: 0 },
     })
     expect(struct_utils.get_element_counts(structure)).toEqual({ Si: 1, Ge: 1 })
 
     const view = new FrameView()
     const identity = snapshot_topologies.get(view.update(frame).structure)
-    // Provenance can change while atom identities stay fixed. A short column marks only its
-    // present rows; NaN and negative numbers follow the same image semantics as rich sites.
+    // Imported provenance-named columns remain ordinary data, including partial columns.
     for (const indices of [undefined, [1], [NaN, -1], [], undefined]) {
       const snapshot = {
         ...frame,
@@ -169,6 +168,7 @@ describe(`numeric composition`, () => {
       const materialize = vi.spyOn(columns, `materialize`)
       const reference = materialize_frame(snapshot).structure as Crystal
       expect(snapshot_topologies.get(numeric)).toBe(identity)
+      expect(struct_utils.get_element_counts(numeric)).toEqual({ Si: 1, Ge: 1 })
       for (const calculate of [
         struct_utils.get_density,
         struct_utils.get_element_counts,
@@ -180,7 +180,7 @@ describe(`numeric composition`, () => {
   })
 
   test.each([0, 119, 255])(
-    `rejects invalid atomic number %i, including image sites`,
+    `rejects invalid atomic number %i with source provenance properties`,
     (atomic_number) => {
       for (const scalar_columns of [undefined, { orig_site_idx: Float64Array.of(0, 0) }]) {
         const structure = new FrameView().update({
@@ -865,7 +865,7 @@ describe(`characteristic_atom_spacing`, () => {
     const structure = structures[0]
     const image_site = {
       ...structure.sites[0],
-      properties: { ...structure.sites[0].properties, orig_site_idx: 0 },
+      provenance: { image_of: 0 },
     }
     expect(
       characteristic_atom_spacing({ ...structure, sites: [...structure.sites, image_site] }),

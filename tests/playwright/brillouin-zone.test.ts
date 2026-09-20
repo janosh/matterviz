@@ -257,6 +257,16 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_error`, {
       timeout: 20000,
     })
+    const viewer = page.locator(BZ_SELECTOR)
+    const alert = viewer.getByRole(`alert`)
+    for (const width of [800, 320]) {
+      await viewer.evaluate((element, size) => {
+        element.style.setProperty(`--bz-width`, `${size}px`)
+      }, width)
+      expect(await require_bbox(alert)).toEqual(await require_bbox(viewer))
+    }
+    await alert.getByRole(`button`, { name: `Dismiss message` }).click()
+    await expect(alert).toHaveCount(0)
   })
 })
 

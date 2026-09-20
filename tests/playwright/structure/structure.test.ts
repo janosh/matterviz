@@ -343,8 +343,13 @@ test.describe(`Structure Component Tests`, () => {
       dispatch_cancelable_keydown(structure_div, init).then((not_prevented) => !not_prevented)
 
     // view toggles are plain letters; the same key as a chord is left to browser and host
-    for (const key of [`f`, `i`, `g`]) {
+    for (const [key, selector] of [
+      [`f`, `.fullscreen-btn`],
+      [`i`, `.structure-info-toggle`],
+      [`g`, `.view-layout-dropdown > button`],
+    ]) {
       await expect(handles({ key }), `plain ${key}`).resolves.toBe(true)
+      await expect(structure_div.locator(selector)).toHaveCSS(`box-shadow`, /0px 0px 0px 1px$/)
       await expect(handles({ key, [primary_modifier]: true }), `mod+${key}`).resolves.toBe(
         false,
       )
@@ -655,7 +660,7 @@ test.describe(`File Drop Functionality Tests`, () => {
   // Synthetic DataTransfer events are unreliable in headless CI; these work locally
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
-    await goto_structure_test(page, `/test/structure?files=true`)
+    await goto_structure_test(page)
   })
 
   // Regression: commit 10477bb9 added scene_props.camera_target for comparison-view
@@ -742,6 +747,18 @@ test.describe(`Show Buttons Tests`, () => {
   }
 })
 
+test(`should trigger on_file_load event when structure is loaded from a source URL`, async ({
+  page,
+}) => {
+  const ownership_warnings: string[] = []
+  page.on(`console`, (message) => {
+    if (message.text().includes(`ownership_invalid`)) ownership_warnings.push(message.text())
+  })
+  await goto_structure_test(page, `/test/structure?source=/structures/mp-1.json`)
+  await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
+  expect(ownership_warnings).toEqual([])
+})
+
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
@@ -790,25 +807,39 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(event.data).toMatchObject({ fullscreen: true })
   })
 
-  test(`should trigger on_file_load event when structure is loaded from a source URL`, async ({
+  test(`import notices and file errors overlay the viewer without shrinking its canvas`, async ({
     page,
   }) => {
-    const ownership_warnings: string[] = []
-    page.on(`console`, (message) => {
-      if (message.text().includes(`ownership_invalid`)) ownership_warnings.push(message.text())
-    })
-    await goto_structure_test(page, `/test/structure?source=/structures/mp-1.json`)
-    await wait_for_event(page, `on_file_load`, [`structure`, `filename`])
-    expect(ownership_warnings).toEqual([])
-  })
-
-  test(`should trigger on_error event when file loading fails`, async ({ page }) => {
-    await page.goto(`/test/structure?source=non-existent.json`)
-    await wait_for_event(page, `on_error`, [`error_msg`, `filename`])
-
-    // UI should still render gracefully despite the load failure
-    await expect(page.locator(`#test-structure`)).toBeVisible()
-    await expect(page.locator(`[data-testid="pane-open-status"]`)).toBeVisible()
+    const viewer = page.locator(`#test-structure`)
+    const canvas = structure_canvas(page)
+    const chgcar = `H\n1\n1 0 0\n0 1 0\n0 0 1\nH\n1\nDirect\n0 0 0\n\n2 2 2\n1 2 3 4 5 6 7 8`
+    for (const filename of [`A.CHGCAR`, `B.CHGCAR`]) {
+      await clear_events(page)
+      await drop_file(page, viewer, chgcar, filename)
+      await wait_for_event(page, `on_file_load`, [`filename`])
+    }
+    const notice = viewer.locator(`.import-notice`)
+    await expect(notice).toContainText(`Added 1 volume from B.CHGCAR`)
+    expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
+    const notice_box = await require_bbox(notice)
+    const viewer_box = await require_bbox(viewer)
+    expect(notice_box.y + notice_box.height).toBeLessThanOrEqual(
+      viewer_box.y + viewer_box.height,
+    )
+    await notice.getByRole(`button`, { name: `Dismiss message` }).click()
+    await expect(notice).toHaveCount(0)
+    await drop_file(page, viewer, `invalid structure`, `${`long-filename-`.repeat(20)}.cif`)
+    await wait_for_event(page, `on_error`, [`error_msg`])
+    const alert = viewer.getByRole(`alert`).filter({ hasText: `Failed to load` })
+    await expect(alert).toBeVisible()
+    expect(await require_bbox(alert)).toEqual(await require_bbox(viewer))
+    expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
+    expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+    await alert.getByRole(`button`, { name: `Dismiss message` }).click()
+    await expect(alert).toHaveCount(0)
+    expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
   })
 
   test(`camera movement emits distinct on_camera_move events`, async ({ page }) => {
@@ -948,6 +979,10 @@ test.describe(`Structure Event Handler Tests`, () => {
     await page.keyboard.press(`Shift+R`)
     expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
     await page.keyboard.press(`r`)
+    await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
+      `box-shadow`,
+      /0px 0px 0px 1px$/,
+    )
     await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
   })
 })

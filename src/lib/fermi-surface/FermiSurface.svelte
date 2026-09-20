@@ -6,7 +6,8 @@
   import { reciprocal_lattice } from '$lib/math'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
-  import { type Spinner, StatusMessage } from 'svelte-widgets'
+  import type { Spinner } from 'svelte-widgets'
+  import ViewerError from '$lib/layout/ViewerError.svelte'
   import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
   import type { FileLoadCallback } from '$lib/io'
@@ -289,6 +290,7 @@
   })
 
   function handle_keydown(event: KeyboardEvent) {
+    if (event.defaultPrevented || event.isComposing) return
     if (is_editable_event_target(event.target)) return
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
@@ -316,12 +318,7 @@
   {#if loading}
     <LoadingStatus overlay label="Loading Fermi surface..." {...spinner_props} />
   {:else if error_msg}
-    <StatusMessage
-      bind:message={error_msg}
-      type="error"
-      dismissible
-      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; text-align: center"
-    />
+    <ViewerError bind:message={error_msg} dismissible />
   {:else if surface_data || grid_data}
     {#if extracting}
       <LoadingStatus overlay label="Extracting Fermi surface..." {...spinner_props} />

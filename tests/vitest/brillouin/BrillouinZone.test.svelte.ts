@@ -232,7 +232,9 @@ test(`reports a singular lattice instead of computing a zone`, async () => {
   await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
   expect(on_error.mock.calls[0][0].error_msg).toMatch(/BZ computation failed: .*singular/)
   expect(props.error_msg).toMatch(/singular/)
-  expect(document.body.querySelector(`.brillouin-zone`)?.textContent).toMatch(/singular/)
+  expect(doc_query(`.brillouin-zone > .viewer-error [role="alert"]`).textContent).toMatch(
+    /singular/,
+  )
 })
 
 // The zone the component renders, observed through its `children` snippet (the derived zone
@@ -388,3 +390,32 @@ test(`hovering the zone and pressing f fullscreens it`, async () => {
   await tick()
   expect(props.fullscreen).toBe(true)
 })
+
+test.each([
+  [`i`, false, false],
+  [`Escape`, false, false],
+  [`i`, true, false],
+  [`Escape`, true, false],
+  [`i`, false, true],
+  [`Escape`, false, true],
+] as const)(
+  `pane shortcut %s respects canceled=%s composing=%s`,
+  async (key, canceled, is_composing) => {
+    const state = $state({ info_pane_open: true })
+    mounted_component = mount(BrillouinZone, {
+      target: document.body,
+      props: state,
+    })
+    await tick()
+    const event = new KeyboardEvent(`keydown`, {
+      key,
+      isComposing: is_composing,
+      cancelable: true,
+      bubbles: true,
+    })
+    if (canceled) event.preventDefault()
+    doc_query(`.brillouin-zone`).dispatchEvent(event)
+    await tick()
+    expect(state.info_pane_open).toBe(canceled || is_composing)
+  },
+)

@@ -1,5 +1,6 @@
 import { FPS_STEP } from '$lib/constants'
 import { clamp } from '$lib/math'
+import { create_shortcut_flash } from '$lib/effects.svelte'
 import { untrack } from 'svelte'
 
 // Shared playback/navigation for ordered collections. Getter inputs preserve reactivity
@@ -26,6 +27,7 @@ const snap_fps = (value: number, round = Math.round) => round(value * FPS_SCALE)
 
 export function create_sequence_player(inputs: SequencePlayerInputs) {
   let is_playing = $state(false)
+  const shortcut_flash = create_shortcut_flash<`play` | `previous` | `next` | `step` | `fps`>()
 
   const fps_limits = $derived.by(() => {
     const [range_start, range_end] = inputs.fps_range()
@@ -90,18 +92,21 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
   }
 
   function handle_keydown(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented || event.isComposing) return false
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
     if (is_cmd_or_ctrl && key !== `ArrowLeft` && key !== `ArrowRight`) return false
 
+    const previous_index = inputs.index()
+    const previous_fps = playback_fps
+    const was_playing = is_playing
+
     if (key === ` `) {
       if (!event.repeat) toggle()
     } else if (key === `ArrowLeft`) {
-      if (is_cmd_or_ctrl) seek(0)
-      else previous()
+      seek(is_cmd_or_ctrl ? 0 : inputs.index() - 1)
     } else if (key === `ArrowRight`) {
-      if (is_cmd_or_ctrl) seek(inputs.count() - 1)
-      else next()
+      seek(is_cmd_or_ctrl ? inputs.count() - 1 : inputs.index() + 1)
     } else if (key === `Home`) seek(0)
     else if (key === `End`) seek(inputs.count() - 1)
     else if (key === `j`) seek(inputs.index() - 10)
@@ -113,6 +118,16 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     } else if (key >= `0` && key <= `9`) {
       seek(Math.floor((Number(key) / 10) * (inputs.count() - 1)))
     } else return false
+    if (is_playing !== was_playing) shortcut_flash.show(`play`)
+    else if (inputs.index() !== previous_index)
+      shortcut_flash.show(
+        !is_cmd_or_ctrl && key === `ArrowLeft`
+          ? `previous`
+          : !is_cmd_or_ctrl && key === `ArrowRight`
+            ? `next`
+            : `step`,
+      )
+    else if (playback_fps !== previous_fps) shortcut_flash.show(`fps`)
     return true
   }
 
@@ -163,6 +178,7 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
       inputs.set_fps(normalize_fps(value))
     },
     fps_step: FPS_STEP,
+    shortcut_flash,
     go_to,
     play: () => set_playing(true),
     pause: () => set_playing(false),

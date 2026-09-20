@@ -117,7 +117,8 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 {
   "matterviz.trajectory.auto_play": true,
   "matterviz.trajectory.fps": 10,
-  "matterviz.trajectory.display_mode": "structure+scatter",
+  "matterviz.trajectory.display_mode": "structure+plot",
+  "matterviz.trajectory.plot_type": "time-series",
   "matterviz.trajectory.show_controls": true,
   "matterviz.trajectory.atom_type_mapping": { "1": "Si", "2": "O" }
 }

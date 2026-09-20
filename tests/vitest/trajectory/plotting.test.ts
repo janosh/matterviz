@@ -126,11 +126,20 @@ describe(`generate_plot_series`, () => {
   })
 
   it(`groups energy and force series by unit`, () => {
-    const series = generate_plot_series(create_rows(COMMON_TRAJECTORIES.multi_property), {
+    const rows = create_rows(
+      COMMON_TRAJECTORIES.multi_property.map(({ energy, ...properties }) => ({
+        ...properties,
+        energy,
+      })),
+    )
+    const series = generate_plot_series(rows, {
       property_config: DEFAULT_PROPERTY_CONFIG,
       default_visible_properties: new Set([`energy`, `force_max`]),
     })
     expect(series).toHaveLength(3)
+    expect(
+      generate_plot_series(rows, { include_all_properties: true }).map((srs) => srs.id),
+    ).toEqual([`energy`, `force_max`, `volume`])
     // Dense properties share one source-frame grid rather than copying it per column.
     for (const srs of series) expect(srs.x).toBe(series[0].x)
     // Units belong on the axis label, not duplicated in the legend series text
@@ -378,7 +387,11 @@ describe(`generate_plot_series`, () => {
     { name: `empty trajectory`, frames: [], expected_length: 0 },
     { name: `single frame`, frames: [{ energy: -10.0 }], expected_length: 0 },
   ])(`handles edge case: $name`, ({ frames, expected_length }) => {
-    expect(generate_plot_series(create_rows(frames))).toHaveLength(expected_length)
+    const rows = create_rows(frames)
+    expect(generate_plot_series(rows)).toHaveLength(expected_length)
+    expect(generate_plot_series(rows, { include_all_properties: true })).toHaveLength(
+      frames.length,
+    )
   })
 
   // oxfmt-ignore
@@ -409,6 +422,9 @@ describe(`generate_plot_series`, () => {
     if (match) expect(find_series_by_label(series, key)).toMatchObject(match)
     expect(generate_plot_series(rows, { relative_energy: true }).map((srs) => srs.id))
       .toEqual(series.map((srs) => srs.id))
+    const distribution = generate_plot_series(rows, { include_all_properties: true })
+    expect(distribution).toHaveLength(1)
+    expect(distribution[0].y).toEqual(values)
   })
 })
 

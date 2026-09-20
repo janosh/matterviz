@@ -157,6 +157,13 @@ describe(`ChemPot temperature config wiring`, () => {
       max_interpolation_gap: 700,
     })
     expect(document.querySelector(`.error-state`)).toBeNull()
+    const export_toggle = document.querySelector<HTMLButtonElement>(
+      `.header-controls > .chempot-export-toggle`,
+    )
+    expect(export_toggle).not.toBeNull()
+    export_toggle?.click()
+    await tick()
+    expect(document.querySelector(`.chempot-export-pane.pane-open`)).not.toBeNull()
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
     expect(
       document.querySelector<HTMLInputElement>(`.temperature-slider input[type="range"]`)

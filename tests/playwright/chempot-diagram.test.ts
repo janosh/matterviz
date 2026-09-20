@@ -1,6 +1,6 @@
 import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { IS_CI } from './helpers'
+import { expect_centered, IS_CI, require_bbox } from './helpers'
 
 const TEST_URL = `/convex-hull/chempot-diagram`
 
@@ -138,7 +138,10 @@ test.describe(`ChemPot Diagram interactions`, () => {
     )
 
     const controls_toggle = diagram.locator(`button.plot-controls-toggle`).first()
-    await expect(controls_toggle).toHaveCSS(`right`, `68px`)
+    const icons = diagram.locator(`.header-controls > button > svg`)
+    await expect(icons).toHaveCount(3)
+    const first = await require_bbox(icons.first())
+    for (const icon of await icons.all()) expect_centered(await require_bbox(icon), first, `y`)
     const controls_pane = diagram
       .locator(`.draggable-pane`)
       .filter({

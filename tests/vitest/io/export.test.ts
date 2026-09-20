@@ -5,6 +5,7 @@ import {
   export_svg_as_png,
   export_svg_as_svg,
   export_trajectory_video,
+  render_video_frames,
   renderer_registry,
   scene_registry,
   svg_to_png_blob,
@@ -12,7 +13,8 @@ import {
 } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
-import { Vector2 } from 'three/webgpu'
+import { Vector2, PerspectiveCamera } from 'three/webgpu'
+import { plan_movie, movie_frame } from '$lib/trajectory/movie'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
 
@@ -59,6 +61,84 @@ function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => 
   renderer_registry.set(canvas, renderer as unknown as WebGPURenderer)
   return { canvas, renderer }
 }
+
+test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
+  `offline video awaits slow frames and restores dimensions on %s`,
+  async (outcome) => {
+    vi.useFakeTimers()
+    const { canvas, renderer } = make_canvas_with_renderer()
+    const camera = new PerspectiveCamera(50, 4 / 3)
+    camera.position.set(0, 0, 10)
+    const original = camera.clone()
+    scene_registry.set(canvas, { scene: {} as Scene, camera })
+    const capture_canvas = mock_offscreen_canvas()
+    const plan = plan_movie(
+      {
+        video: { width: 1280, height: 720, fps: 30, duration_s: 0.1 },
+        camera: { preset: `orbit`, turns: 0.5 },
+      },
+      6,
+      {
+        position: [0, 0, 10],
+        target: [0, 0, 0],
+        quaternion: [0, 0, 0, 1],
+        projection: `perspective`,
+        zoom: 1,
+        fov: 50,
+        pan: [0, 0],
+      },
+    )
+    const abort = new AbortController()
+    let prepared = -1
+    const captured: number[] = []
+    const result = render_video_frames(
+      canvas,
+      {
+        ...plan.video,
+        total_frames: 3,
+        camera_flight: plan.camera,
+        signal: abort.signal,
+        on_step: async (idx) => {
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          prepared = movie_frame(plan, idx).source_frame
+        },
+      },
+      {
+        frame: async (frame, _idx, signal) => {
+          expect(signal).toBe(abort.signal)
+          expect(frame).toBe(capture_canvas)
+          expect([frame.width, frame.height]).toEqual([1280, 720])
+          captured.push(prepared)
+          if (outcome === `sink-error`) throw new Error(`encoder failed`)
+          if (outcome === `cancel`) abort.abort(new Error(`cancelled`))
+          if (outcome === `blocked-sink`) {
+            setTimeout(() => abort.abort(new Error(`cancelled`)), 20)
+            await new Promise<void>(() => {})
+          }
+        },
+      },
+    ).catch((error: unknown) => error)
+    await vi.runAllTimersAsync()
+    if (outcome === `success`) {
+      expect(await result).toBeUndefined()
+      expect(captured).toEqual([0, 3, 5])
+      const rendered_camera = renderer.render.mock.calls.at(-1)?.[1] as PerspectiveCamera
+      expect(rendered_camera.aspect).toBe(16 / 9)
+      expect(rendered_camera.position.toArray()).toEqual(
+        plan.camera.keyframes.at(-1)?.position,
+      )
+    } else
+      expect(await result).toMatchObject({
+        message: outcome === `sink-error` ? `encoder failed` : `cancelled`,
+      })
+    expect(camera.position.toArray()).toEqual(original.position.toArray())
+    expect(camera.projectionMatrix.elements).toEqual(original.projectionMatrix.elements)
+    expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
+      [1280, 720, 1],
+      [800, 600, 1],
+    ])
+  },
+)
 
 function make_svg(viewBox?: string): SVGElement {
   const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
@@ -583,7 +663,7 @@ describe(`export_trajectory_video`, () => {
       } else {
         expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
       }
-      expect(on_finish).toHaveBeenCalledTimes(failure.startsWith(`init-`) ? 0 : 1)
+      expect(on_finish).toHaveBeenCalledOnce()
       expect(renderer.render).not.toHaveBeenCalled()
       expect(download).not.toHaveBeenCalled()
     },
@@ -683,6 +763,7 @@ describe(`export_trajectory_video`, () => {
     const format = outcome === `success-mp4` ? `mp4` : undefined
     const mime_type = format === `mp4` ? `video/mp4;codecs=av01` : `video/webm;codecs=av1`
     let recording_started = false
+    let recording_started_at = 0
     let stop_started = 0
     let cleanup_delay = 0
     class MockMediaRecorder extends EventTarget {
@@ -706,6 +787,7 @@ describe(`export_trajectory_video`, () => {
             return
           }
           recording_started = true
+          recording_started_at = performance.now()
           this.dispatchEvent(new Event(`start`))
           if (outcome === `abort-delay`) setTimeout(cancel, 1)
         }, 500)
@@ -872,7 +954,13 @@ describe(`export_trajectory_video`, () => {
     ])
     expect(capture_canvas.captureStream).toHaveBeenCalledWith(fps)
     expect([capture_canvas.width, capture_canvas.height]).toEqual([800, 600])
-    expect(captured_steps).toEqual(completed_frames ? [0, 0, 1] : total_frames ? [0, 0] : [])
+    expect(captured_steps).toEqual(completed_frames ? [0, 1] : total_frames ? [0] : [])
+    if (outcome === `success`) {
+      // Frame preparation fits inside each 24 FPS interval; it must not add another delay.
+      expect(stop_started - recording_started_at).toBeLessThan(
+        (total_frames * 1000) / fps + 10,
+      )
+    }
     expect(tracks[0].requestFrame).toHaveBeenCalledTimes(
       completed_frames ? 2 : total_frames ? 1 : 0,
     )

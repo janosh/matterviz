@@ -5,6 +5,8 @@ import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { electroneg_ratio, get_majority_element } from '$lib/structure/bonding'
 import { parse_structure_file } from '$lib/structure/parse'
+import { get_element_counts } from '$lib/structure/density'
+import { is_image_site } from '$lib/structure/site'
 import { open_trajectory } from '$lib/trajectory/open'
 import { structure_map } from '$site/structures'
 import lifemn_cif from '$site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
@@ -97,17 +99,20 @@ test(`find_image_atoms adds bond-completing images beyond the face tolerance`, (
   const boundary = image_atoms.filter(([site_idx]) => site_idx === 0)
   expect(boundary.length).toBeGreaterThan(0)
   expect(boundary.every((img) => img[3] === undefined)).toBe(true)
-  // get_pbc_image_sites propagates the marker onto site properties
-  const imaged = get_pbc_image_sites(structure)
-  const completion_sites = imaged.sites.filter((site) => site.properties?.completion_image)
+  // Imported names remain ordinary data; only generated provenance identifies images.
+  const source_properties = { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }
+  for (const site of structure.sites) site.properties = { ...source_properties }
+  const imaged = structuredClone(get_pbc_image_sites(structure))
+  const original_sites = imaged.sites.slice(0, structure.sites.length)
+  expect(get_element_counts(imaged)).toEqual({ Ag: 1, I: 1 })
+  for (const site of imaged.sites) expect(site.properties).toEqual(source_properties)
+  expect(original_sites.some(is_image_site)).toBe(false)
+  expect(imaged.sites.slice(structure.sites.length).every(is_image_site)).toBe(true)
+  const completion_sites = imaged.sites.filter((site) => site.provenance?.completion)
   expect(completion_sites.length).toBeGreaterThan(0)
   expect(completion_sites.every((site) => site.species[0].element === `I`)).toBe(true)
   // original (non-image) sites never carry the marker
-  expect(
-    imaged.sites
-      .slice(0, structure.sites.length)
-      .every((site) => !site.properties?.completion_image),
-  ).toBe(true)
+  expect(original_sites.every((site) => !site.provenance?.completion)).toBe(true)
 
   // an isolated atom pair too far apart to bond must NOT generate phase-2 images
   const unbonded = make_crystal(10, [

@@ -7,6 +7,7 @@
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+  import { create_shortcut_flash } from '$lib/effects.svelte'
 
   // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
   // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to
@@ -22,6 +23,7 @@
 
   // marks a wrapper as a fullscreen root so nested viewers can spot an outer owner
   const VIEWER_ATTR = `data-mv-fullscreen-root`
+  const shortcut_flash = create_shortcut_flash<`fullscreen`>()
 
   let reported = fullscreen
   const report = (next: boolean) => {
@@ -57,6 +59,7 @@
       // Only the keyboard defers — the nested viewer's own button still works.
       if (root.parentElement?.closest(`[${VIEWER_ATTR}]`)) return false
       fullscreen = !fullscreen
+      shortcut_flash.show(`fullscreen`)
       return true
     }
     const detach = forward_window_keydown({ handle })(root)
@@ -78,5 +81,7 @@
     ...rest.icons,
   }}
   {hidden}
-  style={[rest.style, hidden && `display: none`].filter(Boolean).join(`; `)}
+  style={[rest.style, shortcut_flash.style(`fullscreen`), hidden && `display: none`]
+    .filter(Boolean)
+    .join(`; `)}
 />

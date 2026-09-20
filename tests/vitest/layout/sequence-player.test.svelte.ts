@@ -10,6 +10,11 @@ type Host = {
   fps_range: readonly [number, number]
 }
 
+const flashed_controls = (player: Player) =>
+  ([`play`, `previous`, `next`, `step`, `fps`] as const).filter((control) =>
+    player.shortcut_flash.style(control).includes(`transition: none`),
+  )
+
 // Drive the rAF loop by hand: each frame callback is queued, run_frame pops and runs one
 const stub_animation_frames = () => {
   const callbacks: FrameRequestCallback[] = []
@@ -85,6 +90,7 @@ describe(`create_sequence_player`, () => {
     act(player)
     expect(host.index).toBe(expected)
     expect(set_index).toHaveBeenCalledTimes(set_calls)
+    expect(flashed_controls(player)).toEqual([])
   })
 
   test(`stepping clamps to the shrunken range after the sequence loses items`, () => {
@@ -234,35 +240,65 @@ describe(`create_sequence_player`, () => {
   })
 
   test.each([
-    [{ key: ` ` }, { index: 2, fps: 10, playing: true }, true],
-    [{ key: ` `, repeat: true }, { index: 2, fps: 10, playing: false }, true],
-    [{ key: `ArrowRight` }, { index: 3, fps: 10, playing: false }, true],
-    [{ key: `ArrowLeft` }, { index: 1, fps: 10, playing: false }, true],
-    [{ key: `ArrowLeft`, metaKey: true }, { index: 0, fps: 10, playing: false }, true],
-    [{ key: `ArrowRight`, ctrlKey: true }, { index: 9, fps: 10, playing: false }, true],
-    [{ key: `Home` }, { index: 0, fps: 10, playing: false }, true],
-    [{ key: `End` }, { index: 9, fps: 10, playing: false }, true],
-    [{ key: `j` }, { index: 0, fps: 10, playing: false }, true],
-    [{ key: `L` }, { index: 9, fps: 10, playing: false }, true],
-    [{ key: `PageUp` }, { index: 0, fps: 10, playing: false }, true],
-    [{ key: `PageDown` }, { index: 9, fps: 10, playing: false }, true],
-    [{ key: `+` }, { index: 2, fps: 10.1, playing: false }, true],
-    [{ key: `=` }, { index: 2, fps: 10.1, playing: false }, true],
-    [{ key: `-` }, { index: 2, fps: 9.9, playing: false }, true],
-    [{ key: `5` }, { index: 4, fps: 10, playing: false }, true],
-    [{ key: `0` }, { index: 0, fps: 10, playing: false }, true],
-    [{ key: `9` }, { index: 8, fps: 10, playing: false }, true],
-    [{ key: `q` }, { index: 2, fps: 10, playing: false }, false],
-    [{ key: `f`, ctrlKey: true }, { index: 2, fps: 10, playing: false }, false],
-    [{ key: `j`, metaKey: true }, { index: 2, fps: 10, playing: false }, false],
-  ])(`handle_keydown(%j) -> %j, handled=%s`, (init, expected, handled) => {
+    [{ key: ` ` }, { index: 2, fps: 10, playing: true }, true, `play`],
+    [{ key: ` `, repeat: true }, { index: 2, fps: 10, playing: false }, true, undefined],
+    [{ key: `ArrowRight` }, { index: 3, fps: 10, playing: false }, true, `next`],
+    [{ key: `ArrowLeft` }, { index: 1, fps: 10, playing: false }, true, `previous`],
+    [{ key: `ArrowLeft`, metaKey: true }, { index: 0, fps: 10, playing: false }, true, `step`],
+    [
+      { key: `ArrowRight`, ctrlKey: true },
+      { index: 9, fps: 10, playing: false },
+      true,
+      `step`,
+    ],
+    [{ key: `Home` }, { index: 0, fps: 10, playing: false }, true, `step`],
+    [{ key: `End` }, { index: 9, fps: 10, playing: false }, true, `step`],
+    [{ key: `j` }, { index: 0, fps: 10, playing: false }, true, `step`],
+    [{ key: `L` }, { index: 9, fps: 10, playing: false }, true, `step`],
+    [{ key: `PageUp` }, { index: 0, fps: 10, playing: false }, true, `step`],
+    [{ key: `PageDown` }, { index: 9, fps: 10, playing: false }, true, `step`],
+    [{ key: `+` }, { index: 2, fps: 10.1, playing: false }, true, `fps`],
+    [{ key: `=` }, { index: 2, fps: 10.1, playing: false }, true, `fps`],
+    [{ key: `-` }, { index: 2, fps: 9.9, playing: false }, true, `fps`],
+    [{ key: `5` }, { index: 4, fps: 10, playing: false }, true, `step`],
+    [{ key: `0` }, { index: 0, fps: 10, playing: false }, true, `step`],
+    [{ key: `9` }, { index: 8, fps: 10, playing: false }, true, `step`],
+    [{ key: `q` }, { index: 2, fps: 10, playing: false }, false, undefined],
+    [{ key: `f`, ctrlKey: true }, { index: 2, fps: 10, playing: false }, false, undefined],
+    [{ key: `j`, metaKey: true }, { index: 2, fps: 10, playing: false }, false, undefined],
+  ])(`handle_keydown(%j) -> %j, handled=%s`, (init, expected, handled, control) => {
     stub_animation_frames()
     const { host, player } = make_player({ count: 10, index: 2 })
+    // Child controls and IME composition own these keys before the player can act.
+    for (const is_composing of [true, false]) {
+      const ignored = new KeyboardEvent(`keydown`, {
+        ...init,
+        isComposing: is_composing,
+        cancelable: true,
+      })
+      if (!is_composing) ignored.preventDefault()
+      expect(player.handle_keydown(ignored)).toBe(false)
+      expect([host.index, host.fps, player.is_playing]).toEqual([2, 10, false])
+      expect(flashed_controls(player)).toEqual([])
+    }
     expect(player.handle_keydown(new KeyboardEvent(`keydown`, init))).toBe(handled)
     flushSync()
     expect(host.index).toBe(expected.index)
     expect(host.fps).toBeCloseTo(expected.fps, 10)
     expect(player.is_playing).toBe(expected.playing)
+    expect(flashed_controls(player)).toEqual(control ? [control] : [])
+  })
+
+  test.each([
+    [{ index: 0 }, `ArrowLeft`],
+    [{ index: 4 }, `End`],
+    [{ fps: 300 }, `+`],
+    [{ fps: 0 }, `-`],
+    [{ count: 1 }, ` `],
+  ])(`unchanged shortcut %j %s does not flash`, (overrides, key) => {
+    const { player } = make_player(overrides)
+    player.handle_keydown(new KeyboardEvent(`keydown`, { key }))
+    expect(flashed_controls(player)).toEqual([])
   })
 })
 

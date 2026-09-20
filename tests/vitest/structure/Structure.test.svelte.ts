@@ -28,7 +28,9 @@ import type StructureScene from '$lib/structure/StructureScene.svelte'
 import { structures } from '$site/structures'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { OrthographicCamera } from 'three/webgpu'
+import { Matrix4, OrthographicCamera } from 'three/webgpu'
+import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
+import type { AtomColorField } from '$lib/structure/atom-color-field'
 import {
   fire,
   assertHoverScopedShortcut,
@@ -98,6 +100,7 @@ afterEach(() => {
   scene_stub.props = undefined
   for (const component of mounted.splice(0)) void unmount(component)
   structure_host_tool.component = original_host_component
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
@@ -332,7 +335,14 @@ test.each([
         (has_atoms ? [`A`, `B`] : [`B`]).map((name) => `${name}.${extension}`),
       ),
     )
-    if (has_atoms) expect(document.body.textContent).toContain(`Added 1 volume from B`)
+    if (has_atoms) {
+      const notice = doc_query(`.import-notice`)
+      expect(notice.textContent).toContain(`Added 1 volume from B`)
+      doc_query<HTMLButtonElement>(`.import-notice button`).click()
+      await tick()
+      expect(document.querySelector(`.import-notice`)).toBeNull()
+      expect(state.structure).toBe(original)
+    }
     drop(content.replace(before, after), `C`)
     await vi.waitFor(() =>
       expect(state.volumetric_data?.map(({ source_filename }) => source_filename)).toEqual([
@@ -411,6 +421,7 @@ test.each([
 })
 
 test(`multi-file drops continue after failures and report one batch error`, async () => {
+  mock_gpu()
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
   const state = $state<{ error_msg?: string }>({ error_msg: undefined })
   mount_structure(bind_props({ on_file_load }, state))
@@ -427,6 +438,14 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
   expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ filename: `good.poscar`, total_atoms: 5 }),
   )
+  const viewport = doc_query(`.viewport-stage`)
+  const alert = doc_query(`.structure > .viewer-error [role="alert"]`)
+  expect(alert.textContent).toContain(state.error_msg)
+  doc_query<HTMLButtonElement>(`.viewer-error button`).click()
+  await tick()
+  expect(state.error_msg).toBeUndefined()
+  expect(document.querySelector(`.viewer-error`)).toBeNull()
+  expect(doc_query(`.viewport-stage`)).toBe(viewport)
 })
 
 const volumetric_data = [
@@ -1123,6 +1142,7 @@ describe(`Structure`, () => {
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
     const state = { active_pane: null as StructurePane | null }
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
@@ -1132,6 +1152,13 @@ describe(`Structure`, () => {
       trigger: () => press_window_key({ key: `i` }),
       read_state: () => state.active_pane === `info`,
     })
+    await fire(doc_query(`.structure`), keydown(`i`))
+    expect(state.active_pane).toBe(`info`)
+    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
+    vi.advanceTimersByTime(400)
+    await fire(doc_query(`.structure`), keydown(`Escape`))
+    expect(state.active_pane).toBeNull()
+    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
   })
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
@@ -1151,20 +1178,76 @@ describe(`Structure`, () => {
     expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
   })
 
-  test(`edit-atoms A opens the element input and Escape closes it, even while that input has focus`, async () => {
-    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
-    mount_structure(bind_props(edit_props, { structure: structures[0] }))
-    await tick()
-    const press = (target: Element, key: string) =>
-      target.dispatchEvent(keydown(key, { cancelable: true }))
-    press(doc_query(`.structure`), `a`)
-    await tick()
-    const add_input = doc_query<HTMLInputElement>(`.add-atom-input input`)
-    // the autofocused element input is where the next keystroke lands
-    press(add_input, `Escape`)
-    await tick()
-    expect(document.querySelector(`.add-atom-input`)).toBeNull()
-  })
+  test.each([
+    [`a`, true, `Escape`],
+    [`a`, false, `Escape`],
+    [`e`, true, `Escape`],
+    [`e`, false, `Escape`],
+    [`e`, true, `Enter`],
+  ] as const)(
+    `edit-atoms %s opens a field (from input: %s); %s closes quietly`,
+    async (key, from_input, dismiss_key) => {
+      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+      const state = $state<{
+        structure: AnyStructure
+        measure_mode: MeasureMode
+        selected_sites: number[]
+      }>({
+        structure,
+        measure_mode: `edit-atoms`,
+        selected_sites: [],
+      })
+      mount_structure(state)
+      await tick()
+      state.selected_sites = [0]
+      const viewer = doc_query(`.structure`)
+      await fire(viewer, keydown(key, { isComposing: true }))
+      expect(document.querySelector(`.add-atom-input`)).toBeNull()
+      await fire(viewer, keydown(key, { cancelable: true }))
+      const toggle = doc_query(`.measure-mode-dropdown > button`)
+      expect(toggle.style.boxShadow).toContain(`1px`)
+      // Let the opening flash expire so it cannot hide a new flash on Escape.
+      vi.advanceTimersByTime(400)
+      const input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+      input.value = `H`
+      await fire(input, new Event(`input`, { bubbles: true }))
+      const dismiss_target = from_input ? input : viewer
+      for (const is_composing of [true, false]) {
+        const ignored = keydown(dismiss_key, { isComposing: is_composing, cancelable: true })
+        if (!is_composing) ignored.preventDefault()
+        await fire(dismiss_target, ignored)
+        expect(document.querySelector(`.add-atom-input input`)).toBe(input)
+        expect(state.selected_sites).toEqual([0])
+        expect(state.structure.sites[0].species).toEqual(structure.sites[0].species)
+      }
+      // Other editable fields own Escape, even while atom placement is active.
+      const other_input = document.createElement(`input`)
+      viewer.append(other_input)
+      other_input.focus()
+      const escape = keydown(`Escape`, { cancelable: true })
+      await fire(other_input, escape)
+      expect(escape.defaultPrevented).toBe(false)
+      expect(document.querySelector(`.add-atom-input input`)).toBe(input)
+      expect(state.selected_sites).toEqual([0])
+      other_input.remove()
+      const dismiss = keydown(dismiss_key, { cancelable: true })
+      await fire(dismiss_target, dismiss)
+      expect(dismiss.defaultPrevented).toBe(key === `a` || !from_input)
+      expect(document.querySelector(`.add-atom-input`)).toBeNull()
+      expect(toggle.style.boxShadow).toBe(``)
+      expect(state.selected_sites).toEqual([0])
+      expect(state.structure.sites[0].species[0].element).toBe(
+        dismiss_key === `Enter` ? `H` : structure.sites[0].species[0].element,
+      )
+      // Selection clears before edit mode exits.
+      for (const mode of [`edit-atoms`, `distance`]) {
+        await fire(viewer, keydown(`Escape`, { cancelable: true }))
+        expect(state.selected_sites).toEqual([])
+        expect(state.measure_mode).toBe(mode)
+        expect(toggle.style.boxShadow).toBe(``)
+      }
+    },
+  )
 
   test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
     // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
@@ -1185,26 +1268,45 @@ describe(`Structure`, () => {
     const n_before = state.structure.sites.length
 
     // dispatch on the viewer (focused/element path) — handle_and_prevent should run
-    const press = (init: KeyboardEventInit) => {
-      const event = new KeyboardEvent(`keydown`, {
-        cancelable: true,
-        bubbles: true,
-        ...init,
-      })
+    const press = (key: string, init: KeyboardEventInit = {}) => {
+      const event = keydown(key, { cancelable: true, ...init })
       doc_query(`.structure`).dispatchEvent(event)
       return event
     }
-    const delete_event = press({ key: `Delete` })
+    const delete_event = press(`Delete`)
     await tick()
     expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
     expect(state.structure.sites).toHaveLength(n_before - 1)
     expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
 
-    press({ key: `z`, ctrlKey: true })
+    press(`z`, { ctrlKey: true })
     await tick()
     expect(state.structure.sites).toHaveLength(n_before)
     expect(state.bonds).toEqual(orig_bonds)
+    expect(doc_query(`button[aria-label="Undo (Cmd/Ctrl+Z)"]`).style.boxShadow).toContain(
+      `1px`,
+    )
   })
+
+  test.each([`add`, `delete`] as const)(
+    `bond shortcut highlights the %s toggle`,
+    async (mode) => {
+      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+      mount_structure({
+        structure,
+        measure_mode: `edit-bonds`,
+        bond_edit_mode: mode === `add` ? `delete` : `add`,
+      })
+      await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
+      const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
+      expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
+      expect(selected.style.boxShadow).toContain(`1px`)
+      vi.advanceTimersByTime(400)
+      await fire(doc_query(`.structure`), keydown(`Escape`))
+      expect(document.querySelector(`.bond-edit-toolbar`)).toBeNull()
+      expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toBe(``)
+    },
+  )
 
   test.each([
     [{ supercell_scaling: `2x1x1` }, true],
@@ -1384,11 +1486,12 @@ describe(`Structure`, () => {
     expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
   })
 
-  // The symmetry-element and lattice-plane overlays only exist in the analyzed (input) cell and
+  // Cell-aligned overlays only exist in the analyzed (input) cell and
   // are blanked for conventional/primitive views; that must be said (toast), not happen silently
-  test.each([`symmetry`, `lattice planes`])(
+  test.each([`symmetry`, `lattice planes`, `thermal`])(
     `toasts why the %s overlay vanishes when the cell leaves the input frame`,
     async (overlay) => {
+      mock_gpu()
       await init_moyo_for_tests()
       const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
         { element: `Cu`, abc: [0, 0, 0] },
@@ -1396,12 +1499,31 @@ describe(`Structure`, () => {
       const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
       const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
       expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
+      const field: AtomColorField = {
+        dims: [1, 1, 1],
+        colors: new Float32Array([1, 0, 0, 1]),
+        pbc: [true, true, true],
+        cartesian_to_fractional: new Matrix4(),
+      }
+      const thermal = overlay === `thermal`
       const props = $state<ComponentProps<typeof Structure>>({
         structure: prim_fcc_cu,
+        ...(thermal && {
+          atom_color_field: field,
+          volume_color_field: field,
+          atom_opacity: 0,
+          cutaway: {
+            ...DEFAULT_CUTAWAY,
+            mode: `plane`,
+            cartesian_to_fractional: new Matrix4(),
+          },
+        }),
         scene_props:
           overlay === `symmetry`
             ? { symmetry_elements }
-            : { lattice_planes: [{ hkl: [1, 1, 1] }] },
+            : overlay === `lattice planes`
+              ? { lattice_planes: [{ hkl: [1, 1, 1] }] }
+              : {},
         cell_type: `original`,
       })
       vi.stubEnv(`VITEST`, ``)
@@ -1409,16 +1531,26 @@ describe(`Structure`, () => {
       await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
       flushSync()
       expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
-
-      props.cell_type = `conventional`
-      flushSync()
-      expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
-        OVERLAYS_INPUT_FRAME_NOTE,
-      )
+      for (const cell_type of [`original`, `conventional`, `original`] as const) {
+        props.cell_type = cell_type
+        flushSync()
+        const show_thermal = thermal && cell_type === `original`
+        for (const prop of [`atom_color_field`, `volume_color_field`, `cutaway`] as const) {
+          expect(scene_stub.props?.[prop], `${cell_type}: ${prop}`).toBe(
+            show_thermal ? props[prop] : undefined,
+          )
+        }
+        expect(scene_stub.props?.atom_opacity, cell_type).toBe(show_thermal ? 0 : 1)
+        if (cell_type === `conventional`)
+          expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+            OVERLAYS_INPUT_FRAME_NOTE,
+          )
+      }
     },
   )
 
   test(`shows safe bond editing controls by default`, async () => {
+    mock_gpu()
     mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
     await tick()
 
@@ -1431,10 +1563,24 @@ describe(`Structure`, () => {
     await tick()
     expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
     expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
-    expect(
-      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`)
-        .disabled,
-    ).toBe(true)
+    const undo_button = doc_query<HTMLButtonElement>(
+      `button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`,
+    )
+    expect(undo_button.disabled).toBe(true)
+    const scene = scene_stub.props
+    if (!scene?.on_bond_edit_start) throw new Error(`Missing bond-edit callback`)
+    scene.on_bond_edit_start()
+    scene.added_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+    await tick()
+    for (const label of [`Undo`, `Redo`]) {
+      const button = doc_query<HTMLButtonElement>(`button[aria-label^="${label} bond edit"]`)
+      expect(button.disabled).toBe(false)
+      expect(button.textContent?.trim()).toBe(`1`)
+      button.click()
+      await tick()
+      expect(scene.added_bonds).toHaveLength(label === `Undo` ? 0 : 1)
+      expect(button.disabled).toBe(true)
+    }
   })
 
   // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
@@ -1654,6 +1800,7 @@ describe(`Structure`, () => {
     const fullscreen_button = doc_query<HTMLButtonElement>(
       `.structure > section.control-buttons > .fullscreen-btn`,
     )
+    expect(fullscreen_button.parentElement?.lastElementChild).toBe(fullscreen_button)
 
     fullscreen_button.click()
     // the flag flips on click and reverts once the browser rejects the request

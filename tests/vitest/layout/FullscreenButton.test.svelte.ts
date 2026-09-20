@@ -179,10 +179,11 @@ describe(`FullscreenButton`, () => {
     [`f outside the viewer is ignored`, { key: `f` }, false, false],
   ])(`%s`, async (_name, init, toggles, hovered = true) => {
     const wrapper = create_wrapper()
-    const { state } = mount_button(wrapper)
+    const { state, button } = mount_button(wrapper)
     if (hovered) wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
     await fire(globalThis, new KeyboardEvent(`keydown`, init))
     expect(state.fullscreen).toBe(toggles)
+    expect(button.style.boxShadow.includes(`1px`)).toBe(toggles)
   })
 
   // A Structure inside a Trajectory is hovered at the same time as its host, so both would

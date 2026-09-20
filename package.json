@@ -279,6 +279,7 @@
     "access": "public"
   },
   "scripts": {
+    "movie": "node src/scripts/movie.mjs",
     "build:site": "vp build && pagefind --site build",
     "test": "vitest run && playwright test",
     "knip": "knip --include files,dependencies,exports,types,nsExports",

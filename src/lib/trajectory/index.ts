@@ -10,6 +10,7 @@ import type { NumericFrame } from './frame'
 export * from './analysis'
 export * from './positions'
 export * from './hotspots'
+export * from './movie'
 export {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,

@@ -1,6 +1,19 @@
 <script lang="ts">
   import { TooltipValue } from '$lib/tooltip'
   import { webgpu_available } from '$lib/scene'
+  import { camera_flight_registry } from '$lib/scene/camera-flight'
+  import {
+    export_trajectory_video,
+    render_video_frames,
+    type VideoFrameOptions,
+  } from '$lib/io/export'
+  import {
+    plan_movie,
+    movie_frame,
+    type MoviePlan,
+    type MovieRenderOptions,
+    type TrajectoryViewerController,
+  } from './movie'
   import type {
     ScatterPlotOptions,
     HistogramOptions,
@@ -9,7 +22,7 @@
     Orientation,
   } from '$lib/plot'
   // Playback and acquisition share one viewer; only runs opened here are disposed here.
-  import { create_flash } from '$lib/effects.svelte'
+  import { create_flash, create_shortcut_flash } from '$lib/effects.svelte'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
@@ -19,11 +32,10 @@
     Check,
     Database,
     Graph,
-    Histogram as HistogramIcon,
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { handle_and_prevent, strip_html, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
     parse_axis_label,
@@ -33,7 +45,7 @@
   } from '$lib/labels'
   import type { TrajPropertyConfig } from '$lib/labels'
   import { clamp } from '$lib/math'
-  import type { Vec2 } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
   import { FullscreenButton, SettingsSection } from '$lib/layout'
@@ -41,13 +53,13 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import { first_point_style } from '$lib/plot/core/data-transform'
   import type { ScatterHandlerProps } from '$lib/plot/core/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { StructurePane, StructureOptions } from '$lib/structure'
   import { applies_to_structure } from '$lib/structure/settings'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
+  import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
   import { is_vector_key } from '$lib/structure/vectors'
   import type { FrameChannels } from './frame'
   import Structure from '$lib/structure/Structure.svelte'
@@ -64,6 +76,8 @@
     hotspot_colors,
     hotspot_field_geometry,
     hotspot_cloud_colors,
+    hotspot_probe,
+    type HotspotScale,
     DEFAULT_HOTSPOT_CLOUD,
   } from './hotspot-colors'
   import { collected_frame_idx } from '$lib/structure/trajectory-lines'
@@ -76,7 +90,6 @@
   import { SvelteSet } from 'svelte/reactivity'
   import type {
     ParseProgress,
-    TrajectoryController,
     TrajectoryPositionStream,
     TrajectoryXQuantity,
     TrajHandlerData,
@@ -132,13 +145,8 @@
     | `data-inspector`
     | `export`
     | `flight`
-  export type TrajectoryDisplayMode =
-    | `auto`
-    | `structure+scatter`
-    | `structure`
-    | `scatter`
-    | `histogram`
-    | `structure+histogram`
+  export type TrajectoryDisplayMode = `auto` | `structure+plot` | `structure` | `plot`
+  export type TrajectoryPlotType = `time-series` | `distribution`
   export type TrajectoryControlName =
     | `filename`
     | `nav`
@@ -167,10 +175,8 @@
   const DISPLAY_MODES = [
     { mode: `auto`, icon: TwoColumns, label: `Automatic` },
     { mode: `structure`, icon: Atom, label: `Structure-only` },
-    { mode: `structure+scatter`, icon: TwoColumns, label: `Structure + Scatter` },
-    { mode: `structure+histogram`, icon: TwoColumns, label: `Structure + Histogram` },
-    { mode: `scatter`, icon: ScatterPlotIcon, label: `Scatter-only` },
-    { mode: `histogram`, icon: HistogramIcon, label: `Histogram-only` },
+    { mode: `structure+plot`, icon: TwoColumns, label: `Structure + Plot` },
+    { mode: `plot`, icon: ScatterPlotIcon, label: `Plot-only` },
   ] as const
   // Trails get a 64 MB position budget; larger runs trade smoothness for frame stride
   const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
@@ -190,6 +196,8 @@
     fps_range = DEFAULTS.trajectory.fps_range,
     auto_play = DEFAULTS.trajectory.auto_play,
     display_mode = $bindable(DEFAULTS.trajectory.display_mode),
+    plot_type = $bindable(DEFAULTS.trajectory.plot_type),
+    distribution_property = $bindable(),
     layout = DEFAULTS.trajectory.layout,
     pane_ratio = $bindable(0.5),
     structure_props = {},
@@ -243,6 +251,9 @@
     auto_play?: boolean
     // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
+    plot_type?: TrajectoryPlotType
+    // Independent of time-series visibility; uses the highest-priority property if unset.
+    distribution_property?: string | null
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
     pane_ratio?: number
@@ -252,7 +263,10 @@
       ScatterPlotOptions,
       `tooltip` | `x_axis` | `y_axis` | `y2_axis` | `hidden_series`
     >
-    histogram_props?: Omit<HistogramOptions, `tooltip` | `hidden_series`>
+    histogram_props?: Omit<
+      HistogramOptions,
+      `series` | `hidden_series` | `mode` | `selected_series_idx` | `x2_axis` | `y2_axis`
+    >
     // Display labels per property key, merged with trajectory_property_config
     property_labels?: Record<string, string>
     // What the plot's x axis counts: 'frame' (position in the run), 'step' (the MD step
@@ -289,7 +303,7 @@
     on_frame_rate_change?: EventHandler
     on_display_mode_change?: EventHandler
     on_fullscreen_change?: EventHandler
-    on_controller?: (controller: TrajectoryController | null) => void
+    on_controller?: (controller: TrajectoryViewerController | null) => void
   } = $props()
 
   let loading = $state(false)
@@ -593,6 +607,15 @@
     },
   })
   const { player, controller } = session
+  let movie_abort: AbortController | undefined
+  let movie_generation = 0
+  $effect(() => {
+    void trajectory
+    return () => {
+      movie_generation++
+      movie_abort?.abort(new DOMException(`Trajectory replaced or unmounted`, `AbortError`))
+    }
+  })
   let hotspot_result = $state.raw<HotspotResult>()
   let hotspot_coverage = $state<HotspotCoverage>()
   const hotspot_pattern_id = $props.id()
@@ -600,11 +623,150 @@
     await flush_updates()
     await session.wait_for_frame(idx, signal)
   }
+  const prepare_movie_frame = async (idx: number, cancellation?: AbortSignal) => {
+    const timeout = AbortSignal.timeout(120_000)
+    const signal = cancellation ? AbortSignal.any([cancellation, timeout]) : timeout
+    if (!trajectory || !Number.isInteger(idx) || idx < 0 || idx >= trajectory.frame_count)
+      throw new RangeError(`Movie source frame ${idx} is unavailable`)
+    if (!uses_structure_renderer())
+      throw new Error(`Select a view mode containing the structure before rendering a movie`)
+    signal.throwIfAborted()
+    player.pause()
+    session.commit(idx)
+    await prepare_structure_frame(idx, signal)
+  }
+  const movie_canvas = () => {
+    const canvas = wrapper?.querySelector<HTMLCanvasElement>(`.structure canvas`)
+    if (!canvas) throw new Error(`Trajectory canvas is not ready`)
+    return canvas
+  }
+  const inspect_movie = async () => {
+    const was_playing = player.is_playing
+    try {
+      await prepare_movie_frame(current_step_idx)
+      const camera = camera_flight_registry.get(movie_canvas())
+      if (!camera || !trajectory) throw new Error(`Trajectory camera is not ready`)
+      const min: Vec3 = [Infinity, Infinity, Infinity]
+      const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+      const frame = session.numeric_frame
+      if (!frame) throw new Error(`Trajectory display frame is not ready`)
+      const stride = 6 + frame.vector_keys.length * 3
+      for (let atom_idx = 0; atom_idx < frame.sites.length; atom_idx++) {
+        for (let axis = 0; axis < 3; axis++) {
+          const value = frame.coordinates[atom_idx * stride + axis]
+          min[axis] = Math.min(min[axis], value)
+          max[axis] = Math.max(max[axis], value)
+        }
+      }
+      return {
+        frame_count: trajectory.frame_count,
+        atom_count: trajectory.atom_count,
+        filename: trajectory.provenance.filename,
+        camera: camera.capture(),
+        viewport_height: movie_canvas().clientHeight,
+        bounds: { min, max },
+        warnings: trajectory.warnings,
+      }
+    } finally {
+      if (was_playing) player.play()
+    }
+  }
+  const run_movie = async (
+    plan: MoviePlan,
+    options: MovieRenderOptions,
+    render: (canvas: HTMLCanvasElement, options: VideoFrameOptions) => Promise<void>,
+  ) => {
+    if (movie_abort) throw new Error(`A movie is already rendering in this viewer`)
+    const run = trajectory
+    if (!run) throw new Error(`No trajectory loaded`)
+    // Revalidate saved plans against this source before changing the viewer.
+    const checked = plan_movie(plan, run.frame_count, plan.camera.keyframes[0])
+    const original_idx = current_step_idx
+    const was_playing = player.is_playing
+    const generation = movie_generation
+    const request = new AbortController()
+    movie_abort = request
+    const signal = options.signal
+      ? AbortSignal.any([request.signal, options.signal])
+      : request.signal
+    try {
+      await render(movie_canvas(), {
+        ...checked.video,
+        total_frames: checked.video.frame_count,
+        camera_flight: checked.camera,
+        camera_viewport_height: checked.camera_viewport_height,
+        resolution_multiplier: 1,
+        signal,
+        on_progress: options.on_progress,
+        on_step: (idx) => prepare_movie_frame(movie_frame(checked, idx).source_frame, signal),
+      })
+      signal.throwIfAborted()
+      options.on_progress?.(100)
+    } finally {
+      try {
+        if (trajectory === run && generation === movie_generation) {
+          await prepare_movie_frame(original_idx)
+          if (was_playing) player.play()
+        }
+      } finally {
+        if (movie_abort === request) movie_abort = undefined
+      }
+    }
+  }
+  const viewer_controller: TrajectoryViewerController = {
+    ...controller,
+    async load(input, options = {}) {
+      options.signal?.throwIfAborted()
+      const request = begin_load()
+      const abort = () => request.abort(options.signal?.reason)
+      options.signal?.addEventListener(`abort`, abort, { once: true })
+      try {
+        await open_source({ input }, request, options.hdf5_group_path)
+        request.signal.throwIfAborted()
+        if (hdf5_selection) throw new Hdf5GroupSelectionRequiredError(hdf5_selection.groups)
+        if (error_msg) throw new Error(error_msg)
+        await prepare_movie_frame(0, options.signal)
+      } finally {
+        options.signal?.removeEventListener(`abort`, abort)
+      }
+    },
+    prepare_frame: prepare_movie_frame,
+    inspect: inspect_movie,
+    async plan_movie(request) {
+      const info = await inspect_movie()
+      return plan_movie(
+        {
+          ...request,
+          camera_viewport_height: request.camera_viewport_height ?? info.viewport_height,
+        },
+        info.frame_count,
+        info.camera,
+      )
+    },
+    render_movie: (plan, on_frame, options = {}) =>
+      run_movie(plan, options, (canvas, settings) =>
+        render_video_frames(canvas, settings, { frame: on_frame }),
+      ),
+    export_movie: (plan, options = {}) =>
+      run_movie(plan, options, (canvas, settings) =>
+        export_trajectory_video(canvas, trajectory?.provenance.filename ?? `trajectory`, {
+          ...options,
+          ...settings,
+          bitrate: plan.video.bitrate,
+        }),
+      ),
+    cancel_movie: () => movie_abort?.abort(new DOMException(`Movie cancelled`, `AbortError`)),
+  }
   let hotspot_metric = $state<HotspotMetric>(`energy`)
   let hotspot_min_atoms = $state(10)
   let hotspot_threshold = $state(1.25)
   let show_heatmap = $state(true)
   let hotspot_cloud = $state({ ...DEFAULT_HOTSPOT_CLOUD })
+  let hotspot_numeric_scale = $state<HotspotScale>()
+  const hotspot_scale = $derived(
+    hotspot_numeric_scale?.metric === hotspot_metric ? hotspot_numeric_scale : undefined,
+  )
+  let hotspot_cutaway = $state({ ...DEFAULT_CUTAWAY })
   const hotspot_values = $derived(
     hotspot_result
       ? hotspot_display_values(hotspot_result, hotspot_metric, hotspot_min_atoms)
@@ -615,17 +777,21 @@
       ? hotspot_field_geometry(hotspot_result, session.scene_frame.frame)
       : undefined,
   )
-  const heatmap_colors = $derived(hotspot_values ? hotspot_colors(hotspot_values) : undefined)
+  const heatmap_colors = $derived(
+    hotspot_values && hotspot_scale
+      ? hotspot_colors(hotspot_values, hotspot_scale)
+      : undefined,
+  )
   const atom_color_field = $derived(
     show_heatmap && field_geometry && heatmap_colors
       ? { ...field_geometry, colors: heatmap_colors }
       : undefined,
   )
   const cloud_colors = $derived(
-    hotspot_cloud.visible && hotspot_values
+    hotspot_cloud.visible && hotspot_values && hotspot_scale
       ? hotspot_cloud_colors(
           hotspot_values,
-          hotspot_threshold,
+          hotspot_scale,
           hotspot_cloud.base_color,
           hotspot_cloud.hot_color,
         )
@@ -633,6 +799,11 @@
   )
   const volume_color_field = $derived(
     field_geometry && cloud_colors ? { ...field_geometry, colors: cloud_colors } : undefined,
+  )
+  const cutaway = $derived(
+    field_geometry && hotspot_cutaway.mode !== `off`
+      ? { ...hotspot_cutaway, cartesian_to_fractional: field_geometry.cartesian_to_fractional }
+      : undefined,
   )
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)
@@ -650,7 +821,7 @@
       : undefined,
   )
   $effect(() => {
-    on_controller?.(controller)
+    on_controller?.(viewer_controller)
     return () => on_controller?.(null)
   })
   $effect(() => {
@@ -873,20 +1044,43 @@
       y_axis: plot_series[idx].y_axis,
     })),
   )
-  // Both plot modes carry the same property IDs.
-  let histogram_series = $derived<HistogramSeries[]>(
-    plot_series.map((srs) => ({
-      id: srs.id,
-      values: srs.y,
-      label: srs.label,
-      visible: srs.visible,
-      legend_group: srs.legend_group,
-      unit: srs.unit,
-      axis_group: srs.axis_group,
-      color: srs.line_style?.stroke ?? first_point_style(srs)?.fill,
-      y_axis: srs.y_axis,
-    })),
+  // A distribution has one value axis. Keep its selection separate from the time plot's
+  // multi-property visibility so switching plots cannot mix units or discard that selection.
+  const distribution_properties = $derived(
+    generate_plot_series(session.property_rows, {
+      property_config: extended_config,
+      relative_energy,
+      include_all_properties: true,
+    }),
   )
+  // Do not prepare distributions just to show the layout menu for an existing time plot.
+  const has_plot_properties = $derived(
+    base_plot_series.length > 0 || distribution_properties.length > 0,
+  )
+  const distribution_series = $derived(
+    distribution_properties.find((srs) => srs.id === distribution_property) ??
+      distribution_properties[0],
+  )
+  let histogram_series = $derived.by((): HistogramSeries[] => {
+    if (!distribution_series) return []
+    const { id, y: values, label, unit, line_style } = distribution_series
+    return [{ id, values, label, unit, color: line_style?.stroke }]
+  })
+  const distribution_count = $derived(
+    distribution_series?.y.reduce(
+      (count, value) => count + (Number.isFinite(value) ? 1 : 0),
+      0,
+    ) ?? 0,
+  )
+  let distribution_axis = $derived({
+    format: `.3~s`,
+    ...histogram_props.x_axis,
+    label: distribution_series?.unit
+      ? `${distribution_series.label} (${distribution_series.unit})`
+      : (distribution_series?.label ?? `Value`),
+    unit: distribution_series?.unit,
+  })
+  let distribution_count_axis = $derived({ format: `.3~g`, ...histogram_props.y_axis })
   let x_axis = $derived({
     label: x_map.unit ? `${x_map.label} (${x_map.unit})` : x_map.label,
     // step_label_positions are frame indices; the axis is drawn in x units
@@ -904,20 +1098,23 @@
     label_shift: { y: 80 },
     scale_type: y_axis_scale_types.y2,
   })
-  let plot_loading = $derived(!session.properties_complete && plot_series.length === 0)
-  // Wait for scalar sampling before choosing the default; explicit modes always win.
-  let effective_display_mode = $derived(
-    display_mode === `auto`
-      ? session.properties_complete && should_hide_plot(total_frames, plot_series)
-        ? `structure`
-        : `structure+scatter`
-      : display_mode,
+  let plot_loading = $derived(
+    !session.properties_complete &&
+      (plot_type === `time-series` ? plot_series.length === 0 : !distribution_series),
   )
+  // Wait for scalar sampling before choosing the default; explicit modes always win.
+  let effective_display_mode = $derived.by(() => {
+    if (display_mode !== `auto`) return display_mode
+    if (!session.properties_complete) return `structure+plot`
+    const hide_plot =
+      plot_type === `time-series`
+        ? should_hide_plot(total_frames, plot_series)
+        : !distribution_series
+    return hide_plot ? `structure` : `structure+plot`
+  })
   // Spectroscopy owns the plot region while open.
   let show_plot = $derived(spectroscopy_open || effective_display_mode !== `structure`)
-  let show_structure = $derived(
-    spectroscopy_open || ![`scatter`, `histogram`].includes(effective_display_mode),
-  )
+  let show_structure = $derived(spectroscopy_open || effective_display_mode !== `plot`)
   let has_y2_series = $derived(
     plot_series.some(
       ({ y: coord_y, y_axis: axis_name, visible }) =>
@@ -958,13 +1155,20 @@
     throw new Error(`Unexpected display mode: ${display_mode}`)
   })
 
+  const shortcut_flash = create_shortcut_flash<`view`>()
+  function select_display_mode(mode: TrajectoryDisplayMode): void {
+    display_mode = mode
+    on_display_mode_change?.(event_data())
+    view_mode_dropdown_open = false
+  }
+
   // === keyboard ===
   // Returns true if the key was handled, so the caller can suppress the browser default
   function onkeydown(event: KeyboardEvent): boolean {
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented) return false
+    if (event.defaultPrevented || event.isComposing) return false
     // Leave form fields alone; sequence controls handle their own navigation keys and let
     // the viewer shortcuts they do not use bubble here
     const target = event.target instanceof HTMLElement ? event.target : null
@@ -978,6 +1182,22 @@
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
+    if (
+      key === `v` &&
+      !event.altKey &&
+      !event.repeat &&
+      has_plot_properties &&
+      wrapper?.contains(wrapper.ownerDocument.activeElement)
+    ) {
+      const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
+      const next =
+        (index + (event.shiftKey ? -1 : 1) + DISPLAY_MODES.length) % DISPLAY_MODES.length
+      select_display_mode(DISPLAY_MODES[next].mode)
+      shortcut_flash.show(`view`)
+      // A mode change may unmount the focused plot/structure; keep subsequent shortcuts here.
+      wrapper.focus({ preventScroll: true })
+      return true
+    }
     // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
     // leaves fullscreen to the browser, which exits on its own and lets the flag follow
     // fullscreenchange — exiting here would steal it from a host that owns it (a slide
@@ -1039,8 +1259,8 @@
   let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
 </script>
 
-{#snippet energy_controls()}
-  {#if base_plot_series.some((srs) => is_energy_property(srs.id))}
+{#snippet energy_controls(has_energy: boolean)}
+  {#if has_energy}
     <SettingsSection
       title="Energy"
       changed_keys={relative_energy ? [`relative_energy`] : []}
@@ -1070,6 +1290,7 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
+  aria-keyshortcuts={has_plot_properties ? `V Shift+V` : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
@@ -1201,6 +1422,29 @@
       {fullscreen}
       bind:height={controls_height}
     >
+      {#if show_plot && !spectroscopy_open && controls_config.mode !== `never`}
+        <div class="plot-toolbar">
+          <select aria-label="Plot type" bind:value={plot_type}>
+            <option value="time-series">Time series</option>
+            <option value="distribution">Distribution</option>
+          </select>
+          {#if plot_type === `distribution`}
+            <select
+              aria-label="Distribution property"
+              disabled={!distribution_series}
+              bind:value={
+                () => distribution_series?.id ?? ``, (value) => (distribution_property = value)
+              }
+            >
+              {#each distribution_properties as srs (srs.id)}
+                <option value={srs.id}
+                  >{strip_html(srs.label ?? srs.id)}{srs.unit ? ` (${srs.unit})` : ``}</option
+                >
+              {/each}
+            </select>
+          {/if}
+        </div>
+      {/if}
       {#if trajectory_controls}
         {@render trajectory_controls({
           trajectory,
@@ -1346,7 +1590,7 @@
             />
           {/if}
           <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
-          cannot share the step-linked scatter/histogram display modes -->
+          cannot share the trajectory's scalar plots -->
           {#if visible_analyses.length > 0}
             <ToolbarMenu
               bind:open={analysis_menu_open}
@@ -1384,6 +1628,8 @@
                   />
                 {/each}
                 <TrajectoryHotspotPane
+                  bind:scale={hotspot_numeric_scale}
+                  bind:cutaway={hotspot_cutaway}
                   bind:cloud={hotspot_cloud}
                   persistent
                   max_width="42em"
@@ -1416,7 +1662,7 @@
               {/snippet}
             </ToolbarMenu>
           {/if}
-          {#if !spectroscopy_open && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
+          {#if show_plot && !spectroscopy_open && plot_type === `time-series` && plot_series.length > 0 && x_quantity_options.length > 1 && controls_config.visible(`x-axis`)}
             <select
               bind:value={() => x_map.quantity, (choice) => (x_quantity = choice)}
               class="x-quantity-select"
@@ -1428,11 +1674,12 @@
               {/each}
             </select>
           {/if}
-          {#if plot_series.length > 0 && controls_config.visible(`view-mode`)}
+          {#if has_plot_properties && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`}
+              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
               class="view-mode-dropdown-wrapper"
+              button_style={shortcut_flash.style(`view`)}
             >
               {#snippet button()}
                 <Icon icon={current_display_mode.icon} />
@@ -1440,11 +1687,7 @@
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
                   class={['view-mode-option', { selected: display_mode === option.mode }]}
-                  onclick={() => {
-                    display_mode = option.mode
-                    on_display_mode_change?.(event_data())
-                    view_mode_dropdown_open = false
-                  }}
+                  onclick={() => select_display_mode(option.mode)}
                 >
                   <Icon icon={option.icon} />
                   <span>{option.label}</span>
@@ -1497,6 +1740,7 @@
           bind:atom_color_config
           {atom_color_field}
           {volume_color_field}
+          {cutaway}
           volume_opacity={hotspot_cloud.opacity}
           atom_opacity={volume_color_field && hotspot_cloud.opacity > 0
             ? hotspot_cloud.atom_opacity
@@ -1520,7 +1764,7 @@
           bind:active_pane={
             () => (active_pane === `controls` ? `controls` : structure_pane),
             (pane) => {
-              // Both camera buttons plan the same flight, synchronized to MD playback.
+              // Both export panes plan the same flight, synchronized to MD playback.
               if (pane === `flight`) {
                 active_pane = `flight`
                 structure_pane = null
@@ -1531,7 +1775,52 @@
             }
           }
           bind:hidden_elements
-        />
+        >
+          {#snippet atom_tooltip({ site, site_idx })}
+            {@render structure_props.atom_tooltip?.({ site, site_idx })}
+            {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
+              {@const probe = hotspot_probe(
+                hotspot_result,
+                hotspot_values,
+                field_geometry,
+                site.xyz,
+              )}
+              <div
+                style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
+              >
+                {#if probe}
+                  <div>
+                    Bin-average {hotspot_metric === `energy`
+                      ? `kinetic energy`
+                      : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
+                    <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
+                  </div>
+                  <div>
+                    {Number.isFinite(probe.ratio)
+                      ? `${format_num(probe.ratio, `.3~g`)}× mean`
+                      : `Ratio to mean unavailable (zero mean)`}
+                  </div>
+                  <div>
+                    {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
+                    frames
+                  </div>
+                {:else}
+                  <div>
+                    Bin-average heat unavailable (outside grid, missing or underpopulated bin)
+                  </div>
+                {/if}
+                <div>
+                  Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
+                  · {hotspot_result.weighting} weighting
+                </div>
+                <div>
+                  Viewing frame {session.scene_frame?.idx} · {hotspot_result.options
+                    .coordinates ?? `device`} grid
+                </div>
+              </div>
+            {/if}
+          {/snippet}
+        </Structure>
       {/if}
 
       {#if show_structure && show_plot}
@@ -1556,7 +1845,7 @@
             text="Sampling trajectory plot data..."
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
-        {:else if effective_display_mode === `scatter` || effective_display_mode === `structure+scatter`}
+        {:else if plot_type === `time-series`}
           <ScatterPlot
             {...scatter_props}
             show_controls={controls_config.mode === `never`
@@ -1579,7 +1868,9 @@
             hover_config={trajectory_hover_config}
           >
             {#snippet controls_extra(config)}
-              {@render energy_controls()}
+              {@render energy_controls(
+                base_plot_series.some((srs) => is_energy_property(srs.id)),
+              )}
               {@render scatter_props.controls_extra?.(config)}
             {/snippet}
             {#snippet tooltip({
@@ -1610,39 +1901,31 @@
               ? false
               : histogram_props.show_controls}
             series={histogram_series}
-            bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
-            x_axis={{
-              label: String(histogram_props.x_axis?.label ?? y_axis_labels.y),
-              format: `.3~s`,
-              ...histogram_props.x_axis,
-            }}
-            y_axis={{ label: `Count`, format: `.3~s`, ...histogram_props.y_axis }}
-            mode={histogram_props.mode ?? `overlay`}
+            x_axis={distribution_axis}
+            y_axis={distribution_count_axis}
+            mode="single"
+            show_legend={histogram_props.show_legend ?? false}
             style="height: 100%"
           >
             {#snippet controls_extra(config)}
-              {@render energy_controls()}
+              <small
+                class="distribution-coverage"
+                style="color: var(--text-muted, currentColor)"
+                title="Each sample counts one frame with a finite property value; counts are not time-weighted."
+              >
+                Frames with values: {format_num(distribution_count, `,.0f`)} / {format_num(
+                  total_frames,
+                  `,.0f`,
+                )}{!session.properties_complete
+                  ? ` · loading…`
+                  : session.property_rows.length < total_frames
+                    ? ` · sampled`
+                    : ``}
+              </small>
+              {@render energy_controls(
+                Boolean(distribution_series && is_energy_property(distribution_series.id)),
+              )}
               {@render histogram_props.controls_extra?.(config)}
-            {/snippet}
-            {#snippet tooltip({
-              value,
-              count,
-              property,
-              series_idx,
-            }: {
-              value: number
-              count: number
-              property?: string
-              series_idx: number
-            })}
-              <div>
-                <TooltipValue
-                  label={property || `Value`}
-                  value={format_num(value)}
-                  unit={histogram_series[series_idx]?.unit}
-                />
-              </div>
-              <div>Count: {count}</div>
             {/snippet}
           </Histogram>
         {/if}
@@ -1781,6 +2064,15 @@
     &:is(.hide-plot, .hide-structure) {
       grid-template-columns: minmax(0, 1fr) !important;
       grid-template-rows: minmax(0, 1fr) !important;
+    }
+  }
+  .plot-toolbar {
+    display: flex;
+    gap: 0.5em;
+    min-width: 0;
+    select {
+      min-width: 0;
+      max-width: min(12em, 30cqw);
     }
   }
   button.filename {

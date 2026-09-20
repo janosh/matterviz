@@ -641,6 +641,7 @@
     clear_hover()
   }}
   {header_controls}
+  {controls_toggle_props}
   {user_content}
   {children}
   {...rest}
@@ -946,6 +947,30 @@
     {@render ref_lines_layer(`above-all`)}
   {/snippet}
 
+  {#snippet controls(toggle_props, show_controls)}
+    <BarPlotControls
+      on_export={handle_export}
+      export_filename={chart_export_filename(frame)}
+      {toggle_props}
+      pane_props={controls_pane_props}
+      {show_controls}
+      bind:controls_open
+      bind:orientation
+      bind:mode
+      bind:x_axis
+      bind:x2_axis={x2_axis_prop}
+      bind:y_axis
+      bind:y2_axis={y2_axis_prop}
+      bind:display
+      auto_ranges={{
+        ...auto_ranges,
+        x2: show_x2 ? auto_ranges.x2 : undefined,
+        y2: show_y2 ? auto_ranges.y2 : undefined,
+      }}
+      children={controls_extra}
+    />
+  {/snippet}
+
   {#snippet overlays()}
     <!-- Legend -->
     <PlotLegendLayer
@@ -1012,28 +1037,6 @@
         {/if}
       </PlotTooltip>
     {/if}
-
-    <BarPlotControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
-      toggle_props={controls_toggle_props}
-      pane_props={controls_pane_props}
-      bind:show_controls
-      bind:controls_open
-      bind:orientation
-      bind:mode
-      bind:x_axis
-      bind:x2_axis={x2_axis_prop}
-      bind:y_axis
-      bind:y2_axis={y2_axis_prop}
-      bind:display
-      auto_ranges={{
-        ...auto_ranges,
-        x2: show_x2 ? auto_ranges.x2 : undefined,
-        y2: show_y2 ? auto_ranges.y2 : undefined,
-      }}
-      children={controls_extra}
-    />
   {/snippet}
 </CartesianFrame>
 

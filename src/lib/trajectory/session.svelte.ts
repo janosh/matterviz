@@ -88,7 +88,6 @@ export function create_trajectory_session(
   const render_waiters = new Set<{
     run: TrajectoryRun
     idx: number
-    key: string
     settle: (error?: Error) => void
   }>()
   const cancel_render_waiters = (error: Error): void => {
@@ -264,7 +263,9 @@ export function create_trajectory_session(
     frame_failure = undefined
     const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
     for (const waiter of render_waiters) {
-      if (waiter.run !== run || waiter.idx !== frame_idx || waiter.key !== request_key)
+      // Initial mounting can refine geometry settings while the first frame is loading.
+      // Keep waiting for that frame's current scene; only navigation supersedes the wait.
+      if (waiter.run !== run || waiter.idx !== frame_idx)
         waiter.settle(new DOMException(`Displayed frame request superseded`, `AbortError`))
     }
     const candidate = frame_idx === null ? undefined : prefetched.get(frame_idx)
@@ -509,7 +510,7 @@ export function create_trajectory_session(
         else resolve()
       }
       const abort = () => finish(to_error(signal.reason))
-      const waiter = { run, idx, key: request_key, settle: finish }
+      const waiter = { run, idx, settle: finish }
       render_waiters.add(waiter)
       signal.addEventListener(`abort`, abort, { once: true })
     })

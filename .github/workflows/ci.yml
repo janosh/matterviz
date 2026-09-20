@@ -188,6 +188,10 @@ jobs:
         uses: ./.github/actions/setup
       - name: Install Chromium
         run: pnpm exec playwright install chromium --no-shell
+      - name: Install FFmpeg for movie export tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
       - uses: actions/download-artifact@v8
         with:
           name: browser-test-site

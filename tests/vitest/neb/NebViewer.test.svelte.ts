@@ -192,8 +192,11 @@ describe(`NebViewer`, () => {
       const toggle = viewer.querySelector<HTMLElement>(`.scatter .plot-controls-toggle`)
       expect(Boolean(toggle)).toBe(shown)
       if (shown) {
-        expect(toggle?.classList.contains(`hover-visible`)).toBe(true)
-        expect(toggle?.style.opacity).toBe(`0.5`)
+        const header = viewer.querySelector<HTMLElement>(`.scatter .header-controls`)
+        expect(header?.classList.contains(`hover-visible`)).toBe(true)
+        expect(header?.style.opacity).toBe(`0.5`)
+        expect(toggle?.classList.contains(`always-visible`)).toBe(true)
+        expect(toggle?.style.opacity).toBe(``)
       }
     },
   )
@@ -373,6 +376,15 @@ describe(`NebViewer`, () => {
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
     )
+    const plot = query(viewer, `.scatter`)
+    expect(query(viewer, `.viewer-error [role="alert"]`).textContent).toContain(
+      state.error_msg,
+    )
+    query<HTMLButtonElement>(viewer, `.viewer-error button`).click()
+    await tick()
+    expect(state.error_msg).toBeUndefined()
+    expect(viewer.querySelector(`.viewer-error`)).toBeNull()
+    expect(query(viewer, `.scatter`)).toBe(plot)
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {

@@ -17,6 +17,26 @@ afterEach(async () => {
   for (const component of mounted.splice(0)) await unmount(component)
 })
 
+test.each([
+  [false, false],
+  [true, false],
+  [false, true],
+])(`pane Escape respects canceled=%s composing=%s`, async (canceled, is_composing) => {
+  const state = $state({ controls_open: true })
+  mounted.push(mount(FermiSurface, { target: document.body, props: state }))
+  await tick()
+  doc_query(`.fermi-surface`).dispatchEvent(new MouseEvent(`mouseenter`))
+  const event = new KeyboardEvent(`keydown`, {
+    key: `Escape`,
+    isComposing: is_composing,
+    cancelable: true,
+  })
+  if (canceled) event.preventDefault()
+  globalThis.dispatchEvent(event)
+  await tick()
+  expect(state.controls_open).toBe(canceled || is_composing)
+})
+
 test(`custom drops receive raw content while loading remains visible`, async () => {
   const pending = Promise.withResolvers<undefined>()
   const on_file_drop = vi.fn(() => pending.promise)
@@ -263,7 +283,9 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
   await tick()
   expect(props.error_msg).toMatch(/^Invalid Fermi surface data: /)
   expect(on_error).toHaveBeenCalledWith({ error_msg: props.error_msg })
-  expect(document.body.textContent).toContain(`Invalid Fermi surface data`)
+  expect(doc_query(`.fermi-surface > .viewer-error [role="alert"]`).textContent).toContain(
+    `Invalid Fermi surface data`,
+  )
 
   props.fermi_data = typed_data
   await tick()

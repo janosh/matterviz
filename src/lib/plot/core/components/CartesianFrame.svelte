@@ -1,6 +1,7 @@
 <script lang="ts">
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { FullscreenButton } from '$lib/layout'
+  import type { PaneToggleProps } from '$lib/overlays'
   import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetAxis } from '$lib/plot/core/facets'
   import type {
@@ -75,11 +76,13 @@
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    controls_toggle_props?: PaneToggleProps
+    controls?: Snippet<[PaneToggleProps, boolean]>
     // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges
     user_content?: Snippet<[UserContentProps]>
     // Marks, axes, zero lines and reference lines, in the chart's own paint order
     layers?: Snippet
-    // Legend, tooltip and controls pane, rendered after the SVG
+    // Legend and tooltip, rendered after the SVG
     overlays?: Snippet
     // HTML overlays after the SVG, given the same scales/padding as user_content so they can
     // anchor to data coordinates (the .plot-frame is position: relative)
@@ -109,6 +112,8 @@
     on_key_down,
     live_message,
     header_controls,
+    controls_toggle_props,
+    controls,
     user_content,
     layers,
     overlays,
@@ -166,6 +171,10 @@
 
   onDestroy(() => pan_zoom.destroy())
   const controls_config = $derived(normalize_show_controls(show_controls))
+  const toggle_props = $derived({
+    ...controls_toggle_props,
+    style: `position: static; ${controls_toggle_props?.style ?? ``}`,
+  })
 </script>
 
 <svelte:window
@@ -187,6 +196,7 @@
   {#if measured}
     <div class={[`header-controls`, controls_config.class]} style={controls_config.style}>
       {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
+      {@render controls?.(toggle_props, controls_config.visible(`controls`))}
       {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
         <FullscreenButton
           bind:fullscreen
@@ -294,7 +304,6 @@
     white-space: nowrap;
   }
   .plot-frame {
-    --ctrl-btn-default-right: 30px;
     position: relative;
     width: var(--plot-frame-width);
     height: var(--plot-frame-height);
@@ -338,21 +347,15 @@
     align-items: center;
     gap: 8px;
     --icon-size: var(--ctrl-btn-icon-size, 1rem);
-  }
-  /* Hide controls and fullscreen toggles by default, show on hover */
-  .plot-frame .header-controls {
     opacity: 0;
     transition:
       opacity 0.2s,
       background-color 0.2s;
   }
-  .plot-frame :global(.pane-toggle),
-  .plot-frame :global(.fullscreen-btn) {
-    --icon-size: var(--ctrl-btn-icon-size, 1rem);
-  }
   .header-controls.always-visible,
   .plot-frame:hover .header-controls,
-  .plot-frame .header-controls:focus-within {
+  .plot-frame .header-controls:focus-within,
+  .header-controls:has(:global([aria-expanded='true'])) {
     opacity: 1;
   }
   svg {

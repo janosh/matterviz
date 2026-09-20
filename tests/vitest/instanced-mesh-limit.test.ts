@@ -30,7 +30,8 @@ describe(`InstancedMesh limits`, () => {
     // supercells; atoms must render through the imperative InstancedAtoms wrapper
     expect(get_tags(source)).toHaveLength(0)
     expect(source).not.toContain(`extras.Instance`)
-    expect(source.match(/<InstancedAtoms\b/g)).toHaveLength(2)
+    // Base and image groups share one instanced rendering loop.
+    expect(source.match(/<InstancedAtoms\b/g)).toHaveLength(1)
     // arrows are instanced too (2 draw calls per layer): one call site for per-site
     // vectors (forces, magmoms), one for the displacement-vs-reference overlay
     expect(source.match(/<ArrowInstances\b/g)).toHaveLength(2)

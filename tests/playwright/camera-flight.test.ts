@@ -1,5 +1,134 @@
 import { expect, test } from '@playwright/test'
 import type * as CameraFlightModule from '$lib/scene/camera-flight'
+import type { TrajectoryViewerController } from '$lib/trajectory'
+import { execFile } from 'node:child_process'
+import { readdir, writeFile } from 'node:fs/promises'
+import { promisify } from 'node:util'
+
+test(`movie CLI cancellation stops an encoder waiting for input and removes partial output`, async ({
+  baseURL: base_url,
+}, test_info) => {
+  if (!base_url) throw new Error(`Movie CLI test requires the Playwright server URL`)
+  const source = test_info.outputPath(`source.xyz`)
+  const spec = test_info.outputPath(`movie.json`)
+  const output = test_info.outputPath(`cancelled.mp4`)
+  await writeFile(source, `1\n\nH 0 0 0\n1\n\nH 1 0 0\n`)
+  await writeFile(
+    spec,
+    JSON.stringify({
+      source: { path: source },
+      video: { width: 64, height: 64, fps: 30, duration_s: 60 },
+    }),
+  )
+  const execution = promisify(execFile)(
+    process.execPath,
+    [`src/scripts/movie.mjs`, `render`, spec, `--url`, base_url, `--output`, output],
+    { timeout: test_info.timeout / 2, killSignal: `SIGKILL` },
+  )
+  let progress = ``
+  let cancelled = false
+  execution.child.stderr?.on(`data`, (chunk: string) => {
+    progress += chunk
+    if (!cancelled && progress.includes(`"stage":"sample"`)) {
+      cancelled = true
+      execution.child.kill(`SIGTERM`)
+    }
+  })
+  // A watchdog kill has code=null; only a graceful CLI exit passes this assertion.
+  await expect(execution).rejects.toMatchObject({ code: 1, signal: null, stdout: `` })
+  expect(cancelled, progress).toBe(true)
+  expect(progress).toContain(`"stage":"cancelled"`)
+  expect((await readdir(test_info.outputDir)).toSorted()).toEqual([
+    `cancelled.mp4.review`,
+    `movie.json`,
+    `source.xyz`,
+  ])
+})
+
+test(`movie controller renders saved framing, waits for frames and restores after cancellation`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 480 })
+  await page.goto(`/trajectory/render`)
+  await page.waitForFunction(() =>
+    Boolean((window as Window & { matterviz_movie?: unknown }).matterviz_movie),
+  )
+  const result = await page.evaluate(async () => {
+    const viewer = (window as Window & { matterviz_movie?: TrajectoryViewerController })
+      .matterviz_movie
+    if (!viewer) throw new Error(`Movie controller is not registered`)
+    await viewer.load({
+      filename: `movie.extxyz`,
+      data: [
+        `3`,
+        `Lattice="8 0 0 0 8 0 0 0 8" Properties=species:S:1:pos:R:3`,
+        `Si 1 1 1`,
+        `Ge 4 2 3`,
+        `O 2 5 6`,
+        `3`,
+        `Lattice="8 0 0 0 8 0 0 0 8" Properties=species:S:1:pos:R:3`,
+        `Si 2 1 1`,
+        `Ge 4 3 3`,
+        `O 2 5 6`,
+      ].join(`\n`),
+    })
+    const info = await viewer.inspect()
+    const plan = await viewer.plan_movie({
+      frames: { start: 0, end: 1 },
+      camera: { preset: `orbit`, turns: 0.25 },
+      video: { width: 360, height: 240, fps: 10, duration_s: 0.3, background: `#112233` },
+    })
+    const images: string[] = []
+    const dimensions: number[][] = []
+    await viewer.render_movie(plan, async (canvas) => {
+      // Encoder backpressure must not skip/reorder source or camera frames.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      images.push(canvas.toDataURL())
+      dimensions.push([canvas.width, canvas.height])
+    })
+    return { info, plan, images, dimensions, step: viewer.state().current_step_idx }
+  })
+  expect(result.info).toMatchObject({ atom_count: 3, frame_count: 2 })
+  expect(result.dimensions).toEqual([
+    [360, 240],
+    [360, 240],
+    [360, 240],
+  ])
+  expect(new Set(result.images).size).toBe(3)
+  expect(result.step).toBe(0)
+  await page.setViewportSize({ width: 1000, height: 800 })
+  const after_resize = await page.evaluate(async (plan) => {
+    const viewer = (window as Window & { matterviz_movie?: TrajectoryViewerController })
+      .matterviz_movie
+    if (!viewer) throw new Error(`Movie controller is not registered`)
+    // Let the new viewport reach the renderer before exercising saved framing.
+    await new Promise(requestAnimationFrame)
+    await new Promise(requestAnimationFrame)
+    const images: string[] = []
+    await viewer.render_movie(plan, async (canvas) => {
+      images.push(canvas.toDataURL())
+    })
+    await viewer.prepare_frame(1)
+    let cancelled = ``
+    try {
+      await viewer.render_movie(plan, async (_canvas, _idx, signal) => {
+        setTimeout(() => viewer.cancel_movie(), 20)
+        // A sink that ignores cancellation must not retain the viewer's export lock.
+        await new Promise<void>(() => {
+          if (signal.aborted) throw new Error(`Frame consumer received a stale signal`)
+        })
+      })
+    } catch (error) {
+      cancelled = String(error)
+    }
+    // Cancellation releases the render lock even though the previous sink never settles.
+    await viewer.render_movie(plan, async () => {})
+    return { images, cancelled, step: viewer.state().current_step_idx }
+  }, result.plan)
+  expect(after_resize.images).toEqual(result.images)
+  expect(after_resize.cancelled).toContain(`Movie cancelled`)
+  expect(after_resize.step).toBe(1)
+})
 
 // oxlint-disable-next-line vitest/prefer-each -- Playwright has no test.each.
 for (const kind of [`structure`, `trajectory`] as const) {
@@ -20,17 +149,16 @@ for (const kind of [`structure`, `trajectory`] as const) {
     const toggle = viewer.locator(`.${kind}-flight-toggle`).first()
     const export_toggle = viewer.locator(`.${kind}-export-toggle`).first()
     const export_pane = viewer.locator(`.export-pane`).first()
-    await expect(kind === `trajectory` ? export_toggle : toggle).toBeVisible({
+    await expect(export_toggle).toBeVisible({
       timeout: 30_000,
     })
-    if (kind === `trajectory`) await expect(toggle).toBeHidden()
+    await expect(toggle).toBeHidden()
     const open_planner = async () => {
-      if (kind === `trajectory`) {
-        if (!(await export_pane.isVisible())) await export_toggle.click()
-        await export_pane
-          .getByRole(`button`, { name: `Plan camera flight`, exact: true })
-          .click()
-      } else await toggle.click()
+      if (!(await export_pane.isVisible())) await export_toggle.click()
+      await export_pane
+        .getByRole(`button`, { name: `Plan camera flight`, exact: true })
+        .click()
+      await expect(export_pane).toBeHidden()
     }
     const read_pose = () =>
       page.evaluate(async (viewer_selector) => {
@@ -88,7 +216,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
         const styles = getComputedStyle(node)
         return { 'font-size': styles.fontSize, width: styles.width, height: styles.height }
       })
-    if (kind === `structure`) await export_toggle.click()
     await open_planner()
     const pane = viewer.locator(`.${kind}-flight-pane`)
     const flight = pane.locator(`.camera-flight`)
@@ -247,12 +374,9 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(flight.getByRole(`alert`)).toHaveCount(0)
     await flight.getByRole(`button`, { name: `Go to view 3`, exact: true }).click()
     await expect(home).toBeEnabled()
-    await (
-      kind === `trajectory`
-        ? flight.getByRole(`button`, { name: `Export options →`, exact: true })
-        : toggle
-    ).click()
+    await flight.getByRole(`button`, { name: `Export options →`, exact: true }).click()
     await expect(pane).toBeHidden()
+    await expect(export_pane).toBeVisible()
     await expect_original_pose()
     await open_planner()
     await expect(images).toHaveCount(9)
@@ -346,5 +470,23 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await preview.scrollIntoViewIfNeeded()
     await expect(preview).toBeInViewport()
     await page.screenshot({ path: `tmp/camera-flight-${kind}-mobile.png`, fullPage: true })
+    if (kind === `trajectory`) {
+      await pane.getByRole(`button`, { name: `Export options →` }).click()
+      await expect(export_pane.getByText(/Includes camera flight/)).toBeVisible()
+      await viewer.evaluate((element) => {
+        const transfer = new DataTransfer()
+        transfer.items.add(
+          new File(
+            [
+              `1\nProperties=species:S:1:pos:R:3\nSi 0 0 0\n1\nProperties=species:S:1:pos:R:3\nSi 0.1 0 0\n`,
+            ],
+            `replacement.xyz`,
+          ),
+        )
+        element.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+      })
+      await expect(viewer.locator(`.step-input`)).toHaveAttribute(`max`, `1`)
+      await expect(export_pane.getByText(/Includes camera flight/)).toHaveCount(0)
+    }
   })
 }

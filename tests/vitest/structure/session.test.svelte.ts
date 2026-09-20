@@ -169,18 +169,16 @@ describe(`display pipeline`, () => {
     expect(session.supercell_tiling).toEqual([2, 2, 2])
   })
 
-  // A caller-supplied supercell (phonon mode explorer) carries orig_unit_cell_idx into a cell
+  // A caller-supplied supercell (phonon mode explorer) carries unit_cell_idx into a cell
   // that is not displayed; edits and coordination colors must index the displayed sites, not
   // follow those indices. Only the session's own supercell and image-atom provenance are followed.
-  it(`ignores foreign orig_unit_cell_idx on the input structure`, () => {
+  it(`ignores foreign unit_cell_idx on the input structure`, () => {
     const base = make_crystal(4, [
       { element: `Na`, abc: [0, 0, 0] },
       { element: `Cl`, abc: [0.5, 0.5, 0.5] },
     ])
     const foreign = make_supercell(base, [2, 1, 1])
-    expect(foreign.sites.map((site) => site.properties.orig_unit_cell_idx)).toEqual([
-      0, 1, 0, 1,
-    ])
+    expect(foreign.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 1, 0, 1])
     const coordination_config: AtomColorConfig = {
       ...DEFAULT_ATOM_COLOR_CONFIG,
       mode: `coordination`,
@@ -195,7 +193,7 @@ describe(`display pipeline`, () => {
     // the third displayed site is the second Na copy; deleting it must not resolve to site 0
     // (its unit-cell ancestor), and image atoms map to the displayed site they mirror
     expect([...session.scene_to_structure_indices([2])]).toEqual([2])
-    const image_idx = displayed.findIndex((site) => site.properties.orig_site_idx === 2)
+    const image_idx = displayed.findIndex((site) => site.provenance?.image_of === 2)
     expect(image_idx).toBeGreaterThan(3)
     expect([...session.scene_to_structure_indices([image_idx])]).toEqual([2])
     // coordination colors follow the same mapping: every displayed site gets its own value
@@ -215,12 +213,12 @@ describe(`display pipeline`, () => {
     expect(session.property_colors?.values[image_idx]).toBe(30)
     expect(foreign.sites[2].properties).not.toHaveProperty(`charge`)
 
-    // once the session tiles a supercell itself, its orig_unit_cell_idx is followed
+    // once the session tiles a supercell itself, its unit_cell_idx is followed
     host.supercell_scaling = `1x2x1`
     flushSync()
     expect(session.supercell_structure?.sites).toHaveLength(8)
     const site_idx = session.displayed_structure?.sites.findIndex(
-      (site) => site.properties.orig_unit_cell_idx === 3 && !is_image_site(site),
+      (site) => site.provenance?.unit_cell_idx === 3 && !is_image_site(site),
     )
     expect([...session.scene_to_structure_indices([site_idx ?? -1])]).toEqual([3])
     expect(session.property_colors?.values[site_idx ?? -1]).toBe(40)
