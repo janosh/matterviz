@@ -6,8 +6,9 @@ import { readdir, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 test(`movie CLI cancellation stops an encoder waiting for input and removes partial output`, async ({
-  browserName: _browser_name,
+  baseURL: base_url,
 }, test_info) => {
+  if (!base_url) throw new Error(`Movie CLI test requires the Playwright server URL`)
   const source = test_info.outputPath(`source.xyz`)
   const spec = test_info.outputPath(`movie.json`)
   const output = test_info.outputPath(`cancelled.mp4`)
@@ -21,15 +22,7 @@ test(`movie CLI cancellation stops an encoder waiting for input and removes part
   )
   const execution = promisify(execFile)(
     process.execPath,
-    [
-      `src/scripts/movie.mjs`,
-      `render`,
-      spec,
-      `--url`,
-      `http://127.0.0.1:3005`,
-      `--output`,
-      output,
-    ],
+    [`src/scripts/movie.mjs`, `render`, spec, `--url`, base_url, `--output`, output],
     { timeout: test_info.timeout / 2, killSignal: `SIGKILL` },
   )
   let progress = ``
