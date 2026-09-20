@@ -192,8 +192,11 @@ describe(`NebViewer`, () => {
       const toggle = viewer.querySelector<HTMLElement>(`.scatter .plot-controls-toggle`)
       expect(Boolean(toggle)).toBe(shown)
       if (shown) {
-        expect(toggle?.classList.contains(`hover-visible`)).toBe(true)
-        expect(toggle?.style.opacity).toBe(`0.5`)
+        const header = viewer.querySelector<HTMLElement>(`.scatter .header-controls`)
+        expect(header?.classList.contains(`hover-visible`)).toBe(true)
+        expect(header?.style.opacity).toBe(`0.5`)
+        expect(toggle?.classList.contains(`always-visible`)).toBe(true)
+        expect(toggle?.style.opacity).toBe(``)
       }
     },
   )
