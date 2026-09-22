@@ -196,11 +196,25 @@ describe(`PieChart`, () => {
     )
   })
 
-  test(`donut inner radius is capped 10px inside the outer radius`, () => {
-    mount_chart(PieChart, { composition: { H: 1, O: 1 }, size: 100, inner_radius: 500 })
-    // outer radius 49.5 -> inner 39.5 appears as the inner arc radius
-    expect(path_numbers(doc_query(`path.pie-segment`))).toContain(39.5)
-  })
+  test.each([
+    [{ H: 1, O: 1 }, 100, 500, 39.5],
+    [{ H: 1, O: 4 }, 200, 90, 89.5],
+    [{ H: 1, O: 4 }, 200, 50, 50],
+  ])(
+    `donut %j caps its hole and keeps labels on the ring`,
+    (composition, size, inner_radius, ring_inner) => {
+      mount_chart(PieChart, { composition, size, inner_radius })
+      expect(path_numbers(doc_query(`path.pie-segment`))).toContain(ring_inner)
+      for (const label of document.querySelectorAll(`text`)) {
+        const radius = Math.hypot(
+          Number(label.getAttribute(`x`)) - size / 2,
+          Number(label.getAttribute(`y`)) - size / 2,
+        )
+        expect(radius).toBeGreaterThan(ring_inner)
+        expect(radius).toBeLessThan(size / 2 - 0.5)
+      }
+    },
+  )
 
   test.each([
     [true, 4],
@@ -246,14 +260,13 @@ describe(`BubbleChart`, () => {
     expect(document.querySelectorAll(`circle`)).toHaveLength(0)
   })
 
-  // size 0 packs every bubble at r = 0, and dividing the label scale by 0 / 0 wrote NaNpx
-  test(`a collapsed size keeps label font sizes finite`, () => {
-    mount_chart(BubbleChart, { composition: { H: 4, O: 1 }, size: 0 })
-    const sizes = [...document.querySelectorAll<SVGTSpanElement>(`tspan`)].map(
-      (tspan) => tspan.style.fontSize,
-    )
-    expect(sizes.length).toBeGreaterThan(0)
-    for (const size of sizes) expect(size).toMatch(/^[\d.]+px$/)
+  test.each([
+    [0, 0],
+    [200, 100],
+    [200, 120],
+  ])(`size=%s, padding=%s leaves no drawable area`, (size, padding) => {
+    mount_chart(BubbleChart, { composition: { H: 4, O: 1 }, size, padding })
+    expect(document.querySelectorAll(`circle, text`)).toHaveLength(0)
   })
 })
 

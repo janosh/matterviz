@@ -77,16 +77,15 @@
     hovered_element ? (element_by_symbol.get(hovered_element) ?? null) : null,
   )
 
-  // Format formula as plain text for clipboard: "Li2 O" or "Fe(+3)2 O(-2)3"
+  // Use parseable bracket charges on the clipboard: "Li2 O" or "Fe[+3]2 O[-2]3".
   const plain_text_formula = $derived(
     sorted_elements
       .map(({ element, amount, oxidation_state }) => {
         let text = element
         if (oxidation_state !== undefined && oxidation_state !== 0) {
-          // Use parentheses to avoid ambiguity like "Fe+32" looking like oxidation +32
-          text += `(${format_oxi_state(oxidation_state)})`
+          text += `[${format_oxi_state(oxidation_state)}]`
         }
-        if (amount !== 1) text += format_amount(amount, amount_format)
+        if (amount !== 1) text += format_amount(amount, `.12~g`)
         return text
       })
       .join(` `),

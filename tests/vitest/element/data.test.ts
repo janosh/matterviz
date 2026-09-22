@@ -38,6 +38,8 @@ test(`element data basics`, () => {
   expect(element_data[0].atomic_mass).toBe(1.008)
   expect(element_data[0].electronegativity).toBe(2.2)
   expect(element_data[0].electron_configuration).toBe(`1s1`)
+  expect(element_data[111].name).toBe(`Copernicium`)
+  expect(element_data[111].summary).not.toMatch(/copernicum/i)
   expect(element_data.every((element) => typeof element.density === `number`)).toBe(true)
   expect(element_by_symbol.size).toBe(element_data.length)
   for (const element of element_data)

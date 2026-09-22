@@ -20,13 +20,18 @@ export const format_amount = (amount: number, amount_format = AMOUNT_FORMAT): st
     amount,
     sig_digits_below_one && Math.abs(amount) < 1 ? `.3~g` : amount_format,
   )
-  // Both `.3~g` and `.3~f` fall back to exponent form below about 1e-6, which no formula parser
-  // reads back either - a trace dopant occupancy of 1e-7 produced `FeO1e-7`, and parsing that
-  // threw on the `e`. Fixed notation covers every small amount, which is the whole reason `s`
-  // was ruled out above; 12 decimals is past f64's significant digits, so nothing is lost.
-  // Amounts at or above 1e21 have no fixed form to fall back on (JS switches to exponent there
-  // too) and still cannot round-trip, but no real formula carries a coefficient that large.
-  return text.includes(`e`) ? format_num(amount, `.12~f`) : text
+  // Formula parsers require decimal notation. Move the decimal point in the formatted
+  // mantissa: fixed decimal precision would erase trace occupancies below that cutoff.
+  return text.replaceAll(
+    /(?<integer>\d+)(?:\.(?<fraction>\d+))?e(?<exponent>[+-]?\d+)/g,
+    (_match: string, integer: string, fraction: string | undefined, exponent: string) => {
+      const digits = integer + (fraction ?? ``)
+      const decimal_idx = integer.length + Number(exponent)
+      if (decimal_idx <= 0) return `0.${`0`.repeat(-decimal_idx)}${digits}`
+      if (decimal_idx >= digits.length) return digits + `0`.repeat(decimal_idx - digits.length)
+      return `${digits.slice(0, decimal_idx)}.${digits.slice(decimal_idx)}`
+    },
+  )
 }
 
 export type FormulaFormatOptions = {
@@ -146,7 +151,7 @@ export function is_compound(name: string): boolean {
 // water molecules, not atoms in the preceding group, so `CuSO4·5H2O` must render its 5 full
 // size. Every digit run classified as a subscript printed it as CuSO4·₅H₂O.
 const FORMULA_TOKEN_RE =
-  /(?<coeff>(?<=[·⋅*])\d+(?:\.\d+)?)|(?<sub>\d+(?:\.\d+)?)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|[^A-Z\d-]+)/g
+  /(?<coeff>(?<=[·⋅*])(?:\d+(?:\.\d+)?|\.\d+))|(?<sub>\d+(?:\.\d+)?|\.\d+)|(?<sup>-(?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>-|\.(?!\d)|[^A-Z\d.-]+)/g
 // Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
 const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
 
@@ -201,32 +206,17 @@ export function get_formula_label_segments(label: string): FormulaLabelSegment[]
   return segments.length > 0 ? segments : [{ text: label, subscript: false }]
 }
 
-// Baseline shifts for sub/superscript (SVG dy values are cumulative across tspans)
-const BASELINE_SHIFT = { sub: 0.25, sup: -0.4 } as const
-
-// Format chemical formula as SVG tspan elements with subscripts
-// Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
+// Native baseline shifts are scoped to each tspan, so adjacent scripts and trailing text
+// align without cumulative dy offsets or invisible reset characters.
 export function format_formula_svg(formula: string, use_subscripts = true): string {
   if (!use_subscripts || !is_compound(formula)) return formula
-
-  let result = ``
-  let offset = 0
-
-  for (const token of tokenize_formula_markup(formula)) {
-    if (token.text !== undefined) {
-      result += offset ? `<tspan dy="${-offset}em">${token.text}</tspan>` : token.text
-      offset = 0
-    } else {
-      const delta_y = token.sub !== undefined ? BASELINE_SHIFT.sub : BASELINE_SHIFT.sup
-      result += `<tspan dy="${delta_y}em" font-size="0.75em">${token.sub ?? token.sup}</tspan>`
-      offset += delta_y
-    }
-  }
-
-  // Reset baseline after trailing subscript/superscript using a zero-width space
-  // (empty tspans may not apply dy in all SVG renderers)
-  if (offset) result += `<tspan dy="${-offset}em">\u200B</tspan>`
-  return result
+  return tokenize_formula_markup(formula)
+    .map(
+      (token) =>
+        token.text ??
+        `<tspan baseline-shift="${token.sub !== undefined ? `-0.25em` : `0.4em`}" font-size="0.75em">${token.sub ?? token.sup}</tspan>`,
+    )
+    .join(``)
 }
 
 // Format chemical formula as HTML with <sub> and <sup> tags

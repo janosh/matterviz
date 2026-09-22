@@ -3,18 +3,26 @@ import type { BandsOptions, DosOptions } from '$lib/spectral'
 import type { StructureOptions } from '$lib/structure'
 import type { BrillouinZoneOptions } from '$lib/brillouin'
 import ElementScatter from '$lib/plot/scatter/ElementScatter.svelte'
+import ElementPage from '$root/src/routes/(element)/[slug]/+page.svelte'
 import { element_data } from '$lib/element'
 import type { InternalPoint } from '$lib/plot/core/types'
 import { selected } from '$lib/state.svelte'
 import { flushSync, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized } from '../setup'
+import { bind_props, doc_query, expect_plot_controls, mount_sized } from '../setup'
+
+vi.mock(`$app/state`, () => ({
+  page: { params: { slug: `hydrogen` }, url: new URL(`http://localhost/hydrogen`) },
+}))
 
 // Atomic radii for first 10 elements (H through Ne)
 const y_values = [53, 31, 167, 112, 87, 77, 75, 73, 71, 69]
 
 describe(`ElementScatter`, () => {
-  afterEach(() => (selected.element = null)) // module-global, so don't leak between tests
+  afterEach(() => {
+    selected.element = null
+    selected.heatmap_key = null
+  }) // module-global, so don't leak between tests
 
   test(`presentation props cannot replace computed data`, async () => {
     expectTypeOf<
@@ -145,15 +153,39 @@ describe(`ElementScatter`, () => {
     const state: { tooltip_point: InternalPoint | null } = { tooltip_point: null }
     mount(ElementScatter, {
       target: document.body,
-      props: bind_props({ y: y_values }, state),
+      props: bind_props({ y: y_values.map((value, idx) => (idx === 1 ? NaN : value)) }, state),
     })
 
     selected.element = element_data.find((elem) => elem.number === 6) ?? null
     await tick()
     expect(state.tooltip_point).toMatchObject({ x: 6, y: 77, point_idx: 5 })
 
+    for (const element_idx of [1, 11]) {
+      selected.element = element_data[element_idx] // missing value or outside the supplied array
+      await tick()
+      expect(state.tooltip_point).toBeNull()
+    }
+
     selected.element = null // pointer left the table
     await tick()
     expect(state.tooltip_point).toBeNull()
+  })
+
+  test(`element pages keep property values aligned with atomic numbers across missing data`, async () => {
+    selected.heatmap_key = `electronegativity`
+    const plot = await mount_sized(ElementPage, {}, { selector: `.scatter` })
+    selected.element = element_data[2] // lithium follows the missing helium value
+    await tick()
+    const markers = plot.querySelectorAll(`.marker`)
+    expect(markers[1].classList.contains(`is-hovered`)).toBe(true)
+    expect(plot.querySelectorAll(`.marker.is-hovered`)).toHaveLength(1)
+
+    const neutrons = [...document.querySelectorAll(`.properties > div`)].find(
+      (row) => row.querySelector(`small`)?.textContent === `Neutrons`,
+    )
+    expect(neutrons?.querySelector(`strong`)?.textContent?.trim()).toBe(`0`)
+    doc_query(`div.multiselect ul.options > li`).click() // Atomic Mass
+    await tick()
+    expect(selected.heatmap_key).toBe(`atomic_mass`)
   })
 })

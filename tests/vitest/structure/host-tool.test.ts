@@ -106,6 +106,7 @@ describe(`host prediction ownership`, () => {
     expect(on_view).toHaveBeenCalledTimes(view_calls)
     controller.invalidate_if_changed()
     expect(old_run.signal.aborted).toBe(true)
+    expect(on_view).toHaveBeenLastCalledWith(null)
     if (cause === `new run`)
       expect(on_prediction.mock.lastCall?.[0]?.site_properties).toEqual([{ charge: 2 }])
     else expect(on_prediction).toHaveBeenLastCalledWith(null)

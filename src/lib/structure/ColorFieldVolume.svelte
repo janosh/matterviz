@@ -1,5 +1,6 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
+  import type { Vec3 } from '$lib/math'
   import {
     BackSide,
     BoxGeometry,
@@ -7,6 +8,7 @@
     Mesh,
     MeshBasicNodeMaterial,
     Vector2,
+    Vector3,
     Vector4,
   } from 'three/webgpu'
   import {
@@ -33,7 +35,13 @@
     field,
     opacity = 0.35,
     cutaway,
-  }: { field: AtomColorField; opacity?: number; cutaway?: StructureCutaway } = $props()
+    tiling = [1, 1, 1],
+  }: {
+    field: AtomColorField
+    opacity?: number
+    cutaway?: StructureCutaway
+    tiling?: Vec3
+  } = $props()
   const { invalidate } = useThrelte()
   // A single proxy box, independent of atom count. Transparent projection deliberately
   // includes heat behind atoms; maximum opacity keeps the underlying geometry readable.
@@ -48,6 +56,7 @@
   const density_texture = texture3D(texture)
   const alpha = uniform(0.35)
   const steps = uniform(48, `int`)
+  const box_size = uniform(new Vector3(1, 1, 1))
   const clip_enabled = uniform(false)
   const clip_coordinate = uniform(new Vector4())
   const clip_bounds = uniform(new Vector2())
@@ -66,7 +75,7 @@
       direction.z.abs().max(1e-7).mul(direction.z.lessThan(0).select(-1, 1)),
     )
     const first = origin.negate().div(safe_direction)
-    const last = origin.oneMinus().div(safe_direction)
+    const last = box_size.sub(origin).div(safe_direction)
     const lower = min(first, last)
     const upper = max(first, last)
     const entry = max(max(lower.x, lower.y), max(lower.z, 0)).toVar()
@@ -113,7 +122,16 @@
     if (!visible) return
     const { dims, cartesian_to_fractional } = field
     texture.update(field)
-    steps.value = Math.min(192, Math.max(32, 3 * Math.max(...dims)))
+    // Enlarge one proxy box, keeping both the texture and ray coordinates in the input cell.
+    const bounds = tiling.map((size, axis) => (field.pbc[axis] ? size : 1)) as Vec3
+    if (bounds.some((size, axis) => size !== box_size.value.getComponent(axis))) {
+      geometry.scale(
+        ...(bounds.map((size, axis) => size / box_size.value.getComponent(axis)) as Vec3),
+      )
+      box_size.value.set(...bounds)
+    }
+    const tiled_dims = dims.map((size, axis) => size * bounds[axis])
+    steps.value = Math.min(192, Math.max(32, 3 * Math.max(...tiled_dims)))
     mesh.matrix.copy(cartesian_to_fractional).invert()
     mesh.matrixWorldNeedsUpdate = true
     invalidate()

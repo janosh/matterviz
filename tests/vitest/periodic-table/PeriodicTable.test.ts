@@ -211,6 +211,30 @@ describe(`PeriodicTable`, () => {
     expect(document.activeElement).toBe(input)
   })
 
+  test.each([
+    [`H`, `ArrowRight`, `He`],
+    [`He`, `ArrowLeft`, `H`],
+    [`Be`, `ArrowRight`, `B`],
+    [`B`, `ArrowLeft`, `Be`],
+    [`H`, `ArrowDown`, `Na`],
+    [`Na`, `ArrowUp`, `H`],
+    [`Y`, `ArrowDown`, `La`],
+    [`La`, `ArrowUp`, `Y`],
+  ])(`arrow navigation skips gaps and unlinked tiles: %s %s → %s`, async (from, key, to) => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { links: { [from]: `#${from}`, [to]: `#${to}` } },
+    })
+    const source = doc_query(`[data-element-symbol="${from}"]`)
+    const target = doc_query(`[data-element-symbol="${to}"]`)
+    source.focus()
+    source.dispatchEvent(keydown(key))
+    await tick()
+    expect(document.activeElement).toBe(target)
+    expect(source.tabIndex).toBe(-1)
+    expect(target.tabIndex).toBe(0)
+  })
+
   test(`tile content can be hidden`, () => {
     mount(PeriodicTable, {
       target: document.body,
@@ -332,32 +356,55 @@ describe(`PeriodicTable`, () => {
     expect(tile.getAttribute(`tabindex`)).toBe(`2`)
   })
 
-  test(`demo rejects inherited heatmap keys and uses automatic tile contrast`, async () => {
-    page.url.search = `?heatmap=toString`
-    page.url.hash = `#test-anchor` // URL rewrites must not drop the fragment
+  test.each([`toString`, `phase`])(
+    `demo rejects unsupported heatmap key %s and uses automatic tile contrast`,
+    async (heatmap) => {
+      page.url.search = `?heatmap=${heatmap}`
+      page.url.hash = `#test-anchor` // URL rewrites must not drop the fragment
+      mount(PeriodicTableDemo, { target: document.body })
+      await vi.waitFor(() =>
+        expect(replace_url).toHaveBeenCalledWith(`/periodic-table#test-anchor`),
+      )
+      expect(document.querySelector(`.periodic-table .value`)).toBeNull()
+
+      doc_query(`ul.options > li`).click()
+      await tick()
+
+      const selected_text =
+        doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
+      // the picked label maps to a real element property, whose key lands in the URL
+      const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
+      if (!heatmap_key) throw new Error(`no heatmap key for label "${selected_text}"`)
+      await vi.waitFor(() =>
+        expect(document.querySelector(`.periodic-table .value`)).toBeInstanceOf(HTMLElement),
+      )
+      const tiles = document.querySelectorAll<HTMLElement>(`.periodic-table .element-tile`)
+      expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
+        new Set([`white`, `black`]),
+      )
+      expect(replace_url).toHaveBeenLastCalledWith(
+        `/periodic-table?heatmap=${heatmap_key}#test-anchor`,
+      )
+    },
+  )
+
+  test(`demo preserves missing element properties instead of coloring them as zero`, async () => {
+    page.url.search = `?heatmap=electronegativity`
     mount(PeriodicTableDemo, { target: document.body })
-    await vi.waitFor(() =>
-      expect(replace_url).toHaveBeenCalledWith(`/periodic-table#test-anchor`),
-    )
-    expect(document.querySelector(`.periodic-table .value`)).toBeNull()
-
-    doc_query(`ul.options > li`).click()
     await tick()
-
-    const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
-    // the picked label maps to a real element property, whose key lands in the URL
-    const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
-    if (!heatmap_key) throw new Error(`no heatmap key for label "${selected_text}"`)
-    await vi.waitFor(() =>
-      expect(document.querySelector(`.periodic-table .value`)).toBeInstanceOf(HTMLElement),
+    expect(doc_query(`form .multiselect ul.selected`).textContent?.trim()).toBe(
+      `Electronegativity`,
     )
-    const tiles = document.querySelectorAll<HTMLElement>(`.periodic-table .element-tile`)
-    expect(new Set([...tiles].map((tile) => tile.style.color))).toEqual(
-      new Set([`white`, `black`]),
-    )
-    expect(replace_url).toHaveBeenLastCalledWith(
-      `/periodic-table?heatmap=${heatmap_key}#test-anchor`,
-    )
+    const helium = doc_query(`[data-element-symbol="He"]`)
+    expect(helium.querySelector(`.value`)).toBeNull()
+    expect(helium.style.backgroundColor).toBe(`#666`)
+    helium.dispatchEvent(mouseenter)
+    await tick()
+    expect(doc_query(`.periodic-table > .tooltip`).textContent).toContain(`N/A`)
+    doc_query(`form .multiselect ul.selected button.remove`).click()
+    await tick()
+    expect(doc_query(`form .multiselect ul.selected`).textContent?.trim()).toBe(``)
+    expect(replace_url).toHaveBeenLastCalledWith(`/periodic-table`)
   })
 
   test(`gap prop overrides --ptable-gap and the f-block spacer sits in grid row 8`, () => {
@@ -484,6 +531,7 @@ describe(`PeriodicTable`, () => {
   test.each([
     [`absent object key`, { He: 5 }, [true, false]], // H absent -> missing, He present
     [`NaN is missing`, [NaN, 5], [true, false]], // NaN -> missing, value 5 present
+    [`blank strings are missing`, [``, `  `], [true, true]],
     [`explicit colors are real data`, [`#ff0000`, `#00ff00`], [false, false]],
   ] as const)(
     `missing decorations apply only to missing tiles: %s`,
@@ -523,18 +571,26 @@ describe(`PeriodicTable`, () => {
 
   // a multi-value tile is missing only when ALL segments are missing (order-independent)
   test.each([
-    [[5, null], ``],
-    [[null, 5], ``], // regression: was decorated because only segment[0] was checked
-    [[null, null], `0.3`],
+    [[5, null], false, ``, [`5`]],
+    [[null, 5], false, ``, [`5`]], // regression: only segment[0] was checked
+    [[NaN, 5], false, ``, [`5`]],
+    [[Infinity, 5], false, ``, [`5`]],
+    [[`pending`, 5], false, ``, [`5`]],
+    [[0, 5], true, ``, [`5`]],
+    [[-1, 5], true, ``, [`5`]],
+    [[null, null], false, `0.3`, []],
   ] as const)(
-    `multi-value tile %j missing-decorated opacity=%s`,
-    (value, expected_opacity) => {
+    `multi-value tile %j (log=%s) hides missing labels`,
+    (value, log, expected_opacity, expected_labels) => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [value] as never, missing: { style: `opacity: 0.3` } },
+        props: { heatmap_values: [value] as never, log, missing: { style: `opacity: 0.3` } },
       })
       const tile = document.querySelector(`.element-tile`) as HTMLElement
       expect(tile.style.opacity).toBe(expected_opacity)
+      expect([...tile.querySelectorAll(`.value`)].map((label) => label.textContent)).toEqual(
+        expected_labels,
+      )
     },
   )
 
@@ -931,6 +987,7 @@ describe(`PeriodicTable`, () => {
     test.each([
       [{ show_color_bar: false }, `show_color_bar=false`],
       [{ heatmap_values: [] }, `empty heatmap`],
+      [{ heatmap_values: [``, `  `] }, `blank values`],
       [{ heatmap_values: [`#f00`, `#0f0`] as never }, `color-only values`],
     ])(`does not show ColorBar for %s`, (props, _desc) => {
       mount(PeriodicTable, {

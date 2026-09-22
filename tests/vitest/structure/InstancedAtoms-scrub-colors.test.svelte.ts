@@ -8,9 +8,11 @@ import {
   type AtomColorField,
 } from '$lib/structure/atom-color-field'
 import { flushSync, mount, unmount } from 'svelte'
+import type { Vec3 } from '$lib/math'
 import { useThrelte } from '@threlte/core'
 import {
   Color,
+  ClampToEdgeWrapping,
   Data3DTexture,
   DataUtils,
   FloatType,
@@ -21,6 +23,7 @@ import {
   MeshStandardNodeMaterial,
   type InstancedBufferGeometry,
   PerspectiveCamera,
+  RepeatWrapping,
   SphereGeometry,
 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -98,7 +101,7 @@ const current_mesh = (): AtomInstances => threlte_stub.nodes.at(-1)?.props.is as
 const slot_color = (slot_idx: number): number[] =>
   Array.from(current_mesh().colors.array.slice(slot_idx * 3, slot_idx * 3 + 3))
 
-test(`volume cloud reuses its mesh and texture across opacity and cell changes`, async () => {
+test(`volume cloud tiles periodic axes and reuses its mesh and texture across updates`, async () => {
   const update_texture = vi.spyOn(ColorFieldTexture.prototype, `update`)
   const encode = vi.spyOn(DataUtils, `toHalfFloat`)
   const dispose_texture = vi.spyOn(Data3DTexture.prototype, `dispose`)
@@ -109,7 +112,7 @@ test(`volume cloud reuses its mesh and texture across opacity and cell changes`,
     cartesian_to_fractional: new Matrix4(),
     pbc: [true, false, false],
   }
-  const props = $state({ field, opacity: 0.35 })
+  const props = $state({ field, opacity: 0.35, tiling: [2, 3, 4] as Vec3 })
   const component = mount(ColorFieldVolume, { target: document.body, props })
   teardown = () => unmount(component)
   flushSync()
@@ -121,10 +124,16 @@ test(`volume cloud reuses its mesh and texture across opacity and cell changes`,
     type: HalfFloatType,
     minFilter: LinearFilter,
     magFilter: LinearFilter,
+    wrapS: ClampToEdgeWrapping,
+    wrapT: ClampToEdgeWrapping,
+    wrapR: RepeatWrapping,
   })
   const mesh = threlte_stub.nodes.at(-1)?.props.is
   if (!(mesh instanceof Mesh)) throw new Error(`Expected cloud mesh`)
   expect(mesh.name).toBe(`ColorFieldVolume`)
+  mesh.geometry.computeBoundingBox()
+  expect(mesh.geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
+  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([2, 1, 1])
   expect(mesh.geometry.index?.count).toBe(36)
   expect(mesh.material).toMatchObject({
     transparent: true,
@@ -134,6 +143,16 @@ test(`volume cloud reuses its mesh and texture across opacity and cell changes`,
   expect(encode.mock.calls.map(([value]) => value)).toEqual([0.5, 0, 0, 0.5, 0, 0, 0, 0])
   encode.mockClear()
   dispose_texture.mockClear()
+  // Scaling changes only the proxy bounds; periodic sampling reuses the original grid.
+  props.tiling = [3, 2, 1]
+  flushSync()
+  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([3, 1, 1])
+  props.tiling = [1, 1, 1]
+  flushSync()
+  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 1, 1])
+  expect(texture.version).toBe(texture_version)
+  expect(encode).not.toHaveBeenCalled()
+  expect(dispose_texture).not.toHaveBeenCalled()
   props.opacity = 0
   flushSync()
   expect(mesh.visible).toBe(false)
@@ -164,6 +183,21 @@ test(`volume cloud reuses its mesh and texture across opacity and cell changes`,
   expect(texture.image.data).not.toBe(texels)
   expect(texture.image.data).toHaveLength(12)
   expect(threlte_stub.nodes.at(-1)?.props.is).toBe(mesh)
+  const periodic_texels = texture.image.data
+  const periodic_version = texture.version
+  encode.mockClear()
+  props.tiling = [2, 3, 4]
+  props.field = { ...props.field, pbc: [false, true, false] }
+  flushSync()
+  expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 3, 1])
+  expect(texture).toMatchObject({
+    wrapS: ClampToEdgeWrapping,
+    wrapT: RepeatWrapping,
+    wrapR: ClampToEdgeWrapping,
+    version: periodic_version + 1,
+  })
+  expect(texture.image.data).toBe(periodic_texels)
+  expect(encode).not.toHaveBeenCalled()
   const dispose_geometry = vi.spyOn(mesh.geometry, `dispose`)
   await teardown?.()
   teardown = undefined

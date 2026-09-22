@@ -43,7 +43,7 @@ export const normalize_formula_unicode = (formula: string): string =>
 
 const NUMBER_RE = /\d+(?:\.\d+)?|\.\d+/y
 // ^2+, ^+2, ^-, [2-], [+] ... (bare sign = ±1)
-const CHARGE_RE = /\^(?<caret>[+-]?\d+[+-]?|[+-])|\[(?<bracket>[+-]?\d+[+-]?|[+-])\]/y
+const CHARGE_RE = /\^(?<caret>[+-]\d+|\d+[+-]?|[+-])|\[(?<bracket>[+-]\d+|\d+[+-]?|[+-])\]/y
 
 const parse_charge = (charge: string): number => {
   const sign = charge.startsWith(`-`) || charge.endsWith(`-`) ? -1 : 1
@@ -119,7 +119,9 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
       continue
     }
     const coefficient = Number(read(NUMBER_RE)?.[0] ?? 1)
-    for (const token of parse_group(null)) {
+    const segment = parse_group(null)
+    if (segment.length === 0) fail(`Empty formula segment`)
+    for (const token of segment) {
       tokens.push({ ...token, amount: round_amount(token.amount * coefficient) })
     }
   }
@@ -162,7 +164,7 @@ export const extract_formula_elements = (
   formula: string,
   { sorted = true }: { sorted?: boolean } = {},
 ): ElementSymbol[] => {
-  const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
+  const symbols = Object.keys(parse_composition(formula)) as ElementSymbol[]
   return sorted ? symbols.toSorted() : symbols
 }
 
@@ -179,7 +181,7 @@ export const parse_composition = (
       if (trimmed && Object.keys(composition).length === 0) {
         throw new Error(`No valid elements in composition: ${input}`)
       }
-      return composition
+      return parse_composition(composition)
     }
     // quote bare keys so {Fe: 2, O: 3} is accepted alongside strict JSON
     const json = trimmed.replaceAll(

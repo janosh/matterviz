@@ -4,7 +4,7 @@
 // type-only import (erased at runtime, so no import cycle with $lib/plot)
 import type { SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
 import { is_elem_symbol } from '$lib/element'
-import { parse_formula } from './parse'
+import { extract_formula_elements } from './parse'
 
 interface ChemSysSunburstMetadata {
   chem_sys: string // alphabetically sorted element string, e.g. "Fe-Li-O"
@@ -41,13 +41,10 @@ export function chem_sys_sunburst_data(
   // distinct string only once
   const normalized = new Map<string, string | null>()
   const normalize = (entry: string): string | null => {
-    let elements: string[]
-    if (entry.includes(`-`)) {
-      elements = entry.split(`-`).map((element) => element.trim())
-      if (!elements.every(is_elem_symbol)) return null
-    } else {
+    let elements = entry.split(`-`).map((element) => element.trim())
+    if (!elements.every(is_elem_symbol)) {
       try {
-        elements = Object.keys(parse_formula(entry))
+        elements = extract_formula_elements(entry)
       } catch {
         return null
       }

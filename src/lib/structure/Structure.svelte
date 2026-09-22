@@ -378,6 +378,7 @@
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
   let tool_overlay_visible = $state(true)
+  const active_cloud = $derived(tool_overlay_visible ? active_tool_view?.cloud : undefined)
   const active_prediction = $derived(tool_source === session.tool_input ? tool_overlay : null)
   const active_overlay = $derived(tool_overlay_visible ? active_prediction : null)
   const tool_structure = $derived(
@@ -682,7 +683,10 @@
     )
     const planes_on = (scene_props.lattice_planes?.length ?? 0) > 0
     const thermal_on =
-      atom_color_field || volume_color_field || (cutaway && cutaway.mode !== `off`)
+      atom_color_field ||
+      active_cloud ||
+      volume_color_field ||
+      (cutaway && cutaway.mode !== `off`)
     const hidden =
       Boolean(symmetry_on || planes_on || thermal_on) && !session.shows_input_frame
     if (hidden && !overlay_hidden_by_frame)
@@ -799,7 +803,7 @@
       atom_color_field,
       atom_tooltip,
       atom_opacity,
-      volume_color_field,
+      volume_color_field: active_cloud ?? volume_color_field,
       volume_opacity,
       cutaway,
       render_token,
@@ -886,7 +890,7 @@
   const shortcut_flash = create_shortcut_flash()
   // Returns true when the key was handled so the caller can suppress the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    if (active_tool_view || event.isComposing) return false
+    if (active_tool_view?.content || event.isComposing) return false
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
@@ -1022,7 +1026,7 @@
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
   <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
-    <div style:display={active_tool_view ? `none` : `contents`}>
+    <div style:display={active_tool_view?.content ? `none` : `contents`}>
       <structure_host_tool.component
         structure={session.tool_input}
         prediction={active_prediction}
@@ -1032,7 +1036,7 @@
       />
     </div>
   {/if}
-  {#if active_tool_view}
+  {#if active_tool_view?.content}
     <div class="host-view">
       {@render active_tool_view.content({
         scene_props,

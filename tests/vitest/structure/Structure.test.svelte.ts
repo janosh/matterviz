@@ -522,6 +522,52 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   expect(tool_props.structure).toBe(original_input)
 })
 
+test(`host clouds update the existing scene and clear without exporting a prediction`, async () => {
+  mock_gpu()
+  const state = $state({ structure, supercell_scaling: `1x1x1` })
+  const tool = await mount_host_structure(bind_props({}, state))
+  const field: AtomColorField = {
+    colors: new Float32Array([0, 0.5, 1, 1]),
+    dims: [1, 1, 1],
+    cartesian_to_fractional: new Matrix4(),
+    pbc: [true, true, true],
+  }
+  tool.on_view({ cloud: field })
+  await tick()
+  expect(scene_stub.props?.volume_color_field).toBe(field)
+  expect(document.querySelector(`.host-view`)).toBeNull()
+  expect(doc_query(`.structure > div[style*="display"]`).style.display).toBe(`contents`)
+  const camera = scene_stub.props?.camera
+  state.supercell_scaling = `2x1x1`
+  await tick()
+  expect(scene_stub.props?.supercell_tiling).toEqual([2, 1, 1])
+  expect(scene_stub.props?.volume_color_field).toBe(field)
+  expect(tool.signal.aborted).toBe(false)
+  const updated = { ...field, colors: new Float32Array([0, 0.5, 1, 2]) }
+  tool.on_view({ cloud: updated })
+  await tick()
+  expect(scene_stub.props?.volume_color_field).toBe(updated)
+  expect(scene_stub.props?.camera).toBe(camera)
+  tool.set_overlay_visible(false)
+  await tick()
+  expect(scene_stub.props?.volume_color_field).toBeUndefined()
+  tool.set_overlay_visible(true)
+  await tick()
+  expect(scene_stub.props?.volume_color_field).toBe(updated)
+  const content = createRawSnippet(() => ({ render: () => `<div>Live view</div>` }))
+  tool.on_view({ content })
+  await tick()
+  expect(document.querySelector(`.host-view`)?.textContent).toBe(`Live view`)
+  tool.on_view({ cloud: updated })
+  await tick()
+  expect(document.querySelector(`.host-view`)).toBeNull()
+  expect(scene_stub.props?.volume_color_field).toBe(updated)
+  tool.cancel()
+  tool.on_view({ cloud: field })
+  await tick()
+  expect(scene_stub.props?.volume_color_field).toBeUndefined()
+})
+
 test.each([
   [`clear`, true],
   [`clear`, false],

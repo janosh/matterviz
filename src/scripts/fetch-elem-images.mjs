@@ -15,7 +15,7 @@ const fallback_urls = {
   '109-meitnerium': `https://www.rsc-cdn.org/www.rsc.org/periodic-table/content/Images/Elements/Meitnerium-L.jpg`,
   '110-darmstadtium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Darmstadtium-2.jpg`,
   '111-roentgenium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Roentgenium-2.jpg`,
-  '112-copernicum': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Copernicum-2.jpg`,
+  '112-copernicium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Copernicum-2.jpg`,
 }
 
 const action = process.env.ACTION ?? ``

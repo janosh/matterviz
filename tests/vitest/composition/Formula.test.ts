@@ -1,6 +1,6 @@
 import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import type { OxiComposition } from '$lib/composition'
-import { Formula } from '$lib/composition'
+import { Formula, parse_formula_with_oxidation } from '$lib/composition'
 import { rgb } from 'd3-color'
 import { type ComponentProps, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
@@ -166,13 +166,17 @@ test.each([
   [`NaCl`, `Na Cl`],
   [`Li2SO4`, `Li2 S O4`],
   [`Ca(OH)2`, `Ca O2 H2`],
-  [`Fe^3+2O^2-3`, `Fe(+3)2 O(-2)3`], // oxidation in parens to avoid "Fe+32" ambiguity
+  [`Fe^3+2O^2-3`, `Fe[+3]2 O[-2]3`],
+  [`Fe^2+Fe^3+2O4`, `Fe[+2] Fe[+3]2 O4`],
+  [`Li0.123456Na0.876544Cl`, `Li0.123456 Na0.876544 Cl`],
+  [`Li1.0001O2`, `Li1.0001 O2`],
 ])(`Formula copy: "%s" -> "%s"`, (formula, expected) => {
   mount_formula({ formula })
   const { text, type, prevented } = simulate_copy()
   expect(prevented).toBe(true)
   expect(type).toBe(`text/plain`)
   expect(text).toBe(expected)
+  expect(parse_formula_with_oxidation(text)).toEqual(parse_formula_with_oxidation(formula))
 })
 
 test.each([
@@ -193,8 +197,9 @@ test(`Formula copy respects ordering prop`, () => {
   expect(simulate_copy().text).toBe(`Fe H O`)
 })
 
-test(`Formula copy handles fractional amounts`, () => {
-  const composition = { Li: { amount: 0.5 }, O: { amount: 1 } } as OxiComposition
+test(`Formula copy preserves amounts independently of display precision`, () => {
+  const composition = { Li: { amount: 0.501 }, O: { amount: 1 } } as OxiComposition
   mount_formula({ formula: composition, amount_format: `.2f` })
-  expect(simulate_copy().text).toBe(`Li0.50 O`)
+  expect(doc_query(`.amt`).textContent).toBe(`0.50`)
+  expect(simulate_copy().text).toBe(`Li0.501 O`)
 })

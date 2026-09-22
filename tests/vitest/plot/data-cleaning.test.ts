@@ -1,4 +1,5 @@
 import type { DataSeries } from '$lib/plot'
+import { assert_series_lengths } from '$lib/plot/core/types'
 import type { InvalidValueMode } from '$lib/plot/core/data-cleaning'
 import {
   clean_multi_series,
@@ -256,7 +257,7 @@ describe(`clean_series`, () => {
     })
   })
 
-  it(`keeps every aligned array in sync when filtering`, () => {
+  it.each([false, true])(`keeps every aligned array in sync (in_place=%s)`, (in_place) => {
     const series: DataSeries = {
       x: [0, 1, 2, 3, 4],
       y: [0, NaN, 4, 6, 8],
@@ -264,10 +265,17 @@ describe(`clean_series`, () => {
       metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }, { id: `e` }],
       color_values: [1, 2, 3, 4, 5],
       size_values: [10, 20, 30, 40, 50],
+      x_error: [1, 2, 3, 4, 5],
+      y_error: { lower: 1, upper: [10, 20, 30, 40, 50] },
+      point_style: [0, 1, 2, 3, 4].map((radius) => ({ radius })),
+      point_hover: [0, 1, 2, 3, 4].map((scale) => ({ scale })),
+      point_label: [0, 1, 2, 3, 4].map((idx) => ({ text: `${idx}` })),
+      point_offset: [0, 1, 2, 3, 4].map((coord) => ({ x: coord, y: coord })),
     }
-    const { series: cleaned, quality } = clean_series(series, { in_place: false })
-    expect(cleaned).not.toBe(series)
-    expect(series.y[1]).toBeNaN() // source untouched
+    const { series: cleaned, quality } = clean_series(series, { in_place })
+    expect(cleaned === series).toBe(in_place)
+    if (!in_place) expect(series.y[1]).toBeNaN() // source untouched
+    expect(() => assert_series_lengths(cleaned)).not.toThrow()
     expect(quality.invalid_values_found).toBe(1)
     expect(cleaned).toMatchObject({
       x: [0, 2, 3, 4],
@@ -276,13 +284,33 @@ describe(`clean_series`, () => {
       metadata: [{ id: `a` }, { id: `c` }, { id: `d` }, { id: `e` }],
       color_values: [1, 3, 4, 5],
       size_values: [10, 30, 40, 50],
+      x_error: [1, 3, 4, 5],
+      y_error: { lower: 1, upper: [10, 30, 40, 50] },
+      point_style: [0, 2, 3, 4].map((radius) => ({ radius })),
+      point_hover: [0, 2, 3, 4].map((scale) => ({ scale })),
+      point_label: [0, 2, 3, 4].map((idx) => ({ text: `${idx}` })),
+      point_offset: [0, 2, 3, 4].map((coord) => ({ x: coord, y: coord })),
     })
-    const null_colors = clean_series({ x: [0, 1], y: [0, NaN], color_values: null })
+    const null_colors = clean_series({
+      x: [0, 1],
+      y: [0, NaN],
+      color_values: null,
+      y_error: { lower: [1, 2], upper: 3 },
+    })
     expect(null_colors.series.color_values).toBeNull()
+    expect(null_colors.series.y_error).toEqual({ lower: [1], upper: 3 })
     // scalar (non-array) metadata describes the whole series and passes through by reference
     const scalar = { key: `value` }
-    const with_scalar = clean_series({ x: [0, 1], y: [0, NaN], metadata: scalar })
+    const with_scalar = clean_series({
+      x: [0, 1],
+      y: [0, NaN],
+      metadata: scalar,
+      x_error: 2,
+      point_label: { text: `all` },
+    })
     expect(with_scalar.series.metadata).toBe(scalar)
+    expect(with_scalar.series.x_error).toBe(2)
+    expect(with_scalar.series.point_label).toEqual({ text: `all` })
   })
 
   it(`mutates in place by default, including interpolated values`, () => {
@@ -640,6 +668,21 @@ describe(`clean_multi_series`, () => {
     )
     expect(filtered.x).toEqual([1, 2, 3])
     expect(filtered.cleaned_y[1]).toEqual([5, 10, 15])
+    expect(filtered.quality.map(({ bounds_violations }) => bounds_violations)).toEqual([2, 0])
+    // Interpolate before filtering, as clean_series does; filled values can violate bounds.
+    const interpolated_bounds = clean_multi_series(
+      [0, 1, 2],
+      [
+        [-5, NaN, 5],
+        [0, 5, 10],
+      ],
+      { invalid_values: `interpolate`, bounds: { min: 1, max: 10, mode: `filter` } },
+    )
+    expect(interpolated_bounds.x).toEqual([2])
+    expect(interpolated_bounds.cleaned_y).toEqual([[5], [10]])
+    expect(
+      interpolated_bounds.quality.map(({ bounds_violations }) => bounds_violations),
+    ).toEqual([2, 1])
   })
 
   it(`handles empty input and counts invalid values only inside the aligned prefix`, () => {
@@ -705,12 +748,19 @@ describe(`clean_xyz`, () => {
   })
 
   // Regression: x-dependent bounds resolve against x even when filtering on another axis
-  it(`filters on primary_axis using x for dynamic bounds`, () => {
-    const result = clean_xyz([1, 2, 3, 4, 5], [1, 5, 4, 10, 8], [0, 0, 0, 0, 0], {
-      primary_axis: `y`,
-      bounds: { max: (x_val) => x_val * 2, mode: `filter` }, // max = 2, 4, 6, 8, 10
-    })
-    expect(result).toMatchObject({ x: [1, 3, 5], y: [1, 4, 8], z: [0, 0, 0] })
-    expect(result.quality).toMatchObject({ bounds_violations: 2, points_removed: 2 })
-  })
+  it.each([
+    [`filter`, [1, 3, 5], [1, 4, 8], 2],
+    [`clamp`, [1, 2, 3, 4, 5], [1, 4, 4, 8, 8], 0],
+    [`null`, [1, 2, 3, 4, 5], [1, NaN, 4, NaN, 8], 0],
+  ] as const)(
+    `applies %s on primary_axis using x for dynamic bounds`,
+    (mode, coord_x, coord_y, points_removed) => {
+      const result = clean_xyz([1, 2, 3, 4, 5], [1, 5, 4, 10, 8], [0, 0, 0, 0, 0], {
+        primary_axis: `y`,
+        bounds: { max: (x_val) => x_val * 2, mode }, // max = 2, 4, 6, 8, 10
+      })
+      expect(result).toMatchObject({ x: coord_x, y: coord_y, z: coord_x.map(() => 0) })
+      expect(result.quality).toMatchObject({ bounds_violations: 2, points_removed })
+    },
+  )
 })

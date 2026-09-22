@@ -571,11 +571,6 @@ const bounds_violation = (
   }
 }
 
-const is_in_bounds = (y_val: number, x_val: number, bounds: PhysicalBounds): boolean => {
-  const { below, above } = bounds_violation(y_val, x_val, bounds)
-  return below === null && above === null
-}
-
 function apply_bounds(
   x_values: readonly number[],
   y_values: number[],
@@ -665,11 +660,31 @@ export function clean_series<T extends DataSeries>(
   const result_series = (config.in_place ?? true) ? series : { ...series }
   result_series.x = x_arr
   result_series.y = y_arr
-  if (series.raw_y) result_series.raw_y = pick(series.raw_y, kept)
-  // Per-point metadata arrays are filtered alongside y; scalar metadata passes through untouched
-  if (Array.isArray(series.metadata)) result_series.metadata = pick(series.metadata, kept)
-  if (series.color_values) result_series.color_values = pick(series.color_values, kept)
-  if (series.size_values) result_series.size_values = pick(series.size_values, kept)
+  // Filter every per-point field once; scalar styles and metadata stay untouched.
+  for (const key of [
+    `raw_y`,
+    `metadata`,
+    `color_values`,
+    `size_values`,
+    `point_style`,
+    `point_hover`,
+    `point_label`,
+    `point_offset`,
+  ] as const) {
+    const value = series[key]
+    if (Array.isArray(value))
+      Object.assign(result_series, { [key]: pick<unknown>(value, kept) })
+  }
+  const pick_error = (side: number | readonly number[]) =>
+    typeof side === `number` ? side : pick(side, kept)
+  for (const key of [`x_error`, `y_error`] as const) {
+    const error = series[key]
+    if (error === undefined || typeof error === `number`) continue
+    result_series[key] =
+      `upper` in error
+        ? { upper: pick_error(error.upper), lower: pick_error(error.lower) }
+        : pick(error, kept)
+  }
   return { series: result_series, quality }
 }
 
@@ -684,31 +699,38 @@ export function clean_multi_series(
   const length = Math.min(x_values.length, ...y_arrays.map((array) => array.length))
   const kept_indices = index_range(length).filter(
     (idx) =>
-      (invalid_mode !== `remove` || y_arrays.every((array) => Number.isFinite(array[idx]))) &&
-      (bounds?.mode !== `filter` ||
-        y_arrays.every((array) => is_in_bounds(array[idx], x_values[idx], bounds))),
+      invalid_mode !== `remove` || y_arrays.every((array) => Number.isFinite(array[idx])),
   )
-  const coord_x = pick(x_values, kept_indices)
+  let coord_x = pick(x_values, kept_indices)
   const quality = y_arrays.map((array) => {
     let invalid_count = 0
     for (let idx = 0; idx < length; idx++) if (!Number.isFinite(array[idx])) invalid_count++
     return create_cleaning_quality(length - kept_indices.length, invalid_count)
   })
-  const cleaned_y = y_arrays.map((array, array_idx) => {
+  const removed = new Set<number>()
+  let cleaned_y = y_arrays.map((array, array_idx) => {
     let cleaned = pick(array, kept_indices)
     if (invalid_mode === `interpolate`) interpolate_invalid_values(cleaned)
-    if (bounds && bounds.mode !== `filter`) {
+    if (bounds) {
       const result = apply_bounds(coord_x, cleaned, bounds)
       cleaned = result.y
       quality[array_idx].bounds_violations = result.violations
+      for (const idx of result.filtered_indices) removed.add(idx)
     }
-    return smooth ? apply_smoothing(coord_x, cleaned, smooth) : cleaned
+    return cleaned
   })
+  if (removed.size) {
+    const kept = index_range(coord_x.length).filter((idx) => !removed.has(idx))
+    coord_x = pick(coord_x, kept)
+    cleaned_y = cleaned_y.map((array) => pick(array, kept))
+    for (const entry of quality) entry.points_removed += removed.size
+  }
+  if (smooth) cleaned_y = cleaned_y.map((array) => apply_smoothing(coord_x, array, smooth))
   return { x: coord_x, cleaned_y, quality }
 }
 
 // Clean correlated x/y/z for 3D data. All three arrays are filtered to the intersection of
-// valid indices; bounds filter on `primary_axis` (resolved against x for x-dependent bounds).
+// valid indices; bounds apply to `primary_axis` (resolved against x for x-dependent bounds).
 export function clean_xyz(
   x_values: readonly number[],
   y_values: readonly number[],
@@ -738,13 +760,18 @@ export function clean_xyz(
   if (invalid_mode === `interpolate`) {
     for (const axis of axes) interpolate_invalid_values(filtered[axis])
   }
-  if (bounds?.mode === `filter`) {
-    const bounds_kept = index_range(filtered.x.length).filter((idx) =>
-      is_in_bounds(filtered[primary_axis][idx], filtered.x[idx], bounds),
-    )
-    quality.bounds_violations = filtered.x.length - bounds_kept.length
-    quality.points_removed += quality.bounds_violations
-    filtered = pick_rows(filtered, bounds_kept)
+  if (bounds) {
+    const result = apply_bounds(filtered.x, filtered[primary_axis], bounds)
+    filtered[primary_axis] = result.y
+    quality.bounds_violations = result.violations
+    quality.points_removed += result.filtered_indices.length
+    if (result.filtered_indices.length) {
+      const removed = new Set(result.filtered_indices)
+      filtered = pick_rows(
+        filtered,
+        index_range(filtered.x.length).filter((idx) => !removed.has(idx)),
+      )
+    }
   }
   // x is the independent variable (time, index, ...) and is never smoothed
   if (smooth) {

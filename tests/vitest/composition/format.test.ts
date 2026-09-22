@@ -49,6 +49,8 @@ describe(`get_alphabetical_formula`, () => {
     ],
     [`Fe2.5O3.75`, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [`Fe2.5O3.75`, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ O: 1.23456e-13 }, { amount_format: `.2e` }, `O<sub>0.000000000000123</sub>`],
+    [{ O: 123.4 }, { amount_format: `.3e` }, `O<sub>123.4</sub>`],
     // an explicit SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
     [`Li0.5FeO2`, { plain_text: true, delim: `` }, `FeLi0.5O2`],
     [
@@ -113,8 +115,10 @@ describe(`hydrate coefficients`, () => {
     [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
     [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
     [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
+    [`CaSO4·.5H2O`, `CaSO<sub>4</sub>·.5H<sub>2</sub>O`],
     [`Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`], // an ordinary subscript is untouched
     [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
+    [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
   ])(`renders %s`, (formula, expected) => {
     expect(format_formula_html(formula)).toBe(expected)
   })
@@ -132,6 +136,7 @@ describe(`get_formula_label_segments`, () => {
       [plain(`C`), subscript(`12`), plain(`H`), subscript(`22`), plain(`O`), subscript(`11`)],
     ],
     [`Li0.5FeO2`, [plain(`Li`), subscript(`0.5`), plain(`FeO`), subscript(`2`)]],
+    [`Li.5FeO2`, [plain(`Li`), subscript(`.5`), plain(`FeO`), subscript(`2`)]],
     [`Ca(OH)2`, [plain(`Ca(OH)`), subscript(`2`)]],
     [`mp-123`, [plain(`mp-123`)]],
     [`mp-1234`, [plain(`mp-1234`)]],
@@ -201,13 +206,10 @@ describe(`tokenize_formula_markup`, () => {
   })
 })
 
-// SVG baselines: a subscript drops 0.25em, a superscript rises 0.4em, and the shifts are
-// cumulative across tspans, so trailing text (or a zero-width space after a trailing
-// sub/superscript, since empty tspans may not apply dy everywhere) resets the running offset
-const svg_sub = (digits: string) => `<tspan dy="0.25em" font-size="0.75em">${digits}</tspan>`
-const svg_sup = (sign: string) => `<tspan dy="-0.4em" font-size="0.75em">${sign}</tspan>`
-const svg_reset = (delta_y: number, content = `\u200B`) =>
-  `<tspan dy="${delta_y}em">${content}</tspan>`
+const svg_sub = (digits: string) =>
+  `<tspan baseline-shift="-0.25em" font-size="0.75em">${digits}</tspan>`
+const svg_sup = (sign: string) =>
+  `<tspan baseline-shift="0.4em" font-size="0.75em">${sign}</tspan>`
 
 type Formatter = (formula: string, use_subscripts?: boolean) => string
 describe.each<[string, Formatter, [string, string][]]>([
@@ -224,18 +226,16 @@ describe.each<[string, Formatter, [string, string][]]>([
     `format_formula_svg`,
     format_formula_svg,
     [
-      [`Fe3C`, `Fe${svg_sub(`3`)}${svg_reset(-0.25, `C`)}`],
-      [`SiO2`, `SiO${svg_sub(`2`)}${svg_reset(-0.25)}`],
-      [`O2-`, `O${svg_sub(`2`)}${svg_sup(`-`)}${svg_reset(0.4 - 0.25)}`],
+      [`Fe3C`, `Fe${svg_sub(`3`)}C`],
+      [`SiO2`, `SiO${svg_sub(`2`)}`],
+      [`O2-`, `O${svg_sub(`2`)}${svg_sup(`-`)}`],
+      [`O2-2H`, `O${svg_sub(`2`)}${svg_sup(`-2`)}H`],
+      [`H2O2H2O`, `H${svg_sub(`2`)}O${svg_sub(`2`)}H${svg_sub(`2`)}O`],
     ],
   ],
   // labels split on " + " and format each phase on its own
   [`format_label_html`, format_label_html, [[`Fe3C + NiO`, `Fe<sub>3</sub>C + NiO`]]],
-  [
-    `format_label_svg`,
-    format_label_svg,
-    [[`Fe3C + NiO`, `Fe${svg_sub(`3`)}${svg_reset(-0.25, `C`)} + NiO`]],
-  ],
+  [`format_label_svg`, format_label_svg, [[`Fe3C + NiO`, `Fe${svg_sub(`3`)}C + NiO`]]],
 ])(`%s`, (_name, format_fn, cases) => {
   test.each(cases)(`%s → %s`, (formula, expected) => {
     expect(format_fn(formula)).toBe(expected)
@@ -303,14 +303,16 @@ describe(`format_oxi_state`, () => {
 describe(`amount formatting round-trips`, () => {
   test.each([
     [{ Fe: 1, O: 1e-7 }, `FeO0.0000001`],
+    [{ Fe: 1, O: 1.23e-13 }, `FeO0.000000000000123`],
+    [{ Fe: 1, O: 1e-300 }, `FeO0.${`0`.repeat(299)}1`],
+    [{ Fe: 1, O: Number.MIN_VALUE }, `FeO0.${`0`.repeat(323)}494`],
+    [{ Fe: 1, O: 1.23e21 }, `FeO1230000000000000000000`],
     [{ Fe: 1, O: 1e-5 }, `FeO0.00001`],
     [{ Fe: 1, O: 0.0625 }, `FeO0.0625`], // sub-1 keeps significant digits, not 3 decimals
     [{ Fe: 2, O: 3 }, `Fe2O3`],
   ])(`%j renders and parses back`, (composition, expected) => {
     const formula = get_alphabetical_formula(composition, { plain_text: true, delim: `` })
     expect(formula).toBe(expected)
-    for (const [element, amount] of Object.entries(parse_formula(formula))) {
-      expect(amount).toBeCloseTo((composition as Record<string, number>)[element], 12)
-    }
+    expect(parse_formula(formula)).toEqual(composition)
   })
 })

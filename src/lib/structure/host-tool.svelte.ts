@@ -1,6 +1,7 @@
 import type { Component, Snippet } from 'svelte'
 import type { StructureSettings } from './settings'
 import type { AnyStructure } from './index'
+import type { AtomColorField } from './atom-color-field'
 import {
   copy_prediction_input,
   copy_prediction_overlay,
@@ -27,7 +28,9 @@ export interface StructureToolViewProps {
   show_image_atoms: boolean
 }
 export interface StructureToolView {
-  content: Snippet<[StructureToolViewProps]>
+  // Transient visuals: replace the viewer or overlay its structure, without exporting them.
+  content?: Snippet<[StructureToolViewProps]>
+  cloud?: AtomColorField
 }
 export interface StructureToolRun {
   id: number

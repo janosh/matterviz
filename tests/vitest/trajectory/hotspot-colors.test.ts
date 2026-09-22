@@ -1,4 +1,4 @@
-import { atom_field_color } from '$lib/structure/atom-color-field'
+import { atom_field_color, density_color_field } from '$lib/structure/atom-color-field'
 import {
   hotspot_field_geometry,
   hotspot_colors,
@@ -15,7 +15,7 @@ import { encode_frame } from '$lib/trajectory/frame'
 import { make_trajectory_frame } from '../test-fixtures'
 import { Color, Vector3 } from 'three/webgpu'
 import { expect, it } from 'vitest'
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { make_lattice } from '$lib/structure/parsers/shared'
 import { parse_linear_rgb } from '$lib/scene/colors'
 import { interpolateInferno } from 'd3-scale-chromatic'
@@ -50,6 +50,27 @@ const scale_for = (mean: number, threshold = 1.25) => {
   if (!scale) throw new Error(`Invalid test mean ${mean}`)
   return scale
 }
+
+it(`density clouds align skew cells and reject invalid previews`, () => {
+  const lattice: Matrix3x3 = [
+    [2, 0, 0],
+    [1, 2, 0],
+    [0, 1, 2],
+  ]
+  const field = density_color_field([-1, 0, 2, 100], [4, 1, 1], lattice, 2, `#59a8ff`)
+  expect(field.cartesian_to_fractional.elements).toEqual([
+    0.5, 0, 0, 0, -0.25, 0.5, 0, 0, 0.125, -0.25, 0.5, 0, 0, 0, 0, 1,
+  ])
+  expect(Array.from(field.colors).filter((_value, idx) => idx % 4 === 3)).toEqual([0, 0, 1, 8])
+  for (const values of [[NaN], [Infinity], []])
+    expect(() => density_color_field(values, [1, 1, 1], lattice, 2, `#59a8ff`)).toThrow(
+      `Invalid density`,
+    )
+  for (const reference of [0, -1, NaN])
+    expect(() => density_color_field([1], [1, 1, 1], lattice, reference, `#59a8ff`)).toThrow(
+      `Invalid density`,
+    )
+})
 
 it.each([0, 1e-20, 0.5, 300])(
   `heatmap palette matches D3 at every boundary for mean=%s`,

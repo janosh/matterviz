@@ -73,6 +73,13 @@ describe(`parse_formula`, () => {
     [`)(`, `Unbalanced parentheses`],
     [`(Fe2O3]`, `Unbalanced parentheses: unexpected "]"`],
     [`Mg()O2`, `Empty parentheses`],
+    [`CuSO4·5`, `Empty formula segment`],
+    [`CuSO4*5`, `Empty formula segment`],
+    [`5`, `Empty formula segment`],
+    [`Fe^+2-`, `Unexpected character`],
+    [`Fe^-2+`, `Unexpected character`],
+    [`Fe[+2-]`, `Unexpected character`],
+    [`Fe[-2+]`, `Unexpected character`],
   ])(`%s -> %s`, (formula, expected) => {
     expect(() => parse_formula(formula)).toThrow(expected)
   })
@@ -173,6 +180,9 @@ describe(`extract_formula_elements`, () => {
     [`NbZr2Nb`, {}, [`Nb`, `Zr`]],
     [`Ca(OH)2`, {}, [`Ca`, `H`, `O`]],
     [`ZrNb`, { sorted: false }, [`Zr`, `Nb`]],
+    [`Li0Fe2O3`, {}, [`Fe`, `O`]],
+    [`(LiFe)0O2`, {}, [`O`]],
+    [`H0`, {}, []],
     [``, {}, []],
   ])(`extract_formula_elements(%s, %j) -> %j`, (formula, opts, expected) => {
     expect(extract_formula_elements(formula, opts)).toEqual(expected)
@@ -186,6 +196,9 @@ describe(`extract_formula_elements`, () => {
 describe(`parse_composition`, () => {
   test.each([
     [`Fe2O3`, { Fe: 2, O: 3 }],
+    [`Li0Fe2O3`, { Fe: 2, O: 3 }],
+    [`(LiFe)0O2`, { O: 2 }],
+    [`H0`, {}],
     [
       `{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`,
       { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },
@@ -366,4 +379,42 @@ describe(`get_reduced_formula`, () => {
   ])(`%j -> %j`, (input, expected) => {
     expect(get_reduced_formula(input)).toEqual(expected)
   })
+
+  test.each([1e-200, 1e-5, 1e-4, 1, 1e4, 1e200])(
+    `reduction is independent of scale (%s) and element order`,
+    (scale) => {
+      for (const [composition, expected] of [
+        [
+          { Fe: 0.3333, O: 0.6667 },
+          { Fe: 1, O: 2 },
+        ],
+        [
+          { Fe: 1, O: 2 },
+          { Fe: 1, O: 2 },
+        ],
+        [
+          { Fe: 0.01, O: 0.99 },
+          { Fe: 1, O: 99 },
+        ],
+        [
+          { Fe: 2, O: 19998 },
+          { Fe: 1, O: 9999 },
+        ],
+        [
+          { Li: 1 / 3, Ni: 1 / 3, Mn: 1 / 3, O: 2 },
+          { Li: 1, Ni: 1, Mn: 1, O: 6 },
+        ],
+      ]) {
+        const entries = Object.entries(composition).map(([symbol, amount]) => [
+          symbol,
+          amount * scale,
+        ])
+        expect(get_reduced_formula(Object.fromEntries(entries))).toEqual(expected)
+        const reversed = Object.fromEntries(entries.toReversed())
+        expect(get_reduced_formula(reversed)).toEqual(expected)
+      }
+      const dilute = { Fe: 0.00001 * scale, O: scale }
+      expect(get_reduced_formula(dilute)).toEqual(dilute)
+    },
+  )
 })

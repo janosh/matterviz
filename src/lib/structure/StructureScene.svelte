@@ -2545,7 +2545,12 @@
     </T>
     {#if volume_color_field}
       <T.Group position={neg_rotation_target}>
-        <ColorFieldVolume field={volume_color_field} opacity={volume_opacity} {cutaway} />
+        <ColorFieldVolume
+          field={volume_color_field}
+          opacity={volume_opacity}
+          {cutaway}
+          tiling={supercell_tiling}
+        />
       </T.Group>
     {/if}
   </T.Group>
