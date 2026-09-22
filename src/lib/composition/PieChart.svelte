@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import { TooltipValue } from '$lib/tooltip'
   import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
+  import SegmentTooltip from './SegmentTooltip.svelte'
 
   // label placement tiers by slice angle (degrees)
   const THIN_SLICE = 20 // label outside the pie
@@ -77,7 +76,7 @@
       const label_radius = outside
         ? outer_radius * 1.2
         : span < MEDIUM_SLICE
-          ? outer_radius * 0.7
+          ? ring_inner + (outer_radius - ring_inner) * 0.7
           : (outer_radius + ring_inner) / 2
       const [label_x, label_y] = polar(label_radius, (start + end) / 2)
       // font grows with slice angle, then shrinks to fit radial/arc space at the label radius
@@ -107,12 +106,7 @@
   <defs><PatternDefs patterns={segments.map((seg) => seg.pattern)} /></defs>
   {#each segments as segment (segment.element)}
     {#snippet segment_tooltip()}
-      <TooltipValue
-        label={segment.element}
-        value={segment.amount}
-        unit={segment.amount === 1 ? 'atom' : 'atoms'}
-      />
-      (<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+      <SegmentTooltip {segment} />
     {/snippet}
     <path
       d={segment.path}

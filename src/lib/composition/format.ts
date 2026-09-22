@@ -20,13 +20,18 @@ export const format_amount = (amount: number, amount_format = AMOUNT_FORMAT): st
     amount,
     sig_digits_below_one && Math.abs(amount) < 1 ? `.3~g` : amount_format,
   )
-  // Both `.3~g` and `.3~f` fall back to exponent form below about 1e-6, which no formula parser
-  // reads back either - a trace dopant occupancy of 1e-7 produced `FeO1e-7`, and parsing that
-  // threw on the `e`. Fixed notation covers every small amount, which is the whole reason `s`
-  // was ruled out above; 12 decimals is past f64's significant digits, so nothing is lost.
-  // Amounts at or above 1e21 have no fixed form to fall back on (JS switches to exponent there
-  // too) and still cannot round-trip, but no real formula carries a coefficient that large.
-  return text.includes(`e`) ? format_num(amount, `.12~f`) : text
+  // Formula parsers require decimal notation. Move the decimal point in the formatted
+  // mantissa: fixed decimal precision would erase trace occupancies below that cutoff.
+  return text.replaceAll(
+    /(?<integer>\d+)(?:\.(?<fraction>\d+))?e(?<exponent>[+-]?\d+)/g,
+    (_match: string, integer: string, fraction: string | undefined, exponent: string) => {
+      const digits = integer + (fraction ?? ``)
+      const decimal_idx = integer.length + Number(exponent)
+      if (decimal_idx <= 0) return `0.${`0`.repeat(-decimal_idx)}${digits}`
+      if (decimal_idx >= digits.length) return digits + `0`.repeat(decimal_idx - digits.length)
+      return `${digits.slice(0, decimal_idx)}.${digits.slice(decimal_idx)}`
+    },
+  )
 }
 
 export type FormulaFormatOptions = {

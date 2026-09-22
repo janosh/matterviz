@@ -316,16 +316,21 @@
   // wildcards trailing in source order (LiFe*2* -> FeLi*2*). Invalid input passes through.
   function normalize_exact_formula(input: string): string {
     if (exact_formula_error(input) !== null) return input
+    // Match the parser's 12 significant digits; display rounding changes an exact query.
+    const amount_format = `.12~g`
     // zero amounts (H0) parse but format to nothing; keep the text rather than clear the field
     if (!has_wildcards(input))
-      return get_alphabetical_formula(input, { plain_text: true, delim: `` }) || input
+      return (
+        get_alphabetical_formula(input, { plain_text: true, delim: ``, amount_format }) ||
+        input
+      )
     const tokens = parse_formula_with_wildcards(input)
     const merged = new Map<ElementSymbol, number>()
     for (const { element, amount } of tokens) {
       if (element) merged.set(element, (merged.get(element) ?? 0) + amount)
     }
     const with_amount = (symbol: string, amount: number) =>
-      amount === 1 ? symbol : `${symbol}${format_amount(amount)}`
+      amount === 1 ? symbol : `${symbol}${format_amount(amount, amount_format)}`
     const explicit_str = [...merged]
       .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
       .map(([element, amount]) => with_amount(element, amount))

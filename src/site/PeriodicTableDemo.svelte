@@ -5,7 +5,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { is_d3_interpolate_name } from '$lib/colors'
   import { TooltipValue } from '$lib/tooltip'
-  import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
+  import { ELEM_HEATMAP_KEYS, ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
   import type { ScaleContext } from '$lib/periodic-table'
   import { TableInset } from '$lib/periodic-table'
   import { ColorScaleSelect, ElementScatter } from '$lib/plot'
@@ -31,15 +31,10 @@
     const scale = page.url.searchParams.get(`color_scale`)
     if (scale && is_d3_interpolate_name(scale)) color_scale = scale
     const property = page.url.searchParams.get(`heatmap`)
-    if (property && Object.hasOwn(ELEM_PROPERTY_LABELS, property)) {
-      heatmap_key = property as keyof ChemicalElement
-    }
+    heatmap_key = ELEM_HEATMAP_KEYS.find((key) => key === property) ?? null
     url_synced = true
   })
 
-  // Deriving these from the URL instead looks tidier but loses the selection: PropertySelect
-  // writes its own empty initial value back through `bind:` on mount, which would overwrite
-  // a derived and then get mirrored into the URL, dropping ?heatmap= before it is ever read.
   $effect(() => {
     if (!url_synced) return // don't clobber the incoming URL before it has been read
     const params = new URLSearchParams(page.url.searchParams)
@@ -63,7 +58,7 @@
     if (!key) return []
     return element_data.map((element) => {
       const value = element[key]
-      return typeof value === `number` ? value : 0
+      return typeof value === `number` ? value : null
     })
   })
 
@@ -117,7 +112,7 @@
 <form
   style="display: flex; flex-wrap: wrap; place-content: center; gap: 1em; margin-block: 0 2em"
 >
-  <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
+  <PropertySelect id="heatmap-select" bind:key={heatmap_key} />
   {#if heatmap_key}
     <ColorScaleSelect bind:value={color_scale} min_select={1} style="flex: 1" />
   {/if}

@@ -12,8 +12,8 @@ export const count_atoms_in_composition = (composition: CompositionType): number
   Object.values(composition).reduce((sum, count) => sum + count, 0)
 
 // Smallest whole-number formula with the same ratios: Fe2O4 -> FeO2, Li0.5Na0.5Cl -> LiNaCl2,
-// Fe0.01O0.99 -> FeO99. Amounts are divided by their float gcd (resolved to
-// 1/MAX_FORMULA_DENOMINATOR), rounded and reduced by their integer gcd. The result must
+// Fe0.01O0.99 -> FeO99. Normalize to atomic fractions before resolving the float gcd to
+// 1/MAX_FORMULA_DENOMINATOR, then round and reduce by the integer gcd. The result must
 // reproduce every atomic fraction of the input to within that resolution and give every
 // element at least one atom; otherwise the composition is returned unchanged.
 export const get_reduced_formula = (composition: CompositionType): CompositionType => {
@@ -22,12 +22,25 @@ export const get_reduced_formula = (composition: CompositionType): CompositionTy
     number,
   ][]
   if (entries.length === 0) return {}
-  const amounts = entries.map(([, amt]) => amt)
+  // Scale before summing so finite amounts cannot overflow the normalization total.
+  const max_amount = Math.max(...entries.map(([, amt]) => amt))
+  const scaled_amounts = entries.map(([, amt]) => amt / max_amount)
+  const scaled_total = scaled_amounts.reduce((sum, amt) => sum + amt, 0)
+  const amounts = scaled_amounts.map((amt) => amt / scaled_total)
   const tol = 1 / MAX_FORMULA_DENOMINATOR
-  // Euclid's float gcd stops below `tol`: resolves dilute ratios (0.01/0.99 -> 0.01)
-  // while tolerating rounded inputs (0.3333/0.6667 -> 0.3333), like pymatgen's gcd_float.
+  // Each fraction uses two divisions and an n-term sum. Keep that arithmetic error
+  // separate from the 1e-4 chemical resolution when a remainder lies on its boundary.
+  const arithmetic_tol = 4 * Number.EPSILON * amounts.length
+  if (amounts.some((amt) => amt < tol - arithmetic_tol)) return composition
+  // Apply the resolution to ratios, not absolute counts, so rescaling the input cannot
+  // skip Euclid's divisions or chase insignificant remainders in very large amounts.
   const unit = amounts.reduce((val_a, val_b) => {
-    while (Math.abs(val_b) > tol) [val_a, val_b] = [val_b, val_a % val_b]
+    if (val_a < val_b) [val_a, val_b] = [val_b, val_a]
+    while (val_b > 0) {
+      const remainder = val_a % val_b
+      if (remainder <= tol + arithmetic_tol) return val_b
+      ;[val_a, val_b] = [val_b, remainder]
+    }
     return val_a
   })
   const int_amounts = amounts.map((amt) => Math.round(amt / unit))

@@ -73,6 +73,13 @@ describe(`parse_formula`, () => {
     [`)(`, `Unbalanced parentheses`],
     [`(Fe2O3]`, `Unbalanced parentheses: unexpected "]"`],
     [`Mg()O2`, `Empty parentheses`],
+    [`CuSO4·5`, `Empty formula segment`],
+    [`CuSO4*5`, `Empty formula segment`],
+    [`5`, `Empty formula segment`],
+    [`Fe^+2-`, `Unexpected character`],
+    [`Fe^-2+`, `Unexpected character`],
+    [`Fe[+2-]`, `Unexpected character`],
+    [`Fe[-2+]`, `Unexpected character`],
   ])(`%s -> %s`, (formula, expected) => {
     expect(() => parse_formula(formula)).toThrow(expected)
   })
@@ -366,4 +373,42 @@ describe(`get_reduced_formula`, () => {
   ])(`%j -> %j`, (input, expected) => {
     expect(get_reduced_formula(input)).toEqual(expected)
   })
+
+  test.each([1e-200, 1e-5, 1e-4, 1, 1e4, 1e200])(
+    `reduction is independent of scale (%s) and element order`,
+    (scale) => {
+      for (const [composition, expected] of [
+        [
+          { Fe: 0.3333, O: 0.6667 },
+          { Fe: 1, O: 2 },
+        ],
+        [
+          { Fe: 1, O: 2 },
+          { Fe: 1, O: 2 },
+        ],
+        [
+          { Fe: 0.01, O: 0.99 },
+          { Fe: 1, O: 99 },
+        ],
+        [
+          { Fe: 2, O: 19998 },
+          { Fe: 1, O: 9999 },
+        ],
+        [
+          { Li: 1 / 3, Ni: 1 / 3, Mn: 1 / 3, O: 2 },
+          { Li: 1, Ni: 1, Mn: 1, O: 6 },
+        ],
+      ]) {
+        const entries = Object.entries(composition).map(([symbol, amount]) => [
+          symbol,
+          amount * scale,
+        ])
+        expect(get_reduced_formula(Object.fromEntries(entries))).toEqual(expected)
+        const reversed = Object.fromEntries(entries.toReversed())
+        expect(get_reduced_formula(reversed)).toEqual(expected)
+      }
+      const dilute = { Fe: 0.00001 * scale, O: scale }
+      expect(get_reduced_formula(dilute)).toEqual(dilute)
+    },
+  )
 })

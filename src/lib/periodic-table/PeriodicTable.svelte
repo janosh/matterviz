@@ -235,22 +235,29 @@
       ArrowUp: row === 9 ? 6 : row === 10 ? 7 : row - 1,
       ArrowDown: row === 6 && in_f_block ? 9 : row === 7 && in_f_block ? 10 : row + 1,
     }
-    const target_row = row_map[event.key] ?? row
-    const target_col =
-      event.key === `ArrowLeft` ? col - 1 : event.key === `ArrowRight` ? col + 1 : col
-    const target_element = element_data.find(
-      (element) =>
-        element.column === target_col &&
-        element.row === target_row &&
-        element_is_interactive(element),
-    )
-    if (!target_element) return
-
-    focused_symbol = target_element.symbol
-    active_element = target_element
-    event.currentTarget
-      .querySelector<HTMLElement>(`[data-element-symbol="${target_element.symbol}"]`)
-      ?.focus()
+    const row_step = event.key === `ArrowUp` ? -1 : event.key === `ArrowDown` ? 1 : 0
+    const col_step = event.key === `ArrowLeft` ? -1 : event.key === `ArrowRight` ? 1 : 0
+    let target_row = row_map[event.key] ?? row
+    let target_col = col + col_step
+    // Sparse links and the table's empty grid cells must not strand keyboard focus.
+    while (target_row >= 1 && target_row <= 10 && target_col >= 1 && target_col <= 18) {
+      const target_element = element_data.find(
+        (element) =>
+          element.column === target_col &&
+          element.row === target_row &&
+          element_is_interactive(element),
+      )
+      if (target_element) {
+        focused_symbol = target_element.symbol
+        active_element = target_element
+        event.currentTarget
+          .querySelector<HTMLElement>(`[data-element-symbol="${target_element.symbol}"]`)
+          ?.focus()
+        return
+      }
+      target_row += row_step
+      target_col += col_step
+    }
   }
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
@@ -269,12 +276,11 @@
     }
   }
 
-  // finite numeric heat value (numeric strings coerced; colors, null/false and non-finite
-  // excluded so they can't poison the color-scale domain). null => not a mappable number
+  // Numeric heat values usable by the active scale; blank/color strings and missing data
+  // cannot enter the domain or labels. Log scales also exclude non-positive values.
   const to_heat_num = (value: number | string | false | null | undefined): number | null => {
-    if (value == null || value === false || is_color(value)) return null
-    const num = Number(value)
-    return Number.isFinite(num) ? num : null
+    const num = typeof value === `string` && value.trim() ? Number(value) : value
+    return typeof num === `number` && Number.isFinite(num) && (!log || num > 0) ? num : null
   }
 
   // finite numeric heat values usable by the active scale (log excludes non-positive)
@@ -282,7 +288,7 @@
     heat_values
       .flat()
       .map(to_heat_num)
-      .filter((num): num is number => num !== null && (!log || num > 0)),
+      .filter((num): num is number => num !== null),
   )
   // data span shared by tile colors and the auto ColorBar; explicit color_scale_range wins,
   // except a non-positive log min, which has no log image and would otherwise floor the ramp
@@ -303,8 +309,7 @@
   const value_is_missing = (value: HeatValue | false | null): boolean => {
     if (Array.isArray(value)) return value.every(value_is_missing) // [] -> true (missing)
     if (is_color(value)) return false // explicit colors are real values, not missing
-    const num = to_heat_num(value)
-    return num === null || (log && num <= 0)
+    return to_heat_num(value) === null
   }
 
   const bg_color = (
@@ -314,14 +319,15 @@
     if (Array.isArray(value)) return bg_color(value[0], element) // arrays: use first value
     if (is_color(value)) return value // already a color string
 
-    if (!heat_values.length || value_is_missing(value)) {
+    const num = to_heat_num(value)
+    if (!heat_values.length || num === null) {
       const category_color = colors.category[element.category] || `#cccccc`
       if (missing.color === `element-category`) return category_color
       // default: category colors for a plain table, gray for missing heatmap data
       return missing.color || (heat_values.length ? `#666` : category_color)
     }
 
-    return ramp.color_fn(Number(value))
+    return ramp.color_fn(num)
   }
 
   // Keep each segment's fill and optional label together.
@@ -335,9 +341,9 @@
     return values.map((val) => ({
       color: override ?? bg_color(val, element) ?? undefined,
       value:
-        tile_missing || val == null || val === false || Array.isArray(val) || is_color(val)
-          ? undefined
-          : val,
+        (typeof val === `number` || typeof val === `string`) && to_heat_num(val) !== null
+          ? val
+          : undefined,
     }))
   }
 

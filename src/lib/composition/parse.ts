@@ -43,7 +43,7 @@ export const normalize_formula_unicode = (formula: string): string =>
 
 const NUMBER_RE = /\d+(?:\.\d+)?|\.\d+/y
 // ^2+, ^+2, ^-, [2-], [+] ... (bare sign = ±1)
-const CHARGE_RE = /\^(?<caret>[+-]?\d+[+-]?|[+-])|\[(?<bracket>[+-]?\d+[+-]?|[+-])\]/y
+const CHARGE_RE = /\^(?<caret>[+-]\d+|\d+[+-]?|[+-])|\[(?<bracket>[+-]\d+|\d+[+-]?|[+-])\]/y
 
 const parse_charge = (charge: string): number => {
   const sign = charge.startsWith(`-`) || charge.endsWith(`-`) ? -1 : 1
@@ -119,7 +119,9 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
       continue
     }
     const coefficient = Number(read(NUMBER_RE)?.[0] ?? 1)
-    for (const token of parse_group(null)) {
+    const segment = parse_group(null)
+    if (segment.length === 0) fail(`Empty formula segment`)
+    for (const token of segment) {
       tokens.push({ ...token, amount: round_amount(token.amount * coefficient) })
     }
   }

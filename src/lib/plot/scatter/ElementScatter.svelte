@@ -18,7 +18,7 @@
     controls_open = $bindable(false),
     ...rest
   }: Omit<ScatterPlotOptions, `tooltip`> & {
-    y: number[] // array of length 118 (one value for each element)
+    y: (number | null)[] // positional by atomic number; null/non-finite values are missing
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     y_unit?: string | null
@@ -26,15 +26,19 @@
     hovered?: boolean
   } = $props()
 
+  const y_values = $derived(coord_y.map((value) => value ?? NaN))
+
   // Mirror the hovered element tile onto the matching point. Cleared when the tile hover ends,
   // because the plot styles a marker as hovered off `tooltip_point` alone — leaving it set
   // strands that marker enlarged and brightened after the pointer leaves the table.
   $effect.pre(() => {
     if (hovered) return // the pointer is on the plot, which owns tooltip_point itself
     const atomic_num = selected.element?.number
-    tooltip_point = atomic_num
-      ? { x: atomic_num, y: coord_y[atomic_num - 1], series_idx: 0, point_idx: atomic_num - 1 }
-      : null
+    const value = atomic_num ? y_values[atomic_num - 1] : NaN
+    tooltip_point =
+      atomic_num && Number.isFinite(value)
+        ? { x: atomic_num, y: value, series_idx: 0, point_idx: atomic_num - 1 }
+        : null
   })
 </script>
 
@@ -45,8 +49,8 @@
   {...rest}
   series={[
     {
-      x: [...Array(coord_y.length + 1).keys()].slice(1),
-      y: coord_y,
+      x: coord_y.map((_, idx) => idx + 1),
+      y: y_values,
       color_values: coord_y,
       point_style: { radius: 2 },
     },

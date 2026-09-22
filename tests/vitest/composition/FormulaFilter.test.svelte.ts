@@ -709,6 +709,25 @@ describe(`FormulaFilter`, () => {
       // an SI amount format would canonicalize to C1kH2k, which no longer parses
       [`large counts stay plain digits`, {}, `H2000C1000`, `C1000H2000`],
       [`wildcard amounts are merged and formatted`, {}, `*2Li0.1Li0.2*`, `Li0.3*2*`],
+      [
+        `fractional amounts retain precision`,
+        {},
+        `Li0.123456Na0.876544Cl`,
+        `ClLi0.123456Na0.876544`,
+      ],
+      [`near-integer amounts stay distinct`, {}, `Li1.0001O2`, `Li1.0001O2`],
+      [
+        `wildcard amounts retain precision`,
+        {},
+        `Li0.123456*0.876544O2`,
+        `Li0.123456O2*0.876544`,
+      ],
+      [
+        `trace amounts stay parseable`,
+        {},
+        `Li0.000000000000123456O2`,
+        `Li0.000000000000123456O2`,
+      ],
     ])(`exact mode: %s`, (_name, props, input, expected) => {
       const on_change = vi.fn()
       mount_filter({ value: ``, on_change, ...props })

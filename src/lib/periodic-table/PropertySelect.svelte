@@ -4,24 +4,17 @@
   import type { ComponentProps } from 'svelte'
   import { MultiSelect as Select } from 'svelte-widgets'
 
-  const options = Object.keys(ELEM_HEATMAP_LABELS) as (keyof ChemicalElement)[]
+  const options = Object.keys(ELEM_HEATMAP_LABELS)
   let {
-    empty = false,
-    value = $bindable(empty ? null : options[1]),
     min_select = 0,
-    key = $bindable(null),
+    key = $bindable(`atomic_radius`),
     ...rest
   }: Omit<
-    Extract<ComponentProps<typeof Select<keyof ChemicalElement>>, { mode: `single` }>,
-    `options` | `key` | `mode`
+    Extract<ComponentProps<typeof Select<string>>, { mode: `single` }>,
+    `options` | `key` | `mode` | `value`
   > & {
-    empty?: boolean
-    key?: string | null
+    key?: keyof ChemicalElement | null
   } = $props()
-
-  $effect.pre(() => {
-    key = ELEM_HEATMAP_LABELS[value ?? ``] ?? null
-  })
 </script>
 
 <Select
@@ -29,7 +22,10 @@
   mode="single"
   max_options={options.length}
   {min_select}
-  bind:value
+  bind:value={
+    () => options.find((label) => ELEM_HEATMAP_LABELS[label] === key) ?? null,
+    (label) => (key = ELEM_HEATMAP_LABELS[label ?? ``] ?? null)
+  }
   placeholder="Select a heatmap"
   input_style="padding: 3pt 6pt;"
   {...rest}

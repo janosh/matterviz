@@ -64,28 +64,15 @@
   } as const
 
   let key_vals = $derived(
-    Object.keys(ELEM_PROPERTY_LABELS)
-      .filter((key) => {
-        const value = element[key as keyof ChemicalElement]
-        // empty arrays would otherwise render as a unit-only row
-        return Array.isArray(value) ? value.length > 0 : Boolean(value)
-      })
-      .map((key) => {
-        const [label, unit] = ELEM_PROPERTY_LABELS[key as keyof ChemicalElement] ?? []
-        let value = element[key as keyof ChemicalElement]
-        // if value is number, pretty format it
-        if (typeof value === `number`) value = format_num(value)
-        // array to string
-        if (Array.isArray(value)) value = value.join(`, `)
-        // if value has a unit, append it
-        if (unit) value = `${value} &thinsp;${unit}`
-
-        const icon =
-          label && label in icon_property_map
-            ? icon_property_map[label as keyof typeof icon_property_map]
-            : Info
-        return [label, value, icon] as const
-      }),
+    Object.entries(ELEM_PROPERTY_LABELS).flatMap(([key, [label, unit]]) => {
+      let value = element[key as keyof ChemicalElement]
+      // Empty arrays would otherwise render as a unit-only row; retain numeric zero.
+      if (value == null || value === `` || (Array.isArray(value) && !value.length)) return []
+      if (typeof value === `number`) value = format_num(value)
+      else if (Array.isArray(value)) value = value.join(`, `)
+      const icon = icon_property_map[label as keyof typeof icon_property_map] ?? Info
+      return [[label, unit ? `${value} &thinsp;${unit}` : value, icon] as const]
+    }),
   )
 
   // set atomic radius as default heatmap_key
@@ -100,11 +87,10 @@
   let active_shell: number | null = $state(null)
 
   let scatter_plot_values = $derived(
-    element_data
-      .map((element_info) =>
-        selected.heatmap_key ? element_info[selected.heatmap_key] : null,
-      )
-      .filter((val): val is number => typeof val === `number`),
+    element_data.map((element_info) => {
+      const value = selected.heatmap_key ? element_info[selected.heatmap_key] : null
+      return typeof value === `number` ? value : null
+    }),
   )
   let [y_label, y_unit] = $derived(
     selected.heatmap_key ? (ELEM_PROPERTY_LABELS[selected.heatmap_key] ?? []) : [],
@@ -139,7 +125,7 @@
 {/if}
 
 <form>
-  <PropertySelect min_select={1} />
+  <PropertySelect min_select={1} bind:key={selected.heatmap_key} />
   <ColorScaleSelect bind:value={color_scale} min_select={1} />
 </form>
 <section class="viz">

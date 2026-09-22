@@ -49,21 +49,27 @@ You can make fat and skinny bars:
 ```svelte example code_above
 <script lang="ts">
   import type { D3InterpolateName } from 'matterviz/colors'
-  import { element_data } from 'matterviz/element'
+  import { element_data, type ChemicalElement } from 'matterviz/element'
+  import { ELEM_HEATMAP_LABELS } from 'matterviz/labels'
   import { ColorScaleSelect } from 'matterviz/plot'
   import { PeriodicTable, PropertySelect } from 'matterviz/periodic-table'
 
   let color_scale = $state<D3InterpolateName>(`interpolateCividis`)
-  let heatmap_key = $state(``)
-  let heat_label = $state(``)
-  let heatmap_values = $derived(
-    heatmap_key ? element_data.map((element) => element[heatmap_key]) : [],
+  let heatmap_key = $state<keyof ChemicalElement | null>(`atomic_radius`)
+  let heat_label = $derived(
+    Object.keys(ELEM_HEATMAP_LABELS).find(
+      (label) => ELEM_HEATMAP_LABELS[label] === heatmap_key,
+    ),
   )
+  let heatmap_values = $derived.by(() => {
+    const key = heatmap_key
+    return key ? element_data.map((element) => element[key]) : []
+  })
 </script>
 
 <form>
   <ColorScaleSelect bind:value={color_scale} min_select={1} />
-  <PropertySelect bind:key={heatmap_key} bind:value={heat_label} />
+  <PropertySelect bind:key={heatmap_key} />
 </form>
 
 <PeriodicTable

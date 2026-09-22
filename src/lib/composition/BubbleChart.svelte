@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import { TooltipValue } from '$lib/tooltip'
   import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { hierarchy, pack } from 'd3-hierarchy'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'
+  import SegmentTooltip from './SegmentTooltip.svelte'
 
   let {
     composition,
@@ -30,7 +29,7 @@
   // d3 circle packing: bubble area ∝ amount
   let bubbles = $derived.by(() => {
     const segments = composition_segments(composition, color_scheme, patterns, `bubble-${uid}`)
-    if (segments.length === 0) return []
+    if (segments.length === 0 || size <= 2 * padding) return []
     const root = hierarchy<{ children: ChartSegment[] } | ChartSegment>({
       children: segments,
     }).sum((node) => (`amount` in node ? node.amount : 0))
@@ -39,9 +38,7 @@
       .size([inner_size, inner_size])
       .padding(padding * 0.1)(root)
       .leaves()
-    // `|| 1` floors the divisor: size 0 or padding >= size / 2 packs every bubble at r = 0,
-    // and 0 / 0 put a NaN font_scale into `font-size: NaNpx`
-    const max_radius = Math.max(...leaves.map((leaf) => leaf.r)) || 1
+    const max_radius = Math.max(...leaves.map((leaf) => leaf.r))
     return leaves.map((leaf) => {
       const segment = leaf.data as ChartSegment
       const label = segment.element + segment_suffix(segment, label_opts)
@@ -67,12 +64,7 @@
   <defs><PatternDefs patterns={bubbles.map((bubble) => bubble.pattern)} /></defs>
   {#each bubbles as bubble (bubble.element)}
     {#snippet segment_tooltip()}
-      <TooltipValue
-        label={bubble.element}
-        value={bubble.amount}
-        unit={bubble.amount === 1 ? 'atom' : 'atoms'}
-      />
-      (<TooltipValue value={format_num(bubble.fraction, '.1~%')} />)
+      <SegmentTooltip segment={bubble} />
     {/snippet}
     <circle
       cx={bubble.x}

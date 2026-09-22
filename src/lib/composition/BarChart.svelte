@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import { TooltipValue } from '$lib/tooltip'
   import { hover_tooltip } from '$lib/tooltip/hover.svelte'
   import { clamp } from '$lib/math'
   import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
+  import SegmentTooltip from './SegmentTooltip.svelte'
 
   const LABEL_HEIGHT = 20 // px rows above and below the bar for external labels
   const GAP = 2 // px between bar and label rows
@@ -94,12 +93,7 @@
   <g clip-path="url(#{clip_path_id})">
     {#each segments as segment (segment.element)}
       {#snippet segment_tooltip()}
-        <TooltipValue
-          label={segment.element}
-          value={segment.amount}
-          unit={segment.amount === 1 ? 'atom' : 'atoms'}
-        />
-        (<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+        <SegmentTooltip {segment} />
       {/snippet}
       <rect
         x={segment.x}

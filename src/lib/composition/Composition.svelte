@@ -3,7 +3,8 @@
 
   import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
   import type { CompositionType } from '$lib/composition'
-  import { ActionMenu, type CmdSection, Icon, type IconData } from 'svelte-widgets'
+  import { ActionMenu, Icon } from 'svelte-widgets'
+  import type { CmdAction, CmdSection, IconData } from 'svelte-widgets'
   import {
     Circle,
     ColorPalette,
@@ -21,6 +22,7 @@
   import PieChart from './PieChart.svelte'
 
   type CompositionChartMode = `pie` | `bubble` | `bar`
+  type CompositionAction = CmdAction & { icon: IconData }
   let {
     composition,
     mode = $bindable(`pie`),
@@ -40,9 +42,15 @@
   $effect(() => on_parse?.(parsed))
 
   let context_menu_at = $state<{ x: number; y: number } | null>(null)
+  let export_pane_open = $state(false)
 
-  const is_icon_data = (icon: unknown): icon is IconData =>
-    typeof icon === `object` && icon !== null && (`d` in icon || `markup` in icon)
+  async function copy_text(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (error) {
+      console.error(`Export failed:`, error)
+    }
+  }
 
   const mode_actions = (
     [
@@ -50,12 +58,7 @@
       [`bubble`, ScatterPlot, `Bubble Chart`],
       [`bar`, Graph, `Bar Chart`],
     ] as const
-  ).map(([identifier, icon, label]) => ({
-    id: identifier,
-    icon,
-    label,
-    action: () => (mode = identifier),
-  }))
+  ).map(([id, icon, label]) => ({ id, icon, label, action: () => (mode = id) }))
 
   const color_scheme_actions = ELEMENT_COLOR_SCHEME_NAMES.map((identifier) => ({
     id: identifier,
@@ -66,38 +69,33 @@
 
   const export_actions = (
     [
-      [`copy_formula`, Copy, `Copy Formula`],
-      [`copy_data`, Copy, `Copy Data`],
-      [`export_files`, Download, `Export files…`],
+      [
+        `copy_formula`,
+        Copy,
+        `Copy Formula`,
+        () =>
+          copy_text(
+            get_electro_neg_formula(parsed, { plain_text: true, amount_format: `.12~g` }),
+          ),
+      ],
+      [`copy_data`, Copy, `Copy Data`, () => copy_text(JSON.stringify(parsed, null, 2))],
+      [
+        `export_files`,
+        Download,
+        `Export files…`,
+        () => {
+          if (svg_node) export_pane_open = true
+          else console.warn(`Chart SVG not available for export`)
+        },
+      ],
     ] as const
-  ).map(([identifier, icon, label]) => ({
-    id: identifier,
-    icon,
-    label,
-    action: () => handle_export(identifier),
-  }))
+  ).map(([id, icon, label, action]) => ({ id, icon, label, action }))
 
-  const context_menu_actions = $derived<CmdSection[]>([
+  const context_menu_actions = $derived<CmdSection<CompositionAction>[]>([
     { title: `Display Mode`, selected: mode, actions: mode_actions },
     { title: `Color Scheme`, selected: color_scheme, actions: color_scheme_actions },
     { title: `Export`, actions: export_actions },
   ])
-
-  function handle_export(export_type: (typeof export_actions)[number][`id`]) {
-    try {
-      if (export_type === `copy_formula`) {
-        navigator.clipboard.writeText(get_electro_neg_formula(parsed, { plain_text: true }))
-      } else if (export_type === `copy_data`) {
-        navigator.clipboard.writeText(JSON.stringify(parsed, null, 2))
-      } else if (!svg_node) console.warn(`Chart SVG not available for export`)
-      else {
-        export_pane_open = true
-      }
-    } catch (error) {
-      console.error(`Export failed:`, error)
-    }
-  }
-  let export_pane_open = $state(false)
 </script>
 
 <!-- the chart itself is the right-click region; `at` is also set from the keyboard
@@ -128,9 +126,7 @@ path below, which has no pointer position to read -->
     class={[`composition`, rest.class]}
   />
   {#snippet item({ action })}
-    {#if is_icon_data(action.icon)}
-      <Icon icon={action.icon} />
-    {/if}
+    <Icon icon={action.icon} />
     {action.label}
   {/snippet}
 </ActionMenu>

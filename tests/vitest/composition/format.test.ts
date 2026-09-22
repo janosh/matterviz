@@ -49,6 +49,8 @@ describe(`get_alphabetical_formula`, () => {
     ],
     [`Fe2.5O3.75`, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [`Fe2.5O3.75`, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
+    [{ O: 1.23456e-13 }, { amount_format: `.2e` }, `O<sub>0.000000000000123</sub>`],
+    [{ O: 123.4 }, { amount_format: `.3e` }, `O<sub>123.4</sub>`],
     // an explicit SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
     [`Li0.5FeO2`, { plain_text: true, delim: `` }, `FeLi0.5O2`],
     [
@@ -303,14 +305,16 @@ describe(`format_oxi_state`, () => {
 describe(`amount formatting round-trips`, () => {
   test.each([
     [{ Fe: 1, O: 1e-7 }, `FeO0.0000001`],
+    [{ Fe: 1, O: 1.23e-13 }, `FeO0.000000000000123`],
+    [{ Fe: 1, O: 1e-300 }, `FeO0.${`0`.repeat(299)}1`],
+    [{ Fe: 1, O: Number.MIN_VALUE }, `FeO0.${`0`.repeat(323)}494`],
+    [{ Fe: 1, O: 1.23e21 }, `FeO1230000000000000000000`],
     [{ Fe: 1, O: 1e-5 }, `FeO0.00001`],
     [{ Fe: 1, O: 0.0625 }, `FeO0.0625`], // sub-1 keeps significant digits, not 3 decimals
     [{ Fe: 2, O: 3 }, `Fe2O3`],
   ])(`%j renders and parses back`, (composition, expected) => {
     const formula = get_alphabetical_formula(composition, { plain_text: true, delim: `` })
     expect(formula).toBe(expected)
-    for (const [element, amount] of Object.entries(parse_formula(formula))) {
-      expect(amount).toBeCloseTo((composition as Record<string, number>)[element], 12)
-    }
+    expect(parse_formula(formula)).toEqual(composition)
   })
 })
