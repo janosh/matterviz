@@ -10,6 +10,9 @@ describe(`chem_sys_sunburst_data`, () => {
       `Fe2O3`,
       `Fe-O`,
       `LiCoO2`,
+      `Fe[+3]2O[-2]3`,
+      `Fe2^3+O3^2-`,
+      `Li0Fe2O3`,
     ])
     expect(data.map((node) => node.id)).toEqual([`binary`, `ternary`, `quaternary`])
     const ternary = data[1]
@@ -20,7 +23,7 @@ describe(`chem_sys_sunburst_data`, () => {
     ])
     expect(ternary.children?.[0].id).toBe(`ternary/Fe-Li-O`)
     expect(ternary.children?.[0].metadata).toEqual({ chem_sys: `Fe-Li-O`, arity: 3 })
-    expect(data[0].children?.map((node) => [node.label, node.value])).toEqual([[`Fe-O`, 2]])
+    expect(data[0].children?.map((node) => [node.label, node.value])).toEqual([[`Fe-O`, 5]])
   })
 
   test(`duplicate elements in a formula count once toward arity`, () => {
@@ -31,11 +34,11 @@ describe(`chem_sys_sunburst_data`, () => {
 
   test(`skips invalid entries with a single warning`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const data = chem_sys_sunburst_data([`Fe-O`, `Xx-Yy`, `not a formula!`, ``])
+    const data = chem_sys_sunburst_data([`Fe-O`, `Xx-Yy`, `not a formula!`, ``, `Fe0`])
     expect(data).toHaveLength(1)
     expect(data[0].children?.[0].value).toBe(1)
     expect(warn).toHaveBeenCalledExactlyOnceWith(
-      expect.stringMatching(/skipped 3 invalid entries/),
+      expect.stringMatching(/skipped 4 invalid entries/),
     )
     warn.mockRestore()
   })

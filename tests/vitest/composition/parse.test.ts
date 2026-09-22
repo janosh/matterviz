@@ -180,6 +180,9 @@ describe(`extract_formula_elements`, () => {
     [`NbZr2Nb`, {}, [`Nb`, `Zr`]],
     [`Ca(OH)2`, {}, [`Ca`, `H`, `O`]],
     [`ZrNb`, { sorted: false }, [`Zr`, `Nb`]],
+    [`Li0Fe2O3`, {}, [`Fe`, `O`]],
+    [`(LiFe)0O2`, {}, [`O`]],
+    [`H0`, {}, []],
     [``, {}, []],
   ])(`extract_formula_elements(%s, %j) -> %j`, (formula, opts, expected) => {
     expect(extract_formula_elements(formula, opts)).toEqual(expected)
@@ -193,6 +196,9 @@ describe(`extract_formula_elements`, () => {
 describe(`parse_composition`, () => {
   test.each([
     [`Fe2O3`, { Fe: 2, O: 3 }],
+    [`Li0Fe2O3`, { Fe: 2, O: 3 }],
+    [`(LiFe)0O2`, { O: 2 }],
+    [`H0`, {}],
     [
       `{"Fe":70,"Cr":18,"Ni":8,"Mn":2,"Si":1,"C":1}`,
       { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },

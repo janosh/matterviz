@@ -294,6 +294,8 @@
   // anything else is an exact formula (LiFePO4)
   function infer_mode(input: string): FormulaSearchMode {
     const trimmed = input.trim()
+    // Brackets/carets belong to formulas; their charge signs are not search operators.
+    if (/[[^]/.test(normalize_formula_unicode(trimmed))) return `exact`
     if (!trimmed || /^[-+!]|[+!,]/.test(trimmed)) return `elements`
     if (trimmed.replaceAll(/:\s*\d+-\d+/g, ``).includes(`-`)) return `chemsys`
     return trimmed.includes(`:`) ? `elements` : `exact`
@@ -450,13 +452,13 @@
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
     if (!trimmed) return []
-    if (/[-,]/.test(trimmed)) {
+    if (infer_mode(trimmed) !== `exact`) {
       const parts = trimmed.split(/[-,]/).map((part) => part.trim())
       const elements = [...new Set(parts.filter(is_elem_symbol))].toSorted()
       return [...elements, ...parts.filter((part) => part === `*`)]
     }
     try {
-      const tokens = parse_formula_with_wildcards(trimmed)
+      const tokens = parse_formula_with_wildcards(trimmed).filter((token) => token.amount > 0)
       const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))]
       return [
         ...elements.toSorted(),

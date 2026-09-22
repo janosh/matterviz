@@ -164,7 +164,7 @@ export const extract_formula_elements = (
   formula: string,
   { sorted = true }: { sorted?: boolean } = {},
 ): ElementSymbol[] => {
-  const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
+  const symbols = Object.keys(parse_composition(formula)) as ElementSymbol[]
   return sorted ? symbols.toSorted() : symbols
 }
 
@@ -181,7 +181,7 @@ export const parse_composition = (
       if (trimmed && Object.keys(composition).length === 0) {
         throw new Error(`No valid elements in composition: ${input}`)
       }
-      return composition
+      return parse_composition(composition)
     }
     // quote bare keys so {Fe: 2, O: 3} is accepted alongside strict JSON
     const json = trimmed.replaceAll(

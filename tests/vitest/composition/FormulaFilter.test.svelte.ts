@@ -85,6 +85,10 @@ describe(`FormulaFilter`, () => {
     [`*-Li-*-O-*`, `chemsys`, `Li-O-*-*-*`],
     [`LiFePO4`, `exact`, `FeLiO4P`],
     [`NaCl`, `exact`, `ClNa`],
+    [`Fe[+3]2O[-2]3`, `exact`, `Fe2O3`],
+    [`Fe2^3+O3^2-`, `exact`, `Fe2O3`],
+    [`Fe³⁺₂O²⁻₃`, `exact`, `Fe2O3`],
+    [`Cl[-]`, `exact`, `Cl`],
     [`LiFe*2*`, `exact`, `FeLi*2*`],
     [`*2O3`, `exact`, `O3*2`],
     [`H0`, `exact`, `H0`], // zero amount formats to nothing; the text survives
@@ -152,6 +156,9 @@ describe(`FormulaFilter`, () => {
     [`Li,Fe,*,*`, `exact`, `FeLi**`],
     [`LiFe*2*`, `elements`, `Fe,Li,*,*`],
     [`LiFe*2*`, `chemsys`, `Fe-Li-*-*`],
+    [`Fe[+3]2O[-2]3`, `elements`, `Fe,O`],
+    [`Fe2^3+O3^2-`, `chemsys`, `Fe-O`],
+    [`Li0Fe2O3`, `elements`, `Fe,O`],
   ] as const)(`reformats "%s" to %s mode as "%s"`, async (from, to_mode, expected) => {
     const on_change = vi.fn()
     await mount_bound(from, { on_change })
