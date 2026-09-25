@@ -138,7 +138,8 @@ export interface IsosurfaceLayer {
   color: string
   opacity: number
   visible: boolean
-  // When true, also render the -isovalue surface in `negative_color`
+  // When true, also render the -isovalue surface; of the two, the lobe drawn at a negative
+  // value takes `negative_color` and the positive one `color`
   show_negative: boolean
   negative_color: string
   // Geometry-source volume ID

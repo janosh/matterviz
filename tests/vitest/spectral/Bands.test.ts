@@ -453,17 +453,22 @@ describe(`Bands component`, () => {
 
   // Bands 0 and 1 of the fixture cross E_F = 0, i.e. a metal. The gap used to be the largest
   // below-E_F and smallest above-E_F energy over all points, which reported 0.3 eV for it.
+  // Occupations decide filling over E_F: in a non-SCF line-mode run the VBM can lie on the
+  // path between SCF k-points and rise above the SCF E_F (here by 30 meV)
+  const filled_below_band_2 = [1, 1, 0, 0].map((occupation) => Array(4).fill(occupation))
   it.each([
-    [`metal`, 0, null],
-    [`semiconductor`, -0.95, `0.25 eV`], // bands 0-1 top out at -0.05, band 2 starts at 0.2
+    [`metal`, 0, undefined, null],
+    [`semiconductor`, -0.95, undefined, `0.25 eV`], // bands 0-1 top at -0.05, band 2 at 0.2
+    [`VBM above E_F but insulating occupations`, -0.87, filled_below_band_2, `0.17 eV`],
   ])(
     `electronic gap annotation for a %s ignores the units prop`,
-    async (_desc, shift, expected_gap) => {
+    async (_desc, shift, occupations, expected_gap) => {
       const shifted = {
         ...spin_polarized_electronic,
         bands: spin_polarized_electronic.bands.map((band, band_idx) =>
           band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
         ),
+        occupations,
       }
       await mount_bands({
         band_structs: { '': shifted },

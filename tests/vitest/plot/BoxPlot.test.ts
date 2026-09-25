@@ -379,13 +379,23 @@ describe(`BoxPlot`, () => {
   })
 
   // On a log value axis the violin is estimated in log10 space: its outline points are
-  // evenly spaced on screen (a linear grid put nearly all of them in the top decade)
+  // evenly spaced on screen (a linear grid put nearly all of them in the top decade), and a
+  // numeric bandwidth is in decades
   test(`violin on a log value axis samples every decade evenly`, async () => {
+    const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
+    const exponents = dist(200, 0, 1.5)
     const plot = await mount_sized_box_plot({
-      series: [{ ...basic, y: dist(200, 0, 1.5).map((val) => 10 ** val) }],
+      series: [{ ...basic, y: exponents.map((val) => 10 ** val) }],
       kind: `violin`,
+      bandwidth: 0.25,
       y_axis: { scale_type: `log` },
     })
+    const [samples, opts] = kde_spy.mock.calls[0] ?? []
+    expect(samples).toHaveLength(exponents.length)
+    // log10(10 ** val) round-trips to within a few ulps
+    samples?.forEach((val, idx) => expect(val).toBeCloseTo(exponents[idx], 12))
+    expect(opts?.bandwidth).toBe(0.25)
+    expect(kde_spy.mock.results[0]?.value.bandwidth).toBe(0.25)
     const { ys } = path_coords(plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``)
     const levels = [...new Set(ys.map((val) => Math.round(val * 1e3) / 1e3))].toSorted(
       (low, high) => low - high,

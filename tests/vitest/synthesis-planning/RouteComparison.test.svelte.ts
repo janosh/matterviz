@@ -1,5 +1,6 @@
 import type { PhaseData } from '$lib/convex-hull'
 import RouteComparison from '$lib/synthesis-planning/RouteComparison.svelte'
+import RouteTable from '$lib/synthesis-planning/RouteTable.svelte'
 import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import type { SynthesisRoute } from '$lib/synthesis-planning/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
@@ -187,3 +188,36 @@ test.each([0, -2])(
     for (const cell of cells) expect(cell.textContent).toContain(`Tied for highest score`)
   },
 )
+
+test(`route table sorts downhill windows by their lowest temperature, not alphabetically`, async () => {
+  const windows: [number, number][][] = [[[1105, 2000]], [], [[300, 2000]], [[0, 1480]]]
+  const component = mount(RouteTable, {
+    target: document.body,
+    props: {
+      routes: windows.map((downhill_windows, idx) => ({
+        ...routes[idx],
+        thermodynamics: { ...base.thermodynamics, downhill_windows },
+      })),
+    },
+  })
+  onTestFinished(() => unmount(component))
+  await tick()
+  const header = doc_query(`th[data-col-id="downhill"]`)
+  const column = () =>
+    [...document.querySelectorAll(`td[data-col="Downhill window"]`)].map((cell) =>
+      cell.textContent?.trim(),
+    )
+  const ascending = [
+    `downhill up to 1480 K`,
+    `downhill from 300 K`,
+    `downhill from 1105 K`,
+    `never downhill between 0 and 2000 K`,
+  ]
+  // No `better` direction, so the first click sorts descending
+  header.click()
+  await tick()
+  expect(column()).toEqual(ascending.toReversed())
+  header.click()
+  await tick()
+  expect(column()).toEqual(ascending)
+})

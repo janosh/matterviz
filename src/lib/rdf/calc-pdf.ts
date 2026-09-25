@@ -113,22 +113,25 @@ export function calculate_total_pdf(
   { radiation, s_val, ...rdf_options }: TotalPdfOptions = {},
 ): TotalPdfPattern {
   // Rejects a lattice-less or empty structure with the PDF's own message before the search
-  number_density(structure)
+  const rho_0 = number_density(structure)
   const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
-  return weight_pdf_partials(structure, partial_rdfs, { radiation, s_val })
+  return weight_pdf_partials(structure, partial_rdfs, { rho_0, radiation, s_val })
 }
 
 // The weighting half of calculate_total_pdf: combine a structure's partial g_ab(r) (from
 // calculate_all_pair_rdfs) into the total for one radiation. Split out because the partials
 // are the expensive neighbour search and depend only on geometry and binning, so switching
-// radiation re-weights them instead of re-running it.
+// radiation re-weights them instead of re-running it. `rho_0` is the structure's
+// number_density, which callers already computed to validate it before the search.
 export function weight_pdf_partials(
   structure: Crystal,
   partial_rdfs: readonly RdfPattern[],
-  options: Pick<TotalPdfOptions, `radiation` | `s_val`> = {},
+  options: Pick<TotalPdfOptions, `radiation` | `s_val`> & { rho_0: number },
 ): TotalPdfPattern {
-  const { radiation = `xray`, s_val = 0 } = options
-  const rho_0 = number_density(structure)
+  const { radiation = `xray`, s_val = 0, rho_0 } = options
+  if (!(rho_0 > 0 && Number.isFinite(rho_0))) {
+    throw new Error(`weight_pdf_partials needs a positive finite rho_0, got ${rho_0}`)
+  }
   const composition = site_composition(structure)
 
   let weighting: PdfWeighting

@@ -96,18 +96,26 @@ export function create_camera_flight_sampler(
   flight: CameraFlight,
 ): (time: number) => CameraPose {
   validate_camera_flight(flight)
+  // Smooth flights place the camera by its offset from the target in its own (slerped) frame,
+  // so an orbit's offsets are one constant vector and the path is exactly circular at uniform
+  // speed, however few waypoints it has. Cartesian splines cut inside the circle instead.
   const keyframes = flight.keyframes.map((frame) => ({
     ...copy_pose(frame),
     time: frame.time,
+    offset: new Vector3(...frame.position)
+      .sub(new Vector3(...frame.target))
+      .applyQuaternion(new Quaternion(...frame.quaternion).invert())
+      .toArray(),
   }))
+  type CompiledKeyframe = (typeof keyframes)[number]
   const { interpolation } = flight
   const n_frames = keyframes.length
   const total = keyframes[n_frames - 1].time
   // A path ending where it starts (a 360° orbit) is a loop: its end tangents wrap around to
-  // the other end. One-sided end tangents cut the first and last segments' corners (a 9-point
-  // orbit dollied 4.9% in there) and kink the camera's velocity where the video loops.
+  // the other end. One-sided end tangents bend the first and last segments and kink the
+  // camera's velocity where the video loops.
   const closed = n_frames > 2 && same_view(keyframes[0], keyframes[n_frames - 1])
-  const neighbor = (idx: number, fallback: CameraKeyframe): CameraKeyframe => {
+  const neighbor = (idx: number, fallback: CompiledKeyframe): CompiledKeyframe => {
     if (idx >= 0 && idx < n_frames) return keyframes[idx]
     if (!closed) return fallback
     // Skip the duplicated end pose and shift time by one loop period
@@ -128,7 +136,7 @@ export function create_camera_flight_sampler(
     const fraction = (time - from.time) / duration
     const squared = fraction * fraction
     const cubed = squared * fraction
-    const blend = (key: 'position' | 'target'): Vec3 =>
+    const blend = (key: 'position' | 'target' | 'offset'): Vec3 =>
       from[key].map((value, axis) => {
         if (interpolation === `linear`) return lerp(value, to[key][axis], fraction)
         // Time-aware cubic Hermite tangents pass through non-uniformly timed waypoints.
@@ -141,13 +149,23 @@ export function create_camera_flight_sampler(
           (cubed - squared) * duration * tangent_to
         )
       }) as Vec3
+    const quaternion = new Quaternion(...from.quaternion).slerp(
+      new Quaternion(...to.quaternion),
+      fraction,
+    )
+    const target = blend(`target`)
     return {
-      position: blend(`position`),
-      target: blend(`target`),
+      // Linear flights keep straight segments between waypoints
+      position:
+        interpolation === `linear`
+          ? blend(`position`)
+          : new Vector3(...blend(`offset`))
+              .applyQuaternion(quaternion)
+              .add(new Vector3(...target))
+              .toArray(),
+      target,
       projection: from.projection,
-      quaternion: new Quaternion(...from.quaternion)
-        .slerp(new Quaternion(...to.quaternion), fraction)
-        .toArray(),
+      quaternion: quaternion.toArray(),
       zoom: Math.exp(lerp(Math.log(from.zoom), Math.log(to.zoom), fraction)),
       fov: lerp(from.fov, to.fov, fraction),
       pan: [lerp(from.pan[0], to.pan[0], fraction), lerp(from.pan[1], to.pan[1], fraction)],
@@ -155,9 +173,9 @@ export function create_camera_flight_sampler(
   }
 }
 
-// A cubic spline through N points on a circle bulges inward between them: with the loop's
-// wrap-around tangents 8 segments dolly 0.85% in, 16 only 0.055%.
-const ORBIT_SEGMENTS = 16
+// 45° steps: smooth flights orbit exactly (see create_camera_flight_sampler), so more
+// waypoints would only add thumbnails and editable views to the planner.
+const ORBIT_SEGMENTS = 8
 
 export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlight {
   const target = new Vector3(...pose.target)

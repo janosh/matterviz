@@ -34,6 +34,18 @@ const KDE_TAIL_SIGMA = 6
 
 const MAX_GRID_POINTS = 2000
 
+// Violin KDE grid over the observed support (no tail extension): at least 100 points and at
+// least 3 per bandwidth, so a far outlier can't flatten the bulk and a kernel-wide peak falling
+// midway between grid points reads at least exp(-1/72) ~ 98.6% of its height (1 per bandwidth
+// under-read it by up to exp(-1/8) ~ 12%). Densities sum over at most 5000 stride-sampled
+// values (bandwidth still comes from the full sample).
+export const VIOLIN_KDE_OPTS = {
+  n_points: 100,
+  points_per_bandwidth: 3,
+  cut: 0,
+  max_samples: 5000,
+} as const satisfies KdeOptions
+
 // Spread for samples with no variance (a single value or all equal): the magnitude of the
 // value, like R's bw.nrd0, so constant 1e-6 samples get a kernel at their own scale rather
 // than a fixed 1 that smears them across +-2. Exactly zero falls back to 1.

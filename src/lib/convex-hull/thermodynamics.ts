@@ -118,24 +118,31 @@ export function compute_e_form_per_atom(
   return energy_per_atom - ref_sum
 }
 
+// Lowest-energy unary entry per element. Polymorphs rank by absolute energy per atom, or by
+// e_form_per_atom when none of the element's unaries carries an absolute energy
+// (get_energy_per_atom would read each as 0 eV). An E_form-only polymorph is measured against
+// the element's absolute-energy entries, so those take precedence as references.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
-  const refs: Record<string, PhaseData> = {}
+  const refs: Record<string, { entry: PhaseData; score: number; absolute: boolean }> = {}
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
-    const energy_per_atom = get_energy_per_atom(entry)
-    if (!Number.isFinite(energy_per_atom)) continue
+    const absolute =
+      typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
+    const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
+    if (!Number.isFinite(score)) continue
     const element = Object.keys(entry.composition).find(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
     if (!element) continue
     const current = refs[element]
-    if (!current || energy_per_atom < get_energy_per_atom(current)) {
-      refs[element] = entry
-    }
+    if (!current || (absolute === current.absolute ? score < current.score : absolute))
+      refs[element] = { entry, score, absolute }
   }
-  return refs
+  return Object.fromEntries(
+    Object.entries(refs).map(([element, { entry }]) => [element, entry]),
+  )
 }
 
 // Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure.

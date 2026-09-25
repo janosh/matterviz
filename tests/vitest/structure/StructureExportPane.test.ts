@@ -305,7 +305,7 @@ describe(`StructureExportPane`, () => {
     })
     await tick()
     get_button(`Create a complete orbit`).click()
-    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(17))
+    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(9))
     const pose = controller.capture()
     const imported: CameraFlight = {
       interpolation: `linear`,
@@ -322,7 +322,7 @@ describe(`StructureExportPane`, () => {
       const valid = content === JSON.stringify(imported)
       await vi.waitFor(() => {
         expect(doc_query<HTMLFieldSetElement>(`.camera-flight fieldset`).disabled).toBe(false)
-        expect(document.querySelectorAll(`.waypoint`)).toHaveLength(valid ? 2 : 17)
+        expect(document.querySelectorAll(`.waypoint`)).toHaveLength(valid ? 2 : 9)
         expect(document.querySelectorAll(`.camera-flight [role="alert"]`)).toHaveLength(
           valid ? 0 : 1,
         )
@@ -330,7 +330,7 @@ describe(`StructureExportPane`, () => {
       expect(input.value).toBe(``)
     }
     doc_query<HTMLButtonElement>(`[aria-label="Undo flight edit"]`).click()
-    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(17))
+    await vi.waitFor(() => expect(document.querySelectorAll(`.waypoint`)).toHaveLength(9))
     doc_query<HTMLButtonElement>(`[aria-label="Go to view 3"]`).click()
     const home = [...document.querySelectorAll(`button`)].find((button) =>
       button.textContent?.includes(`Return to original view`),

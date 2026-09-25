@@ -1358,7 +1358,7 @@ describe(`XYZ`, () => {
       open(content, `npt.extxyz`, { index_above_bytes: 0 }),
     ])
     await Promise.all([memory.properties.done, indexed.properties.done])
-    expect(indexed.properties.rows).toEqual(memory.properties.rows)
+    expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
     const series = (run: TrajectoryRun) =>
       generate_plot_series(run.properties.rows, { include_all_properties: true }).map(
         ({ id, x, y }) => ({ id, x, y }),
@@ -1481,9 +1481,18 @@ describe(`ASE`, () => {
       })),
     )
     const indexed = await open(buffer, `canonical.traj`)
+    // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
+    // numbers and never a position: fully decoding every frame (6 position reads each here)
+    // made indexed row extraction 2-3x slower than it needs to be
+    const reads = vi.spyOn(DataView.prototype, `getFloat64`)
+    onTestFinished(() => reads.mockRestore())
     await indexed.properties.done
+    expect(reads).toHaveBeenCalledTimes(2)
     const memory = trajectory_from_frames(parse_ase_trajectory(buffer).frames)
-    expect(indexed.properties.rows).toEqual(memory.properties.rows)
+    expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
+    const source = open_ase_frames(buffer)
+    onTestFinished(() => source.release())
+    expect(() => source.plot_row_frame(1).structure.sites).toThrow(`has no decoded sites`)
     expect(Object.keys(indexed.properties.rows[1].properties)).toEqual(
       expect.arrayContaining([`energy`, `bandgap`, `temperature`, `a`, `volume`, `density`]),
     )
@@ -1846,6 +1855,31 @@ describe(`JSON`, () => {
       expect(metadata).toMatchObject({ force_max: 0.3 })
       expect(metadata).not.toHaveProperty(`forces`)
     }
+  })
+
+  // Same rule and wording as vaspout.h5 (checked_site_forces): unusable forces are dropped
+  // from that frame alone, with a warning naming the frame and the mismatch
+  it.each([
+    [
+      `one row too many`,
+      [
+        [0.3, 0, 0],
+        [0, 0, 0],
+      ],
+      `expected 1 finite 3-vectors, got 2`,
+    ],
+    [`a 2-vector`, [[0.3, 0]], `entry 0 of 1 is [0.3,0], not a finite 3-vector`],
+  ])(`ignores frame forces with %s and says why`, async (_label, bad_forces, reason) => {
+    const good_forces = [[0.3, 0, 0]]
+    const run = await open(
+      pymatgen({ frame_properties: [{ forces: good_forces }, { forces: bad_forces }] }),
+      `f.json`,
+    )
+    const [good, bad] = await frames_of(run)
+    expect(good.metadata).toMatchObject({ force_max: 0.3 })
+    expect(bad.metadata).not.toHaveProperty(`force_max`)
+    expect(bad.structure.sites[0].properties).not.toHaveProperty(`force`)
+    expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 1: ${reason}`])
   })
 
   // pymatgen's default verbosity writes matrix + pbc only; older dumps have no pbc at all.

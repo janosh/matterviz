@@ -215,9 +215,9 @@ describe(`ScatterPlot`, () => {
       expect(announced(plot)).toBe(``)
     })
 
-    // The cursor is a flat index into the plotted data: after a series is hidden it would
-    // name whatever point now sits at that index
-    test(`a data change resets the cursor instead of re-pointing it`, async () => {
+    // The cursor names its point by identity, so hiding another series or zooming keeps it on
+    // that point while it stays in view, and leaves it inactive (never retargeted) otherwise
+    test(`the cursor stays on its point through data changes and zoom`, async () => {
       document.body.innerHTML = ``
       const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
         hidden_series: [],
@@ -236,17 +236,24 @@ describe(`ScatterPlot`, () => {
         ),
       )
       const svg = plot_svg(plot)
-      for (let step = 0; step < 3; step++) await arrow(svg, `ArrowRight`)
-      expect(announced(plot)).toContain(`second point 1`)
+      for (let step = 0; step < 4; step++) await arrow(svg, `ArrowRight`)
+      expect(announced(plot)).toContain(`second point 2`)
+      // hiding the first series shifts every flat index, but not the cursor's point
       state.hidden_series = [`first`]
       flushSync()
-      expect(announced(plot)).toBe(``)
-      await arrow(svg, `ArrowRight`)
+      expect(announced(plot)).toContain(`second point 2`)
+      // zooming onto the cursor's point keeps it, and steps continue from it
+      state.x_axis = { range: [1.5, 3.5] }
+      flushSync()
+      expect(announced(plot)).toContain(`second point 2`)
+      await arrow(svg, `ArrowLeft`)
       expect(announced(plot)).toContain(`second point 1`)
-      // a zoom re-filters the plotted points just the same: index 0 now names second point 2
+      // zooming it out of view clears the cursor rather than naming second point 2 instead
       state.x_axis = { range: [2.5, 3.5] }
       flushSync()
       expect(announced(plot)).toBe(``)
+      await arrow(svg, `ArrowLeft`)
+      expect(announced(plot)).toContain(`second point 2`)
     })
   })
 

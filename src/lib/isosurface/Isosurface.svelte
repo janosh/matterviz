@@ -187,6 +187,11 @@
   // at -isovalue, which at 0 is the same surface.
   const mirror_signs = (layer: ResolvedLayer): readonly (1 | -1)[] =>
     layer.show_negative && layer.isovalue !== 0 ? [1, -1] : [1]
+  // A mirrored pair colours each lobe by the sign of the value it is drawn at, not by which
+  // one mirrors the other: with a negative isovalue the mirror is the positive lobe, which
+  // takes `color`. A lone surface always takes `color`, whatever the sign of its isovalue.
+  const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
+    layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
     const vol = layer.volume
@@ -517,7 +522,7 @@
         set_vertex_colors(entry.geometry, scalars, {
           colormap: layer.colormap ?? DEFAULT_ISO_COLORMAP,
           color_range: layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1],
-          fallback_color: entry.sign > 0 ? layer.color : layer.negative_color,
+          fallback_color: lobe_color(layer, entry.sign),
         }),
       )
       colored_keys.add(entry.key)
@@ -561,11 +566,7 @@
   {@const layer = resolved_layers[entry.layer_idx]}
   {#if layer}
     {@const vertex_colored = colored_keys.has(entry.key)}
-    {@const color = vertex_colored
-      ? `#ffffff`
-      : entry.sign > 0
-        ? layer.color
-        : layer.negative_color}
+    {@const color = vertex_colored ? `#ffffff` : lobe_color(layer, entry.sign)}
     {@const opacity = layer.opacity}
     {@const transparent = opacity < 1}
     <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->

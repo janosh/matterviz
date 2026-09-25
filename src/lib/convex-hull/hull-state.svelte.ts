@@ -33,15 +33,18 @@ interface HullDataPipelineInputs {
   // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
   components?: () => readonly string[] | undefined
   max_hull_dist_show_phases: () => number
-  // The threshold was passed by the caller: the auto threshold must not replace it
+  // Values the caller passed are their choice, so data-dependent defaults skip them: the auto
+  // threshold must not replace a passed threshold, nor large datasets hide passed label toggles
   max_hull_dist_explicit: boolean
+  labels_explicit: boolean
   show_stable: () => boolean
   show_unstable: () => boolean
   // Categorical classification (marker shapes + filter toggles), null to disable
   entry_category: () => EntryCategoryConfig | null
   // Category values whose entries are hidden from the plot (view predicate)
   hidden_categories: () => readonly string[]
-  label_threshold: () => number // datasets larger than this start with labels hidden (hide_labels)
+  // Datasets larger than this start with labels hidden (hide_labels) unless labels_explicit
+  label_threshold: () => number
   // Setters for bindable props written by pipeline effects
   set_temperature: (temperature: number) => void
   set_max_hull_dist_show_phases: (value: number) => void
@@ -208,7 +211,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   $effect(() => {
     if (label_defaults_applied_for === inputs.entries()) return
     label_defaults_applied_for = inputs.entries()
-    if (effective_entries.length > inputs.label_threshold()) inputs.hide_labels()
+    if (!inputs.labels_explicit && effective_entries.length > inputs.label_threshold())
+      inputs.hide_labels()
   })
 
   // Filter by threshold; visibility is a view predicate, not entry state.

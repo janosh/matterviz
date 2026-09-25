@@ -20,6 +20,7 @@ import type * as h5wasm from 'h5wasm'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import {
   calc_force_stats,
+  checked_site_forces,
   create_trajectory_frame,
   expand_ion_types,
 } from '$lib/trajectory/helpers'
@@ -254,10 +255,12 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     const energy = to_finite_number(raw_energy)
     if (energy !== null) metadata.energy = energy
     // Per-atom vectors on the sites, like every other parser; only the statistics are metadata
-    const site_forces =
-      Array.isArray(forces) && forces.length === positions.length
-        ? (forces as number[][])
-        : null
+    const site_forces = checked_site_forces(
+      forces,
+      positions.length,
+      `vaspout.h5 forces of ionic step ${step}`,
+      warn,
+    )
     if (site_forces) Object.assign(metadata, calc_force_stats(site_forces))
     return create_trajectory_frame(
       positions,

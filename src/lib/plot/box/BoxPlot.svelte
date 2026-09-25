@@ -41,7 +41,7 @@
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_whiskers, summarize_box_samples } from '$lib/plot/box/box-plot'
-  import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
+  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
@@ -185,6 +185,8 @@
       value_label_format?: string
       kind?: ViolinKind
       side?: ViolinSide
+      // KDE bandwidth for violins. A number is in value-axis units, i.e. in decades (log10
+      // units) on a log value axis, where the density is estimated in log10 space.
       bandwidth?: BandwidthOption
       violin_width?: number
       violin_style?: ViolinStyle
@@ -222,16 +224,6 @@
     },
   )
   let series: BoxPlotSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
-
-  // Violin KDE grid over the observed support (no tail extension): at least 100 points and at
-  // least one per bandwidth (so a far outlier can't flatten the bulk), densities summed over
-  // at most 5000 stride-sampled values (bandwidth still comes from the full sample)
-  const KDE_OPTS = {
-    n_points: 100,
-    points_per_bandwidth: 1,
-    cut: 0,
-    max_samples: 5000,
-  } as const
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
   let whisker_state = $derived({ ...DEFAULTS.box.whisker, ...whisker })
@@ -356,14 +348,15 @@
   )
 
   type ViolinKde = KdeResult & { max_density: number }
-  // Per value axis, whether it is logarithmic: booleans, so a new axis object (label, ticks)
+  // The logarithmic axes as one string key (e.g. `x y2`), so a new axis object (label, ticks)
   // that keeps its scale type doesn't recompute every KDE
-  const log_x = $derived(get_scale_type_name(x_axis.scale_type) === `log`)
-  const log_x2 = $derived(get_scale_type_name(x2_axis.scale_type) === `log`)
-  const log_y = $derived(get_scale_type_name(y_axis.scale_type) === `log`)
-  const log_y2 = $derived(get_scale_type_name(y2_axis.scale_type) === `log`)
+  const log_axes = $derived(
+    (Object.keys(plot_axes) as (keyof typeof plot_axes)[])
+      .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
+      .join(` `),
+  )
   const log_value_axis = (srs: BoxPlotSeries<Metadata>): boolean =>
-    ({ x: log_x, x2: log_x2, y: log_y, y2: log_y2 })[val_axis_key(srs)]
+    log_axes.split(` `).includes(val_axis_key(srs))
   // KDE depends on the distribution, bandwidth and value-axis scale, not box statistics,
   // whisker settings or legend visibility (hidden series are skipped when drawing), so it
   // reads the authored series_in. On a log axis the density is estimated in log10 space and
@@ -382,7 +375,7 @@
         ? (srs.y ?? []).filter((val) => val > 0).map(Math.log10)
         : (srs.y ?? [])
       const kde = gaussian_kde(samples, {
-        ...KDE_OPTS,
+        ...VIOLIN_KDE_OPTS,
         bandwidth: srs.bandwidth ?? bandwidth,
         clip: log && clip ? [to_log(clip[0]), to_log(clip[1])] : clip,
       })

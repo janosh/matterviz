@@ -148,6 +148,23 @@ describe(`E_form-only entries`, () => {
     expect(section.dg_form.at(-1)).toBeCloseTo(0.2, 12)
   })
 
+  test(`the lowest-E_form unary is the reference, whatever the entry order`, () => {
+    const entries = [
+      { composition: { Li: 1 }, e_form_per_atom: 0.05, entry_id: `Li-high` },
+      { composition: { Li: 1 }, e_form_per_atom: 0, entry_id: `Li` },
+      { composition: { Na: 1 }, e_form_per_atom: 0, entry_id: `Na` },
+      { composition: { K: 1 }, e_form_per_atom: 0, entry_id: `K` },
+    ] as PhaseData[]
+    const model = prepare_diagram(entries, {
+      elements: toy_elements,
+      free_energy: { mode: `static` },
+    })
+    const section = compute_section(model, 500)
+    // Polymorph at E_form + E_ref = 0.05 + 0 exactly; the reference is its own zero
+    expect(Array.from(section.dg_form)).toEqual([0.05, 0, 0, 0])
+    expect(section.stable).toEqual([1, 2, 3])
+  })
+
   test(`an entry with no energy of any kind throws instead of sitting at 0 eV`, () => {
     const entries = [
       ...toy_entries,

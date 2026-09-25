@@ -6,6 +6,7 @@ import type { Pbc } from '$lib/structure'
 import {
   calc_force_stats,
   convert_atomic_numbers,
+  create_plot_row_frame,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
@@ -205,12 +206,20 @@ const ase_pbc = (value: unknown): Pbc => {
   return [value[0], value[1], value[2]]
 }
 
+// `plot_row: true` returns create_plot_row_frame's reduced frame (see there): the same header,
+// atom-count checks and calculator data, but the positions are never read and no site built
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,
-  { fallback_numbers, fallback_pbc, max_json_length, base_offset = 0 }: AseFrameOptions = {},
+  {
+    fallback_numbers,
+    fallback_pbc,
+    max_json_length,
+    base_offset = 0,
+    plot_row = false,
+  }: AseFrameOptions & { plot_row?: boolean } = {},
 ): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
   const frame_data = JSON.parse(
     read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
@@ -219,51 +228,67 @@ export function decode_ase_frame(
   const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
     read_ndarray_from_view(view, ref, base_offset)
 
-  const positions_ref = frame_data[`positions.`] ?? frame_data.positions
-  const positions = positions_ref?.ndarray
-    ? read_ndarray(positions_ref)
-    : (positions_ref as number[][])
+  const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
+  // A plot row needs only the atom count, which the ndarray shape states without a read
+  const positions = is_ndarray_ref(positions_ref)
+    ? plot_row
+      ? undefined
+      : read_ndarray(positions_ref)
+    : (positions_ref as number[][] | undefined)
+  const n_atoms = positions
+    ? positions.length
+    : is_ndarray_ref(positions_ref)
+      ? ndarray_reader(view, positions_ref, base_offset).shape[0]
+      : undefined
 
   const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
   const numbers: number[] = numbers_ref?.ndarray
     ? read_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
 
-  if (!numbers || !positions) {
+  if (!numbers || n_atoms === undefined) {
     throw new Error(`missing ${!numbers ? `numbers` : `positions`}`)
   }
+  if (numbers.length !== n_atoms)
+    throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
   const pbc_value = frame_data.pbc ?? fallback_pbc
   if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
   const pbc = ase_pbc(pbc_value)
 
   const forces = ase_calculator_forces(frame_data, read_ndarray)
-  if (forces && forces.length !== positions.length) {
-    throw new Error(`ASE calculator has ${forces.length} forces for ${positions.length} atoms`)
+  if (forces && forces.length !== n_atoms) {
+    throw new Error(`ASE calculator has ${forces.length} forces for ${n_atoms} atoms`)
   }
-  const frame = create_trajectory_frame(
-    positions,
-    convert_atomic_numbers(numbers),
-    ase_cell(frame_data),
-    pbc,
+  // The vectors go on the sites, only their statistics into the metadata
+  const metadata = {
     step,
-    // The vectors go on the sites, only their statistics into the metadata
-    {
-      step,
-      ...ase_calculator_data(frame_data, read_ndarray),
-      ...(forces && calc_force_stats(forces)),
-      ...frame_data.info,
-    },
-    forces?.map((force) => ({ force })),
-  )
+    ...ase_calculator_data(frame_data, read_ndarray),
+    ...(forces && calc_force_stats(forces)),
+    ...frame_data.info,
+  }
+  const cell = ase_cell(frame_data)
+  const frame = plot_row
+    ? create_plot_row_frame(numbers, cell, pbc, step, metadata)
+    : create_trajectory_frame(
+        positions ?? [],
+        convert_atomic_numbers(numbers),
+        cell,
+        pbc,
+        step,
+        metadata,
+        forces?.map((force) => ({ force })),
+      )
   return { frame, numbers, pbc }
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
 // first frame's atomic numbers and pbc are cached because ASE writes them once); plot rows
-// come from the decoded frames like every other reader's. `release` drops the buffer.
+// come from `plot_row_frame`, the decode minus positions and sites (see
+// create_plot_row_frame), so they equal an in-memory run's. `release` drops the buffer.
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
+  plot_row_frame: (frame_idx: number) => TrajectoryFrame
   release: () => void
   read_atoms?: ReadAtoms
   atom_masses?: number[]
@@ -298,8 +323,8 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
     )
   let numbers: number[] | undefined
   let pbc: Pbc | undefined
-  const decode = (frame_idx: number): TrajectoryFrame => {
-    if (frame_idx > 0 && !numbers) decode(0)
+  const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
+    if (frame_idx > 0 && !numbers) decode_frame(0, true)
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
@@ -307,6 +332,7 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
         fallback_numbers: numbers,
         fallback_pbc: pbc,
         max_json_length: MAX_ASE_HEADER_BYTES,
+        plot_row,
       })
       numbers = decoded.numbers
       pbc = decoded.pbc
@@ -444,7 +470,8 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       mass_unit: `amu`,
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
-    decode,
+    decode: (frame_idx) => decode_frame(frame_idx, false),
+    plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {
       source = null
     },

@@ -111,6 +111,7 @@
     energy_source_mode: () => energy_source_mode,
     max_hull_dist_show_phases: () => max_hull_dist_show_phases,
     max_hull_dist_explicit,
+    labels_explicit,
     show_stable: () => show_stable,
     show_unstable: () => show_unstable,
     entry_category: () => entry_category,
@@ -119,7 +120,6 @@
     set_temperature: (next_temp) => (temperature = next_temp),
     set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
     hide_labels: () => {
-      if (labels_explicit) return
       show_stable_labels = false
       show_unstable_labels = false
     },

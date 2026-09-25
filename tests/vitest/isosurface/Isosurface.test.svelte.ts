@@ -190,17 +190,35 @@ describe(`Isosurface`, () => {
     }
   })
 
-  test(`negative lobe adds a second surface in negative_color`, async () => {
-    mount_isosurface({
-      volumes: [signed_volume()],
-      settings: with_layers([layer(0.3, { show_negative: true })]),
-    })
-    await settle()
-    expect(meshes()).toHaveLength(4)
-    const colors = materials().map((node) => node.props.color)
-    expect(colors).toEqual([`#3b82f6`, `#3b82f6`, `#ef4444`, `#ef4444`])
-    expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
-  })
+  // Colour follows the sign of the value drawn, not which lobe mirrors the other: with a
+  // negative isovalue the mirror is the positive lobe, which used to get negative_color
+  test.each([0.3, -0.3])(
+    `negative lobe adds a second surface in negative_color (isovalue %s)`,
+    async (isovalue) => {
+      mount_isosurface({
+        volumes: [signed_volume()],
+        settings: with_layers([layer(isovalue, { show_negative: true })]),
+      })
+      await settle()
+      expect(meshes()).toHaveLength(4)
+      expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
+      // the positive blob sits at grid (3,3,3), the negative one at (7,7,7)
+      const mean_x = (geometry: BufferGeometry): number => {
+        const positions = geometry.getAttribute(`position`)
+        let sum = 0
+        for (let idx = 0; idx < positions.count; idx++) sum += positions.getX(idx)
+        return sum / positions.count
+      }
+      const [first_x, second_x] = [meshes()[0], meshes()[2]].map((node) =>
+        mean_x(geometry_of(node)),
+      )
+      const colors = materials().map((node) => node.props.color)
+      const [positive_color, negative_color] =
+        first_x < second_x ? [colors[0], colors[2]] : [colors[2], colors[0]]
+      expect([positive_color, negative_color]).toEqual([`#3b82f6`, `#ef4444`])
+      expect(colors[0]).toBe(colors[1]) // both passes of a lobe share its colour
+    },
+  )
 
   test(`layers skip missing volume IDs without retargeting`, async () => {
     const base = layer(0.3, { color: `#112233`, opacity: 1 })

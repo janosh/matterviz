@@ -151,9 +151,10 @@
       return { data: null, error: `Invalid phase diagram input: ${to_error(error).message}` }
     }
   })
-  // The data prop gets the same id check build_diagram applies to diagram_input
+  // The data prop gets the same id check build_diagram applies to diagram_input, unless a
+  // successfully built diagram_input means it is ignored anyway
   const data_prop_error = $derived.by((): string | null => {
-    if (!data_prop) return null
+    if (!data_prop || rebuilt.data) return null
     try {
       assert_unique_ids(data_prop)
       return null

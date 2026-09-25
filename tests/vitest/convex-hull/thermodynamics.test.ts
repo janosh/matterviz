@@ -151,6 +151,28 @@ describe(`find_lowest_energy_unary_refs`, () => {
       expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-4.0, -2.5])
     },
   )
+
+  test.each([false, true])(
+    `ranks E_form-only unaries by E_form, below absolute-energy ones (reversed: %s)`,
+    (reversed) => {
+      const e_form_only = (element: string, e_form: number) =>
+        ({
+          composition: { [element]: 1 },
+          e_form_per_atom: e_form,
+          entry_id: `${element}${e_form}`,
+        }) as PhaseData
+      const entries = [
+        e_form_only(`Li`, 0.05),
+        e_form_only(`Li`, 0),
+        e_form_only(`Li`, 0.1),
+        e_form_only(`Na`, -0.3),
+        make_phase({ Na: 1 }, -1.3, { entry_id: `Na-abs` }),
+        make_phase({ Na: 1 }, -1.2, { entry_id: `Na-abs-high` }),
+      ]
+      const refs = find_lowest_energy_unary_refs(reversed ? entries.toReversed() : entries)
+      expect([refs.Li.entry_id, refs.Na.entry_id]).toEqual([`Li0`, `Na-abs`])
+    },
+  )
 })
 
 // Brute-force lower hull energy at `query`: min over all (d+1)-subsets containing the

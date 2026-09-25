@@ -253,16 +253,37 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(panned.querySelectorAll(`.special-point-marker`)).toHaveLength(0)
   })
 
-  test(`data with duplicate region ids shows an error banner instead of crashing`, async () => {
-    const wrapper = await mount_diagram({
-      data: {
-        ...eutectic,
-        regions: [eutectic.regions[0], { ...eutectic.regions[1], id: `liq` }],
-      },
-    })
+  test(`data with duplicate region ids shows an error banner unless diagram_input replaces it`, async () => {
+    const data = {
+      ...eutectic,
+      regions: [eutectic.regions[0], { ...eutectic.regions[1], id: `liq` }],
+    }
+    const wrapper = await mount_diagram({ data })
     expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toMatch(
       /Invalid phase diagram data: Duplicate region id "liq"/,
     )
+    document.body.innerHTML = ``
+    // A diagram_input that builds wins over the data prop, so its ids don't matter
+    const with_input = await mount_diagram({
+      data,
+      diagram_input: {
+        meta: { components: [`A`, `B`], temp_range: [300, 900] },
+        curves: {},
+        regions: [
+          {
+            id: `liquid`,
+            name: `Liquid`,
+            bounds: [
+              [0, 900],
+              [1, 900],
+              [1, 700],
+            ],
+          },
+        ],
+      },
+    })
+    expect(with_input.querySelector(`.error[role="alert"]`)).toBeNull()
+    expect(with_input.querySelectorAll(`.phase-regions path`)).toHaveLength(1)
   })
 
   test(`keeps default temperature ticks sparse`, async () => {

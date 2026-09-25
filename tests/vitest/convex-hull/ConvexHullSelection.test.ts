@@ -320,6 +320,16 @@ describe(`convex hull replacement state`, () => {
       },
       { labels: [true, true], threshold_is: 0.01 },
     ],
+    [
+      `only threshold passed`,
+      { max_hull_dist_show_phases: 0.01 },
+      { labels: [false, false], threshold_is: 0.01 },
+    ],
+    [
+      `only a label toggle passed`,
+      { show_unstable_labels: true },
+      { labels: [true, true], threshold_is: `auto` },
+    ],
   ] as const)(`large datasets: %s`, async (_label, passed, expected) => {
     const entries = [
       make_phase({ Li: 1 }, 0),

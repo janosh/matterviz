@@ -23,7 +23,7 @@ vi.mock(`$lib/io/url-drop`, () => ({
 }))
 
 // The default (text/ArrayBuffer) branch of the FileDropOptions union
-type TextDropOptions = Extract<FileDropOptions, { on_drop: FileLoadCallback }>
+type TextDropOptions = Extract<FileDropOptions, { hdf5_as_blob?: false }>
 
 // empty items means no directories, so files_from_data_transfer uses the flat list
 const make_event = (files: File[] = [], items: unknown[] = []) =>
@@ -63,7 +63,7 @@ describe(`create_file_drop_handler`, () => {
       on_error,
       set_loading,
     }
-    await create_file_drop_handler({ ...defaults, ...opts } as TextDropOptions)(event)
+    await create_file_drop_handler({ ...defaults, ...opts })(event)
     return event
   }
 
@@ -95,7 +95,10 @@ describe(`create_file_drop_handler`, () => {
 
     await run({}, [file])
 
-    expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
+    expect(load_from_url).toHaveBeenCalledWith(
+      `https://example.com/f.cif`,
+      expect.any(Function),
+    )
     expect(decompress_file).toHaveBeenCalledWith(file)
     expect(vi.mocked(on_drop).mock.calls).toEqual([
       [`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`)],
@@ -206,6 +209,59 @@ describe(`create_file_drop_handler`, () => {
     },
   )
 
+  // Files that only mean something together (NEB images) arrive in one call per drop, with
+  // each loaded file, after every on_drop and before the failure report
+  test(`on_batch gets each drop's loaded files once, failures reported after it`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValueOnce(`https://example.com/u.cif`)
+    vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
+      await callback(`remote`, `u.cif`, source_meta(`u.cif`, `https://example.com/u.cif`))
+    })
+    vi.mocked(decompress_file)
+      .mockResolvedValueOnce({ content: `first`, filename: `a.cube` })
+      .mockRejectedValueOnce(new Error(`corrupt`))
+      .mockResolvedValueOnce({ content: `third`, filename: `c.cube` })
+    const calls: string[] = []
+    vi.mocked(on_drop).mockImplementation((_content, filename) => {
+      calls.push(`drop ${filename}`)
+    })
+    const report = (msg: string) => calls.push(`error ${msg}`)
+    const on_batch = vi.fn((files: { filename: string }[]) => {
+      calls.push(`batch ${files.map(({ filename }) => filename).join(` `)}`)
+    })
+    const handler = create_file_drop_handler({
+      allow: () => true,
+      on_drop,
+      on_error: report,
+      on_batch,
+    })
+    await handler(make_event([`a`, `b`, `c`].map((name) => new File([name], `${name}.cube`))))
+    expect(on_batch.mock.calls[0][0]).toEqual([
+      {
+        content: `remote`,
+        filename: `u.cif`,
+        metadata: source_meta(`u.cif`, `https://example.com/u.cif`),
+      },
+      { content: `first`, filename: `a.cube`, metadata: source_meta(`a.cube`) },
+      { content: `third`, filename: `c.cube`, metadata: source_meta(`c.cube`) },
+    ])
+    // a drop whose every file fails has no batch
+    vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`bad`))
+    await handler(make_event([new File([`d`], `d.cube`)]))
+    expect(calls).toEqual([
+      `drop u.cif`,
+      `drop a.cube`,
+      `drop c.cube`,
+      `batch u.cif a.cube c.cube`,
+      `error Failed to load 1 file — b.cube: corrupt`,
+      `error Failed to load 1 file — d.cube: bad`,
+    ])
+    // on_batch alone is enough, and a handler needs at least one consumer
+    await create_file_drop_handler({ allow: () => true, on_batch })(make_event())
+    expect(() => create_file_drop_handler({ allow: () => true })).toThrow(
+      `File drop handlers need on_drop, on_batch or both`,
+    )
+  })
+
   test(`one failing file does not abort the rest of the batch`, async () => {
     vi.mocked(decompress_file)
       .mockRejectedValueOnce(new Error(`corrupt`))
@@ -297,6 +353,9 @@ describe(`create_file_drop_handler`, () => {
   // materialising the whole file; everything else still arrives the way parsers expect
   test(`hdf5_as_blob hands .h5 drops over as Blobs, text files as text, URLs to the trajectory loader`, async () => {
     vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/run.h5`)
+    vi.mocked(load_trajectory_from_url).mockImplementation(async (url, callback) => {
+      await callback(`remote`, `remote.h5`, source_meta(`remote.h5`, url))
+    })
     const trajectory_drop = vi.fn<TrajectoryFileLoadCallback>()
     const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
     const h5_file = new File(
@@ -314,13 +373,14 @@ describe(`create_file_drop_handler`, () => {
 
     expect(load_trajectory_from_url).toHaveBeenCalledWith(
       `https://example.com/run.h5`,
-      trajectory_drop,
+      expect.any(Function),
     )
     expect(load_from_url).not.toHaveBeenCalled()
     expect(decompress_file).not.toHaveBeenCalled()
     expect(on_error).not.toHaveBeenCalled()
-    const [[h5_content, h5_name, h5_meta], [xyz_content, xyz_name]] =
+    const [[url_content, url_name], [h5_content, h5_name, h5_meta], [xyz_content, xyz_name]] =
       trajectory_drop.mock.calls
+    expect([url_content, url_name]).toEqual([`remote`, `remote.h5`])
     expect(h5_content).toBeInstanceOf(Blob)
     expect((h5_content as Blob).size).toBe(h5_file.size)
     expect(h5_name).toBe(`run.h5`)

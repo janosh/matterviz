@@ -36,6 +36,8 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   return {
     frame_count: frames.length,
     decode,
+    // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
+    plot_row_frame: decode,
     // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
       text = ``
@@ -91,8 +93,9 @@ export const indexed_text_run = (
           try {
             // Exactly an in-memory run's row (see frame_property_row), for XYZ and ASE alike:
             // header- or comment-only scans lost the lattice and density curves and showed a
-            // different set of series depending on which reader a file's size picked
-            batch.push(frame_property_row(decode(frame_idx), frame_idx))
+            // different set of series depending on which reader a file's size picked. ASE's
+            // plot-row frame skips positions and sites, the bulk of a full decode.
+            batch.push(frame_property_row(source.plot_row_frame(frame_idx), frame_idx))
           } catch (error) {
             collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
           }

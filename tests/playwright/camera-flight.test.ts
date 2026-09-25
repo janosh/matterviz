@@ -240,7 +240,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await flight.getByLabel(`Flight duration`, { exact: true }).fill(`2`)
     await flight.getByRole(`button`, { name: `360° orbit`, exact: true }).click()
     const images = flight.locator(`.waypoint img`)
-    await expect(images).toHaveCount(17)
+    await expect(images).toHaveCount(9)
     await expect(preview).toBeEnabled()
     await expect(flight.locator(`[aria-label^="Keyframe "]`)).toHaveCount(1)
     await expect(flight.getByLabel(`Keyframe 1 time`, { exact: true })).toBeDisabled()
@@ -275,7 +275,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
           node instanceof HTMLImageElement ? [node.naturalWidth, node.naturalHeight] : null,
         ),
       ),
-    ).toEqual(Array.from({ length: 17 }, () => [160, 100]))
+    ).toEqual(Array.from({ length: 9 }, () => [160, 100]))
     const thumbnails = await images.evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute(`src`)),
     )
@@ -291,18 +291,18 @@ for (const kind of [`structure`, `trajectory`] as const) {
       `font-size`,
       await duration.evaluate((node) => getComputedStyle(node).fontSize),
     )
-    await expect(view_time).toHaveValue(`0.25`)
+    await expect(view_time).toHaveValue(`0.5`)
     await view_time.fill(`0`)
     await view_time.press(`Tab`)
     await expect(view_time).toHaveAttribute(`aria-invalid`, `true`)
     await expect(flight.getByRole(`alert`)).toContainText(`View 3 must come after view 2`)
-    await view_time.fill(`0.3`)
+    await view_time.fill(`0.6`)
     await view_time.press(`Tab`)
     await expect(view_time).toHaveAttribute(`aria-invalid`, `false`)
     await expect(flight.getByRole(`alert`)).toHaveCount(0)
     await expect(flight.getByLabel(`Space views evenly`)).not.toBeChecked()
     await flight.getByRole(`button`, { name: `Undo flight edit` }).click()
-    await expect(view_time).toHaveValue(`0.25`)
+    await expect(view_time).toHaveValue(`0.5`)
     await expect(flight.getByLabel(`Space views evenly`)).toBeChecked()
     await expect(home).toBeEnabled()
     await expect.poll(async () => (await read_pose()).position).not.toEqual(original.position)
@@ -326,6 +326,21 @@ for (const kind of [`structure`, `trajectory`] as const) {
       await expect(movie_time).toHaveValue(`0.25`)
       await expect(playhead).toHaveValue(`0.25`)
     }
+    // Mid-segment of the 8-segment orbit, where a Cartesian spline dipped 0.85% inside the
+    // circle, the camera keeps its distance to the target. Budget: the sampler's quaternion
+    // products and slerp stay within ~16 eps; allow 64 eps relative to the radius.
+    await movie_time.fill(`0.13`)
+    await movie_time.press(`Tab`)
+    await expect(playhead).toHaveValue(`0.13`)
+    const orbit_radius = Math.hypot(
+      ...original.position.map((value, axis) => value - original.target[axis]),
+    )
+    await expect(async () => {
+      const { position, target } = await read_pose()
+      expect(position).not.toEqual(original.position)
+      const radius = Math.hypot(...position.map((value, axis) => value - target[axis]))
+      expect(Math.abs(radius - orbit_radius)).toBeLessThan(64 * Number.EPSILON * orbit_radius)
+    }).toPass({ timeout: 10_000 })
     await home.click()
     await expect_original_pose()
     if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
@@ -340,11 +355,11 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await flight.getByRole(`button`, { name: `Update view`, exact: true }).click()
     await expect(preview).toBeEnabled()
     await flight.getByRole(`button`, { name: `Insert after`, exact: true }).click()
-    await expect(images).toHaveCount(18)
+    await expect(images).toHaveCount(10)
     await flight.getByRole(`button`, { name: `Undo flight edit` }).click()
-    await expect(images).toHaveCount(17)
+    await expect(images).toHaveCount(9)
     await flight.getByRole(`button`, { name: `Redo flight edit` }).click()
-    await expect(images).toHaveCount(18)
+    await expect(images).toHaveCount(10)
     await flight.getByRole(`button`, { name: `Undo flight edit` }).click()
 
     await preview.click()
@@ -379,7 +394,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(export_pane).toBeVisible()
     await expect_original_pose()
     await open_planner()
-    await expect(images).toHaveCount(17)
+    await expect(images).toHaveCount(9)
     await expect(flight.getByLabel(`Flight duration`, { exact: true })).toHaveValue(`2`)
     // Fullscreen changes the pane's coordinate system. Even a manually dragged pane must
     // return fully on screen, including its protruding reset/close tab.

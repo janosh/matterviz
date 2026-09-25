@@ -68,7 +68,8 @@
       id: `downhill`,
       label: `Downhill window`,
       key: `downhill`,
-      description: `Temperatures (0–2000 K) where the reaction energy is negative at the set partial pressures: a lower bound for gas release, an upper bound for gas uptake (not a firing recommendation)`,
+      color_scale: null,
+      description: `Temperatures (0–2000 K) where the reaction energy is negative at the set partial pressures: a lower bound for gas release, an upper bound for gas uptake (not a firing recommendation). Sorts by the lowest downhill temperature.`,
     },
     {
       id: `practicality`,
@@ -81,6 +82,13 @@
     { id: `steps`, label: `Steps`, key: `steps`, format: `d`, color_scale: null },
   ]
 
+  // Prose for display, search and export; the lowest downhill temperature as numeric sort key.
+  // Never-downhill routes have none, so they rank as if infinitely hot (last when ascending).
+  const downhill_cell = (windows: [number, number][]): string => {
+    const text = describe_downhill_windows(windows)
+    return windows.length ? `<span data-sort-value="${windows[0][0]}">${text}</span>` : text
+  }
+
   const data = $derived<RowData[]>(
     routes.map((route, idx) => ({
       route_id: route.id,
@@ -91,7 +99,7 @@
       inverse_hull: route.selectivity.inverse_hull_energy * 1000,
       margin: route.selectivity.selectivity_margin * 1000,
       n_more_favorable: route.selectivity.n_more_favorable,
-      downhill: describe_downhill_windows(route.thermodynamics.downhill_windows),
+      downhill: downhill_cell(route.thermodynamics.downhill_windows),
       atmosphere: route.thermodynamics.atmosphere,
       practicality: route.practicality.score,
       steps: route.kind === `two_step` ? 2 : 1,

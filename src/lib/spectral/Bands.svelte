@@ -470,20 +470,25 @@
   })
 
   let electronic_gap_annotation = $derived.by(() => {
-    if (
-      !show_gap_annotation ||
-      band_type !== `electronic` ||
-      effective_fermi_level === undefined
-    )
-      return null
+    if (!show_gap_annotation || band_type !== `electronic`) return null
     // One gap per system: the first structure, which also supplies the default E_F. Only
     // the spin channels on display count.
     const band_structure = structures[0]?.bs
     if (!band_structure) return null
-    const channels = [
-      ...(effective_spin_mode === `down_only` ? [] : band_structure.bands),
-      ...(effective_spin_mode === `up_only` ? [] : (band_structure.spin_down_bands ?? [])),
+    const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
+    const [show_up, show_down] = [
+      effective_spin_mode !== `down_only`,
+      effective_spin_mode !== `up_only`,
     ]
+    const channels = [...(show_up ? bands : []), ...(show_down ? (spin_down_bands ?? []) : [])]
+    // Occupations, where the data has them, decide filling over E_F (see electronic_band_gap)
+    if (occupations) {
+      return helpers.electronic_band_gap(channels, [
+        ...(show_up ? occupations : []),
+        ...(show_down ? (spin_down_occupations ?? []) : []),
+      ])
+    }
+    if (effective_fermi_level === undefined) return null
     return helpers.electronic_band_gap(channels, effective_fermi_level)
   })
 

@@ -277,6 +277,44 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   )
 }
 
+// State occupations shaped like the bands, as spin-keyed `occupations` ({'1': ..., '-1': ...},
+// like pymatgen's `bands`) or matterviz `occupations` plus `spin_down_occupations`. Present
+// but malformed occupations throw rather than being dropped, since electronic_band_gap would
+// then silently judge filling from E_F. Both keys are always returned so a spread replaces
+// unvalidated input values.
+const read_occupations = (
+  input: Record<string, unknown>,
+  bands: number[][],
+  spin_down_bands: number[][] | undefined,
+): Pick<types.BaseBandStructure, `occupations` | `spin_down_occupations`> => {
+  if (input.occupations == null) {
+    return { occupations: undefined, spin_down_occupations: undefined }
+  }
+  const channels = extract_spin_channels<unknown>(input.occupations)
+  const [spin_up, spin_down] = [channels?.up, channels?.down ?? input.spin_down_occupations]
+  const matches_bands = (occupations: unknown, ref: number[][]): occupations is number[][] =>
+    Array.isArray(occupations) &&
+    occupations.length === ref.length &&
+    occupations.every(
+      (occ_band, band_idx) =>
+        Array.isArray(occ_band) &&
+        occ_band.length === ref[band_idx].length &&
+        occ_band.every(Number.isFinite),
+    )
+  if (!matches_bands(spin_up, bands)) {
+    throw new Error(
+      `band structure occupations must be finite numbers shaped like the bands (${bands.length} bands x ${bands[0]?.length} k-points)`,
+    )
+  }
+  if (!spin_down_bands) return { occupations: spin_up, spin_down_occupations: undefined }
+  if (!matches_bands(spin_down, spin_down_bands)) {
+    throw new Error(
+      `spin-polarized band structure occupations need a finite spin-down channel shaped like spin_down_bands (${spin_down_bands.length} bands), under 'occupations' key '-1' or 'spin_down_occupations'`,
+    )
+  }
+  return { occupations: spin_up, spin_down_occupations: spin_down }
+}
+
 // Convert pymatgen bands while retaining their physical type and reference energy.
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
@@ -398,6 +436,7 @@ function convert_pymatgen_band_structure(
       ? raw_spin_down_bands
       : null
 
+  const spin_down_bands = valid_spin_down_bands?.map(to_thz)
   return {
     type: is_electronic_band_struct(pmg) ? `electronic` : `phonon`,
     ...(typeof pmg.efermi === `number` && { efermi: pmg.efermi }),
@@ -406,7 +445,8 @@ function convert_pymatgen_band_structure(
     branches,
     distance,
     bands: raw_bands.map(to_thz),
-    spin_down_bands: valid_spin_down_bands?.map(to_thz),
+    spin_down_bands,
+    ...read_occupations(pmg, raw_bands, spin_down_bands),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     ...(typeof pmg.has_nac === `boolean` && { has_nac: pmg.has_nac }),
@@ -428,7 +468,7 @@ export function normalize_band_structure(
     return convert_pymatgen_band_structure(band_struct)
   }
 
-  const { qpoints, branches, bands, distance } =
+  const { qpoints, branches, bands, distance, spin_down_bands } =
     band_struct as Partial<types.BaseBandStructure>
   if (
     !Array.isArray(qpoints) ||
@@ -461,6 +501,7 @@ export function normalize_band_structure(
     type: is_electronic_band_struct(band_struct) ? `electronic` : `phonon`,
     nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
     labels_dict: band_struct.labels_dict ?? {},
+    ...read_occupations(band_struct, bands, spin_down_bands),
   } as unknown as types.BaseBandStructure
 }
 
@@ -841,29 +882,56 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
 // rounds eigenvalues to 1e-4 eV, so a VBM sitting at E_F can land a hair above it and turn
 // a semiconductor into a metal (pymatgen's BandStructure.is_metal uses the same 1e-4).
 const FERMI_LEVEL_TOL = 1e-4
+// A state counts as filled when more than half occupied: smearing leaves the band-edge
+// states of small-gap semiconductors slightly fractional and tetrahedron (Blöchl)
+// corrections push occupations slightly outside [0, 1], so exact 0/1 tests would misfire.
+const FILLED_OCCUPATION = 0.5
 
-// Band gap of electronic bands (each an array of energies over k). A band with energies on
-// both sides of E_F makes the system metallic, so there is no gap (null). Otherwise the VBM is
-// the top of the fully occupied bands and the CBM the bottom of the empty ones. Taking the
-// highest point below and lowest above E_F over all points instead reported the gap between
-// neighbouring k-points of any band crossing E_F, so every metal showed a spurious gap.
+// Band gap of electronic bands (each an array of energies over k). `filling` says which
+// states are filled: per-state occupations shaped like `bands` when the data has them, else
+// E_F (states below it are filled). Occupations take precedence because E_F alone misjudges
+// non-SCF line-mode runs: their E_F comes from the uniform SCF mesh, so a VBM lying on the
+// path between SCF k-points can rise tens of meV above E_F while the band stays filled
+// (pymatgen's serialized vbm/cbm/is_metal come from E_F too, so they are no better source).
+// A band filled at some k-points and empty at others makes the system metallic (null).
+// Otherwise the VBM is the top of the filled bands and the CBM the bottom of the empty ones.
 export function electronic_band_gap(
   bands: readonly (readonly number[])[],
-  fermi_level: number,
+  filling: number | readonly (readonly number[])[],
 ): { vbm: number; cbm: number; gap: number } | null {
+  const occupations = typeof filling === `number` ? null : filling
+  if (
+    occupations &&
+    (occupations.length !== bands.length ||
+      bands.some((band, band_idx) => occupations[band_idx].length !== band.length))
+  ) {
+    const shape = (rows: readonly (readonly number[])[]): string =>
+      `[${rows.map((row) => row.length).join(`, `)}]`
+    throw new Error(
+      `electronic_band_gap: occupations must match the bands shape, got per-band lengths ${shape(occupations)} for bands ${shape(bands)}`,
+    )
+  }
   let vbm = -Infinity
   let cbm = Infinity
-  for (const band of bands) {
+  for (const [band_idx, band] of bands.entries()) {
     let [band_min, band_max] = [Infinity, -Infinity]
-    for (const energy of band) {
+    let [n_filled, n_empty] = [0, 0]
+    for (const [k_idx, energy] of band.entries()) {
       if (!Number.isFinite(energy)) continue
       band_min = Math.min(band_min, energy)
       band_max = Math.max(band_max, energy)
+      if (!occupations) continue
+      if (occupations[band_idx][k_idx] > FILLED_OCCUPATION) n_filled++
+      else n_empty++
     }
     if (band_min > band_max) continue // no finite energies
-    if (band_max <= fermi_level + FERMI_LEVEL_TOL) vbm = Math.max(vbm, band_max)
-    else if (band_min >= fermi_level - FERMI_LEVEL_TOL) cbm = Math.min(cbm, band_min)
-    else return null // crosses E_F
+    const [is_filled, is_empty] =
+      typeof filling === `number`
+        ? [band_max <= filling + FERMI_LEVEL_TOL, band_min >= filling - FERMI_LEVEL_TOL]
+        : [n_empty === 0, n_filled === 0]
+    if (is_filled) vbm = Math.max(vbm, band_max)
+    else if (is_empty) cbm = Math.min(cbm, band_min)
+    else return null // partially filled: a metal
   }
   const gap = cbm - vbm
   return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null

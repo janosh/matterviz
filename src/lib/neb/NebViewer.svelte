@@ -146,25 +146,15 @@
     if (active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
-  // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch:
-  // on_drop buffers each file and the batch end (set_loading(false), which the drop handler
-  // calls once after the last file) hands them all to parse_dropped_paths at once.
-  let dropped_batch: { content: string; filename: string }[] = []
+  // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
-    on_drop: (content, filename) => {
-      dropped_batch.push({ content: as_text(content), filename })
-    },
-    on_error: (msg) => (error_msg = msg),
-    set_loading: (loading) => {
-      if (loading) {
-        error_msg = undefined
-        dropped_batch = []
-        return
-      }
-      const files = dropped_batch
-      dropped_batch = []
-      if (files.length === 0) return
+    on_batch: (dropped) => {
+      error_msg = undefined
+      const files = dropped.map(({ content, filename }) => ({
+        content: as_text(content),
+        filename,
+      }))
       try {
         const parsed = parse_dropped_paths(files)
         // Profile before accepting, so an unplottable path is refused with its reason
@@ -179,6 +169,7 @@
         error_msg = `${names}: ${to_error(exc).message}`
       }
     },
+    on_error: (msg) => (error_msg = msg),
   })
 
   // Energy of the shown image on the same reference as the plot's y axis

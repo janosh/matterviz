@@ -1,6 +1,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '$lib/rdf'
 import {
+  calculate_all_pair_rdfs,
   calculate_pdf,
   calculate_rdf,
   calculate_total_pdf,
@@ -8,6 +9,7 @@ import {
   number_density,
   PDF_DEFAULT_N_BINS,
   site_composition,
+  weight_pdf_partials,
 } from '$lib/rdf'
 import { neutron_scattering_length } from '$lib/scattering'
 import type { Crystal } from '$lib/structure'
@@ -340,6 +342,30 @@ describe(`reduced PDF G(r)`, () => {
 describe(`total scattering-weighted PDF`, () => {
   const NACL_A = 5.63
   const nacl = () => rock_salt(`Na`, `Cl`, NACL_A)
+
+  // Callers validate with number_density before the neighbour search and pass that rho_0 on,
+  // so weighting must use the one it is given rather than computing the density again
+  test(`weight_pdf_partials scales G(r) by the rho_0 it is given and rejects an invalid one`, () => {
+    const structure = nacl()
+    const partial_rdfs = calculate_all_pair_rdfs(structure, { cutoff: 6, n_bins: 60 })
+    const rho_0 = number_density(structure)
+    const total = weight_pdf_partials(structure, partial_rdfs, { rho_0 })
+    const doubled = weight_pdf_partials(structure, partial_rdfs, { rho_0: 2 * rho_0 })
+    expect(total).toEqual(calculate_total_pdf(structure, { cutoff: 6, n_bins: 60 }))
+    expect(doubled.rho_0).toBe(2 * rho_0)
+    expect(doubled.g_r).toEqual(total.g_r)
+    // G(r) = 4*pi*r*rho_0*(g(r) - 1) is linear in rho_0, and scaling by 2 is exact in f64
+    expect(doubled.reduced_g_r).toEqual(total.reduced_g_r.map((value) => 2 * value))
+    expect(doubled.partials[0].reduced_g_r).toEqual(
+      total.partials[0].reduced_g_r.map((value) => 2 * value),
+    )
+    for (const bad_rho of [0, -1, Number.NaN, Infinity]) {
+      expect(() => weight_pdf_partials(structure, partial_rdfs, { rho_0: bad_rho })).toThrow(
+        `weight_pdf_partials needs a positive finite rho_0, got ${bad_rho}`,
+      )
+    }
+  })
+
   // calculate_all_pair_rdfs sorts the element list, so the unordered pair keys are Cl-* first
   const NACL_B: Record<string, Record<string, number>> = {
     // x-ray form factors at s = 0 reduce to Z

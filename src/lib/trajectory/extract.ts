@@ -83,7 +83,8 @@ export const full_data_extractor: TrajectoryDataExtractor = (
 }
 
 // One frame's plot row. The single definition of per-frame plot values: in-memory runs map it
-// over their frames and indexed runs over each frame as they decode it, so which reader a
+// over their frames and indexed runs over each frame as they decode it (ASE via a reduced
+// decode that skips positions and sites, see create_plot_row_frame), so which reader a
 // file's byte size picks cannot change its plot.
 export const frame_property_row = (
   frame: TrajectoryFrame,

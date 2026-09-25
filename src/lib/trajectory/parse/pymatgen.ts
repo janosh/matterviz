@@ -3,7 +3,11 @@ import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
-import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpers'
+import {
+  calc_force_stats,
+  checked_site_forces,
+  create_trajectory_frame,
+} from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { is_plain_object } from '$lib/utils'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -137,17 +141,8 @@ export function parse_pymatgen_trajectory(
     for (const [key, value] of Object.entries(frame_properties[idx] ?? {})) {
       // Per-atom forces go on the sites (`force`), their statistics into the metadata
       if (key === `forces` && Array.isArray(value)) {
-        if (
-          value.length !== n_sites ||
-          !value.every((force) => math.is_finite_vec3_like(force))
-        ) {
-          warn(
-            `Ignoring pymatgen forces of frame ${idx}: expected ${n_sites} finite 3-vectors`,
-          )
-          continue
-        }
-        forces = value as number[][]
-        Object.assign(processed_properties, calc_force_stats(forces))
+        forces = checked_site_forces(value, n_sites, `pymatgen forces of frame ${idx}`, warn)
+        if (forces) Object.assign(processed_properties, calc_force_stats(forces))
         continue
       }
       // Kept raw: pymatgen records no stress unit (VASP kB with compression positive, CHGNet

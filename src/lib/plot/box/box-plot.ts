@@ -44,7 +44,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   // Violin overrides (else fall back to component-level props)
   kind?: ViolinKind // 'box' (default), 'violin', or 'violin+box'
   side?: ViolinSide // 'both' (default), 'positive', or 'negative'
-  bandwidth?: BandwidthOption
+  bandwidth?: BandwidthOption // numeric: value-axis units, decades on a log value axis
   violin_width?: number // fraction of the category slot
   clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
   // Series sharing a `category` occupy the same slot (for split/grouped violins).

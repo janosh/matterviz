@@ -71,10 +71,12 @@
   const partials = $derived(
     struct_list.map(({ struct, label }) => {
       try {
-        number_density(struct) // the PDF's own message for a lattice-less or empty structure
+        // the PDF's own message for a lattice-less or empty structure, before the search
+        const rho_0 = number_density(struct)
         return {
           struct,
           label,
+          rho_0,
           partial_rdfs: calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc }),
         }
       } catch (exc) {
@@ -91,8 +93,9 @@
         continue
       }
       try {
-        const { struct, label, partial_rdfs } = entry
-        totals.push({ label, total: weight_pdf_partials(struct, partial_rdfs, { radiation }) })
+        const { struct, label, partial_rdfs, rho_0 } = entry
+        const total = weight_pdf_partials(struct, partial_rdfs, { rho_0, radiation })
+        totals.push({ label, total })
       } catch (exc) {
         failure = to_error(exc).message
       }

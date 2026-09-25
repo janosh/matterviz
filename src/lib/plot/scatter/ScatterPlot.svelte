@@ -1420,7 +1420,10 @@
   // navigable to a picture. Arrow keys therefore drive a cursor through the data
   // itself; the point it lands on becomes the hovered one, which the SVG overlay
   // draws back on top of the canvas (so it is focusable and shows a tooltip again).
-  let kbd_cursor = $state<number | null>(null)
+  // The cursor names a point by identity, not by its position among the in-range points,
+  // so a pan/zoom or data change can never silently retarget it to whichever point now sits
+  // at the old position
+  let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
 
   // The plotted point with the same logical key (series_idx, point_idx), or null when the
   // current data no longer plots it (series hidden or removed, index gone, value non-finite)
@@ -1457,23 +1460,31 @@
     return null
   }
 
+  // The cursor's point and its flat index among the in-range points. Null while that point
+  // is out of view or no longer plotted: the cursor is then inactive (nothing announced, the
+  // next arrow key starts over from the first or last in-range point).
+  let kbd_cursor_at = $derived.by(() => {
+    if (!kbd_cursor) return null
+    const { series_idx, point_idx } = kbd_cursor
+    const series_pos = filtered_series.findIndex((srs) => srs.orig_series_idx === series_idx)
+    const list = kbd_nav.lists[series_pos]
+    if (!list) return null
+    // filtered_data keeps the materialized order, which ascends in point_idx
+    const list_idx = partition_point(list, (pt) => pt.point_idx < point_idx)
+    const point = list[list_idx]
+    if (point?.point_idx !== point_idx) return null
+    return { point, nav_idx: kbd_nav.offsets[series_pos] + list_idx }
+  })
+
   // A data swap or a host-hidden series leaves no pointer event to clear the tooltip, so
   // re-resolve the hovered point on every data change: it keeps tracking the same point's
-  // new values, or closes when that point is no longer plotted. The keyboard cursor is a
-  // flat index into the in-range points (kbd_nav), so it resets once that index names
-  // another point, after a data change or a pan/zoom alike.
-  let kbd_cursor_key: string | null = null
+  // new values, or closes when that point is no longer plotted
   $effect.pre(() => {
-    void [materialized_series, kbd_nav]
+    void materialized_series
     untrack(() => {
-      if (tooltip_point) {
-        const next = plotted_point(tooltip_point)
-        if (next !== tooltip_point) tooltip_point = next
-      }
-      const cursor_point = kbd_cursor === null ? null : kbd_point(kbd_cursor)
-      const cursor_key =
-        cursor_point && roving_key(cursor_point.series_idx, cursor_point.point_idx)
-      if (cursor_key !== kbd_cursor_key) kbd_cursor = null
+      if (!tooltip_point) return
+      const next = plotted_point(tooltip_point)
+      if (next !== tooltip_point) tooltip_point = next
     })
   })
 
@@ -1482,18 +1493,17 @@
     if (total === 0) return false
     const forward = event.key === `ArrowRight` || event.key === `ArrowDown`
     const backward = event.key === `ArrowLeft` || event.key === `ArrowUp`
+    const current = kbd_cursor_at?.nav_idx
     let next: number
     if (event.key === `Home`) next = 0
     else if (event.key === `End`) next = total - 1
     else if (forward || backward) {
       const step = forward ? 1 : -1
-      next =
-        kbd_cursor == null ? (forward ? 0 : total - 1) : (kbd_cursor + step + total) % total
+      next = current == null ? (forward ? 0 : total - 1) : (current + step + total) % total
     } else return false
     event.preventDefault()
-    kbd_cursor = next
     const point = kbd_point(next)
-    kbd_cursor_key = point && roving_key(point.series_idx, point.point_idx)
+    kbd_cursor = point && { series_idx: point.series_idx, point_idx: point.point_idx }
     if (!point) return true
     hovered = true
     tooltip_point = point
@@ -1509,10 +1519,9 @@
       hovered = false
       return true
     }
-    const cursor_point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
-    if (cursor_point && points_interactive && is_activation_key(event)) {
+    if (kbd_cursor_at && points_interactive && is_activation_key(event)) {
       event.preventDefault()
-      activate_point(cursor_point, new MouseEvent(`click`))
+      activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
       return true
     }
     return move_kbd_cursor(event)
@@ -1521,10 +1530,7 @@
   // Reads the cursor's own point, not the hovered one: `tooltip_point` also tracks the
   // mouse, so announcing that would re-announce every point the pointer swept over once
   // the cursor had been used at all.
-  let live_message = $derived.by(() => {
-    const point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
-    return point ? point_accessible_label(point) : ``
-  })
+  let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
   // One tab stop for the whole point cloud instead of one per point: a 10k-point
   // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
