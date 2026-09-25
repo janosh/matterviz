@@ -351,55 +351,6 @@ export function build_xyz_frame(
   )
 }
 
-// Force statistics straight off a frame's atom lines, without building the frame: what the
-// indexed (large-file) run needs for its plot rows. Identical arithmetic to the materialized
-// path's calc_force_stats over the same columns — including its rules that an atom whose
-// species is unrecognised does not count and that forces are dropped unless every counted
-// atom has them — so the force curve does not change with the file size that picks the path.
-export function xyz_frame_force_stats(
-  text: string,
-  { atoms_start, end, num_atoms, comment }: XyzFrameSpec,
-): { force_max: number; force_norm: number } | null {
-  const { atomic_number_col, symbol_col, forces_col, min_cols, pos_col, spec_error } =
-    parse_extxyz_columns(comment)
-  // An unusable spec establishes no offsets, and the materialized path rejects the frame over
-  // it. Scanning `forces_col` anyway published a force curve point for a frame that cannot be
-  // built - here it read the tail of the position columns.
-  if (spec_error || forces_col < 0) return null
-  const scanner = new LineScanner()
-  let force_max = -Infinity
-  let sum_sq = 0
-  let counted = 0
-  let cursor = atoms_start
-  const required_columns = Math.max(min_cols, forces_col + 3, symbol_col + 1)
-  for (let idx = 0; idx < num_atoms && cursor < end; idx++) {
-    const eol = line_end(text, cursor, end)
-    // Atom payloads can carry dozens of velocity, stress and descriptor columns. The plot
-    // only needs coordinates, species and forces; full frame decoding still reads them all.
-    const n_cols = scanner.scan(text, cursor, eol, required_columns)
-    cursor = eol + 1
-    if (n_cols < min_cols) return null
-    // The frame builder rejects an atom whose coordinates are not finite. The frame walk's
-    // atom-line test only rules out NaN, so an overflowing `1e999` reaches here and used to
-    // contribute a force-curve point to a frame that cannot be built.
-    if (![0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))) return null
-    // An atom whose species the frame builder skips does not count toward the stats either
-    if (!scanned_element(scanner, symbol_col, atomic_number_col)) continue
-    if (n_cols < forces_col + 3) return null
-    const force_x = scanner.num(forces_col)
-    const force_y = scanner.num(forces_col + 1)
-    const force_z = scanner.num(forces_col + 2)
-    if (!Number.isFinite(force_x) || !Number.isFinite(force_y) || !Number.isFinite(force_z))
-      return null
-    const magnitude = Math.hypot(force_x, force_y, force_z)
-    if (magnitude > force_max) force_max = magnitude
-    sum_sq += magnitude ** 2
-    counted++
-  }
-  if (counted === 0) return null
-  return { force_max, force_norm: Math.sqrt(sum_sq / counted) }
-}
-
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
 // a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
 // instead of yielding it) or a final frame whose last atom line, the file's last line, is

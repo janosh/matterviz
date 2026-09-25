@@ -9,7 +9,11 @@ import { structure_to_xyz_str } from '$lib/structure/export'
 import { get_element_counts } from '$lib/structure/density'
 import { parse_xyz } from '$lib/structure/parse'
 import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory'
+import {
+  is_loaded_signal,
+  is_signal_descriptor,
+  trajectory_from_frames,
+} from '$lib/trajectory'
 import {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
@@ -25,6 +29,7 @@ import {
 } from '$lib/trajectory/parse/ase'
 import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
 import { hotspot_mean } from '$lib/trajectory/hotspots'
+import { generate_plot_series } from '$lib/trajectory/plotting'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   HDF5_MAX_WHOLE_DATASET_BYTES,
@@ -156,8 +161,7 @@ const FIXTURES = [
   { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, format: `pymatgen-json`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
     volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
-    frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983,
-      stress_max: 0.0021019913256168365, pressure: -0.0012979226206274082 },
+    frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983 },
     last_metadata: { energy: -58.59364700317383, force_max: 1.2433049712799658 },
     site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618,
       force: [4.470348358154297e-8, -2.7939677238464355e-8, 0.02407112345099449] } },
@@ -1334,6 +1338,50 @@ describe(`XYZ`, () => {
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
   })
 
+  // Which reader opens a file is decided by its byte size alone, so the plot must not change
+  // with it: the in-memory rows are canonical. The indexed run used to read comment scalars
+  // only, losing the lattice/density curves and gaining custom keys like ref_energy.
+  it(`extracts identical plot rows and series in memory and indexed`, async () => {
+    const npt_frame = (frame_idx: number) => {
+      const cell = 5 + 0.1 * frame_idx
+      return [
+        `2`,
+        `Lattice="${cell} 0 0 0 ${cell} 0 0 0 ${cell + 1}" Properties=species:S:1:pos:R:3:forces:R:3 ` +
+          `energy=${-10 - frame_idx} ref_energy=1.5 bandgap=${1 + 0.1 * frame_idx} temperature=${300 + frame_idx} step=${10 * frame_idx} pbc="T T T"`,
+        `Si 0 0 0 0.1 0 ${0.01 * frame_idx}`,
+        `O 1 1 1 0 -0.2 0`,
+      ].join(`\n`)
+    }
+    const content = [0, 1, 2].map(npt_frame).join(`\n`)
+    const [memory, indexed] = await Promise.all([
+      open(content, `npt.extxyz`),
+      open(content, `npt.extxyz`, { index_above_bytes: 0 }),
+    ])
+    await Promise.all([memory.properties.done, indexed.properties.done])
+    expect(indexed.properties.rows).toEqual(memory.properties.rows)
+    const series = (run: TrajectoryRun) =>
+      generate_plot_series(run.properties.rows, { include_all_properties: true }).map(
+        ({ id, x, y }) => ({ id, x, y }),
+      )
+    expect(series(indexed)).toEqual(series(memory))
+    // the canonical rows carry the lattice geometry and density, and every finite scalar the
+    // file records (an allowlist silently dropped bandgap and custom keys like ref_energy)
+    expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
+      expect.arrayContaining([
+        `energy`,
+        `force_max`,
+        `temperature`,
+        `a`,
+        `volume`,
+        `density`,
+        `bandgap`,
+        `ref_energy`,
+      ]),
+    )
+    // bookkeeping is not a series: the step is the row's own axis
+    expect(memory.properties.rows[0].properties).not.toHaveProperty(`step`)
+  })
+
   // Tails that are not truncation are kept (or skipped silently, like a 0-atom frame anywhere)
   // oxfmt-ignore
   it.each([
@@ -1413,11 +1461,40 @@ describe(`ASE`, () => {
     }
   })
 
-  it(`reads calculator forces onto the sites and stress into a pressure`, () => {
+  // ASE opens indexed only, but its rows must be the same canonical rows an in-memory run of
+  // the decoded frames gets: the header-only scan lost the lattice and density curves
+  it(`extracts the canonical plot rows, lattice, density and bandgap included`, async () => {
+    const buffer = make_ase_buffer(
+      [0, 1].map((frame_idx) => (array) => ({
+        ...(frame_idx === 0 && {
+          pbc: [true, true, true],
+          [`numbers.`]: array([2], (idx) => [14, 8][idx]),
+        }),
+        [`positions.`]: array([2, 3], (idx) => idx + 0.1 * frame_idx),
+        cell: [
+          [4 + 0.1 * frame_idx, 0, 0],
+          [0, 4, 0],
+          [0, 0, 4],
+        ],
+        [`calculator.`]: { energy: -1 - frame_idx },
+        info: { bandgap: 1.5 - 0.1 * frame_idx, temperature: 300 },
+      })),
+    )
+    const indexed = await open(buffer, `canonical.traj`)
+    await indexed.properties.done
+    const memory = trajectory_from_frames(parse_ase_trajectory(buffer).frames)
+    expect(indexed.properties.rows).toEqual(memory.properties.rows)
+    expect(Object.keys(indexed.properties.rows[1].properties)).toEqual(
+      expect.arrayContaining([`energy`, `bandgap`, `temperature`, `a`, `volume`, `density`]),
+    )
+    expect(indexed.properties.rows[1].properties).toMatchObject({ bandgap: 1.4, a: 4.1 })
+  })
+
+  it(`reads calculator forces onto the sites and stress into a pressure`, async () => {
     const buffer = ase_frames([true, true, true], box, true)
     const { frames } = parse_ase_trajectory(buffer)
-    const source = open_ase_frames(buffer)
-    onTestFinished(() => source.release())
+    const run = await open(buffer, `calc.traj`)
+    await run.properties.done
     for (const [frame_idx, { structure, metadata }] of frames.entries()) {
       expect(structure.sites.map(({ properties }) => properties.force)).toEqual([
         [0.3, 0, 0],
@@ -1429,8 +1506,8 @@ describe(`ASE`, () => {
       // calculator bookkeeping is not a frame property, and the vectors stay off metadata
       for (const key of [`name`, `parameters`, `forces`])
         expect(metadata).not.toHaveProperty(key)
-      // the indexed path's plot rows read the same header
-      expect(source.property_row(frame_idx).properties).toMatchObject({
+      // the indexed run's plot rows carry the same values
+      expect(run.properties.rows[frame_idx].properties).toMatchObject({
         force_max: 0.4,
         pressure: metadata?.pressure,
       })
@@ -1656,11 +1733,7 @@ describe(`JSON`, () => {
       { magmom: 2 },
     ])
     expect(frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
-    expect(frames[0].metadata).toMatchObject({
-      stress: stress.data,
-      stress_max: 3,
-      pressure: 2,
-    })
+    expect(frames[0].metadata).toMatchObject({ stress: stress.data })
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
   })
 
@@ -1725,6 +1798,42 @@ describe(`JSON`, () => {
     expect(frames.map((frame) => frame.structure.sites[0].xyz)).toEqual(expected_xyz)
     const periodic = (fields as { lattice?: unknown }).lattice !== null
     expect(frames.every(({ structure }) => `lattice` in structure === periodic)).toBe(true)
+  })
+
+  // pymatgen stores no stress unit (VASP kB, compression positive; CHGNet GPa), so a GPa
+  // pressure or stress curve derived from it would be a guess
+  it.each([
+    [
+      `numpy`,
+      numpy([
+        [-1, 0, 0],
+        [0, -2, 0],
+        [0, 0, -3],
+      ]),
+    ],
+    [
+      `plain list`,
+      [
+        [-1, 0, 0],
+        [0, -2, 0],
+        [0, 0, -3],
+      ],
+    ],
+  ])(`keeps %s stress raw without deriving pressure`, async (_label, stress) => {
+    const run = await open(pymatgen({ frame_properties: [{ stress }, { stress }] }), `s.json`)
+    await run.properties.done
+    for (const { metadata } of await frames_of(run)) {
+      expect(metadata?.stress).toEqual([
+        [-1, 0, 0],
+        [0, -2, 0],
+        [0, 0, -3],
+      ])
+      expect(metadata).not.toHaveProperty(`pressure`)
+      expect(metadata).not.toHaveProperty(`stress_max`)
+    }
+    const keys = run.properties.rows.flatMap(({ properties }) => Object.keys(properties))
+    expect(keys).not.toContain(`pressure`)
+    expect(keys).not.toContain(`stress_max`)
   })
 
   it.each([

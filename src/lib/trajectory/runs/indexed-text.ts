@@ -3,17 +3,11 @@ import { encode_frame } from '../frame'
 // payload and a private frame index (line offsets for XYZ, the ULM offsets table for ASE);
 // frames are decoded on read and cached by the session, never all at once. Per-frame scalars
 // for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
-import * as math from '$lib/math'
 import type { TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
 import type { WarningCollector } from '../parse/shared'
-import {
-  build_xyz_frame,
-  index_xyz_frames,
-  parse_extxyz_lattice,
-  parse_xyz_comment_metadata,
-  xyz_frame_force_stats,
-} from '../parse/xyz'
+import { frame_property_row } from '../extract'
+import { build_xyz_frame, index_xyz_frames } from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -32,31 +26,16 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
   let text = data
   const frames = index_xyz_frames(text, collector.warn)
+  const decode = (frame_idx: number): TrajectoryFrame =>
+    build_xyz_frame(
+      text,
+      frames[frame_idx],
+      { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
+      collector,
+    )
   return {
     frame_count: frames.length,
-    decode: (frame_idx): TrajectoryFrame =>
-      build_xyz_frame(
-        text,
-        frames[frame_idx],
-        { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
-        collector,
-      ),
-    property_row: (frame_idx) => {
-      const spec = frames[frame_idx]
-      const { comment } = spec
-      const { step, properties } = parse_xyz_comment_metadata(comment)
-      if (properties.volume === undefined) {
-        const lattice = parse_extxyz_lattice(comment)
-        if (lattice) properties.volume = Math.abs(math.det_3x3(lattice))
-      }
-      // Per-atom `forces` columns, like build_xyz_frame reads for the materialized path (and
-      // overriding a comment-level fmax the same way). Which path opens a file is decided by
-      // its byte size alone, so leaving these to the comment lost the force curve of every
-      // file above the indexing threshold that writes forces per atom.
-      const force_stats = xyz_frame_force_stats(text, spec)
-      if (force_stats) Object.assign(properties, force_stats)
-      return { frame_number: frame_idx, step: step ?? frame_idx, properties }
-    },
+    decode,
     // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
       text = ``
@@ -110,7 +89,10 @@ export const indexed_text_run = (
         const batch: TrajectoryMetadata[] = []
         do {
           try {
-            batch.push(source.property_row(frame_idx))
+            // Exactly an in-memory run's row (see frame_property_row), for XYZ and ASE alike:
+            // header- or comment-only scans lost the lattice and density curves and showed a
+            // different set of series depending on which reader a file's size picked
+            batch.push(frame_property_row(decode(frame_idx), frame_idx))
           } catch (error) {
             collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
           }

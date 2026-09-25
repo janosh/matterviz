@@ -150,19 +150,9 @@ export function parse_pymatgen_trajectory(
         Object.assign(processed_properties, calc_force_stats(forces))
         continue
       }
+      // Kept raw: pymatgen records no stress unit (VASP kB with compression positive, CHGNet
+      // GPa, ...), so deriving a GPa pressure or stress_max from it would guess
       processed_properties[key] = value
-      if (key === `stress` && Array.isArray(value)) {
-        const stress_tensor = value
-        if (!math.is_square_matrix(stress_tensor, 3)) {
-          warn(`Invalid stress tensor structure in frame ${idx}`)
-        } else {
-          // Normal stresses are the diagonal; pressure is minus their mean
-          const normal_stresses = stress_tensor.map((row, dim) => row[dim])
-          processed_properties.stress_max = Math.max(...normal_stresses.map(Math.abs))
-          processed_properties.pressure =
-            -(normal_stresses[0] + normal_stresses[1] + normal_stresses[2]) / 3
-        }
-      }
     }
 
     return create_trajectory_frame(

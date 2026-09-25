@@ -2,7 +2,7 @@ import { encode_frame, type NumericFrame } from '../frame'
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
 import { first_non_increasing_index } from '$lib/math'
-import { full_data_extractor } from '../extract'
+import { frame_property_row, full_data_extractor } from '../extract'
 import { is_supported_trajectory_signal_shape } from '../helpers'
 import type {
   TrajectoryDataExtractor,
@@ -110,11 +110,7 @@ const rows_from_frames = (
   frames: readonly TrajectoryFrame[],
   data_extractor: TrajectoryDataExtractor = full_data_extractor,
 ): TrajectoryMetadata[] =>
-  frames.map((frame, frame_idx) => ({
-    frame_number: frame_idx,
-    step: frame.step,
-    properties: data_extractor(frame),
-  }))
+  frames.map((frame, frame_idx) => frame_property_row(frame, frame_idx, data_extractor))
 
 export function trajectory_from_frames(
   frames: TrajectoryFrame[],

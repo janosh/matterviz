@@ -1,17 +1,15 @@
-import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
-import * as math from '$lib/math'
+import type * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
 import {
   calc_force_stats,
   convert_atomic_numbers,
-  copy_numeric_fields,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
 import type { ParsedTrajectory } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
@@ -20,17 +18,6 @@ import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
 // bytes (a real header is a few KB)
 const MAX_ASE_HEADER_BYTES = 50 * 1024 * 1024
 const decoder = new TextDecoder()
-
-const ASE_PLOT_SCALARS = [
-  ...TRAJECTORY_ENERGY_KEYS,
-  `force_max`,
-  `force_norm`,
-  `stress_max`,
-  `stress_frobenius`,
-  `pressure`,
-  `temperature`,
-  `bandgap`,
-]
 
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({
   n_items: Number(view.getBigInt64(32, true)),
@@ -269,12 +256,11 @@ export function decode_ase_frame(
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
-// first frame's atomic numbers are cached because ASE writes them once) and `property_row`
-// reads a frame's plot scalars off its JSON header alone. `release` drops the buffer.
+// first frame's atomic numbers and pbc are cached because ASE writes them once); plot rows
+// come from the decoded frames like every other reader's. `release` drops the buffer.
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
-  property_row: (frame_idx: number) => TrajectoryMetadata
   release: () => void
   read_atoms?: ReadAtoms
   atom_masses?: number[]
@@ -447,21 +433,6 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       throw frame_error(frame_idx, offset, error)
     }
   }
-  const property_row = (frame_idx: number): TrajectoryMetadata => {
-    const frame_data = frame_header(frame_idx)
-    // ASE puts computed results in the calculator and user-set values in `info`, but which
-    // scalar lands where is up to whoever wrote the file, so both sections get every alias
-    const properties: Record<string, number> = {}
-    const read_ndarray: NdarrayReader = (ref) => read_ndarray_from_view(live().view, ref)
-    for (const section of [ase_calculator_data(frame_data, read_ndarray), frame_data.info]) {
-      if (section && typeof section === `object`) {
-        copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
-      }
-    }
-    const cell = ase_cell(frame_data)
-    if (cell) properties.volume = Math.abs(math.det_3x3(cell))
-    return { frame_number: frame_idx, step: frame_idx, properties }
-  }
   return {
     frame_count: n_items,
     read_atoms,
@@ -471,7 +442,6 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
     decode,
-    property_row,
     release: () => {
       source = null
     },

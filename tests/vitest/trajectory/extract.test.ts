@@ -69,6 +69,24 @@ describe(`trajectory data extractors`, () => {
       { Step: 4, ...cubic, density: 0, temperature: 300 },
       false,
     ],
+    // every finite metadata scalar, not an allowlist; bookkeeping and non-numbers stay out
+    [
+      `every finite metadata scalar and nothing else`,
+      full_data_extractor,
+      3,
+      {
+        bandgap: 1.2,
+        ref_energy: -3,
+        step: 3,
+        total_atoms: 4,
+        label: `x`,
+        converged: true,
+        bad: Number.NaN,
+      },
+      undefined,
+      { Step: 3, bandgap: 1.2, ref_energy: -3 },
+      true,
+    ],
     [
       `combined energy, force, SCF and structural fields`,
       full_data_extractor,

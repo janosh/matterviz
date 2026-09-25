@@ -3,11 +3,7 @@
 // indexed (large-file) run must report the same per-frame scalars as the materialized one.
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import {
-  index_xyz_frames,
-  parse_xyz_trajectory,
-  xyz_frame_force_stats,
-} from '$lib/trajectory/parse/xyz'
+import { index_xyz_frames, parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { expect, test } from 'vitest'
 
@@ -72,32 +68,9 @@ test(`indexed run reports the same force stats as the materialized run`, async (
   expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
 })
 
-test.each([
-  [`species:S:1:pos:R:3:forces:R:3:extra:R:3`, `Si 0 0 0 3 4 0 NaN Infinity garbage`, true],
-  [`species:S:1:forces:R:3:extra:R:1:pos:R:3`, `Si 3 4 0 99 0 0 0`, true],
-  [`species:S:1:forces:R:3:extra:R:1:pos:R:3`, `Si 3 4 0 99 0 0 1e999`, false],
-  [`pos:R:3:forces:R:3:extra:R:1:Z:I:1`, `0 0 0 3 4 0 99 14`, true],
-  [`pos:R:3:forces:R:3:extra:R:1:Z:I:1`, `0 0 0 3 4 0 99 14.9`, false],
-  [`species:S:1:pos:R:3:forces:R:3`, `Si 0 0 0 3 4`, false],
-  [`species:S:1:pos:R:3:forces:R:3`, `Si 0 0 0 3 Infinity 0`, false],
-  [`species:S:1:pos:R:3:forces:R:3`, `X 0 0 0 3 4 0`, false],
-] as const)(`force-only scan honors required columns in %s: %s`, (layout, text, valid) => {
-  const stats = xyz_frame_force_stats(text, {
-    start: 0,
-    atoms_start: 0,
-    end: text.length,
-    line: 1,
-    num_atoms: 1,
-    comment: `Properties=${layout}`,
-  })
-  expect(stats).toEqual(valid ? { force_max: 5, force_norm: 5 } : null)
-})
-
-// The same agreement has to hold when a spec is unusable. Each frame carries its own
-// `Properties=`, and the indexed run only decodes frame 0 eagerly: a later frame's force
-// stats are scanned straight off its atom lines. `forces:R:3` still resolves to an offset
-// when a short `pos` discredits the spec, so that scan would publish a number for a frame
-// the materialized path refuses to build at all.
+// The same agreement has to hold when a spec is unusable: each frame carries its own
+// `Properties=`, so a later frame the materialized path refuses to build must not get a plot
+// row in the indexed run either.
 test(`indexed run publishes no force stats for a frame whose spec is unusable`, async () => {
   const sound = `species:S:1:pos:R:3:forces:R:3`
   const text = two_frames(sound, [[`Si`], [`Si`]])

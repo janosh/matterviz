@@ -2,7 +2,7 @@
 import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { get_density } from '$lib/structure/density'
 import { copy_numeric_fields } from './helpers'
-import type { TrajectoryDataExtractor, TrajectoryFrame } from './index'
+import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
 
 // Build an extractor that copies the listed numeric metadata fields (plus Step)
 const make_metadata_extractor =
@@ -28,14 +28,6 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
   copy_numeric_fields(data, metadata, [`stress_max`, `stress_frobenius`, `pressure`])
   return data
 }
-
-// SCF/electronic-convergence properties, emitted per frame by e.g. the vaspout.h5 parser
-const scf_data_extractor: TrajectoryDataExtractor = make_metadata_extractor([
-  `n_scf_steps`,
-  `scf_energy_delta`,
-  `scf_rms`,
-  `scf_charge_rms`,
-])
 
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 
@@ -67,13 +59,38 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
   return data
 }
 
-// Combined data extractor that extracts all common properties. Lattice parameters that never
-// vary are dropped by the plot's constant-series filter, so nothing marks them here.
+// Frame bookkeeping rather than per-frame physics: the step is the row's own axis
+const BOOKKEEPING_METADATA_KEYS = new Set([`step`, `frame_number`, `total_atoms`])
+
+// The canonical plot row: every finite numeric scalar the frame's metadata carries (energies,
+// forces, SCF residuals, bandgap, temperature, file-specific keys, ...) plus the lattice
+// geometry and density derived from its structure. A fixed allowlist here silently lost every
+// series it did not name. Lattice parameters that never vary are dropped by the plot's
+// constant-series filter, so nothing marks them here.
 export const full_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-): Record<string, number> => ({
-  ...energy_data_extractor(frame),
-  ...force_stress_data_extractor(frame),
-  ...scf_data_extractor(frame),
-  ...structural_data_extractor(frame),
+): Record<string, number> => {
+  const data: Record<string, number> = { Step: frame.step }
+  for (const [key, value] of Object.entries(frame.metadata ?? {})) {
+    if (
+      typeof value === `number` &&
+      Number.isFinite(value) &&
+      !BOOKKEEPING_METADATA_KEYS.has(key)
+    )
+      data[key] = value
+  }
+  return { ...data, ...structural_data_extractor(frame) }
+}
+
+// One frame's plot row. The single definition of per-frame plot values: in-memory runs map it
+// over their frames and indexed runs over each frame as they decode it, so which reader a
+// file's byte size picks cannot change its plot.
+export const frame_property_row = (
+  frame: TrajectoryFrame,
+  frame_number: number,
+  data_extractor: TrajectoryDataExtractor = full_data_extractor,
+): TrajectoryMetadata => ({
+  frame_number,
+  step: frame.step,
+  properties: data_extractor(frame),
 })
