@@ -361,17 +361,38 @@ describe(`BoxPlot`, () => {
     expect(kde_spy).toHaveBeenCalledTimes(3)
   })
 
-  test(`forwards axis_loading to the value axis`, async () => {
-    const plot = await with_measured_text(() =>
-      mount_sized_box_plot({
-        series: [basic],
-        y_axis: { options: [{ key: `energy`, label: `Energy`, unit: `eV` }] },
-        axis_loading: `y`,
-      }),
-    )
-    expect(plot.querySelector(`.interactive-axis-label.loading`)).not.toBeNull()
-    expect(plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)?.disabled).toBe(true)
-  })
+  test.each([null, `y`] as const)(
+    `forwards axis_loading=%s and on_axis_change to the value axis`,
+    async (axis_loading) => {
+      const on_axis_change = vi.fn()
+      const options = [
+        { key: `energy`, label: `Energy`, unit: `eV` },
+        { key: `volume`, label: `Volume` },
+      ]
+      const plot = await with_measured_text(() =>
+        mount_sized_box_plot({
+          series: [basic],
+          y_axis: { selected_key: `energy`, options },
+          axis_loading,
+          on_axis_change,
+        }),
+      )
+      const trigger = plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)
+      expect(plot.querySelector(`.interactive-axis-label.loading`) !== null).toBe(
+        axis_loading !== null,
+      )
+      expect(trigger?.disabled).toBe(axis_loading !== null)
+      if (axis_loading) return
+      trigger?.click()
+      await tick()
+      const volume = [...document.querySelectorAll<HTMLElement>(`[role="option"]`)].find(
+        (option) => option.textContent?.includes(`Volume`),
+      )
+      volume?.click()
+      await tick()
+      expect(on_axis_change).toHaveBeenCalledExactlyOnceWith(`y`, `volume`)
+    },
+  )
 
   // === Violin support ===
   const iqr_box = (plot: HTMLElement) => plot.querySelectorAll(`.box-series rect.iqr-box`)

@@ -474,6 +474,18 @@ describe(`Bands component`, () => {
     },
   )
 
+  it(`rejects occupations missing a spin-down channel instead of crashing`, async () => {
+    await mount_bands({
+      band_structs: { '': { ...spin_polarized_electronic, occupations: filled_below_band_2 } },
+      band_spin_mode: `overlay`,
+      show_gap_annotation: true,
+    })
+    expect(document.body.textContent).toMatch(
+      /Invalid band occupations: .*must be finite and match bands/,
+    )
+    expect(document.querySelector(`.scatter`)).toBeNull()
+  })
+
   const tick_labels = () => [
     ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),
   ]

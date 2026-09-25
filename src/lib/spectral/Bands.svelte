@@ -8,6 +8,7 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
+  import { to_error } from '$lib/utils'
   import { clamp, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
@@ -468,9 +469,20 @@
     return null
   })
 
-  let electronic_gap_annotation = $derived.by(() => {
-    // One gap per system, from the first one (which also supplies the default E_F) and only
-    // the spin channels on display
+  // One gap per system, from the first one (which also supplies the default E_F) and only the
+  // spin channels on display. Malformed occupations (wrong shape, or a spin-down channel
+  // without its own) reject the data with electronic_band_gap's message instead of throwing
+  // out of the $derived and blanking the component.
+  let gap_result = $derived.by(() => {
+    try {
+      return { gap: electronic_gap() }
+    } catch (exc) {
+      return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
+    }
+  })
+  let electronic_gap_annotation = $derived(gap_result.gap)
+  let data_error = $derived(strict_path_error ?? gap_result.error ?? null)
+  const electronic_gap = () => {
     const band_structure = structures[0]?.bs
     if (!show_gap_annotation || band_type !== `electronic` || !band_structure) return null
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
@@ -483,10 +495,10 @@
       : effective_fermi_level
     if (filling === undefined) return null
     return helpers.electronic_band_gap(shown(bands, spin_down_bands), filling)
-  })
+  }
 
   let empty_state_msg = $derived(
-    strict_path_error ??
+    data_error ??
       (num_structures === 0
         ? `No band structure data to display.`
         : `No plottable band segments were found in the provided data.`),
@@ -526,7 +538,7 @@
   )
 </script>
 
-{#if series_data.length > 0 && !strict_path_error}
+{#if series_data.length > 0 && !data_error}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
