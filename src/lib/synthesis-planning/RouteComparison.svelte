@@ -3,6 +3,7 @@
   import { Popover } from 'svelte-widgets'
   import { format_equation_html } from './format'
   import { assess_practicality } from './scoring'
+  import { describe_downhill_windows } from './thermo'
   import type {
     RouteComparisonOptions,
     ScoreWeights,
@@ -111,12 +112,10 @@
         ].join(`; `),
     },
     {
-      label: `Thermodynamic onset`,
-      hint: `Not a firing temperature`,
+      label: `Downhill window`,
+      hint: `Where ΔE < 0 at these pressures; not a firing schedule`,
       value: (step: SynthesisStep) =>
-        step.thermodynamics.onset_temperature === null
-          ? `No onset available`
-          : `${step.thermodynamics.onset_temperature} K`,
+        describe_downhill_windows(step.thermodynamics.downhill_windows),
     },
   ]
   const metrics: { label: string; hint?: string; value: (route: SynthesisRoute) => string }[] =

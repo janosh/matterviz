@@ -169,10 +169,12 @@ export interface SelectivityMetrics {
 export interface RouteThermodynamics {
   temperature: number
   partial_pressures: Partial<Record<GasSpecies, number>>
-  // Lowest temperature (K) at which the reaction energy turns negative at the given partial
-  // pressures, searched on a 1 K grid up to 2000 K. null when no gas is exchanged, when the
-  // reaction is already downhill at 0 K (then `onset_temperature` = 0), or never downhill.
-  onset_temperature: number | null
+  // Temperature intervals [T_min, T_max] (K, inclusive, 1 K grid over 0–2000 K) in which the
+  // reaction energy is negative at these partial pressures. Only gas chemical potentials vary
+  // with T: releasing gas makes a reaction downhill above a lower bound, taking gas up below an
+  // upper bound; an end at 0 or 2000 K is the scan edge, not a bound. Without gas exchange the
+  // energy is constant, so this is [[0, 2000]] or []. Not a firing schedule.
+  downhill_windows: [number, number][]
   // Moles of each gas per formula unit of target; positive = released, negative = consumed
   gas_exchange: Partial<Record<GasSpecies, number>>
   // Human-readable net gas exchange; not an experimental atmosphere recommendation.
@@ -227,7 +229,7 @@ export interface SynthesisStep {
 export type RejectReason =
   | `unbalanced` // precursors cannot combine to the target (with the allowed gas exchange)
   | `redundant_precursor` // a precursor gets zero coefficient, a smaller set covers this route
-  | `uphill` // reaction energy positive at the requested conditions and never downhill up to 2000 K
+  | `uphill` // reaction energy positive at the requested conditions and at every temperature 0-2000 K
 
 export interface SynthesisRoute {
   id: string

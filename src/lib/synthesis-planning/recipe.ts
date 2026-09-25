@@ -1,5 +1,6 @@
 import { format_num } from '$lib/labels'
 import { lookup_precursor_info } from './precursor-library'
+import { describe_downhill_windows } from './thermo'
 import type {
   SynthesisReaction,
   SynthesisRoute,
@@ -150,7 +151,7 @@ export function format_recipe_text(route: SynthesisRoute): string {
           .join(`, `) || `closed system`
       }`,
       `Modeled reaction energy: ${format_num(step.reaction.energy_per_atom, `.4~f`)} eV/atom; gas exchange: ${step.thermodynamics.atmosphere}`,
-      `Thermodynamic onset: ${step.thermodynamics.onset_temperature === null ? `not identified` : `${step.thermodynamics.onset_temperature} K`}; this does not determine a firing schedule.`,
+      `Downhill window: ${describe_downhill_windows(step.thermodynamics.downhill_windows)}; this does not determine a firing schedule.`,
       `Library guidance (unreferenced; verify before use):`,
       ...step.recipe.guidance,
       `Experimental assumptions (user supplied; blank means undecided):`,

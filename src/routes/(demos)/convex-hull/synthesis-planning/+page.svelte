@@ -77,8 +77,9 @@
       keep their 0 K computed energies, open gases get μ(T, p) = H<sub>f</sub> − T·S + kT
       ln(p/p°), so carbonate decomposition and O<sub>2</sub> release turn on with temperature.
       The
-      <em>onset</em> is the first temperature where a gas-exchanging reaction becomes downhill, not
-      a recommended firing temperature.
+      <em>downhill window</em> is the temperature range where a gas-exchanging reaction is downhill:
+      above a lower bound when it releases gas, below an upper bound when it takes gas up. It is
+      not a recommended firing temperature.
     </li>
     <li>
       <strong>Competing phases</strong>: every near-hull phase that the same precursor mixture

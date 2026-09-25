@@ -3,6 +3,7 @@
   import { HeatmapTable } from '$lib/table'
   import type { Column, RowData } from '$lib/table'
   import { format_equation_html } from './format'
+  import { describe_downhill_windows } from './thermo'
   import type { SynthesisRoute } from './types'
 
   let {
@@ -64,12 +65,10 @@
     },
     { id: `atmosphere`, label: `Net gas exchange`, key: `atmosphere`, filter: `category` },
     {
-      id: `onset`,
-      label: `Onset (K)`,
-      key: `onset`,
-      better: `lower`,
-      format: `d`,
-      description: `First downhill temperature found for a gas-exchanging reaction (not a firing recommendation)`,
+      id: `downhill`,
+      label: `Downhill window`,
+      key: `downhill`,
+      description: `Temperatures (0–2000 K) where the reaction energy is negative at the set partial pressures: a lower bound for gas release, an upper bound for gas uptake (not a firing recommendation)`,
     },
     {
       id: `practicality`,
@@ -92,7 +91,7 @@
       inverse_hull: route.selectivity.inverse_hull_energy * 1000,
       margin: route.selectivity.selectivity_margin * 1000,
       n_more_favorable: route.selectivity.n_more_favorable,
-      onset: route.thermodynamics.onset_temperature ?? null,
+      downhill: describe_downhill_windows(route.thermodynamics.downhill_windows),
       atmosphere: route.thermodynamics.atmosphere,
       practicality: route.practicality.score,
       steps: route.kind === `two_step` ? 2 : 1,

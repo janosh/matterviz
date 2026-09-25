@@ -11,7 +11,8 @@ import {
   hull_at,
   lookup_precursor_info,
   make_reaction,
-  onset_temperature,
+  describe_downhill_windows,
+  downhill_windows,
   plan_synthesis,
   PRECURSOR_LIBRARY,
   precursor_key,
@@ -366,10 +367,11 @@ describe(`analyze_selectivity`, () => {
 })
 
 describe(`temperature dependence`, () => {
+  // Lower bound of CaCO3 → CaO + CO2's downhill window: gas release is downhill above it
   const decomposition_onset = (
     pressure: number,
     cache: ReturnType<typeof create_thermo_cache>,
-  ): number | null => {
+  ): number => {
     const conditions = {
       temperature: 300,
       open_species: [`CO2` as const],
@@ -389,27 +391,83 @@ describe(`temperature dependence`, () => {
     const temperatures = Array.from({ length: 2001 }, (_, idx) => idx)
     expect(temperatures.map(cached)).toEqual(temperatures.map(energy_at))
     expect(energy_at(300)).toBeCloseTo(balanced.energy_per_fu, 9)
-    return onset_temperature(energy_at)
+    const windows = downhill_windows(energy_at)
+    expect(windows).toHaveLength(1)
+    expect(windows[0][1]).toBe(2000) // open towards high T
+    return windows[0][0]
   }
 
   test(`CaCO3 decomposition onset drops with CO2 partial pressure`, () => {
     const cache = create_thermo_cache()
     const onset_1bar = decomposition_onset(1, cache)
     const onset_air = decomposition_onset(4e-4, cache)
-    expect(onset_1bar).not.toBeNull()
-    expect(onset_air).not.toBeNull()
-    if (onset_1bar === null || onset_air === null) return
     expect(onset_air).toBeLessThan(onset_1bar)
     // Experiment: ~1170 K at 1 bar CO2; raw PBE formation energies put it a few hundred K lower
     expect(onset_1bar).toBeGreaterThan(600)
     expect(onset_1bar).toBeLessThan(1500)
   })
 
-  test(`onset_temperature handles the trivial cases`, () => {
-    expect(onset_temperature(() => -1)).toBe(0)
-    expect(onset_temperature(() => 1)).toBeNull()
-    expect(onset_temperature((temperature) => 500 - temperature)).toBe(501)
-    expect(onset_temperature((temperature) => 500 - temperature, 400)).toBeNull()
+  test.each([
+    [
+      `always downhill`,
+      () => -1,
+      [[0, 2000]],
+      `downhill at every temperature from 0 to 2000 K`,
+    ],
+    [`never downhill`, () => 1, [], `never downhill between 0 and 2000 K`],
+    [
+      `gas release: lower bound`,
+      (temp: number) => 500 - temp,
+      [[501, 2000]],
+      `downhill from 501 K`,
+    ],
+    [
+      `gas uptake: upper bound`,
+      (temp: number) => temp - 1480,
+      [[0, 1479]],
+      `downhill up to 1479 K`,
+    ],
+    [
+      `release + uptake: both bounds`,
+      (temp: number) => (temp - 800) * (temp - 1300),
+      [[801, 1299]],
+      `downhill from 801 to 1299 K`,
+    ],
+  ] as const)(`downhill_windows: %s`, (_label, energy_at, windows, text) => {
+    expect(downhill_windows(energy_at)).toEqual(windows)
+    expect(describe_downhill_windows(windows)).toBe(text)
+  })
+
+  // Oxidation takes O2 up, so its ΔE rises with T: at 1500 K CoO + O2 → Co3O4 is uphill but
+  // was downhill up to some lower temperature, which must be reported as an upper bound (an
+  // "onset" of 0 K read as "favorable above 0 K", i.e. everywhere)
+  test(`gas-consuming routes report an upper temperature limit`, () => {
+    const entries = [
+      make_phase({ Co: 1 }, 0, { entry_id: `Co` }),
+      make_phase({ O: 1 }, 0, { entry_id: `O` }),
+      make_phase({ Co: 1, O: 1 }, -1.2, { entry_id: `CoO` }),
+      make_phase({ Co: 3, O: 4 }, -1.3, { entry_id: `Co3O4` }),
+    ]
+    const plan_at = (temperature: number) =>
+      plan_synthesis({
+        entries,
+        target: `Co3O4`,
+        max_precursors: 1,
+        precursors: { only_common: false, allow: [`CoO`] },
+        conditions: { temperature, open_species: [`O2`] },
+      })
+    const hot_plan = plan_at(1500)
+    const [hot] = hot_plan.routes
+    expect(hot.reaction.equation).toBe(`6 CoO + O2 → 2 Co3O4`)
+    expect(hot.reaction.energy_per_atom).toBeGreaterThan(0)
+    const [[lower, upper], ...rest] = hot.thermodynamics.downhill_windows
+    expect([lower, rest]).toEqual([0, []])
+    expect(upper).toBeGreaterThan(300)
+    expect(upper).toBeLessThan(1500)
+    // the requested temperature only picks a point on the same window
+    expect(plan_at(300).routes[0].thermodynamics.downhill_windows).toEqual([[0, upper]])
+    expect(format_plan_text(hot_plan)).toContain(`downhill up to ${upper} K`)
+    expect(format_recipe_text(hot)).toContain(`Downhill window: downhill up to ${upper} K`)
   })
 })
 
@@ -452,7 +510,10 @@ describe(`plan_synthesis`, () => {
     ).toEqual([best.id, kept.id])
     expect(best.reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(best.thermodynamics.gas_exchange.CO2).toBeCloseTo(1, 9)
-    expect(best.thermodynamics.onset_temperature).toBeGreaterThan(0)
+    // CO2 release: downhill above a lower bound, open to the top of the scan
+    const [[lower, upper]] = best.thermodynamics.downhill_windows
+    expect(lower).toBeGreaterThan(0)
+    expect(upper).toBe(2000)
     for (const { phase } of [...best.reaction.reactants, ...best.reaction.products])
       expect(plan.phases).toContainEqual(phase)
     // Ba2TiO4 is the experimentally observed intermediate of this reaction

@@ -19,7 +19,8 @@ import type {
 } from './types'
 
 const COEFF_TOL = 1e-7
-const MAX_ONSET_TEMPERATURE = 2000
+// Upper end of the 1 K temperature scan for downhill windows (K)
+export const MAX_SCAN_TEMPERATURE = 2000
 
 // Formula-unit atom counts of a phase per element of the phase set, and its energy per formula unit
 const fu_counts = (phase: PlannerPhase): number[] =>
@@ -179,8 +180,8 @@ interface Competitor {
 
 // One prepared phase set/request only. Preserve pair order: LP coefficients depend on it.
 export const create_thermo_cache = () => ({
-  // μ(T) per `${species}:${pressure}` on the integer onset grid 0..MAX_ONSET_TEMPERATURE (NaN =
-  // not computed yet), so the onset scans of hundreds of routes share one provider sweep
+  // μ(T) per `${species}:${pressure}` on the integer scan grid 0..MAX_SCAN_TEMPERATURE (NaN =
+  // not computed yet), so the window scans of hundreds of routes share one provider sweep
   gas_mu: new Map<string, Float64Array>(),
   pairs: new Map<PlannerPhase, Map<PlannerPhase, Map<PlannerPhase, Competitor[]>>>(),
 })
@@ -367,7 +368,7 @@ export function reaction_energy_at_temperature(
     const key = `${species}:${pressure}`
     let grid = samples?.get(key)
     if (samples && !grid) {
-      grid = new Float64Array(MAX_ONSET_TEMPERATURE + 1).fill(NaN)
+      grid = new Float64Array(MAX_SCAN_TEMPERATURE + 1).fill(NaN)
       samples.set(key, grid)
     }
     return {
@@ -380,7 +381,7 @@ export function reaction_energy_at_temperature(
   })
   return (temperature) => {
     const on_grid =
-      Number.isInteger(temperature) && temperature >= 0 && temperature <= MAX_ONSET_TEMPERATURE
+      Number.isInteger(temperature) && temperature >= 0 && temperature <= MAX_SCAN_TEMPERATURE
     let gas_part = 0
     for (const { species, pressure, grid, exchange, n_atoms } of terms) {
       let mean = grid && on_grid ? grid[temperature] : NaN
@@ -394,15 +395,41 @@ export function reaction_energy_at_temperature(
   }
 }
 
-// Lowest temperature (1 K grid, ≤ max_temperature) where the reaction energy turns negative, or
-// null when it never does. Only meaningful for reactions that exchange gas: nothing else varies.
-export function onset_temperature(
+// Inclusive temperature intervals (1 K grid, 0..max_temperature) where the reaction energy is
+// negative. Gas release gives [T_min, max], gas uptake [0, T_max]; releasing one gas while
+// consuming another can bound both ends. Empty when the reaction is never downhill.
+export function downhill_windows(
   energy_at: (temperature: number) => number,
-  max_temperature = MAX_ONSET_TEMPERATURE,
-): number | null {
-  if (energy_at(0) < 0) return 0
-  for (let temperature = 1; temperature <= max_temperature; temperature++) {
-    if (energy_at(temperature) < 0) return temperature
+  max_temperature = MAX_SCAN_TEMPERATURE,
+): [number, number][] {
+  const windows: [number, number][] = []
+  let start: number | null = null
+  for (let temperature = 0; temperature <= max_temperature; temperature++) {
+    const downhill = energy_at(temperature) < 0
+    if (downhill && start === null) start = temperature
+    else if (!downhill && start !== null) {
+      windows.push([start, temperature - 1])
+      start = null
+    }
   }
-  return null
+  if (start !== null) windows.push([start, max_temperature])
+  return windows
+}
+
+// Plain-text reading of downhill_windows for UIs, recipes and agents, e.g. `downhill above
+// 1105 K`, `downhill up to 1480 K`, `downhill from 800 to 1300 K`
+export function describe_downhill_windows(
+  windows: readonly (readonly [number, number])[],
+  max_temperature = MAX_SCAN_TEMPERATURE,
+): string {
+  if (windows.length === 0) return `never downhill between 0 and ${max_temperature} K`
+  return windows
+    .map(([lower, upper]) => {
+      if (lower === 0 && upper === max_temperature)
+        return `downhill at every temperature from 0 to ${max_temperature} K`
+      if (lower === 0) return `downhill up to ${upper} K`
+      if (upper === max_temperature) return `downhill from ${lower} K`
+      return `downhill from ${lower} to ${upper} K`
+    })
+    .join(` and `)
 }
