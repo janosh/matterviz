@@ -5,7 +5,7 @@
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
-import { unique_id } from '$lib/plot/core/utils'
+import { unique_id } from '../utils'
 import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
