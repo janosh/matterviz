@@ -1829,6 +1829,31 @@ describe(`HeatmapTable`, () => {
       expect(rendered_models()).toEqual([`C`]) // alpha AND score >= 20
     })
 
+    it(`binds visible_rows to the filtered rows in sort order across all pages`, async () => {
+      const state = $state<{
+        visible_rows: RowData[]
+        column_prefs: Record<string, ColumnPrefs>
+      }>({ visible_rows: [], column_prefs: {} })
+      mount_table(
+        bind_props(
+          {
+            data: metric_rows,
+            columns: metrics,
+            sort: { column: `Score`, dir: `desc` as const },
+            pagination: { page_size: 1 },
+          },
+          state,
+        ),
+      )
+      await tick()
+      const models = () => state.visible_rows.map((row) => row.Model)
+      expect(models()).toEqual([`C`, `B`, `A`])
+      expect(rendered_models()).toEqual([`C`]) // one page rendered, all rows reported
+      state.column_prefs = { Tier: { filter: { kind: `category`, values: [`alpha`] } } }
+      await tick()
+      expect(models()).toEqual([`C`, `A`])
+    })
+
     // Summary rows read the same stats the color scales use, so they must shrink with the
     // filter rather than describing the untouched data.
     it(`summarizes only the rows left after filtering`, async () => {
@@ -1936,6 +1961,25 @@ describe(`HeatmapTable`, () => {
         states: [
           [[`C`, `A`, `B`], `↑`],
           [[`B`, `A`, `C`], `↓`],
+          [[`A`, `B`, `C`], ``],
+        ] as const,
+      },
+      {
+        // The gradient-direction pref (context menu) overrides the column config for sorting
+        // too, not just for the colors
+        desc: `starts ascending when column_prefs marks lower as better`,
+        data: [
+          { Model: `A`, Score: 20, Tier: `alpha` },
+          { Model: `B`, Score: 10, Tier: `beta` },
+          { Model: `C`, Score: 30, Tier: `alpha` },
+        ],
+        columns: metrics,
+        column_prefs: { Score: { better: `lower` as const } },
+        initial_sort: undefined,
+        initial: [`A`, `B`, `C`],
+        states: [
+          [[`B`, `A`, `C`], `↓`],
+          [[`C`, `A`, `B`], `↑`],
           [[`A`, `B`, `C`], ``],
         ] as const,
       },
@@ -2281,6 +2325,30 @@ describe(`HeatmapTable`, () => {
       expect(lines).toHaveLength(2) // header + 1 selected row
       expect(text).toContain(`Model A`)
       expect(text).not.toContain(`Model B`)
+    })
+
+    it(`exports selected rows in the current sort order`, async () => {
+      const text = await export_table_text(
+        {
+          data: sample_data,
+          columns: sample_columns,
+          show_row_select: true,
+          row_key: `Model`,
+          sort: { column: `Value`, dir: `desc` },
+        },
+        async () => {
+          for (const checkbox of document.querySelectorAll<HTMLInputElement>(
+            `td.select-col input[type="checkbox"]`,
+          ))
+            await click(checkbox)
+        },
+      )
+      const models = text
+        .trim()
+        .split(`\n`)
+        .slice(1)
+        .map((line) => line.split(`,`)[0])
+      expect(models).toEqual([`Model C`, `Model B`, `Model A`])
     })
   })
 

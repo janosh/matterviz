@@ -240,7 +240,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await flight.getByLabel(`Flight duration`, { exact: true }).fill(`2`)
     await flight.getByRole(`button`, { name: `360° orbit`, exact: true }).click()
     const images = flight.locator(`.waypoint img`)
-    await expect(images).toHaveCount(9)
+    await expect(images).toHaveCount(17)
     await expect(preview).toBeEnabled()
     await expect(flight.locator(`[aria-label^="Keyframe "]`)).toHaveCount(1)
     await expect(flight.getByLabel(`Keyframe 1 time`, { exact: true })).toBeDisabled()
@@ -275,7 +275,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
           node instanceof HTMLImageElement ? [node.naturalWidth, node.naturalHeight] : null,
         ),
       ),
-    ).toEqual(Array.from({ length: 9 }, () => [160, 100]))
+    ).toEqual(Array.from({ length: 17 }, () => [160, 100]))
     const thumbnails = await images.evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute(`src`)),
     )
@@ -340,11 +340,11 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await flight.getByRole(`button`, { name: `Update view`, exact: true }).click()
     await expect(preview).toBeEnabled()
     await flight.getByRole(`button`, { name: `Insert after`, exact: true }).click()
-    await expect(images).toHaveCount(10)
+    await expect(images).toHaveCount(18)
     await flight.getByRole(`button`, { name: `Undo flight edit` }).click()
-    await expect(images).toHaveCount(9)
+    await expect(images).toHaveCount(17)
     await flight.getByRole(`button`, { name: `Redo flight edit` }).click()
-    await expect(images).toHaveCount(10)
+    await expect(images).toHaveCount(18)
     await flight.getByRole(`button`, { name: `Undo flight edit` }).click()
 
     await preview.click()
@@ -379,7 +379,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(export_pane).toBeVisible()
     await expect_original_pose()
     await open_planner()
-    await expect(images).toHaveCount(9)
+    await expect(images).toHaveCount(17)
     await expect(flight.getByLabel(`Flight duration`, { exact: true })).toHaveValue(`2`)
     // Fullscreen changes the pane's coordinate system. Even a manually dragged pane must
     // return fully on screen, including its protruding reset/close tab.

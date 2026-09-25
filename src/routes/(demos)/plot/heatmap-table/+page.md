@@ -4,6 +4,10 @@ Columns use a stable `id`, a display `label`, and an optional row-property `key`
 
 For row selection, supply `row_key` as a property name or a function returning a unique string or number, and bind `selected_ids`. Selection survives replacing row objects; derive selected rows from the current data when needed. JSON exports use column IDs as keys; CSV and other display formats use labels.
 
+Bind `visible_rows` to read the rows the table currently shows: every row left after search and filters, in the active sort order and across all pages. Use it for custom exports or top-N picks instead of re-implementing the table's sort and filter logic.
+
+For large tables (thousands of rows), hold `data` in `$state.raw` rather than `$state`. A deep `$state` proxy wraps every row and cell in a reactive signal the table then reads through, which made a 20,000-row, 13-column table mount about 6x slower and refresh about 14x slower in our measurements. Replace the array to update it (`rows = [...rows, new_row]`) instead of mutating rows in place.
+
 ## Basic Usage
 
 ```svelte example

@@ -155,14 +155,36 @@ describe(`camera flight sampling`, () => {
 
   it(`builds a full orbit with exact loop endpoints and a constant-radius waypoint ring`, () => {
     const flight = orbit_camera_flight(pose, 8)
-    expect(flight.keyframes).toHaveLength(9)
+    expect(flight.keyframes).toHaveLength(17)
     expect(flight.keyframes[0]).toEqual({ ...pose, time: 0 })
-    expect(flight.keyframes[8]).toEqual({ ...pose, time: 8 })
+    expect(flight.keyframes[16]).toEqual({ ...pose, time: 8 })
     for (const frame of flight.keyframes)
       expect(Math.abs(Math.hypot(...frame.position) - 10)).toBeLessThan(
         16 * Number.EPSILON * 10,
       )
     expect(() => orbit_camera_flight({ ...pose, position: [0, 0, 0] })).toThrow(`orbit target`)
+  })
+
+  it(`flies a sampled orbit at constant radius, aimed at the target, with a seamless loop`, () => {
+    const sample = create_camera_flight_sampler(orbit_camera_flight(pose, 8))
+    const offset = (time: number) => {
+      const { position, target } = sample(time)
+      return new Vector3(...position).sub(new Vector3(...target))
+    }
+    for (let time = 0; time <= 8; time += 0.01) {
+      // 16 spline segments on a circle bulge inward by 0.055%; the old 9-point orbit with
+      // one-sided end tangents dollied 4.9% in over its first and last segments
+      expect(Math.abs(offset(time).length() / 10 - 1)).toBeLessThan(1e-3)
+      const forward = new Vector3(0, 0, -1).applyQuaternion(
+        new Quaternion(...sample(time).quaternion),
+      )
+      expect(forward.angleTo(offset(time).negate())).toBeLessThan((0.1 * Math.PI) / 180)
+    }
+    // Loop seam: leaving the start and arriving at the end move the camera the same way
+    const step = 1e-4
+    const start_velocity = offset(step).sub(offset(0))
+    const end_velocity = offset(8).sub(offset(8 - step))
+    expect(start_velocity.angleTo(end_velocity)).toBeLessThan(1e-3)
   })
 
   it.each([

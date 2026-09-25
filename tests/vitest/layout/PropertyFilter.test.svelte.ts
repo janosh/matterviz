@@ -108,6 +108,37 @@ describe(`PropertyFilter`, () => {
     expect(on_change).toHaveBeenCalledWith(5, 10)
   })
 
+  test(`clearing a typed bound reads back as undefined, not null`, () => {
+    const on_change = vi.fn()
+    const state = $state<{ min_value?: number; max_value?: number }>({
+      min_value: undefined,
+      max_value: undefined,
+    })
+    mount(PropertyFilter, {
+      target: document.body,
+      props: bind_props({ label: `Test`, on_change }, state),
+    })
+    flushSync()
+    const max_input = inputs()[1]
+    const type_and_blur = (text: string) => {
+      max_input.value = text
+      max_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      max_input.dispatchEvent(new Event(`blur`, { bubbles: true }))
+      flushSync()
+    }
+    type_and_blur(`3`)
+    expect([state.min_value, state.max_value]).toEqual([undefined, 3])
+    type_and_blur(``)
+    // null would filter as `val <= 0` in consumers testing `max === undefined`
+    expect([state.min_value, state.max_value]).toEqual([undefined, undefined])
+    expect(on_change.mock.calls).toEqual([
+      [undefined, 3],
+      [undefined, undefined],
+    ])
+    expect(container().classList.contains(`active`)).toBe(false)
+    expect(document.querySelector(`.clear-btn`)).toBeNull()
+  })
+
   test.each([
     [{ histogram_data: [1, 2, 3] }, `top`],
     [{ histogram_data: [1, 2, 3], histogram_position: `bottom` as const }, `bottom`],
