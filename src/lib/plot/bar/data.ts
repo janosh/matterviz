@@ -229,17 +229,18 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 
     let computed_range = nice_range(values, limit, scale_type)
 
-    // Bar value axes include 0 when all values share one sign - unless an explicit
-    // range is set or the scale is log (where 0 is invalid)
-    if (
-      (type_name === `linear` || type_name === `arcsinh`) &&
-      limit[0] == null &&
-      limit[1] == null
-    ) {
+    // Bars encode value as length from 0, so the value axis keeps the zero baseline when all
+    // values share one sign. Each bound decides alone: a pinned bound is honored exactly (a
+    // min above 0 is an explicit choice), an automatic one still reaches 0 as when neither
+    // is pinned. Log scales have no 0.
+    if (type_name === `linear` || type_name === `arcsinh`) {
       const has_negative = values.some((val) => val < 0)
       const has_positive = values.some((val) => val > 0)
-      if (has_positive && !has_negative) computed_range = [0, computed_range[1]]
-      else if (has_negative && !has_positive) computed_range = [computed_range[0], 0]
+      // a pinned opposite bound on the far side of 0 leaves no room for the baseline
+      if (has_positive && !has_negative && limit[0] == null && computed_range[1] > 0)
+        computed_range = [0, computed_range[1]]
+      else if (has_negative && !has_positive && limit[1] == null && computed_range[0] < 0)
+        computed_range = [computed_range[0], 0]
     }
 
     return computed_range

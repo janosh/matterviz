@@ -173,6 +173,27 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges(series, overrides)[key]).toEqual(range)
   })
 
+  // A pinned value bound is honored exactly; an automatic one keeps the zero baseline, as
+  // when neither is pinned. Pinning one bound used to drop the baseline, so a [50, 90] series
+  // pinned at max 100 drew its shortest bar with zero length.
+  // oxfmt-ignore
+  test.each([
+    { desc: `only max pinned, positive data: min stays 0`, y: [50, 70, 90], range: [null, 100], expected: [0, 100] },
+    { desc: `only min pinned below the data: max stays automatic`, y: [50, 70, 90], range: [10, null], expected: [10, 90] },
+    { desc: `only min pinned above 0: honored`, y: [50, 70, 90], range: [40, null], expected: [40, 90] },
+    { desc: `negative data, only min pinned: max stays 0`, y: [-90, -70, -50], range: [-100, null], expected: [-100, 0] },
+    { desc: `negative data, only max pinned below 0: honored`, y: [-90, -70, -50], range: [null, -40], expected: [-90, -40] },
+    { desc: `mixed signs, one bound pinned: 0 already spanned`, y: [-20, 50], range: [null, 60], expected: [-20, 60] },
+    { desc: `both bounds pinned: honored exactly`, y: [50, 90], range: [60, 80], expected: [60, 80] },
+  ] as const)(`one-sided value range: $desc`, ({ y, range, expected }) => {
+    const series = [bar({ x: y.map((_, idx) => idx), y: [...y] })]
+    expect(auto_ranges(series, { axes: { y: { range: [...range] } } }).y).toEqual(expected)
+    // horizontal bars read their value limits from x
+    expect(
+      auto_ranges(series, { orientation: `horizontal`, axes: { x: { range: [...range] } } }).x,
+    ).toEqual(expected)
+  })
+
   test(`uses scale-valid fallbacks for axes without finite points`, () => {
     expect(auto_ranges([])).toEqual({ x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] })
     const no_finite_points = [bar({ x: [NaN], y: [Infinity] })]
@@ -236,14 +257,15 @@ describe(`compute_bar_auto_ranges`, () => {
       x: [0, 5],
       y: [-0.25, 10.25],
     })
-    // horizontal: x2 carries the secondary values and the value axes honour x/x2 limits
+    // horizontal: x2 carries the secondary values and the value axes honour x/x2 limits,
+    // while each automatic bound still reaches the zero baseline
     const with_secondary = [...series, bar({ x: [0, 10], y: [-30, -10], x_axis: `x2` })]
     expect(
       auto_ranges(with_secondary, {
         orientation: `horizontal`,
         axes: { x: { range: [null, 8] }, x2: { range: [-40, null] } },
       }),
-    ).toEqual({ x: [1, 8], x2: [-40, -10], y: [-0.25, 10.25], y2: [0, 1] })
+    ).toEqual({ x: [0, 8], x2: [-40, 0], y: [-0.25, 10.25], y2: [0, 1] })
   })
 
   test(`vertical x2 series get their own category range; x stays sentinel without x1 series`, () => {
