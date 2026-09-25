@@ -280,6 +280,11 @@ export function build_orbit_props(opts: {
     if (fov === undefined || !(fov > 0) || fov >= 180) return undefined
     return perspective_distance_for_zoom(zoom, viewport_px, fov)
   }
+  // Callers disable hover raycasts while the camera moves. Interactivity may listen on the
+  // canvas after OrbitControls, so doing that synchronously in `start` would swallow the
+  // pointerdown that began the gesture (e.g. a click deleting a bond). Defer it past this
+  // event's dispatch, and skip it for presses that ended first.
+  let moving_timer: ReturnType<typeof setTimeout> | undefined
   return {
     target: opts.target,
     enableRotate: opts.rotate_speed > 0,
@@ -303,10 +308,11 @@ export function build_orbit_props(opts: {
     enableDamping: Boolean(opts.rotation_damping),
     dampingFactor: opts.rotation_damping,
     onstart: () => {
-      opts.set_camera_is_moving?.(true)
+      moving_timer = setTimeout(() => opts.set_camera_is_moving?.(true), 0)
       opts.on_start_extra?.()
     },
     onend: () => {
+      clearTimeout(moving_timer)
       opts.set_camera_is_moving?.(false)
       opts.on_end_extra?.()
     },

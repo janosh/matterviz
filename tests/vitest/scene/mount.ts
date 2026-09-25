@@ -9,9 +9,13 @@ export function mount_scene(render: Component) {
   const Harness: Component = (anchor) => {
     const canvas = document.createElement(`canvas`)
     const info = { render: { calls: 0 } }
+    // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
+    const dom = document.createElement(`div`)
+    dom.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
+    document.body.append(dom)
     contexts.push(
       createThrelteContext({
-        dom: document.body,
+        dom,
         canvas,
         createRenderer: () =>
           ({
