@@ -20,7 +20,7 @@ import type {
 
 const COEFF_TOL = 1e-7
 // Upper end of the 1 K temperature scan for downhill windows (K)
-export const MAX_SCAN_TEMPERATURE = 2000
+const MAX_SCAN_TEMPERATURE = 2000
 
 // Formula-unit atom counts of a phase per element of the phase set, and its energy per formula unit
 const fu_counts = (phase: PlannerPhase): number[] =>
