@@ -135,13 +135,18 @@
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
   // survives mode and amplitude changes and keys the camera framing, the displacement pattern
   // survives amplitude changes, and frames are synthesised on read
-  let supercell_result = $derived(
-    try_generate(() => phonon_supercell($state.snapshot(mode_data), supercell)),
-  )
+  // Only the unit cell is snapshotted (proxy-free for the run): snapshotting the whole
+  // dataset deep-copied every eigenvector at every q-point, 5-7 s for 20 atoms x 300 q-points
+  let supercell_result = $derived.by(() => {
+    const { n_atoms, atoms, lattice } = mode_data
+    return try_generate(() =>
+      phonon_supercell($state.snapshot({ n_atoms, atoms, lattice }), supercell),
+    )
+  })
   let pattern_result = $derived.by(() => {
     const [cell, selected] = [supercell_result.value, selection]
     if (!cell || !selected) return { value: null, error: null }
-    return try_generate(() => phonon_mode_pattern(cell, selected))
+    return try_generate(() => phonon_mode_pattern(cell, mode_data, selected))
   })
   let trajectory_result = $derived.by(() => {
     const pattern = pattern_result.value

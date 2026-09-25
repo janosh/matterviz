@@ -32,7 +32,18 @@ export function format_hkl(hkl: Hkl, format: HklFormat): string {
   return hkl.map((val) => (val < 0 ? overbar(val) : `${val}`)).join(``)
 }
 
-export type XrdPattern = { x: number[]; y: number[]; hkls?: HklObj[][]; d_hkls?: number[] }
+// `sticks` (default): discrete reflections, drawn as bars and broadened on request.
+// `profile`: a continuous intensity curve (a measured scan or an already broadened pattern),
+// drawn as a line, thinned for display and never broadened again. The parsers in ./parse
+// mark every file they read as a profile.
+export type XrdPatternKind = `sticks` | `profile`
+export type XrdPattern = {
+  x: number[]
+  y: number[]
+  hkls?: HklObj[][]
+  d_hkls?: number[]
+  kind?: XrdPatternKind
+}
 
 // Thin a long measured scan to at most `max_points` for rendering: uniform sampling plus
 // the strongest local maxima (up to 30% of the slots), so peaks that fall between uniform
@@ -61,6 +72,7 @@ export function decimate_pattern(pattern: XrdPattern, max_points: number): XrdPa
   const pick = <Item>(values: Item[]): Item[] => selected.map((idx) => values[idx])
   const { hkls, d_hkls } = pattern
   return {
+    ...pattern,
     x: pick(x_vals),
     y: pick(y_vals),
     ...(hkls && { hkls: pick(hkls) }),
@@ -80,8 +92,9 @@ export type XrdOptions = {
   accelerating_voltage?: number
   debye_waller_factors?: CompositionType
   scaled?: boolean
-  // 2θ window in degrees. Omitted → [0, 90] (see compute_xrd_pattern for why it stops short
-  // of the Lorentz singularity); null → unbounded up to the Bragg maximum 2/λ
+  // 2θ window in degrees, 0 <= min < max <= 180 (anything else throws). Omitted → [0, 90]
+  // (see compute_xrd_pattern for why it stops short of the Lorentz singularity); null →
+  // unbounded up to the Bragg maximum 2/λ
   two_theta_range?: Vec2 | null
   // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)
   peak_merge_tol?: number

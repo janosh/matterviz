@@ -22,7 +22,7 @@
     color: string
     opacity: number
     edge_color?: string // defaults to the face color (IBZ wedge)
-    edge_width: number
+    edge_width: number // absolute cylinder thickness in 1/Å (see bz_mark_sizes)
     onpointermove?: (event: ThreltePointerEvent) => void
     onpointerleave?: () => void
   } = $props()

@@ -211,7 +211,8 @@ const ifermi_json = {
   '@module': `ifermi.surface`,
   '@class': `FermiSurface`,
   isosurfaces: {
-    '3': [{ vertices: json_vertices, faces: json_faces, band_idx: 3, dimensionality: `3D` }],
+    // keyed by spin (Spin.up = 1); the band lives in band_idx
+    '1': [{ vertices: json_vertices, faces: json_faces, band_idx: 3, dimensionality: `3D` }],
   },
   reciprocal_space: { '@class': `WignerSeitzCell`, reciprocal_lattice: IDENTITY_MATRIX3 },
 }

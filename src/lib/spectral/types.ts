@@ -107,7 +107,7 @@ export interface BandLineStyle {
 export type LineKwargs = BandLineStyle | { acoustic?: BandLineStyle; optical?: BandLineStyle }
 
 export interface HoveredData {
-  hovered_frequency?: number | null
+  hovered_frequency?: number | null // data unit: THz (phonon) or eV (electronic)
   hovered_band_point?: InternalPoint | null
   hovered_qpoint_index?: number | null
 }

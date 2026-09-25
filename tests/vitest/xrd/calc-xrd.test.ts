@@ -777,6 +777,22 @@ describe(`compute_xrd_pattern options`, () => {
     },
   )
 
+  // 2·sin(θ)/λ turns over at 180°, so [0, 200] used to act as a silent 160° cap
+  test.each([
+    [0, 200],
+    [0, 240],
+    [-10, 90],
+    [60, 30],
+    [30, 30],
+    [0, NaN],
+  ] as Vec2[])(`two_theta_range [%d, %d] throws`, (min_angle, max_angle) => {
+    expect(() =>
+      compute_xrd_pattern(make_simple_cubic_structure(1.3404), {
+        two_theta_range: [min_angle, max_angle],
+      }),
+    ).toThrow(/Invalid two_theta_range/)
+  })
+
   test(`scaled false returns raw intensities; scaled true caps max to 100`, () => {
     const structure = make_simple_cubic_structure(2)
     const raw = compute_xrd_pattern(structure, { wavelength: `CuKa`, scaled: false })

@@ -32,9 +32,16 @@ import { make_volume, type VolumetricData, type VolumetricFileData } from './typ
 const POWERS_OF_TEN = Float64Array.from({ length: 23 }, (_, exp) => Number(`1e${exp}`))
 const MAX_SAFE_MANTISSA = 2 ** 53
 
+// Fortran drops the exponent letter once the exponent needs three digits: 0.8E-100 is
+// written 0.80000-100
+const FORTRAN_WIDE_EXPONENT = /^(?<mantissa>[-+]?(?:\d+\.?\d*|\.\d+))(?<exponent>[-+]\d{3})$/
+
 // General path for tokens the fast path cannot handle (also normalizes Fortran exponents)
-const parse_token_slow = (text: string, start: number, end: number): number =>
-  Number(normalize_scientific_notation(text.slice(start, end)))
+const parse_token_slow = (text: string, start: number, end: number): number => {
+  const token = normalize_scientific_notation(text.slice(start, end))
+  const wide = FORTRAN_WIDE_EXPONENT.exec(token)?.groups
+  return Number(wide ? `${wide.mantissa}e${wide.exponent}` : token)
+}
 
 // Parse the decimal token text[start, end) into a double. Digits, one optional `.`, and an
 // e/E/d/D exponent (Fortran) are consumed directly from char codes. When the integer
@@ -143,7 +150,13 @@ export function parse_float_block(
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
     const num = parse_decimal_token(text, start, pos)
-    if (!Number.isNaN(num)) data[idx++] = num
+    // Skipping an unreadable token shifted every later value one grid point early
+    if (Number.isNaN(num)) {
+      throw new TypeError(
+        `Unreadable number '${text.slice(start, pos)}' at character ${start} (value ${idx - data_offset + 1} of ${max_count})`,
+      )
+    }
+    data[idx++] = num
     if (first_column_only) while (pos < len && text.charCodeAt(pos) !== 10) pos++
   }
   return { count: idx - data_offset, end_pos: pos }
@@ -172,10 +185,58 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
     .slice(0, 3)
     .map((token) => Number(normalize_scientific_notation(token))) as Vec3
 
-// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format.
-// CHGCAR/PARCHG consists of a POSCAR header followed by volumetric data on a 3D grid.
-// Spin-polarized files contain two data blocks (total charge + magnetization).
-export function parse_chgcar(content: string): VolumetricFileData {
+// What a VASP volumetric file stores. `density` files (CHGCAR, CHG, AECCAR*, PARCHG) hold
+// rho·V_cell and are divided by the cell volume; `elf` (ELFCAR, dimensionless in [0, 1]) and
+// `potential` (LOCPOT, eV) are stored as is. Dividing every file by V put a real ELFCAR's
+// maximum at 0.019 instead of 0.87.
+export type VaspVolumetricKind = `density` | `elf` | `potential`
+
+// Kind from a VASP file name (compression suffixes and prefixes/suffixes like `mp-1_ELFCAR`
+// allowed). Names that do not say (a sniffed file, `CHGCAR`, `PARCHG.0001`) are densities.
+export function vasp_volumetric_kind(filename?: string): VaspVolumetricKind {
+  const name = strip_compression_extensions(filename ?? ``).toLowerCase()
+  if (name.includes(`elfcar`)) return `elf`
+  if (name.includes(`locpot`)) return `potential`
+  return `density`
+}
+
+// Block labels by kind and block count. Charge files carry the total density, then either
+// one magnetization block (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC).
+// Spin-polarized ELFCARs list the spin-up then spin-down ELF.
+function vasp_block_labels(kind: VaspVolumetricKind, n_blocks: number): string[] {
+  const labels: Record<VaspVolumetricKind, Record<number, string[]>> = {
+    density: {
+      1: [`charge density`],
+      2: [`charge density`, `magnetization density`],
+      4: [
+        `charge density`,
+        `magnetization density (x)`,
+        `magnetization density (y)`,
+        `magnetization density (z)`,
+      ],
+    },
+    elf: { 1: [`ELF`], 2: [`ELF (spin up)`, `ELF (spin down)`] },
+    potential: {
+      1: [`local potential`],
+      2: [`local potential (spin up)`, `local potential (spin down)`],
+    },
+  }
+  const found = labels[kind][n_blocks]
+  if (!found) {
+    throw new Error(
+      `VASP ${kind} file has ${n_blocks} data blocks; expected ${Object.keys(labels[kind]).join(` or `)}`,
+    )
+  }
+  return found
+}
+
+// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format: a POSCAR header followed by one
+// or more volumetric blocks on a 3D grid (see vasp_block_labels). `kind` sets whether values
+// are divided by the cell volume; parse_volumetric_file derives it from the file name.
+export function parse_chgcar(
+  content: string,
+  kind: VaspVolumetricKind = `density`,
+): VolumetricFileData {
   // Strip leading whitespace
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
@@ -233,11 +294,13 @@ export function parse_chgcar(content: string): VolumetricFileData {
     lattice: { matrix: lattice, pbc: [true, true, true], ...lattice_params },
   }
 
-  // Parse volumetric data blocks
-  const volumes: VolumetricData[] = []
-  const volume_labels = [`charge density`, `magnetization density`]
+  // Parse volumetric data blocks until the file runs out of grid-dimension lines
+  const blocks: { values: Float64Array; dims: Vec3 }[] = []
+  // Only density files store rho·V_cell. Math.abs guards a left-handed lattice.
+  const cell_volume = Math.abs(lattice_params.volume)
+  const divisor = kind === `density` && cell_volume > 1e-30 ? cell_volume : 1
 
-  for (let vol_idx = 0; vol_idx < 2; vol_idx++) {
+  for (let vol_idx = 0; ; vol_idx++) {
     // Skip blank lines
     while (pos < content.length) {
       cur = read_text_line(content, pos)
@@ -267,29 +330,17 @@ export function parse_chgcar(content: string): VolumetricFileData {
     pos = end_pos
 
     if (parsed_count < total_points) {
-      const message = `CHGCAR ${volume_labels[vol_idx]} (${ngx}×${ngy}×${ngz}): expected ${total_points} values, got ${parsed_count} — file truncated?`
-      // A truncated first block leaves nothing usable; a truncated magnetization block (a
-      // spin-polarised run cut short mid-write) must not discard the intact charge density
+      const message = `CHGCAR block ${vol_idx + 1} (${ngx}×${ngy}×${ngz}): expected ${total_points} values, got ${parsed_count} — file truncated?`
+      // A truncated first block leaves nothing usable; a truncated later block (a run cut
+      // short mid-write) must not discard the intact first one
       if (vol_idx === 0) throw new Error(message)
-      console.warn(`${message} Keeping the intact charge density.`)
+      console.warn(`${message} Keeping the intact first block only.`)
+      blocks.length = 1
       break
     }
 
-    // CHGCAR stores rho * V_cell, so normalize by dividing by cell volume.
-    // Use Math.abs to guard against negative determinant (left-handed lattice).
-    const cell_volume = Math.abs(lattice_params.volume)
-    const divisor = cell_volume > 1e-30 ? cell_volume : 1
     const dims: Vec3 = [ngx, ngy, ngz]
-    const values = transpose_x_fastest(data, dims, divisor)
-    volumes.push(
-      make_volume(values, dims, {
-        id: volume_labels[vol_idx],
-        lattice,
-        origin: [0, 0, 0],
-        periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
-        label: volume_labels[vol_idx],
-      }),
-    )
+    blocks.push({ values: transpose_x_fastest(data, dims, divisor), dims })
 
     // Skip augmentation occupancies and any remaining non-numeric lines
     while (pos < content.length) {
@@ -300,7 +351,17 @@ export function parse_chgcar(content: string): VolumetricFileData {
     }
   }
 
-  if (volumes.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
+  if (blocks.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
+  const labels = vasp_block_labels(kind, blocks.length)
+  const volumes = blocks.map(({ values, dims }, block_idx) =>
+    make_volume(values, dims, {
+      id: labels[block_idx],
+      lattice,
+      origin: [0, 0, 0],
+      periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
+      label: labels[block_idx],
+    }),
+  )
 
   return { structure, volumes }
 }
@@ -584,7 +645,9 @@ export function parse_volumetric_file(
   const format = looks_like_volumetric(content, filename)
   if (!format) return null
   try {
-    return format === `cube` ? parse_cube(content) : parse_chgcar(content)
+    return format === `cube`
+      ? parse_cube(content)
+      : parse_chgcar(content, vasp_volumetric_kind(filename))
   } catch (error) {
     throw new Error(
       `Failed to parse ${format === `cube` ? `.cube` : `VASP volumetric (CHGCAR-like)`} file${filename ? ` '${filename}'` : ``}: ${to_error(error).message}`,

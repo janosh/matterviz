@@ -42,7 +42,7 @@ export interface GeometryResult {
 export function compute_isosurface_geometries(input: GeometryInput): GeometryResult {
   const volumes = input.volumes.map((job): GeometryVolumeResult => {
     const prepare_start = performance.now()
-    // Returns the source grid itself when there is no range and it is within budget
+    // Always a fresh endpoint-inclusive grid (a periodic cell gains its wrap-around samples)
     const { grid, lattice, origin } = prepare_geometry_grid(job.volume, job.range)
     const prepare_geometry_ms = performance.now() - prepare_start
     const surfaces = job.surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {
@@ -51,6 +51,10 @@ export function compute_isosurface_geometries(input: GeometryInput): GeometryRes
         periodic: false, // finite display window in scene coordinates
         normals: false, // BufferGeometry.computeVertexNormals() on the main thread
         position_offset: origin,
+        // Front faces point away from the enclosed lobe (values beyond the isovalue): the
+        // transparent back-then-front pass and winding-derived normals rely on it, and a
+        // negative lobe used to come out inside-out
+        facing: isovalue < 0 ? `increasing` : `decreasing`,
       })
       return {
         token,

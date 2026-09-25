@@ -69,7 +69,8 @@
   // Positions plus the channels the collector will stream (site velocities, frame signals)
   // are budgeted like every other sweep: a run too large for the buffer is sub-sampled rather
   // than refused. The strided steps carry their own spacing, so the frequency axis stays
-  // right; only the position Nyquist drops, which the peak table reports per mode.
+  // right, but every spectrum's Nyquist frequency drops by the stride and faster vibrations
+  // fold back below it as spurious peaks, so the provenance line warns whenever stride > 1.
   let frame_stride = $derived(
     run
       ? suggest_frame_stride(
@@ -266,7 +267,7 @@
     </fieldset>
     <p class="provenance">
       {run.frame_count} total frames{frame_stride > 1
-        ? ` · positions sampled 1 in ${frame_stride} to fit the memory budget`
+        ? ` · positions and signals sampled 1 in ${frame_stride} to fit the memory budget`
         : ``} · timestep {has_physical_time
         ? `${format_num(analysis_time_step ?? 0, `.5~g`)} ${analysis_time_unit}`
         : `not recorded`} · raw spectra remain unsmoothed and independently normalized only for display
@@ -274,6 +275,12 @@
     <button onclick={calculate} disabled={calculation_busy}>{calculation_label}</button>
     {#if progress}<span class="progress">{progress.stage}</span>{/if}
     {#if error_msg}<StatusMessage type="error" message={error_msg} />{/if}
+    {#if frame_stride > 1}
+      <StatusMessage
+        type="warning"
+        message={`Sub-sampling lowers the Nyquist frequency ${frame_stride}-fold${result ? ` to ${format_num(result.vdos.nyquist, `.4~g`)} ${result.frequency_unit}` : ``}: vibrations above it alias into spurious lower-frequency peaks.`}
+      />
+    {/if}
   {/if}
 {/snippet}
 

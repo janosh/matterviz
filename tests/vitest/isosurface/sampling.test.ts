@@ -201,6 +201,25 @@ describe(`sample_volume_at_positions`, () => {
   })
 })
 
+// Viewers pass $state volumes: every property read then runs a proxy trap. Reading dims and
+// values per sample made slices and vertex colouring 14-35x slower (16.9 s vs 475 ms for a
+// 1024² slice of a 100³ grid), so the reads must not scale with the number of samples.
+test(`samplers read the volume a fixed number of times, not once per sample`, () => {
+  let n_reads = 0
+  const counted = new Proxy(linear_volume(11, cubic, false), {
+    get: (target, key, receiver) => {
+      n_reads++
+      return Reflect.get(target, key, receiver)
+    },
+  })
+  const sampler = create_volume_sampler(counted)
+  const reads_at_creation = n_reads
+  for (let idx = 0; idx < 1000; idx++) sampler([idx % 10, 5, 5])
+  expect(n_reads).toBe(reads_at_creation)
+  sample_volume_at_positions(counted, new Float64Array(3000).fill(5))
+  expect(n_reads - reads_at_creation).toBeLessThan(20)
+})
+
 describe(`create_volume_sampler reads the current volume fields`, () => {
   // Pin lattice, origin, and periodic so a future cache keyed on volume identity
   // that misses one of them fails a test

@@ -604,15 +604,26 @@ function clipped_hull(
   return compute_convex_hull(vertices, edge_sharp_angle_deg)
 }
 
-// Compute the irreducible Brillouin zone by clipping the full BZ with symmetry planes
+// Compute the irreducible Brillouin zone by clipping the full BZ with symmetry planes.
+// time_reversal (default on): E(k) = E(−k) without magnetic order, so the k-space symmetry is
+// the Laue group (point group plus inversion), as VASP/QE k-point reduction and standard
+// band paths assume. Without it a non-centrosymmetric crystal (Td: 24 ops) got a wedge twice
+// the size of the true IBZ. Pass false for magnetic or spin-orbit-broken systems.
 export function compute_irreducible_bz(
   bz_data: BrillouinZoneData,
   point_group_ops: Matrix3x3[],
-  edge_sharp_angle_deg = 5,
+  { time_reversal = true, edge_sharp_angle_deg = 5 } = {},
 ): IrreducibleBZData {
+  const ops = time_reversal
+    ? [
+        ...point_group_ops,
+        ...point_group_ops.map((rot) => rot.map((row) => row.map((val) => -val)) as Matrix3x3),
+      ]
+    : point_group_ops
   // Convert fractional rotations to Cartesian k-space rotations
-  // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows)
-  const cartesian_ops = point_group_ops.map((rotation_matrix) =>
+  // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows).
+  // Duplicates (−R already in a centrosymmetric group) collapse onto one plane below.
+  const cartesian_ops = ops.map((rotation_matrix) =>
     fractional_to_cartesian_rotation(rotation_matrix, bz_data.k_lattice),
   )
   const clipping_planes = compute_ibz_clipping_planes(cartesian_ops)

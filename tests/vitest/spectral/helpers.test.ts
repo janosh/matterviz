@@ -22,6 +22,7 @@ import {
   normalize_band_structure,
   normalize_densities,
   trapezoid_weights,
+  electronic_band_gap,
   normalize_dos,
   pretty_sym_point,
   qpoint_x_position,
@@ -801,6 +802,43 @@ describe(`normalize_band_structure`, () => {
   })
 })
 
+describe(`electronic_band_gap`, () => {
+  it.each([
+    [
+      `insulator`,
+      [
+        [-2, -1],
+        [1, 3],
+      ],
+      0,
+      { vbm: -1, cbm: 1, gap: 2 },
+    ],
+    [
+      `band touching E_F from below`,
+      [
+        [-2, 0],
+        [0.5, 1],
+      ],
+      0,
+      { vbm: 0, cbm: 0.5, gap: 0.5 },
+    ],
+    // the old any-point scan reported vbm -0.3, cbm 0.2 for this single crossing band
+    [`metal (band crosses E_F)`, [[-1, -0.3, 0.2, 1]], 0, null],
+    [`all bands occupied`, [[-2, -1]], 0, null],
+    [
+      `non-finite energies skipped`,
+      [
+        [NaN, -1],
+        [1, Infinity],
+      ],
+      0,
+      { vbm: -1, cbm: 1, gap: 2 },
+    ],
+  ])(`%s`, (_desc, bands, fermi_level, expected) => {
+    expect(electronic_band_gap(bands, fermi_level)).toEqual(expected)
+  })
+})
+
 describe(`normalize_dos`, () => {
   it.each([
     [
@@ -852,16 +890,21 @@ describe(`normalize_dos`, () => {
     [`cm^-1`, 1 / THZ_TO_INVERSE_CM],
     [`cm⁻¹`, 1 / THZ_TO_INVERSE_CM],
     [`meV`, 1 / 4.135667696],
-  ])(`phonon frequencies declared in %s are stored in THz`, (frequency_unit, thz_per_unit) => {
-    const result = normalize_dos({
-      frequencies: [0, 10],
-      densities: [0, 1],
-      ...(frequency_unit && { frequency_unit }),
-    })
-    expect(result?.type).toBe(`phonon`)
-    if (result?.type === `phonon`)
+  ])(
+    `phonon DOS declared in %s is stored in THz with its integral preserved`,
+    (frequency_unit, thz_per_unit) => {
+      const result = normalize_dos({
+        frequencies: [0, 10],
+        densities: [0, 1],
+        ...(frequency_unit && { frequency_unit }),
+      })
+      expect(result?.type).toBe(`phonon`)
+      if (result?.type !== `phonon`) return
       expect(result.frequencies[1]).toBeCloseTo(10 * thz_per_unit, 8)
-  })
+      // g is per unit frequency: ∫g dν = 5 in any unit, so densities scale by 1/thz_per_unit
+      expect(result.densities[1]).toBeCloseTo(1 / thz_per_unit, 8)
+    },
+  )
 
   it.each([
     [`null`, null],

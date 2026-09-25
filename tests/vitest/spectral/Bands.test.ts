@@ -451,17 +451,35 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  it(`annotates the electronic gap and ignores the units prop for electronic values`, async () => {
-    await mount_bands({
-      band_structs: { '': spin_polarized_electronic },
-      band_spin_mode: `up_only`,
-      units: `cm^-1`,
-      show_gap_annotation: true,
-    })
-    expect(document.body.textContent).toContain(`Energy (eV)`)
-    expect(document.body.textContent).toContain(`Eg:`)
-    expect(document.body.textContent).toContain(`0.3 eV`)
-  })
+  // Bands 0 and 1 of the fixture cross E_F = 0, i.e. a metal. The gap used to be the largest
+  // below-E_F and smallest above-E_F energy over all points, which reported 0.3 eV for it.
+  it.each([
+    [`metal`, 0, null],
+    [`semiconductor`, -0.95, `0.25 eV`], // bands 0-1 top out at -0.05, band 2 starts at 0.2
+  ])(
+    `electronic gap annotation for a %s ignores the units prop`,
+    async (_desc, shift, expected_gap) => {
+      const shifted = {
+        ...spin_polarized_electronic,
+        bands: spin_polarized_electronic.bands.map((band, band_idx) =>
+          band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
+        ),
+      }
+      await mount_bands({
+        band_structs: { '': shifted },
+        band_spin_mode: `up_only`,
+        units: `cm^-1`,
+        show_gap_annotation: true,
+      })
+      const text = document.body.textContent ?? ``
+      expect(text).toContain(`Energy (eV)`)
+      if (expected_gap === null) expect(text).not.toContain(`Eg:`)
+      else {
+        expect(text).toContain(`Eg:`)
+        expect(text).toContain(expected_gap)
+      }
+    },
+  )
 
   const tick_labels = () => [
     ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),

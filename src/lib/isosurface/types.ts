@@ -133,6 +133,7 @@ export interface VolumetricFileData {
 // optionally picks a different volume whose scalar field is sampled at surface
 // vertices to drive a colormap (e.g. density surface colored by ESP).
 export interface IsosurfaceLayer {
+  // Any finite value in the volume's units: 0 draws a signed field's nodal surface
   isovalue: number
   color: string
   opacity: number

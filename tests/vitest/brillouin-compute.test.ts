@@ -13,6 +13,7 @@ import { DEFAULT_FIT_PADDING } from '$lib/structure/camera-fit'
 import {
   bz_fit_extent,
   cartesian_to_fractional,
+  bz_mark_sizes,
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
@@ -655,6 +656,16 @@ const MIRROR_Z_MAT: Matrix3x3 = [
 ]
 const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z_MAT])
 
+// Sign of the permutation a signed permutation matrix applies (+1 even, −1 odd)
+const perm_parity = (rot: Matrix3x3): number => {
+  const perm = rot.map((row) => row.findIndex((val) => val !== 0))
+  let parity = 1
+  for (let idx = 0; idx < 3; idx++) {
+    for (let jdx = idx + 1; jdx < 3; jdx++) if (perm[idx] > perm[jdx]) parity = -parity
+  }
+  return parity
+}
+
 describe(`compute_irreducible_bz`, () => {
   const basis_z = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
 
@@ -717,10 +728,27 @@ describe(`compute_irreducible_bz`, () => {
     },
   )
 
-  test(`P1 (identity only) → full BZ`, () => {
-    const ibz = compute_irreducible_bz(basis_z, [IDENTITY_MAT])
+  test(`P1 (identity only) → full BZ without time reversal, half with it`, () => {
+    const ibz = compute_irreducible_bz(basis_z, [IDENTITY_MAT], { time_reversal: false })
     expect(ibz.vertices).toHaveLength(basis_z.vertices.length)
     expect(ibz.volume).toBeCloseTo(basis_z.volume, 6)
+    expect(compute_irreducible_bz(basis_z, [IDENTITY_MAT]).volume).toBeCloseTo(
+      basis_z.volume / 2,
+      6,
+    )
+  })
+
+  // Time reversal makes E(k) = E(−k), so the k-space group is the Laue group: the 24-op
+  // non-centrosymmetric Td reduces the zone 48-fold like Oh (it used to give 24)
+  const td_ops = oh_ops.filter((rot) => math.det_3x3(rot) * perm_parity(rot) > 0)
+  test.each([
+    [`Td with time reversal`, 48, td_ops, true],
+    [`Td without time reversal`, 24, td_ops, false],
+    [`Oh with time reversal (already centrosymmetric)`, 48, oh_ops, true],
+  ] as const)(`%s → BZ / %i`, (_label, order, ops, time_reversal) => {
+    expect(ops).toHaveLength(ops === td_ops ? 24 : 48)
+    const ibz = compute_irreducible_bz(basis_z, [...ops], { time_reversal })
+    expect(Math.abs(ibz.volume * order - basis_z.volume)).toBeLessThan(1e-8 * basis_z.volume)
   })
 
   test.each([
@@ -744,7 +772,7 @@ describe(`compute_irreducible_bz`, () => {
       digits: 6,
     },
   ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
-    const ibz = compute_irreducible_bz(basis_z, ops)
+    const ibz = compute_irreducible_bz(basis_z, ops, { time_reversal: false })
     expect(ibz.volume / basis_z.volume).toBeCloseTo(ratio, digits)
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     if (check_faces) {
@@ -774,7 +802,9 @@ describe(`compute_irreducible_bz`, () => {
       reference_data.hexagonal.reciprocal_lattice as Matrix3x3,
       1,
     )
-    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
+    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ], {
+      time_reversal: false,
+    })
     expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
   })
 })
@@ -926,6 +956,16 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
     expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
+  })
+
+  // Edges, k-path and symmetry points were fixed 1/Å sizes while edge_width claimed to be a
+  // fraction of the zone: 0.08% of a Si zone but 11-14% of a 100 Å supercell's
+  test.each([2, 0.0628])(`bz_mark_sizes scale with the zone (bz_size %d)`, (bz_size) => {
+    const sizes = bz_mark_sizes(bz_size, 0.002)
+    expect(sizes.edge / bz_size).toBeCloseTo(0.001, 12)
+    expect(sizes.kpath / bz_size).toBeCloseTo(0.006, 12)
+    expect(sizes.sym_point / bz_size).toBeCloseTo(0.0075, 12)
+    expect(sizes.hovered_point / bz_size).toBeCloseTo(0.015, 12)
   })
 
   test(`k_space_size is the mean k-vector magnitude, 10 when missing`, () => {

@@ -10,7 +10,15 @@ import {
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
 import { mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
-import { bind_props, doc_query, expect_plot_controls, mount_sized, plot_svg } from '../setup'
+import {
+  bind_props,
+  clip_rect,
+  doc_query,
+  expect_plot_controls,
+  mount_sized,
+  plot_svg,
+} from '../setup'
+import { convert_frequencies } from '$lib/spectral/frequency-units'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -154,6 +162,35 @@ describe(`Dos component`, () => {
     }
     expect(select.value).toBe(`THz`)
   })
+
+  // reference_frequency, hovered_frequency and sigma live in the data unit (THz) whatever the
+  // axis displays. Dos used to draw reference_frequency and apply sigma in the displayed unit
+  // while Bands read them as THz, so a 5 THz reference landed at 5 cm⁻¹ (1.5% of the axis).
+  it.each([`THz`, `cm^-1`, `meV`] as const)(
+    `draws a THz reference line and shows a THz sigma in %s`,
+    async (units) => {
+      const to_unit = (value: number) => convert_frequencies([value], units)[0]
+      const plot = await mount_sized(
+        Dos,
+        {
+          doses: { '': phonon_dos },
+          units,
+          reference_frequency: 5,
+          sigma: 0.5,
+          sigma_range: [0, 2],
+          x_axis: { range: [0, to_unit(10)] },
+          show_controls: true,
+          controls_open: true,
+        },
+        { selector: `.scatter` },
+      )
+      const line = plot.querySelector(`line[stroke*="--dos-reference-line-color"]`)
+      const { x: clip_x, width: clip_width } = clip_rect(plot)
+      expect((Number(line?.getAttribute(`x1`)) - clip_x) / clip_width).toBeCloseTo(0.5, 2)
+      const sigma_text = document.querySelector(`.sigma-value`)?.textContent ?? ``
+      expect(Number(sigma_text) / to_unit(0.5)).toBeCloseTo(1, 2)
+    },
+  )
 
   // Dos forwards undefined to ScatterPlot's auto rule; explicit booleans still win.
   // oxfmt-ignore

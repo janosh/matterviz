@@ -70,7 +70,7 @@ function finalize(x_values: number[], y_values: number[], format: string): XrdPa
   }
   const max_y = array_max(y_values)
   const scale = max_y > 0 ? 100 / max_y : 1
-  return { x: x_values, y: y_values.map((val) => val * scale) }
+  return { x: x_values, y: y_values.map((val) => val * scale), kind: `profile` }
 }
 
 // Column data: every data row has at least two leading numbers (2θ, intensity[, error]).

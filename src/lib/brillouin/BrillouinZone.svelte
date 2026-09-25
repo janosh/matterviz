@@ -229,6 +229,9 @@
 
     let stale = false
     const captured_bz = zone
+    // The previous structure's wedge (and its multiplicity) must not linger over the new zone
+    // while the symmetry analysis runs
+    ibz_data = null
 
     analyze_structure_symmetry(structure, {})
       .then((sym_data) => {

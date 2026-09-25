@@ -117,6 +117,37 @@ describe(`compute_isosurface_geometries`, () => {
     }
   })
 
+  // Isosurface draws negative lobes at -isovalue; their front faces must point away from the
+  // lobe like a positive one's, or the transparent back-then-front pass draws them inside-out
+  test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
+    const blob = blob_volume()
+    const volume = { ...blob, values: blob.values.map((val) => sign * val) }
+    const input: GeometryInput = {
+      volumes: [
+        { token: 0, volume, range: null, surfaces: [{ token: `s`, isovalue: sign * 0.5 }] },
+      ],
+    }
+    const [{ positions, indices }] = compute_isosurface_geometries(input).volumes[0].surfaces
+    const vertex = (idx: number) => [0, 1, 2].map((axis) => positions[3 * idx + axis])
+    let n_outward = 0
+    for (let tri = 0; tri < indices.length; tri += 3) {
+      const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner) => vertex(indices[tri + corner]))
+      const edge_1 = vert_b.map((coord, axis) => coord - vert_a[axis])
+      const edge_2 = vert_c.map((coord, axis) => coord - vert_a[axis])
+      const normal = [
+        edge_1[1] * edge_2[2] - edge_1[2] * edge_2[1],
+        edge_1[2] * edge_2[0] - edge_1[0] * edge_2[2],
+        edge_1[0] * edge_2[1] - edge_1[1] * edge_2[0],
+      ]
+      // blob centred at (5, 5, 5) Å
+      const radial = vert_a.map((coord) => coord - 5)
+      if (normal[0] * radial[0] + normal[1] * radial[1] + normal[2] * radial[2] > 0)
+        n_outward++
+    }
+    expect(indices.length).toBeGreaterThan(300)
+    expect(n_outward).toBe(indices.length / 3)
+  })
+
   test(`transferables list every output buffer exactly once`, () => {
     const result = compute_isosurface_geometries(blob_input())
     const buffers = geometry_result_transferables(result)

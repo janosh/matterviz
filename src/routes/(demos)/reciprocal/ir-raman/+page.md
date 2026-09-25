@@ -105,7 +105,7 @@ The three acoustic modes are identified at Γ and excluded from the stick spectr
 
 ## Transmittance presentation
 
-Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the peak width, `shape_factor` the pseudo-Voigt mixing (0 = Gaussian, 1 = Lorentzian).
+Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the peak width in cm⁻¹ (whatever `units` displays), `shape_factor` the pseudo-Voigt mixing (0 = Gaussian, 1 = Lorentzian).
 
 ```svelte example
 <script lang="ts">

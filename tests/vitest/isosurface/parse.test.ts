@@ -108,6 +108,16 @@ describe(`parse_decimal_token`, () => {
     const reference = Number(normalize_scientific_notation(token))
     expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
   })
+
+  // Fortran drops the exponent letter for 3-digit exponents; two digits still need a letter
+  test.each([
+    [`0.80000-100`, 0.8e-100],
+    [`-1.5+123`, -1.5e123],
+    [`.25-101`, 0.25e-101],
+    [`1-2`, NaN],
+  ])(`%s parses as %d`, (token, expected) => {
+    expect(parse_decimal_token(token, 0, token.length)).toBe(expected)
+  })
 })
 
 describe(`parse_float_block`, () => {
@@ -120,6 +130,13 @@ describe(`parse_float_block`, () => {
     const { count, end_pos } = parse_float_block(text, 0, 10, data, 0, first_column_only)
     expect(Array.from(data.subarray(0, count))).toEqual(values)
     expect(text.slice(end_pos)).toBe(`\naugmentation 8\n`)
+  })
+
+  // An unreadable token used to be skipped, shifting every later value one grid point early
+  test(`throws on an unreadable token instead of shifting the grid`, () => {
+    expect(() => parse_float_block(`1 2 *** 4`, 0, 4, new Float64Array(4))).toThrow(
+      /Unreadable number '\*\*\*' at character 4 \(value 3 of 4\)/,
+    )
   })
 })
 
@@ -353,7 +370,9 @@ describe(`parse_chgcar`, () => {
     [`symbol and count lines of different length`, make_chgcar({ elements: `H O Na`, counts: `1 1`, positions: [`0 0 0`, `0.5 0.5 0.5`] }), /CHGCAR/],
     [`singular lattice`, make_chgcar({ lattice: [`5.0  0.0  0.0`, `0.0  0.0  0.0`, `0.0  0.0  5.0`], coord_mode: `Cartesian`, positions: [`0.0  0.0  0.0`, `1.0  0.0  1.0`] }), /singular/],
     // a truncated first block throws instead of zero-padding the grid
-    [`truncated first block`, make_chgcar({ data: `1.0  2.0  3.0` }), /charge density .*expected 8 values, got 3/],
+    [`truncated first block`, make_chgcar({ data: `1.0  2.0  3.0` }), /block 1 .*expected 8 values, got 3/],
+    // a charge file holds 1, 2 (collinear spin) or 4 (noncollinear) blocks
+    [`three data blocks`, make_chgcar({ second_volume: `   2   2   2\n${`0.1 `.repeat(8)}\n\n   2   2   2\n${`0.2 `.repeat(8)}` }), /3 data blocks; expected 1 or 2 or 4/],
   ])(`throws for %s`, (_label, content, pattern) => {
     expect(() => parse_chgcar(content)).toThrow(pattern)
   })
@@ -367,7 +386,7 @@ describe(`parse_chgcar`, () => {
     expect(result.volumes[0].values).toHaveLength(8)
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0][0]).toMatch(
-      /CHGCAR magnetization density \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact charge density/,
+      /CHGCAR block 2 \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact first block only/,
     )
   })
 
@@ -833,6 +852,30 @@ describe(`site fixtures`, () => {
     expect(charge.data_range.min).toBeGreaterThan(0)
   })
 
+  // SOC CHGCARs carry charge + m_x, m_y, m_z; only the first two used to be read, and m_x
+  // was labelled as the (collinear) magnetization
+  test(`noncollinear CHGCAR yields charge and three magnetization components`, () => {
+    const parsed = load(`pymatgen-CHGCAR.NiO_SOC`)
+    expect(parsed.volumes.map((vol) => vol.label)).toEqual([
+      `charge density`,
+      `magnetization density (x)`,
+      `magnetization density (y)`,
+      `magnetization density (z)`,
+    ])
+    for (const volume of parsed.volumes) expect(volume.dims).toEqual([28, 28, 28])
+  })
+
+  // this spin-polarized ELFCAR used to come out as "charge density" + "magnetization density"
+  test(`real spin-polarized ELFCAR stays within the ELF range [0, 1]`, () => {
+    const { volumes } = load(`pymatgen-ELFCAR`)
+    expect(volumes.map((vol) => vol.label)).toEqual([`ELF (spin up)`, `ELF (spin down)`])
+    expect(volumes[0].data_range.max).toBeCloseTo(0.8685, 3)
+    for (const { data_range } of volumes) {
+      expect(data_range.min).toBeGreaterThanOrEqual(0)
+      expect(data_range.max).toBeLessThanOrEqual(1)
+    }
+  })
+
   test(`molecular .cube keeps the (N-1)*voxel box and atoms inside it`, () => {
     const parsed = load(`glycine-density.cube`)
     const [volume] = parsed.volumes
@@ -875,23 +918,27 @@ describe(`parse_volumetric_file`, () => {
     expect(parse_volumetric_file(minimal_cube)).not.toBeNull()
   })
 
+  // Only CHGCAR-family densities store rho·V_cell; ELFCAR and LOCPOT values are stored as is
+  // (every file used to be divided by V, putting a real ELFCAR's max at 0.019, not 0.87)
   test.each([
-    [`CHGCAR`],
-    [`CHGCAR.gz`],
-    [`AECCAR0`],
-    [`AECCAR2`],
-    [`ELFCAR`],
-    [`LOCPOT`],
-    [`PARCHG`],
-    [`PARCHG.BAND_1`],
-    [`path/to/CHGCAR`],
-    [`run_PARCHG_001`],
+    [`CHGCAR`, `charge density`, true],
+    [`CHGCAR.gz`, `charge density`, true],
+    [`AECCAR0`, `charge density`, true],
+    [`AECCAR2`, `charge density`, true],
+    [`ELFCAR`, `ELF`, false],
+    [`mp-149_ELFCAR.gz`, `ELF`, false],
+    [`LOCPOT`, `local potential`, false],
+    [`PARCHG`, `charge density`, true],
+    [`PARCHG.BAND_1`, `charge density`, true],
+    [`path/to/CHGCAR`, `charge density`, true],
+    [`run_PARCHG_001`, `charge density`, true],
     // `data.dat` says nothing: content sniffing on the POSCAR-like header with scale factor
-    [`data.dat`],
-  ])(`detects VASP volumetric from %s`, (filename) => {
+    [`data.dat`, `charge density`, true],
+  ])(`detects VASP volumetric from %s as %s`, (filename, label, divided_by_volume) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
-    expect(result).not.toBeNull()
-    expect(result?.volumes.length).toBeGreaterThan(0)
+    expect(result?.volumes.map((volume) => volume.label)).toEqual([label])
+    const cell_volume = result?.structure.lattice.volume ?? NaN
+    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(divided_by_volume ? 8 / cell_volume : 8, 10)
   })
 
   test.each([

@@ -13,6 +13,7 @@ import {
   IrRamanSpectrum,
   is_gamma_point,
   parse_born,
+  parse_frequency_unit,
   parse_phonon_modes,
   raman_invariants,
   scale_to_max,
@@ -995,27 +996,40 @@ describe(`IrRamanSpectrum component`, () => {
     expect(document.body.textContent).toMatch(/No IR-active modes/)
   })
 
-  // Physical unit changes rescale FWHM; alternate cm^-1 spellings preserve it exactly.
+  // fwhm is one physical width in cm^-1: switching units only changes how the slider shows
+  // it. It used to be quoted in the displayed unit and rescaled by an effect that ran a render
+  // late, so Ha -> cm^-1 broadened a 4.6e-5 width on a cm^-1 grid and threw (8.9e8 points).
   it.each([
+    [`Ha`, `cm^-1`],
+    [`eV`, `cm^-1`],
     [`cm^-1`, `THz`],
     [`cm^-1`, `meV`],
     [`cm-1`, `cm^-1`],
     [`cm⁻¹`, `cm^-1`],
-  ] as const)(`fwhm follows the unit transition %s → %s`, async (initial, units) => {
-    const props = $state({ spectrum: co2_spectrum, units: initial as FrequencyUnit, fwhm: 25 })
-    mount(IrRamanSpectrum, { target: document.body, props })
-    await tick()
-    expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
-    expect(props.fwhm).toBe(25)
-    props.units = units
-    await tick()
-    if (units === `cm^-1`) expect(props.fwhm).toBe(25)
-    else {
-      const ratio = convert_frequencies([1], units)[0] / convert_frequencies([1], `cm^-1`)[0]
-      // Pure multiplication by a ratio of f64 constants, so demand near-exact agreement.
-      expect(props.fwhm).toBeCloseTo(25 * ratio, 12)
-    }
-  })
+  ] as const)(
+    `fwhm stays fixed in cm^-1 across the unit switch %s → %s`,
+    async (initial, units) => {
+      const props = $state({
+        spectrum: co2_spectrum,
+        units: initial as FrequencyUnit,
+        fwhm: 25,
+        controls_open: true,
+      })
+      mount(IrRamanSpectrum, { target: document.body, props })
+      await tick()
+      const slider_width = () => Number(doc_query<HTMLInputElement>(`#ir-raman-fwhm`).value)
+      for (const unit of [initial, units]) {
+        props.units = unit as FrequencyUnit
+        await tick()
+        expect(props.fwhm).toBe(25)
+        const canonical = parse_frequency_unit(unit) // resolves the cm-1/cm⁻¹ aliases
+        if (!canonical) throw new Error(`unknown unit ${unit}`)
+        const expected = convert_frequencies([25], canonical, `cm^-1`)[0]
+        expect(slider_width() / expected).toBeCloseTo(1, 12)
+        expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(3)
+      }
+    },
+  )
 
   // The curve itself is not measurable here — the plot's line path stays empty under
   // happy-dom — so the drawn direction is checked on the sticks, which share the same

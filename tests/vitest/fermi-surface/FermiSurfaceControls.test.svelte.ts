@@ -136,5 +136,14 @@ describe(`FermiSurfaceControls`, () => {
     await tick()
     await reset_section(`bands`)
     expect(state.selected_bands).toEqual([3, 4, 5])
+    // a mu change that adds or drops crossing bands keeps the bands switched off hidden (the
+    // selection used to reset to every band on each re-extraction)
+    state.selected_bands = [3, 5]
+    state.fermi_data = make_fermi_data([3, 4, 5, 6])
+    await tick()
+    expect(state.selected_bands).toEqual([3, 5, 6])
+    state.fermi_data = make_fermi_data([4, 5, 6])
+    await tick()
+    expect(state.selected_bands).toEqual([5, 6])
   })
 })

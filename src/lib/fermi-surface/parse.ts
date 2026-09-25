@@ -166,7 +166,10 @@ function parse_frmsf(content: string): BandGridData {
   if (![0, 1, 2].includes(lshift)) {
     throw new Error(`FRMSF: Invalid lshift value ${lshift} (expected 0, 1, or 2)`)
   }
-  const grid_shift: Vec3 = lshift === 1 ? [0, 0, 0] : [0.5, 0.5, 0.5]
+  // grid_shift is index 0's position in grid steps, so lshift=0's (i + ½)/n − ½ is ½ − n/2
+  const grid_shift = k_grid.map((count) =>
+    lshift === 1 ? 0 : lshift === 2 ? 0.5 : 0.5 - count / 2,
+  ) as Vec3
 
   // Line 3: number of bands
   const n_bands = Math.trunc(Number(reader.next()))
@@ -430,7 +433,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
     )
   }
 
-  // Check if it's IFermi format (isosurfaces is an object keyed by band index)
+  // Check if it's IFermi format (isosurfaces is an object keyed by spin)
   if (
     data[`@class`] === `FermiSurface` &&
     data.isosurfaces &&
@@ -497,12 +500,46 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
   throw new Error(`Unrecognized JSON format: missing required fields for Fermi surface data`)
 }
 
-// Helper type for IFermi isosurface JSON
+// Helper type for IFermi isosurface JSON (Isosurface.as_dict()). `properties` is one value
+// per FACE: scalars (n_faces,) or vectors (n_faces, 3), e.g. Fermi velocities.
 interface IFermiIsosurface {
   vertices: number[][]
   faces: number[][]
   band_idx: number
-  properties?: Record<string, number[]>
+  properties?: (number | number[])[] | null
+}
+
+// IFermi keys isosurfaces by spin (str(Spin.up) = "1", str(Spin.down) = "-1"), not by band:
+// the band lives in each surface's band_idx. Reading the key as the band put every sheet of
+// a spin channel on "band 1", so all sheets shared one colour and band toggle.
+const IFERMI_SPIN_KEYS: Record<string, SpinChannel> = { '1': `up`, '-1': `down` }
+
+// Face values averaged onto the vertices of each face (vector properties by magnitude), so
+// the mesh can be vertex-coloured like every other Fermi surface
+function ifermi_vertex_properties(iso: IFermiIsosurface, label: string): number[] | undefined {
+  const { properties, faces, vertices } = iso
+  if (properties == null) return undefined
+  if (!Array.isArray(properties) || properties.length !== faces.length) {
+    throw new Error(
+      `${label}: properties must hold one value per face (${faces.length}), got ${Array.isArray(properties) ? properties.length : typeof properties}`,
+    )
+  }
+  const sums = new Float64Array(vertices.length)
+  const counts = new Uint32Array(vertices.length)
+  for (const [face_idx, face] of faces.entries()) {
+    const raw = properties[face_idx]
+    const value = Array.isArray(raw) ? Math.hypot(...raw) : raw
+    if (!Number.isFinite(value)) {
+      throw new TypeError(
+        `${label}: face ${face_idx} has non-numeric property ${JSON.stringify(raw)}`,
+      )
+    }
+    for (const vert_idx of face) {
+      sums[vert_idx] += value
+      counts[vert_idx]++
+    }
+  }
+  return Array.from(sums, (sum, vert_idx) => (counts[vert_idx] ? sum / counts[vert_idx] : 0))
 }
 
 // Parse IFermi's JSON output format
@@ -523,17 +560,22 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   const isosurfaces: FermiIsosurface[] = []
   const band_indices = new Set<number>()
 
-  for (const [band_key, iso_list] of Object.entries(isosurfaces_obj)) {
-    const band_index = Math.trunc(Number(band_key))
-    // spin is determined by sign: positive = up, negative = down
-    const spin: SpinChannel = band_index < 0 ? `down` : `up`
-    const abs_band_idx = Math.abs(band_index)
-    band_indices.add(abs_band_idx)
-
-    for (const ifermi_iso of iso_list) {
-      // IFermi stores properties like fermi_velocity, spin, etc.; the first one colours the mesh
-      const properties = Object.values(ifermi_iso.properties ?? {})[0]
-      isosurfaces.push(isosurface_from_json({ ...ifermi_iso, properties }, abs_band_idx, spin))
+  for (const [spin_key, iso_list] of Object.entries(isosurfaces_obj)) {
+    const spin = IFERMI_SPIN_KEYS[spin_key]
+    if (!spin) {
+      throw new Error(
+        `IFermi isosurfaces are keyed by spin ("1" or "-1"), got key ${JSON.stringify(spin_key)}`,
+      )
+    }
+    for (const [iso_idx, ifermi_iso] of iso_list.entries()) {
+      const label = `IFermi ${spin} surface ${iso_idx}`
+      const { band_idx } = ifermi_iso
+      if (!Number.isInteger(band_idx) || band_idx < 0) {
+        throw new Error(`${label}: band_idx must be a non-negative integer, got ${band_idx}`)
+      }
+      band_indices.add(band_idx)
+      const properties = ifermi_vertex_properties(ifermi_iso, label)
+      isosurfaces.push(isosurface_from_json({ ...ifermi_iso, properties }, band_idx, spin))
     }
   }
 

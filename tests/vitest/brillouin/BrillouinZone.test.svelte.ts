@@ -5,8 +5,16 @@ import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { mock_parse_worker, create_drop_event, doc_query, mock_fullscreen } from '../setup'
+import {
+  bind_props,
+  mock_parse_worker,
+  create_drop_event,
+  doc_query,
+  mock_fullscreen,
+} from '../setup'
 import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
+
+type BrillouinZoneProps = ComponentProps<typeof BrillouinZone>
 
 beforeEach(mock_parse_worker)
 
@@ -375,6 +383,49 @@ test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, a
 
   props.show_ibz = false
   await vi.waitFor(() => expect(viewer?.querySelector(`.status-message`)).toBeNull())
+})
+
+// A structure change used to leave the previous structure's IBZ wedge (and its multiplicity)
+// on the new zone until the new symmetry analysis resolved, and a slow info-pane analysis for
+// the previous structure could overwrite the space group of the current one
+const identity_op = { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }
+test(`a structure change drops the previous IBZ while symmetry reruns`, async () => {
+  analyze_structure_symmetry
+    .mockResolvedValueOnce({ operations: [identity_op] })
+    .mockReturnValueOnce(new Promise(() => {}))
+  const state = $state({
+    structure: cubic,
+    show_ibz: true,
+    ibz_data: null as BrillouinZoneProps[`ibz_data`],
+  })
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: bind_props({}, state),
+  })
+  await vi.waitFor(() => expect(state.ibz_data).not.toBeNull())
+  state.structure = make_crystal(4, si_site)
+  flushSync()
+  expect(state.ibz_data).toBeNull()
+})
+
+test(`the info pane ignores a symmetry result for a replaced structure`, async () => {
+  const late = Promise.withResolvers<unknown>()
+  analyze_structure_symmetry
+    .mockReturnValueOnce(late.promise)
+    .mockResolvedValueOnce({ operations: [identity_op], hm_symbol: `NEW` })
+  const state = $state({ structure: cubic, info_pane_open: true })
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: bind_props({}, state),
+  })
+  await tick()
+  state.structure = make_crystal(4, si_site)
+  await vi.waitFor(() => expect(document.body.textContent).toContain(`(NEW)`))
+  late.resolve({ operations: [identity_op], hm_symbol: `OLD` })
+  await tick()
+  await tick()
+  expect(document.body.textContent).toContain(`(NEW)`)
+  expect(document.body.textContent).not.toContain(`(OLD)`)
 })
 
 // Wiring check that a real viewer picks up the shared shortcut; the full key contract

@@ -63,8 +63,9 @@ export interface BandGridData {
   // true: points sit at k=i/n with no duplicated endpoint (FRMSF); false/undefined:
   // endpoint-inclusive grid storing both equivalent k=0 and k=1 (BXSF)
   periodic?: boolean
-  // Fractional grid shift per axis: grid point i sits at (i + grid_shift)/n. FRMSF lshift=2
-  // (Γ + half step) gives 0.5; unset/0 for Γ-centred meshes.
+  // Grid shift per axis in grid steps: grid point i sits at (i + grid_shift)/period (period =
+  // n, or n − 1 for endpoint-inclusive grids). Unset/0 for Γ-centred meshes (index 0 is Γ),
+  // 0.5 for FRMSF lshift=2, ½ − n/2 for lshift=0 meshes that start near −½.
   grid_shift?: Vec3
 }
 
@@ -73,6 +74,8 @@ export interface FermiSliceData {
   isolines: Isoline[]
   plane_normal: Vec3
   plane_distance: number
+  // Orthonormal Cartesian (u, v) directions that points_2d are expressed in
+  in_plane_basis: [Vec3, Vec3]
   metadata: {
     n_lines: number
     has_properties: boolean

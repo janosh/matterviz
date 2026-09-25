@@ -84,6 +84,8 @@
     path_mode?: PathMode
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
+    // Horizontal reference line in the data unit (THz for phonons, eV for electrons),
+    // whatever `units` displays; Dos emits hovered_frequency in the same unit
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
@@ -474,17 +476,15 @@
       effective_fermi_level === undefined
     )
       return null
-    let vbm = -Infinity
-    let cbm = Infinity
-    for (const series_item of series_data) {
-      for (const energy of series_item.y) {
-        if (!Number.isFinite(energy)) continue
-        if (energy <= effective_fermi_level) vbm = Math.max(vbm, energy)
-        else cbm = Math.min(cbm, energy)
-      }
-    }
-    const gap = cbm - vbm
-    return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
+    // One gap per system: the first structure, which also supplies the default E_F. Only
+    // the spin channels on display count.
+    const band_structure = structures[0]?.bs
+    if (!band_structure) return null
+    const channels = [
+      ...(effective_spin_mode === `down_only` ? [] : band_structure.bands),
+      ...(effective_spin_mode === `up_only` ? [] : (band_structure.spin_down_bands ?? [])),
+    ]
+    return helpers.electronic_band_gap(channels, effective_fermi_level)
   })
 
   let empty_state_msg = $derived(

@@ -73,10 +73,14 @@
   }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
     doses: Record<string, DosData>
     stack?: boolean
+    // Gaussian smearing width in the data unit (THz for phonons, eV for electrons), whatever
+    // `units` displays
     sigma?: number
     units?: FrequencyUnit
     normalize?: NormalizationMode
     orientation?: `vertical` | `horizontal`
+    // Both in the data unit (THz for phonons, eV for electrons), never the displayed unit, so
+    // they pass unchanged between Bands, Dos and PhononModeExplorer
     hovered_frequency?: number | null
     reference_frequency?: number | null
     fermi_level?: number // Fermi level for electronic DOS (auto-detected if not provided)
@@ -84,7 +88,7 @@
     // Controls configuration
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
-    sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
+    sigma_range?: Vec2 // sigma slider [min, max] in the data unit (auto-detected if omitted)
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -93,6 +97,13 @@
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
   const is_phonon = $derived(spectral_type(doses) === `phonon`)
+  // Data unit (THz / eV) <-> displayed unit. Electronic energies are never converted.
+  const to_display = (value: number): number =>
+    is_phonon ? convert_frequencies([value], unit)[0] : value
+  const from_display = (value: number): number =>
+    is_phonon ? convert_frequencies([value], `THz`, unit)[0] : value
+  // sigma is stored in the data unit; smearing runs on the displayed axis
+  const display_sigma = $derived(to_display(sigma))
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
 
   let has_spin_polarized = $derived(
@@ -134,7 +145,10 @@
           fill_color: string,
           warn_label: string,
         ): number[] => {
-          let densities = sigma > 0 ? apply_gaussian_smearing(x_values, raw, sigma) : [...raw]
+          let densities =
+            display_sigma > 0
+              ? apply_gaussian_smearing(x_values, raw, display_sigma)
+              : [...raw]
           densities = normalize_densities(densities, x_values, normalize)
           if (cumulative === false) return densities
           if (cumulative?.length === densities.length) {
@@ -321,7 +335,8 @@
     {show_legend}
     hover_config={{ threshold_px: 50, ...rest.hover_config }}
     on_point_hover={(event) => {
-      hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
+      const hovered = is_horizontal ? event?.point?.y : event?.point?.x
+      hovered_frequency = hovered == null ? null : from_display(hovered)
       rest.on_point_hover?.(event)
     }}
     bind:show_controls
@@ -377,7 +392,7 @@
       >
         <label>
           <span title="Gaussian smearing width (σ)">σ</span>
-          <span class="sigma-value">{format_num(sigma)}</span>
+          <span class="sigma-value">{format_num(display_sigma)}</span>
           <input
             id="dos-sigma"
             type="range"
@@ -470,12 +485,9 @@
       {/if}
 
       <!-- Reference frequency line -->
-      {@const ref_pos =
-        reference_frequency !== null
-          ? is_horizontal
-            ? y_scale_fn(reference_frequency)
-            : x_scale_fn(reference_frequency)
-          : NaN}
+      {@const ref_display =
+        reference_frequency === null ? NaN : to_display(reference_frequency)}
+      {@const ref_pos = is_horizontal ? y_scale_fn(ref_display) : x_scale_fn(ref_display)}
       {#if Number.isFinite(ref_pos)}
         {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
           ? [pad.l, width - pad.r, ref_pos, ref_pos]

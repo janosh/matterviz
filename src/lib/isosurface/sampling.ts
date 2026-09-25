@@ -149,6 +149,14 @@ function volume_sampler_xyz(
   const { periodic } = volume
   const [origin_x, origin_y, origin_z] = volume.origin
   const fallback = out_of_bounds === `fallback`
+  // Read the grid once: viewers hand in reactive ($state) volumes, and going through the
+  // proxy for dims/values on every sample made slices and vertex colouring 14-35x slower
+  const [size_x, size_y, size_z] = volume.dims
+  const grid: ScalarGrid3D = {
+    values: volume.values,
+    dims: [size_x, size_y, size_z],
+    order: volume.order,
+  }
 
   return (coord_x, coord_y, coord_z) => {
     const cart_x = coord_x - origin_x
@@ -178,7 +186,7 @@ function volume_sampler_xyz(
       frac_y = clamp01(frac_y)
       frac_z = clamp01(frac_z)
     }
-    return trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic)
+    return trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)
   }
 }
 

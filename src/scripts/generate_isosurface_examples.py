@@ -145,7 +145,9 @@ def write_chgcar(
         lattice: 3 lattice vectors as (x, y, z) tuples
         elements: list of (symbol, [fractional_coords]) pairs
         grid_dims: (nx, ny, nz) grid dimensions
-        density_fn: (Cartesian position, fractional position) -> rho*volume
+        density_fn: (Cartesian position, fractional position) -> the value as stored:
+            rho*volume for CHGCAR-family densities, the bare ELF or potential for
+            ELFCAR/LOCPOT (which VASP, and the matterviz reader, do not volume-scale)
         extra_blocks: optional additional volumetric blocks (e.g. magnetization)
             each is (density_fn, augmentation_text or None)
     """
@@ -443,7 +445,7 @@ def al_slab_geometry() -> tuple[list[Vec3], list[Vec3], list[Vec3], float]:
 
 def generate_al_slab_locpot() -> str:
     """Al(111) slab local potential (LOCPOT, 12x12x40)."""
-    lattice, atom_cart, lat_vecs_xy, volume = al_slab_geometry()
+    lattice, atom_cart, lat_vecs_xy, _volume = al_slab_geometry()
 
     atoms = periodic_field(atom_cart, [13.0] * 4, 0.5, lat_vecs_xy)
 
@@ -453,7 +455,7 @@ def generate_al_slab_locpot() -> str:
         slab_center, slab_width = 0.375, 0.10
         in_slab = math.exp(-((frac[2] - slab_center) ** 2) / (2 * slab_width**2))
         pot += -2.0 * in_slab + 0.5 * (1 - in_slab)
-        return pot * volume
+        return pot
 
     return write_chgcar(
         "Al(111) slab - local potential",
@@ -594,7 +596,7 @@ def generate_hbn_elfcar() -> str:
         val += 0.85 * bonds(position)
         val += 0.6 * nitrogen(position)
         val += 0.3 * boron(position)
-        return min(val, 1.0) * geom.volume
+        return min(val, 1.0)
 
     return write_chgcar(
         "hBN hexagonal - simulated ELF (pairs with hBN-CHGCAR)",
@@ -618,7 +620,6 @@ def generate_large_grid_locpot() -> str:
         (0.5, 0.0, 0.5),
         (0.0, 0.5, 0.5),
     ]
-    volume = 12.0 * 12.0 * 14.4
     atom_cart = [
         (frac_x * 12.0, frac_y * 12.0, frac_z * 14.4)
         for frac_x, frac_y, frac_z in si_frac
@@ -633,7 +634,7 @@ def generate_large_grid_locpot() -> str:
         pot += 0.8 * math.sin(2 * math.pi * frac_x) * math.cos(2 * math.pi * frac_y)
         pot += 0.5 * math.cos(2 * math.pi * frac_z)
         # Round to 6 significant digits so the gzipped file stays small
-        return float(f"{pot * volume:.5e}")
+        return float(f"{pot:.5e}")
 
     return write_chgcar(
         "Large grid LOCPOT - perf test (pairs with large-grid-CHGCAR)",

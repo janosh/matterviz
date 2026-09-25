@@ -505,6 +505,54 @@ describe(`marching_cubes`, () => {
   })
 })
 
+// Front faces (CCW winding) must face the way `facing` says for either lattice handedness:
+// a left-handed lattice mirrors the index-space winding, and a negative lobe drawn at a
+// negative isovalue needs its front faces toward increasing values. Both used to come out
+// inside-out (0% of faces outward), which breaks back-then-front transparent rendering.
+describe(`winding follows facing on either lattice handedness`, () => {
+  const size = 16
+  const center = (size - 1) / 2
+  // negative Gaussian lobe: values fall toward the centre, so outward = increasing
+  const grid = make_grid(
+    size,
+    size,
+    size,
+    (idx_x, idx_y, idx_z) =>
+      -Math.exp(-((idx_x - center) ** 2 + (idx_y - center) ** 2 + (idx_z - center) ** 2) / 20),
+  )
+  const left_handed: Matrix3x3 = [
+    [0, 5, 0],
+    [5, 0, 0],
+    [0, 0, 5],
+  ]
+  test.each([
+    [`right-handed`, `decreasing`, -1, cubic_matrix(5)],
+    [`right-handed`, `increasing`, 1, cubic_matrix(5)],
+    [`left-handed`, `decreasing`, -1, left_handed],
+    [`left-handed`, `increasing`, 1, left_handed],
+  ] as const)(`%s lattice, facing %s`, (_hand, facing, outward_sign, lattice) => {
+    const { vertices, faces, normals } = marching_cubes(grid, -0.5, lattice, {
+      ...NON_PERIODIC,
+      facing,
+    })
+    expect(faces.length).toBeGreaterThan(100)
+    const mesh_center = vertices
+      .reduce<Vec3>((sum, vert) => add(sum, vert), [0, 0, 0])
+      .map((coord) => coord / vertices.length) as Vec3
+    for (const [idx_0, idx_1, idx_2] of faces) {
+      const [vert_a, vert_b, vert_c] = [vertices[idx_0], vertices[idx_1], vertices[idx_2]]
+      const face_normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
+      // winding agrees with the gradient normals...
+      expect(
+        dot(face_normal, add(normals[idx_0], normals[idx_1], normals[idx_2])),
+      ).toBeGreaterThan(0)
+      // ...and both point outward for `increasing` on this negative lobe, inward otherwise
+      const radial = subtract(vert_a, mesh_center)
+      expect(Math.sign(dot(face_normal, radial))).toBe(outward_sign)
+    }
+  })
+})
+
 describe(`compute_vertex_normals`, () => {
   const xy_triangle = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
   const xy_quad = new Float32Array([...xy_triangle, 1, 1, 0])

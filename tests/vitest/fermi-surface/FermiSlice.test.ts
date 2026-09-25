@@ -83,4 +83,39 @@ describe(`FermiSlice`, () => {
     // the empty axes still export as a standalone SVG document
     expect(received?.export_svg()).toMatch(/^<svg[^>]*role="application"/)
   })
+
+  // Labels come from the (u, v) directions points_2d use. They used to be read off the Miller
+  // zeros: a (010) slice's vertical axis runs along −kz but was labelled kz, and (100) of a
+  // lattice whose b₁ is oblique got Cartesian labels for an oblique plane.
+  test.each([
+    [`(001)`, [0, 0, 1], undefined, [`kₓ`, `kᵧ`]],
+    [`(010)`, [0, 1, 0], undefined, [`kₓ`, `−kz`]],
+    [
+      `(100) with oblique b₁`,
+      [1, 0, 0],
+      [
+        [Math.sqrt(3) / 2, -0.5, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      [`k₁ ∥ [0.5, 0.87, 0]`, `kz`],
+    ],
+  ] as const)(
+    `labels the %s slice axes by their directions`,
+    async (_desc, miller, k_lattice, expected) => {
+      const fermi_data = create_mock_fermi_data([0])
+      if (k_lattice)
+        fermi_data.k_lattice = k_lattice.map((row) => [
+          ...row,
+        ]) as FermiSurfaceData[`k_lattice`]
+      const plot = await mount_sized(
+        FermiSlice,
+        { fermi_data, miller_indices: [...miller], distance: 0.05 },
+        { selector: `.fermi-slice` },
+      )
+      await tick()
+      const text = plot.textContent ?? ``
+      for (const label of expected) expect(text).toContain(label)
+    },
+  )
 })

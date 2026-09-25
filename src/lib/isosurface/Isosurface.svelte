@@ -182,6 +182,12 @@
 
   // range_key covers halo + tiling (encoded in the range for periodic volumes;
   // irrelevant for finite ones), so the geometry identity needs no other inputs
+  // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
+  // negative lobe (both used to render nothing, silently). show_negative mirrors the surface
+  // at -isovalue, which at 0 is the same surface.
+  const mirror_signs = (layer: ResolvedLayer): readonly (1 | -1)[] =>
+    layer.show_negative && layer.isovalue !== 0 ? [1, -1] : [1]
+
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
     const vol = layer.volume
     return JSON.stringify([
@@ -288,9 +294,9 @@
 
     for (const [layer_idx, layer] of layers.entries()) {
       const vol = layer.volume
-      if (!layer.visible || layer.isovalue <= 0) continue
+      if (!layer.visible || !Number.isFinite(layer.isovalue)) continue
 
-      for (const sign of layer.show_negative ? ([1, -1] as const) : ([1] as const)) {
+      for (const sign of mirror_signs(layer)) {
         const key = `${layer_idx}:${sign}`
         const geo_key = geometry_key(layer, sign)
         const reused = reusable.get(geo_key)
@@ -413,7 +419,7 @@
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
-        if (!layer.visible || layer.isovalue <= 0) return `off`
+        if (!layer.visible || !Number.isFinite(layer.isovalue)) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
       .join(`|`),

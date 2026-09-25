@@ -9,7 +9,12 @@ import { is_band_grid_data, is_fermi_surface_data } from '$lib/fermi-surface/typ
 import type { BandGridData } from '$lib/fermi-surface/types'
 import { fermi_surface_files } from '$site/fermi-surfaces'
 import { describe, expect, test } from 'vitest'
-import { IDENTITY_MATRIX3, make_bxsf, make_fermi_surface } from '../test-fixtures'
+import {
+  IDENTITY_MATRIX3,
+  make_bxsf,
+  make_fermi_surface,
+  read_maybe_gz,
+} from '../test-fixtures'
 
 const triangle_mesh = {
   vertices: [
@@ -196,14 +201,15 @@ END_BLOCK_BANDGRID_3D
       },
     )
 
-    // lshift=2 places point i at (i + ½)/n. lshift=0 is a Monkhorst-Pack mesh, point i at
-    // (2i − n + 1)/(2n) = (i + ½)/n − ½ for odd and even n alike (odd n: −1/3, 0, 1/3 for
-    // n=3), so it is a half-step shift too — FermiSurfer's parity-dependent shiftk only
-    // works together with its index rotation by ⌊(n+1)/2⌋
+    // grid_shift is where index 0 sits, in grid steps. lshift=2 places point i at (i + ½)/n.
+    // lshift=0 is a Monkhorst-Pack mesh starting at the most negative k, point i at
+    // (2i − n + 1)/(2n) = (i + ½ − n/2)/n for odd and even n alike (−1/3, 0, 1/3 for n=3) —
+    // FermiSurfer's parity-dependent shiftk only works together with its index rotation by
+    // ⌊(n+1)/2⌋. Recording it as a bare ½ step treated that mesh as Γ-started.
     test.each([
       [2, `3 3 3`, [0.5, 0.5, 0.5]],
-      [0, `3 3 3`, [0.5, 0.5, 0.5]],
-      [0, `4 3 2`, [0.5, 0.5, 0.5]],
+      [0, `3 3 3`, [-1, -1, -1]],
+      [0, `4 3 2`, [-1.5, -1, -0.5]],
     ])(`lshift=%i on a %s grid gives grid_shift %j`, (lshift, dims, expected) => {
       const [size_x, size_y, size_z] = dims.split(` `).map(Number)
       const content = `${[
@@ -394,14 +400,18 @@ END_BLOCK_BANDGRID_3D
         '@module': `ifermi.surface`,
         '@class': `FermiSurface`,
         '@version': `0.3.0`,
+        // keyed by spin; the band is each surface's band_idx (a spin key used to be read as
+        // the band, collapsing every sheet of a channel onto band 1)
         isosurfaces: {
           1: [
             {
               ...triangle_mesh,
-              band_idx: 1,
+              band_idx: 5,
               dimensionality: `3D`,
               orientation: null,
+              properties: [[3, 4, 0]], // per-face vector: its magnitude colours the vertices
             },
+            { ...triangle_mesh, band_idx: 6, properties: null },
           ],
           '-1': [
             {
@@ -411,7 +421,7 @@ END_BLOCK_BANDGRID_3D
                 [0.25, 0.25, 0.25],
               ],
               faces: [[0, 1, 2]],
-              band_idx: 1,
+              band_idx: 7,
               dimensionality: `2D`,
               orientation: [0, 0, 1],
             },
@@ -429,26 +439,85 @@ END_BLOCK_BANDGRID_3D
       const result = parse_fermi_file(ifermi_json, `fs_test.json`)
       if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
 
-      expect(result.isosurfaces).toHaveLength(2)
+      expect(result.isosurfaces).toHaveLength(3)
       expect(result.k_lattice).toEqual([
         [2.0, 0.0, 0.0],
         [0.0, 2.0, 0.0],
         [0.0, 0.0, 2.0],
       ])
 
-      // Spin channels come from the sign of the band key
-      const spin_up = result.isosurfaces.find((iso) => iso.spin === `up`)
-      const spin_down = result.isosurfaces.find((iso) => iso.spin === `down`)
-      expect(spin_up?.band_index).toBe(1)
-      expect(spin_down?.band_index).toBe(1)
-      expect(Array.from(spin_up?.indices ?? [])).toEqual([0, 1, 2])
-      expect(spin_up?.normals).toHaveLength(9)
+      expect(result.isosurfaces.map((iso) => [iso.band_index, iso.spin])).toEqual([
+        [5, `up`],
+        [6, `up`],
+        [7, `down`],
+      ])
+      const [spin_up] = result.isosurfaces
+      expect(Array.from(spin_up.indices)).toEqual([0, 1, 2])
+      expect(spin_up.normals).toHaveLength(9)
+      expect(Array.from(spin_up.properties ?? [])).toEqual([5, 5, 5])
+      expect(result.isosurfaces[1].properties).toBeUndefined()
 
       expect(result.metadata).toEqual({
-        n_bands: 1,
-        n_surfaces: 2,
+        n_bands: 3,
+        n_surfaces: 3,
         source_format: `ifermi-json`,
       })
+    })
+
+    test(`IFermi fixture keeps its bands apart`, () => {
+      const result = parse_fermi_file(
+        read_maybe_gz(`src/site/fermi-surfaces/fs_BaFe2As2_wigner.json.gz`),
+        `fs_BaFe2As2_wigner.json`,
+      )
+      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
+      const sheets = result.isosurfaces.map((iso) => `${iso.band_index}${iso.spin}`)
+      expect(sheets).toEqual([
+        `5up`,
+        `6up`,
+        `6up`,
+        `7up`,
+        `7up`,
+        `5down`,
+        `6down`,
+        `6down`,
+        `7down`,
+        `7down`,
+      ])
+      expect(result.metadata.n_bands).toBe(3)
+    })
+
+    test.each([
+      [`a non-spin key`, { 5: [{ vertices: [], faces: [], band_idx: 5 }] }, /keyed by spin/],
+      [
+        `a missing band_idx`,
+        { 1: [{ vertices: [], faces: [] }] },
+        /band_idx must be a non-negative integer/,
+      ],
+      [
+        `properties per vertex instead of per face`,
+        {
+          1: [
+            {
+              vertices: [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+              ],
+              faces: [[0, 1, 2]],
+              band_idx: 0,
+              properties: [1, 2, 3],
+            },
+          ],
+        },
+        /one value per face \(1\), got 3/,
+      ],
+    ])(`rejects IFermi JSON with %s`, (_label, isosurfaces, message) => {
+      const json = JSON.stringify({
+        '@module': `ifermi.surface`,
+        '@class': `FermiSurface`,
+        isosurfaces,
+      })
+      expect(() => parse_fermi_file(json, `bad.json`)).toThrow(message)
     })
 
     test(`rejects IFermi JSON whose faces reference missing vertices`, () => {
@@ -459,6 +528,7 @@ END_BLOCK_BANDGRID_3D
           1: [
             {
               ...triangle_mesh,
+              band_idx: 0,
               // Face indices 99, 100, 101 are out of bounds (only 3 vertices exist)
               faces: [
                 [0, 1, 2],

@@ -44,20 +44,34 @@
     return () => clearTimeout(timer)
   })
 
+  // Only the plane and resolution decide the sampled values: a string key compares by value,
+  // so colormap, contour or colour-range edits repaint without re-sampling the whole plane
+  // (270-490 ms at the default resolution)
+  let sampling_key = $derived.by(() => {
+    if (!sampling_settings) return null
+    const { plane_mode, miller_indices, position, resolution } = sampling_settings
+    const { cartesian_point, cartesian_normal, cartesian_up } = sampling_settings
+    return JSON.stringify(
+      plane_mode === `hkl`
+        ? [plane_mode, miller_indices, position, resolution]
+        : [plane_mode, cartesian_point, cartesian_normal, cartesian_up, resolution],
+    )
+  })
+
   let computed_slice = $derived.by(() => {
-    if (!volume || !sampling_settings) return null
-    const resolution =
-      sampling_settings.resolution > 0 ? sampling_settings.resolution : undefined
-    if (sampling_settings.plane_mode === `hkl`) {
-      const { miller_indices, position } = sampling_settings
-      return sample_hkl_slice(volume, miller_indices, position, resolution)
+    if (!volume || !sampling_key) return null
+    const plane = untrack(() => sampling_settings)
+    if (!plane) return null
+    const resolution = plane.resolution > 0 ? plane.resolution : undefined
+    if (plane.plane_mode === `hkl`) {
+      return sample_hkl_slice(volume, plane.miller_indices, plane.position, resolution)
     }
     return sample_plane_slice(
       volume,
       {
-        point: resolve_slice_cartesian_point(sampling_settings.cartesian_point, volume),
-        normal: sampling_settings.cartesian_normal,
-        up: sampling_settings.cartesian_up,
+        point: resolve_slice_cartesian_point(plane.cartesian_point, volume),
+        normal: plane.cartesian_normal,
+        up: plane.cartesian_up,
       },
       { resolution },
     )

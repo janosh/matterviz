@@ -513,11 +513,15 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     if (!source_unit) return null
     const numeric_frequencies = frequencies as number[]
     const source_unit_per_thz = frequency_unit_per_thz(source_unit)
-    const normalized_frequencies =
-      source_unit === `THz`
-        ? numeric_frequencies
-        : numeric_frequencies.map((frequency) => frequency / source_unit_per_thz)
-    return { type: `phonon`, frequencies: normalized_frequencies, densities }
+    if (source_unit === `THz`)
+      return { type: `phonon`, frequencies: numeric_frequencies, densities }
+    // g(ν) is a density per unit frequency, so the Jacobian dν_unit/dν_THz rescales it too:
+    // converting only the axis left ∫g dν off by the unit factor (33x for cm^-1)
+    return {
+      type: `phonon`,
+      frequencies: numeric_frequencies.map((frequency) => frequency / source_unit_per_thz),
+      densities: densities.map((density) => density * source_unit_per_thz),
+    }
   }
 
   // Electronic DOS: has energies
@@ -835,6 +839,33 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
 
 // A shared axis cannot mix frequencies and energies. Validate every material, including maps
 // whose first dataset is empty, before rendering or computing a combined range.
+// Band gap of electronic bands (each an array of energies over k). A band with energies on
+// both sides of E_F makes the system metallic, so there is no gap (null). Otherwise the VBM is
+// the top of the fully occupied bands and the CBM the bottom of the empty ones. Taking the
+// highest point below and lowest above E_F over all points instead reported the gap between
+// neighbouring k-points of any band crossing E_F, so every metal showed a spurious gap.
+export function electronic_band_gap(
+  bands: readonly (readonly number[])[],
+  fermi_level: number,
+): { vbm: number; cbm: number; gap: number } | null {
+  let vbm = -Infinity
+  let cbm = Infinity
+  for (const band of bands) {
+    let [band_min, band_max] = [Infinity, -Infinity]
+    for (const energy of band) {
+      if (!Number.isFinite(energy)) continue
+      band_min = Math.min(band_min, energy)
+      band_max = Math.max(band_max, energy)
+    }
+    if (band_min > band_max) continue // no finite energies
+    if (band_max <= fermi_level) vbm = Math.max(vbm, band_max)
+    else if (band_min > fermi_level) cbm = Math.min(cbm, band_min)
+    else return null // crosses E_F
+  }
+  const gap = cbm - vbm
+  return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
+}
+
 export function spectral_type(
   ...collections: Record<string, { type: types.BandStructureType }>[]
 ): types.BandStructureType | undefined {

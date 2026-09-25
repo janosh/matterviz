@@ -152,10 +152,33 @@ describe(`Isosurface`, () => {
       settings: with_layers([layer(0.3)], { wireframe: true }),
       n_meshes: 1,
     },
-    { desc: `isovalue 0 renders nothing`, settings: with_layers([layer(0)]), n_meshes: 0 },
+    // non-positive isovalues used to render nothing, silently: 0 is a signed field's nodal
+    // surface (mirroring it would duplicate it) and a negative value its negative lobe
+    {
+      desc: `isovalue 0 renders the nodal surface once, even with show_negative`,
+      settings: with_layers([layer(0, { show_negative: true })]),
+      volumes: [signed_volume()],
+      n_meshes: 2,
+    },
+    {
+      desc: `a negative isovalue renders the negative lobe`,
+      settings: with_layers([layer(-0.3)]),
+      volumes: [signed_volume()],
+      n_meshes: 2,
+    },
+    {
+      desc: `a non-finite isovalue renders nothing`,
+      settings: with_layers([layer(Number.NaN)]),
+      n_meshes: 0,
+    },
     { desc: `no layers render nothing`, settings: DEFAULT_ISOSURFACE_SETTINGS, n_meshes: 0 },
-  ])(`$desc`, async ({ settings, n_meshes }) => {
-    mount_isosurface({ settings })
+  ] as {
+    desc: string
+    settings: IsosurfaceSettings
+    volumes?: VolumetricData[]
+    n_meshes: number
+  }[])(`$desc`, async ({ settings, volumes, n_meshes }) => {
+    mount_isosurface({ settings, ...(volumes && { volumes }) })
     await settle()
     expect(meshes()).toHaveLength(n_meshes)
     if (settings.wireframe) {
