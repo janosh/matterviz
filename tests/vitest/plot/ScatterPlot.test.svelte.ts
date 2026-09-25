@@ -14,6 +14,7 @@ import { rects_overlap, type Rect } from '$lib/plot/core/layout'
 import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
 import { materialize_series_points } from '$lib/plot/scatter/scatter-data'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { SvelteSet } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
@@ -1978,6 +1979,29 @@ describe(`ScatterPlot`, () => {
       ),
     )
   })
+
+  // The solver must count the grid the legend renders after a chevron toggle, whether the
+  // collapsed set comes from the caller or the plot owns it
+  test.each([
+    [`caller set`, new SvelteSet([`Signals`]), 1, 3],
+    [`plot-owned set`, undefined, 3, 1],
+  ])(
+    `auto tracks follow chevron toggles with %s`,
+    async (_, collapsed_groups, before, after) => {
+      mock_decoration_measurements()
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          { ...basic, label: `A`, legend_group: `Signals` },
+          { ...basic, label: `B`, legend_group: `Signals` },
+        ],
+        legend: { layout: `vertical`, layout_tracks: `auto`, collapsed_groups },
+      })
+      const rows = () => plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateRows
+      await vi.waitFor(() => expect(rows()).toBe(`repeat(${before}, auto)`))
+      plot.querySelector<HTMLElement>(`.group-chevron`)?.click()
+      await vi.waitFor(() => expect(rows()).toBe(`repeat(${after}, auto)`))
+    },
+  )
 
   test(`keeps the unified decoration solution disjoint initially and across resize`, async () => {
     mock_decoration_measurements()

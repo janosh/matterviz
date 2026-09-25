@@ -42,7 +42,7 @@
     item_extents,
     style = ``,
     item_style = ``,
-    collapsed_groups = $bindable(new SvelteSet<string>()),
+    collapsed_groups = new SvelteSet<string>(),
     on_toggle = () => {},
     on_double_click = () => {},
     on_fill_toggle,
@@ -72,8 +72,8 @@
     item_extents?: readonly (LegendItemExtent | undefined)[]
     style?: string // Inline styles forwarded to wrapper div
     item_style?: string
-    // Bindable set of collapsed group names (pass initial values to collapse groups by default)
-    collapsed_groups?: Set<string>
+    // Collapsed group names, toggled in place by the chevrons (seed it to start collapsed)
+    collapsed_groups?: SvelteSet<string>
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
     on_fill_toggle?: (source_type: `fill_region` | `error_band`, source_idx: number) => void
@@ -173,12 +173,8 @@
     return groups
   })
 
-  function toggle_group_collapse(group_name: string) {
-    // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
-    if (!(collapsed_groups instanceof SvelteSet)) {
-      collapsed_groups = new SvelteSet(collapsed_groups)
-    }
-    // Set.delete returns true if element existed, so add if delete failed
+  // Set.delete returns true if element existed, so add if delete failed
+  const toggle_group_collapse = (group_name: string) => {
     if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
   }
 
