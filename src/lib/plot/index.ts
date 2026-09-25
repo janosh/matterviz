@@ -182,3 +182,4 @@ export type HistogramOptions = PlotElementOptions &
   >
 
 export { create_axis_loader } from './core/axis-utils'
+export { create_collapsible_legend, type CollapsibleLegend } from './core/collapsible-legend'
