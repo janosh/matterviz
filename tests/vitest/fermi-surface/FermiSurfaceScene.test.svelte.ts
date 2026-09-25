@@ -138,7 +138,7 @@ test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
 
 // A drag or wheel zoom used to keep raycasting the sheets on every pointermove, and the tooltip
 // popping in and out under the cursor flickered over the surface
-test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {
+test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, async () => {
   // only nullness of the tooltip is asserted, so a stub stands in for the full hover record
   const props = $state<{ hover_data: FermiHoverData | null }>({
     hover_data: { band_index: 0 } as FermiHoverData,
@@ -151,6 +151,9 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
   hover_enabled.set.mockClear()
 
   onstart()
+  // raycasts switch off only after the pointerdown that started the orbit reached the meshes
+  expect(hover_enabled.set).not.toHaveBeenCalled()
+  await new Promise((resolve) => setTimeout(resolve, 0))
   flushSync()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(false)
   expect(props.hover_data).toBeNull()
