@@ -9,6 +9,7 @@ import {
 } from '$lib/isosurface/geometry'
 import { create_volume_sampler, prepare_geometry_grid } from '$lib/isosurface/sampling'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '$lib/isosurface/types'
+import { cross_3d, dot, subtract, type Vec3 } from '$lib/math'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { install_stub_worker } from '../setup'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
@@ -117,8 +118,8 @@ describe(`compute_isosurface_geometries`, () => {
     }
   })
 
-  // Isosurface draws negative lobes at -isovalue; their front faces must point away from the
-  // lobe like a positive one's, or the transparent back-then-front pass draws them inside-out
+  // Front faces must point away from the lobe for either sign, or the transparent
+  // back-then-front pass draws negative lobes inside-out
   test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
     const blob = blob_volume()
     const volume = { ...blob, values: blob.values.map((val) => sign * val) }
@@ -128,21 +129,14 @@ describe(`compute_isosurface_geometries`, () => {
       ],
     }
     const [{ positions, indices }] = compute_isosurface_geometries(input).volumes[0].surfaces
-    const vertex = (idx: number) => [0, 1, 2].map((axis) => positions[3 * idx + axis])
+    const vertex = (idx: number): Vec3 =>
+      [0, 1, 2].map((axis) => positions[3 * idx + axis]) as Vec3
     let n_outward = 0
     for (let tri = 0; tri < indices.length; tri += 3) {
       const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner) => vertex(indices[tri + corner]))
-      const edge_1 = vert_b.map((coord, axis) => coord - vert_a[axis])
-      const edge_2 = vert_c.map((coord, axis) => coord - vert_a[axis])
-      const normal = [
-        edge_1[1] * edge_2[2] - edge_1[2] * edge_2[1],
-        edge_1[2] * edge_2[0] - edge_1[0] * edge_2[2],
-        edge_1[0] * edge_2[1] - edge_1[1] * edge_2[0],
-      ]
+      const normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
       // blob centred at (5, 5, 5) Å
-      const radial = vert_a.map((coord) => coord - 5)
-      if (normal[0] * radial[0] + normal[1] * radial[1] + normal[2] * radial[2] > 0)
-        n_outward++
+      if (dot(normal, subtract(vert_a, [5, 5, 5])) > 0) n_outward++
     }
     expect(indices.length).toBeGreaterThan(300)
     expect(n_outward).toBe(indices.length / 3)

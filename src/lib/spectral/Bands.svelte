@@ -476,20 +476,16 @@
     const band_structure = structures[0]?.bs
     if (!band_structure) return null
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
-    const [show_up, show_down] = [
-      effective_spin_mode !== `down_only`,
-      effective_spin_mode !== `up_only`,
+    const shown = (up: number[][], down: number[][] | undefined): number[][] => [
+      ...(effective_spin_mode !== `down_only` ? up : []),
+      ...(effective_spin_mode !== `up_only` ? (down ?? []) : []),
     ]
-    const channels = [...(show_up ? bands : []), ...(show_down ? (spin_down_bands ?? []) : [])]
     // Occupations, where the data has them, decide filling over E_F (see electronic_band_gap)
-    if (occupations) {
-      return helpers.electronic_band_gap(channels, [
-        ...(show_up ? occupations : []),
-        ...(show_down ? (spin_down_occupations ?? []) : []),
-      ])
-    }
-    if (effective_fermi_level === undefined) return null
-    return helpers.electronic_band_gap(channels, effective_fermi_level)
+    const filling = occupations
+      ? shown(occupations, spin_down_occupations)
+      : effective_fermi_level
+    if (filling === undefined) return null
+    return helpers.electronic_band_gap(shown(bands, spin_down_bands), filling)
   })
 
   let empty_state_msg = $derived(

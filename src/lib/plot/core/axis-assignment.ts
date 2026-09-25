@@ -237,11 +237,11 @@ export function assign_axes<Series extends AxisAssignableSeries>(
     const axis =
       explicit_axes[0] ??
       supported_axes.find((slot) => !blocked_axes.includes(slot) && !automatic_axes.has(slot))
-    if (explicit_axes.length === 0 && axis) automatic_axes.add(axis)
     if (axis === undefined) {
       overflow_groups.push(group)
       continue
     }
+    if (explicit_axes.length === 0) automatic_axes.add(axis)
     assigned_groups.push({ ...group, axis })
     if (explicit_axes.length < 2) {
       group.series_indices.forEach((series_idx) => (assignments[series_idx] ??= axis))

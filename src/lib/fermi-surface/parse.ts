@@ -510,8 +510,7 @@ interface IFermiIsosurface {
 }
 
 // IFermi keys isosurfaces by spin (str(Spin.up) = "1", str(Spin.down) = "-1"), not by band:
-// the band lives in each surface's band_idx. Reading the key as the band put every sheet of
-// a spin channel on "band 1", so all sheets shared one colour and band toggle.
+// the band lives in each surface's band_idx
 const IFERMI_SPIN_KEYS: Record<string, SpinChannel> = { '1': `up`, '-1': `down` }
 
 // Face values averaged onto the vertices of each face (vector properties by magnitude), so

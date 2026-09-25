@@ -7,12 +7,10 @@
 // Every origin at every lag is averaged exactly, in O(n log n) per coordinate, by expanding
 // the square: summed over origins, |r(t + m) - r(t)|² = S1(m) - 2 S2(m) with
 // S1(m) = Σ_t |r(t)|² + |r(t + m)|² (prefix sums) and S2(m) = Σ_t r(t) · r(t + m), an
-// autocorrelation taken with the same Wiener–Khinchin kernel as the VACF. The direct
-// lags x origins x atoms loop this replaced took 1.5 s at 1000 frames x 100 atoms (now 13 ms)
-// and 4.8 s at 2000 x 500 (now 0.9 s) even after thinning origins 4x to fit its work budget.
-// Each coordinate is centred on its time average first, so the difference cancels on the
-// scale of the motion rather than of the absolute position: a walk 1000 Å from the origin
-// matches the direct loop to < 1e-11 relative, against 7.7e-9 uncentred.
+// autocorrelation taken with the same Wiener–Khinchin kernel as the VACF (13 ms at 1000
+// frames x 100 atoms). Each coordinate is centred on its time average first, so the
+// difference cancels on the scale of the motion rather than of the absolute position: a walk
+// 1000 Å from the origin matches the direct loop to < 1e-11 relative, against 7.7e-9 uncentred.
 import { mean as mean_of } from '$lib/math'
 import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
 import {

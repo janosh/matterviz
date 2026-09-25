@@ -116,8 +116,7 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
   })
 
   // Parsed per-atom data lives on the sites (forces as `force`, velocities, charges, ...), so
-  // the structure exporter writes every dense numeric column and the parser reads it back.
-  // Velocities and charges used to be dropped, losing MLIP training data on re-export.
+  // the structure exporter writes every dense numeric column and the parser reads it back
   test(`round-trips per-atom forces, velocities and charges through parse and export`, () => {
     const source = [
       `2`,

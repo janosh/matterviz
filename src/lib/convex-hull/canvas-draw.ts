@@ -383,16 +383,6 @@ function hull_label_entries(
   )
 }
 
-// Per-segment widths (fonts are fixed module constants, so widths don't depend on the frame)
-const measure_segments = (
-  ctx: CanvasRenderingContext2D,
-  segments: FormulaLabelSegment[],
-): number[] =>
-  segments.map((segment) => {
-    ctx.font = segment.subscript ? LABEL_SUBSCRIPT_FONT : LABEL_FONT
-    return ctx.measureText(segment.text).width
-  })
-
 interface LabelLayout {
   entry: ConvexHullEntry
   segments: FormulaLabelSegment[]
@@ -419,7 +409,11 @@ function hull_label_layouts(
   if (cached?.key === key) return cached.layouts
   const layouts = hull_label_entries(entries, opts).map((entry) => {
     const segments = get_formula_label_segments(get_entry_label(entry, elements))
-    const segment_widths = measure_segments(ctx, segments)
+    // fonts are fixed module constants, so widths don't depend on the frame
+    const segment_widths = segments.map((segment) => {
+      ctx.font = segment.subscript ? LABEL_SUBSCRIPT_FONT : LABEL_FONT
+      return ctx.measureText(segment.text).width
+    })
     const text_width = segment_widths.reduce((sum, width) => sum + width, 0)
     return { entry, segments, segment_widths, text_width }
   })
@@ -444,11 +438,8 @@ export function draw_hull_labels(
   ctx.fillStyle = text_color
   ctx.textAlign = `left`
   ctx.textBaseline = `top`
-  for (const { entry, segments, segment_widths, text_width } of hull_label_layouts(
-    ctx,
-    entries,
-    opts,
-  )) {
+  const layouts = hull_label_layouts(ctx, entries, opts)
+  for (const { entry, segments, segment_widths, text_width } of layouts) {
     const projected = project(entry.x, entry.y, entry.z)
     const gap = point_radius(entry) * scale + 4 * scale
     const side = gap + scale + text_width / 2

@@ -231,9 +231,8 @@ export const count_total = (counts: Iterable<number>): number => {
 }
 
 // Scale raw counts into bar heights. `probability` and `density` divide by `total`, density
-// additionally by each bin's width in data units. The total is explicit because the bins
-// shown after a zoom are a window onto the full distribution: dividing by the visible count
-// instead would inflate a zoomed tail's density by the fraction of samples scrolled away.
+// additionally by each bin's width in data units. The total is explicit because zoomed bins
+// are a window onto the full distribution, which the visible count would misnormalize.
 export function normalize_counts(
   edges: Float64Array,
   counts: Uint32Array | Float64Array,
@@ -289,7 +288,7 @@ export const histogram_totals = (
 export function compute_histogram_bins(
   counted: ReturnType<typeof compute_histogram_counts>,
   normalize: HistogramNormalize,
-  series_color: (series_data: HistogramSeries, series_idx: number) => string,
+  series_color: (series_idx: number) => string,
   totals: ReadonlyMap<number, number>,
 ): BinnedSeries[] {
   return counted.map(({ series_data, series_idx, edges, counts }) => {
@@ -311,7 +310,7 @@ export function compute_histogram_bins(
       id: series_data.id ?? series_idx,
       series_idx,
       label: series_data.label ?? `Series ${series_idx + 1}`,
-      color: series_color(series_data, series_idx),
+      color: series_color(series_idx),
       bins,
       x_axis: series_data.x_axis,
       y_axis: series_data.y_axis,

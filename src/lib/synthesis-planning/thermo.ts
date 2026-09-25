@@ -395,16 +395,15 @@ export function reaction_energy_at_temperature(
   }
 }
 
-// Inclusive temperature intervals (1 K grid, 0..max_temperature) where the reaction energy is
-// negative. Gas release gives [T_min, max], gas uptake [0, T_max]; releasing one gas while
+// Inclusive temperature intervals (1 K grid, 0..MAX_SCAN_TEMPERATURE) where the reaction energy
+// is negative. Gas release gives [T_min, max], gas uptake [0, T_max]; releasing one gas while
 // consuming another can bound both ends. Empty when the reaction is never downhill.
 export function downhill_windows(
   energy_at: (temperature: number) => number,
-  max_temperature = MAX_SCAN_TEMPERATURE,
 ): [number, number][] {
   const windows: [number, number][] = []
   let start: number | null = null
-  for (let temperature = 0; temperature <= max_temperature; temperature++) {
+  for (let temperature = 0; temperature <= MAX_SCAN_TEMPERATURE; temperature++) {
     const downhill = energy_at(temperature) < 0
     if (downhill && start === null) start = temperature
     else if (!downhill && start !== null) {
@@ -412,23 +411,22 @@ export function downhill_windows(
       start = null
     }
   }
-  if (start !== null) windows.push([start, max_temperature])
+  if (start !== null) windows.push([start, MAX_SCAN_TEMPERATURE])
   return windows
 }
 
-// Plain-text reading of downhill_windows for UIs, recipes and agents, e.g. `downhill above
+// Plain-text reading of downhill_windows for UIs, recipes and agents, e.g. `downhill from
 // 1105 K`, `downhill up to 1480 K`, `downhill from 800 to 1300 K`
 export function describe_downhill_windows(
   windows: readonly (readonly [number, number])[],
-  max_temperature = MAX_SCAN_TEMPERATURE,
 ): string {
-  if (windows.length === 0) return `never downhill between 0 and ${max_temperature} K`
+  if (windows.length === 0) return `never downhill between 0 and ${MAX_SCAN_TEMPERATURE} K`
   return windows
     .map(([lower, upper]) => {
-      if (lower === 0 && upper === max_temperature)
-        return `downhill at every temperature from 0 to ${max_temperature} K`
+      if (lower === 0 && upper === MAX_SCAN_TEMPERATURE)
+        return `downhill at every temperature from 0 to ${MAX_SCAN_TEMPERATURE} K`
       if (lower === 0) return `downhill up to ${upper} K`
-      if (upper === max_temperature) return `downhill from ${lower} K`
+      if (upper === MAX_SCAN_TEMPERATURE) return `downhill from ${lower} K`
       return `downhill from ${lower} to ${upper} K`
     })
     .join(` and `)

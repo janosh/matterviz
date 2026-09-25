@@ -777,7 +777,7 @@ describe(`compute_xrd_pattern options`, () => {
     },
   )
 
-  // 2·sin(θ)/λ turns over at 180°, so [0, 200] used to act as a silent 160° cap
+  // 2·sin(θ)/λ turns over at 180°, so [0, 200] would act as a silent 160° cap
   test.each([
     [0, 200],
     [0, 240],

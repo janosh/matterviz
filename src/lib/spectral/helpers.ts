@@ -277,11 +277,22 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   )
 }
 
+// Whether `values` is a finite number[][] with the per-row lengths of `ref`
+const is_shaped_like = (
+  values: unknown,
+  ref: readonly (readonly number[])[],
+): values is number[][] =>
+  Array.isArray(values) &&
+  values.length === ref.length &&
+  values.every(
+    (row, row_idx) =>
+      Array.isArray(row) && row.length === ref[row_idx].length && row.every(Number.isFinite),
+  )
+
 // State occupations shaped like the bands, as spin-keyed `occupations` ({'1': ..., '-1': ...},
-// like pymatgen's `bands`) or matterviz `occupations` plus `spin_down_occupations`. Present
-// but malformed occupations throw rather than being dropped, since electronic_band_gap would
-// then silently judge filling from E_F. Both keys are always returned so a spread replaces
-// unvalidated input values.
+// like pymatgen's `bands`) or matterviz `occupations` plus `spin_down_occupations`. Malformed
+// occupations throw rather than being dropped, which would silently judge filling from E_F.
+// Both keys are always returned so a spread replaces unvalidated input values.
 const read_occupations = (
   input: Record<string, unknown>,
   bands: number[][],
@@ -292,22 +303,13 @@ const read_occupations = (
   }
   const channels = extract_spin_channels<unknown>(input.occupations)
   const [spin_up, spin_down] = [channels?.up, channels?.down ?? input.spin_down_occupations]
-  const matches_bands = (occupations: unknown, ref: number[][]): occupations is number[][] =>
-    Array.isArray(occupations) &&
-    occupations.length === ref.length &&
-    occupations.every(
-      (occ_band, band_idx) =>
-        Array.isArray(occ_band) &&
-        occ_band.length === ref[band_idx].length &&
-        occ_band.every(Number.isFinite),
-    )
-  if (!matches_bands(spin_up, bands)) {
+  if (!is_shaped_like(spin_up, bands)) {
     throw new Error(
       `band structure occupations must be finite numbers shaped like the bands (${bands.length} bands x ${bands[0]?.length} k-points)`,
     )
   }
   if (!spin_down_bands) return { occupations: spin_up, spin_down_occupations: undefined }
-  if (!matches_bands(spin_down, spin_down_bands)) {
+  if (!is_shaped_like(spin_down, spin_down_bands)) {
     throw new Error(
       `spin-polarized band structure occupations need a finite spin-down channel shaped like spin_down_bands (${spin_down_bands.length} bands), under 'occupations' key '-1' or 'spin_down_occupations'`,
     )
@@ -887,28 +889,22 @@ const FERMI_LEVEL_TOL = 1e-4
 // corrections push occupations slightly outside [0, 1], so exact 0/1 tests would misfire.
 const FILLED_OCCUPATION = 0.5
 
-// Band gap of electronic bands (each an array of energies over k). `filling` says which
-// states are filled: per-state occupations shaped like `bands` when the data has them, else
-// E_F (states below it are filled). Occupations take precedence because E_F alone misjudges
-// non-SCF line-mode runs: their E_F comes from the uniform SCF mesh, so a VBM lying on the
-// path between SCF k-points can rise tens of meV above E_F while the band stays filled
-// (pymatgen's serialized vbm/cbm/is_metal come from E_F too, so they are no better source).
+// Band gap of electronic bands (each an array of energies over k). `filling` is per-state
+// occupations shaped like `bands` when the data has them, else E_F (states below it are
+// filled). Occupations win because E_F misjudges non-SCF line-mode runs: their E_F comes from
+// the uniform SCF mesh, so a VBM on the path between SCF k-points can rise tens of meV above
+// E_F while the band stays filled (pymatgen's serialized vbm/cbm/is_metal share that flaw).
 // A band filled at some k-points and empty at others makes the system metallic (null).
-// Otherwise the VBM is the top of the filled bands and the CBM the bottom of the empty ones.
 export function electronic_band_gap(
   bands: readonly (readonly number[])[],
   filling: number | readonly (readonly number[])[],
 ): { vbm: number; cbm: number; gap: number } | null {
   const occupations = typeof filling === `number` ? null : filling
-  if (
-    occupations &&
-    (occupations.length !== bands.length ||
-      bands.some((band, band_idx) => occupations[band_idx].length !== band.length))
-  ) {
+  if (occupations && !is_shaped_like(occupations, bands)) {
     const shape = (rows: readonly (readonly number[])[]): string =>
       `[${rows.map((row) => row.length).join(`, `)}]`
     throw new Error(
-      `electronic_band_gap: occupations must match the bands shape, got per-band lengths ${shape(occupations)} for bands ${shape(bands)}`,
+      `electronic_band_gap: occupations must be finite and match the bands shape, got per-band lengths ${shape(occupations)} for bands ${shape(bands)}`,
     )
   }
   let vbm = -Infinity

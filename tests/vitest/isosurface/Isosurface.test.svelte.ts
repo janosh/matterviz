@@ -152,8 +152,8 @@ describe(`Isosurface`, () => {
       settings: with_layers([layer(0.3)], { wireframe: true }),
       n_meshes: 1,
     },
-    // non-positive isovalues used to render nothing, silently: 0 is a signed field's nodal
-    // surface (mirroring it would duplicate it) and a negative value its negative lobe
+    // 0 is a signed field's nodal surface (mirroring it would duplicate it) and a negative
+    // value its negative lobe
     {
       desc: `isovalue 0 renders the nodal surface once, even with show_negative`,
       settings: with_layers([layer(0, { show_negative: true })]),
@@ -190,8 +190,7 @@ describe(`Isosurface`, () => {
     }
   })
 
-  // Colour follows the sign of the value drawn, not which lobe mirrors the other: with a
-  // negative isovalue the mirror is the positive lobe, which used to get negative_color
+  // Colour follows the sign of the value drawn, not which lobe mirrors the other
   test.each([0.3, -0.3])(
     `negative lobe adds a second surface in negative_color (isovalue %s)`,
     async (isovalue) => {

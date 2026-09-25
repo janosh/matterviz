@@ -162,12 +162,11 @@ export const create_file_drop_handler = (
       if (!content) throw new Error(`file is empty`)
       return { content, filename, metadata: { source_filename: source.name, file: source } }
     }
+    // load_url calls back exactly once or throws
     const fetched: DroppedFile<TrajectorySource>[] = []
     await load_url(source, (content, filename, metadata) => {
       fetched.push({ content, filename, metadata })
     })
-    if (fetched.length !== 1)
-      throw new Error(`URL ${source} produced ${fetched.length} payloads, expected 1`)
     return fetched[0]
   }
   const load = async (source: DropSource): Promise<DroppedFile<TrajectorySource>> => {
@@ -176,15 +175,14 @@ export const create_file_drop_handler = (
     return dropped
   }
   const batch_opts = { allow, max_files, on_error, set_loading }
+  if (on_batch) return create_drop_batch_handler({ ...batch_opts, handle: load, on_batch })
   // Without on_batch nothing keeps a file's content past its own on_drop
-  if (!on_batch)
-    return create_drop_batch_handler({
-      ...batch_opts,
-      handle: async (source) => {
-        await load(source)
-      },
-    })
-  return create_drop_batch_handler({ ...batch_opts, handle: load, on_batch })
+  return create_drop_batch_handler({
+    ...batch_opts,
+    handle: async (source) => {
+      await load(source)
+    },
+  })
 }
 
 // Mirrors the hover state to the caller, e.g. for a bindable `dragover` prop

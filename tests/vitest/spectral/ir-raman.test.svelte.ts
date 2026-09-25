@@ -997,8 +997,7 @@ describe(`IrRamanSpectrum component`, () => {
   })
 
   // fwhm is one physical width in cm^-1: switching units only changes how the slider shows
-  // it. It used to be quoted in the displayed unit and rescaled by an effect that ran a render
-  // late, so Ha -> cm^-1 broadened a 4.6e-5 width on a cm^-1 grid and threw (8.9e8 points).
+  // it. Ha -> cm^-1 guards against broadening a stale Ha-sized width on a cm^-1 grid.
   it.each([
     [`Ha`, `cm^-1`],
     [`eV`, `cm^-1`],

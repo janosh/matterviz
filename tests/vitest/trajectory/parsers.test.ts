@@ -1171,7 +1171,7 @@ describe(`XYZ`, () => {
     [`species:S:1:pos:R:3:forces:R:3`, `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`, [[0.1, 0, 0], [0, 0, 0.3]]],
     [`species:S:1:pos:R:3:momenta:R:3:forces:R:3`, `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
     [`species:S:1:pos:R:3:node_energy:R:1:forces:R:3`, `H 0 0 0 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
-    // the libAtoms/QUIP/GAP column name, which used to be read and then deleted
+    // the libAtoms/QUIP/GAP column name
     [`species:S:1:pos:R:3:force:R:3`, `H 0 0 0 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
   ])(`reads forces at Properties column offset: %s`, async (properties, atom_lines, expected_forces) => {
     const frame = xyz_frame(atom_lines.split(`\n`), `Properties=${properties}`)
@@ -1339,8 +1339,7 @@ describe(`XYZ`, () => {
   })
 
   // Which reader opens a file is decided by its byte size alone, so the plot must not change
-  // with it: the in-memory rows are canonical. The indexed run used to read comment scalars
-  // only, losing the lattice/density curves and gaining custom keys like ref_energy.
+  // with it: the in-memory rows are canonical
   it(`extracts identical plot rows and series in memory and indexed`, async () => {
     const npt_frame = (frame_idx: number) => {
       const cell = 5 + 0.1 * frame_idx
@@ -1365,7 +1364,7 @@ describe(`XYZ`, () => {
       )
     expect(series(indexed)).toEqual(series(memory))
     // the canonical rows carry the lattice geometry and density, and every finite scalar the
-    // file records (an allowlist silently dropped bandgap and custom keys like ref_energy)
+    // file records
     expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
       expect.arrayContaining([
         `energy`,
@@ -1447,7 +1446,7 @@ describe(`ASE`, () => {
     [`a cell with no periodic axis`, [false, false, false]],
   ])(`every frame of %s keeps the pbc written in frame 0`, (_label, pbc) => {
     const { frames } = parse_ase_trajectory(ase_frames(pbc, box))
-    // ASE only repeats pbc when it changes; later frames used to fall back to [T, T, T]
+    // ASE only repeats pbc when it changes
     expect(frames.map((frame) => lattice_of(frame).pbc)).toEqual([pbc, pbc])
   })
 
@@ -1462,7 +1461,7 @@ describe(`ASE`, () => {
   })
 
   // ASE opens indexed only, but its rows must be the same canonical rows an in-memory run of
-  // the decoded frames gets: the header-only scan lost the lattice and density curves
+  // the decoded frames gets
   it(`extracts the canonical plot rows, lattice, density and bandgap included`, async () => {
     const buffer = make_ase_buffer(
       [0, 1].map((frame_idx) => (array) => ({
@@ -1482,8 +1481,7 @@ describe(`ASE`, () => {
     )
     const indexed = await open(buffer, `canonical.traj`)
     // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
-    // numbers and never a position: fully decoding every frame (6 position reads each here)
-    // made indexed row extraction 2-3x slower than it needs to be
+    // numbers and never a position (6 reads per frame here)
     const reads = vi.spyOn(DataView.prototype, `getFloat64`)
     onTestFinished(() => reads.mockRestore())
     await indexed.properties.done
@@ -1763,7 +1761,7 @@ describe(`JSON`, () => {
     expect(run.time_step).toBeUndefined()
   })
 
-  // What MontyEncoder actually writes for pymatgen objects the parser used to reject
+  // What MontyEncoder writes for pymatgen objects
   const numpy = (data: unknown) => ({
     '@module': `numpy`,
     '@class': `array`,
@@ -1811,32 +1809,16 @@ describe(`JSON`, () => {
 
   // pymatgen stores no stress unit (VASP kB, compression positive; CHGNet GPa), so a GPa
   // pressure or stress curve derived from it would be a guess
+  // oxfmt-ignore
+  const stress_tensor = [[-1, 0, 0], [0, -2, 0], [0, 0, -3]]
   it.each([
-    [
-      `numpy`,
-      numpy([
-        [-1, 0, 0],
-        [0, -2, 0],
-        [0, 0, -3],
-      ]),
-    ],
-    [
-      `plain list`,
-      [
-        [-1, 0, 0],
-        [0, -2, 0],
-        [0, 0, -3],
-      ],
-    ],
+    [`numpy`, numpy(stress_tensor)],
+    [`plain list`, stress_tensor],
   ])(`keeps %s stress raw without deriving pressure`, async (_label, stress) => {
     const run = await open(pymatgen({ frame_properties: [{ stress }, { stress }] }), `s.json`)
     await run.properties.done
     for (const { metadata } of await frames_of(run)) {
-      expect(metadata?.stress).toEqual([
-        [-1, 0, 0],
-        [0, -2, 0],
-        [0, 0, -3],
-      ])
+      expect(metadata?.stress).toEqual(stress_tensor)
       expect(metadata).not.toHaveProperty(`pressure`)
       expect(metadata).not.toHaveProperty(`stress_max`)
     }

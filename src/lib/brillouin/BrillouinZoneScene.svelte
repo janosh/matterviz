@@ -124,9 +124,6 @@
     },
   })
 
-  // The k-path's invisible hover proxy is twice the visible thickness so the cursor snaps to
-  // the path even when it isn't directly over the thin visible segment.
-
   // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).
   // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
   // a fraction of the zone. Skip segments far longer than the median sampling step.

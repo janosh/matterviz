@@ -63,9 +63,8 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // FWHM in the displayed unit, derived from the one stored width. A width synced by an
-  // effect lagged one render behind a unit switch, broadening Ha-sized widths on a cm^-1
-  // grid (8.9e8 points, which threw) before the effect caught up.
+  // FWHM in the displayed unit, derived (not effect-synced) so a unit switch never broadens
+  // with a stale width on the new grid
   let display_fwhm = $derived(convert_frequencies([fwhm], unit, `cm^-1`)[0])
 
   let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
@@ -278,8 +277,11 @@
               {...fwhm_input}
               value={display_fwhm}
               oninput={(event) => {
-                const width = Number(event.currentTarget.value)
-                fwhm = convert_frequencies([width], `cm^-1`, unit)[0]
+                fwhm = convert_frequencies(
+                  [Number(event.currentTarget.value)],
+                  `cm^-1`,
+                  unit,
+                )[0]
               }}
             />
           </label>

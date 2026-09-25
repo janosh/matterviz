@@ -214,9 +214,8 @@
   }
 
   // Escape closes all panels, returning to the overview. Listened for on the window so it
-  // works with nothing focused, but only for Escapes aimed at this browser: not ones another
-  // widget already consumed (a panel's popover, a nested viewer's pane) or ones pressed
-  // inside a different element, such as a second browser on the same page.
+  // works with nothing focused, skipping Escapes another widget consumed (popover, nested
+  // viewer) or pressed inside a different element (e.g. a second browser on the page).
   $effect(() => {
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {

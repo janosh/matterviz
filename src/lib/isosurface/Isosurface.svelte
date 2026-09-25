@@ -180,19 +180,17 @@
     dispose_all()
   })
 
-  // range_key covers halo + tiling (encoded in the range for periodic volumes;
-  // irrelevant for finite ones), so the geometry identity needs no other inputs
   // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
-  // negative lobe (both used to render nothing, silently). show_negative mirrors the surface
-  // at -isovalue, which at 0 is the same surface.
+  // negative lobe. show_negative mirrors the surface at -isovalue, which at 0 is the same one.
   const mirror_signs = (layer: ResolvedLayer): readonly (1 | -1)[] =>
     layer.show_negative && layer.isovalue !== 0 ? [1, -1] : [1]
-  // A mirrored pair colours each lobe by the sign of the value it is drawn at, not by which
-  // one mirrors the other: with a negative isovalue the mirror is the positive lobe, which
-  // takes `color`. A lone surface always takes `color`, whatever the sign of its isovalue.
+  // A mirrored pair colours each lobe by the sign of the value it is drawn at (with a negative
+  // isovalue the mirror is the positive lobe); a lone surface always takes `color`
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
+  // range_key covers halo + tiling (encoded in the range for periodic volumes;
+  // irrelevant for finite ones), so the geometry identity needs no other inputs
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
     const vol = layer.volume
     return JSON.stringify([

@@ -101,8 +101,6 @@ function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
 }
 
 type Edge = { from: number; to: number; bond: BondPair }
-// Bond order per edge and the valence each atom uses under those orders
-type BondOrderSolution = { orders: number[]; valence: number[] }
 
 // One target valence per atom, lowest total valence first (xyz2mol prefers the
 // least-saturated solution). Only atoms with a choice are enumerated.
@@ -213,18 +211,14 @@ function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boo
   return true
 }
 
-// Raise bond orders so every atom ends exactly at its target valence, or null when no
+// Bond order per edge so every atom ends exactly at its target valence, or null when no
 // assignment exists. Starting from all-single bonds, each atom must gain its deficit in extra
 // bond orders, one per unit across a bond: a perfect matching between per-unit copies of the
 // atoms. The matching doesn't cap raises per bond: one that puts three on a bond (beyond a
 // triple) is rejected. That can miss a valid assignment only when two adjacent non-terminal
-// atoms both need 3+ extra orders (S/Se/Te/P at high valence), never for C/N/O. Exact
-// otherwise, where the greedy raise it replaced failed on up to 80% of atom orderings of fused
-// aromatics.
-function assign_bond_orders(
-  edges: Edge[],
-  target_valence: number[],
-): BondOrderSolution | null {
+// atoms both need 3+ extra orders (S/Se/Te/P at high valence), never for C/N/O. Unlike a
+// greedy raise, the result does not depend on atom order.
+function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] | null {
   const n_atoms = target_valence.length
   const deficit = target_valence.slice()
   // a self-bond (periodic image of the atom itself) counts once and is never raised
@@ -239,14 +233,16 @@ function assign_bond_orders(
   }
   const n_copies = first_copy[n_atoms]
   const orders = Array.from({ length: edges.length }, () => 1)
-  if (n_copies === 0) return { orders, valence: target_valence.slice() }
+  if (n_copies === 0) return orders
   if (n_copies % 2 === 1) return null
+  const pair_key = (atom_1: number, atom_2: number): number =>
+    Math.min(atom_1, atom_2) * n_atoms + Math.max(atom_1, atom_2)
   const adjacency = Array.from({ length: n_copies }, () => [] as number[])
   // raisable bonds by the atom pair they join (periodic images can bond one pair twice)
   const edges_by_pair = new Map<number, number[]>()
   for (const [edge_idx, { from, to: target }] of edges.entries()) {
     if (from === target || !deficit[from] || !deficit[target]) continue
-    const pair = Math.min(from, target) * n_atoms + Math.max(from, target)
+    const pair = pair_key(from, target)
     const pair_edges = edges_by_pair.get(pair)
     if (pair_edges) {
       pair_edges.push(edge_idx)
@@ -278,19 +274,18 @@ function assign_bond_orders(
   for (let copy = 0; copy < n_copies; copy++) {
     const partner = mate[copy]
     if (partner < copy) continue
-    const [atom_1, atom_2] = [atom_of_copy[copy], atom_of_copy[partner]]
-    const pair = Math.min(atom_1, atom_2) * n_atoms + Math.max(atom_1, atom_2)
+    const pair = pair_key(atom_of_copy[copy], atom_of_copy[partner])
     const edge_idx = edges_by_pair.get(pair)?.find((idx) => orders[idx] < 3)
     if (edge_idx === undefined) return null // three raises on one bond
     orders[edge_idx]++
   }
-  return { orders, valence: target_valence.slice() }
+  return orders
 }
 
 // Rings as the shortest cycle through each bond (at most MAX_RING_SIZE atoms), deduplicated
-// by vertex set. A spanning-tree cycle basis could return a fused system's envelope in place
-// of one of its small rings, so that ring was never tested for aromaticity. `in_scope` limits
-// ring members (aromatic rings only hold C/N/O/S), which also bounds the search.
+// by vertex set, so every small ring of a fused system is found (a spanning-tree cycle basis
+// can return the envelope instead). `in_scope` limits ring members (aromatic rings only hold
+// C/N/O/S), which also bounds the search.
 const MAX_RING_SIZE = 8
 function find_rings(
   n_atoms: number,
@@ -368,8 +363,8 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
 // the conjugated π system (C, N, O, S). Other ring members disqualify.
 const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 
-// Valence-consistent bond orders of one fragment, the first found for each formal charge in
-// least-saturated order. Formal charge mostly rises with the valence sum, so the search stops
+// Valence-consistent bond orders of one fragment by formal charge, the first found for each
+// in least-saturated order. Formal charge mostly rises with the valence sum, so the search stops
 // once a solution at charge `stop_charge` (or above) turns up. That early exit is a heuristic,
 // not a bound: S is +1 at valence 3 but neutral at 6, and B is -1 at valence 4.
 function fragment_solutions(
@@ -377,16 +372,16 @@ function fragment_solutions(
   local_edges: Edge[],
   valence_lists: number[][],
   stop_charge: number,
-): Map<number, BondOrderSolution> {
-  const solutions = new Map<number, BondOrderSolution>()
+): Map<number, number[]> {
+  const solutions = new Map<number, number[]>()
   for (const target of valence_combinations(valence_lists)) {
-    const candidate = assign_bond_orders(local_edges, target)
-    if (!candidate) continue
+    const orders = assign_bond_orders(local_edges, target)
+    if (!orders) continue
     let charge = 0
     for (const [local_atom_idx, symbol] of symbols.entries()) {
-      charge += formal_charge(symbol, candidate.valence[local_atom_idx])
+      charge += formal_charge(symbol, target[local_atom_idx])
     }
-    if (!solutions.has(charge)) solutions.set(charge, candidate)
+    if (!solutions.has(charge)) solutions.set(charge, orders)
     if (charge >= stop_charge) break
   }
   return solutions
@@ -394,8 +389,8 @@ function fragment_solutions(
 
 // One formal charge per fragment summing to `total_charge`, fewest charged fragments first
 // (then least total |charge|), or null when the fragments' solutions can't reach the total.
-// The total belongs to the whole structure: requiring it of every fragment left a salt such as
-// CO3 + CO2 at -2 (or two CO3 at -4) with no fragment able to match it.
+// The total belongs to the whole structure: a salt such as CO3 + CO2 at -2 has no fragment
+// that matches it alone.
 function distribute_charge(
   charges_per_fragment: number[][],
   total_charge: number,
@@ -483,13 +478,13 @@ export function perceive_bond_orders(
   }
   const total_charge = opts.total_charge ?? 0
 
-  // Candidate solutions per bonded main-group fragment
+  // Candidate bond orders by formal charge per bonded main-group fragment
   const solved_frags: {
     frag: number[]
-    symbols: string[]
     local_edges: Edge[]
-    solutions: Map<number, BondOrderSolution>
+    solutions: Map<number, number[]>
   }[] = []
+  const stop_charge = Math.max(0, total_charge)
   for (const [frag_idx, frag] of frags.entries()) {
     const local_edges = edges_by_frag[frag_idx]
     if (local_edges.length === 0 || frag.length > max_atoms) continue
@@ -511,9 +506,8 @@ export function perceive_bond_orders(
       )
       continue
     }
-    const stop_charge = Math.max(0, total_charge)
     const solutions = fragment_solutions(symbols, local_edges, valence_lists, stop_charge)
-    solved_frags.push({ frag, symbols, local_edges, solutions })
+    solved_frags.push({ frag, local_edges, solutions })
   }
   // The total is only enforceable when every bonded fragment is a candidate; otherwise (and
   // when the total is out of reach) each fragment is taken neutral, if it can be.
@@ -529,9 +523,8 @@ export function perceive_bond_orders(
 
   let ring_id = 0
   for (const [solved_idx, { frag, local_edges, solutions }] of solved_frags.entries()) {
-    const solved = solutions.get(charges[solved_idx])
-    if (!solved) continue
-    const { orders } = solved
+    const orders = solutions.get(charges[solved_idx])
+    if (!orders) continue
     local_edges.forEach((edge, edge_idx) => {
       const solved_order = orders[edge_idx]
       const order: BondOrder = solved_order >= 3 ? 3 : solved_order === 2 ? 2 : 1

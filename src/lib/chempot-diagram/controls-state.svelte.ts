@@ -112,11 +112,10 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   const requested_elements = $derived(opts.elements?.() ?? opts.config().elements)
   const projection = $derived.by((): string[] | null => {
     const data_elements = entry_elements(slice.temp_filtered_entries)
-    const requested = requested_elements
-    return requested?.length &&
-      requested.length < data_elements.length &&
-      requested.every((element) => data_elements.includes(element))
-      ? [...requested]
+    return requested_elements?.length &&
+      requested_elements.length < data_elements.length &&
+      requested_elements.every((element) => data_elements.includes(element))
+      ? requested_elements
       : null
   })
   const compute_config = $derived<ChemPotDiagramConfig>({

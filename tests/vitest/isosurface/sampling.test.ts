@@ -201,9 +201,8 @@ describe(`sample_volume_at_positions`, () => {
   })
 })
 
-// Viewers pass $state volumes: every property read then runs a proxy trap. Reading dims and
-// values per sample made slices and vertex colouring 14-35x slower (16.9 s vs 475 ms for a
-// 1024² slice of a 100³ grid), so the reads must not scale with the number of samples.
+// Viewers pass $state volumes, where every property read runs a proxy trap, so reads must
+// not scale with the number of samples (per-sample reads were 14-35x slower)
 test(`samplers read the volume a fixed number of times, not once per sample`, () => {
   let n_reads = 0
   const counted = new Proxy(linear_volume(11, cubic, false), {

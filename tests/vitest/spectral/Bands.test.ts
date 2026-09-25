@@ -451,10 +451,8 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  // Bands 0 and 1 of the fixture cross E_F = 0, i.e. a metal. The gap used to be the largest
-  // below-E_F and smallest above-E_F energy over all points, which reported 0.3 eV for it.
-  // Occupations decide filling over E_F: in a non-SCF line-mode run the VBM can lie on the
-  // path between SCF k-points and rise above the SCF E_F (here by 30 meV)
+  // Bands 0 and 1 of the fixture cross E_F = 0, i.e. a metal. Occupations decide filling
+  // over E_F: in a non-SCF line-mode run the VBM can rise above the SCF E_F (here by 30 meV)
   const filled_below_band_2 = [1, 1, 0, 0].map((occupation) => Array(4).fill(occupation))
   it.each([
     [`metal`, 0, undefined, null],

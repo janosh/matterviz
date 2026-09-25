@@ -176,11 +176,9 @@ const with_cell_volume = (
 ): Record<string, unknown> => (lattice ? { ...metadata, volume: lattice.volume } : metadata)
 
 // A frame that only feeds frame_property_row: step, metadata and lattice exactly as
-// create_trajectory_frame records them, with the atoms reduced to the atomic numbers the
-// density weighs. They are numeric-backed, so get_density counts them without building a
-// site, and indexed readers produce one per frame for its plot row without decoding any
-// coordinates. Its `sites` throw on access, so an extractor that starts to need atom data
-// fails loudly instead of plotting an empty structure.
+// create_trajectory_frame records them, with the atoms reduced to numeric-backed atomic
+// numbers so get_density counts them without decoding coordinates or building sites. Its
+// `sites` throw on access, so an extractor that starts to need atom data fails loudly.
 export const create_plot_row_frame = (
   atomic_numbers: readonly number[],
   lattice_matrix: math.Matrix3x3 | undefined,
@@ -190,15 +188,8 @@ export const create_plot_row_frame = (
 ): TrajectoryFrame => {
   let topology = plot_row_topologies.get(atomic_numbers)
   if (!topology) {
-    const numbers = new Uint8Array(atomic_numbers.length)
-    for (let idx = 0; idx < numbers.length; idx++) {
-      const number = atomic_numbers[idx]
-      // Same check (and message) as convert_atomic_numbers on the full decode path
-      if (!element_from_atomic_number(number))
-        throw new Error(`Unknown atomic number in trajectory data: ${number}`)
-      numbers[idx] = number
-    }
-    topology = { numbers }
+    convert_atomic_numbers(atomic_numbers) // the full decode's validation and message
+    topology = { numbers: Uint8Array.from(atomic_numbers) }
     plot_row_topologies.set(atomic_numbers, topology)
   }
   const lattice = lattice_matrix && make_lattice(lattice_matrix, pbc)
@@ -291,14 +282,9 @@ export const checked_site_forces = (
   warn: WarnFn,
 ): number[][] | null => {
   if (forces === undefined || forces === null) return null
-  if (!Array.isArray(forces)) {
-    warn(
-      `Ignoring ${context}: expected an array of ${n_atoms} 3-vectors, got ${typeof forces}`,
-    )
-    return null
-  }
-  if (forces.length !== n_atoms) {
-    warn(`Ignoring ${context}: expected ${n_atoms} finite 3-vectors, got ${forces.length}`)
+  if (!Array.isArray(forces) || forces.length !== n_atoms) {
+    const got = Array.isArray(forces) ? forces.length : typeof forces
+    warn(`Ignoring ${context}: expected ${n_atoms} finite 3-vectors, got ${got}`)
     return null
   }
   const bad_idx = forces.findIndex((force) => !is_finite_vec3_like(force))

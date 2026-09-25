@@ -163,9 +163,8 @@ describe(`Dos component`, () => {
     expect(select.value).toBe(`THz`)
   })
 
-  // reference_frequency, hovered_frequency and sigma live in the data unit (THz) whatever the
-  // axis displays. Dos used to draw reference_frequency and apply sigma in the displayed unit
-  // while Bands read them as THz, so a 5 THz reference landed at 5 cm⁻¹ (1.5% of the axis).
+  // reference_frequency and sigma live in the data unit (THz) whatever the axis displays,
+  // matching how Bands reads them
   it.each([`THz`, `cm^-1`, `meV`] as const)(
     `draws a THz reference line and shows a THz sigma in %s`,
     async (units) => {

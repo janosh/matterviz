@@ -167,8 +167,7 @@ export const ase_calculator_data = (
       continue
     }
     if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
-    const reference = value
-    const shape = reference.ndarray[0]
+    const shape = value.ndarray[0]
     if (
       !Array.isArray(shape) ||
       !shape.every((dimension) => Number.isInteger(dimension) && dimension > 0)
@@ -181,7 +180,7 @@ export const ase_calculator_data = (
     if (result_key in results) {
       throw new Error(`ASE calculator contains duplicate result key ${result_key}`)
     }
-    const array = read_ndarray(reference)
+    const array = read_ndarray(value)
     results[result_key] = shape.length === 1 ? array[0] : array
   }
   const pressure = ase_pressure(results.stress)

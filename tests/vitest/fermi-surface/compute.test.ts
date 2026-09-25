@@ -368,52 +368,32 @@ describe(`grid/lattice conventions`, () => {
     for (const axis of [0, 1, 2]) expect(ignored[axis]).toBeCloseTo(-half_voxel[axis], 3)
   })
 
-  // Sphere of radius 0.3 around Γ (index 0) must keep its radius through extraction and
-  // upsampling — a mixed-up grid convention rescales it by ~n/(n−1), and shifting a Γ-started
-  // grid by −½(a*+b*+c*) instead of rolling it split the sphere into corner caps at |k| 0.57-0.74
+  // Sphere of radius 0.3 around Γ must stay centred and keep its radius through extraction
+  // and upsampling: a mixed-up grid convention rescales it by ~n/(n−1), and shifting a
+  // Γ-started grid by −½(a*+b*+c*) instead of rolling it splits it into corner caps
+  const lshift_0 = 0.5 - 20 / 2 // lshift=0 Monkhorst-Pack mesh: index 0 already at −½
   test.each([
-    [`endpoint-inclusive (BXSF), odd n`, 21, false],
-    [`periodic (FRMSF lshift=1), odd n`, 21, true],
-    [`periodic (FRMSF lshift=1), even n`, 20, true],
-  ])(`Γ-centred sphere is drawn around the origin: %s`, (_label, grid_n, periodic) => {
-    const { isosurfaces } = extract_fermi_surface(
-      make_band_data(grid_n, sphere, { periodic }),
-      { mu: 0.3 },
-    )
-    expect(isosurfaces).toHaveLength(1)
-    for (const vertex of vertices_of(isosurfaces[0])) {
-      expect(Math.hypot(...vertex)).toBeCloseTo(0.3, 1)
-    }
-  })
-
-  // An lshift=0 Monkhorst-Pack mesh already starts at −½ and needs no roll
-  test(`lshift=0 mesh (index 0 at −½) stays centred on Γ`, () => {
-    const grid_n = 20
-    const { isosurfaces } = extract_fermi_surface(
-      make_band_data(grid_n, sphere, {
-        periodic: true,
-        grid_shift: [0.5 - grid_n / 2, 0.5 - grid_n / 2, 0.5 - grid_n / 2],
-      }),
-      { mu: 0.3 },
-    )
-    const verts = vertices_of(isosurfaces[0])
-    const mean_radius = verts.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / verts.length
-    expect(mean_radius).toBeCloseTo(0.3, 2)
-  })
-
-  // Sphere of radius 0.3 around Γ must keep its radius through extraction and upsampling
-  test.each([
-    [`endpoint-inclusive (BXSF)`, false, 1],
-    [`endpoint-inclusive (BXSF), 2x upsampled`, false, 2],
-    [`periodic (FRMSF)`, true, 1],
-    [`periodic (FRMSF), 2x upsampled`, true, 2],
-  ])(`sphere keeps its radius: %s`, (_label, periodic, interpolation_factor) => {
-    const band_data = make_band_data(20, sphere, { periodic })
-    const { isosurfaces } = extract_fermi_surface(band_data, { mu: 0.3, interpolation_factor })
-    const verts = vertices_of(isosurfaces[0])
-    const mean_radius = verts.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / verts.length
-    expect(mean_radius).toBeCloseTo(0.3, 2)
-  })
+    [`endpoint-inclusive (BXSF)`, 20, false, 1, undefined],
+    [`endpoint-inclusive (BXSF), odd n`, 21, false, 1, undefined],
+    [`endpoint-inclusive (BXSF), 2x upsampled`, 20, false, 2, undefined],
+    [`periodic (FRMSF lshift=1)`, 20, true, 1, undefined],
+    [`periodic (FRMSF lshift=1), odd n`, 21, true, 1, undefined],
+    [`periodic (FRMSF), 2x upsampled`, 20, true, 2, undefined],
+    [`periodic (FRMSF lshift=0)`, 20, true, 1, [lshift_0, lshift_0, lshift_0] as Vec3],
+  ])(
+    `Γ-centred sphere keeps its radius: %s`,
+    (_label, grid_n, periodic, interpolation_factor, grid_shift) => {
+      const band_data = make_band_data(grid_n, sphere, { periodic, grid_shift })
+      const { isosurfaces } = extract_fermi_surface(band_data, {
+        mu: 0.3,
+        interpolation_factor,
+      })
+      expect(isosurfaces).toHaveLength(1)
+      const radii = vertices_of(isosurfaces[0]).map((vertex) => Math.hypot(...vertex))
+      for (const radius of radii) expect(radius).toBeCloseTo(0.3, 1)
+      expect(radii.reduce((sum, radius) => sum + radius, 0) / radii.length).toBeCloseTo(0.3, 2)
+    },
+  )
 
   test.each([
     { periodic: false, dims: [10, 4, 6] as Vec3, factor: 2, expected: [19, 7, 11] as Vec3 },

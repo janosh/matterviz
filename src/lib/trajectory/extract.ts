@@ -62,11 +62,9 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 // Frame bookkeeping rather than per-frame physics: the step is the row's own axis
 const BOOKKEEPING_METADATA_KEYS = new Set([`step`, `frame_number`, `total_atoms`])
 
-// The canonical plot row: every finite numeric scalar the frame's metadata carries (energies,
-// forces, SCF residuals, bandgap, temperature, file-specific keys, ...) plus the lattice
-// geometry and density derived from its structure. A fixed allowlist here silently lost every
-// series it did not name. Lattice parameters that never vary are dropped by the plot's
-// constant-series filter, so nothing marks them here.
+// The canonical plot row: every finite numeric scalar in the frame's metadata (not an
+// allowlist, so file-specific keys survive) plus the lattice geometry and density. Lattice
+// parameters that never vary are dropped by the plot's constant-series filter.
 export const full_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
 ): Record<string, number> => {
@@ -82,10 +80,8 @@ export const full_data_extractor: TrajectoryDataExtractor = (
   return { ...data, ...structural_data_extractor(frame) }
 }
 
-// One frame's plot row. The single definition of per-frame plot values: in-memory runs map it
-// over their frames and indexed runs over each frame as they decode it (ASE via a reduced
-// decode that skips positions and sites, see create_plot_row_frame), so which reader a
-// file's byte size picks cannot change its plot.
+// One frame's plot row, shared by in-memory and indexed runs so the reader a file's byte
+// size picks cannot change its plot
 export const frame_property_row = (
   frame: TrajectoryFrame,
   frame_number: number,

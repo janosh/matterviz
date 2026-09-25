@@ -37,14 +37,17 @@ const SVG_NS = `http://www.w3.org/2000/svg`
 // Interactive controls have no static rendering (and raster exports must stay untainted)
 const SKIPPED_OVERLAY_ELEMENTS = new Set([`INPUT`, `SELECT`, `BUTTON`, `TEXTAREA`])
 
-const svg_el = <Tag extends keyof SVGElementTagNameMap>(
-  tag: Tag,
+const set_attrs = <El extends Element>(
+  element: El,
   attrs: Record<string, string | number>,
-): SVGElementTagNameMap[Tag] => {
-  const element = document.createElementNS(SVG_NS, tag)
+) => {
   for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, String(value))
   return element
 }
+const svg_el = <Tag extends keyof SVGElementTagNameMap>(
+  tag: Tag,
+  attrs: Record<string, string | number>,
+): SVGElementTagNameMap[Tag] => set_attrs(document.createElementNS(SVG_NS, tag), attrs)
 
 // Split on top-level commas only: color functions like rgb(1, 2, 3) nest their own
 const split_top_level = (text: string): string[] => {
@@ -121,18 +124,17 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
     // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS lengths include px
     const radius = Number.parseFloat(style.borderTopLeftRadius) || 0
     const gradient = parse_linear_gradient(style.backgroundImage)
-    let fill = gradient ? `` : style.backgroundColor
+    let fill = style.backgroundColor
     if (gradient) {
-      const gradient_id = unique_id(`export-overlay-gradient`)
+      const id = unique_id(`export-overlay-gradient`)
       const [x1, y1, x2, y2] = gradient.vector
-      const element_gradient = svg_el(`linearGradient`, { id: gradient_id, x1, y1, x2, y2 })
+      const element_gradient = svg_el(`linearGradient`, { id, x1, y1, x2, y2 })
       for (const [color, offset] of gradient.stops) {
         element_gradient.append(svg_el(`stop`, { offset, 'stop-color': color }))
       }
       defs.append(element_gradient)
-      fill = `url(#${gradient_id})`
-    }
-    if (is_transparent(fill)) return
+      fill = `url(#${id})`
+    } else if (is_transparent(fill)) return
     group.append(svg_el(`rect`, { ...rect, rx: radius, fill, opacity }))
   }
 
@@ -171,10 +173,8 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
     const opacity = parent_opacity * own_opacity
     if (element instanceof SVGSVGElement) {
       const clone = element.cloneNode(true) as SVGSVGElement
-      for (const [name, value] of Object.entries(box(element.getBoundingClientRect())))
-        clone.setAttribute(name, String(value))
-      clone.setAttribute(`opacity`, String(opacity))
-      group.append(clone)
+      const rect = box(element.getBoundingClientRect())
+      group.append(set_attrs(clone, { ...rect, opacity }))
       return
     }
     add_background(element, style, opacity)

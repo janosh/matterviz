@@ -260,8 +260,7 @@ describe(`VolumeSlice`, () => {
   })
 })
 
-// Colormap, contour and colour-range edits only repaint: re-sampling the plane for them cost
-// 270-490 ms at the default resolution (seconds with a reactive volume)
+// Colormap, contour and colour-range edits only repaint, never re-sample the plane
 describe(`VolumeSliceView`, () => {
   test(`re-samples for plane changes but not for rendering-only changes`, async () => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(

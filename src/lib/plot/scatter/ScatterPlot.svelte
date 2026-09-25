@@ -981,12 +981,8 @@
       .filter((entry): entry is TaggedRegion & { region: FillRegion } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
         // A region draws against its (series-implied) axes, and hides with its series
-        const {
-          x_axis: fill_x_axis,
-          y_axis: fill_y_axis,
-          series_hidden,
-        } = resolve_fill_binding(region, assigned_series)
-        const [x_ax, y_ax] = [axis_scales[fill_x_axis], axis_scales[fill_y_axis]]
+        const { series_hidden, ...axes } = resolve_fill_binding(region, assigned_series)
+        const [x_ax, y_ax] = [axis_scales[axes.x_axis], axis_scales[axes.y_axis]]
         // On log axes, non-positive coords are held at the domain floor before scaling: a
         // fixed tiny epsilon can sit far below the domain and map to extreme pixel coords
         const x_px = log_floor_scale(x_ax.scale, x_ax.config.scale_type, x_ax.domain)
@@ -1021,8 +1017,7 @@
         return {
           ...region,
           ...(hidden && { visible: false }),
-          x_axis: fill_x_axis,
-          y_axis: fill_y_axis,
+          ...axes,
           idx,
           source_type,
           source_idx,
@@ -1425,15 +1420,18 @@
   // at the old position
   let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
 
+  // Index of `point_idx` in a list ascending in point_idx (materialized order, which
+  // filtered_data keeps), or -1 when absent
+  const index_of_point = (points: readonly InternalPoint<Metadata>[], point_idx: number) => {
+    const idx = partition_point(points, (pt) => pt.point_idx < point_idx)
+    return points[idx]?.point_idx === point_idx ? idx : -1
+  }
   // The plotted point with the same logical key (series_idx, point_idx), or null when the
   // current data no longer plots it (series hidden or removed, index gone, value non-finite)
-  const plotted_point = (point: InternalPoint<Metadata>): InternalPoint<Metadata> | null => {
-    const points = materialized_series.find(
-      (srs) => srs.orig_series_idx === point.series_idx,
-    )?.points
-    if (!points) return null
-    const found = points[partition_point(points, (pt) => pt.point_idx < point.point_idx)]
-    return found?.point_idx === point.point_idx ? found : null
+  const plotted_point = ({ series_idx, point_idx }: InternalPoint<Metadata>) => {
+    const points =
+      materialized_series.find((srs) => srs.orig_series_idx === series_idx)?.points ?? []
+    return points[index_of_point(points, point_idx)] ?? null
   }
 
   // Per-series point lists plus the offsets that flatten them into one index space.
@@ -1467,13 +1465,10 @@
     if (!kbd_cursor) return null
     const { series_idx, point_idx } = kbd_cursor
     const series_pos = filtered_series.findIndex((srs) => srs.orig_series_idx === series_idx)
-    const list = kbd_nav.lists[series_pos]
-    if (!list) return null
-    // filtered_data keeps the materialized order, which ascends in point_idx
-    const list_idx = partition_point(list, (pt) => pt.point_idx < point_idx)
-    const point = list[list_idx]
-    if (point?.point_idx !== point_idx) return null
-    return { point, nav_idx: kbd_nav.offsets[series_pos] + list_idx }
+    const list = kbd_nav.lists[series_pos] ?? []
+    const list_idx = index_of_point(list, point_idx)
+    if (list_idx < 0) return null
+    return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
   })
 
   // A data swap or a host-hidden series leaves no pointer event to clear the tooltip, so

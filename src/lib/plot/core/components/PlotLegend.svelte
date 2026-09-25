@@ -178,11 +178,6 @@
     return groups
   })
 
-  // Set.delete returns true if element existed, so add if delete failed
-  const toggle_group_collapse = (group_name: string) => {
-    if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
-  }
-
   const group_indices = (items: readonly LegendItem[]): number[] =>
     items.map(({ series_idx }) => series_idx)
   const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
@@ -270,6 +265,23 @@
     if (event.key !== `Enter` && event.key !== ` `) return
     event.preventDefault()
     action()
+  }
+
+  // Expand/collapse button props: the chevron's, or in `collapse` mode the whole header's
+  const collapse_toggle = (group_name: string): HTMLAttributes<HTMLElement> => {
+    const is_collapsed = collapsed_groups.has(group_name)
+    // Set.delete returns true if element existed, so add if delete failed
+    const toggle = () => {
+      if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
+    }
+    return {
+      onclick: (event) => stop_and_run(event, toggle),
+      onkeydown: (event) => keyboard_activate(event, toggle),
+      role: `button`,
+      tabindex: 0,
+      'aria-expanded': !is_collapsed,
+      'aria-label': `${is_collapsed ? `Expand` : `Collapse`} group ${strip_html(group_name)}`,
+    }
   }
 </script>
 
@@ -453,39 +465,20 @@
       {@const group_items = items_by_group.get(cell.group) ?? []}
       {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
-      {@const group_name = strip_html(cell.group)}
+      {@const header_toggles = group_click === `collapse`}
       <!-- Sibling controls, never nested: in visibility mode the chevron expands and the
            label toggles visibility; in collapse mode the whole header is one expand toggle -->
-      {#if group_click === `collapse`}
-        <div
-          class={['legend-group-header', { hidden: !group_visible }]}
-          onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
-          onkeydown={(event) =>
-            keyboard_activate(event, () => toggle_group_collapse(cell.group))}
-          role="button"
-          tabindex="0"
-          aria-expanded={!is_collapsed}
-          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {group_name}"
+      <div
+        class={['legend-group-header', { hidden: !group_visible }]}
+        {...header_toggles ? collapse_toggle(cell.group) : {}}
+      >
+        <span
+          class={['group-chevron', { collapsed: is_collapsed }]}
+          {...header_toggles ? { 'aria-hidden': true } : collapse_toggle(cell.group)}>▶</span
         >
-          <span class={['group-chevron', { collapsed: is_collapsed }]} aria-hidden="true"
-            >▶</span
-          >
+        {#if header_toggles}
           <span class="group-label">{@html sanitize_html(cell.group)}</span>
-        </div>
-      {:else}
-        <div class={['legend-group-header', { hidden: !group_visible }]}>
-          <span
-            class={['group-chevron', { collapsed: is_collapsed }]}
-            onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
-            onkeydown={(event) =>
-              keyboard_activate(event, () => toggle_group_collapse(cell.group))}
-            role="button"
-            tabindex="0"
-            aria-expanded={!is_collapsed}
-            aria-label="{is_collapsed ? `Expand` : `Collapse`} group {group_name}"
-          >
-            ▶
-          </span>
+        {:else}
           <span
             class="group-label"
             onclick={(event) =>
@@ -499,12 +492,12 @@
             role="button"
             tabindex="0"
             aria-pressed={group_visible}
-            aria-label="Toggle group {group_name}"
+            aria-label="Toggle group {strip_html(cell.group)}"
           >
             {@html sanitize_html(cell.group)}
           </span>
-        </div>
-      {/if}
+        {/if}
+      </div>
     {:else}
       {@const series = series_data[cell.item_idx]}
       {#if series}

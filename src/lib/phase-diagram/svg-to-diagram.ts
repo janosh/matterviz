@@ -127,6 +127,13 @@ function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
   }
 }
 
+// [min_x, min_y, max_x, max_y] of pixel vertices
+const bbox_of = (verts: Vec2[]): Vec4 => {
+  const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
+  const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
+  return [min_x, min_y, max_x, max_y]
+}
+
 // Scale whose domain covers the pixel span [px_a, px_b] (either order)
 const with_px_domain = (scale: LinearScale, [px_a, px_b]: Vec2): LinearScale => {
   const [data_a, data_b] = [scale.to_data(px_a), scale.to_data(px_b)]
@@ -153,50 +160,38 @@ function plot_area_px(
     ...y_ticks.map(({ px }) => px),
     ...lines.flatMap(([, y_1, , y_2]) => [y_1, y_2]),
   ])
-  const bbox_of = (rings: Vec2[][]): Vec4 => {
-    const verts = rings.flat()
-    const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
-    const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
-    return [min_x, min_y, max_x, max_y]
-  }
   const axes_patch =
     format === `matplotlib`
       ? doc.querySelector(
           `[id^="axes_"] > [id^="patch_"] > path, [id^="axes_"] > [id^="patch_"] > rect`,
         )
       : null
-  const patch_rings = axes_patch && shape_rings(axes_patch)
-  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
-  const patch_bbox = patch_rings?.flat().length ? bbox_of(patch_rings) : null
-  if (patch_bbox && patch_bbox[2] > patch_bbox[0] && patch_bbox[3] > patch_bbox[1]) {
-    const [min_x, min_y, max_x, max_y] = patch_bbox
-    return [
-      [min_x, max_x],
-      [min_y, max_y],
-    ]
-  }
+  const patch_verts = (axes_patch && shape_rings(axes_patch))?.flat() ?? []
+  const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
   // 1 px slack for strokes drawn on the plot edge
   const encloses = ([min_x, min_y, max_x, max_y]: Vec4) =>
     min_x <= x_span[0] + 1 &&
     max_x >= x_span[1] - 1 &&
     min_y <= y_span[0] + 1 &&
     max_y >= y_span[1] - 1
-  const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
-  const background = filled_shapes
-    .map(({ bbox }) => bbox)
-    .filter(encloses)
-    .reduce<Vec4 | null>(
-      (best, bbox) => (!best || area(bbox) < area(best) ? bbox : best),
-      null,
-    )
-  if (background) {
-    const [min_x, min_y, max_x, max_y] = background
-    return [
-      [min_x, max_x],
-      [min_y, max_y],
-    ]
-  }
-  return [x_span, y_span]
+  const patch_bbox = patch_verts.length ? bbox_of(patch_verts) : null
+  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
+  const plot_bbox =
+    patch_bbox && area(patch_bbox) > 0
+      ? patch_bbox
+      : filled_shapes
+          .map(({ bbox }) => bbox)
+          .filter(encloses)
+          .reduce<Vec4 | null>(
+            (best, bbox) => (!best || area(bbox) < area(best) ? bbox : best),
+            null,
+          )
+  if (!plot_bbox) return [x_span, y_span]
+  const [min_x, min_y, max_x, max_y] = plot_bbox
+  return [
+    [min_x, max_x],
+    [min_y, max_y],
+  ]
 }
 
 // === Boundary Extraction ===
@@ -386,9 +381,7 @@ function extract_filled_shapes(doc: Document): FilledShape[] {
     const rings = shape_rings(element) ?? []
     const verts = rings.flat()
     if (verts.length < 3) continue // fewer than 3 corners encloses no area
-    const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
-    const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
-    shapes.push({ fill, bbox: [min_x, min_y, max_x, max_y], rings })
+    shapes.push({ fill, bbox: bbox_of(verts), rings })
   }
   return shapes
 }

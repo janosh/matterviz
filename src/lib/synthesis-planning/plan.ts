@@ -27,7 +27,6 @@ import {
   create_thermo_cache,
   make_reaction,
   downhill_windows,
-  MAX_SCAN_TEMPERATURE,
   reaction_energy_at_temperature,
 } from './thermo'
 import type {
@@ -153,19 +152,17 @@ function evaluate_route(
   ) as Partial<Record<GasSpecies, number>>
   // Only gas-exchanging reactions change with temperature; the others are downhill at every
   // temperature or at none
-  const windows: [number, number][] = Object.keys(gas_exchange).length
-    ? downhill_windows(
-        reaction_energy_at_temperature(
+  const windows = downhill_windows(
+    Object.keys(gas_exchange).length
+      ? reaction_energy_at_temperature(
           balanced,
           gases,
           gas_species,
           conditions,
           ctx.thermo_cache,
-        ),
-      )
-    : balanced.energy_per_fu < 0
-      ? [[0, MAX_SCAN_TEMPERATURE]]
-      : []
+        )
+      : () => balanced.energy_per_fu,
+  )
   // Uphill here and at every scanned temperature: no conditions in range make it work
   if (balanced.energy_per_fu >= 0 && windows.length === 0) {
     rejected.uphill++

@@ -80,7 +80,7 @@
           partial_rdfs: calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc }),
         }
       } catch (exc) {
-        return { struct, label, failure: to_error(exc).message }
+        return { failure: to_error(exc).message }
       }
     }),
   )
@@ -109,8 +109,7 @@
 
   const ref_lines = $derived<RefLine[]>([rdf_baseline(quantity), ...(rest.ref_lines ?? [])])
 
-  // One running colour index across every structure's curves: a fixed per-structure stride
-  // collided as soon as a structure had more partials than the stride
+  // One running colour index across every structure's curves, so no two curves share one
   const series = $derived.by<DataSeries[]>(() => {
     let color_idx = 0
     return computed.totals.flatMap(({ label, total }) => {

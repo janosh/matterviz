@@ -693,6 +693,7 @@ describe(`compute_irreducible_bz`, () => {
   test(`generated point groups have the right order`, () => {
     expect(group_closure(oh_ops)).toHaveLength(48)
     expect(D6H_OPS).toHaveLength(24)
+    expect(td_ops).toHaveLength(24)
     // fcc Oh ops are integer in the primitive basis and still form a 48-element group
     for (const w_frac of fcc_oh_frac) {
       for (const val of w_frac.flat())
@@ -715,41 +716,25 @@ describe(`compute_irreducible_bz`, () => {
 
   // The Dirichlet wedge is an exact fundamental domain: V_IBZ = V_BZ/|G|. 1e-8 relative leaves
   // room for the clip-then-rehull rounding while catching a single dropped plane (factor 2).
+  // Time reversal (the default) makes E(k) = E(−k), so the k-space group is the Laue group:
+  // P1 halves the zone and the 24-op non-centrosymmetric Td reduces it 48-fold like Oh
+  const td_ops = oh_ops.filter((rot) => math.det_3x3(rot) * perm_parity(rot) > 0)
   test.each([
-    [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops],
-    [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops],
-    [`hexagonal D6h`, 24, REAL_LATTICES.hexagonal, D6H_OPS],
-  ] as [string, number, Matrix3x3, Matrix3x3[]][])(
+    [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops, true],
+    [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops, true],
+    [`hexagonal D6h`, 24, REAL_LATTICES.hexagonal, D6H_OPS, true],
+    [`cubic Td`, 48, REAL_LATTICES.cubic, td_ops, true],
+    [`cubic Td without time reversal`, 24, REAL_LATTICES.cubic, td_ops, false],
+    [`P1`, 2, REAL_LATTICES.cubic, [IDENTITY_MAT], true],
+    [`P1 without time reversal`, 1, REAL_LATTICES.cubic, [IDENTITY_MAT], false],
+  ] as [string, number, Matrix3x3, Matrix3x3[], boolean][])(
     `%s: IBZ volume = BZ volume / %i`,
-    (_label, order, real, ops) => {
+    (_label, order, real, ops, time_reversal) => {
       const full_bz = compute_brillouin_zone(recip_2pi(real), 1)
-      const ibz = compute_irreducible_bz(full_bz, ops)
+      const ibz = compute_irreducible_bz(full_bz, ops, { time_reversal })
       expect(Math.abs(ibz.volume * order - full_bz.volume)).toBeLessThan(1e-8 * full_bz.volume)
     },
   )
-
-  test(`P1 (identity only) → full BZ without time reversal, half with it`, () => {
-    const ibz = compute_irreducible_bz(basis_z, [IDENTITY_MAT], { time_reversal: false })
-    expect(ibz.vertices).toHaveLength(basis_z.vertices.length)
-    expect(ibz.volume).toBeCloseTo(basis_z.volume, 6)
-    expect(compute_irreducible_bz(basis_z, [IDENTITY_MAT]).volume).toBeCloseTo(
-      basis_z.volume / 2,
-      6,
-    )
-  })
-
-  // Time reversal makes E(k) = E(−k), so the k-space group is the Laue group: the 24-op
-  // non-centrosymmetric Td reduces the zone 48-fold like Oh (it used to give 24)
-  const td_ops = oh_ops.filter((rot) => math.det_3x3(rot) * perm_parity(rot) > 0)
-  test.each([
-    [`Td with time reversal`, 48, td_ops, true],
-    [`Td without time reversal`, 24, td_ops, false],
-    [`Oh with time reversal (already centrosymmetric)`, 48, oh_ops, true],
-  ] as const)(`%s → BZ / %i`, (_label, order, ops, time_reversal) => {
-    expect(ops).toHaveLength(ops === td_ops ? 24 : 48)
-    const ibz = compute_irreducible_bz(basis_z, [...ops], { time_reversal })
-    expect(Math.abs(ibz.volume * order - basis_z.volume)).toBeLessThan(1e-8 * basis_z.volume)
-  })
 
   test.each([
     {
@@ -958,8 +943,7 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
   })
 
-  // Edges, k-path and symmetry points were fixed 1/Å sizes while edge_width claimed to be a
-  // fraction of the zone: 0.08% of a Si zone but 11-14% of a 100 Å supercell's
+  // Edges, k-path and symmetry points scale with the zone, from a Si zone to a 100 Å supercell's
   test.each([2, 0.0628])(`bz_mark_sizes scale with the zone (bz_size %d)`, (bz_size) => {
     const sizes = bz_mark_sizes(bz_size, 0.002)
     expect(sizes.edge / bz_size).toBeCloseTo(0.001, 12)

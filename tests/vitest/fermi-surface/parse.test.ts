@@ -205,7 +205,7 @@ END_BLOCK_BANDGRID_3D
     // lshift=0 is a Monkhorst-Pack mesh starting at the most negative k, point i at
     // (2i − n + 1)/(2n) = (i + ½ − n/2)/n for odd and even n alike (−1/3, 0, 1/3 for n=3) —
     // FermiSurfer's parity-dependent shiftk only works together with its index rotation by
-    // ⌊(n+1)/2⌋. Recording it as a bare ½ step treated that mesh as Γ-started.
+    // ⌊(n+1)/2⌋.
     test.each([
       [2, `3 3 3`, [0.5, 0.5, 0.5]],
       [0, `3 3 3`, [-1, -1, -1]],
@@ -400,8 +400,7 @@ END_BLOCK_BANDGRID_3D
         '@module': `ifermi.surface`,
         '@class': `FermiSurface`,
         '@version': `0.3.0`,
-        // keyed by spin; the band is each surface's band_idx (a spin key used to be read as
-        // the band, collapsing every sheet of a channel onto band 1)
+        // keyed by spin; the band is each surface's band_idx
         isosurfaces: {
           1: [
             {

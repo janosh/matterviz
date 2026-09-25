@@ -150,7 +150,7 @@ export function parse_float_block(
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
     const num = parse_decimal_token(text, start, pos)
-    // Skipping an unreadable token shifted every later value one grid point early
+    // Skipping an unreadable token would shift every later value one grid point early
     if (Number.isNaN(num)) {
       throw new TypeError(
         `Unreadable number '${text.slice(start, pos)}' at character ${start} (value ${idx - data_offset + 1} of ${max_count})`,
@@ -187,8 +187,7 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
 
 // What a VASP volumetric file stores. `density` files (CHGCAR, CHG, AECCAR*, PARCHG) hold
 // rho·V_cell and are divided by the cell volume; `elf` (ELFCAR, dimensionless in [0, 1]) and
-// `potential` (LOCPOT, eV) are stored as is. Dividing every file by V put a real ELFCAR's
-// maximum at 0.019 instead of 0.87.
+// `potential` (LOCPOT, eV) are stored as is.
 export type VaspVolumetricKind = `density` | `elf` | `potential`
 
 // Kind from a VASP file name (compression suffixes and prefixes/suffixes like `mp-1_ELFCAR`
@@ -203,35 +202,21 @@ export function vasp_volumetric_kind(filename?: string): VaspVolumetricKind {
 // Block labels by kind and block count. Charge files carry the total density, then either
 // one magnetization block (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC).
 // Spin-polarized ELFCARs list the spin-up then spin-down ELF.
-function vasp_block_labels(kind: VaspVolumetricKind, n_blocks: number): string[] {
-  const labels: Record<VaspVolumetricKind, Record<number, string[]>> = {
-    density: {
-      1: [`charge density`],
-      2: [`charge density`, `magnetization density`],
-      4: [
-        `charge density`,
-        `magnetization density (x)`,
-        `magnetization density (y)`,
-        `magnetization density (z)`,
-      ],
-    },
-    elf: { 1: [`ELF`], 2: [`ELF (spin up)`, `ELF (spin down)`] },
-    potential: {
-      1: [`local potential`],
-      2: [`local potential (spin up)`, `local potential (spin down)`],
-    },
-  }
-  const found = labels[kind][n_blocks]
-  if (!found) {
-    throw new Error(
-      `VASP ${kind} file has ${n_blocks} data blocks; expected ${Object.keys(labels[kind]).join(` or `)}`,
-    )
-  }
-  return found
+const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = {
+  density: {
+    1: [`charge density`],
+    2: [`charge density`, `magnetization density`],
+    4: [`charge density`, ...[`x`, `y`, `z`].map((axis) => `magnetization density (${axis})`)],
+  },
+  elf: { 1: [`ELF`], 2: [`ELF (spin up)`, `ELF (spin down)`] },
+  potential: {
+    1: [`local potential`],
+    2: [`local potential (spin up)`, `local potential (spin down)`],
+  },
 }
 
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format: a POSCAR header followed by one
-// or more volumetric blocks on a 3D grid (see vasp_block_labels). `kind` sets whether values
+// or more volumetric blocks on a 3D grid (see VASP_BLOCK_LABELS). `kind` sets whether values
 // are divided by the cell volume; parse_volumetric_file derives it from the file name.
 export function parse_chgcar(
   content: string,
@@ -352,7 +337,12 @@ export function parse_chgcar(
   }
 
   if (blocks.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
-  const labels = vasp_block_labels(kind, blocks.length)
+  const labels = VASP_BLOCK_LABELS[kind][blocks.length]
+  if (!labels) {
+    throw new Error(
+      `VASP ${kind} file has ${blocks.length} data blocks; expected ${Object.keys(VASP_BLOCK_LABELS[kind]).join(` or `)}`,
+    )
+  }
   const volumes = blocks.map(({ values, dims }, block_idx) =>
     make_volume(values, dims, {
       id: labels[block_idx],

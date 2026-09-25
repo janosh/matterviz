@@ -63,7 +63,6 @@
       return { fits: [], fit_error: to_error(exc).message }
     }
   })
-  let fits = $derived(fitted.fits)
 
   let series = $derived.by<DataSeries[]>(() => {
     if (!result) return []
@@ -84,7 +83,7 @@
         })),
         line_style: { stroke: color, stroke_width: 2 },
       }
-      const fit = fits[idx]
+      const fit = fitted.fits[idx]
       if (!show_fit || !fit) return [msd_series]
       const [fit_start, fit_end] = [
         fit.lag_window[0] * delta_time,
@@ -150,7 +149,7 @@
       ]}
     >
       {#each summary.curves as { label, n_atoms }, curve_idx (label)}
-        {@const fit = fits[curve_idx]}
+        {@const fit = fitted.fits[curve_idx]}
         <tr>
           <td>{label}</td>
           <td>{n_atoms}</td>

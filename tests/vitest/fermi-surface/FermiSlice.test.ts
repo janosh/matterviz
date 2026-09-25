@@ -84,9 +84,8 @@ describe(`FermiSlice`, () => {
     expect(received?.export_svg()).toMatch(/^<svg[^>]*role="application"/)
   })
 
-  // Labels come from the (u, v) directions points_2d use. They used to be read off the Miller
-  // zeros: a (010) slice's vertical axis runs along −kz but was labelled kz, and (100) of a
-  // lattice whose b₁ is oblique got Cartesian labels for an oblique plane.
+  // Labels come from the (u, v) directions points_2d use, not the Miller zeros: a (010)
+  // slice's vertical axis runs along −kz, and (100) with an oblique b₁ is an oblique plane
   test.each([
     [`(001)`, [0, 0, 1], undefined, [`kₓ`, `kᵧ`]],
     [`(010)`, [0, 1, 0], undefined, [`kₓ`, `−kz`]],

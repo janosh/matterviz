@@ -385,9 +385,8 @@ test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, a
   await vi.waitFor(() => expect(viewer?.querySelector(`.status-message`)).toBeNull())
 })
 
-// A structure change used to leave the previous structure's IBZ wedge (and its multiplicity)
-// on the new zone until the new symmetry analysis resolved, and a slow info-pane analysis for
-// the previous structure could overwrite the space group of the current one
+// A structure change must not leave the previous IBZ wedge on the new zone while symmetry
+// reruns, nor let a slow info-pane analysis overwrite the current space group
 const identity_op = { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }
 test(`a structure change drops the previous IBZ while symmetry reruns`, async () => {
   analyze_structure_symmetry

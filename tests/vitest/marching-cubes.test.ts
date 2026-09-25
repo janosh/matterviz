@@ -507,8 +507,7 @@ describe(`marching_cubes`, () => {
 
 // Front faces (CCW winding) must face the way `facing` says for either lattice handedness:
 // a left-handed lattice mirrors the index-space winding, and a negative lobe drawn at a
-// negative isovalue needs its front faces toward increasing values. Both used to come out
-// inside-out (0% of faces outward), which breaks back-then-front transparent rendering.
+// negative isovalue needs its front faces toward increasing values.
 describe(`winding follows facing on either lattice handedness`, () => {
   const size = 16
   const center = (size - 1) / 2

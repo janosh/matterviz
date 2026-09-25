@@ -78,33 +78,23 @@ export function resolve_fill_binding(
     const resolved = resolve_series_ref(boundary, series)
     return resolved ? [resolved] : []
   })
+  // The explicit axis and every bound series' axis must name the same one
   const pick = <Axis extends string>(
     key: `x_axis` | `y_axis`,
-    explicit: Axis | undefined,
-    bound_axes: Axis[],
+    axes: (Axis | undefined)[],
     fallback: Axis,
   ): Axis => {
-    const axes = new Set([...(explicit ? [explicit] : []), ...bound_axes])
-    if (axes.size > 1) {
+    const distinct = new Set(axes.filter((axis): axis is Axis => axis !== undefined))
+    if (distinct.size > 1) {
       throw new Error(
-        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...axes].join(` and `)}: its series boundaries and ${key} must agree`,
+        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...distinct].join(` and `)}: its series boundaries and ${key} must agree`,
       )
     }
-    return [...axes][0] ?? fallback
+    return [...distinct][0] ?? fallback
   }
   return {
-    x_axis: pick(
-      `x_axis`,
-      region.x_axis,
-      bound.map((srs) => srs.x_axis ?? `x`),
-      `x`,
-    ),
-    y_axis: pick(
-      `y_axis`,
-      region.y_axis,
-      bound.map((srs) => srs.y_axis ?? `y`),
-      `y`,
-    ),
+    x_axis: pick(`x_axis`, [region.x_axis, ...bound.map((srs) => srs.x_axis ?? `x`)], `x`),
+    y_axis: pick(`y_axis`, [region.y_axis, ...bound.map((srs) => srs.y_axis ?? `y`)], `y`),
     series_hidden: bound.some((srs) => srs.visible === false),
   }
 }

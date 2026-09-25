@@ -230,18 +230,18 @@
     // count) scale, so the two groups share no unit: each is scaled so its highest point is
     // 100, which keeps relative heights within a group. The true maximum, not max(1, ...):
     // an already normalized pattern profiles well under 1 and a floor of 1 under-scales it.
-    const group_max = (from_profile: boolean): number => {
-      let max_y = 0
-      broadened.forEach((profile, entry_idx) => {
-        if (is_profile(pattern_entries[entry_idx].pattern) !== from_profile) return
-        for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
-      })
-      return max_y
-    }
+    const from_profile = pattern_entries.map(({ pattern }) => is_profile(pattern))
+    const group_max = (profiles: boolean): number =>
+      Math.max(
+        0,
+        ...broadened.flatMap((profile, idx) =>
+          from_profile[idx] === profiles ? [array_max(profile.y)] : [],
+        ),
+      )
     const [sticks_max, profiles_max] = [group_max(false), group_max(true)]
 
     return broadened.map((profile, entry_idx) => {
-      const max_y = is_profile(pattern_entries[entry_idx].pattern) ? profiles_max : sticks_max
+      const max_y = from_profile[entry_idx] ? profiles_max : sticks_max
       // broaden_peaks drops non-positive peaks, so max_y === 0 means an all-zero profile
       const y_values = max_y > 0 ? profile.y.map((y_val) => (y_val / max_y) * 100) : profile.y
       // ScatterPlot has no orientation of its own, so the horizontal layout swaps the data

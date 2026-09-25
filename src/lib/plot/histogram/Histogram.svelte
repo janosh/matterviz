@@ -364,15 +364,14 @@
     }),
   )
 
-  // A series' own `color` wins; otherwise a lone series uses the configured bar color and
-  // several the cycled palette. Keyed on `series`, not the visible subset the legend outlives,
-  // which painted every swatch `bar.color` once all but one series were hidden.
-  const series_color = (_series_data: HistogramSeries, series_idx: number): string =>
+  // Keyed on all `series`, not the visible subset, so hiding all but one series doesn't
+  // repaint the survivor with `bar.color`
+  const series_color = (series_idx: number): string =>
     histogram_series_color(series, series_idx, resolved_bar.color)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
       x: series_data.values,
-      color: series_color(series_data, series_idx),
+      color: series_color(series_idx),
       label: series_data.label,
       visible: true,
       x_axis: series_data.x_axis,
@@ -401,7 +400,7 @@
   let legend_data = $derived(
     build_legend_items(series, (series_data, series_idx) => ({
       symbol_type: `Square`,
-      symbol_color: series_color(series_data, series_idx),
+      symbol_color: series_color(series_idx),
       pattern: series_data.pattern,
     })),
   )
@@ -413,11 +412,7 @@
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
       series_data.pattern
-        ? resolve_pattern(
-            series_data.pattern,
-            series_color(series_data, series_idx),
-            pattern_uid,
-          )
+        ? resolve_pattern(series_data.pattern, series_color(series_idx), pattern_uid)
         : null,
     ),
   )

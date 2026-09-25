@@ -82,8 +82,8 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   const displacement_eps_sq = (1e-10 * lattice_norm) ** 2
 
   // Boundary tolerance: physical 0.5 Å from a cell face as fractional per-axis, so large cells
-  // (MOFs) don't over-generate. Measured along the cell heights: dividing by vector lengths
-  // shrank the reach of skewed cells (0.43 Å in a hexagonal cell), unlike phase 2.
+  // (MOFs) don't over-generate. Measured along the cell heights, not vector lengths, so skewed
+  // cells keep the full reach.
   const PHYSICAL_TOLERANCE = 0.5 // Å
   const tolerances = math.frac_cutoff_per_axis(lattice_vecs, PHYSICAL_TOLERANCE)
 

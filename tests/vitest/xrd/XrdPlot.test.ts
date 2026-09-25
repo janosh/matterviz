@@ -355,8 +355,6 @@ describe(`XrdPlot`, () => {
     },
   )
 
-  // peak_width used to be Math.max(peak_width, 0.8), so every value below 0.8 (including the
-  // old 0.5 default) drew identical bars
   test(`peak_width sets the stick width in degrees`, async () => {
     const bar_width = async (peak_width: number) => {
       const target = await mount_xrd({ patterns: pattern, peak_width, annotate_peaks: 0 })
@@ -404,9 +402,8 @@ describe(`XrdPlot`, () => {
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
   })
 
-  // A profile (measured scan) used to be broadened like a stick pattern, widening its peaks a
-  // second time and sharing one scale with the area-normalized sticks (Cu sticks topped out at
-  // 43 while the same physics as a scan hit 100). The broadened view also ignored orientation.
+  // A profile (measured scan) is never broadened again and gets its own 100 scale, apart
+  // from the area-normalized sticks, in either orientation
   test.each([`vertical`, `horizontal`] as const)(
     `broadened %s view passes profiles through and scales sticks and profiles to 100 each`,
     async (orientation) => {

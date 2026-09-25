@@ -71,9 +71,8 @@ function parse_coordinate_line(line: string): number[] {
   return tokens.slice(0, 3).map(parse_coordinate)
 }
 
-// Symmetry images and atom-site rows closer than this (Å, minimum image) are one site. Published
-// coordinates are rounded (0.3333 for 1/3), so exact matching turned the images of an atom on
-// a special position into distinct, nearly coincident atoms. No two real atoms sit this close.
+// Symmetry images and atom-site rows closer than this (Å, minimum image) are one site:
+// published coordinates are rounded (0.3333 for 1/3), and no two real atoms sit this close.
 const CIF_SITE_TOLERANCE = 0.05
 
 // Fractional positions in [0, 1) bucketed by cell height, so finding a site within

@@ -166,17 +166,17 @@ describe(`aromaticity`, () => {
     expect(result.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
   })
 
-  // Hydrogens on each listed heavy atom, appended after the heavy atoms
+  // h_counts[idx] hydrogens on heavy atom idx, appended after the heavy atoms
   const with_hydrogens = (
     heavy: ElementSymbol[],
     heavy_edges: Vec2[],
-    h_counts: Record<number, number>,
+    h_counts: number[],
   ): { elements: ElementSymbol[]; edges: Vec2[] } => {
     const elements = [...heavy]
     const edges = [...heavy_edges]
-    for (const [atom_idx, count] of Object.entries(h_counts)) {
+    for (const [atom_idx, count] of h_counts.entries()) {
       for (let h_idx = 0; h_idx < count; h_idx++) {
-        edges.push([Number(atom_idx), elements.length])
+        edges.push([atom_idx, elements.length])
         elements.push(`H`)
       }
     }
@@ -190,21 +190,17 @@ describe(`aromaticity`, () => {
   const naphthalene = with_hydrogens(
     carbons(10),
     [...ring(0, 6), [0, 6], [6, 7], [7, 8], [8, 9], [9, 1]],
-    { 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1 },
+    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
   )
-  const indane = with_hydrogens(carbons(9), [...ring(0, 6), [0, 6], [6, 7], [7, 8], [8, 5]], {
-    1: 1,
-    2: 1,
-    3: 1,
-    4: 1,
-    6: 2,
-    7: 2,
-    8: 2,
-  })
+  const indane = with_hydrogens(
+    carbons(9),
+    [...ring(0, 6), [0, 6], [6, 7], [7, 8], [8, 5]],
+    [0, 1, 1, 1, 1, 0, 2, 2, 2],
+  )
   const fluorene = with_hydrogens(
     carbons(13),
     [...ring(0, 6), ...ring(6, 6), [5, 11], [0, 12], [6, 12]],
-    { 1: 1, 2: 1, 3: 1, 4: 1, 7: 1, 8: 1, 9: 1, 10: 1, 12: 2 },
+    [0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 2],
   )
 
   // The greedy raise stranded atoms on a bad first pick (naphthalene failed for 158 of 200
@@ -239,37 +235,17 @@ describe(`aromaticity`, () => {
   })
 
   test(`butadiene with its central bond listed first gets two double bonds`, () => {
-    const { elements, edges } = with_hydrogens(
-      carbons(4),
-      [
-        [1, 2],
-        [0, 1],
-        [2, 3],
-      ],
-      {
-        0: 2,
-        1: 1,
-        2: 1,
-        3: 2,
-      },
-    )
+    // oxfmt-ignore
+    const { elements, edges } = with_hydrogens(carbons(4), [[1, 2], [0, 1], [2, 3]], [2, 1, 1, 2])
     const coords = elements.map((_, idx): Vec3 => [idx * 1.4, (idx % 2) * 0.8, 0])
     const { sites, bonds } = make_input(elements, coords, edges)
     const orders = perceive_bond_orders(sites, bonds, {}).map((bond) => bond.bond_order)
     expect(orders.slice(0, 3)).toEqual([1, 2, 2])
   })
 
-  // max_atoms capped the whole structure, so any molecular crystal past 5000 sites lost
-  // perception; it bounds each fragment
+  // max_atoms bounds each fragment, not the whole structure
   test(`perceives every molecule of a molecular crystal larger than max_atoms`, () => {
-    const benzene = with_hydrogens(carbons(6), ring(0, 6), {
-      0: 1,
-      1: 1,
-      2: 1,
-      3: 1,
-      4: 1,
-      5: 1,
-    })
+    const benzene = with_hydrogens(carbons(6), ring(0, 6), Array(6).fill(1))
     const n_molecules = 500
     const elements = Array.from({ length: n_molecules }, () => benzene.elements).flat()
     const edges = Array.from({ length: n_molecules }, (_, mol_idx) =>

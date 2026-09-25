@@ -213,10 +213,20 @@
     `${point.series_idx}-${point.point_idx}`
   const in_range = (value: number, [bound_a, bound_b]: Vec2) =>
     value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
+  const data_coords = (srs: DataSeries3D<Metadata>, point_idx: number): Vec3 => [
+    srs.x[point_idx],
+    srs.y[point_idx],
+    srs.z[point_idx],
+  ]
+  // User Z → Three.js Y (vertical), user Y → Three.js Z (depth)
+  const to_scene = ([coord_x, coord_y, coord_z]: Vec3): Vec3 => [
+    normalize_x(coord_x),
+    normalize_z(coord_z),
+    normalize_y(coord_y),
+  ]
 
   // Every in-range point of every visible series, in (series_idx, point_idx) order: the point
-  // in data coordinates, plus its scene position (user Z → Three.js Y, user Y → Three.js Z),
-  // radius and color. Points outside the axis ranges (a narrowed or pinned range) are left
+  // in data coordinates, plus its scene position, radius and color. Points outside the axis ranges (a narrowed or pinned range) are left
   // out rather than drawn outside the box; non-finite coordinates fail in_range too.
   let point_instances = $derived.by(() => {
     const instances: PointInstance[] = []
@@ -224,11 +234,8 @@
       if (!srs || !(srs.visible ?? true)) return
       const { metadata, point_style } = srs
       for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const [coord_x, coord_y, coord_z] = [
-          srs.x[point_idx],
-          srs.y[point_idx],
-          srs.z[point_idx],
-        ]
+        const coords = data_coords(srs, point_idx)
+        const [coord_x, coord_y, coord_z] = coords
         if (!in_range(coord_x, x_range) || !in_range(coord_y, y_range)) continue
         if (!in_range(coord_z, z_range)) continue
         const point: InternalPoint3D<Metadata> = {
@@ -244,7 +251,7 @@
         }
         instances.push({
           point,
-          position: [normalize_x(coord_x), normalize_z(coord_z), normalize_y(coord_y)],
+          position: to_scene(coords),
           color:
             point.color_value != null
               ? color_scale_fn(point.color_value)
@@ -357,40 +364,27 @@
   // Per-series fat-line inputs (ordered positions + resolved stroke style) as a derived so
   // the effect below can diff against previous lines and only rebuild what changed
   let line_inputs = $derived.by((): SeriesLineInput[] => {
-    const inputs = new Map<number, SeriesLineInput>()
-    for (let series_idx = 0; series_idx < series.length; series_idx++) {
-      const srs = series[series_idx]
+    const inputs: SeriesLineInput[] = []
+    for (const [series_idx, srs] of series.entries()) {
       const line_style = srs?.line_style
       if (!line_style || !(srs.visible ?? true)) continue
-      const color = line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx)
-      inputs.set(series_idx, {
+      // Lines run through every finite point, in range or not: the box's clipping group cuts
+      // them at the axes instead of dropping whole segments
+      const positions: number[] = []
+      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
+        const coords = data_coords(srs, point_idx)
+        if (coords.every(Number.isFinite)) positions.push(...to_scene(coords))
+      }
+      if (positions.length < 6) continue // < 2 points
+      inputs.push({
         series_idx,
-        positions: [],
-        color,
+        positions,
+        color: line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx),
         width: line_style.stroke_width ?? 2,
         dashed: Boolean(line_style.line_dash),
       })
     }
-    // Lines run through every finite point, in range or not: the box's clipping group cuts
-    // them at the axes instead of dropping whole segments
-    for (const input of inputs.values()) {
-      const srs = series[input.series_idx]
-      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const [coord_x, coord_y, coord_z] = [
-          srs.x[point_idx],
-          srs.y[point_idx],
-          srs.z[point_idx],
-        ]
-        if (
-          !Number.isFinite(coord_x) ||
-          !Number.isFinite(coord_y) ||
-          !Number.isFinite(coord_z)
-        )
-          continue
-        input.positions.push(normalize_x(coord_x), normalize_z(coord_z), normalize_y(coord_y))
-      }
-    }
-    return [...inputs.values()].filter((input) => input.positions.length >= 6) // >= 2 points
+    return inputs
   })
 
   const same_line_input = (prev: SeriesLineData, next: SeriesLineInput): boolean =>

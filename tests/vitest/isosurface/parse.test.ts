@@ -132,7 +132,7 @@ describe(`parse_float_block`, () => {
     expect(text.slice(end_pos)).toBe(`\naugmentation 8\n`)
   })
 
-  // An unreadable token used to be skipped, shifting every later value one grid point early
+  // Skipping an unreadable token would shift every later value one grid point early
   test(`throws on an unreadable token instead of shifting the grid`, () => {
     expect(() => parse_float_block(`1 2 *** 4`, 0, 4, new Float64Array(4))).toThrow(
       /Unreadable number '\*\*\*' at character 4 \(value 3 of 4\)/,
@@ -852,8 +852,7 @@ describe(`site fixtures`, () => {
     expect(charge.data_range.min).toBeGreaterThan(0)
   })
 
-  // SOC CHGCARs carry charge + m_x, m_y, m_z; only the first two used to be read, and m_x
-  // was labelled as the (collinear) magnetization
+  // SOC CHGCARs carry charge + m_x, m_y, m_z
   test(`noncollinear CHGCAR yields charge and three magnetization components`, () => {
     const parsed = load(`pymatgen-CHGCAR.NiO_SOC`)
     expect(parsed.volumes.map((vol) => vol.label)).toEqual([
@@ -865,7 +864,6 @@ describe(`site fixtures`, () => {
     for (const volume of parsed.volumes) expect(volume.dims).toEqual([28, 28, 28])
   })
 
-  // this spin-polarized ELFCAR used to come out as "charge density" + "magnetization density"
   test(`real spin-polarized ELFCAR stays within the ELF range [0, 1]`, () => {
     const { volumes } = load(`pymatgen-ELFCAR`)
     expect(volumes.map((vol) => vol.label)).toEqual([`ELF (spin up)`, `ELF (spin down)`])
@@ -919,7 +917,6 @@ describe(`parse_volumetric_file`, () => {
   })
 
   // Only CHGCAR-family densities store rho·V_cell; ELFCAR and LOCPOT values are stored as is
-  // (every file used to be divided by V, putting a real ELFCAR's max at 0.019, not 0.87)
   test.each([
     [`CHGCAR`, `charge density`, true],
     [`CHGCAR.gz`, `charge density`, true],

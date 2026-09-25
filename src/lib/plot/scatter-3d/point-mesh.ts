@@ -22,9 +22,8 @@ const scratch_color = new Color()
 const grow_capacity = (capacity: number, needed: number): number =>
   Math.max(needed, Math.ceil(capacity * 1.5))
 
-// Write every instance into one InstancedMesh, reusing `mesh` while it has room. The buffers
-// are uploaded only here, on data change (a component per instance re-copied every matrix
-// and color each frame, which kept the on-demand scene rendering while idle). Returns the
+// Write every instance into one InstancedMesh, reusing `mesh` while it has room. Buffers
+// upload only here, on data change, so an idle on-demand scene stops rendering. Returns the
 // mesh to keep (a fresh one when capacity grew, the old one disposed) or null for no items.
 export function sync_point_mesh(
   mesh: InstancedMesh | null,

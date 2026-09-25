@@ -98,15 +98,16 @@ describe(`ASE frame slicing`, () => {
     const base_offset = second_span.byte_offset
     expect(() => decode_span(second_span, 1, { base_offset })).toThrow(/missing numbers/)
 
-    const first = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
-    const { numbers } = first
+    const { numbers, pbc } = decode_span(first_span, 0, {
+      base_offset: first_span.byte_offset,
+    })
     expect(() =>
       decode_span(second_span, 1, { base_offset, fallback_numbers: numbers }),
     ).toThrow(/missing pbc/)
     const { frame } = decode_span(second_span, 1, {
       base_offset,
       fallback_numbers: numbers,
-      fallback_pbc: first.pbc,
+      fallback_pbc: pbc,
     })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
       parse_ase_trajectory(buffer).frames[1].structure.sites.map(

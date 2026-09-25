@@ -14,11 +14,9 @@ export type CollapsibleLegend = {
   collapse_on_outside_click: Attachment<HTMLElement>
 }
 
-// Legend groups that expand/collapse on group-header click and re-collapse on a click
-// anywhere outside the legend, e.g. a long per-model legend that should stay out of the
-// way until opened. Pass the groups to start collapsed. `group_click: 'collapse'` makes the
-// header an expand toggle only, so opening a group can never also hide its series (charts
-// otherwise wire header clicks to group visibility).
+// Legend groups that expand on header click and re-collapse on a click outside the legend,
+// e.g. a long per-model legend that stays out of the way until opened. `group_click:
+// 'collapse'` keeps the header an expand toggle, so opening a group never hides its series.
 export const create_collapsible_legend = (
   initially_collapsed: Iterable<string> = [],
 ): CollapsibleLegend => {
@@ -27,18 +25,15 @@ export const create_collapsible_legend = (
   const toggle_group = (group: string) => {
     if (!collapsed_groups.delete(group)) collapsed_groups.add(group)
   }
-  // Restoring the initial groups rather than tracking toggles keeps this independent of
-  // how a group was expanded: PlotLegend's header edits collapsed_groups directly.
+  // Restores the initial groups rather than tracking toggles, since PlotLegend's header
+  // edits collapsed_groups directly
   const collapse = (group?: string) => {
     for (const name of group === undefined ? initial_groups : [group])
       collapsed_groups.add(name)
   }
-  // Only the legend counts as inside — a click on the plot or the controls above it
-  // collapses too — so pass the surface as `inside` rather than attaching to `node` (which
-  // click_outside would treat as inside). `scope` keeps a sibling figure's legend from
-  // counting. `release` listens for click, not pointerdown, matching the legend's own
-  // toggles, and the listener is capture-phase either way, so it still sees clicks whose
-  // inner handlers stop propagation.
+  // Only the legend counts as inside (clicks on the plot or its controls collapse too), and
+  // `scope` keeps a sibling figure's legend from counting. `release` waits for click like the
+  // legend's own toggles; the capture-phase listener still sees clicks that stop propagation.
   const collapse_on_outside_click: Attachment<HTMLElement> = (node) =>
     dismiss_on_outside_press({
       inside: [`.legend`],

@@ -45,8 +45,7 @@
   })
 
   // Only the plane and resolution decide the sampled values: a string key compares by value,
-  // so colormap, contour or colour-range edits repaint without re-sampling the whole plane
-  // (270-490 ms at the default resolution)
+  // so rendering-only edits (colormap, contours, colour range) repaint without re-sampling
   let sampling_key = $derived.by(() => {
     if (!sampling_settings) return null
     const { plane_mode, miller_indices, position, resolution } = sampling_settings

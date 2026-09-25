@@ -61,22 +61,18 @@ const shrink_factor = (n_vals: number): number => {
 // statsmodels' `silverman` (scipy's `silverman` is the different std * (3n/4)^(-1/5)).
 // The spread falls back to std, then to the constant-sample spread above.
 export function silverman_bandwidth(samples: readonly number[]): number {
-  const n_vals = samples.length
+  const shrink = shrink_factor(samples.length)
   // `samples` need not be sorted; quartile selection reorders a scratch copy, not the input
   const scratch = [...samples]
-  const iqr =
-    n_vals < 2 ? 0 : quantile_unordered(scratch, 0.75) - quantile_unordered(scratch, 0.25)
-  const std = n_vals < 2 ? 0 : sample_std(samples)
+  const iqr = quantile_unordered(scratch, 0.75) - quantile_unordered(scratch, 0.25)
+  const std = sample_std(samples) // 0 below 2 samples
   const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
-  return 0.9 * (spread || constant_spread(samples)) * shrink_factor(n_vals)
+  return 0.9 * (spread || constant_spread(samples)) * shrink
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data (order-independent, never touches `samples`)
-export function scott_bandwidth(samples: readonly number[]): number {
-  const n_vals = samples.length
-  const std = n_vals < 2 ? 0 : sample_std(samples)
-  return (std || constant_spread(samples)) * shrink_factor(n_vals)
-}
+export const scott_bandwidth = (samples: readonly number[]): number =>
+  (sample_std(samples) || constant_spread(samples)) * shrink_factor(samples.length)
 
 function exact_density(
   eval_samples: readonly number[],

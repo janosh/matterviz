@@ -314,8 +314,7 @@ interface MarchingCubesOptions {
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
-  // Cartesian translation added to every vertex, e.g. −½(a*+b*+c*) to centre a reciprocal
-  // cell on Γ, or a grid-shift correction for half-step k-meshes.
+  // Cartesian translation added to every vertex, e.g. the position of grid index 0
   position_offset?: Vec3
   // Side front faces (CCW winding) and normals point to: toward `decreasing` values
   // (default: outward for a density blob) or `increasing` ones (outward for a negative lobe

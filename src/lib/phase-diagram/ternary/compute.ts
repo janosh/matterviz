@@ -82,14 +82,13 @@ export function prepare_diagram(
   // next to absolute DFT energies (Li at -1.9 eV/atom) it would make every compound's dG_f wrong
   const absolute_refs = Object.entries(
     find_lowest_energy_unary_refs(normalized.filter((entry) => !entry.exclude_from_hull)),
-  ).filter(([, ref]) => Math.abs(get_energy_per_atom(ref)) > 1e-6)
+  ).flatMap(([element, ref]) => {
+    const energy = get_energy_per_atom(ref)
+    return Math.abs(energy) > 1e-6 ? [`${element} (${energy} eV/atom)`] : []
+  })
   if (missing.length > 0 && absolute_refs.length > 0) {
     throw new Error(
-      `No reference entry for ${missing.join(`, `)}, while ${absolute_refs
-        .map(([element, ref]) => `${element} (${get_energy_per_atom(ref)} eV/atom)`)
-        .join(
-          `, `,
-        )} carry absolute energies: add the missing elemental entries or pass formation energies`,
+      `No reference entry for ${missing.join(`, `)}, while ${absolute_refs.join(`, `)} carry absolute energies: add the missing elemental entries or pass formation energies`,
     )
   }
   for (const element of missing) {

@@ -167,14 +167,21 @@ test.each([`surface`, `axes`, `reference plane`] as const)(
   },
 )
 
+// Every object under `root` of the given class that passes `keep`
+const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
+  root: Object3D,
+  type: Ctor,
+  keep: (object: InstanceType<Ctor>) => boolean = () => true,
+): InstanceType<Ctor>[] => {
+  const found: InstanceType<Ctor>[] = []
+  root.traverse((object) => {
+    if (object instanceof type && keep(object as InstanceType<Ctor>))
+      found.push(object as InstanceType<Ctor>)
+  })
+  return found
+}
+
 describe(`ScatterPlot3DScene points`, () => {
-  const instanced_meshes = (scene: Object3D): InstancedMesh[] => {
-    const meshes: InstancedMesh[] = []
-    scene.traverse((object) => {
-      if (object instanceof InstancedMesh) meshes.push(object)
-    })
-    return meshes
-  }
   const mount_points = (
     state: { series: DataSeries3D[]; hovered_point?: unknown },
     extra: Partial<ComponentProps<typeof ScatterPlot3DScene>> = {},
@@ -220,18 +227,13 @@ describe(`ScatterPlot3DScene points`, () => {
     })
     const { scene, render_frame, unmount_scene } = mount_points(state)
     try {
-      const [mesh, ...others] = instanced_meshes(scene)
+      const [mesh, ...others] = find_objects(scene, InstancedMesh)
       expect(others).toHaveLength(0)
       expect(mesh.count).toBe(4)
       // instance 1 sits at data (2, 2, 2): user z is Three.js y, user y is Three.js z
-      const position = new Vector3().setFromMatrixPosition(
-        (() => {
-          const matrix = new Matrix4()
-          mesh.getMatrixAt(1, matrix)
-          return matrix
-        })(),
-      )
-      expect(position.toArray()).toEqual([
+      const matrix = new Matrix4()
+      mesh.getMatrixAt(1, matrix)
+      expect(new Vector3().setFromMatrixPosition(matrix).toArray()).toEqual([
         normalize_to_scene(2, [0, 4], 10),
         normalize_to_scene(2, [0, 4], 5),
         normalize_to_scene(2, [0, 4], 10),
@@ -254,7 +256,7 @@ describe(`ScatterPlot3DScene points`, () => {
     })
     const { scene, unmount_scene } = mount_points(state)
     try {
-      expect(instanced_meshes(scene)[0].count).toBe(2)
+      expect(find_objects(scene, InstancedMesh)[0].count).toBe(2)
     } finally {
       await unmount_scene()
     }
@@ -270,19 +272,12 @@ describe(`ScatterPlot3DScene points`, () => {
       fullscreen: true,
     })
     // the hover halo is the one mesh drawn without depth testing
-    const halo = () => {
-      let found: Mesh | undefined
-      scene.traverse((object) => {
-        if (
-          object instanceof Mesh &&
-          !(object instanceof InstancedMesh) &&
-          !Array.isArray(object.material) &&
-          object.material.depthTest === false
-        )
-          found = object
-      })
-      return found
-    }
+    const halo = () =>
+      find_objects(
+        scene,
+        Mesh,
+        (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
+      ).at(-1)
     try {
       state.hovered_point = { x: 2, y: 1.5, z: 2, series_idx: 0, point_idx: 1 }
       flushSync()
@@ -321,21 +316,19 @@ describe(`ScatterPlot3DScene points`, () => {
       surfaces: [grid_surface],
     })
     try {
-      const groups: ClippingGroup[] = []
-      scene.traverse((object) => {
-        if (object instanceof ClippingGroup) groups.push(object)
-      })
+      const groups = find_objects(scene, ClippingGroup)
       expect(groups).toHaveLength(1)
       expect(groups[0].clippingPlanes).toHaveLength(6)
       // the series line and the surface are clipped, the point mesh is range-filtered
       const clipped_types = new Set<string>()
       groups[0].traverse((object) => clipped_types.add(object.type))
       expect([...clipped_types]).toEqual(expect.arrayContaining([`Line2`, `Mesh`]))
-      let edges = 0
-      scene.traverse((object) => {
-        if (object instanceof LineSegments && object.geometry instanceof EdgesGeometry) edges++
-      })
-      expect(edges).toBe(1)
+      const edges = find_objects(
+        scene,
+        LineSegments,
+        (line) => line.geometry instanceof EdgesGeometry,
+      )
+      expect(edges).toHaveLength(1)
     } finally {
       await unmount_scene()
     }
@@ -419,12 +412,9 @@ describe(`3D point mesh and scene helpers`, () => {
     )
     flushSync()
     try {
-      let geometry: BufferGeometry | undefined
-      scene.traverse((object) => {
-        if (object instanceof Mesh) geometry = object.geometry
-      })
+      const geometry: BufferGeometry | undefined = find_objects(scene, Mesh).at(-1)?.geometry
       if (!geometry) throw new Error(`no surface mesh`)
-      const values = (name: string) => [...(geometry?.getAttribute(name).array ?? [])]
+      const values = (name: string) => [...geometry.getAttribute(name).array]
       expect(values(`position`).every(Number.isFinite)).toBe(true)
       expect(values(`normal`).every(Number.isFinite)).toBe(true)
       const index_count = geometry.index?.count ?? 0

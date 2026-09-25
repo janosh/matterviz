@@ -173,8 +173,7 @@ export function upsample_grid(
 // return the fractional position of its new index 0 per axis. `index0_frac` is where index 0
 // sits in the source grid: 0 for Γ-centred meshes (BXSF, FRMSF lshift=1), ½/n for FRMSF
 // lshift=2, (½ − n/2)/n for lshift=0 Monkhorst-Pack meshes that already start near −½.
-// Only a data roll centres a Γ-centred grid: a bare −½(a*+b*+c*) shift of a mesh whose
-// index 0 is Γ moved Γ to the cell corners (Cu's belly to L, a Γ-sphere into 8 corner caps).
+// Rolling the data, not shifting vertices by −½(a*+b*+c*), keeps Γ at the cell centre.
 // Endpoint-inclusive grids (BXSF) roll their n−1 unique points and re-append the duplicate.
 function center_grid_on_gamma(
   grid: BandEnergyGrid,
@@ -222,8 +221,7 @@ function center_grid_on_gamma(
 }
 
 // Upsampled, Γ-centred grids keyed by source grid: they depend only on the grid, factor and
-// convention, while the mu slider re-extracts at a new isovalue on every change, and the
-// upsampling was 82-92% of each extraction (1.8 of 2.2 s for MgB₂ at factor 3)
+// convention, so mu slider re-extractions skip the upsampling (82-92% of each extraction)
 const prepared_grids = new WeakMap<
   BandEnergyGrid,
   Map<string, ReturnType<typeof center_grid_on_gamma>>
@@ -360,8 +358,7 @@ export function compute_fermi_slice(
 }
 
 // Axis label for an in-plane slice direction: the signed Cartesian axis it runs along, or its
-// direction when it is oblique. Labels guessed from the Miller indices named the wrong axis:
-// the basis of a (010) slice runs along −kz, and (100) of a hexagonal lattice is not kₓ-free.
+// direction when it is oblique (a (010) slice's basis runs along −kz, so Miller zeros can't say)
 const K_AXIS_LABELS = [`kₓ`, `kᵧ`, `kz`] as const // (subscript z doesn't exist in Unicode)
 export function slice_axis_label(direction: Vec3, fallback: string): string {
   const axis = direction.findIndex((component) => Math.abs(component) > 1 - 1e-6)

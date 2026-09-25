@@ -355,22 +355,19 @@
       .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
       .join(` `),
   )
-  const log_value_axis = (srs: BoxPlotSeries<Metadata>): boolean =>
-    log_axes.split(` `).includes(val_axis_key(srs))
   // KDE depends on the distribution, bandwidth and value-axis scale, not box statistics,
   // whisker settings or legend visibility (hidden series are skipped when drawing), so it
   // reads the authored series_in. On a log axis the density is estimated in log10 space and
-  // the grid mapped back, which is what the axis shows: a lognormal draws as a symmetric
-  // violin, and every decade gets grid points and a bandwidth at its own scale. A numeric
-  // bandwidth is then in decades.
+  // the grid mapped back: a lognormal draws as a symmetric violin and a numeric bandwidth is
+  // in decades. A non-positive clip bound has no log, so it leaves that side open.
+  const to_log = (bound: number | null) =>
+    bound !== null && bound > 0 ? Math.log10(bound) : null
   let violin_kdes = $derived.by(() => {
     const map = new Map<number, ViolinKde>()
     for (const [series_idx, srs] of series_in.entries()) {
       if (!draws_violin(srs)) continue
       const clip = srs.clip ?? kde_clip
-      const log = log_value_axis(srs)
-      const to_log = (bound: number | null) =>
-        bound !== null && bound > 0 ? Math.log10(bound) : null
+      const log = log_axes.split(` `).includes(val_axis_key(srs))
       const samples = log
         ? (srs.y ?? []).filter((val) => val > 0).map(Math.log10)
         : (srs.y ?? [])

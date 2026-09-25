@@ -355,10 +355,9 @@ export function phonon_mode_pattern(
       `Phonon mode data has ${data.n_atoms} atoms but the supercell was built for ${cell.n_atoms}`,
     )
   }
-  const validated = validate_selection(data, selection)
-  const { eigenvector, frequency } = validated
+  const { eigenvector, frequency, q_position: q_source } = validate_selection(data, selection)
   // Plain copies: a viewer may pass reactive proxies, and the pattern ends up in run metadata
-  const q_position: Vec3 = [...validated.q_position]
+  const q_position: Vec3 = [...q_source]
   const { qpoint_idx, mode_idx } = selection
 
   let anchor_re = 1
