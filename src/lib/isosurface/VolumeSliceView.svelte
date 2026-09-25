@@ -48,13 +48,9 @@
   // so rendering-only edits (colormap, contours, colour range) repaint without re-sampling
   let sampling_key = $derived.by(() => {
     if (!sampling_settings) return null
-    const { plane_mode, miller_indices, position, resolution } = sampling_settings
-    const { cartesian_point, cartesian_normal, cartesian_up } = sampling_settings
-    return JSON.stringify(
-      plane_mode === `hkl`
-        ? [plane_mode, miller_indices, position, resolution]
-        : [plane_mode, cartesian_point, cartesian_normal, cartesian_up, resolution],
-    )
+    const { render_mode, colormap, contour_levels, color_range, symmetric, ...plane } =
+      sampling_settings
+    return JSON.stringify(plane)
   })
 
   let computed_slice = $derived.by(() => {

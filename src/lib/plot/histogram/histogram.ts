@@ -223,19 +223,19 @@ export const histogram_series_color = (
 ): string =>
   series[series_idx]?.color ?? (uses_bar_color(series) ? bar_color : plot_color(series_idx))
 
-export const count_total = (counts: Iterable<number>): number => {
+const count_total = (counts: Iterable<number>): number => {
   let total = 0
   for (const count of counts) total += count
   return total
 }
 
-// Scale raw counts into bar heights. `probability` and `density` divide by `total`, density
-// additionally by each bin's width in data units.
+// Scale raw counts into bar heights. `probability` and `density` divide by `total` (default:
+// the counts' own sum), density additionally by each bin's width in data units.
 export function normalize_counts(
   edges: Float64Array,
   counts: Uint32Array | Float64Array,
   normalize: HistogramNormalize,
-  total: number,
+  total = count_total(counts),
 ): HistogramBin[] {
   return Array.from(counts, (count, idx) => {
     const [coord_x_0, coord_x_1] = [edges[idx], edges[idx + 1]]

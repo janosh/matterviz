@@ -316,9 +316,6 @@ interface MarchingCubesOptions {
   normals?: boolean
   // Cartesian translation added to every vertex, e.g. the position of grid index 0
   position_offset?: Vec3
-  // Which values front faces (CCW) and normals point toward, on either lattice handedness:
-  // `decreasing` (default, outward for a density blob) or `increasing` (for a negative lobe)
-  facing?: `decreasing` | `increasing`
 }
 
 type GrowableArray = Float32Array | Uint32Array
@@ -344,16 +341,10 @@ export function marching_cubes(
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
 ): MarchingCubesBuffers {
-  const {
-    periodic = true,
-    normals: compute_norms = true,
-    position_offset,
-    facing = `decreasing`,
-  } = options
-  const normal_sign = facing === `increasing` ? -1 : 1
-  // The triangle table winds toward decreasing values in index space; a left-handed lattice
-  // mirrors that and `increasing` wants the other side, so each swaps the winding
-  const flip_winding = det_3x3(k_lattice) < 0 !== (facing === `increasing`)
+  const { periodic = true, normals: compute_norms = true, position_offset } = options
+  // Front faces (CCW) and normals point toward decreasing values; the triangle table winds that
+  // way in index space, which a left-handed lattice mirrors
+  const flip_winding = det_3x3(k_lattice) < 0
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
   const [size_x, size_y, size_z] = grid_dimensions(grid)
@@ -428,7 +419,7 @@ export function marching_cubes(
     const span = periodic ? 2 : hi_idx - lo_idx
     const lo_val = values[base_offset + lo_idx * stride]
     const hi_val = values[base_offset + hi_idx * stride]
-    return (normal_sign * -(hi_val - lo_val)) / span
+    return -(hi_val - lo_val) / span
   }
   // Scratch for the gradient at grid point (ix, iy, iz), in index space scaled to
   // fractional units. Periodic cubes reach index n on their far face (= grid point 0);

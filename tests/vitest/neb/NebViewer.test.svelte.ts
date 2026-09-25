@@ -390,25 +390,53 @@ describe(`NebViewer`, () => {
     }
   })
 
-  test(`loads valid drops and reports invalid ones`, async () => {
+  test(`loads valid drops, loose image batches, and reports invalid ones`, async () => {
     const state = $state({
       active_path_key: ``,
       active_image_idx: 1,
       error_msg: undefined as string | undefined,
     })
     const viewer = await mount_viewer(bind_props({}, state))
-    const content = JSON.stringify({
-      format: `matterviz-reaction-path`,
-      label: `dropped`,
-      images: direct_path.images,
-    })
-    viewer.dispatchEvent(create_drop_event(new File([content], `path.json`)))
+    const drop = (files: File | File[]) => viewer.dispatchEvent(create_drop_event(files))
+    const [first, second] = direct_path.images
+    const path_file = (label: string, images: unknown[]) =>
+      new File(
+        [JSON.stringify({ format: `matterviz-reaction-path`, label, images })],
+        `${label}.json`,
+      )
+    drop(path_file(`dropped`, direct_path.images))
     await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped`))
     expect(state.active_image_idx).toBe(0)
     expect(viewer.querySelector(`.scatter`)).not.toBeNull()
 
+    // pymatgen-style structure JSONs carrying their energy: only the batch forms a path
+    drop(
+      direct_path.images.slice(0, 3).map(
+        ({ structure, energy }, idx) =>
+          new File(
+            [
+              JSON.stringify({
+                ...structure,
+                properties: { ...structure.properties, energy },
+              }),
+            ],
+            `img-${idx}.json`,
+          ),
+      ),
+    )
+    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped images`))
+    expect(state.error_msg).toBeUndefined()
+    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(1/3)`)
+
+    // identical consecutive images give no path tangent: refused with its reason
+    drop(path_file(`dup`, [first, first, second]))
+    await vi.waitFor(() =>
+      expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
+    )
+    expect(state.active_path_key).toBe(`dropped images`)
+
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    viewer.dispatchEvent(create_drop_event(new File([`{`], `bad.json`)))
+    drop(new File([`{`], `bad.json`))
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
     )
@@ -423,49 +451,12 @@ describe(`NebViewer`, () => {
     expect(query(viewer, `.scatter`)).toBe(plot)
   })
 
-  test(`builds one path from several loose structure files dropped together`, async () => {
-    const state = $state({ active_path_key: ``, error_msg: undefined as string | undefined })
-    const viewer = await mount_viewer(bind_props({}, state))
-    // pymatgen-style structure JSONs carrying their energy: only the batch forms a path
-    const files = direct_path.images.slice(0, 3).map(
-      ({ structure, energy }, idx) =>
-        new File(
-          [
-            JSON.stringify({
-              ...structure,
-              properties: { ...structure.properties, energy },
-            }),
-          ],
-          `img-${idx}.json`,
-        ),
-    )
-    viewer.dispatchEvent(create_drop_event(files))
-    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped images`))
-    expect(state.error_msg).toBeUndefined()
-    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(1/3)`)
-  })
-
-  test(`reports a path it cannot profile instead of crashing`, async () => {
-    const state = $state({ active_path_key: ``, error_msg: undefined as string | undefined })
-    const viewer = await mount_viewer(bind_props({}, state))
-    // identical consecutive images: no path tangent (and no arc length) between them
+  test(`reports a path prop it cannot profile beside those that do`, async () => {
     const [first, second] = direct_path.images
-    const content = JSON.stringify({
-      format: `matterviz-reaction-path`,
-      label: `dup`,
-      images: [first, first, second],
-    })
-    viewer.dispatchEvent(create_drop_event(new File([content], `dup.json`)))
-    await vi.waitFor(() =>
-      expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
-    )
-    expect(state.active_path_key).toBe(``)
-
-    // the same path passed as a prop is reported beside the paths that do profile
     const dup = { images: [first, first, second] }
-    const with_prop = await mount_viewer({ paths: { dup, ok: direct_path } })
-    expect(with_prop.querySelector(`.scatter`)).not.toBeNull()
-    expect(with_prop.textContent).toMatch(/dup: .*zero-length path tangent/)
+    const viewer = await mount_viewer({ paths: { dup, ok: direct_path } })
+    expect(viewer.querySelector(`.scatter`)).not.toBeNull()
+    expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {

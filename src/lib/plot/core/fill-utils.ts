@@ -75,22 +75,22 @@ export function resolve_fill_binding(region: FillRegion, series: readonly DataSe
       ? (resolve_series_ref(boundary, series) ?? [])
       : [],
   )
-  const pick = <Axis extends string>(
-    key: `x_axis` | `y_axis`,
-    axes: (Axis | undefined)[],
-    fallback: Axis,
-  ): Axis => {
-    const distinct = [...new Set(axes.filter((axis) => axis !== undefined))]
-    if (distinct.length > 1) {
+  const pick = <Key extends `x_axis` | `y_axis`>(
+    key: Key,
+    fallback: NonNullable<DataSeries[Key]>,
+  ) => {
+    const axes = new Set([region[key], ...bound.map((srs) => srs[key] ?? fallback)])
+    axes.delete(undefined)
+    if (axes.size > 1) {
       throw new Error(
-        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${distinct.join(` and `)}: its series boundaries and ${key} must agree`,
+        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...axes].join(` and `)}: its series boundaries and ${key} must agree`,
       )
     }
-    return distinct[0] ?? fallback
+    return [...axes][0] ?? fallback
   }
   return {
-    x_axis: pick(`x_axis`, [region.x_axis, ...bound.map((srs) => srs.x_axis ?? `x`)], `x`),
-    y_axis: pick(`y_axis`, [region.y_axis, ...bound.map((srs) => srs.y_axis ?? `y`)], `y`),
+    x_axis: pick(`x_axis`, `x`),
+    y_axis: pick(`y_axis`, `y`),
     series_hidden: bound.some((srs) => srs.visible === false),
   }
 }

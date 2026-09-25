@@ -22,6 +22,7 @@
   import { SvelteMap } from 'svelte/reactivity'
   import type {
     EnergyReference,
+    PathProfile,
     ReactionCoordMode,
     ReactionPath,
     ReactionPathInput,
@@ -100,21 +101,18 @@
   // consecutive images give no arc length, mismatched site counts no displacement) is
   // reported and left out instead of throwing through the render.
   const profile_options = $derived({ ...coord_options, mode: coord_mode })
-  const profile_results = $derived(
-    named_paths.map(({ key, path }) => {
+  const { profiled, failures: profile_failures } = $derived.by(() => {
+    const entries: { key: string; path: ReactionPath; profile: PathProfile }[] = []
+    const failures: string[] = []
+    for (const { key, path } of named_paths) {
       try {
-        return { key, path, profile: path_profile(path, profile_options) }
+        entries.push({ key, path, profile: path_profile(path, profile_options) })
       } catch (exc) {
-        return { key, path, failure: `${key}: ${to_error(exc).message}` }
+        failures.push(`${key}: ${to_error(exc).message}`)
       }
-    }),
-  )
-  const profiled = $derived(
-    profile_results.flatMap(({ key, path, profile }) =>
-      profile ? [{ key, path, profile }] : [],
-    ),
-  )
-  const profile_failures = $derived(profile_results.flatMap(({ failure }) => failure ?? []))
+    }
+    return { profiled: entries, failures }
+  })
   const profiles = $derived(
     Object.fromEntries(profiled.map(({ key, profile }) => [key, profile])),
   )

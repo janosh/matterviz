@@ -135,6 +135,7 @@
   // 'liquid'), so two diagrams on one page would otherwise cross-reference each
   // other's gradients (first-in-document wins, with that instance's pixel coords)
   const gradient_uid = unique_id(`pd-gradient`)
+  const plot_clip = `url(#${gradient_uid}-plot-area)`
 
   // A diagram_input that fails to build is surfaced as an error banner rather than silently
   // falling back to the data prop.
@@ -202,14 +203,13 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
   const temp_range = $derived(effective_data.temperature_range)
 
-  // Visible temperature window in display units: y_axis.range (either end may be null) over
-  // the data's temperature_range
-  const y_domain_display = $derived.by(() => {
-    const [t_min, t_max] = temp_range.map((temp) =>
-      convert_temp(temp, data_temp_unit, temp_unit),
-    )
-    return [y_axis.range?.[0] ?? t_min, y_axis.range?.[1] ?? t_max]
-  })
+  // Visible temperature window in display units: each set y_axis.range end overrides the
+  // data's temperature_range
+  const y_domain_display = $derived(
+    temp_range.map(
+      (temp, idx) => y_axis.range?.[idx] ?? convert_temp(temp, data_temp_unit, temp_unit),
+    ),
+  )
 
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
@@ -584,103 +584,101 @@
         </g>
       {/if}
 
-      <g clip-path="url(#{gradient_uid}-plot-area)">
-        <g class="phase-regions">
-          {#each transformed_regions as region (region.id)}
+      <g class="phase-regions" clip-path={plot_clip}>
+        {#each transformed_regions as region (region.id)}
+          <path
+            d={region.svg_path}
+            fill={region.gradient
+              ? `url(#${gradient_uid}-${region.id})`
+              : region.color || get_phase_color(region.name)}
+            stroke="none"
+            class:hovered={hovered_region?.id === region.id}
+          />
+        {/each}
+      </g>
+
+      {#if show_boundaries}
+        <g class="boundaries" clip-path={plot_clip}>
+          {#each transformed_boundaries as boundary (boundary.id)}
             <path
-              d={region.svg_path}
-              fill={region.gradient
-                ? `url(#${gradient_uid}-${region.id})`
-                : region.color || get_phase_color(region.name)}
-              stroke="none"
-              class:hovered={hovered_region?.id === region.id}
+              d={boundary.svg_path}
+              fill="none"
+              stroke={boundary.style?.color ?? merged_config.colors.boundary}
+              stroke-width={boundary.style?.width ?? 2}
+              stroke-dasharray={boundary.style?.dash || ``}
+              stroke-linecap="round"
+              stroke-linejoin="round"
             />
           {/each}
         </g>
+      {/if}
 
-        {#if show_boundaries}
-          <g class="boundaries">
-            {#each transformed_boundaries as boundary (boundary.id)}
-              <path
-                d={boundary.svg_path}
-                fill="none"
-                stroke={boundary.style?.color ?? merged_config.colors.boundary}
-                stroke-width={boundary.style?.width ?? 2}
-                stroke-dasharray={boundary.style?.dash || ``}
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            {/each}
-          </g>
-        {/if}
+      {#if show_labels}
+        <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
+          {#each transformed_regions as region (region.id)}
+            {@const line_height = merged_config.font_size * 1.2}
+            <g
+              transform="translate({region.label_pos[0]}, {region
+                .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
+            >
+              {#each region.label_lines as line, line_idx (line_idx)}
+                <text
+                  x={0}
+                  y={(line_idx - (region.label_lines.length - 1) / 2) * line_height}
+                  text-anchor="middle"
+                  dominant-baseline="middle"
+                  fill={merged_config.colors.text}
+                  font-size={merged_config.font_size}
+                  font-weight="500"
+                  class="region-label"
+                >
+                  {@html sanitize_svg(format_label_svg(line, use_subscripts))}
+                </text>
+              {/each}
+            </g>
+          {/each}
+        </g>
+      {/if}
 
-        {#if show_labels}
-          <g class="region-labels" style="pointer-events: none">
-            {#each transformed_regions as region (region.id)}
-              {@const line_height = merged_config.font_size * 1.2}
-              <g
-                transform="translate({region.label_pos[0]}, {region
-                  .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
-              >
-                {#each region.label_lines as line, line_idx (line_idx)}
-                  <text
-                    x={0}
-                    y={(line_idx - (region.label_lines.length - 1) / 2) * line_height}
-                    text-anchor="middle"
-                    dominant-baseline="middle"
-                    fill={merged_config.colors.text}
-                    font-size={merged_config.font_size}
-                    font-weight="500"
-                    class="region-label"
-                  >
-                    {@html sanitize_svg(format_label_svg(line, use_subscripts))}
-                  </text>
-                {/each}
-              </g>
-            {/each}
-          </g>
-        {/if}
-
-        <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
-        {#if tie_line}
-          {@const {
-            cursor,
-            endpoints: [start, end],
-          } = tie_line}
-          {@const top_left = merged_config.tie_line}
-          <g class="tie-line" class:locked={locked_hover_info}>
-            {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
-              <line
-                x1={start.cx}
-                y1={start.cy}
-                x2={end.cx}
-                y2={end.cy}
-                {stroke}
-                stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
-                stroke-linecap="round"
-              />
-            {/each}
-            {#each tie_line.endpoints as endpoint, idx (idx)}
-              <circle
-                cx={endpoint.cx}
-                cy={endpoint.cy}
-                r={top_left.endpoint_radius}
-                fill={endpoint.color}
-                stroke="white"
-                stroke-width={1.5}
-              />
-            {/each}
-            <circle
-              cx={cursor.cx}
-              cy={cursor.cy}
-              r={top_left.cursor_radius}
-              fill={TIE_LINE_COLOR}
-              stroke="white"
-              stroke-width={2}
+      <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
+      {#if tie_line}
+        {@const {
+          cursor,
+          endpoints: [start, end],
+        } = tie_line}
+        {@const top_left = merged_config.tie_line}
+        <g class="tie-line" class:locked={locked_hover_info} clip-path={plot_clip}>
+          {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
+            <line
+              x1={start.cx}
+              y1={start.cy}
+              x2={end.cx}
+              y2={end.cy}
+              {stroke}
+              stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
+              stroke-linecap="round"
             />
-          </g>
-        {/if}
-      </g>
+          {/each}
+          {#each tie_line.endpoints as endpoint, idx (idx)}
+            <circle
+              cx={endpoint.cx}
+              cy={endpoint.cy}
+              r={top_left.endpoint_radius}
+              fill={endpoint.color}
+              stroke="white"
+              stroke-width={1.5}
+            />
+          {/each}
+          <circle
+            cx={cursor.cx}
+            cy={cursor.cy}
+            r={top_left.cursor_radius}
+            fill={TIE_LINE_COLOR}
+            stroke="white"
+            stroke-width={2}
+          />
+        </g>
+      {/if}
 
       <!-- Special points (rendered last for highest z-index) -->
       {#if show_special_points}

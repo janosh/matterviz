@@ -229,11 +229,9 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       x_axis: { range: [0.4, 0.6] },
       y_axis: { range: [400, 600] },
     })
-    const clip_id = wrapper.querySelector(`clipPath`)?.id
-    const clipped = wrapper.querySelector(`[clip-path="url(#${clip_id})"]`)
-    for (const selector of [`.phase-regions`, `.boundaries`, `.region-labels`]) {
-      expect(clipped?.querySelector(selector), selector).not.toBeNull()
-    }
+    const clip = `url(#${wrapper.querySelector(`clipPath`)?.id})`
+    for (const selector of [`.phase-regions`, `.boundaries`, `.region-labels`])
+      expect(wrapper.querySelector(selector)?.getAttribute(`clip-path`)).toBe(clip)
     const clip_rect = wrapper.querySelector(`clipPath rect`)
     expect(
       [`x`, `y`, `width`, `height`].map((attr) => Number(clip_rect?.getAttribute(attr))),

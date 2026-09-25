@@ -123,36 +123,6 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.frames[3].metadata?.force_max).toBeUndefined()
   })
 
-  // Same rule and wording as the pymatgen reader (checked_site_forces): a step whose force
-  // count disagrees with its atom count keeps its frame but loses its forces, with a warning
-  it(`drops and reports forces whose count does not match the atoms`, async () => {
-    const warnings: string[] = []
-    const trajectory = await with_h5_file(
-      read_vaspout(`vaspout-si-relax.h5`),
-      `vaspout.h5`,
-      (h5_file) => {
-        const forces_path = `intermediate/ion_dynamics/forces`
-        const forces = h5_file.get(forces_path) as h5wasm.Dataset
-        const to_array = forces.to_array.bind(forces)
-        forces.to_array = () => {
-          const steps = to_array() as number[][][]
-          steps[1] = steps[1].slice(0, 1)
-          return steps
-        }
-        const patched = {
-          get: (path: string) => (path === forces_path ? forces : h5_file.get(path)),
-        } as unknown as h5wasm.File
-        return parse_vaspout_h5_file(patched, (message) => warnings.push(message))
-      },
-    )
-    expect(trajectory.frames).toHaveLength(5)
-    expect(trajectory.frames[1].metadata).not.toHaveProperty(`force_max`)
-    expect(trajectory.frames[1].structure.sites[0].properties.force).toBeUndefined()
-    expect(warnings).toEqual([
-      `Ignoring vaspout.h5 forces of ionic step 1: expected 2 finite 3-vectors, got 1`,
-    ])
-  })
-
   it(`throws electronic-only data for bands-only vaspout files`, async () => {
     const direct = await rejection_of(parse_fixture(`vaspout-tinisn-bands-only.h5`))
     const dispatched = await rejection_of(

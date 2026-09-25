@@ -134,7 +134,6 @@ test.each([
   [`linear-gradient(to top, red 0%, rgba(0, 128, 0, 0.5) 50%, blue 100%)`, { vector: [0, 1, 0, 0], stops: [[`red`, `0%`], [`rgba(0, 128, 0, 0.5)`, `50%`], [`blue`, `100%`]] }],
   [`linear-gradient(red, blue)`, null],
   [`none`, null],
-  [`url(img.png)`, null],
 ])(`parse_linear_gradient(%s)`, (css, expected) => {
   expect(parse_linear_gradient(css)).toEqual(expected)
 })

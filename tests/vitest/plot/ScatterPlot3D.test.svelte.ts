@@ -174,185 +174,132 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
-describe(`ScatterPlot3DScene geometry`, () => {
+// Every point used to be its own <Instance>, re-uploaded each frame so the on-demand scene
+// never went idle; out-of-range points and lines drew outside the box; hover reported scene
+// coordinates (y and z swapped); NaN surface vertices poisoned their neighbours' normals
+test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [
     normalize_to_scene(data_x, [0, 4], 10),
     normalize_to_scene(data_z, [0, 4], 5),
     normalize_to_scene(data_y, [0, 4], 10),
   ]
-  const mount_points = (
-    state: { series: DataSeries3D[]; hovered_point?: unknown },
-    extra: Partial<ComponentProps<typeof ScatterPlot3DScene>> = {},
-  ) => {
-    const portal = document.createElement(`div`)
-    document.body.append(portal)
-    const tooltip = createRawSnippet((data: () => Scatter3DHandlerEvent) => ({
-      render: () => `<span class="tip"></span>`,
-      setup: (node: Element) => {
-        $effect(() => {
-          const { x, y, z, fullscreen } = data()
-          node.textContent = `${x},${y},${z} ${fullscreen}`
-        })
+  const state = $state<{ series: DataSeries3D[]; hovered_point: unknown }>({
+    series: [
+      {
+        x: [1, 2, 3, 3.5, 9, 1],
+        y: [1, 1, 3, 0.5, 1, 1],
+        z: [1, 3, 3, 2, 1, -5],
+        line_style: { stroke: `red` },
       },
-    }))
-    const mounted = mount_scene((anchor) =>
-      ScatterPlot3DScene(anchor, {
-        get series() {
-          return state.series
-        },
-        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-        gizmo: false,
-        tooltip,
-        tooltip_portal: portal,
-        get hovered_point() {
-          return (state.hovered_point ?? null) as never
-        },
-        set hovered_point(value) {
-          state.hovered_point = value
-        },
-        ...extra,
-      }),
-    )
-    flushSync()
-    return { ...mounted, portal }
+    ],
+    hovered_point: null,
+  })
+  const portal = document.createElement(`div`)
+  document.body.append(portal)
+  const tooltip = createRawSnippet((data: () => Scatter3DHandlerEvent) => ({
+    render: () => `<span class="tip"></span>`,
+    setup: (node: Element) => {
+      $effect(() => {
+        const { x, y, z, fullscreen } = data()
+        node.textContent = `${x},${y},${z} ${fullscreen}`
+      })
+    },
+  }))
+  // z is undefined off the unit disk
+  const hemisphere: Surface3DConfig = {
+    type: `grid`,
+    resolution: 25,
+    x_range: [-1, 1],
+    y_range: [-1, 1],
+    z_fn: (x_val, y_val) => Math.sqrt(1 - x_val ** 2 - y_val ** 2),
   }
-
-  // Every point used to be its own <Instance>, re-uploaded each frame so the on-demand scene
-  // never went idle, and points outside a narrowed axis range drew outside the box
-  test(`draws in-range points as one InstancedMesh and stops rendering once idle`, async () => {
-    const state = $state({
-      series: [
-        { x: [1, 2, 3, 3.5, 9, 1], y: [1, 1, 3, 0.5, 1, 1], z: [1, 3, 3, 2, 1, -5] },
-      ] as DataSeries3D[],
-    })
-    const { scene, render_frame, unmount_scene } = mount_points(state)
-    const instances = () => {
-      const [mesh, ...stale] = find_objects(scene, InstancedMesh)
-      expect(stale).toHaveLength(0)
-      return mesh
-    }
-    const position_of = (mesh: InstancedMesh, idx: number) => {
-      const matrix = new Matrix4()
-      mesh.getMatrixAt(idx, matrix)
-      return new Vector3().setFromMatrixPosition(matrix).toArray()
-    }
-    try {
-      expect(instances().count).toBe(4)
-      expect(position_of(instances(), 1)).toEqual(scene_pos(2, 1, 3))
-      for (let frame = 0; frame < 3; frame++) render_frame()
-      expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
-      // outgrowing the mesh's capacity swaps in a larger one and renders again
-      state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
-      flushSync()
-      expect(render_frame()).toBe(true)
-      expect(instances().count).toBe(5)
-      expect(position_of(instances(), 4)).toEqual(scene_pos(4, 0, 4))
-    } finally {
-      await unmount_scene()
-    }
-  })
-
-  // tooltip_point / event.point used to carry scene coordinates with y and z swapped
-  test(`hover reports data coordinates and follows data changes`, async () => {
-    const state = $state<{ series: DataSeries3D[]; hovered_point: unknown }>({
-      series: [{ x: [1, 2, 3], y: [0.5, 1.5, 2.5], z: [3, 2, 1] }],
-      hovered_point: null,
-    })
-    const { portal, scene, render_frame, unmount_scene } = mount_points(state, {
-      fullscreen: true,
-    })
-    const tip_text = () => portal.querySelector(`.tip`)?.textContent
-    try {
-      state.hovered_point = { x: 2, y: 1.5, z: 2, series_idx: 0, point_idx: 1 }
-      flushSync()
-      render_frame()
-      expect(tip_text()).toBe(`2,1.5,2 true`)
-      // the hover halo is the one mesh drawn without depth testing
-      const halo = find_objects(scene, Mesh).findLast(
-        (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
-      )
-      expect(halo?.position.toArray()).toEqual(scene_pos(2, 1.5, 2))
-      // same logical point, new values: the tooltip moves with it
-      state.series = [{ x: [1, 3, 3], y: [0.5, 0.5, 2.5], z: [3, 1, 1] }]
-      flushSync()
-      flushSync()
-      render_frame()
-      expect(state.hovered_point).toMatchObject({ x: 3, y: 0.5, z: 1, point_idx: 1 })
-      expect(tip_text()).toBe(`3,0.5,1 true`)
-      // the point is gone: hover clears instead of describing a stale point
-      state.series = [{ x: [1], y: [1], z: [1] }]
-      flushSync()
-      expect(state.hovered_point).toBeNull()
-      expect(tip_text()).toBeUndefined()
-    } finally {
-      await unmount_scene()
-    }
-  })
-
-  test(`clips data geometry to the box and draws the bounding box on request`, async () => {
-    const state = $state({
-      series: [
-        { x: [1, 2, 3], y: [1, 2, 3], z: [1, 2, 3], line_style: { stroke: `red` } },
-      ] as DataSeries3D[],
-    })
-    const { scene, unmount_scene } = mount_points(state, {
+  const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      get series() {
+        return state.series
+      },
+      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      gizmo: false,
       display: { show_bounding_box: true },
-      surfaces: [grid_surface],
-    })
-    try {
-      const [group, ...others] = find_objects(scene, ClippingGroup)
-      expect(others).toHaveLength(0)
-      // the planes keep the 10 x 5 x 10 box (user z is Three.js y) and cut just outside it
-      const inside = (point: number[]) =>
-        group.clippingPlanes.every(
-          (plane) => plane.distanceToPoint(new Vector3().fromArray(point)) >= 0,
-        )
-      // oxfmt-ignore
-      const probes = [[5, 2.5, 5], [0, 0, 0], [5.1, 0, 0], [0, 2.6, 0], [0, 0, -5.1]]
-      expect(probes.map(inside)).toEqual([true, true, false, false, false])
-      // the series line and the surface are clipped, the point mesh is range-filtered
-      const clipped_types = new Set<string>()
-      group.traverse((object) => clipped_types.add(object.type))
-      expect([...clipped_types]).toEqual(expect.arrayContaining([`Line2`, `Mesh`]))
-      const edges = find_objects(scene, LineSegments).filter(
-        (line) => line.geometry instanceof EdgesGeometry,
+      surfaces: [hemisphere],
+      fullscreen: true,
+      tooltip,
+      tooltip_portal: portal,
+      get hovered_point() {
+        return state.hovered_point as never
+      },
+      set hovered_point(value) {
+        state.hovered_point = value
+      },
+    }),
+  )
+  flushSync()
+  const instances = () => {
+    const [mesh, ...stale] = find_objects(scene, InstancedMesh)
+    expect(stale).toHaveLength(0)
+    return mesh
+  }
+  const position_of = (idx: number) => {
+    const matrix = new Matrix4()
+    instances().getMatrixAt(idx, matrix)
+    return new Vector3().setFromMatrixPosition(matrix).toArray()
+  }
+  const tip_text = () => portal.querySelector(`.tip`)?.textContent
+  try {
+    expect(instances().count).toBe(4)
+    expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
+    const [group, ...others] = find_objects(scene, ClippingGroup)
+    expect(others).toHaveLength(0)
+    // the planes keep the 10 x 5 x 10 box (user z is Three.js y) and cut just outside it
+    const inside = (point: number[]) =>
+      group.clippingPlanes.every(
+        (plane) => plane.distanceToPoint(new Vector3().fromArray(point)) >= 0,
       )
-      expect(edges).toHaveLength(1)
-    } finally {
-      await unmount_scene()
-    }
-  })
-
-  // NaN vertices (z undefined off the disk) used to poison the normals of their neighbours
-  test(`surface drops triangles touching non-finite vertices`, async () => {
-    const { scene, unmount_scene } = mount_scene((anchor) =>
-      Surface3D(anchor, {
-        config: {
-          type: `grid`,
-          resolution: 25,
-          x_range: [-1, 1],
-          y_range: [-1, 1],
-          z_fn: (x_val: number, y_val: number) => Math.sqrt(1 - x_val ** 2 - y_val ** 2),
-        },
-        x_range: [-1, 1],
-        y_range: [-1, 1],
-        z_range: [0, 1],
-      }),
+    // oxfmt-ignore
+    const probes = [[5, 2.5, 5], [0, 0, 0], [5.1, 0, 0], [0, 2.6, 0], [0, 0, -5.1]]
+    expect(probes.map(inside)).toEqual([true, true, false, false, false])
+    // the series line and the surface are clipped, the point mesh is range-filtered
+    expect(group.getObjectsByProperty(`type`, `Line2`)).toHaveLength(1)
+    const surface = find_objects(group, Mesh).find((mesh) => mesh.type === `Mesh`)?.geometry
+    for (const name of [`position`, `normal`])
+      expect([...(surface?.getAttribute(name).array ?? [])].every(Number.isFinite)).toBe(true)
+    // triangles touching a NaN vertex are dropped
+    expect(surface?.index?.count).toBeGreaterThan(0)
+    expect(surface?.index?.count).toBeLessThan(24 * 24 * 6)
+    const edges = find_objects(scene, LineSegments).filter(
+      (line) => line.geometry instanceof EdgesGeometry,
     )
+    expect(edges).toHaveLength(1)
+    for (let frame = 0; frame < 3; frame++) render_frame()
+    expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
+
+    state.hovered_point = { x: 2, y: 1, z: 3, series_idx: 0, point_idx: 1 }
     flushSync()
-    try {
-      const geometry: BufferGeometry | undefined = find_objects(scene, Mesh).at(-1)?.geometry
-      if (!geometry) throw new Error(`no surface mesh`)
-      for (const name of [`position`, `normal`])
-        expect([...geometry.getAttribute(name).array].every(Number.isFinite)).toBe(true)
-      const index_count = geometry.index?.count ?? 0
-      expect(index_count).toBeGreaterThan(0)
-      expect(index_count).toBeLessThan(24 * 24 * 6)
-    } finally {
-      await unmount_scene()
-    }
-  })
+    render_frame()
+    expect(tip_text()).toBe(`2,1,3 true`)
+    // the hover halo is the one mesh drawn without depth testing
+    const halo = find_objects(scene, Mesh).findLast(
+      (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
+    )
+    expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
+    // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
+    // tooltip follows the same logical point to its new values
+    state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
+    flushSync()
+    expect(render_frame()).toBe(true)
+    expect(instances().count).toBe(5)
+    expect(position_of(4)).toEqual(scene_pos(4, 0, 4))
+    expect(state.hovered_point).toMatchObject({ x: 1, y: 3, z: 1, point_idx: 1 })
+    expect(tip_text()).toBe(`1,3,1 true`)
+    // the point is gone: hover clears instead of describing a stale point
+    state.series = [{ x: [1], y: [1], z: [1] }]
+    flushSync()
+    expect(state.hovered_point).toBeNull()
+    expect(tip_text()).toBeUndefined()
+  } finally {
+    await unmount_scene()
+  }
 })
 
 describe(`ScatterPlot3D smoke tests`, () => {

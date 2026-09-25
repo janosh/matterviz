@@ -431,7 +431,6 @@
   </div>
 {/snippet}
 
-<!-- data-export-overlay: chart image exports redraw the legend as static SVG -->
 <div
   bind:this={root_element}
   data-export-overlay

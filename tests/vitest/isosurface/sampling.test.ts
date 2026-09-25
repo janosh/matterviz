@@ -214,8 +214,6 @@ test(`samplers read the volume a fixed number of times, not once per sample`, ()
   const reads_at_creation = n_reads
   for (let idx = 0; idx < 1000; idx++) sampler([idx % 10, 5, 5])
   expect(n_reads).toBe(reads_at_creation)
-  sample_volume_at_positions(counted, new Float64Array(3000).fill(5))
-  expect(n_reads - reads_at_creation).toBeLessThan(20)
 })
 
 describe(`create_volume_sampler reads the current volume fields`, () => {

@@ -34,23 +34,18 @@ const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 // as static SVG at its on-screen position.
 const SVG_NS = `http://www.w3.org/2000/svg`
 
-const set_attrs = <El extends Element>(
-  element: El,
-  attrs: Record<string, string | number>,
-) => {
+type Attrs = Record<string, string | number>
+const set_attrs = <El extends Element>(element: El, attrs: Attrs): El => {
   for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, String(value))
   return element
 }
-const svg_el = <Tag extends keyof SVGElementTagNameMap>(
-  tag: Tag,
-  attrs: Record<string, string | number>,
-): SVGElementTagNameMap[Tag] => set_attrs(document.createElementNS(SVG_NS, tag), attrs)
+const svg_el = (tag: string, attrs: Attrs) =>
+  set_attrs(document.createElementNS(SVG_NS, tag), attrs)
 
+// ColorBar only draws `to right` (horizontal) and `to top` (vertical) gradients
 const GRADIENT_VECTORS: Record<string, [number, number, number, number]> = {
   right: [0, 0, 1, 0],
-  left: [1, 0, 0, 0],
   top: [0, 1, 0, 0],
-  bottom: [0, 0, 0, 1],
 }
 
 // ColorBar's computed `linear-gradient(to <side>, <color> <offset>, ...)` as an SVG gradient
@@ -73,7 +68,7 @@ const is_transparent = (color: string): boolean =>
 // Redraw an HTML overlay as SVG in the coordinate frame of `origin` (the chart SVG's box):
 // solid and gradient backgrounds become rects, nested SVGs (legend markers) are cloned in
 // place, text runs become <text> at their laid-out position with the computed font.
-function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
+function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGElement {
   // clipPath and linearGradient never render themselves, so they can live in the group
   const group = svg_el(`g`, { class: `export-overlay` })
   const box = (rect: DOMRect) => ({
@@ -84,12 +79,12 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
   })
   // A scrolling legend shows only what fits its box
   if (getComputedStyle(root).overflowY !== `visible`) {
-    const clip_id = unique_id(`export-overlay-clip`)
-    const clip = svg_el(`clipPath`, { id: clip_id })
+    const id = unique_id(`export-overlay-clip`)
+    const clip = svg_el(`clipPath`, { id })
     const root_box = box(root.getBoundingClientRect())
     clip.append(svg_el(`rect`, root_box))
     group.append(clip)
-    group.setAttribute(`clip-path`, `url(#${clip_id})`)
+    group.setAttribute(`clip-path`, `url(#${id})`)
   }
 
   const add_background = (element: Element, style: CSSStyleDeclaration, opacity: number) => {

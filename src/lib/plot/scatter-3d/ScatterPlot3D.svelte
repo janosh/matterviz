@@ -150,10 +150,9 @@
   // would otherwise draw silently linear
   $effect.pre(() => {
     const scale_types = [x_axis, y_axis, z_axis].map((axis): unknown => axis.scale_type)
-    if (scale_types.some((scale_type) => scale_type && scale_type !== `linear`)) {
-      throw new Error(
-        `ScatterPlot3D axes are linear, got scale_type ${JSON.stringify(scale_types)}`,
-      )
+    if (scale_types.some((scale_type) => (scale_type ?? `linear`) !== `linear`)) {
+      const got = JSON.stringify(scale_types)
+      throw new Error(`ScatterPlot3D axes are linear, got scale_type ${got}`)
     }
   })
 
@@ -165,23 +164,17 @@
   // Bounds come from the very vertices Surface3D draws. A grid surface without its own x/y
   // range spans the plot's, so x/y resolve first and such surfaces then only extend z.
   const visible_surfaces = $derived(surfaces.filter((surface) => surface.visible !== false))
-  const auto_xy_ranges = $derived(
+  const auto_ranges_over = (plot_ranges: Parameters<typeof sample_surface>[1]) =>
     get_3d_auto_ranges(
       series,
-      visible_surfaces.flatMap((surface) => sample_surface(surface)),
-    ),
-  )
+      visible_surfaces.flatMap((surface) => sample_surface(surface, plot_ranges)),
+    )
+  const auto_xy_ranges = $derived(auto_ranges_over(null))
   const xy_ranges = $derived({
     x: resolve_axis_range({ range: x_axis.range }, auto_xy_ranges.x),
     y: resolve_axis_range({ range: y_axis.range }, auto_xy_ranges.y),
   })
-  const auto_ranges = $derived({
-    ...auto_xy_ranges,
-    z: get_3d_auto_ranges(
-      series,
-      visible_surfaces.flatMap((surface) => sample_surface(surface, xy_ranges)),
-    ).z,
-  })
+  const auto_ranges = $derived({ ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z })
   const ranges = $derived({
     ...xy_ranges,
     z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),

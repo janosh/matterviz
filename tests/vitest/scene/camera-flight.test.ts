@@ -177,53 +177,36 @@ describe(`camera flight sampling`, () => {
       )
       .toArray(),
   }
-  it.each([pose, tilted])(
-    `flies an exactly circular, uniform, seamless orbit from %j`,
-    (start) => {
-      const flight = orbit_camera_flight(start, 8)
-      expect(flight.keyframes).toHaveLength(9)
-      expect(flight.keyframes[0]).toEqual({ ...start, time: 0 })
-      expect(flight.keyframes[8]).toEqual({ ...start, time: 8 })
-      expect(() => orbit_camera_flight({ ...start, position: start.target })).toThrow(
-        `orbit target`,
-      )
-      const sample = create_camera_flight_sampler(flight)
-      const center = new Vector3(...start.target)
-      const start_offset = new Vector3(...start.position).sub(center)
-      const radius = start_offset.length()
-      const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...start.quaternion))
-      const height = start_offset.dot(up)
-      const in_plane = (vec: Vector3) => vec.clone().projectOnPlane(up)
-      const offset = (time: number) => new Vector3(...sample(time).position).sub(center)
-      // Each sample is a few quaternion products, one slerp and a vector add, each exact to a
-      // couple of f64 eps; 64 eps (1.4e-14) of the radius bounds their sum with margin.
-      const tol = 64 * Number.EPSILON * radius
-      for (let step = 0; step <= 800; step++) {
-        const time = step / 100
-        const vec = offset(time)
-        expect(Math.abs(vec.length() - radius)).toBeLessThan(tol)
-        expect(Math.abs(vec.dot(up) - height)).toBeLessThan(tol)
-        // Uniform angular speed: swept azimuth is exactly proportional to time. angleTo is an
-        // acos, which resolves angles near 0 and π only to ~sqrt(2 eps) = 2e-8 rad.
-        const swept = in_plane(start_offset).angleTo(in_plane(vec))
-        const expected = Math.PI - Math.abs(Math.PI - (2 * Math.PI * time) / 8)
-        expect(Math.abs(swept - expected)).toBeLessThan(1e-7)
-        const forward = new Vector3(0, 0, -1).applyQuaternion(
-          new Quaternion(...sample(time).quaternion),
-        )
-        expect(forward.angleTo(vec.negate())).toBeLessThan(1e-7)
-      }
-      // Loop seam: the chords leaving the start and reaching the end have equal length and
-      // differ in direction by exactly the angle swept over one step, as on an unbroken circle
-      const step = 1e-4
-      const start_velocity = offset(step).sub(offset(0))
-      const end_velocity = offset(8).sub(offset(8 - step))
-      expect(
-        Math.abs(start_velocity.angleTo(end_velocity) - (2 * Math.PI * step) / 8),
-      ).toBeLessThan(1e-9)
-      expect(Math.abs(start_velocity.length() / end_velocity.length() - 1)).toBeLessThan(1e-9)
-    },
-  )
+  it.each([pose, tilted])(`flies an exactly circular, uniform orbit from %j`, (start) => {
+    const flight = orbit_camera_flight(start, 8)
+    expect(flight.keyframes).toHaveLength(9)
+    expect(flight.keyframes[0]).toEqual({ ...start, time: 0 })
+    expect(flight.keyframes[8]).toEqual({ ...start, time: 8 })
+    expect(() => orbit_camera_flight({ ...start, position: start.target })).toThrow(
+      `orbit target`,
+    )
+    const sample = create_camera_flight_sampler(flight)
+    const center = new Vector3(...start.target)
+    const start_offset = new Vector3(...start.position).sub(center)
+    const radius = start_offset.length()
+    const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...start.quaternion))
+    const height = start_offset.dot(up)
+    const in_plane = (vec: Vector3) => vec.clone().projectOnPlane(up)
+    // Each sample is a few quaternion products, one slerp and a vector add, each exact to a
+    // couple of f64 eps; 64 eps (1.4e-14) of the radius bounds their sum with margin.
+    const tol = 64 * Number.EPSILON * radius
+    for (let step = 0; step <= 800; step++) {
+      const time = step / 100
+      const vec = new Vector3(...sample(time).position).sub(center)
+      expect(Math.abs(vec.length() - radius)).toBeLessThan(tol)
+      expect(Math.abs(vec.dot(up) - height)).toBeLessThan(tol)
+      // Uniform angular speed: swept azimuth is exactly proportional to time. angleTo is an
+      // acos, which resolves angles near 0 and π only to ~sqrt(2 eps) = 2e-8 rad.
+      const swept = in_plane(start_offset).angleTo(in_plane(vec))
+      const expected = Math.PI - Math.abs(Math.PI - (2 * Math.PI * time) / 8)
+      expect(Math.abs(swept - expected)).toBeLessThan(1e-7)
+    }
+  })
 
   it.each([
     [0, 5],

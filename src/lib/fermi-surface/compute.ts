@@ -223,10 +223,7 @@ export function extract_fermi_surface(
       let centered = prepared_grids.get(raw_energies)
       if (centered?.key !== key) {
         const upsampled = upsample_grid(raw_energies, interpolation_factor, periodic)
-        centered = {
-          key,
-          ...center_grid_on_gamma(upsampled, periodic, index0_frac),
-        }
+        centered = { key, ...center_grid_on_gamma(upsampled, periodic, index0_frac) }
         prepared_grids.set(raw_energies, centered)
       }
       const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {

@@ -233,8 +233,6 @@ describe(`ScatterPlot`, () => {
       state.x_axis = { range: [2.5, 3.5] }
       flushSync()
       expect(announced(plot)).toBe(``)
-      await arrow(svg, `ArrowLeft`)
-      expect(announced(plot)).toContain(`second point 2`)
     })
   })
 
@@ -244,28 +242,21 @@ describe(`ScatterPlot`, () => {
       series: DataSeries[]
       hidden_series: (string | number)[]
       tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-      hovered: boolean
     }>({
       series: [{ x: [0, 1, 2], y: [0, 1, 2], color_values: [1, NaN, 3], id: `a` }],
       hidden_series: [],
       tooltip_point: null,
-      hovered: true,
     })
     const plot = await mount_sized_scatter_plot(
-      bind_props({ point_tween: { duration: 0 }, color_bar: null }, state),
+      bind_props({ point_tween: { duration: 0 }, color_bar: null, hovered: true }, state),
     )
     const tooltip_text = () =>
       plot.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `).trim()
     const hover_point = (point_idx: number) => {
       const { x, y, color_values } = state.series[0]
+      const [x_val, y_val] = [x[point_idx], y[point_idx]]
       const color_value = color_values?.[point_idx]
-      state.tooltip_point = {
-        x: x[point_idx],
-        y: y[point_idx],
-        series_idx: 0,
-        point_idx,
-        color_value,
-      }
+      state.tooltip_point = { x: x_val, y: y_val, series_idx: 0, point_idx, color_value }
       flushSync()
     }
     hover_point(2)
@@ -641,12 +632,10 @@ describe(`ScatterPlot`, () => {
       await tick()
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
-      // The hovered overlay is drawn in full (a fill-less one left canvas hovers and the
-      // keyboard cursor with no visible highlight), scaled up by .is-hovered
-      const hovered_marker = query(hover_plot, `path.marker`)
-      expect(hovered_marker.classList.contains(`is-hovered`)).toBe(true)
-      expect(hovered_marker.getAttribute(`fill`)).not.toBe(`none`)
-      expect(hovered_marker.getAttribute(`fill`)).toMatch(/^var\(--point-fill-color/)
+      // The hovered overlay is drawn in full: a fill-less one left canvas hovers and the
+      // keyboard cursor with no visible highlight
+      const hovered_fill = query(hover_plot, `path.marker`).getAttribute(`fill`)
+      expect(hovered_fill).toMatch(/^var\(--point-fill-color/)
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
       for (const selected_points of [[4, 5], []]) {
         state.selected_points = selected_points.map((selected_idx) => ({

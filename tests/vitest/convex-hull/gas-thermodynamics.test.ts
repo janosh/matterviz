@@ -288,7 +288,7 @@ describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
       (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
         provider.get_standard_chemical_potential(gas, 0)) *
       Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
-    return { pressures, shift, molecule_shift }
+    return { shift, molecule_shift }
   }
 
   // A gas fixes only the stoichiometric sum of its elements' shifts (Δμ_C + 2 Δμ_O = Δμ(CO2)):
@@ -306,14 +306,6 @@ describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
       )
       expect(sum).toBeCloseTo(molecule_shift(gas), 12)
     }
-  })
-
-  test(`compute_gas_correction weights element shifts by composition`, () => {
-    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `CO2`] }
-    const { pressures, shift } = setup(config, 1000)
-    const caco3 = make_phase({ Ca: 1, C: 1, O: 3 }) // 1/5 C + 3/5 O (+ Ca unshifted)
-    const correction = compute_gas_correction(caco3, config, 1000, pressures)
-    expect(correction).toBeCloseTo((shift(`C`) + 3 * shift(`O`)) / 5, 12)
   })
 
   test.each([

@@ -115,22 +115,21 @@ export function calculate_total_pdf(
   // Rejects a lattice-less or empty structure with the PDF's own message before the search
   const rho_0 = number_density(structure)
   const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
-  return weight_pdf_partials(structure, partial_rdfs, { rho_0, radiation, s_val })
+  return weight_pdf_partials(structure, partial_rdfs, { radiation, s_val, rho_0 })
 }
 
 // The weighting half of calculate_total_pdf: combine a structure's partial g_ab(r) (from
 // calculate_all_pair_rdfs) into the total for one radiation. Split out because the partials
 // are the expensive neighbour search and depend only on geometry and binning, so switching
-// radiation re-weights them instead of re-running it. `rho_0` is the structure's
-// number_density, which callers compute anyway to validate it before the search.
+// radiation re-weights them instead of re-running it.
 export function weight_pdf_partials(
   structure: Crystal,
   partial_rdfs: readonly RdfPattern[],
   {
-    rho_0,
     radiation = `xray`,
     s_val = 0,
-  }: Pick<TotalPdfOptions, `radiation` | `s_val`> & { rho_0: number },
+    rho_0 = number_density(structure),
+  }: Pick<TotalPdfOptions, `radiation` | `s_val`> & { rho_0?: number } = {},
 ): TotalPdfPattern {
   const composition = site_composition(structure)
 
@@ -150,11 +149,7 @@ export function weight_pdf_partials(
     })
   }
 
-  if (partial_rdfs.length === 0) {
-    throw new Error(
-      `weight_pdf_partials got no partial RDFs for ${structure.sites.length} sites`,
-    )
-  }
+  if (partial_rdfs.length === 0) throw new Error(`weight_pdf_partials got no partial RDFs`)
   const radii = partial_rdfs[0].r
   const n_bins = radii.length
   const g_r: number[] = Array(n_bins).fill(0)

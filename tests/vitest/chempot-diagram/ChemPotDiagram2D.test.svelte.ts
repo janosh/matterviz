@@ -1,9 +1,8 @@
 import ChemPotDiagram from '$lib/chempot-diagram/ChemPotDiagram.svelte'
-import ChemPotDiagram2D from '$lib/chempot-diagram/ChemPotDiagram2D.svelte'
 import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '$lib/chempot-diagram/types'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
-import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { resize_element } from '../setup'
 
@@ -50,26 +49,35 @@ const size_plot = async (): Promise<void> => {
   if (!wrapper) throw new Error(`plot not mounted`)
   await resize_element(wrapper, 600, 450)
 }
-type Props = ComponentProps<typeof ChemPotDiagram2D>
-const mount_2d = async (
-  props: Props,
-  component: Component<Props> = ChemPotDiagram2D,
-): Promise<void> => {
+// Through the wrapper, which routes a 2-element system (or projection) to ChemPotDiagram2D
+const mount_2d = async (props: ComponentProps<typeof ChemPotDiagram>): Promise<void> => {
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
-  mounted.push(mount(component, { target: document.body, props }))
+  mounted.push(mount(ChemPotDiagram, { target: document.body, props }))
   await tick()
 }
 
 describe(`ChemPotDiagram2D recomputes`, () => {
-  test(`keep the plot and temperature slider mounted, a pinned tooltip re-reads its domain`, async () => {
+  test(`run only for compute-relevant changes, keep the plot, abort superseded requests, re-read a pinned tooltip`, async () => {
     const props = $state({
       entries: binary_temp_entries,
       temperature: 300,
+      config: { default_min_limit: -25 },
       hover_info: null as ChemPotHoverInfo | null,
     })
     await mount_2d(props)
     expect(document.querySelector(`.spinner`)).not.toBeNull() // first load: nothing to show yet
     await resolve_latest()
+    // display-only keys and fresh-but-equal config objects must not recompute
+    for (const config of [
+      { default_min_limit: -25, label_stable: false },
+      { default_min_limit: -25, element_padding: 2, color_mode: `arity` as const },
+      { default_min_limit: -25 },
+    ]) {
+      props.config = config
+      flushSync()
+      await tick()
+    }
+    expect(calls.list).toHaveLength(1)
     await size_plot()
     document
       .querySelector(`g[data-series-id="Li2O"] [role="button"]`)
@@ -87,40 +95,26 @@ describe(`ChemPotDiagram2D recomputes`, () => {
     await resolve_latest()
     expect(props.hover_info?.formula).toBe(`Li2O`)
     expect(props.hover_info?.axis_ranges).not.toEqual(pinned_ranges)
-  })
 
-  test(`only compute-relevant config changes reach the worker, superseded requests abort`, async () => {
-    const props = $state({
-      entries: binary_temp_entries,
-      temperature: 300,
-      config: { default_min_limit: -25 },
-    })
-    await mount_2d(props)
-    await resolve_latest()
-    // display-only keys and fresh-but-equal config objects must not recompute
-    for (const config of [
-      { default_min_limit: -25, label_stable: false },
-      { default_min_limit: -25, element_padding: 2, color_mode: `arity` as const },
-      { default_min_limit: -25 },
-    ]) {
-      props.config = config
-      flushSync()
-      await tick()
-    }
-    expect(calls.list).toHaveLength(1)
     props.config = { default_min_limit: -20 }
     flushSync()
     props.config = { default_min_limit: -15 }
     flushSync()
     await tick()
-    expect(calls.list.map(({ config }) => config.default_min_limit)).toEqual([-25, -20, -15])
+    expect(calls.list.map(({ config }) => config.default_min_limit)).toEqual([
+      -25, -25, -20, -15,
+    ])
     // the unfinished -20 request is dropped once -15 supersedes it
-    expect(calls.list.slice(1).map(({ signal }) => signal?.aborted)).toEqual([true, false])
+    expect(calls.list.slice(2).map(({ signal }) => signal?.aborted)).toEqual([true, false])
   })
 
   test(`an error state keeps the controls, so the setting that caused it can be undone`, async () => {
-    // a floor above every formation energy leaves no domains
-    await mount_2d({ entries: binary_temp_entries, config: { default_min_limit: 5 } })
+    // a floor above every formation energy leaves no domains; an empty elements list means all
+    // elements (not an unsupported 0-element system that never reaches the 2D error state)
+    await mount_2d({
+      entries: binary_temp_entries,
+      config: { elements: [], default_min_limit: 5 },
+    })
     calls.list.at(-1)?.resolve()
     await vi.waitFor(() => expect(document.querySelector(`.error-state`)).not.toBeNull())
     const labels = [...document.querySelectorAll(`.error-state label`)]
@@ -159,10 +153,4 @@ test(`a projection from a larger system draws closed straight outlines, switchin
   await tick()
   expect(calls.list).toHaveLength(1)
   expect(line_paths().map((path) => path.getAttribute(`d`))).not.toEqual(li_o_paths)
-})
-
-test(`ChemPotDiagram treats an empty config.elements as all elements`, async () => {
-  await mount_2d({ entries: binary_temp_entries, config: { elements: [] } }, ChemPotDiagram)
-  expect(document.querySelector(`.chempot-error`)).toBeNull()
-  expect(calls.list).toHaveLength(1)
 })

@@ -656,16 +656,6 @@ const MIRROR_Z_MAT: Matrix3x3 = [
 ]
 const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z_MAT])
 
-// Sign of the permutation a signed permutation matrix applies (+1 even, −1 odd)
-const perm_parity = (rot: Matrix3x3): number => {
-  const perm = rot.map((row) => row.findIndex((val) => val !== 0))
-  let parity = 1
-  for (let idx = 0; idx < 3; idx++) {
-    for (let jdx = idx + 1; jdx < 3; jdx++) if (perm[idx] > perm[jdx]) parity = -parity
-  }
-  return parity
-}
-
 describe(`compute_irreducible_bz`, () => {
   const basis_z = compute_brillouin_zone(recip_2pi(CUBIC_5), 1)
 
@@ -693,7 +683,7 @@ describe(`compute_irreducible_bz`, () => {
   test(`generated point groups have the right order`, () => {
     expect(group_closure(oh_ops)).toHaveLength(48)
     expect(D6H_OPS).toHaveLength(24)
-    expect(td_ops).toHaveLength(24)
+    expect(group_closure(td_ops)).toHaveLength(24)
     // fcc Oh ops are integer in the primitive basis and still form a 48-element group
     for (const w_frac of fcc_oh_frac) {
       for (const val of w_frac.flat())
@@ -718,7 +708,8 @@ describe(`compute_irreducible_bz`, () => {
   // room for the clip-then-rehull rounding while catching a single dropped plane (factor 2).
   // Time reversal (the default) makes E(k) = E(−k), so the k-space group is the Laue group:
   // P1 halves the zone and the 24-op non-centrosymmetric Td reduces it 48-fold like Oh
-  const td_ops = oh_ops.filter((rot) => math.det_3x3(rot) * perm_parity(rot) > 0)
+  // Td: the Oh signed permutations with an even number of −1 entries (det · parity = +1)
+  const td_ops = oh_ops.filter((rot) => rot.flat().filter((val) => val < 0).length % 2 === 0)
   test.each([
     [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops, true],
     [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops, true],
@@ -944,12 +935,13 @@ describe(`scene sizing helpers`, () => {
   })
 
   // Edges, k-path and symmetry points scale with the zone, from a Si zone to a 100 Å supercell's
-  test.each([2, 0.0628])(`bz_mark_sizes scale with the zone (bz_size %d)`, (bz_size) => {
-    const sizes = bz_mark_sizes(bz_size, 0.002)
-    expect(sizes.edge / bz_size).toBeCloseTo(0.001, 12)
-    expect(sizes.kpath / bz_size).toBeCloseTo(0.006, 12)
-    expect(sizes.sym_point / bz_size).toBeCloseTo(0.0075, 12)
-    expect(sizes.hovered_point / bz_size).toBeCloseTo(0.015, 12)
+  test(`bz_mark_sizes scale with the zone`, () => {
+    const [si, supercell] = [2, 0.0628].map((size) =>
+      Object.values(bz_mark_sizes(size, 0.002)),
+    )
+    expect(si).toHaveLength(4)
+    for (const [idx, size] of si.entries())
+      expect(size / supercell[idx]).toBeCloseTo(2 / 0.0628, 9)
   })
 
   test(`k_space_size is the mean k-vector magnitude, 10 when missing`, () => {

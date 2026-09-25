@@ -5,13 +5,7 @@ import { reciprocal_lattice } from '$lib/math'
 import type * as symmetry from '$lib/symmetry'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import {
-  bind_props,
-  mock_parse_worker,
-  create_drop_event,
-  doc_query,
-  mock_fullscreen,
-} from '../setup'
+import { mock_parse_worker, create_drop_event, doc_query, mock_fullscreen } from '../setup'
 import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
 
 type BrillouinZoneProps = ComponentProps<typeof BrillouinZone>
@@ -397,10 +391,7 @@ test(`a structure change drops the previous IBZ while symmetry reruns`, async ()
     show_ibz: true,
     ibz_data: null as BrillouinZoneProps[`ibz_data`],
   })
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: bind_props({}, state),
-  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
   await vi.waitFor(() => expect(state.ibz_data).not.toBeNull())
   state.structure = make_crystal(4, si_site)
   flushSync()
@@ -413,10 +404,7 @@ test(`the info pane ignores a symmetry result for a replaced structure`, async (
     .mockReturnValueOnce(late.promise)
     .mockResolvedValueOnce({ operations: [identity_op], hm_symbol: `NEW` })
   const state = $state({ structure: cubic, info_pane_open: true })
-  mounted_component = mount(BrillouinZone, {
-    target: document.body,
-    props: bind_props({}, state),
-  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
   await tick()
   state.structure = make_crystal(4, si_site)
   await vi.waitFor(() => expect(document.body.textContent).toContain(`(NEW)`))

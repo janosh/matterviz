@@ -607,7 +607,7 @@ export function compute_e_above_hull_nd(
   return query_points.map((query) => {
     if (!query.every(Number.isFinite)) return NaN
     const energies = facets.map((facet) => facet_energy(facet, query))
-    const e_hull = Math.max(...energies)
+    const e_hull = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
     if (!Number.isFinite(e_hull)) return NaN
     const covered = facets.some(
       (facet, idx) => energies[idx] >= e_hull - HULL_EPS && contains(facet, query),

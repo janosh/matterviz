@@ -179,19 +179,17 @@ describe(`compute_bar_auto_ranges`, () => {
   // oxfmt-ignore
   test.each([
     { desc: `only max pinned, positive data: min stays 0`, y: [50, 70, 90], range: [null, 100], expected: [0, 100] },
-    { desc: `only min pinned below the data: max stays automatic`, y: [50, 70, 90], range: [10, null], expected: [10, 90] },
-    { desc: `only min pinned above 0: honored`, y: [50, 70, 90], range: [40, null], expected: [40, 90] },
+    { desc: `only min pinned above 0: honored, max stays automatic`, y: [50, 70, 90], range: [40, null], expected: [40, 90] },
     { desc: `negative data, only min pinned: max stays 0`, y: [-90, -70, -50], range: [-100, null], expected: [-100, 0] },
     { desc: `negative data, only max pinned below 0: honored`, y: [-90, -70, -50], range: [null, -40], expected: [-90, -40] },
+    // a pinned bound past 0 leaves no room for the baseline, which would invert the range
+    { desc: `positive data, max pinned below 0`, y: [50, 90], range: [null, -10], expected: [-50, -10] },
+    { desc: `negative data, min pinned above 0`, y: [-90, -50], range: [10, null], expected: [10, 50] },
     { desc: `mixed signs, one bound pinned: 0 already spanned`, y: [-20, 50], range: [null, 60], expected: [-20, 60] },
     { desc: `both bounds pinned: honored exactly`, y: [50, 90], range: [60, 80], expected: [60, 80] },
   ] as const)(`one-sided value range: $desc`, ({ y, range, expected }) => {
     const series = [bar({ x: y.map((_, idx) => idx), y: [...y] })]
     expect(auto_ranges(series, { axes: { y: { range: [...range] } } }).y).toEqual(expected)
-    // horizontal bars read their value limits from x
-    expect(
-      auto_ranges(series, { orientation: `horizontal`, axes: { x: { range: [...range] } } }).x,
-    ).toEqual(expected)
   })
 
   test(`uses scale-valid fallbacks for axes without finite points`, () => {

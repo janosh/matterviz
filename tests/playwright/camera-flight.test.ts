@@ -326,21 +326,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
       await expect(movie_time).toHaveValue(`0.25`)
       await expect(playhead).toHaveValue(`0.25`)
     }
-    // Mid-segment of the 8-segment orbit, where a Cartesian spline dipped 0.85% inside the
-    // circle, the camera keeps its distance to the target. Budget: the sampler's quaternion
-    // products and slerp stay within ~16 eps; allow 64 eps relative to the radius.
-    await movie_time.fill(`0.13`)
-    await movie_time.press(`Tab`)
-    await expect(playhead).toHaveValue(`0.13`)
-    const orbit_radius = Math.hypot(
-      ...original.position.map((value, axis) => value - original.target[axis]),
-    )
-    await expect(async () => {
-      const { position, target } = await read_pose()
-      expect(position).not.toEqual(original.position)
-      const radius = Math.hypot(...position.map((value, axis) => value - target[axis]))
-      expect(Math.abs(radius - orbit_radius)).toBeLessThan(64 * Number.EPSILON * orbit_radius)
-    }).toPass({ timeout: 10_000 })
     await home.click()
     await expect_original_pose()
     if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)

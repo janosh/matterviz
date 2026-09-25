@@ -406,9 +406,7 @@ export function downhill_windows(
 
 // Plain-text reading of downhill_windows for UIs, recipes and agents, e.g. `downhill from
 // 1105 K`, `downhill up to 1480 K`, `downhill from 800 to 1300 K`
-export function describe_downhill_windows(
-  windows: readonly (readonly [number, number])[],
-): string {
+export function describe_downhill_windows(windows: [number, number][]): string {
   if (windows.length === 0) return `never downhill between 0 and ${MAX_SCAN_TEMPERATURE} K`
   return windows
     .map(([lower, upper]) => {

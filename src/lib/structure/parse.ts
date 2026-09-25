@@ -87,24 +87,21 @@ const create_frac_site_index = (lattice_matrix: math.Matrix3x3, tolerance: numbe
   const buckets = new Map<string, { abc: Vec3; site_idx: number }[]>()
   const bins_of = (abc: Vec3): number[] =>
     abc.map((coord, axis) => Math.min(Math.floor(coord * n_bins[axis]), n_bins[axis] - 1))
-  const offsets = [-1, 0, 1]
+  const steps = [-1, 0, 1]
+  const offsets = steps.flatMap((off_a) =>
+    steps.flatMap((off_b) => steps.map((off_c) => [off_a, off_b, off_c])),
+  )
   return {
     find: (abc: Vec3): number | undefined => {
       const bins = bins_of(abc)
-      for (const off_a of offsets) {
-        for (const off_b of offsets) {
-          for (const off_c of offsets) {
-            const key = [off_a, off_b, off_c]
-              .map((offset, axis) => (bins[axis] + offset + n_bins[axis]) % n_bins[axis])
-              .join(`,`)
-            for (const entry of buckets.get(key) ?? []) {
-              const delta = abc.map((coord, axis) => {
-                const diff = coord - entry.abc[axis]
-                return diff - Math.round(diff)
-              }) as Vec3
-              if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
-            }
-          }
+      for (const offset of offsets) {
+        const key = bins.map((bin, axis) => (bin + offset[axis] + n_bins[axis]) % n_bins[axis])
+        for (const entry of buckets.get(key.join(`,`)) ?? []) {
+          const delta = abc.map((coord, axis) => {
+            const diff = coord - entry.abc[axis]
+            return diff - Math.round(diff)
+          }) as Vec3
+          if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
         }
       }
       return undefined

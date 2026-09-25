@@ -110,29 +110,6 @@ const EV_PER_A3_IN_GPA = 160.21766208
 type NdarrayReader = (ref: { ndarray: unknown[] }) => number[][]
 const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
   Boolean(value && typeof value === `object` && `ndarray` in value)
-const calculator_of = (
-  frame_data: Record<string, unknown>,
-): Record<string, unknown> | null => {
-  const calculator = frame_data[`calculator.`] ?? frame_data.calculator
-  return calculator && typeof calculator === `object`
-    ? (calculator as Record<string, unknown>)
-    : null
-}
-
-// Per-atom calculator forces of one frame (eV/Å), or undefined when it stores none
-function ase_calculator_forces(
-  frame_data: Record<string, unknown>,
-  read_ndarray: NdarrayReader,
-): number[][] | undefined {
-  const ref = calculator_of(frame_data)?.[`forces.`]
-  if (!is_ndarray_ref(ref)) return undefined
-  const forces = read_ndarray(ref)
-  if (!forces.every((force) => force.length === 3)) {
-    throw new Error(`ASE calculator forces must be n x 3, got rows of ${forces[0]?.length}`)
-  }
-  return forces
-}
-
 // Pressure (GPa, compression positive) from an ASE stress: a 6-component Voigt vector
 // [xx, yy, zz, yz, xz, xy] or a 3x3 tensor, both in eV/Å³ with tension positive
 const ase_pressure = (stress: unknown): number | undefined => {
@@ -151,17 +128,17 @@ export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
   read_ndarray?: NdarrayReader,
 ): Record<string, unknown> => {
-  const calculator = calculator_of(frame_data)
-  if (!calculator) return {}
+  const calculator = frame_data[`calculator.`] ?? frame_data.calculator
+  if (!calculator || typeof calculator !== `object`) return {}
   const results: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(calculator)) {
+  for (const [key, value] of Object.entries(calculator as Record<string, unknown>)) {
     if (CALCULATOR_BOOKKEEPING_KEYS.has(key)) continue
     if (!is_ndarray_ref(value)) {
       results[key] = value
       continue
     }
-    if (read_ndarray && key === `stress.`) {
-      results.stress = read_ndarray(value)
+    if (read_ndarray && (key === `stress.` || key === `forces.`)) {
+      results[key.slice(0, -1)] = read_ndarray(value)
       continue
     }
     if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
@@ -254,14 +231,19 @@ export function decode_ase_frame(
   if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
   const pbc = ase_pbc(pbc_value)
 
-  const forces = ase_calculator_forces(frame_data, read_ndarray)
-  if (forces && forces.length !== n_atoms) {
-    throw new Error(`ASE calculator has ${forces.length} forces for ${n_atoms} atoms`)
+  // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
+  const { forces, ...calculator } = ase_calculator_data(frame_data, read_ndarray)
+  const is_force_array = (value: unknown): value is number[][] =>
+    Array.isArray(value) &&
+    value.length === n_atoms &&
+    value.every((force) => Array.isArray(force) && force.length === 3)
+  if (forces !== undefined && !is_force_array(forces)) {
+    const rows = Array.isArray(forces) ? `${forces.length} rows` : typeof forces
+    throw new Error(`ASE calculator forces must be ${n_atoms} x 3, got ${rows}`)
   }
-  // The vectors go on the sites, only their statistics into the metadata
   const metadata = {
     step,
-    ...ase_calculator_data(frame_data, read_ndarray),
+    ...calculator,
     ...(forces && calc_force_stats(forces)),
     ...frame_data.info,
   }

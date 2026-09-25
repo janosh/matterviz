@@ -51,10 +51,13 @@ export function compute_isosurface_geometries(input: GeometryInput): GeometryRes
         periodic: false, // finite display window in scene coordinates
         normals: false, // BufferGeometry.computeVertexNormals() on the main thread
         position_offset: origin,
-        // Front faces point away from the enclosed lobe (values beyond the isovalue), which
-        // the transparent back-then-front pass and winding-derived normals rely on
-        facing: isovalue < 0 ? `increasing` : `decreasing`,
       })
+      // Front faces must point away from the enclosed lobe for the transparent back-then-front
+      // pass and winding-derived normals; a negative lobe encloses values below the isovalue
+      if (isovalue < 0) {
+        for (let idx = 0; idx < indices.length; idx += 3)
+          indices.subarray(idx + 1, idx + 3).reverse()
+      }
       return {
         token,
         positions,

@@ -429,17 +429,15 @@ describe(`temperature dependence`, () => {
         precursors: { only_common: false, allow: [`CoO`] },
         conditions: { temperature, open_species: [`O2`] },
       })
-    const hot_plan = plan_at(1500)
-    const [hot] = hot_plan.routes
+    const [hot] = plan_at(1500).routes
     expect(hot.reaction.equation).toBe(`6 CoO + O2 → 2 Co3O4`)
     expect(hot.reaction.energy_per_atom).toBeGreaterThan(0)
-    const [[lower, upper], ...rest] = hot.thermodynamics.downhill_windows
-    expect([lower, rest]).toEqual([0, []])
+    const upper = hot.thermodynamics.downhill_windows[0][1]
     expect(upper).toBeGreaterThan(300)
     expect(upper).toBeLessThan(1500)
     // the requested temperature only picks a point on the same window
-    expect(plan_at(300).routes[0].thermodynamics.downhill_windows).toEqual([[0, upper]])
-    expect(format_plan_text(hot_plan)).toContain(`downhill up to ${upper} K`)
+    for (const route of [hot, plan_at(300).routes[0]])
+      expect(route.thermodynamics.downhill_windows).toEqual([[0, upper]])
     expect(format_recipe_text(hot)).toContain(`Downhill window: downhill up to ${upper} K`)
   })
 })

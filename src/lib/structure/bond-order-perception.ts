@@ -223,11 +223,13 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
     if (target !== from) deficit[target]--
   }
   const first_copy = new Int32Array(n_atoms + 1)
+  const atom_of_copy: number[] = []
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
     if (deficit[atom_idx] < 0) return null
-    first_copy[atom_idx + 1] = first_copy[atom_idx] + deficit[atom_idx]
+    for (let unit = 0; unit < deficit[atom_idx]; unit++) atom_of_copy.push(atom_idx)
+    first_copy[atom_idx + 1] = atom_of_copy.length
   }
-  const n_copies = first_copy[n_atoms]
+  const n_copies = atom_of_copy.length
   const orders = Array.from({ length: edges.length }, () => 1)
   if (n_copies === 0) return orders
   if (n_copies % 2 === 1) return null
@@ -263,10 +265,6 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
     if (partner !== undefined) [mate[copy], mate[partner]] = [partner, copy]
   }
   if (!complete_perfect_matching(adjacency, mate)) return null
-  const atom_of_copy = new Int32Array(n_copies)
-  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    atom_of_copy.fill(atom_idx, first_copy[atom_idx], first_copy[atom_idx + 1])
-  }
   for (let copy = 0; copy < n_copies; copy++) {
     const partner = mate[copy]
     if (partner < copy) continue
@@ -279,16 +277,11 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
 }
 
 // Shortest cycle through each bond (up to MAX_RING_SIZE atoms) deduplicated by vertex set, so
-// every small ring of a fused system is found. Only `in_scope` atoms can be ring members.
+// every small ring of a fused system is found. Edges must not be self-bonds.
 const MAX_RING_SIZE = 8
-function find_rings(
-  n_atoms: number,
-  edges: Vec2[],
-  in_scope: (atom_idx: number) => boolean,
-): number[][] {
+function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
   for (const [atom_idx_1, atom_idx_2] of edges) {
-    if (atom_idx_1 === atom_idx_2 || !in_scope(atom_idx_1) || !in_scope(atom_idx_2)) continue
     adjacency[atom_idx_1].push(atom_idx_2)
     adjacency[atom_idx_2].push(atom_idx_1)
   }
@@ -298,7 +291,6 @@ function find_rings(
   const rings = new Map<string, number[]>()
   let stamp = 0
   for (const [start, goal] of edges) {
-    if (start === goal || !in_scope(start) || !in_scope(goal)) continue
     // BFS from start to goal without using the start-goal bond itself
     stamp++
     visit_stamp[start] = stamp
@@ -499,11 +491,13 @@ export function perceive_bond_orders(
       incident[from].push(edge_idx)
       if (target !== from) incident[target].push(edge_idx)
     }
-    const rings = find_rings(
-      frag.length,
-      local_edges.map((edge) => [edge.from, edge.to] as Vec2),
-      (local_atom_idx) => SP2_OK.has(primary_element(sites[frag[local_atom_idx]])),
+    // only sp2-capable atoms can be ring members
+    const is_sp2 = (local_atom_idx: number) =>
+      SP2_OK.has(primary_element(sites[frag[local_atom_idx]]))
+    const ring_bonds = local_edges.flatMap(({ from, to: target }): Vec2[] =>
+      from !== target && is_sp2(from) && is_sp2(target) ? [[from, target]] : [],
     )
+    const rings = find_rings(frag.length, ring_bonds)
     for (const ring of rings) {
       const global_ring = ring.map((local_atom_idx) => frag[local_atom_idx])
       if (!ring_is_planar(global_ring, sites)) continue

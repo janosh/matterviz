@@ -246,42 +246,32 @@ test(`reselecting, replacing, closing and destroying panels manage viewer lifeti
 
 // Escape reaches the window from anywhere, so each browser acts only on Escapes aimed at it
 test(`Escape skips consumed events and ones pressed inside another browser`, async () => {
-  const hosts = [document.createElement(`div`), document.createElement(`div`)]
-  document.body.append(...hosts)
-  for (const [idx, host] of hosts.entries()) {
-    const app = mount(JsonBrowser, {
-      target: host,
-      props: { value: { [`t${idx}`]: table_rows(idx, 3) } },
-    })
-    onTestFinished(() => unmount(app))
-    const chip = await vi.waitFor(() => {
-      const found = host.querySelector<HTMLElement>(`.renderable-chip`)
-      if (!found) throw new Error(`chip not rendered yet`)
-      return found
-    })
-    chip.click()
+  // the first browser's placeholder chip is gone once its panel opens
+  for (const [idx, key] of [`first`, `second`].entries()) {
+    mount_browser({ value: { [key]: table_rows(idx, 3) } })
+    await click_first_chip()
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll(`.viz-panel`)).toHaveLength(idx + 1),
+    )
   }
-  const panel_counts = () => hosts.map((host) => host.querySelectorAll(`.viz-panel`).length)
-  await vi.waitFor(() => expect(panel_counts()).toEqual([1, 1]))
-  const escape = () =>
-    new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true, cancelable: true })
-
-  // Already handled by a widget inside the panel
-  const consumed = escape()
-  consumed.preventDefault()
-  hosts[0].querySelector(`.viz-panel`)?.dispatchEvent(consumed)
-  flushSync()
-  expect(panel_counts()).toEqual([1, 1])
-
-  // Pressed inside the first browser: only its panels close
-  hosts[0].querySelector(`.json-browser`)?.dispatchEvent(escape())
-  flushSync()
-  expect(panel_counts()).toEqual([0, 1])
-
-  // With nothing focused the event targets the body, which every browser answers
-  document.body.dispatchEvent(escape())
-  flushSync()
-  expect(panel_counts()).toEqual([0, 0])
+  const browsers = [...document.querySelectorAll(`.json-browser`)]
+  const escape = (target: Element | null, consumed = false): number[] => {
+    const event = new KeyboardEvent(`keydown`, {
+      key: `Escape`,
+      bubbles: true,
+      cancelable: true,
+    })
+    if (consumed) event.preventDefault()
+    target?.dispatchEvent(event)
+    flushSync()
+    return browsers.map((root) => root.querySelectorAll(`.viz-panel`).length)
+  }
+  // already handled by a widget inside the panel
+  expect(escape(document.querySelector(`.viz-panel`), true)).toEqual([1, 1])
+  // pressed inside the first browser: only its panels close
+  expect(escape(browsers[0])).toEqual([0, 1])
+  // with nothing focused the event targets the body, which every browser answers
+  expect(escape(document.body)).toEqual([0, 0])
 })
 
 // A new document replaces captured panel data and can auto-render its own root.

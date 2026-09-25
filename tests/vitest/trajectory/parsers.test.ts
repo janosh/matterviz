@@ -1724,44 +1724,16 @@ describe(`JSON`, () => {
   })
 
   // What MontyEncoder writes for pymatgen objects
-  const numpy = (data: unknown) => ({
-    '@module': `numpy`,
-    '@class': `array`,
-    dtype: `float64`,
-    data,
-  })
+  const numpy = (data: unknown) => ({ '@module': `numpy`, '@class': `array`, data })
+  // oxfmt-ignore
   it.each([
     // Trajectory.to_displacements(): base_positions is a numpy array
-    [
-      `numpy base_positions`,
-      {
-        coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]],
-        coords_are_displacement: true,
-        base_positions: numpy([[0.5, 0.5, 0.5]]),
-      },
-      [
-        [6, 5, 5],
-        [7, 5, 5],
-      ],
-    ],
+    [`numpy base_positions`, { coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]], coords_are_displacement: true, base_positions: numpy([[0.5, 0.5, 0.5]]) },
+      [[6, 5, 5], [7, 5, 5]]],
     // Trajectory(lattice, species=["H"], coords): species serialize as plain strings
-    [
-      `string species`,
-      { species: [`H`] },
-      [
-        [5, 5, 5],
-        [5, 5, 5],
-      ],
-    ],
+    [`string species`, { species: [`H`] }, [[5, 5, 5], [5, 5, 5]]],
     // Trajectory.from_molecules(): no lattice, Cartesian coords
-    [
-      `a molecule trajectory`,
-      { lattice: null, coords: [[[0.5, 0, 0]], [[0.7, 0, 0]]] },
-      [
-        [0.5, 0, 0],
-        [0.7, 0, 0],
-      ],
-    ],
+    [`a molecule trajectory`, { lattice: null, coords: [[[0.5, 0, 0]], [[0.7, 0, 0]]] }, [[0.5, 0, 0], [0.7, 0, 0]]],
   ])(`reads %s`, async (_label, fields, expected_xyz) => {
     const frames = await frames_of(await open(pymatgen(fields), `test.json`))
     expect(frames.map((frame) => frame.structure.sites[0].xyz)).toEqual(expected_xyz)
@@ -1778,35 +1750,20 @@ describe(`JSON`, () => {
     [`plain list`, stress_tensor],
   ])(`keeps %s stress raw without deriving pressure`, async (_label, stress) => {
     const run = await open(pymatgen({ frame_properties: [{ stress }, { stress }] }), `s.json`)
-    await run.properties.done
+    // plot rows copy every numeric metadata scalar, so none here means no curve either
     for (const { metadata } of await frames_of(run)) {
       expect(metadata?.stress).toEqual(stress_tensor)
       expect(metadata).not.toHaveProperty(`pressure`)
       expect(metadata).not.toHaveProperty(`stress_max`)
     }
-    const keys = run.properties.rows.flatMap(({ properties }) => Object.keys(properties))
-    expect(keys).not.toContain(`pressure`)
-    expect(keys).not.toContain(`stress_max`)
   })
 
   // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning
   // naming the frame and the mismatch (same rule and wording as vaspout.h5)
+  // oxfmt-ignore
   it.each([
-    [
-      `numpy`,
-      numpy([[0.3, 0, 0]]),
-      [
-        [0.3, 0, 0],
-        [0, 0, 0],
-      ],
-      `expected 1 finite 3-vectors, got 2`,
-    ],
-    [
-      `plain list`,
-      [[0.3, 0, 0]],
-      [[0.3, 0]],
-      `entry 0 of 1 is [0.3,0], not a finite 3-vector`,
-    ],
+    [`numpy`, numpy([[0.3, 0, 0]]), [[0.3, 0, 0], [0, 0, 0]], `expected 1 finite 3-vectors, got 2`],
+    [`plain list`, [[0.3, 0, 0]], [[0.3, 0]], `entry 0 of 1 is [0.3,0], not a finite 3-vector`],
   ])(
     `reads %s frame forces onto the sites, ignoring bad ones`,
     async (_label, forces, bad_forces, reason) => {

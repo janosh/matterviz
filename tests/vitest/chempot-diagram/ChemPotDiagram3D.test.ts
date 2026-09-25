@@ -8,7 +8,7 @@ import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometr
 import { swizzle_to_render } from '$lib/chempot-diagram/compute'
 import type { Vec3 } from '$lib/math'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { load_json } from '../test-fixtures'
@@ -47,6 +47,7 @@ afterEach(() => {
   threlte_stub.reset()
   document.body.innerHTML = ``
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -63,9 +64,6 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   const frame = { close: vi.fn() }
   const decode = vi.fn(async () => frame)
   vi.stubGlobal(`createImageBitmap`, decode)
-  onTestFinished(() => {
-    vi.unstubAllGlobals()
-  })
   const context = { scale: vi.fn(), drawImage: vi.fn() }
   const blob = new Blob([`pixels`], { type: `image/png` })
   const output = {

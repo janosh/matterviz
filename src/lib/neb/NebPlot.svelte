@@ -61,18 +61,10 @@
   const named_paths = $derived(normalize_paths(paths))
   const profile_options = $derived({ ...coord_options, mode: coord_mode })
 
-  // The geometry (reaction coordinate, spline) of each path. Kept apart from the energy
-  // shift below so toggling the energy reference never re-profiles a path.
-  const base_profiles = $derived(
-    named_paths.map(({ key, path }) => ({
-      key,
-      path,
-      profile: given_profiles?.[key] ?? path_profile(path, profile_options),
-    })),
-  )
-  // Everything the plot needs per path
+  // Everything the plot needs per path, recomputed only when inputs or modes change
   const profiles = $derived(
-    base_profiles.map(({ key, path, profile }, path_idx) => {
+    named_paths.map(({ key, path }, path_idx) => {
+      const profile = given_profiles?.[key] ?? path_profile(path, profile_options)
       const offset = energy_reference === `initial` ? path.images[0].energy : 0
       return {
         ...profile,

@@ -231,14 +231,10 @@
     // 100, which keeps relative heights within a group. The true maximum, not max(1, ...):
     // an already normalized pattern profiles well under 1 and a floor of 1 under-scales it.
     const from_profile = pattern_entries.map(({ pattern }) => is_profile(pattern))
-    const group_max = (profiles: boolean): number =>
-      Math.max(
-        0,
-        ...broadened.flatMap((profile, idx) =>
-          from_profile[idx] === profiles ? [array_max(profile.y)] : [],
-        ),
-      )
-    const [sticks_max, profiles_max] = [group_max(false), group_max(true)]
+    const [sticks_max, profiles_max] = [false, true].map((profiles) => {
+      const group = broadened.filter((_profile, idx) => from_profile[idx] === profiles)
+      return Math.max(0, ...group.map((profile) => array_max(profile.y)))
+    })
 
     return broadened.map((profile, entry_idx) => {
       const max_y = from_profile[entry_idx] ? profiles_max : sticks_max

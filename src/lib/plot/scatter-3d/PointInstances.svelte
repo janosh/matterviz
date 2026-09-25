@@ -20,7 +20,6 @@
     Matrix4,
     type SphereGeometry,
   } from 'three/webgpu'
-  import { untrack } from 'svelte'
 
   // One InstancedMesh for many spheres sharing a caller-owned geometry and material
   let {
@@ -40,38 +39,27 @@
   const { invalidate } = useThrelte()
   const scratch_matrix = new Matrix4()
   const scratch_color = new Color()
-  let mesh = $state.raw<InstancedMesh | null>(null)
-  // Buffers upload only when `items` change, so an idle on-demand scene stops rendering. The
-  // mesh is reused while it has room.
+  // A new mesh only when the instance count, geometry or material changes; buffers refill
+  // only when `items` change, so an idle on-demand scene stops rendering
+  const count = $derived(items.length)
+  const mesh = $derived(new InstancedMesh(geometry, material, count))
   $effect(() => {
-    const previous = untrack(() => mesh)
-    const reuse = previous && previous.instanceMatrix.count >= items.length
-    if (!reuse || items.length === 0) previous?.dispose()
-    const target =
-      items.length === 0
-        ? null
-        : reuse
-          ? previous
-          : new InstancedMesh(geometry, material, items.length)
-    if (target) {
-      target.geometry = geometry
-      target.material = material
-      for (const [idx, { position, radius, color }] of items.entries()) {
-        scratch_matrix.makeScale(radius, radius, radius).setPosition(...position)
-        target.setMatrixAt(idx, scratch_matrix)
-        target.setColorAt(idx, scratch_color.set(color))
-      }
-      target.count = items.length
-      target.instanceMatrix.needsUpdate = true
-      if (target.instanceColor) target.instanceColor.needsUpdate = true
-      target.computeBoundingSphere() // exact bounds for frustum culling and raycasting
+    const current = mesh
+    return () => current.dispose() // frees only the instance buffers
+  })
+  $effect(() => {
+    for (const [idx, { position, radius, color }] of items.entries()) {
+      scratch_matrix.makeScale(radius, radius, radius).setPosition(...position)
+      mesh.setMatrixAt(idx, scratch_matrix)
+      mesh.setColorAt(idx, scratch_color.set(color))
     }
-    mesh = target
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    mesh.computeBoundingSphere() // exact bounds for frustum culling and raycasting
     invalidate()
   })
-  $effect(() => () => mesh?.dispose()) // frees only the instance buffers
 </script>
 
-{#if mesh}
+{#if count > 0}
   <T is={mesh} {...pointer_props} dispose={false} />
 {/if}

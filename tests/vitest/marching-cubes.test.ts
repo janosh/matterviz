@@ -457,21 +457,19 @@ describe(`marching_cubes`, () => {
   })
 
   // Analytic sphere: value = distance from the grid center, iso = radius in grid units.
-  // Values grow outward, so front faces (CCW) and normals point inward for `decreasing` and
-  // outward for `increasing`, also on a left-handed lattice (which mirrors the winding)
+  // Values grow outward, so front faces (CCW) and normals point inward, also on a left-handed
+  // lattice (which mirrors the winding)
   const left_handed: Matrix3x3 = [
     [0, 10, 0],
     [10, 0, 0],
     [0, 0, 10],
   ]
   test.each([
-    [`decreasing`, `right`, cubic_matrix(10)],
-    [`increasing`, `right`, cubic_matrix(10)],
-    [`decreasing`, `left`, left_handed],
-    [`increasing`, `left`, left_handed],
+    [`right`, cubic_matrix(10)],
+    [`left`, left_handed],
   ] as const)(
-    `analytic sphere (facing %s, %s-handed): closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`,
-    (facing, _hand, lattice) => {
+    `analytic sphere (%s-handed): closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`,
+    (_hand, lattice) => {
       const size = 40
       const center = (size - 1) / 2
       const radius_idx = 14
@@ -480,10 +478,12 @@ describe(`marching_cubes`, () => {
       )
       const spacing = 10 / (size - 1)
       const radius = radius_idx * spacing
-      const { vertices, faces, normals } = marching_cubes(grid, radius_idx, lattice, {
-        ...NON_PERIODIC,
-        facing,
-      })
+      const { vertices, faces, normals } = marching_cubes(
+        grid,
+        radius_idx,
+        lattice,
+        NON_PERIODIC,
+      )
 
       // Closed genus-0 triangle mesh: V - E + F = 2 with E = 3F/2, so F = 2V - 4
       expect(vertices.length).toBeGreaterThan(1000)
@@ -502,10 +502,9 @@ describe(`marching_cubes`, () => {
       expect(area / (4 * Math.PI * radius ** 2)).toBeCloseTo(1, 2)
 
       const sphere_center = center * spacing
-      const outward = facing === `increasing` ? 1 : -1
       for (let idx = 0; idx < vertices.length; idx++) {
         const radial = vertices[idx].map((coord) => coord - sphere_center) as Vec3
-        const cos_angle = (outward * dot(radial, normals[idx])) / Math.hypot(...radial)
+        const cos_angle = -dot(radial, normals[idx]) / Math.hypot(...radial)
         max_normal_error_deg = Math.max(
           max_normal_error_deg,
           (Math.acos(Math.min(1, cos_angle)) * 180) / Math.PI,

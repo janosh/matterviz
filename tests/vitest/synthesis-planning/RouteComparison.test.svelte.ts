@@ -201,20 +201,14 @@ test(`route table sorts downhill windows by their lowest temperature, not alphab
     },
   })
   onTestFinished(() => unmount(component))
-  const header = doc_query(`th[data-col-id="downhill"]`)
-  const column = async () => {
-    header.click() // no `better` direction, so the first click sorts descending
-    await tick()
-    return [...document.querySelectorAll(`td[data-col="Downhill window"]`)].map((cell) =>
-      cell.textContent?.trim(),
-    )
-  }
-  const ascending = [
-    `downhill up to 1480 K`,
-    `downhill from 300 K`,
-    `downhill from 1105 K`,
+  doc_query(`th[data-col-id="downhill"]`).click() // no `better` direction: sorts descending
+  await tick()
+  const cells = document.querySelectorAll(`td[data-col="Downhill window"]`)
+  // alphabetically `downhill up to 1480 K` would come right after `never downhill`
+  expect([...cells].map((cell) => cell.textContent?.trim())).toEqual([
     `never downhill between 0 and 2000 K`,
-  ]
-  expect(await column()).toEqual(ascending.toReversed())
-  expect(await column()).toEqual(ascending)
+    `downhill from 1105 K`,
+    `downhill from 300 K`,
+    `downhill up to 1480 K`,
+  ])
 })

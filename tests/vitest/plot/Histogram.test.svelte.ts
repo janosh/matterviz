@@ -16,6 +16,7 @@ import {
   bind_props,
   doc_query,
   mount_sized,
+  mouse,
   one_tab_stop,
   pattern_id_of,
   plot_svg,
@@ -263,57 +264,33 @@ describe(`Histogram`, () => {
   })
 
   // Zooming into part of the distribution must not renormalize by the samples still in view
-  test.each([`density`, `probability`] as const)(
-    `%s bar heights survive a rect zoom`,
-    async (normalize) => {
-      const on_bar_hover = vi.fn()
-      await mount_histogram({
-        series: [{ values: Array.from({ length: 1000 }, (_, idx) => idx), label: `U` }],
-        normalize,
-        bins: 10,
-        on_bar_hover,
-      })
-      const hovered_value = async () => {
-        const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-        bars[Math.floor(bars.length / 2)].dispatchEvent(
-          new MouseEvent(`mousemove`, { bubbles: true }),
-        )
-        await tick()
-        return on_bar_hover.mock.lastCall?.[0]
-      }
-      const before = await hovered_value()
-      const svg = plot_svg()
-      const { left, top } = svg.getBoundingClientRect()
-      const at = (px_x: number, px_y: number) => ({
-        clientX: left + px_x,
-        clientY: top + px_y,
-      })
-      svg.dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true, button: 0, buttons: 1, ...at(130, 40) }),
-      )
-      window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(250, 240) }))
-      window.dispatchEvent(new MouseEvent(`mouseup`, at(250, 240)))
-      await tick()
-      const after = await hovered_value()
-      // the zoom re-bins (fewer samples per bin), yet uniform samples keep their density and a
-      // bin's probability stays its share of all 1000 samples. 5% covers the +-1 sample
-      // integer-grid jitter of ~30-sample bins; the in-view total would triple the height.
-      expect(after.count).toBeLessThan(before.count)
-      if (normalize === `density`) expect(Math.abs(after.y / before.y - 1)).toBeLessThan(0.05)
-      else expect(after.y).toBeCloseTo(after.count / 1000, 12)
-    },
-  )
-
-  test(`weights count each sample by its weight, and a length mismatch throws`, () => {
-    const [weighted] = histogram_bins(
-      [{ series_data: series_of([1, 1, 9], { weights: [2, 0.5, 4] }), series_idx: 0 }],
-      { normalize: `probability` },
-    )
-    expect(weighted.bins.map(({ count }) => count)).toEqual([2.5, 0, 0, 0, 4])
-    expect(weighted.bins[0].value).toBeCloseTo(2.5 / 6.5, 12)
-    expect(() =>
-      histogram_bins([{ series_data: series_of([1, 2], { weights: [1] }), series_idx: 0 }]),
-    ).toThrow(`bin_values got 1 weights for 2 values`)
+  test(`probability bar heights survive a rect zoom`, async () => {
+    const on_bar_hover = vi.fn()
+    const values = Array.from({ length: 1000 }, (_, idx) => idx)
+    await mount_histogram({
+      series: [{ values }],
+      normalize: `probability`,
+      bins: 10,
+      on_bar_hover,
+    })
+    const svg = plot_svg()
+    const { left, top } = svg.getBoundingClientRect()
+    const at = (px_x: number, px_y: number) => ({
+      clientX: left + px_x,
+      clientY: top + px_y,
+      button: 0,
+      buttons: 1,
+    })
+    svg.dispatchEvent(mouse(`mousedown`, at(130, 40)))
+    window.dispatchEvent(mouse(`mousemove`, at(250, 240)))
+    window.dispatchEvent(mouse(`mouseup`, at(250, 240)))
+    await tick()
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
+    const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}
+    // the zoom re-binned into fewer samples per bin, each still a share of all 1000
+    expect(count).toBeLessThan(100)
+    expect(y).toBeCloseTo(count / 1000, 12)
   })
 
   test.each([
@@ -886,6 +863,13 @@ describe(`Histogram`, () => {
     expect(x2_hist.bins.map(({ count }) => count)).toEqual([0, 0, 1, 1, 0])
     expect(x2_hist.bins[0].x1).toBeCloseTo(100 * 2 ** (1 / 5), 12)
     expect(x2_hist.max_value).toBe(0.5)
+    // per-sample weights reach the counts and the probability total
+    const [weighted] = histogram_bins(
+      [{ series_data: series_of([1, 1, 9], { weights: [2, 0.5, 4] }), series_idx: 0 }],
+      { normalize: `probability` },
+    )
+    expect(weighted.bins.map(({ count }) => count)).toEqual([2.5, 0, 0, 0, 4])
+    expect(weighted.bins[0].value).toBeCloseTo(2.5 / 6.5, 12)
 
     for (const [_name, series, scale_type, expected] of [
       [`linear empty`, [], `linear`, [0, 1]],

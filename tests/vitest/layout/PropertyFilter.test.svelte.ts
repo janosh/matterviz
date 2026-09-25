@@ -53,7 +53,7 @@ describe(`PropertyFilter`, () => {
     expect(Boolean(document.querySelector(`.unit-label`))).toBe(expected)
   })
 
-  test(`clear button and Escape reset both bounds and fire on_clear before on_change`, () => {
+  test(`clear button and Escape reset both bounds and fire on_clear before on_change, a cleared input unsets its bound`, () => {
     const calls: string[] = []
     const state = $state<{ min_value?: number; max_value?: number }>({
       min_value: 10,
@@ -94,6 +94,17 @@ describe(`PropertyFilter`, () => {
     inputs()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
     expect(calls).toHaveLength(4)
+
+    // A cleared input reports null, which must read back as undefined: consumers testing
+    // `max === undefined` would filter a leaked null as `val <= 0`
+    for (const text of [`3`, ``]) {
+      inputs()[1].value = text
+      inputs()[1].dispatchEvent(new Event(`input`, { bubbles: true }))
+      inputs()[1].dispatchEvent(new Event(`blur`, { bubbles: true }))
+      flushSync()
+    }
+    expect(calls.slice(4)).toEqual([`change:undefined:3`, `change:undefined:undefined`])
+    expect(state.max_value).toBeUndefined()
   })
 
   test(`blur reports the current bounds and Enter blurs the input`, () => {
@@ -106,37 +117,6 @@ describe(`PropertyFilter`, () => {
     min_input.dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()
     expect(on_change).toHaveBeenCalledWith(5, 10)
-  })
-
-  test(`clearing a typed bound reads back as undefined, not null`, () => {
-    const on_change = vi.fn()
-    const state = $state<{ min_value?: number; max_value?: number }>({
-      min_value: undefined,
-      max_value: undefined,
-    })
-    mount(PropertyFilter, {
-      target: document.body,
-      props: bind_props({ label: `Test`, on_change }, state),
-    })
-    flushSync()
-    const max_input = inputs()[1]
-    const type_and_blur = (text: string) => {
-      max_input.value = text
-      max_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      max_input.dispatchEvent(new Event(`blur`, { bubbles: true }))
-      flushSync()
-    }
-    type_and_blur(`3`)
-    expect([state.min_value, state.max_value]).toEqual([undefined, 3])
-    type_and_blur(``)
-    // null would filter as `val <= 0` in consumers testing `max === undefined`
-    expect([state.min_value, state.max_value]).toEqual([undefined, undefined])
-    expect(on_change.mock.calls).toEqual([
-      [undefined, 3],
-      [undefined, undefined],
-    ])
-    expect(container().classList.contains(`active`)).toBe(false)
-    expect(document.querySelector(`.clear-btn`)).toBeNull()
   })
 
   test.each([

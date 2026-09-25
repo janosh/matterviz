@@ -414,7 +414,6 @@ describe(`PlotLegend`, () => {
 
       // Chevron (expansion) and label (visibility) are sibling controls, never nested
       expect(document.querySelectorAll(`[role="button"] [role="button"]`)).toHaveLength(0)
-      expect(doc_query(`.legend-group-header`).hasAttribute(`role`)).toBe(false)
       const label = doc_query(`.group-label`)
       expect(label.getAttribute(`role`)).toBe(`button`)
       expect(label.getAttribute(`aria-pressed`)).toBe(`true`)

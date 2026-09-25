@@ -269,10 +269,7 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
   const volume = make_volume(
     make_grid(6, 6, 6, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
   )
-  const props = $state({
-    volume,
-    settings: { resolution: 16 },
-  })
+  const props = $state({ volume, settings: { resolution: 16 } })
   mount(VolumeSliceView, { target: document.body, props })
   await tick()
   const settle = async (settings: Partial<VolumeSliceSettings>) => {

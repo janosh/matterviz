@@ -155,13 +155,11 @@ describe(`Isosurface`, () => {
     {
       desc: `isovalue 0 renders the nodal surface once, even with show_negative`,
       settings: with_layers([layer(0, { show_negative: true })]),
-      volumes: [signed_volume()],
       n_meshes: 2,
     },
     {
       desc: `a negative isovalue renders the negative lobe`,
       settings: with_layers([layer(-0.3)]),
-      volumes: [signed_volume()],
       n_meshes: 2,
     },
     {
@@ -170,13 +168,9 @@ describe(`Isosurface`, () => {
       n_meshes: 0,
     },
     { desc: `no layers render nothing`, settings: DEFAULT_ISOSURFACE_SETTINGS, n_meshes: 0 },
-  ] as {
-    desc: string
-    settings: IsosurfaceSettings
-    volumes?: VolumetricData[]
-    n_meshes: number
-  }[])(`$desc`, async ({ settings, volumes, n_meshes }) => {
-    mount_isosurface({ settings, ...(volumes && { volumes }) })
+  ])(`$desc`, async ({ settings, n_meshes }) => {
+    // the signed field has a positive and a negative lobe
+    mount_isosurface({ settings, volumes: [signed_volume()] })
     await settle()
     expect(meshes()).toHaveLength(n_meshes)
     if (settings.wireframe) {

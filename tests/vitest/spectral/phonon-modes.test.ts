@@ -381,9 +381,6 @@ describe(`staged phonon runs`, () => {
     )
     expect(pattern_a.supercell).toBe(cell)
     expect(pattern_b.supercell).toBe(cell)
-    // the supercell holds only the unit cell, so a viewer can snapshot it without deep-copying
-    // every q-point's eigenvectors (5-7 s for 20 atoms x 300 q-points)
-    expect(Object.keys(cell.cell).toSorted()).toEqual([`atoms`, `lattice`, `n_atoms`])
     const other_data = { ...data, n_atoms: data.n_atoms + 1 }
     expect(() =>
       phonon_mode_pattern(cell, other_data, { qpoint_idx: 0, mode_idx: 3 }),

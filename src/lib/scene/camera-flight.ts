@@ -74,23 +74,6 @@ export function validate_camera_flight(value: unknown): asserts value is CameraF
   }
 }
 
-// Same camera placement to within float noise (scale-relative for position and target;
-// q and -q are the same rotation)
-const same_view = (pose_a: CameraPose, pose_b: CameraPose): boolean => {
-  const close = (vec_a: readonly number[], vec_b: readonly number[]) =>
-    Math.hypot(...vec_a.map((value, idx) => value - vec_b[idx])) <=
-    1e-9 * Math.max(1, Math.hypot(...vec_a))
-  const quat_dot = pose_a.quaternion.reduce(
-    (sum, value, idx) => sum + value * pose_b.quaternion[idx],
-    0,
-  )
-  return (
-    close(pose_a.position, pose_b.position) &&
-    close(pose_a.target, pose_b.target) &&
-    Math.abs(quat_dot) >= 1 - 1e-12
-  )
-}
-
 // Compile once: samples have no dependence on rendering speed or previous samples.
 export function create_camera_flight_sampler(
   flight: CameraFlight,
@@ -107,21 +90,7 @@ export function create_camera_flight_sampler(
       .applyQuaternion(new Quaternion(...frame.quaternion).invert())
       .toArray(),
   }))
-  type CompiledKeyframe = (typeof keyframes)[number]
   const { interpolation } = flight
-  const n_frames = keyframes.length
-  const total = keyframes[n_frames - 1].time
-  // A path ending where it starts (a 360° orbit) is a loop: its end tangents wrap around to
-  // the other end. One-sided end tangents bend the first and last segments and kink the
-  // camera's velocity where the video loops.
-  const closed = n_frames > 2 && same_view(keyframes[0], keyframes[n_frames - 1])
-  const neighbor = (idx: number, fallback: CompiledKeyframe): CompiledKeyframe => {
-    if (idx >= 0 && idx < n_frames) return keyframes[idx]
-    if (!closed) return fallback
-    // Skip the duplicated end pose and shift time by one loop period
-    const wrapped = idx < 0 ? keyframes[n_frames - 2] : keyframes[1]
-    return { ...wrapped, time: wrapped.time + (idx < 0 ? -total : total) }
-  }
   return (time) => {
     if (!Number.isFinite(time)) throw new Error(`Invalid camera flight time: ${time}`)
     const end_idx = keyframes.findIndex((frame) => frame.time > time)
@@ -130,8 +99,8 @@ export function create_camera_flight_sampler(
     const from = keyframes[end_idx - 1]
     if (time === from.time) return copy_pose(from)
     const to = keyframes[end_idx]
-    const before = neighbor(end_idx - 2, from)
-    const after = neighbor(end_idx + 1, to)
+    const before = keyframes[Math.max(0, end_idx - 2)]
+    const after = keyframes[Math.min(keyframes.length - 1, end_idx + 1)]
     const duration = to.time - from.time
     const fraction = (time - from.time) / duration
     const squared = fraction * fraction
@@ -173,36 +142,30 @@ export function create_camera_flight_sampler(
   }
 }
 
-// 45° steps: smooth flights orbit exactly (see create_camera_flight_sampler), so more
-// waypoints would only add thumbnails and editable views to the planner.
-const ORBIT_SEGMENTS = 8
-
 export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlight {
   const target = new Vector3(...pose.target)
   const offset = new Vector3(...pose.position).sub(target)
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
   const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...pose.quaternion))
-  const keyframes = Array.from(
-    { length: ORBIT_SEGMENTS + 1 },
-    (_unused, idx): CameraKeyframe => {
-      const position = offset
-        .clone()
-        .applyAxisAngle(up, (2 * Math.PI * idx) / ORBIT_SEGMENTS)
-        .add(target)
-      return {
-        ...copy_pose(pose),
-        time: (duration * idx) / ORBIT_SEGMENTS,
-        position: position.toArray(),
-        quaternion: new Quaternion()
-          .setFromRotationMatrix(new Matrix4().lookAt(position, target, up))
-          .toArray(),
-      }
-    },
-  )
+  // 45° steps suffice: smooth flights orbit exactly (see create_camera_flight_sampler)
+  const keyframes = Array.from({ length: 9 }, (_unused, idx): CameraKeyframe => {
+    const position = offset
+      .clone()
+      .applyAxisAngle(up, (idx * Math.PI) / 4)
+      .add(target)
+    return {
+      ...copy_pose(pose),
+      time: (duration * idx) / 8,
+      position: position.toArray(),
+      quaternion: new Quaternion()
+        .setFromRotationMatrix(new Matrix4().lookAt(position, target, up))
+        .toArray(),
+    }
+  })
   // The closing pose is exact, avoiding a visible seam when the video loops.
   keyframes[0] = { ...copy_pose(pose), time: 0 }
-  keyframes[ORBIT_SEGMENTS] = { ...copy_pose(pose), time: duration }
+  keyframes[8] = { ...copy_pose(pose), time: duration }
   const flight: CameraFlight = { keyframes, interpolation: `smooth` }
   validate_camera_flight(flight)
   return flight

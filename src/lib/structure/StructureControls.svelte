@@ -851,12 +851,6 @@
     })
   }
 
-  // Sample colors for common elements, used to preview an element color scheme
-  function get_representative_colors(scheme_name: ColorSchemeName): string[] {
-    const scheme = scheme_colors(scheme_name)
-    return ([`H`, `C`, `N`, `O`] as const).map((elem) => scheme[elem] ?? `#cccccc`)
-  }
-
   // Which top-level groups start expanded. Appearance is what people came for; camera and
   // scene are set-once topics, so they stay folded until asked for. Conditional groups open
   // when present — they only render at all because the data made them relevant.
@@ -1088,9 +1082,10 @@
             {#snippet children({ option })}
               <div class="scheme-option">
                 {option}
+                <!-- common elements preview the scheme -->
                 <div class="scheme-swatches">
-                  {#each get_representative_colors(option) as color (color)}
-                    <div style:background={color}></div>
+                  {#each [`H`, `C`, `N`, `O`] as elem (elem)}
+                    <div style:background={scheme_colors(option)[elem]}></div>
                   {/each}
                 </div>
               </div>

@@ -412,11 +412,7 @@ C 1.23 0.7101408311032397 0.0`
     expect(sites.length).toBeGreaterThan(2)
     for (const { xyz, provenance } of sites.slice(2)) {
       const offset = to_frac(math.subtract(xyz, sites[provenance?.image_of ?? -1].xyz))
-      expect(offset.map((coord) => Math.abs(coord - Math.round(coord)) < 1e-9)).toEqual([
-        true,
-        true,
-        true,
-      ])
+      expect(offset.every((coord) => Math.abs(coord - Math.round(coord)) < 1e-9)).toBe(true)
     }
   })
 

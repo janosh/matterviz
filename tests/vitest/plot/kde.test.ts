@@ -97,13 +97,18 @@ describe(`gaussian_kde`, () => {
   })
 
   // A far outlier stretches a fixed 100-point grid to ~5 units per step against a 0.2
-  // bandwidth, so the N(0, 1) bulk got one grid point. The capped 2000-point grid (step ~0.25)
-  // must read the bulk's peak to within 1% of an exact evaluation on a 0.001 step.
-  test(`points_per_bandwidth resolves the bulk beside a far outlier`, () => {
+  // bandwidth, so the N(0, 1) bulk got one grid point. The violin grid's 3 points per bandwidth,
+  // capped at 2000 (step ~0.25), read the bulk's peak within 1% of an exact 0.001-step
+  // evaluation. Uncapped, a kernel-wide peak midway between grid points is the worst case: 1
+  // point per bandwidth reads it at exp(-1/8) ~ 88% of its height, 3 at exp(-1/72) ~ 98.6%.
+  // 200.5 sits midway on a step-1/3 grid, and two samples make it outrank the range ends.
+  test(`violin grid refines per bandwidth to resolve peaks`, () => {
     const samples = [...normal_samples(1000, 5), 500]
-    const opts = { n_points: 100, cut: 0, max_samples: 5000 }
-    const coarse = gaussian_kde(samples, opts)
-    const fine = gaussian_kde(samples, { ...opts, points_per_bandwidth: 1 })
+    const coarse = gaussian_kde(samples, {
+      ...VIOLIN_KDE_OPTS,
+      points_per_bandwidth: undefined,
+    })
+    const fine = gaussian_kde(samples, VIOLIN_KDE_OPTS)
     const peak = ({ density }: { density: number[] }) => Math.max(...density)
     const fine_axis = Array.from({ length: 2001 }, (_, idx) => -1 + idx / 1000)
     const true_peak = Math.max(...ref_density(samples, fine_axis, fine.bandwidth))
@@ -112,26 +117,12 @@ describe(`gaussian_kde`, () => {
     expect(fine.grid).toHaveLength(2000) // capped by MAX_GRID_POINTS
     expect(peak(fine) / true_peak).toBeGreaterThan(0.99)
     expect([fine.grid[0], fine.grid.at(-1)]).toEqual([coarse.grid[0], coarse.grid.at(-1)])
-    const uncapped = gaussian_kde([0, 1, 2, 3], {
-      cut: 0,
-      n_points: 2,
-      points_per_bandwidth: 2,
-    })
-    expect(uncapped.grid).toHaveLength(Math.ceil((3 / uncapped.bandwidth) * 2) + 1)
-  })
-
-  // A kernel-wide peak centered midway between two violin grid points is the worst case: 1
-  // point per bandwidth reads it at exp(-1/8) ~ 88% of its height, 3 at exp(-1/72) ~ 98.6%.
-  // At 200.5 it sits midway on both a 1/bandwidth grid (step 1) and a 3/bandwidth one (1/3);
-  // it holds two samples so it outranks the on-grid kernels at the range ends.
-  test(`violin grid reads a kernel-wide peak between grid points`, () => {
-    const peak_at = 200.5
-    const samples = [0, peak_at, peak_at, 400]
-    const kde = gaussian_kde(samples, { ...VIOLIN_KDE_OPTS, bandwidth: 1 })
-    const [true_peak] = ref_density(samples, [peak_at], 1)
-    const ratio = Math.max(...kde.density) / true_peak
+    const between = [0, 200.5, 200.5, 400]
+    const kde = gaussian_kde(between, { ...VIOLIN_KDE_OPTS, bandwidth: 1 })
+    expect(kde.grid).toHaveLength(400 * 3 + 1)
     // the bound holds with equality here, so allow a few ulps of grid round-off
-    expect(ratio).toBeGreaterThan(Math.exp(-1 / 72) - 1e-12)
+    const [between_peak] = ref_density(between, [200.5], 1)
+    expect(peak(kde) / between_peak).toBeGreaterThan(Math.exp(-1 / 72) - 1e-12)
   })
 
   test(`respects clip bounds (RMSD >= 0)`, () => {

@@ -33,10 +33,8 @@ interface PhononModeTrajectoryOptions {
 // The real-space cell one or more modes animate in: the tiled unit cell with boundary
 // coordination completed and equilibrium bonds attached. Independent of the selected mode, so a viewer
 // keeps one per supercell (and its camera framing) while modes and amplitudes change.
-// Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
-export type PhononCell = Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>
 export interface PhononSupercell {
-  cell: PhononCell
+  n_atoms: number // of the unit cell, which the mode data must match
   scaling: Vec3
   structure: Crystal
   // Unit-cell atom each displayed site descends from, and its position in unit-cell fractional
@@ -267,8 +265,9 @@ export function phonon_mode_character(
 
 // Build the displayed supercell once per (data, scaling): tiling, image atoms and bonding
 // are the expensive steps and none of them depends on which mode is animated.
+// Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
 export function phonon_supercell(
-  data: PhononCell,
+  data: Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>,
   supercell: Vec3 = DEFAULT_PHONON_SUPERCELL,
 ): PhononSupercell {
   if (!data.lattice) throw new Error(`Phonon mode animation needs a real-space lattice`)
@@ -336,8 +335,7 @@ export function phonon_supercell(
       cell_position[site_idx * 3 + axis] = site.abc[axis] * scaling[axis]
     }
   }
-  const cell: PhononCell = { n_atoms: data.n_atoms, atoms: data.atoms, lattice: data.lattice }
-  return { cell, scaling, structure, atom_idx, cell_position }
+  return { n_atoms: data.n_atoms, scaling, structure, atom_idx, cell_position }
 }
 
 // Mass-unweight the eigenvector (phonopy convention), rotate away its arbitrary global phase
@@ -348,10 +346,10 @@ export function phonon_mode_pattern(
   data: PhononModeData,
   selection: PhononModeSelection,
 ): PhononModePattern {
-  const { cell, scaling, atom_idx, cell_position } = supercell
-  if (data.n_atoms !== cell.n_atoms) {
+  const { n_atoms, scaling, atom_idx, cell_position } = supercell
+  if (data.n_atoms !== n_atoms) {
     throw new Error(
-      `Phonon mode data has ${data.n_atoms} atoms but the supercell was built for ${cell.n_atoms}`,
+      `Phonon mode data has ${data.n_atoms} atoms but the supercell was built for ${n_atoms}`,
     )
   }
   const { eigenvector, frequency, q_position: q_source } = validate_selection(data, selection)
