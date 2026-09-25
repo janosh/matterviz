@@ -172,13 +172,9 @@ export const read_vaspout_bands = (
     // band-path VBM. Same (n_spin, n_kpoints, n_bands) layout as the eigenvalues.
     const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as number[][][] | null
     const n_spins = spin_down_bands ? 2 : 1
-    if (
-      fermiweights !== null &&
-      (fermiweights.length !== n_spins ||
-        fermiweights.some(
-          (spin) => spin.length !== n_kpoints || spin.some((kpt) => kpt.length !== n_bands),
-        ))
-    ) {
+    const kpoint_ok = (kpt: number[]) => kpt.length === n_bands
+    const spin_ok = (spin: number[][]) => spin.length === n_kpoints && spin.every(kpoint_ok)
+    if (fermiweights && (fermiweights.length !== n_spins || !fermiweights.every(spin_ok))) {
       throw new Error(
         `${group}/fermiweights shape does not match eigenvalues (${n_spins}, ${n_kpoints}, ${n_bands})`,
       )

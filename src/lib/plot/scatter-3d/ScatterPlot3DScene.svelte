@@ -44,8 +44,10 @@
     hover_marker_geometry,
     normalize_to_scene,
   } from '$lib/plot/scatter-3d/scene-coords'
-  import PointInstances from '$lib/plot/scatter-3d/PointInstances.svelte'
-  import type { PointInstanceSpec } from '$lib/plot/scatter-3d/point-mesh'
+  import PointInstances, {
+    type InstanceEvent,
+    type PointInstanceSpec,
+  } from '$lib/plot/scatter-3d/PointInstances.svelte'
   import { collect_size_range, create_size_scale } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
@@ -213,11 +215,6 @@
     `${point.series_idx}-${point.point_idx}`
   const in_range = (value: number, [bound_a, bound_b]: Vec2) =>
     value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
-  const data_coords = (srs: DataSeries3D<Metadata>, point_idx: number): Vec3 => [
-    srs.x[point_idx],
-    srs.y[point_idx],
-    srs.z[point_idx],
-  ]
   // User Z → Three.js Y (vertical), user Y → Three.js Z (depth)
   const to_scene = ([coord_x, coord_y, coord_z]: Vec3): Vec3 => [
     normalize_x(coord_x),
@@ -226,15 +223,15 @@
   ]
 
   // Every in-range point of every visible series, in (series_idx, point_idx) order: the point
-  // in data coordinates, plus its scene position, radius and color. Points outside the axis ranges (a narrowed or pinned range) are left
-  // out rather than drawn outside the box; non-finite coordinates fail in_range too.
+  // in data coordinates plus its scene position, radius and color. Out-of-range points (and
+  // non-finite ones, which fail in_range) are left out rather than drawn outside the box.
   let point_instances = $derived.by(() => {
     const instances: PointInstance[] = []
     series.forEach((srs, series_idx) => {
       if (!srs || !(srs.visible ?? true)) return
       const { metadata, point_style } = srs
       for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const coords = data_coords(srs, point_idx)
+        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
         const [coord_x, coord_y, coord_z] = coords
         if (!in_range(coord_x, x_range) || !in_range(coord_y, y_range)) continue
         if (!in_range(coord_z, z_range)) continue
@@ -297,8 +294,6 @@
     projection_material.dispose()
   })
 
-  // Instance events carry the hit's instanceId, the index into point_instances
-  type InstanceEvent = { instanceId?: number; nativeEvent?: Event }
   const instance_point = (event: InstanceEvent) =>
     point_instances[event.instanceId ?? -1]?.point ?? null
   // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
@@ -372,7 +367,7 @@
       // them at the axes instead of dropping whole segments
       const positions: number[] = []
       for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const coords = data_coords(srs, point_idx)
+        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
         if (coords.every(Number.isFinite)) positions.push(...to_scene(coords))
       }
       if (positions.length < 6) continue // < 2 points
@@ -497,13 +492,10 @@
 
   // Everything drawn from data (lines, surfaces, reference lines/planes) stays inside the box
   const box_clip = box_clipping_planes(scene_x, scene_y, scene_z)
-  // The box's 12 edges, for display.show_bounding_box
-  const bounding_box_geometry = (() => {
-    const box = new THREE.BoxGeometry(scene_x, scene_z, scene_y)
-    const edges = new THREE.EdgesGeometry(box)
-    box.dispose()
-    return edges
-  })()
+  // The box's 12 edges, for display.show_bounding_box (the BoxGeometry never reaches the GPU)
+  const bounding_box_geometry = new THREE.EdgesGeometry(
+    new THREE.BoxGeometry(scene_x, scene_z, scene_y),
+  )
   onDestroy(() => bounding_box_geometry.dispose())
 
   // User x/y/z map to scene x/z/y. Each axis supplies its orientation and label offsets;

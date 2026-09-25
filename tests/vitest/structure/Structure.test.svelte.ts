@@ -995,25 +995,28 @@ const stub_fullscreen_api = () => {
 describe(`Structure`, () => {
   // Each viewer wrote its scheme into the page-wide colors.element: the last mounted one
   // recolored every viewer, and an unknown name set the whole map to undefined (crashing it)
-  test(`each viewer colors atoms by its own color_scheme without touching page colors`, async () => {
+  test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
     const page_colors = { ...colors.element }
     const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
     for (const color_scheme of [`Jmol`, `Vesta`] as const) {
       mount_structure({ structure: oxide, color_scheme })
     }
-    await vi.waitFor(() => {
-      const swatches = [...document.querySelectorAll<HTMLElement>(`.element-legend label`)]
-      expect(swatches.map((label) => label.style.backgroundColor)).toEqual([
+    const swatches = () =>
+      [...document.querySelectorAll<HTMLElement>(`.element-legend label`)].map(
+        (label) => label.style.backgroundColor,
+      )
+    await vi.waitFor(() =>
+      expect(swatches()).toEqual([
         ELEMENT_COLOR_SCHEMES.Jmol.O,
         ELEMENT_COLOR_SCHEMES.Vesta.O,
-      ])
-    })
-    expect(colors.element).toEqual(page_colors)
-  })
-
-  test(`an unknown color_scheme fails with the valid names`, () => {
-    const page_colors = { ...colors.element }
-    const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
+      ]),
+    )
+    const picker = doc_query<HTMLInputElement>(`.element-legend input[type="color"]`)
+    picker.value = `#123456`
+    picker.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await vi.waitFor(() =>
+      expect(swatches()).toEqual([`#123456`, ELEMENT_COLOR_SCHEMES.Vesta.O]),
+    )
     expect(() =>
       mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
     ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)

@@ -65,9 +65,8 @@ function formal_charge(symbol: string, bond_valence: number): number {
 
 const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 
-// Cap per-fragment work at valence combinations x (atoms + bonds): each combination is one
-// matching attempt over the fragment's atoms and bonds. S8 (3^8 combinations) fits easily; a
-// catenated S20 chain (3^20) or a 12-nitrogen 3000-atom chain (2^12 x 6000) is refused.
+// Per-fragment cap on valence combinations x (atoms + bonds), one matching attempt per
+// combination: S8 (3^8) fits, an S20 chain (3^20) or 12 N in 3000 atoms (2^12 x 6000) does not
 const MAX_PERCEPTION_WORK = 20_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.
@@ -129,9 +128,8 @@ function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   }
 }
 
-// Maximum-cardinality matching in a general graph (Edmonds' blossom algorithm), grown in
-// place from the partial matching `mate` (-1 = unmatched). Returns false as soon as some
-// vertex can't be matched: a vertex with no augmenting path now never gets one later.
+// Edmonds' blossom algorithm: grow the partial matching `mate` (-1 = unmatched) into a perfect
+// one, false once a vertex has no augmenting path (it never gets one later)
 function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boolean {
   const n_vertices = adjacency.length
   const parent = new Int32Array(n_vertices)
@@ -211,13 +209,11 @@ function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boo
   return true
 }
 
-// Bond order per edge so every atom ends exactly at its target valence, or null when no
-// assignment exists. Starting from all-single bonds, each atom must gain its deficit in extra
-// bond orders, one per unit across a bond: a perfect matching between per-unit copies of the
-// atoms. The matching doesn't cap raises per bond: one that puts three on a bond (beyond a
-// triple) is rejected. That can miss a valid assignment only when two adjacent non-terminal
-// atoms both need 3+ extra orders (S/Se/Te/P at high valence), never for C/N/O. Unlike a
-// greedy raise, the result does not depend on atom order.
+// Bond order per edge so every atom ends exactly at its target valence, or null. Each atom's
+// deficit over all-single bonds is one vertex per missing unit; a perfect matching of those
+// copies across bonds raises one order per matched pair. A matching putting 3 raises on one
+// bond is rejected, which can only miss an assignment when two adjacent atoms both lack 3+
+// (S/Se/Te/P at high valence), never for C/N/O.
 function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] | null {
   const n_atoms = target_valence.length
   const deficit = target_valence.slice()
@@ -257,7 +253,7 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
     }
   }
   const mate = new Int32Array(n_copies).fill(-1)
-  // Greedy start, most constrained copies first, leaves few vertices for augmentation
+  // greedy start, most constrained copies first, leaves few vertices to augment
   const by_degree = Array.from({ length: n_copies }, (_, copy) => copy).toSorted(
     (copy_a, copy_b) => adjacency[copy_a].length - adjacency[copy_b].length,
   )
@@ -282,10 +278,8 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
   return orders
 }
 
-// Rings as the shortest cycle through each bond (at most MAX_RING_SIZE atoms), deduplicated
-// by vertex set, so every small ring of a fused system is found (a spanning-tree cycle basis
-// can return the envelope instead). `in_scope` limits ring members (aromatic rings only hold
-// C/N/O/S), which also bounds the search.
+// Shortest cycle through each bond (up to MAX_RING_SIZE atoms) deduplicated by vertex set, so
+// every small ring of a fused system is found. Only `in_scope` atoms can be ring members.
 const MAX_RING_SIZE = 8
 function find_rings(
   n_atoms: number,
@@ -363,10 +357,9 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
 // the conjugated π system (C, N, O, S). Other ring members disqualify.
 const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 
-// Valence-consistent bond orders of one fragment by formal charge, the first found for each
-// in least-saturated order. Formal charge mostly rises with the valence sum, so the search stops
-// once a solution at charge `stop_charge` (or above) turns up. That early exit is a heuristic,
-// not a bound: S is +1 at valence 3 but neutral at 6, and B is -1 at valence 4.
+// First valence-consistent bond orders per formal charge, least saturated first. Charge mostly
+// rises with valence, so the search stops at charge >= `stop_charge` (a heuristic: S is +1 at
+// valence 3 but neutral at 6).
 function fragment_solutions(
   symbols: string[],
   local_edges: Edge[],
@@ -387,54 +380,40 @@ function fragment_solutions(
   return solutions
 }
 
-// One formal charge per fragment summing to `total_charge`, fewest charged fragments first
-// (then least total |charge|), or null when the fragments' solutions can't reach the total.
-// The total belongs to the whole structure: a salt such as CO3 + CO2 at -2 has no fragment
-// that matches it alone.
+// One formal charge per fragment summing to `total_charge` (the whole structure's: a salt such
+// as CO3 + CO2 at -2 has no fragment matching it alone), fewest charged fragments first, then
+// least total |charge|. Null when out of reach.
 function distribute_charge(
   charges_per_fragment: number[][],
   total_charge: number,
 ): number[] | null {
-  if (total_charge === 0 && charges_per_fragment.every((charges) => charges.includes(0))) {
-    return charges_per_fragment.map(() => 0)
-  }
-  // Layer k maps a partial charge sum over the first k fragments to its cheapest way there
-  type Step = { cost: number; previous_sum: number; charge: number }
-  const layers: Map<number, Step>[] = [new Map([[0, { cost: 0, previous_sum: 0, charge: 0 }]])]
+  // cheapest pick chain reaching each partial charge sum, extended one fragment at a time
+  type Pick = { cost: number; charge: number; prev?: Pick }
+  let layer = new Map<number, Pick>([[0, { cost: 0, charge: 0 }]])
   for (const charges of charges_per_fragment) {
-    const layer = new Map<number, Step>()
-    for (const [sum, { cost }] of layers[layers.length - 1]) {
+    const next = new Map<number, Pick>()
+    for (const [sum, prev] of layer) {
       for (const charge of charges) {
-        const next_cost = cost + (charge === 0 ? 0 : 1_000_000 + Math.abs(charge))
-        const existing = layer.get(sum + charge)
-        if (!existing || next_cost < existing.cost) {
-          layer.set(sum + charge, { cost: next_cost, previous_sum: sum, charge })
-        }
+        const cost = prev.cost + (charge && 1_000_000 + Math.abs(charge))
+        const existing = next.get(sum + charge)
+        if (!existing || cost < existing.cost) next.set(sum + charge, { cost, charge, prev })
       }
     }
-    layers.push(layer)
+    layer = next
   }
-  if (!layers[layers.length - 1].has(total_charge)) return null
   const picks: number[] = []
-  let sum = total_charge
-  for (let layer_idx = layers.length - 1; layer_idx > 0; layer_idx--) {
-    const step = layers[layer_idx].get(sum)
-    if (!step) throw new Error(`distribute_charge: broken path at fragment ${layer_idx - 1}`)
-    picks.push(step.charge)
-    sum = step.previous_sum
-  }
-  return picks.toReversed()
+  for (let pick = layer.get(total_charge); pick?.prev; pick = pick.prev)
+    picks.push(pick.charge)
+  return layer.has(total_charge) ? picks.toReversed() : null
 }
 
-// xyz2mol AC->BO core (main-group). Each connected fragment gets a valence-consistent bond
-// order assignment; fragments with a non-main-group atom, over the size or work caps, or with
-// no assignment at the charge they are given fall back to single + not perceived.
+// xyz2mol AC->BO core (main-group), per connected fragment. Fragments with a non-main-group
+// atom, over max_atoms or the work cap, or unsolvable at their charge stay single + unperceived.
 export function perceive_bond_orders(
   sites: Site[],
   bonds: readonly BondPair[],
   opts: PerceptionOptions = {},
 ): PerceivedBond[] {
-  // per fragment: a molecular crystal of many small molecules is perceived molecule by molecule
   const max_atoms = opts.max_atoms ?? 5000
   const edges: Edge[] = []
   const result = new Map<BondPair, PerceivedBond>()
@@ -447,16 +426,12 @@ export function perceive_bond_orders(
       bond.site_idx_2 >= sites.length
     )
       continue
-    edges.push({
-      from: bond.site_idx_1,
-      to: bond.site_idx_2,
-      bond,
-    })
+    edges.push({ from: bond.site_idx_1, to: bond.site_idx_2, bond })
   }
 
   const frags = split_fragments(
     sites.length,
-    edges.map((edge) => [edge.from, edge.to] as Vec2),
+    edges.map(({ from, to }) => [from, to] as Vec2),
   )
   // Every edge joins two atoms of one fragment: bucket edges by fragment and renumber their
   // endpoints to fragment-local indices in one pass over the edges
@@ -478,25 +453,15 @@ export function perceive_bond_orders(
   }
   const total_charge = opts.total_charge ?? 0
 
-  // Candidate bond orders by formal charge per bonded main-group fragment
-  const solved_frags: {
-    frag: number[]
-    local_edges: Edge[]
-    solutions: Map<number, number[]>
-  }[] = []
   const stop_charge = Math.max(0, total_charge)
-  for (const [frag_idx, frag] of frags.entries()) {
+  const solved_frags = frags.flatMap((frag, frag_idx) => {
     const local_edges = edges_by_frag[frag_idx]
-    if (local_edges.length === 0 || frag.length > max_atoms) continue
+    if (local_edges.length === 0 || frag.length > max_atoms) return []
     const symbols = frag.map((atom_idx) => primary_element(sites[atom_idx]))
-    if (!symbols.every(is_main_group)) continue
+    if (!symbols.every(is_main_group)) return []
     const valence_lists = symbols.map((symbol) => ATOMIC_VALENCE[symbol])
-    const combo_count = valence_lists.reduce(
-      (product, valence_list) => product * valence_list.length,
-      1,
-    )
-    const work = combo_count * (frag.length + local_edges.length)
-    if (work > MAX_PERCEPTION_WORK) {
+    const combo_count = valence_lists.reduce((product, list) => product * list.length, 1)
+    if (combo_count * (frag.length + local_edges.length) > MAX_PERCEPTION_WORK) {
       // Console, no WarnFn here: silently drawing benzene as all-single bonds is wrong data
       console.warn(
         `Bond-order perception skipped fragment ${frag_idx} (${frag.length} atoms, ` +
@@ -504,22 +469,19 @@ export function perceive_bond_orders(
           `${frag.length + local_edges.length} atoms+bonds exceed the ` +
           `${MAX_PERCEPTION_WORK} work cap, so its bonds stay single-order and unperceived`,
       )
-      continue
+      return []
     }
     const solutions = fragment_solutions(symbols, local_edges, valence_lists, stop_charge)
-    solved_frags.push({ frag, local_edges, solutions })
-  }
-  // The total is only enforceable when every bonded fragment is a candidate; otherwise (and
-  // when the total is out of reach) each fragment is taken neutral, if it can be.
+    return [{ frag, local_edges, solutions }]
+  })
+  // The total is only enforceable when every bonded fragment is a candidate, else (or when
+  // it is out of reach) each fragment is taken neutral
   const n_bonded_frags = edges_by_frag.filter((frag_edges) => frag_edges.length > 0).length
-  const distributed =
-    solved_frags.length === n_bonded_frags
-      ? distribute_charge(
-          solved_frags.map(({ solutions }) => [...solutions.keys()]),
-          total_charge,
-        )
-      : null
-  const charges = distributed ?? solved_frags.map(() => 0)
+  const fragment_charges = solved_frags.map(({ solutions }) => [...solutions.keys()])
+  const charges =
+    (solved_frags.length === n_bonded_frags
+      ? distribute_charge(fragment_charges, total_charge)
+      : null) ?? solved_frags.map(() => 0)
 
   let ring_id = 0
   for (const [solved_idx, { frag, local_edges, solutions }] of solved_frags.entries()) {

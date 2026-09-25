@@ -152,8 +152,6 @@ describe(`Isosurface`, () => {
       settings: with_layers([layer(0.3)], { wireframe: true }),
       n_meshes: 1,
     },
-    // 0 is a signed field's nodal surface (mirroring it would duplicate it) and a negative
-    // value its negative lobe
     {
       desc: `isovalue 0 renders the nodal surface once, even with show_negative`,
       settings: with_layers([layer(0, { show_negative: true })]),
@@ -200,21 +198,11 @@ describe(`Isosurface`, () => {
       })
       await settle()
       expect(meshes()).toHaveLength(4)
-      expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
-      // the positive blob sits at grid (3,3,3), the negative one at (7,7,7)
-      const mean_x = (geometry: BufferGeometry): number => {
-        const positions = geometry.getAttribute(`position`)
-        let sum = 0
-        for (let idx = 0; idx < positions.count; idx++) sum += positions.getX(idx)
-        return sum / positions.count
-      }
-      const [first_x, second_x] = [meshes()[0], meshes()[2]].map((node) =>
-        mean_x(geometry_of(node)),
-      )
       const colors = materials().map((node) => node.props.color)
-      const [positive_color, negative_color] =
-        first_x < second_x ? [colors[0], colors[2]] : [colors[2], colors[0]]
-      expect([positive_color, negative_color]).toEqual([`#3b82f6`, `#ef4444`])
+      const x_of = (idx: number) => geometry_of(meshes()[idx]).getAttribute(`position`).getX(0)
+      // the positive blob sits at grid (3,3,3), the negative one at (7,7,7)
+      const [positive, negative] = x_of(0) < x_of(2) ? [0, 2] : [2, 0]
+      expect([colors[positive], colors[negative]]).toEqual([`#3b82f6`, `#ef4444`])
       expect(colors[0]).toBe(colors[1]) // both passes of a lobe share its colour
     },
   )

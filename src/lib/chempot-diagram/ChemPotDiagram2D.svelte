@@ -72,29 +72,18 @@
 
   const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
 
-  // In a binary system every domain is a segment. Projected onto two elements of a larger
-  // system (config.elements), a domain is a polygon whose vertices come in no particular
-  // order, so it is drawn as its closed convex outline instead of a self-crossing polyline.
+  // Projected from a larger system, a domain is a polygon with unordered vertices: draw its
+  // closed convex outline (binary domains and collinear vertices collapse to one segment)
   const outline = (pts: number[][]): number[][] => {
-    const hull = convex_hull_2d(
-      pts.map(([mu_x, mu_y]): Vec2 => [mu_x, mu_y]),
-      1e-9,
-    )
-    // collinear vertices collapse to their two ends, drawn as one segment
-    return hull.length >= 3 ? [...hull, hull[0]] : hull.length === 2 ? hull : pts
+    const hull = convex_hull_2d(pts as Vec2[], 1e-9)
+    return hull.length >= 3 ? [...hull, hull[0]] : hull
   }
   const draw_domains = $derived.by((): Record<string, number[][]> => {
     if (!diagram_data || plot_elements.length < 2) return {}
     const indices = [0, 1]
     const new_lims =
-      element_padding > 0
-        ? apply_element_padding(
-            diagram_data.domains,
-            indices,
-            element_padding,
-            default_min_limit,
-          )
-        : null
+      element_padding > 0 &&
+      apply_element_padding(diagram_data.domains, indices, element_padding, default_min_limit)
     const result: Record<string, number[][]> = {}
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
       if (pts.length === 0) continue
@@ -115,7 +104,7 @@
       x: pts.map((point) => point[0]),
       y: pts.map((point) => point[1]),
       markers: `line+points` as const,
-      // domain edges are straight: a spline would bow polygon outlines
+      // a spline would bow polygon outlines
       line_style: {
         stroke: domain_colors.get(formula) ?? `black`,
         stroke_width: 3,
@@ -183,8 +172,7 @@
     hover_info = null
   }
 
-  // A pinned tooltip follows recomputes (temperature, limits, padding): its numbers are re-read
-  // from the new domain, and it unpins when that domain is gone
+  // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
   $effect(() => {
     const domains = draw_domains
     untrack(() => {
@@ -312,8 +300,7 @@
   </SettingsSection>
 {/snippet}
 
-<!-- A recompute (temperature drag, formal/limit change) keeps the previous plot, its settings
-pane and the temperature slider mounted; the spinner only fills the first load -->
+<!-- recomputes keep the previous plot, settings and temperature slider mounted -->
 {#if chempot.computing && !diagram_data}
   <Spinner
     text="Computing chemical potential domains..."
@@ -323,7 +310,7 @@ pane and the temperature slider mounted; the spinner only fills the first load -
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
     <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
-    <!-- the settings that caused the error (e.g. a min limit above the domains) stay editable -->
+    <!-- the setting that caused the error stays editable -->
     {@render chempot_controls(null)}
   </div>
 {:else}

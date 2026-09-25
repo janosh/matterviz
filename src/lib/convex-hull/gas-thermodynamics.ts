@@ -204,50 +204,44 @@ export function get_effective_pressures(
   return pressures
 }
 
-// Shift of an element's chemical potential (eV/atom of element) set by its gas reservoir at
-// (T, P) relative to (0 K, 1 bar). A gas fixes only the sum of its elements' potentials,
-// e.g. Δμ(CO2) = Δμ_C + 2 Δμ_O per molecule. A partner element with its own enabled reservoir
-// (O from O2) is pinned by that reservoir, so the gas's element gets the remainder:
-// Δμ_C = Δμ(CO2) − 2 Δμ_O(O2). Partners without an enabled reservoir contribute 0.
+// Shift of an element's chemical potential (eV/atom) set by its gas reservoir at (T, P)
+// relative to (0 K, 1 bar). A gas fixes only the sum of its elements' potentials, e.g.
+// Δμ(CO2) = Δμ_C + 2 Δμ_O, so partners with their own enabled reservoir (O from O2) are pinned
+// by it and the element gets the remainder. Partners without a reservoir contribute 0.
 export function compute_element_mu_shift(
   element: ElementSymbol,
   config: GasThermodynamicsConfig,
   temperature: number,
   pressures: Record<GasSpecies, number>,
-  resolving: ReadonlySet<ElementSymbol> = new Set(),
 ): number {
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
-  const gas = element_to_gas[element]
-  if (!gas || !config.enabled_gases?.includes(gas)) return 0
-  const stoichiometry = GAS_STOICHIOMETRY[gas]
-  const stoich = stoichiometry[element]
-  if (!stoich)
-    throw new Error(`element_to_gas maps ${element} to ${gas}, which has no ${element}`)
-  if (resolving.has(element)) {
-    throw new Error(
-      `Gas reservoirs for ${[...resolving, element].join(` → `)} depend on each other; map each element to a gas whose other elements have their own reservoir`,
-    )
+  const element_to_gas: Partial<Record<string, GasSpecies>> = {
+    ...DEFAULT_ELEMENT_TO_GAS,
+    ...config.element_to_gas,
   }
   const provider = config.provider ?? get_default_gas_provider()
-  // Per atom of gas at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
-  const mu_shift_per_atom =
-    compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
-    provider.get_standard_chemical_potential(gas, 0)
-  const next_resolving = new Set([...resolving, element])
-  let partner_shift = 0
-  for (const [partner, count] of Object.entries(stoichiometry)) {
-    if (partner === element) continue
-    partner_shift +=
-      count *
-      compute_element_mu_shift(
-        partner as ElementSymbol,
-        config,
-        temperature,
-        pressures,
-        next_resolving,
+  const shift = (elem: string, resolving: string[]): number => {
+    const gas = element_to_gas[elem]
+    if (!gas || !config.enabled_gases?.includes(gas)) return 0
+    const stoichiometry: Record<string, number> = GAS_STOICHIOMETRY[gas]
+    const stoich = stoichiometry[elem]
+    if (!stoich) throw new Error(`element_to_gas maps ${elem} to ${gas}, which has no ${elem}`)
+    if (resolving.includes(elem)) {
+      throw new Error(
+        `Gas reservoirs for ${[...resolving, elem].join(` → `)} depend on each other; map each element to a gas whose other elements have their own reservoir`,
       )
+    }
+    // Per molecule at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
+    const molecule_shift =
+      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
+        provider.get_standard_chemical_potential(gas, 0)) *
+      gas_num_atoms(gas)
+    let partner_shift = 0
+    for (const [partner, count] of Object.entries(stoichiometry)) {
+      if (partner !== elem) partner_shift += count * shift(partner, [...resolving, elem])
+    }
+    return (molecule_shift - partner_shift) / stoich
   }
-  return (mu_shift_per_atom * gas_num_atoms(gas) - partner_shift) / stoich
+  return shift(element, [])
 }
 
 // Chemical potential correction (eV/atom of compound) for an entry's energy: the composition-
@@ -263,13 +257,9 @@ export function compute_gas_correction(
   let correction = 0
   for (const [element, amount] of Object.entries(entry.composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
-    const shift = compute_element_mu_shift(
-      element as ElementSymbol,
-      config,
-      temperature,
-      pressures,
-    )
-    correction += (amount / n_atoms) * shift
+    correction +=
+      (amount / n_atoms) *
+      compute_element_mu_shift(element as ElementSymbol, config, temperature, pressures)
   }
   return correction
 }

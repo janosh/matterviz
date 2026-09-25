@@ -13,10 +13,9 @@ export interface KdeResult {
 interface KdeOptions {
   bandwidth?: number | `silverman` | `scott` // default 'silverman'
   n_points?: number // integer grid resolution >= 2 (default 100)
-  // Refine the grid to at least this many points per bandwidth (up to max_points), so a
+  // Refine the grid to at least this many points per bandwidth (up to MAX_GRID_POINTS), so a
   // distant outlier stretching the range can't leave the bulk's peak between two grid points
   points_per_bandwidth?: number
-  max_points?: number // cap for the refined grid (default 2000)
   cut?: number // extend grid by cut*bandwidth beyond data extremes (default 2)
   clip?: [number | null, number | null] // hard bounds for the grid (e.g. [0, null] for RMSD)
   range?: Vec2 // explicit eval range (overrides data extent + cut)
@@ -34,11 +33,8 @@ const KDE_TAIL_SIGMA = 6
 
 const MAX_GRID_POINTS = 2000
 
-// Violin KDE grid over the observed support (no tail extension): at least 100 points and at
-// least 3 per bandwidth, so a far outlier can't flatten the bulk and a kernel-wide peak falling
-// midway between grid points reads at least exp(-1/72) ~ 98.6% of its height (1 per bandwidth
-// under-read it by up to exp(-1/8) ~ 12%). Densities sum over at most 5000 stride-sampled
-// values (bandwidth still comes from the full sample).
+// Violin KDE grid over the observed support (no tail extension). 3 points per bandwidth read
+// a kernel-wide peak midway between grid points at >= exp(-1/72) ~ 98.6% of its height.
 export const VIOLIN_KDE_OPTS = {
   n_points: 100,
   points_per_bandwidth: 3,
@@ -46,20 +42,18 @@ export const VIOLIN_KDE_OPTS = {
   max_samples: 5000,
 } as const satisfies KdeOptions
 
-// Spread for samples with no variance (a single value or all equal): the magnitude of the
-// value, like R's bw.nrd0, so constant 1e-6 samples get a kernel at their own scale rather
-// than a fixed 1 that smears them across +-2. Exactly zero falls back to 1.
+// Spread for samples with no variance: the value's magnitude (else 1), like R's bw.nrd0, so
+// constant 1e-6 samples get a kernel at their own scale
 const constant_spread = (samples: readonly number[]): number => Math.abs(samples[0] ?? 0) || 1
 
-// The n^(-1/5) shrink both rules share. No samples means no bandwidth (0^(-1/5) is Infinity).
+// The n^(-1/5) shrink both rules share (0^(-1/5) is Infinity, so no samples throw)
 const shrink_factor = (n_vals: number): number => {
   if (n_vals === 0) throw new RangeError(`KDE bandwidth needs at least one sample`)
   return n_vals ** (-1 / 5)
 }
 
 // Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5), i.e. R's bw.nrd0 and
-// statsmodels' `silverman` (scipy's `silverman` is the different std * (3n/4)^(-1/5)).
-// The spread falls back to std, then to the constant-sample spread above.
+// statsmodels' `silverman` (not scipy's std * (3n/4)^(-1/5))
 export function silverman_bandwidth(samples: readonly number[]): number {
   const shrink = shrink_factor(samples.length)
   // `samples` need not be sorted; quartile selection reorders a scratch copy, not the input
@@ -148,7 +142,7 @@ function binned_density(
 // Estimate a smooth density from raw samples via a Gaussian kernel.
 export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
   // oxfmt-ignore
-  const { bandwidth = `silverman`, n_points = 100, points_per_bandwidth, max_points = MAX_GRID_POINTS, cut = 2, clip, range, max_samples, grid_transform } = opts
+  const { bandwidth = `silverman`, n_points = 100, points_per_bandwidth, cut = 2, clip, range, max_samples, grid_transform } = opts
 
   if (!Number.isSafeInteger(n_points) || n_points < 2) {
     throw new RangeError(`KDE n_points must be an integer >= 2, got ${n_points}`)
@@ -159,17 +153,9 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   if (typeof bandwidth === `number` && (!Number.isFinite(bandwidth) || bandwidth <= 0)) {
     throw new RangeError(`KDE bandwidth must be finite and positive, got ${bandwidth}`)
   }
-  if (
-    points_per_bandwidth !== undefined &&
-    !(Number.isFinite(points_per_bandwidth) && points_per_bandwidth > 0)
-  ) {
+  if (points_per_bandwidth !== undefined && !(points_per_bandwidth > 0)) {
     throw new RangeError(
-      `KDE points_per_bandwidth must be finite and positive, got ${points_per_bandwidth}`,
-    )
-  }
-  if (!Number.isSafeInteger(max_points) || max_points < n_points) {
-    throw new RangeError(
-      `KDE max_points must be an integer >= n_points (${n_points}), got ${max_points}`,
+      `KDE points_per_bandwidth must be positive, got ${points_per_bandwidth}`,
     )
   }
   if (!Number.isFinite(cut) || cut < 0) {
@@ -224,7 +210,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
     ? clamp(
         Math.ceil(((upper - lower) / band) * points_per_bandwidth) + 1,
         n_points,
-        max_points,
+        MAX_GRID_POINTS,
       )
     : n_points
   const grid = Array.from({ length: n_grid }, () => 0)

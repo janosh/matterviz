@@ -130,12 +130,9 @@ export function build_hull_model(
   const hull_facets = thermo.compute_lower_hull_nd(hull_points)
 
   // Entries with e_above_hull/is_stable: from the data when precomputed and present, else
-  // from the hull (precomputed E_form without E_above_hull, e.g. when unary references are
-  // missing, still places every entry on the hull built from those E_form values)
+  // from the hull (e.g. precomputed E_form without E_above_hull when unary refs are missing)
   const needs_hull_distance = (entry: ConvexHullEntry): boolean =>
-    energy_mode === `on-the-fly` ||
-    typeof entry.e_above_hull !== `number` ||
-    !Number.isFinite(entry.e_above_hull)
+    energy_mode === `on-the-fly` || !Number.isFinite(entry.e_above_hull)
   if (entries.some(needs_hull_distance)) {
     // No facets means every hull point sits at E_form = 0 (the corners always do), so the
     // hull is that plane and the distance is E_form itself
@@ -161,11 +158,7 @@ export function build_hull_model(
       ...facet,
       vertex_indices: facet.vertex_indices.map((idx) => hull_indices[idx]),
     })),
-    phase_stats: thermo.get_convex_hull_stats(
-      entries.filter((entry) => !entry.is_synthetic),
-      elements,
-      dim,
-    ),
+    phase_stats: thermo.get_convex_hull_stats(entries, elements, dim),
   }
 }
 

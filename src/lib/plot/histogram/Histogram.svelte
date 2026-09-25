@@ -57,7 +57,6 @@
     compute_histogram_bins,
     compute_histogram_counts,
     histogram_series_color,
-    histogram_totals,
     log_safe_range,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -248,7 +247,7 @@
     })
   // Every view normalizes by the auto-domain totals, so zooming into a tail keeps its density
   const display_bins = (counted: ReturnType<typeof count_over>) =>
-    compute_histogram_bins(counted, normalize, series_color, auto_totals)
+    compute_histogram_bins(counted, normalize, series_color, auto_counts)
   const count_ranges = (binned: readonly BinnedSeries[]) => {
     const on_axis = (axis: `y` | `y2`) =>
       binned.filter((hist) => (hist.y_axis ?? `y`) === axis)
@@ -277,7 +276,6 @@
   // Bins over the data-driven x domains; they also fix the count ranges so a pan/zoom along x
   // doesn't rescale y.
   const auto_counts = $derived(count_over(auto_x_ranges.x, auto_x_ranges.x2))
-  const auto_totals = $derived(histogram_totals(auto_counts))
   const auto_bins = $derived(display_bins(auto_counts))
   let auto_ranges = $derived({ ...auto_x_ranges, ...count_ranges(auto_bins) })
   // Histogram count ranges depend on the bin domain. Once FacetGrid resolves shared x domains,

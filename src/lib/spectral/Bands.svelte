@@ -84,8 +84,7 @@
     path_mode?: PathMode
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
-    // Horizontal reference line in the data unit (THz for phonons, eV for electrons),
-    // whatever `units` displays; Dos emits hovered_frequency in the same unit
+    // Horizontal line in the data unit (THz or eV) whatever `units` displays, like Dos
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
@@ -470,17 +469,15 @@
   })
 
   let electronic_gap_annotation = $derived.by(() => {
-    if (!show_gap_annotation || band_type !== `electronic`) return null
-    // One gap per system: the first structure, which also supplies the default E_F. Only
-    // the spin channels on display count.
+    // One gap per system, from the first one (which also supplies the default E_F) and only
+    // the spin channels on display
     const band_structure = structures[0]?.bs
-    if (!band_structure) return null
+    if (!show_gap_annotation || band_type !== `electronic` || !band_structure) return null
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
     const shown = (up: number[][], down: number[][] | undefined): number[][] => [
       ...(effective_spin_mode !== `down_only` ? up : []),
       ...(effective_spin_mode !== `up_only` ? (down ?? []) : []),
     ]
-    // Occupations, where the data has them, decide filling over E_F (see electronic_band_gap)
     const filling = occupations
       ? shown(occupations, spin_down_occupations)
       : effective_fermi_level

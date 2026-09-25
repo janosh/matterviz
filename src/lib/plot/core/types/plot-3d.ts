@@ -33,8 +33,7 @@ export interface DataSeries3D<Metadata = Record<string, unknown>> extends Omit<
   filtered_data?: InternalPoint3D<Metadata>[]
 }
 
-// A point of a ScatterPlot3D series, in data coordinates (what tooltip_point, hover and click
-// events report; the scene keeps its own scene-space positions)
+// A ScatterPlot3D point in data coordinates (as reported by hover and click events)
 export interface InternalPoint3D<
   Metadata = Record<string, unknown>,
 > extends ScatterPoint3D<Metadata> {

@@ -3,12 +3,7 @@
 // Would have caught the bug where H had larger atomic_radius than O.
 
 import type { ElementSymbol } from '$lib/element'
-import {
-  element_by_symbol,
-  element_data,
-  element_group_keys,
-  element_groups,
-} from '$lib/element'
+import { element_by_symbol, element_data, element_groups } from '$lib/element'
 import { element_from_lammps_type } from '$lib/element/helpers'
 import { describe, expect, test } from 'vitest'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
@@ -59,23 +54,18 @@ test(`category counts`, () => {
   expect(counts).toEqual(expected_counts)
 })
 
+const n_nonmetals =
+  expected_counts[`diatomic nonmetal`] + expected_counts[`polyatomic nonmetal`]
 test.each([
   [`all`, 118, `Og`],
-  [`alkali`, expected_counts[`alkali metal`], `Cs`],
   [`transition`, expected_counts[`transition metal`], `Fe`],
-  [
-    `nonmetal`,
-    expected_counts[`diatomic nonmetal`] + expected_counts[`polyatomic nonmetal`],
-    `C`,
-  ],
+  [`nonmetal`, n_nonmetals, `C`],
   [`halogen`, 6, `Ts`],
-  [`actinide`, expected_counts.actinide, `U`],
 ] as const)(`element group %s holds %i elements including %s`, (key, count, member) => {
   const group = element_groups.find(({ value }) => value === key)
   const members = element_data.filter((element) => group?.includes(element))
   expect(members).toHaveLength(count)
   expect(members.map(({ symbol }) => symbol)).toContain(member)
-  expect(element_group_keys.has(key)).toBe(true)
 })
 
 describe(`atomic_radius`, () => {

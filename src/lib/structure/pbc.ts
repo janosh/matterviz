@@ -55,9 +55,8 @@ export const wrap_to_unit_cell = (frac: Vec3, pbc: Pbc = [true, true, true]): Ve
   pbc[2] ? wrap_frac_coord(frac[2]) : frac[2],
 ]
 
-// Trajectory-like data: >10% of atoms far outside the unit cell along a periodic axis.
-// Image-atom generation is skipped for such structures. Aperiodic axes don't count: a buckled
-// 2D sheet or a slab legitimately extends past its cell along the vacuum direction.
+// Trajectory-like data: >10% of atoms far outside the unit cell along a periodic axis (a
+// slab may extend past its vacuum axis). Image-atom generation is skipped for such structures.
 const is_scattered_trajectory = (sites: Site[], pbc: Pbc): boolean => {
   const atoms_outside_cell = sites.filter(({ abc }) =>
     abc.some((coord, axis) => pbc[axis] && (coord < -0.1 || coord > 1.1)),
@@ -81,9 +80,8 @@ export function find_image_atoms(structure: AnyStructure): [number, Vec3, Vec3, 
   const lattice_norm = Math.max(...vec_lens)
   const displacement_eps_sq = (1e-10 * lattice_norm) ** 2
 
-  // Boundary tolerance: physical 0.5 Å from a cell face as fractional per-axis, so large cells
-  // (MOFs) don't over-generate. Measured along the cell heights, not vector lengths, so skewed
-  // cells keep the full reach.
+  // Boundary tolerance: 0.5 Å from a cell face (along the cell heights) as fractional
+  // per-axis, so large cells (MOFs) don't over-generate
   const PHYSICAL_TOLERANCE = 0.5 // Å
   const tolerances = math.frac_cutoff_per_axis(lattice_vecs, PHYSICAL_TOLERANCE)
 

@@ -136,20 +136,16 @@ function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
 }
 
 // Region, boundary and special-point ids key the rendered SVG elements (and gradient ids), so
-// each must be unique within its kind
-export function assert_unique_ids(data: PhaseDiagramData): void {
-  const kinds = {
-    region: data.regions,
-    boundary: data.boundaries,
-    special_point: data.special_points ?? [],
-  }
+// each must be unique within its kind. Returns an error message for the first repeat, else null.
+export function find_duplicate_id(data: PhaseDiagramData): string | null {
+  const { regions, boundaries, special_points = [] } = data
+  const kinds = { region: regions, boundary: boundaries, special_point: special_points }
   for (const [kind, items] of Object.entries(kinds)) {
-    const seen = new Set<string>()
-    for (const { id } of items) {
-      if (seen.has(id)) throw new Error(`Duplicate ${kind} id "${id}"`)
-      seen.add(id)
-    }
+    const ids = items.map(({ id }) => id)
+    const repeat = ids.find((id, idx) => ids.indexOf(id) !== idx)
+    if (repeat !== undefined) return `Duplicate ${kind} id "${repeat}"`
   }
+  return null
 }
 
 // Build full PhaseDiagramData from compact DiagramInput JSON format
@@ -188,6 +184,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     ...(meta.x_axis_label && { x_axis_label: meta.x_axis_label }),
     ...(meta.y_axis_label && { y_axis_label: meta.y_axis_label }),
   }
-  assert_unique_ids(data)
+  const duplicate = find_duplicate_id(data)
+  if (duplicate) throw new Error(duplicate)
   return data
 }

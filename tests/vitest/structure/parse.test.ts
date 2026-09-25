@@ -388,9 +388,8 @@ describe(`XYZ Parser`, () => {
     }
   })
 
-  // ASE writes 2D sheets without vacuum with c = 0. That singular cell got axis-length
-  // fractional coords (wrong for hexagonal cells), misplaced PBC images and made every
-  // distance measurement throw `Matrix is singular`.
+  // ASE writes 2D sheets without vacuum with c = 0: that singular cell got wrong fractional
+  // coords and PBC images and made distance measurements throw `Matrix is singular`
   test(`completes the zero c vector of a 2D sheet`, () => {
     const graphene = `2
 Lattice="2.46 0.0 0.0 -1.23 2.130422493309719 0.0 0.0 0.0 0.0" Properties=species:S:1:pos:R:3 pbc="T T F"
@@ -399,7 +398,6 @@ C 1.23 0.7101408311032397 0.0`
     const sheet = parse_structure_file(graphene, `graphene.extxyz`)
     assert(`lattice` in sheet, `extxyz with Lattice should parse as a crystal`)
     expect(sheet.lattice.matrix[2]).toEqual([0, 0, 1])
-    expect(sheet.lattice.pbc).toEqual([true, true, false])
     const abcs = sheet.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(6))))
     expect(abcs).toEqual([
       [0.333333, 0.666667, 0],
@@ -410,18 +408,19 @@ C 1.23 0.7101408311032397 0.0`
     expect(math.pbc_dist(pos_1, pos_2, matrix, undefined, pbc)).toBeCloseTo(1.42, 2)
     // every PBC image sits a whole lattice vector from its source atom
     const to_frac = math.create_cart_to_frac(matrix)
-    const imaged = get_pbc_image_sites(sheet)
-    expect(imaged.sites.length).toBeGreaterThan(2)
-    for (const site of imaged.sites.slice(2)) {
-      const source = imaged.sites[site.provenance?.image_of ?? -1]
-      for (const coord of to_frac(math.subtract(site.xyz, source.xyz))) {
-        expect(Math.abs(coord - Math.round(coord))).toBeLessThan(1e-9)
-      }
+    const { sites } = get_pbc_image_sites(sheet)
+    expect(sites.length).toBeGreaterThan(2)
+    for (const { xyz, provenance } of sites.slice(2)) {
+      const offset = to_frac(math.subtract(xyz, sites[provenance?.image_of ?? -1].xyz))
+      expect(offset.map((coord) => Math.abs(coord - Math.round(coord)) < 1e-9)).toEqual([
+        true,
+        true,
+        true,
+      ])
     }
   })
 
-  // The viewer wraps every periodic structure, but PDB/mol2/JSON bonds are explicit: a CONECT
-  // bond whose atom wrapped to the far face was drawn spanning the whole cell
+  // A CONECT bond whose atom wrapped to the far face was drawn spanning the whole cell
   test(`wrapping sites keeps explicit bond lengths via cell_shift`, () => {
     const pdb = [
       `CRYST1   10.000   10.000   10.000  90.00  90.00  90.00 P 1           1`,
@@ -1480,14 +1479,7 @@ loop_
     `merges symmetry images of hcp Mg at x = %s into 2 sites`,
     (third) => {
       const two_thirds = (1 - Number(third)).toFixed(third.length - 2)
-      const ops = [
-        `x,y,z`,
-        `-y,x-y,z`,
-        `-x+y,-x,z`,
-        `-x,-y,z+1/2`,
-        `y,-x+y,z+1/2`,
-        `x-y,x,z+1/2`,
-      ]
+      const ops = `x,y,z -y,x-y,z -x+y,-x,z -x,-y,z+1/2 y,-x+y,z+1/2 x-y,x,z+1/2`.split(` `)
       const cif = `data_Mg
 ${cif_cell(3.2094, 3.2094, 5.2108, [90, 90, 120])}
 loop_

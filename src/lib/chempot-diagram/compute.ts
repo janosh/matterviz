@@ -420,14 +420,13 @@ function compute_domains(
   return Object.fromEntries(Object.entries(domains).filter(([, domain]) => domain.length > 0))
 }
 
-// Whether a domain coordinate is the artificial default_min_limit bound rather than a real
-// vertex (pymatgen's np.isclose(col, default_min_limit) with its default tolerances). The
-// padding width must not enter: a real vertex 0.8 eV above the floor is still a real vertex.
+// Whether a coordinate is the artificial default_min_limit bound, not a real vertex near it
+// (pymatgen's np.isclose(col, default_min_limit) with default tolerances)
 const at_min_limit = (val: number, default_min_limit: number): boolean =>
   Math.abs(val - default_min_limit) <= 1e-8 + 1e-5 * Math.abs(default_min_limit)
 
-// Apply element padding: replace coordinates at default_min_limit with actual_min - padding
-// for cleaner visual bounds. Single pass over all points.
+// Apply element padding: replace coordinates close to default_min_limit with
+// actual_min - padding for cleaner visual bounds. Single pass over all points.
 export function apply_element_padding(
   domains: Record<string, number[][]>,
   elem_indices: number[],
@@ -1047,27 +1046,23 @@ export function compute_chempot_diagram(
   )
   const nd_domains = compute_domains(hyperplanes, compute_lims, hyperplane_entries)
 
-  // Project domain vertices from N-D to display axes (the identity in subsystem mode, where
-  // compute_elements is display_elements)
+  // Project domain vertices from N-D to display axes (column extraction; the identity in
+  // subsystem mode, where compute_elements is display_elements)
   return project_chempot_diagram(
     { domains: nd_domains, elements: compute_elements, lims: compute_lims },
     display_elements,
   )
 }
 
-// Column extraction of a diagram onto a subset of its axes, in the given order. Projections
-// of one N-D diagram (the quaternary+ grid's ternary panels) share a single computation.
+// Column extraction of a diagram onto a subset of its axes, in the given order
 export function project_chempot_diagram(
   data: ChemPotDiagramData,
   elements: readonly string[],
 ): ChemPotDiagramData {
   const col_indices = elements.map((element) => {
     const col_idx = data.elements.indexOf(element)
-    if (col_idx === -1) {
-      throw new Error(
-        `Cannot project chemical potential diagram onto ${element}: not among ${data.elements.join(`, `)}`,
-      )
-    }
+    if (col_idx === -1)
+      throw new Error(`Cannot project onto ${element}: not in ${data.elements}`)
     return col_idx
   })
   return {

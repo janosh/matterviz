@@ -17,7 +17,6 @@ import {
   get_image_source_idx,
   get_orig_site_idx,
   get_site,
-  is_image_site,
   numeric_sites,
   NumericSites,
   site_count,
@@ -184,10 +183,8 @@ export const normalize_structure_bond = (
   return { ...bond, order }
 }
 
-// Explicit bonds after wrapping moved their sites by whole lattice vectors: site i moved by
-// `site_shift(i)` (integer lattice vectors, undefined = unmoved), so bond i -> j + S keeps its
-// geometry as i -> j + (S + k_i - k_j). Wrapping sites without this stretched every bond that
-// crossed a cell face into one spanning the cell.
+// Explicit bonds after site i moved by whole lattice vectors `site_shift(i)` (undefined =
+// unmoved): bond i -> j + S keeps its geometry as i -> j + (S + k_i - k_j)
 export function shift_bonds_for_moved_sites(
   bonds: readonly StructureBond[],
   site_shift: (site_idx: number) => Vec3 | undefined,
@@ -1634,7 +1631,6 @@ function bond_columns(
     ]),
   )
   const matched_keys = new Set<string>()
-  const has_image_sites = explicit.size > 0 && structure.sites.some(is_image_site)
   const indices = new Uint32Array((count + explicit.size) * 2)
   const lengths = new Float64Array(count + explicit.size)
   const orders = new Uint8Array(count + explicit.size)
@@ -1672,20 +1668,14 @@ function bond_columns(
       image_columns[image_offset++] = shift_c
     }
     if (explicit.size) {
-      // Explicit bonds name unit-cell sites, while a perceived bond may end on a PBC image
-      // atom: key it by the image's source site and shift so the explicit bond matches
-      // every copy it draws as (a bond crossing a face and its mirror) instead of being
-      // appended once more on top of them
-      const key = rendered_bond_key_for(
-        canonicalize_bond_target(
-          {
-            site_idx_1,
-            site_idx_2,
-            cell_shift: shifted ? [shift_a, shift_b, shift_c] : undefined,
-          },
-          has_image_sites ? structure.sites : undefined,
-        ),
+      // Explicit bonds name unit-cell sites: key a bond ending on a PBC image atom by its
+      // source site so the explicit bond tags every copy it draws as instead of adding one
+      const cell_shift: Vec3 | undefined = shifted ? [shift_a, shift_b, shift_c] : undefined
+      const target = canonicalize_bond_target(
+        { site_idx_1, site_idx_2, cell_shift },
+        structure.sites,
       )
+      const key = rendered_bond_key_for(target)
       const metadata = explicit.get(key)
       if (metadata) {
         orders[bond_count] = BOND_ORDERS.indexOf(metadata.order)

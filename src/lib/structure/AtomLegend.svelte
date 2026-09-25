@@ -340,6 +340,7 @@
         elem) as ElementSymbol}
       {@const is_hidden = hidden_elements.has(displayed_elem)}
       {@const color = palette.colors[displayed_elem]}
+      {@const visibility_label = `${is_hidden ? `Show` : `Hide`} ${displayed_elem} atoms`}
       <div class="legend-item">
         <label
           title="{element_by_symbol.get(displayed_elem)?.name ?? ``}{displayed_elem !== elem
@@ -373,10 +374,8 @@
           class={['toggle-visibility', { 'element-hidden': is_hidden }]}
           onclick={(event) =>
             (hidden_elements = toggle_visibility(hidden_elements, displayed_elem, event))}
-          title={is_hidden ? `Show ${displayed_elem} atoms` : `Hide ${displayed_elem} atoms`}
-          aria-label={is_hidden
-            ? `Show ${displayed_elem} atoms`
-            : `Hide ${displayed_elem} atoms`}
+          title={visibility_label}
+          aria-label={visibility_label}
           {@attach tooltip({ placement: `top` })}
           type="button"
         >

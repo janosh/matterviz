@@ -89,8 +89,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   const overrides = create_chempot_overrides(opts.config, keys, opts.custom_defaults)
   const { resolve } = overrides
 
-  // Primitive deriveds, so a parent passing a fresh config object (or changing display keys)
-  // doesn't re-slice the entries and, through them, re-run the worker
+  // Primitives, so a fresh config object doesn't re-slice the entries (and re-run the worker)
   const interpolate_temperature = $derived(opts.config().interpolate_temperature)
   const max_interpolation_gap = $derived(opts.config().max_interpolation_gap)
   const slice = $derived(
@@ -106,9 +105,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
 
   // Only what compute_chempot_diagram reads, so display toggles (labels, padding, overlays)
   // never re-run the worker; the previous diagram stays on screen while a replacement computes.
-  // A projection onto a subset of the data's elements (grid panels, the 3D projection picker)
-  // computes the full N-D diagram, identical for every panel so the worker client shares one
-  // request, and extracts the columns here.
+  // Projections onto a subset of the elements (grid panels, 3D picker) share one full N-D
+  // computation and extract their columns below.
   const requested_elements = $derived(opts.elements?.() ?? opts.config().elements)
   const projection = $derived.by((): string[] | null => {
     const data_elements = entry_elements(slice.temp_filtered_entries)
@@ -124,9 +122,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     limits: opts.config().limits,
     elements: projection ? undefined : requested_elements,
   })
-  // Value identity for the effect below: a recreated but equal config must not recompute
+  // A recreated but equal config must not recompute
   const compute_key = $derived(JSON.stringify(compute_config))
-  // Result of the last computation (the full N-D diagram when projecting)
   let computed = $state.raw<ChemPotDiagramData | null>(null)
   let computing = $state(false)
   let error = $state<string | null>(null)
@@ -140,7 +137,6 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       error = null
       return undefined
     }
-    // Aborting on cleanup drops superseded requests instead of queueing them in the worker
     const controller = new AbortController()
     computing = true
     compute_chempot_async(entries, config, { signal: controller.signal })
@@ -160,9 +156,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       })
     return () => controller.abort()
   })
-  // Switching between projections of one system (e.g. the 3D picker's triplets) leaves
-  // compute_config unchanged, so the columns are extracted here rather than in the effect. A
-  // previous system's result still on screen during a recompute may lack the new axes.
+  // A previous system's result still shown during a recompute may lack the projection's axes
   const diagram_data = $derived.by((): ChemPotDiagramData | null => {
     const full = computed
     if (!full) return null

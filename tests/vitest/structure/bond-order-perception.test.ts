@@ -11,6 +11,13 @@ import { make_rng } from '../numeric-helpers'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
 
+// `count` points on a planar circle
+const circle = (count: number, radius: number, z = 0): Vec3[] =>
+  Array.from({ length: count }, (_, idx) => {
+    const angle = (2 * Math.PI * idx) / count
+    return [Math.cos(angle) * radius, Math.sin(angle) * radius, z]
+  })
+
 function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
   const sites = elements.map((element, idx) => ({
     species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -64,6 +71,10 @@ describe(`perceive_bond_orders on small molecules`, () => {
     { name: `water: all single`, elements: [`O`, `H`, `H`],
       coords: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]], edges: [[0, 1], [0, 2]],
       expected: [1, 1], perceived: true },
+    // a greedy raise of the central bond, listed first, stranded both terminal carbons
+    { name: `butadiene with its central bond first`, elements: [`C`, `C`, `C`, `C`, ...h_fan(6)],
+      coords: circle(10, 3), edges: [[1, 2], [0, 1], [2, 3], [0, 4], [0, 5], [1, 6], [2, 7], [3, 8],
+        [3, 9]], expected: [1, 2, 2, 1, 1, 1, 1, 1, 1], perceived: true },
     { name: `carbonate CO3^2-: one C=O double, two C-O single`, elements: [`C`, `O`, `O`, `O`],
       coords: [[0, 0, 0], [1.28, 0, 0], [-0.64, 1.11, 0], [-0.64, -1.11, 0]],
       edges: [[0, 1], [0, 2], [0, 3]], charge: -2, expected: [2, 1, 1], perceived: true },
@@ -140,27 +151,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
 
 describe(`aromaticity`, () => {
   test(`benzene: all 6 ring bonds flagged aromatic`, () => {
-    const ring_pos = (vertex_idx: number): [number, number, number] => [
-      Math.cos((vertex_idx * Math.PI) / 3) * 1.39,
-      Math.sin((vertex_idx * Math.PI) / 3) * 1.39,
-      0,
-    ]
-    const coords = [
-      ring_pos(0),
-      ring_pos(1),
-      ring_pos(2),
-      ring_pos(3),
-      ring_pos(4),
-      ring_pos(5),
-    ]
-    const { sites, bonds } = make_input([`C`, `C`, `C`, `C`, `C`, `C`], coords, [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 4],
-      [4, 5],
-      [5, 0],
-    ])
+    const { sites, bonds } = make_input(carbons(6), circle(6, 1.39), ring(0, 6))
     const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(result.every((bond) => bond.aromatic_ring !== undefined)).toBe(true)
     expect(result.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
@@ -204,7 +195,8 @@ describe(`aromaticity`, () => {
   )
 
   // The greedy raise stranded atoms on a bad first pick (naphthalene failed for 158 of 200
-  // shuffles) and the spanning-tree ring basis could skip the benzene ring of a fused system
+  // shuffles) and the spanning-tree ring basis could skip the benzene ring of a fused system.
+  // Kekulé orders of shared fused-ring bonds must still saturate every atom.
   test.each([
     { name: `naphthalene`, molecule: naphthalene, n_aromatic: 11 },
     { name: `indane`, molecule: indane, n_aromatic: 6 },
@@ -223,42 +215,34 @@ describe(`aromaticity`, () => {
       const edges = molecule.edges
         .map(([idx_1, idx_2]): Vec2 => [new_idx[idx_1], new_idx[idx_2]])
         .toSorted(() => rng() - 0.5)
-      const coords = elements.map((_, idx): Vec3 => {
-        const angle = (2 * Math.PI * idx) / n_atoms
-        return [Math.cos(angle) * 5, Math.sin(angle) * 5, 0]
-      })
-      const { sites, bonds } = make_input(elements, coords, edges)
+      const { sites, bonds } = make_input(elements, circle(n_atoms, 5), edges)
       const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
       expect(result.every((bond) => bond.perceived)).toBe(true)
       expect(result.filter((bond) => bond.bond_order === `aromatic`)).toHaveLength(n_aromatic)
+      const valence = elements.map(() => 0)
+      for (const { site_idx_1, site_idx_2, kekule_order, bond_order } of result) {
+        valence[site_idx_1] += Number(kekule_order ?? bond_order)
+        valence[site_idx_2] += Number(kekule_order ?? bond_order)
+      }
+      expect(valence).toEqual(elements.map((element) => (element === `C` ? 4 : 1)))
     }
-  })
-
-  test(`butadiene with its central bond listed first gets two double bonds`, () => {
-    // oxfmt-ignore
-    const { elements, edges } = with_hydrogens(carbons(4), [[1, 2], [0, 1], [2, 3]], [2, 1, 1, 2])
-    const coords = elements.map((_, idx): Vec3 => [idx * 1.4, (idx % 2) * 0.8, 0])
-    const { sites, bonds } = make_input(elements, coords, edges)
-    const orders = perceive_bond_orders(sites, bonds, {}).map((bond) => bond.bond_order)
-    expect(orders.slice(0, 3)).toEqual([1, 2, 2])
   })
 
   // max_atoms bounds each fragment, not the whole structure
   test(`perceives every molecule of a molecular crystal larger than max_atoms`, () => {
     const benzene = with_hydrogens(carbons(6), ring(0, 6), Array(6).fill(1))
     const n_molecules = 500
-    const elements = Array.from({ length: n_molecules }, () => benzene.elements).flat()
-    const edges = Array.from({ length: n_molecules }, (_, mol_idx) =>
-      benzene.edges.map(([idx_1, idx_2]): Vec2 => [
-        idx_1 + mol_idx * 12,
-        idx_2 + mol_idx * 12,
-      ]),
-    ).flat()
-    const coords = elements.map((_, idx): Vec3 => {
-      const angle = (2 * Math.PI * (idx % 12)) / 12
-      return [Math.cos(angle) * 2, Math.sin(angle) * 2, Math.floor(idx / 12) * 4]
-    })
-    const { sites, bonds } = make_input(elements, coords, edges)
+    const molecules = Array.from({ length: n_molecules }, (_, mol_idx) => mol_idx)
+    const { sites, bonds } = make_input(
+      molecules.flatMap(() => benzene.elements),
+      molecules.flatMap((mol_idx) => circle(12, 2, mol_idx * 4)),
+      molecules.flatMap((mol_idx) =>
+        benzene.edges.map(([idx_1, idx_2]): Vec2 => [
+          idx_1 + mol_idx * 12,
+          idx_2 + mol_idx * 12,
+        ]),
+      ),
+    )
     const result = perceive_bond_orders(sites, bonds, { max_atoms: 5000 })
     expect(sites).toHaveLength(6000)
     expect(result.filter((bond) => bond.bond_order === `aromatic`)).toHaveLength(
@@ -372,46 +356,14 @@ describe(`aromaticity`, () => {
     },
   )
 
-  test(`naphthalene: fused rings preserve shared-bond kekule order`, () => {
-    const { elements, edges } = naphthalene
-    const coords = elements.map((_, idx): Vec3 => {
-      const angle = (2 * Math.PI * idx) / elements.length
-      return [Math.cos(angle) * 4, Math.sin(angle) * 4, 0]
-    })
-    const { sites, bonds } = make_input(elements, coords, edges)
-    const result = perceive_bond_orders(sites, bonds)
-    const ring_bonds = result.filter((bond) => bond.site_idx_2 < 10)
-    expect(ring_bonds.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
-    expect(new Set(ring_bonds.map((bond) => bond.aromatic_ring)).size).toBeGreaterThanOrEqual(
-      2,
-    )
-    // the shared 0-1 bond keeps the order its first ring recorded, so the Kekulé orders still
-    // saturate every carbon
-    const valence = Array(10).fill(0)
-    for (const { site_idx_1, site_idx_2, kekule_order, bond_order } of result) {
-      const order = Number(kekule_order ?? bond_order)
-      valence[site_idx_1] += order
-      if (site_idx_2 < 10) valence[site_idx_2] += order
-    }
-    expect(valence).toEqual(Array(10).fill(4))
-  })
-
   test.each([
     { n_atoms: 4, radius: 1.45, name: `cyclobutadiene` },
     { n_atoms: 8, radius: 1.8, name: `cyclooctatetraene` },
   ])(`$name is not flagged aromatic`, ({ n_atoms, radius }) => {
-    const coords: [number, number, number][] = Array.from(
-      { length: n_atoms },
-      (_, vertex_idx): [number, number, number] => [
-        Math.cos((vertex_idx * 2 * Math.PI) / n_atoms) * radius,
-        Math.sin((vertex_idx * 2 * Math.PI) / n_atoms) * radius,
-        0,
-      ],
-    )
     const { sites, bonds } = make_input(
-      Array.from({ length: n_atoms }, (): ElementSymbol => `C`),
-      coords,
-      Array.from({ length: n_atoms }, (_, idx): Vec2 => [idx, (idx + 1) % n_atoms]),
+      carbons(n_atoms),
+      circle(n_atoms, radius),
+      ring(0, n_atoms),
     )
     const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(result.every((bond) => bond.bond_order !== `aromatic`)).toBe(true)

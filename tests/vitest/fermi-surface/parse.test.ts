@@ -201,11 +201,9 @@ END_BLOCK_BANDGRID_3D
       },
     )
 
-    // grid_shift is where index 0 sits, in grid steps. lshift=2 places point i at (i + ½)/n.
-    // lshift=0 is a Monkhorst-Pack mesh starting at the most negative k, point i at
-    // (2i − n + 1)/(2n) = (i + ½ − n/2)/n for odd and even n alike (−1/3, 0, 1/3 for n=3) —
-    // FermiSurfer's parity-dependent shiftk only works together with its index rotation by
-    // ⌊(n+1)/2⌋.
+    // grid_shift is index 0's position in grid steps. lshift=2 puts point i at (i + ½)/n,
+    // lshift=0 (Monkhorst-Pack) at (2i − n + 1)/(2n) = (i + ½ − n/2)/n for any n parity
+    // (FermiSurfer's parity-dependent shiftk only works with its ⌊(n+1)/2⌋ index rotation)
     test.each([
       [2, `3 3 3`, [0.5, 0.5, 0.5]],
       [0, `3 3 3`, [-1, -1, -1]],
@@ -400,7 +398,6 @@ END_BLOCK_BANDGRID_3D
         '@module': `ifermi.surface`,
         '@class': `FermiSurface`,
         '@version': `0.3.0`,
-        // keyed by spin; the band is each surface's band_idx
         isosurfaces: {
           1: [
             {
@@ -438,7 +435,6 @@ END_BLOCK_BANDGRID_3D
       const result = parse_fermi_file(ifermi_json, `fs_test.json`)
       if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
 
-      expect(result.isosurfaces).toHaveLength(3)
       expect(result.k_lattice).toEqual([
         [2.0, 0.0, 0.0],
         [0.0, 2.0, 0.0],
@@ -470,45 +466,37 @@ END_BLOCK_BANDGRID_3D
       )
       if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
       const sheets = result.isosurfaces.map((iso) => `${iso.band_index}${iso.spin}`)
-      expect(sheets).toEqual([
-        `5up`,
-        `6up`,
-        `6up`,
-        `7up`,
-        `7up`,
-        `5down`,
-        `6down`,
-        `6down`,
-        `7down`,
-        `7down`,
-      ])
+      expect(sheets.join(` `)).toBe(`5up 6up 6up 7up 7up 5down 6down 6down 7down 7down`)
       expect(result.metadata.n_bands).toBe(3)
     })
 
     test.each([
-      [`a non-spin key`, { 5: [{ vertices: [], faces: [], band_idx: 5 }] }, /keyed by spin/],
+      [`a non-spin key`, { 5: [{ ...triangle_mesh, band_idx: 5 }] }, /keyed by spin/],
       [
         `a missing band_idx`,
-        { 1: [{ vertices: [], faces: [] }] },
+        { 1: [triangle_mesh] },
         /band_idx must be a non-negative integer/,
       ],
       [
         `properties per vertex instead of per face`,
+        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [1, 2, 3] }] },
+        /one value per face \(1\), got 3/,
+      ],
+      [
+        `faces referencing missing vertices`,
         {
           1: [
             {
-              vertices: [
-                [0, 0, 0],
-                [1, 0, 0],
-                [0, 1, 0],
-              ],
-              faces: [[0, 1, 2]],
+              ...triangle_mesh,
               band_idx: 0,
-              properties: [1, 2, 3],
+              faces: [
+                [0, 1, 2],
+                [99, 100, 101],
+              ],
             },
           ],
         },
-        /one value per face \(1\), got 3/,
+        /references vertex 99 of a 3-vertex mesh/,
       ],
     ])(`rejects IFermi JSON with %s`, (_label, isosurfaces, message) => {
       const json = JSON.stringify({
@@ -517,29 +505,6 @@ END_BLOCK_BANDGRID_3D
         isosurfaces,
       })
       expect(() => parse_fermi_file(json, `bad.json`)).toThrow(message)
-    })
-
-    test(`rejects IFermi JSON whose faces reference missing vertices`, () => {
-      const malformed_ifermi_json = JSON.stringify({
-        '@module': `ifermi.surface`,
-        '@class': `FermiSurface`,
-        isosurfaces: {
-          1: [
-            {
-              ...triangle_mesh,
-              band_idx: 0,
-              // Face indices 99, 100, 101 are out of bounds (only 3 vertices exist)
-              faces: [
-                [0, 1, 2],
-                [99, 100, 101],
-              ],
-            },
-          ],
-        },
-      })
-      expect(() => parse_fermi_file(malformed_ifermi_json, `malformed.json`)).toThrow(
-        /references vertex 99 of a 3-vertex mesh/,
-      )
     })
   })
 

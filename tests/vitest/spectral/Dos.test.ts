@@ -163,8 +163,6 @@ describe(`Dos component`, () => {
     expect(select.value).toBe(`THz`)
   })
 
-  // reference_frequency and sigma live in the data unit (THz) whatever the axis displays,
-  // matching how Bands reads them
   it.each([`THz`, `cm^-1`, `meV`] as const)(
     `draws a THz reference line and shows a THz sigma in %s`,
     async (units) => {

@@ -75,11 +75,10 @@ function parse_coordinate_line(line: string): number[] {
 // published coordinates are rounded (0.3333 for 1/3), and no two real atoms sit this close.
 const CIF_SITE_TOLERANCE = 0.05
 
-// Fractional positions in [0, 1) bucketed by cell height, so finding a site within
-// `tolerance` Å (minimum image) checks the 27 neighbouring buckets instead of every site
+// Fractional positions in [0, 1) bucketed at least `tolerance` Å wide per cell height, so a
+// site within `tolerance` (minimum image) is found in the 27 neighbouring buckets
 const create_frac_site_index = (lattice_matrix: math.Matrix3x3, tolerance: number) => {
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-  // A bucket at least `tolerance` wide along each cell height keeps any match within reach
   const n_bins = math
     .cell_heights(lattice_matrix)
     .map((height) =>
@@ -88,39 +87,31 @@ const create_frac_site_index = (lattice_matrix: math.Matrix3x3, tolerance: numbe
   const buckets = new Map<string, { abc: Vec3; site_idx: number }[]>()
   const bins_of = (abc: Vec3): number[] =>
     abc.map((coord, axis) => Math.min(Math.floor(coord * n_bins[axis]), n_bins[axis] - 1))
-  const neighbor_keys = (abc: Vec3): Set<string> => {
-    const [bin_a, bin_b, bin_c] = bins_of(abc)
-    const wrap = (bin: number, axis: number) => (bin + n_bins[axis]) % n_bins[axis]
-    const keys = new Set<string>()
-    for (const off_a of [-1, 0, 1]) {
-      for (const off_b of [-1, 0, 1]) {
-        for (const off_c of [-1, 0, 1]) {
-          keys.add(
-            `${wrap(bin_a + off_a, 0)},${wrap(bin_b + off_b, 1)},${wrap(bin_c + off_c, 2)}`,
-          )
-        }
-      }
-    }
-    return keys
-  }
+  const offsets = [-1, 0, 1]
   return {
     find: (abc: Vec3): number | undefined => {
-      for (const key of neighbor_keys(abc)) {
-        for (const entry of buckets.get(key) ?? []) {
-          const delta = abc.map((coord, axis) => {
-            const diff = coord - entry.abc[axis]
-            return diff - Math.round(diff)
-          }) as Vec3
-          if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
+      const bins = bins_of(abc)
+      for (const off_a of offsets) {
+        for (const off_b of offsets) {
+          for (const off_c of offsets) {
+            const key = [off_a, off_b, off_c]
+              .map((offset, axis) => (bins[axis] + offset + n_bins[axis]) % n_bins[axis])
+              .join(`,`)
+            for (const entry of buckets.get(key) ?? []) {
+              const delta = abc.map((coord, axis) => {
+                const diff = coord - entry.abc[axis]
+                return diff - Math.round(diff)
+              }) as Vec3
+              if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
+            }
+          }
         }
       }
       return undefined
     },
     add: (abc: Vec3, site_idx: number): void => {
       const key = bins_of(abc).join(`,`)
-      const bucket = buckets.get(key)
-      if (bucket) bucket.push({ abc, site_idx })
-      else buckets.set(key, [{ abc, site_idx }])
+      buckets.set(key, [...(buckets.get(key) ?? []), { abc, site_idx }])
     },
   }
 }
@@ -373,10 +364,8 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
     ]
   })
 
-// Positions of `coords` under every symmetry operation, each also offset by every
-// lattice-centering translation, wrapped into [0, 1). Coincident images are merged by the
-// caller within CIF_SITE_TOLERANCE, which absorbs rounded coordinates and float error from
-// compound ops like x-y, -x+y.
+// Positions of `coords` under every symmetry op and centering translation, wrapped into
+// [0, 1). The caller merges coincident images within CIF_SITE_TOLERANCE.
 const apply_symmetry_ops = (
   coords: Vec3,
   symmetry_ops: ParsedSymOp[],
@@ -798,8 +787,7 @@ export const parse_cif = (content: string): Crystal => {
       const coords = wrap_to_unit_cell(
         atom.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
       )
-      // The row's first site keeps its _atom_site_label; generated images get a `_k` suffix
-      // so labels stay unique and a CIF written back out still reads as the same refinement
+      // the row's first site keeps its label, later images get a unique `_k` suffix
       let n_row_sites = 0
       for (const abc of apply_symmetry_ops(coords, ops_to_use, extra_centering)) {
         const site_idx = site_index.find(abc)
@@ -1015,7 +1003,7 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   })
   const bonds = structure.properties?.bonds
   if (!bonds) return { ...structure, sites }
-  // Explicit bonds (PDB CONECT, mol2, pymatgen JSON) keep their geometry across the wrap
+  // explicit bonds (PDB CONECT, mol2, pymatgen JSON) keep their geometry across the wrap
   const moved_bonds = shift_bonds_for_moved_sites(bonds, (site_idx) => site_shifts[site_idx])
   return { ...structure, sites, properties: { ...structure.properties, bonds: moved_bonds } }
 }

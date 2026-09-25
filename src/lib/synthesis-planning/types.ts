@@ -169,11 +169,9 @@ export interface SelectivityMetrics {
 export interface RouteThermodynamics {
   temperature: number
   partial_pressures: Partial<Record<GasSpecies, number>>
-  // Temperature intervals [T_min, T_max] (K, inclusive, 1 K grid over 0–2000 K) in which the
-  // reaction energy is negative at these partial pressures. Only gas chemical potentials vary
-  // with T: releasing gas makes a reaction downhill above a lower bound, taking gas up below an
-  // upper bound; an end at 0 or 2000 K is the scan edge, not a bound. Without gas exchange the
-  // energy is constant, so this is [[0, 2000]] or []. Not a firing schedule.
+  // Inclusive [T_min, T_max] intervals (K, 1 K grid over 0–2000 K) where the reaction energy is
+  // negative at these partial pressures: gas release bounds them below, uptake above; an end at
+  // 0 or 2000 K is the scan edge. Without gas exchange [[0, 2000]] or []. Not a firing schedule.
   downhill_windows: [number, number][]
   // Moles of each gas per formula unit of target; positive = released, negative = consumed
   gas_exchange: Partial<Record<GasSpecies, number>>

@@ -221,18 +221,18 @@ test(`display toggles and partial number input never recompute the diagram`, asy
 })
 
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave): the
-// camera-start callback must drop an unpinned tooltip while a click-pinned one survives
-test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, async () => {
+// camera-start callback must drop an unpinned tooltip while a click-pinned one survives, and
+// the pinned one re-reads its domain after a recompute
+test(`camera start clears an unpinned domain tooltip, a pinned one survives and follows recomputes`, async () => {
   // plain object: the test only reads the bound value back, no reactivity needed
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
-  const scene = (
-    await mount_diagram<{
-      hover_meshes: { formula: string }[]
-      on_domain_hover: (mesh: unknown, event: unknown) => void
-      on_domain_press: (mesh: unknown, event: unknown) => void
-      on_camera_start: () => void
-    }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
-  )()
+  const get_scene = await mount_diagram<{
+    hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
+    on_domain_hover: (mesh: unknown, event: unknown) => void
+    on_domain_press: (mesh: unknown, event: unknown) => void
+    on_camera_start: () => void
+  }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
+  const scene = get_scene()
   const [domain] = scene.hover_meshes
   const event = {
     nativeEvent: new PointerEvent(`pointerdown`),
@@ -252,6 +252,18 @@ test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, as
   scene.on_camera_start()
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)
+
+  const pinned_ranges = bound.hover_info?.axis_ranges
+  document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
+  flushSync()
+  const formal = [...document.querySelectorAll(`.draggable-pane label`)]
+    .find((label) => label.textContent?.includes(`Formal chempots`))
+    ?.querySelector(`input`)
+  formal?.click() // absolute chempots: recompute
+  await vi.waitFor(() => expect(bound.hover_info?.axis_ranges).not.toEqual(pinned_ranges))
+  const fresh = get_scene().hover_meshes.find(({ formula }) => formula === domain.formula)
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
 })
 
 // Each hull face lies on exactly one entry's hyperplane, so its owner is the domain whose

@@ -94,8 +94,7 @@
     label_scale: number
   } = $props()
 
-  // Registers the canvas' renderer, scene and camera so the PNG export can re-render the frame
-  bind_renderer()
+  bind_renderer() // lets the PNG export re-render the frame
 
   const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent

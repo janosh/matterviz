@@ -520,10 +520,8 @@ export function create_trajectory_session(
   let scrubbing = $state(false)
   let scrub_raf: number | undefined
   let scrub_settle: ReturnType<typeof setTimeout> | undefined
-  let pending_scrub: number | undefined
-  // The run a pending scrub index belongs to: a run swapped in before the next animation
-  // frame must not receive the old run's slider position
-  let scrub_run: TrajectoryRun | undefined
+  // With its run: a run swapped in before the next animation frame must not get the index
+  let pending_scrub: { idx: number; run: TrajectoryRun | undefined } | undefined
 
   // Not normalize_idx's map-to-0: `scrub(NaN)` must not silently jump the viewer to frame 0
   function commit_index(idx: number): void {
@@ -540,15 +538,14 @@ export function create_trajectory_session(
     scrub_raf = undefined
     scrub_settle = undefined
     pending_scrub = undefined
-    scrub_run = undefined
   }
 
   // Slider/pointer bursts: one index write per animation frame, "scrubbing" stays on until
   // the burst has been quiet for scrub_settle_ms so consumers can defer expensive work.
   function scrub(idx: number): void {
-    if (idx === pending_scrub && scrub_run === inputs.run()) return
-    pending_scrub = idx
-    scrub_run = inputs.run()
+    const scrub_run = inputs.run()
+    if (idx === pending_scrub?.idx && scrub_run === pending_scrub.run) return
+    pending_scrub = { idx, run: scrub_run }
     if (scrub_raf !== undefined) return
     scrubbing = true
     cancel_prefetch()
@@ -557,11 +554,9 @@ export function create_trajectory_session(
     scrub_raf = requestAnimationFrame(() => {
       scrub_raf = undefined
       const next = pending_scrub
-      const next_run = scrub_run
       pending_scrub = undefined
-      scrub_run = undefined
       try {
-        if (next !== undefined && next_run === inputs.run()) commit_index(next)
+        if (next && next.run === inputs.run()) commit_index(next.idx)
       } finally {
         scrub_settle = setTimeout(() => {
           scrub_settle = undefined
@@ -574,7 +569,7 @@ export function create_trajectory_session(
   }
 
   // Explicit navigation (keys, buttons, plot click, controller): settle immediately
-  function commit(idx = pending_scrub): void {
+  function commit(idx = pending_scrub?.idx): void {
     end_scrub()
     scrubbing = false
     if (idx !== undefined) commit_index(idx)

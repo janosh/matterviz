@@ -7,7 +7,7 @@ import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
 import { is_finite_vec3_like } from '$lib/math'
-import type { AnyStructure, Site } from '$lib/structure/index'
+import type { AnyStructure } from '$lib/structure/index'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -15,12 +15,7 @@ import {
   make_lattice,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import {
-  make_site,
-  numeric_sites,
-  NumericSites,
-  snapshot_topologies,
-} from '$lib/structure/site'
+import { make_site } from '$lib/structure/site'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
 
@@ -158,55 +153,15 @@ export const create_trajectory_frame = (
     site_properties,
     warn,
   )
+  // The cell volume is the one per-frame scalar every periodic format plots, so it is read
+  // off the lattice here once instead of being recomputed by each parser
   return {
     structure,
     step,
-    metadata: with_cell_volume(
-      metadata,
-      `lattice` in structure ? structure.lattice : undefined,
-    ),
+    metadata:
+      `lattice` in structure ? { ...metadata, volume: structure.lattice.volume } : metadata,
   }
 }
-
-// The cell volume is the one per-frame scalar every periodic format plots, so it is read
-// off the lattice once here instead of being recomputed by each parser
-const with_cell_volume = (
-  metadata: Record<string, unknown>,
-  lattice: { volume: number } | undefined,
-): Record<string, unknown> => (lattice ? { ...metadata, volume: lattice.volume } : metadata)
-
-// A frame that only feeds frame_property_row: step, metadata and lattice exactly as
-// create_trajectory_frame records them, with the atoms reduced to numeric-backed atomic
-// numbers so get_density counts them without decoding coordinates or building sites. Its
-// `sites` throw on access, so an extractor that starts to need atom data fails loudly.
-export const create_plot_row_frame = (
-  atomic_numbers: readonly number[],
-  lattice_matrix: math.Matrix3x3 | undefined,
-  pbc: Pbc | undefined,
-  step: number,
-  metadata: Record<string, unknown> = {},
-): TrajectoryFrame => {
-  let topology = plot_row_topologies.get(atomic_numbers)
-  if (!topology) {
-    convert_atomic_numbers(atomic_numbers) // the full decode's validation and message
-    topology = { numbers: Uint8Array.from(atomic_numbers) }
-    plot_row_topologies.set(atomic_numbers, topology)
-  }
-  const lattice = lattice_matrix && make_lattice(lattice_matrix, pbc)
-  const structure: AnyStructure = {
-    ...(lattice && { lattice }),
-    get sites(): Site[] {
-      throw new Error(`Plot-row frame at step ${step} has no decoded sites`)
-    },
-  }
-  numeric_sites.set(structure, new NumericSites(topology.numbers, new Float64Array(0), [], []))
-  snapshot_topologies.set(structure, topology)
-  return { structure, step, metadata: with_cell_volume(metadata, lattice) }
-}
-
-// Frames that share one atomic-numbers array (ASE writes it once, in frame 0) share its
-// validated copy and one topology identity, under which get_density counts elements once
-const plot_row_topologies = new WeakMap<readonly number[], { numbers: Uint8Array }>()
 
 // A strided preview keeps full-topology indices without scanning every atom's species.
 export const create_sampled_frame = (
@@ -271,10 +226,8 @@ export function calc_force_stats(
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
 }
 
-// A frame's per-atom forces when they are one finite 3-vector per atom, else null. Present
-// but unusable forces are dropped with a warning naming the frame and the mismatch, so the
-// force curve of a frame never vanishes without a word. `context` names the frame, e.g.
-// `pymatgen forces of frame 3`.
+// A frame's forces if they are one finite 3-vector per atom, else null, warning when present
+// but unusable. `context` names the frame, e.g. `pymatgen forces of frame 3`.
 export const checked_site_forces = (
   forces: unknown,
   n_atoms: number,

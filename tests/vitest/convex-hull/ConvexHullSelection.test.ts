@@ -310,27 +310,10 @@ describe(`convex hull replacement state`, () => {
   // 60 entries > label_threshold (50): unset label toggles get the large-dataset default
   // (hidden) and an unset threshold the auto value, but passed values are the caller's choice
   test.each([
-    [`nothing passed`, {}, { labels: [false, false], threshold_is: `auto` }],
-    [
-      `labels and threshold passed`,
-      {
-        show_stable_labels: true,
-        show_unstable_labels: true,
-        max_hull_dist_show_phases: 0.01,
-      },
-      { labels: [true, true], threshold_is: 0.01 },
-    ],
-    [
-      `only threshold passed`,
-      { max_hull_dist_show_phases: 0.01 },
-      { labels: [false, false], threshold_is: 0.01 },
-    ],
-    [
-      `only a label toggle passed`,
-      { show_unstable_labels: true },
-      { labels: [true, true], threshold_is: `auto` },
-    ],
-  ] as const)(`large datasets: %s`, async (_label, passed, expected) => {
+    [`nothing passed`, {}, [false, false], false],
+    [`only threshold passed`, { max_hull_dist_show_phases: 0.01 }, [false, false], true],
+    [`only a label toggle passed`, { show_unstable_labels: true }, [true, true], false],
+  ] as const)(`large datasets: %s`, async (_label, passed, labels, keeps_threshold) => {
     const entries = [
       make_phase({ Li: 1 }, 0),
       make_phase({ O: 1 }, 0),
@@ -347,10 +330,8 @@ describe(`convex hull replacement state`, () => {
       bind_props({ entries }, state as Partial<ComponentProps<typeof ConvexHull>>),
     )
     flushSync()
-    expect([state.show_stable_labels, state.show_unstable_labels]).toEqual(expected.labels)
-    if (expected.threshold_is === `auto`)
-      expect(state.max_hull_dist_show_phases).not.toBe(0.01)
-    else expect(state.max_hull_dist_show_phases).toBe(expected.threshold_is)
+    expect([state.show_stable_labels, state.show_unstable_labels]).toEqual(labels)
+    expect(state.max_hull_dist_show_phases === 0.01).toBe(keeps_threshold)
   })
 
   test.each([
@@ -659,23 +640,18 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
   )
 
   test(`2D energy coloring uses color_scale over the hull-distance range`, async () => {
-    const fills = async (color_scale?: `interpolateReds`) => {
-      document.body.replaceChildren()
-      const plot = await mount_sized(
-        ConvexHull,
-        { entries: magnetic_entries, color_scale },
-        { selector: `.scatter`, on_mount: track_component },
-      )
-      // ScatterPoint paints var(--point-fill-color) set on its wrapper
-      return [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)].map(
-        (element) => element.style.getPropertyValue(`--point-fill-color`).trim(),
-      )
-    }
-    const reds = await fills(`interpolateReds`)
+    const plot = await mount_sized(
+      ConvexHull,
+      { entries: magnetic_entries, color_scale: `interpolateReds` },
+      { selector: `.scatter`, on_mount: track_component },
+    )
+    // ScatterPoint paints var(--point-fill-color) set on its wrapper
+    const fills = [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)].map(
+      (element) => element.style.getPropertyValue(`--point-fill-color`).trim(),
+    )
     // the furthest entry (0.1 eV/atom) sits at the top of the [0, 0.1] domain: darkest red
-    expect(reds).toContain(interpolateReds(1))
-    expect(reds).toContain(interpolateReds(0))
-    expect(await fills()).not.toContain(interpolateReds(1))
+    expect(fills).toContain(interpolateReds(1))
+    expect(fills).toContain(interpolateReds(0))
   })
 
   test(`hull facets are straight segments, never splined`, async () => {

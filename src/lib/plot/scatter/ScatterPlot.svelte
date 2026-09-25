@@ -850,9 +850,8 @@
     return safe
   }
   // Canvas markers for every plain point, or null when markers must be SVG: canvas not
-  // requested, no points shown, per-point DOM handlers needed (clicks don't count: the plot
-  // surface routes them to the nearest point), or a paint value canvas can't parse. One pass
-  // decides the mode and builds the markers.
+  // requested, no points shown, per-point DOM handlers other than clicks needed, or a paint
+  // value canvas can't parse. One pass decides the mode and builds the markers.
   const canvas_markers = $derived.by((): CanvasMarker[] | null => {
     const canvas_requested =
       marker_renderer === `canvas` ||
@@ -934,8 +933,6 @@
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type FillSource = `fill_region` | `error_band`
   type ComputedFill = FillRegion & {
-    x_axis: `x` | `x2`
-    y_axis: `y` | `y2`
     idx: number
     source_type: FillSource
     source_idx: number
@@ -983,13 +980,11 @@
         // A region draws against its (series-implied) axes, and hides with its series
         const { series_hidden, ...axes } = resolve_fill_binding(region, assigned_series)
         const [x_ax, y_ax] = [axis_scales[axes.x_axis], axis_scales[axes.y_axis]]
-        // On log axes, non-positive coords are held at the domain floor before scaling: a
-        // fixed tiny epsilon can sit far below the domain and map to extreme pixel coords
+        // On log axes, non-positive coords are held at the domain floor before scaling
         const x_px = log_floor_scale(x_ax.scale, x_ax.config.scale_type, x_ax.domain)
         const y_px = log_floor_scale(y_ax.scale, y_ax.config.scale_type, y_ax.domain)
         const to_px = (pt: Pt): Pt => ({ x: x_px(pt.x), y: y_px(pt.y) })
-        // Each boundary is traced through its own points with the same curve the series line
-        // uses, so fill edges coincide with the lines they border (x_domain anchors flat edges)
+        // x_domain anchors flat boundaries
         const domains = {
           x_domain: x_ax.domain,
           y_domain: y_ax.domain,
@@ -1025,7 +1020,7 @@
           path_segments,
         }
       })
-      .filter((fill): fill is ComputedFill => fill !== null)
+      .filter((fill) => fill !== null)
   })
 
   let legend_data = $derived(
@@ -1202,9 +1197,8 @@
     })
   }
 
-  // Canvas markers have no DOM node to click, so a click on the plot surface activates the
-  // nearest point within the click radius, like clicking its SVG marker would (which also
-  // keeps it from reaching on_plot_click)
+  // Canvas markers have no DOM node to click, so a plot-surface click activates the nearest
+  // point within the click radius instead of reaching on_plot_click
   function handle_plot_click(evt: MouseEvent) {
     if (
       !(on_plot_click || canvas_points_clickable) ||
@@ -1324,8 +1318,7 @@
       x_formatted: format_value_or_num(x, active_x_config.format),
       y_formatted: format_value_or_num(y, active_y_config.format),
       raw_y: hovered_series.raw_y?.[point.point_idx],
-      // NaN/null color values are drawn in the series color, so they have no color reading
-      color_value: finite_color_value,
+      color_value: finite_color_value, // NaN/null draw in the series color
       color_bar: {
         value: finite_color_value,
         title: color_bar?.title ?? null,
@@ -1415,19 +1408,15 @@
   // navigable to a picture. Arrow keys therefore drive a cursor through the data
   // itself; the point it lands on becomes the hovered one, which the SVG overlay
   // draws back on top of the canvas (so it is focusable and shows a tooltip again).
-  // The cursor names a point by identity, not by its position among the in-range points,
-  // so a pan/zoom or data change can never silently retarget it to whichever point now sits
-  // at the old position
+  // Named by identity, so a pan/zoom or data change never retargets it to another point
   let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
 
-  // Index of `point_idx` in a list ascending in point_idx (materialized order, which
-  // filtered_data keeps), or -1 when absent
+  // Index of `point_idx` in a list ascending in point_idx, or -1 when absent
   const index_of_point = (points: readonly InternalPoint<Metadata>[], point_idx: number) => {
     const idx = partition_point(points, (pt) => pt.point_idx < point_idx)
     return points[idx]?.point_idx === point_idx ? idx : -1
   }
-  // The plotted point with the same logical key (series_idx, point_idx), or null when the
-  // current data no longer plots it (series hidden or removed, index gone, value non-finite)
+  // The currently plotted point with the same (series_idx, point_idx), else null
   const plotted_point = ({ series_idx, point_idx }: InternalPoint<Metadata>) => {
     const points =
       materialized_series.find((srs) => srs.orig_series_idx === series_idx)?.points ?? []
@@ -1458,9 +1447,8 @@
     return null
   }
 
-  // The cursor's point and its flat index among the in-range points. Null while that point
-  // is out of view or no longer plotted: the cursor is then inactive (nothing announced, the
-  // next arrow key starts over from the first or last in-range point).
+  // The cursor's point and its flat index among the in-range points, or null (inactive) while
+  // that point is out of view or no longer plotted
   let kbd_cursor_at = $derived.by(() => {
     if (!kbd_cursor) return null
     const { series_idx, point_idx } = kbd_cursor
@@ -1471,9 +1459,8 @@
     return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
   })
 
-  // A data swap or a host-hidden series leaves no pointer event to clear the tooltip, so
-  // re-resolve the hovered point on every data change: it keeps tracking the same point's
-  // new values, or closes when that point is no longer plotted
+  // A data swap or host-hidden series fires no pointer event, so re-resolve the hovered point
+  // on every data change (tracking its new values, or closing once it is gone)
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
@@ -1529,9 +1516,8 @@
 
   // One tab stop for the whole point cloud instead of one per point: a 10k-point
   // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
-  // Only interactive points carry roving keys, so a plain plot needs no roving group (whose
-  // DOM observer rescans every mark on each hover class toggle). The hover overlay list only
-  // decides which marks exist in canvas mode; in SVG mode it is a fresh [] per hover.
+  // Only interactive points carry roving keys, so a plain plot needs no roving group. The
+  // hover overlay list only decides which marks exist in canvas mode.
   const roving = create_roving_focus({
     container: () => (points_interactive ? frame.svg_element : null),
     items: () => [
@@ -1751,10 +1737,8 @@
     {/if}
 
     <!-- Canvas mode retains only labelled/hovered/selected points here, drawn in full over
-         their canvas marker (the hovered one scaled up, so it reads as the highlight and marks
-         the keyboard cursor). Point centers are
-         range-filtered, but marker geometry may extend beyond the plot edge: keep complete
-         icons visible, only lines and area geometry are clipped. -->
+         their canvas marker. Point centers are range-filtered, but marker geometry may extend
+         beyond the plot edge: keep complete icons visible, only lines and area are clipped. -->
     {#if show_points}
       {#each filtered_series as series_data, series_pos (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`points`)}

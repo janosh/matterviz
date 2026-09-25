@@ -1,6 +1,5 @@
-// Element colors scoped to one structure viewer. Each Structure resolves its own color_scheme
-// plus the colors picked in its legend, so two viewers on a page (gallery cards, side-by-side
-// comparisons) keep their own schemes instead of overwriting one page-wide map.
+// Element colors scoped to one structure viewer, so two viewers on a page keep their own
+// color_scheme and legend-picked colors instead of overwriting one page-wide map.
 import type { ColorSchemeName } from '$lib/colors'
 import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
@@ -17,59 +16,41 @@ export interface ElementPalette {
   reset: (element: ElementSymbol) => void // back to the scheme's color
 }
 
-// Fail fast: an unknown name used to set every element color to undefined
 export function scheme_colors(scheme: ColorSchemeName): ElementColors {
   const scheme_map: ElementColors | undefined = ELEMENT_COLOR_SCHEMES[scheme]
-  if (!scheme_map) {
-    throw new Error(
-      `Unknown color_scheme '${scheme}', expected one of ${ELEMENT_COLOR_SCHEME_NAMES.join(`, `)}`,
-    )
-  }
-  return scheme_map
+  if (scheme_map) return scheme_map
+  const valid = ELEMENT_COLOR_SCHEME_NAMES.join(`, `)
+  throw new Error(`Unknown color_scheme '${scheme}', expected one of ${valid}`)
 }
 
-// A viewer's palette. Picked colors belong to the scheme they were picked under, so switching
-// scheme shows that scheme's colors rather than a mix.
 export class ViewerElementPalette implements ElementPalette {
-  private picked = $state.raw<{ scheme?: ColorSchemeName; colors: ElementColors }>({
-    colors: {},
-  })
-  // $derived.by: the scheme getter is a constructor parameter, assigned after field initializers
-  private readonly picked_colors = $derived.by(() =>
-    this.picked.scheme === this.scheme() ? this.picked.colors : {},
-  )
+  // picked colors per scheme, so switching scheme shows that scheme's colors, not a mix
+  #picked = $state<Partial<Record<ColorSchemeName, ElementColors>>>({})
+  // .by: TS reads a plain $derived(expr) as touching `scheme` before the constructor sets it
   readonly colors = $derived.by(() => ({
     ...scheme_colors(this.scheme()),
-    ...this.picked_colors,
+    ...this.#picked[this.scheme()],
   }))
 
   constructor(private readonly scheme: () => ColorSchemeName) {}
 
   set(element: ElementSymbol, color: string): void {
-    this.picked = {
-      scheme: this.scheme(),
-      colors: { ...this.picked_colors, [element]: color },
-    }
+    const scheme = this.scheme()
+    this.#picked[scheme] = { ...this.#picked[scheme], [element]: color }
   }
 
   reset(element: ElementSymbol): void {
-    const { [element]: _reset, ...kept } = this.picked_colors
-    this.picked = { scheme: this.scheme(), colors: kept }
+    delete this.#picked[this.scheme()]?.[element]
   }
 }
 
-// Components rendered outside any viewer (a standalone WyckoffTable or scene) use the
-// page-wide map in $lib/state, the one the periodic table colors from
+// Outside any viewer (standalone WyckoffTable or scene): the page-wide map
 const page_palette: ElementPalette = {
   get colors() {
     return colors.element
   },
-  set: (element, color) => {
-    colors.element[element] = color
-  },
-  reset: (element) => {
-    colors.element[element] = default_element_colors[element]
-  },
+  set: (element, color) => (colors.element[element] = color),
+  reset: (element) => (colors.element[element] = default_element_colors[element]),
 }
 
 const PALETTE_KEY = Symbol(`element-palette`)

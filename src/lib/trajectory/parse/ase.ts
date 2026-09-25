@@ -3,10 +3,10 @@ import { element_from_atomic_number } from '$lib/element/helpers'
 import type * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
+import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
   calc_force_stats,
   convert_atomic_numbers,
-  create_plot_row_frame,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
@@ -137,16 +137,14 @@ function ase_calculator_forces(
 // [xx, yy, zz, yz, xz, xy] or a 3x3 tensor, both in eV/Å³ with tension positive
 const ase_pressure = (stress: unknown): number | undefined => {
   const values = Array.isArray(stress) ? stress.flat() : []
-  if (!values.every((value) => typeof value === `number` && Number.isFinite(value))) {
+  const diagonal = values.length === 6 ? [0, 1, 2] : values.length === 9 ? [0, 4, 8] : null
+  if (
+    !diagonal ||
+    !values.every((value) => typeof value === `number` && Number.isFinite(value))
+  )
     return undefined
-  }
-  const trace =
-    values.length === 6
-      ? values[0] + values[1] + values[2]
-      : values.length === 9
-        ? values[0] + values[4] + values[8]
-        : undefined
-  return trace === undefined ? undefined : (-trace / 3) * EV_PER_A3_IN_GPA
+  const [xx, yy, zz] = diagonal.map((idx) => values[idx])
+  return (-(xx + yy + zz) / 3) * EV_PER_A3_IN_GPA
 }
 
 export const ase_calculator_data = (
@@ -205,8 +203,10 @@ const ase_pbc = (value: unknown): Pbc => {
   return [value[0], value[1], value[2]]
 }
 
-// `plot_row: true` returns create_plot_row_frame's reduced frame (see there): the same header,
-// atom-count checks and calculator data, but the positions are never read and no site built
+const plot_row_numbers = new WeakMap<number[], Uint8Array>()
+
+// `plot_row: true` skips reading positions and building sites (2-4x faster plot rows) but keeps
+// every check, the metadata and the lattice, so its plot row equals the full decode's
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,
@@ -228,17 +228,17 @@ export function decode_ase_frame(
     read_ndarray_from_view(view, ref, base_offset)
 
   const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
-  // A plot row needs only the atom count, which the ndarray shape states without a read
   const positions = is_ndarray_ref(positions_ref)
     ? plot_row
       ? undefined
       : read_ndarray(positions_ref)
     : (positions_ref as number[][] | undefined)
-  const n_atoms = positions
-    ? positions.length
-    : is_ndarray_ref(positions_ref)
+  // a plot row takes the atom count from the ndarray shape
+  const n_atoms =
+    positions?.length ??
+    (is_ndarray_ref(positions_ref)
       ? ndarray_reader(view, positions_ref, base_offset).shape[0]
-      : undefined
+      : undefined)
 
   const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
   const numbers: number[] = numbers_ref?.ndarray
@@ -266,24 +266,38 @@ export function decode_ase_frame(
     ...frame_data.info,
   }
   const cell = ase_cell(frame_data)
-  const frame = plot_row
-    ? create_plot_row_frame(numbers, cell, pbc, step, metadata)
-    : create_trajectory_frame(
-        positions ?? [],
-        convert_atomic_numbers(numbers),
-        cell,
-        pbc,
-        step,
-        metadata,
-        forces?.map((force) => ({ force })),
-      )
+  if (!plot_row) {
+    const frame = create_trajectory_frame(
+      positions ?? [],
+      convert_atomic_numbers(numbers),
+      cell,
+      pbc,
+      step,
+      metadata,
+      forces?.map((force) => ({ force })),
+    )
+    return { frame, numbers, pbc }
+  }
+  // get_density counts a plot row's atoms from numeric atomic numbers, validated and counted
+  // once per numbers array (frames without their own share frame 0's)
+  let atomic_numbers = plot_row_numbers.get(numbers)
+  if (!atomic_numbers) {
+    convert_atomic_numbers(numbers)
+    atomic_numbers = Uint8Array.from(numbers)
+    plot_row_numbers.set(numbers, atomic_numbers)
+  }
+  const frame = create_trajectory_frame([], [], cell, pbc, step, metadata)
+  numeric_sites.set(
+    frame.structure,
+    new NumericSites(atomic_numbers, new Float64Array(0), [], []),
+  )
+  snapshot_topologies.set(frame.structure, atomic_numbers)
   return { frame, numbers, pbc }
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
-// first frame's atomic numbers and pbc are cached because ASE writes them once); plot rows
-// come from `plot_row_frame`, the decode minus positions and sites (see
-// create_plot_row_frame), so they equal an in-memory run's. `release` drops the buffer.
+// first frame's atomic numbers and pbc are cached because ASE writes them once);
+// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer.
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame

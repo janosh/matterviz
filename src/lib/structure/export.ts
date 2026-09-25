@@ -156,10 +156,8 @@ const XYZ_RESERVED_PROPERTIES = new Set([
   `move_mask`,
 ])
 
-// Every other site property that is a finite number (1 column) or finite 3-vector (3
-// columns) on EVERY site — per-atom velocities, charges, magnetic moments, LAMMPS ids — so an
-// export does not silently drop data the file came with. Anything sparse or non-numeric has
-// no faithful column and is left out.
+// Other site properties that are a finite number (1 column) or 3-vector (3 columns) on EVERY
+// site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data
 function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 | 3 }[] {
   const first = structure.sites[0]?.properties ?? {}
   return Object.keys(first).flatMap((key) => {
@@ -234,7 +232,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
     if (has_constraints) columns.push(...move_flag_columns(site))
-    // Full precision: these are arbitrary per-atom data, not coordinates on a 1e-6 grid
+    // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
     lines.push(`${site_element(site)} ${columns.join(` `)}`)

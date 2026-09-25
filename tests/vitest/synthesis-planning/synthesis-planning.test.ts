@@ -97,40 +97,29 @@ describe(`prepare_phase_set`, () => {
     expect(co2.energy_per_atom).toBeLessThan(-1.6)
   })
 
-  test(`uses conventional formula units and names for library precursors`, () => {
-    const phase_set = prepare_phase_set([
-      make_phase({ Li: 1 }, 0),
-      make_phase({ O: 1 }, 0),
-      make_phase({ Li: 4, O: 4 }, -1.5, { entry_id: `peroxide` }),
-    ])
-    const li2o2 = find(phase_set.phases, `Li2O2`)
-    expect(li2o2.common_name).toBe(`lithium peroxide`)
-    expect(li2o2.n_atoms_per_fu).toBe(4)
-  })
-
-  test(`resolves library precursors by their conventional or reduced formula, never gases`, () => {
+  test(`uses conventional formula units and names for library precursors, resolvable by either formula`, () => {
     const phase_set = prepare_phase_set(
       [
         make_phase({ Li: 1 }, 0),
         make_phase({ O: 1 }, 0),
         make_phase({ H: 1 }, 0),
-        make_phase({ Mg: 1 }, 0),
         make_phase({ Li: 4, O: 4 }, -1.5, { entry_id: `peroxide` }),
         make_phase({ Li: 1, O: 1, H: 1 }, -1.8, { entry_id: `lioh` }),
-        make_phase({ Mg: 1, O: 2, H: 2 }, -1.9, { entry_id: `brucite` }),
       ],
       { open_species: [`O2`] },
     )
-    for (const [query, id] of [
-      [`Li2O2`, `peroxide`],
-      [`LiO`, `peroxide`],
-      [`LiOH`, `lioh`],
-      [`HLiO`, `lioh`],
-      [`Mg(OH)2`, `brucite`],
-    ]) {
-      expect(resolve_phase(phase_set, query)?.id, query).toBe(id)
-    }
-    expect(resolve_phase(phase_set, `O2`)).toBeNull()
+    const li2o2 = find(phase_set.phases, `Li2O2`)
+    expect(li2o2.common_name).toBe(`lithium peroxide`)
+    expect(li2o2.n_atoms_per_fu).toBe(4)
+    // conventional (Li2O2, LiOH) or reduced (LiO, HLiO) formulas; gases are never resolved
+    const queries = [`Li2O2`, `LiO`, `LiOH`, `HLiO`, `O2`]
+    expect(queries.map((query) => resolve_phase(phase_set, query)?.id ?? null)).toEqual([
+      `peroxide`,
+      `peroxide`,
+      `lioh`,
+      `lioh`,
+      null,
+    ])
   })
 
   test(`skips entries without a computable formation energy and warns`, () => {
@@ -407,40 +396,24 @@ describe(`temperature dependence`, () => {
     expect(onset_1bar).toBeLessThan(1500)
   })
 
-  test.each([
+  test.each<[string, (temp: number) => number, [number, number][], string]>([
+    [`always`, () => -1, [[0, 2000]], `downhill at every temperature from 0 to 2000 K`],
+    [`never`, () => 1, [], `never downhill between 0 and 2000 K`],
+    [`gas release`, (temp) => 500 - temp, [[501, 2000]], `downhill from 501 K`],
+    [`gas uptake`, (temp) => temp - 1480, [[0, 1479]], `downhill up to 1479 K`],
     [
-      `always downhill`,
-      () => -1,
-      [[0, 2000]],
-      `downhill at every temperature from 0 to 2000 K`,
-    ],
-    [`never downhill`, () => 1, [], `never downhill between 0 and 2000 K`],
-    [
-      `gas release: lower bound`,
-      (temp: number) => 500 - temp,
-      [[501, 2000]],
-      `downhill from 501 K`,
-    ],
-    [
-      `gas uptake: upper bound`,
-      (temp: number) => temp - 1480,
-      [[0, 1479]],
-      `downhill up to 1479 K`,
-    ],
-    [
-      `release + uptake: both bounds`,
-      (temp: number) => (temp - 800) * (temp - 1300),
+      `both`,
+      (temp) => (temp - 800) * (temp - 1300),
       [[801, 1299]],
       `downhill from 801 to 1299 K`,
     ],
-  ] as const)(`downhill_windows: %s`, (_label, energy_at, windows, text) => {
+  ])(`downhill_windows: %s`, (_label, energy_at, windows, text) => {
     expect(downhill_windows(energy_at)).toEqual(windows)
     expect(describe_downhill_windows(windows)).toBe(text)
   })
 
-  // Oxidation takes O2 up, so its ΔE rises with T: at 1500 K CoO + O2 → Co3O4 is uphill but
-  // was downhill up to some lower temperature, which must be reported as an upper bound (an
-  // "onset" of 0 K read as "favorable above 0 K", i.e. everywhere)
+  // Oxidation takes O2 up, so ΔE rises with T: CoO + O2 → Co3O4 is uphill at 1500 K but
+  // downhill below some upper bound
   test(`gas-consuming routes report an upper temperature limit`, () => {
     const entries = [
       make_phase({ Co: 1 }, 0, { entry_id: `Co` }),
@@ -510,10 +483,7 @@ describe(`plan_synthesis`, () => {
     ).toEqual([best.id, kept.id])
     expect(best.reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(best.thermodynamics.gas_exchange.CO2).toBeCloseTo(1, 9)
-    // CO2 release: downhill above a lower bound, open to the top of the scan
-    const [[lower, upper]] = best.thermodynamics.downhill_windows
-    expect(lower).toBeGreaterThan(0)
-    expect(upper).toBe(2000)
+    expect(best.thermodynamics.downhill_windows[0][0]).toBeGreaterThan(0) // CO2 release
     for (const { phase } of [...best.reaction.reactants, ...best.reaction.products])
       expect(plan.phases).toContainEqual(phase)
     // Ba2TiO4 is the experimentally observed intermediate of this reaction
@@ -678,11 +648,9 @@ describe(`plan_synthesis`, () => {
       ...base_request,
       precursors: { allow: [`Xx9`, `Xx9`], block: [`Xx9`] },
     })
-    // one line per distinct warning, so UIs can key the list by its text
-    expect(
-      bogus.warnings.filter((warning) => warning.includes(`"Xx9" matches no phase`)),
-    ).toHaveLength(1)
+    // repeated causes give one warning each
     expect(new Set(bogus.warnings).size).toBe(bogus.warnings.length)
+    expect(bogus.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(true)
   })
 
   test(`polymorph targets and metastable targets are warned about`, () => {

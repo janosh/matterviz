@@ -21,8 +21,7 @@
     children?: Snippet
   } = $props()
 
-  // Committed on change (Enter, blur, spinner arrows), not per keystroke: typing -10 would
-  // otherwise recompute at -1 first. Unparsable input (``, `-`) leaves the value alone.
+  // Commit on change, not per keystroke (typing -10 would compute at -1 first); ignore `-`
   const set_number = (key: `element_padding` | `default_min_limit`, event: Event) => {
     const value = (event.currentTarget as HTMLInputElement).valueAsNumber
     if (Number.isFinite(value)) set(key, value)

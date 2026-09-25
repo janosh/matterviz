@@ -29,7 +29,6 @@ export {
   describe_downhill_windows,
   downhill_windows,
   make_reaction,
-  MAX_SCAN_TEMPERATURE,
   reaction_energy_at_temperature,
 } from './thermo'
 export type { BalancedReaction, BalanceFailure } from './thermo'

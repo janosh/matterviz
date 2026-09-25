@@ -1,5 +1,4 @@
-// Named element filters for pickers (e.g. a "show only transition metals" select). Groups
-// overlap: halogens are also nonmetals or metalloids, and `all` holds every element.
+// Named, overlapping element filters for pickers (`all` first, as a picker's default)
 import type { ChemicalElement, ElementCategory } from './types'
 
 const category_groups = [
@@ -13,11 +12,8 @@ const category_groups = [
   [`actinide`, `Actinides`, `actinide`],
 ] as const satisfies readonly (readonly [string, string, ElementCategory])[]
 
-export type ElementGroupKey =
-  | `all`
-  | `nonmetal`
-  | `halogen`
-  | (typeof category_groups)[number][0]
+type CategoryGroupKey = (typeof category_groups)[number][0]
+export type ElementGroupKey = `all` | `nonmetal` | `halogen` | CategoryGroupKey
 export type ElementGroup = {
   readonly value: ElementGroupKey
   readonly label: string
@@ -31,7 +27,6 @@ const to_group = ([value, label, category]: (typeof category_groups)[number]) =>
   includes: (element: ChemicalElement) => element.category === category,
 })
 
-// In periodic-table reading order, `all` first so it can serve as a picker's default
 export const element_groups: readonly ElementGroup[] = [
   { value: `all`, label: `All`, tooltip: `Show all elements`, includes: () => true },
   ...category_groups.slice(0, 5).map(to_group),
@@ -39,8 +34,7 @@ export const element_groups: readonly ElementGroup[] = [
     value: `nonmetal`,
     label: `Nonmetals`,
     tooltip: `Diatomic and polyatomic nonmetals`,
-    includes: (element) =>
-      element.category === `diatomic nonmetal` || element.category === `polyatomic nonmetal`,
+    includes: ({ category }) => category.endsWith(` nonmetal`),
   },
   {
     value: `halogen`,
@@ -51,7 +45,6 @@ export const element_groups: readonly ElementGroup[] = [
   ...category_groups.slice(5).map(to_group),
 ]
 
-// For validating persisted or URL-supplied group keys
 export const element_group_keys: ReadonlySet<ElementGroupKey> = new Set(
   element_groups.map(({ value }) => value),
 )

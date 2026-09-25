@@ -55,10 +55,12 @@ const brackets = () =>
 const diagram = compute_ternary_phase_diagram(toy_entries, { elements: toy_elements })
 
 describe(`IsobaricTernaryPhaseDiagram`, () => {
-  test(`sweeps in the background, lists transitions and links them to the live section`, async () => {
+  test(`sweeps in the background, lists transitions, links them to the live section and releases the worker on unmount`, async () => {
+    const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
     mount_diagram()
     doc_query(`.ternary-section canvas`)
     await wait_for_events()
+    expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
     expect(items.map((item) => item.classList[0])).toEqual([
       `appear`,
@@ -79,6 +81,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       text(`.stable-count`),
       doc_query(`.phase-event-list li.active`).classList[0],
     ]).toEqual([`6stable`, `vanish`])
+    unmount_all()
+    expect(release).toHaveBeenCalledOnce()
   })
 
   test(`temperature binding is clamped to the sweep, stepped by keyboard, played by space`, async () => {
@@ -158,15 +162,6 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     flushSync()
     await wait_for_events()
     expect(document.querySelector(`.error`)).toBeNull()
-  })
-
-  test(`unmounting releases the sweep worker`, async () => {
-    const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
-    mount_diagram()
-    await wait_for_events()
-    expect(release).not.toHaveBeenCalled()
-    unmount_all()
-    expect(release).toHaveBeenCalledOnce()
   })
 
   test(`view toggle, hidden panels, gated controls and the empty state`, () => {

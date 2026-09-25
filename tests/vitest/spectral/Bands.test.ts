@@ -451,8 +451,8 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  // Bands 0 and 1 of the fixture cross E_F = 0, i.e. a metal. Occupations decide filling
-  // over E_F: in a non-SCF line-mode run the VBM can rise above the SCF E_F (here by 30 meV)
+  // Bands 0 and 1 of the fixture cross E_F = 0 (a metal). Occupations decide filling over E_F:
+  // a non-SCF line-mode VBM can rise above the SCF E_F (here by 30 meV)
   const filled_below_band_2 = [1, 1, 0, 0].map((occupation) => Array(4).fill(occupation))
   it.each([
     [`metal`, 0, undefined, null],
@@ -461,26 +461,19 @@ describe(`Bands component`, () => {
   ])(
     `electronic gap annotation for a %s ignores the units prop`,
     async (_desc, shift, occupations, expected_gap) => {
-      const shifted = {
-        ...spin_polarized_electronic,
-        bands: spin_polarized_electronic.bands.map((band, band_idx) =>
-          band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
-        ),
-        occupations,
-      }
+      const bands = spin_polarized_electronic.bands.map((band, band_idx) =>
+        band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
+      )
       await mount_bands({
-        band_structs: { '': shifted },
+        band_structs: { '': { ...spin_polarized_electronic, bands, occupations } },
         band_spin_mode: `up_only`,
         units: `cm^-1`,
         show_gap_annotation: true,
       })
       const text = document.body.textContent ?? ``
       expect(text).toContain(`Energy (eV)`)
-      if (expected_gap === null) expect(text).not.toContain(`Eg:`)
-      else {
-        expect(text).toContain(`Eg:`)
-        expect(text).toContain(expected_gap)
-      }
+      expect(text.includes(`Eg:`)).toBe(expected_gap !== null)
+      if (expected_gap) expect(text).toContain(expected_gap)
     },
   )
 

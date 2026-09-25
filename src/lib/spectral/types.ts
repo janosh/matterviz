@@ -39,9 +39,8 @@ export interface BaseBandStructure {
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]
   spin_down_bands?: number[][] // [nb_bands][nb_qpoints] for spin-polarized electronic bands
-  // Electronic state occupations per spin-orbital (0 = empty, 1 = filled), shaped like
-  // `bands`/`spin_down_bands`, from the run that produced the eigenvalues. When present they,
-  // not E_F, decide which states are filled for the band gap (see electronic_band_gap).
+  // Electronic occupations (0 = empty, 1 = filled) shaped like `bands`/`spin_down_bands`.
+  // When present they, not E_F, decide filling for the band gap (see electronic_band_gap).
   occupations?: number[][]
   spin_down_occupations?: number[][]
   band_widths?: number[][] // [nb_bands][nb_qpoints] - width values for fat bands visualization

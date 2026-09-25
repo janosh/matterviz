@@ -75,24 +75,24 @@ export function hover_marker_geometry(marker_radius: number) {
 }
 
 // A surface's vertices in data coordinates, exactly as Surface3D draws them: grid surfaces
-// sample z_fn at `resolution` over their own x/y ranges (else the plot's), parametric ones
-// their u/v ranges, triangulated ones use their points. `grid` gives the row layout of the
-// first two. Null when a grid surface has neither its own nor a plot x/y range to span.
-// Vertices may be non-finite (a z_fn undefined off its domain); callers drop them.
+// sample z_fn over their own x/y ranges (else the plot's), parametric ones their u/v ranges,
+// triangulated ones use their points. `grid` gives the row layout of the first two. Null when
+// a grid surface has no x/y range to span. Vertices may be non-finite; callers drop them.
 export function surface_vertices(
   surface: Surface3DConfig,
   plot_ranges: { x: Vec2; y: Vec2 } | null,
 ): { points: Point3D[]; grid?: Vec2; triangles?: readonly Vec3[] } | null {
-  const [res_a, res_b] = Array.isArray(surface.resolution)
+  const grid: Vec2 = Array.isArray(surface.resolution)
     ? surface.resolution
     : [surface.resolution ?? 20, surface.resolution ?? 20]
+  const [res_a, res_b] = grid
   const sample_grid = (
     [u_0, u_1]: Vec2,
     [v_0, v_1]: Vec2,
     at: (param_u: number, param_v: number) => Point3D,
   ) => {
-    if (res_a < 2 || res_b < 2) return { points: [], grid: [res_a, res_b] as Vec2 }
     const points: Point3D[] = []
+    if (res_a < 2 || res_b < 2) return { points, grid }
     for (let idx_b = 0; idx_b < res_b; idx_b++) {
       for (let idx_a = 0; idx_a < res_a; idx_a++) {
         points.push(
@@ -103,7 +103,7 @@ export function surface_vertices(
         )
       }
     }
-    return { points, grid: [res_a, res_b] as Vec2 }
+    return { points, grid }
   }
   if (surface.type === `grid` && surface.z_fn) {
     const { z_fn } = surface
@@ -136,24 +136,13 @@ export const sample_surface = (
       Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
   )
 
-// World-space planes bounding the scene box ([-scene_x/2, scene_x/2] etc. in Three.js axes,
-// user z vertical), for a ClippingGroup that keeps lines, surfaces and reference planes from
-// drawing past the axes. The small slack keeps geometry lying exactly on a face.
-export function box_clipping_planes(
-  scene_x: number,
-  scene_y: number,
-  scene_z: number,
-): Plane[] {
-  const slack = 1e-3
-  const halves: Vec3 = [scene_x / 2, scene_z / 2, scene_y / 2]
-  return halves.flatMap((half, axis) =>
-    [1, -1].map((sign) => {
-      const normal: Vec3 = [0, 0, 0]
-      normal[axis] = sign
-      return new Plane(new Vector3(...normal), half + slack)
-    }),
+// World-space planes bounding the scene box (Three.js axes, user z vertical), for a
+// ClippingGroup that keeps lines, surfaces and reference planes inside the axes. The small
+// slack keeps geometry lying exactly on a face.
+export const box_clipping_planes = (scene_x: number, scene_y: number, scene_z: number) =>
+  [scene_x, scene_z, scene_y].flatMap((size, axis) =>
+    [1, -1].map((sign) => new Plane(new Vector3().setComponent(axis, sign), size / 2 + 1e-3)),
   )
-}
 
 // Share one extent collection and padding policy between 3D renderers and controls.
 export function get_3d_auto_ranges(

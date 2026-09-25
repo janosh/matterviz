@@ -146,17 +146,11 @@ function volume_sampler_xyz(
   const [[i00, i01, i02], [i10, i11, i12], [i20, i21, i22]] = reciprocal_lattice(
     volume.lattice,
   )
-  const { periodic } = volume
+  const { periodic, values, order } = volume
   const [origin_x, origin_y, origin_z] = volume.origin
   const fallback = out_of_bounds === `fallback`
-  // Read the grid once: viewers hand in reactive ($state) volumes, and going through the
-  // proxy for dims/values on every sample made slices and vertex colouring 14-35x slower
-  const [size_x, size_y, size_z] = volume.dims
-  const grid: ScalarGrid3D = {
-    values: volume.values,
-    dims: [size_x, size_y, size_z],
-    order: volume.order,
-  }
+  // Read the grid once: per-sample reads through a $state volume's proxy are 14-35x slower
+  const grid: ScalarGrid3D = { values, dims: [...volume.dims], order }
 
   return (coord_x, coord_y, coord_z) => {
     const cart_x = coord_x - origin_x

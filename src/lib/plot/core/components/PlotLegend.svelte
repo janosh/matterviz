@@ -75,9 +75,8 @@
     item_style?: string
     // Collapsed group names, toggled in place by the chevrons (seed it to start collapsed)
     collapsed_groups?: SvelteSet<string>
-    // What a click on a group's label does: `visibility` toggles all its series (calling
-    // on_group_toggle), `collapse` expands/collapses it like the chevron (and never touches
-    // visibility, so on_group_toggle and on_group_double_click don't fire)
+    // Group label click: `visibility` toggles all its series (on_group_toggle), `collapse`
+    // expands/collapses it like the chevron (never touching visibility)
     group_click?: `visibility` | `collapse`
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void

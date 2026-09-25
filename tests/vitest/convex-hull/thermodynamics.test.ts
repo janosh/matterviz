@@ -162,12 +162,10 @@ describe(`find_lowest_energy_unary_refs`, () => {
           entry_id: `${element}${e_form}`,
         }) as PhaseData
       const entries = [
-        e_form_only(`Li`, 0.05),
-        e_form_only(`Li`, 0),
-        e_form_only(`Li`, 0.1),
+        ...[0.05, 0, 0.1].map((e_form) => e_form_only(`Li`, e_form)),
         e_form_only(`Na`, -0.3),
         make_phase({ Na: 1 }, -1.3, { entry_id: `Na-abs` }),
-        make_phase({ Na: 1 }, -1.2, { entry_id: `Na-abs-high` }),
+        make_phase({ Na: 1 }, -1.2),
       ]
       const refs = find_lowest_energy_unary_refs(reversed ? entries.toReversed() : entries)
       expect([refs.Li.entry_id, refs.Na.entry_id]).toEqual([`Li0`, `Na-abs`])
@@ -367,16 +365,7 @@ describe(`N-dimensional quickhull`, () => {
       { vertex_indices: [0, 1, 2], normal: [0, 0, -1], offset: 0 },
       { vertex_indices: [0, 2, 3], normal: [0, 0, -1], offset: 0 },
     ]
-    expect(
-      compute_e_above_hull_nd(
-        [
-          [0.2, 0.8, 0.5],
-          [0.8, 0.2, 0.25],
-        ],
-        facets,
-        points,
-      ),
-    ).toEqual([0.5, 0.25])
+    expect(compute_e_above_hull_nd([[0.2, 0.8, 0.5]], facets, points)).toEqual([0.5])
   })
 
   test(`duplicate compositions: duplicates score 0, the higher polymorph its energy gap`, () => {

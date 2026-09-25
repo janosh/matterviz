@@ -316,9 +316,8 @@ interface MarchingCubesOptions {
   normals?: boolean
   // Cartesian translation added to every vertex, e.g. the position of grid index 0
   position_offset?: Vec3
-  // Side front faces (CCW winding) and normals point to: toward `decreasing` values
-  // (default: outward for a density blob) or `increasing` ones (outward for a negative lobe
-  // at a negative isovalue). Holds for left-handed lattices too.
+  // Which values front faces (CCW) and normals point toward, on either lattice handedness:
+  // `decreasing` (default, outward for a density blob) or `increasing` (for a negative lobe)
   facing?: `decreasing` | `increasing`
 }
 
@@ -352,9 +351,8 @@ export function marching_cubes(
     facing = `decreasing`,
   } = options
   const normal_sign = facing === `increasing` ? -1 : 1
-  // The triangle table winds front faces toward decreasing values in index space; a
-  // left-handed lattice (det < 0) mirrors that in Cartesian space, and `increasing` wants
-  // the opposite side, so either one swaps the winding (both cancel)
+  // The triangle table winds toward decreasing values in index space; a left-handed lattice
+  // mirrors that and `increasing` wants the other side, so each swaps the winding
   const flip_winding = det_3x3(k_lattice) < 0 !== (facing === `increasing`)
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 

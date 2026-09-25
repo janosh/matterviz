@@ -27,14 +27,8 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import {
-  InstancedBufferAttribute,
-  Matrix4,
-  Mesh,
-  Raycaster,
-  type SphereGeometry,
-  Vector3,
-} from 'three/webgpu'
+import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
+import type { SphereGeometry } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -97,7 +91,6 @@ test(`Scene draws one wedge per species of a site listing an element twice`, () 
     StructureScene(anchor, {
       structure: { sites: [site] },
       show_bonds: `never`,
-      show_polyhedra: `never`,
       gizmo: false,
     }),
   )

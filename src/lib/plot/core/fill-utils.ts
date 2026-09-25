@@ -69,28 +69,24 @@ export function resolve_series_ref(
 // Axes a region draws against and whether a series it is bound to is hidden. A series
 // boundary carries its series' axes (a band around a y2 series belongs on y2), so an explicit
 // region axis that disagrees with one is a caller error rather than a silent choice.
-export function resolve_fill_binding(
-  region: FillRegion,
-  series: readonly DataSeries[],
-): { x_axis: `x` | `x2`; y_axis: `y` | `y2`; series_hidden: boolean } {
-  const bound = [region.upper, region.lower].flatMap((boundary) => {
-    if (typeof boundary !== `object` || boundary.type !== `series`) return []
-    const resolved = resolve_series_ref(boundary, series)
-    return resolved ? [resolved] : []
-  })
-  // The explicit axis and every bound series' axis must name the same one
+export function resolve_fill_binding(region: FillRegion, series: readonly DataSeries[]) {
+  const bound = [region.upper, region.lower].flatMap((boundary) =>
+    typeof boundary === `object` && boundary.type === `series`
+      ? (resolve_series_ref(boundary, series) ?? [])
+      : [],
+  )
   const pick = <Axis extends string>(
     key: `x_axis` | `y_axis`,
     axes: (Axis | undefined)[],
     fallback: Axis,
   ): Axis => {
-    const distinct = new Set(axes.filter((axis): axis is Axis => axis !== undefined))
-    if (distinct.size > 1) {
+    const distinct = [...new Set(axes.filter((axis) => axis !== undefined))]
+    if (distinct.length > 1) {
       throw new Error(
-        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...distinct].join(` and `)}: its series boundaries and ${key} must agree`,
+        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${distinct.join(` and `)}: its series boundaries and ${key} must agree`,
       )
     }
-    return [...distinct][0] ?? fallback
+    return distinct[0] ?? fallback
   }
   return {
     x_axis: pick(`x_axis`, [region.x_axis, ...bound.map((srs) => srs.x_axis ?? `x`)], `x`),

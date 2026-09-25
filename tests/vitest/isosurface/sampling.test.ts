@@ -201,8 +201,7 @@ describe(`sample_volume_at_positions`, () => {
   })
 })
 
-// Viewers pass $state volumes, where every property read runs a proxy trap, so reads must
-// not scale with the number of samples (per-sample reads were 14-35x slower)
+// Every read of a $state volume runs a proxy trap, so reads must not scale with sample count
 test(`samplers read the volume a fixed number of times, not once per sample`, () => {
   let n_reads = 0
   const counted = new Proxy(linear_volume(11, cubic, false), {

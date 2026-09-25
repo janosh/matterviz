@@ -230,79 +230,48 @@ describe(`parse_phase_diagram_svg`, () => {
       [`l_b`, `L + B`],
       [`a_b_2`, `A+B`],
     ])
-    expect(() => build_diagram(input)).not.toThrow()
   })
 
-  // Ticks at 600/1400 K (px 460/140) sit inside the 500..1500 K plot area (px 500..100); the
-  // L + c field above the 1450 K boundary exists only between the last tick and the axes edge
+  // Ticks at 500/1500 K (px 500/100) sit inside a plot area reaching 1600 K (px 60); the L + c
+  // field above the 1550 K boundary exists only between the last tick and the axes edge
   it.each([
     {
       format: `simple`,
       // a tinted page background also encloses every tick and boundary but is not the plot area
       svg: simple_svg(
-        `${SIMPLE_BOUNDARIES}<line class="phase-boundary" x1="100" y1="120" x2="500" y2="120"/>`,
-        `<text class="label-main" x="300" y="110">L + c</text>
-        <rect x="0" y="0" width="600" height="600" fill="#eeeeee"/>`,
-      )
-        .replace(
-          `y1="500" x2="100" y2="500"/>
-      <text class="tick-text" x="90" y="500">500`,
-          `y1="460" x2="100" y2="460"/>
-      <text class="tick-text" x="90" y="460">600`,
-        )
-        .replace(
-          `y1="100" x2="100" y2="100"/>
-      <text class="tick-text" x="90" y="100">1500 K`,
-          `y1="140" x2="100" y2="140"/>
-      <text class="tick-text" x="90" y="140">1400 K`,
-        ),
+        `${SIMPLE_BOUNDARIES}<line class="phase-boundary" x1="100" y1="80" x2="500" y2="80"/>`,
+        `<text class="label-main" x="300" y="70">L + c</text>
+        <rect x="100" y="60" width="400" height="440" fill="#dddddd"/>
+        <rect width="600" height="600" fill="#eeeeee"/>`,
+      ),
     },
     {
       format: `matplotlib`,
       svg: matplotlib_svg(
-        [...MPL_BOUNDARIES, `M 100 120 L 500 120`],
-        `<g id="text_9"><!-- L + c --><g transform="translate(300 110)"/></g>`,
-      )
-        .replace(
-          `x="100" y="500"/></g><g id="text_3"><!-- 500 -->`,
-          `x="100" y="460"/></g><g id="text_3"><!-- 600 -->`,
-        )
-        .replace(
-          `x="100" y="100"/></g><g id="text_4"><!-- 1500 -->`,
-          `x="100" y="140"/></g><g id="text_4"><!-- 1400 -->`,
-        ),
+        [...MPL_BOUNDARIES, `M 100 80 L 500 80`],
+        `<g id="text_9"><!-- L + c --><g transform="translate(300 70)"/></g>`,
+      ).replace(`M 100 100 L 500 100`, `M 100 60 L 500 60`),
     },
   ])(
     `takes the axis range from the plot area, not the outermost ticks ($format)`,
     ({ svg }) => {
       const input = parse_phase_diagram_svg(svg)
-      expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1500, 9)])
+      expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
       const top = input.regions.find(({ name }) => name === `L + c`)
       expect(top?.bounds).toEqual([
-        [0, 1450],
-        [1, 1450],
-        [1, 1500],
-        [0, 1500],
+        [0, 1550],
+        [1, 1550],
+        [1, 1600],
+        [0, 1600],
       ])
     },
   )
 
   it.each([
-    [
-      `vertical ends 0.3 px short`,
-      `x1="300" y1="500" x2="300" y2="300.3"`,
-      `x1="100" y1="300" x2="300" y2="300"`,
-    ],
-    [
-      `horizontal ends 0.3 px short`,
-      `x1="300" y1="500" x2="300" y2="300"`,
-      `x1="100" y1="300" x2="299.7" y2="300"`,
-    ],
-  ])(`snaps sub-pixel gaps between boundaries (%s)`, (_label, vertical, horizontal) => {
-    const svg = simple_svg(
-      `<line class="phase-boundary" ${vertical}/><line class="phase-boundary" ${horizontal}/>`,
-    )
-    const input = parse_phase_diagram_svg(svg)
+    [`vertical`, `x2="300" y2="300"`, `x2="300" y2="300.3"`],
+    [`horizontal`, `y1="300" x2="300"`, `y1="300" x2="299.7"`],
+  ])(`snaps sub-pixel gaps between boundaries (%s ends 0.3 px short)`, (_label, from, to) => {
+    const input = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES.replace(from, to)))
     expect(input.regions.map(({ name }) => name)).toEqual([`α + β`, `L + α`])
   })
 

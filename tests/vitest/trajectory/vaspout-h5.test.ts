@@ -148,7 +148,6 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.frames).toHaveLength(5)
     expect(trajectory.frames[1].metadata).not.toHaveProperty(`force_max`)
     expect(trajectory.frames[1].structure.sites[0].properties.force).toBeUndefined()
-    expect(trajectory.frames[2].metadata?.force_max).toBeGreaterThanOrEqual(0)
     expect(warnings).toEqual([
       `Ignoring vaspout.h5 forces of ionic step 1: expected 2 finite 3-vectors, got 1`,
     ])

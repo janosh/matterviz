@@ -47,9 +47,7 @@
     spectrum: VibrationalSpectrum
     kind?: SpectrumKind
     units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
-    // Peak width in cm^-1 whatever `units` displays: one physical width, so switching units
-    // never rescales it (the slider shows it converted to the displayed unit)
-    fwhm?: number
+    fwhm?: number // peak width in cm^-1 whatever `units` displays
     shape_factor?: number // pseudo-Voigt mixing: 0 = Gaussian, 1 = Lorentzian
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
@@ -63,8 +61,7 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // FWHM in the displayed unit, derived (not effect-synced) so a unit switch never broadens
-  // with a stale width on the new grid
+  // Derived, not effect-synced, so a unit switch never broadens a stale width on the new grid
   let display_fwhm = $derived(convert_frequencies([fwhm], unit, `cm^-1`)[0])
 
   let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
@@ -92,13 +89,8 @@
 
   let broadened = $derived.by(() => {
     if (!has_signal) return { x: [], y: [] }
-    const opts = {
-      fwhm: display_fwhm,
-      shape_factor,
-      range: plot_range,
-      step_size: display_fwhm / 20,
-    }
-    return broaden_spectrum(sticks, opts)
+    const opts = { shape_factor, range: plot_range, step_size: display_fwhm / 20 }
+    return broaden_spectrum(sticks, { ...opts, fwhm: display_fwhm })
   })
 
   // Transmittance needs a bounded absorbance to invert, so it always scales to max=1
@@ -172,8 +164,8 @@
       normalize: `max`,
     },
   )
-  // One percent of the unbroadened span (in cm^-1); a single peak uses the initial 10 cm^-1
-  // width. Including the FWHM-dependent plot padding would move the target after every reset.
+  // One percent of the unbroadened span; a single peak uses the initial 10 cm^-1 width.
+  // Including the FWHM-dependent plot padding would move the target after every reset.
   const broadening_defaults = $derived.by(() => {
     const [lower = 0, upper = 0] = extent(sticks.x)
     const span_cm = convert_frequencies([upper - lower], `cm^-1`, unit)[0]
@@ -275,14 +267,10 @@
               id="ir-raman-fwhm"
               type="range"
               {...fwhm_input}
-              value={display_fwhm}
-              oninput={(event) => {
-                fwhm = convert_frequencies(
-                  [Number(event.currentTarget.value)],
-                  `cm^-1`,
-                  unit,
-                )[0]
-              }}
+              bind:value={
+                () => display_fwhm,
+                (width) => (fwhm = convert_frequencies([width], `cm^-1`, unit)[0])
+              }
             />
           </label>
           <label>

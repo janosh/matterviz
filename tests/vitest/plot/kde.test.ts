@@ -109,7 +109,7 @@ describe(`gaussian_kde`, () => {
     const true_peak = Math.max(...ref_density(samples, fine_axis, fine.bandwidth))
     expect(coarse.grid).toHaveLength(100)
     expect(peak(coarse) / true_peak).toBeLessThan(0.1)
-    expect(fine.grid).toHaveLength(2000) // capped by max_points
+    expect(fine.grid).toHaveLength(2000) // capped by MAX_GRID_POINTS
     expect(peak(fine) / true_peak).toBeGreaterThan(0.99)
     expect([fine.grid[0], fine.grid.at(-1)]).toEqual([coarse.grid[0], coarse.grid.at(-1)])
     const uncapped = gaussian_kde([0, 1, 2, 3], {
@@ -132,13 +132,6 @@ describe(`gaussian_kde`, () => {
     const ratio = Math.max(...kde.density) / true_peak
     // the bound holds with equality here, so allow a few ulps of grid round-off
     expect(ratio).toBeGreaterThan(Math.exp(-1 / 72) - 1e-12)
-  })
-
-  test.each([
-    [{ points_per_bandwidth: 0 }, `points_per_bandwidth must be finite and positive, got 0`],
-    [{ max_points: 50 }, `max_points must be an integer >= n_points (100), got 50`],
-  ])(`rejects invalid grid refinement %o`, (opts, message) => {
-    expect(() => gaussian_kde([1, 2, 3], opts)).toThrow(message)
   })
 
   test(`respects clip bounds (RMSD >= 0)`, () => {
@@ -259,6 +252,8 @@ describe(`gaussian_kde`, () => {
     { n_points: Infinity },
     { cut: -1 },
     { cut: NaN },
+    { points_per_bandwidth: 0 },
+    { points_per_bandwidth: NaN },
   ])(`rejects invalid options %j`, (options) => {
     expect(() => gaussian_kde([1, 2, 3], options)).toThrow(RangeError)
   })

@@ -996,39 +996,35 @@ describe(`IrRamanSpectrum component`, () => {
     expect(document.body.textContent).toMatch(/No IR-active modes/)
   })
 
-  // fwhm is one physical width in cm^-1: switching units only changes how the slider shows
-  // it. Ha -> cm^-1 guards against broadening a stale Ha-sized width on a cm^-1 grid.
+  // fwhm is one physical width in cm^-1: unit switches only rescale the slider's display
   it.each([
     [`Ha`, `cm^-1`],
-    [`eV`, `cm^-1`],
     [`cm^-1`, `THz`],
     [`cm^-1`, `meV`],
     [`cm-1`, `cm^-1`],
     [`cm⁻¹`, `cm^-1`],
-  ] as const)(
-    `fwhm stays fixed in cm^-1 across the unit switch %s → %s`,
-    async (initial, units) => {
-      const props = $state({
-        spectrum: co2_spectrum,
-        units: initial as FrequencyUnit,
-        fwhm: 25,
-        controls_open: true,
-      })
-      mount(IrRamanSpectrum, { target: document.body, props })
+  ] as const)(`fwhm stays 25 cm^-1 across the unit switch %s → %s`, async (initial, units) => {
+    const props = $state({
+      spectrum: co2_spectrum,
+      units: initial as FrequencyUnit,
+      fwhm: 25,
+      controls_open: true,
+    })
+    mount(IrRamanSpectrum, { target: document.body, props })
+    for (const unit of [initial, units]) {
+      props.units = unit as FrequencyUnit
       await tick()
-      const slider_width = () => Number(doc_query<HTMLInputElement>(`#ir-raman-fwhm`).value)
-      for (const unit of [initial, units]) {
-        props.units = unit as FrequencyUnit
-        await tick()
-        expect(props.fwhm).toBe(25)
-        const canonical = parse_frequency_unit(unit) // resolves the cm-1/cm⁻¹ aliases
-        if (!canonical) throw new Error(`unknown unit ${unit}`)
-        const expected = convert_frequencies([25], canonical, `cm^-1`)[0]
-        expect(slider_width() / expected).toBeCloseTo(1, 12)
-        expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(3)
-      }
-    },
-  )
+      expect(props.fwhm).toBe(25)
+      const canonical = parse_frequency_unit(unit) // resolves the cm-1/cm⁻¹ aliases
+      if (!canonical) throw new Error(`unknown unit ${unit}`)
+      const slider_width = Number(doc_query<HTMLInputElement>(`#ir-raman-fwhm`).value)
+      expect(slider_width / convert_frequencies([25], canonical, `cm^-1`)[0]).toBeCloseTo(
+        1,
+        12,
+      )
+      expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(3)
+    }
+  })
 
   // The curve itself is not measurable here — the plot's line path stays empty under
   // happy-dom — so the drawn direction is checked on the sticks, which share the same

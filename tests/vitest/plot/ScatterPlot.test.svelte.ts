@@ -177,31 +177,6 @@ describe(`ScatterPlot`, () => {
       expect(announced(plot)).toContain(`point ${point_number}`)
     })
 
-    // Two series exercise the offset arithmetic: the cursor is one flat index across
-    // both, so the series boundary is where an off-by-one shows up
-    test(`the cursor crosses the series boundary into the second series`, async () => {
-      document.body.innerHTML = ``
-      const plot = await mount_sized_scatter_plot({
-        series: [
-          { x: [0, 1], y: [1, 2], label: `first` },
-          { x: [2, 3], y: [3, 4], label: `second` },
-        ],
-        marker_renderer: `canvas`,
-      })
-      const svg = plot_svg(plot)
-      const live = () => plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
-
-      for (const expected of [`first point 1`, `first point 2`, `second point 1`]) {
-        svg.dispatchEvent(keydown(`ArrowRight`))
-        await tick()
-        expect(live()).toContain(expected)
-      }
-      // End lands on the last point of the last series, not past it
-      svg.dispatchEvent(keydown(`End`))
-      await tick()
-      expect(live()).toContain(`second point 2`)
-    })
-
     test(`arrows step and wrap, Escape clears the announcement`, async () => {
       const { plot, svg } = await mount_dense()
       await arrow(svg, `ArrowRight`)
@@ -215,9 +190,10 @@ describe(`ScatterPlot`, () => {
       expect(announced(plot)).toBe(``)
     })
 
-    // The cursor names its point by identity, so hiding another series or zooming keeps it on
-    // that point while it stays in view, and leaves it inactive (never retargeted) otherwise
-    test(`the cursor stays on its point through data changes and zoom`, async () => {
+    // Two series exercise the offset arithmetic: the cursor is one flat index across both, so
+    // the series boundary is where an off-by-one shows up. The cursor names its point by
+    // identity, so hiding the other series or zooming keeps it while that point stays in view
+    test(`the cursor crosses series and keeps its point through hiding and zoom`, async () => {
       document.body.innerHTML = ``
       const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
         hidden_series: [],
@@ -236,7 +212,12 @@ describe(`ScatterPlot`, () => {
         ),
       )
       const svg = plot_svg(plot)
-      for (let step = 0; step < 4; step++) await arrow(svg, `ArrowRight`)
+      for (const expected of [`first point 1`, `first point 2`, `second point 1`]) {
+        await arrow(svg, `ArrowRight`)
+        expect(announced(plot)).toContain(expected)
+      }
+      // End lands on the last point of the last series, not past it
+      await arrow(svg, `End`)
       expect(announced(plot)).toContain(`second point 2`)
       // hiding the first series shifts every flat index, but not the cursor's point
       state.hidden_series = [`first`]
@@ -257,59 +238,56 @@ describe(`ScatterPlot`, () => {
     })
   })
 
-  // No pointer event clears the tooltip when the host swaps data or hides a series
-  describe(`tooltip after data changes`, () => {
-    const tooltip_text = (plot: HTMLElement) =>
+  // No pointer event updates or clears the tooltip when the host swaps data or hides a series
+  test(`tooltip follows its point through data changes and closes when it is gone`, async () => {
+    const state = $state<{
+      series: DataSeries[]
+      hidden_series: (string | number)[]
+      tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
+      hovered: boolean
+    }>({
+      series: [{ x: [0, 1, 2], y: [0, 1, 2], color_values: [1, NaN, 3], id: `a` }],
+      hidden_series: [],
+      tooltip_point: null,
+      hovered: true,
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props({ point_tween: { duration: 0 }, color_bar: null }, state),
+    )
+    const tooltip_text = () =>
       plot.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `).trim()
-    const mount_hovered = async () => {
-      const state = $state<{
-        series: DataSeries[]
-        hidden_series: (string | number)[]
-        tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-        hovered: boolean
-      }>({
-        series: [{ x: [0, 1, 2], y: [0, 1, 2], color_values: [1, NaN, 3], id: `a` }],
-        hidden_series: [],
-        tooltip_point: null,
-        hovered: true,
-      })
-      const plot = await mount_sized_scatter_plot(
-        bind_props({ point_tween: { duration: 0 }, color_bar: null }, state),
-      )
-      state.tooltip_point = { x: 2, y: 2, series_idx: 0, point_idx: 2, color_value: 3 }
+    const hover_point = (point_idx: number) => {
+      const { x, y, color_values } = state.series[0]
+      const color_value = color_values?.[point_idx]
+      state.tooltip_point = {
+        x: x[point_idx],
+        y: y[point_idx],
+        series_idx: 0,
+        point_idx,
+        color_value,
+      }
       flushSync()
-      expect(tooltip_text(plot)).toContain(`x: 2 y: 2`)
-      return { plot, state }
     }
-
-    test(`tracks the same point's new values, and closes when it is gone`, async () => {
-      const { plot, state } = await mount_hovered()
-      state.series = [{ x: [0, 1, 7], y: [0, 1, 8], id: `a` }]
-      flushSync()
-      expect(tooltip_text(plot)).toContain(`x: 7 y: 8`)
-      expect(state.tooltip_point).toMatchObject({ x: 7, y: 8, point_idx: 2 })
-      state.series = [{ x: [5, 6], y: [50, 60], id: `a` }]
-      flushSync()
-      expect(tooltip_text(plot)).toBeUndefined()
-      expect(state.tooltip_point).toBeNull()
-    })
-
-    test(`closes when the host hides the hovered series`, async () => {
-      const { plot, state } = await mount_hovered()
-      state.hidden_series = [`a`]
-      flushSync()
-      expect(tooltip_text(plot)).toBeUndefined()
-    })
-
-    // A NaN color value falls back to the series color, so there is no color to report
-    test(`omits the color row for a NaN color value`, async () => {
-      const { plot, state } = await mount_hovered()
-      expect(tooltip_text(plot)).toContain(`Color: 3`)
-      state.tooltip_point = { x: 1, y: 1, series_idx: 0, point_idx: 1, color_value: NaN }
-      flushSync()
-      expect(tooltip_text(plot)).toContain(`x: 1 y: 1`)
-      expect(tooltip_text(plot)).not.toContain(`Color`)
-    })
+    hover_point(2)
+    expect(tooltip_text()).toContain(`x: 2 y: 2 Color: 3`)
+    // a NaN color value falls back to the series color, so there is no color to report
+    hover_point(1)
+    expect(tooltip_text()).toContain(`x: 1 y: 1`)
+    expect(tooltip_text()).not.toContain(`Color`)
+    hover_point(2)
+    state.series = [{ x: [0, 1, 7], y: [0, 1, 8], id: `a` }]
+    flushSync()
+    expect(tooltip_text()).toContain(`x: 7 y: 8`)
+    expect(state.tooltip_point).toMatchObject({ x: 7, y: 8, point_idx: 2 })
+    state.series = [{ x: [5, 6], y: [50, 60], id: `a` }]
+    flushSync()
+    expect(tooltip_text()).toBeUndefined()
+    expect(state.tooltip_point).toBeNull()
+    hover_point(1)
+    expect(tooltip_text()).toContain(`x: 6 y: 60`)
+    state.hidden_series = [`a`]
+    flushSync()
+    expect(tooltip_text()).toBeUndefined()
   })
 
   // Legend and color bar are HTML over the SVG: exports used to drop both
@@ -340,75 +318,48 @@ describe(`ScatterPlot`, () => {
     expect(svg.querySelector(`.export-overlay`)).toBeNull()
   })
 
-  describe(`error bands`, () => {
-    const fill_path_ys = (plot: HTMLElement): number[] =>
-      [...plot.querySelectorAll(`.fill-region path`)].flatMap((path) =>
-        [
-          ...(path.getAttribute(`d`) ?? ``).matchAll(
-            /[MLC,]\s*(?<x>-?[\d.e]+)[, ](?<y>-?[\d.e]+)/g,
-          ),
-        ].map((match) => Number(match.groups?.y)),
-      )
-    const band_series = [
-      { x: [0, 1, 2, 3], y: [0, 1, 0, 1], id: `a`, label: `left`, markers: `points` as const },
-      {
-        x: [0, 1, 2, 3],
-        y: [1000, 1000, 1000, 1000],
-        y_axis: `y2` as const,
-        id: `b`,
-        label: `right`,
-        markers: `points` as const,
-      },
-    ]
-
-    // The band around a y2 series used to be projected with the y scale (0..1), landing
-    // ~230k px off screen instead of hugging its markers
-    test(`a band around a y2 series draws on the y2 scale`, async () => {
-      const plot = await mount_sized_scatter_plot({
-        series: band_series,
-        error_bands: [{ series: { type: `series`, series_id: `b` }, error: 10 }],
-        point_tween: { duration: 0 },
-        line_tween: { duration: 0 },
-        legend: null,
-      })
-      const marker_y = marker_position(plot, 4).y
-      const band_ys = fill_path_ys(plot)
-      expect(band_ys.length).toBeGreaterThan(0)
-      expect(Math.min(...band_ys)).toBeGreaterThan(marker_y - 50)
-      expect(Math.max(...band_ys)).toBeLessThan(marker_y + 50)
-    })
-
-    test(`bands disappear with their hidden series`, async () => {
-      const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
-        hidden_series: [],
-        x_axis: {},
-      })
-      const plot = await mount_sized_scatter_plot(
-        bind_props(
-          {
-            series: band_series,
-            error_bands: [
-              {
-                series: { type: `series` as const, series_id: `a` },
-                error: 0.5,
-                label: `A band`,
-              },
-            ],
-            fill_regions: [{ upper: { type: `series` as const, series_id: `a` }, lower: 0 }],
-          },
-          state,
-        ),
-      )
-      expect(plot.querySelectorAll(`.fill-region path`)).toHaveLength(2)
-      state.hidden_series = [`a`]
-      flushSync()
-      expect(plot.querySelectorAll(`.fill-region path`)).toHaveLength(0)
-      // the band's legend entry stays, greyed out
-      const band_item = [...plot.querySelectorAll(`.legend-item`)].find((item) =>
-        item.textContent?.includes(`A band`),
-      )
-      expect(band_item?.classList.contains(`hidden`)).toBe(true)
-    })
+  // A band around a y2 series used to be projected with the y scale (0..1), landing ~230k px
+  // off screen instead of hugging its markers; bands and fills also outlived hidden series
+  test(`error bands draw on their series' y axis and hide with it`, async () => {
+    const state = $state<{ hidden_series: (string | number)[] }>({ hidden_series: [] })
+    const ref = (series_id: string) => ({ type: `series` as const, series_id })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [
+            { x: [0, 1, 2, 3], y: [0, 1, 0, 1], id: `a`, markers: `points` as const },
+            { x: [0, 1, 2, 3], y: [1e3, 1e3, 1e3, 1e3], y_axis: `y2` as const, id: `b` },
+          ],
+          error_bands: [
+            { series: ref(`b`), error: 10 },
+            { series: ref(`a`), error: 0.5, label: `A band` },
+          ],
+          fill_regions: [{ upper: ref(`a`), lower: 0 }],
+          point_tween: { duration: 0 },
+          line_tween: { duration: 0 },
+        },
+        state,
+      ),
+    )
+    const fill_paths = () => plot.querySelectorAll(`.fill-region path`)
+    expect(fill_paths()).toHaveLength(3)
+    state.hidden_series = [`a`]
+    flushSync()
+    // only b's band is left, hugging b's markers
+    const [band] = fill_paths()
+    expect(fill_paths()).toHaveLength(1)
+    const band_ys = [
+      ...(band.getAttribute(`d`) ?? ``).matchAll(/[MLC,]\s*-?[\d.e]+[, ](?<y>-?[\d.e]+)/g),
+    ].map((match) => Number(match.groups?.y))
+    const marker_y = marker_position(plot, 0).y
+    expect(band_ys.length).toBeGreaterThan(0)
+    expect(Math.min(...band_ys)).toBeGreaterThan(marker_y - 50)
+    expect(Math.max(...band_ys)).toBeLessThan(marker_y + 50)
+    // the hidden band's legend entry stays, greyed out
+    const band_item = [...plot.querySelectorAll(`.legend-item`)].find((item) =>
+      item.textContent?.includes(`A band`),
+    )
+    expect(band_item?.classList.contains(`hidden`)).toBe(true)
   })
 
   describe(`error bars`, () => {
@@ -485,32 +436,26 @@ describe(`ScatterPlot`, () => {
     expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
   })
 
-  // Roving marks exist only on interactive points: a plain plot must not rescan its whole
-  // SVG for them on every hover (the scan dominated hover cost at a few thousand points)
+  // Only interactive points carry roving marks, so a plain plot must not rescan its SVG for
+  // them on every hover (the scan dominated hover cost at a few thousand points), and an
+  // interactive one rescans at most once per hover
   test.each([
-    { desc: `plain points`, extra: {}, max_scans: 0 },
-    // at most one DOM-observer rescan per hover; the overlay list no longer adds a second
-    { desc: `interactive points`, extra: { on_point_click: () => {} }, max_scans: 3 },
+    { desc: `plain`, extra: {}, max_scans: 0 },
+    { desc: `interactive`, extra: { on_point_click: () => {} }, max_scans: 3 },
   ])(
-    `hovering $desc rescans roving marks at most $max_scans times`,
+    `hovering $desc points rescans roving marks at most $max_scans times`,
     async ({ extra, max_scans }) => {
       document.body.innerHTML = ``
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
-        hovered: boolean
-      }>({ tooltip_point: null, hovered: true })
-      await mount_sized_scatter_plot(
-        bind_props({ series: [basic], marker_renderer: `svg` as const, ...extra }, state),
-      )
+      }>({ tooltip_point: null })
+      const props = { series: [basic], marker_renderer: `svg` as const, hovered: true }
+      await mount_sized_scatter_plot(bind_props({ ...props, ...extra }, state))
       await tick()
       const scan_spy = vi.spyOn(Element.prototype, `querySelectorAll`)
       for (const point_idx of [0, 1, 2]) {
-        state.tooltip_point = {
-          x: basic.x[point_idx],
-          y: basic.y[point_idx],
-          series_idx: 0,
-          point_idx,
-        }
+        const [x_val, y_val] = [basic.x[point_idx], basic.y[point_idx]]
+        state.tooltip_point = { x: x_val, y: y_val, series_idx: 0, point_idx }
         flushSync()
         await tick()
       }

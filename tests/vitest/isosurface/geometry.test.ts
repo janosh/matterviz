@@ -123,23 +123,16 @@ describe(`compute_isosurface_geometries`, () => {
   test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
     const blob = blob_volume()
     const volume = { ...blob, values: blob.values.map((val) => sign * val) }
-    const input: GeometryInput = {
-      volumes: [
-        { token: 0, volume, range: null, surfaces: [{ token: `s`, isovalue: sign * 0.5 }] },
-      ],
-    }
+    const surfaces = [{ token: `s`, isovalue: sign * 0.5 }]
+    const input = { volumes: [{ ...blob_input(volume).volumes[0], range: null, surfaces }] }
     const [{ positions, indices }] = compute_isosurface_geometries(input).volumes[0].surfaces
-    const vertex = (idx: number): Vec3 =>
-      [0, 1, 2].map((axis) => positions[3 * idx + axis]) as Vec3
-    let n_outward = 0
+    const vertex = (idx: number) => [...positions.subarray(3 * idx, 3 * idx + 3)] as Vec3
+    expect(indices.length).toBeGreaterThan(300)
     for (let tri = 0; tri < indices.length; tri += 3) {
       const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner) => vertex(indices[tri + corner]))
       const normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
-      // blob centred at (5, 5, 5) Å
-      if (dot(normal, subtract(vert_a, [5, 5, 5])) > 0) n_outward++
+      expect(dot(normal, subtract(vert_a, [5, 5, 5]))).toBeGreaterThan(0) // blob centre (Å)
     }
-    expect(indices.length).toBeGreaterThan(300)
-    expect(n_outward).toBe(indices.length / 3)
   })
 
   test(`transferables list every output buffer exactly once`, () => {

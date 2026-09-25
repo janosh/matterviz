@@ -7,7 +7,6 @@ import {
   compute_count_range,
   compute_histogram_bins,
   compute_histogram_counts,
-  histogram_totals,
   log_safe_range,
   normalize_counts,
 } from '$lib/plot/histogram/histogram'
@@ -94,7 +93,7 @@ const histogram_bins = (
     counted,
     overrides.normalize ?? `count`,
     histogram_cfg.series_color,
-    histogram_totals(counted),
+    counted,
   )
 }
 // count range of a set of series binned over histogram_cfg's domains
@@ -241,15 +240,11 @@ describe(`Histogram`, () => {
 
   // A series' own color wins over bar.color, and the fill picker only shows when bar.color
   // is what the bars actually use (a lone series without its own color)
+  // oxfmt-ignore
   test.each([
     [`lone series color wins`, [{ values: [1, 2], color: `#00ff00` }], `#00ff00`, false],
     [`lone series uses bar.color`, [{ values: [1, 2] }], `#123456`, true],
-    [
-      `several series use the palette`,
-      [{ values: [1, 2] }, { values: [2, 3], visible: false }],
-      plot_color(0),
-      false,
-    ],
+    [`several series use the palette`, [{ values: [1, 2] }, { values: [2, 3], visible: false }], plot_color(0), false],
   ])(`bar fill: %s`, async (_desc, series, expected_fill, picker_shown) => {
     await mount_histogram({
       series,
@@ -258,14 +253,13 @@ describe(`Histogram`, () => {
       show_controls: true,
       controls_open: true,
     })
-    const fills = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)].map(
-      (bar) => bar.getAttribute(`fill`),
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    expect(bars.length).toBeGreaterThan(0)
+    expect(new Set([...bars].map((bar) => bar.getAttribute(`fill`)))).toEqual(
+      new Set([expected_fill]),
     )
-    expect(fills.length).toBeGreaterThan(0)
-    expect(new Set(fills)).toEqual(new Set([expected_fill]))
-    expect(document.querySelector(`input[aria-label="Fill color hex"]`) !== null).toBe(
-      picker_shown,
-    )
+    const picker = document.querySelector(`input[aria-label="Fill color hex"]`)
+    expect(Boolean(picker)).toBe(picker_shown)
   })
 
   // Zooming into part of the distribution must not renormalize by the samples still in view
@@ -290,23 +284,21 @@ describe(`Histogram`, () => {
       const before = await hovered_value()
       const svg = plot_svg()
       const { left, top } = svg.getBoundingClientRect()
-      const at = (px_x: number, px_y: number): MouseEventInit => ({
-        button: 0,
-        buttons: 1,
+      const at = (px_x: number, px_y: number) => ({
         clientX: left + px_x,
         clientY: top + px_y,
       })
-      svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(130, 40) }))
-      window.dispatchEvent(new MouseEvent(`mousemove`, at(250, 240)))
-      window.dispatchEvent(new MouseEvent(`mouseup`, { ...at(250, 240), buttons: 0 }))
+      svg.dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true, button: 0, buttons: 1, ...at(130, 40) }),
+      )
+      window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(250, 240) }))
+      window.dispatchEvent(new MouseEvent(`mouseup`, at(250, 240)))
       await tick()
       const after = await hovered_value()
-      // the zoom re-bins: same bin count over a narrower span, so fewer samples per bin
+      // the zoom re-bins (fewer samples per bin), yet uniform samples keep their density and a
+      // bin's probability stays its share of all 1000 samples. 5% covers the +-1 sample
+      // integer-grid jitter of ~30-sample bins; the in-view total would triple the height.
       expect(after.count).toBeLessThan(before.count)
-      // bar height (y) of uniform samples: density stays 1/1000 per unit, probability is the
-      // bin's share of all 1000 samples, not of those still in view
-      // (5% covers the zoomed bins' +-1 sample of integer-grid discretization, ~30 per bin;
-      // dividing by the in-view total instead would roughly triple the height)
       if (normalize === `density`) expect(Math.abs(after.y / before.y - 1)).toBeLessThan(0.05)
       else expect(after.y).toBeCloseTo(after.count / 1000, 12)
     },

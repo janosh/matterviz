@@ -112,8 +112,7 @@ export class AxisAssignmentOverflowError extends Error {
 
 const default_is_visible = (series: AxisAssignableSeries): boolean => series.visible !== false
 
-// No unit and no axis_group: nothing ties the series to any other, so an explicit y_axis on
-// one unitless series must not drag the rest of the unitless series onto its axis
+// No unit and no axis_group: nothing ties the series to any other
 const is_unitless = (series: AxisAssignableSeries): boolean =>
   !series.axis_group?.trim() && !series.unit?.trim()
 
@@ -182,10 +181,9 @@ export function group_axis_series<Series extends AxisAssignableSeries>(
     .toSorted((group_a, group_b) => group_a.priority - group_b.priority)
 }
 
-// Preserve visible explicit assignments, then assign automatic groups only to
-// unreserved axes. The aligned result keeps this operation pure. An explicit axis on a unit
-// or axis_group series carries its whole group. On a unitless series it pins only itself:
-// it keeps unit groups off that axis, but the other unitless series are free to share it.
+// Preserve visible explicit assignments, then assign automatic groups only to unreserved
+// axes. An explicit axis on a unit/axis_group series carries its whole group; on a unitless
+// series it pins only itself, keeping unit groups (not other unitless series) off that axis.
 export function assign_axes<Series extends AxisAssignableSeries>(
   series: readonly Series[],
   options: AxisAssignmentOptions<Series> = {},

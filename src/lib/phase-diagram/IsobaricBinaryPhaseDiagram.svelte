@@ -8,12 +8,7 @@
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { ViewerChrome } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
-  import {
-    array_extent,
-    compute_bounding_box_2d,
-    polygon_centroid,
-    type Vec2,
-  } from '$lib/math'
+  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '$lib/math'
   import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { handle_and_prevent, to_error } from '$lib/utils'
@@ -22,7 +17,7 @@
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { assert_unique_ids, build_diagram } from './build-diagram'
+  import { build_diagram, find_duplicate_id } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
@@ -151,22 +146,19 @@
       return { data: null, error: `Invalid phase diagram input: ${to_error(error).message}` }
     }
   })
-  // The data prop gets the same id check build_diagram applies to diagram_input, unless a
-  // successfully built diagram_input means it is ignored anyway
-  const data_prop_error = $derived.by((): string | null => {
-    if (!data_prop || rebuilt.data) return null
-    try {
-      assert_unique_ids(data_prop)
-      return null
-    } catch (error) {
-      return `Invalid phase diagram data: ${to_error(error).message}`
-    }
-  })
+  // The data prop gets build_diagram's id check unless a built diagram_input replaces it
+  const duplicate_id = $derived(
+    rebuilt.data || !data_prop ? null : find_duplicate_id(data_prop),
+  )
   let drop_error = $state<string | null>(null)
-  const input_error = $derived(drop_error ?? rebuilt.error ?? data_prop_error)
+  const input_error = $derived(
+    drop_error ??
+      rebuilt.error ??
+      (duplicate_id && `Invalid phase diagram data: ${duplicate_id}`),
+  )
 
   // Direct editor edits can override this value until either source changes.
-  let source_data = $derived(rebuilt.data ?? (data_prop_error ? undefined : data_prop))
+  let source_data = $derived(rebuilt.data ?? (duplicate_id ? undefined : data_prop))
   const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
@@ -210,14 +202,13 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
   const temp_range = $derived(effective_data.temperature_range)
 
-  // Visible temperature window in display units: y_axis.range (in the unit the axis shows,
-  // either end may be null) over the data's temperature_range
-  const y_domain_display = $derived.by((): Vec2 => {
-    const [lower, upper] = y_axis.range ?? [null, null]
+  // Visible temperature window in display units: y_axis.range (either end may be null) over
+  // the data's temperature_range
+  const y_domain_display = $derived.by(() => {
     const [t_min, t_max] = temp_range.map((temp) =>
       convert_temp(temp, data_temp_unit, temp_unit),
     )
-    return [lower ?? t_min, upper ?? t_max]
+    return [y_axis.range?.[0] ?? t_min, y_axis.range?.[1] ?? t_max]
   })
 
   // y_scale maps data temperatures to SVG coordinates

@@ -475,8 +475,7 @@ export function plan_synthesis(
     rejected: ctx.rejected,
     n_candidates,
     precursor_pool: pool.map(to_phase_ref),
-    // Repeated causes (an entry id used 3+ times, a formula in both allow and block) produce
-    // identical messages; one line each is enough and keeps the list usable as keys
+    // repeated causes (e.g. a formula in both allow and block) produce identical warnings
     warnings: [...new Set(ctx.warnings)],
   }
 }

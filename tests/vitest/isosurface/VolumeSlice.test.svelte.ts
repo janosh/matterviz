@@ -3,12 +3,12 @@ import VolumeSlice from '$lib/isosurface/VolumeSlice.svelte'
 import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
 import * as slice_module from '$lib/isosurface/slice'
 import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
-import { make_volume } from '$lib/isosurface/types'
 import type { SliceResult } from '$lib/isosurface/slice'
 import type { VolumeSliceMode } from '$lib/isosurface/slice-rendering'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+import { make_grid, make_volume } from '../test-fixtures'
 
 const make_slice = (): SliceResult => {
   const width = 4
@@ -261,44 +261,28 @@ describe(`VolumeSlice`, () => {
 })
 
 // Colormap, contour and colour-range edits only repaint, never re-sample the plane
-describe(`VolumeSliceView`, () => {
-  test(`re-samples for plane changes but not for rendering-only changes`, async () => {
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
-      mock_context() as unknown as CanvasRenderingContext2D,
-    )
-    const sample = vi.spyOn(slice_module, `sample_hkl_slice`)
-    const n_pts = 6
-    const volume = make_volume(
-      Float64Array.from({ length: n_pts ** 3 }, (_, idx) => idx),
-      [n_pts, n_pts, n_pts],
-      {
-        id: `rho`,
-        lattice: [
-          [3, 0, 0],
-          [0, 3, 0],
-          [0, 0, 3],
-        ],
-        origin: [0, 0, 0],
-        periodic: true,
-      },
-    )
-    const props = $state<{ volume: typeof volume; settings: Partial<VolumeSliceSettings> }>({
-      volume,
-      settings: { resolution: 16 },
-    })
-    mount(VolumeSliceView, { target: document.body, props })
-    await tick()
-    expect(sample).toHaveBeenCalledTimes(1)
-    const settle = async (settings: Partial<VolumeSliceSettings>) => {
-      props.settings = { ...props.settings, ...settings }
-      await tick()
-      await new Promise((resolve) => setTimeout(resolve, 200)) // 150 ms edit coalescing
-      await tick()
-    }
-    await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
-    await settle({ render_mode: `contours`, symmetric: true })
-    expect(sample).toHaveBeenCalledTimes(1)
-    await settle({ position: 0.25 })
-    expect(sample).toHaveBeenCalledTimes(2)
+test(`VolumeSliceView re-samples for plane changes only`, async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
+    mock_context() as unknown as CanvasRenderingContext2D,
+  )
+  const sample = vi.spyOn(slice_module, `sample_hkl_slice`)
+  const volume = make_volume(
+    make_grid(6, 6, 6, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
+  )
+  const props = $state({
+    volume,
+    settings: { resolution: 16 },
   })
+  mount(VolumeSliceView, { target: document.body, props })
+  await tick()
+  const settle = async (settings: Partial<VolumeSliceSettings>) => {
+    props.settings = { ...props.settings, ...settings }
+    await new Promise((resolve) => setTimeout(resolve, 200)) // 150 ms edit coalescing
+    await tick()
+  }
+  await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
+  await settle({ render_mode: `contours`, symmetric: true })
+  expect(sample).toHaveBeenCalledTimes(1)
+  await settle({ position: 0.25 })
+  expect(sample).toHaveBeenCalledTimes(2)
 })

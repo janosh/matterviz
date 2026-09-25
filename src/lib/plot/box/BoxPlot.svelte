@@ -185,9 +185,7 @@
       value_label_format?: string
       kind?: ViolinKind
       side?: ViolinSide
-      // KDE bandwidth for violins. A number is in value-axis units, i.e. in decades (log10
-      // units) on a log value axis, where the density is estimated in log10 space.
-      bandwidth?: BandwidthOption
+      bandwidth?: BandwidthOption // violin KDE; a number is in decades on a log value axis
       violin_width?: number
       violin_style?: ViolinStyle
       kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
@@ -355,11 +353,9 @@
       .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
       .join(` `),
   )
-  // KDE depends on the distribution, bandwidth and value-axis scale, not box statistics,
-  // whisker settings or legend visibility (hidden series are skipped when drawing), so it
-  // reads the authored series_in. On a log axis the density is estimated in log10 space and
-  // the grid mapped back: a lognormal draws as a symmetric violin and a numeric bandwidth is
-  // in decades. A non-positive clip bound has no log, so it leaves that side open.
+  // KDEs read the authored series_in so legend toggles don't recompute them (hidden series
+  // are skipped when drawing). On a log axis the density is estimated in log10 space, so a
+  // numeric bandwidth is in decades; a non-positive clip bound leaves that side open.
   const to_log = (bound: number | null) =>
     bound !== null && bound > 0 ? Math.log10(bound) : null
   let violin_kdes = $derived.by(() => {

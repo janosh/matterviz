@@ -610,7 +610,7 @@
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
-  // This viewer's element colors, shared with its scene, legend and panes through context
+  // this viewer's element colors, shared with its scene, legend and panes
   set_element_palette(new ViewerElementPalette(() => color_scheme))
 
   // Isosurface geometry-worker failures (chunk 404, OOM): the scene keeps its previous

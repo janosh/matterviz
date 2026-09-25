@@ -33,18 +33,13 @@ interface HullDataPipelineInputs {
   // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
   components?: () => readonly string[] | undefined
   max_hull_dist_show_phases: () => number
-  // Values the caller passed are their choice, so data-dependent defaults skip them: the auto
-  // threshold must not replace a passed threshold, nor large datasets hide passed label toggles
-  max_hull_dist_explicit: boolean
-  labels_explicit: boolean
   show_stable: () => boolean
   show_unstable: () => boolean
   // Categorical classification (marker shapes + filter toggles), null to disable
   entry_category: () => EntryCategoryConfig | null
   // Category values whose entries are hidden from the plot (view predicate)
   hidden_categories: () => readonly string[]
-  // Datasets larger than this start with labels hidden (hide_labels) unless labels_explicit
-  label_threshold: () => number
+  label_threshold: () => number // datasets larger than this start with labels hidden
   // Setters for bindable props written by pipeline effects
   set_temperature: (temperature: number) => void
   set_max_hull_dist_show_phases: (value: number) => void
@@ -190,11 +185,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     ),
   )
 
-  // Re-created per arity (a dimension change adopts that arity's auto threshold)
-  const next_auto_threshold = $derived.by(() => {
-    void dim
-    return helpers.auto_threshold_reset(inputs.max_hull_dist_explicit)
-  })
+  const next_auto_threshold = $derived(helpers.auto_threshold_reset(default_threshold))
   $effect(() => {
     const current = inputs.max_hull_dist_show_phases()
     // Keyed on the enriched entries, not raw entries(), so the auto threshold re-derives when
@@ -211,8 +202,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   $effect(() => {
     if (label_defaults_applied_for === inputs.entries()) return
     label_defaults_applied_for = inputs.entries()
-    if (!inputs.labels_explicit && effective_entries.length > inputs.label_threshold())
-      inputs.hide_labels()
+    if (effective_entries.length > inputs.label_threshold()) inputs.hide_labels()
   })
 
   // Filter by threshold; visibility is a view predicate, not entry state.
@@ -241,11 +231,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const phase_stats = $derived(
     plot_entries.length === model.entries.length
       ? model.phase_stats
-      : thermo.get_convex_hull_stats(
-          plot_entries.filter((entry) => !entry.is_synthetic),
-          elements,
-          dim,
-        ),
+      : thermo.get_convex_hull_stats(plot_entries, elements, dim),
   )
 
   return {

@@ -75,8 +75,8 @@
   )
   const available_bands_changed = make_change_detector()
 
-  // Bands the user switched off stay off when the set of bands crossing E_F changes (a mu
-  // drag re-extracts the surface); newly crossing bands start visible. Plain bookkeeping.
+  // Bands switched off stay off when a mu change alters which bands cross E_F; newly
+  // crossing bands start visible
   let previous_bands: number[] = []
   const sync_bindable_defaults = (bands_changed = false): void => {
     if (color_property === `property` && !has_property)

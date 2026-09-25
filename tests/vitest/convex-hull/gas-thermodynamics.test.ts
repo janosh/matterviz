@@ -15,6 +15,7 @@ import {
 } from '$lib/convex-hull/gas-thermodynamics'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
@@ -278,68 +279,49 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
 describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
   const provider = get_default_gas_provider()
-  // Δμ of a whole molecule at (T, P) relative to (0 K, 1 bar)
-  const molecule_shift = (gas: GasSpecies, temperature: number, pressure: number): number =>
-    (compute_gas_chemical_potential(provider, gas, temperature, pressure) -
-      provider.get_standard_chemical_potential(gas, 0)) *
-    Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
-  const shifts = (config: GasThermodynamicsConfig, temperature: number) => {
+  const setup = (config: GasThermodynamicsConfig, temperature: number) => {
     const pressures = get_effective_pressures(config)
-    return {
-      carbon: compute_element_mu_shift(`C`, config, temperature, pressures),
-      oxygen: compute_element_mu_shift(`O`, config, temperature, pressures),
-      pressures,
-    }
+    const shift = (element: string) =>
+      compute_element_mu_shift(element as ElementSymbol, config, temperature, pressures)
+    // Δμ of a whole molecule at (T, P) relative to (0 K, 1 bar)
+    const molecule_shift = (gas: GasSpecies) =>
+      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
+        provider.get_standard_chemical_potential(gas, 0)) *
+      Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
+    return { pressures, shift, molecule_shift }
   }
 
-  test(`CO2 fixes Δμ_C + 2 Δμ_O, so C gets the remainder of an O2-pinned oxygen shift`, () => {
-    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `CO2`] }
-    const { carbon, oxygen, pressures } = shifts(config, 1000)
-    expect(oxygen).toBeCloseTo(molecule_shift(`O2`, 1000, pressures.O2) / 2, 12)
-    // equilibrium with the CO2 reservoir: μ_C + 2 μ_O = μ(CO2)
-    expect(carbon + 2 * oxygen).toBeCloseTo(molecule_shift(`CO2`, 1000, pressures.CO2), 12)
-    // oxygen's −T·S share of the CO2 entropy is not double-counted on carbon (≈ −0.81 vs −3.47 eV)
-    expect(carbon - molecule_shift(`CO2`, 1000, pressures.CO2)).toBeCloseTo(-2 * oxygen, 12)
-    expect(carbon).toBeCloseTo(-0.8069, 3)
-    // composition-weighted: CaCO3 = 1/5 C + 3/5 O (+ Ca unshifted)
-    const correction = compute_gas_correction(
-      make_phase({ Ca: 1, C: 1, O: 3 }),
-      config,
-      1000,
-      pressures,
-    )
-    expect(correction).toBeCloseTo((carbon + 3 * oxygen) / 5, 12)
-  })
-
-  test(`without an O2 reservoir the whole CO2 shift goes to carbon`, () => {
-    const { carbon, oxygen, pressures } = shifts({ enabled_gases: [`CO2`] }, 1000)
-    expect(oxygen).toBe(0)
-    expect(carbon).toBeCloseTo(molecule_shift(`CO2`, 1000, pressures.CO2), 12)
-  })
-
-  test(`H2O pins H against O2: Δμ_H = (Δμ(H2O) − Δμ_O) / 2`, () => {
-    const config: GasThermodynamicsConfig = {
-      enabled_gases: [`O2`, `H2O`],
-      element_to_gas: { H: `H2O` },
+  // A gas fixes only the stoichiometric sum of its elements' shifts (Δμ_C + 2 Δμ_O = Δμ(CO2)):
+  // a partner pinned by its own reservoir (O by O2) leaves the element the remainder
+  test.each<[GasSpecies[], GasThermodynamicsConfig[`element_to_gas`], number]>([
+    [[`O2`, `CO2`], {}, 1000],
+    [[`CO2`], {}, 1000],
+    [[`O2`, `H2O`], { H: `H2O` }, 800],
+  ])(`sum rule holds for %o (%o) at %d K`, (enabled_gases, element_to_gas, temperature) => {
+    const { shift, molecule_shift } = setup({ enabled_gases, element_to_gas }, temperature)
+    for (const gas of enabled_gases) {
+      const sum = Object.entries(GAS_STOICHIOMETRY[gas]).reduce(
+        (acc, [element, count]) => acc + count * shift(element),
+        0,
+      )
+      expect(sum).toBeCloseTo(molecule_shift(gas), 12)
     }
-    const pressures = get_effective_pressures(config)
-    const hydrogen = compute_element_mu_shift(`H`, config, 800, pressures)
-    const oxygen = compute_element_mu_shift(`O`, config, 800, pressures)
-    expect(2 * hydrogen + oxygen).toBeCloseTo(molecule_shift(`H2O`, 800, pressures.H2O), 12)
+  })
+
+  test(`compute_gas_correction weights element shifts by composition`, () => {
+    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`, `CO2`] }
+    const { pressures, shift } = setup(config, 1000)
+    const caco3 = make_phase({ Ca: 1, C: 1, O: 3 }) // 1/5 C + 3/5 O (+ Ca unshifted)
+    const correction = compute_gas_correction(caco3, config, 1000, pressures)
+    expect(correction).toBeCloseTo((shift(`C`) + 3 * shift(`O`)) / 5, 12)
   })
 
   test.each([
-    [{ O: `CO2`, C: `CO2` }, /depend on each other/],
-    [{ N: `O2` }, /maps N to O2, which has no N/],
-  ] as const)(`rejects ill-posed element_to_gas %o`, (element_to_gas, message) => {
-    const config: GasThermodynamicsConfig = {
-      enabled_gases: [`O2`, `CO2`],
-      element_to_gas,
-    }
-    const element = `N` in element_to_gas ? `N` : `C`
-    expect(() =>
-      compute_element_mu_shift(element, config, 1000, get_effective_pressures(config)),
-    ).toThrow(message)
+    [`C`, { O: `CO2`, C: `CO2` }, /depend on each other/],
+    [`N`, { N: `O2` }, /maps N to O2, which has no N/],
+  ] as const)(`%s: rejects element_to_gas %o`, (element, element_to_gas, message) => {
+    const { shift } = setup({ enabled_gases: [`O2`, `CO2`], element_to_gas }, 1000)
+    expect(() => shift(element)).toThrow(message)
   })
 })
 

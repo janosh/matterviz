@@ -175,17 +175,14 @@ export function compute_auto_hull_dist_threshold(
 }
 
 // Returns the threshold to apply when the data source changes (undefined = leave as is).
-// A user adjustment away from the previous auto value is preserved across source changes;
-// `user_set` means the threshold was passed explicitly, so even the first source keeps it.
-export function auto_threshold_reset(user_set: boolean) {
+// A user adjustment away from the previous auto value is preserved across source changes.
+export function auto_threshold_reset(default_threshold: number) {
   let source: unknown
-  let auto_threshold = NaN
+  let auto_threshold = default_threshold
   let initialized = false
   return (next_source: unknown, current_threshold: number, next_auto_threshold: number) => {
     if (initialized && next_source === source) return undefined
-    const user_changed = initialized
-      ? Math.abs(current_threshold - auto_threshold) > 0.001
-      : user_set
+    const user_changed = initialized && Math.abs(current_threshold - auto_threshold) > 0.001
     source = next_source
     auto_threshold = next_auto_threshold
     initialized = true

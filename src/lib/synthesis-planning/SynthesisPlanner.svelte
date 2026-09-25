@@ -324,15 +324,7 @@
       [`Inverse hull`, format_mev(selectivity.inverse_hull_energy)],
       [`Selectivity margin`, format_mev(selectivity.selectivity_margin)],
       [`Net gas exchange`, thermodynamics.atmosphere],
-      // gas exchange is what makes ΔE temperature dependent, hence bounds the downhill range
-      ...(Object.keys(thermodynamics.gas_exchange).length
-        ? [
-            [
-              `Downhill window`,
-              describe_downhill_windows(thermodynamics.downhill_windows),
-            ] as [string, string],
-          ]
-        : []),
+      [`Downhill window`, describe_downhill_windows(thermodynamics.downhill_windows)],
       [`Score`, format_num(score, `.2f`)],
     ]
   })

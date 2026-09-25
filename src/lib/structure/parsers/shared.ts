@@ -285,10 +285,8 @@ export const make_lattice = (
   return { matrix: completed, ...math.calc_lattice_params(completed), pbc }
 }
 
-// Replace zero-length cell vectors with unit vectors normal to the others, as ASE's
-// complete_cell does. 2D sheets are written with c = 0 (ASE's graphene() without vacuum):
-// that singular cell made fractional coordinates, PBC images and every distance measurement
-// wrong or throw. Right-handed completion; other degenerate cells are returned unchanged.
+// Zero-length cell vectors become right-handed unit normals to the others (ASE complete_cell),
+// e.g. the c = 0 of 2D sheets. Other degenerate cells are returned unchanged.
 export function complete_lattice_matrix(matrix: math.Matrix3x3): math.Matrix3x3 {
   const is_zero = matrix.map((row) => Math.hypot(...row) < math.EPS)
   const n_zero = is_zero.filter(Boolean).length
@@ -397,7 +395,6 @@ export const cart_to_frac_with_fallback = (
   opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
 ): { convert: (xyz: Vec3, target?: Vec3) => Vec3; exact: boolean } => {
   try {
-    // exact for completed 2D/1D cells too, the same cell make_lattice stores
     return { convert: math.create_cart_to_frac(complete_lattice_matrix(matrix)), exact: true }
   } catch {
     // fall through to the per-axis-length approximation below

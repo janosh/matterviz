@@ -119,9 +119,8 @@ export async function export_png_file(
   if (!ctx) return
   ctx.scale(scale, scale)
 
-  // A 2D drawImage of a WebGPU canvas reads no pixels (the swap chain is gone after present),
-  // so re-render through the registered renderer at export resolution and composite the
-  // decoded frame. An unregistered canvas is encoded as-is, at display resolution.
+  // drawImage of a WebGPU canvas reads no pixels after present, so re-render the registered
+  // scene at export resolution (unregistered canvases encode as-is) and composite that frame
   const view = scene_registry.get(gl_canvas)
   const frame_blob = await canvas_to_png_blob(
     gl_canvas,

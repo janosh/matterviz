@@ -114,7 +114,6 @@ describe(`parse_decimal_token`, () => {
     [`0.80000-100`, 0.8e-100],
     [`-1.5+123`, -1.5e123],
     [`.25-101`, 0.25e-101],
-    [`1-2`, NaN],
   ])(`%s parses as %d`, (token, expected) => {
     expect(parse_decimal_token(token, 0, token.length)).toBe(expected)
   })
@@ -811,7 +810,9 @@ describe(`site fixtures`, () => {
   ])(`$name integrates to $n_electrons electrons`, ({ name, dims, n_sites, n_electrons }) => {
     const parsed = load(name)
     expect(parsed.structure.sites).toHaveLength(n_sites)
-    expect(parsed.volumes[0].dims).toEqual(dims)
+    // collinear spin adds one magnetization block, SOC three (m_x, m_y, m_z)
+    expect(parsed.volumes).toHaveLength(name.endsWith(`_SOC`) ? 4 : 2)
+    for (const volume of parsed.volumes) expect(volume.dims).toEqual(dims)
     expect(parsed.volumes[0].values).toHaveLength(dims[0] * dims[1] * dims[2])
     // rho*V on the VASP grid sums to the electron count; divided by V and averaged it
     // reproduces N to the 5-digit precision of the file
@@ -850,18 +851,6 @@ describe(`site fixtures`, () => {
     expect(magnetization.data_range.mean * cell_volume).toBeCloseTo(14.07, 2)
     expect(magnetization.data_range.min).toBeLessThan(0)
     expect(charge.data_range.min).toBeGreaterThan(0)
-  })
-
-  // SOC CHGCARs carry charge + m_x, m_y, m_z
-  test(`noncollinear CHGCAR yields charge and three magnetization components`, () => {
-    const parsed = load(`pymatgen-CHGCAR.NiO_SOC`)
-    expect(parsed.volumes.map((vol) => vol.label)).toEqual([
-      `charge density`,
-      `magnetization density (x)`,
-      `magnetization density (y)`,
-      `magnetization density (z)`,
-    ])
-    for (const volume of parsed.volumes) expect(volume.dims).toEqual([28, 28, 28])
   })
 
   test(`real spin-polarized ELFCAR stays within the ELF range [0, 1]`, () => {

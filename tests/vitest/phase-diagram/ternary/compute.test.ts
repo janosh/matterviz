@@ -112,67 +112,45 @@ describe(`prepare_diagram`, () => {
       toy_elements,
       /No reference entry for K, while Li \(-1.9 eV\/atom\), Na \(-1.3 eV\/atom\) carry absolute energies/,
     ],
+    [
+      [...toy_entries, { composition: { Li: 2, K: 1 }, entry_id: `bare` } as PhaseData],
+      toy_elements,
+      /bare has no energy, energy_per_atom or e_form_per_atom/,
+    ],
   ])(`rejects invalid systems (%#)`, (entries, elements, message) => {
     expect(() => prepare_diagram(entries, { elements })).toThrow(message)
   })
 })
 
 describe(`E_form-only entries`, () => {
+  // no `energy`: E_form is all the data carries; the lowest-E_form unary is the reference,
+  // whatever the entry order, and a polymorph sits at E_form + E_ref = 0.05 + 0 exactly
   test.each([`auto`, `static`] as const)(`%s mode uses e_form_per_atom as dG_f`, (mode) => {
-    const entries: PhaseData[] = [
+    const entries = [
+      { composition: { Li: 1 }, e_form_per_atom: 0.05, entry_id: `Li-high` },
       { composition: { Li: 1 }, e_form_per_atom: 0, entry_id: `Li` },
       { composition: { Na: 1 }, e_form_per_atom: 0, entry_id: `Na` },
       { composition: { K: 1 }, e_form_per_atom: 0, entry_id: `K` },
       { composition: { Li: 1, Na: 1 }, e_form_per_atom: -0.5, entry_id: `LiNa` },
       { composition: { Na: 1, K: 1 }, e_form_per_atom: -0.3, entry_id: `NaK` },
-    ] as PhaseData[] // no `energy`: E_form is all the data carries
+    ] as PhaseData[]
     const model = prepare_diagram(entries, { elements: toy_elements, free_energy: { mode } })
     const section = compute_section(model, 500)
-    expect(Array.from(section.dg_form)).toEqual([0, 0, 0, -0.5, -0.3])
-    expect(section.stable).toEqual([0, 1, 2, 3, 4])
+    expect(Array.from(section.dg_form)).toEqual([0.05, 0, 0, 0, -0.5, -0.3])
+    expect(section.stable).toEqual([1, 2, 3, 4, 5])
   })
 
   test(`an E_form-only polymorph sits its E_form above absolute-energy references`, () => {
-    const entries: PhaseData[] = [
+    const entries = [
       make_phase({ Li: 1 }, -1.9),
       make_phase({ Na: 1 }, -1.3),
       make_phase({ K: 1 }, -1),
       make_phase({ Li: 1, Na: 1 }, -3.6),
       { composition: { Li: 1 }, e_form_per_atom: 0.2, entry_id: `Li-polymorph` } as PhaseData,
     ]
-    const model = prepare_diagram(entries, {
-      elements: toy_elements,
-      free_energy: { mode: `static` },
-    })
-    const section = compute_section(model, 500)
+    const options = { elements: toy_elements, free_energy: { mode: `static` } } as const
+    const section = compute_section(prepare_diagram(entries, options), 500)
     expect(section.dg_form.at(-1)).toBeCloseTo(0.2, 12)
-  })
-
-  test(`the lowest-E_form unary is the reference, whatever the entry order`, () => {
-    const entries = [
-      { composition: { Li: 1 }, e_form_per_atom: 0.05, entry_id: `Li-high` },
-      { composition: { Li: 1 }, e_form_per_atom: 0, entry_id: `Li` },
-      { composition: { Na: 1 }, e_form_per_atom: 0, entry_id: `Na` },
-      { composition: { K: 1 }, e_form_per_atom: 0, entry_id: `K` },
-    ] as PhaseData[]
-    const model = prepare_diagram(entries, {
-      elements: toy_elements,
-      free_energy: { mode: `static` },
-    })
-    const section = compute_section(model, 500)
-    // Polymorph at E_form + E_ref = 0.05 + 0 exactly; the reference is its own zero
-    expect(Array.from(section.dg_form)).toEqual([0.05, 0, 0, 0])
-    expect(section.stable).toEqual([1, 2, 3])
-  })
-
-  test(`an entry with no energy of any kind throws instead of sitting at 0 eV`, () => {
-    const entries = [
-      ...toy_entries,
-      { composition: { Li: 2, K: 1 }, entry_id: `bare` } as PhaseData,
-    ]
-    expect(() =>
-      prepare_diagram(entries, { elements: toy_elements, free_energy: { mode: `static` } }),
-    ).toThrow(/bare has no energy, energy_per_atom or e_form_per_atom/)
   })
 })
 

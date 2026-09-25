@@ -252,9 +252,8 @@ describe(`make_supercell`, () => {
     })
   }
 
-  // Folding an out-of-cell atom back in moved it a supercell vector away from its bond partner
-  // O sits outside the cell along every axis, so [2, 3, 2] exercises the per-axis decoding
-  // of supercell site indices into cell indices
+  // Folding an out-of-cell atom (O, outside along every axis) back in moved it a supercell
+  // vector away from its bond partner
   test.each([
     [true, [2, 1, 1]],
     [false, [2, 1, 1]],

@@ -1,147 +1,91 @@
 // @vitest-environment happy-dom
-import { create_collapsible_legend, type LegendItem, PlotLegend, ScatterPlot } from '$lib/plot'
-import { flushSync, mount, unmount } from 'svelte'
+import { create_collapsible_legend, ScatterPlot } from '$lib/plot'
+import { flushSync } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { mount_sized } from '../setup'
 
 afterEach(() => document.body.replaceChildren())
 
-// Two sibling figures, each wrapping controls, a plot area and a `.legend`
-const make_figures = () => {
-  const figures = [0, 1].map(() => {
-    const figure = document.createElement(`div`)
-    figure.innerHTML = `<button class="control"></button><svg class="plot"></svg><div class="legend"><span class="item"></span></div>`
-    document.body.append(figure)
-    return figure
-  })
-  // SVG elements lack .click(), so dispatch the event the dismiss listener waits for
-  const click = (idx: number, selector: string) => {
-    const el = figures[idx].querySelector(selector)
-    if (!el) throw new Error(`no ${selector} in figure ${idx}`)
-    el.dispatchEvent(new MouseEvent(`click`, { bubbles: true, composed: true }))
-  }
-  return { figures, click }
-}
-
 describe(`create_collapsible_legend`, () => {
-  test(`starts with the given groups collapsed and toggles them`, () => {
-    const { collapsed_groups, legend, toggle_group } = create_collapsible_legend([`Models`])
-    expect([...collapsed_groups]).toEqual([`Models`])
-    expect(legend).toEqual({ collapsed_groups, group_click: `collapse` })
-    toggle_group(`Models`)
-    expect(collapsed_groups.has(`Models`)).toBe(false)
-    toggle_group(`Models`)
-    expect(collapsed_groups.has(`Models`)).toBe(true)
-  })
-
-  test(`collapse(group) adds one group, collapse() restores the initially collapsed ones`, () => {
-    const { collapsed_groups, toggle_group, collapse } = create_collapsible_legend([`a`])
-    toggle_group(`a`) // expand initial group
-    toggle_group(`b`) // collapse a group that started expanded
-    collapse(`c`)
-    collapse(`c`) // idempotent
-    expect(new Set(collapsed_groups)).toEqual(new Set([`b`, `c`]))
-    collapse()
-    expect(new Set(collapsed_groups)).toEqual(new Set([`a`, `b`, `c`]))
-  })
-
+  // Only a figure's own legend counts as inside; `scope` keeps a sibling figure's from counting
   test.each([
-    [`.plot`, true],
-    [`.control`, true],
-    [`.legend`, false],
-    [`.legend .item`, false],
-  ])(`click on own figure's %s collapses: %s`, (selector, collapses) => {
-    const { toggle_group, collapsed_groups, collapse_on_outside_click } =
-      create_collapsible_legend([`Models`])
-    const { figures, click } = make_figures()
-    const cleanup = collapse_on_outside_click(figures[0])
-    toggle_group(`Models`)
-    click(0, selector)
-    expect(collapsed_groups.has(`Models`)).toBe(collapses)
-    if (typeof cleanup === `function`) cleanup()
-  })
+    [`own plot`, 0, `.plot`, true],
+    [`own control`, 0, `.control`, true],
+    [`own legend`, 0, `.legend`, false],
+    [`own legend item`, 0, `.legend .item`, false],
+    [`sibling legend item`, 1, `.legend .item`, true],
+  ])(
+    `click on %s in figure %i (%s) collapses: %s`,
+    (_desc, figure_idx, selector, collapses) => {
+      const { collapsed_groups, collapse_on_outside_click } = create_collapsible_legend([
+        `Models`,
+      ])
+      const figures = [0, 1].map(() => {
+        const figure = document.createElement(`div`)
+        figure.innerHTML = `<button class="control"></button><svg class="plot"></svg><div class="legend"><span class="item"></span></div>`
+        document.body.append(figure)
+        return figure
+      })
+      // SVG elements lack .click(), so dispatch the event the dismiss listener waits for
+      const click = () =>
+        figures[figure_idx]
+          .querySelector(selector)
+          ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true, composed: true }))
+      const cleanup = collapse_on_outside_click(figures[0])
+      collapsed_groups.delete(`Models`)
+      click()
+      expect(collapsed_groups.has(`Models`)).toBe(collapses)
+      // after cleanup, clicks no longer collapse
+      collapsed_groups.delete(`Models`)
+      if (typeof cleanup === `function`) cleanup()
+      click()
+      expect(collapsed_groups.has(`Models`)).toBe(false)
+    },
+  )
 
-  test(`scope: a click on a sibling figure's legend still collapses`, () => {
-    const { toggle_group, collapsed_groups, collapse_on_outside_click } =
-      create_collapsible_legend([`Models`])
-    const { figures, click } = make_figures()
-    const cleanup = collapse_on_outside_click(figures[0])
-    toggle_group(`Models`)
-    click(1, `.legend .item`)
-    expect(collapsed_groups.has(`Models`)).toBe(true)
-    // after cleanup, outside clicks no longer collapse
-    toggle_group(`Models`)
-    if (typeof cleanup === `function`) cleanup()
-    click(0, `.plot`)
-    expect(collapsed_groups.has(`Models`)).toBe(false)
-  })
-
-  test(`in PlotLegend, outside click restores initial groups however they were toggled`, async () => {
-    const collapsible = create_collapsible_legend([`Models`])
-    const series_data: LegendItem[] = [`Models`, `Models`, `Refs`, `Other`].map(
-      (legend_group, series_idx) => ({
-        label: `series ${series_idx}`,
-        visible: true,
-        series_idx,
-        legend_group,
-        display_style: {},
-      }),
-    )
-    const component = mount(PlotLegend, {
-      target: document.body,
-      props: { series_data, ...collapsible.legend },
-    })
-    const cleanup = collapsible.collapse_on_outside_click(document.body)
-    const header = (group: string) => {
-      const el = [...document.querySelectorAll<HTMLElement>(`.legend-group-header`)].find(
-        (node) => node.textContent?.includes(group),
-      )
-      if (!el) throw new Error(`no header for group ${group}`)
-      return el
-    }
-    const chevron = (group: string) =>
-      header(group).querySelector<HTMLElement>(`.group-chevron`)
-    expect(header(`Models`).getAttribute(`aria-expanded`)).toBe(`false`)
-    expect(document.querySelectorAll(`.legend-item`)).toHaveLength(2) // Refs + Other
-    header(`Models`).click() // expand via the header
-    header(`Refs`).click() // collapse via the header...
-    chevron(`Refs`)?.click() // ...and expand via the chevron inside it
-    chevron(`Other`)?.click() // collapse and expand via the chevron only
-    chevron(`Other`)?.click()
-    flushSync()
-    expect(collapsible.collapsed_groups.size).toBe(0)
-    expect(document.querySelectorAll(`.legend-item`)).toHaveLength(4)
-    document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    flushSync()
-    expect([...collapsible.collapsed_groups]).toEqual([`Models`])
-    expect(document.querySelectorAll(`.legend-item`)).toHaveLength(2)
-    if (typeof cleanup === `function`) cleanup()
-    await unmount(component)
-  })
-
-  // Charts wire header clicks to group visibility; the helper's header must only expand
-  test(`in ScatterPlot, header click expands the group without hiding its series`, async () => {
+  // Charts wire header clicks to group visibility; the helper's header must only expand, and
+  // an outside click re-collapses the initial groups however header or chevron toggled them
+  test(`in ScatterPlot, headers expand without hiding series and outside clicks re-collapse`, async () => {
     const collapsible = create_collapsible_legend([`Models`])
     const plot = await mount_sized(
       ScatterPlot,
       {
-        series: [`A`, `B`].map((label) => ({
+        series: [`Models`, `Models`, `Refs`].map((legend_group, idx) => ({
           x: [1, 2, 3],
           y: [1, 2, 3],
-          label,
-          legend_group: `Models`,
+          label: `S${idx}`,
+          legend_group,
         })),
         legend: { ...collapsible.legend },
       },
       { selector: `.scatter` },
     )
-    const header = plot.querySelector<HTMLElement>(`.legend-group-header`)
-    expect(header?.getAttribute(`aria-expanded`)).toBe(`false`)
-    header?.click()
+    const cleanup = collapsible.collapse_on_outside_click(document.body)
+    const header = (group: string) => {
+      const el = [...plot.querySelectorAll<HTMLElement>(`.legend-group-header`)].find((node) =>
+        node.textContent?.includes(group),
+      )
+      if (!el) throw new Error(`no header for group ${group}`)
+      return el
+    }
+    const items_hidden = () =>
+      [...plot.querySelectorAll(`.legend-item`)].map((item) =>
+        item.classList.contains(`hidden`),
+      )
+    expect(header(`Models`).getAttribute(`aria-expanded`)).toBe(`false`)
+    expect(items_hidden()).toEqual([false]) // only Refs' item
+    header(`Models`).click() // expand via the header
+    header(`Refs`).click() // collapse via the header...
+    header(`Refs`).querySelector<HTMLElement>(`.group-chevron`)?.click() // ...expand via its chevron
     flushSync()
-    expect(header?.getAttribute(`aria-expanded`)).toBe(`true`)
-    expect(header?.classList.contains(`hidden`)).toBe(false)
-    const items = [...plot.querySelectorAll(`.legend-item`)]
-    expect(items.map((item) => item.classList.contains(`hidden`))).toEqual([false, false])
+    expect(collapsible.collapsed_groups.size).toBe(0)
+    expect(header(`Models`).getAttribute(`aria-expanded`)).toBe(`true`)
+    expect(header(`Models`).classList.contains(`hidden`)).toBe(false)
+    expect(items_hidden()).toEqual([false, false, false])
+    document.body.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    flushSync()
+    expect([...collapsible.collapsed_groups]).toEqual([`Models`])
+    expect(items_hidden()).toEqual([false])
+    if (typeof cleanup === `function`) cleanup()
   })
 })

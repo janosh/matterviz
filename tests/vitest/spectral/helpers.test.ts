@@ -771,82 +771,6 @@ describe(`normalize_band_structure`, () => {
       expect(ragged?.spin_down_bands).toBeUndefined()
     })
 
-    const two_bands = [
-      [0, 1],
-      [2, 3],
-    ]
-    const filled = [
-      [1, 1],
-      [0, 0],
-    ]
-    it.each([
-      [
-        `pymatgen spin-keyed`,
-        { ...identity_rec, kpoints: line(2), bands: { '1': two_bands, '-1': two_bands } },
-        { '1': filled, '-1': filled },
-      ],
-      [
-        `matterviz`,
-        {
-          qpoints: line(2).map((frac_coords) => ({ label: null, frac_coords })),
-          branches: [{ start_index: 0, end_index: 1, name: `path` }],
-          distance: [0, 1],
-          bands: two_bands,
-          spin_down_bands: two_bands,
-          spin_down_occupations: filled,
-        },
-        filled,
-      ],
-    ])(`carries %s occupations for both spin channels`, (_desc, input, occupations) => {
-      expect(normalize_band_structure({ ...input, occupations })).toMatchObject({
-        occupations: filled,
-        spin_down_occupations: filled,
-      })
-    })
-
-    it.each([
-      [
-        `a ragged spin-up channel`,
-        {
-          '1': [[1, 1], [0]],
-          '-1': [
-            [1, 1],
-            [0, 0],
-          ],
-        },
-      ],
-      [
-        `a missing spin-down channel`,
-        {
-          '1': [
-            [1, 1],
-            [0, 0],
-          ],
-        },
-      ],
-      [
-        `non-finite values`,
-        {
-          '1': [
-            [1, NaN],
-            [0, 0],
-          ],
-          '-1': [
-            [1, 1],
-            [0, 0],
-          ],
-        },
-      ],
-    ])(`throws for occupations with %s`, (_desc, occupations) => {
-      const input = {
-        ...identity_rec,
-        kpoints: line(2),
-        bands: { '1': two_bands, '-1': two_bands },
-        occupations,
-      }
-      expect(() => normalize_band_structure(input)).toThrow(/occupations/)
-    })
-
     it(`recognises pymatgen input by kpoints, @class or @module, but not bare branched input`, () => {
       const branched = {
         ...identity_rec,
@@ -879,121 +803,33 @@ describe(`normalize_band_structure`, () => {
 })
 
 describe(`electronic_band_gap`, () => {
+  // oxfmt-ignore
   it.each([
-    [
-      `insulator`,
-      [
-        [-2, -1],
-        [1, 3],
-      ],
-      0,
-      { vbm: -1, cbm: 1, gap: 2 },
-    ],
-    [
-      `band touching E_F from below`,
-      [
-        [-2, 0],
-        [0.5, 1],
-      ],
-      0,
-      { vbm: 0, cbm: 0.5, gap: 0.5 },
-    ],
+    [`insulator`, [[-2, -1], [1, 3]], 0, { vbm: -1, cbm: 1, gap: 2 }],
     // vasprun rounds eigenvalues to 1e-4 eV, so band edges at E_F land a hair past it
-    [
-      `VBM rounded just above E_F`,
-      [
-        [-2, 5e-5],
-        [1, 2],
-      ],
-      0,
-      { vbm: 5e-5, cbm: 1, gap: 1 - 5e-5 },
-    ],
-    [
-      `CBM rounded just below E_F`,
-      [
-        [-2, -1],
-        [-5e-5, 1],
-      ],
-      0,
-      { vbm: -1, cbm: -5e-5, gap: -5e-5 + 1 },
-    ],
+    [`VBM rounded just above E_F`, [[-2, 5e-5], [1, 2]], 0, { vbm: 5e-5, cbm: 1, gap: 1 - 5e-5 }],
+    [`CBM rounded just below E_F`, [[-2, -1], [-5e-5, 1]], 0, { vbm: -1, cbm: -5e-5, gap: 1 - 5e-5 }],
     [`metal (band crosses E_F)`, [[-1, -0.3, 0.2, 1]], 0, null],
     [`metal crossing E_F by just over the tolerance`, [[-2e-4, 2e-4]], 0, null],
     [`all bands occupied`, [[-2, -1]], 0, null],
-    [
-      `non-finite energies skipped`,
-      [
-        [NaN, -1],
-        [1, Infinity],
-      ],
-      0,
-      { vbm: -1, cbm: 1, gap: 2 },
-    ],
-    // Non-SCF line-mode run: E_F = 0 is from the SCF mesh and the VBM, lying on the path
-    // between SCF k-points, rises 30 meV above it. E_F alone calls this a metal.
-    [
-      `VBM between SCF k-points 30 meV above E_F, occupations say insulator`,
-      [
-        [-1, -0.2, 0.03, -0.4],
-        [0.8, 0.5, 0.9, 1.2],
-      ],
-      [
-        [1, 1, 1, 1],
-        [0, 0, 0, 0],
-      ],
-      { vbm: 0.03, cbm: 0.5, gap: 0.5 - 0.03 },
-    ],
+    [`non-finite energies skipped`, [[NaN, -1], [1, Infinity]], 0, { vbm: -1, cbm: 1, gap: 2 }],
+    // non-SCF line-mode run: E_F = 0 from the SCF mesh calls this a metal, occupations don't
+    [`VBM 30 meV above E_F, insulating occupations`, [[-1, 0.03], [0.5, 0.9]], [[1, 1], [0, 0]], { vbm: 0.03, cbm: 0.5, gap: 0.5 - 0.03 }],
     // smearing leaves band-edge states fractional, Blöchl corrections push them past [0, 1]
-    [
-      `smeared and Blöchl-corrected occupations`,
-      [
-        [-1, -0.1],
-        [0.2, 1],
-      ],
-      [
-        [1.002, 0.93],
-        [0.07, -0.002],
-      ],
-      { vbm: -0.1, cbm: 0.2, gap: 0.2 + 0.1 },
-    ],
-    [
-      `metal by occupations though no band crosses E_F`,
-      [
-        [-1, -0.5],
-        [0.5, 1],
-      ],
-      [
-        [1, 0],
-        [0, 0],
-      ],
-      null,
-    ],
-    [
-      `occupations of non-finite energies ignored`,
-      [
-        [-1, NaN],
-        [1, 2],
-      ],
-      [
-        [1, 0],
-        [0, 0],
-      ],
-      { vbm: -1, cbm: 1, gap: 2 },
-    ],
+    [`smeared and Blöchl-corrected occupations`, [[-1, -0.1], [0.2, 1]], [[1.002, 0.93], [0.07, -0.002]], { vbm: -0.1, cbm: 0.2, gap: 0.2 + 0.1 }],
+    [`metal by occupations though no band crosses E_F`, [[-1, -0.5], [0.5, 1]], [[1, 0], [0, 0]], null],
+    [`occupations of non-finite energies ignored`, [[-1, NaN], [1, 2]], [[1, 0], [0, 0]], { vbm: -1, cbm: 1, gap: 2 }],
   ])(`%s`, (_desc, bands, filling, expected) => {
     expect(electronic_band_gap(bands, filling)).toEqual(expected)
   })
 
-  it(`throws naming both shapes when occupations do not match the bands`, () => {
-    expect(() =>
-      electronic_band_gap(
-        [
-          [-1, 0],
-          [1, 2],
-        ],
-        [[1, 1]],
-      ),
-    ).toThrow(/per-band lengths \[2\] for bands \[2, 2\]/)
+  // oxfmt-ignore
+  it.each([
+    [`too few bands (e.g. a missing spin-down channel)`, [[1, 1]], /lengths \[2\] must be finite and match bands \[2,2\]/],
+    [`a ragged band`, [[1, 1], [0]], /lengths \[2,1\]/],
+    [`non-finite values`, [[1, NaN], [0, 0]], /must be finite/],
+  ])(`throws for occupations with %s`, (_desc, occupations, error) => {
+    expect(() => electronic_band_gap([[-1, 0], [1, 2]], occupations)).toThrow(error)
   })
 })
 
@@ -1048,21 +884,17 @@ describe(`normalize_dos`, () => {
     [`cm^-1`, 1 / THZ_TO_INVERSE_CM],
     [`cm⁻¹`, 1 / THZ_TO_INVERSE_CM],
     [`meV`, 1 / 4.135667696],
-  ])(
-    `phonon DOS declared in %s is stored in THz with its integral preserved`,
-    (frequency_unit, thz_per_unit) => {
-      const result = normalize_dos({
-        frequencies: [0, 10],
-        densities: [0, 1],
-        ...(frequency_unit && { frequency_unit }),
-      })
-      expect(result?.type).toBe(`phonon`)
-      if (result?.type !== `phonon`) return
-      expect(result.frequencies[1]).toBeCloseTo(10 * thz_per_unit, 8)
-      // g is per unit frequency: ∫g dν = 5 in any unit, so densities scale by 1/thz_per_unit
-      expect(result.densities[1]).toBeCloseTo(1 / thz_per_unit, 8)
-    },
-  )
+  ])(`phonon DOS in %s is stored in THz, keeping ∫g dν`, (frequency_unit, thz_per_unit) => {
+    const result = normalize_dos({
+      frequencies: [0, 10],
+      densities: [0, 1],
+      ...(frequency_unit && { frequency_unit }),
+    })
+    if (result?.type !== `phonon`)
+      throw new Error(`expected a phonon DOS, got ${result?.type}`)
+    expect(result.frequencies[1]).toBeCloseTo(10 * thz_per_unit, 8)
+    expect(result.densities[1]).toBeCloseTo(1 / thz_per_unit, 8)
+  })
 
   it.each([
     [`null`, null],

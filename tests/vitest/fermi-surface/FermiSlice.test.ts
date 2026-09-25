@@ -2,6 +2,7 @@
 // Tests for FermiSlice.svelte component (ScatterPlot-based implementation)
 import FermiSlice from '$lib/fermi-surface/FermiSlice.svelte'
 import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, mount_sized } from '../setup'
@@ -84,37 +85,21 @@ describe(`FermiSlice`, () => {
     expect(received?.export_svg()).toMatch(/^<svg[^>]*role="application"/)
   })
 
-  // Labels come from the (u, v) directions points_2d use, not the Miller zeros: a (010)
-  // slice's vertical axis runs along −kz, and (100) with an oblique b₁ is an oblique plane
-  test.each([
-    [`(001)`, [0, 0, 1], undefined, [`kₓ`, `kᵧ`]],
-    [`(010)`, [0, 1, 0], undefined, [`kₓ`, `−kz`]],
-    [
-      `(100) with oblique b₁`,
-      [1, 0, 0],
-      [
-        [Math.sqrt(3) / 2, -0.5, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      [`k₁ ∥ [0.5, 0.87, 0]`, `kz`],
-    ],
-  ] as const)(
-    `labels the %s slice axes by their directions`,
-    async (_desc, miller, k_lattice, expected) => {
-      const fermi_data = create_mock_fermi_data([0])
-      if (k_lattice)
-        fermi_data.k_lattice = k_lattice.map((row) => [
-          ...row,
-        ]) as FermiSurfaceData[`k_lattice`]
-      const plot = await mount_sized(
-        FermiSlice,
-        { fermi_data, miller_indices: [...miller], distance: 0.05 },
-        { selector: `.fermi-slice` },
-      )
-      await tick()
-      const text = plot.textContent ?? ``
-      for (const label of expected) expect(text).toContain(label)
-    },
-  )
+  // Labels follow the in-plane directions: a (010) slice's vertical axis runs along −kz
+  const oblique: Matrix3x3 = [
+    [Math.sqrt(3) / 2, -0.5, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  test.each<[Vec3, Matrix3x3 | undefined, string[]]>([
+    [[0, 0, 1], undefined, [`kₓ`, `kᵧ`]],
+    [[0, 1, 0], undefined, [`kₓ`, `−kz`]],
+    [[1, 0, 0], oblique, [`k₁ ∥ [0.5, 0.87, 0]`, `kz`]],
+  ])(`labels the %j slice axes by direction`, async (miller_indices, k_lattice, labels) => {
+    const fermi_data = { ...create_mock_fermi_data([0]), ...(k_lattice && { k_lattice }) }
+    const props = { fermi_data, miller_indices, distance: 0.05 }
+    const plot = await mount_sized(FermiSlice, props, { selector: `.fermi-slice` })
+    await tick()
+    for (const label of labels) expect(plot.textContent).toContain(label)
+  })
 })

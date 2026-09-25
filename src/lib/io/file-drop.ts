@@ -5,35 +5,21 @@ import { plural } from '$lib/labels'
 import { to_error } from '$lib/utils'
 import type { Attachment } from 'svelte/attachments'
 import { files_from_data_transfer } from 'svelte-widgets/file-drop'
-import type { TrajectorySource } from '$lib/trajectory/index'
 import type { FileLoadCallback, FileLoadMeta, TrajectoryFileLoadCallback } from './types'
 
-// One dropped file as read (decompressed, or fetched for a URL drop)
-export interface DroppedFile<Content = string | ArrayBuffer> {
-  content: Content
-  filename: string
-  metadata: FileLoadMeta
-}
+type DroppedFile = { content: string | ArrayBuffer; filename: string; metadata: FileLoadMeta }
 
-// `on_drop` gets each file as soon as it is read; `on_batch` gets all files of one drop at
-// once, for files that only mean something together. At least one of them is required.
 export type FileDropOptions = {
   allow: () => boolean
   max_files?: number
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
 } & (
-  | {
-      hdf5_as_blob?: false
-      on_drop?: FileLoadCallback
-      on_batch?: (files: DroppedFile[]) => Promise<void> | void
-    }
+  | { hdf5_as_blob?: false; on_drop: FileLoadCallback }
+  // All files of one drop in one call, for files that only mean something together
+  | { hdf5_as_blob?: false; on_batch: (files: DroppedFile[]) => Promise<void> | void }
   // Trajectory viewers keep HDF5 payloads as a Blob so h5wasm can read them lazily
-  | {
-      hdf5_as_blob: true
-      on_drop?: TrajectoryFileLoadCallback
-      on_batch?: (files: DroppedFile<TrajectorySource>[]) => Promise<void> | void
-    }
+  | { hdf5_as_blob: true; on_drop: TrajectoryFileLoadCallback }
 )
 
 // Drag-over visual-state handlers for file-drop zones; spread onto the drop target
@@ -58,14 +44,12 @@ export interface DropBatchOptions<Handled = void> {
   allow: () => boolean
   max_files?: number
   on_error?: (msg: string) => void
-  // Loading state only: true when a drop starts processing, false once it settled
   set_loading?: (loading: boolean) => void
   // Consume one dropped source. Throwing folds that item's failure into the batch report
   // and leaves the rest of the batch running.
   handle: (source: DropSource) => Promise<Handled> | Handled
-  // Runs once per drop after every source was handled, with the results of those that did
-  // not throw, in drop order (skipped when none succeeded). Item failures are reported
-  // after it returns; a throw of its own is reported through on_error.
+  // Once per drop with the results of the sources that did not throw, in drop order (skipped
+  // when none succeeded), before item failures are reported
   on_batch?: (handled: Handled[]) => Promise<void> | void
 }
 
@@ -145,43 +129,30 @@ export const create_drop_batch_handler = <Handled = void>(
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
-  const { allow, max_files, on_error, set_loading } = opts
-  // Both option variants in one shape: hdf5_as_blob only widens what content can be
-  const on_drop = opts.on_drop as TrajectoryFileLoadCallback | undefined
-  const on_batch = opts.on_batch as
-    | ((files: DroppedFile<TrajectorySource>[]) => Promise<void> | void)
-    | undefined
-  if (!on_drop && !on_batch) {
-    throw new TypeError(`File drop handlers need on_drop, on_batch or both`)
-  }
   const load_url = opts.hdf5_as_blob ? load_trajectory_from_url : load_from_url
   const read_file = opts.hdf5_as_blob ? decompress_trajectory_file : decompress_file
-  const read_source = async (source: DropSource): Promise<DroppedFile<TrajectorySource>> => {
-    if (typeof source !== `string`) {
-      const { content, filename } = await read_file(source)
-      if (!content) throw new Error(`file is empty`)
-      return { content, filename, metadata: { source_filename: source.name, file: source } }
-    }
-    // load_url calls back exactly once or throws
-    const fetched: DroppedFile<TrajectorySource>[] = []
-    await load_url(source, (content, filename, metadata) => {
-      fetched.push({ content, filename, metadata })
-    })
-    return fetched[0]
+  const read = async (source: DropSource, on_file: TrajectoryFileLoadCallback) => {
+    if (typeof source === `string`) return load_url(source, on_file)
+    const { content, filename } = await read_file(source)
+    if (!content) throw new Error(`file is empty`)
+    await on_file(content, filename, { source_filename: source.name, file: source })
   }
-  const load = async (source: DropSource): Promise<DroppedFile<TrajectorySource>> => {
-    const dropped = await read_source(source)
-    await on_drop?.(dropped.content, dropped.filename, dropped.metadata)
-    return dropped
+  if (!(`on_batch` in opts)) {
+    const on_drop = opts.on_drop as TrajectoryFileLoadCallback
+    return create_drop_batch_handler({ ...opts, handle: (source) => read(source, on_drop) })
   }
-  const batch_opts = { allow, max_files, on_error, set_loading }
-  if (on_batch) return create_drop_batch_handler({ ...batch_opts, handle: load, on_batch })
-  // Without on_batch nothing keeps a file's content past its own on_drop
+  const { on_batch } = opts
   return create_drop_batch_handler({
-    ...batch_opts,
+    ...opts,
     handle: async (source) => {
-      await load(source)
+      const files: DroppedFile[] = []
+      // content is never a Blob here: on_batch excludes hdf5_as_blob
+      await read(source, (content, filename, metadata) => {
+        files.push({ content: content as string | ArrayBuffer, filename, metadata })
+      })
+      return files
     },
+    on_batch: (handled) => on_batch(handled.flat()),
   })
 }
 
@@ -226,7 +197,7 @@ export const file_drop_zone = (
 // Drop zone that forwards untouched URLs and Files, for the open_material() components:
 // acquisition and decompression stay in the material runtime.
 export const raw_file_drop_zone = (
-  options: Omit<DropBatchOptions, `handle` | `on_batch`> &
+  options: Omit<DropBatchOptions, `handle`> &
     DragoverOption & { on_drop: (source: DropSource) => Promise<void> | void },
 ): Attachment<HTMLElement> =>
   drop_zone(options, create_drop_batch_handler({ ...options, handle: options.on_drop }))

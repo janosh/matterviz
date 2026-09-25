@@ -118,10 +118,9 @@ export function compute_e_form_per_atom(
   return energy_per_atom - ref_sum
 }
 
-// Lowest-energy unary entry per element. Polymorphs rank by absolute energy per atom, or by
-// e_form_per_atom when none of the element's unaries carries an absolute energy
-// (get_energy_per_atom would read each as 0 eV). An E_form-only polymorph is measured against
-// the element's absolute-energy entries, so those take precedence as references.
+// Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
+// (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
+// without absolute-energy unaries, since their E_form is measured against those.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
@@ -260,10 +259,11 @@ export function calculate_e_above_hull(
 }
 
 export function get_convex_hull_stats(
-  processed_entries: PhaseData[],
+  entries: (PhaseData & { is_synthetic?: boolean })[],
   elements: ElementSymbol[],
   max_arity: number = 4,
 ): PhaseStats | null {
+  const processed_entries = entries.filter((entry) => !entry.is_synthetic) // not data phases
   if (processed_entries.length === 0) return null
   max_arity = Math.max(1, max_arity)
 

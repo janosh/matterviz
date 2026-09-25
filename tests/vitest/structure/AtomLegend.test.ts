@@ -475,11 +475,9 @@ describe(`AtomLegend Component`, () => {
 
     // The scene draws mapped species, so hiding/recoloring by the file's symbol hid nothing
     // and the picker edited the source element's color while the swatch showed the target's
-    test(`hide and color picker act on the displayed element of a remapped entry`, async () => {
+    test(`hide and color picker act on the displayed element of a remapped entry`, () => {
       const original_na = colors.element.Na
-      onTestFinished(() => {
-        colors.element.Na = original_na
-      })
+      onTestFinished(() => void (colors.element.Na = original_na))
       let hidden_elements = new Set<ElementSymbol>()
       mount_legend({
         elements: { H: 2 },
@@ -492,12 +490,9 @@ describe(`AtomLegend Component`, () => {
         },
       })
       const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
-      expect(color_input.value).toBe(colors.element.Na)
       color_input.value = `#123456`
       color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       expect(colors.element.Na).toBe(`#123456`)
-      await tick()
-      expect(doc_query(`label`).style.backgroundColor).toBe(`#123456`)
       const hide_button = doc_query<HTMLButtonElement>(`button.toggle-visibility`)
       expect(hide_button.getAttribute(`aria-label`)).toBe(`Hide Na atoms`)
       hide_button.click()

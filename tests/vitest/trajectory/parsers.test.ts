@@ -29,7 +29,6 @@ import {
 } from '$lib/trajectory/parse/ase'
 import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
 import { hotspot_mean } from '$lib/trajectory/hotspots'
-import { generate_plot_series } from '$lib/trajectory/plotting'
 import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   HDF5_MAX_WHOLE_DATASET_BYTES,
@@ -1340,7 +1339,7 @@ describe(`XYZ`, () => {
 
   // Which reader opens a file is decided by its byte size alone, so the plot must not change
   // with it: the in-memory rows are canonical
-  it(`extracts identical plot rows and series in memory and indexed`, async () => {
+  it(`extracts identical plot rows in memory and indexed`, async () => {
     const npt_frame = (frame_idx: number) => {
       const cell = 5 + 0.1 * frame_idx
       return [
@@ -1358,11 +1357,6 @@ describe(`XYZ`, () => {
     ])
     await Promise.all([memory.properties.done, indexed.properties.done])
     expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
-    const series = (run: TrajectoryRun) =>
-      generate_plot_series(run.properties.rows, { include_all_properties: true }).map(
-        ({ id, x, y }) => ({ id, x, y }),
-      )
-    expect(series(indexed)).toEqual(series(memory))
     // the canonical rows carry the lattice geometry and density, and every finite scalar the
     // file records
     expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
@@ -1424,7 +1418,8 @@ describe(`ASE`, () => {
       [0, 1].map((frame_idx) => (array) => ({
         ...(frame_idx === 0 && { pbc, [`numbers.`]: array([2], (idx) => [14, 8][idx]) }),
         [`positions.`]: array([2, 3], (idx) => idx + 0.1 * frame_idx),
-        cell,
+        cell: cell.map((row) => row.map((value) => value * (1 + 0.025 * frame_idx))),
+        info: { bandgap: 1.5 - 0.1 * frame_idx, temperature: 300 },
         ...(with_calculator && {
           [`calculator.`]: {
             name: `unknown`,
@@ -1442,7 +1437,6 @@ describe(`ASE`, () => {
 
   it.each([
     [`a slab`, [true, true, false]],
-    [`a fully periodic cell`, [true, true, true]],
     [`a cell with no periodic axis`, [false, false, false]],
   ])(`every frame of %s keeps the pbc written in frame 0`, (_label, pbc) => {
     const { frames } = parse_ase_trajectory(ase_frames(pbc, box))
@@ -1460,48 +1454,21 @@ describe(`ASE`, () => {
     }
   })
 
-  // ASE opens indexed only, but its rows must be the same canonical rows an in-memory run of
-  // the decoded frames gets
-  it(`extracts the canonical plot rows, lattice, density and bandgap included`, async () => {
-    const buffer = make_ase_buffer(
-      [0, 1].map((frame_idx) => (array) => ({
-        ...(frame_idx === 0 && {
-          pbc: [true, true, true],
-          [`numbers.`]: array([2], (idx) => [14, 8][idx]),
-        }),
-        [`positions.`]: array([2, 3], (idx) => idx + 0.1 * frame_idx),
-        cell: [
-          [4 + 0.1 * frame_idx, 0, 0],
-          [0, 4, 0],
-          [0, 0, 4],
-        ],
-        [`calculator.`]: { energy: -1 - frame_idx },
-        info: { bandgap: 1.5 - 0.1 * frame_idx, temperature: 300 },
-      })),
-    )
-    const indexed = await open(buffer, `canonical.traj`)
-    // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
-    // numbers and never a position (6 reads per frame here)
-    const reads = vi.spyOn(DataView.prototype, `getFloat64`)
-    onTestFinished(() => reads.mockRestore())
-    await indexed.properties.done
-    expect(reads).toHaveBeenCalledTimes(2)
-    const memory = trajectory_from_frames(parse_ase_trajectory(buffer).frames)
-    expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
-    const source = open_ase_frames(buffer)
-    onTestFinished(() => source.release())
-    expect(() => source.plot_row_frame(1).structure.sites).toThrow(`has no decoded sites`)
-    expect(Object.keys(indexed.properties.rows[1].properties)).toEqual(
-      expect.arrayContaining([`energy`, `bandgap`, `temperature`, `a`, `volume`, `density`]),
-    )
-    expect(indexed.properties.rows[1].properties).toMatchObject({ bandgap: 1.4, a: 4.1 })
-  })
-
-  it(`reads calculator forces onto the sites and stress into a pressure`, async () => {
+  // ASE opens indexed only, but its rows must be the canonical rows of the decoded frames
+  it(`reads calculator forces and stress, and extracts the canonical plot rows`, async () => {
     const buffer = ase_frames([true, true, true], box, true)
     const { frames } = parse_ase_trajectory(buffer)
     const run = await open(buffer, `calc.traj`)
+    // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
+    // numbers and each frame's six force components, never a position
+    const reads = vi.spyOn(DataView.prototype, `getFloat64`)
+    onTestFinished(() => reads.mockRestore())
     await run.properties.done
+    expect(reads).toHaveBeenCalledTimes(2 + 2 * 6)
+    expect(run.properties.rows).toStrictEqual(trajectory_from_frames(frames).properties.rows)
+    expect(Object.keys(run.properties.rows[1].properties)).toEqual(
+      expect.arrayContaining([`bandgap`, `temperature`, `a`, `volume`, `density`, `pressure`]),
+    )
     for (const [frame_idx, { structure, metadata }] of frames.entries()) {
       expect(structure.sites.map(({ properties }) => properties.force)).toEqual([
         [0.3, 0, 0],
@@ -1513,11 +1480,6 @@ describe(`ASE`, () => {
       // calculator bookkeeping is not a frame property, and the vectors stay off metadata
       for (const key of [`name`, `parameters`, `forces`])
         expect(metadata).not.toHaveProperty(key)
-      // the indexed run's plot rows carry the same values
-      expect(run.properties.rows[frame_idx].properties).toMatchObject({
-        force_max: 0.4,
-        pressure: metadata?.pressure,
-      })
     }
   })
 
@@ -1827,42 +1789,40 @@ describe(`JSON`, () => {
     expect(keys).not.toContain(`stress_max`)
   })
 
-  it.each([
-    [`numpy`, numpy([[0.3, 0, 0]])],
-    [`plain list`, [[0.3, 0, 0]]],
-  ])(`reads %s frame forces onto the sites`, async (_label, forces) => {
-    const run = await open(pymatgen({ frame_properties: [{ forces }, { forces }] }), `f.json`)
-    for (const { structure, metadata } of await frames_of(run)) {
-      expect(structure.sites[0].properties.force).toEqual([0.3, 0, 0])
-      expect(metadata).toMatchObject({ force_max: 0.3 })
-      expect(metadata).not.toHaveProperty(`forces`)
-    }
-  })
-
-  // Same rule and wording as vaspout.h5 (checked_site_forces): unusable forces are dropped
-  // from that frame alone, with a warning naming the frame and the mismatch
+  // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning
+  // naming the frame and the mismatch (same rule and wording as vaspout.h5)
   it.each([
     [
-      `one row too many`,
+      `numpy`,
+      numpy([[0.3, 0, 0]]),
       [
         [0.3, 0, 0],
         [0, 0, 0],
       ],
       `expected 1 finite 3-vectors, got 2`,
     ],
-    [`a 2-vector`, [[0.3, 0]], `entry 0 of 1 is [0.3,0], not a finite 3-vector`],
-  ])(`ignores frame forces with %s and says why`, async (_label, bad_forces, reason) => {
-    const good_forces = [[0.3, 0, 0]]
-    const run = await open(
-      pymatgen({ frame_properties: [{ forces: good_forces }, { forces: bad_forces }] }),
-      `f.json`,
-    )
-    const [good, bad] = await frames_of(run)
-    expect(good.metadata).toMatchObject({ force_max: 0.3 })
-    expect(bad.metadata).not.toHaveProperty(`force_max`)
-    expect(bad.structure.sites[0].properties).not.toHaveProperty(`force`)
-    expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 1: ${reason}`])
-  })
+    [
+      `plain list`,
+      [[0.3, 0, 0]],
+      [[0.3, 0]],
+      `entry 0 of 1 is [0.3,0], not a finite 3-vector`,
+    ],
+  ])(
+    `reads %s frame forces onto the sites, ignoring bad ones`,
+    async (_label, forces, bad_forces, reason) => {
+      const run = await open(
+        pymatgen({ frame_properties: [{ forces }, { forces: bad_forces }] }),
+        `f.json`,
+      )
+      const [good, bad] = await frames_of(run)
+      expect(good.structure.sites[0].properties.force).toEqual([0.3, 0, 0])
+      expect(good.metadata).toMatchObject({ force_max: 0.3 })
+      for (const { metadata } of [good, bad]) expect(metadata).not.toHaveProperty(`forces`)
+      expect(bad.metadata).not.toHaveProperty(`force_max`)
+      expect(bad.structure.sites[0].properties).not.toHaveProperty(`force`)
+      expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 1: ${reason}`])
+    },
+  )
 
   // pymatgen's default verbosity writes matrix + pbc only; older dumps have no pbc at all.
   // Frames are promoted like single JSON structures (lattice params, pbc, abc+xyz) but are

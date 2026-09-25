@@ -18,8 +18,7 @@ import { plot_color } from '$lib/colors'
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
   values: readonly number[]
-  // Per-sample weights, index-aligned with `values` (e.g. pre-aggregated counts per value);
-  // without them every sample counts 1. Non-finite weights drop their sample.
+  // Per-sample weights aligned with `values` (default 1); non-finite ones drop their sample
   weights?: readonly number[]
   label?: string
   // Bar fill; without one a lone series uses `bar.color`, several the cycled palette
@@ -212,8 +211,8 @@ export function bin_values(
   return { edges, counts }
 }
 
-// `bar.color` fills only a lone series that sets no color of its own. The chart and its
-// controls share this, so the fill picker shows exactly when editing it changes the bars.
+// `bar.color` fills only a lone series without its own color (shared with the controls'
+// fill picker)
 export const uses_bar_color = (series: readonly Pick<HistogramSeries, `color`>[]): boolean =>
   series.length === 1 && series[0].color === undefined
 
@@ -231,8 +230,7 @@ export const count_total = (counts: Iterable<number>): number => {
 }
 
 // Scale raw counts into bar heights. `probability` and `density` divide by `total`, density
-// additionally by each bin's width in data units. The total is explicit because zoomed bins
-// are a window onto the full distribution, which the visible count would misnormalize.
+// additionally by each bin's width in data units.
 export function normalize_counts(
   edges: Float64Array,
   counts: Uint32Array | Float64Array,
@@ -277,27 +275,17 @@ export function compute_histogram_counts(
   })
 }
 
-// Normalization totals per series_idx: the counts over the full (auto) domain, so zoomed
-// bins keep the heights they have in the full view
-export const histogram_totals = (
-  counted: ReturnType<typeof compute_histogram_counts>,
-): Map<number, number> =>
-  new Map(counted.map(({ series_idx, counts }) => [series_idx, count_total(counts)]))
-
 // Reuse raw counts when changing units or colors; only the small bin arrays change.
+// `full_counted` (aligned with `counted`) holds the counts over the full auto domain, whose
+// totals normalize every view so zoomed bins keep the heights they have in the full view.
 export function compute_histogram_bins(
   counted: ReturnType<typeof compute_histogram_counts>,
   normalize: HistogramNormalize,
   series_color: (series_idx: number) => string,
-  totals: ReadonlyMap<number, number>,
+  full_counted: ReturnType<typeof compute_histogram_counts>,
 ): BinnedSeries[] {
-  return counted.map(({ series_data, series_idx, edges, counts }) => {
-    const total = totals.get(series_idx)
-    if (total === undefined) {
-      throw new Error(
-        `compute_histogram_bins: no normalization total for series ${series_idx}`,
-      )
-    }
+  return counted.map(({ series_data, series_idx, edges, counts }, idx) => {
+    const total = count_total(full_counted[idx].counts)
     const bins = normalize_counts(edges, counts, normalize, total)
     let max_value = 0
     let min_value = Infinity

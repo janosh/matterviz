@@ -73,7 +73,6 @@
     // primitive cells and supercells too, not the analyzed cell's indices
     wyckoff_positions?: WyckoffPos[]
   } = $props()
-  // Enclosing viewer's element colors (page-wide ones when standalone)
   const palette = get_element_palette()
 
   const { copy } = create_clipboard_feedback()

@@ -413,17 +413,18 @@ describe(`display modes`, () => {
     view_mode_button.click()
     await tick()
     expect(view_mode_button.querySelectorAll(`svg`)).toHaveLength(1)
-    expect(
-      [...target.querySelectorAll(`${CONTROLS} .view-mode-option`)].map((option) =>
-        option.textContent?.trim(),
-      ),
-    ).toEqual([`Automatic`, `Structure-only`, `Structure + Plot`, `Plot-only`])
     // the selected mode is announced, not just styled
-    const pressed = () =>
-      [...target.querySelectorAll(`${CONTROLS} .view-mode-option`)].map((option) =>
+    expect(
+      [...target.querySelectorAll(`${CONTROLS} .view-mode-option`)].map((option) => [
+        option.textContent?.trim(),
         option.getAttribute(`aria-pressed`),
-      )
-    expect(pressed()).toEqual([`false`, `false`, `true`, `false`])
+      ]),
+    ).toEqual([
+      [`Automatic`, `false`],
+      [`Structure-only`, `false`],
+      [`Structure + Plot`, `true`],
+      [`Plot-only`, `false`],
+    ])
     menu_option(target, `Plot-only`).click()
     await tick()
     expect(props.display_mode).toBe(`plot`)

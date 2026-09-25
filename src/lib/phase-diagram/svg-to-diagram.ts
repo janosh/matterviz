@@ -97,10 +97,11 @@ function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
   ]
 }
 
-// Build a linear scale from tick data points. Fewer than two ticks means the SVG is neither a
-// matplotlib export nor the simple class-based format (e.g. an MPDS export), so say so
-// instead of failing on the missing tick.
-function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
+// Build a linear scale from tick data points, its domain spanning the plot area's pixel span
+// [px_a, px_b] (either order). Fewer than two ticks means the SVG is neither a matplotlib
+// export nor the simple class-based format (e.g. an MPDS export), so say so instead of failing
+// on the missing tick.
+function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): LinearScale {
   if (ticks.length < 2) {
     throw new Error(
       `could not find ${axis}-axis tick marks in this SVG (need at least 2, found ${ticks.length})`,
@@ -118,11 +119,13 @@ function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
     )
   }
   const px_per_unit = px_range / range
+  const to_data = (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit
+  const [data_a, data_b] = [to_data(px_a), to_data(px_b)]
 
   return {
-    to_data: (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit,
+    to_data,
     to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
-    domain: [first.value, last.value],
+    domain: [Math.min(data_a, data_b), Math.max(data_a, data_b)],
     px_tol: 1 / Math.abs(px_per_unit),
   }
 }
@@ -134,64 +137,38 @@ const bbox_of = (verts: Vec2[]): Vec4 => {
   return [min_x, min_y, max_x, max_y]
 }
 
-// Scale whose domain covers the pixel span [px_a, px_b] (either order)
-const with_px_domain = (scale: LinearScale, [px_a, px_b]: Vec2): LinearScale => {
-  const [data_a, data_b] = [scale.to_data(px_a), scale.to_data(px_b)]
-  return { ...scale, domain: [Math.min(data_a, data_b), Math.max(data_a, data_b)] }
-}
-
-// Pixel extent [x_span, y_span] of the plot area. Ticks sit at round values inside the axis
-// limits, so their span alone would crop everything between the outermost tick and the axes
-// edge. Matplotlib's axes background patch (first patch of axes_N) gives the exact area; the
-// simple format uses the smallest filled shape enclosing every tick and boundary (a page
-// background encloses them too, but is larger), else the span of the ticks and boundaries.
+// Pixel bbox of the plot area. Ticks sit at round values inside the axis limits, so their span
+// alone would crop everything between the outermost tick and the axes edge. Matplotlib's axes
+// background patch gives the exact area; otherwise the smallest filled shape enclosing every
+// tick and boundary (a page background encloses them too, but is larger), else their span.
 function plot_area_px(
   doc: Document,
-  format: SvgFormat,
   [x_ticks, y_ticks]: [Tick[], Tick[]],
   lines: Vec4[],
   filled_shapes: FilledShape[],
-): [Vec2, Vec2] {
-  const x_span = array_extent([
+): Vec4 {
+  const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
+  const patch = doc.querySelector(`[id^="axes_"] > [id^="patch_"] > *`)
+  const patch_verts = (patch && shape_rings(patch))?.flat() ?? []
+  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
+  if (patch_verts.length && area(bbox_of(patch_verts)) > 0) return bbox_of(patch_verts)
+  const [min_x, max_x] = array_extent([
     ...x_ticks.map(({ px }) => px),
     ...lines.flatMap(([x_1, , x_2]) => [x_1, x_2]),
   ])
-  const y_span = array_extent([
+  const [min_y, max_y] = array_extent([
     ...y_ticks.map(({ px }) => px),
     ...lines.flatMap(([, y_1, , y_2]) => [y_1, y_2]),
   ])
-  const axes_patch =
-    format === `matplotlib`
-      ? doc.querySelector(
-          `[id^="axes_"] > [id^="patch_"] > path, [id^="axes_"] > [id^="patch_"] > rect`,
-        )
-      : null
-  const patch_verts = (axes_patch && shape_rings(axes_patch))?.flat() ?? []
-  const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
   // 1 px slack for strokes drawn on the plot edge
-  const encloses = ([min_x, min_y, max_x, max_y]: Vec4) =>
-    min_x <= x_span[0] + 1 &&
-    max_x >= x_span[1] - 1 &&
-    min_y <= y_span[0] + 1 &&
-    max_y >= y_span[1] - 1
-  const patch_bbox = patch_verts.length ? bbox_of(patch_verts) : null
-  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
-  const plot_bbox =
-    patch_bbox && area(patch_bbox) > 0
-      ? patch_bbox
-      : filled_shapes
-          .map(({ bbox }) => bbox)
-          .filter(encloses)
-          .reduce<Vec4 | null>(
-            (best, bbox) => (!best || area(bbox) < area(best) ? bbox : best),
-            null,
-          )
-  if (!plot_bbox) return [x_span, y_span]
-  const [min_x, min_y, max_x, max_y] = plot_bbox
-  return [
-    [min_x, max_x],
-    [min_y, max_y],
-  ]
+  const enclosing = filled_shapes
+    .map(({ bbox }) => bbox)
+    .filter(
+      ([left, top, right, bottom]) =>
+        left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
+    )
+  const span: Vec4 = [min_x, min_y, max_x, max_y]
+  return enclosing.toSorted((bbox_a, bbox_b) => area(bbox_a) - area(bbox_b))[0] ?? span
 }
 
 // === Boundary Extraction ===
@@ -441,24 +418,15 @@ function infer_regions(
   const verticals = boundaries.filter((boundary) => boundary.orientation === `vertical`)
   const horizontals = boundaries.filter((boundary) => boundary.orientation === `horizontal`)
 
-  // Collect all unique x and y coordinates (boundaries + domain edges)
-  // Coordinates closer than 1 px are the same grid line drawn with pixel jitter
+  // Unique x and y coordinates of domain edges and boundaries (x1 === x2 for verticals, y1 ===
+  // y2 for horizontals); ones closer than 1 px are the same grid line drawn with pixel jitter
   const [x_tol, y_tol] = [x_scale.px_tol, y_scale.px_tol]
   const x_coords = collect_unique_sorted(
-    [
-      x_scale.domain[0],
-      x_scale.domain[1],
-      ...verticals.map((boundary) => boundary.x1), // x1 === x2 for vertical
-    ],
+    [...x_scale.domain, ...verticals.map(({ x1 }) => x1)],
     x_tol,
   )
-
   const y_coords = collect_unique_sorted(
-    [
-      y_scale.domain[0],
-      y_scale.domain[1],
-      ...horizontals.map((boundary) => boundary.y1), // y1 === y2 for horizontal
-    ],
+    [...y_scale.domain, ...horizontals.map(({ y1 }) => y1)],
     y_tol,
   )
 
@@ -523,8 +491,8 @@ function infer_regions(
         .toLowerCase()
         .replaceAll(/[^a-z0-9]+/g, `_`)
         .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
-    // Separate fields may share a label (a miscibility gap splitting "A + B"), or labels may
-    // slug alike (`A + B`, `A+B`); ids key the rendered regions, so suffix repeats: a_b, a_b_2
+    // Ids key rendered regions, but fields may share a label (a miscibility gap) or slug alike
+    // (`A + B`, `A+B`): suffix repeats as a_b, a_b_2
     const n_seen = (slug_counts.get(base_slug) ?? 0) + 1
     slug_counts.set(base_slug, n_seen)
     const slug = n_seen === 1 ? base_slug : `${base_slug}_${n_seen}`
@@ -706,10 +674,10 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
     format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
   const lines = extract_boundary_lines(doc, format)
   const filled_shapes = extract_filled_shapes(doc)
-  const [x_area, y_area] = plot_area_px(doc, format, ticks, lines, filled_shapes)
+  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_shapes)
   // y-axis inverted (SVG y down, temp up)
-  const x_scale = with_px_domain(build_scale(`x`, ticks[0]), x_area)
-  const y_scale = with_px_domain(build_scale(`y`, ticks[1]), y_area)
+  const x_scale = build_scale(`x`, ticks[0], [min_x, max_x])
+  const y_scale = build_scale(`y`, ticks[1], [min_y, max_y])
   const boundaries = lines.flatMap((line) => to_boundary(line, x_scale, y_scale) ?? [])
   const labels = extract_labels(doc, format)
   if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)

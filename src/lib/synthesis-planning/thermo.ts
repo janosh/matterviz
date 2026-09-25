@@ -366,33 +366,22 @@ export function reaction_energy_at_temperature(
     const species = gas_species[idx]
     const pressure = conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
     const key = `${species}:${pressure}`
-    let grid = samples?.get(key)
-    if (samples && !grid) {
-      grid = new Float64Array(MAX_SCAN_TEMPERATURE + 1).fill(NaN)
-      samples.set(key, grid)
-    }
-    return {
-      species,
-      pressure,
-      grid,
-      exchange: balanced.gas_exchange[idx],
-      n_atoms: gas.n_atoms_per_fu,
-    }
+    if (samples && !samples.has(key))
+      samples.set(key, new Float64Array(MAX_SCAN_TEMPERATURE + 1).fill(NaN))
+    return { species, pressure, grid: samples?.get(key), exchange: balanced.gas_exchange[idx] }
   })
-  return (temperature) => {
-    const on_grid =
-      Number.isInteger(temperature) && temperature >= 0 && temperature <= MAX_SCAN_TEMPERATURE
-    let gas_part = 0
-    for (const { species, pressure, grid, exchange, n_atoms } of terms) {
-      let mean = grid && on_grid ? grid[temperature] : NaN
+  return (temperature) =>
+    solid_part +
+    terms.reduce((sum, { species, pressure, grid, exchange }, idx) => {
+      // typed arrays read undefined at, and ignore writes to, off-grid (fractional or out of
+      // range) indices, so only integer temperatures in the scan range are cached
+      let mean = grid?.[temperature] ?? NaN
       if (Number.isNaN(mean)) {
         mean = compute_gas_chemical_potential(provider, species, temperature, pressure)
-        if (grid && on_grid) grid[temperature] = mean
+        if (grid) grid[temperature] = mean
       }
-      gas_part += exchange * mean * n_atoms
-    }
-    return solid_part + gas_part
-  }
+      return sum + exchange * mean * gases[idx].n_atoms_per_fu
+    }, 0)
 }
 
 // Inclusive temperature intervals (1 K grid, 0..MAX_SCAN_TEMPERATURE) where the reaction energy

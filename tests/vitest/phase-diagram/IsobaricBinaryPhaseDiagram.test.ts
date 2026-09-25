@@ -1,4 +1,5 @@
 import { format_hover_info_text, IsobaricBinaryPhaseDiagram } from '$lib/phase-diagram'
+import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
 import type { LeverRuleResult, PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -228,8 +229,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       x_axis: { range: [0.4, 0.6] },
       y_axis: { range: [400, 600] },
     })
-    const clip_id = wrapper.querySelector(`clipPath`)?.id ?? ``
-    expect(clip_id).not.toBe(``)
+    const clip_id = wrapper.querySelector(`clipPath`)?.id
     const clipped = wrapper.querySelector(`[clip-path="url(#${clip_id})"]`)
     for (const selector of [`.phase-regions`, `.boundaries`, `.region-labels`]) {
       expect(clipped?.querySelector(selector), selector).not.toBeNull()
@@ -238,11 +238,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(
       [`x`, `y`, `width`, `height`].map((attr) => Number(clip_rect?.getAttribute(attr))),
     ).toEqual([left, top, right - left, bottom - top])
-    const y_ticks = [...wrapper.querySelectorAll(`.y-axis > g`)].map((tick_el) =>
-      Number(tick_el.textContent),
+    const y_ticks = [...wrapper.querySelectorAll(`.y-axis > g`)].map((el) =>
+      Number(el.textContent),
     )
-    expect(Math.min(...y_ticks)).toBeGreaterThanOrEqual(400)
-    expect(Math.max(...y_ticks)).toBeLessThanOrEqual(600)
+    expect(y_ticks.filter((temp) => temp < 400 || temp > 600)).toEqual([])
     // the eutectic line at 500 K sits mid-plot in a 400..600 K window
     const eutectic_path = wrapper.querySelector(`.boundaries path`)?.getAttribute(`d`) ?? ``
     expect(eutectic_path).toContain(`,${(top + bottom) / 2}`)
@@ -251,39 +250,6 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     document.body.innerHTML = ``
     const panned = await mount_diagram({ x_axis: { range: [0.6, 0.9] } })
     expect(panned.querySelectorAll(`.special-point-marker`)).toHaveLength(0)
-  })
-
-  test(`data with duplicate region ids shows an error banner unless diagram_input replaces it`, async () => {
-    const data = {
-      ...eutectic,
-      regions: [eutectic.regions[0], { ...eutectic.regions[1], id: `liq` }],
-    }
-    const wrapper = await mount_diagram({ data })
-    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toMatch(
-      /Invalid phase diagram data: Duplicate region id "liq"/,
-    )
-    document.body.innerHTML = ``
-    // A diagram_input that builds wins over the data prop, so its ids don't matter
-    const with_input = await mount_diagram({
-      data,
-      diagram_input: {
-        meta: { components: [`A`, `B`], temp_range: [300, 900] },
-        curves: {},
-        regions: [
-          {
-            id: `liquid`,
-            name: `Liquid`,
-            bounds: [
-              [0, 900],
-              [1, 900],
-              [1, 700],
-            ],
-          },
-        ],
-      },
-    })
-    expect(with_input.querySelector(`.error[role="alert"]`)).toBeNull()
-    expect(with_input.querySelectorAll(`.phase-regions path`)).toHaveLength(1)
   })
 
   test(`keeps default temperature ticks sparse`, async () => {
@@ -338,18 +304,35 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
   })
 
-  test(`an unbuildable diagram_input shows an error banner instead of silently using data`, async () => {
-    const wrapper = await mount_diagram({
-      diagram_input: {
-        meta: { components: [`A`, `B`], temp_range: [0, 1000] },
-        curves: {},
-        regions: [{ id: `L`, name: `L`, bounds: [`liquidus`] }], // unknown curve → throws
-      },
-    })
+  const bad_input: DiagramInput = {
+    meta: { components: [`A`, `B`], temp_range: [0, 1000] },
+    curves: {},
+    regions: [{ id: `L`, name: `L`, bounds: [`liquidus`] }], // unknown curve → throws
+  }
+  const good_input: DiagramInput = {
+    ...bad_input,
+    curves: {
+      liquidus: [
+        [0, 1000],
+        [1, 1000],
+        [1, 500],
+      ],
+    },
+  }
+  const bad_data = {
+    ...eutectic,
+    regions: [eutectic.regions[0], { ...eutectic.regions[1], id: `liq` }],
+  }
+  // A failed build or duplicate ids (they key rendered elements) are not silently rendered, but a
+  // diagram_input that builds replaces the data prop, so the data's ids don't matter
+  test.each([
+    [`bad input`, { diagram_input: bad_input }, /Invalid phase diagram input/],
+    [`duplicate ids`, { data: bad_data }, /phase diagram data: Duplicate region id "liq"/],
+    [`good input over bad data`, { data: bad_data, diagram_input: good_input }, /^$/],
+  ])(`error banner for %s`, async (_label, props, error) => {
+    const wrapper = await mount_diagram(props)
     await tick()
-    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toMatch(
-      /Invalid phase diagram input/,
-    )
+    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent ?? ``).toMatch(error)
   })
 })
 

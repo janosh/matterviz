@@ -98,9 +98,18 @@ export function upsample_grid(
       span > 0 ? (idx / span) * period : 0,
     )
   }
-  // Per-axis stencil offsets (in units of `stride`) and Catmull-Rom weights for every output
-  // index along that axis
-  const axis_stencils = (new_n: number, period: number, stride: number) => {
+  // One 1D Catmull-Rom pass along an axis: src[outer][axis][inner] → out[outer][new_n][inner],
+  // where outer_bases are the src offsets of each outer slab and `stride` the src step along
+  // the axis. Tricubic = passes along z, y, then x: 12 multiply-adds per output instead of 64,
+  // summed in the same order as the nested Σx cx·Σy cy·Σz cz·v form.
+  const resample_axis = (
+    src: ArrayLike<number>,
+    outer_bases: Int32Array | number[],
+    new_n: number,
+    period: number,
+    stride: number,
+    n_inner: number,
+  ): Float64Array => {
     const coords = src_coords(new_n, period)
     const offsets = new Int32Array(4 * new_n)
     const coeffs = new Float64Array(4 * new_n)
@@ -109,77 +118,45 @@ export function upsample_grid(
       wrapped_stencil(coord, period, stride, offsets.subarray(4 * idx, 4 * idx + 4))
       catmull_rom_coeffs(coord - Math.floor(coord), coeffs.subarray(4 * idx, 4 * idx + 4))
     }
-    return { offsets, coeffs }
-  }
-
-  // Tricubic = three 1D passes (z, then y, then x): 12 multiply-adds per output instead of
-  // 64. Each pass evaluates exactly the sub-expression the nested form did in the same order
-  // (Σx cx·Σy cy·Σz cz·v), so the result is bit-identical, 3-15x faster.
-  // Pass z: [size_x][size_y][new_nz]
-  const { offsets: z_offsets, coeffs: z_coeffs } = axis_stencils(new_nz, pixel_z, stride_z)
-  const pass_z = new Float64Array(size_x * size_y * new_nz)
-  let pass_idx = 0
-  for (let idx_x = 0; idx_x < size_x; idx_x++) {
-    for (let idx_y = 0; idx_y < size_y; idx_y++) {
-      const row = idx_x * stride_x + idx_y * stride_y
-      for (let idx_z = 0; idx_z < new_nz; idx_z++) {
-        const base = 4 * idx_z
-        pass_z[pass_idx++] =
-          z_coeffs[base] * values[row + z_offsets[base]] +
-          z_coeffs[base + 1] * values[row + z_offsets[base + 1]] +
-          z_coeffs[base + 2] * values[row + z_offsets[base + 2]] +
-          z_coeffs[base + 3] * values[row + z_offsets[base + 3]]
-      }
-    }
-  }
-  // Pass y: [size_x][new_ny][new_nz], reading pass_z with strides (size_y·new_nz, new_nz, 1)
-  const { offsets: y_offsets, coeffs: y_coeffs } = axis_stencils(new_ny, pixel_y, new_nz)
-  const pass_y = new Float64Array(size_x * new_ny * new_nz)
-  pass_idx = 0
-  for (let idx_x = 0; idx_x < size_x; idx_x++) {
-    const plane = idx_x * size_y * new_nz
-    for (let idx_y = 0; idx_y < new_ny; idx_y++) {
-      const base = 4 * idx_y
-      for (let idx_z = 0; idx_z < new_nz; idx_z++) {
-        const cell = plane + idx_z
-        let y_sum = 0
-        for (let tap = 0; tap < 4; tap++) {
-          y_sum += y_coeffs[base + tap] * pass_z[cell + y_offsets[base + tap]]
+    const out = new Float64Array(outer_bases.length * new_n * n_inner)
+    let out_idx = 0
+    for (const slab of outer_bases) {
+      for (let tap = 0; tap < 4 * new_n; tap += 4) {
+        for (let inner = slab; inner < slab + n_inner; inner++) {
+          out[out_idx++] =
+            coeffs[tap] * src[inner + offsets[tap]] +
+            coeffs[tap + 1] * src[inner + offsets[tap + 1]] +
+            coeffs[tap + 2] * src[inner + offsets[tap + 2]] +
+            coeffs[tap + 3] * src[inner + offsets[tap + 3]]
         }
-        pass_y[pass_idx++] = y_sum
       }
     }
+    return out
   }
-  // Pass x: [new_nx][new_ny][new_nz], reading pass_y with strides (new_ny·new_nz, new_nz, 1)
+  const rows = Int32Array.from(
+    { length: size_x * size_y },
+    (_, idx) => Math.floor(idx / size_y) * stride_x + (idx % size_y) * stride_y,
+  )
+  const pass_z = resample_axis(values, rows, new_nz, pixel_z, stride_z, 1)
+  const slabs = Int32Array.from({ length: size_x }, (_, idx_x) => idx_x * size_y * new_nz)
+  const pass_y = resample_axis(pass_z, slabs, new_ny, pixel_y, new_nz, new_nz)
   const plane_size = new_ny * new_nz
-  const { offsets: x_offsets, coeffs: x_coeffs } = axis_stencils(new_nx, pixel_x, plane_size)
-  const out = new Float64Array(new_nx * plane_size)
-  let out_idx = 0
-  for (let idx_x = 0; idx_x < new_nx; idx_x++) {
-    const base = 4 * idx_x
-    for (let cell = 0; cell < plane_size; cell++) {
-      let result = 0
-      for (let tap = 0; tap < 4; tap++) {
-        result += x_coeffs[base + tap] * pass_y[cell + x_offsets[base + tap]]
-      }
-      out[out_idx++] = result
-    }
-  }
-
+  const out = resample_axis(pass_y, [0], new_nx, pixel_x, plane_size, plane_size)
   return { values: out, dims: [new_nx, new_ny, new_nz], order: `z_fastest` }
 }
 
 // Roll a periodic band grid so it covers the Γ-centred cell [−½, ½) along every axis, and
-// return the fractional position of its new index 0 per axis. `index0_frac` is where index 0
-// sits in the source grid: 0 for Γ-centred meshes (BXSF, FRMSF lshift=1), ½/n for FRMSF
-// lshift=2, (½ − n/2)/n for lshift=0 Monkhorst-Pack meshes that already start near −½.
-// Rolling the data, not shifting vertices by −½(a*+b*+c*), keeps Γ at the cell centre.
-// Endpoint-inclusive grids (BXSF) roll their n−1 unique points and re-append the duplicate.
+// return the fractional position of its new index 0. `index0_frac` is where index 0 sits in
+// the source grid: 0 for Γ-centred meshes (BXSF, FRMSF lshift=1), ½/n for lshift=2,
+// (½ − n/2)/n for lshift=0 Monkhorst-Pack meshes. Rolling the data rather than shifting
+// vertices by −½(a*+b*+c*) keeps Γ at the cell centre. Endpoint-inclusive grids (BXSF) roll
+// their n−1 unique points and re-append the duplicate.
+type CenteredGrid = { grid: BandEnergyGrid; index0_frac: Vec3 }
 function center_grid_on_gamma(
   grid: BandEnergyGrid,
   periodic: boolean,
   index0_frac: Vec3,
-): { grid: BandEnergyGrid; index0_frac: Vec3 } {
+): CenteredGrid {
   const dims = grid_dimensions(grid)
   const strides = scalar_grid_strides(grid)
   const periods = dims.map((count) => (periodic ? count : count - 1))
@@ -190,58 +167,31 @@ function center_grid_on_gamma(
       ? ((Math.ceil((-0.5 - index0_frac[axis]) * period - 1e-9) % period) + period) % period
       : 0,
   )
-  const wrap = (frac: number) => frac - Math.floor(frac + 0.5)
-  const new_index0 = periods.map((period, axis) =>
-    period > 0 ? wrap(rolls[axis] / period + index0_frac[axis]) : 0,
-  ) as Vec3
+  const new_index0 = periods.map((period, axis) => {
+    const frac = period > 0 ? rolls[axis] / period + index0_frac[axis] : 0
+    return frac - Math.floor(frac + 0.5)
+  }) as Vec3
   if (rolls.every((roll) => roll === 0)) return { grid, index0_frac: new_index0 }
 
-  const [size_x, size_y, size_z] = dims
-  const [period_x, period_y, period_z] = periods
-  const [roll_x, roll_y, roll_z] = rolls
-  const [stride_x, stride_y, stride_z] = strides
-  const src_offsets = (count: number, period: number, roll: number, stride: number) =>
+  const [x_offsets, y_offsets, z_offsets] = dims.map((count, axis) =>
     Int32Array.from({ length: count }, (_, idx) =>
-      period > 0 ? ((idx + roll) % period) * stride : 0,
-    )
-  const x_offsets = src_offsets(size_x, period_x, roll_x, stride_x)
-  const y_offsets = src_offsets(size_y, period_y, roll_y, stride_y)
-  const z_offsets = src_offsets(size_z, period_z, roll_z, stride_z)
-  const values = new Float64Array(size_x * size_y * size_z)
+      periods[axis] > 0 ? ((idx + rolls[axis]) % periods[axis]) * strides[axis] : 0,
+    ),
+  )
+  const values = new Float64Array(dims[0] * dims[1] * dims[2])
   let out_idx = 0
-  for (let idx_x = 0; idx_x < size_x; idx_x++) {
-    for (let idx_y = 0; idx_y < size_y; idx_y++) {
-      const row = x_offsets[idx_x] + y_offsets[idx_y]
-      for (let idx_z = 0; idx_z < size_z; idx_z++) {
-        values[out_idx++] = grid.values[row + z_offsets[idx_z]]
-      }
+  for (const x_offset of x_offsets) {
+    for (const y_offset of y_offsets) {
+      for (const z_offset of z_offsets)
+        values[out_idx++] = grid.values[x_offset + y_offset + z_offset]
     }
   }
   return { grid: { values, dims, order: `z_fastest` }, index0_frac: new_index0 }
 }
 
-// Upsampled, Γ-centred grids keyed by source grid: they depend only on the grid, factor and
-// convention, so mu slider re-extractions skip the upsampling (82-92% of each extraction)
-const prepared_grids = new WeakMap<
-  BandEnergyGrid,
-  Map<string, ReturnType<typeof center_grid_on_gamma>>
->()
-function prepared_band_grid(
-  raw: BandEnergyGrid,
-  factor: number,
-  periodic: boolean,
-  index0_frac: Vec3,
-): ReturnType<typeof center_grid_on_gamma> {
-  const key = `${factor}|${periodic}|${index0_frac.join(`,`)}`
-  let by_key = prepared_grids.get(raw)
-  if (!by_key) prepared_grids.set(raw, (by_key = new Map()))
-  const cached = by_key.get(key)
-  if (cached) return cached
-  const upsampled = factor > 1 ? upsample_grid(raw, factor, periodic) : raw
-  const prepared = center_grid_on_gamma(upsampled, periodic, index0_frac)
-  by_key.set(key, prepared)
-  return prepared
-}
+// Last upsampled, Γ-centred grid per source grid: mu slider re-extractions reuse it and skip
+// the upsampling that dominates each extraction
+const prepared_grids = new WeakMap<BandEnergyGrid, CenteredGrid & { key: string }>()
 
 // Extract the Fermi surface of every band the level E_F + mu crosses
 export function extract_fermi_surface(
@@ -258,6 +208,8 @@ export function extract_fermi_surface(
   const index0_frac = band_data.k_grid.map(
     (count, axis) => (band_data.grid_shift?.[axis] ?? 0) / (periodic ? count : count - 1),
   ) as Vec3
+  const key = `${interpolation_factor}|${periodic}|${index0_frac}`
+  const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
 
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
     const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
@@ -268,20 +220,18 @@ export function extract_fermi_surface(
 
       // Marching cubes output stays in the Γ-centred parallelepiped cell; the renderer's
       // symmetry tiling covers the full Wigner-Seitz zone.
-      const centered = prepared_band_grid(
-        raw_energies,
-        interpolation_factor,
-        periodic,
-        index0_frac,
-      )
-      const position_offset = [0, 1, 2].reduce<Vec3>(
-        (offset, axis) =>
-          math.add(offset, math.scale(band_data.k_lattice[axis], centered.index0_frac[axis])),
-        [0, 0, 0],
-      )
+      let centered = prepared_grids.get(raw_energies)
+      if (centered?.key !== key) {
+        const upsampled = upsample_grid(raw_energies, interpolation_factor, periodic)
+        centered = {
+          key,
+          ...center_grid_on_gamma(upsampled, periodic, index0_frac),
+        }
+        prepared_grids.set(raw_energies, centered)
+      }
       const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {
         periodic,
-        position_offset,
+        position_offset: math.mat3x3_vec3_multiply(k_lattice_t, centered.index0_frac),
       })
       if (mesh.positions.length === 0) continue
       isosurfaces.push({ ...mesh, band_index: band_idx, spin })
@@ -357,8 +307,8 @@ export function compute_fermi_slice(
   }
 }
 
-// Axis label for an in-plane slice direction: the signed Cartesian axis it runs along, or its
-// direction when it is oblique (a (010) slice's basis runs along −kz, so Miller zeros can't say)
+// Label for an in-plane slice direction: the signed Cartesian axis it runs along, or the
+// direction itself when oblique
 const K_AXIS_LABELS = [`kₓ`, `kᵧ`, `kz`] as const // (subscript z doesn't exist in Unicode)
 export function slice_axis_label(direction: Vec3, fallback: string): string {
   const axis = direction.findIndex((component) => Math.abs(component) > 1 - 1e-6)

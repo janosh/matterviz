@@ -1142,8 +1142,7 @@
     if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
-  // A pinned tooltip follows recomputes (temperature, limits, formal/absolute): its numbers are
-  // re-read from the new domain, and it unpins when that domain is gone
+  // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
   $effect(() => {
     const meshes = hover_mesh_data
     untrack(() => {

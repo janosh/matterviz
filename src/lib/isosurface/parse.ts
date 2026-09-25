@@ -185,43 +185,28 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
     .slice(0, 3)
     .map((token) => Number(normalize_scientific_notation(token))) as Vec3
 
-// What a VASP volumetric file stores. `density` files (CHGCAR, CHG, AECCAR*, PARCHG) hold
-// rho·V_cell and are divided by the cell volume; `elf` (ELFCAR, dimensionless in [0, 1]) and
-// `potential` (LOCPOT, eV) are stored as is.
-export type VaspVolumetricKind = `density` | `elf` | `potential`
-
-// Kind from a VASP file name (compression suffixes and prefixes/suffixes like `mp-1_ELFCAR`
-// allowed). Names that do not say (a sniffed file, `CHGCAR`, `PARCHG.0001`) are densities.
-export function vasp_volumetric_kind(filename?: string): VaspVolumetricKind {
-  const name = strip_compression_extensions(filename ?? ``).toLowerCase()
-  if (name.includes(`elfcar`)) return `elf`
-  if (name.includes(`locpot`)) return `potential`
-  return `density`
-}
-
-// Block labels by kind and block count. Charge files carry the total density, then either
-// one magnetization block (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC).
-// Spin-polarized ELFCARs list the spin-up then spin-down ELF.
-const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = {
+// Block labels by what a VASP volumetric file stores and its block count. Charge files
+// (CHGCAR, CHG, AECCAR*, PARCHG) hold the total density, then one magnetization block
+// (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC). Spin-polarized ELFCARs and
+// LOCPOTs list spin up then spin down.
+const VASP_BLOCK_LABELS: Record<string, Record<number, string[]>> = {
   density: {
     1: [`charge density`],
     2: [`charge density`, `magnetization density`],
     4: [`charge density`, ...[`x`, `y`, `z`].map((axis) => `magnetization density (${axis})`)],
   },
-  elf: { 1: [`ELF`], 2: [`ELF (spin up)`, `ELF (spin down)`] },
-  potential: {
+  elfcar: { 1: [`ELF`], 2: [`ELF (spin up)`, `ELF (spin down)`] },
+  locpot: {
     1: [`local potential`],
     2: [`local potential (spin up)`, `local potential (spin down)`],
   },
 }
 
-// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format: a POSCAR header followed by one
-// or more volumetric blocks on a 3D grid (see VASP_BLOCK_LABELS). `kind` sets whether values
-// are divided by the cell volume; parse_volumetric_file derives it from the file name.
-export function parse_chgcar(
-  content: string,
-  kind: VaspVolumetricKind = `density`,
-): VolumetricFileData {
+// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG: a POSCAR header followed by one or more
+// volumetric blocks on a 3D grid. A `filename` containing ELFCAR or LOCPOT keeps values as is;
+// any other is a density file storing rho·V_cell.
+export function parse_chgcar(content: string, filename = ``): VolumetricFileData {
+  const kind = /elfcar|locpot/i.exec(filename)?.[0].toLowerCase() ?? `density`
   // Strip leading whitespace
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
@@ -281,7 +266,7 @@ export function parse_chgcar(
 
   // Parse volumetric data blocks until the file runs out of grid-dimension lines
   const blocks: { values: Float64Array; dims: Vec3 }[] = []
-  // Only density files store rho·V_cell. Math.abs guards a left-handed lattice.
+  // Only density files are divided by the cell volume (|det| for a left-handed lattice)
   const cell_volume = Math.abs(lattice_params.volume)
   const divisor = kind === `density` && cell_volume > 1e-30 ? cell_volume : 1
 
@@ -635,9 +620,7 @@ export function parse_volumetric_file(
   const format = looks_like_volumetric(content, filename)
   if (!format) return null
   try {
-    return format === `cube`
-      ? parse_cube(content)
-      : parse_chgcar(content, vasp_volumetric_kind(filename))
+    return format === `cube` ? parse_cube(content) : parse_chgcar(content, filename)
   } catch (error) {
     throw new Error(
       `Failed to parse ${format === `cube` ? `.cube` : `VASP volumetric (CHGCAR-like)`} file${filename ? ` '${filename}'` : ``}: ${to_error(error).message}`,

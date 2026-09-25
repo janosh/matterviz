@@ -133,8 +133,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // PlotLegendLayer binds this, so the frame owns the text and the legend config only seeds
   // it: a $derived would discard what the user typed on every new legend object.
   let legend_filter_query = $state(opts.legend()?.filter_query ?? ``)
-  // One collapse set for PlotLegend and the solver: the caller's, else one the frame owns,
-  // so the auto tracks count the grid the legend renders after a chevron toggle.
+  // One collapse set (the caller's, else the frame's) shared by PlotLegend and the solver
   const own_collapsed_groups = new SvelteSet<string>()
   const legend_collapsed_groups = $derived(
     opts.legend()?.collapsed_groups ?? own_collapsed_groups,

@@ -69,8 +69,7 @@
   // Positions plus the channels the collector will stream (site velocities, frame signals)
   // are budgeted like every other sweep: a run too large for the buffer is sub-sampled rather
   // than refused. The strided steps carry their own spacing, so the frequency axis stays
-  // right, but every spectrum's Nyquist frequency drops by the stride and faster vibrations
-  // fold back below it as spurious peaks, so the provenance line warns whenever stride > 1.
+  // right, but the Nyquist frequency drops by the stride, so a warning flags possible aliasing.
   let frame_stride = $derived(
     run
       ? suggest_frame_stride(

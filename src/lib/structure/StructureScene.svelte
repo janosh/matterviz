@@ -1307,8 +1307,7 @@
     structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
   )
 
-  // The enclosing viewer's element colors. One reactive read per palette entry instead of
-  // one proxy access per atom/bond.
+  // One reactive read per palette entry instead of one proxy access per atom/bond.
   const element_palette = get_element_palette()
   const palette = $derived({ ...element_palette.colors })
   type RenderAtom = InstancedAtom &

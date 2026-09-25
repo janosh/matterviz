@@ -146,20 +146,14 @@
 
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
   $effect.pre(() => series.forEach(assert_series_lengths))
-  // The scene, its ticks and auto ranges map every axis linearly; a log axis from an untyped
-  // caller (JSON, Python) would otherwise draw silently linear
+  // The scene maps every axis linearly; a log axis from an untyped caller (JSON, Python)
+  // would otherwise draw silently linear
   $effect.pre(() => {
-    for (const [name, axis] of [
-      [`x`, x_axis],
-      [`y`, y_axis],
-      [`z`, z_axis],
-    ] as const) {
-      const scale_type: unknown = axis.scale_type
-      if (scale_type !== undefined && scale_type !== `linear`) {
-        throw new Error(
-          `ScatterPlot3D axes are linear, got ${name}_axis.scale_type=${JSON.stringify(scale_type)}`,
-        )
-      }
+    const scale_types = [x_axis, y_axis, z_axis].map((axis): unknown => axis.scale_type)
+    if (scale_types.some((scale_type) => scale_type && scale_type !== `linear`)) {
+      throw new Error(
+        `ScatterPlot3D axes are linear, got scale_type ${JSON.stringify(scale_types)}`,
+      )
     }
   })
 
@@ -169,8 +163,7 @@
   let resolved_z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis })
   let resolved_display = $derived({ ...DISPLAY_DEFAULTS_3D, ...display })
   // Bounds come from the very vertices Surface3D draws. A grid surface without its own x/y
-  // range spans the plot's, so x/y resolve first (from series and self-spanning surfaces) and
-  // such surfaces then only extend z. Shared by the scene and the controls.
+  // range spans the plot's, so x/y resolve first and such surfaces then only extend z.
   const visible_surfaces = $derived(surfaces.filter((surface) => surface.visible !== false))
   const auto_xy_ranges = $derived(
     get_3d_auto_ranges(
