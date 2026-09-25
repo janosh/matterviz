@@ -63,8 +63,11 @@
       undefined as number | undefined,
     ),
     max_hull_dist_show_labels = $bindable(0.1),
-    show_stable_labels = $bindable(true),
-    show_unstable_labels = $bindable(false),
+    // undefined = not passed: large datasets then start with labels hidden (label_threshold)
+    show_stable_labels: show_stable_labels_prop = $bindable(undefined as boolean | undefined),
+    show_unstable_labels: show_unstable_labels_prop = $bindable(
+      undefined as boolean | undefined,
+    ),
     energy_source_mode = $bindable(`precomputed`),
     display = $bindable({ x_grid: false, y_grid: false }),
     highlighted_entries = $bindable([]),
@@ -89,6 +92,13 @@
 
   const entries = $derived(entries_prop ?? [])
 
+  // Values the caller passed are choices; only unset ones get data-dependent defaults
+  const { max_hull_dist_explicit, labels_explicit } = untrack(() => ({
+    max_hull_dist_explicit: max_hull_dist_show_phases_prop !== undefined,
+    labels_explicit:
+      show_stable_labels_prop !== undefined || show_unstable_labels_prop !== undefined,
+  }))
+
   // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
   const hull_data = create_hull_data_pipeline({
     entries: () => entries,
@@ -100,6 +110,7 @@
     gas_pressures: () => gas_pressures,
     energy_source_mode: () => energy_source_mode,
     max_hull_dist_show_phases: () => max_hull_dist_show_phases,
+    max_hull_dist_explicit,
     show_stable: () => show_stable,
     show_unstable: () => show_unstable,
     entry_category: () => entry_category,
@@ -108,6 +119,7 @@
     set_temperature: (next_temp) => (temperature = next_temp),
     set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
     hide_labels: () => {
+      if (labels_explicit) return
       show_stable_labels = false
       show_unstable_labels = false
     },
@@ -124,6 +136,18 @@
   let max_hull_dist_show_phases = $derived(
     max_hull_dist_show_phases_prop ?? hull_defaults.max_hull_dist_show_phases,
   )
+  let show_stable_labels = $derived(
+    show_stable_labels_prop ?? hull_defaults.show_stable_labels,
+  )
+  let show_unstable_labels = $derived(
+    show_unstable_labels_prop ?? hull_defaults.show_unstable_labels,
+  )
+  $effect(() => {
+    if (show_stable_labels_prop !== show_stable_labels)
+      show_stable_labels_prop = show_stable_labels
+    if (show_unstable_labels_prop !== show_unstable_labels)
+      show_unstable_labels_prop = show_unstable_labels
+  })
   $effect(() => {
     if (element_count < 2 || element_count > 4) return
     if (hull_face_opacity_prop !== hull_face_opacity)
@@ -378,6 +402,7 @@
       <ConvexHull2D
         {...plot_props}
         {entry_category}
+        {color_scale}
         {tooltip}
         {title_height}
         {x_axis}

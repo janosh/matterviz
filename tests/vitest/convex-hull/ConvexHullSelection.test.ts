@@ -3,6 +3,7 @@ import * as thermo from '$lib/convex-hull/thermodynamics'
 import * as canvas_draw from '$lib/convex-hull/canvas-draw'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -304,6 +305,42 @@ describe(`convex hull replacement state`, () => {
       else expect(face_mode?.textContent?.trim()).toBe(dim === 3 ? `Uniform` : `Element`)
       expect(normalize).toHaveBeenCalledOnce()
     }
+  })
+
+  // 60 entries > label_threshold (50): unset label toggles get the large-dataset default
+  // (hidden) and an unset threshold the auto value, but passed values are the caller's choice
+  test.each([
+    [`nothing passed`, {}, { labels: [false, false], threshold_is: `auto` }],
+    [
+      `labels and threshold passed`,
+      {
+        show_stable_labels: true,
+        show_unstable_labels: true,
+        max_hull_dist_show_phases: 0.01,
+      },
+      { labels: [true, true], threshold_is: 0.01 },
+    ],
+  ] as const)(`large datasets: %s`, async (_label, passed, expected) => {
+    const entries = [
+      make_phase({ Li: 1 }, 0),
+      make_phase({ O: 1 }, 0),
+      make_phase({ Li: 1, O: 1 }, -1),
+      ...Array.from({ length: 57 }, (_, idx) => make_phase({ Li: idx + 1, O: 58 - idx }, 0)),
+    ]
+    const state: Record<string, unknown> = {
+      show_stable_labels: undefined,
+      show_unstable_labels: undefined,
+      max_hull_dist_show_phases: undefined,
+      ...passed,
+    }
+    await mount_hull(
+      bind_props({ entries }, state as Partial<ComponentProps<typeof ConvexHull>>),
+    )
+    flushSync()
+    expect([state.show_stable_labels, state.show_unstable_labels]).toEqual(expected.labels)
+    if (expected.threshold_is === `auto`)
+      expect(state.max_hull_dist_show_phases).not.toBe(0.01)
+    else expect(state.max_hull_dist_show_phases).toBe(expected.threshold_is)
   })
 
   test.each([
@@ -610,6 +647,26 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
       }
     },
   )
+
+  test(`2D energy coloring uses color_scale over the hull-distance range`, async () => {
+    const fills = async (color_scale?: `interpolateReds`) => {
+      document.body.replaceChildren()
+      const plot = await mount_sized(
+        ConvexHull,
+        { entries: magnetic_entries, color_scale },
+        { selector: `.scatter`, on_mount: track_component },
+      )
+      // ScatterPoint paints var(--point-fill-color) set on its wrapper
+      return [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)].map(
+        (element) => element.style.getPropertyValue(`--point-fill-color`).trim(),
+      )
+    }
+    const reds = await fills(`interpolateReds`)
+    // the furthest entry (0.1 eV/atom) sits at the top of the [0, 0.1] domain: darkest red
+    expect(reds).toContain(interpolateReds(1))
+    expect(reds).toContain(interpolateReds(0))
+    expect(await fills()).not.toContain(interpolateReds(1))
+  })
 
   test(`hull facets are straight segments, never splined`, async () => {
     const entries: PhaseData[] = [

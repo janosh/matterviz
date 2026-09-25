@@ -802,26 +802,26 @@ describe(`build_hyperplanes`, () => {
 })
 
 describe(`element padding`, () => {
-  test(`axis limits ignore near-default points; pad_domain_points replaces only those`, () => {
+  test(`only coordinates at default_min_limit are padded, real vertices near it are kept`, () => {
     const domains = {
       A: [
         [-50, -50],
-        [-47, -46],
+        [-47, -46], // a real vertex 3-4 eV above the floor, i.e. within the 5 eV padding
         [-40, -44],
       ],
     }
     const padding = 5.0
     const new_lims = apply_element_padding(domains, [0, 1], padding, -50)
-    // Axis mins should ignore near-default points within 5 eV: use -40 and -44
-    expect(new_lims[0]).toBeCloseTo(-45, 8)
-    expect(new_lims[1]).toBeCloseTo(-49, 8)
+    // axis mins skip only the floor itself (pymatgen's np.isclose(col, default_min_limit))
+    expect(new_lims[0]).toBeCloseTo(-52, 12)
+    expect(new_lims[1]).toBeCloseTo(-51, 12)
 
-    const padded = pad_domain_points(domains.A, [0, 1], new_lims, -50, padding)
-    // Values within 5 eV of default_min_limit should be replaced
-    expect(padded[0]).toEqual([-45, -49])
-    expect(padded[1]).toEqual([-45, -49])
-    // Values farther than 5 eV should be preserved
-    expect(padded[2]).toEqual([-40, -44])
+    const padded = pad_domain_points(domains.A, [0, 1], new_lims, -50)
+    expect(padded).toEqual([
+      [new_lims[0], new_lims[1]],
+      [-47, -46],
+      [-40, -44],
+    ])
   })
 })
 

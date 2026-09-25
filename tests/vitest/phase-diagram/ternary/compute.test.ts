@@ -102,8 +102,44 @@ describe(`prepare_diagram`, () => {
     ],
     [[...toy_entries, make_phase({ Rb: 1 }, 0)], toy_elements, /outside the Li-Na-K system/],
     [[{ composition: {}, energy: 0 }], toy_elements, /no recognizable elements/],
+    [
+      // absolute DFT energies for Li and Na, no K entry: a 0 eV K corner would be meaningless
+      [
+        make_phase({ Li: 1 }, -1.9),
+        make_phase({ Na: 1 }, -1.3),
+        make_phase({ Li: 1, K: 1 }, -2),
+      ],
+      toy_elements,
+      /No reference entry for K, while Li \(-1.9 eV\/atom\), Na \(-1.3 eV\/atom\) carry absolute energies/,
+    ],
   ])(`rejects invalid systems (%#)`, (entries, elements, message) => {
     expect(() => prepare_diagram(entries, { elements })).toThrow(message)
+  })
+})
+
+describe(`E_form-only entries`, () => {
+  test.each([`auto`, `static`] as const)(`%s mode uses e_form_per_atom as dG_f`, (mode) => {
+    const entries: PhaseData[] = [
+      { composition: { Li: 1 }, e_form_per_atom: 0, entry_id: `Li` },
+      { composition: { Na: 1 }, e_form_per_atom: 0, entry_id: `Na` },
+      { composition: { K: 1 }, e_form_per_atom: 0, entry_id: `K` },
+      { composition: { Li: 1, Na: 1 }, e_form_per_atom: -0.5, entry_id: `LiNa` },
+      { composition: { Na: 1, K: 1 }, e_form_per_atom: -0.3, entry_id: `NaK` },
+    ] as PhaseData[] // no `energy`: E_form is all the data carries
+    const model = prepare_diagram(entries, { elements: toy_elements, free_energy: { mode } })
+    const section = compute_section(model, 500)
+    expect(Array.from(section.dg_form)).toEqual([0, 0, 0, -0.5, -0.3])
+    expect(section.stable).toEqual([0, 1, 2, 3, 4])
+  })
+
+  test(`an entry with no energy of any kind throws instead of sitting at 0 eV`, () => {
+    const entries = [
+      ...toy_entries,
+      { composition: { Li: 2, K: 1 }, entry_id: `bare` } as PhaseData,
+    ]
+    expect(() =>
+      prepare_diagram(entries, { elements: toy_elements, free_energy: { mode: `static` } }),
+    ).toThrow(/bare has no energy, energy_per_atom or e_form_per_atom/)
   })
 })
 

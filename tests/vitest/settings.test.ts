@@ -305,6 +305,8 @@ describe(`Settings`, () => {
         hull_face_opacity: `undefined resolves per dimension through get_convex_hull_defaults (ternary 0.3, quaternary 0.03)`,
         hull_face_color_mode: `undefined resolves per dimension through get_convex_hull_defaults; ConvexHullSelection tests the rendered modes across dimension changes`,
         max_hull_dist_show_phases: `undefined resolves per dimension through get_convex_hull_defaults (binary 0.1, ternary 0.5)`,
+        show_stable_labels: `undefined marks the prop as not passed, so large datasets may auto-hide labels; it resolves through get_convex_hull_defaults`,
+        show_unstable_labels: `undefined marks the prop as not passed, so large datasets may auto-hide labels; it resolves through get_convex_hull_defaults`,
       },
       'scene/SceneCamera': {
         camera_projection: `shared camera primitive; every scene passes its own schema value`,

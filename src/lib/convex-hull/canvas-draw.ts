@@ -383,11 +383,48 @@ function hull_label_entries(
   )
 }
 
-function measure_segments(ctx: CanvasRenderingContext2D, segments: FormulaLabelSegment[]) {
-  return segments.reduce((sum, segment) => {
+// Per-segment widths (fonts are fixed module constants, so widths don't depend on the frame)
+const measure_segments = (
+  ctx: CanvasRenderingContext2D,
+  segments: FormulaLabelSegment[],
+): number[] =>
+  segments.map((segment) => {
     ctx.font = segment.subscript ? LABEL_SUBSCRIPT_FONT : LABEL_FONT
-    return sum + ctx.measureText(segment.text).width
-  }, 0)
+    return ctx.measureText(segment.text).width
+  })
+
+interface LabelLayout {
+  entry: ConvexHullEntry
+  segments: FormulaLabelSegment[]
+  segment_widths: number[]
+  text_width: number
+}
+
+// Label selection, ordering, formula segments and text widths depend only on the entries
+// and the label toggles, not the camera: computed once per entries array and toggle state
+// instead of every frame of a rotation
+const label_layout_cache = new WeakMap<
+  ConvexHullEntry[],
+  { key: string; layouts: LabelLayout[] }
+>()
+function hull_label_layouts(
+  ctx: CanvasRenderingContext2D,
+  entries: ConvexHullEntry[],
+  opts: LabelOpts,
+): LabelLayout[] {
+  const { show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, elements } =
+    opts
+  const key = `${show_stable_labels}|${show_unstable_labels}|${max_hull_dist_show_labels}|${elements.join(`,`)}`
+  const cached = label_layout_cache.get(entries)
+  if (cached?.key === key) return cached.layouts
+  const layouts = hull_label_entries(entries, opts).map((entry) => {
+    const segments = get_formula_label_segments(get_entry_label(entry, elements))
+    const segment_widths = measure_segments(ctx, segments)
+    const text_width = segment_widths.reduce((sum, width) => sum + width, 0)
+    return { entry, segments, segment_widths, text_width }
+  })
+  label_layout_cache.set(entries, { key, layouts })
+  return layouts
 }
 
 // Formula labels next to their points, trying 8 placements around each point and skipping
@@ -397,7 +434,7 @@ export function draw_hull_labels(
   entries: ConvexHullEntry[],
   opts: LabelOpts,
 ): void {
-  const { project, elements, scale, text_color, width, height, paint_only } = opts
+  const { project, scale, text_color, width, height, paint_only } = opts
   const label_height = LABEL_FONT_SIZE + 2
   const padding = Math.max(1, 2 * scale)
   const canvas_rect: Rect = { x: 0, y: 0, width, height }
@@ -407,10 +444,12 @@ export function draw_hull_labels(
   ctx.fillStyle = text_color
   ctx.textAlign = `left`
   ctx.textBaseline = `top`
-  for (const entry of hull_label_entries(entries, opts)) {
+  for (const { entry, segments, segment_widths, text_width } of hull_label_layouts(
+    ctx,
+    entries,
+    opts,
+  )) {
     const projected = project(entry.x, entry.y, entry.z)
-    const segments = get_formula_label_segments(get_entry_label(entry, elements))
-    const text_width = measure_segments(ctx, segments)
     const gap = point_radius(entry) * scale + 4 * scale
     const side = gap + scale + text_width / 2
     const half_height = label_height / 2
@@ -435,14 +474,14 @@ export function draw_hull_labels(
     if (!placement || (paint_only && !paint_only(entry))) continue
 
     let text_x = placement[0] - text_width / 2
-    for (const segment of segments) {
+    for (const [segment_idx, segment] of segments.entries()) {
       ctx.font = segment.subscript ? LABEL_SUBSCRIPT_FONT : LABEL_FONT
       ctx.fillText(
         segment.text,
         text_x,
         placement[1] + (segment.subscript ? LABEL_FONT_SIZE * 0.28 : 0),
       )
-      text_x += ctx.measureText(segment.text).width
+      text_x += segment_widths[segment_idx]
     }
   }
   ctx.restore()

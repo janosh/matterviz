@@ -197,9 +197,10 @@ const MAX_INTERPOLATION_GAP = 500 // K
 function own_g_per_atom(
   entry: PhaseData,
   tabulated: boolean,
+  static_energy: (entry: PhaseData) => number,
 ): (temperature: number) => number {
   if (!tabulated) {
-    const energy = energy_per_atom(entry)
+    const energy = static_energy(entry)
     return () => energy
   }
   const { temperatures = [], free_energies = [] } = entry
@@ -245,13 +246,33 @@ export function build_free_energy_model(
     unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }
   const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
 
+  // Static energy per atom: the entry's own energy, else its E_form placed on the references'
+  // energy scale (E_form + Σ x_e E_e; E_form alone for a unary). An entry with neither would
+  // silently sit at 0 eV/atom, so it throws.
+  const static_energy = (entry: PhaseData): number => {
+    if (typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`)
+      return energy_per_atom(entry)
+    const e_form = entry.e_form_per_atom
+    if (typeof e_form !== `number` || !Number.isFinite(e_form)) {
+      throw new TypeError(
+        `Entry ${entry.entry_id ?? JSON.stringify(entry.composition)} has no energy, energy_per_atom or e_form_per_atom`,
+      )
+    }
+    const fractions = atomic_fractions(entry)
+    if (fractions.length === 1) return e_form
+    return fractions.reduce(
+      (sum, [element, frac]) => sum + frac * static_energy(unary_refs[element]),
+      e_form,
+    )
+  }
+
   // Reference G_e(T) per element from its lowest-energy unary entry
   const refs = elements.map((element) => {
     const ref = unary_refs[element]
     const tabulated = mode !== `static` && has_tabulated_g(ref)
     return [
       element,
-      own_g_per_atom(ref, tabulated),
+      own_g_per_atom(ref, tabulated, static_energy),
       tabulated ? tabulated_range(ref) : null,
     ] as const
   })
@@ -301,7 +322,7 @@ export function build_free_energy_model(
       // Unary entries: the experimental reference makes the ground state dG_f = 0 and leaves
       // polymorphs at their 0 K offset
       if (unary) {
-        const offset = energy_per_atom(entry) - energy_per_atom(unary_refs[fractions[0][0]])
+        const offset = static_energy(entry) - static_energy(unary_refs[fractions[0][0]])
         return { source, t_range: null, dg_form: () => offset }
       }
       const volume = get_volume_per_atom(entry) ?? NaN
@@ -321,7 +342,7 @@ export function build_free_energy_model(
       }
     }
     const tabulated = source === `tabulated`
-    const own_g = own_g_per_atom(entry, tabulated)
+    const own_g = own_g_per_atom(entry, tabulated, static_energy)
     return {
       source,
       t_range: intersect_ranges([

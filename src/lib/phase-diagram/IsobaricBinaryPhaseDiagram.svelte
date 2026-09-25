@@ -8,7 +8,12 @@
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import { ViewerChrome } from '$lib/layout'
   import { sanitize_svg } from '$lib/sanitize'
-  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '$lib/math'
+  import {
+    array_extent,
+    compute_bounding_box_2d,
+    polygon_centroid,
+    type Vec2,
+  } from '$lib/math'
   import { type AxisConfig, PlotTooltip } from '$lib/plot'
   import { unique_id } from '$lib/plot/core/utils'
   import { handle_and_prevent, to_error } from '$lib/utils'
@@ -17,7 +22,7 @@
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { build_diagram } from './build-diagram'
+  import { assert_unique_ids, build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
@@ -146,11 +151,21 @@
       return { data: null, error: `Invalid phase diagram input: ${to_error(error).message}` }
     }
   })
+  // The data prop gets the same id check build_diagram applies to diagram_input
+  const data_prop_error = $derived.by((): string | null => {
+    if (!data_prop) return null
+    try {
+      assert_unique_ids(data_prop)
+      return null
+    } catch (error) {
+      return `Invalid phase diagram data: ${to_error(error).message}`
+    }
+  })
   let drop_error = $state<string | null>(null)
-  const input_error = $derived(drop_error ?? rebuilt.error)
+  const input_error = $derived(drop_error ?? rebuilt.error ?? data_prop_error)
 
   // Direct editor edits can override this value until either source changes.
-  let source_data = $derived(rebuilt.data ?? data_prop)
+  let source_data = $derived(rebuilt.data ?? (data_prop_error ? undefined : data_prop))
   const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
@@ -194,17 +209,27 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
   const temp_range = $derived(effective_data.temperature_range)
 
+  // Visible temperature window in display units: y_axis.range (in the unit the axis shows,
+  // either end may be null) over the data's temperature_range
+  const y_domain_display = $derived.by((): Vec2 => {
+    const [lower, upper] = y_axis.range ?? [null, null]
+    const [t_min, t_max] = temp_range.map((temp) =>
+      convert_temp(temp, data_temp_unit, temp_unit),
+    )
+    return [lower ?? t_min, upper ?? t_max]
+  })
+
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
-  const y_scale = $derived(scaleLinear().domain(temp_range).range([bottom, top]))
+  const y_scale = $derived(
+    scaleLinear()
+      .domain(y_domain_display.map((temp) => convert_temp(temp, temp_unit, data_temp_unit)))
+      .range([bottom, top]),
+  )
 
   // y_scale_display maps display temperatures (after unit conversion) to SVG
   // Used for axis labels and ticks
-  const y_scale_display = $derived(
-    scaleLinear()
-      .domain(temp_range.map((temp) => convert_temp(temp, data_temp_unit, temp_unit)))
-      .range([bottom, top]),
-  )
+  const y_scale_display = $derived(scaleLinear().domain(y_domain_display).range([bottom, top]))
 
   const tick_count = (axis: AxisConfig, fallback: number): number =>
     typeof axis.ticks === `number` ? axis.ticks : fallback
@@ -247,12 +272,21 @@
     })),
   )
 
+  // Points outside a zoomed x/y window would sit on the axes or margins
   const transformed_special_points = $derived(
-    (effective_data.special_points ?? []).map((point) => ({
-      ...point,
-      svg_x: x_scale(point.position[0]),
-      svg_y: y_scale(point.position[1]),
-    })),
+    (effective_data.special_points ?? [])
+      .map((point) => ({
+        ...point,
+        svg_x: x_scale(point.position[0]),
+        svg_y: y_scale(point.position[1]),
+      }))
+      .filter(
+        ({ svg_x, svg_y }) =>
+          svg_x >= left - 0.5 &&
+          svg_x <= right + 0.5 &&
+          svg_y >= top - 0.5 &&
+          svg_y <= bottom + 0.5,
+      ),
   )
 
   let hover_info = $state<PhaseHoverInfo | null>(null)
@@ -517,6 +551,10 @@
     >
       <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>
+        <!-- zoomed axes (x_axis/y_axis.range) must not paint data over the axes and margins -->
+        <clipPath id="{gradient_uid}-plot-area">
+          <rect x={left} y={top} width={plot_width} height={plot_height} />
+        </clipPath>
         {#each transformed_regions as region (region.id)}
           {#if region.gradient}
             <linearGradient
@@ -554,101 +592,103 @@
         </g>
       {/if}
 
-      <g class="phase-regions">
-        {#each transformed_regions as region (region.id)}
-          <path
-            d={region.svg_path}
-            fill={region.gradient
-              ? `url(#${gradient_uid}-${region.id})`
-              : region.color || get_phase_color(region.name)}
-            stroke="none"
-            class:hovered={hovered_region?.id === region.id}
-          />
-        {/each}
-      </g>
-
-      {#if show_boundaries}
-        <g class="boundaries">
-          {#each transformed_boundaries as boundary (boundary.id)}
-            <path
-              d={boundary.svg_path}
-              fill="none"
-              stroke={boundary.style?.color ?? merged_config.colors.boundary}
-              stroke-width={boundary.style?.width ?? 2}
-              stroke-dasharray={boundary.style?.dash || ``}
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          {/each}
-        </g>
-      {/if}
-
-      {#if show_labels}
-        <g class="region-labels" style="pointer-events: none">
+      <g clip-path="url(#{gradient_uid}-plot-area)">
+        <g class="phase-regions">
           {#each transformed_regions as region (region.id)}
-            {@const line_height = merged_config.font_size * 1.2}
-            <g
-              transform="translate({region.label_pos[0]}, {region
-                .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
-            >
-              {#each region.label_lines as line, line_idx (line_idx)}
-                <text
-                  x={0}
-                  y={(line_idx - (region.label_lines.length - 1) / 2) * line_height}
-                  text-anchor="middle"
-                  dominant-baseline="middle"
-                  fill={merged_config.colors.text}
-                  font-size={merged_config.font_size}
-                  font-weight="500"
-                  class="region-label"
-                >
-                  {@html sanitize_svg(format_label_svg(line, use_subscripts))}
-                </text>
-              {/each}
-            </g>
+            <path
+              d={region.svg_path}
+              fill={region.gradient
+                ? `url(#${gradient_uid}-${region.id})`
+                : region.color || get_phase_color(region.name)}
+              stroke="none"
+              class:hovered={hovered_region?.id === region.id}
+            />
           {/each}
         </g>
-      {/if}
 
-      <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
-      {#if tie_line}
-        {@const {
-          cursor,
-          endpoints: [start, end],
-        } = tie_line}
-        {@const top_left = merged_config.tie_line}
-        <g class="tie-line" class:locked={locked_hover_info}>
-          {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
-            <line
-              x1={start.cx}
-              y1={start.cy}
-              x2={end.cx}
-              y2={end.cy}
-              {stroke}
-              stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
-              stroke-linecap="round"
-            />
-          {/each}
-          {#each tie_line.endpoints as endpoint, idx (idx)}
+        {#if show_boundaries}
+          <g class="boundaries">
+            {#each transformed_boundaries as boundary (boundary.id)}
+              <path
+                d={boundary.svg_path}
+                fill="none"
+                stroke={boundary.style?.color ?? merged_config.colors.boundary}
+                stroke-width={boundary.style?.width ?? 2}
+                stroke-dasharray={boundary.style?.dash || ``}
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            {/each}
+          </g>
+        {/if}
+
+        {#if show_labels}
+          <g class="region-labels" style="pointer-events: none">
+            {#each transformed_regions as region (region.id)}
+              {@const line_height = merged_config.font_size * 1.2}
+              <g
+                transform="translate({region.label_pos[0]}, {region
+                  .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
+              >
+                {#each region.label_lines as line, line_idx (line_idx)}
+                  <text
+                    x={0}
+                    y={(line_idx - (region.label_lines.length - 1) / 2) * line_height}
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    fill={merged_config.colors.text}
+                    font-size={merged_config.font_size}
+                    font-weight="500"
+                    class="region-label"
+                  >
+                    {@html sanitize_svg(format_label_svg(line, use_subscripts))}
+                  </text>
+                {/each}
+              </g>
+            {/each}
+          </g>
+        {/if}
+
+        <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
+        {#if tie_line}
+          {@const {
+            cursor,
+            endpoints: [start, end],
+          } = tie_line}
+          {@const top_left = merged_config.tie_line}
+          <g class="tie-line" class:locked={locked_hover_info}>
+            {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
+              <line
+                x1={start.cx}
+                y1={start.cy}
+                x2={end.cx}
+                y2={end.cy}
+                {stroke}
+                stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
+                stroke-linecap="round"
+              />
+            {/each}
+            {#each tie_line.endpoints as endpoint, idx (idx)}
+              <circle
+                cx={endpoint.cx}
+                cy={endpoint.cy}
+                r={top_left.endpoint_radius}
+                fill={endpoint.color}
+                stroke="white"
+                stroke-width={1.5}
+              />
+            {/each}
             <circle
-              cx={endpoint.cx}
-              cy={endpoint.cy}
-              r={top_left.endpoint_radius}
-              fill={endpoint.color}
+              cx={cursor.cx}
+              cy={cursor.cy}
+              r={top_left.cursor_radius}
+              fill={TIE_LINE_COLOR}
               stroke="white"
-              stroke-width={1.5}
+              stroke-width={2}
             />
-          {/each}
-          <circle
-            cx={cursor.cx}
-            cy={cursor.cy}
-            r={top_left.cursor_radius}
-            fill={TIE_LINE_COLOR}
-            stroke="white"
-            stroke-width={2}
-          />
-        </g>
-      {/if}
+          </g>
+        {/if}
+      </g>
 
       <!-- Special points (rendered last for highest z-index) -->
       {#if show_special_points}

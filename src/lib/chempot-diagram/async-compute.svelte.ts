@@ -3,7 +3,7 @@
 // Falls back to synchronous main-thread computation during SSR.
 import { slim_phase_entry } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { create_worker_client } from '$lib/worker-client.svelte'
+import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
 import { compute_chempot_diagram } from './compute'
 import type { ChemPotDiagramConfig, ChemPotDiagramData } from './types'
 
@@ -34,7 +34,13 @@ const run_chempot = create_worker_client<
   dedupe_by_payload: `unordered`,
 })
 
-export const compute_chempot_async = (
-  entries: PhaseData[],
-  config: ChemPotDiagramConfig = {},
-): Promise<ChemPotDiagramData> => run_chempot(entries, config)
+// `signal` drops a superseded request (the worker client stops tracking it once no caller
+// waits); `release` terminates an idle worker on unmount
+export const compute_chempot_async = Object.assign(
+  (
+    entries: PhaseData[],
+    config: ChemPotDiagramConfig = {},
+    options: WorkerRequestOptions = {},
+  ): Promise<ChemPotDiagramData> => run_chempot(entries, config, options),
+  { release: run_chempot.release },
+)

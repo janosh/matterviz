@@ -409,6 +409,12 @@ describe(`ConvexHullStats`, () => {
       },
     )
 
+    test(`E_form column stays empty for an entry with only an absolute energy`, () => {
+      mount_table_with_single_entry({ e_form_per_atom: undefined, energy_per_atom: -5.2 })
+      // −5.2 only under E_raw, not repeated as a (mislabelled) formation energy
+      expect(doc_query(`tbody`).textContent?.split(`−5.2`).length).toBe(2)
+    })
+
     test(`composition fallback when reduced_formula missing`, () => {
       mount_stats_table({
         stable_entries: [

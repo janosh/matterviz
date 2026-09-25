@@ -107,6 +107,31 @@ describe(`prepare_phase_set`, () => {
     expect(li2o2.n_atoms_per_fu).toBe(4)
   })
 
+  test(`resolves library precursors by their conventional or reduced formula, never gases`, () => {
+    const phase_set = prepare_phase_set(
+      [
+        make_phase({ Li: 1 }, 0),
+        make_phase({ O: 1 }, 0),
+        make_phase({ H: 1 }, 0),
+        make_phase({ Mg: 1 }, 0),
+        make_phase({ Li: 4, O: 4 }, -1.5, { entry_id: `peroxide` }),
+        make_phase({ Li: 1, O: 1, H: 1 }, -1.8, { entry_id: `lioh` }),
+        make_phase({ Mg: 1, O: 2, H: 2 }, -1.9, { entry_id: `brucite` }),
+      ],
+      { open_species: [`O2`] },
+    )
+    for (const [query, id] of [
+      [`Li2O2`, `peroxide`],
+      [`LiO`, `peroxide`],
+      [`LiOH`, `lioh`],
+      [`HLiO`, `lioh`],
+      [`Mg(OH)2`, `brucite`],
+    ]) {
+      expect(resolve_phase(phase_set, query)?.id, query).toBe(id)
+    }
+    expect(resolve_phase(phase_set, `O2`)).toBeNull()
+  })
+
   test(`skips entries without a computable formation energy and warns`, () => {
     const phase_set = prepare_phase_set([
       make_phase({ Li: 1 }, 0),
@@ -588,8 +613,15 @@ describe(`plan_synthesis`, () => {
       ),
     ).toBe(true)
     expect(single.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(false)
-    const bogus = plan_synthesis({ ...base_request, precursors: { allow: [`Xx9`] } })
-    expect(bogus.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(true)
+    const bogus = plan_synthesis({
+      ...base_request,
+      precursors: { allow: [`Xx9`, `Xx9`], block: [`Xx9`] },
+    })
+    // one line per distinct warning, so UIs can key the list by its text
+    expect(
+      bogus.warnings.filter((warning) => warning.includes(`"Xx9" matches no phase`)),
+    ).toHaveLength(1)
+    expect(new Set(bogus.warnings).size).toBe(bogus.warnings.length)
   })
 
   test(`polymorph targets and metastable targets are warned about`, () => {

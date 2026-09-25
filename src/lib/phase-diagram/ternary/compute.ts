@@ -7,6 +7,8 @@ import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coor
 import { is_unary_entry } from '$lib/convex-hull/helpers'
 import {
   compute_lower_hull_nd,
+  find_lowest_energy_unary_refs,
+  get_energy_per_atom,
   normalize_hull_composition_keys,
 } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
@@ -73,17 +75,30 @@ export function prepare_diagram(
     )
   // Synthetic corners for elements without a hull-eligible reference entry (dG_f = 0 by
   // definition); an exclude_from_hull element is drawn but cannot anchor the hull
-  for (const element of elements) {
-    const has_corner = (entry: PhaseData) =>
-      is_unary_entry(entry) && entry.composition[element] && !entry.exclude_from_hull
-    if (!normalized.some(has_corner)) {
-      normalized.push({
-        composition: { [element]: 1 },
-        energy: 0,
-        entry_id: `synthetic-element:${element}`,
-        reduced_formula: element,
-      })
-    }
+  const has_corner = (element: ElementSymbol) => (entry: PhaseData) =>
+    is_unary_entry(entry) && Boolean(entry.composition[element]) && !entry.exclude_from_hull
+  const missing = elements.filter((element) => !normalized.some(has_corner(element)))
+  // A 0 eV corner is only a formation-energy reference when the other references are 0 eV too;
+  // next to absolute DFT energies (Li at -1.9 eV/atom) it would make every compound's dG_f wrong
+  const absolute_refs = Object.entries(
+    find_lowest_energy_unary_refs(normalized.filter((entry) => !entry.exclude_from_hull)),
+  ).filter(([, ref]) => Math.abs(get_energy_per_atom(ref)) > 1e-6)
+  if (missing.length > 0 && absolute_refs.length > 0) {
+    throw new Error(
+      `No reference entry for ${missing.join(`, `)}, while ${absolute_refs
+        .map(([element, ref]) => `${element} (${get_energy_per_atom(ref)} eV/atom)`)
+        .join(
+          `, `,
+        )} carry absolute energies: add the missing elemental entries or pass formation energies`,
+    )
+  }
+  for (const element of missing) {
+    normalized.push({
+      composition: { [element]: 1 },
+      energy: 0,
+      entry_id: `synthetic-element:${element}`,
+      reduced_formula: element,
+    })
   }
   const model = build_free_energy_model(normalized, elements, options.free_energy)
   const [el_a, el_b, el_c] = elements

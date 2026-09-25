@@ -214,6 +214,96 @@ describe(`parse_phase_diagram_svg`, () => {
     expect(input.regions.find((region) => region.bounds.length === 4)?.color).toBe(`#112233`)
   })
 
+  it(`gives separate fields that share a label (or slug alike) unique ids`, () => {
+    const svg = simple_svg(
+      `<line class="phase-boundary" x1="233" y1="500" x2="233" y2="100"/>
+      <line class="phase-boundary" x1="366" y1="500" x2="366" y2="100"/>`,
+    )
+      .replace(`x="200" y="400">α + β`, `x="150" y="300">A + B`)
+      .replace(
+        `x="400" y="400">L + α`,
+        `x="300" y="300">L + B</text><text class="label-main" x="450" y="300">A+B`,
+      )
+    const input = parse_phase_diagram_svg(svg)
+    expect(input.regions.map(({ id, name }) => [id, name])).toEqual([
+      [`a_b`, `A + B`],
+      [`l_b`, `L + B`],
+      [`a_b_2`, `A+B`],
+    ])
+    expect(() => build_diagram(input)).not.toThrow()
+  })
+
+  // Ticks at 600/1400 K (px 460/140) sit inside the 500..1500 K plot area (px 500..100); the
+  // L + c field above the 1450 K boundary exists only between the last tick and the axes edge
+  it.each([
+    {
+      format: `simple`,
+      svg: simple_svg(
+        `${SIMPLE_BOUNDARIES}<line class="phase-boundary" x1="100" y1="120" x2="500" y2="120"/>`,
+        `<text class="label-main" x="300" y="110">L + c</text>`,
+      )
+        .replace(
+          `y1="500" x2="100" y2="500"/>
+      <text class="tick-text" x="90" y="500">500`,
+          `y1="460" x2="100" y2="460"/>
+      <text class="tick-text" x="90" y="460">600`,
+        )
+        .replace(
+          `y1="100" x2="100" y2="100"/>
+      <text class="tick-text" x="90" y="100">1500 K`,
+          `y1="140" x2="100" y2="140"/>
+      <text class="tick-text" x="90" y="140">1400 K`,
+        ),
+    },
+    {
+      format: `matplotlib`,
+      svg: matplotlib_svg(
+        [...MPL_BOUNDARIES, `M 100 120 L 500 120`],
+        `<g id="text_9"><!-- L + c --><g transform="translate(300 110)"/></g>`,
+      )
+        .replace(
+          `x="100" y="500"/></g><g id="text_3"><!-- 500 -->`,
+          `x="100" y="460"/></g><g id="text_3"><!-- 600 -->`,
+        )
+        .replace(
+          `x="100" y="100"/></g><g id="text_4"><!-- 1500 -->`,
+          `x="100" y="140"/></g><g id="text_4"><!-- 1400 -->`,
+        ),
+    },
+  ])(
+    `takes the axis range from the plot area, not the outermost ticks ($format)`,
+    ({ svg }) => {
+      const input = parse_phase_diagram_svg(svg)
+      expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1500, 9)])
+      const top = input.regions.find(({ name }) => name === `L + c`)
+      expect(top?.bounds).toEqual([
+        [0, 1450],
+        [1, 1450],
+        [1, 1500],
+        [0, 1500],
+      ])
+    },
+  )
+
+  it.each([
+    [
+      `vertical ends 0.3 px short`,
+      `x1="300" y1="500" x2="300" y2="300.3"`,
+      `x1="100" y1="300" x2="300" y2="300"`,
+    ],
+    [
+      `horizontal ends 0.3 px short`,
+      `x1="300" y1="500" x2="300" y2="300"`,
+      `x1="100" y1="300" x2="299.7" y2="300"`,
+    ],
+  ])(`snaps sub-pixel gaps between boundaries (%s)`, (_label, vertical, horizontal) => {
+    const svg = simple_svg(
+      `<line class="phase-boundary" ${vertical}/><line class="phase-boundary" ${horizontal}/>`,
+    )
+    const input = parse_phase_diagram_svg(svg)
+    expect(input.regions.map(({ name }) => name)).toEqual([`α + β`, `L + α`])
+  })
+
   it.each([
     { label: `relative l`, d_attr: `m 300 500 l 0 -200` },
     { label: `vertical V`, d_attr: `M 300 500 V 300` },

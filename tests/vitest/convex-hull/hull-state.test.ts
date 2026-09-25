@@ -111,6 +111,45 @@ describe(`compute_hull_model`, () => {
     },
   )
 
+  test(`precomputed E_form without unary references still gets hull distances`, () => {
+    // no Fe/O entries: E_form cannot be recomputed, so the precomputed values build the hull
+    const entries = [
+      make_phase({ Fe: 1, O: 1 }, -5, { entry_id: `FeO`, e_form_per_atom: -1.5 }),
+      make_phase({ Fe: 2, O: 3 }, -5, { entry_id: `Fe2O3`, e_form_per_atom: -1.7 }),
+      make_phase({ Fe: 1, O: 2 }, -5, {
+        entry_id: `FeO2`,
+        e_form_per_atom: -0.5,
+        e_above_hull: 0.9,
+      }),
+    ]
+    const by_id = Object.fromEntries(
+      compute_hull_model(entries).entries.map((entry) => [entry.entry_id, entry]),
+    )
+    expect(by_id.FeO).toMatchObject({ e_above_hull: 0, is_stable: true })
+    expect(by_id.Fe2O3).toMatchObject({ e_above_hull: 0, is_stable: true })
+    // a value carried by the data is kept in precomputed mode
+    expect(by_id.FeO2.e_above_hull).toBe(0.9)
+  })
+
+  test(`an excluded unary gets a synthetic corner, which phase counts leave out`, () => {
+    const entries = [
+      make_phase({ Fe: 1 }, -8, { entry_id: `Fe`, exclude_from_hull: true }),
+      make_phase({ O: 1 }, -4, { entry_id: `O` }),
+      make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` }),
+      make_phase({ Fe: 3, O: 1 }, -7.5, { entry_id: `Fe3O` }),
+    ]
+    const model = compute_hull_model(entries, { energy_source_mode: `on-the-fly` })
+    const corner = model.entries.find((entry) => entry.entry_id === `synthetic-element:Fe`)
+    expect(corner).toMatchObject({ is_synthetic: true, e_form_per_atom: 0 })
+    // E_form(FeO) = −7.5 − (−8 − 4)/2 = −1.5 against the (excluded) Fe reference energy, so
+    // the hull runs Fe corner (0) → FeO (−1.5): at x_O = 0.25 it is −0.75, Fe3O's E_form is
+    // −7.5 − (3·−8 − 4)/4 = −0.5, i.e. 0.25 eV/atom above the hull
+    const fe3o = model.entries.find((entry) => entry.entry_id === `Fe3O`)
+    expect(fe3o?.is_stable).toBe(false)
+    expect(fe3o?.e_above_hull).toBeCloseTo(0.25, 12)
+    expect(model.phase_stats?.total).toBe(entries.length)
+  })
+
   test(`supports pseudo-components and rejects an unrenderable arity`, () => {
     const entries = [
       make_phase({ BaO: 1 }, 0),

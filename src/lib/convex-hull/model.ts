@@ -105,7 +105,10 @@ export function build_hull_model(
       entries.push({ ...entry, ...plot_position(entry.composition, e_form), is_element })
     }
     for (const element of elements) {
-      if (entries.some((entry) => entry.is_element && entry.composition[element])) continue
+      // An excluded unary is drawn but cannot anchor the hull, so it still needs the corner
+      const anchors = (entry: ConvexHullEntry) =>
+        entry.is_element && entry.composition[element] && !entry.exclude_from_hull
+      if (entries.some(anchors)) continue
       const composition = { [element]: 1 } as CompositionType
       entries.push({
         composition,
@@ -116,6 +119,7 @@ export function build_hull_model(
         entry_id: `synthetic-element:${element}`,
         ...plot_position(composition, 0),
         is_element: true,
+        is_synthetic: true,
       })
     }
   }
@@ -125,8 +129,14 @@ export function build_hull_model(
   const hull_points = hull_indices.map((idx) => hull_point(entries[idx], dim))
   const hull_facets = thermo.compute_lower_hull_nd(hull_points)
 
-  // Entries with e_above_hull/is_stable: from the data when precomputed, else from the hull
-  if (energy_mode === `on-the-fly`) {
+  // Entries with e_above_hull/is_stable: from the data when precomputed and present, else
+  // from the hull (precomputed E_form without E_above_hull, e.g. when unary references are
+  // missing, still places every entry on the hull built from those E_form values)
+  const needs_hull_distance = (entry: ConvexHullEntry): boolean =>
+    energy_mode === `on-the-fly` ||
+    typeof entry.e_above_hull !== `number` ||
+    !Number.isFinite(entry.e_above_hull)
+  if (entries.some(needs_hull_distance)) {
     // No facets means every hull point sits at E_form = 0 (the corners always do), so the
     // hull is that plane and the distance is E_form itself
     const raw_dists =
@@ -139,6 +149,7 @@ export function build_hull_model(
           )
     // non-finite distance (no covering hull face) → unknown, handled by compute_hull_stability
     for (const [idx, entry] of entries.entries()) {
+      if (!needs_hull_distance(entry)) continue
       Object.assign(entry, compute_hull_stability(raw_dists[idx], entry.exclude_from_hull))
     }
   }
@@ -150,7 +161,11 @@ export function build_hull_model(
       ...facet,
       vertex_indices: facet.vertex_indices.map((idx) => hull_indices[idx]),
     })),
-    phase_stats: thermo.get_convex_hull_stats(entries, elements, dim),
+    phase_stats: thermo.get_convex_hull_stats(
+      entries.filter((entry) => !entry.is_synthetic),
+      elements,
+      dim,
+    ),
   }
 }
 

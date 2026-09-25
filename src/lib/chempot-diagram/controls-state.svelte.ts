@@ -3,9 +3,15 @@
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Point2D } from '$lib/math'
 import { to_error } from '$lib/utils'
+import { untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'
-import { get_energy_stats_by_formula, get_min_entries_and_el_refs } from './compute'
+import {
+  entry_elements,
+  get_energy_stats_by_formula,
+  get_min_entries_and_el_refs,
+  project_chempot_diagram,
+} from './compute'
 import { get_temp_filter_payload, get_valid_temperature } from './temperature'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
@@ -83,8 +89,15 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   const overrides = create_chempot_overrides(opts.config, keys, opts.custom_defaults)
   const { resolve } = overrides
 
+  // Primitive deriveds, so a parent passing a fresh config object (or changing display keys)
+  // doesn't re-slice the entries and, through them, re-run the worker
+  const interpolate_temperature = $derived(opts.config().interpolate_temperature)
+  const max_interpolation_gap = $derived(opts.config().max_interpolation_gap)
   const slice = $derived(
-    get_temp_filter_payload(opts.entries(), opts.temperature.get(), opts.config()),
+    get_temp_filter_payload(opts.entries(), opts.temperature.get(), {
+      interpolate_temperature,
+      max_interpolation_gap,
+    }),
   )
   $effect(() => {
     const next = get_valid_temperature(opts.temperature.get(), slice.available_temperatures)
@@ -92,45 +105,65 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
 
   // Only what compute_chempot_diagram reads, so display toggles (labels, padding, overlays)
-  // never re-run the worker; the previous diagram stays on screen while a replacement computes
+  // never re-run the worker; the previous diagram stays on screen while a replacement computes.
+  // A projection onto a subset of the data's elements (grid panels, the 3D projection picker)
+  // computes the full N-D diagram, identical for every panel so the worker client shares one
+  // request, and extracts the columns here.
+  const requested_elements = $derived(opts.elements?.() ?? opts.config().elements)
+  const projection = $derived.by((): string[] | null => {
+    const data_elements = entry_elements(slice.temp_filtered_entries)
+    const requested = requested_elements
+    return requested?.length &&
+      requested.length < data_elements.length &&
+      requested.every((element) => data_elements.includes(element))
+      ? [...requested]
+      : null
+  })
   const compute_config = $derived<ChemPotDiagramConfig>({
     formal_chempots: resolve(`formal_chempots`),
     default_min_limit: resolve(`default_min_limit`),
     limits: opts.config().limits,
-    elements: opts.elements?.() ?? opts.config().elements,
+    elements: projection ? undefined : requested_elements,
   })
+  // Value identity for the effect below: a recreated but equal config must not recompute
+  const compute_key = $derived(JSON.stringify(compute_config))
   let diagram_data = $state.raw<ChemPotDiagramData | null>(null)
   let computing = $state(false)
   let error = $state<string | null>(null)
   $effect(() => {
     const entries = slice.temp_filtered_entries
+    void compute_key
+    const [config, project_onto] = untrack(() => [compute_config, projection] as const)
     if (entries.length < opts.min_elements) {
       diagram_data = null
       computing = false
       error = null
       return undefined
     }
-    let cancelled = false
+    // Aborting on cleanup drops superseded requests instead of queueing them in the worker
+    const controller = new AbortController()
     computing = true
-    compute_chempot_async(entries, compute_config)
-      .then((data) => {
-        if (cancelled) return
+    compute_chempot_async(entries, config, { signal: controller.signal })
+      .then((full_data) => {
+        if (controller.signal.aborted) return
+        const data = project_onto
+          ? project_chempot_diagram(full_data, project_onto)
+          : full_data
         diagram_data = data.elements.length >= opts.min_elements ? data : null
         error = null
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (controller.signal.aborted) return
         console.error(`${opts.label}:`, err)
         diagram_data = null
         error = to_error(err).message
       })
       .finally(() => {
-        if (!cancelled) computing = false
+        if (!controller.signal.aborted) computing = false
       })
-    return () => {
-      cancelled = true
-    }
+    return () => controller.abort()
   })
+  $effect(() => () => compute_chempot_async.release())
 
   // Raw (non-renormalized) elemental references for true DFT formation energies; the
   // formal-chempot pipeline renormalizes its own refs to zero. Memoized apart from the

@@ -173,13 +173,17 @@ describe(`helpers: thresholds and tooltips`, () => {
   })
 
   test(`auto_threshold_reset re-derives on source change unless the user moved the slider`, () => {
-    const next = helpers.auto_threshold_reset(0.1)
+    const next = helpers.auto_threshold_reset(false)
     const source_a = [1]
     const source_b = [2]
     expect(next(source_a, 0.1, 0.4)).toBe(0.4) // first call: adopt auto value
     expect(next(source_a, 0.4, 0.4)).toBeUndefined() // same source: leave alone
     expect(next(source_b, 0.4, 0.3)).toBe(0.3) // new source, untouched slider: re-derive
     expect(next(source_a, 0.25, 0.4)).toBeUndefined() // user changed it: preserve
+    // an explicitly passed threshold survives the first source and later ones
+    const explicit = helpers.auto_threshold_reset(true)
+    expect(explicit(source_a, 0.01, 1.1677)).toBeUndefined()
+    expect(explicit(source_b, 0.01, 0.3)).toBeUndefined()
   })
 
   test.each([
@@ -253,8 +257,15 @@ describe(`helpers: thresholds and tooltips`, () => {
       entry_id: `mp-1`,
     })
     expect(param_2).toBe(
-      `\nComposition: Li: ½, O: ½\nE<sub>above hull</sub>: 0 eV/atom\nE<sub>form</sub>: −3 eV/atom\nID: mp-1`,
+      `\nComposition: Li: ½, O: ½\nE_above_hull: 0 eV/atom\nE_form: −3 eV/atom\nID: mp-1`,
     )
+    // an absolute energy_per_atom is not a formation energy, so it is not labelled as one
+    const absolute_only = helpers.build_entry_tooltip_text({
+      composition: { Li: 1, O: 1 },
+      energy: -12,
+      energy_per_atom: -6,
+    })
+    expect(absolute_only).not.toMatch(/E_form|<sub>/)
   })
 })
 

@@ -116,6 +116,23 @@ describe(`build_diagram`, () => {
     expect(() => build_diagram(bad_input)).toThrow(/Unknown curve "solvus".*liquidus, solidus/)
   })
 
+  test.each<[string, Partial<DiagramInput>]>([
+    [`region`, { regions: [...minimal_input.regions, { ...minimal_input.regions[0] }] }],
+    [
+      `special_point`,
+      {
+        special_points: [
+          { id: `e`, type: `eutectic`, position: [0.5, 500] },
+          { id: `e`, type: `eutectic`, position: [0.6, 500] },
+        ],
+      },
+    ],
+  ])(`throws on duplicate %s ids (they key rendered elements)`, (kind, patch) => {
+    expect(() => build_diagram({ ...minimal_input, ...patch })).toThrow(
+      new RegExp(`Duplicate ${kind} id`),
+    )
+  })
+
   test(`passes raw CSS region colors through and omits color when unset`, () => {
     expect(build_diagram(minimal_input).regions[0].color).toBe(`rgba(135, 206, 250, 0.6)`)
     const uncolored = {

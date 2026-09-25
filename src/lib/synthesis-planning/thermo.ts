@@ -19,6 +19,7 @@ import type {
 } from './types'
 
 const COEFF_TOL = 1e-7
+const MAX_ONSET_TEMPERATURE = 2000
 
 // Formula-unit atom counts of a phase per element of the phase set, and its energy per formula unit
 const fu_counts = (phase: PlannerPhase): number[] =>
@@ -178,7 +179,9 @@ interface Competitor {
 
 // One prepared phase set/request only. Preserve pair order: LP coefficients depend on it.
 export const create_thermo_cache = () => ({
-  gas_mu: new Map<string, number>(),
+  // μ(T) per `${species}:${pressure}` on the integer onset grid 0..MAX_ONSET_TEMPERATURE (NaN =
+  // not computed yet), so the onset scans of hundreds of routes share one provider sweep
+  gas_mu: new Map<string, Float64Array>(),
   pairs: new Map<PlannerPhase, Map<PlannerPhase, Map<PlannerPhase, Competitor[]>>>(),
 })
 type ThermoCache = ReturnType<typeof create_thermo_cache>
@@ -358,26 +361,44 @@ export function reaction_energy_at_temperature(
         sum + balanced.gas_exchange[idx] * gas.energy_per_atom * gas.n_atoms_per_fu,
       0,
     )
-  return (temperature) =>
-    solid_part +
-    gases.reduce((sum, gas, idx) => {
-      const species = gas_species[idx]
-      const pressure =
-        conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
-      const key = `${species}:${temperature}:${pressure}`
-      const mean =
-        samples?.get(key) ??
-        compute_gas_chemical_potential(provider, species, temperature, pressure)
-      samples?.set(key, mean)
-      return sum + balanced.gas_exchange[idx] * mean * gas.n_atoms_per_fu
-    }, 0)
+  const terms = gases.map((gas, idx) => {
+    const species = gas_species[idx]
+    const pressure = conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
+    const key = `${species}:${pressure}`
+    let grid = samples?.get(key)
+    if (samples && !grid) {
+      grid = new Float64Array(MAX_ONSET_TEMPERATURE + 1).fill(NaN)
+      samples.set(key, grid)
+    }
+    return {
+      species,
+      pressure,
+      grid,
+      exchange: balanced.gas_exchange[idx],
+      n_atoms: gas.n_atoms_per_fu,
+    }
+  })
+  return (temperature) => {
+    const on_grid =
+      Number.isInteger(temperature) && temperature >= 0 && temperature <= MAX_ONSET_TEMPERATURE
+    let gas_part = 0
+    for (const { species, pressure, grid, exchange, n_atoms } of terms) {
+      let mean = grid && on_grid ? grid[temperature] : NaN
+      if (Number.isNaN(mean)) {
+        mean = compute_gas_chemical_potential(provider, species, temperature, pressure)
+        if (grid && on_grid) grid[temperature] = mean
+      }
+      gas_part += exchange * mean * n_atoms
+    }
+    return solid_part + gas_part
+  }
 }
 
 // Lowest temperature (1 K grid, ≤ max_temperature) where the reaction energy turns negative, or
 // null when it never does. Only meaningful for reactions that exchange gas: nothing else varies.
 export function onset_temperature(
   energy_at: (temperature: number) => number,
-  max_temperature = 2000,
+  max_temperature = MAX_ONSET_TEMPERATURE,
 ): number | null {
   if (energy_at(0) < 0) return 0
   for (let temperature = 1; temperature <= max_temperature; temperature++) {

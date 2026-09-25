@@ -208,7 +208,7 @@
         '#': idx + 1,
         Formula: is_on_hull(entry) ? `<strong>${formula}</strong>` : formula,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
-        'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
+        'E<sub>form</sub>': entry.e_form_per_atom ?? null,
       }
       if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
       if (has_ids) {

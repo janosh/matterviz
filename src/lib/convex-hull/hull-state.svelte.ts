@@ -33,13 +33,15 @@ interface HullDataPipelineInputs {
   // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
   components?: () => readonly string[] | undefined
   max_hull_dist_show_phases: () => number
+  // The threshold was passed by the caller: the auto threshold must not replace it
+  max_hull_dist_explicit: boolean
   show_stable: () => boolean
   show_unstable: () => boolean
   // Categorical classification (marker shapes + filter toggles), null to disable
   entry_category: () => EntryCategoryConfig | null
   // Category values whose entries are hidden from the plot (view predicate)
   hidden_categories: () => readonly string[]
-  label_threshold: () => number // datasets larger than this start with labels hidden
+  label_threshold: () => number // datasets larger than this start with labels hidden (hide_labels)
   // Setters for bindable props written by pipeline effects
   set_temperature: (temperature: number) => void
   set_max_hull_dist_show_phases: (value: number) => void
@@ -185,7 +187,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     ),
   )
 
-  const next_auto_threshold = $derived(helpers.auto_threshold_reset(default_threshold))
+  // Re-created per arity (a dimension change adopts that arity's auto threshold)
+  const next_auto_threshold = $derived.by(() => {
+    void dim
+    return helpers.auto_threshold_reset(inputs.max_hull_dist_explicit)
+  })
   $effect(() => {
     const current = inputs.max_hull_dist_show_phases()
     // Keyed on the enriched entries, not raw entries(), so the auto threshold re-derives when
@@ -231,7 +237,11 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const phase_stats = $derived(
     plot_entries.length === model.entries.length
       ? model.phase_stats
-      : thermo.get_convex_hull_stats(plot_entries, elements, dim),
+      : thermo.get_convex_hull_stats(
+          plot_entries.filter((entry) => !entry.is_synthetic),
+          elements,
+          dim,
+        ),
   )
 
   return {

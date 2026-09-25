@@ -332,6 +332,31 @@ describe(`N-dimensional quickhull`, () => {
     expect(compute_e_above_hull_nd([[0.3, 0.3, -1]], facets, points)[0]).toBeCloseTo(0, 12)
   })
 
+  test(`compute_e_above_hull_nd: coplanar facets tie, the one containing the query wins`, () => {
+    // Flat unit square split into two triangles on the same E = 0 plane; (0.2, 0.8) lies only
+    // in the second, so picking the first tied facet would call the query uncovered (NaN)
+    const points = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+    ]
+    const facets = [
+      { vertex_indices: [0, 1, 2], normal: [0, 0, -1], offset: 0 },
+      { vertex_indices: [0, 2, 3], normal: [0, 0, -1], offset: 0 },
+    ]
+    expect(
+      compute_e_above_hull_nd(
+        [
+          [0.2, 0.8, 0.5],
+          [0.8, 0.2, 0.25],
+        ],
+        facets,
+        points,
+      ),
+    ).toEqual([0.5, 0.25])
+  })
+
   test(`duplicate compositions: duplicates score 0, the higher polymorph its energy gap`, () => {
     const points = [
       [0, 0],

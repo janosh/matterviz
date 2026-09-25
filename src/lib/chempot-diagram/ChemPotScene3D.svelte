@@ -7,6 +7,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import type { ThreltePointerEvent } from '$lib/scene'
   import {
+    bind_renderer,
     build_orbit_props,
     dispose_on_change,
     line_geometry,
@@ -92,6 +93,9 @@
     domain_labels: DomainLabel[]
     label_scale: number
   } = $props()
+
+  // Registers the canvas' renderer, scene and camera so the PNG export can re-render the frame
+  bind_renderer(() => {})
 
   const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent

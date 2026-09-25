@@ -223,6 +223,48 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(y_axis).toContain(`600`)
   })
 
+  test(`zoomed axes clip data to the plot area and y_axis.range sets the temperature window`, async () => {
+    const wrapper = await mount_diagram({
+      x_axis: { range: [0.4, 0.6] },
+      y_axis: { range: [400, 600] },
+    })
+    const clip_id = wrapper.querySelector(`clipPath`)?.id ?? ``
+    expect(clip_id).not.toBe(``)
+    const clipped = wrapper.querySelector(`[clip-path="url(#${clip_id})"]`)
+    for (const selector of [`.phase-regions`, `.boundaries`, `.region-labels`]) {
+      expect(clipped?.querySelector(selector), selector).not.toBeNull()
+    }
+    const clip_rect = wrapper.querySelector(`clipPath rect`)
+    expect(
+      [`x`, `y`, `width`, `height`].map((attr) => Number(clip_rect?.getAttribute(attr))),
+    ).toEqual([left, top, right - left, bottom - top])
+    const y_ticks = [...wrapper.querySelectorAll(`.y-axis > g`)].map((tick_el) =>
+      Number(tick_el.textContent),
+    )
+    expect(Math.min(...y_ticks)).toBeGreaterThanOrEqual(400)
+    expect(Math.max(...y_ticks)).toBeLessThanOrEqual(600)
+    // the eutectic line at 500 K sits mid-plot in a 400..600 K window
+    const eutectic_path = wrapper.querySelector(`.boundaries path`)?.getAttribute(`d`) ?? ``
+    expect(eutectic_path).toContain(`,${(top + bottom) / 2}`)
+    // the eutectic point (x 0.5, 500 K) stays; zooming it out of view drops it
+    expect(wrapper.querySelectorAll(`.special-point-marker`)).toHaveLength(1)
+    document.body.innerHTML = ``
+    const panned = await mount_diagram({ x_axis: { range: [0.6, 0.9] } })
+    expect(panned.querySelectorAll(`.special-point-marker`)).toHaveLength(0)
+  })
+
+  test(`data with duplicate region ids shows an error banner instead of crashing`, async () => {
+    const wrapper = await mount_diagram({
+      data: {
+        ...eutectic,
+        regions: [eutectic.regions[0], { ...eutectic.regions[1], id: `liq` }],
+      },
+    })
+    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toMatch(
+      /Invalid phase diagram data: Duplicate region id "liq"/,
+    )
+  })
+
   test(`keeps default temperature ticks sparse`, async () => {
     const wrapper = await mount_diagram({
       data: { ...eutectic, temperature_range: [-200, 1600] },

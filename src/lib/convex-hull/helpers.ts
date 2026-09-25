@@ -175,14 +175,17 @@ export function compute_auto_hull_dist_threshold(
 }
 
 // Returns the threshold to apply when the data source changes (undefined = leave as is).
-// A user adjustment away from the previous auto value is preserved across source changes.
-export function auto_threshold_reset(default_threshold: number) {
+// A user adjustment away from the previous auto value is preserved across source changes;
+// `user_set` means the threshold was passed explicitly, so even the first source keeps it.
+export function auto_threshold_reset(user_set: boolean) {
   let source: unknown
-  let auto_threshold = default_threshold
+  let auto_threshold = NaN
   let initialized = false
   return (next_source: unknown, current_threshold: number, next_auto_threshold: number) => {
     if (initialized && next_source === source) return undefined
-    const user_changed = initialized && Math.abs(current_threshold - auto_threshold) > 0.001
+    const user_changed = initialized
+      ? Math.abs(current_threshold - auto_threshold) > 0.001
+      : user_set
     source = next_source
     auto_threshold = next_auto_threshold
     initialized = true
@@ -247,13 +250,12 @@ export function build_entry_tooltip_text(
     if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
   }
 
+  // Plain text for the clipboard: no markup, and no absolute energy passed off as E_form
   if (entry.e_above_hull !== undefined) {
-    text += `E<sub>above hull</sub>: ${format_num(entry.e_above_hull, `.3~`)} eV/atom\n`
+    text += `E_above_hull: ${format_num(entry.e_above_hull, `.3~`)} eV/atom\n`
   }
-  // Fallback to energy_per_atom if e_form_per_atom is absent
-  const e_form_display = entry.e_form_per_atom ?? entry.energy_per_atom
-  if (e_form_display !== undefined) {
-    text += `E<sub>form</sub>: ${format_num(e_form_display, `.3~`)} eV/atom`
+  if (entry.e_form_per_atom !== undefined) {
+    text += `E_form: ${format_num(entry.e_form_per_atom, `.3~`)} eV/atom`
   }
   const category_value = get_entry_category(entry, category)
   if (category && category_value) text += `\n${category.label}: ${category_value}`

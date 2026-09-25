@@ -11,6 +11,7 @@ import {
   TERNARY_DISPLAY_DEFAULTS,
   TernaryPhaseDiagramControls,
 } from '$lib/phase-diagram'
+import { compute_ternary_phase_diagram_async } from '$lib/phase-diagram/ternary/async-compute.svelte'
 import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -157,6 +158,15 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     flushSync()
     await wait_for_events()
     expect(document.querySelector(`.error`)).toBeNull()
+  })
+
+  test(`unmounting releases the sweep worker`, async () => {
+    const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
+    mount_diagram()
+    await wait_for_events()
+    expect(release).not.toHaveBeenCalled()
+    unmount_all()
+    expect(release).toHaveBeenCalledOnce()
   })
 
   test(`view toggle, hidden panels, gated controls and the empty state`, () => {

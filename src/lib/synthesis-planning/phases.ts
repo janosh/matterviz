@@ -255,7 +255,14 @@ export function resolve_phase(phase_set: PhaseSet, query: string): PlannerPhase 
   } catch {
     return null
   }
-  return phase_set.phases.find((phase) => phase.formula === formula) ?? null
+  // Match on the reduced composition: library precursors keep their conventional formula
+  // (LiOH, Li2O2), which differs from formula_of's reduced electronegativity order (LiHO, LiO).
+  // Gases are never targets or precursors.
+  return (
+    phase_set.phases.find(
+      (phase) => !phase.is_gas && formula_of(phase.composition) === formula,
+    ) ?? null
+  )
 }
 
 export const to_phase_ref = (phase: PlannerPhase): PhaseRef => {
