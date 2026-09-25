@@ -1,7 +1,7 @@
 <script lang="ts">
   import { contrast_text_color, resolve_backdrop } from '$lib/colors'
   import { format_fractional } from '$lib/labels'
-  import { colors } from '$lib/state.svelte'
+  import { get_element_palette } from '$lib/structure/element-palette.svelte'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from './wyckoff'
@@ -26,6 +26,8 @@
     on_click?: (site_indices: number[] | null) => void
     active_color?: string
   } = $props()
+  // Enclosing viewer's element colors (page-wide ones when standalone)
+  const palette = get_element_palette()
 
   // Occupied orbits enriched with ITA representative coordinates + site symmetry
   const rows = $derived(enrich_wyckoff_rows(wyckoff_positions, db_positions))
@@ -102,9 +104,9 @@
           <td>{wyckoff}</td>
           <td>
             <span
-              style:background-color={colors.element[elem]}
+              style:background-color={palette.colors[elem]}
               style:color={contrast_text_color({
-                background: colors.element[elem],
+                background: palette.colors[elem],
                 backdrop: backdrop.current,
               })}
               style="display: inline-block; padding: 0 4pt; border-radius: 3pt; line-height: 1.25"

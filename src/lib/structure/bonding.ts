@@ -17,6 +17,7 @@ import {
   get_image_source_idx,
   get_orig_site_idx,
   get_site,
+  is_image_site,
   numeric_sites,
   NumericSites,
   site_count,
@@ -181,6 +182,25 @@ export const normalize_structure_bond = (
 ): StructureBond => {
   const bond = normalize_bond_endpoints(site_idx_1, site_idx_2, cell_shift)
   return { ...bond, order }
+}
+
+// Explicit bonds after wrapping moved their sites by whole lattice vectors: site i moved by
+// `site_shift(i)` (integer lattice vectors, undefined = unmoved), so bond i -> j + S keeps its
+// geometry as i -> j + (S + k_i - k_j). Wrapping sites without this stretched every bond that
+// crossed a cell face into one spanning the cell.
+export function shift_bonds_for_moved_sites(
+  bonds: readonly StructureBond[],
+  site_shift: (site_idx: number) => Vec3 | undefined,
+): StructureBond[] {
+  return bonds.map((bond) => {
+    const [shift_1, shift_2] = [site_shift(bond.site_idx_1), site_shift(bond.site_idx_2)]
+    if (!shift_1 && !shift_2) return bond
+    const cell_shift = bond.cell_shift ?? [0, 0, 0]
+    const moved = [0, 1, 2].map(
+      (axis) => cell_shift[axis] + (shift_1?.[axis] ?? 0) - (shift_2?.[axis] ?? 0),
+    ) as Vec3
+    return normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, bond.order, moved)
+  })
 }
 
 export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
@@ -1555,6 +1575,11 @@ export function get_bond_data(
   let by_sig = bond_memo.get(structure)
   const cached = by_sig?.get(sig)
   if (cached) return cached
+  // Strategy names arrive as plain strings from widgets and saved settings
+  if (!Object.hasOwn(BONDING_STRATEGIES, strategy)) {
+    const valid = Object.keys(BONDING_STRATEGIES).join(`, `)
+    throw new Error(`Unknown bonding strategy '${strategy}', expected one of ${valid}`)
+  }
   const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
   const bonds = strategy_fn(structure, options)
   if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
@@ -1608,6 +1633,8 @@ function bond_columns(
       bond,
     ]),
   )
+  const matched_keys = new Set<string>()
+  const has_image_sites = explicit.size > 0 && structure.sites.some(is_image_site)
   const indices = new Uint32Array((count + explicit.size) * 2)
   const lengths = new Float64Array(count + explicit.size)
   const orders = new Uint8Array(count + explicit.size)
@@ -1645,19 +1672,29 @@ function bond_columns(
       image_columns[image_offset++] = shift_c
     }
     if (explicit.size) {
-      const key = get_bond_key(
-        site_idx_1,
-        site_idx_2,
-        shifted ? [shift_a, shift_b, shift_c] : undefined,
+      // Explicit bonds name unit-cell sites, while a perceived bond may end on a PBC image
+      // atom: key it by the image's source site and shift so the explicit bond matches
+      // every copy it draws as (a bond crossing a face and its mirror) instead of being
+      // appended once more on top of them
+      const key = rendered_bond_key_for(
+        canonicalize_bond_target(
+          {
+            site_idx_1,
+            site_idx_2,
+            cell_shift: shifted ? [shift_a, shift_b, shift_c] : undefined,
+          },
+          has_image_sites ? structure.sites : undefined,
+        ),
       )
       const metadata = explicit.get(key)
       if (metadata) {
         orders[bond_count] = BOND_ORDERS.indexOf(metadata.order)
-        explicit.delete(key)
+        matched_keys.add(key)
       }
     }
   }
-  for (const metadata of explicit.values()) {
+  for (const [key, metadata] of explicit) {
+    if (matched_keys.has(key)) continue
     const bond = structure_bond_to_bond_pair(structure, metadata)
     indices[bond_count * 2] = bond.site_idx_1
     indices[bond_count * 2 + 1] = bond.site_idx_2

@@ -40,7 +40,8 @@
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
   import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
-  import { colors, theme_state } from '$lib/state.svelte'
+  import { theme_state } from '$lib/state.svelte'
+  import { get_element_palette } from './element-palette.svelte'
   import type {
     AnyStructure,
     BondEditMode,
@@ -1306,11 +1307,14 @@
     structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
   )
 
-  // One reactive read per palette entry instead of one proxy access per atom/bond.
-  const palette = $derived({ ...colors.element })
+  // The enclosing viewer's element colors. One reactive read per palette entry instead of
+  // one proxy access per atom/bond.
+  const element_palette = get_element_palette()
+  const palette = $derived({ ...element_palette.colors })
   type RenderAtom = InstancedAtom &
     ReturnType<typeof compute_slice_geometry>[number] & {
       site_idx: number
+      slice_idx: number // wedge index within its site (a site may list one element twice)
       species: Site[`species`]
       is_image_atom: boolean
     }
@@ -1416,10 +1420,13 @@
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
-      for (const slice_data of compute_slice_geometry(visible_species)) {
+      for (const [slice_idx, slice_data] of compute_slice_geometry(
+        visible_species,
+      ).entries()) {
         const atom = {
           ...slice_data,
           site_idx,
+          slice_idx,
           species: site.species,
           position: [...site.xyz] as Vec3,
           radius,
@@ -1764,7 +1771,7 @@
     if (hovered_idx !== null) {
       const hover_color =
         atom_groups.first_by_site.get(hovered_idx)?.color ??
-        (hovered_site?.species[0] && colors.element?.[hovered_site.species[0].element])
+        (hovered_site?.species[0] && palette[hovered_site.species[0].element])
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
     for (const idx of selected_sites) add(`selected`, idx, selection_highlight_color)
@@ -1995,7 +2002,7 @@
         {/each}
 
         <!-- Regular rendering for partial occupancy atoms -->
-        {#each atom_groups.partial as atom (atom.site_idx + atom.element + atom.occupancy)}
+        {#each atom_groups.partial as atom (`${atom.site_idx}-${atom.slice_idx}`)}
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
           {@const opacity = atom_opacity * (partial_edit_image ? 0.5 : 1)}
           <!-- Clipping can expose a cap behind the rejected sphere-front hit.
@@ -2101,7 +2108,7 @@
           frame_stride={trajectory_line_frame_stride}
           elements={trajectory_line_elements}
           color_mode={trajectory_line_color_mode}
-          element_colors={colors.element}
+          element_colors={palette}
           wrap_mode={trajectory_line_wrap_mode}
           anchor_positions={trajectory_line_anchors}
           bind:build_result={trajectory_lines_result}

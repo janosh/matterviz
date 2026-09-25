@@ -1,18 +1,13 @@
 <script lang="ts">
-  import {
-    contrast_text_color,
-    default_element_colors,
-    perceived_brightness,
-    resolve_backdrop,
-  } from '$lib/colors'
+  import { contrast_text_color, perceived_brightness, resolve_backdrop } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
   import { Icon } from 'svelte-widgets'
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
   import { ELEM_SYMBOLS, format_num } from '$lib/labels'
   import { ColorBar } from '$lib/plot'
-  import { colors } from '$lib/state.svelte'
   import type { AnyStructure } from '$lib/structure'
+  import { get_element_palette } from '$lib/structure/element-palette.svelte'
   import { atomic_radii, site_base_radius } from '$lib/structure'
   import type { AtomColorMode } from '$lib/settings'
   import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
@@ -64,6 +59,8 @@
     show_mode_toggle?: boolean
     children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
   } = $props()
+
+  const palette = get_element_palette()
 
   const legend_id = $props.id()
 
@@ -337,20 +334,25 @@
   <div {...rest} class={[`atom-legend element-legend`, rest.class]}>
     {@render mode_selector_snippet()}
     {#each sorted_element_entries as [elem, amt] (elem)}
-      {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
-      {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
+      <!-- The scene renders mapped species, so hiding and coloring act on the displayed
+        element; only the remap menu addresses the element the file named -->
+      {@const displayed_elem = (element_mapping?.[elem as ElementSymbol] ||
+        elem) as ElementSymbol}
+      {@const is_hidden = hidden_elements.has(displayed_elem)}
+      {@const color = palette.colors[displayed_elem]}
       <div class="legend-item">
         <label
-          title="{element_by_symbol.get(displayed_elem as ElementSymbol)?.name ??
-            ``}{displayed_elem !== elem ? ` (remapped from ${elem})` : ``}"
+          title="{element_by_symbol.get(displayed_elem)?.name ?? ``}{displayed_elem !== elem
+            ? ` (remapped from ${elem})`
+            : ``}"
           {@attach tooltip()}
-          style:background-color={colors.element[displayed_elem]}
-          style:color={element_text_color(colors.element[displayed_elem])}
+          style:background-color={color}
+          style:color={element_text_color(color)}
           class:hidden={is_hidden}
           class:remapped={displayed_elem !== elem}
           ondblclick={(event) => {
             event.preventDefault()
-            colors.element[displayed_elem] = default_element_colors[displayed_elem]
+            palette.reset(displayed_elem)
           }}
           oncontextmenu={(event) => {
             event.preventDefault()
@@ -362,20 +364,19 @@
           <sub>{format_num(amt, `.3~f`)}</sub>
           <input
             type="color"
-            bind:value={colors.element[elem]}
+            value={color}
+            oninput={(event) => palette.set(displayed_elem, event.currentTarget.value)}
             title="Double click to reset color"
           />
         </label>
         <button
           class={['toggle-visibility', { 'element-hidden': is_hidden }]}
           onclick={(event) =>
-            (hidden_elements = toggle_visibility(
-              hidden_elements,
-              elem as ElementSymbol,
-              event,
-            ))}
-          title={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
-          aria-label={is_hidden ? `Show ${elem} atoms` : `Hide ${elem} atoms`}
+            (hidden_elements = toggle_visibility(hidden_elements, displayed_elem, event))}
+          title={is_hidden ? `Show ${displayed_elem} atoms` : `Hide ${displayed_elem} atoms`}
+          aria-label={is_hidden
+            ? `Show ${displayed_elem} atoms`
+            : `Hide ${displayed_elem} atoms`}
           {@attach tooltip({ placement: `top` })}
           type="button"
         >
@@ -457,8 +458,8 @@
                 <button
                   class={['remap-option', { selected: displayed_elem === target_elem }]}
                   onclick={() => remap_element(elem as ElementSymbol, target_elem)}
-                  style:background-color={colors.element[target_elem]}
-                  style:color={element_text_color(colors.element[target_elem])}
+                  style:background-color={palette.colors[target_elem]}
+                  style:color={element_text_color(palette.colors[target_elem])}
                 >
                   <small style="opacity: 0.6">{elem_info?.number}</small>
                   <b>{target_elem}</b>

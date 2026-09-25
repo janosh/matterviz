@@ -155,6 +155,26 @@ describe(`display pipeline`, () => {
     expect(session.tool_input).toBe(original_input)
   })
 
+  // A LAMMPS type mapping (and hidden legend values) describe one file's atoms: carried over
+  // to the next file they silently relabeled its real H atoms
+  it(`keeps the element mapping across frames and drops it with a new topology`, () => {
+    const { host, session } = make_session()
+    session.element_mapping = { H: `Fe` }
+    session.hidden_prop_vals.add(`H:1a`)
+    const moved = structuredClone($state.snapshot(host.structure))
+    if (!moved) throw new Error(`session needs a structure`)
+    moved.sites[0].xyz = [0.1, 0.1, 0.1]
+    host.structure = moved
+    flushSync()
+    expect(session.element_mapping).toEqual({ H: `Fe` })
+    expect([...session.hidden_prop_vals]).toEqual([`H:1a`])
+    host.structure = crystal(4)
+    flushSync()
+    expect(session.element_mapping).toBeUndefined()
+    expect(session.hidden_prop_vals.size).toBe(0)
+    expect(session.displayed_structure?.sites[0].species[0].element).toBe(`H`)
+  })
+
   it(`builds large supercells off the main task and keeps the previous build while loading`, () => {
     const { host, session } = make_session({ structure: crystal(200) })
     host.supercell_scaling = `2x2x2`

@@ -243,6 +243,40 @@ describe(`make_supercell`, () => {
     ])
   })
 
+  // Cartesian length of every explicit bond, reading cell_shift in supercell-lattice vectors
+  const bond_lengths = (cell: Crystal): number[] => {
+    const to_cart = math.create_frac_to_cart(cell.lattice.matrix)
+    return (cell.properties?.bonds ?? []).map(({ site_idx_1, site_idx_2, cell_shift }) => {
+      const end = math.add<Vec3>(cell.sites[site_idx_2].abc, cell_shift ?? [0, 0, 0])
+      return math.euclidean_dist(to_cart(cell.sites[site_idx_1].abc), to_cart(end))
+    })
+  }
+
+  // Folding an out-of-cell atom back in moved it a supercell vector away from its bond partner
+  test.each([true, false])(`keeps explicit bond lengths (to_unit_cell=%s)`, (to_unit_cell) => {
+    const base: Crystal = {
+      ...make_crystal(4, [
+        { element: `O`, abc: [-0.05, 0.5, 0.5] },
+        { element: `H`, abc: [0.15, 0.5, 0.5] },
+      ]),
+      properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }] },
+    }
+    const lengths = bond_lengths(make_supercell(base, [2, 1, 1], to_unit_cell))
+    expect(lengths).toHaveLength(2)
+    for (const length of lengths) expect(length).toBeCloseTo(0.8, 12)
+  })
+
+  // A slab's vacuum axis is aperiodic: folding it tore atoms below the slab to its top
+  test(`leaves aperiodic axes unwrapped`, () => {
+    const slab = make_crystal(4, [{ element: `Si`, abc: [0.25, 0.25, -0.25] }], {
+      pbc: [true, true, false],
+    })
+    const cell = make_supercell(slab, [2, 2, 1])
+    expect(cell.sites.map(({ abc, xyz }) => [abc[2], xyz[2]])).toEqual(
+      Array.from({ length: 4 }, () => [-0.25, -1]),
+    )
+  })
+
   test(`does not modify original structure`, () => {
     const original = structuredClone(sample_structure)
     const supercell = make_supercell(original, [2, 2, 2])

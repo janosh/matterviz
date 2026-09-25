@@ -76,10 +76,11 @@ describe(`trajectory helpers`, () => {
 
   it(`falls back to axis lengths for a singular lattice and warns once per structure`, () => {
     const warnings: string[] = []
+    // a zero vector is completed (see complete_lattice_matrix); parallel a and b are not
     const slab: Matrix3x3 = [
       [4, 0, 0],
-      [0, 4, 0],
-      [0, 0, 0],
+      [8, 0, 0],
+      [0, 0, 4],
     ]
     const structure = create_structure(
       [
@@ -93,11 +94,11 @@ describe(`trajectory helpers`, () => {
       (message) => warnings.push(message),
     )
     expect(structure.sites.map((site) => site.abc)).toEqual([
-      [0.25, 0.5, 0],
-      [0.75, 0.25, 0],
+      [0.25, 0.25, 0],
+      [0.75, 0.125, 0],
     ])
     expect(warnings).toEqual([
-      `Singular lattice [[4,0,0],[0,4,0],[0,0,0]], using axis-length fallback for cart→frac`,
+      `Singular lattice [[4,0,0],[8,0,0],[0,0,4]], using axis-length fallback for cart→frac`,
     ])
   })
 

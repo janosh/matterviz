@@ -1,4 +1,5 @@
 import { default_element_colors } from '$lib/colors'
+import type { ElementSymbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
@@ -471,6 +472,37 @@ describe(`AtomLegend Component`, () => {
         )
       },
     )
+
+    // The scene draws mapped species, so hiding/recoloring by the file's symbol hid nothing
+    // and the picker edited the source element's color while the swatch showed the target's
+    test(`hide and color picker act on the displayed element of a remapped entry`, async () => {
+      const original_na = colors.element.Na
+      onTestFinished(() => {
+        colors.element.Na = original_na
+      })
+      let hidden_elements = new Set<ElementSymbol>()
+      mount_legend({
+        elements: { H: 2 },
+        element_mapping: { H: `Na` },
+        get hidden_elements() {
+          return hidden_elements
+        },
+        set hidden_elements(value) {
+          hidden_elements = value
+        },
+      })
+      const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
+      expect(color_input.value).toBe(colors.element.Na)
+      color_input.value = `#123456`
+      color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(colors.element.Na).toBe(`#123456`)
+      await tick()
+      expect(doc_query(`label`).style.backgroundColor).toBe(`#123456`)
+      const hide_button = doc_query<HTMLButtonElement>(`button.toggle-visibility`)
+      expect(hide_button.getAttribute(`aria-label`)).toBe(`Hide Na atoms`)
+      hide_button.click()
+      expect([...hidden_elements]).toEqual([`Na`])
+    })
 
     test(`right-click opens a searchable remap dropdown that Escape closes`, async () => {
       mount_legend({ elements: { H: 1 } })

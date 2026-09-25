@@ -5,7 +5,7 @@
   import { get_electro_neg_formula } from '$lib/composition'
   import { element_by_symbol, type ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import { colors } from '$lib/state.svelte'
+  import { get_element_palette } from '$lib/structure/element-palette.svelte'
   import { get_density, type AnyStructure } from '$lib/structure'
   import type { BondingStrategy } from '$lib/structure/bonding'
   import { has_usable_lattice } from '$lib/structure/validation'
@@ -73,6 +73,8 @@
     // primitive cells and supercells too, not the analyzed cell's indices
     wyckoff_positions?: WyckoffPos[]
   } = $props()
+  // Enclosing viewer's element colors (page-wide ones when standalone)
+  const palette = get_element_palette()
 
   const { copy } = create_clipboard_feedback()
 
@@ -305,7 +307,7 @@
       },
     ],
     'data-site-idx': card.idx,
-    style: `--site-color: ${colors.element?.[card.element as ElementSymbol] ?? `#888`}`,
+    style: `--site-color: ${palette.colors[card.element as ElementSymbol] ?? `#888`}`,
     title: `Click to select ${card.title}. Press c to copy.`,
     role: `button`,
     tabindex: 0,

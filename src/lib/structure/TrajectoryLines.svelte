@@ -52,7 +52,7 @@ subtle opacity instead of exposing width and opacity controls. -->
     // Species to draw. null = all, [] = none.
     elements?: readonly ElementSymbol[] | null
     color_mode?: TrajectoryLineColorMode
-    // Normally the scene's live `colors.element` map so trails match their spheres
+    // Normally the viewer's element palette so trails match their spheres
     element_colors?: Partial<Record<ElementSymbol, string>>
     wrap_mode?: TrajectoryLineWrapMode
     // Displayed Cartesian positions to glue the trail heads to, one xyz per stream atom.

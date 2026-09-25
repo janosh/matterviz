@@ -3,7 +3,6 @@
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
   import { DEFAULT_PNG_DPI } from '$lib/constants'
   import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
@@ -28,7 +27,6 @@
   import { ViewerChrome } from '$lib/layout'
   import { ToolbarMenu } from '$lib/overlays'
   import { DEFAULTS } from '$lib/settings'
-  import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
     BondEditMode,
@@ -63,6 +61,7 @@
   import type { AtomColorField } from './atom-color-field'
   import type { StructureCutaway } from './cutaway'
   import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
+  import { set_element_palette, ViewerElementPalette } from './element-palette.svelte'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
   import type { DisplacementSummary } from './measure'
@@ -230,7 +229,7 @@
     wrapper?: HTMLDivElement
     width?: number // output: wrapper width in CSS px
     height?: number // output: wrapper height in CSS px
-    color_scheme?: string
+    color_scheme?: ColorSchemeName
     atom_color_config?: AtomColorConfig
     // URL or named file contents; parsed structures can be supplied directly via structure.
     source?: MaterialSource
@@ -611,9 +610,8 @@
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
-  $effect(() => {
-    colors.element = ELEMENT_COLOR_SCHEMES[color_scheme as ColorSchemeName]
-  })
+  // This viewer's element colors, shared with its scene, legend and panes through context
+  set_element_palette(new ViewerElementPalette(() => color_scheme))
 
   // Isosurface geometry-worker failures (chunk 404, OOM): the scene keeps its previous
   // surfaces, so without this notice the user would only see an unchanged view. Isosurface

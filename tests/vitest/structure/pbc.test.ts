@@ -577,6 +577,33 @@ describe(`wrap_to_unit_cell`, () => {
   })
 })
 
+// A buckled sheet reaches past its cell along the vacuum axis, which the trajectory heuristic
+// counted as scattered and so dropped every image atom
+test(`atoms outside the cell along an aperiodic axis keep image generation`, () => {
+  const sheet = make_crystal(
+    5,
+    Array.from({ length: 4 }, (_, idx) => ({
+      element: `C`,
+      abc: [0.02, idx / 4, idx % 2 ? 0.15 : -0.15] as Vec3,
+    })),
+    { pbc: [true, true, false] },
+  )
+  expect(find_image_atoms(sheet).length).toBeGreaterThan(0)
+})
+
+// The 0.5 Å face tolerance was divided by vector lengths, not cell heights, so in a hexagonal
+// cell (height 0.87 |a|) an atom 0.45 Å from the face got no image
+test(`face tolerance is 0.5 Å along the cell height of a skewed cell`, () => {
+  const hexagonal: Matrix3x3 = [
+    [4, 0, 0],
+    [-2, 2 * Math.sqrt(3), 0],
+    [0, 0, 10],
+  ]
+  const structure = make_crystal(hexagonal, [[`C`, [0.13, 0.5, 0.5]]])
+  expect(0.13 * math.cell_heights(hexagonal)[0]).toBeCloseTo(0.45, 2)
+  expect(find_image_atoms(structure).map(([, , abc]) => abc)).toEqual([[1.13, 0.5, 0.5]])
+})
+
 test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {
   // Corner atom in a fully periodic cell generates images along all 3 dims
   const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])

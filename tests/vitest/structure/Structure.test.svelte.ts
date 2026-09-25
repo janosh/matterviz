@@ -3,7 +3,9 @@ import type { AnyStructure, MeasureMode } from '$lib'
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
 import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface'
+import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { DEFAULTS } from '$lib/settings'
+import { colors } from '$lib/state.svelte'
 import {
   create_structure_view_state,
   save_structure_view_state,
@@ -991,6 +993,33 @@ const stub_fullscreen_api = () => {
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
+  // Each viewer wrote its scheme into the page-wide colors.element: the last mounted one
+  // recolored every viewer, and an unknown name set the whole map to undefined (crashing it)
+  test(`each viewer colors atoms by its own color_scheme without touching page colors`, async () => {
+    const page_colors = { ...colors.element }
+    const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
+    for (const color_scheme of [`Jmol`, `Vesta`] as const) {
+      mount_structure({ structure: oxide, color_scheme })
+    }
+    await vi.waitFor(() => {
+      const swatches = [...document.querySelectorAll<HTMLElement>(`.element-legend label`)]
+      expect(swatches.map((label) => label.style.backgroundColor)).toEqual([
+        ELEMENT_COLOR_SCHEMES.Jmol.O,
+        ELEMENT_COLOR_SCHEMES.Vesta.O,
+      ])
+    })
+    expect(colors.element).toEqual(page_colors)
+  })
+
+  test(`an unknown color_scheme fails with the valid names`, () => {
+    const page_colors = { ...colors.element }
+    const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
+    expect(() =>
+      mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
+    ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)
+    expect(colors.element).toEqual(page_colors)
+  })
+
   // Regression: bond-edit identity tokens (structure_identity) were stored in
   // deeply-proxied $state, so comparing them against the raw `structure` prop
   // triggered state_proxy_equality_mismatch on mount. They must use $state.raw.

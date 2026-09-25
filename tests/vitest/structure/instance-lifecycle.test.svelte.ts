@@ -27,7 +27,14 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
+import {
+  InstancedBufferAttribute,
+  Matrix4,
+  Mesh,
+  Raycaster,
+  type SphereGeometry,
+  Vector3,
+} from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -76,6 +83,36 @@ test.each([`plane`, `slab`] as const)(
     expect(hits()[0]?.distance).toBeLessThan(2)
   },
 )
+
+// Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy, which
+// collided in the wedge keys (`0Fe0.5`) and threw each_key_duplicate on mount
+test(`Scene draws one wedge per species of a site listing an element twice`, () => {
+  const species = [2, 3].map((oxidation_state) => ({
+    element: `Fe`,
+    occu: 0.5,
+    oxidation_state,
+  }))
+  const site = { ...make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`), species } as Site
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: { sites: [site] },
+      show_bonds: `never`,
+      show_polyhedra: `never`,
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const wedge_phis: number[] = []
+  scene.traverse((object) => {
+    const { geometry } = object as Mesh
+    if (geometry?.type === `SphereGeometry`) {
+      wedge_phis.push((geometry as SphereGeometry).parameters.phiStart)
+    }
+  })
+  expect(wedge_phis).toHaveLength(2)
+  expect(wedge_phis[1]).toBeCloseTo(Math.PI, 2)
+})
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {
   // Vitest's TS loader sees the legacy *.svelte declaration; this is a Svelte 5 component.

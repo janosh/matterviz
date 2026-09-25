@@ -508,6 +508,9 @@ export class StructureSession {
           if (inputs.highlighted_sites().length > 0) inputs.set_highlighted_sites([])
           if (inputs.hovered_site_idx() !== null) inputs.set_hovered_site_idx(null)
           this.site_radius_overrides.clear()
+          // A type mapping and hidden legend values describe the previous file's atoms
+          this.element_mapping = undefined
+          this.hidden_prop_vals.clear()
         }
         // Supercell/image/cell changes renumber scene sites. In edit-atoms mode they are the
         // user's own transforms and the selection stays so TransformControls remains attached.

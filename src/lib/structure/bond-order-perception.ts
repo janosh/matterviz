@@ -65,12 +65,10 @@ function formal_charge(symbol: string, bond_valence: number): number {
 
 const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 
-// Cap per-fragment valence enumeration (3^k for catenated S/Se/Te/P chains), counted in PICKS
-// (combinations x fragment atoms) since valence_combinations materializes one target valence
-// per atom per combination: a 12-nitrogen 3000-atom chain is 4096 combinations, inside the old
-// combination cap, but 1.2e7 picks and 267 s. 2e6 picks is ~16 MB and ~200 ms worst case, and
-// gives small fragments (S8, Se8) more room than 4096 combinations did.
-const MAX_VALENCE_PICKS = 2_000_000
+// Cap per-fragment work at valence combinations x (atoms + bonds): each combination is one
+// matching attempt over the fragment's atoms and bonds. S8 (3^8 combinations) fits easily; a
+// catenated S20 chain (3^20) or a 12-nitrogen 3000-atom chain (2^12 x 6000) is refused.
+const MAX_PERCEPTION_WORK = 20_000_000
 
 // Edges are bounds-checked by perceive_bond_orders before reaching here.
 function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
@@ -106,132 +104,240 @@ type Edge = { from: number; to: number; bond: BondPair }
 // Bond order per edge and the valence each atom uses under those orders
 type BondOrderSolution = { orders: number[]; valence: number[] }
 
-// Enumerate one target valence per atom, all combinations, lowest total
-// valence-sum first (xyz2mol prefers the least-saturated solution).
+// One target valence per atom, lowest total valence first (xyz2mol prefers the
+// least-saturated solution). Only atoms with a choice are enumerated.
 function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
-  const combos: { sum: number; pick: number[] }[] = []
-  // One shared, mutable prefix, leaves copied out: `[...acc, valence]` copied the whole prefix
-  // at every recursion step, costing combinations x atoms^2 rather than x atoms.
-  const acc: number[] = Array.from({ length: valence_lists.length }, () => 0)
+  const choice_atoms = valence_lists.flatMap((list, atom_idx) =>
+    list.length > 1 ? [atom_idx] : [],
+  )
+  const combos: { sum: number; picks: number[] }[] = []
+  const picks: number[] = Array.from({ length: choice_atoms.length }, () => 0)
   const rec = (pos: number, sum: number) => {
-    if (pos === valence_lists.length) {
-      combos.push({ sum, pick: acc.slice() })
+    if (pos === choice_atoms.length) {
+      combos.push({ sum, picks: picks.slice() })
       return
     }
-    for (const valence of valence_lists[pos]) {
-      acc[pos] = valence
+    for (const valence of valence_lists[choice_atoms[pos]]) {
+      picks[pos] = valence
       rec(pos + 1, sum + valence)
     }
   }
   rec(0, 0)
   combos.sort((left_combo, right_combo) => left_combo.sum - right_combo.sum)
-  for (const combo of combos) yield combo.pick
+  const target = valence_lists.map((list) => list[0])
+  for (const combo of combos) {
+    for (const [pos, atom_idx] of choice_atoms.entries()) target[atom_idx] = combo.picks[pos]
+    yield target
+  }
 }
 
-// Greedily raise bond orders toward each atom's target valence; succeeds only if every
-// atom's used valence ends exactly at its target. The per-atom valence is updated with each
-// raised order, so a pass costs O(edges) instead of re-summing every atom's edges.
+// Maximum-cardinality matching in a general graph (Edmonds' blossom algorithm), grown in
+// place from the partial matching `mate` (-1 = unmatched). Returns false as soon as some
+// vertex can't be matched: a vertex with no augmenting path now never gets one later.
+function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boolean {
+  const n_vertices = adjacency.length
+  const parent = new Int32Array(n_vertices)
+  const base = new Int32Array(n_vertices)
+  const in_queue = new Uint8Array(n_vertices)
+  const in_blossom = new Uint8Array(n_vertices)
+  const on_path = new Uint8Array(n_vertices)
+  const queue: number[] = []
+  const lowest_common_base = (vertex_a: number, vertex_b: number): number => {
+    on_path.fill(0)
+    for (let vertex = vertex_a; ; vertex = parent[mate[vertex]]) {
+      vertex = base[vertex]
+      on_path[vertex] = 1
+      if (mate[vertex] === -1) break
+    }
+    for (let vertex = vertex_b; ; vertex = parent[mate[vertex]]) {
+      vertex = base[vertex]
+      if (on_path[vertex]) return vertex
+    }
+  }
+  const mark_blossom = (start: number, blossom_base: number, child: number): void => {
+    for (let vertex = start, next_child = child; base[vertex] !== blossom_base;) {
+      in_blossom[base[vertex]] = 1
+      in_blossom[base[mate[vertex]]] = 1
+      parent[vertex] = next_child
+      next_child = mate[vertex]
+      vertex = parent[mate[vertex]]
+    }
+  }
+  // End of an augmenting path from `root`, or -1 when there is none
+  const find_augmenting_path = (root: number): number => {
+    parent.fill(-1)
+    in_queue.fill(0)
+    for (let vertex = 0; vertex < n_vertices; vertex++) base[vertex] = vertex
+    queue.length = 0
+    queue.push(root)
+    in_queue[root] = 1
+    // the array iterator re-reads the length, so vertices queued meanwhile are visited too
+    for (const vertex of queue) {
+      for (const neighbor of adjacency[vertex]) {
+        if (base[vertex] === base[neighbor] || mate[vertex] === neighbor) continue
+        if (neighbor === root || (mate[neighbor] !== -1 && parent[mate[neighbor]] !== -1)) {
+          const blossom_base = lowest_common_base(vertex, neighbor)
+          in_blossom.fill(0)
+          mark_blossom(vertex, blossom_base, neighbor)
+          mark_blossom(neighbor, blossom_base, vertex)
+          for (let member = 0; member < n_vertices; member++) {
+            if (!in_blossom[base[member]]) continue
+            base[member] = blossom_base
+            if (!in_queue[member]) {
+              in_queue[member] = 1
+              queue.push(member)
+            }
+          }
+        } else if (parent[neighbor] === -1) {
+          parent[neighbor] = vertex
+          if (mate[neighbor] === -1) return neighbor
+          in_queue[mate[neighbor]] = 1
+          queue.push(mate[neighbor])
+        }
+      }
+    }
+    return -1
+  }
+  for (let root = 0; root < n_vertices; root++) {
+    if (mate[root] !== -1) continue
+    let end = find_augmenting_path(root)
+    if (end === -1) return false
+    while (end !== -1) {
+      const previous = parent[end]
+      const next_end = mate[previous]
+      mate[end] = previous
+      mate[previous] = end
+      end = next_end
+    }
+  }
+  return true
+}
+
+// Raise bond orders so every atom ends exactly at its target valence, or null when no
+// assignment exists. Starting from all-single bonds, each atom must gain its deficit in extra
+// bond orders, one per unit across a bond: a perfect matching between per-unit copies of the
+// atoms, with each bond carrying at most two raises (a triple bond). Exact where the greedy
+// raise it replaces failed on up to 80% of atom orderings of fused aromatics.
 function assign_bond_orders(
   edges: Edge[],
   target_valence: number[],
 ): BondOrderSolution | null {
-  const orders = Array.from({ length: edges.length }, () => 1)
-  const valence = Array.from({ length: target_valence.length }, () => 0)
-  // a self-bond (periodic image of the atom itself) counts once, like any other edge
-  const add_valence = (from: number, target: number): void => {
-    valence[from]++
-    if (target !== from) valence[target]++
+  const n_atoms = target_valence.length
+  const deficit = target_valence.slice()
+  // a self-bond (periodic image of the atom itself) counts once and is never raised
+  for (const { from, to: target } of edges) {
+    deficit[from]--
+    if (target !== from) deficit[target]--
   }
-  for (const { from, to: target } of edges) add_valence(from, target)
-  for (;;) {
-    let best = -1
-    let best_deficit = 0
-    for (const [edge_idx, { from, to: target }] of edges.entries()) {
-      const shared_deficit = Math.min(
-        target_valence[from] - valence[from],
-        target_valence[target] - valence[target],
-      )
-      if (shared_deficit > best_deficit && orders[edge_idx] < 3) {
-        best_deficit = shared_deficit
-        best = edge_idx
+  const first_copy = new Int32Array(n_atoms + 1)
+  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+    if (deficit[atom_idx] < 0) return null
+    first_copy[atom_idx + 1] = first_copy[atom_idx] + deficit[atom_idx]
+  }
+  const n_copies = first_copy[n_atoms]
+  const orders = Array.from({ length: edges.length }, () => 1)
+  if (n_copies === 0) return { orders, valence: target_valence.slice() }
+  if (n_copies % 2 === 1) return null
+  const adjacency = Array.from({ length: n_copies }, () => [] as number[])
+  // raisable bonds by the atom pair they join (periodic images can bond one pair twice)
+  const edges_by_pair = new Map<number, number[]>()
+  for (const [edge_idx, { from, to: target }] of edges.entries()) {
+    if (from === target || !deficit[from] || !deficit[target]) continue
+    const pair = Math.min(from, target) * n_atoms + Math.max(from, target)
+    const pair_edges = edges_by_pair.get(pair)
+    if (pair_edges) {
+      pair_edges.push(edge_idx)
+      continue
+    }
+    edges_by_pair.set(pair, [edge_idx])
+    for (let copy_1 = first_copy[from]; copy_1 < first_copy[from + 1]; copy_1++) {
+      for (let copy_2 = first_copy[target]; copy_2 < first_copy[target + 1]; copy_2++) {
+        adjacency[copy_1].push(copy_2)
+        adjacency[copy_2].push(copy_1)
       }
     }
-    if (best < 0) break
-    orders[best]++
-    add_valence(edges[best].from, edges[best].to)
   }
-  const solved = valence.every((used, atom_idx) => used === target_valence[atom_idx])
-  return solved ? { orders, valence } : null
+  const mate = new Int32Array(n_copies).fill(-1)
+  // Greedy start, most constrained copies first, leaves few vertices for augmentation
+  const by_degree = Array.from({ length: n_copies }, (_, copy) => copy).toSorted(
+    (copy_a, copy_b) => adjacency[copy_a].length - adjacency[copy_b].length,
+  )
+  for (const copy of by_degree) {
+    if (mate[copy] !== -1) continue
+    const partner = adjacency[copy].find((neighbor) => mate[neighbor] === -1)
+    if (partner !== undefined) [mate[copy], mate[partner]] = [partner, copy]
+  }
+  if (!complete_perfect_matching(adjacency, mate)) return null
+  const atom_of_copy = new Int32Array(n_copies)
+  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+    atom_of_copy.fill(atom_idx, first_copy[atom_idx], first_copy[atom_idx + 1])
+  }
+  for (let copy = 0; copy < n_copies; copy++) {
+    const partner = mate[copy]
+    if (partner < copy) continue
+    const [atom_1, atom_2] = [atom_of_copy[copy], atom_of_copy[partner]]
+    const pair = Math.min(atom_1, atom_2) * n_atoms + Math.max(atom_1, atom_2)
+    const edge_idx = edges_by_pair.get(pair)?.find((idx) => orders[idx] < 3)
+    if (edge_idx === undefined) return null // three raises on one bond
+    orders[edge_idx]++
+  }
+  return { orders, valence: target_valence.slice() }
 }
 
-// Spanning-tree cycle basis, deduplicated by sorted vertex set.
-function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
-  const adjacency = Array.from({ length: n_atoms }, () => new Set<number>())
+// Rings as the shortest cycle through each bond (at most MAX_RING_SIZE atoms), deduplicated
+// by vertex set. A spanning-tree cycle basis could return a fused system's envelope in place
+// of one of its small rings, so that ring was never tested for aromaticity. `in_scope` limits
+// ring members (aromatic rings only hold C/N/O/S), which also bounds the search.
+const MAX_RING_SIZE = 8
+function find_rings(
+  n_atoms: number,
+  edges: Vec2[],
+  in_scope: (atom_idx: number) => boolean,
+): number[][] {
+  const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
   for (const [atom_idx_1, atom_idx_2] of edges) {
-    adjacency[atom_idx_1].add(atom_idx_2)
-    adjacency[atom_idx_2].add(atom_idx_1)
+    if (atom_idx_1 === atom_idx_2 || !in_scope(atom_idx_1) || !in_scope(atom_idx_2)) continue
+    adjacency[atom_idx_1].push(atom_idx_2)
+    adjacency[atom_idx_2].push(atom_idx_1)
   }
-  const parent = Array.from({ length: n_atoms }, () => -1)
-  const seen = new Set<number>()
-  const rings: number[][] = []
-  const path_to_ancestor = (start_idx: number, ancestor_idx: number): number[] => {
-    const path: number[] = []
-    for (
-      let path_atom_idx = start_idx;
-      path_atom_idx !== ancestor_idx;
-      path_atom_idx = parent[path_atom_idx]
-    ) {
-      path.push(path_atom_idx)
-    }
-    return path
-  }
-  for (let start_idx = 0; start_idx < n_atoms; start_idx++) {
-    if (seen.has(start_idx)) continue
-    const queue = [start_idx]
-    let queue_idx = 0
-    seen.add(start_idx)
-    parent[start_idx] = -1
-    while (queue_idx < queue.length) {
-      const current_atom_idx = queue[queue_idx++]
-      for (const neighbor_idx of adjacency[current_atom_idx]) {
-        if (!seen.has(neighbor_idx)) {
-          seen.add(neighbor_idx)
-          parent[neighbor_idx] = current_atom_idx
-          queue.push(neighbor_idx)
-        } else if (parent[current_atom_idx] !== neighbor_idx) {
-          const current_ancestors = new Set<number>()
-          for (
-            let ancestor_idx = current_atom_idx;
-            ancestor_idx !== -1;
-            ancestor_idx = parent[ancestor_idx]
-          ) {
-            current_ancestors.add(ancestor_idx)
-          }
-          for (
-            let ancestor_idx = neighbor_idx;
-            ancestor_idx !== -1;
-            ancestor_idx = parent[ancestor_idx]
-          ) {
-            if (current_ancestors.has(ancestor_idx)) {
-              const ring = [
-                ancestor_idx,
-                ...path_to_ancestor(current_atom_idx, ancestor_idx),
-                ...path_to_ancestor(neighbor_idx, ancestor_idx).toReversed(),
-              ]
-              if (ring.length >= 3) rings.push(ring)
-              break
-            }
-          }
+  const parent = new Int32Array(n_atoms)
+  const depth = new Int32Array(n_atoms)
+  const visit_stamp = new Int32Array(n_atoms)
+  const rings = new Map<string, number[]>()
+  let stamp = 0
+  for (const [start, goal] of edges) {
+    if (start === goal || !in_scope(start) || !in_scope(goal)) continue
+    // BFS from start to goal without using the start-goal bond itself
+    stamp++
+    visit_stamp[start] = stamp
+    parent[start] = -1
+    depth[start] = 0
+    const queue = [start]
+    let found = false
+    for (let head = 0; head < queue.length && !found; head++) {
+      const atom_idx = queue[head]
+      if (depth[atom_idx] >= MAX_RING_SIZE - 1) break
+      for (const neighbor of adjacency[atom_idx]) {
+        if (atom_idx === start && neighbor === goal) continue
+        if (visit_stamp[neighbor] === stamp) continue
+        visit_stamp[neighbor] = stamp
+        parent[neighbor] = atom_idx
+        depth[neighbor] = depth[atom_idx] + 1
+        if (neighbor === goal) {
+          found = true
+          break
         }
+        queue.push(neighbor)
       }
     }
+    if (!found) continue
+    const ring: number[] = []
+    for (let atom_idx = goal; atom_idx !== -1; atom_idx = parent[atom_idx]) ring.push(atom_idx)
+    if (ring.length < 3) continue
+    const key = ring.toSorted((idx_a, idx_b) => idx_a - idx_b).join(`,`)
+    if (!rings.has(key)) rings.set(key, ring)
   }
-  const uniq = new Map<string, number[]>()
-  for (const ring of rings) {
-    const key = [...ring].toSorted((left_idx, right_idx) => left_idx - right_idx).join(`,`)
-    if (!uniq.has(key)) uniq.set(key, ring)
-  }
-  return [...uniq.values()]
+  return [...rings.values()]
 }
 
 // Conservative planarity check: degenerate first-3-atom planes are non-planar.
@@ -259,18 +365,78 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
 // the conjugated π system (C, N, O, S). Other ring members disqualify.
 const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 
-// xyz2mol AC->BO core (neutral, main-group). Processes each connected
-// fragment independently; fragments containing a non-main-group atom or
-// with no valence-consistent assignment fall back to single + not perceived.
+// Valence-consistent bond orders of one fragment, the first found for each formal charge in
+// least-saturated order. Formal charge rises with the valence sum, so the search stops once a
+// solution at charge `stop_charge` (or above) turns up.
+function fragment_solutions(
+  symbols: string[],
+  local_edges: Edge[],
+  valence_lists: number[][],
+  stop_charge: number,
+): Map<number, BondOrderSolution> {
+  const solutions = new Map<number, BondOrderSolution>()
+  for (const target of valence_combinations(valence_lists)) {
+    const candidate = assign_bond_orders(local_edges, target)
+    if (!candidate) continue
+    let charge = 0
+    for (const [local_atom_idx, symbol] of symbols.entries()) {
+      charge += formal_charge(symbol, candidate.valence[local_atom_idx])
+    }
+    if (!solutions.has(charge)) solutions.set(charge, candidate)
+    if (charge >= stop_charge) break
+  }
+  return solutions
+}
+
+// One formal charge per fragment summing to `total_charge`, fewest charged fragments first
+// (then least total |charge|), or null when the fragments' solutions can't reach the total.
+// The total belongs to the whole structure: requiring it of every fragment left a salt such as
+// CO3 + CO2 at -2 (or two CO3 at -4) with no fragment able to match it.
+function distribute_charge(
+  charges_per_fragment: number[][],
+  total_charge: number,
+): number[] | null {
+  if (total_charge === 0 && charges_per_fragment.every((charges) => charges.includes(0))) {
+    return charges_per_fragment.map(() => 0)
+  }
+  // Layer k maps a partial charge sum over the first k fragments to its cheapest way there
+  type Step = { cost: number; previous_sum: number; charge: number }
+  const layers: Map<number, Step>[] = [new Map([[0, { cost: 0, previous_sum: 0, charge: 0 }]])]
+  for (const charges of charges_per_fragment) {
+    const layer = new Map<number, Step>()
+    for (const [sum, { cost }] of layers[layers.length - 1]) {
+      for (const charge of charges) {
+        const next_cost = cost + (charge === 0 ? 0 : 1_000_000 + Math.abs(charge))
+        const existing = layer.get(sum + charge)
+        if (!existing || next_cost < existing.cost) {
+          layer.set(sum + charge, { cost: next_cost, previous_sum: sum, charge })
+        }
+      }
+    }
+    layers.push(layer)
+  }
+  if (!layers[layers.length - 1].has(total_charge)) return null
+  const picks: number[] = []
+  let sum = total_charge
+  for (let layer_idx = layers.length - 1; layer_idx > 0; layer_idx--) {
+    const step = layers[layer_idx].get(sum)
+    if (!step) throw new Error(`distribute_charge: broken path at fragment ${layer_idx - 1}`)
+    picks.push(step.charge)
+    sum = step.previous_sum
+  }
+  return picks.toReversed()
+}
+
+// xyz2mol AC->BO core (main-group). Each connected fragment gets a valence-consistent bond
+// order assignment; fragments with a non-main-group atom, over the size or work caps, or with
+// no assignment at the charge they are given fall back to single + not perceived.
 export function perceive_bond_orders(
   sites: Site[],
   bonds: readonly BondPair[],
   opts: PerceptionOptions = {},
 ): PerceivedBond[] {
+  // per fragment: a molecular crystal of many small molecules is perceived molecule by molecule
   const max_atoms = opts.max_atoms ?? 5000
-  if (sites.length > max_atoms) {
-    return bonds.map((bond) => ({ ...bond, bond_order: 1, perceived: false }))
-  }
   const edges: Edge[] = []
   const result = new Map<BondPair, PerceivedBond>()
   for (const bond of bonds) {
@@ -311,40 +477,55 @@ export function perceive_bond_orders(
       bond,
     })
   }
-  const want_charge = opts.total_charge ?? 0
-  let ring_id = 0
+  const total_charge = opts.total_charge ?? 0
+
+  // Candidate solutions per bonded main-group fragment
+  const solved_frags: {
+    frag: number[]
+    symbols: string[]
+    local_edges: Edge[]
+    solutions: Map<number, BondOrderSolution>
+  }[] = []
   for (const [frag_idx, frag] of frags.entries()) {
+    const local_edges = edges_by_frag[frag_idx]
+    if (local_edges.length === 0 || frag.length > max_atoms) continue
     const symbols = frag.map((atom_idx) => primary_element(sites[atom_idx]))
     if (!symbols.every(is_main_group)) continue
-    const local_edges = edges_by_frag[frag_idx]
     const valence_lists = symbols.map((symbol) => ATOMIC_VALENCE[symbol])
     const combo_count = valence_lists.reduce(
       (product, valence_list) => product * valence_list.length,
       1,
     )
-    const pick_count = combo_count * valence_lists.length
-    if (pick_count > MAX_VALENCE_PICKS) {
+    const work = combo_count * (frag.length + local_edges.length)
+    if (work > MAX_PERCEPTION_WORK) {
       // Console, no WarnFn here: silently drawing benzene as all-single bonds is wrong data
       console.warn(
         `Bond-order perception skipped fragment ${frag_idx} (${frag.length} atoms, ` +
-          `${local_edges.length} bonds): ${pick_count} valence picks exceed the ` +
-          `${MAX_VALENCE_PICKS}-pick cap, so its bonds stay single-order and unperceived`,
+          `${local_edges.length} bonds): ${combo_count} valence combinations x ` +
+          `${frag.length + local_edges.length} atoms+bonds exceed the ` +
+          `${MAX_PERCEPTION_WORK} work cap, so its bonds stay single-order and unperceived`,
       )
       continue
     }
-    let solved: BondOrderSolution | null = null
-    for (const target of valence_combinations(valence_lists)) {
-      const candidate = assign_bond_orders(local_edges, target)
-      if (!candidate) continue
-      let sum_fc = 0
-      for (const [local_atom_idx, symbol] of symbols.entries()) {
-        sum_fc += formal_charge(symbol, candidate.valence[local_atom_idx])
-      }
-      if (sum_fc === want_charge) {
-        solved = candidate
-        break
-      }
-    }
+    const stop_charge = Math.max(0, total_charge)
+    const solutions = fragment_solutions(symbols, local_edges, valence_lists, stop_charge)
+    solved_frags.push({ frag, symbols, local_edges, solutions })
+  }
+  // The total is only enforceable when every bonded fragment is a candidate; otherwise (and
+  // when the total is out of reach) each fragment is taken neutral, if it can be.
+  const n_bonded_frags = edges_by_frag.filter((frag_edges) => frag_edges.length > 0).length
+  const distributed =
+    solved_frags.length === n_bonded_frags
+      ? distribute_charge(
+          solved_frags.map(({ solutions }) => [...solutions.keys()]),
+          total_charge,
+        )
+      : null
+  const charges = distributed ?? solved_frags.map(() => 0)
+
+  let ring_id = 0
+  for (const [solved_idx, { frag, local_edges, solutions }] of solved_frags.entries()) {
+    const solved = solutions.get(charges[solved_idx])
     if (!solved) continue
     const { orders } = solved
     local_edges.forEach((edge, edge_idx) => {
@@ -354,41 +535,41 @@ export function perceive_bond_orders(
     })
 
     // Hückel aromatic post-pass, retaining Kekulé orders for display toggles.
+    const incident = frag.map(() => [] as number[])
+    for (const [edge_idx, { from, to: target }] of local_edges.entries()) {
+      incident[from].push(edge_idx)
+      if (target !== from) incident[target].push(edge_idx)
+    }
     const rings = find_rings(
       frag.length,
       local_edges.map((edge) => [edge.from, edge.to] as Vec2),
+      (local_atom_idx) => SP2_OK.has(primary_element(sites[frag[local_atom_idx]])),
     )
     for (const ring of rings) {
       const global_ring = ring.map((local_atom_idx) => frag[local_atom_idx])
-      const has_only_sp2_ring_atoms = global_ring.every((global_atom_idx) =>
-        SP2_OK.has(primary_element(sites[global_atom_idx])),
-      )
-      if (!has_only_sp2_ring_atoms) continue
       if (!ring_is_planar(global_ring, sites)) continue
       const ring_set = new Set(ring)
-      const edge_is_in_ring = (edge: Edge): boolean =>
-        ring_set.has(edge.from) && ring_set.has(edge.to)
-      const has_ring_multiple = new Set<number>()
-      local_edges.forEach((edge, edge_idx) => {
-        if (edge_is_in_ring(edge) && orders[edge_idx] > 1) {
-          has_ring_multiple.add(edge.from)
-          has_ring_multiple.add(edge.to)
+      const ring_edge_idxs = new Set<number>()
+      for (const atom_idx of ring) {
+        for (const edge_idx of incident[atom_idx]) {
+          const { from, to: target } = local_edges[edge_idx]
+          if (ring_set.has(from) && ring_set.has(target)) ring_edge_idxs.add(edge_idx)
         }
-      })
+      }
+      const has_ring_multiple = (atom_idx: number): boolean =>
+        incident[atom_idx].some(
+          (edge_idx) => ring_edge_idxs.has(edge_idx) && orders[edge_idx] > 1,
+        )
       const has_any_multiple_bond = (atom_idx: number): boolean =>
-        local_edges.some((edge, edge_idx) => {
-          if (edge.from !== atom_idx && edge.to !== atom_idx) return false
-          return orders[edge_idx] > 1
-        })
+        incident[atom_idx].some((edge_idx) => orders[edge_idx] > 1)
       const has_non_ring_neighbor = (atom_idx: number): boolean =>
-        local_edges.some((edge) => {
-          if (edge.from !== atom_idx && edge.to !== atom_idx) return false
-          const neighbor_idx = edge.from === atom_idx ? edge.to : edge.from
-          return !ring_set.has(neighbor_idx)
+        incident[atom_idx].some((edge_idx) => {
+          const { from, to: target } = local_edges[edge_idx]
+          return !ring_set.has(from === atom_idx ? target : from)
         })
       const pi_by_atom = ring.map((atom_idx) => {
         const element = primary_element(sites[frag[atom_idx]])
-        if (has_ring_multiple.has(atom_idx)) return 1
+        if (has_ring_multiple(atom_idx)) return 1
         if (element === `N` || element === `O` || element === `S`) return 2
         if (element === `C`)
           return Number(has_any_multiple_bond(atom_idx) || !has_non_ring_neighbor(atom_idx))
@@ -401,19 +582,18 @@ export function perceive_bond_orders(
         (pi_electrons - 2) % 4 === 0
       ) {
         const this_ring = ring_id++
-        local_edges.forEach((edge) => {
-          if (edge_is_in_ring(edge)) {
-            const prev = result.get(edge.bond)
-            if (prev === undefined) throw new Error(`Missing perceived bond`)
-            result.set(edge.bond, {
-              ...prev,
-              bond_order: `aromatic`,
-              aromatic_ring: this_ring,
-              kekule_order: prev.kekule_order ?? (prev.bond_order === 1 ? 1 : 2),
-              perceived: true,
-            })
-          }
-        })
+        for (const edge_idx of ring_edge_idxs) {
+          const { bond } = local_edges[edge_idx]
+          const prev = result.get(bond)
+          if (prev === undefined) throw new Error(`Missing perceived bond`)
+          result.set(bond, {
+            ...prev,
+            bond_order: `aromatic`,
+            aromatic_ring: this_ring,
+            kekule_order: prev.kekule_order ?? (prev.bond_order === 1 ? 1 : 2),
+            perceived: true,
+          })
+        }
       }
     }
   }

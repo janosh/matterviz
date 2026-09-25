@@ -280,7 +280,40 @@ export const cell_frame = (
 export const make_lattice = (
   matrix: math.Matrix3x3,
   pbc: Pbc = [true, true, true],
-): LatticeType => ({ matrix, ...math.calc_lattice_params(matrix), pbc })
+): LatticeType => {
+  const completed = complete_lattice_matrix(matrix)
+  return { matrix: completed, ...math.calc_lattice_params(completed), pbc }
+}
+
+// Replace zero-length cell vectors with unit vectors normal to the others, as ASE's
+// complete_cell does. 2D sheets are written with c = 0 (ASE's graphene() without vacuum):
+// that singular cell made fractional coordinates, PBC images and every distance measurement
+// wrong or throw. Right-handed completion; other degenerate cells are returned unchanged.
+export function complete_lattice_matrix(matrix: math.Matrix3x3): math.Matrix3x3 {
+  const is_zero = matrix.map((row) => Math.hypot(...row) < math.EPS)
+  const n_zero = is_zero.filter(Boolean).length
+  if (n_zero === 0 || n_zero === 3) return matrix
+  const completed = matrix.map((row) => [...row]) as math.Matrix3x3
+  // `+ 0` turns the cross product's -0 into 0
+  const unit = (vec: Vec3): Vec3 => vec.map((coord) => coord / Math.hypot(...vec) + 0) as Vec3
+  if (n_zero === 1) {
+    const zero_axis = is_zero.indexOf(true)
+    // cyclic order keeps a x b = c, b x c = a, c x a = b right-handed
+    const normal = math.cross_3d(matrix[(zero_axis + 1) % 3], matrix[(zero_axis + 2) % 3])
+    if (Math.hypot(...normal) < math.EPS) return matrix
+    completed[zero_axis] = unit(normal)
+    return completed
+  }
+  const axis = is_zero.indexOf(false)
+  const direction = unit(matrix[axis])
+  // any vector not parallel to `direction` seeds the perpendicular pair
+  const seed: Vec3 = Math.abs(direction[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+  const perp_1 = unit(math.cross_3d(direction, seed))
+  const perp_2 = math.cross_3d(direction, perp_1)
+  completed[(axis + 1) % 3] = perp_1
+  completed[(axis + 2) % 3] = perp_2
+  return completed
+}
 
 // The shape every format parser returns: an empty bond list and an absent lattice are
 // omitted rather than written as empty/undefined fields.
@@ -364,7 +397,8 @@ export const cart_to_frac_with_fallback = (
   opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
 ): { convert: (xyz: Vec3, target?: Vec3) => Vec3; exact: boolean } => {
   try {
-    return { convert: math.create_cart_to_frac(matrix), exact: true }
+    // exact for completed 2D/1D cells too, the same cell make_lattice stores
+    return { convert: math.create_cart_to_frac(complete_lattice_matrix(matrix)), exact: true }
   } catch {
     // fall through to the per-axis-length approximation below
   }
