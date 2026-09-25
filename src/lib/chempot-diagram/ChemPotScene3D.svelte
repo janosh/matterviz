@@ -95,7 +95,7 @@
   } = $props()
 
   // Registers the canvas' renderer, scene and camera so the PNG export can re-render the frame
-  bind_renderer(() => {})
+  bind_renderer()
 
   const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent

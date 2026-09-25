@@ -39,6 +39,12 @@ const MAX_GRID_POINTS = 2000
 // than a fixed 1 that smears them across +-2. Exactly zero falls back to 1.
 const constant_spread = (samples: readonly number[]): number => Math.abs(samples[0] ?? 0) || 1
 
+// The n^(-1/5) shrink both rules share. No samples means no bandwidth (0^(-1/5) is Infinity).
+const shrink_factor = (n_vals: number): number => {
+  if (n_vals === 0) throw new RangeError(`KDE bandwidth needs at least one sample`)
+  return n_vals ** (-1 / 5)
+}
+
 // Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5), i.e. R's bw.nrd0 and
 // statsmodels' `silverman` (scipy's `silverman` is the different std * (3n/4)^(-1/5)).
 // The spread falls back to std, then to the constant-sample spread above.
@@ -50,14 +56,14 @@ export function silverman_bandwidth(samples: readonly number[]): number {
     n_vals < 2 ? 0 : quantile_unordered(scratch, 0.75) - quantile_unordered(scratch, 0.25)
   const std = n_vals < 2 ? 0 : sample_std(samples)
   const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
-  return 0.9 * (spread || constant_spread(samples)) * n_vals ** (-1 / 5)
+  return 0.9 * (spread || constant_spread(samples)) * shrink_factor(n_vals)
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data (order-independent, never touches `samples`)
 export function scott_bandwidth(samples: readonly number[]): number {
   const n_vals = samples.length
   const std = n_vals < 2 ? 0 : sample_std(samples)
-  return (std || constant_spread(samples)) * n_vals ** (-1 / 5)
+  return (std || constant_spread(samples)) * shrink_factor(n_vals)
 }
 
 function exact_density(

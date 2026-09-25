@@ -119,7 +119,7 @@ const calculator_of = (
 }
 
 // Per-atom calculator forces of one frame (eV/Å), or undefined when it stores none
-export function ase_calculator_forces(
+function ase_calculator_forces(
   frame_data: Record<string, unknown>,
   read_ndarray: NdarrayReader,
 ): number[][] | undefined {
@@ -183,9 +183,6 @@ export const ase_calculator_data = (
     const array = read_ndarray(reference)
     results[result_key] = shape.length === 1 ? array[0] : array
   }
-  // Statistics only: the vectors themselves belong on the sites (see decode_ase_frame)
-  const forces = read_ndarray && ase_calculator_forces(frame_data, read_ndarray)
-  if (forces) Object.assign(results, calc_force_stats(forces))
   const pressure = ase_pressure(results.stress)
   if (pressure !== undefined && !(`pressure` in results)) results.pressure = pressure
   return results
@@ -249,7 +246,13 @@ export function decode_ase_frame(
     ase_cell(frame_data),
     pbc,
     step,
-    { step, ...ase_calculator_data(frame_data, read_ndarray), ...frame_data.info },
+    // The vectors go on the sites, only their statistics into the metadata
+    {
+      step,
+      ...ase_calculator_data(frame_data, read_ndarray),
+      ...(forces && calc_force_stats(forces)),
+      ...frame_data.info,
+    },
     forces?.map((force) => ({ force })),
   )
   return { frame, numbers, pbc }

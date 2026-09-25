@@ -136,8 +136,8 @@ const with_px_domain = (scale: LinearScale, [px_a, px_b]: Vec2): LinearScale => 
 // Pixel extent [x_span, y_span] of the plot area. Ticks sit at round values inside the axis
 // limits, so their span alone would crop everything between the outermost tick and the axes
 // edge. Matplotlib's axes background patch (first patch of axes_N) gives the exact area; the
-// simple format uses the largest filled rect enclosing every tick and boundary, else the span
-// of the ticks and boundaries themselves.
+// simple format uses the smallest filled shape enclosing every tick and boundary (a page
+// background encloses them too, but is larger), else the span of the ticks and boundaries.
 function plot_area_px(
   doc: Document,
   format: SvgFormat,
@@ -166,8 +166,10 @@ function plot_area_px(
         )
       : null
   const patch_rings = axes_patch && shape_rings(axes_patch)
-  if (patch_rings?.flat().length) {
-    const [min_x, min_y, max_x, max_y] = bbox_of(patch_rings)
+  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
+  const patch_bbox = patch_rings?.flat().length ? bbox_of(patch_rings) : null
+  if (patch_bbox && patch_bbox[2] > patch_bbox[0] && patch_bbox[3] > patch_bbox[1]) {
+    const [min_x, min_y, max_x, max_y] = patch_bbox
     return [
       [min_x, max_x],
       [min_y, max_y],
@@ -184,7 +186,7 @@ function plot_area_px(
     .map(({ bbox }) => bbox)
     .filter(encloses)
     .reduce<Vec4 | null>(
-      (best, bbox) => (!best || area(bbox) > area(best) ? bbox : best),
+      (best, bbox) => (!best || area(bbox) < area(best) ? bbox : best),
       null,
     )
   if (background) {

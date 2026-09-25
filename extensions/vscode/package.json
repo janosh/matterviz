@@ -698,7 +698,7 @@
         "matterviz.brillouin.edge_width": {
           "type": "number",
           "default": 0.002,
-          "description": "Width of Brillouin zone edges (fraction of zone size)",
+          "description": "Width of Brillouin zone edges (fraction of the zone half-size, ½·mean |b|)",
           "minimum": 0,
           "maximum": 0.05
         },

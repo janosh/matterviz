@@ -81,12 +81,10 @@ export function resolve_fill_binding(
   const pick = <Axis extends string>(
     key: `x_axis` | `y_axis`,
     explicit: Axis | undefined,
+    bound_axes: Axis[],
     fallback: Axis,
   ): Axis => {
-    const axes = new Set([
-      ...(explicit ? [explicit] : []),
-      ...bound.map((srs) => (srs[key] as Axis | undefined) ?? fallback),
-    ])
+    const axes = new Set([...(explicit ? [explicit] : []), ...bound_axes])
     if (axes.size > 1) {
       throw new Error(
         `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...axes].join(` and `)}: its series boundaries and ${key} must agree`,
@@ -95,8 +93,18 @@ export function resolve_fill_binding(
     return [...axes][0] ?? fallback
   }
   return {
-    x_axis: pick(`x_axis`, region.x_axis, `x`),
-    y_axis: pick(`y_axis`, region.y_axis, `y`),
+    x_axis: pick(
+      `x_axis`,
+      region.x_axis,
+      bound.map((srs) => srs.x_axis ?? `x`),
+      `x`,
+    ),
+    y_axis: pick(
+      `y_axis`,
+      region.y_axis,
+      bound.map((srs) => srs.y_axis ?? `y`),
+      `y`,
+    ),
     series_hidden: bound.some((srs) => srs.visible === false),
   }
 }

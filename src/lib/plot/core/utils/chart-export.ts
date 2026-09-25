@@ -4,8 +4,8 @@
 
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-import { unique_id } from '../utils'
 import { download } from '$lib/io/fetch'
+import { unique_id } from '$lib/plot/core/utils'
 import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
@@ -32,7 +32,7 @@ const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 // Legends and color bars are HTML laid over the chart SVG (they need wrapping, scrolling and
 // form controls), so an export of the SVG alone lost them. Components mark such roots with
 // this attribute; at export time each is redrawn as static SVG at its on-screen position.
-export const EXPORT_OVERLAY_ATTR = `data-export-overlay`
+const EXPORT_OVERLAY_ATTR = `data-export-overlay`
 const SVG_NS = `http://www.w3.org/2000/svg`
 // Interactive controls have no static rendering (and raster exports must stay untainted)
 const SKIPPED_OVERLAY_ELEMENTS = new Set([`INPUT`, `SELECT`, `BUTTON`, `TEXTAREA`])
@@ -95,7 +95,7 @@ const is_transparent = (color: string): boolean =>
 // Redraw an HTML overlay as SVG in the coordinate frame of `origin` (the chart SVG's box):
 // solid and gradient backgrounds become rects, nested SVGs (legend markers) are cloned in
 // place, text runs become <text> at their laid-out position with the computed font.
-export function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
+function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
   const group = svg_el(`g`, { class: `export-overlay` })
   const defs = svg_el(`defs`, {})
   group.append(defs)

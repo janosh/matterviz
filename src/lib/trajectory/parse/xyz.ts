@@ -15,7 +15,7 @@ import {
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
-export function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
+function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   // Both quote styles, as parse_extxyz_pbc below already accepts: ASE writes double quotes but
   // single-quoted cells occur, and matching only `"` dropped the cell without a word, turning
   // a crystal into a molecule with every fractional coordinate at the origin.

@@ -116,7 +116,7 @@ export function upsample_grid(
   // 64. Each pass evaluates exactly the sub-expression the nested form did in the same order
   // (Σx cx·Σy cy·Σz cz·v), so the result is bit-identical, 3-15x faster.
   // Pass z: [size_x][size_y][new_nz]
-  const stencil_z = axis_stencils(new_nz, pixel_z, stride_z)
+  const { offsets: z_offsets, coeffs: z_coeffs } = axis_stencils(new_nz, pixel_z, stride_z)
   const pass_z = new Float64Array(size_x * size_y * new_nz)
   let pass_idx = 0
   for (let idx_x = 0; idx_x < size_x; idx_x++) {
@@ -124,29 +124,27 @@ export function upsample_grid(
       const row = idx_x * stride_x + idx_y * stride_y
       for (let idx_z = 0; idx_z < new_nz; idx_z++) {
         const base = 4 * idx_z
-        const { offsets, coeffs } = stencil_z
         pass_z[pass_idx++] =
-          coeffs[base] * values[row + offsets[base]] +
-          coeffs[base + 1] * values[row + offsets[base + 1]] +
-          coeffs[base + 2] * values[row + offsets[base + 2]] +
-          coeffs[base + 3] * values[row + offsets[base + 3]]
+          z_coeffs[base] * values[row + z_offsets[base]] +
+          z_coeffs[base + 1] * values[row + z_offsets[base + 1]] +
+          z_coeffs[base + 2] * values[row + z_offsets[base + 2]] +
+          z_coeffs[base + 3] * values[row + z_offsets[base + 3]]
       }
     }
   }
   // Pass y: [size_x][new_ny][new_nz], reading pass_z with strides (size_y·new_nz, new_nz, 1)
-  const stencil_y = axis_stencils(new_ny, pixel_y, new_nz)
+  const { offsets: y_offsets, coeffs: y_coeffs } = axis_stencils(new_ny, pixel_y, new_nz)
   const pass_y = new Float64Array(size_x * new_ny * new_nz)
   pass_idx = 0
   for (let idx_x = 0; idx_x < size_x; idx_x++) {
     const plane = idx_x * size_y * new_nz
     for (let idx_y = 0; idx_y < new_ny; idx_y++) {
       const base = 4 * idx_y
-      const { offsets, coeffs } = stencil_y
       for (let idx_z = 0; idx_z < new_nz; idx_z++) {
         const cell = plane + idx_z
         let y_sum = 0
         for (let tap = 0; tap < 4; tap++) {
-          y_sum += coeffs[base + tap] * pass_z[cell + offsets[base + tap]]
+          y_sum += y_coeffs[base + tap] * pass_z[cell + y_offsets[base + tap]]
         }
         pass_y[pass_idx++] = y_sum
       }
@@ -154,16 +152,15 @@ export function upsample_grid(
   }
   // Pass x: [new_nx][new_ny][new_nz], reading pass_y with strides (new_ny·new_nz, new_nz, 1)
   const plane_size = new_ny * new_nz
-  const stencil_x = axis_stencils(new_nx, pixel_x, plane_size)
+  const { offsets: x_offsets, coeffs: x_coeffs } = axis_stencils(new_nx, pixel_x, plane_size)
   const out = new Float64Array(new_nx * plane_size)
   let out_idx = 0
   for (let idx_x = 0; idx_x < new_nx; idx_x++) {
     const base = 4 * idx_x
-    const { offsets, coeffs } = stencil_x
     for (let cell = 0; cell < plane_size; cell++) {
       let result = 0
       for (let tap = 0; tap < 4; tap++) {
-        result += coeffs[base + tap] * pass_y[cell + offsets[base + tap]]
+        result += x_coeffs[base + tap] * pass_y[cell + x_offsets[base + tap]]
       }
       out[out_idx++] = result
     }

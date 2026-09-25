@@ -608,7 +608,8 @@ function clipped_hull(
 // time_reversal (default on): E(k) = E(−k) without magnetic order, so the k-space symmetry is
 // the Laue group (point group plus inversion), as VASP/QE k-point reduction and standard
 // band paths assume. Without it a non-centrosymmetric crystal (Td: 24 ops) got a wedge twice
-// the size of the true IBZ. Pass false for magnetic or spin-orbit-broken systems.
+// the size of the true IBZ. Pass false for magnetically ordered systems (spin-orbit coupling
+// alone keeps time reversal: Kramers pairs still give E(k) = E(−k)).
 export function compute_irreducible_bz(
   bz_data: BrillouinZoneData,
   point_group_ops: Matrix3x3[],

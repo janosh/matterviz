@@ -219,7 +219,10 @@ describe(`ScatterPlot`, () => {
     // name whatever point now sits at that index
     test(`a data change resets the cursor instead of re-pointing it`, async () => {
       document.body.innerHTML = ``
-      const state = $state<{ hidden_series: (string | number)[] }>({ hidden_series: [] })
+      const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
+        hidden_series: [],
+        x_axis: {},
+      })
       const plot = await mount_sized_scatter_plot(
         bind_props(
           {
@@ -240,6 +243,10 @@ describe(`ScatterPlot`, () => {
       expect(announced(plot)).toBe(``)
       await arrow(svg, `ArrowRight`)
       expect(announced(plot)).toContain(`second point 1`)
+      // a zoom re-filters the plotted points just the same: index 0 now names second point 2
+      state.x_axis = { range: [2.5, 3.5] }
+      flushSync()
+      expect(announced(plot)).toBe(``)
     })
   })
 
@@ -365,7 +372,10 @@ describe(`ScatterPlot`, () => {
     })
 
     test(`bands disappear with their hidden series`, async () => {
-      const state = $state<{ hidden_series: (string | number)[] }>({ hidden_series: [] })
+      const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
+        hidden_series: [],
+        x_axis: {},
+      })
       const plot = await mount_sized_scatter_plot(
         bind_props(
           {

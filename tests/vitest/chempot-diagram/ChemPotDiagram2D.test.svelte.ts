@@ -235,7 +235,8 @@ describe(`pinned tooltips follow recomputes`, () => {
 
 describe(`ChemPotDiagram2D projection onto two elements of a larger system`, () => {
   test(`computes the full diagram and draws each domain as its closed convex outline`, async () => {
-    await mount_2d({ entries: ternary_entries, config: { elements: [`Li`, `O`] } })
+    const props = $state({ entries: ternary_entries, config: { elements: [`Li`, `O`] } })
+    await mount_2d(props)
     expect(calls.list[0].config.elements).toBeUndefined() // one N-D compute shared by projections
     await resolve_latest()
     const wrapper = document.querySelector<HTMLElement>(`.scatter`)
@@ -254,6 +255,17 @@ describe(`ChemPotDiagram2D projection onto two elements of a larger system`, () 
     // straight edges, not a spline through the vertices
     for (const path of document.querySelectorAll(`g[data-series-id] > path[stroke]`))
       expect(path.getAttribute(`d`)).not.toContain(`C`)
+    // switching to another projection of the same system re-extracts columns without a recompute
+    const line_d = () =>
+      [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map((path) =>
+        path.getAttribute(`d`),
+      )
+    const li_o_paths = line_d()
+    props.config = { elements: [`Co`, `O`] }
+    flushSync()
+    await tick()
+    expect(calls.list).toHaveLength(1)
+    expect(line_d()).not.toEqual(li_o_paths)
   })
 })
 

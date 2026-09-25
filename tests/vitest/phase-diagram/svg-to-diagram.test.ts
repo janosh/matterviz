@@ -238,9 +238,11 @@ describe(`parse_phase_diagram_svg`, () => {
   it.each([
     {
       format: `simple`,
+      // a tinted page background also encloses every tick and boundary but is not the plot area
       svg: simple_svg(
         `${SIMPLE_BOUNDARIES}<line class="phase-boundary" x1="100" y1="120" x2="500" y2="120"/>`,
-        `<text class="label-main" x="300" y="110">L + c</text>`,
+        `<text class="label-main" x="300" y="110">L + c</text>
+        <rect x="0" y="0" width="600" height="600" fill="#eeeeee"/>`,
       )
         .replace(
           `y1="500" x2="100" y2="500"/>

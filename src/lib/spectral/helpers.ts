@@ -837,8 +837,11 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
     `Z`,
   ].join(` `)
 
-// A shared axis cannot mix frequencies and energies. Validate every material, including maps
-// whose first dataset is empty, before rendering or computing a combined range.
+// Band energies within this of E_F count as touching it, not crossing it (eV). vasprun.xml
+// rounds eigenvalues to 1e-4 eV, so a VBM sitting at E_F can land a hair above it and turn
+// a semiconductor into a metal (pymatgen's BandStructure.is_metal uses the same 1e-4).
+const FERMI_LEVEL_TOL = 1e-4
+
 // Band gap of electronic bands (each an array of energies over k). A band with energies on
 // both sides of E_F makes the system metallic, so there is no gap (null). Otherwise the VBM is
 // the top of the fully occupied bands and the CBM the bottom of the empty ones. Taking the
@@ -858,14 +861,16 @@ export function electronic_band_gap(
       band_max = Math.max(band_max, energy)
     }
     if (band_min > band_max) continue // no finite energies
-    if (band_max <= fermi_level) vbm = Math.max(vbm, band_max)
-    else if (band_min > fermi_level) cbm = Math.min(cbm, band_min)
+    if (band_max <= fermi_level + FERMI_LEVEL_TOL) vbm = Math.max(vbm, band_max)
+    else if (band_min >= fermi_level - FERMI_LEVEL_TOL) cbm = Math.min(cbm, band_min)
     else return null // crosses E_F
   }
   const gap = cbm - vbm
   return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
 }
 
+// A shared axis cannot mix frequencies and energies. Validate every material, including maps
+// whose first dataset is empty, before rendering or computing a combined range.
 export function spectral_type(
   ...collections: Record<string, { type: types.BandStructureType }>[]
 ): types.BandStructureType | undefined {

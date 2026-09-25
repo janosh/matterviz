@@ -216,8 +216,11 @@ function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boo
 // Raise bond orders so every atom ends exactly at its target valence, or null when no
 // assignment exists. Starting from all-single bonds, each atom must gain its deficit in extra
 // bond orders, one per unit across a bond: a perfect matching between per-unit copies of the
-// atoms, with each bond carrying at most two raises (a triple bond). Exact where the greedy
-// raise it replaces failed on up to 80% of atom orderings of fused aromatics.
+// atoms. The matching doesn't cap raises per bond: one that puts three on a bond (beyond a
+// triple) is rejected. That can miss a valid assignment only when two adjacent non-terminal
+// atoms both need 3+ extra orders (S/Se/Te/P at high valence), never for C/N/O. Exact
+// otherwise, where the greedy raise it replaced failed on up to 80% of atom orderings of fused
+// aromatics.
 function assign_bond_orders(
   edges: Edge[],
   target_valence: number[],
@@ -366,8 +369,9 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
 const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 
 // Valence-consistent bond orders of one fragment, the first found for each formal charge in
-// least-saturated order. Formal charge rises with the valence sum, so the search stops once a
-// solution at charge `stop_charge` (or above) turns up.
+// least-saturated order. Formal charge mostly rises with the valence sum, so the search stops
+// once a solution at charge `stop_charge` (or above) turns up. That early exit is a heuristic,
+// not a bound: S is +1 at valence 3 but neutral at 6, and B is -1 at valence 4.
 function fragment_solutions(
   symbols: string[],
   local_edges: Edge[],

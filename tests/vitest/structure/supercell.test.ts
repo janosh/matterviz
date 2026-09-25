@@ -253,18 +253,29 @@ describe(`make_supercell`, () => {
   }
 
   // Folding an out-of-cell atom back in moved it a supercell vector away from its bond partner
-  test.each([true, false])(`keeps explicit bond lengths (to_unit_cell=%s)`, (to_unit_cell) => {
-    const base: Crystal = {
-      ...make_crystal(4, [
-        { element: `O`, abc: [-0.05, 0.5, 0.5] },
-        { element: `H`, abc: [0.15, 0.5, 0.5] },
-      ]),
-      properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }] },
-    }
-    const lengths = bond_lengths(make_supercell(base, [2, 1, 1], to_unit_cell))
-    expect(lengths).toHaveLength(2)
-    for (const length of lengths) expect(length).toBeCloseTo(0.8, 12)
-  })
+  // O sits outside the cell along every axis, so [2, 3, 2] exercises the per-axis decoding
+  // of supercell site indices into cell indices
+  test.each([
+    [true, [2, 1, 1]],
+    [false, [2, 1, 1]],
+    [true, [2, 3, 2]],
+  ] as [boolean, Vec3][])(
+    `keeps explicit bond lengths (to_unit_cell=%s, scaling=%j)`,
+    (to_unit_cell, scaling) => {
+      const base: Crystal = {
+        ...make_crystal(4, [
+          { element: `O`, abc: [-0.05, -0.1, 1.05] },
+          { element: `H`, abc: [0.15, 0.1, 0.9] },
+        ]),
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }] },
+      }
+      const lengths = bond_lengths(make_supercell(base, scaling, to_unit_cell))
+      expect(lengths).toHaveLength(scaling[0] * scaling[1] * scaling[2])
+      // |(0.2, 0.2, -0.15)| * 4 Å
+      for (const length of lengths)
+        expect(length).toBeCloseTo(4 * Math.hypot(0.2, 0.2, 0.15), 12)
+    },
+  )
 
   // A slab's vacuum axis is aperiodic: folding it tore atoms below the slab to its top
   test(`leaves aperiodic axes unwrapped`, () => {

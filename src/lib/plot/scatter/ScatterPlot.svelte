@@ -1432,24 +1432,6 @@
     const found = points[partition_point(points, (pt) => pt.point_idx < point.point_idx)]
     return found?.point_idx === point.point_idx ? found : null
   }
-  // A data swap or a host-hidden series leaves no pointer event to clear the tooltip, so
-  // re-resolve the hovered point on every data change: it keeps tracking the same point's
-  // new values, or closes when that point is no longer plotted. The keyboard cursor is a
-  // flat index into the plotted points, so it resets once that index names another point.
-  let kbd_cursor_key: string | null = null
-  $effect.pre(() => {
-    void materialized_series
-    untrack(() => {
-      if (tooltip_point) {
-        const next = plotted_point(tooltip_point)
-        if (next !== tooltip_point) tooltip_point = next
-      }
-      const cursor_point = kbd_cursor === null ? null : kbd_point(kbd_cursor)
-      const cursor_key =
-        cursor_point && roving_key(cursor_point.series_idx, cursor_point.point_idx)
-      if (cursor_key !== kbd_cursor_key) kbd_cursor = null
-    })
-  })
 
   // Per-series point lists plus the offsets that flatten them into one index space.
   // Only the offsets are materialised - flattening 100k points on every keystroke
@@ -1474,6 +1456,26 @@
     }
     return null
   }
+
+  // A data swap or a host-hidden series leaves no pointer event to clear the tooltip, so
+  // re-resolve the hovered point on every data change: it keeps tracking the same point's
+  // new values, or closes when that point is no longer plotted. The keyboard cursor is a
+  // flat index into the in-range points (kbd_nav), so it resets once that index names
+  // another point, after a data change or a pan/zoom alike.
+  let kbd_cursor_key: string | null = null
+  $effect.pre(() => {
+    void [materialized_series, kbd_nav]
+    untrack(() => {
+      if (tooltip_point) {
+        const next = plotted_point(tooltip_point)
+        if (next !== tooltip_point) tooltip_point = next
+      }
+      const cursor_point = kbd_cursor === null ? null : kbd_point(kbd_cursor)
+      const cursor_key =
+        cursor_point && roving_key(cursor_point.series_idx, cursor_point.point_idx)
+      if (cursor_key !== kbd_cursor_key) kbd_cursor = null
+    })
+  })
 
   function move_kbd_cursor(event: KeyboardEvent): boolean {
     const { total } = kbd_nav

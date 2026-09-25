@@ -247,8 +247,8 @@ export function build_free_energy_model(
   const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
 
   // Static energy per atom: the entry's own energy, else its E_form placed on the references'
-  // energy scale (E_form + Σ x_e E_e; E_form alone for a unary). An entry with neither would
-  // silently sit at 0 eV/atom, so it throws.
+  // energy scale (E_form + Σ x_e E_e, also for a unary polymorph; E_form alone for a reference
+  // itself). An entry with neither would silently sit at 0 eV/atom, so it throws.
   const static_energy = (entry: PhaseData): number => {
     if (typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`)
       return energy_per_atom(entry)
@@ -259,7 +259,7 @@ export function build_free_energy_model(
       )
     }
     const fractions = atomic_fractions(entry)
-    if (fractions.length === 1) return e_form
+    if (fractions.length === 1 && unary_refs[fractions[0][0]] === entry) return e_form
     return fractions.reduce(
       (sum, [element, frac]) => sum + frac * static_energy(unary_refs[element]),
       e_form,

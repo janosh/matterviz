@@ -132,6 +132,22 @@ describe(`E_form-only entries`, () => {
     expect(section.stable).toEqual([0, 1, 2, 3, 4])
   })
 
+  test(`an E_form-only polymorph sits its E_form above absolute-energy references`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Li: 1 }, -1.9),
+      make_phase({ Na: 1 }, -1.3),
+      make_phase({ K: 1 }, -1),
+      make_phase({ Li: 1, Na: 1 }, -3.6),
+      { composition: { Li: 1 }, e_form_per_atom: 0.2, entry_id: `Li-polymorph` } as PhaseData,
+    ]
+    const model = prepare_diagram(entries, {
+      elements: toy_elements,
+      free_energy: { mode: `static` },
+    })
+    const section = compute_section(model, 500)
+    expect(section.dg_form.at(-1)).toBeCloseTo(0.2, 12)
+  })
+
   test(`an entry with no energy of any kind throws instead of sitting at 0 eV`, () => {
     const entries = [
       ...toy_entries,

@@ -127,15 +127,16 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
   // Value identity for the effect below: a recreated but equal config must not recompute
   const compute_key = $derived(JSON.stringify(compute_config))
-  let diagram_data = $state.raw<ChemPotDiagramData | null>(null)
+  // Result of the last computation (the full N-D diagram when projecting)
+  let computed = $state.raw<ChemPotDiagramData | null>(null)
   let computing = $state(false)
   let error = $state<string | null>(null)
   $effect(() => {
     const entries = slice.temp_filtered_entries
     void compute_key
-    const [config, project_onto] = untrack(() => [compute_config, projection] as const)
+    const config = untrack(() => compute_config)
     if (entries.length < opts.min_elements) {
-      diagram_data = null
+      computed = null
       computing = false
       error = null
       return undefined
@@ -144,24 +145,32 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     const controller = new AbortController()
     computing = true
     compute_chempot_async(entries, config, { signal: controller.signal })
-      .then((full_data) => {
+      .then((data) => {
         if (controller.signal.aborted) return
-        const data = project_onto
-          ? project_chempot_diagram(full_data, project_onto)
-          : full_data
-        diagram_data = data.elements.length >= opts.min_elements ? data : null
+        computed = data
         error = null
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
         console.error(`${opts.label}:`, err)
-        diagram_data = null
+        computed = null
         error = to_error(err).message
       })
       .finally(() => {
         if (!controller.signal.aborted) computing = false
       })
     return () => controller.abort()
+  })
+  // Switching between projections of one system (e.g. the 3D picker's triplets) leaves
+  // compute_config unchanged, so the columns are extracted here rather than in the effect. A
+  // previous system's result still on screen during a recompute may lack the new axes.
+  const diagram_data = $derived.by((): ChemPotDiagramData | null => {
+    const full = computed
+    if (!full) return null
+    const data = projection?.every((element) => full.elements.includes(element))
+      ? project_chempot_diagram(full, projection)
+      : full
+    return data.elements.length >= opts.min_elements ? data : null
   })
   $effect(() => () => compute_chempot_async.release())
 

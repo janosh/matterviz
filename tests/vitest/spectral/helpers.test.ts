@@ -822,8 +822,28 @@ describe(`electronic_band_gap`, () => {
       0,
       { vbm: 0, cbm: 0.5, gap: 0.5 },
     ],
+    // vasprun rounds eigenvalues to 1e-4 eV, so band edges at E_F land a hair past it
+    [
+      `VBM rounded just above E_F`,
+      [
+        [-2, 5e-5],
+        [1, 2],
+      ],
+      0,
+      { vbm: 5e-5, cbm: 1, gap: 1 - 5e-5 },
+    ],
+    [
+      `CBM rounded just below E_F`,
+      [
+        [-2, -1],
+        [-5e-5, 1],
+      ],
+      0,
+      { vbm: -1, cbm: -5e-5, gap: -5e-5 + 1 },
+    ],
     // the old any-point scan reported vbm -0.3, cbm 0.2 for this single crossing band
     [`metal (band crosses E_F)`, [[-1, -0.3, 0.2, 1]], 0, null],
+    [`metal crossing E_F by just over the tolerance`, [[-2e-4, 2e-4]], 0, null],
     [`all bands occupied`, [[-2, -1]], 0, null],
     [
       `non-finite energies skipped`,

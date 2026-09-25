@@ -77,6 +77,8 @@ describe(`gaussian_kde`, () => {
     `%s bandwidth matches its closed form for [1,2,3,4,5]`,
     (_rule, bandwidth_fn, expected, digits) => {
       expect(bandwidth_fn([1, 2, 3, 4, 5])).toBeCloseTo(expected, digits)
+      // no samples has no bandwidth (n^(-1/5) would return Infinity)
+      expect(() => bandwidth_fn([])).toThrow(`KDE bandwidth needs at least one sample`)
     },
   )
 
