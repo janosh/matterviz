@@ -243,8 +243,7 @@ describe(`numeric frames`, () => {
   )
 
   it(`encodes dense numeric site scalars as columns and restores them`, () => {
-    // LAMMPS `id type x y z` dumps: left in per-site records these forced every frame down
-    // the structuredClone(records) path (8.9 s vs 2.1 s to open 200 frames x 2000 atoms)
+    // LAMMPS `id type x y z` dumps
     const source = make_trajectory_frame(0, 3)
     for (const [idx, site] of source.structure.sites.entries()) {
       Object.assign(site.properties, { id: idx + 7, type: 2, force: [idx, 0, 0] })
@@ -260,7 +259,6 @@ describe(`numeric frames`, () => {
   })
 
   it(`publishes a fresh header without deep-copying its metadata`, () => {
-    // structuredClone(header) per displayed frame cost 54 ms at 20k atoms with per-atom arrays
     const per_atom = [[0.1, 0.2, 0.3]]
     const frame = encode_frame(make_trajectory_frame(0, 1, { energy: -1, per_atom }))
     const { metadata } = new FrameView().update(frame)

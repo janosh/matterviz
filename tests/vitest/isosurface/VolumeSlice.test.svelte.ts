@@ -260,7 +260,6 @@ describe(`VolumeSlice`, () => {
   })
 })
 
-// Colormap, contour and colour-range edits only repaint, never re-sample the plane
 test(`VolumeSliceView re-samples for plane changes only`, async () => {
   vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
     mock_context() as unknown as CanvasRenderingContext2D,

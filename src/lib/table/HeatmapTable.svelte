@@ -131,8 +131,8 @@
     controls_open = $bindable(false),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    // Hold large datasets in $state.raw: a deep $state proxy makes every cell read go through
-    // a signal (6x slower mount, 14x slower refresh at 20k x 13). Replace, don't mutate.
+    // Hold large datasets in $state.raw: a deep $state proxy routes every cell read through a
+    // signal. Replace, don't mutate.
     data: Row[]
     // Discovered from the first 50 rows' keys when omitted
     columns?: Column<Row>[]
@@ -183,8 +183,7 @@
     row_animation_ms?: number
     selected_ids?: RowId[]
     // Read-only output: every row left after search and filters, in the current sort order
-    // and across all pages. Bind it to act on what the table shows (export, top-N picks)
-    // instead of re-deriving the table's sort and filter pipeline.
+    // and across all pages (bind it to export or pick from what the table shows)
     visible_rows?: Row[]
     // Column IDs hidden through the column toggle. Bindable for persistence.
     hidden_columns?: string[]

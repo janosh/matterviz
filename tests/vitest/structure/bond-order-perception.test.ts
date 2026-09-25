@@ -71,7 +71,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
     { name: `water: all single`, elements: [`O`, `H`, `H`],
       coords: [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]], edges: [[0, 1], [0, 2]],
       expected: [1, 1], perceived: true },
-    // a greedy raise of the central bond, listed first, stranded both terminal carbons
+    // a greedy raise of the central bond, listed first, would strand both terminal carbons
     { name: `butadiene with its central bond first`, elements: [`C`, `C`, `C`, `C`, ...h_fan(6)],
       coords: circle(10, 3), edges: [[1, 2], [0, 1], [2, 3], [0, 4], [0, 5], [1, 6], [2, 7], [3, 8],
         [3, 9]], expected: [1, 2, 2, 1, 1, 1, 1, 1, 1], perceived: true },
@@ -79,7 +79,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
       coords: [[0, 0, 0], [1.28, 0, 0], [-0.64, 1.11, 0], [-0.64, -1.11, 0]],
       edges: [[0, 1], [0, 2], [0, 3]], charge: -2, expected: [2, 1, 1], perceived: true },
     // total_charge belongs to the structure, not to each fragment: CO2 is neutral beside the
-    // dianion, and two carbonates share -4 (both used to fall back to all-single)
+    // dianion, and two carbonates share -4
     { name: `carbonate + CO2 at total charge -2`, elements: [`C`, `O`, `O`, `O`, `C`, `O`, `O`],
       coords: [[0, 0, 0], [1.28, 0, 0], [-0.64, 1.11, 0], [-0.64, -1.11, 0], [5, 0, 0],
         [6.16, 0, 0], [3.84, 0, 0]],
@@ -113,7 +113,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
       edges: Array.from({ length: 8 }, (_, idx) => [idx, (idx + 1) % 8] as Vec2),
       expected: Array(8).fill(1), perceived: true },
     // The work is combinations x fragment size: 12 N give 2^12 = 4096 combinations at any
-    // chain length, so a combination cap let this chain grind for 266.5 s; refused in ~2 ms.
+    // chain length, so only a work cap (not a combination cap) refuses this chain
     { name: `12-nitrogen 3000-atom chain is refused, not ground through`,
       elements: Array.from({ length: 3000 }, (_un, idx): ElementSymbol => idx < 12 ? `N` : `C`),
       coords: Array.from({ length: 3000 }, (_un, idx): Vec3 => [idx * 1.4, 0, 0]),
@@ -194,9 +194,7 @@ describe(`aromaticity`, () => {
     [0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 2],
   )
 
-  // The greedy raise stranded atoms on a bad first pick (naphthalene failed for 158 of 200
-  // shuffles) and the spanning-tree ring basis could skip the benzene ring of a fused system.
-  // Kekulé orders of shared fused-ring bonds must still saturate every atom.
+  // Kekulé orders of shared fused-ring bonds must saturate every atom, whatever the atom order
   test.each([
     { name: `naphthalene`, molecule: naphthalene, n_aromatic: 11 },
     { name: `indane`, molecule: indane, n_aromatic: 6 },

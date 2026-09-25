@@ -35,10 +35,9 @@
   }
 
   // Scene geometry from the shared vertex grid (the same vertices the axis bounds sample).
-  // A vertex with a non-finite coordinate (z_fn undefined off its domain, e.g. a hemisphere
-  // outside the unit disk) leaves a hole: triangles touching it are dropped so their NaN
-  // doesn't spread into neighbouring normals, and it is parked at the origin so bounds stay
-  // finite.
+  // A non-finite vertex (z_fn undefined off its domain) leaves a hole: triangles touching it
+  // are dropped so NaN doesn't spread into neighbouring normals, and it is parked at the
+  // origin so bounds stay finite.
   function create_geometry(): THREE.BufferGeometry | null {
     const vertices = surface_vertices(config, { x: x_range, y: y_range })
     if (!vertices) return null

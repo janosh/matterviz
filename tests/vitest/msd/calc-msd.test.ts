@@ -429,12 +429,11 @@ describe(`time axis`, () => {
     },
   )
 
-  it.each([
-    [`dt without a unit`, { dt: 0.5 }, /dt was supplied .* without time_unit/],
-    // would label frame lags as ps and quote D in cm²/s for an implied dt of 1 ps
-    [`a unit without dt`, { time_unit: `ps` }, /time_unit 'ps' was supplied without dt/],
-  ])(`refuses to invent a time axis from %s`, (_label, options, error) => {
-    expect(() => calc_msd(ballistic([0.1, 0, 0], 20), options)).toThrow(error)
+  // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
+  it(`refuses to invent a time unit when dt is supplied without one`, () => {
+    expect(() => calc_msd(ballistic([0.1, 0, 0], 20), { dt: 0.5 })).toThrow(
+      /dt was supplied .* without time_unit/,
+    )
   })
 })
 

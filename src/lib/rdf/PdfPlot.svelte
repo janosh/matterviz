@@ -63,11 +63,9 @@
   )
 
   // Two stages so the radiation buttons never re-run the neighbour search: the partial
-  // g_ab(r) depend only on geometry and binning (~1 s at 30 Å for 512 atoms), the weighting
-  // on radiation (microseconds). A missing scattering length or a null-matrix composition
-  // throws out of $lib/scattering; surface it instead of blanking the plot. Failures ride back
-  // with the results because writing to state — or to a prop — from inside a $derived is
-  // state_unsafe_mutation, a hard error in Svelte 5.
+  // g_ab(r) depend only on geometry and binning, the weighting on radiation. Errors (e.g. a
+  // missing scattering length) ride back with the results instead of blanking the plot, since
+  // writing state from inside a $derived is state_unsafe_mutation.
   const partials = $derived(
     struct_list.map(({ struct, label }) => {
       try {

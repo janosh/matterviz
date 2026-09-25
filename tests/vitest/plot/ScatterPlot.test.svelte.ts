@@ -190,11 +190,9 @@ describe(`ScatterPlot`, () => {
       expect(announced(plot)).toBe(``)
     })
 
-    // Two series exercise the offset arithmetic: the cursor is one flat index across both, so
-    // the series boundary is where an off-by-one shows up. The cursor names its point by
-    // identity, so hiding the other series or zooming keeps it while that point stays in view
+    // The cursor is one flat index across both series, so the series boundary is where an
+    // off-by-one shows up
     test(`the cursor crosses series and keeps its point through hiding and zoom`, async () => {
-      document.body.innerHTML = ``
       const state = $state<{ hidden_series: (string | number)[]; x_axis: AxisConfig }>({
         hidden_series: [],
         x_axis: {},
@@ -281,7 +279,6 @@ describe(`ScatterPlot`, () => {
     expect(tooltip_text()).toBeUndefined()
   })
 
-  // Legend and color bar are HTML over the SVG: exports used to drop both
   test(`image export redraws the legend and color bar, then cleans up`, async () => {
     const plot = await mount_sized_scatter_plot({
       series: [
@@ -309,8 +306,6 @@ describe(`ScatterPlot`, () => {
     expect(svg.querySelector(`.export-overlay`)).toBeNull()
   })
 
-  // A band around a y2 series used to be projected with the y scale (0..1), landing ~230k px
-  // off screen instead of hugging its markers; bands and fills also outlived hidden series
   test(`error bands draw on their series' y axis and hide with it`, async () => {
     const state = $state<{ hidden_series: (string | number)[] }>({ hidden_series: [] })
     const ref = (series_id: string) => ({ type: `series` as const, series_id })
@@ -428,15 +423,13 @@ describe(`ScatterPlot`, () => {
   })
 
   // Only interactive points carry roving marks, so a plain plot must not rescan its SVG for
-  // them on every hover (the scan dominated hover cost at a few thousand points), and an
-  // interactive one rescans at most once per hover
+  // them on every hover, and an interactive one rescans at most once per hover
   test.each([
     { desc: `plain`, extra: {}, max_scans: 0 },
     { desc: `interactive`, extra: { on_point_click: () => {} }, max_scans: 3 },
   ])(
     `hovering $desc points rescans roving marks at most $max_scans times`,
     async ({ extra, max_scans }) => {
-      document.body.innerHTML = ``
       const state = $state<{
         tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
       }>({ tooltip_point: null })
@@ -632,8 +625,7 @@ describe(`ScatterPlot`, () => {
       await tick()
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
-      // The hovered overlay is drawn in full: a fill-less one left canvas hovers and the
-      // keyboard cursor with no visible highlight
+      // The hovered overlay is filled so canvas hovers and the keyboard cursor stay visible
       const hovered_fill = query(hover_plot, `path.marker`).getAttribute(`fill`)
       expect(hovered_fill).toMatch(/^var\(--point-fill-color/)
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
@@ -683,8 +675,6 @@ describe(`ScatterPlot`, () => {
       expect(arc).not.toHaveBeenCalled()
     })
 
-    // A click handler alone used to force every point back to SVG (20k nodes at 20k
-    // points); the plot surface now routes clicks to the nearest canvas point instead
     test(`keeps canvas markers with click handlers and routes clicks to the nearest point`, async () => {
       const on_point_click = vi.fn()
       const on_plot_click = vi.fn()

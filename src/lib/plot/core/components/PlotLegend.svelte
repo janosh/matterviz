@@ -269,7 +269,6 @@
   // Expand/collapse button props: the chevron's, or in `collapse` mode the whole header's
   const collapse_toggle = (group_name: string): HTMLAttributes<HTMLElement> => {
     const is_collapsed = collapsed_groups.has(group_name)
-    // Set.delete returns true if element existed, so add if delete failed
     const toggle = () => {
       if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
     }

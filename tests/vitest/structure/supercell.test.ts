@@ -252,8 +252,8 @@ describe(`make_supercell`, () => {
     })
   }
 
-  // Folding an out-of-cell atom (O, outside along every axis) back in moved it a supercell
-  // vector away from its bond partner
+  // Folding an out-of-cell atom (O, outside along every axis) back in must not move it a
+  // supercell vector away from its bond partner
   test.each([
     [true, [2, 1, 1]],
     [false, [2, 1, 1]],
@@ -276,7 +276,6 @@ describe(`make_supercell`, () => {
     },
   )
 
-  // A slab's vacuum axis is aperiodic: folding it tore atoms below the slab to its top
   test(`leaves aperiodic axes unwrapped`, () => {
     const slab = make_crystal(4, [{ element: `Si`, abc: [0.25, 0.25, -0.25] }], {
       pbc: [true, true, false],

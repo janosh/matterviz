@@ -119,9 +119,8 @@ export function calculate_total_pdf(
 }
 
 // The weighting half of calculate_total_pdf: combine a structure's partial g_ab(r) (from
-// calculate_all_pair_rdfs) into the total for one radiation. Split out because the partials
-// are the expensive neighbour search and depend only on geometry and binning, so switching
-// radiation re-weights them instead of re-running it.
+// calculate_all_pair_rdfs) into the total for one radiation, so switching radiation skips
+// the expensive neighbour search.
 export function weight_pdf_partials(
   structure: Crystal,
   partial_rdfs: readonly RdfPattern[],

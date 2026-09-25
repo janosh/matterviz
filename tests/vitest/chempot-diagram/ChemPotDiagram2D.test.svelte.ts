@@ -3,8 +3,8 @@ import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '$lib/chempot-diagra
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
-import { resize_element } from '../setup'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { mouse, resize_element } from '../setup'
 
 // Every compute request is held until the test resolves it, so "while recomputing" states are
 // observable; requests record their config and abort signal
@@ -31,12 +31,8 @@ const binary_temp_entries: PhaseData[] = [
   { composition: { Li: 2, O: 1 }, energy: -14.3, temperatures, free_energies: [-14.5, -14.1] },
 ]
 
-let mounted: ReturnType<typeof mount>[] = []
-afterEach(async () => {
-  for (const component of mounted) await unmount(component)
-  mounted = []
+afterEach(() => {
   calls.list = []
-  document.body.innerHTML = ``
   vi.restoreAllMocks()
 })
 const resolve_latest = async (): Promise<void> => {
@@ -52,7 +48,8 @@ const size_plot = async (): Promise<void> => {
 // Through the wrapper, which routes a 2-element system (or projection) to ChemPotDiagram2D
 const mount_2d = async (props: ComponentProps<typeof ChemPotDiagram>): Promise<void> => {
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
-  mounted.push(mount(ChemPotDiagram, { target: document.body, props }))
+  const component = mount(ChemPotDiagram, { target: document.body, props })
+  onTestFinished(() => unmount(component))
   await tick()
 }
 
@@ -81,7 +78,7 @@ describe(`ChemPotDiagram2D recomputes`, () => {
     await size_plot()
     document
       .querySelector(`g[data-series-id="Li2O"] [role="button"]`)
-      ?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      ?.dispatchEvent(mouse(`click`))
     flushSync()
     expect(props.hover_info?.formula).toBe(`Li2O`)
     const pinned_ranges = props.hover_info?.axis_ranges

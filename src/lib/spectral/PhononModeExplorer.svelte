@@ -135,7 +135,7 @@
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
   // survives mode and amplitude changes and keys the camera framing, the displacement pattern
   // survives amplitude changes, and frames are synthesised on read
-  // Snapshot only the unit cell: the whole dataset took 5-7 s for 20 atoms x 300 q-points
+  // Snapshot only the unit cell: the whole dataset's eigenvectors take seconds to snapshot
   let supercell_result = $derived.by(() => {
     const { n_atoms, atoms, lattice } = mode_data
     return try_generate(() =>

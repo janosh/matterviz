@@ -399,8 +399,7 @@ describe(`fitted saddle versus highest image`, () => {
   })
 
   // A Hermite segment through an exact parabola with its analytic slopes has a cubic term of
-  // a few ulps. The textbook quadratic formula then divided round-off by round-off: s0 = 0.3
-  // came back at 0.2625, and some peaks were lost to `saddle_at_image`.
+  // a few ulps, where the textbook quadratic formula divides round-off by round-off
   test.each([0.3, 0.45, 0.6305, 0.95, 1.1, 1.55, 1.9])(
     `locates the peak of an exact parabola at s0 = %s`,
     (peak_coord) => {

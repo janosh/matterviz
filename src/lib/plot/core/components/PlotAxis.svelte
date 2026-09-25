@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Vec2 } from '$lib/math'
+  import { in_range, type Vec2 } from '$lib/math'
   import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '$lib/plot/core/layout'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
@@ -158,8 +158,7 @@
   })
 
   // ScatterPlot mode: cull ticks whose pixel pos is off-plot and hide labels outside the data domain
-  const in_domain = (tick: number): boolean =>
-    !domain || (tick >= Math.min(...domain) && tick <= Math.max(...domain))
+  const in_domain = (tick: number): boolean => !domain || in_range(tick, domain)
   const in_plot = (pos: number): boolean =>
     !domain ||
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)

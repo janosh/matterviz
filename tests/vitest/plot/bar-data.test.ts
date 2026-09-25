@@ -174,8 +174,7 @@ describe(`compute_bar_auto_ranges`, () => {
   })
 
   // A pinned value bound is honored exactly; an automatic one keeps the zero baseline, as
-  // when neither is pinned. Pinning one bound used to drop the baseline, so a [50, 90] series
-  // pinned at max 100 drew its shortest bar with zero length.
+  // when neither is pinned
   // oxfmt-ignore
   test.each([
     { desc: `only max pinned, positive data: min stays 0`, y: [50, 70, 90], range: [null, 100], expected: [0, 100] },

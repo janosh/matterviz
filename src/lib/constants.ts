@@ -19,7 +19,7 @@ export const AVOGADRO_PER_MOL = 6.02214076e23 // 1/mol
 // in kJ/mol (96.485332) for the phonon thermal plot's molar units
 export const BOLTZMANN_EV_PER_K = BOLTZMANN_J_PER_K / ELEMENTARY_CHARGE_C
 export const EV_TO_KJ_PER_MOL = (ELEMENTARY_CHARGE_C * AVOGADRO_PER_MOL) / 1000
-// 1 eV/A^3 in GPa (160.2176634): bulk moduli from equation-of-state fits (eos/fit.ts)
+// 1 eV/A^3 in GPa (160.2176634): EOS bulk moduli (eos/fit.ts) and ASE stresses
 export const EV_PER_A3_TO_GPA = ELEMENTARY_CHARGE_C * 1e21
 
 // Wavenumber of a 1 THz vibration, i.e. 1e12 Hz over c in cm/s (phonon unit table, VDOS axis)

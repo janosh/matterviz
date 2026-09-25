@@ -97,10 +97,8 @@ describe(`gaussian_kde`, () => {
   })
 
   // A far outlier stretches a fixed 100-point grid to ~5 units per step against a 0.2
-  // bandwidth, so the N(0, 1) bulk got one grid point. The violin grid's 3 points per bandwidth,
-  // capped at 2000 (step ~0.25), read the bulk's peak within 1% of an exact 0.001-step
-  // evaluation. Uncapped, a kernel-wide peak midway between grid points is the worst case: 1
-  // point per bandwidth reads it at exp(-1/8) ~ 88% of its height, 3 at exp(-1/72) ~ 98.6%.
+  // bandwidth. 3 points per bandwidth (capped at 2000) read the bulk's peak within 1%; the
+  // worst case, a peak midway between grid points, reads at exp(-1/72) ~ 98.6% of its height.
   // 200.5 sits midway on a step-1/3 grid, and two samples make it outrank the range ends.
   test(`violin grid refines per bandwidth to resolve peaks`, () => {
     const samples = [...normal_samples(1000, 5), 500]

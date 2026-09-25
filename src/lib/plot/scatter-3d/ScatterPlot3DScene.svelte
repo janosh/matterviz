@@ -4,7 +4,7 @@
 >
   import { TooltipValue } from '$lib/tooltip'
   import { format_num } from '$lib/labels'
-  import type { Vec2, Vec3 } from '$lib/math'
+  import { in_range, type Vec2, type Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -213,8 +213,6 @@
 
   const point_key = (point: Pick<InternalPoint3D<Metadata>, `series_idx` | `point_idx`>) =>
     `${point.series_idx}-${point.point_idx}`
-  const in_range = (value: number, [bound_a, bound_b]: Vec2) =>
-    value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
   // User Z → Three.js Y (vertical), user Y → Three.js Z (depth)
   const to_scene = ([coord_x, coord_y, coord_z]: Vec3): Vec3 => [
     normalize_x(coord_x),
@@ -222,9 +220,8 @@
     normalize_y(coord_y),
   ]
 
-  // Every in-range point of every visible series, in (series_idx, point_idx) order: the point
-  // in data coordinates plus its scene position, radius and color. Out-of-range points (and
-  // non-finite ones, which fail in_range) are left out rather than drawn outside the box.
+  // Every in-range point of every visible series, in (series_idx, point_idx) order, with its
+  // scene position, radius and color. Out-of-range and non-finite points are left out.
   let point_instances = $derived.by(() => {
     const instances: PointInstance[] = []
     series.forEach((srs, series_idx) => {

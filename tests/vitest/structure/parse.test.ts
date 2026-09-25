@@ -388,8 +388,7 @@ describe(`XYZ Parser`, () => {
     }
   })
 
-  // ASE writes 2D sheets without vacuum with c = 0: that singular cell got wrong fractional
-  // coords and PBC images and made distance measurements throw `Matrix is singular`
+  // ASE writes 2D sheets without vacuum with c = 0, a singular cell
   test(`completes the zero c vector of a 2D sheet`, () => {
     const graphene = `2
 Lattice="2.46 0.0 0.0 -1.23 2.130422493309719 0.0 0.0 0.0 0.0" Properties=species:S:1:pos:R:3 pbc="T T F"
@@ -416,7 +415,6 @@ C 1.23 0.7101408311032397 0.0`
     }
   })
 
-  // A CONECT bond whose atom wrapped to the far face was drawn spanning the whole cell
   test(`wrapping sites keeps explicit bond lengths via cell_shift`, () => {
     const pdb = [
       `CRYST1   10.000   10.000   10.000  90.00  90.00  90.00 P 1           1`,
@@ -1470,7 +1468,7 @@ loop_
   })
 
   // Published coordinates are rounded, so the images of an atom on a 3-fold axis land a few
-  // 1e-4 apart; exact matching made each one a separate, nearly coincident atom
+  // 1e-4 apart
   test.each([`0.33333333`, `0.33333`, `0.3333`, `0.333`])(
     `merges symmetry images of hcp Mg at x = %s into 2 sites`,
     (third) => {

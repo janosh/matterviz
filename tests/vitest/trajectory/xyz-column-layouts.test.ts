@@ -44,33 +44,9 @@ test(`does not invent frames from numeric lines inside a frame`, () => {
   expect(count_xyz_frames(text)).toBe(1)
 })
 
-// Both open paths must agree on the plot data. The indexed path is chosen purely by file
-// size (open.ts index_above_bytes), so a force curve that only the materialized path
-// computes disappears when the same file grows past the threshold.
-test(`indexed run reports the same force stats as the materialized run`, async () => {
-  const text = two_frames(`species:S:1:pos:R:3:forces:R:3`, [[`Si`], [`Si`]])
-    .split(`\n`)
-    .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
-    .join(`\n`)
-  const collector = create_warning_collector()
-  const materialized = parse_xyz_trajectory(text, collector).frames
-  // |(0.1, 0.2, 0.2)| = 0.3 for every atom, so both stats are exactly 0.3
-  expect(materialized[0].metadata?.force_max).toBeCloseTo(0.3, 12)
-
-  const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
-  await run.properties.done
-  expect(run.properties.rows.map((row) => row.properties.force_max)).toEqual(
-    materialized.map((frame) => frame.metadata?.force_max),
-  )
-  expect(run.properties.rows.map((row) => row.properties.force_norm)).toEqual(
-    materialized.map((frame) => frame.metadata?.force_norm),
-  )
-  expect(run.properties.rows.map((row) => row.properties.energy)).toEqual([-3, -4])
-})
-
-// The same agreement has to hold when a spec is unusable: each frame carries its own
-// `Properties=`, so a later frame the materialized path refuses to build must not get a plot
-// row in the indexed run either.
+// Both open paths must agree on the plot rows (parsers.test compares them for sound files),
+// also when a spec is unusable: each frame carries its own `Properties=`, so a later frame
+// the materialized path refuses to build must not get a plot row in the indexed run either.
 test(`indexed run publishes no force stats for a frame whose spec is unusable`, async () => {
   const sound = `species:S:1:pos:R:3:forces:R:3`
   const text = two_frames(sound, [[`Si`], [`Si`]])

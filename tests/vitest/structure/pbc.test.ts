@@ -577,8 +577,7 @@ describe(`wrap_to_unit_cell`, () => {
   })
 })
 
-// A buckled sheet reaches past its cell along the vacuum axis, which the trajectory heuristic
-// counted as scattered and so dropped every image atom
+// A buckled sheet reaches past its cell along the vacuum axis: not a scattered trajectory
 test(`atoms outside the cell along an aperiodic axis keep image generation`, () => {
   const sheet = make_crystal(
     5,
@@ -591,8 +590,7 @@ test(`atoms outside the cell along an aperiodic axis keep image generation`, () 
   expect(find_image_atoms(sheet).length).toBeGreaterThan(0)
 })
 
-// The 0.5 Å face tolerance was divided by vector lengths, not cell heights, so in a hexagonal
-// cell (height 0.87 |a|) an atom 0.45 Å from the face got no image
+// In a hexagonal cell (height 0.87 |a|), an atom 0.45 Å from the face must get an image
 test(`face tolerance is 0.5 Å along the cell height of a skewed cell`, () => {
   const hexagonal: Matrix3x3 = [
     [4, 0, 0],

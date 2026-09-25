@@ -123,11 +123,8 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, downhill win
     `Multi-step adjustment subtracts 3 from the weighted score.`,
   )
   expect(row_values(`Multi-step adjustment`)).toContain(`−3.00`)
+  // wiring only: describe_downhill_windows' wording is tested in synthesis-planning.test
   expect(row_values(`Downhill window`)).toContain(`downhill up to 1480 K`)
-  expect(row_values(`Downhill window`)).toContain(
-    `downhill at every temperature from 0 to 2000 K`,
-  )
-  expect(row_values(`Downhill window`)).toContain(`never downhill between 0 and 2000 K`)
   expect(document.querySelector(`thead`)?.textContent).toContain(
     `Step 1: Intermediate synthesis`,
   )

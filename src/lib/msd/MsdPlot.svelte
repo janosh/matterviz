@@ -53,8 +53,7 @@
   })
 
   // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An
-  // invalid window (start >= end) is reported beside the curves rather than thrown through
-  // the render, since the curves themselves are still valid.
+  // invalid window (start >= end) is reported beside the still-valid curves, not thrown.
   let fitted = $derived.by(() => {
     if (!result) return { fits: [], fit_error: undefined }
     try {

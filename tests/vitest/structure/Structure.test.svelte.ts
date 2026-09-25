@@ -993,8 +993,6 @@ const stub_fullscreen_api = () => {
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
-  // Each viewer wrote its scheme into the page-wide colors.element: the last mounted one
-  // recolored every viewer, and an unknown name set the whole map to undefined (crashing it)
   test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
     const page_colors = { ...colors.element }
     const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])

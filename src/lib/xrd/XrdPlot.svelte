@@ -227,9 +227,8 @@
     if (typeof broadened === `string` || broadened.length === 0) return []
 
     // Broadened sticks are area-normalized while input profiles carry their own (often
-    // count) scale, so the two groups share no unit: each is scaled so its highest point is
-    // 100, which keeps relative heights within a group. The true maximum, not max(1, ...):
-    // an already normalized pattern profiles well under 1 and a floor of 1 under-scales it.
+    // count) scale, so the two groups share no unit: each is scaled so its true highest point
+    // (often < 1 for normalized profiles) is 100, keeping relative heights within a group.
     const from_profile = pattern_entries.map(({ pattern }) => is_profile(pattern))
     const [sticks_max, profiles_max] = [false, true].map((profiles) => {
       const group = broadened.filter((_profile, idx) => from_profile[idx] === profiles)

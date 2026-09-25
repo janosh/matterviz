@@ -2,7 +2,7 @@ import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from 
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
 import { element_by_symbol } from '$lib/element/data'
-import { calc_lattice_params, det_3x3 } from '$lib/math'
+import { calc_lattice_params, det_3x3, is_pbc } from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
 import { convert_atomic_numbers, create_sampled_frame } from '../helpers'
@@ -148,18 +148,10 @@ export const parse_md_h5_file = (
   if (det_3x3(cell) <= 0) throw new Error(`${FORMAT} cell must have positive volume`)
   const pbc_dataset = required(file, `/static/pbc`)
   ensure_shape(pbc_dataset, `/static/pbc`, [3])
-  const raw_pbc = pbc_dataset.to_array()
-  if (
-    !Array.isArray(raw_pbc) ||
-    raw_pbc.length !== 3 ||
-    raw_pbc.some((value) => typeof value !== `boolean`)
-  )
+  const raw_pbc: unknown = pbc_dataset.to_array()
+  if (!is_pbc(raw_pbc))
     throw new Error(`${FORMAT} requires three boolean periodic boundary flags`)
-  const pbc: [boolean, boolean, boolean] = [
-    raw_pbc[0] === true,
-    raw_pbc[1] === true,
-    raw_pbc[2] === true,
-  ]
+  const pbc: [boolean, boolean, boolean] = [...raw_pbc]
   const volume = calc_lattice_params(cell).volume
   const metadata_text = string_value(attr(file, `metadata_json`))
   const producer: unknown = metadata_text ? JSON.parse(metadata_text) : null

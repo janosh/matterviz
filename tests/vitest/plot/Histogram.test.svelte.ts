@@ -263,7 +263,6 @@ describe(`Histogram`, () => {
     expect(Boolean(picker)).toBe(picker_shown)
   })
 
-  // Zooming into part of the distribution must not renormalize by the samples still in view
   test(`probability bar heights survive a rect zoom`, async () => {
     const on_bar_hover = vi.fn()
     const values = Array.from({ length: 1000 }, (_, idx) => idx)

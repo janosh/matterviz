@@ -472,8 +472,6 @@ describe(`AtomLegend Component`, () => {
       },
     )
 
-    // The scene draws mapped species, so hiding/recoloring by the file's symbol hid nothing
-    // and the picker edited the source element's color while the swatch showed the target's
     test(`hide and color picker act on the displayed element of a remapped entry`, async () => {
       const original_na = colors.element.Na
       onTestFinished(() => void (colors.element.Na = original_na))

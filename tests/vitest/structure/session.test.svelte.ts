@@ -156,7 +156,7 @@ describe(`display pipeline`, () => {
   })
 
   // A LAMMPS type mapping (and hidden legend values) describe one file's atoms: carried over
-  // to the next file they silently relabeled its real H atoms
+  // to the next file they would silently relabel its real H atoms
   it(`keeps the element mapping across frames and drops it with a new topology`, () => {
     const { host, session } = make_session()
     session.element_mapping = { H: `Fe` }

@@ -131,7 +131,6 @@ describe(`parse_float_block`, () => {
     expect(text.slice(end_pos)).toBe(`\naugmentation 8\n`)
   })
 
-  // Skipping an unreadable token would shift every later value one grid point early
   test(`throws on an unreadable token instead of shifting the grid`, () => {
     expect(() => parse_float_block(`1 2 *** 4`, 0, 4, new Float64Array(4))).toThrow(
       /Unreadable number '\*\*\*' at character 4 \(value 3 of 4\)/,

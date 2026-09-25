@@ -1,6 +1,7 @@
 import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
-import type * as math from '$lib/math'
+import { EV_PER_A3_TO_GPA } from '$lib/constants'
+import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
 import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
@@ -104,8 +105,6 @@ const read_frame_json = (
 const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
 // Calculator bookkeeping ASE stores next to the results; not per-frame properties
 const CALCULATOR_BOOKKEEPING_KEYS = new Set([`name`, `parameters`])
-// ASE stress is in eV/Å³ with tension positive; the trajectory plots quote pressure in GPa
-const EV_PER_A3_IN_GPA = 160.21766208
 
 type NdarrayReader = (ref: { ndarray: unknown[] }) => number[][]
 const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
@@ -121,7 +120,7 @@ const ase_pressure = (stress: unknown): number | undefined => {
   )
     return undefined
   const [xx, yy, zz] = diagonal.map((idx) => values[idx])
-  return (-(xx + yy + zz) / 3) * EV_PER_A3_IN_GPA
+  return (-(xx + yy + zz) / 3) * EV_PER_A3_TO_GPA
 }
 
 export const ase_calculator_data = (
@@ -171,19 +170,15 @@ const ase_cell = (frame_data: Record<string, unknown>): math.Matrix3x3 | undefin
 }
 
 const ase_pbc = (value: unknown): Pbc => {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 3 ||
-    value.some((flag) => typeof flag !== `boolean`)
-  )
+  if (!math.is_pbc(value))
     throw new Error(`ASE PBC must contain three booleans, got ${JSON.stringify(value)}`)
-  return [value[0], value[1], value[2]]
+  return [...value]
 }
 
 const plot_row_numbers = new WeakMap<number[], Uint8Array>()
 
-// `plot_row: true` skips reading positions and building sites (2-4x faster plot rows) but keeps
-// every check, the metadata and the lattice, so its plot row equals the full decode's
+// `plot_row: true` skips reading positions and building sites but keeps every check, the
+// metadata and the lattice, so its plot row equals the full decode's
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,

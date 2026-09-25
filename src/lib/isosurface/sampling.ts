@@ -149,7 +149,7 @@ function volume_sampler_xyz(
   const { periodic, values, order } = volume
   const [origin_x, origin_y, origin_z] = volume.origin
   const fallback = out_of_bounds === `fallback`
-  // Read the grid once: per-sample reads through a $state volume's proxy are 14-35x slower
+  // Read the grid once: per-sample reads through a $state volume's proxy are far slower
   const grid: ScalarGrid3D = { values, dims: [...volume.dims], order }
 
   return (coord_x, coord_y, coord_z) => {

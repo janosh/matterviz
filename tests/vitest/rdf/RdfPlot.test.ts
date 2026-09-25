@@ -342,7 +342,7 @@ describe(`PdfPlot`, () => {
     await tick()
     expect(neutron_btn.classList.contains(`active`)).toBe(true)
     expect(caption()).toContain(`w(H-Ni) = −`)
-    // radiation only re-weights the partials; the ~1 s neighbour search must not re-run
+    // radiation only re-weights the partials; the neighbour search must not re-run
     expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
 
     expect(y_label()).toContain(`G(r)`)
@@ -372,8 +372,7 @@ describe(`PdfPlot`, () => {
   })
 
   test(`every curve of several structures gets its own colour`, async () => {
-    // 2 structures x (total + 3 partials) = 8 curves, within the 10-colour palette. A fixed
-    // stride of 7 per structure gave the second structure's last partial colour 0 again.
+    // 2 structures x (total + 3 partials) = 8 curves, within the 10-colour palette
     const target = await mount_pdf_plot({
       structures: { a: nih, b: nih },
       show_partials: true,

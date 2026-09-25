@@ -206,8 +206,7 @@ describe(`create_file_drop_handler`, () => {
     },
   )
 
-  // Files that only mean something together (NEB images) arrive in one call per drop,
-  // before the failure report; a drop whose every file fails has no batch
+  // a drop whose every file fails has no batch
   test(`on_batch gets each drop's loaded files once, failures reported after it`, async () => {
     vi.mocked(dropped_file_url).mockReturnValueOnce(`https://example.com/u.cif`)
     vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {

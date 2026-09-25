@@ -100,8 +100,7 @@ export function upsample_grid(
   }
   // One 1D Catmull-Rom pass along an axis: src[outer][axis][inner] → out[outer][new_n][inner],
   // where outer_bases are the src offsets of each outer slab and `stride` the src step along
-  // the axis. Tricubic = passes along z, y, then x: 12 multiply-adds per output instead of 64,
-  // summed in the same order as the nested Σx cx·Σy cy·Σz cz·v form.
+  // the axis. Tricubic = separable passes along z, y, then x.
   const resample_axis = (
     src: ArrayLike<number>,
     outer_bases: Int32Array | number[],

@@ -25,6 +25,12 @@ export const finite_vec3_from_values = (values: unknown): Vec3 | undefined => {
   return [values[0], values[1], values[2]]
 }
 
+// Exactly three boolean periodicity flags
+export const is_pbc = (value: unknown): value is Pbc =>
+  Array.isArray(value) &&
+  value.length === 3 &&
+  value.every((flag) => typeof flag === `boolean`)
+
 // Column-major 4x4 matrix as flat 16-element tuple (for Three.js/WebGL)
 // oxfmt-ignore
 export type Matrix4Tuple = [
@@ -75,6 +81,10 @@ export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 // that need a finite result must check first.
 export const clamp = (value: number, lower: number, upper: number): number =>
   Math.max(lower, Math.min(upper, value))
+
+// Whether value lies in the closed interval between the range ends, in either order
+export const in_range = (value: number, [bound_a, bound_b]: Vec2): boolean =>
+  value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
 
 // Index of the first value for which an initial-prefix predicate is false.
 export const partition_point = <Value>(

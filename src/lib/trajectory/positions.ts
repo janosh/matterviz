@@ -236,8 +236,7 @@ export function lag_range(
 // Per-group sums over atoms and time origins of x(t) . x(t + lag), for lags 0..max_lag, of a
 // flat frame-major vec3 series (velocities for the VACF, positions for the MSD). Slot
 // `n_groups` is the all-atom total. `offsets` (one per component, frame-independent) is
-// subtracted from every sample first: the MSD centres each coordinate on its mean so the
-// S1 - 2 S2 difference cancels on the scale of the motion rather than of the absolute position.
+// subtracted from every sample first (the MSD centres each coordinate on its mean).
 //
 // One forward FFT per PAIR of components accumulates their |X(f)|^2 into the group's power
 // spectrum; one inverse FFT per group then yields the autocorrelation sums. Forward and
@@ -293,8 +292,7 @@ export function autocorrelation_sums(
       }
     }
   }
-  // A lone species IS the total (0 + x is exact), so its sums are copied rather than paying
-  // a second n_fft buffer and inverse transform for the same numbers
+  // A lone species IS the total, so its sums are copied instead of transformed a second time
   if (n_groups > 1) {
     const total_power = new Float64Array(n_fft)
     for (const group_power of power) {

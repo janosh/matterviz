@@ -23,8 +23,8 @@ const species_symbol = (species: unknown): ElementSymbol | undefined => {
 }
 
 // Replace every numpy array MontyEncoder wrote ({"@module": "numpy", "@class": "array",
-// "data": [...]}) by its data, at any depth: base_positions, lattice, site and frame
-// properties can each be one, and reading them one field at a time missed some.
+// "data": [...]}) by its data, at any depth (base_positions, lattice, site and frame
+// properties can each be one)
 const unwrap_numpy_arrays = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(unwrap_numpy_arrays)
   if (!is_plain_object(value)) return value

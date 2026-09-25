@@ -70,8 +70,7 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
-// Line and marker sizes proportional to the zone's characteristic size `bz_size`
-// (k_space_size), so they look alike on unit cells' large zones and supercells' small ones.
+// Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
   edge: edge_width * 0.5 * bz_size,

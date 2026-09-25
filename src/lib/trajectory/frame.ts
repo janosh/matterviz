@@ -141,7 +141,7 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
       }),
   )
   // Dense finite numeric scalars (LAMMPS id/type, charges) travel as columns too, sparing the
-  // structuredClone(records) path (200 frames x 2000 atoms `id type x y z`: 8.9 s -> 2.1 s)
+  // slow structuredClone(records) path
   const scalar_keys = Object.keys(sites[0]?.properties ?? {}).filter(
     (key) =>
       key !== `__proto__` &&
@@ -376,7 +376,7 @@ export class FrameView {
       }
       numeric_sites.set(structure, columns)
       if (data.topology) snapshot_topologies.set(structure, this.topology)
-      // Fresh top-level references for Svelte; a deep clone cost 54 ms per 20k-atom frame
+      // Fresh top-level references for Svelte; a deep clone is too slow for large frames
       frame = {
         ...data.header,
         metadata: data.header.metadata && { ...data.header.metadata },

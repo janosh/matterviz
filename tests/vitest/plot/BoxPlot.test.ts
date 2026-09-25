@@ -342,7 +342,6 @@ describe(`BoxPlot`, () => {
     expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
-  // Legend visibility changes no samples, so it must not re-run the KDEs
   test(`violin KDEs survive legend toggles and report hidden series`, async () => {
     const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
     const on_hidden_series_change = vi.fn()
@@ -518,11 +517,9 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(2)
   })
 
-  // On a log value axis, stats <= 0 (whisker_low is exactly 0 here) must clamp to the log
-  // floor instead of rendering NaN coordinates, and the violin is estimated in log10 space over
-  // the positive samples with the refined violin grid: its outline points are evenly spaced on
-  // screen (a linear grid put nearly all of them in the top decade) and a numeric bandwidth is
-  // in decades
+  // Stats <= 0 (whisker_low is exactly 0 here) clamp to the log floor instead of rendering NaN,
+  // and the violin is estimated in log10 space over the positive samples: its outline points
+  // are evenly spaced on screen and a numeric bandwidth is in decades
   test(`log value axis: finite box glyphs and a violin sampled evenly per decade`, async () => {
     const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
     const exponents = dist(200, 0, 1.5)

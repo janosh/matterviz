@@ -9,7 +9,7 @@
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { to_error } from '$lib/utils'
-  import { clamp, reciprocal_lattice } from '$lib/math'
+  import { clamp, in_range, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import type {
@@ -378,8 +378,6 @@
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
-  const in_range = (value: number, [lower, upper]: Vec2) =>
-    value >= Math.min(lower, upper) && value <= Math.max(lower, upper)
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
     return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
@@ -470,9 +468,8 @@
   })
 
   // One gap per system, from the first one (which also supplies the default E_F) and only the
-  // spin channels on display. Malformed occupations (wrong shape, or a spin-down channel
-  // without its own) reject the data with electronic_band_gap's message instead of throwing
-  // out of the $derived and blanking the component.
+  // spin channels on display. Malformed occupations surface electronic_band_gap's message
+  // instead of throwing out of the $derived and blanking the component.
   let gap_result = $derived.by(() => {
     try {
       return { gap: electronic_gap() }

@@ -545,8 +545,7 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
   })
 
-  // With image atoms shown, the perceived bond ends on the O image, so the explicit shifted
-  // bond never matched: it was drawn a second time on top and the mirror bond lost its order
+  // With image atoms shown, the perceived bond ends on the O image
   test(`explicit periodic bonds tag the bonds drawn to PBC image atoms`, () => {
     const structure = make_crystal(10, [
       [`Si`, [0.9, 0.5, 0.5]],
@@ -1526,8 +1525,6 @@ describe(`compute_bonds memo`, () => {
     )
   })
 
-  // Widgets pass strategy names as strings; a removed one (`solid_angle`) or a prototype key
-  // crashed with `strategy_fn is not a function` instead of naming the valid strategies
   test.each([`solid_angle`, `toString`])(`rejects unknown strategy %s by name`, (strategy) => {
     expect(() =>
       bonding.compute_bonds(structure, strategy as bonding.BondingStrategy),

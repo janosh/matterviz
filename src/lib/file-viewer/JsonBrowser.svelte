@@ -213,9 +213,8 @@
     if (spec) replace_or_add_panel(spec)
   }
 
-  // Escape closes all panels, returning to the overview. Listened for on the window so it
-  // works with nothing focused, skipping Escapes another widget consumed (popover, nested
-  // viewer) or pressed inside a different element (e.g. a second browser on the page).
+  // Escape closes all panels. Listened for on the window so it works with nothing focused,
+  // skipping Escapes another widget consumed or pressed inside another element (a 2nd browser).
   $effect(() => {
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {

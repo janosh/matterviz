@@ -115,8 +115,6 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(comment).not.toMatch(/NaN|Infinity/)
   })
 
-  // Parsed per-atom data lives on the sites (forces as `force`, velocities, charges, ...), so
-  // the structure exporter writes every dense numeric column and the parser reads it back
   test(`round-trips per-atom forces, velocities and charges through parse and export`, () => {
     const source = [
       `2`,

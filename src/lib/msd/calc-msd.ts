@@ -7,10 +7,9 @@
 // Every origin at every lag is averaged exactly, in O(n log n) per coordinate, by expanding
 // the square: summed over origins, |r(t + m) - r(t)|² = S1(m) - 2 S2(m) with
 // S1(m) = Σ_t |r(t)|² + |r(t + m)|² (prefix sums) and S2(m) = Σ_t r(t) · r(t + m), an
-// autocorrelation taken with the same Wiener–Khinchin kernel as the VACF (13 ms at 1000
-// frames x 100 atoms). Each coordinate is centred on its time average first, so the
-// difference cancels on the scale of the motion rather than of the absolute position: a walk
-// 1000 Å from the origin matches the direct loop to < 1e-11 relative, against 7.7e-9 uncentred.
+// autocorrelation taken with the same Wiener–Khinchin kernel as the VACF. Each coordinate is
+// centred on its time average first, so the difference cancels on the scale of the motion
+// rather than of the absolute position.
 import { mean as mean_of } from '$lib/math'
 import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
 import {
@@ -102,12 +101,7 @@ export function calc_msd(
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
-  const {
-    dt: delta_time = 1,
-    max_lag_fraction = 0.5,
-    // Cap on the number of lags reported; longer runs report every lag_stride-th one
-    max_lags = 200,
-  } = options
+  const { dt: delta_time = 1, max_lag_fraction = 0.5, max_lags = 200 } = options
 
   validate_position_stream_layout(input, `calc_msd`, 2)
   const time_unit = resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
@@ -206,8 +200,7 @@ export function calc_msd(
 }
 
 // Einstein fit of every curve of an MSD result, index-aligned with result.curves. Separate
-// from calc_msd so moving the fit window refits in microseconds instead of re-running the
-// whole displacement analysis.
+// from calc_msd so moving the fit window doesn't re-run the displacement analysis.
 export const fit_msd_curves = (
   { lags, times, curves, time_unit }: MsdResult,
   options: EinsteinFitOptions = {},

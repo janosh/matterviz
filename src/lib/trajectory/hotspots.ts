@@ -1,5 +1,5 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
-import { matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
+import { is_pbc, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
@@ -186,8 +186,7 @@ export function validate_hotspot_grid(grid: HotspotGrid): number {
     !grid.origin.every(Number.isFinite) ||
     grid.cell.length !== 3 ||
     grid.cell.some((row) => row.length !== 3 || !row.every(Number.isFinite)) ||
-    grid.pbc.length !== 3 ||
-    grid.pbc.some((value) => typeof value !== `boolean`)
+    !is_pbc(grid.pbc)
   )
     throw new Error(
       `Hotspot grid needs a finite origin, invertible cell and three periodic flags`,

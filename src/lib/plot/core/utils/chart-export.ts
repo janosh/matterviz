@@ -29,9 +29,8 @@ const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 
 // === HTML overlays ===
 
-// Legends and color bars are HTML laid over the chart SVG, so an export of the SVG alone lost
-// them. Components mark such roots with `data-export-overlay`; at export time each is redrawn
-// as static SVG at its on-screen position.
+// Legends and color bars are HTML laid over the chart SVG. Components mark such roots with
+// `data-export-overlay`; at export time each is redrawn as static SVG at its on-screen position.
 const SVG_NS = `http://www.w3.org/2000/svg`
 
 type Attrs = Record<string, string | number>

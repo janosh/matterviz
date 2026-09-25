@@ -3,7 +3,7 @@ import { mount_viewer } from '$lib/file-viewer/mount-viewer'
 import { flushSync, mount, unmount } from 'svelte'
 import type * as SvelteModule from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, keydown } from '../setup'
 
 // Pass-through spy: a panel render is one mount_viewer call, so the count tells how many
 // viewers a burst of tree selections really built
@@ -244,7 +244,6 @@ test(`reselecting, replacing, closing and destroying panels manage viewer lifeti
   expect(unmount).toHaveBeenCalledWith(viewer_apps()[3])
 })
 
-// Escape reaches the window from anywhere, so each browser acts only on Escapes aimed at it
 test(`Escape skips consumed events and ones pressed inside another browser`, async () => {
   // the first browser's placeholder chip is gone once its panel opens
   for (const [idx, key] of [`first`, `second`].entries()) {
@@ -256,11 +255,7 @@ test(`Escape skips consumed events and ones pressed inside another browser`, asy
   }
   const browsers = [...document.querySelectorAll(`.json-browser`)]
   const escape = (target: Element | null, consumed = false): number[] => {
-    const event = new KeyboardEvent(`keydown`, {
-      key: `Escape`,
-      bubbles: true,
-      cancelable: true,
-    })
+    const event = keydown(`Escape`, { cancelable: true })
     if (consumed) event.preventDefault()
     target?.dispatchEvent(event)
     flushSync()

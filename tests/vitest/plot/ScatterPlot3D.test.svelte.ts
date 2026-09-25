@@ -174,9 +174,6 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
-// Every point used to be its own <Instance>, re-uploaded each frame so the on-demand scene
-// never went idle; out-of-range points and lines drew outside the box; hover reported scene
-// coordinates (y and z swapped); NaN surface vertices poisoned their neighbours' normals
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [
@@ -358,7 +355,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       { series: [{ id: `points`, x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] },
       `Series "points": aligned arrays must have equal lengths, got x=3, y=2, z=4`,
     ],
-    // the scene maps axes linearly, so an untyped caller's log axis used to draw silently linear
+    // the scene maps axes linearly, so an untyped caller's log axis would draw silently linear
     [
       `non-linear axis scale types`,
       { series: [basic_series], z_axis: { scale_type: `log` as never } },
@@ -715,8 +712,6 @@ describe(`scene coordinates`, () => {
     })
   })
 
-  // Bounds used an 11x11 grid over [-1, 1] while the surface draws `resolution` points over
-  // the plot's x/y: a narrow peak between samples poked out of the box
   test(`surface bounds sample the drawn vertex grid`, () => {
     const peak = (x_val: number, y_val: number) =>
       Math.exp(-((x_val - 0.37) ** 2 + (y_val - 0.37) ** 2) * 200)

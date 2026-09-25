@@ -78,8 +78,7 @@ test.each([`plane`, `slab`] as const)(
   },
 )
 
-// Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy, which
-// collided in the wedge keys (`0Fe0.5`) and threw each_key_duplicate on mount
+// Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
 test(`Scene draws one wedge per species of a site listing an element twice`, () => {
   const species = [2, 3].map((oxidation_state) => ({
     element: `Fe`,

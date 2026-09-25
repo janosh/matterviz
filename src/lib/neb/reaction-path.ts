@@ -322,8 +322,8 @@ function segment_critical_points(
   const discriminant = quad_b * quad_b - 4 * quad_a * quad_c
   if (discriminant < 0) return []
   // Numerically stable roots q / a and c / q. The textbook (-b ± √disc) / 2a cancels
-  // catastrophically when a is a few ulps (a near-exact parabola segment), putting the
-  // saddle up to 0.3 Å off or losing it; c / q stays exact there and covers a = 0 too.
+  // catastrophically when a is a few ulps (a near-exact parabola segment); c / q stays exact
+  // there and covers a = 0 too.
   const quad_q = -0.5 * (quad_b + (quad_b < 0 ? -1 : 1) * Math.sqrt(discriminant))
   if (quad_q === 0) return [] // b = c = 0: the derivative is a·t², no interior sign change
   const roots = [quad_c / quad_q, ...(quad_a === 0 ? [] : [quad_q / quad_a])]

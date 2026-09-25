@@ -4,7 +4,7 @@ import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
-import type { Vec3 } from '$lib/math'
+import { is_pbc, type Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Pbc, Site } from '$lib/structure'
 import { shift_bonds_for_moved_sites } from '$lib/structure/bonding'
@@ -918,11 +918,6 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
     Array.isArray(species) && species.length > 0 && (Array.isArray(abc) || Array.isArray(xyz))
   )
 }
-
-const is_pbc = (value: unknown): value is Pbc =>
-  Array.isArray(value) &&
-  value.length === 3 &&
-  value.every((flag) => typeof flag === `boolean`)
 
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every

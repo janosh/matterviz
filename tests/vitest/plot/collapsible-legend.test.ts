@@ -1,13 +1,10 @@
-// @vitest-environment happy-dom
 import { create_collapsible_legend, ScatterPlot } from '$lib/plot'
 import { flushSync } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { mount_sized, mouse } from '../setup'
 
-afterEach(() => document.body.replaceChildren())
-
 describe(`create_collapsible_legend`, () => {
-  // Only a figure's own legend counts as inside; `scope` keeps a sibling figure's from counting
+  // `scope` keeps a sibling figure's legend from counting as inside
   test(`clicks outside the figure's own legend re-collapse until cleanup`, () => {
     const { collapsed_groups, collapse_on_outside_click } = create_collapsible_legend([
       `Models`,
@@ -32,8 +29,6 @@ describe(`create_collapsible_legend`, () => {
     expect(collapses(`svg`)).toBe(false)
   })
 
-  // Charts wire header clicks to group visibility; the helper's header must only expand, and
-  // an outside click restores the chart's initial collapse
   test(`in ScatterPlot, headers expand without hiding series and outside clicks re-collapse`, async () => {
     const collapsible = create_collapsible_legend([`Models`])
     const plot = await mount_sized(

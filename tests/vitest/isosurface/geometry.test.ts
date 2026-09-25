@@ -118,8 +118,7 @@ describe(`compute_isosurface_geometries`, () => {
     }
   })
 
-  // Front faces must point away from the lobe for either sign, or the transparent
-  // back-then-front pass draws negative lobes inside-out
+  // Otherwise the transparent back-then-front pass draws negative lobes inside-out
   test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
     const blob = blob_volume()
     const volume = { ...blob, values: blob.values.map((val) => sign * val) }

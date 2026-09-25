@@ -245,7 +245,6 @@ test.each([`signal`, `frame_count`] as const)(
     if (field === `frame_count`) {
       expect(mocks.collect.mock.lastCall?.[1].frame_stride).toBeGreaterThan(1)
       // striding folds vibrations above the reduced Nyquist frequency back as fake peaks
-      // (a 2001 cm⁻¹ mode showed up at 1334 cm⁻¹ at stride 20), so it must not be silent
       await vi.waitFor(() =>
         expect(target.querySelector(`.status-message.warning`)?.textContent).toMatch(
           /Nyquist frequency \d+-fold to 1 cm\^-1: vibrations above it alias/,

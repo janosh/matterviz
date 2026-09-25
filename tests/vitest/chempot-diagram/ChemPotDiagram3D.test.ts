@@ -179,8 +179,7 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
 })
 
 // Only formal_chempots/default_min_limit/limits/elements reach the worker, so label and overlay
-// toggles must not recompute (or rebuild any hull); number inputs commit on change, and a
-// half-typed number (`-`) is NaN and must not reach the computation either.
+// toggles must not recompute (or rebuild any hull)
 test(`display toggles and partial number input never recompute the diagram`, async () => {
   const scene = await mount_diagram<{ domain_labels: unknown[] }>({
     entries,
@@ -218,9 +217,7 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
 })
 
-// A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave): the
-// camera-start callback must drop an unpinned tooltip while a click-pinned one survives, and
-// the pinned one re-reads its domain after a recompute
+// A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)
 test(`camera start clears an unpinned domain tooltip, a pinned one survives and follows recomputes`, async () => {
   // plain object: the test only reads the bound value back, no reactivity needed
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }

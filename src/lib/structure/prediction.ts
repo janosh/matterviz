@@ -2,7 +2,7 @@
 // the same contract as live tools. Undefined object fields are omitted; array holes are errors.
 import { grid_data_range, type VolumetricData } from '$lib/isosurface/types'
 import { grid_dimensions } from '$lib/isosurface/grid'
-import { det_3x3 } from '$lib/math'
+import { det_3x3, is_pbc } from '$lib/math'
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { AnyStructure } from './index'
 
@@ -108,12 +108,7 @@ export function copy_prediction_input(value: unknown): AnyStructure {
   if (input.lattice !== undefined) {
     const lattice = record(input.lattice, `input.lattice`)
     matrix(lattice.matrix, `input.lattice.matrix`)
-    if (
-      !Array.isArray(lattice.pbc) ||
-      lattice.pbc.length !== 3 ||
-      !lattice.pbc.every((flag) => typeof flag === `boolean`)
-    )
-      invalid(`input.lattice.pbc`, `expected three booleans`)
+    if (!is_pbc(lattice.pbc)) invalid(`input.lattice.pbc`, `expected three booleans`)
     for (const key of [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`])
       if (typeof lattice[key] !== `number` || lattice[key] <= 0)
         invalid(`input.lattice.${key}`, `expected a positive finite number`)

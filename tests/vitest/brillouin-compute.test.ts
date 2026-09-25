@@ -934,7 +934,6 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
   })
 
-  // Edges, k-path and symmetry points scale with the zone, from a Si zone to a 100 Å supercell's
   test(`bz_mark_sizes scale with the zone`, () => {
     const [si, supercell] = [2, 0.0628].map((size) =>
       Object.values(bz_mark_sizes(size, 0.002)),

@@ -98,9 +98,8 @@ function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
 }
 
 // Build a linear scale from tick data points, its domain spanning the plot area's pixel span
-// [px_a, px_b] (either order). Fewer than two ticks means the SVG is neither a matplotlib
-// export nor the simple class-based format (e.g. an MPDS export), so say so instead of failing
-// on the missing tick.
+// [px_a, px_b] (either order). Fewer than two ticks means an unsupported SVG (e.g. an MPDS
+// export), so say so instead of failing on the missing tick.
 function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): LinearScale {
   if (ticks.length < 2) {
     throw new Error(

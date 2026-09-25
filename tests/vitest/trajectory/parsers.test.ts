@@ -168,7 +168,7 @@ const FIXTURES = [
   { file: `ase-LiMnO2-chgnet-relax.traj`, format: `ase`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
     volume: [77.5448402400077, 78.13040242854699], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
-    // calculator forces now give the same force_max as the pymatgen dump of this run
+    // calculator forces give the same force_max as the pymatgen dump of this run
     frame0_metadata: { step: 0, energy: -58.97273254394531, force_max: 0.025402992964072665 }, last_metadata: { energy: -58.59364700317383 } },
   { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
@@ -1476,7 +1476,7 @@ describe(`ASE`, () => {
       ])
       expect(metadata).toMatchObject({ energy: -1 - frame_idx, force_max: 0.4 })
       expect(metadata?.force_norm).toBeCloseTo(Math.sqrt((0.09 + 0.16) / 2), 14)
-      expect(metadata?.pressure).toBeCloseTo(-0.01 * 160.21766208, 12)
+      expect(metadata?.pressure).toBeCloseTo(-0.01 * 160.2176634, 12)
       // calculator bookkeeping is not a frame property, and the vectors stay off metadata
       for (const key of [`name`, `parameters`, `forces`])
         expect(metadata).not.toHaveProperty(key)

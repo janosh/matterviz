@@ -92,8 +92,9 @@ export type XrdOptions = {
   accelerating_voltage?: number
   debye_waller_factors?: CompositionType
   scaled?: boolean
-  // 2θ window in degrees, 0 <= min < max <= 180 (anything else throws). Omitted → [0, 90]
-  // (see compute_xrd_pattern for why it stops short of the Lorentz singularity); null →
+  // 2θ window in degrees, 0 <= min < max <= 180 (anything else throws). Omitted → [0, 90],
+  // [0, 5] for electrons (see compute_xrd_pattern for why it stops short of the Lorentz
+  // singularity); null →
   // unbounded up to the Bragg maximum 2/λ
   two_theta_range?: Vec2 | null
   // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)

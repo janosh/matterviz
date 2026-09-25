@@ -875,7 +875,7 @@ describe(`plot`, () => {
     const target = mount_trajectory(props)
     await tick()
     expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
-    // the defaults written for run A used to stick and name no series of run B
+    // defaults written for run A must not stick and hide run B's series
     props.trajectory = make_run({
       properties: (idx) => ({ temperature: 300 + idx, pressure: 1 - idx }),
     })

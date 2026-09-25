@@ -815,6 +815,28 @@ test.each([
   expect(math.clamp(value, lower, upper)).toBe(expected)
 })
 
+test.each([
+  [1, [0, 2], true],
+  [1, [2, 0], true], // inverted range
+  [0, [0, 2], true], // closed ends
+  [2, [2, 0], true],
+  [3, [0, 2], false],
+  [NaN, [0, 2], false],
+] as const)(`in_range(%f, %j) = %s`, (value, range, expected) => {
+  expect(math.in_range(value, [...range])).toBe(expected)
+})
+
+test.each([
+  [[true, false, true], true],
+  [[true, true], false],
+  [[true, true, true, true], false],
+  [[1, 0, 1], false],
+  [new Uint8Array([1, 0, 1]), false],
+  [null, false],
+])(`is_pbc(%j) = %s`, (value, expected) => {
+  expect(math.is_pbc(value)).toBe(expected)
+})
+
 // mean / sample_std / median agree with the textbook definitions and with d3-array
 test.each([
   { values: [1, 2, 3, 4], mean: 2.5, std: Math.sqrt(5 / 3), median: 2.5 },

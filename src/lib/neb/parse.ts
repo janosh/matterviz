@@ -27,7 +27,7 @@
 // A `paths` entry is either a full path object or a bare image array.
 
 import type { Vec3 } from '$lib/math'
-import { is_finite_vec3_like } from '$lib/math'
+import { finite_vec3_from_values, is_finite_vec3_like } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import { count_xyz_frames, iter_xyz_frames } from '$lib/trajectory/helpers'
@@ -168,14 +168,13 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
     )
     // Forces as read by the trajectory parser onto the sites, which it keeps only when every
     // site got a finite one
-    const site_forces = structure.sites.map(({ properties }) => properties?.force)
-    const forces = site_forces.every((vec) => is_finite_vec3_like(vec))
-      ? site_forces.map((vec): Vec3 => [vec[0], vec[1], vec[2]])
-      : undefined
+    const forces = structure.sites.map(({ properties }) =>
+      finite_vec3_from_values(properties?.force),
+    )
     images.push({
       structure,
       energy: xyz_comment_energy(frame.comment, context),
-      ...(forces && { forces }),
+      ...(forces.every((force): force is Vec3 => force !== undefined) && { forces }),
       label: `image ${image_idx}`,
     })
   }
