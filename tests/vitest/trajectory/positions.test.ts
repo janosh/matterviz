@@ -48,6 +48,7 @@ describe(`resolve_lag_time_unit`, () => {
     [0.5, undefined, /dt was supplied \(0\.5\) without time_unit; pass e.g. time_unit: 'fs'/],
     [0.5, ``, /without time_unit/],
     [0.5, `frame`, /time_unit 'frame' cannot be combined with dt/],
+    [undefined, `ps`, /time_unit .ps. was supplied without dt/],
   ])(`rejects dt=%s with time_unit=%s`, (delta_time, time_unit, expected) => {
     expect(() => resolve_lag_time_unit(`calc_msd`, delta_time, time_unit, `fs`)).toThrow(
       expected,
@@ -222,7 +223,8 @@ describe(`numeric position input`, () => {
         frame.metadata = { dipole: [idx, 0, 1], temperature: 300 + idx }
         frame.structure.sites.forEach((site, site_idx) => {
           site.label = `${site.species[0].element}${site_idx + 1}`
-          if (rich) site.properties.id = site_idx + 1
+          // a numeric id travels as a scalar column; a string property keeps the records
+          if (rich) Object.assign(site.properties, { id: site_idx + 1, tag: `t${site_idx}` })
         })
         return encode_frame(frame)
       })

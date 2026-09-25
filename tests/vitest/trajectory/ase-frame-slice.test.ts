@@ -78,28 +78,36 @@ describe(`ASE frame slicing`, () => {
     const whole_file = parse_ase_trajectory(buffer)
     expect(whole_file.frames).toHaveLength(spans.length)
 
-    let cached_numbers: number[] | undefined
+    let cached: Pick<AseFrameOptions, `fallback_numbers` | `fallback_pbc`> = {}
     for (const [frame_idx, span] of spans.entries()) {
-      const { frame, numbers } = decode_span(span, frame_idx, {
+      const { frame, numbers, pbc } = decode_span(span, frame_idx, {
         base_offset: span.byte_offset,
-        fallback_numbers: cached_numbers,
+        ...cached,
       })
-      cached_numbers = numbers
+      cached = { fallback_numbers: numbers, fallback_pbc: pbc }
       // Same float64 bytes read through a rebased offset, so the frames must be
       // bit-identical (toEqual on numbers is exact), not merely close.
       expect(frame).toEqual(whole_file.frames[frame_idx])
     }
   })
 
-  test(`the atomic numbers cached from frame 0 carry into later frames`, () => {
-    // ASE writes `numbers` only into the first frame, so a slice of frame 1 has
-    // no elements of its own and must be handed frame 0's.
+  test(`the atomic numbers and pbc cached from frame 0 carry into later frames`, () => {
+    // ASE writes `numbers` and `pbc` only into the first frame, so a slice of frame 1 has
+    // neither of its own and must be handed frame 0's.
     const [first_span, second_span] = spans
     const base_offset = second_span.byte_offset
     expect(() => decode_span(second_span, 1, { base_offset })).toThrow(/missing numbers/)
 
-    const { numbers } = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
-    const { frame } = decode_span(second_span, 1, { base_offset, fallback_numbers: numbers })
+    const first = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
+    const { numbers } = first
+    expect(() =>
+      decode_span(second_span, 1, { base_offset, fallback_numbers: numbers }),
+    ).toThrow(/missing pbc/)
+    const { frame } = decode_span(second_span, 1, {
+      base_offset,
+      fallback_numbers: numbers,
+      fallback_pbc: first.pbc,
+    })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
       parse_ase_trajectory(buffer).frames[1].structure.sites.map(
         (site) => site.species[0].element,

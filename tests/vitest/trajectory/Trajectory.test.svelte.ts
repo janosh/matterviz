@@ -418,6 +418,12 @@ describe(`display modes`, () => {
         option.textContent?.trim(),
       ),
     ).toEqual([`Automatic`, `Structure-only`, `Structure + Plot`, `Plot-only`])
+    // the selected mode is announced, not just styled
+    const pressed = () =>
+      [...target.querySelectorAll(`${CONTROLS} .view-mode-option`)].map((option) =>
+        option.getAttribute(`aria-pressed`),
+      )
+    expect(pressed()).toEqual([`false`, `false`, `true`, `false`])
     menu_option(target, `Plot-only`).click()
     await tick()
     expect(props.display_mode).toBe(`plot`)
@@ -859,6 +865,31 @@ describe(`plot`, () => {
       expect(Object.values(legend_state(target))).toEqual(expected)
     }
     expect(prepared_rows()).toHaveLength(2)
+  })
+
+  test(`re-derives default series visibility for a swapped-in run`, async () => {
+    const props = $state(
+      default_props({ visible_properties: undefined, display_mode: `plot` }),
+    )
+    const target = mount_trajectory(props)
+    await tick()
+    expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
+    // the defaults written for run A used to stick and name no series of run B
+    props.trajectory = make_run({
+      properties: (idx) => ({ temperature: 300 + idx, pressure: 1 - idx }),
+    })
+    await tick()
+    await tick()
+    expect(Object.values(legend_state(target))).toContain(true)
+    expect(props.visible_properties?.length).toBeGreaterThan(0)
+    // a host (or legend) choice is a standing request and survives the next swap
+    props.visible_properties = [`pressure`]
+    props.trajectory = make_run({
+      properties: (idx) => ({ temperature: 310 + idx, pressure: 2 - idx }),
+    })
+    await tick()
+    await tick()
+    expect(props.visible_properties).toEqual([`pressure`])
   })
 
   test(`time-series can replace energy with a distinct SCF axis group`, async () => {

@@ -115,29 +115,24 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(comment).not.toMatch(/NaN|Infinity/)
   })
 
-  // XYZ parsing stores per-atom forces on frame.metadata, which the single-structure
-  // exporter never sees; without folding them onto the sites they vanish on export.
-  test(`recovers per-atom forces from frame metadata`, () => {
-    // oxfmt-ignore
-    const frame = make_frame(0, two_sites, { forces: [[0.1, 0.2, 0.3], [-0.1, -0.2, -0.3]] })
-    const text = trajectory_frame_to_extxyz_str(frame)
-    expect(text).toContain(`forces:R:3`)
+  // Parsed per-atom data lives on the sites (forces as `force`, velocities, charges, ...), so
+  // the structure exporter writes every dense numeric column and the parser reads it back.
+  // Velocities and charges used to be dropped, losing MLIP training data on re-export.
+  test(`round-trips per-atom forces, velocities and charges through parse and export`, () => {
+    const source = [
+      `2`,
+      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1`,
+      `Si 0 0 0 0.1 0.2 0.3 1e-7 2 3 0.25`,
+      `O 1 1 1 -0.1 -0.2 -0.3 4 5 6 -0.5`,
+    ].join(`\n`)
+    const [parsed] = parse_exported_frames(source)
+    const text = trajectory_frame_to_extxyz_str(parsed)
+    expect(text).toContain(`forces:R:3:velocity:R:3:charge:R:1`)
     const reparsed = parse_xyz(text)
-    expect(reparsed?.sites[0].properties.force).toEqual([0.1, 0.2, 0.3])
-    expect(reparsed?.sites[1].properties.force).toEqual([-0.1, -0.2, -0.3])
-  })
-
-  // Anything less than a full set drops the column: exporting the usable ones and zeroing the
-  // rest would report converged atoms on no evidence.
-  // oxfmt-ignore
-  test.each([
-    [`a length mismatch`, [[0.1, 0.2, 0.3]]],
-    [`a short entry`, [[0.1, 0.2, 0.3], [0.1, 0.2]]],
-    [`a non-finite component`, [[0.1, 0.2, 0.3], [0.1, Number.NaN, 0.3]]],
-    [`a null entry`, [[0.1, 0.2, 0.3], null]],
-  ])(`ignores forces with %s`, (_name, forces) => {
-    expect(trajectory_frame_to_extxyz_str(make_frame(0, two_sites, { forces })))
-      .not.toContain(`forces:R:3`)
+    expect(reparsed?.sites.map(({ properties }) => properties)).toEqual([
+      { force: [0.1, 0.2, 0.3], velocity: [1e-7, 2, 3], charge: 0.25 },
+      { force: [-0.1, -0.2, -0.3], velocity: [4, 5, 6], charge: -0.5 },
+    ])
   })
 })
 

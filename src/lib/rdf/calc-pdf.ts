@@ -110,9 +110,24 @@ export function calculate_pdf(structure: Crystal, options: RdfOptions = {}): Pdf
 // Faber-Ziman weights w_ab = c_a·c_b·b_a·b_b/<b>² supplied by $lib/scattering.
 export function calculate_total_pdf(
   structure: Crystal,
-  options: TotalPdfOptions = {},
+  { radiation, s_val, ...rdf_options }: TotalPdfOptions = {},
 ): TotalPdfPattern {
-  const { radiation = `xray`, s_val = 0, ...rdf_options } = options
+  // Rejects a lattice-less or empty structure with the PDF's own message before the search
+  number_density(structure)
+  const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
+  return weight_pdf_partials(structure, partial_rdfs, { radiation, s_val })
+}
+
+// The weighting half of calculate_total_pdf: combine a structure's partial g_ab(r) (from
+// calculate_all_pair_rdfs) into the total for one radiation. Split out because the partials
+// are the expensive neighbour search and depend only on geometry and binning, so switching
+// radiation re-weights them instead of re-running it.
+export function weight_pdf_partials(
+  structure: Crystal,
+  partial_rdfs: readonly RdfPattern[],
+  options: Pick<TotalPdfOptions, `radiation` | `s_val`> = {},
+): TotalPdfPattern {
+  const { radiation = `xray`, s_val = 0 } = options
   const rho_0 = number_density(structure)
   const composition = site_composition(structure)
 
@@ -132,10 +147,11 @@ export function calculate_total_pdf(
     })
   }
 
-  // No emptiness check: number_density above already rejects a structure with no atoms,
-  // and any atom yields at least a self-pair.
-  const partial_rdfs = calculate_all_pair_rdfs(structure, with_pdf_defaults(rdf_options))
-
+  if (partial_rdfs.length === 0) {
+    throw new Error(
+      `weight_pdf_partials got no partial RDFs for ${structure.sites.length} sites`,
+    )
+  }
   const radii = partial_rdfs[0].r
   const n_bins = radii.length
   const g_r: number[] = Array(n_bins).fill(0)

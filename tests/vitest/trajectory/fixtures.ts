@@ -4,11 +4,15 @@
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { make_rng } from '../numeric-helpers'
 
-// Two ASE frames sharing topology, with isotope masses and unequal physical timestamps.
-export function make_ase_md_buffer(n_atoms: number, recorded_masses = true): ArrayBuffer {
-  let offset = 64
+// ULM container (what ASE's Trajectory writes) of the given frame headers. Each header is
+// built with `array`, which appends a float64 payload and returns its ndarray descriptor.
+type AseArray = (shape: number[], value: (idx: number) => number) => { ndarray: unknown[] }
+export function make_ase_buffer(
+  frame_headers: ((array: AseArray) => Record<string, unknown>)[],
+): ArrayBuffer {
+  let offset = 48 + frame_headers.length * 8
   const chunks: Uint8Array[] = []
-  const array = (shape: number[], value: (idx: number) => number) => {
+  const array: AseArray = (shape, value) => {
     const data = Float64Array.from(
       { length: shape.reduce((total, size) => total * size, 1) },
       (_, idx) => value(idx),
@@ -19,8 +23,34 @@ export function make_ase_md_buffer(n_atoms: number, recorded_masses = true): Arr
     return ref
   }
   const offsets: number[] = []
-  for (let frame_idx = 0; frame_idx < 2; frame_idx++) {
-    const header = {
+  for (const make_header of frame_headers) {
+    const json = new TextEncoder().encode(JSON.stringify(make_header(array)))
+    const entry = new Uint8Array(8 + Math.ceil(json.length / 8) * 8)
+    new DataView(entry.buffer).setBigInt64(0, BigInt(json.length), true)
+    entry.set(json, 8)
+    offsets.push(offset)
+    chunks.push(entry)
+    offset += entry.byteLength
+  }
+  const buffer = new ArrayBuffer(offset)
+  const bytes = new Uint8Array(buffer)
+  bytes.set(new TextEncoder().encode(`- of Ulm`))
+  const view = new DataView(buffer)
+  view.setBigInt64(32, BigInt(frame_headers.length), true)
+  view.setBigInt64(40, 48n, true)
+  offsets.forEach((value, idx) => view.setBigInt64(48 + idx * 8, BigInt(value), true))
+  offset = 48 + frame_headers.length * 8
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return buffer
+}
+
+// Two ASE frames sharing topology, with isotope masses and unequal physical timestamps.
+export const make_ase_md_buffer = (n_atoms: number, recorded_masses = true): ArrayBuffer =>
+  make_ase_buffer(
+    [0, 1].map((frame_idx) => (array) => ({
       ...(frame_idx === 0 && {
         [`numbers.`]: array([n_atoms], () => 1),
         ...(recorded_masses && { [`masses.`]: array([n_atoms], () => 2) }),
@@ -37,29 +67,8 @@ export function make_ase_md_buffer(n_atoms: number, recorded_masses = true): Arr
         [0, 0, 10],
       ],
       info: { time_fs: frame_idx ? 14 : 10 },
-    }
-    const json = new TextEncoder().encode(JSON.stringify(header))
-    const entry = new Uint8Array(8 + Math.ceil(json.length / 8) * 8)
-    new DataView(entry.buffer).setBigInt64(0, BigInt(json.length), true)
-    entry.set(json, 8)
-    offsets.push(offset)
-    chunks.push(entry)
-    offset += entry.byteLength
-  }
-  const buffer = new ArrayBuffer(offset)
-  const bytes = new Uint8Array(buffer)
-  bytes.set(new TextEncoder().encode(`- of Ulm`))
-  const view = new DataView(buffer)
-  view.setBigInt64(32, 2n, true)
-  view.setBigInt64(40, 48n, true)
-  offsets.forEach((value, idx) => view.setBigInt64(48 + idx * 8, BigInt(value), true))
-  offset = 64
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return buffer
-}
+    })),
+  )
 
 // Deterministic EXTXYZ: a cubic cell that breathes, atoms jittering around a grid, an energy
 // that drifts with the frame index.

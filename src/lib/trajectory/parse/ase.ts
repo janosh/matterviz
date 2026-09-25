@@ -3,7 +3,9 @@ import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import type { Pbc } from '$lib/structure'
 import {
+  calc_force_stats,
   convert_atomic_numbers,
   copy_numeric_fields,
   create_trajectory_frame,
@@ -85,7 +87,10 @@ export const read_ndarray_from_view = (
 }
 
 export interface AseFrameOptions {
+  // ASE writes numbers and pbc into frame 0 only, repeating them when they change, so later
+  // frames inherit the last values seen
   fallback_numbers?: number[]
+  fallback_pbc?: Pbc
   max_json_length?: number
   base_offset?: number
 }
@@ -109,21 +114,72 @@ const read_frame_json = (
 }
 
 const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
+// Calculator bookkeeping ASE stores next to the results; not per-frame properties
+const CALCULATOR_BOOKKEEPING_KEYS = new Set([`name`, `parameters`])
+// ASE stress is in eV/Å³ with tension positive; the trajectory plots quote pressure in GPa
+const EV_PER_A3_IN_GPA = 160.21766208
+
+type NdarrayReader = (ref: { ndarray: unknown[] }) => number[][]
+const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
+  Boolean(value && typeof value === `object` && `ndarray` in value)
+const calculator_of = (
+  frame_data: Record<string, unknown>,
+): Record<string, unknown> | null => {
+  const calculator = frame_data[`calculator.`] ?? frame_data.calculator
+  return calculator && typeof calculator === `object`
+    ? (calculator as Record<string, unknown>)
+    : null
+}
+
+// Per-atom calculator forces of one frame (eV/Å), or undefined when it stores none
+export function ase_calculator_forces(
+  frame_data: Record<string, unknown>,
+  read_ndarray: NdarrayReader,
+): number[][] | undefined {
+  const ref = calculator_of(frame_data)?.[`forces.`]
+  if (!is_ndarray_ref(ref)) return undefined
+  const forces = read_ndarray(ref)
+  if (!forces.every((force) => force.length === 3)) {
+    throw new Error(`ASE calculator forces must be n x 3, got rows of ${forces[0]?.length}`)
+  }
+  return forces
+}
+
+// Pressure (GPa, compression positive) from an ASE stress: a 6-component Voigt vector
+// [xx, yy, zz, yz, xz, xy] or a 3x3 tensor, both in eV/Å³ with tension positive
+const ase_pressure = (stress: unknown): number | undefined => {
+  const values = Array.isArray(stress) ? stress.flat() : []
+  if (!values.every((value) => typeof value === `number` && Number.isFinite(value))) {
+    return undefined
+  }
+  const trace =
+    values.length === 6
+      ? values[0] + values[1] + values[2]
+      : values.length === 9
+        ? values[0] + values[4] + values[8]
+        : undefined
+  return trace === undefined ? undefined : (-trace / 3) * EV_PER_A3_IN_GPA
+}
 
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
-  read_ndarray?: (ref: { ndarray: unknown[] }) => number[][],
+  read_ndarray?: NdarrayReader,
 ): Record<string, unknown> => {
-  const calculator = frame_data[`calculator.`] ?? frame_data.calculator
-  if (!calculator || typeof calculator !== `object`) return {}
+  const calculator = calculator_of(frame_data)
+  if (!calculator) return {}
   const results: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(calculator as Record<string, unknown>)) {
-    if (!(value && typeof value === `object` && `ndarray` in value)) {
+  for (const [key, value] of Object.entries(calculator)) {
+    if (CALCULATOR_BOOKKEEPING_KEYS.has(key)) continue
+    if (!is_ndarray_ref(value)) {
       results[key] = value
       continue
     }
+    if (read_ndarray && key === `stress.`) {
+      results.stress = read_ndarray(value)
+      continue
+    }
     if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
-    const reference = value as { ndarray: unknown[] }
+    const reference = value
     const shape = reference.ndarray[0]
     if (
       !Array.isArray(shape) ||
@@ -140,7 +196,29 @@ export const ase_calculator_data = (
     const array = read_ndarray(reference)
     results[result_key] = shape.length === 1 ? array[0] : array
   }
+  // Statistics only: the vectors themselves belong on the sites (see decode_ase_frame)
+  const forces = read_ndarray && ase_calculator_forces(frame_data, read_ndarray)
+  if (forces) Object.assign(results, calc_force_stats(forces))
+  const pressure = ase_pressure(results.stress)
+  if (pressure !== undefined && !(`pressure` in results)) results.pressure = pressure
   return results
+}
+
+// A frame's cell, or undefined for none: ASE stores a molecule's missing cell as all zeros
+const ase_cell = (frame_data: Record<string, unknown>): math.Matrix3x3 | undefined => {
+  if (!frame_data.cell) return undefined
+  const cell = matrix3x3_from_rows(frame_data.cell, `ASE cell`)
+  return cell.every((row) => row.every((value) => value === 0)) ? undefined : cell
+}
+
+const ase_pbc = (value: unknown): Pbc => {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    value.some((flag) => typeof flag !== `boolean`)
+  )
+    throw new Error(`ASE PBC must contain three booleans, got ${JSON.stringify(value)}`)
+  return [value[0], value[1], value[2]]
 }
 
 export function decode_ase_frame(
@@ -148,8 +226,8 @@ export function decode_ase_frame(
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,
-  { fallback_numbers, max_json_length, base_offset = 0 }: AseFrameOptions = {},
-): { frame: TrajectoryFrame; numbers: number[] } {
+  { fallback_numbers, fallback_pbc, max_json_length, base_offset = 0 }: AseFrameOptions = {},
+): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
   const frame_data = JSON.parse(
     read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
   )
@@ -170,17 +248,24 @@ export function decode_ase_frame(
   if (!numbers || !positions) {
     throw new Error(`missing ${!numbers ? `numbers` : `positions`}`)
   }
+  const pbc_value = frame_data.pbc ?? fallback_pbc
+  if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
+  const pbc = ase_pbc(pbc_value)
 
-  const cell = frame_data.cell ? matrix3x3_from_rows(frame_data.cell, `ASE cell`) : undefined
+  const forces = ase_calculator_forces(frame_data, read_ndarray)
+  if (forces && forces.length !== positions.length) {
+    throw new Error(`ASE calculator has ${forces.length} forces for ${positions.length} atoms`)
+  }
   const frame = create_trajectory_frame(
     positions,
     convert_atomic_numbers(numbers),
-    cell,
-    frame_data.pbc ?? [true, true, true],
+    ase_cell(frame_data),
+    pbc,
     step,
     { step, ...ase_calculator_data(frame_data, read_ndarray), ...frame_data.info },
+    forces?.map((force) => ({ force })),
   )
-  return { frame, numbers }
+  return { frame, numbers, pbc }
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
@@ -223,6 +308,7 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       { cause: error },
     )
   let numbers: number[] | undefined
+  let pbc: Pbc | undefined
   const decode = (frame_idx: number): TrajectoryFrame => {
     if (frame_idx > 0 && !numbers) decode(0)
     const offset = frame_offset(frame_idx)
@@ -230,9 +316,11 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       const { buffer, view } = live()
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
         fallback_numbers: numbers,
+        fallback_pbc: pbc,
         max_json_length: MAX_ASE_HEADER_BYTES,
       })
       numbers = decoded.numbers
+      pbc = decoded.pbc
       return decoded.frame
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
@@ -308,22 +396,16 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       const time = info?.time_fs
       if (time !== undefined && (typeof time !== `number` || !Number.isFinite(time)))
         throw new Error(`ASE time_fs must be finite, got ${JSON.stringify(time)}`)
-      const pbc = topology.pbc
-      if (
-        !Array.isArray(pbc) ||
-        pbc.length !== 3 ||
-        pbc.some((value) => typeof value !== `boolean`)
-      )
-        throw new Error(`ASE PBC must contain three booleans, got ${JSON.stringify(pbc)}`)
+      const frame_pbc = ase_pbc(topology.pbc)
       const batch: AtomBatch = {
         positions: new Float64Array(count * 3),
         atomic_numbers: new Uint8Array(count),
         total_atoms,
         start,
         step: frame_idx,
-        cell: header.cell ? matrix3x3_from_rows(header.cell, `ASE cell`) : undefined,
+        cell: ase_cell(header),
         origin: [0, 0, 0],
-        pbc: [pbc[0], pbc[1], pbc[2]],
+        pbc: frame_pbc,
         ...(time !== undefined && { time }),
         ...(momenta && { velocities: new Float64Array(count * 3) }),
         ...(mass_source && { masses: new Float64Array(count) }),
@@ -370,16 +452,14 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
     // ASE puts computed results in the calculator and user-set values in `info`, but which
     // scalar lands where is up to whoever wrote the file, so both sections get every alias
     const properties: Record<string, number> = {}
-    for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
+    const read_ndarray: NdarrayReader = (ref) => read_ndarray_from_view(live().view, ref)
+    for (const section of [ase_calculator_data(frame_data, read_ndarray), frame_data.info]) {
       if (section && typeof section === `object`) {
         copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
       }
     }
-    if (frame_data.cell) {
-      properties.volume = Math.abs(
-        math.det_3x3(matrix3x3_from_rows(frame_data.cell, `ASE cell`)),
-      )
-    }
+    const cell = ase_cell(frame_data)
+    if (cell) properties.volume = Math.abs(math.det_3x3(cell))
     return { frame_number: frame_idx, step: frame_idx, properties }
   }
   return {

@@ -8,6 +8,14 @@ import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, resize_element } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
+import type * as calc_rdf from '$lib/rdf/calc-rdf'
+import { calculate_all_pair_rdfs } from '$lib/rdf/calc-rdf'
+
+// Spy on the neighbour search so the radiation buttons can be shown not to re-run it
+vi.mock(`$lib/rdf/calc-rdf`, async (import_original) => {
+  const actual = await import_original<typeof calc_rdf>()
+  return { ...actual, calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs) }
+})
 
 const nacl_structure = structure_map.get(`mp-1234`)
 const pd_structure = structure_map.get(`mp-2`)
@@ -329,10 +337,13 @@ describe(`PdfPlot`, () => {
     // b_coh(H) < 0, so switching to neutrons is what flips w(H-Ni) negative. format_num emits
     // U+2212 MINUS SIGN, not ASCII hyphen.
     expect(caption()).not.toContain(`w(H-Ni) = −`)
+    vi.mocked(calculate_all_pair_rdfs).mockClear()
     const neutron_btn = click(`Neutron`)
     await tick()
     expect(neutron_btn.classList.contains(`active`)).toBe(true)
     expect(caption()).toContain(`w(H-Ni) = −`)
+    // radiation only re-weights the partials; the ~1 s neighbour search must not re-run
+    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
 
     expect(y_label()).toContain(`G(r)`)
     click(`g(r)`)
@@ -358,5 +369,19 @@ describe(`PdfPlot`, () => {
     for (const pair of [`H-H`, `H-Ni`, `Ni-Ni`]) {
       expect(labels.filter((label) => label?.endsWith(pair))).toHaveLength(1)
     }
+  })
+
+  test(`every curve of several structures gets its own colour`, async () => {
+    // 2 structures x (total + 3 partials) = 8 curves, within the 10-colour palette. A fixed
+    // stride of 7 per structure gave the second structure's last partial colour 0 again.
+    const target = await mount_pdf_plot({
+      structures: { a: nih, b: nih },
+      show_partials: true,
+    })
+    const strokes = [...target.querySelectorAll(`.legend-item line`)].map((line) =>
+      line.getAttribute(`stroke`),
+    )
+    expect(strokes).toHaveLength(8)
+    expect(new Set(strokes).size).toBe(8)
   })
 })

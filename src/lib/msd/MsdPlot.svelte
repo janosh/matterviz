@@ -5,15 +5,18 @@
   import { format_num } from '$lib/labels'
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
+  import { to_error } from '$lib/utils'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import { compute_msd_async } from './async-compute.svelte'
-  import type { MsdOptions, MsdResult } from './index'
+  import { fit_msd_curves } from './calc-msd'
+  import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
 
   let {
     result = $bindable(),
     positions,
     msd_options = {},
+    fit_options = {},
     show_fit = true,
     show_summary = true,
     max_visible_curves = 4,
@@ -30,6 +33,9 @@
     // Supply positions instead of `result` to have this component compute (in a worker)
     positions?: TrajectoryPositionStream
     msd_options?: MsdOptions
+    // Einstein fit window, applied on the main thread to whichever result is shown, so moving
+    // it never re-runs the displacement analysis
+    fit_options?: EinsteinFitOptions
     show_fit?: boolean
     show_summary?: boolean
     max_visible_curves?: number
@@ -46,6 +52,19 @@
     set_error: (message) => (error_msg = message),
   })
 
+  // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An
+  // invalid window (start >= end) is reported beside the curves rather than thrown through
+  // the render, since the curves themselves are still valid.
+  let fitted = $derived.by(() => {
+    if (!result) return { fits: [], fit_error: undefined }
+    try {
+      return { fits: fit_msd_curves(result, fit_options), fit_error: undefined }
+    } catch (exc) {
+      return { fits: [], fit_error: to_error(exc).message }
+    }
+  })
+  let fits = $derived(fitted.fits)
+
   let series = $derived.by<DataSeries[]>(() => {
     if (!result) return []
     const { times, curves, lags, dt: delta_time } = result
@@ -58,15 +77,14 @@
         label: `${curve.label} (${curve.n_atoms} atoms)`,
         visible,
         markers: `line`,
-        // n_origins/std_error per point so the tooltip can show how thin the tail is
+        // n_origins per point so the tooltip can show how thin the tail is
         metadata: times.map((_time, point_idx) => ({
           lag: lags[point_idx],
           n_origins: curve.n_origins[point_idx],
-          std_error: curve.std_error[point_idx],
         })),
         line_style: { stroke: color, stroke_width: 2 },
       }
-      const { fit } = curve
+      const fit = fits[idx]
       if (!show_fit || !fit) return [msd_series]
       const [fit_start, fit_end] = [
         fit.lag_window[0] * delta_time,
@@ -108,6 +126,9 @@
     styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 320px;`}
   />
+  {#if show_fit && fitted.fit_error}
+    <StatusMessage message={fitted.fit_error} type="warning" />
+  {/if}
   {#if show_summary}
     <AnalysisSummary
       headers={[`Species`, `Atoms`, `D`, `R²`, `Fit lags`]}
@@ -119,9 +140,8 @@
             lag_frames: summary.lags,
             [`lag_time_${summary.time_unit}`]: summary.times,
             ...Object.fromEntries(
-              summary.curves.flatMap(({ label, msd, std_error, n_origins }) => [
+              summary.curves.flatMap(({ label, msd, n_origins }) => [
                 [`msd_${label}_A2`, msd],
-                [`std_error_${label}_A2`, std_error],
                 [`n_origins_${label}`, n_origins],
               ]),
             ),
@@ -129,7 +149,8 @@
         },
       ]}
     >
-      {#each summary.curves as { label, n_atoms, fit } (label)}
+      {#each summary.curves as { label, n_atoms }, curve_idx (label)}
+        {@const fit = fits[curve_idx]}
         <tr>
           <td>{label}</td>
           <td>{n_atoms}</td>
@@ -146,7 +167,6 @@
       {#snippet note()}
         {summary.n_frames} frames × {summary.n_atoms} atoms
         {#if summary.frame_stride > 1}· 1 in {summary.frame_stride} frames{/if}
-        {#if summary.origin_stride > 1}· 1 in {summary.origin_stride} time origins{/if}
         {#if summary.lag_stride > 1}· 1 in {summary.lag_stride} lags{/if}
         · {summary.unwrapped ? `unwrapped across periodic images` : `no unwrapping applied`}
       {/snippet}

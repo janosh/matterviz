@@ -101,7 +101,13 @@ const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTr
     return { format: `json`, frames, metadata: {} }
   }
   if (!is_plain_object(value)) throw new Error(`Invalid data format`)
-  if (value[`@class`] === `Trajectory` && value.species && value.coords && value.lattice) {
+  // `lattice` is null (not absent) for a pymatgen molecule trajectory
+  if (
+    value[`@class`] === `Trajectory` &&
+    value.species &&
+    value.coords &&
+    `lattice` in value
+  ) {
     return parse_pymatgen_trajectory(value, collector.warn)
   }
   if (Array.isArray(value.frames)) {

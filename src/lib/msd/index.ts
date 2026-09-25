@@ -36,26 +36,21 @@ export interface MsdCurve {
   n_atoms: number
   // Mean squared displacement in Å², one entry per lag
   msd: number[]
-  // Standard error of the mean over time origins. Time origins overlap and are
-  // therefore correlated, so this is a lower bound on the true uncertainty.
-  std_error: number[]
-  // Number of time origins averaged at each lag (decreases with lag)
+  // Number of time origins averaged at each lag: n_frames - lag, so the tail is thin
   n_origins: number[]
-  // Null when the fit window contained fewer than 2 lags
-  fit: EinsteinFit | null
 }
 
 export interface MsdOptions {
   // Time per collected frame. Left at 1 the x axis is labelled in frames, because
   // a run may not record a timestep and frame spacing is not guaranteed uniform.
   dt?: number
-  // Only used when dt is explicitly supplied (e.g. `ps`, `fs`)
+  // Required with dt and rejected without it (e.g. `ps`, `fs`)
   time_unit?: string
   // Largest lag as a fraction of the trajectory length (longer lags have too few origins)
   max_lag_fraction?: number
-  // Cap on the number of distinct lags evaluated; longer runs sub-sample lags evenly
+  // Cap on the number of lags reported; longer runs sub-sample lags evenly. Every lag is
+  // still averaged over all of its time origins.
   max_lags?: number
-  fit?: EinsteinFitOptions
 }
 
 export interface MsdResult {
@@ -72,9 +67,7 @@ export interface MsdResult {
   n_atoms: number
   // False when the input was already unwrapped or had no lattice
   unwrapped: boolean
-  // Every `lag_stride`-th lag was evaluated (from `max_lags`) and every `origin_stride`-th
-  // time origin averaged (auto-tuned against an internal work budget)
+  // Every `lag_stride`-th lag was reported (from `max_lags`)
   lag_stride: number
-  origin_stride: number
   frame_stride: number
 }

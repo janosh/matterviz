@@ -45,7 +45,8 @@ describe(`vaspout.h5 parsing`, () => {
       12, 8, 6, 5, 4,
     ])
     for (const frame of trajectory.frames) {
-      expect(Array.isArray(frame.metadata?.forces)).toBe(true)
+      expect(frame.structure.sites.every(({ properties }) => properties.force)).toBe(true)
+      expect(frame.metadata?.force_max).toBeGreaterThanOrEqual(0)
       expect(frame.metadata?.volume).toBeCloseTo(5.43 ** 3, 6)
     }
     // The fixture stores the final SCF residuals per ionic step as decades: charge RMS
@@ -116,8 +117,9 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.frames.every((frame) => Number.isFinite(frame.metadata?.energy))).toBe(
       true,
     )
-    expect(Array.isArray(trajectory.frames[2].metadata?.forces)).toBe(true)
-    expect(trajectory.frames[3].metadata?.forces).toBeUndefined()
+    expect(trajectory.frames[2].structure.sites[0].properties.force).toHaveLength(3)
+    expect(trajectory.frames[3].structure.sites[0].properties.force).toBeUndefined()
+    expect(trajectory.frames[3].metadata?.force_max).toBeUndefined()
   })
 
   it(`throws electronic-only data for bands-only vaspout files`, async () => {

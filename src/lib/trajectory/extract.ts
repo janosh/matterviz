@@ -1,7 +1,7 @@
 // Data extraction functions for trajectory analysis and plotting
 import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { get_density } from '$lib/structure/density'
-import { calc_force_stats, copy_numeric_fields } from './helpers'
+import { copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame } from './index'
 
 // Build an extractor that copies the listed numeric metadata fields (plus Step)
@@ -15,23 +15,15 @@ const make_metadata_extractor =
 
 export const energy_data_extractor = make_metadata_extractor(TRAJECTORY_ENERGY_KEYS)
 
-// Force statistics as the parser recorded them, else computed from the per-atom forces array
-// (the parsers that carry forces also record the statistics, so this avoids a second pass
-// over every atom). A relaxed structure legitimately has force_max 0.
+// Force statistics as the parser recorded them (per-atom vectors live on the sites as
+// `force`, never in frame metadata). A relaxed structure legitimately has force_max 0.
 export const force_stress_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
 ): Record<string, number> => {
   const data: Record<string, number> = { Step: frame.step }
   const { metadata } = frame
   if (!metadata) return data
-  const recorded =
-    typeof metadata.force_max === `number` && typeof metadata.force_norm === `number`
-  if (recorded || !Array.isArray(metadata.forces)) {
-    copy_numeric_fields(data, metadata, [`force_max`, `force_norm`])
-  } else {
-    // Object.assign ignores the null calc_force_stats returns for empty forces
-    Object.assign(data, calc_force_stats(metadata.forces as number[][]))
-  }
+  copy_numeric_fields(data, metadata, [`force_max`, `force_norm`])
   // pressure lives here, not in structural_data_extractor, so full_data_extractor gets it once
   copy_numeric_fields(data, metadata, [`stress_max`, `stress_frobenius`, `pressure`])
   return data

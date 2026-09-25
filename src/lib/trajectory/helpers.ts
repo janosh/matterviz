@@ -334,13 +334,17 @@ export function parse_extxyz_columns(comment: string): {
   const species_col = layout?.species?.offset ?? 0
   const atomic_number_col = !layout?.species && layout?.z?.ncols === 1 ? layout.z.offset : -1
   const pos_col = layout?.pos?.offset ?? 1
-  const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
+  // `forces` is ASE's name, `force` the libAtoms/QUIP/GAP one (declaring both is rejected below)
+  const force_column = layout?.forces ?? layout?.force
+  const forces_col = force_column && force_column.ncols >= 3 ? force_column.offset : -1
   // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
   // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
   let spec_error: string | null = null
   if (spec !== undefined) {
     if (duplicate) spec_error = `Properties=${spec} declares '${duplicate}' more than once`
-    else if (layout?.pos?.ncols !== 3) {
+    else if (layout?.forces && layout.force) {
+      spec_error = `Properties=${spec} declares both 'forces' and 'force'; keep one`
+    } else if (layout?.pos?.ncols !== 3) {
       spec_error = `Properties=${spec} does not declare a 3-column pos field`
     }
   }

@@ -22,13 +22,13 @@
   import { SvelteMap } from 'svelte/reactivity'
   import type {
     EnergyReference,
-    PathMetric,
     ReactionCoordMode,
     ReactionPath,
     ReactionPathInput,
   } from './index'
   import NebPlot from './NebPlot.svelte'
   import { parse_dropped_paths } from './parse'
+  import type { PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
 
   type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `fullscreen`
@@ -37,7 +37,7 @@
     paths,
     coord_mode = $bindable(`arc_length`),
     energy_reference = $bindable(`initial`),
-    metric = `minimum_image`,
+    coord_options = {},
     show_spline = $bindable(true),
     active_path_key = $bindable(``),
     active_image_idx = $bindable(0),
@@ -59,7 +59,8 @@
     paths?: ReactionPathInput
     coord_mode?: ReactionCoordMode
     energy_reference?: EnergyReference
-    metric?: PathMetric
+    // Path metric, pbc, spline sampling and force usage; the x-axis mode is `coord_mode`
+    coord_options?: Omit<PathSplineOptions, `mode`>
     show_spline?: boolean
     active_path_key?: string
     active_image_idx?: number
@@ -93,19 +94,37 @@
     ...Object.fromEntries(dropped_paths),
   })
   const named_paths = $derived(Object.keys(merged).length > 0 ? normalize_paths(merged) : [])
-  const active = $derived(
-    named_paths.find((entry) => entry.key === active_path_key) ?? named_paths[0],
-  )
   // The one options object both the summary table below and the plot's own annotation
   // measure the path with, so the two cannot report different barriers. Profiles are
-  // computed once here and handed to the plot.
-  const coord_options = $derived({ mode: coord_mode, metric })
-  const profiles = $derived(
-    Object.fromEntries(
-      named_paths.map(({ key, path }) => [key, path_profile(path, coord_options)]),
+  // computed once here and handed to the plot. A path that cannot be profiled (identical
+  // consecutive images give no arc length, mismatched site counts no displacement) is
+  // reported and left out instead of throwing through the render.
+  const profile_options = $derived({ ...coord_options, mode: coord_mode })
+  const profile_results = $derived(
+    named_paths.map(({ key, path }) => {
+      try {
+        return { key, path, profile: path_profile(path, profile_options) }
+      } catch (exc) {
+        return { key, path, failure: `${key}: ${to_error(exc).message}` }
+      }
+    }),
+  )
+  const profiled = $derived(
+    profile_results.flatMap(({ key, path, profile }) =>
+      profile ? [{ key, path, profile }] : [],
     ),
   )
-  const profile = $derived(active ? profiles[active.key] : null)
+  const profile_failures = $derived(profile_results.flatMap(({ failure }) => failure ?? []))
+  const profiles = $derived(
+    Object.fromEntries(profiled.map(({ key, profile }) => [key, profile])),
+  )
+  const plotted_paths = $derived(
+    Object.fromEntries(profiled.map(({ key, path }) => [key, path])),
+  )
+  const active = $derived(
+    profiled.find((entry) => entry.key === active_path_key) ?? profiled[0],
+  )
+  const profile = $derived(active?.profile ?? null)
   const n_images = $derived(active?.path.images.length ?? 0)
   const image_idx = $derived(clamp(active_image_idx, 0, Math.max(n_images - 1, 0)))
   const current_image = $derived(active?.path.images[image_idx])
@@ -127,23 +146,38 @@
     if (active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
+  // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch:
+  // on_drop buffers each file and the batch end (set_loading(false), which the drop handler
+  // calls once after the last file) hands them all to parse_dropped_paths at once.
+  let dropped_batch: { content: string; filename: string }[] = []
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: (content, filename) => {
+      dropped_batch.push({ content: as_text(content), filename })
+    },
+    on_error: (msg) => (error_msg = msg),
+    set_loading: (loading) => {
+      if (loading) {
+        error_msg = undefined
+        dropped_batch = []
+        return
+      }
+      const files = dropped_batch
+      dropped_batch = []
+      if (files.length === 0) return
       try {
-        const parsed = parse_dropped_paths([{ content: as_text(content), filename }])
+        const parsed = parse_dropped_paths(files)
+        // Profile before accepting, so an unplottable path is refused with its reason
+        for (const path of Object.values(parsed)) path_profile(path, profile_options)
         for (const [key, path] of Object.entries(parsed)) {
           dropped_paths.set(key, path)
           active_path_key = key
         }
         active_image_idx = 0
       } catch (exc) {
-        error_msg = `${filename}: ${to_error(exc).message}`
+        const names = files.map(({ filename }) => filename).join(`, `)
+        error_msg = `${names}: ${to_error(exc).message}`
       }
-    },
-    on_error: (msg) => (error_msg = msg),
-    set_loading: (loading) => {
-      if (loading) error_msg = undefined
     },
   })
 
@@ -196,7 +230,7 @@
       {fullscreen}
       bind:height={controls_height}
     >
-      {#if named_paths.length > 1 && controls_config.visible(`path`)}
+      {#if profiled.length > 1 && controls_config.visible(`path`)}
         <label class="path-control">
           Path
           <select
@@ -206,7 +240,7 @@
               active_image_idx = 0
             }}
           >
-            {#each named_paths as { key } (key)}<option value={key}>{key}</option>{/each}
+            {#each profiled as { key } (key)}<option value={key}>{key}</option>{/each}
           </select>
         </label>
       {/if}
@@ -250,7 +284,7 @@
     >
       <NebPlot
         {...plot_props}
-        paths={merged}
+        paths={plotted_paths}
         {profiles}
         {coord_options}
         bind:coord_mode
@@ -281,6 +315,9 @@
     </div>
 
     <StatGrid items={barrier_stats} class="barrier-summary" aria-label="Reaction barriers" />
+  {/if}
+  {#if profile_failures.length > 0}
+    <StatusMessage message={profile_failures.join(`; `)} type="error" />
   {/if}
   <ViewerError bind:message={error_msg} dismissible />
 </div>

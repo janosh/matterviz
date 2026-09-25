@@ -21,8 +21,8 @@
   // Presentation attributes spread onto the shared `seg` line snippet below
   type SegAttrs = Record<string, string | number>
   // ScatterPlot's metadata generic must stay mutually assignable with Record<string, unknown>,
-  // so the plotted variant has optional fields and is narrowed before use. Spline series carry
-  // no metadata at all, so the optionality is real, not just a type-level concession.
+  // so the plotted variant has optional fields and is narrowed before use. Spline samples carry
+  // only their path_key, so the optional image_idx is real, not just a type-level concession.
   type PlotPointMeta = Partial<PointMeta> & Record<string, unknown>
 
   let {
@@ -61,10 +61,18 @@
   const named_paths = $derived(normalize_paths(paths))
   const profile_options = $derived({ ...coord_options, mode: coord_mode })
 
-  // Everything the plot needs per path, recomputed only when inputs or modes change
+  // The geometry (reaction coordinate, spline) of each path. Kept apart from the energy
+  // shift below so toggling the energy reference never re-profiles a path.
+  const base_profiles = $derived(
+    named_paths.map(({ key, path }) => ({
+      key,
+      path,
+      profile: given_profiles?.[key] ?? path_profile(path, profile_options),
+    })),
+  )
+  // Everything the plot needs per path
   const profiles = $derived(
-    named_paths.map(({ key, path }, path_idx) => {
-      const profile = given_profiles?.[key] ?? path_profile(path, profile_options)
+    base_profiles.map(({ key, path, profile }, path_idx) => {
       const offset = energy_reference === `initial` ? path.images[0].energy : 0
       return {
         ...profile,
@@ -109,6 +117,8 @@
         y: spline.energies.map((energy) => energy - offset),
         label: `${key} (${spline.method})`,
         markers: `line`,
+        // the path key, so hovering this curve selects an image of THIS path
+        metadata: spline.coords.map(() => ({ path_key: key })),
         line_style: { stroke: color, stroke_width: 1.5, curve: `linear` },
       }
       return [curve, points]
@@ -134,11 +144,11 @@
   const select_point = (data: { x: number; metadata?: PlotPointMeta | null } | null) => {
     if (!data) return
     const { path_key, image_idx } = data.metadata ?? {}
-    if (path_key !== undefined && image_idx !== undefined) {
-      return select_image(path_key, image_idx)
-    }
-    // Spline points carry no metadata; map the hovered coordinate to the nearest image
-    select_image(active.key, nearest_image_idx(active.coords, data.x))
+    if (path_key === undefined) return
+    if (image_idx !== undefined) return select_image(path_key, image_idx)
+    // A spline sample: map the hovered coordinate to the nearest image of its own path
+    const hovered = profiles.find((profile) => profile.key === path_key)
+    if (hovered) select_image(path_key, nearest_image_idx(hovered.coords, data.x))
   }
 
   const profile_settings = track_settings(

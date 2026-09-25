@@ -1016,10 +1016,26 @@
     }),
   )
   let plot_series = $derived(with_visible_properties(base_plot_series, visible_properties))
-  // Publish defaults once property rows arrive; an explicit empty selection stays empty.
+  // Publish defaults once property rows arrive; an explicit empty selection stays empty. Like
+  // x_quantity, only a selection the host or the legend made is a standing request: defaults
+  // this component wrote follow the data, so swapping runs re-derives them instead of keeping
+  // names the new run lacks and hiding every series it has.
+  let written_visible_properties: string[] | undefined
+  const same_ids = (left: readonly string[], right: readonly string[]) =>
+    left.length === right.length && left.every((id, idx) => id === right[idx])
   $effect(() => {
-    if (visible_properties === undefined && plot_series.length > 0)
-      visible_properties = plot_series.filter((srs) => srs.visible).map((srs) => srs.id)
+    if (base_plot_series.length === 0) return
+    const written = written_visible_properties
+    const component_owned =
+      visible_properties === undefined ||
+      (written !== undefined && same_ids(visible_properties, written))
+    if (!component_owned) return
+    const ids = with_visible_properties(base_plot_series, undefined)
+      .filter((srs) => srs.visible)
+      .map((srs) => srs.id)
+    if (visible_properties !== undefined && same_ids(ids, visible_properties)) return
+    written_visible_properties = ids
+    visible_properties = ids
   })
   const hidden_plot_series = () =>
     plot_series.filter((srs) => !srs.visible).map((srs) => srs.id)
@@ -1687,6 +1703,7 @@
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
                   class={['view-mode-option', { selected: display_mode === option.mode }]}
+                  aria-pressed={display_mode === option.mode}
                   onclick={() => select_display_mode(option.mode)}
                 >
                   <Icon icon={option.icon} />

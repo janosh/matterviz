@@ -175,6 +175,12 @@ describe(`no-dt policy`, () => {
     `time_unit '${time_unit}' with frequency_unit 'THz' is not convertible; use frequency_unit '1/frame'`
   it.each([
     [`a dt without a time_unit`, { dt: 0.5 }, /dt was supplied \(0.5\) without time_unit/],
+    // would report THz frequencies for an implied dt of 1 fs per frame
+    [
+      `a time_unit without a dt`,
+      { time_unit: `fs` },
+      /time_unit 'fs' was supplied without dt/,
+    ],
     [
       `a dt with the frame sentinel time unit`,
       { dt: 0.5, time_unit: `frame` },

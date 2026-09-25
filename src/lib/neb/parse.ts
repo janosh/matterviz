@@ -160,24 +160,22 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
   for (const frame of iter_xyz_frames(content)) {
     const image_idx = images.length
     const context = `${filename} frame ${image_idx}`
-    const { structure, metadata } = build_xyz_frame(
+    const { structure } = build_xyz_frame(
       content,
       frame,
       { frame_label: context, default_step: image_idx },
       collector,
     )
-    // Forces as read by the trajectory parser, kept only when every site got one
-    const raw_forces = metadata?.forces
-    const has_forces =
-      Array.isArray(raw_forces) &&
-      raw_forces.length === structure.sites.length &&
-      raw_forces.every((vec) => is_finite_vec3_like(vec))
+    // Forces as read by the trajectory parser onto the sites, which it keeps only when every
+    // site got a finite one
+    const site_forces = structure.sites.map(({ properties }) => properties?.force)
+    const forces = site_forces.every((vec) => is_finite_vec3_like(vec))
+      ? site_forces.map((vec): Vec3 => [vec[0], vec[1], vec[2]])
+      : undefined
     images.push({
       structure,
       energy: xyz_comment_energy(frame.comment, context),
-      ...(has_forces
-        ? { forces: raw_forces.map((vec): Vec3 => [vec[0], vec[1], vec[2]]) }
-        : {}),
+      ...(forces && { forces }),
       label: `image ${image_idx}`,
     })
   }

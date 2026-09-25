@@ -9,6 +9,8 @@ import {
   create_drop_event,
   doc_query,
   flush_render,
+  mouse,
+  plot_svg,
   query,
   resize_element,
 } from '../setup'
@@ -147,6 +149,40 @@ describe(`NebPlot`, () => {
     await mount_plot({ paths: reaction_paths, show_spline })
     expect(document.querySelectorAll(`.legend-item`)).toHaveLength(expected_series)
   })
+})
+
+test(`hovering another path's spline selects an image of that path`, async () => {
+  // B is A with a 3x taller barrier, so its curve runs well above A's
+  const [initial] = direct_path.images
+  const taller = {
+    images: direct_path.images.map((image) => ({
+      ...image,
+      energy: initial.energy + 3 * (image.energy - initial.energy),
+    })),
+  }
+  const on_image_change = vi.fn()
+  const plot = await mount_plot({
+    paths: { A: direct_path, B: taller },
+    active_path_key: `A`,
+    point_tween: { duration: 0 },
+    on_image_change,
+  })
+  const svg = plot_svg(plot)
+  svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 340 })
+  // B's spline is the second 1.5 px line; hover a sample between its first two images, where
+  // the nearest plotted point is a spline sample rather than an image marker
+  const splines = [...plot.querySelectorAll(`path[stroke-width="1.5"]`)]
+  const samples = [
+    ...(splines[1]?.getAttribute(`d`) ?? ``).matchAll(/(?<x>-?[\d.e-]+),(?<y>-?[\d.e-]+)/g),
+  ]
+  expect(samples.length).toBeGreaterThan(100)
+  const { x = ``, y = `` } = samples[Math.round(samples.length * 0.1)].groups ?? {}
+  svg.dispatchEvent(mouse(`mousemove`, { clientX: Number(x), clientY: Number(y) }))
+  await vi.waitFor(() =>
+    expect(on_image_change).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path_key: `B` }),
+    ),
+  )
 })
 
 describe(`NebViewer`, () => {
@@ -385,6 +421,51 @@ describe(`NebViewer`, () => {
     expect(state.error_msg).toBeUndefined()
     expect(viewer.querySelector(`.viewer-error`)).toBeNull()
     expect(query(viewer, `.scatter`)).toBe(plot)
+  })
+
+  test(`builds one path from several loose structure files dropped together`, async () => {
+    const state = $state({ active_path_key: ``, error_msg: undefined as string | undefined })
+    const viewer = await mount_viewer(bind_props({}, state))
+    // pymatgen-style structure JSONs carrying their energy: only the batch forms a path
+    const files = direct_path.images.slice(0, 3).map(
+      ({ structure, energy }, idx) =>
+        new File(
+          [
+            JSON.stringify({
+              ...structure,
+              properties: { ...structure.properties, energy },
+            }),
+          ],
+          `img-${idx}.json`,
+        ),
+    )
+    viewer.dispatchEvent(create_drop_event(files))
+    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped images`))
+    expect(state.error_msg).toBeUndefined()
+    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(1/3)`)
+  })
+
+  test(`reports a path it cannot profile instead of crashing`, async () => {
+    const state = $state({ active_path_key: ``, error_msg: undefined as string | undefined })
+    const viewer = await mount_viewer(bind_props({}, state))
+    // identical consecutive images: no path tangent (and no arc length) between them
+    const [first, second] = direct_path.images
+    const content = JSON.stringify({
+      format: `matterviz-reaction-path`,
+      label: `dup`,
+      images: [first, first, second],
+    })
+    viewer.dispatchEvent(create_drop_event(new File([content], `dup.json`)))
+    await vi.waitFor(() =>
+      expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
+    )
+    expect(state.active_path_key).toBe(``)
+
+    // the same path passed as a prop is reported beside the paths that do profile
+    const dup = { images: [first, first, second] }
+    const with_prop = await mount_viewer({ paths: { dup, ok: direct_path } })
+    expect(with_prop.querySelector(`.scatter`)).not.toBeNull()
+    expect(with_prop.textContent).toMatch(/dup: .*zero-length path tangent/)
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {

@@ -69,7 +69,13 @@ function read_extxyz_move_flags(
   return undefined
 }
 
-const RESERVED_EXTXYZ_COLUMNS = new Set([`species`, `pos`, `forces`, ...MOVE_FLAG_COLUMNS])
+const RESERVED_EXTXYZ_COLUMNS = new Set([
+  `species`,
+  `pos`,
+  `forces`,
+  `force`,
+  ...MOVE_FLAG_COLUMNS,
+])
 
 const EXTXYZ_COLUMN_ALIASES: Record<string, string> = {
   velocities: `velocity`,
@@ -331,8 +337,8 @@ export function build_xyz_frame(
     collector.warn,
   )
   const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
-  const force_stats = calc_force_stats(forces)
-  if (force_stats) Object.assign(metadata, { forces, ...force_stats })
+  // The vectors themselves live on the sites (`force`); only their statistics go here
+  Object.assign(metadata, calc_force_stats(forces))
   return create_trajectory_frame(
     positions,
     elements,

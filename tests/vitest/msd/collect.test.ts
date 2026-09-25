@@ -138,6 +138,23 @@ describe(`MSD components`, () => {
     expect(document.body.textContent).toContain(`R²`)
   })
 
+  it.each([
+    // 40 frames give lags 1..19: fractions 0.5-1 of the largest lag pick lags 10-19
+    [{ start_fraction: 0.5, end_fraction: 1 }, `10–19`],
+    [{ start_fraction: 0.8, end_fraction: 0.2 }, `must be below end_fraction`],
+  ])(`refits a shown result for fit_options %o`, async (fit_options, expected) => {
+    const result = calc_msd(drift_positions(40))
+    mounted.push(
+      mount(MsdPlot, {
+        target: document.body,
+        props: { result, fit_options, style: `width: 400px; height: 300px` },
+      }),
+    )
+    await tick()
+    expect(document.querySelector(`.scatter`)).not.toBeNull()
+    expect(document.body.textContent).toContain(expected)
+  })
+
   it(`collects through TrajectoryMsdPane and carries the run timestep into units`, async () => {
     const run = make_run(20)
     mounted.push(
