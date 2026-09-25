@@ -43,6 +43,7 @@
     style = ``,
     item_style = ``,
     collapsed_groups = new SvelteSet<string>(),
+    group_click = `visibility`,
     on_toggle = () => {},
     on_double_click = () => {},
     on_fill_toggle,
@@ -74,6 +75,10 @@
     item_style?: string
     // Collapsed group names, toggled in place by the chevrons (seed it to start collapsed)
     collapsed_groups?: SvelteSet<string>
+    // What a click on a group's label does: `visibility` toggles all its series (calling
+    // on_group_toggle), `collapse` expands/collapses it like the chevron (and never touches
+    // visibility, so on_group_toggle and on_group_double_click don't fire)
+    group_click?: `visibility` | `collapse`
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
     on_fill_toggle?: (source_type: `fill_region` | `error_band`, source_idx: number) => void
@@ -261,14 +266,9 @@
     action()
   }
 
-  const keyboard_activate = (
-    event: KeyboardEvent,
-    action: () => void,
-    stop_propagation = false,
-  ): void => {
+  const keyboard_activate = (event: KeyboardEvent, action: () => void): void => {
     if (event.key !== `Enter` && event.key !== ` `) return
     event.preventDefault()
-    if (stop_propagation) event.stopPropagation()
     action()
   }
 </script>
@@ -420,8 +420,10 @@
   </div>
 {/snippet}
 
+<!-- data-export-overlay: chart image exports redraw the legend as static SVG -->
 <div
   bind:this={root_element}
+  data-export-overlay
   onmousedown={handle_legend_mouse_down}
   onmouseenter={() => on_hover_change?.(true)}
   onmouseleave={() => on_hover_change?.(false)}
@@ -451,34 +453,58 @@
       {@const group_items = items_by_group.get(cell.group) ?? []}
       {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
-      <div
-        class={['legend-group-header', { hidden: !group_visible }]}
-        onclick={(event) =>
-          stop_and_run(event, () => handle_group_click(cell.group, group_items))}
-        ondblclick={(event) =>
-          stop_and_run(event, () =>
-            on_group_double_click?.(cell.group, group_indices(group_items)),
-          )}
-        onkeydown={(event) =>
-          keyboard_activate(event, () => handle_group_click(cell.group, group_items))}
-        role="button"
-        tabindex="0"
-        aria-expanded={!is_collapsed}
-        aria-label="Toggle group {strip_html(cell.group)}"
-      >
-        <span
-          class={['group-chevron', { collapsed: is_collapsed }]}
+      {@const group_name = strip_html(cell.group)}
+      <!-- Sibling controls, never nested: in visibility mode the chevron expands and the
+           label toggles visibility; in collapse mode the whole header is one expand toggle -->
+      {#if group_click === `collapse`}
+        <div
+          class={['legend-group-header', { hidden: !group_visible }]}
           onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
           onkeydown={(event) =>
-            keyboard_activate(event, () => toggle_group_collapse(cell.group), true)}
+            keyboard_activate(event, () => toggle_group_collapse(cell.group))}
           role="button"
           tabindex="0"
-          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {strip_html(cell.group)}"
+          aria-expanded={!is_collapsed}
+          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {group_name}"
         >
-          ▶
-        </span>
-        <span class="group-label">{@html sanitize_html(cell.group)}</span>
-      </div>
+          <span class={['group-chevron', { collapsed: is_collapsed }]} aria-hidden="true"
+            >▶</span
+          >
+          <span class="group-label">{@html sanitize_html(cell.group)}</span>
+        </div>
+      {:else}
+        <div class={['legend-group-header', { hidden: !group_visible }]}>
+          <span
+            class={['group-chevron', { collapsed: is_collapsed }]}
+            onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
+            onkeydown={(event) =>
+              keyboard_activate(event, () => toggle_group_collapse(cell.group))}
+            role="button"
+            tabindex="0"
+            aria-expanded={!is_collapsed}
+            aria-label="{is_collapsed ? `Expand` : `Collapse`} group {group_name}"
+          >
+            ▶
+          </span>
+          <span
+            class="group-label"
+            onclick={(event) =>
+              stop_and_run(event, () => handle_group_click(cell.group, group_items))}
+            ondblclick={(event) =>
+              stop_and_run(event, () =>
+                on_group_double_click?.(cell.group, group_indices(group_items)),
+              )}
+            onkeydown={(event) =>
+              keyboard_activate(event, () => handle_group_click(cell.group, group_items))}
+            role="button"
+            tabindex="0"
+            aria-pressed={group_visible}
+            aria-label="Toggle group {group_name}"
+          >
+            {@html sanitize_html(cell.group)}
+          </span>
+        </div>
+      {/if}
     {:else}
       {@const series = series_data[cell.item_idx]}
       {#if series}
@@ -596,8 +622,11 @@
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
   .legend-group-header:hover,
-  .legend-group-header:focus {
+  .legend-group-header:focus-within {
     background-color: var(--plot-legend-item-hover-bg-color);
+  }
+  .group-label {
+    flex: 1;
   }
   .group-chevron {
     display: inline-flex;

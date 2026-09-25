@@ -7,25 +7,36 @@ import type {
   AxisConfig3D,
   DataSeries3D,
   DisplayConfig3D,
+  Scatter3DHandlerEvent,
   Surface3DConfig,
 } from '$lib/plot/core/types'
 import {
+  box_clipping_planes,
   hover_marker_geometry,
   normalize_to_scene,
   sample_surface,
   get_3d_auto_ranges,
   span_or,
 } from '$lib/plot/scatter-3d/scene-coords'
+import { sync_point_mesh } from '$lib/plot/scatter-3d/point-mesh'
 import { resolve_axis_range } from '$lib/plot/core/interactions'
 import { mount_scene } from '../scene/mount'
-import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import {
   type BufferGeometry,
+  ClippingGroup,
+  EdgesGeometry,
+  InstancedMesh,
   Line,
+  LineSegments,
+  Matrix4,
   Mesh,
+  MeshBasicMaterial,
   Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  Raycaster,
+  SphereGeometry,
   Vector3,
 } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
@@ -156,6 +167,275 @@ test.each([`surface`, `axes`, `reference plane`] as const)(
   },
 )
 
+describe(`ScatterPlot3DScene points`, () => {
+  const instanced_meshes = (scene: Object3D): InstancedMesh[] => {
+    const meshes: InstancedMesh[] = []
+    scene.traverse((object) => {
+      if (object instanceof InstancedMesh) meshes.push(object)
+    })
+    return meshes
+  }
+  const mount_points = (
+    state: { series: DataSeries3D[]; hovered_point?: unknown },
+    extra: Partial<ComponentProps<typeof ScatterPlot3DScene>> = {},
+  ) => {
+    const portal = document.createElement(`div`)
+    document.body.append(portal)
+    const tooltip = createRawSnippet((data: () => Scatter3DHandlerEvent) => ({
+      render: () => `<span class="tip"></span>`,
+      setup: (node: Element) => {
+        $effect(() => {
+          const { x, y, z, fullscreen } = data()
+          node.textContent = `${x},${y},${z} ${fullscreen}`
+        })
+      },
+    }))
+    const mounted = mount_scene((anchor) =>
+      ScatterPlot3DScene(anchor, {
+        get series() {
+          return state.series
+        },
+        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+        gizmo: false,
+        tooltip,
+        tooltip_portal: portal,
+        get hovered_point() {
+          return (state.hovered_point ?? null) as never
+        },
+        set hovered_point(value) {
+          state.hovered_point = value
+        },
+        ...extra,
+      }),
+    )
+    flushSync()
+    return { ...mounted, portal }
+  }
+
+  // Every point used to be its own <Instance> component, whose update loop re-copied each
+  // matrix and color and invalidated every frame, so the on-demand scene never went idle
+  test(`draws all points as one InstancedMesh and stops rendering once idle`, async () => {
+    const state = $state({
+      series: [{ x: [1, 2, 3, 3.5], y: [1, 2, 3, 0.5], z: [1, 2, 3, 2] }] as DataSeries3D[],
+    })
+    const { scene, render_frame, unmount_scene } = mount_points(state)
+    try {
+      const [mesh, ...others] = instanced_meshes(scene)
+      expect(others).toHaveLength(0)
+      expect(mesh.count).toBe(4)
+      // instance 1 sits at data (2, 2, 2): user z is Three.js y, user y is Three.js z
+      const position = new Vector3().setFromMatrixPosition(
+        (() => {
+          const matrix = new Matrix4()
+          mesh.getMatrixAt(1, matrix)
+          return matrix
+        })(),
+      )
+      expect(position.toArray()).toEqual([
+        normalize_to_scene(2, [0, 4], 10),
+        normalize_to_scene(2, [0, 4], 5),
+        normalize_to_scene(2, [0, 4], 10),
+      ])
+      for (let frame = 0; frame < 3; frame++) render_frame()
+      expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
+      // a data change renders again
+      state.series = [{ x: [1, 2], y: [1, 2], z: [1, 2] }]
+      flushSync()
+      expect(render_frame()).toBe(true)
+    } finally {
+      await unmount_scene()
+    }
+  })
+
+  // A narrowed axis range used to leave points drawn outside the box
+  test(`leaves out points outside the axis ranges`, async () => {
+    const state = $state({
+      series: [{ x: [1, 2, 9], y: [1, 2, 3], z: [1, 2, -5] }] as DataSeries3D[],
+    })
+    const { scene, unmount_scene } = mount_points(state)
+    try {
+      expect(instanced_meshes(scene)[0].count).toBe(2)
+    } finally {
+      await unmount_scene()
+    }
+  })
+
+  // tooltip_point / event.point used to carry scene coordinates with y and z swapped
+  test(`hover reports data coordinates and follows data changes`, async () => {
+    const state = $state<{ series: DataSeries3D[]; hovered_point: unknown }>({
+      series: [{ x: [1, 2, 3], y: [0.5, 1.5, 2.5], z: [3, 2, 1] }],
+      hovered_point: null,
+    })
+    const { portal, scene, render_frame, unmount_scene } = mount_points(state, {
+      fullscreen: true,
+    })
+    // the hover halo is the one mesh drawn without depth testing
+    const halo = () => {
+      let found: Mesh | undefined
+      scene.traverse((object) => {
+        if (
+          object instanceof Mesh &&
+          !(object instanceof InstancedMesh) &&
+          !Array.isArray(object.material) &&
+          object.material.depthTest === false
+        )
+          found = object
+      })
+      return found
+    }
+    try {
+      state.hovered_point = { x: 2, y: 1.5, z: 2, series_idx: 0, point_idx: 1 }
+      flushSync()
+      render_frame()
+      expect(portal.querySelector(`.tip`)?.textContent).toBe(`2,1.5,2 true`)
+      expect(halo()?.position.toArray()).toEqual([
+        normalize_to_scene(2, [0, 4], 10),
+        normalize_to_scene(2, [0, 4], 5),
+        normalize_to_scene(1.5, [0, 4], 10),
+      ])
+      // same logical point, new values: the tooltip and halo move with it
+      state.series = [{ x: [1, 3, 3], y: [0.5, 0.5, 2.5], z: [3, 1, 1] }]
+      flushSync()
+      flushSync()
+      render_frame()
+      expect(state.hovered_point).toMatchObject({ x: 3, y: 0.5, z: 1, point_idx: 1 })
+      expect(portal.querySelector(`.tip`)?.textContent).toBe(`3,0.5,1 true`)
+      // the point is gone: hover clears instead of describing a stale point
+      state.series = [{ x: [1], y: [1], z: [1] }]
+      flushSync()
+      expect(state.hovered_point).toBeNull()
+      expect(portal.querySelector(`.tip`)).toBeNull()
+    } finally {
+      await unmount_scene()
+    }
+  })
+
+  test(`clips data geometry to the box and draws the bounding box on request`, async () => {
+    const state = $state({
+      series: [
+        { x: [1, 2, 3], y: [1, 2, 3], z: [1, 2, 3], line_style: { stroke: `red` } },
+      ] as DataSeries3D[],
+    })
+    const { scene, unmount_scene } = mount_points(state, {
+      display: { show_bounding_box: true },
+      surfaces: [grid_surface],
+    })
+    try {
+      const groups: ClippingGroup[] = []
+      scene.traverse((object) => {
+        if (object instanceof ClippingGroup) groups.push(object)
+      })
+      expect(groups).toHaveLength(1)
+      expect(groups[0].clippingPlanes).toHaveLength(6)
+      // the series line and the surface are clipped, the point mesh is range-filtered
+      const clipped_types = new Set<string>()
+      groups[0].traverse((object) => clipped_types.add(object.type))
+      expect([...clipped_types]).toEqual(expect.arrayContaining([`Line2`, `Mesh`]))
+      let edges = 0
+      scene.traverse((object) => {
+        if (object instanceof LineSegments && object.geometry instanceof EdgesGeometry) edges++
+      })
+      expect(edges).toBe(1)
+    } finally {
+      await unmount_scene()
+    }
+  })
+})
+
+describe(`3D point mesh and scene helpers`, () => {
+  test(`sync_point_mesh reuses capacity, grows it, and picks instances by id`, () => {
+    const geometry = new SphereGeometry(1, 8, 8)
+    const material = new MeshBasicMaterial()
+    const spec = (x_pos: number) => ({
+      position: [x_pos, 0, 0] as [number, number, number],
+      radius: 0.2,
+      color: `#ff0000`,
+    })
+    const first = sync_point_mesh(null, geometry, material, [spec(0), spec(1)])
+    if (!first) throw new Error(`expected a mesh`)
+    expect(first.count).toBe(2)
+    expect(sync_point_mesh(first, geometry, material, [spec(3)])).toBe(first)
+    expect(first.count).toBe(1)
+    const grown = sync_point_mesh(first, geometry, material, [0, 1, 2, 3].map(spec))
+    expect(grown).not.toBe(first)
+    if (!grown) throw new Error(`expected a mesh`)
+    expect(grown.count).toBe(4)
+    grown.updateMatrixWorld()
+    const hits = new Raycaster(new Vector3(2, 0, 5), new Vector3(0, 0, -1)).intersectObject(
+      grown,
+    )
+    expect(hits[0]?.instanceId).toBe(2)
+    expect(sync_point_mesh(grown, geometry, material, [])).toBeNull()
+  })
+
+  test(`box clipping planes keep the box and cut outside it`, () => {
+    const planes = box_clipping_planes(10, 10, 5)
+    const inside = (point: Vector3) =>
+      planes.every((plane) => plane.distanceToPoint(point) >= 0)
+    expect(inside(new Vector3(5, 2.5, 5))).toBe(true) // a corner (user z is Three.js y)
+    expect(inside(new Vector3(0, 0, 0))).toBe(true)
+    expect(inside(new Vector3(5.1, 0, 0))).toBe(false)
+    expect(inside(new Vector3(0, 2.6, 0))).toBe(false)
+    expect(inside(new Vector3(0, 0, -5.1))).toBe(false)
+  })
+
+  // Legend-hidden series used to keep widening the axes
+  test(`auto ranges skip hidden series`, () => {
+    const visible = { x: [0, 1], y: [0, 1], z: [0, 1] }
+    const hidden = { x: [0, 1000], y: [0, 1000], z: [0, 1000], visible: false }
+    expect(get_3d_auto_ranges([visible, hidden], [])).toEqual(
+      get_3d_auto_ranges([visible], []),
+    )
+  })
+
+  // Bounds used an 11x11 grid over [-1, 1] while the surface draws `resolution` points over
+  // the plot's x/y: a narrow peak between samples poked out of the box
+  test(`surface bounds sample the drawn vertex grid`, () => {
+    const peak = (x_val: number, y_val: number) =>
+      Math.exp(-((x_val - 0.37) ** 2 + (y_val - 0.37) ** 2) * 200)
+    const surface: Surface3DConfig = { type: `grid`, resolution: 101, z_fn: peak }
+    const samples = sample_surface(surface, { x: [0, 1], y: [0, 1] })
+    expect(samples).toHaveLength(101 * 101)
+    expect(Math.max(...samples.map(({ z }) => z))).toBeCloseTo(1, 12)
+    // spanning the plot's x/y, it has nothing to add until those ranges are known
+    expect(sample_surface(surface)).toEqual([])
+  })
+
+  // NaN vertices (z undefined off the disk) used to poison the normals of their neighbours
+  test(`surface drops triangles touching non-finite vertices`, async () => {
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      Surface3D(anchor, {
+        config: {
+          type: `grid`,
+          resolution: 25,
+          x_range: [-1, 1],
+          y_range: [-1, 1],
+          z_fn: (x_val: number, y_val: number) => Math.sqrt(1 - x_val ** 2 - y_val ** 2),
+        },
+        x_range: [-1, 1],
+        y_range: [-1, 1],
+        z_range: [0, 1],
+      }),
+    )
+    flushSync()
+    try {
+      let geometry: BufferGeometry | undefined
+      scene.traverse((object) => {
+        if (object instanceof Mesh) geometry = object.geometry
+      })
+      if (!geometry) throw new Error(`no surface mesh`)
+      const values = (name: string) => [...(geometry?.getAttribute(name).array ?? [])]
+      expect(values(`position`).every(Number.isFinite)).toBe(true)
+      expect(values(`normal`).every(Number.isFinite)).toBe(true)
+      const index_count = geometry.index?.count ?? 0
+      expect(index_count).toBeGreaterThan(0)
+      expect(index_count).toBeLessThan(24 * 24 * 6)
+    } finally {
+      await unmount_scene()
+    }
+  })
+})
+
 describe(`ScatterPlot3D smoke tests`, () => {
   let container: HTMLDivElement
   let mounted_component: ReturnType<typeof mount> | null = null
@@ -216,6 +496,18 @@ describe(`ScatterPlot3D smoke tests`, () => {
       })
       flushSync()
     }).toThrow(`Series "points": aligned arrays must have equal lengths, got x=3, y=2, z=4`)
+    mounted_component = null
+  })
+
+  // The scene maps axes linearly, so an untyped caller's log axis used to draw silently linear
+  test(`rejects non-linear axis scale types`, () => {
+    expect(() => {
+      mounted_component = mount(ScatterPlot3D, {
+        target: container,
+        props: { series: [basic_series], z_axis: { scale_type: `log` as never } },
+      })
+      flushSync()
+    }).toThrow(`ScatterPlot3D axes are linear, got z_axis.scale_type="log"`)
     mounted_component = null
   })
 
@@ -294,7 +586,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     flushSync()
     expect(on_double_click).toHaveBeenCalledExactlyOnceWith(0)
     expect(query(container, `.legend-item`).classList.contains(`hidden`)).toBe(false)
-    const group = query(container, `.legend-group-header`)
+    const group = query(container, `.legend-group-header .group-label`)
     for (const hidden_count of [0, 2]) {
       group.click()
       flushSync()

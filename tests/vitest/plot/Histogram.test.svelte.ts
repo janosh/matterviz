@@ -1,11 +1,13 @@
 import Histogram from '$lib/plot/histogram/Histogram.svelte'
 import type { Vec2 } from '$lib'
+import { plot_color } from '$lib/colors'
 import type { HistogramSeries } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
   compute_count_range,
   compute_histogram_bins,
   compute_histogram_counts,
+  histogram_totals,
   log_safe_range,
   normalize_counts,
 } from '$lib/plot/histogram/histogram'
@@ -86,12 +88,15 @@ const histogram_bins = (
   overrides: Partial<Parameters<typeof compute_histogram_counts>[1]> & {
     normalize?: Parameters<typeof compute_histogram_bins>[1]
   } = {},
-) =>
-  compute_histogram_bins(
-    compute_histogram_counts(entries, { ...histogram_cfg, ...overrides }),
+) => {
+  const counted = compute_histogram_counts(entries, { ...histogram_cfg, ...overrides })
+  return compute_histogram_bins(
+    counted,
     overrides.normalize ?? `count`,
     histogram_cfg.series_color,
+    histogram_totals(counted),
   )
+}
 // count range of a set of series binned over histogram_cfg's domains
 const count_range = (
   series: HistogramSeries[],
@@ -232,6 +237,91 @@ describe(`Histogram`, () => {
     expect(swatches).toHaveLength(3)
     expect(new Set(swatches).size).toBe(3)
     expect(swatches).not.toContain(`rebeccapurple`)
+  })
+
+  // A series' own color wins over bar.color, and the fill picker only shows when bar.color
+  // is what the bars actually use (a lone series without its own color)
+  test.each([
+    [`lone series color wins`, [{ values: [1, 2], color: `#00ff00` }], `#00ff00`, false],
+    [`lone series uses bar.color`, [{ values: [1, 2] }], `#123456`, true],
+    [
+      `several series use the palette`,
+      [{ values: [1, 2] }, { values: [2, 3], visible: false }],
+      plot_color(0),
+      false,
+    ],
+  ])(`bar fill: %s`, async (_desc, series, expected_fill, picker_shown) => {
+    await mount_histogram({
+      series,
+      bins: 2,
+      bar: { color: `#123456` },
+      show_controls: true,
+      controls_open: true,
+    })
+    const fills = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)].map(
+      (bar) => bar.getAttribute(`fill`),
+    )
+    expect(fills.length).toBeGreaterThan(0)
+    expect(new Set(fills)).toEqual(new Set([expected_fill]))
+    expect(document.querySelector(`input[aria-label="Fill color hex"]`) !== null).toBe(
+      picker_shown,
+    )
+  })
+
+  // Zooming into part of the distribution must not renormalize by the samples still in view
+  test.each([`density`, `probability`] as const)(
+    `%s bar heights survive a rect zoom`,
+    async (normalize) => {
+      const on_bar_hover = vi.fn()
+      await mount_histogram({
+        series: [{ values: Array.from({ length: 1000 }, (_, idx) => idx), label: `U` }],
+        normalize,
+        bins: 10,
+        on_bar_hover,
+      })
+      const hovered_value = async () => {
+        const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+        bars[Math.floor(bars.length / 2)].dispatchEvent(
+          new MouseEvent(`mousemove`, { bubbles: true }),
+        )
+        await tick()
+        return on_bar_hover.mock.lastCall?.[0]
+      }
+      const before = await hovered_value()
+      const svg = plot_svg()
+      const { left, top } = svg.getBoundingClientRect()
+      const at = (px_x: number, px_y: number): MouseEventInit => ({
+        button: 0,
+        buttons: 1,
+        clientX: left + px_x,
+        clientY: top + px_y,
+      })
+      svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...at(130, 40) }))
+      window.dispatchEvent(new MouseEvent(`mousemove`, at(250, 240)))
+      window.dispatchEvent(new MouseEvent(`mouseup`, { ...at(250, 240), buttons: 0 }))
+      await tick()
+      const after = await hovered_value()
+      // the zoom re-bins: same bin count over a narrower span, so fewer samples per bin
+      expect(after.count).toBeLessThan(before.count)
+      // bar height (y) of uniform samples: density stays 1/1000 per unit, probability is the
+      // bin's share of all 1000 samples, not of those still in view
+      // (5% covers the zoomed bins' +-1 sample of integer-grid discretization, ~30 per bin;
+      // dividing by the in-view total instead would roughly triple the height)
+      if (normalize === `density`) expect(Math.abs(after.y / before.y - 1)).toBeLessThan(0.05)
+      else expect(after.y).toBeCloseTo(after.count / 1000, 12)
+    },
+  )
+
+  test(`weights count each sample by its weight, and a length mismatch throws`, () => {
+    const [weighted] = histogram_bins(
+      [{ series_data: series_of([1, 1, 9], { weights: [2, 0.5, 4] }), series_idx: 0 }],
+      { normalize: `probability` },
+    )
+    expect(weighted.bins.map(({ count }) => count)).toEqual([2.5, 0, 0, 0, 4])
+    expect(weighted.bins[0].value).toBeCloseTo(2.5 / 6.5, 12)
+    expect(() =>
+      histogram_bins([{ series_data: series_of([1, 2], { weights: [1] }), series_idx: 0 }]),
+    ).toThrow(`bin_values got 1 weights for 2 values`)
   })
 
   test.each([
@@ -449,7 +539,8 @@ describe(`Histogram`, () => {
     await tick()
     expect(series_select.disabled).toBe(false)
     expect(series_select.value).toBe(`3`)
-    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).not.toBeNull()
+    // One visible series of five still paints its palette color, so bar.color has no effect
+    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()
     expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
       `3`,
     )
@@ -754,15 +845,15 @@ describe(`Histogram`, () => {
   test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {
     const values = [1, 2, 3, 10, 30, 50, 70, 90, 100, 400, 900, 1000]
     const { edges, counts } = bin_values(values, [1, 1000], 3, `log`)
-    const raw = normalize_counts(edges, counts, `count`)
+    const raw = normalize_counts(edges, counts, `count`, 12)
     expect(raw.map(({ count, value }) => [count, value])).toEqual([
       [3, 3],
       [5, 5],
       [4, 4],
     ])
-    const probability = normalize_counts(edges, counts, `probability`)
+    const probability = normalize_counts(edges, counts, `probability`, 12)
     expect(probability.map(({ value }) => value)).toEqual([3 / 12, 5 / 12, 4 / 12])
-    const density = normalize_counts(edges, counts, `density`)
+    const density = normalize_counts(edges, counts, `density`, 12)
     const integral = density.reduce(
       (sum, { x0: coord_x_0, x1: coord_x_1, value }) => sum + value * (coord_x_1 - coord_x_0),
       0,
@@ -771,7 +862,12 @@ describe(`Histogram`, () => {
     // density = count / (total * width): the widest bin is the flattest
     expect(density[2].value).toBeCloseTo(4 / (12 * 900), 15)
     // empty input keeps zero bars instead of dividing by zero
-    const empty = normalize_counts(Float64Array.of(0, 1, 2), Uint32Array.of(0, 0), `density`)
+    const empty = normalize_counts(
+      Float64Array.of(0, 1, 2),
+      Uint32Array.of(0, 0),
+      `density`,
+      0,
+    )
     expect(empty.map(({ value }) => value)).toEqual([0, 0])
   })
 

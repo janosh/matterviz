@@ -13,6 +13,10 @@ export interface KdeResult {
 interface KdeOptions {
   bandwidth?: number | `silverman` | `scott` // default 'silverman'
   n_points?: number // integer grid resolution >= 2 (default 100)
+  // Refine the grid to at least this many points per bandwidth (up to max_points), so a
+  // distant outlier stretching the range can't leave the bulk's peak between two grid points
+  points_per_bandwidth?: number
+  max_points?: number // cap for the refined grid (default 2000)
   cut?: number // extend grid by cut*bandwidth beyond data extremes (default 2)
   clip?: [number | null, number | null] // hard bounds for the grid (e.g. [0, null] for RMSD)
   range?: Vec2 // explicit eval range (overrides data extent + cut)
@@ -28,29 +32,32 @@ interface KdeOptions {
 const KDE_EXACT_SAMPLE_LIMIT = 1024
 const KDE_TAIL_SIGMA = 6
 
-// Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5). Matches scipy/seaborn.
-// (`sigma` floors to std then 1 to avoid a zero bandwidth.)
-const silverman_from_stats = (n_vals: number, std: number, iqr: number): number => {
-  const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
-  const sigma = spread > 0 ? spread : std > 0 ? std : 1
-  return 0.9 * sigma * n_vals ** (-1 / 5)
-}
+const MAX_GRID_POINTS = 2000
 
-// `samples` need not be sorted; quartile selection reorders a scratch copy, not the input
+// Spread for samples with no variance (a single value or all equal): the magnitude of the
+// value, like R's bw.nrd0, so constant 1e-6 samples get a kernel at their own scale rather
+// than a fixed 1 that smears them across +-2. Exactly zero falls back to 1.
+const constant_spread = (samples: readonly number[]): number => Math.abs(samples[0] ?? 0) || 1
+
+// Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5), i.e. R's bw.nrd0 and
+// statsmodels' `silverman` (scipy's `silverman` is the different std * (3n/4)^(-1/5)).
+// The spread falls back to std, then to the constant-sample spread above.
 export function silverman_bandwidth(samples: readonly number[]): number {
-  if (samples.length < 2) return 1
+  const n_vals = samples.length
+  // `samples` need not be sorted; quartile selection reorders a scratch copy, not the input
   const scratch = [...samples]
-  const quartile_1 = quantile_unordered(scratch, 0.25)
-  const quartile_3 = quantile_unordered(scratch, 0.75)
-  return silverman_from_stats(samples.length, sample_std(samples), quartile_3 - quartile_1)
+  const iqr =
+    n_vals < 2 ? 0 : quantile_unordered(scratch, 0.75) - quantile_unordered(scratch, 0.25)
+  const std = n_vals < 2 ? 0 : sample_std(samples)
+  const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
+  return 0.9 * (spread || constant_spread(samples)) * n_vals ** (-1 / 5)
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data (order-independent, never touches `samples`)
 export function scott_bandwidth(samples: readonly number[]): number {
   const n_vals = samples.length
-  if (n_vals < 2) return 1
-  const std = sample_std(samples) || 1
-  return std * n_vals ** (-1 / 5)
+  const std = n_vals < 2 ? 0 : sample_std(samples)
+  return (std || constant_spread(samples)) * n_vals ** (-1 / 5)
 }
 
 function exact_density(
@@ -127,7 +134,7 @@ function binned_density(
 // Estimate a smooth density from raw samples via a Gaussian kernel.
 export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
   // oxfmt-ignore
-  const { bandwidth = `silverman`, n_points = 100, cut = 2, clip, range, max_samples, grid_transform } = opts
+  const { bandwidth = `silverman`, n_points = 100, points_per_bandwidth, max_points = MAX_GRID_POINTS, cut = 2, clip, range, max_samples, grid_transform } = opts
 
   if (!Number.isSafeInteger(n_points) || n_points < 2) {
     throw new RangeError(`KDE n_points must be an integer >= 2, got ${n_points}`)
@@ -137,6 +144,19 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   }
   if (typeof bandwidth === `number` && (!Number.isFinite(bandwidth) || bandwidth <= 0)) {
     throw new RangeError(`KDE bandwidth must be finite and positive, got ${bandwidth}`)
+  }
+  if (
+    points_per_bandwidth !== undefined &&
+    !(Number.isFinite(points_per_bandwidth) && points_per_bandwidth > 0)
+  ) {
+    throw new RangeError(
+      `KDE points_per_bandwidth must be finite and positive, got ${points_per_bandwidth}`,
+    )
+  }
+  if (!Number.isSafeInteger(max_points) || max_points < n_points) {
+    throw new RangeError(
+      `KDE max_points must be an integer >= n_points (${n_points}), got ${max_points}`,
+    )
   }
   if (!Number.isFinite(cut) || cut < 0) {
     throw new RangeError(`KDE cut must be finite and non-negative, got ${cut}`)
@@ -180,21 +200,28 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   // A collapsed range renders constant samples; only inverted bounds leave no valid grid.
   if (upper < lower) return { grid: [], density: [], bandwidth: band }
 
-  const grid = Array.from({ length: n_points }, () => 0)
   // Spaced in the transformed coordinate when one is given and both ends survive it finite
   // (a log transform of a non-positive bound does not), else evenly in data units
   const [pos_lo, pos_hi] = [
     grid_transform?.fwd(lower) ?? NaN,
     grid_transform?.fwd(upper) ?? NaN,
   ]
+  const n_grid = points_per_bandwidth
+    ? clamp(
+        Math.ceil(((upper - lower) / band) * points_per_bandwidth) + 1,
+        n_points,
+        max_points,
+      )
+    : n_points
+  const grid = Array.from({ length: n_grid }, () => 0)
   const position =
     grid_transform && Number.isFinite(pos_lo) && Number.isFinite(pos_hi)
       ? (frac: number) => grid_transform.inv(pos_lo + (pos_hi - pos_lo) * frac)
       : (frac: number) => lower + (upper - lower) * frac
-  for (let idx = 0; idx < n_points; idx++) grid[idx] = position(idx / (n_points - 1))
+  for (let idx = 0; idx < n_grid; idx++) grid[idx] = position(idx / (n_grid - 1))
   // the transform can round the ends off; the grid must still span exactly [lo, hi]
   grid[0] = lower
-  grid[n_points - 1] = upper
+  grid[n_grid - 1] = upper
   const density =
     max_samples && n_eval > KDE_EXACT_SAMPLE_LIMIT
       ? binned_density(eval_samples, grid, band)

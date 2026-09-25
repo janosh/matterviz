@@ -66,6 +66,41 @@ export function resolve_series_ref(
   return null
 }
 
+// Axes a region draws against and whether a series it is bound to is hidden. A series
+// boundary carries its series' axes (a band around a y2 series belongs on y2), so an explicit
+// region axis that disagrees with one is a caller error rather than a silent choice.
+export function resolve_fill_binding(
+  region: FillRegion,
+  series: readonly DataSeries[],
+): { x_axis: `x` | `x2`; y_axis: `y` | `y2`; series_hidden: boolean } {
+  const bound = [region.upper, region.lower].flatMap((boundary) => {
+    if (typeof boundary !== `object` || boundary.type !== `series`) return []
+    const resolved = resolve_series_ref(boundary, series)
+    return resolved ? [resolved] : []
+  })
+  const pick = <Axis extends string>(
+    key: `x_axis` | `y_axis`,
+    explicit: Axis | undefined,
+    fallback: Axis,
+  ): Axis => {
+    const axes = new Set([
+      ...(explicit ? [explicit] : []),
+      ...bound.map((srs) => (srs[key] as Axis | undefined) ?? fallback),
+    ])
+    if (axes.size > 1) {
+      throw new Error(
+        `Fill region ${region.id ?? region.label ?? ``} spans ${key} values ${[...axes].join(` and `)}: its series boundaries and ${key} must agree`,
+      )
+    }
+    return [...axes][0] ?? fallback
+  }
+  return {
+    x_axis: pick(`x_axis`, region.x_axis, `x`),
+    y_axis: pick(`y_axis`, region.y_axis, `y`),
+    series_hidden: bound.some((srs) => srs.visible === false),
+  }
+}
+
 // === Monotone-cubic interpolation matching d3's curveMonotoneX ===
 // Used to evaluate a boundary's y on its own curve (for endpoint clipping and where-condition
 // detection) so interpolated points lie exactly on the rendered line.
@@ -561,6 +596,10 @@ export function convert_error_band_to_fill_region(
   return {
     id: error_band.id,
     label: error_band.label,
+    // A band lives on its series' axes and disappears with it (its legend entry greys out)
+    x_axis: resolved.x_axis ?? `x`,
+    y_axis: resolved.y_axis ?? `y`,
+    visible: resolved.visible !== false,
     // band edges are data boundaries (default monotoneX); inherit the central series' line
     // curve so the band traces with the same curve as the line it brackets
     curve: line_curve_to_fill(resolved.line_style?.curve),

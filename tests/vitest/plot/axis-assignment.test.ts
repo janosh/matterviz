@@ -153,6 +153,20 @@ describe(`assign_axes`, () => {
     ).toEqual([{ key: `eV`, axis: `y2`, series_indices: [0, 1] }])
   })
 
+  // Unitless series share no declared quantity, so an explicit y2 on one (e.g. cos on y2 next
+  // to an implicit sin) pins only that series and the implicit one keeps the y default
+  // oxfmt-ignore
+  test.each([
+    [`unitless peer stays on y`, [{}, { y_axis: `y2` }], [`y`, `y2`]],
+    [`unitless peer order is irrelevant`, [{ y_axis: `y2` }, {}], [`y2`, `y`]],
+    [`unitless peers may share an explicit y`, [{ y_axis: `y` }, {}, {}], [`y`, `y`, `y`]],
+    [`unit groups can't share a unitless reservation`, [{ y_axis: `y` }, { unit: `eV` }], [`y`, `y2`]],
+    [`axis_group peers still inherit`, [{ axis_group: `g`, y_axis: `y2` }, { axis_group: `g` }], [`y2`, `y2`]],
+  ] as const)(`%s`, (_desc, overrides, expected) => {
+    const series = overrides.map((opts, idx) => create_series(`S${idx}`, ``, opts))
+    expect(assign_axes(series).assignments).toEqual(expected)
+  })
+
   test(`reports an ambiguous automatic peer when its group reserves both axes`, () => {
     const result = assign_overflow([
       create_series(`Explicit secondary energy`, `eV`, { y_axis: `y2` }),

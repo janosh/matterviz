@@ -5,7 +5,7 @@ import { dismiss_on_outside_press } from 'svelte-widgets/attachments'
 
 export type CollapsibleLegend = {
   // Spread into a chart's LegendConfig: `legend={{ ...my_legend, ...collapsible.legend }}`
-  legend: Required<Pick<LegendConfig, `collapsed_groups` | `on_group_toggle`>>
+  legend: Required<Pick<LegendConfig, `collapsed_groups` | `group_click`>>
   collapsed_groups: SvelteSet<string>
   toggle_group: (group: string) => void
   // Collapse one group, or with no argument restore the initially collapsed groups
@@ -16,7 +16,9 @@ export type CollapsibleLegend = {
 
 // Legend groups that expand/collapse on group-header click and re-collapse on a click
 // anywhere outside the legend, e.g. a long per-model legend that should stay out of the
-// way until opened. Pass the groups to start collapsed.
+// way until opened. Pass the groups to start collapsed. `group_click: 'collapse'` makes the
+// header an expand toggle only, so opening a group can never also hide its series (charts
+// otherwise wire header clicks to group visibility).
 export const create_collapsible_legend = (
   initially_collapsed: Iterable<string> = [],
 ): CollapsibleLegend => {
@@ -26,7 +28,7 @@ export const create_collapsible_legend = (
     if (!collapsed_groups.delete(group)) collapsed_groups.add(group)
   }
   // Restoring the initial groups rather than tracking toggles keeps this independent of
-  // how a group was expanded: PlotLegend's chevron edits collapsed_groups directly.
+  // how a group was expanded: PlotLegend's header edits collapsed_groups directly.
   const collapse = (group?: string) => {
     for (const name of group === undefined ? initial_groups : [group])
       collapsed_groups.add(name)
@@ -45,7 +47,7 @@ export const create_collapsible_legend = (
       callback: () => collapse(),
     })
   return {
-    legend: { collapsed_groups, on_group_toggle: toggle_group },
+    legend: { collapsed_groups, group_click: `collapse` },
     collapsed_groups,
     toggle_group,
     collapse,

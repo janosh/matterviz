@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
-  import { normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
+  import { normalize_to_scene, surface_vertices } from '$lib/plot/scatter-3d/scene-coords'
   import type { Surface3DConfig } from '$lib/plot/core/types'
   import { dispose_on_change } from '$lib/scene'
   import { T } from '@threlte/core'
@@ -34,111 +34,61 @@
     return new THREE.Color().setHSL(0.66 - z_norm * 0.66, 0.8, 0.5)
   }
 
-  // Add vertex position (with Y/Z swap for Three.js) and color to arrays
-  function add_vertex(
-    positions: number[],
-    colors: number[],
-    x_val: number,
-    y_val: number,
-    z_val: number,
-  ): void {
-    positions.push(
-      normalize_to_scene(x_val, x_range, scene_x),
-      normalize_to_scene(z_val, z_range, scene_z), // user Z → Three.js Y (vertical)
-      normalize_to_scene(y_val, y_range, scene_y), // user Y → Three.js Z (depth)
-    )
-    const color = get_vertex_color(x_val, y_val, z_val)
-    colors.push(color.r, color.g, color.b)
-  }
-
-  // Build geometry from positions/colors arrays with optional grid indices
-  function build_geometry(
-    positions: number[],
-    colors: number[],
-    res_a?: number,
-    res_b?: number,
-    triangles?: number[][],
-  ): THREE.BufferGeometry {
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
-    // Set indices: either from explicit triangles or generate grid
+  // Scene geometry from the shared vertex grid (the same vertices the axis bounds sample).
+  // A vertex with a non-finite coordinate (z_fn undefined off its domain, e.g. a hemisphere
+  // outside the unit disk) leaves a hole: triangles touching it are dropped so their NaN
+  // doesn't spread into neighbouring normals, and it is parked at the origin so bounds stay
+  // finite.
+  function create_geometry(): THREE.BufferGeometry | null {
+    const vertices = surface_vertices(config, { x: x_range, y: y_range })
+    if (!vertices) return null
+    const { points, grid, triangles } = vertices
+    const positions: number[] = []
+    const colors: number[] = []
+    const valid: boolean[] = []
+    for (const { x: x_val, y: y_val, z: z_val } of points) {
+      const is_valid =
+        Number.isFinite(x_val) && Number.isFinite(y_val) && Number.isFinite(z_val)
+      valid.push(is_valid)
+      if (!is_valid) {
+        positions.push(0, 0, 0)
+        colors.push(0, 0, 0)
+        continue
+      }
+      positions.push(
+        normalize_to_scene(x_val, x_range, scene_x),
+        normalize_to_scene(z_val, z_range, scene_z), // user Z → Three.js Y (vertical)
+        normalize_to_scene(y_val, y_range, scene_y), // user Y → Three.js Z (depth)
+      )
+      const color = get_vertex_color(x_val, y_val, z_val)
+      colors.push(color.r, color.g, color.b)
+    }
+    const indices: number[] = []
+    const add_triangle = (idx_0: number, idx_1: number, idx_2: number) => {
+      if (valid[idx_0] && valid[idx_1] && valid[idx_2]) indices.push(idx_0, idx_1, idx_2)
+    }
     if (triangles?.length) {
-      geom.setIndex(triangles.flat())
-    } else if (res_a && res_b && res_a >= 2 && res_b >= 2) {
-      const indices: number[] = []
+      for (const [idx_0, idx_1, idx_2] of triangles) add_triangle(idx_0, idx_1, idx_2)
+    } else if (grid) {
+      const [res_a, res_b] = grid
       for (let index_b = 0; index_b < res_b - 1; index_b++) {
         for (let index_a = 0; index_a < res_a - 1; index_a++) {
           const top_left = index_b * res_a + index_a
-          indices.push(
-            top_left,
-            top_left + res_a,
-            top_left + 1,
-            top_left + 1,
-            top_left + res_a,
-            top_left + res_a + 1,
-          )
+          add_triangle(top_left, top_left + res_a, top_left + 1)
+          add_triangle(top_left + 1, top_left + res_a, top_left + res_a + 1)
         }
       }
-      geom.setIndex(indices)
+    } else {
+      // Triangulated without explicit triangles: consecutive vertex triples, as three draws
+      // an unindexed geometry
+      for (let idx = 0; idx + 2 < points.length; idx += 3) add_triangle(idx, idx + 1, idx + 2)
     }
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
+    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
+    geom.setIndex(indices)
     geom.computeVertexNormals()
     return geom
-  }
-
-  // Parse resolution config into [res_a, res_b]
-  const get_resolution = (): Vec2 =>
-    Array.isArray(config.resolution)
-      ? config.resolution
-      : [config.resolution ?? 20, config.resolution ?? 20]
-
-  function create_geometry(): THREE.BufferGeometry | null {
-    const [res_a, res_b] = get_resolution()
-    const positions: number[] = []
-    const colors: number[] = []
-
-    if (config.type === `grid` && config.z_fn) {
-      if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
-      const [coord_x_0, coord_x_1] = config.x_range ?? x_range
-      const [coord_y_0, coord_y_1] = config.y_range ?? y_range
-      const x_step = (coord_x_1 - coord_x_0) / (res_a - 1)
-      const y_step = (coord_y_1 - coord_y_0) / (res_b - 1)
-      for (let index_b = 0; index_b < res_b; index_b++) {
-        for (let index_a = 0; index_a < res_a; index_a++) {
-          const x_val = coord_x_0 + index_a * x_step
-          const y_val = coord_y_0 + index_b * y_step
-          add_vertex(positions, colors, x_val, y_val, config.z_fn(x_val, y_val))
-        }
-      }
-      return build_geometry(positions, colors, res_a, res_b)
-    }
-
-    if (config.type === `parametric` && config.parametric_fn) {
-      if (res_a < 2 || res_b < 2) return new THREE.BufferGeometry()
-      const [uniform_0, uniform_1] = config.u_range ?? [0, 1]
-      const [vector_0, vector_1] = config.v_range ?? [0, 1]
-      const u_step = (uniform_1 - uniform_0) / (res_a - 1)
-      const v_step = (vector_1 - vector_0) / (res_b - 1)
-      for (let index_b = 0; index_b < res_b; index_b++) {
-        for (let index_a = 0; index_a < res_a; index_a++) {
-          const point = config.parametric_fn(
-            uniform_0 + index_a * u_step,
-            vector_0 + index_b * v_step,
-          )
-          add_vertex(positions, colors, point.x, point.y, point.z)
-        }
-      }
-      return build_geometry(positions, colors, res_a, res_b)
-    }
-
-    if (config.type === `triangulated` && config.points?.length) {
-      for (const point of config.points) {
-        add_vertex(positions, colors, point.x, point.y, point.z)
-      }
-      return build_geometry(positions, colors, undefined, undefined, config.triangles)
-    }
-
-    return null
   }
 
   // Geometries are derived so they rebuild with the config/ranges; dispose_on_change releases

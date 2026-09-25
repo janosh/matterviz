@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { create_collapsible_legend, type LegendItem, PlotLegend } from '$lib/plot'
+import { create_collapsible_legend, type LegendItem, PlotLegend, ScatterPlot } from '$lib/plot'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
+import { mount_sized } from '../setup'
 
 afterEach(() => document.body.replaceChildren())
 
@@ -26,10 +27,10 @@ describe(`create_collapsible_legend`, () => {
   test(`starts with the given groups collapsed and toggles them`, () => {
     const { collapsed_groups, legend, toggle_group } = create_collapsible_legend([`Models`])
     expect([...collapsed_groups]).toEqual([`Models`])
-    expect(legend.collapsed_groups).toBe(collapsed_groups)
+    expect(legend).toEqual({ collapsed_groups, group_click: `collapse` })
     toggle_group(`Models`)
     expect(collapsed_groups.has(`Models`)).toBe(false)
-    legend.on_group_toggle(`Models`, [0, 1])
+    toggle_group(`Models`)
     expect(collapsed_groups.has(`Models`)).toBe(true)
   })
 
@@ -92,7 +93,9 @@ describe(`create_collapsible_legend`, () => {
     })
     const cleanup = collapsible.collapse_on_outside_click(document.body)
     const header = (group: string) => {
-      const el = document.querySelector<HTMLElement>(`[aria-label="Toggle group ${group}"]`)
+      const el = [...document.querySelectorAll<HTMLElement>(`.legend-group-header`)].find(
+        (node) => node.textContent?.includes(group),
+      )
       if (!el) throw new Error(`no header for group ${group}`)
       return el
     }
@@ -100,10 +103,10 @@ describe(`create_collapsible_legend`, () => {
       header(group).querySelector<HTMLElement>(`.group-chevron`)
     expect(header(`Models`).getAttribute(`aria-expanded`)).toBe(`false`)
     expect(document.querySelectorAll(`.legend-item`)).toHaveLength(2) // Refs + Other
-    header(`Models`).click() // expand via on_group_toggle
-    header(`Refs`).click() // collapse via on_group_toggle...
-    chevron(`Refs`)?.click() // ...and expand via chevron, bypassing on_group_toggle
-    chevron(`Other`)?.click() // collapse and expand via chevron only
+    header(`Models`).click() // expand via the header
+    header(`Refs`).click() // collapse via the header...
+    chevron(`Refs`)?.click() // ...and expand via the chevron inside it
+    chevron(`Other`)?.click() // collapse and expand via the chevron only
     chevron(`Other`)?.click()
     flushSync()
     expect(collapsible.collapsed_groups.size).toBe(0)
@@ -114,5 +117,31 @@ describe(`create_collapsible_legend`, () => {
     expect(document.querySelectorAll(`.legend-item`)).toHaveLength(2)
     if (typeof cleanup === `function`) cleanup()
     await unmount(component)
+  })
+
+  // Charts wire header clicks to group visibility; the helper's header must only expand
+  test(`in ScatterPlot, header click expands the group without hiding its series`, async () => {
+    const collapsible = create_collapsible_legend([`Models`])
+    const plot = await mount_sized(
+      ScatterPlot,
+      {
+        series: [`A`, `B`].map((label) => ({
+          x: [1, 2, 3],
+          y: [1, 2, 3],
+          label,
+          legend_group: `Models`,
+        })),
+        legend: { ...collapsible.legend },
+      },
+      { selector: `.scatter` },
+    )
+    const header = plot.querySelector<HTMLElement>(`.legend-group-header`)
+    expect(header?.getAttribute(`aria-expanded`)).toBe(`false`)
+    header?.click()
+    flushSync()
+    expect(header?.getAttribute(`aria-expanded`)).toBe(`true`)
+    expect(header?.classList.contains(`hidden`)).toBe(false)
+    const items = [...plot.querySelectorAll(`.legend-item`)]
+    expect(items.map((item) => item.classList.contains(`hidden`))).toEqual([false, false])
   })
 })

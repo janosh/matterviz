@@ -24,7 +24,6 @@
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
-  import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
@@ -57,6 +56,8 @@
     compute_count_range,
     compute_histogram_bins,
     compute_histogram_counts,
+    histogram_series_color,
+    histogram_totals,
     log_safe_range,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -245,8 +246,9 @@
       x2_scale_type: final_x2_axis.scale_type,
       bins,
     })
+  // Every view normalizes by the auto-domain totals, so zooming into a tail keeps its density
   const display_bins = (counted: ReturnType<typeof count_over>) =>
-    compute_histogram_bins(counted, normalize, series_color)
+    compute_histogram_bins(counted, normalize, series_color, auto_totals)
   const count_ranges = (binned: readonly BinnedSeries[]) => {
     const on_axis = (axis: `y` | `y2`) =>
       binned.filter((hist) => (hist.y_axis ?? `y`) === axis)
@@ -275,6 +277,7 @@
   // Bins over the data-driven x domains; they also fix the count ranges so a pan/zoom along x
   // doesn't rescale y.
   const auto_counts = $derived(count_over(auto_x_ranges.x, auto_x_ranges.x2))
+  const auto_totals = $derived(histogram_totals(auto_counts))
   const auto_bins = $derived(display_bins(auto_counts))
   let auto_ranges = $derived({ ...auto_x_ranges, ...count_ranges(auto_bins) })
   // Histogram count ranges depend on the bin domain. Once FacetGrid resolves shared x domains,
@@ -361,11 +364,11 @@
     }),
   )
 
-  // A lone series uses the configured bar color; with several, each gets its own (`color`, then
-  // the cycled palette). Keyed on `series`, not the visible subset the legend outlives, which
-  // painted every swatch `bar.color` once all but one series were hidden.
-  const series_color = (series_data: HistogramSeries, series_idx: number): string =>
-    series.length === 1 ? resolved_bar.color : (series_data.color ?? plot_color(series_idx))
+  // A series' own `color` wins; otherwise a lone series uses the configured bar color and
+  // several the cycled palette. Keyed on `series`, not the visible subset the legend outlives,
+  // which painted every swatch `bar.color` once all but one series were hidden.
+  const series_color = (_series_data: HistogramSeries, series_idx: number): string =>
+    histogram_series_color(series, series_idx, resolved_bar.color)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
       x: series_data.values,

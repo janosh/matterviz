@@ -4,6 +4,7 @@
 
 import { DEFAULT_PNG_DPI } from '$lib/constants'
 import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+import { unique_id } from '../utils'
 import { download } from '$lib/io/fetch'
 import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
 import { escape_csv_field } from 'svelte-widgets/csv'
@@ -26,30 +27,215 @@ const CHART_EXPORT_INLINE_STYLES = [
 ]
 const CHART_EXPORT_OPTIONS = { viewbox_padding: `stroke` } as const
 
+// === HTML overlays ===
+
+// Legends and color bars are HTML laid over the chart SVG (they need wrapping, scrolling and
+// form controls), so an export of the SVG alone lost them. Components mark such roots with
+// this attribute; at export time each is redrawn as static SVG at its on-screen position.
+export const EXPORT_OVERLAY_ATTR = `data-export-overlay`
+const SVG_NS = `http://www.w3.org/2000/svg`
+// Interactive controls have no static rendering (and raster exports must stay untainted)
+const SKIPPED_OVERLAY_ELEMENTS = new Set([`INPUT`, `SELECT`, `BUTTON`, `TEXTAREA`])
+
+const svg_el = <Tag extends keyof SVGElementTagNameMap>(
+  tag: Tag,
+  attrs: Record<string, string | number>,
+): SVGElementTagNameMap[Tag] => {
+  const element = document.createElementNS(SVG_NS, tag)
+  for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, String(value))
+  return element
+}
+
+// Split on top-level commas only: color functions like rgb(1, 2, 3) nest their own
+const split_top_level = (text: string): string[] => {
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let idx = 0; idx < text.length; idx++) {
+    if (text[idx] === `(`) depth++
+    else if (text[idx] === `)`) depth--
+    else if (text[idx] === `,` && depth === 0) {
+      parts.push(text.slice(start, idx).trim())
+      start = idx + 1
+    }
+  }
+  parts.push(text.slice(start).trim())
+  return parts
+}
+
+const GRADIENT_VECTORS: Record<string, [number, number, number, number]> = {
+  'to right': [0, 0, 1, 0],
+  'to left': [1, 0, 0, 0],
+  'to top': [0, 1, 0, 0],
+  'to bottom': [0, 0, 0, 1],
+}
+
+// A computed `linear-gradient(<side>, <color> <pct>, ...)` (what ColorBar's bar resolves to)
+// as SVG gradient vector + stops, or null for anything else
+export function parse_linear_gradient(
+  background_image: string,
+): { vector: [number, number, number, number]; stops: [string, string][] } | null {
+  const match = /^linear-gradient\((?<args>.*)\)$/s.exec(background_image.trim())
+  if (!match?.groups) return null
+  const [first, ...rest] = split_top_level(match.groups.args)
+  const vector =
+    GRADIENT_VECTORS[first] ?? (first === `180deg` ? GRADIENT_VECTORS[`to bottom`] : undefined)
+  const color_args = vector ? rest : [first, ...rest]
+  const stops = color_args.map((arg, idx): [string, string] => {
+    const stop = /^(?<color>.*?)\s+(?<offset>-?[\d.]+%)$/s.exec(arg)
+    const fallback = color_args.length > 1 ? `${(idx / (color_args.length - 1)) * 100}%` : `0%`
+    return stop?.groups ? [stop.groups.color, stop.groups.offset] : [arg, fallback]
+  })
+  return stops.length > 0 ? { vector: vector ?? GRADIENT_VECTORS[`to bottom`], stops } : null
+}
+
+const is_transparent = (color: string): boolean =>
+  !color || color === `transparent` || /rgba\([^)]*,\s*0\)$/.test(color)
+
+// Redraw an HTML overlay as SVG in the coordinate frame of `origin` (the chart SVG's box):
+// solid and gradient backgrounds become rects, nested SVGs (legend markers) are cloned in
+// place, text runs become <text> at their laid-out position with the computed font.
+export function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGGElement {
+  const group = svg_el(`g`, { class: `export-overlay` })
+  const defs = svg_el(`defs`, {})
+  group.append(defs)
+  const box = (rect: DOMRect) => ({
+    x: rect.left - origin.left,
+    y: rect.top - origin.top,
+    width: rect.width,
+    height: rect.height,
+  })
+  const root_box = box(root.getBoundingClientRect())
+  // A scrolling legend shows only what fits its box
+  if (getComputedStyle(root).overflowY !== `visible`) {
+    const clip_id = unique_id(`export-overlay-clip`)
+    const clip = svg_el(`clipPath`, { id: clip_id })
+    clip.append(svg_el(`rect`, root_box))
+    defs.append(clip)
+    group.setAttribute(`clip-path`, `url(#${clip_id})`)
+  }
+
+  const add_background = (element: Element, style: CSSStyleDeclaration, opacity: number) => {
+    const rect = box(element.getBoundingClientRect())
+    if (!(rect.width > 0 && rect.height > 0)) return
+    // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS lengths include px
+    const radius = Number.parseFloat(style.borderTopLeftRadius) || 0
+    const gradient = parse_linear_gradient(style.backgroundImage)
+    let fill = gradient ? `` : style.backgroundColor
+    if (gradient) {
+      const gradient_id = unique_id(`export-overlay-gradient`)
+      const [x1, y1, x2, y2] = gradient.vector
+      const element_gradient = svg_el(`linearGradient`, { id: gradient_id, x1, y1, x2, y2 })
+      for (const [color, offset] of gradient.stops) {
+        element_gradient.append(svg_el(`stop`, { offset, 'stop-color': color }))
+      }
+      defs.append(element_gradient)
+      fill = `url(#${gradient_id})`
+    }
+    if (is_transparent(fill)) return
+    group.append(svg_el(`rect`, { ...rect, rx: radius, fill, opacity }))
+  }
+
+  const add_text = (node: Text, style: CSSStyleDeclaration, opacity: number) => {
+    const text = node.textContent?.replaceAll(/\s+/g, ` `).trim()
+    if (!text) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rect = box(range.getBoundingClientRect())
+    if (!(rect.width > 0 || rect.height > 0)) return
+    const text_el = svg_el(`text`, {
+      x: rect.x,
+      y: rect.y + rect.height / 2,
+      'dominant-baseline': `central`,
+      fill: style.color,
+      'font-size': style.fontSize,
+      'font-family': style.fontFamily,
+      'font-weight': style.fontWeight,
+      'font-style': style.fontStyle,
+      opacity,
+    })
+    text_el.textContent = text
+    group.append(text_el)
+  }
+
+  const walk = (element: Element, parent_opacity: number) => {
+    if (
+      SKIPPED_OVERLAY_ELEMENTS.has(element.tagName) ||
+      element.hasAttribute(`data-export-exclude`)
+    )
+      return
+    const style = getComputedStyle(element)
+    if (style.display === `none` || style.visibility === `hidden`) return
+    const own_opacity = style.opacity === `` ? 1 : Number(style.opacity)
+    if (!(own_opacity > 0)) return
+    const opacity = parent_opacity * own_opacity
+    if (element instanceof SVGSVGElement) {
+      const clone = element.cloneNode(true) as SVGSVGElement
+      for (const [name, value] of Object.entries(box(element.getBoundingClientRect())))
+        clone.setAttribute(name, String(value))
+      clone.setAttribute(`opacity`, String(opacity))
+      group.append(clone)
+      return
+    }
+    add_background(element, style, opacity)
+    for (const child of element.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) add_text(child as Text, style, opacity)
+      else if (child instanceof Element) walk(child, opacity)
+    }
+  }
+  walk(root, 1)
+  return group
+}
+
+// The chart's HTML overlays drawn into its SVG for the duration of an export: an export-only
+// group (hidden in the live view, shown in the serialized clone) that `run` sees
+async function with_export_overlays<Result>(
+  svg_element: SVGElement,
+  run: () => Result,
+): Promise<Awaited<Result>> {
+  const host = svg_element.parentElement
+  const overlays = host
+    ? [...host.querySelectorAll<HTMLElement>(`[${EXPORT_OVERLAY_ATTR}]`)].filter(
+        (overlay) => !svg_element.contains(overlay),
+      )
+    : []
+  if (overlays.length === 0) return await run()
+  const origin = svg_element.getBoundingClientRect()
+  const layer = svg_el(`g`, { 'data-export-only': ``, display: `none` })
+  for (const overlay of overlays) layer.append(overlay_to_svg(overlay, origin))
+  svg_element.append(layer)
+  try {
+    return await run()
+  } finally {
+    layer.remove()
+  }
+}
+
 export function export_chart_image(
   svg_element: SVGElement | null,
   base_filename: string,
   format: `svg` | `png`,
   save: FileSaver = download,
-): void | Promise<void> {
-  if (!svg_element) return
+): Promise<void> | undefined {
+  if (!svg_element) return undefined
   const filename = `${base_filename}.${format}`
-  if (format === `svg`) {
-    return export_svg_as_svg(
-      svg_element,
-      filename,
-      CHART_EXPORT_INLINE_STYLES,
-      CHART_EXPORT_OPTIONS,
-      save,
-    )
-  }
-  return export_svg_as_png(
-    svg_element,
-    filename,
-    DEFAULT_PNG_DPI,
-    CHART_EXPORT_INLINE_STYLES,
-    CHART_EXPORT_OPTIONS,
-    save,
+  return with_export_overlays(svg_element, () =>
+    format === `svg`
+      ? export_svg_as_svg(
+          svg_element,
+          filename,
+          CHART_EXPORT_INLINE_STYLES,
+          CHART_EXPORT_OPTIONS,
+          save,
+        )
+      : export_svg_as_png(
+          svg_element,
+          filename,
+          DEFAULT_PNG_DPI,
+          CHART_EXPORT_INLINE_STYLES,
+          CHART_EXPORT_OPTIONS,
+          save,
+        ),
   )
 }
 

@@ -33,7 +33,8 @@ export interface DataSeries3D<Metadata = Record<string, unknown>> extends Omit<
   filtered_data?: InternalPoint3D<Metadata>[]
 }
 
-// Internal 3D point for processing within ScatterPlot3D
+// A point of a ScatterPlot3D series, in data coordinates (what tooltip_point, hover and click
+// events report; the scene keeps its own scene-space positions)
 export interface InternalPoint3D<
   Metadata = Record<string, unknown>,
 > extends ScatterPoint3D<Metadata> {
@@ -75,20 +76,17 @@ export interface Surface3DConfig {
   double_sided?: boolean
 }
 
-// Extended axis config for 3D (same as 2D but can add 3D-specific options)
-export interface AxisConfig3D extends AxisConfig {
-  // 3D-specific axis options can be added here
-  show_plane?: boolean // Show grid plane for this axis
-  plane_opacity?: number
+// Axis config for 3D. The scene maps every axis linearly (ticks, auto ranges and geometry),
+// so a log/arcsinh scale type is not accepted (and rejected at runtime for untyped callers).
+export interface AxisConfig3D extends Omit<AxisConfig, `scale_type`> {
+  scale_type?: `linear`
 }
 
 // Display config extended for 3D
 export interface DisplayConfig3D extends DisplayConfig {
-  z_grid?: boolean
-  z_zero_line?: boolean
   show_axes?: boolean
   show_axis_labels?: boolean
-  show_bounding_box?: boolean
+  show_bounding_box?: boolean // outline the axis box with its 12 edges
   show_grid?: boolean
   // Projection settings - render point shadows on background planes
   // Coordinate mapping: user X→Three.js X, user Y→Three.js Z, user Z→Three.js Y
@@ -125,9 +123,5 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
 // Camera projection types for 3D
 export type { CameraProjection as CameraProjection3D } from '$lib/settings'
 
-// 3D style overrides
-export interface StyleOverrides3D extends StyleOverrides {
-  point?: StyleOverrides[`point`] & {
-    sphere_segments?: number // Level of detail for sphere geometry
-  }
-}
+// 3D style overrides (sphere detail is the component's `sphere_segments` prop)
+export type StyleOverrides3D = StyleOverrides

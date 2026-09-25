@@ -3,6 +3,7 @@ import { download } from '$lib/io/fetch'
 import {
   create_chart_exporter,
   export_filename,
+  parse_linear_gradient,
   series_to_csv_rows,
   to_csv,
 } from '$lib/plot/core/utils/chart-export'
@@ -122,5 +123,47 @@ describe(`create_chart_exporter`, () => {
       `My figure.${format}`,
     ])
     expect(vi.mocked(exporter).mock.lastCall?.at(-1)).toBe(save)
+  })
+})
+
+// Computed ColorBar backgrounds, whose colors carry their own commas
+describe(`parse_linear_gradient`, () => {
+  test.each([
+    [
+      `linear-gradient(to right, rgb(0, 0, 255) 0%, rgb(255, 0, 0) 100%)`,
+      {
+        vector: [0, 0, 1, 0],
+        stops: [
+          [`rgb(0, 0, 255)`, `0%`],
+          [`rgb(255, 0, 0)`, `100%`],
+        ],
+      },
+    ],
+    [
+      `linear-gradient(to top, red 0%, rgba(0, 128, 0, 0.5) 50%, blue 100%)`,
+      {
+        vector: [0, 1, 0, 0],
+        stops: [
+          [`red`, `0%`],
+          [`rgba(0, 128, 0, 0.5)`, `50%`],
+          [`blue`, `100%`],
+        ],
+      },
+    ],
+    // no direction means top-to-bottom; missing offsets spread evenly
+    [
+      `linear-gradient(red, blue)`,
+      {
+        vector: [0, 0, 0, 1],
+        stops: [
+          [`red`, `0%`],
+          [`blue`, `100%`],
+        ],
+      },
+    ],
+    [`none`, null],
+    [`url(img.png)`, null],
+  ])(`%s`, (css, expected) => {
+    expect(parse_linear_gradient(css)).toEqual(expected)
   })
 })

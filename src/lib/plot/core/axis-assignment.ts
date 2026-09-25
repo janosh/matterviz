@@ -112,6 +112,11 @@ export class AxisAssignmentOverflowError extends Error {
 
 const default_is_visible = (series: AxisAssignableSeries): boolean => series.visible !== false
 
+// No unit and no axis_group: nothing ties the series to any other, so an explicit y_axis on
+// one unitless series must not drag the rest of the unitless series onto its axis
+const is_unitless = (series: AxisAssignableSeries): boolean =>
+  !series.axis_group?.trim() && !series.unit?.trim()
+
 export const axis_group_key = (
   series: Pick<AxisAssignableSeries, `axis_group` | `unit`>,
 ): string => {
@@ -178,7 +183,9 @@ export function group_axis_series<Series extends AxisAssignableSeries>(
 }
 
 // Preserve visible explicit assignments, then assign automatic groups only to
-// unreserved axes. The aligned result keeps this operation pure.
+// unreserved axes. The aligned result keeps this operation pure. An explicit axis on a unit
+// or axis_group series carries its whole group. On a unitless series it pins only itself:
+// it keeps unit groups off that axis, but the other unitless series are free to share it.
 export function assign_axes<Series extends AxisAssignableSeries>(
   series: readonly Series[],
   options: AxisAssignmentOptions<Series> = {},
@@ -200,23 +207,37 @@ export function assign_axes<Series extends AxisAssignableSeries>(
     assignments[series_idx] = series_data.y_axis
   })
 
-  const candidate_groups = group_axis_series(series, options)
-  const reserved_axes = supported_axes.filter((axis) =>
-    candidate_groups.some((group) =>
-      group.series.some((series_data) => series_data.y_axis === axis),
-    ),
-  )
-  const available_axes = supported_axes.filter((axis) => !reserved_axes.includes(axis))
+  const candidate_groups = group_axis_series(series, {
+    ...options,
+    is_visible: (series_data, series_idx) =>
+      is_visible(series_data, series_idx) &&
+      !(series_data.y_axis !== undefined && is_unitless(series_data)),
+  })
+  const reserved_by = (keep: (series_data: Series) => boolean): AxisSlot[] =>
+    supported_axes.filter((axis) =>
+      series.some(
+        (series_data, series_idx) =>
+          is_visible(series_data, series_idx) &&
+          series_data.y_axis === axis &&
+          keep(series_data),
+      ),
+    )
+  const reserved_axes = reserved_by(() => true)
+  const reserved_by_units = reserved_by((series_data) => !is_unitless(series_data))
+  const automatic_axes = new Set<AxisSlot>()
   const assigned_groups: AssignedAxisGroup<Series>[] = []
   const overflow_groups: AxisGroup<Series>[] = []
   const attempted_group_keys: string[] = []
-  let automatic_group_idx = 0
   for (const group of candidate_groups) {
     const explicit_axes = supported_axes.filter((axis) =>
       group.series.some((series_data) => series_data.y_axis === axis),
     )
     if (explicit_axes.length === 0) attempted_group_keys.push(group.key)
-    const axis = explicit_axes[0] ?? available_axes[automatic_group_idx++]
+    const blocked_axes = group.series.every(is_unitless) ? reserved_by_units : reserved_axes
+    const axis =
+      explicit_axes[0] ??
+      supported_axes.find((slot) => !blocked_axes.includes(slot) && !automatic_axes.has(slot))
+    if (explicit_axes.length === 0 && axis) automatic_axes.add(axis)
     if (axis === undefined) {
       overflow_groups.push(group)
       continue

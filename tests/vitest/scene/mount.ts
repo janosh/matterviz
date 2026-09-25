@@ -38,9 +38,13 @@ export function mount_scene(render: Component) {
     scene,
     camera,
     disposable_objects,
-    render_frame: () => {
+    // Runs one frame; returns whether the on-demand scheduler would render it (something
+    // invalidated during the frame), which catches scenes that never go idle
+    render_frame: (): boolean => {
       contexts[0].scheduler.run(performance.now())
+      const rendered = contexts[0].shouldRender()
       contexts[0].resetFrameInvalidation()
+      return rendered
     },
     unmount_scene: () => unmount(component),
   }

@@ -10,7 +10,12 @@ import type { Rect, Sides } from '$lib/plot/core/layout'
 import type { LineCurve, ScaleType } from '$lib/plot/core/types'
 import { get_scale_type_name } from '$lib/plot/core/types'
 import { gaussian_kde } from '$lib/plot/box/kde'
-import { bin_transform, bin_values, normalize_counts } from '$lib/plot/histogram/histogram'
+import {
+  bin_transform,
+  bin_values,
+  count_total,
+  normalize_counts,
+} from '$lib/plot/histogram/histogram'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 
@@ -604,12 +609,16 @@ function compute_histogram(
   // 5000 log-uniform samples in one bar), and it returns nice thresholds, not the asked count.
   const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
-  const bins = normalize_counts(edges, counts, config.normalize ?? `count`).map(
-    ({ x0: pos0, x1: pos1, value }) => {
-      if (value > max) max = value
-      return { pos0, pos1, value }
-    },
-  )
+  // A strip summarizes the points in view, so it normalizes by the in-range total
+  const bins = normalize_counts(
+    edges,
+    counts,
+    config.normalize ?? `count`,
+    count_total(counts),
+  ).map(({ x0: pos0, x1: pos1, value }) => {
+    if (value > max) max = value
+    return { pos0, pos1, value }
+  })
   return { kind: `bars`, bins, max }
 }
 

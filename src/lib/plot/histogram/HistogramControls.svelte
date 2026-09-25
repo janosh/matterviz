@@ -7,7 +7,7 @@
   import type { BarStyle, HistogramSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/core/types'
-  import type { HistogramNormalize } from '$lib/plot/histogram/histogram'
+  import { type HistogramNormalize, uses_bar_color } from '$lib/plot/histogram/histogram'
   import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
   import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
   import type { Snippet } from 'svelte'
@@ -144,7 +144,7 @@
         >
       {/if}
       <div class="style-row">
-        {#if stroke || visible_series.length === 1}
+        {#if stroke || uses_bar_color(series)}
           <ColorInput
             label={stroke ? `Color` : `Fill`}
             value={css_color_to_hex(

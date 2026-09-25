@@ -278,8 +278,10 @@
     max-height: ${is_vertical ? `var(--cbar-max-height, 1000px)` : `none`}; ${wrapper_style ?? ``}`)
 </script>
 
+<!-- data-export-overlay: chart image exports redraw the color bar as static SVG -->
 <div
   bind:this={colorbar_node}
+  data-export-overlay
   style:flex-direction={wrapper_flex_dir}
   style:--cbar-tick-label-width={`${tick_label_width}px`}
   {...rest}

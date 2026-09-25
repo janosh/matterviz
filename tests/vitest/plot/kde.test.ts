@@ -80,6 +80,48 @@ describe(`gaussian_kde`, () => {
     },
   )
 
+  // No variance: the spread falls back to the value's magnitude (R bw.nrd0), then 1 at zero
+  // oxfmt-ignore
+  test.each([
+    [`constant tiny samples`, [1e-6, 1e-6, 1e-6], 1e-6 * 3 ** -0.2],
+    [`single sample`, [-5], 5],
+    [`constant zeros`, [0, 0], 2 ** -0.2],
+  ])(`%s get a kernel at their own scale`, (_desc, samples, spread) => {
+    expect(silverman_bandwidth(samples)).toBeCloseTo(0.9 * spread, 15)
+    expect(scott_bandwidth(samples)).toBeCloseTo(spread, 15)
+    // the default cut=2 grid then stays at the samples' scale too
+    const { grid } = gaussian_kde(samples, { n_points: 5 })
+    expect((grid.at(-1) ?? NaN) - grid[0]).toBeCloseTo(4 * 0.9 * spread, 12)
+  })
+
+  // A far outlier stretches a fixed 100-point grid to ~5 units per step against a 0.2
+  // bandwidth, so the N(0, 1) bulk (true KDE peak ~0.4) got one grid point
+  test(`points_per_bandwidth resolves the bulk beside a far outlier`, () => {
+    const samples = [...normal_samples(1000, 5), 500]
+    const opts = { n_points: 100, cut: 0, max_samples: 5000 }
+    const coarse = gaussian_kde(samples, opts)
+    const fine = gaussian_kde(samples, { ...opts, points_per_bandwidth: 1 })
+    const peak = ({ density }: { density: number[] }) => Math.max(...density)
+    expect(coarse.grid).toHaveLength(100)
+    expect(peak(coarse)).toBeLessThan(0.2)
+    expect(fine.grid).toHaveLength(2000) // capped by max_points
+    expect(peak(fine)).toBeGreaterThan(0.35)
+    expect([fine.grid[0], fine.grid.at(-1)]).toEqual([coarse.grid[0], coarse.grid.at(-1)])
+    const uncapped = gaussian_kde([0, 1, 2, 3], {
+      cut: 0,
+      n_points: 2,
+      points_per_bandwidth: 2,
+    })
+    expect(uncapped.grid).toHaveLength(Math.ceil((3 / uncapped.bandwidth) * 2) + 1)
+  })
+
+  test.each([
+    [{ points_per_bandwidth: 0 }, `points_per_bandwidth must be finite and positive, got 0`],
+    [{ max_points: 50 }, `max_points must be an integer >= n_points (100), got 50`],
+  ])(`rejects invalid grid refinement %o`, (opts, message) => {
+    expect(() => gaussian_kde([1, 2, 3], opts)).toThrow(message)
+  })
+
   test(`respects clip bounds (RMSD >= 0)`, () => {
     // unclipped the grid would start at data_min - cut * bandwidth < 0; the lower clip
     // pins it at exactly 0 while the open upper bound still extends past the data max

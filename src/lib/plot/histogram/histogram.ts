@@ -12,13 +12,17 @@ import {
 } from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
+import { plot_color } from '$lib/colors'
 
 // One distribution to bin: `values` are the samples; everything else is legend/axis metadata.
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
   values: readonly number[]
+  // Per-sample weights, index-aligned with `values` (e.g. pre-aggregated counts per value);
+  // without them every sample counts 1. Non-finite weights drop their sample.
+  weights?: readonly number[]
   label?: string
-  // Bar fill; defaults to the auto-cycled series palette (a lone series uses `bar.color`)
+  // Bar fill; without one a lone series uses `bar.color`, several the cycled palette
   color?: string
   pattern?: FillPattern // hatch/texture over the bar fill
   visible?: boolean
@@ -208,15 +212,34 @@ export function bin_values(
   return { edges, counts }
 }
 
-// Scale raw counts into bar heights. `probability` and `density` divide by the in-domain total,
-// density additionally by each bin's width in data units.
+// `bar.color` fills only a lone series that sets no color of its own. The chart and its
+// controls share this, so the fill picker shows exactly when editing it changes the bars.
+export const uses_bar_color = (series: readonly Pick<HistogramSeries, `color`>[]): boolean =>
+  series.length === 1 && series[0].color === undefined
+
+export const histogram_series_color = (
+  series: readonly Pick<HistogramSeries, `color`>[],
+  series_idx: number,
+  bar_color: string,
+): string =>
+  series[series_idx]?.color ?? (uses_bar_color(series) ? bar_color : plot_color(series_idx))
+
+export const count_total = (counts: Iterable<number>): number => {
+  let total = 0
+  for (const count of counts) total += count
+  return total
+}
+
+// Scale raw counts into bar heights. `probability` and `density` divide by `total`, density
+// additionally by each bin's width in data units. The total is explicit because the bins
+// shown after a zoom are a window onto the full distribution: dividing by the visible count
+// instead would inflate a zoomed tail's density by the fraction of samples scrolled away.
 export function normalize_counts(
   edges: Float64Array,
   counts: Uint32Array | Float64Array,
   normalize: HistogramNormalize,
+  total: number,
 ): HistogramBin[] {
-  let total = 0
-  for (const count of counts) total += count
   return Array.from(counts, (count, idx) => {
     const [coord_x_0, coord_x_1] = [edges[idx], edges[idx + 1]]
     const value =
@@ -249,19 +272,34 @@ export function compute_histogram_counts(
       use_x2 ? config.x2_domain : config.x_domain,
       config.bins,
       use_x2 ? config.x2_scale_type : config.x_scale_type,
+      series_data.weights,
     )
     return { series_data, series_idx, edges, counts }
   })
 }
+
+// Normalization totals per series_idx: the counts over the full (auto) domain, so zoomed
+// bins keep the heights they have in the full view
+export const histogram_totals = (
+  counted: ReturnType<typeof compute_histogram_counts>,
+): Map<number, number> =>
+  new Map(counted.map(({ series_idx, counts }) => [series_idx, count_total(counts)]))
 
 // Reuse raw counts when changing units or colors; only the small bin arrays change.
 export function compute_histogram_bins(
   counted: ReturnType<typeof compute_histogram_counts>,
   normalize: HistogramNormalize,
   series_color: (series_data: HistogramSeries, series_idx: number) => string,
+  totals: ReadonlyMap<number, number>,
 ): BinnedSeries[] {
   return counted.map(({ series_data, series_idx, edges, counts }) => {
-    const bins = normalize_counts(edges, counts, normalize)
+    const total = totals.get(series_idx)
+    if (total === undefined) {
+      throw new Error(
+        `compute_histogram_bins: no normalization total for series ${series_idx}`,
+      )
+    }
+    const bins = normalize_counts(edges, counts, normalize, total)
     let max_value = 0
     let min_value = Infinity
     for (const { count, value } of bins) {

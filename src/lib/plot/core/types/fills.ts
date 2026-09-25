@@ -103,6 +103,11 @@ export interface FillRegion {
   edge_lower?: FillEdgeStyle
   curve?: FillCurveType
 
+  // Axes the region is drawn against. A series boundary implies its series' axes, so this
+  // is only needed for regions without one (and must agree with it when both are given).
+  x_axis?: `x` | `x2`
+  y_axis?: `y` | `y2`
+
   // Rendering
   z_index?: LayerZIndex
   visible?: boolean
