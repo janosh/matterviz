@@ -1838,7 +1838,9 @@ describe(`HeatmapTable`, () => {
             columns: metrics,
             sort: { column: `Score`, dir: `desc` as const },
             pagination: { page_size: 1 },
-            column_prefs: { Tier: { filter: { kind: `category` as const, values: [`alpha`] } } },
+            column_prefs: {
+              Tier: { filter: { kind: `category` as const, values: [`alpha`] } },
+            },
           },
           state,
         ),
