@@ -8,7 +8,7 @@ export type CollapsibleLegend = {
   legend: Required<Pick<LegendConfig, `collapsed_groups` | `on_group_toggle`>>
   collapsed_groups: SvelteSet<string>
   toggle_group: (group: string) => void
-  // Collapse one group, or with no argument every group this helper has seen
+  // Collapse one group, or with no argument restore the initially collapsed groups
   collapse: (group?: string) => void
   // Attach to the element wrapping the plot (and any controls that should count as outside)
   collapse_on_outside_click: Attachment<HTMLElement>
@@ -20,18 +20,16 @@ export type CollapsibleLegend = {
 export const create_collapsible_legend = (
   initially_collapsed: Iterable<string> = [],
 ): CollapsibleLegend => {
-  const collapsed_groups = new SvelteSet(initially_collapsed)
-  // groups collapse() without argument re-collapses (non-reactive bookkeeping)
-  const known_groups = new Set(collapsed_groups)
+  const initial_groups = [...initially_collapsed]
+  const collapsed_groups = new SvelteSet(initial_groups)
   const toggle_group = (group: string) => {
-    known_groups.add(group)
     if (!collapsed_groups.delete(group)) collapsed_groups.add(group)
   }
+  // Restoring the initial groups rather than tracking toggles keeps this independent of
+  // how a group was expanded: PlotLegend's chevron edits collapsed_groups directly.
   const collapse = (group?: string) => {
-    if (group !== undefined) {
-      known_groups.add(group)
-      collapsed_groups.add(group)
-    } else for (const known of known_groups) collapsed_groups.add(known)
+    for (const name of group === undefined ? initial_groups : [group])
+      collapsed_groups.add(name)
   }
   // Only the legend counts as inside — a click on the plot or the controls above it
   // collapses too — so pass the surface as `inside` rather than attaching to `node` (which
