@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.8.0](https://github.com/janosh/matterviz/compare/v0.7.0...v0.8.0)
+
+### Migration to 0.8
+
+- `element_groups`, `element_group_keys` and `ElementGroup` are exported again, undoing their 0.7 removal, plus the new `ElementGroupKey` type
+- `PlotLegend.collapsed_groups` must be a `SvelteSet` and is no longer bindable (mutate it instead, e.g. the `collapsed_groups` of `create_collapsible_legend()`); the group header toggle is `.group-label`
+- `compute_histogram_bins(counted, normalize, series_color, full_counted)` takes the full-domain counts and `series_color(series_idx)`; `ScatterPoint.overlay_only` is gone; 3D axes accept only `scale_type: 'linear'`; `AxisConfig3D.show_plane`/`plane_opacity`, `DisplayConfig3D.z_grid`/`z_zero_line` and `StyleOverrides3D.point.sphere_segments` are gone (pass `sphere_segments` as a prop)
+- BoxPlot on a log value axis estimates violins in log10 space, so a numeric `bandwidth` is in decades
+- `color_scheme` is typed `ColorSchemeName` and throws on unknown names; `Structure` no longer writes the global element colors
+- `parse_ase_trajectory`, `open_ase_frames` and `decode_ase_frame` take a `warn` callback; `BOLTZMANN_EV` → `BOLTZMANN_EV_PER_K` from `matterviz/constants`
+- `MsdCurve.std_error` and the `origin_stride` option are gone (MSD averages all origins); `time_unit` without `dt` throws; frame `metadata.forces` → per-site `properties.force`; `full_data_extractor` emits every finite numeric metadata key, not a fixed list; `NebViewer`'s `metric` → `coord_options`
+- Phonon `hovered_frequency`, `reference_frequency` and `sigma` are in THz; `IrRamanSpectrum.fwhm` is in cm⁻¹; `two_theta_range` must lie within [0, 180]; the irreducible Brillouin zone applies time reversal by default
+- `pad_domain_points` drops its `padding` argument; duplicate phase-diagram ids throw
+- `RouteThermodynamics.onset_temperature` and `onset_temperature()` → `downhill_windows` (the old onset is `downhill_windows[0]?.[0]`)
+
 ## [v0.7.0](https://github.com/janosh/matterviz/compare/v0.6.0...v0.7.0)
 
 > 29 August 2026

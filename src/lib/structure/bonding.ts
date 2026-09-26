@@ -1273,7 +1273,7 @@ export function lattice_pbc_or_throw(structure: AnyStructure, override?: Pbc): P
   if (override) return override
   if (!(`lattice` in structure)) return NO_PBC
   const { pbc } = structure.lattice
-  if (!Array.isArray(pbc) || pbc.length !== 3) {
+  if (!math.is_pbc(pbc)) {
     throw new Error(
       `lattice.pbc must be a [boolean, boolean, boolean], got ${JSON.stringify(pbc)}`,
     )

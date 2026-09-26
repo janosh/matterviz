@@ -483,6 +483,16 @@ END_BLOCK_BANDGRID_3D
         /one value per face \(1\), got 3/,
       ],
       [
+        `a non-numeric face property`,
+        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [`fast`] }] },
+        /face 0 has non-numeric property "fast"/,
+      ],
+      [
+        `a vector face property with a non-numeric component`,
+        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [[1, `x`, 0]] }] },
+        /face 0 has non-numeric property \[1,"x",0\]/,
+      ],
+      [
         `faces referencing missing vertices`,
         {
           1: [
