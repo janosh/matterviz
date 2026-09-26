@@ -3,7 +3,7 @@ import { mount_viewer } from '$lib/file-viewer/mount-viewer'
 import { flushSync, mount, unmount } from 'svelte'
 import type * as SvelteModule from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, keydown } from '../setup'
 
 // Pass-through spy: a panel render is one mount_viewer call, so the count tells how many
 // viewers a burst of tree selections really built
@@ -242,6 +242,31 @@ test(`reselecting, replacing, closing and destroying panels manage viewer lifeti
   await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledTimes(4))
   await unmount(browser)
   expect(unmount).toHaveBeenCalledWith(viewer_apps()[3])
+})
+
+test(`Escape skips consumed events and ones pressed inside another browser`, async () => {
+  // the first browser's placeholder chip is gone once its panel opens
+  for (const [idx, key] of [`first`, `second`].entries()) {
+    mount_browser({ value: { [key]: table_rows(idx, 3) } })
+    await click_first_chip()
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll(`.viz-panel`)).toHaveLength(idx + 1),
+    )
+  }
+  const browsers = [...document.querySelectorAll(`.json-browser`)]
+  const escape = (target: Element | null, consumed = false): number[] => {
+    const event = keydown(`Escape`, { cancelable: true })
+    if (consumed) event.preventDefault()
+    target?.dispatchEvent(event)
+    flushSync()
+    return browsers.map((root) => root.querySelectorAll(`.viz-panel`).length)
+  }
+  // already handled by a widget inside the panel
+  expect(escape(document.querySelector(`.viz-panel`), true)).toEqual([1, 1])
+  // pressed inside the first browser: only its panels close
+  expect(escape(browsers[0])).toEqual([0, 1])
+  // with nothing focused the event targets the body, which every browser answers
+  expect(escape(document.body)).toEqual([0, 0])
 })
 
 // A new document replaces captured panel data and can auto-render its own root.

@@ -183,6 +183,23 @@ export const normalize_structure_bond = (
   return { ...bond, order }
 }
 
+// Explicit bonds after site i moved by whole lattice vectors `site_shift(i)` (undefined =
+// unmoved): bond i -> j + S keeps its geometry as i -> j + (S + k_i - k_j)
+export function shift_bonds_for_moved_sites(
+  bonds: readonly StructureBond[],
+  site_shift: (site_idx: number) => Vec3 | undefined,
+): StructureBond[] {
+  return bonds.map((bond) => {
+    const [shift_1, shift_2] = [site_shift(bond.site_idx_1), site_shift(bond.site_idx_2)]
+    if (!shift_1 && !shift_2) return bond
+    const cell_shift = bond.cell_shift ?? [0, 0, 0]
+    const moved = [0, 1, 2].map(
+      (axis) => cell_shift[axis] + (shift_1?.[axis] ?? 0) - (shift_2?.[axis] ?? 0),
+    ) as Vec3
+    return normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, bond.order, moved)
+  })
+}
+
 export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
   const normalized = normalize_bond_endpoints(idx_1, idx_2, cell_shift)
   const shift_suffix =
@@ -1555,6 +1572,11 @@ export function get_bond_data(
   let by_sig = bond_memo.get(structure)
   const cached = by_sig?.get(sig)
   if (cached) return cached
+  // Strategy names arrive as plain strings from widgets and saved settings
+  if (!Object.hasOwn(BONDING_STRATEGIES, strategy)) {
+    const valid = Object.keys(BONDING_STRATEGIES).join(`, `)
+    throw new Error(`Unknown bonding strategy '${strategy}', expected one of ${valid}`)
+  }
   const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
   const bonds = strategy_fn(structure, options)
   if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
@@ -1608,6 +1630,7 @@ function bond_columns(
       bond,
     ]),
   )
+  const matched_keys = new Set<string>()
   const indices = new Uint32Array((count + explicit.size) * 2)
   const lengths = new Float64Array(count + explicit.size)
   const orders = new Uint8Array(count + explicit.size)
@@ -1645,19 +1668,23 @@ function bond_columns(
       image_columns[image_offset++] = shift_c
     }
     if (explicit.size) {
-      const key = get_bond_key(
-        site_idx_1,
-        site_idx_2,
-        shifted ? [shift_a, shift_b, shift_c] : undefined,
+      // Explicit bonds name unit-cell sites: key a bond ending on a PBC image atom by its
+      // source site so the explicit bond tags every copy it draws as instead of adding one
+      const cell_shift: Vec3 | undefined = shifted ? [shift_a, shift_b, shift_c] : undefined
+      const target = canonicalize_bond_target(
+        { site_idx_1, site_idx_2, cell_shift },
+        structure.sites,
       )
+      const key = rendered_bond_key_for(target)
       const metadata = explicit.get(key)
       if (metadata) {
         orders[bond_count] = BOND_ORDERS.indexOf(metadata.order)
-        explicit.delete(key)
+        matched_keys.add(key)
       }
     }
   }
-  for (const metadata of explicit.values()) {
+  for (const [key, metadata] of explicit) {
+    if (matched_keys.has(key)) continue
     const bond = structure_bond_to_bond_pair(structure, metadata)
     indices[bond_count * 2] = bond.site_idx_1
     indices[bond_count * 2 + 1] = bond.site_idx_2

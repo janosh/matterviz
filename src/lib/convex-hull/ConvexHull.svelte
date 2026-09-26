@@ -63,8 +63,9 @@
       undefined as number | undefined,
     ),
     max_hull_dist_show_labels = $bindable(0.1),
-    show_stable_labels = $bindable(true),
-    show_unstable_labels = $bindable(false),
+    // undefined = not passed: large datasets then start with labels hidden (label_threshold)
+    show_stable_labels = $bindable(undefined as boolean | undefined),
+    show_unstable_labels = $bindable(undefined as boolean | undefined),
     energy_source_mode = $bindable(`precomputed`),
     display = $bindable({ x_grid: false, y_grid: false }),
     highlighted_entries = $bindable([]),
@@ -89,6 +90,16 @@
 
   const entries = $derived(entries_prop ?? [])
 
+  // Passed values are the caller's choice: data-dependent defaults only fill unset ones
+  const { max_hull_dist_explicit, labels_explicit } = untrack(() => ({
+    max_hull_dist_explicit: max_hull_dist_show_phases_prop !== undefined,
+    labels_explicit: show_stable_labels !== undefined || show_unstable_labels !== undefined,
+  }))
+  untrack(() => {
+    show_stable_labels ??= true
+    show_unstable_labels ??= false
+  })
+
   // Shared reactive data pipeline (temperature → gas → energies → coordinates → hull)
   const hull_data = create_hull_data_pipeline({
     entries: () => entries,
@@ -106,8 +117,11 @@
     hidden_categories: () => hidden_categories,
     label_threshold: () => label_threshold,
     set_temperature: (next_temp) => (temperature = next_temp),
-    set_max_hull_dist_show_phases: (value) => (max_hull_dist_show_phases = value),
+    set_max_hull_dist_show_phases: (value) => {
+      if (!max_hull_dist_explicit) max_hull_dist_show_phases = value
+    },
     hide_labels: () => {
+      if (labels_explicit) return
       show_stable_labels = false
       show_unstable_labels = false
     },
@@ -378,6 +392,7 @@
       <ConvexHull2D
         {...plot_props}
         {entry_category}
+        {color_scale}
         {tooltip}
         {title_height}
         {x_axis}

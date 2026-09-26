@@ -77,7 +77,8 @@ const make_band_grid = (
   return { values, dims, order: `z_fastest` }
 }
 
-// Single-band grid sampling `energy_fn` at fractional coordinates (ix + shift)/denom
+// Single-band grid sampling `energy_fn` at the reduced k of each point, (ix + shift)/denom,
+// folded to its minimum image in [−½, ½]: index 0 is Γ, as in BXSF and FRMSF lshift=1 files
 const make_band_data = (
   grid_n: number,
   energy_fn: (frac_x: number, frac_y: number, frac_z: number) => number,
@@ -97,9 +98,9 @@ const make_band_data = (
       [
         make_band_grid(dims, (idx_x, idx_y, idx_z) =>
           energy_fn(
-            (idx_x + shift_x) / denom,
-            (idx_y + shift_y) / denom,
-            (idx_z + shift_z) / denom,
+            min_image((idx_x + shift_x) / denom),
+            min_image((idx_y + shift_y) / denom),
+            min_image((idx_z + shift_z) / denom),
           ),
         ),
       ],
@@ -114,8 +115,10 @@ const make_band_data = (
   }
 }
 
+const min_image = (frac: number) => frac - Math.round(frac)
+// Distance from Γ in reduced units
 const sphere = (frac_x: number, frac_y: number, frac_z: number) =>
-  Math.hypot(frac_x - 0.5, frac_y - 0.5, frac_z - 0.5)
+  Math.hypot(frac_x, frac_y, frac_z)
 
 describe(`extract_fermi_surface`, () => {
   // Band data with a spherical isosurface: energy = distance² from grid center (in index units)
@@ -189,16 +192,16 @@ describe(`free-electron sphere (numerical verification)`, () => {
   const CUBIC = cubic_matrix(B_LEN)
 
   // Endpoint-inclusive grids place point i at frac i/(n−1) (BXSF), periodic ones at i/n
-  // (FRMSF); extraction centres the cell on Γ so k = (frac − 0.5)·b. `center_x`
-  // moves the sphere centre along k_x using the minimum-image distance, so a sphere at the
-  // zone-boundary X point wraps across the ±k_x faces.
+  // (FRMSF), both with Γ at index 0, so k = frac·b (make_band_data folds frac to [−½, ½]).
+  // `center_x` moves the sphere centre along k_x using the minimum-image distance, so a
+  // sphere at the zone-boundary X point wraps across the ±k_x faces.
   const free_electron = (count: number, periodic: boolean, center_x = 0): BandGridData => {
-    const k_of = (frac: number) => (frac - 0.5) * B_LEN
-    const min_image = (delta_k: number) => delta_k - B_LEN * Math.round(delta_k / B_LEN)
+    const k_of = (frac: number) => frac * B_LEN
+    const k_min_image = (delta_k: number) => delta_k - B_LEN * Math.round(delta_k / B_LEN)
     return make_band_data(
       count,
       (frac_x, frac_y, frac_z) => {
-        const delta_x = min_image(k_of(frac_x) - center_x)
+        const delta_x = k_min_image(k_of(frac_x) - center_x)
         return HBAR2_OVER_2M * (delta_x * delta_x + k_of(frac_y) ** 2 + k_of(frac_z) ** 2)
       },
       { k_lattice: CUBIC, periodic, fermi_energy: E_F },
@@ -305,8 +308,11 @@ describe(`free-electron sphere (numerical verification)`, () => {
   // A sphere centred on the zone-boundary X point wraps onto both ±k_x faces. Every vertex
   // must stay inside the centred parallelepiped, the two half-spheres must meet each face,
   // and the summed area must still be the full sphere (measured −2.1e-3 / −2.0e-3).
+  // Both grids have an even period (48 unique points), so the zone faces at ±½ are grid
+  // planes; an odd period can only centre the cell to within half a voxel
   test.each([false, true])(`BZ folding of a sphere at X (periodic=%s)`, (periodic) => {
-    const { isosurfaces } = extract_fermi_surface(free_electron(48, periodic, B_LEN / 2))
+    const count = periodic ? 48 : 49
+    const { isosurfaces } = extract_fermi_surface(free_electron(count, periodic, B_LEN / 2))
     expect(isosurfaces).toHaveLength(1)
     const iso = isosurfaces[0]
     expect(Math.abs(rel_area_error(iso))).toBeLessThan(3e-3)
@@ -348,7 +354,7 @@ describe(`grid/lattice conventions`, () => {
       grid_shift: [0.5, 0.5, 0.5],
     })
     const shifted = centroid(shifted_data)
-    // Both describe a sphere centred at frac (0.5, 0.5, 0.5) → Cartesian Σ 0.5·bᵢ − ½Σbᵢ = 0
+    // Both describe a sphere centred on Γ
     for (const axis of [0, 1, 2]) {
       expect(unshifted[axis]).toBeCloseTo(0, 3)
       expect(shifted[axis]).toBeCloseTo(0, 3)
@@ -362,20 +368,31 @@ describe(`grid/lattice conventions`, () => {
     for (const axis of [0, 1, 2]) expect(ignored[axis]).toBeCloseTo(-half_voxel[axis], 3)
   })
 
-  // Sphere of radius 0.3 around frac (0.5,0.5,0.5) must keep its radius through
-  // extraction and upsampling — a mixed-up grid convention rescales it by ~n/(n−1)
-  test.each([
-    [`endpoint-inclusive (BXSF)`, false, 1],
-    [`endpoint-inclusive (BXSF), 2x upsampled`, false, 2],
-    [`periodic (FRMSF)`, true, 1],
-    [`periodic (FRMSF), 2x upsampled`, true, 2],
-  ])(`sphere keeps its radius: %s`, (_label, periodic, interpolation_factor) => {
-    const band_data = make_band_data(20, sphere, { periodic })
-    const { isosurfaces } = extract_fermi_surface(band_data, { mu: 0.3, interpolation_factor })
-    const verts = vertices_of(isosurfaces[0])
-    const mean_radius = verts.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / verts.length
-    expect(mean_radius).toBeCloseTo(0.3, 2)
-  })
+  // Sphere of radius 0.3 around Γ must stay centred and keep its radius through extraction
+  // and upsampling: a mixed-up grid convention rescales it by ~n/(n−1), and shifting a
+  // Γ-started grid by −½(a*+b*+c*) instead of rolling it splits it into corner caps
+  const lshift_0 = 0.5 - 20 / 2 // lshift=0 mesh: index 0 already at −½
+  test.each<[string, number, boolean, number, Vec3?]>([
+    [`endpoint-inclusive (BXSF)`, 20, false, 1],
+    [`endpoint-inclusive (BXSF), odd n`, 21, false, 1],
+    [`endpoint-inclusive (BXSF), 2x upsampled`, 20, false, 2],
+    [`periodic (FRMSF lshift=1)`, 20, true, 1],
+    [`periodic (FRMSF lshift=1), odd n`, 21, true, 1],
+    [`periodic (FRMSF), 2x upsampled`, 20, true, 2],
+    [`periodic (FRMSF lshift=0)`, 20, true, 1, [lshift_0, lshift_0, lshift_0]],
+  ])(
+    `Γ-centred sphere keeps its radius: %s`,
+    (_label, grid_n, periodic, factor, grid_shift) => {
+      const band_data = make_band_data(grid_n, sphere, { periodic, grid_shift })
+      const { isosurfaces } = extract_fermi_surface(band_data, {
+        mu: 0.3,
+        interpolation_factor: factor,
+      })
+      const radii = vertices_of(isosurfaces[0]).map((vertex) => Math.hypot(...vertex))
+      for (const radius of radii) expect(radius).toBeCloseTo(0.3, 1)
+      expect(radii.reduce((sum, radius) => sum + radius, 0) / radii.length).toBeCloseTo(0.3, 2)
+    },
+  )
 
   test.each([
     { periodic: false, dims: [10, 4, 6] as Vec3, factor: 2, expected: [19, 7, 11] as Vec3 },

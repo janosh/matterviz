@@ -151,6 +151,26 @@ describe(`find_lowest_energy_unary_refs`, () => {
       expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-4.0, -2.5])
     },
   )
+
+  test.each([false, true])(
+    `ranks E_form-only unaries by E_form, below absolute-energy ones (reversed: %s)`,
+    (reversed) => {
+      const e_form_only = (element: string, e_form: number) =>
+        ({
+          composition: { [element]: 1 },
+          e_form_per_atom: e_form,
+          entry_id: `${element}${e_form}`,
+        }) as PhaseData
+      const entries = [
+        ...[0.05, 0, 0.1].map((e_form) => e_form_only(`Li`, e_form)),
+        e_form_only(`Na`, -0.3),
+        make_phase({ Na: 1 }, -1.3, { entry_id: `Na-abs` }),
+        make_phase({ Na: 1 }, -1.2),
+      ]
+      const refs = find_lowest_energy_unary_refs(reversed ? entries.toReversed() : entries)
+      expect([refs.Li.entry_id, refs.Na.entry_id]).toEqual([`Li0`, `Na-abs`])
+    },
+  )
 })
 
 // Brute-force lower hull energy at `query`: min over all (d+1)-subsets containing the
@@ -330,6 +350,22 @@ describe(`N-dimensional quickhull`, () => {
     // Inside: the apex sits 1 eV below the E = 0 corner plane; the apex itself scores 0
     expect(compute_e_above_hull_nd([[0.3, 0.3, 0]], facets, points)[0]).toBeCloseTo(1, 12)
     expect(compute_e_above_hull_nd([[0.3, 0.3, -1]], facets, points)[0]).toBeCloseTo(0, 12)
+  })
+
+  test(`compute_e_above_hull_nd: coplanar facets tie, the one containing the query wins`, () => {
+    // Flat unit square split into two triangles on the same E = 0 plane; (0.2, 0.8) lies only
+    // in the second, so picking the first tied facet would call the query uncovered (NaN)
+    const points = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+    ]
+    const facets = [
+      { vertex_indices: [0, 1, 2], normal: [0, 0, -1], offset: 0 },
+      { vertex_indices: [0, 2, 3], normal: [0, 0, -1], offset: 0 },
+    ]
+    expect(compute_e_above_hull_nd([[0.2, 0.8, 0.5]], facets, points)).toEqual([0.5])
   })
 
   test(`duplicate compositions: duplicates score 0, the higher polymorph its energy gap`, () => {

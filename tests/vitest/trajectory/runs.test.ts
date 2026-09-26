@@ -242,6 +242,22 @@ describe(`numeric frames`, () => {
     },
   )
 
+  it(`encodes dense numeric site scalars as columns and restores them`, () => {
+    // LAMMPS `id type x y z` dumps
+    const source = make_trajectory_frame(0, 3)
+    for (const [idx, site] of source.structure.sites.entries()) {
+      Object.assign(site.properties, { id: idx + 7, type: 2, force: [idx, 0, 0] })
+    }
+    const frame = encode_frame(source)
+    expect(frame.sites).toBeInstanceOf(Uint8Array)
+    expect(frame.vector_keys).toEqual([`force`])
+    expect(frame.scalar_columns).toEqual({
+      id: Float64Array.of(7, 8, 9),
+      type: Float64Array.of(2, 2, 2),
+    })
+    expect(materialize_frame(frame)).toEqual(source)
+  })
+
   it.each([
     [true, true, true],
     [true, false, true],
@@ -271,7 +287,7 @@ describe(`numeric frames`, () => {
       ],
       pbc,
       1,
-      {},
+      { energy: -1, per_atom: [[0.1, 0.2, 0.3]] },
       [`force`],
     )
     next.coordinates.set([1, 2, 3], 6)
@@ -302,6 +318,9 @@ describe(`numeric frames`, () => {
     expect(identity).toBeDefined()
     expect(snapshot_topologies.get(result.structure)).toBe(identity)
     expect(result.structure.sites).not.toBe(atoms)
+    // a fresh header for Svelte, without deep-copying its metadata
+    expect(result.metadata).not.toBe(next.header.metadata)
+    expect(result.metadata?.per_atom).toBe(next.header.metadata?.per_atom)
     expect(result.structure.sites[0].species).toBe(atoms[0].species)
     expect(atoms).toStrictEqual(first_snapshot)
     const reference = normalize_fractional_coords(materialize_frame(next).structure)

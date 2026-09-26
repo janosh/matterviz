@@ -36,7 +36,7 @@ export interface VacfOptions {
   // Time per collected frame. Left unset the lag axis is labelled in frames and the VDOS
   // axis in inverse frames when the run records no timestep.
   dt?: number
-  // Mandatory whenever dt is given (e.g. `fs`, `ps`), same rule as calc_msd
+  // Required with dt and rejected without it (e.g. `fs`, `ps`), same rule as calc_msd
   time_unit?: string
   // Largest lag as a fraction of the velocity series length. 0.5 by default: beyond that
   // there are too few time origins left for the average to mean anything.

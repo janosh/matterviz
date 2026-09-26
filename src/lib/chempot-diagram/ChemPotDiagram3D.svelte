@@ -27,7 +27,7 @@
   import { get_3d_auto_ranges } from '$lib/plot/scatter-3d/scene-coords'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import { rescale_zoom_to_fit } from './camera'
@@ -329,7 +329,7 @@
     const result: RenderDomain[] = []
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
       const padded = new_lims
-        ? pad_domain_points(pts, indices, new_lims, default_min_limit, element_padding)
+        ? pad_domain_points(pts, indices, new_lims, default_min_limit)
         : pts
       if (padded.length < 2) continue
       const { edges, ann_loc } = get_domain_outline(padded)
@@ -1141,6 +1141,17 @@
   function handle_phase_leave(domain_data: HoverMesh): void {
     if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
   }
+
+  // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
+  $effect(() => {
+    const meshes = hover_mesh_data
+    untrack(() => {
+      if (!locked_hover_formula) return
+      const current = meshes.find(({ formula }) => formula === locked_hover_formula)
+      if (!current) clear_hover_lock()
+      else if (hover_info) hover_info = { ...current.info, pointer: hover_info.pointer }
+    })
+  })
 
   // A wheel zoom shifts the domains under a still cursor with no pointerleave to clear the tooltip
   function handle_camera_start(): void {

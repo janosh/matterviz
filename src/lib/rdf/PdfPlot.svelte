@@ -10,11 +10,13 @@
   import type { Crystal, Pbc } from '$lib/structure'
   import { strip_html, to_error } from '$lib/utils'
   import {
-    calculate_total_pdf,
+    calculate_all_pair_rdfs,
     label_structures,
+    number_density,
     PDF_DEFAULT_CUTOFF,
     PDF_DEFAULT_N_BINS,
     rdf_baseline,
+    weight_pdf_partials,
   } from './index'
   import type { PdfPattern, TotalPdfPattern } from './index'
 
@@ -60,19 +62,34 @@
     })),
   )
 
-  // Recomputed whenever radiation/cutoff/n_bins change. A missing scattering length or a
-  // null-matrix composition throws out of $lib/scattering; surface it instead of blanking the
-  // plot. The failure rides back with the results because writing to state — or to a prop —
-  // from inside a $derived is state_unsafe_mutation, a hard error in Svelte 5.
+  // Two stages so the radiation buttons never re-run the neighbour search: the partial
+  // g_ab(r) depend only on geometry and binning, the weighting on radiation. Errors (e.g. a
+  // missing scattering length) ride back with the results instead of blanking the plot, since
+  // writing state from inside a $derived is state_unsafe_mutation.
+  const partials = $derived(
+    struct_list.map(({ struct, label }) => {
+      try {
+        // the PDF's own message for a lattice-less or empty structure, before the search
+        const rho_0 = number_density(struct)
+        const partial_rdfs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
+        return { struct, label, partial_rdfs, rho_0 }
+      } catch (exc) {
+        return { failure: to_error(exc).message }
+      }
+    }),
+  )
   const computed = $derived.by(() => {
     const totals: { label: string; total: TotalPdfPattern }[] = []
     let failure: string | undefined
-    for (const { struct, label } of struct_list) {
+    for (const entry of partials) {
+      if (!entry.partial_rdfs) {
+        failure = entry.failure
+        continue
+      }
       try {
-        totals.push({
-          label,
-          total: calculate_total_pdf(struct, { radiation, cutoff, n_bins, pbc }),
-        })
+        const { struct, label, partial_rdfs, rho_0 } = entry
+        const total = weight_pdf_partials(struct, partial_rdfs, { radiation, rho_0 })
+        totals.push({ label, total })
       } catch (exc) {
         failure = to_error(exc).message
       }
@@ -86,8 +103,10 @@
 
   const ref_lines = $derived<RefLine[]>([rdf_baseline(quantity), ...(rest.ref_lines ?? [])])
 
-  const series = $derived<DataSeries[]>(
-    computed.totals.flatMap(({ label, total }, struct_idx) => {
+  // One running colour index across every structure's curves, so no two curves share one
+  const series = $derived.by<DataSeries[]>(() => {
+    let color_idx = 0
+    return computed.totals.flatMap(({ label, total }) => {
       const curves: [string, PdfPattern][] = [
         [label, total],
         ...(show_partials ? total.partials : []).map((partial): [string, PdfPattern] => [
@@ -102,12 +121,12 @@
         legend_group: label,
         markers: `line` as const,
         line_style: {
-          stroke: plot_color(struct_idx * 7 + curve_idx),
+          stroke: plot_color(color_idx++),
           stroke_width: curve_idx === 0 ? 2 : 1,
         },
       }))
-    }),
-  )
+    })
+  })
 
   // get_electro_neg_formula returns <sub>-tagged markup, which the legend renders but a plain
   // text caption would show verbatim. strip_html rather than {@html}, since dictionary keys

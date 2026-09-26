@@ -1,5 +1,7 @@
 <script lang="ts">
   import { get_electro_neg_formula } from '$lib/composition/format'
+  import { convex_hull_2d, type Vec2 } from '$lib/math'
+  import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
@@ -70,30 +72,25 @@
 
   const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
 
+  // Projected from a larger system, a domain is a polygon with unordered vertices: draw its
+  // closed convex outline (binary domains and collinear vertices collapse to one segment)
+  const outline = (pts: number[][]): number[][] => {
+    const hull = convex_hull_2d(pts as Vec2[], 1e-9)
+    return hull.length >= 3 ? [...hull, hull[0]] : hull
+  }
   const draw_domains = $derived.by((): Record<string, number[][]> => {
     if (!diagram_data || plot_elements.length < 2) return {}
     const indices = [0, 1]
-    if (element_padding <= 0) {
-      return Object.fromEntries(
-        Object.entries(diagram_data.domains).filter(([, pts]) => pts.length > 0),
-      )
-    }
-    const new_lims = apply_element_padding(
-      diagram_data.domains,
-      indices,
-      element_padding,
-      default_min_limit,
-    )
+    const new_lims =
+      element_padding > 0 &&
+      apply_element_padding(diagram_data.domains, indices, element_padding, default_min_limit)
     const result: Record<string, number[][]> = {}
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
-      const padded = pad_domain_points(
-        pts,
-        indices,
-        new_lims,
-        default_min_limit,
-        element_padding,
-      )
-      if (padded.length > 0) result[formula] = padded
+      if (pts.length === 0) continue
+      const padded = new_lims
+        ? pad_domain_points(pts, indices, new_lims, default_min_limit)
+        : pts
+      result[formula] = outline(padded)
     }
     return result
   })
@@ -107,7 +104,12 @@
       x: pts.map((point) => point[0]),
       y: pts.map((point) => point[1]),
       markers: `line+points` as const,
-      line_style: { stroke: domain_colors.get(formula) ?? `black`, stroke_width: 3 },
+      // a spline would bow polygon outlines
+      line_style: {
+        stroke: domain_colors.get(formula) ?? `black`,
+        stroke_width: 3,
+        curve: `linear` as const,
+      },
       point_style: { fill: domain_colors.get(formula) ?? `black`, radius: 3 },
     })),
   )
@@ -169,6 +171,23 @@
     locked_hover_formula = null
     hover_info = null
   }
+
+  // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
+  $effect(() => {
+    const domains = draw_domains
+    untrack(() => {
+      if (!locked_hover_formula) return
+      const pts = domains[locked_hover_formula]
+      if (!pts) clear_hover_lock()
+      else if (hover_info) {
+        hover_info = {
+          ...hover_info,
+          n_points: pts.length,
+          axis_ranges: build_axis_ranges(pts, plot_elements),
+        }
+      }
+    })
+  })
 
   function handle_hover(
     data: { point: { series_idx: number }; event: MouseEvent } | null,
@@ -281,7 +300,8 @@
   </SettingsSection>
 {/snippet}
 
-{#if chempot.computing}
+<!-- recomputes keep the previous plot, settings and temperature slider mounted -->
+{#if chempot.computing && !diagram_data}
   <Spinner
     text="Computing chemical potential domains..."
     style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
@@ -290,6 +310,8 @@
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
     <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
+    <!-- the setting that caused the error stays editable -->
+    {@render chempot_controls(null)}
   </div>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

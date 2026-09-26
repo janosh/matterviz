@@ -180,6 +180,15 @@
     dispose_all()
   })
 
+  // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
+  // negative lobe. show_negative mirrors the surface at -isovalue, which at 0 is the same one.
+  const mirror_signs = (layer: ResolvedLayer): readonly (1 | -1)[] =>
+    layer.show_negative && layer.isovalue !== 0 ? [1, -1] : [1]
+  // A mirrored pair colours each lobe by the sign of the value it is drawn at (with a negative
+  // isovalue the mirror is the positive lobe); a lone surface always takes `color`
+  const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
+    layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
+
   // range_key covers halo + tiling (encoded in the range for periodic volumes;
   // irrelevant for finite ones), so the geometry identity needs no other inputs
   const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
@@ -288,9 +297,9 @@
 
     for (const [layer_idx, layer] of layers.entries()) {
       const vol = layer.volume
-      if (!layer.visible || layer.isovalue <= 0) continue
+      if (!layer.visible || !Number.isFinite(layer.isovalue)) continue
 
-      for (const sign of layer.show_negative ? ([1, -1] as const) : ([1] as const)) {
+      for (const sign of mirror_signs(layer)) {
         const key = `${layer_idx}:${sign}`
         const geo_key = geometry_key(layer, sign)
         const reused = reusable.get(geo_key)
@@ -413,7 +422,7 @@
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
-        if (!layer.visible || layer.isovalue <= 0) return `off`
+        if (!layer.visible || !Number.isFinite(layer.isovalue)) return `off`
         return `${geometry_key(layer, 1)}.${layer.show_negative}`
       })
       .join(`|`),
@@ -511,7 +520,7 @@
         set_vertex_colors(entry.geometry, scalars, {
           colormap: layer.colormap ?? DEFAULT_ISO_COLORMAP,
           color_range: layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1],
-          fallback_color: entry.sign > 0 ? layer.color : layer.negative_color,
+          fallback_color: lobe_color(layer, entry.sign),
         }),
       )
       colored_keys.add(entry.key)
@@ -555,11 +564,7 @@
   {@const layer = resolved_layers[entry.layer_idx]}
   {#if layer}
     {@const vertex_colored = colored_keys.has(entry.key)}
-    {@const color = vertex_colored
-      ? `#ffffff`
-      : entry.sign > 0
-        ? layer.color
-        : layer.negative_color}
+    {@const color = vertex_colored ? `#ffffff` : lobe_color(layer, entry.sign)}
     {@const opacity = layer.opacity}
     {@const transparent = opacity < 1}
     <!-- Recreate materials when vertexColors toggles (needs shader recompile) -->

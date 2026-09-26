@@ -9,7 +9,6 @@
   import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import { extent } from 'd3-array'
-  import { untrack } from 'svelte'
   import {
     convert_frequencies,
     frequency_unit_label,
@@ -48,12 +47,12 @@
     spectrum: VibrationalSpectrum
     kind?: SpectrumKind
     units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
-    fwhm?: number // peak width in the currently selected frequency unit
+    fwhm?: number // peak width in cm^-1 whatever `units` displays
     shape_factor?: number // pseudo-Voigt mixing: 0 = Gaussian, 1 = Lorentzian
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
     show_sticks?: boolean
-    hovered_frequency?: number | null
+    hovered_frequency?: number | null // THz, like every frequency the spectral module passes
     selected_mode_idx?: number | null
     on_mode_select?: (mode_idx: number) => void
   } = $props()
@@ -62,15 +61,8 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  // FWHM is quoted in the displayed unit, so rescale it when the user switches units;
-  // otherwise 10 cm^-1 would silently become 10 THz. prev_unit is intentionally a plain
-  // local: it is bookkeeping for the effect, not reactive state anything renders.
-  let prev_unit = untrack(() => unit)
-  $effect(() => {
-    if (unit === prev_unit) return
-    fwhm = convert_frequencies([fwhm], unit, prev_unit)[0]
-    prev_unit = unit
-  })
+  // Derived, not effect-synced, so a unit switch never broadens a stale width on the new grid
+  let display_fwhm = $derived(convert_frequencies([fwhm], unit, `cm^-1`)[0])
 
   let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
   let sticks = $derived(
@@ -91,14 +83,14 @@
     // extent([]) is [undefined, undefined], which would make the whole range NaN
     if (sticks.x.length === 0) return [0, 1]
     const [min_x, max_x] = extent(sticks.x) as [number, number]
-    const pad = Math.max(8 * fwhm, (max_x - min_x) * 0.1, 1e-6)
+    const pad = Math.max(8 * display_fwhm, (max_x - min_x) * 0.1, 1e-6)
     return [Math.max(0, min_x - pad), max_x + pad]
   })
 
   let broadened = $derived.by(() => {
     if (!has_signal) return { x: [], y: [] }
-    const opts = { fwhm, shape_factor, range: plot_range, step_size: fwhm / 20 }
-    return broaden_spectrum(sticks, opts)
+    const opts = { shape_factor, range: plot_range, step_size: display_fwhm / 20 }
+    return broaden_spectrum(sticks, { ...opts, fwhm: display_fwhm })
   })
 
   // Transmittance needs a bounded absorbance to invert, so it always scales to max=1
@@ -176,11 +168,8 @@
   // Including the FWHM-dependent plot padding would move the target after every reset.
   const broadening_defaults = $derived.by(() => {
     const [lower = 0, upper = 0] = extent(sticks.x)
-    return {
-      fwhm:
-        upper > lower ? (upper - lower) / 100 : convert_frequencies([10], unit, `cm^-1`)[0],
-      shape_factor: 0.5,
-    }
+    const span_cm = convert_frequencies([upper - lower], `cm^-1`, unit)[0]
+    return { fwhm: span_cm > 0 ? span_cm / 100 : 10, shape_factor: 0.5 }
   })
   const broadening_settings = $derived(
     track_settings(() => ({ fwhm, shape_factor }), broadening_defaults),
@@ -201,7 +190,9 @@
     legend={rest.legend === undefined ? null : rest.legend}
     hover_config={{ threshold_px: 30, ...rest.hover_config }}
     on_point_hover={(event) => {
-      hovered_frequency = event?.point?.x ?? null
+      const point_x = event?.point?.x
+      hovered_frequency =
+        point_x == null ? null : convert_frequencies([point_x], `THz`, unit)[0]
       rest.on_point_hover?.(event)
     }}
     range_padding={rest.range_padding ?? 0}
@@ -271,8 +262,16 @@
         <div class="style-row">
           <label>
             <span title="Full width at half maximum">FWHM</span>
-            <span class="value">{format_num(fwhm, `.3~`)}</span>
-            <input id="ir-raman-fwhm" type="range" {...fwhm_input} bind:value={fwhm} />
+            <span class="value">{format_num(display_fwhm, `.3~`)}</span>
+            <input
+              id="ir-raman-fwhm"
+              type="range"
+              {...fwhm_input}
+              bind:value={
+                () => display_fwhm,
+                (width) => (fwhm = convert_frequencies([width], `cm^-1`, unit)[0])
+              }
+            />
           </label>
           <label>
             <span title="0 = Gaussian, 1 = Lorentzian">Shape</span>

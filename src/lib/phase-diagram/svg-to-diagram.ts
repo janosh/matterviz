@@ -15,7 +15,9 @@ type SvgFormat = `matplotlib` | `simple`
 interface LinearScale {
   to_data: (pixel_x: number) => number
   to_px: (value: number) => number
-  domain: Vec2 // [min_data, max_data]
+  domain: Vec2 // [min_data, max_data] of the plot area
+  // Data units spanned by 1 px: the snapping tolerance for coordinates drawn at pixel precision
+  px_tol: number
 }
 
 interface Tick {
@@ -95,10 +97,10 @@ function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
   ]
 }
 
-// Build a linear scale from tick data points. Fewer than two ticks means the SVG is neither a
-// matplotlib export nor the simple class-based format (e.g. an MPDS export), so say so
-// instead of failing on the missing tick.
-function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
+// Build a linear scale from tick data points, its domain spanning the plot area's pixel span
+// [px_a, px_b] (either order). Fewer than two ticks means an unsupported SVG (e.g. an MPDS
+// export), so say so instead of failing on the missing tick.
+function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): LinearScale {
   if (ticks.length < 2) {
     throw new Error(
       `could not find ${axis}-axis tick marks in this SVG (need at least 2, found ${ticks.length})`,
@@ -116,12 +118,56 @@ function build_scale(axis: `x` | `y`, ticks: Tick[]): LinearScale {
     )
   }
   const px_per_unit = px_range / range
+  const to_data = (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit
+  const [data_a, data_b] = [to_data(px_a), to_data(px_b)]
 
   return {
-    to_data: (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit,
+    to_data,
     to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
-    domain: [first.value, last.value],
+    domain: [Math.min(data_a, data_b), Math.max(data_a, data_b)],
+    px_tol: 1 / Math.abs(px_per_unit),
   }
+}
+
+// [min_x, min_y, max_x, max_y] of pixel vertices
+const bbox_of = (verts: Vec2[]): Vec4 => {
+  const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
+  const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
+  return [min_x, min_y, max_x, max_y]
+}
+
+// Pixel bbox of the plot area. Ticks sit at round values inside the axis limits, so their span
+// alone would crop everything between the outermost tick and the axes edge. Matplotlib's axes
+// background patch gives the exact area; otherwise the smallest filled shape enclosing every
+// tick and boundary (a page background encloses them too, but is larger), else their span.
+function plot_area_px(
+  doc: Document,
+  [x_ticks, y_ticks]: [Tick[], Tick[]],
+  lines: Vec4[],
+  filled_shapes: FilledShape[],
+): Vec4 {
+  const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
+  const patch = doc.querySelector(`[id^="axes_"] > [id^="patch_"] > *`)
+  const patch_verts = (patch && shape_rings(patch))?.flat() ?? []
+  // a degenerate patch (e.g. a spine line when the background patch is missing) has no area
+  if (patch_verts.length && area(bbox_of(patch_verts)) > 0) return bbox_of(patch_verts)
+  const [min_x, max_x] = array_extent([
+    ...x_ticks.map(({ px }) => px),
+    ...lines.flatMap(([x_1, , x_2]) => [x_1, x_2]),
+  ])
+  const [min_y, max_y] = array_extent([
+    ...y_ticks.map(({ px }) => px),
+    ...lines.flatMap(([, y_1, , y_2]) => [y_1, y_2]),
+  ])
+  // 1 px slack for strokes drawn on the plot edge
+  const enclosing = filled_shapes
+    .map(({ bbox }) => bbox)
+    .filter(
+      ([left, top, right, bottom]) =>
+        left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
+    )
+  const span: Vec4 = [min_x, min_y, max_x, max_y]
+  return enclosing.toSorted((bbox_a, bbox_b) => area(bbox_a) - area(bbox_b))[0] ?? span
 }
 
 // === Boundary Extraction ===
@@ -311,9 +357,7 @@ function extract_filled_shapes(doc: Document): FilledShape[] {
     const rings = shape_rings(element) ?? []
     const verts = rings.flat()
     if (verts.length < 3) continue // fewer than 3 corners encloses no area
-    const [min_x, max_x] = array_extent(verts.map(([x_px]) => x_px))
-    const [min_y, max_y] = array_extent(verts.map(([, y_px]) => y_px))
-    shapes.push({ fill, bbox: [min_x, min_y, max_x, max_y], rings })
+    shapes.push({ fill, bbox: bbox_of(verts), rings })
   }
   return shapes
 }
@@ -373,18 +417,17 @@ function infer_regions(
   const verticals = boundaries.filter((boundary) => boundary.orientation === `vertical`)
   const horizontals = boundaries.filter((boundary) => boundary.orientation === `horizontal`)
 
-  // Collect all unique x and y coordinates (boundaries + domain edges)
-  const x_coords = collect_unique_sorted([
-    x_scale.domain[0],
-    x_scale.domain[1],
-    ...verticals.map((boundary) => boundary.x1), // x1 === x2 for vertical
-  ])
-
-  const y_coords = collect_unique_sorted([
-    y_scale.domain[0],
-    y_scale.domain[1],
-    ...horizontals.map((boundary) => boundary.y1), // y1 === y2 for horizontal
-  ])
+  // Unique x and y coordinates of domain edges and boundaries (x1 === x2 for verticals, y1 ===
+  // y2 for horizontals); ones closer than 1 px are the same grid line drawn with pixel jitter
+  const [x_tol, y_tol] = [x_scale.px_tol, y_scale.px_tol]
+  const x_coords = collect_unique_sorted(
+    [...x_scale.domain, ...verticals.map(({ x1 }) => x1)],
+    x_tol,
+  )
+  const y_coords = collect_unique_sorted(
+    [...y_scale.domain, ...horizontals.map(({ y1 }) => y1)],
+    y_tol,
+  )
 
   // Build cell grid: cells[col][row]
   const n_cols = x_coords.length - 1
@@ -397,23 +440,24 @@ function infer_regions(
   const v_walls = Array.from({ length: n_cols + 1 }, () => Array(n_rows).fill(false))
   for (const col_walls of h_walls) for (const row of [0, n_rows]) col_walls[row] = true
   for (const col of [0, n_cols]) v_walls[col].fill(true)
-  // Cell intervals of `coords` that the span [lo, hi] covers
-  const spanned_cells = (lower: number, upper: number, coords: number[]): number[] =>
+  // Cell intervals of `coords` that the span [lo, hi] covers, ends snapped within `tol` so a
+  // boundary stopping a pixel short of the one it meets still closes the wall
+  const spanned_cells = (lower: number, upper: number, coords: number[], tol: number) =>
     coords
       .slice(0, -1)
       .flatMap((cell_min, idx) =>
-        lower <= cell_min + 1e-6 && upper >= coords[idx + 1] - 1e-6 ? [idx] : [],
+        lower <= cell_min + tol && upper >= coords[idx + 1] - tol ? [idx] : [],
       )
   for (const horizontal_bond of horizontals) {
-    const row = find_coord_index(y_coords, horizontal_bond.y1)
+    const row = find_coord_index(y_coords, horizontal_bond.y1, y_tol)
     if (row === -1) continue
-    for (const col of spanned_cells(horizontal_bond.x1, horizontal_bond.x2, x_coords))
+    for (const col of spanned_cells(horizontal_bond.x1, horizontal_bond.x2, x_coords, x_tol))
       h_walls[col][row] = true
   }
   for (const vertex_b of verticals) {
-    const col = find_coord_index(x_coords, vertex_b.x1)
+    const col = find_coord_index(x_coords, vertex_b.x1, x_tol)
     if (col === -1) continue
-    for (const row of spanned_cells(vertex_b.y1, vertex_b.y2, y_coords))
+    for (const row of spanned_cells(vertex_b.y1, vertex_b.y2, y_coords, y_tol))
       v_walls[col][row] = true
   }
 
@@ -430,21 +474,27 @@ function infer_regions(
   // Each label names the region of the cell under it
   const region_labels = new Map<number, string>()
   for (const label of labels) {
-    const col = find_cell_index(x_coords, x_scale.to_data(label.px_x))
-    const row = find_cell_index(y_coords, y_scale.to_data(label.px_y))
+    const col = find_cell_index(x_coords, x_scale.to_data(label.px_x), x_tol)
+    const row = find_cell_index(y_coords, y_scale.to_data(label.px_y), y_tol)
     if (col !== -1 && row !== -1) region_labels.set(cell_ids[col][row], label.text)
   }
 
   // Build region polygons by tracing the outline of each region's merged cells
   const regions: RegionInput[] = []
+  const slug_counts = new Map<string, number>()
   for (let region_id = 0; region_id < next_region_id; region_id++) {
     const name = region_labels.get(region_id) ?? `Region ${region_id + 1}`
     // Slug can be empty for non-ASCII labels like "α + β" — fall back to region_N
-    const slug =
+    const base_slug =
       name
         .toLowerCase()
         .replaceAll(/[^a-z0-9]+/g, `_`)
         .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
+    // Ids key rendered regions, but fields may share a label (a miscibility gap) or slug alike
+    // (`A + B`, `A+B`): suffix repeats as a_b, a_b_2
+    const n_seen = (slug_counts.get(base_slug) ?? 0) + 1
+    slug_counts.set(base_slug, n_seen)
+    const slug = n_seen === 1 ? base_slug : `${base_slug}_${n_seen}`
 
     const bounds: DiagramPoint[] = trace_region_outline(
       cell_ids,
@@ -619,13 +669,15 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
   if (parse_error) throw new Error(`Invalid SVG: ${parse_error.textContent}`)
 
   const format = detect_format(doc)
-  const [x_ticks, y_ticks] =
+  const ticks: [Tick[], Tick[]] =
     format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
+  const lines = extract_boundary_lines(doc, format)
+  const filled_shapes = extract_filled_shapes(doc)
+  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_shapes)
   // y-axis inverted (SVG y down, temp up)
-  const [x_scale, y_scale] = [build_scale(`x`, x_ticks), build_scale(`y`, y_ticks)]
-  const boundaries = extract_boundary_lines(doc, format).flatMap(
-    (line) => to_boundary(line, x_scale, y_scale) ?? [],
-  )
+  const x_scale = build_scale(`x`, ticks[0], [min_x, max_x])
+  const y_scale = build_scale(`y`, ticks[1], [min_y, max_y])
+  const boundaries = lines.flatMap((line) => to_boundary(line, x_scale, y_scale) ?? [])
   const labels = extract_labels(doc, format)
   if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)
 
@@ -638,7 +690,7 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
       title: `Imported Phase Diagram`,
     },
     curves: generate_curves(boundaries),
-    regions: infer_regions(boundaries, labels, extract_filled_shapes(doc), x_scale, y_scale),
+    regions: infer_regions(boundaries, labels, filled_shapes, x_scale, y_scale),
   }
 }
 
@@ -789,25 +841,25 @@ function parse_translate(element: Element | null): Vec2 | null {
   return [Number(coord_x), coord_y ? Number(coord_y) : 0]
 }
 
-// Collect unique sorted values from an array (with epsilon deduplication)
-function collect_unique_sorted(values: number[]): number[] {
+// Unique sorted values, merging values within `tol` of the previous kept one
+function collect_unique_sorted(values: number[], tol: number): number[] {
   if (values.length === 0) return []
   const sorted = values.toSorted((val_a, val_b) => val_a - val_b)
   const unique: number[] = [sorted[0]]
   for (let idx = 1; idx < sorted.length; idx++) {
-    if (Math.abs(sorted[idx] - unique[unique.length - 1]) > 1e-4) {
+    if (Math.abs(sorted[idx] - unique[unique.length - 1]) > tol) {
       unique.push(sorted[idx])
     }
   }
   return unique
 }
 
-// Index of a coordinate in a sorted array (with epsilon tolerance), -1 if absent
-const find_coord_index = (coords: number[], value: number): number =>
-  coords.findIndex((coord) => Math.abs(coord - value) < 1e-4)
+// Index of the coordinate within `tol` of value in a sorted array, -1 if absent
+const find_coord_index = (coords: number[], value: number, tol: number): number =>
+  coords.findIndex((coord) => Math.abs(coord - value) <= tol)
 
-// Index of the cell interval [coords[idx], coords[idx + 1]] containing value, -1 if none
-const find_cell_index = (coords: number[], value: number): number =>
+// Index of the cell interval [coords[idx], coords[idx + 1]] containing value (±tol), -1 if none
+const find_cell_index = (coords: number[], value: number, tol: number): number =>
   coords
     .slice(0, -1)
-    .findIndex((lower, idx) => value >= lower - 1e-4 && value <= coords[idx + 1] + 1e-4)
+    .findIndex((lower, idx) => value >= lower - tol && value <= coords[idx + 1] + tol)

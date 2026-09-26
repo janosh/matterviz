@@ -119,6 +119,7 @@
     row_key,
     row_animation_ms = 0,
     selected_ids = $bindable([]),
+    visible_rows = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
     root_style,
@@ -130,6 +131,8 @@
     controls_open = $bindable(false),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Hold large datasets in $state.raw: a deep $state proxy routes every cell read through a
+    // signal. Replace, don't mutate.
     data: Row[]
     // Discovered from the first 50 rows' keys when omitted
     columns?: Column<Row>[]
@@ -179,6 +182,9 @@
     // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
     row_animation_ms?: number
     selected_ids?: RowId[]
+    // Read-only output: every row left after search and filters, in the current sort order
+    // and across all pages (bind it to export or pick from what the table shows)
+    visible_rows?: Row[]
     // Column IDs hidden through the column toggle. Bindable for persistence.
     hidden_columns?: string[]
     scroll_style?: string
@@ -543,20 +549,25 @@
   let sorted_data = $derived(
     sort_criteria.length === 0 ? filtered_data : sort_table_rows(filtered_data, sort_criteria),
   )
+  $effect(() => {
+    visible_rows = sorted_data
+  })
 
   function sort_rows(col: Column<Row>, event: MouseEvent | KeyboardEvent) {
     if (col.sortable === false) return
     const col_id = col.id
+    // The user's gradient-direction pref wins over the column config, as for the colors
+    const lower_first = better_of(col) === `lower`
     // Shift-click toggles this column in multi-sort and clears single-column sorting
     if (event.shiftKey) {
       multi_sort = multi_sort.some((entry) => entry.column === col_id)
         ? multi_sort.filter((entry) => entry.column !== col_id)
-        : [...multi_sort, { column: col_id, ascending: col.better === `lower` }]
+        : [...multi_sort, { column: col_id, ascending: lower_first }]
       sort = { column: ``, dir: `asc` }
       return
     }
     multi_sort = []
-    const first_dir = col.better === `lower` ? `asc` : `desc`
+    const first_dir = lower_first ? `asc` : `desc`
     const on_this_col = sort_state.column === col_id
     const flipped = sort_state.ascending ? `desc` : `asc`
     // Third click on the same column clears the sort, restoring the data's own order — unless
@@ -1237,10 +1248,13 @@
   }
 
   // === Export ===
-  // Selected rows when any are selected, otherwise all sorted+filtered rows
-  let export_rows = $derived(
-    show_row_select && selected_ids.length > 0 ? data.filter(is_row_selected) : sorted_data,
-  )
+  // Selected rows when any are selected (including ones the search or filters hide), else
+  // all sorted+filtered rows. Either way in the table's current sort order.
+  let export_rows = $derived.by(() => {
+    if (!show_row_select || selected_ids.length === 0) return sorted_data
+    const selected = data.filter(is_row_selected)
+    return sort_criteria.length > 0 ? sort_table_rows(selected, sort_criteria) : selected
+  })
   // Visible cells as plain text: the single extraction every exporter builds on
   const table_matrix = (): TableMatrix => ({
     headers: cols.map((view) => strip_html(view.col.label)),

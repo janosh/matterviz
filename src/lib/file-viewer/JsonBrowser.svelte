@@ -99,6 +99,7 @@
   })
 
   let sidebar_element: HTMLElement | undefined = $state()
+  let root_element: HTMLElement | undefined = $state()
 
   // Strip internal suffix used to register multiple renderable types at the same path
   function strip_type_suffix(path: string): string {
@@ -212,12 +213,16 @@
     if (spec) replace_or_add_panel(spec)
   }
 
-  // Escape key closes all panels, returning to the overview
+  // Escape closes all panels. Listened for on the window so it works with nothing focused,
+  // skipping Escapes another widget consumed or pressed inside another element (a 2nd browser).
   $effect(() => {
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {
-      if (event.key !== `Escape`) return
+      if (event.key !== `Escape` || event.defaultPrevented) return
       if (is_editable_event_target(event.target)) return
+      const { target } = event
+      const unfocused = target === document.body || target === document.documentElement
+      if (target instanceof Node && !unfocused && !root_element?.contains(target)) return
       close_all_panels()
     }
     globalThis.addEventListener(`keydown`, on_keydown)
@@ -537,7 +542,7 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="json-browser" class:dragging={split_drag !== null}>
+<div class="json-browser" class:dragging={split_drag !== null} bind:this={root_element}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <aside
     class="sidebar"

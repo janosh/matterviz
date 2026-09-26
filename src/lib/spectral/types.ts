@@ -39,6 +39,10 @@ export interface BaseBandStructure {
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]
   spin_down_bands?: number[][] // [nb_bands][nb_qpoints] for spin-polarized electronic bands
+  // Electronic occupations (0 = empty, 1 = filled) shaped like `bands`/`spin_down_bands`.
+  // When present they, not E_F, decide filling for the band gap (see electronic_band_gap).
+  occupations?: number[][]
+  spin_down_occupations?: number[][]
   band_widths?: number[][] // [nb_bands][nb_qpoints] - width values for fat bands visualization
 }
 
@@ -107,7 +111,7 @@ export interface BandLineStyle {
 export type LineKwargs = BandLineStyle | { acoustic?: BandLineStyle; optical?: BandLineStyle }
 
 export interface HoveredData {
-  hovered_frequency?: number | null
+  hovered_frequency?: number | null // data unit: THz (phonon) or eV (electronic)
   hovered_band_point?: InternalPoint | null
   hovered_qpoint_index?: number | null
 }

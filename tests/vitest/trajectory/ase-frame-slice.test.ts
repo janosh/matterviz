@@ -13,6 +13,7 @@ import { describe, expect, test } from 'vitest'
 import { read_binary_test_file } from '../test-fixtures'
 
 const FIXTURE = `ase-LiMnO2-chgnet-relax.traj`
+const no_warnings = (message: string) => expect.unreachable(message)
 
 // Bytes the ULM header occupies before the first frame's payload data. Mirrors
 // ULM_HEADER_BYTES in Hive's src-tauri/src/trajectory.rs.
@@ -52,7 +53,10 @@ describe(`ASE frame slicing`, () => {
   // withhold `base_offset` to check the bounds guard.
   const decode_span = (span: FrameSpan, frame_idx: number, options: AseFrameOptions) => {
     const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
-    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, options)
+    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, {
+      ...options,
+      warn: no_warnings,
+    })
   }
 
   test(`frame spans tile the data region and contain their own header`, () => {
@@ -75,33 +79,42 @@ describe(`ASE frame slicing`, () => {
   })
 
   test(`a frame decoded from its slice equals the whole-file parse exactly`, () => {
-    const whole_file = parse_ase_trajectory(buffer)
+    const whole_file = parse_ase_trajectory(buffer, no_warnings)
     expect(whole_file.frames).toHaveLength(spans.length)
 
-    let cached_numbers: number[] | undefined
+    let cached: Pick<AseFrameOptions, `fallback_numbers` | `fallback_pbc`> = {}
     for (const [frame_idx, span] of spans.entries()) {
-      const { frame, numbers } = decode_span(span, frame_idx, {
+      const { frame, numbers, pbc } = decode_span(span, frame_idx, {
         base_offset: span.byte_offset,
-        fallback_numbers: cached_numbers,
+        ...cached,
       })
-      cached_numbers = numbers
+      cached = { fallback_numbers: numbers, fallback_pbc: pbc }
       // Same float64 bytes read through a rebased offset, so the frames must be
       // bit-identical (toEqual on numbers is exact), not merely close.
       expect(frame).toEqual(whole_file.frames[frame_idx])
     }
   })
 
-  test(`the atomic numbers cached from frame 0 carry into later frames`, () => {
-    // ASE writes `numbers` only into the first frame, so a slice of frame 1 has
-    // no elements of its own and must be handed frame 0's.
+  test(`the atomic numbers and pbc cached from frame 0 carry into later frames`, () => {
+    // ASE writes `numbers` and `pbc` only into the first frame, so a slice of frame 1 has
+    // neither of its own and must be handed frame 0's.
     const [first_span, second_span] = spans
     const base_offset = second_span.byte_offset
     expect(() => decode_span(second_span, 1, { base_offset })).toThrow(/missing numbers/)
 
-    const { numbers } = decode_span(first_span, 0, { base_offset: first_span.byte_offset })
-    const { frame } = decode_span(second_span, 1, { base_offset, fallback_numbers: numbers })
+    const { numbers, pbc } = decode_span(first_span, 0, {
+      base_offset: first_span.byte_offset,
+    })
+    expect(() =>
+      decode_span(second_span, 1, { base_offset, fallback_numbers: numbers }),
+    ).toThrow(/missing pbc/)
+    const { frame } = decode_span(second_span, 1, {
+      base_offset,
+      fallback_numbers: numbers,
+      fallback_pbc: pbc,
+    })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
-      parse_ase_trajectory(buffer).frames[1].structure.sites.map(
+      parse_ase_trajectory(buffer, no_warnings).frames[1].structure.sites.map(
         (site) => site.species[0].element,
       ),
     )

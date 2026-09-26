@@ -135,6 +135,19 @@ function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
   return { color: `#333`, width: 1.5 }
 }
 
+// Region, boundary and special-point ids key the rendered SVG elements (and gradient ids), so
+// each must be unique within its kind. Returns an error message for the first repeat, else null.
+export function find_duplicate_id(data: PhaseDiagramData): string | null {
+  const { regions, boundaries, special_points = [] } = data
+  const kinds = { region: regions, boundary: boundaries, special_point: special_points }
+  for (const [kind, items] of Object.entries(kinds)) {
+    const ids = items.map(({ id }) => id)
+    const repeat = ids.find((id, idx) => ids.indexOf(id) !== idx)
+    if (repeat !== undefined) return `Duplicate ${kind} id "${repeat}"`
+  }
+  return null
+}
+
 // Build full PhaseDiagramData from compact DiagramInput JSON format
 // Expands curve references in region bounds to full vertex lists
 // and applies default styling based on boundary type names
@@ -158,7 +171,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     return { id: name, type: btype, points, style }
   })
 
-  return {
+  const data: PhaseDiagramData = {
     components: meta.components,
     temperature_range: meta.temp_range,
     temperature_unit: meta.temp_unit,
@@ -171,4 +184,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     ...(meta.x_axis_label && { x_axis_label: meta.x_axis_label }),
     ...(meta.y_axis_label && { y_axis_label: meta.y_axis_label }),
   }
+  const duplicate = find_duplicate_id(data)
+  if (duplicate) throw new Error(duplicate)
+  return data
 }

@@ -815,6 +815,55 @@ test.each([
   expect(math.clamp(value, lower, upper)).toBe(expected)
 })
 
+test.each([
+  [1, [0, 2], true],
+  [1, [2, 0], true], // inverted range
+  [0, [0, 2], true], // closed ends
+  [2, [2, 0], true],
+  [3, [0, 2], false],
+  [NaN, [0, 2], false],
+] as const)(`in_range(%f, %j) = %s`, (value, range, expected) => {
+  expect(math.in_range(value, [...range])).toBe(expected)
+})
+
+test.each([
+  [[true, false, true], true],
+  [[true, true], false],
+  [[true, true, true, true], false],
+  [[1, 0, 1], false],
+  [new Uint8Array([1, 0, 1]), false],
+  [null, false],
+])(`is_pbc(%j) = %s`, (value, expected) => {
+  expect(math.is_pbc(value)).toBe(expected)
+})
+
+test.each([
+  [[1, -0, 3], true, true],
+  [new Float64Array([1, 2, 3]), true, false], // typed arrays are only array-like
+  [{ length: 3, 0: 1, 1: 2, 2: 3 }, true, false],
+  [[1, NaN, 3], false, false],
+  [[Infinity, 0, 0], false, false],
+  [[`1`, 2, 3], false, false], // no string coercion
+  [Object.assign([], { 0: 1, 2: 3, length: 3 }), false, false], // sparse hole at 1
+  [[1, 2], false, false],
+  [[1, 2, 3, 4], false, false],
+  [null, false, false],
+])(`is_finite_vec3_like(%j) = %s, is_finite_vec3 = %s`, (value, like, vec3) => {
+  expect(math.is_finite_vec3_like(value)).toBe(like)
+  expect(math.is_finite_vec3(value)).toBe(vec3)
+  const row = [0, 0, 1]
+  expect(math.is_finite_matrix3x3([row, row, value])).toBe(vec3)
+})
+
+// oxfmt-ignore
+test.each([
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]],
+  [Object.assign([], { 0: [1, 0, 0], 2: [0, 0, 1], length: 3 })], // sparse row
+  [{ 0: [1, 0, 0], 1: [0, 1, 0], 2: [0, 0, 1], length: 3 }], // array-like, not an array
+])(`is_finite_matrix3x3 rejects %j`, (value) => {
+  expect(math.is_finite_matrix3x3(value)).toBe(false)
+})
+
 // mean / sample_std / median agree with the textbook definitions and with d3-array
 test.each([
   { values: [1, 2, 3, 4], mean: 2.5, std: Math.sqrt(5 / 3), median: 2.5 },

@@ -323,33 +323,46 @@ describe(`XrdPlot`, () => {
     expect(label_texts).toEqual([`45.82°`])
   })
 
-  // Computed stick patterns carry hkls and every reflection is a labelled peak, so they must
-  // never be thinned; measured scans (no hkls) are capped to keep the DOM small
+  // Every reflection of a stick pattern is a peak, so sticks (even without hkls) are never
+  // thinned; a profile is a sampled curve, drawn as one line capped at 1000 vertices
   test.each([
-    [`computed`, 1500, true, 1500],
-    [`measured`, 130_000, false, 1000],
-  ])(
-    `%s pattern with %i points renders %s bars`,
-    async (_kind, n_points, with_hkls, expected_bars) => {
+    [`sticks`, 1500, 1500, 0, undefined],
+    [`profile`, 130_000, 0, 1000, `profile`],
+  ] as const)(
+    `%s (%i points) renders %i bars and at most %i line vertices`,
+    async (_desc, n_points, expected_bars, max_vertices, kind) => {
       const coord_x = Array.from(
         { length: n_points },
         (_, idx) => 5 + (80 * idx) / (n_points - 1),
       )
       const coord_y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
-      const long_pattern: XrdPattern = with_hkls
-        ? {
-            x: coord_x,
-            y: coord_y,
-            hkls: coord_x.map(() => [{ hkl: [1, 0, 0] }]),
-            d_hkls: coord_x.map(() => 1),
-          }
-        : { x: coord_x, y: coord_y }
-      const target = await mount_xrd({ patterns: long_pattern, annotate_peaks: 0 })
-      const bars = target.querySelectorAll(`path[aria-label^="bar "]`)
-      if (with_hkls) expect(bars).toHaveLength(expected_bars)
-      else expect(bars.length).toBeLessThanOrEqual(expected_bars)
+      const patterns = { x: coord_x, y: coord_y, kind }
+      const target = await mount_xrd({ patterns, annotate_peaks: 0 })
+      expect(target.querySelectorAll(`path[aria-label^="bar "]`)).toHaveLength(expected_bars)
+      const line = target.querySelector(`.line-series polyline`)
+      if (max_vertices === 0) expect(line).toBeNull()
+      else {
+        const n_vertices = (line?.getAttribute(`points`) ?? ``).trim().split(/\s+/).length
+        expect(n_vertices).toBeGreaterThan(max_vertices / 2)
+        expect(n_vertices).toBeLessThanOrEqual(max_vertices)
+      }
     },
   )
+
+  test(`peak_width sets the stick width in degrees`, async () => {
+    const bar_width = async (peak_width: number) => {
+      const target = await mount_xrd({ patterns: pattern, peak_width, annotate_peaks: 0 })
+      const bar = query<SVGPathElement>(target, `path[aria-label^="bar "]`)
+      // bar paths start `M<left>,<base>` and trace the top edge rightwards via `H<right>`
+      const [left, right] = [/M(?<coord>-?[\d.]+)/, /H(?<coord>-?[\d.]+)/].map((regex) =>
+        Number(bar.getAttribute(`d`)?.match(regex)?.groups?.coord),
+      )
+      return right - left
+    }
+    const [narrow, wide] = [await bar_width(0.2), await bar_width(0.4)]
+    expect(narrow).toBeGreaterThan(0)
+    expect(wide / narrow).toBeCloseTo(2, 1)
+  })
 
   test(`rendering: multiple patterns with colors`, async () => {
     const target = await mount_xrd({
@@ -382,6 +395,43 @@ describe(`XrdPlot`, () => {
     // 100x apart on input, identical once both are scaled to a maximum of 100
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
   })
+
+  // A profile (measured scan) is never broadened again and gets its own 100 scale, apart
+  // from the area-normalized sticks, in either orientation
+  test.each([`vertical`, `horizontal`] as const)(
+    `broadened %s view passes profiles through and scales sticks and profiles to 100 each`,
+    async (orientation) => {
+      const scan_x = Array.from({ length: 501 }, (_, idx) => 10 + idx * 0.08)
+      const scan: XrdPattern = {
+        x: scan_x,
+        y: scan_x.map((angle) => 5 + 1e4 * Math.exp(-(((angle - 30) / 0.1) ** 2))),
+        kind: `profile`,
+      }
+      const target = await mount_xrd({
+        patterns: [
+          { label: `sticks`, pattern },
+          { label: `scan`, pattern: scan },
+        ],
+        broadening_enabled: true,
+        orientation,
+      })
+      const paths = profile_paths(target)
+      expect(paths).toHaveLength(2)
+      // horizontal plots intensity on x (largest px = top), vertical on y (smallest px = top)
+      const horizontal = orientation === `horizontal`
+      const tops = paths.map((path) => {
+        const coords = (path.getAttribute(`d`)?.match(/-?[\d.]+/g) ?? []).map(Number)
+        const values = coords.filter((_value, idx) => idx % 2 === (horizontal ? 0 : 1))
+        return horizontal ? Math.max(...values) : Math.min(...values)
+      })
+      expect(tops[0]).toBeCloseTo(tops[1], 3)
+      // the scan keeps its own 501 samples instead of being resampled onto the 0.02° grid
+      const n_segments = paths[1].getAttribute(`d`)?.match(/[LC]/g)?.length ?? 0
+      expect(n_segments + 1).toBe(501)
+      expect(axis_text(target, horizontal ? `y` : `x`)).toContain(angle_label)
+      expect(axis_text(target, horizontal ? `x` : `y`)).toContain(intensity_label)
+    },
+  )
 
   test(`broadening controls bind one number input per Caglioti parameter, and an invalid FWHM banners instead of blanking`, async () => {
     const target = await mount_xrd({

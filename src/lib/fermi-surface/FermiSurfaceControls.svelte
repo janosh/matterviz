@@ -75,12 +75,18 @@
   )
   const available_bands_changed = make_change_detector()
 
+  // Bands switched off stay off when a mu change alters which bands cross E_F; newly
+  // crossing bands start visible
+  let previous_bands: number[] = []
   const sync_bindable_defaults = (bands_changed = false): void => {
     if (color_property === `property` && !has_property)
       color_property = defaults.color_property
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
-      selected_bands = [...available_bands]
+      const selected = selected_bands
+      const hidden = selected ? previous_bands.filter((band) => !selected.includes(band)) : []
+      selected_bands = available_bands.filter((band) => !hidden.includes(band))
     }
+    previous_bands = available_bands
   }
 
   untrack(sync_bindable_defaults)

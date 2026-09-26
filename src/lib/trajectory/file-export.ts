@@ -4,7 +4,6 @@
 import { strip_compression_extensions } from '$lib/io/decompress'
 import { trajectory_property_config } from '$lib/labels'
 import { structure_to_poscar_str, structure_to_xyz_str } from '$lib/structure/export'
-import type { Site } from '$lib/structure'
 import { to_error } from '$lib/utils'
 import { rows_to_csv } from 'svelte-widgets/csv'
 import { zipSync } from 'fflate'
@@ -45,30 +44,15 @@ export function poscar_frame_filename(
   return `${trajectory_export_basename(filename)}_frame_${padded_idx}.vasp`
 }
 
-// Per-atom forces recorded on the frame rather than its structure. XYZ/extXYZ parsing puts
-// them in `frame.metadata.forces` (see build_xyz_frame), where the structure exporter cannot
-// see them; this folds them back onto the sites it does read. Per-vector validation is left to
-// site_force in structure/export.ts, which already drops the forces column for every atom
-// unless all of them carry a finite 3-vector.
-const frame_sites_with_forces = (frame: TrajectoryFrame): Site[] | null => {
-  const forces = frame.metadata?.forces
-  if (!Array.isArray(forces) || forces.length !== frame.structure.sites.length) return null
-  return frame.structure.sites.map((site, idx) => ({
-    ...site,
-    properties: { ...site.properties, force: forces[idx] },
-  }))
-}
-
-// Already carried by the forces columns, recomputed from the cell on read, or written
-// explicitly below, so re-emitting them in the comment would duplicate or contradict the file.
-const SKIP_METADATA_KEYS = new Set([`forces`, `step`, `volume`])
+// Recomputed from the cell on read, or written explicitly below, so re-emitting them in the
+// comment would duplicate or contradict the file.
+const SKIP_METADATA_KEYS = new Set([`step`, `volume`])
 
 // Serialize one frame as an extXYZ block, preserving the metadata that lives on the frame
 // rather than its structure. Single-structure export reads forces off site properties and
 // knows nothing about energy or step, so both are merged in here.
 export function trajectory_frame_to_extxyz_str(frame: TrajectoryFrame): string {
-  const sites = frame_sites_with_forces(frame)
-  const xyz = structure_to_xyz_str({ ...frame.structure, ...(sites && { sites }) })
+  const xyz = structure_to_xyz_str(frame.structure)
   const extra = [`step=${frame.step}`]
   for (const [key, value] of Object.entries(frame.metadata ?? {})) {
     if (SKIP_METADATA_KEYS.has(key)) continue

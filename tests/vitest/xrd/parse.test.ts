@@ -445,7 +445,11 @@ describe(`parse_xrdml_file`, () => {
   test(`spreads the intensities uniformly between start and end`, () => {
     const content = xrdml(`100 200 300`)
     expect(rounded(parse_xrdml_file(content))).toEqual(THREE_POINTS)
-    expect(parse_xrdml_file(xrdml(`500`, 45, 45))).toEqual({ x: [45], y: [100] })
+    expect(parse_xrdml_file(xrdml(`500`, 45, 45))).toEqual({
+      x: [45],
+      y: [100],
+      kind: `profile`,
+    })
   })
 
   test.each([
@@ -579,6 +583,7 @@ describe(`parse_xrd_file routing`, () => {
     expect(await parse_xrd_file(zipSync(files).buffer, `scan.brml`)).toEqual({
       x: [10, 20],
       y: [50, 100],
+      kind: `profile`,
     })
   })
 

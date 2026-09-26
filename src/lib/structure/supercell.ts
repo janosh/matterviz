@@ -3,7 +3,7 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
-import { normalize_structure_bond } from './bonding'
+import { normalize_structure_bond, shift_bonds_for_moved_sites } from './bonding'
 
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor
 
@@ -207,6 +207,7 @@ export function make_supercell(
   // described cells a lattice vector apart and consumers reading `abc` (PBC image generation,
   // symmetry) disagreed with those reading `xyz` (rendering, bonding) about where the atom
   // is. Applied to `xyz` so both always name the same position.
+  const { pbc } = structure.lattice
   const wrapped_frac: Float64Array[] = []
   const frac_shift: Float64Array[] = []
   let any_frac_shift = false
@@ -217,7 +218,8 @@ export function make_supercell(
       for (let site_idx = 0; site_idx < n_sites; site_idx++) {
         const flat_idx = cell_idx * n_sites + site_idx
         const coord = (sites[site_idx].abc[axis] + cell_idx) / scale
-        const wrapped = to_unit_cell ? wrap_frac_coord(coord) : coord
+        // aperiodic axes (a slab's vacuum direction) stay unwrapped, as in wrap_to_unit_cell
+        const wrapped = to_unit_cell && pbc[axis] ? wrap_frac_coord(coord) : coord
         coords[flat_idx] = wrapped
         shifts[flat_idx] = (wrapped - coord) * scale
         if (shifts[flat_idx] !== 0) any_frac_shift = true
@@ -235,6 +237,8 @@ export function make_supercell(
   }))
 
   const needs_label_separator = supercell_scaling.some((scale) => scale > 10)
+  // per supercell site, its wrap in supercell-lattice vectors (the unit of bond cell_shift)
+  const site_shifts: (Vec3 | undefined)[] = []
 
   // Loop order: k, j, i to match typical pymatgen/standard ordering
   for (let depth_index = 0; depth_index < scale_z; depth_index++) {
@@ -266,6 +270,10 @@ export function make_supercell(
             wrapped_x = shift_a * axis_x + shift_b * basis_x + shift_c * center_x
             wrapped_y = shift_a * axis_y + shift_b * basis_y + shift_c * center_y
             wrapped_z = shift_a * axis_z + shift_b * basis_z + shift_c * center_z
+            const shift = [shift_a, shift_b, shift_c].map((val, axis) =>
+              Math.round(val / supercell_scaling[axis]),
+            ) as Vec3
+            if (shift.some(Boolean)) site_shifts[write_idx] = shift
           }
 
           new_sites[write_idx++] = {
@@ -293,10 +301,13 @@ export function make_supercell(
       ? structure.properties
       : {
           ...structure.properties,
-          bonds: replicate_bonds_for_supercell(
-            structure.properties.bonds,
-            n_sites,
-            supercell_scaling,
+          bonds: shift_bonds_for_moved_sites(
+            replicate_bonds_for_supercell(
+              structure.properties.bonds,
+              n_sites,
+              supercell_scaling,
+            ),
+            (site_idx) => site_shifts[site_idx],
           ),
         }
 

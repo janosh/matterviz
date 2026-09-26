@@ -40,7 +40,9 @@
 
   // Where the histogram renders (none without data)
   const histogram_at = $derived(histogram_data?.length ? histogram_position : `none`)
-  // Active when either bound is set (undefined = unbounded)
+  // Active when either bound is set (undefined = unbounded). A cleared number input reports
+  // null, so the input bindings below map it back to undefined: consumers test
+  // `bound === undefined`, and a leaked null compares as 0 (`val <= null` is `val <= 0`).
   const active = $derived(min_value !== undefined || max_value !== undefined)
   const plain_label = $derived(strip_html(label))
 
@@ -115,7 +117,7 @@
     <span {title} class="filter-label">{@html sanitize_html(label)}</span>
     <div class="filter-inputs">
       <input
-        bind:value={min_value}
+        bind:value={() => min_value ?? null, (value) => (min_value = value ?? undefined)}
         type="number"
         step="any"
         placeholder={placeholders.min ?? `min`}
@@ -125,7 +127,7 @@
         aria-label="{plain_label} minimum"
       />
       <input
-        bind:value={max_value}
+        bind:value={() => max_value ?? null, (value) => (max_value = value ?? undefined)}
         type="number"
         step="any"
         placeholder={placeholders.max ?? `max`}

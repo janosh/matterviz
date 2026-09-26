@@ -319,11 +319,14 @@ function segment_critical_points(
   const quad_b = -6 * point_0 + 6 * point_1 - 4 * moment_0 - 2 * moment_1
   const quad_c = moment_0
   const in_range = (t_val: number) => t_val > 0 && t_val < 1
-  if (quad_a === 0) return quad_b === 0 ? [] : [-quad_c / quad_b].filter(in_range)
   const discriminant = quad_b * quad_b - 4 * quad_a * quad_c
   if (discriminant < 0) return []
-  const sqrt_disc = Math.sqrt(discriminant)
-  const roots = [(-quad_b + sqrt_disc) / (2 * quad_a), (-quad_b - sqrt_disc) / (2 * quad_a)]
+  // Numerically stable roots q / a and c / q. The textbook (-b ± √disc) / 2a cancels
+  // catastrophically when a is a few ulps (a near-exact parabola segment); c / q stays exact
+  // there and covers a = 0 too.
+  const quad_q = -0.5 * (quad_b + (quad_b < 0 ? -1 : 1) * Math.sqrt(discriminant))
+  if (quad_q === 0) return [] // b = c = 0: the derivative is a·t², no interior sign change
+  const roots = [quad_c / quad_q, ...(quad_a === 0 ? [] : [quad_q / quad_a])]
   return roots.filter(in_range)
 }
 

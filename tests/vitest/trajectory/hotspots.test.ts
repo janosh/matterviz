@@ -1,3 +1,4 @@
+import { BOLTZMANN_EV_PER_K } from '$lib/constants'
 import { encode_frame, materialize_frame_result } from '$lib/trajectory/frame'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
@@ -6,7 +7,6 @@ import {
   hotspot_values,
   hotspot_mean,
   infer_mass_unit,
-  BOLTZMANN_EV,
   type HotspotGrid,
   type HotspotRequest,
   type HotspotResult,
@@ -255,7 +255,7 @@ describe(`spatial kinetic hotspots`, () => {
     })
     expect(hotspot_values(result, `energy`, 5).every(Number.isNaN)).toBe(true)
     const temperature = hotspot_values(result, `temperature`)
-    expect(temperature[0]).toBe(Math.fround((28 * conversion) / BOLTZMANN_EV))
+    expect(temperature[0]).toBe(Math.fround((28 * conversion) / BOLTZMANN_EV_PER_K))
   })
 
   it.each([
@@ -601,7 +601,7 @@ describe(`spatial kinetic hotspots`, () => {
     const unknown = await calculate_hotspots(1, read, options)
     expect(hotspot_mean(unknown, `temperature`)).toBeNaN()
     const declared = await calculate_hotspots(1, read, { ...options, dof_per_atom: 1.5 })
-    const expected = 2 / (1.5 * BOLTZMANN_EV)
+    const expected = 2 / (1.5 * BOLTZMANN_EV_PER_K)
     // Reference divides by kB*DOF; reducer divides by DOF then multiplies by 2/kB.
     expect(Math.abs(hotspot_mean(declared, `temperature`) - expected)).toBeLessThanOrEqual(
       2 * Number.EPSILON * expected,

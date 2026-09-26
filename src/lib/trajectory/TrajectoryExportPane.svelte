@@ -485,7 +485,7 @@
     </div>
 
     <div class="export-info">
-      {format_num(export_frame_count / video_fps, `.1f`)}s ({export_frame_count} frames: {range})
+      {format_num(video_frame_count / video_fps, `.1f`)}s ({export_frame_count} frames: {range})
       {#if file_size_mb > 0}
         • ~{file_size_mb < 1
           ? `${format_num(file_size_mb * 1024, `.0f`)} KB`

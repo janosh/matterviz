@@ -5,6 +5,7 @@ import {
   array_extent,
   array_max,
   euclidean_dist,
+  is_finite_matrix3x3,
   mat3x3_vec3_multiply,
   subtract,
   transpose_3x3_matrix,
@@ -253,11 +254,6 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
-const is_matrix3x3 = (val: unknown): val is Matrix3x3 =>
-  Array.isArray(val) &&
-  val.length === 3 &&
-  val.every((row) => is_vec3(row) && row.length === 3)
-
 // pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec` in the physics
 // convention (2π included), the phonon JSON dumped by phonopy/atomate2-style workflows as
 // `recip_lattice` in phonopy's crystallographic convention (no 2π). Both are producer formats,
@@ -269,7 +265,7 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   const scale = is_plain_object(pmg.lattice_rec) ? 1 : 2 * Math.PI
   const lattice = [pmg.lattice_rec, pmg.recip_lattice].find(is_plain_object)
   const matrix = lattice?.matrix
-  if (is_matrix3x3(matrix)) {
+  if (is_finite_matrix3x3(matrix)) {
     return matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3
   }
   throw new Error(
@@ -511,13 +507,13 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     const declared_unit = dos.frequency_unit ?? dos.unit
     const source_unit = declared_unit == null ? `THz` : parse_frequency_unit(declared_unit)
     if (!source_unit) return null
-    const numeric_frequencies = frequencies as number[]
-    const source_unit_per_thz = frequency_unit_per_thz(source_unit)
-    const normalized_frequencies =
-      source_unit === `THz`
-        ? numeric_frequencies
-        : numeric_frequencies.map((frequency) => frequency / source_unit_per_thz)
-    return { type: `phonon`, frequencies: normalized_frequencies, densities }
+    // g(ν) is per unit frequency, so the Jacobian keeps ∫g dν through the conversion to THz
+    const per_thz = frequency_unit_per_thz(source_unit)
+    return {
+      type: `phonon`,
+      frequencies: (frequencies as number[]).map((frequency) => frequency / per_thz),
+      densities: densities.map((density) => density * per_thz),
+    }
   }
 
   // Electronic DOS: has energies
@@ -832,6 +828,57 @@ export const closed_edge_path = (upper_points: string[], lower_points: string[])
     ...lower_points.toReversed().map((point) => `L${point}`),
     `Z`,
   ].join(` `)
+
+// Band energies within this of E_F count as touching it, not crossing it (eV): vasprun.xml
+// rounds eigenvalues to 1e-4 eV, the tolerance pymatgen's BandStructure.is_metal also uses
+const FERMI_LEVEL_TOL = 1e-4
+// Filled means more than half occupied: smearing leaves band-edge occupations fractional and
+// tetrahedron (Blöchl) corrections push them slightly outside [0, 1]
+const FILLED_OCCUPATION = 0.5
+
+// Band gap of electronic bands (each an array of energies over k). `filling` is either
+// per-state occupations shaped like `bands` or E_F (states below it are filled). Prefer
+// occupations: a non-SCF line-mode run takes E_F from the SCF mesh, so a VBM between SCF
+// k-points can rise tens of meV above it while its band stays filled. A band filled at some
+// k-points and empty at others is metallic (null).
+export function electronic_band_gap(
+  bands: readonly (readonly number[])[],
+  filling: number | readonly (readonly number[])[],
+): { vbm: number; cbm: number; gap: number } | null {
+  if (
+    typeof filling !== `number` &&
+    (filling.length !== bands.length ||
+      filling.some(
+        (row, band_idx) =>
+          row.length !== bands[band_idx].length || !row.every(Number.isFinite),
+      ))
+  ) {
+    throw new Error(
+      `electronic_band_gap: occupations with per-band lengths [${filling.map((row) => row.length)}] must be finite and match bands [${bands.map((band) => band.length)}]`,
+    )
+  }
+  let [vbm, cbm] = [-Infinity, Infinity]
+  for (const [band_idx, band] of bands.entries()) {
+    let [band_min, band_max, has_filled, has_empty] = [Infinity, -Infinity, false, false]
+    for (const [k_idx, energy] of band.entries()) {
+      if (!Number.isFinite(energy)) continue
+      band_min = Math.min(band_min, energy)
+      band_max = Math.max(band_max, energy)
+      if (typeof filling === `number`) {
+        // states within FERMI_LEVEL_TOL of E_F are neither
+        has_filled ||= energy < filling - FERMI_LEVEL_TOL
+        has_empty ||= energy > filling + FERMI_LEVEL_TOL
+      } else if (filling[band_idx][k_idx] > FILLED_OCCUPATION) has_filled = true
+      else has_empty = true
+    }
+    if (band_min > band_max) continue // no finite energies
+    if (!has_empty) vbm = Math.max(vbm, band_max)
+    else if (!has_filled) cbm = Math.min(cbm, band_min)
+    else return null // partially filled: a metal
+  }
+  const gap = cbm - vbm
+  return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
+}
 
 // A shared axis cannot mix frequencies and energies. Validate every material, including maps
 // whose first dataset is empty, before rendering or computing a combined range.

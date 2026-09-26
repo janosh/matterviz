@@ -280,6 +280,7 @@
 
 <div
   bind:this={colorbar_node}
+  data-export-overlay
   style:flex-direction={wrapper_flex_dir}
   style:--cbar-tick-label-width={`${tick_label_width}px`}
   {...rest}

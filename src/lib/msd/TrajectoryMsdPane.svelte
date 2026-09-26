@@ -5,7 +5,7 @@
   import { suggest_analysis_frame_stride } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_msd_positions } from './collect'
-  import type { MsdOptions, MsdResult } from './index'
+  import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
 
   let {
@@ -37,7 +37,11 @@
   const msd_options = (ctx: AnalysisPaneContext<TrajectoryPositionStream>): MsdOptions => ({
     ...(ctx.has_valid_dt ? { dt: ctx.dt_collected, time_unit: ctx.time_unit } : {}),
     max_lag_fraction,
-    fit: { start_fraction: fit_start_fraction, end_fraction: fit_end_fraction },
+  })
+  // Kept out of msd_options: the fit window refits the shown result instead of re-running MSD
+  const fit_options: EinsteinFitOptions = $derived({
+    start_fraction: fit_start_fraction,
+    end_fraction: fit_end_fraction,
   })
 </script>
 
@@ -79,6 +83,7 @@
     <MsdPlot
       positions={ctx.input}
       msd_options={msd_options(ctx)}
+      {fit_options}
       bind:result
       bind:loading={plotting}
       bind:error_msg

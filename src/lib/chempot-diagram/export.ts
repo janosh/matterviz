@@ -1,5 +1,5 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
-import { canvas_to_png_blob, dpi_to_scale } from '$lib/io/export'
+import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import type { FileSaver } from '$lib/io/file-export.svelte'
 import { export_scene_as } from '$lib/scene'
@@ -119,7 +119,18 @@ export async function export_png_file(
   if (!ctx) return
   ctx.scale(scale, scale)
 
-  ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
+  // drawImage of a WebGPU canvas reads no pixels after present, so re-render the registered
+  // scene at export resolution (unregistered canvases encode as-is) and composite that frame
+  const view = scene_registry.get(gl_canvas)
+  const frame_blob = await canvas_to_png_blob(
+    gl_canvas,
+    view ? png_dpi : 72,
+    view?.scene ?? null,
+    view?.camera ?? null,
+  )
+  const frame = await createImageBitmap(frame_blob)
+  ctx.drawImage(frame, 0, 0, rect.width, rect.height)
+  frame.close()
 
   for (const text_item of get_overlay_text_items(wrapper, rect)) {
     ctx.font = text_item.font

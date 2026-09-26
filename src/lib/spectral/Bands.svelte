@@ -8,7 +8,8 @@
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
-  import { clamp, reciprocal_lattice } from '$lib/math'
+  import { to_error } from '$lib/utils'
+  import { clamp, in_range, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import type {
@@ -84,6 +85,7 @@
     path_mode?: PathMode
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
+    // Horizontal line in the data unit (THz or eV) whatever `units` displays, like Dos
     reference_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
@@ -376,8 +378,6 @@
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
-  const in_range = (value: number, [lower, upper]: Vec2) =>
-    value >= Math.min(lower, upper) && value <= Math.max(lower, upper)
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
     return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
@@ -467,28 +467,32 @@
     return null
   })
 
-  let electronic_gap_annotation = $derived.by(() => {
-    if (
-      !show_gap_annotation ||
-      band_type !== `electronic` ||
-      effective_fermi_level === undefined
-    )
-      return null
-    let vbm = -Infinity
-    let cbm = Infinity
-    for (const series_item of series_data) {
-      for (const energy of series_item.y) {
-        if (!Number.isFinite(energy)) continue
-        if (energy <= effective_fermi_level) vbm = Math.max(vbm, energy)
-        else cbm = Math.min(cbm, energy)
-      }
+  // One gap per system, from the first one (which also supplies the default E_F) and only the
+  // spin channels on display. Malformed occupations surface electronic_band_gap's message
+  // instead of throwing out of the $derived and blanking the component.
+  let gap_result = $derived.by(() => {
+    const band_structure = structures[0]?.bs
+    if (!show_gap_annotation || band_type !== `electronic` || !band_structure)
+      return { gap: null }
+    const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
+    const shown = (up: number[][], down: number[][] | undefined): number[][] => [
+      ...(effective_spin_mode !== `down_only` ? up : []),
+      ...(effective_spin_mode !== `up_only` ? (down ?? []) : []),
+    ]
+    const filling = occupations
+      ? shown(occupations, spin_down_occupations)
+      : effective_fermi_level
+    if (filling === undefined) return { gap: null }
+    try {
+      return { gap: helpers.electronic_band_gap(shown(bands, spin_down_bands), filling) }
+    } catch (exc) {
+      return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
     }
-    const gap = cbm - vbm
-    return Number.isFinite(gap) && gap > 0 ? { vbm, cbm, gap } : null
   })
+  let data_error = $derived(strict_path_error ?? gap_result.error ?? null)
 
   let empty_state_msg = $derived(
-    strict_path_error ??
+    data_error ??
       (num_structures === 0
         ? `No band structure data to display.`
         : `No plottable band segments were found in the provided data.`),
@@ -528,7 +532,7 @@
   )
 </script>
 
-{#if series_data.length > 0 && !strict_path_error}
+{#if series_data.length > 0 && !data_error}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
@@ -715,7 +719,7 @@
       {@const fermi_y =
         effective_fermi_level !== undefined ? y_scale_fn(effective_fermi_level) : NaN}
       {@const bands_x_end = x_scale_fn(x_range[1])}
-      {@const gap_data = electronic_gap_annotation}
+      {@const gap_data = gap_result.gap}
       {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
       {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
       {@const gap_mid_y = (vbm_y + cbm_y) / 2}

@@ -79,9 +79,16 @@ export function create_camera_flight_sampler(
   flight: CameraFlight,
 ): (time: number) => CameraPose {
   validate_camera_flight(flight)
+  // Smooth flights place the camera by its offset from the target in its own (slerped) frame,
+  // so an orbit's offsets are one constant vector and the path is exactly circular at uniform
+  // speed, however few waypoints it has. Cartesian splines cut inside the circle instead.
   const keyframes = flight.keyframes.map((frame) => ({
     ...copy_pose(frame),
     time: frame.time,
+    offset: new Vector3(...frame.position)
+      .sub(new Vector3(...frame.target))
+      .applyQuaternion(new Quaternion(...frame.quaternion).invert())
+      .toArray(),
   }))
   const { interpolation } = flight
   return (time) => {
@@ -98,7 +105,7 @@ export function create_camera_flight_sampler(
     const fraction = (time - from.time) / duration
     const squared = fraction * fraction
     const cubed = squared * fraction
-    const blend = (key: 'position' | 'target'): Vec3 =>
+    const blend = (key: 'position' | 'target' | 'offset'): Vec3 =>
       from[key].map((value, axis) => {
         if (interpolation === `linear`) return lerp(value, to[key][axis], fraction)
         // Time-aware cubic Hermite tangents pass through non-uniformly timed waypoints.
@@ -111,13 +118,23 @@ export function create_camera_flight_sampler(
           (cubed - squared) * duration * tangent_to
         )
       }) as Vec3
+    const quaternion = new Quaternion(...from.quaternion).slerp(
+      new Quaternion(...to.quaternion),
+      fraction,
+    )
+    const target = blend(`target`)
     return {
-      position: blend(`position`),
-      target: blend(`target`),
+      // Linear flights keep straight segments between waypoints
+      position:
+        interpolation === `linear`
+          ? blend(`position`)
+          : new Vector3(...blend(`offset`))
+              .applyQuaternion(quaternion)
+              .add(new Vector3(...target))
+              .toArray(),
+      target,
       projection: from.projection,
-      quaternion: new Quaternion(...from.quaternion)
-        .slerp(new Quaternion(...to.quaternion), fraction)
-        .toArray(),
+      quaternion: quaternion.toArray(),
       zoom: Math.exp(lerp(Math.log(from.zoom), Math.log(to.zoom), fraction)),
       fov: lerp(from.fov, to.fov, fraction),
       pan: [lerp(from.pan[0], to.pan[0], fraction), lerp(from.pan[1], to.pan[1], fraction)],
@@ -131,6 +148,7 @@ export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlig
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
   const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...pose.quaternion))
+  // 45° steps suffice: smooth flights orbit exactly (see create_camera_flight_sampler)
   const keyframes = Array.from({ length: 9 }, (_unused, idx): CameraKeyframe => {
     const position = offset
       .clone()

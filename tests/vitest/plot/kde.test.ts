@@ -1,4 +1,4 @@
-import { gaussian_kde, scott_bandwidth, silverman_bandwidth } from '$lib/plot'
+import { gaussian_kde, scott_bandwidth, silverman_bandwidth, VIOLIN_KDE_OPTS } from '$lib/plot'
 import { describe, expect, test } from 'vitest'
 
 // Independent O(n*m) Gaussian-sum reference (no subsampling), used to verify gaussian_kde
@@ -77,8 +77,51 @@ describe(`gaussian_kde`, () => {
     `%s bandwidth matches its closed form for [1,2,3,4,5]`,
     (_rule, bandwidth_fn, expected, digits) => {
       expect(bandwidth_fn([1, 2, 3, 4, 5])).toBeCloseTo(expected, digits)
+      // no samples has no bandwidth (n^(-1/5) would return Infinity)
+      expect(() => bandwidth_fn([])).toThrow(`KDE bandwidth needs at least one sample`)
     },
   )
+
+  // No variance: the spread falls back to the value's magnitude (R bw.nrd0), then 1 at zero
+  // oxfmt-ignore
+  test.each([
+    [`constant tiny samples`, [1e-6, 1e-6, 1e-6], 1e-6 * 3 ** -0.2],
+    [`single sample`, [-5], 5],
+    [`constant zeros`, [0, 0], 2 ** -0.2],
+  ])(`%s get a kernel at their own scale`, (_desc, samples, spread) => {
+    expect(silverman_bandwidth(samples)).toBeCloseTo(0.9 * spread, 15)
+    expect(scott_bandwidth(samples)).toBeCloseTo(spread, 15)
+    // the default cut=2 grid then stays at the samples' scale too
+    const { grid } = gaussian_kde(samples, { n_points: 5 })
+    expect((grid.at(-1) ?? NaN) - grid[0]).toBeCloseTo(4 * 0.9 * spread, 12)
+  })
+
+  // A far outlier stretches a fixed 100-point grid to ~5 units per step against a 0.2
+  // bandwidth. 3 points per bandwidth (capped at 2000) read the bulk's peak within 1%; the
+  // worst case, a peak midway between grid points, reads at exp(-1/72) ~ 98.6% of its height.
+  // 200.5 sits midway on a step-1/3 grid, and two samples make it outrank the range ends.
+  test(`violin grid refines per bandwidth to resolve peaks`, () => {
+    const samples = [...normal_samples(1000, 5), 500]
+    const coarse = gaussian_kde(samples, {
+      ...VIOLIN_KDE_OPTS,
+      points_per_bandwidth: undefined,
+    })
+    const fine = gaussian_kde(samples, VIOLIN_KDE_OPTS)
+    const peak = ({ density }: { density: number[] }) => Math.max(...density)
+    const fine_axis = Array.from({ length: 2001 }, (_, idx) => -1 + idx / 1000)
+    const true_peak = Math.max(...ref_density(samples, fine_axis, fine.bandwidth))
+    expect(coarse.grid).toHaveLength(100)
+    expect(peak(coarse) / true_peak).toBeLessThan(0.1)
+    expect(fine.grid).toHaveLength(2000) // capped by MAX_GRID_POINTS
+    expect(peak(fine) / true_peak).toBeGreaterThan(0.99)
+    expect([fine.grid[0], fine.grid.at(-1)]).toEqual([coarse.grid[0], coarse.grid.at(-1)])
+    const between = [0, 200.5, 200.5, 400]
+    const kde = gaussian_kde(between, { ...VIOLIN_KDE_OPTS, bandwidth: 1 })
+    expect(kde.grid).toHaveLength(400 * 3 + 1)
+    // the bound holds with equality here, so allow a few ulps of grid round-off
+    const [between_peak] = ref_density(between, [200.5], 1)
+    expect(peak(kde) / between_peak).toBeGreaterThan(Math.exp(-1 / 72) - 1e-12)
+  })
 
   test(`respects clip bounds (RMSD >= 0)`, () => {
     // unclipped the grid would start at data_min - cut * bandwidth < 0; the lower clip
@@ -198,6 +241,8 @@ describe(`gaussian_kde`, () => {
     { n_points: Infinity },
     { cut: -1 },
     { cut: NaN },
+    { points_per_bandwidth: 0 },
+    { points_per_bandwidth: NaN },
   ])(`rejects invalid options %j`, (options) => {
     expect(() => gaussian_kde([1, 2, 3], options)).toThrow(RangeError)
   })

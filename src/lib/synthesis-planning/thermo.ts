@@ -19,6 +19,8 @@ import type {
 } from './types'
 
 const COEFF_TOL = 1e-7
+// Upper end of the 1 K temperature scan for downhill windows (K)
+const MAX_SCAN_TEMPERATURE = 2000
 
 // Formula-unit atom counts of a phase per element of the phase set, and its energy per formula unit
 const fu_counts = (phase: PlannerPhase): number[] =>
@@ -178,7 +180,9 @@ interface Competitor {
 
 // One prepared phase set/request only. Preserve pair order: LP coefficients depend on it.
 export const create_thermo_cache = () => ({
-  gas_mu: new Map<string, number>(),
+  // μ(T) per `${species}:${pressure}` on the integer scan grid 0..MAX_SCAN_TEMPERATURE (NaN =
+  // not computed yet), so the window scans of hundreds of routes share one provider sweep
+  gas_mu: new Map<string, Float64Array>(),
   pairs: new Map<PlannerPhase, Map<PlannerPhase, Map<PlannerPhase, Competitor[]>>>(),
 })
 type ThermoCache = ReturnType<typeof create_thermo_cache>
@@ -358,30 +362,59 @@ export function reaction_energy_at_temperature(
         sum + balanced.gas_exchange[idx] * gas.energy_per_atom * gas.n_atoms_per_fu,
       0,
     )
+  const terms = gases.map((gas, idx) => {
+    const species = gas_species[idx]
+    const pressure = conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
+    const key = `${species}:${pressure}`
+    if (samples && !samples.has(key))
+      samples.set(key, new Float64Array(MAX_SCAN_TEMPERATURE + 1).fill(NaN))
+    return { species, pressure, grid: samples?.get(key), exchange: balanced.gas_exchange[idx] }
+  })
   return (temperature) =>
     solid_part +
-    gases.reduce((sum, gas, idx) => {
-      const species = gas_species[idx]
-      const pressure =
-        conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]
-      const key = `${species}:${temperature}:${pressure}`
-      const mean =
-        samples?.get(key) ??
-        compute_gas_chemical_potential(provider, species, temperature, pressure)
-      samples?.set(key, mean)
-      return sum + balanced.gas_exchange[idx] * mean * gas.n_atoms_per_fu
+    terms.reduce((sum, { species, pressure, grid, exchange }, idx) => {
+      // typed arrays read undefined at, and ignore writes to, off-grid (fractional or out of
+      // range) indices, so only integer temperatures in the scan range are cached
+      let mean = grid?.[temperature] ?? NaN
+      if (Number.isNaN(mean)) {
+        mean = compute_gas_chemical_potential(provider, species, temperature, pressure)
+        if (grid) grid[temperature] = mean
+      }
+      return sum + exchange * mean * gases[idx].n_atoms_per_fu
     }, 0)
 }
 
-// Lowest temperature (1 K grid, ≤ max_temperature) where the reaction energy turns negative, or
-// null when it never does. Only meaningful for reactions that exchange gas: nothing else varies.
-export function onset_temperature(
+// Inclusive temperature intervals (1 K grid, 0..MAX_SCAN_TEMPERATURE) where the reaction energy
+// is negative. Gas release gives [T_min, max], gas uptake [0, T_max]; releasing one gas while
+// consuming another can bound both ends. Empty when the reaction is never downhill.
+export function downhill_windows(
   energy_at: (temperature: number) => number,
-  max_temperature = 2000,
-): number | null {
-  if (energy_at(0) < 0) return 0
-  for (let temperature = 1; temperature <= max_temperature; temperature++) {
-    if (energy_at(temperature) < 0) return temperature
+): [number, number][] {
+  const windows: [number, number][] = []
+  let start: number | null = null
+  for (let temperature = 0; temperature <= MAX_SCAN_TEMPERATURE; temperature++) {
+    const downhill = energy_at(temperature) < 0
+    if (downhill && start === null) start = temperature
+    else if (!downhill && start !== null) {
+      windows.push([start, temperature - 1])
+      start = null
+    }
   }
-  return null
+  if (start !== null) windows.push([start, MAX_SCAN_TEMPERATURE])
+  return windows
+}
+
+// Plain-text reading of downhill_windows for UIs, recipes and agents, e.g. `downhill from
+// 1105 K`, `downhill up to 1480 K`, `downhill from 800 to 1300 K`
+export function describe_downhill_windows(windows: [number, number][]): string {
+  if (windows.length === 0) return `never downhill between 0 and ${MAX_SCAN_TEMPERATURE} K`
+  return windows
+    .map(([lower, upper]) => {
+      if (lower === 0 && upper === MAX_SCAN_TEMPERATURE)
+        return `downhill at every temperature from 0 to ${MAX_SCAN_TEMPERATURE} K`
+      if (lower === 0) return `downhill up to ${upper} K`
+      if (upper === MAX_SCAN_TEMPERATURE) return `downhill from ${lower} K`
+      return `downhill from ${lower} to ${upper} K`
+    })
+    .join(` and `)
 }

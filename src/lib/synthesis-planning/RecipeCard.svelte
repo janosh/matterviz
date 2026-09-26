@@ -9,6 +9,7 @@
     RECIPE_ASSUMPTION_LABELS,
     RECIPE_ROLE_LABELS,
   } from './recipe'
+  import { describe_downhill_windows } from './thermo'
   import type { RecipeAssumptions, SynthesisRoute } from './types'
 
   let {
@@ -125,9 +126,8 @@
         >. Gas exchange: {step.thermodynamics.atmosphere}.
       </p>
       <p>
-        Thermodynamic onset: {step.thermodynamics.onset_temperature === null
-          ? `not identified`
-          : `${step.thermodynamics.onset_temperature} K`}. Competing phases: {step.selectivity.competitors
+        Downhill window: {describe_downhill_windows(step.thermodynamics.downhill_windows)}.
+        Competing phases: {step.selectivity.competitors
           .slice(0, 3)
           .map(({ phase }) => phase.formula)
           .join(`, `) || `none identified`}.

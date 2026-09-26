@@ -18,7 +18,12 @@
 import { create_frac_to_cart, type Vec3 } from '$lib/math'
 import type * as h5wasm from 'h5wasm'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
-import { create_trajectory_frame, expand_ion_types } from '$lib/trajectory/helpers'
+import {
+  calc_force_stats,
+  checked_site_forces,
+  create_trajectory_frame,
+  expand_ion_types,
+} from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import {
   is_hdf5_group,
@@ -249,7 +254,14 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }
     const energy = to_finite_number(raw_energy)
     if (energy !== null) metadata.energy = energy
-    if (Array.isArray(forces)) metadata.forces = forces
+    // Per-atom vectors on the sites, like every other parser; only the statistics are metadata
+    const site_forces = checked_site_forces(
+      forces,
+      positions.length,
+      `vaspout.h5 forces of ionic step ${step}`,
+      warn,
+    )
+    if (site_forces) Object.assign(metadata, calc_force_stats(site_forces))
     return create_trajectory_frame(
       positions,
       elements,
@@ -257,7 +269,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
       [true, true, true],
       step,
       metadata,
-      undefined,
+      site_forces?.map((force) => ({ force })),
       warn,
     )
   }

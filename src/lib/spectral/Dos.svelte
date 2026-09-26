@@ -29,6 +29,7 @@
   import {
     convert_frequencies,
     frequency_unit_label,
+    frequency_unit_per_thz,
     parse_frequency_unit,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
@@ -73,6 +74,8 @@
   }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
     doses: Record<string, DosData>
     stack?: boolean
+    // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
+    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer
     sigma?: number
     units?: FrequencyUnit
     normalize?: NormalizationMode
@@ -93,6 +96,9 @@
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
   const is_phonon = $derived(spectral_type(doses) === `phonon`)
+  // Displayed per data unit; electronic energies are never converted
+  const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
+  const display_sigma = $derived(sigma * display_factor)
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
 
   let has_spin_polarized = $derived(
@@ -134,7 +140,10 @@
           fill_color: string,
           warn_label: string,
         ): number[] => {
-          let densities = sigma > 0 ? apply_gaussian_smearing(x_values, raw, sigma) : [...raw]
+          let densities =
+            display_sigma > 0
+              ? apply_gaussian_smearing(x_values, raw, display_sigma)
+              : [...raw]
           densities = normalize_densities(densities, x_values, normalize)
           if (cumulative === false) return densities
           if (cumulative?.length === densities.length) {
@@ -321,7 +330,8 @@
     {show_legend}
     hover_config={{ threshold_px: 50, ...rest.hover_config }}
     on_point_hover={(event) => {
-      hovered_frequency = is_horizontal ? (event?.point?.y ?? null) : (event?.point?.x ?? null)
+      const hovered = is_horizontal ? event?.point?.y : event?.point?.x
+      hovered_frequency = hovered == null ? null : hovered / display_factor
       rest.on_point_hover?.(event)
     }}
     bind:show_controls
@@ -377,7 +387,7 @@
       >
         <label>
           <span title="Gaussian smearing width (σ)">σ</span>
-          <span class="sigma-value">{format_num(sigma)}</span>
+          <span class="sigma-value">{format_num(display_sigma)}</span>
           <input
             id="dos-sigma"
             type="range"
@@ -470,12 +480,8 @@
       {/if}
 
       <!-- Reference frequency line -->
-      {@const ref_pos =
-        reference_frequency !== null
-          ? is_horizontal
-            ? y_scale_fn(reference_frequency)
-            : x_scale_fn(reference_frequency)
-          : NaN}
+      {@const ref_display = (reference_frequency ?? NaN) * display_factor}
+      {@const ref_pos = is_horizontal ? y_scale_fn(ref_display) : x_scale_fn(ref_display)}
       {#if Number.isFinite(ref_pos)}
         {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
           ? [pad.l, width - pad.r, ref_pos, ref_pos]

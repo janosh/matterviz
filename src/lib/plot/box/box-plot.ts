@@ -44,7 +44,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   // Violin overrides (else fall back to component-level props)
   kind?: ViolinKind // 'box' (default), 'violin', or 'violin+box'
   side?: ViolinSide // 'both' (default), 'positive', or 'negative'
-  bandwidth?: BandwidthOption
+  bandwidth?: BandwidthOption // numeric: value-axis units, decades on a log value axis
   violin_width?: number // fraction of the category slot
   clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
   // Series sharing a `category` occupy the same slot (for split/grouped violins).
@@ -192,12 +192,15 @@ export function compute_box_whiskers(
     whisker_high = Math.min(data_max, high_bound)
     outliers = collect_outliers_by_scan(vals, low_bound, high_bound, collect_outliers)
   } else {
-    // tukey (default): whiskers extend to the most extreme datum within range*IQR of the quartiles
+    // tukey (default): whiskers extend to the most extreme datum within range*IQR of the
+    // quartiles, never into the box (matplotlib's boxplot_stats rule). Seeding with the
+    // quartiles covers both a fence with no datum between it and the box (e.g. [0, 10, 10, 10]
+    // puts the only in-range values above q1) and one with no datum at all (whisker_range 0).
     const iqr = quartile_3 - quartile_1
     const low_bound = quartile_1 - whisker_range * iqr
     const high_bound = quartile_3 + whisker_range * iqr
-    whisker_low = Infinity
-    whisker_high = -Infinity
+    whisker_low = quartile_1
+    whisker_high = quartile_3
     for (const val of vals) {
       if (val < low_bound || val > high_bound) {
         if (collect_outliers) outliers.push(val)
@@ -207,8 +210,6 @@ export function compute_box_whiskers(
       }
     }
     if (collect_outliers) outliers.sort(ascending)
-    if (whisker_low === Infinity) whisker_low = data_min
-    if (whisker_high === -Infinity) whisker_high = data_max
   }
 
   return {

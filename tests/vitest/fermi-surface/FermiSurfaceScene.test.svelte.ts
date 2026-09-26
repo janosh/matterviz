@@ -147,10 +147,13 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
 
   const orbit = threlte_stub.nodes.find(({ tag }) => tag === `OrbitControls`)
   if (!orbit) throw new Error(`OrbitControls not mounted`)
-  const { onstart, onend } = orbit.props as { onstart: () => void; onend: () => void }
+  const { onstart, onchange, onend } = orbit.props as Record<string, () => void>
   hover_enabled.set.mockClear()
 
   onstart()
+  // raycasts switch off once the camera moves, so the press that started the orbit still hits
+  expect(hover_enabled.set).not.toHaveBeenCalled()
+  onchange()
   flushSync()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(false)
   expect(props.hover_data).toBeNull()

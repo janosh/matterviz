@@ -8,6 +8,7 @@ import {
   is_fill_gradient,
   monotone_interpolate,
   resolve_boundary_points,
+  resolve_fill_binding,
   resolve_series_ref,
 } from '$lib/plot/core/fill-utils'
 import type {
@@ -413,6 +414,39 @@ describe(`generate_fill_path`, () => {
     expect(path.length).toBeGreaterThan(0)
     expect(path).toMatch(/^M/)
     expect(path).toMatch(/Z$/)
+  })
+})
+
+describe(`resolve_fill_binding`, () => {
+  const bound_series: DataSeries[] = [
+    { x: [0, 1], y: [0, 1], id: `left` },
+    { x: [0, 1], y: [5, 6], id: `right`, y_axis: `y2`, x_axis: `x2` },
+    { x: [0, 1], y: [2, 3], id: `hidden`, visible: false },
+  ]
+  const ref = (series_id: string) => ({ type: `series` as const, series_id })
+  // oxfmt-ignore
+  it.each([
+    [`defaults to x/y`, { upper: 1, lower: 0 }, { x_axis: `x`, y_axis: `y`, series_hidden: false }],
+    [`explicit axes without series`, { upper: 1, lower: 0, y_axis: `y2` }, { x_axis: `x`, y_axis: `y2`, series_hidden: false }],
+    [`series boundary implies its axes`, { upper: ref(`right`), lower: 0 }, { x_axis: `x2`, y_axis: `y2`, series_hidden: false }],
+    [`agreeing explicit axis`, { upper: ref(`right`), lower: 0, y_axis: `y2` }, { x_axis: `x2`, y_axis: `y2`, series_hidden: false }],
+    [`hidden series hides the region`, { upper: ref(`hidden`), lower: ref(`left`) }, { x_axis: `x`, y_axis: `y`, series_hidden: true }],
+  ] as const)(`%s`, (_desc, region, expected) => {
+    expect(resolve_fill_binding(region, bound_series)).toEqual(expected)
+  })
+
+  it.each([
+    [{ upper: ref(`right`), lower: ref(`left`) }, `spans x_axis values x2 and x`],
+    [{ upper: ref(`left`), lower: 0, y_axis: `y2` as const }, `spans y_axis values y2 and y`],
+  ])(`rejects regions whose series and axes disagree %#`, (region, message) => {
+    expect(() => resolve_fill_binding(region, bound_series)).toThrow(message)
+  })
+
+  it(`error bands carry their series' axes and visibility`, () => {
+    const band = (series_id: string) =>
+      convert_error_band_to_fill_region({ series: ref(series_id), error: 1 }, bound_series)
+    expect(band(`right`)).toMatchObject({ x_axis: `x2`, y_axis: `y2`, visible: true })
+    expect(band(`hidden`)).toMatchObject({ x_axis: `x`, y_axis: `y`, visible: false })
   })
 })
 

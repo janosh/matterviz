@@ -397,9 +397,11 @@ describe(`PlotLegend`, () => {
         }
         const header =
           document.querySelectorAll<HTMLElement>(`.legend-group-header`)[group_idx]
-        header.dispatchEvent(
-          event === `click` || event === `dblclick` ? mouse(event) : keydown(event),
-        )
+        header
+          .querySelector(`.group-label`)
+          ?.dispatchEvent(
+            event === `click` || event === `dblclick` ? mouse(event) : keydown(event),
+          )
         expect(handler).toHaveBeenCalledWith(group, indices)
         expect(header.querySelector(`.group-chevron`)?.classList.contains(`collapsed`)).toBe(
           false,
@@ -410,12 +412,15 @@ describe(`PlotLegend`, () => {
     test(`chevron toggles group collapse and aria labels on click and keyboard`, async () => {
       mount_legend({ series_data: make_grouped_data() })
 
-      const header = doc_query(`.legend-group-header`)
-      expect(header.getAttribute(`role`)).toBe(`button`)
-      expect(header.getAttribute(`tabindex`)).toBe(`0`)
-      expect(header.getAttribute(`aria-expanded`)).toBe(`true`)
-      expect(header.getAttribute(`aria-label`)).toBe(`Toggle group Li₂O`)
+      // Chevron (expansion) and label (visibility) are sibling controls, never nested
+      expect(document.querySelectorAll(`[role="button"] [role="button"]`)).toHaveLength(0)
+      const label = doc_query(`.group-label`)
+      expect(label.getAttribute(`role`)).toBe(`button`)
+      expect(label.getAttribute(`aria-pressed`)).toBe(`true`)
+      expect(label.getAttribute(`aria-label`)).toBe(`Toggle group Li₂O`)
       const chevron = doc_query(`.group-chevron`)
+      expect(chevron.getAttribute(`tabindex`)).toBe(`0`)
+      expect(chevron.getAttribute(`aria-expanded`)).toBe(`true`)
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
@@ -424,6 +429,7 @@ describe(`PlotLegend`, () => {
       chevron.dispatchEvent(mouse(`click`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(true)
+      expect(chevron.getAttribute(`aria-expanded`)).toBe(`false`)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Expand group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O items
 
@@ -434,6 +440,31 @@ describe(`PlotLegend`, () => {
       expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
     })
+
+    test.each([`click`, `Enter`, `dblclick`] as const)(
+      `group_click collapse: header %s only toggles expansion`,
+      async (event) => {
+        const on_group_toggle = vi.fn()
+        const on_group_double_click = vi.fn()
+        const collapsed_groups = new SvelteSet<string>()
+        mount_legend({
+          series_data: make_grouped_data(),
+          group_click: `collapse`,
+          collapsed_groups,
+          on_group_toggle,
+          on_group_double_click,
+        })
+        const header = doc_query(`.legend-group-header`)
+        expect(header.getAttribute(`role`)).toBe(`button`)
+        expect(header.getAttribute(`aria-expanded`)).toBe(`true`)
+        expect(document.querySelectorAll(`[role="button"] [role="button"]`)).toHaveLength(0)
+        header.dispatchEvent(event === `Enter` ? keydown(event) : mouse(event))
+        await tick()
+        expect(collapsed_groups.has(`Li₂O`)).toBe(event !== `dblclick`)
+        expect(on_group_toggle).not.toHaveBeenCalled()
+        expect(on_group_double_click).not.toHaveBeenCalled()
+      },
+    )
 
     test(`collapsed_groups prop controls initial collapse state`, async () => {
       // Start with Li₂O group collapsed via prop

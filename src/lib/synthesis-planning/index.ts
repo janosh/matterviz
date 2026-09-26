@@ -26,8 +26,9 @@ export { default as SynthesisPlanner } from './SynthesisPlanner.svelte'
 export {
   analyze_selectivity,
   balance_reaction,
+  describe_downhill_windows,
+  downhill_windows,
   make_reaction,
-  onset_temperature,
   reaction_energy_at_temperature,
 } from './thermo'
 export type { BalancedReaction, BalanceFailure } from './thermo'

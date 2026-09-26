@@ -2,7 +2,12 @@
 // Used by both main package and VSCode extension
 
 import type { D3InterpolateName } from '$lib/colors'
-import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '$lib/constants'
+import {
+  type ColorSchemeName,
+  DEFAULT_FPS_RANGE,
+  ELEMENT_COLOR_SCHEME_NAMES,
+  FPS_STEP,
+} from '$lib/constants'
 import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { ElementSymbol } from '$lib/element/types'
 import { capitalize, symbol_names } from '$lib/labels'
@@ -283,7 +288,7 @@ const hull_face_settings = (
 // Complete settings configuration with values, descriptions, and constraints
 export const SETTINGS_CONFIG = define_settings({
   // General display settings
-  color_scheme: typed_setting<string>({
+  color_scheme: typed_setting<ColorSchemeName>({
     value: `Vesta`,
     description: `Color scheme for atoms and bonds`,
     enum: self_labeled_enum(ELEMENT_COLOR_SCHEME_NAMES),
@@ -684,7 +689,7 @@ export const SETTINGS_CONFIG = define_settings({
     edge_color: { value: `#000000`, description: `Brillouin zone edge color` },
     edge_width: {
       value: 0.002,
-      description: `Width of Brillouin zone edges (fraction of zone size)`,
+      description: `Width of Brillouin zone edges (fraction of the zone half-size, ½·mean |b|)`,
       minimum: 0,
       maximum: 0.05,
     },

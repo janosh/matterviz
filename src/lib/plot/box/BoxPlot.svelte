@@ -41,7 +41,7 @@
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_whiskers, summarize_box_samples } from '$lib/plot/box/box-plot'
-  import { gaussian_kde, type KdeResult } from '$lib/plot/box/kde'
+  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '$lib/plot/box/kde'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
@@ -108,6 +108,7 @@
   let {
     series: series_in = [],
     hidden_series = $bindable(),
+    on_hidden_series_change,
     orientation = $bindable(`vertical`),
     x_axis = $bindable({}),
     x2_axis: x2_axis_prop = $bindable({}),
@@ -158,11 +159,14 @@
     pan = {},
     marginals = false,
     facet_layout,
+    axis_loading = null,
+    on_axis_change,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     PlotConfig & {
       hidden_series?: readonly (string | number)[]
+      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
       series?: readonly BoxPlotSeries<Metadata>[]
       orientation?: Orientation
       legend?: LegendConfig | null
@@ -181,7 +185,7 @@
       value_label_format?: string
       kind?: ViolinKind
       side?: ViolinSide
-      bandwidth?: BandwidthOption
+      bandwidth?: BandwidthOption // violin KDE; a number is in decades on a log value axis
       violin_width?: number
       violin_style?: ViolinStyle
       kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
@@ -203,19 +207,21 @@
       pan?: PanConfig
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
+      // The host owns property selection, loading, and publishing the resulting data.
+      axis_loading?: `x` | `x2` | `y` | `y2` | null
+      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
     } = $props()
 
   // Legend choices are separate from immutable series data.
   const legend_vis = create_legend_visibility(
     () => series,
     () => hidden_series,
-    (next) => (hidden_series = next),
+    (next) => {
+      hidden_series = next
+      on_hidden_series_change?.(next)
+    },
   )
   let series: BoxPlotSeries<Metadata>[] = $derived(legend_vis.resolve(series_in))
-
-  // Violin KDE grid: 100 points over the observed support (no tail extension), densities summed
-  // over at most 5000 stride-sampled values (bandwidth still comes from the full sample)
-  const KDE_OPTS = { n_points: 100, cut: 0, max_samples: 5000 } as const
 
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
   let whisker_state = $derived({ ...DEFAULTS.box.whisker, ...whisker })
@@ -340,32 +346,34 @@
   )
 
   type ViolinKde = KdeResult & { max_density: number }
-  // KDE depends on the distribution and bandwidth, not box statistics or whisker settings.
+  // The logarithmic axes as one string key (e.g. `x y2`), so a new axis object (label, ticks)
+  // that keeps its scale type doesn't recompute every KDE
+  const log_axes = $derived(
+    (Object.keys(plot_axes) as (keyof typeof plot_axes)[])
+      .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
+      .join(` `),
+  )
+  // KDEs read the authored series_in so legend toggles don't recompute them (hidden series
+  // are skipped when drawing). On a log axis the density is estimated in log10 space, so a
+  // numeric bandwidth is in decades; a non-positive clip bound leaves that side open.
+  const to_log = (bound: number | null) =>
+    bound !== null && bound > 0 ? Math.log10(bound) : null
   let violin_kdes = $derived.by(() => {
     const map = new Map<number, ViolinKde>()
-    for (const [series_idx, srs] of series.entries()) {
-      if (srs.visible === false || !draws_violin(srs)) continue
-      const samples = srs.y ?? []
-      let clip = srs.clip ?? kde_clip
-      // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
-      // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
-      if (get_scale_type_name(plot_axes[val_axis_key(srs)].scale_type) === `log`) {
-        const min_pos = samples.reduce(
-          (min, val) => (val > 0 && val < min ? val : min),
-          Infinity,
-        )
-        // Guard: no positive samples → min_pos is Infinity; leave clip unchanged so the KDE
-        // never receives a non-finite lower bound
-        if (Number.isFinite(min_pos)) {
-          clip = [Math.max(clip?.[0] ?? -Infinity, min_pos), clip?.[1] ?? null]
-        }
-      }
+    for (const [series_idx, srs] of series_in.entries()) {
+      if (!draws_violin(srs)) continue
+      const clip = srs.clip ?? kde_clip
+      const log = log_axes.split(` `).includes(val_axis_key(srs))
+      const samples = log
+        ? (srs.y ?? []).filter((val) => val > 0).map(Math.log10)
+        : (srs.y ?? [])
       const kde = gaussian_kde(samples, {
-        ...KDE_OPTS,
+        ...VIOLIN_KDE_OPTS,
         bandwidth: srs.bandwidth ?? bandwidth,
-        clip,
+        clip: log && clip ? [to_log(clip[0]), to_log(clip[1])] : clip,
       })
-      map.set(series_idx, { ...kde, max_density: Math.max(0, array_max(kde.density)) })
+      const grid = log ? kde.grid.map((pos) => 10 ** pos) : kde.grid
+      map.set(series_idx, { ...kde, grid, max_density: Math.max(0, array_max(kde.density)) })
     }
     return map
   })
@@ -691,6 +699,8 @@
       display={category_display.resolved}
       label_ticks={{ [cat_axis]: effective_cat_ticks }}
       tick_color={{ [cat_axis]: (tick: number) => slot_colors.get(tick) }}
+      {axis_loading}
+      {on_axis_change}
     />
 
     <!-- Chart content is clipped in two groups so reference lines can interleave

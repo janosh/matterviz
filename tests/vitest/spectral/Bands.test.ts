@@ -451,16 +451,39 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  it(`annotates the electronic gap and ignores the units prop for electronic values`, async () => {
+  // Bands 0 and 1 of the fixture cross E_F = 0 (a metal). Occupations decide filling over E_F:
+  // a non-SCF line-mode VBM can rise above the SCF E_F (here by 30 meV)
+  const filled_below_band_2 = [1, 1, 0, 0].map((occupation) => Array(4).fill(occupation))
+  it.each([
+    [`semiconductor`, -0.95, undefined, /Eg:\s*0\.25 eV/], // bands 0-1 top at -0.05, band 2 at 0.2
+    [`VBM above E_F but insulating occupations`, -0.87, filled_below_band_2, /Eg:\s*0\.17 eV/],
+  ])(
+    `electronic gap annotation for a %s ignores the units prop`,
+    async (_desc, shift, occupations, gap_label) => {
+      const bands = spin_polarized_electronic.bands.map((band, band_idx) =>
+        band.map((energy) => energy + (band_idx < 2 ? shift : 0)),
+      )
+      await mount_bands({
+        band_structs: { '': { ...spin_polarized_electronic, bands, occupations } },
+        band_spin_mode: `up_only`,
+        units: `cm^-1`,
+        show_gap_annotation: true,
+      })
+      expect(document.body.textContent).toContain(`Energy (eV)`)
+      expect(document.body.textContent).toMatch(gap_label)
+    },
+  )
+
+  it(`rejects occupations missing a spin-down channel instead of crashing`, async () => {
     await mount_bands({
-      band_structs: { '': spin_polarized_electronic },
-      band_spin_mode: `up_only`,
-      units: `cm^-1`,
+      band_structs: { '': { ...spin_polarized_electronic, occupations: filled_below_band_2 } },
+      band_spin_mode: `overlay`,
       show_gap_annotation: true,
     })
-    expect(document.body.textContent).toContain(`Energy (eV)`)
-    expect(document.body.textContent).toContain(`Eg:`)
-    expect(document.body.textContent).toContain(`0.3 eV`)
+    expect(document.body.textContent).toMatch(
+      /Invalid band occupations: .*must be finite and match bands/,
+    )
+    expect(document.querySelector(`.scatter`)).toBeNull()
   })
 
   const tick_labels = () => [

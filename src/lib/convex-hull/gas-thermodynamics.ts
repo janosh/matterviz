@@ -204,52 +204,63 @@ export function get_effective_pressures(
   return pressures
 }
 
-// Chemical potential correction (eV/atom of compound) for an entry's energy: the difference
-// between the gas chemical potential at (T, P) and at the reference state (0 K, 1 bar). For a
-// compound A_x B_y where B comes from gas B2: ΔE = (y/2) * [μ(B2, T, P) - μ(B2, 0K, 1bar)],
-// shifting the formation energy with the gas atmosphere.
+// Shift of an element's chemical potential (eV/atom) set by its gas reservoir at (T, P)
+// relative to (0 K, 1 bar). A gas fixes only the sum of its elements' potentials, e.g.
+// Δμ(CO2) = Δμ_C + 2 Δμ_O, so partners with their own enabled reservoir (O from O2) are pinned
+// by it and the element gets the remainder. Partners without a reservoir contribute 0.
+export function compute_element_mu_shift(
+  element: ElementSymbol,
+  config: GasThermodynamicsConfig,
+  temperature: number,
+  pressures: Record<GasSpecies, number>,
+): number {
+  const element_to_gas: Partial<Record<string, GasSpecies>> = {
+    ...DEFAULT_ELEMENT_TO_GAS,
+    ...config.element_to_gas,
+  }
+  const provider = config.provider ?? get_default_gas_provider()
+  const shift = (elem: string, resolving: string[]): number => {
+    const gas = element_to_gas[elem]
+    if (!gas || !config.enabled_gases?.includes(gas)) return 0
+    const stoichiometry: Record<string, number> = GAS_STOICHIOMETRY[gas]
+    const stoich = stoichiometry[elem]
+    if (!stoich) throw new Error(`element_to_gas maps ${elem} to ${gas}, which has no ${elem}`)
+    if (resolving.includes(elem)) {
+      throw new Error(
+        `Gas reservoirs for ${[...resolving, elem].join(` → `)} depend on each other; map each element to a gas whose other elements have their own reservoir`,
+      )
+    }
+    // Per molecule at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
+    const molecule_shift =
+      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
+        provider.get_standard_chemical_potential(gas, 0)) *
+      gas_num_atoms(gas)
+    let partner_shift = 0
+    for (const [partner, count] of Object.entries(stoichiometry)) {
+      if (partner !== elem) partner_shift += count * shift(partner, [...resolving, elem])
+    }
+    return (molecule_shift - partner_shift) / stoich
+  }
+  return shift(element, [])
+}
+
+// Chemical potential correction (eV/atom of compound) for an entry's energy: the composition-
+// weighted element shifts of compute_element_mu_shift. For A_x B_y with B from gas B2:
+// ΔE = y/(x+y) · Δμ_B, shifting the formation energy with the gas atmosphere.
 export function compute_gas_correction(
   entry: PhaseData,
   config: GasThermodynamicsConfig,
   temperature: number,
   pressures: Record<GasSpecies, number>,
 ): number {
-  const provider = config.provider ?? get_default_gas_provider()
-  const element_to_gas = {
-    ...DEFAULT_ELEMENT_TO_GAS,
-    ...config.element_to_gas,
-  }
-  const enabled_gases = new Set(config.enabled_gases)
-
-  let correction = 0
   const n_atoms = count_atoms_in_composition(entry.composition)
-
-  for (const [el_str, amount] of Object.entries(entry.composition)) {
+  let correction = 0
+  for (const [element, amount] of Object.entries(entry.composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
-    const element = el_str as ElementSymbol
-
-    const gas = element_to_gas[element]
-    if (!gas || !enabled_gases.has(gas)) continue
-
-    const stoich = GAS_STOICHIOMETRY[gas][element] ?? 1
-    const num_atoms = gas_num_atoms(gas)
-
-    // Per atom of gas at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
-    const mu_at_conditions = compute_gas_chemical_potential(
-      provider,
-      gas,
-      temperature,
-      pressures[gas],
-    )
-    const mu_ref = provider.get_standard_chemical_potential(gas, 0)
-
-    // Per atom of gas → per atom of this element: multiply by num_atoms, divide by stoich
-    const delta_mu = ((mu_at_conditions - mu_ref) * num_atoms) / stoich
-
-    // Total correction for this element in the compound (per atom of compound)
-    correction += (amount / n_atoms) * delta_mu
+    correction +=
+      (amount / n_atoms) *
+      compute_element_mu_shift(element as ElementSymbol, config, temperature, pressures)
   }
-
   return correction
 }
 

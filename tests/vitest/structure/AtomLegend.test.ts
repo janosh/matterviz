@@ -108,18 +108,29 @@ describe(`AtomLegend Component`, () => {
     }
   })
 
-  test(`color picker functionality`, () => {
-    mount_legend({ elements: { Fe: 2 } })
+  // A remapped entry's picker, reset and hide button act on the displayed element
+  test.each([
+    [`Fe`, undefined],
+    [`H`, `Na`],
+  ] as const)(`color picker and hide act on %s (mapped to %s)`, async (elem, mapped) => {
+    mount_legend({ elements: { [elem]: 2 }, element_mapping: mapped && { [elem]: mapped } })
+    const shown = mapped ?? elem
 
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
     expect(color_input.title).toBe(`Double click to reset color`)
 
     color_input.value = `#ff0000`
     color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    expect(colors.element.Fe).toBe(`#ff0000`)
+    expect(colors.element[shown]).toBe(`#ff0000`)
 
     doc_query(`label`).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    expect(colors.element.Fe).toBe(default_element_colors.Fe)
+    expect(colors.element[shown]).toBe(default_element_colors[shown])
+
+    const hide_button = doc_query<HTMLButtonElement>(`button.toggle-visibility`)
+    expect(hide_button.getAttribute(`aria-label`)).toBe(`Hide ${shown} atoms`)
+    hide_button.click()
+    await tick()
+    expect(hide_button.getAttribute(`aria-label`)).toBe(`Show ${shown} atoms`)
   })
 
   test.each([

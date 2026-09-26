@@ -62,7 +62,7 @@ const file_metadata: Record<string, { label: string; description: string }> = {
   },
   'pymatgen-ELFCAR.gz': {
     label: `ELF (real)`,
-    description: `Real electron localization function, unusual 18×18×70 grid`,
+    description: `Real spin-polarized electron localization function, unusual 9×9×35 grid`,
   },
   // Real .cube files from quantum chemistry calculations (MIT license)
   'caffeine-HOMO.cube.gz': {

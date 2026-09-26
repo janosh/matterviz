@@ -2,7 +2,7 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
 import type { ScalarGrid3D } from '$lib/isosurface/grid'
-import { matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
+import { det_3x3, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
 
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '$lib/isosurface/grid'
 
@@ -314,8 +314,7 @@ interface MarchingCubesOptions {
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
-  // Cartesian translation added to every vertex, e.g. −½(a*+b*+c*) to centre a reciprocal
-  // cell on Γ, or a grid-shift correction for half-step k-meshes.
+  // Cartesian translation added to every vertex, e.g. the position of grid index 0
   position_offset?: Vec3
 }
 
@@ -343,6 +342,9 @@ export function marching_cubes(
   options: MarchingCubesOptions = {},
 ): MarchingCubesBuffers {
   const { periodic = true, normals: compute_norms = true, position_offset } = options
+  // Front faces (CCW) and normals point toward decreasing values; the triangle table winds that
+  // way in index space, which a left-handed lattice mirrors
+  const flip_winding = det_3x3(k_lattice) < 0
   const [offset_x, offset_y, offset_z] = position_offset ?? [0, 0, 0]
 
   const [size_x, size_y, size_z] = grid_dimensions(grid)
@@ -573,8 +575,8 @@ export function marching_cubes(
           if (vector_0 === vector_1 || vector_1 === vector_2 || vector_0 === vector_2) continue
           indices = grow(indices, n_indices + 3)
           indices[n_indices++] = vector_0
-          indices[n_indices++] = vector_1
-          indices[n_indices++] = vector_2
+          indices[n_indices++] = flip_winding ? vector_2 : vector_1
+          indices[n_indices++] = flip_winding ? vector_1 : vector_2
         }
       }
     }

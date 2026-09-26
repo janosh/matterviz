@@ -20,6 +20,7 @@
     cartesian_to_fractional,
     default_camera_position,
     k_lattice_inverse,
+    bz_mark_sizes,
     k_space_size,
     polyhedron_centroid,
   } from './geometry'
@@ -86,6 +87,7 @@
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
   const bz_size = $derived(k_space_size(bz_data?.k_lattice))
+  const mark_sizes = $derived(bz_mark_sizes(bz_size, edge_width))
   const computed_camera_position = $derived(default_camera_position(bz_size))
   // Label chips are HTML drawn over the canvas and cover the sphere at their point, so a
   // highlighted point also tints its chip (tolerance scaled to the zone: positions come from
@@ -121,11 +123,6 @@
       on_kpath_hover?.(null)
     },
   })
-
-  // K-path styling. The invisible hover proxy is twice the visible thickness so the cursor
-  // snaps to the path even when it isn't directly over the thin visible segment.
-  const KPATH_THICKNESS = 0.012
-  const KPATH_HOVER_THICKNESS = KPATH_THICKNESS * 2
 
   // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).
   // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
@@ -230,7 +227,7 @@
       color={surface_color}
       opacity={surface_opacity}
       {edge_color}
-      {edge_width}
+      edge_width={mark_sizes.edge}
       onpointermove={(event) => handle_hover(event, false)}
       onpointerleave={() => handle_leave(false)}
     />
@@ -241,7 +238,7 @@
         polyhedron={ibz_data}
         color={ibz_color}
         opacity={ibz_opacity}
-        edge_width={edge_width * 1.5}
+        edge_width={mark_sizes.edge * 1.5}
         onpointermove={(event) => handle_hover(event, true)}
         onpointerleave={() => handle_leave(true)}
       />
@@ -264,14 +261,14 @@
           <Cylinder
             from={from_point}
             to={to_point}
-            thickness={KPATH_THICKNESS}
+            thickness={mark_sizes.kpath}
             color={is_hovered ? `#ff6b35` : `#ffcc00`}
           />
           <!-- Invisible wider proxy: lets the cursor snap to the path within ~2× its radius -->
           <Cylinder
             from={from_point}
             to={to_point}
-            thickness={KPATH_HOVER_THICKNESS}
+            thickness={mark_sizes.kpath * 2}
             opacity={0}
             onpointermove={(event: ThreltePointerEvent) => handle_kpath_hover(event, idx)}
             onpointerleave={() => on_kpath_hover?.(null)}
@@ -285,7 +282,7 @@
       {#if label}
         {@const highlighted = is_highlighted(position)}
         <T.Mesh position={[position[0], position[1], position[2]]}>
-          <T.SphereGeometry args={[0.015, 16, 16]} />
+          <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
           <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
         </T.Mesh>
         <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
@@ -303,7 +300,7 @@
     <!-- Hovered k-point highlight -->
     {#if hovered_k_point}
       <T.Mesh position={hovered_k_point}>
-        <T.SphereGeometry args={[0.03, 16, 16]} />
+        <T.SphereGeometry args={[mark_sizes.hovered_point, 16, 16]} />
         <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
       </T.Mesh>
     {/if}

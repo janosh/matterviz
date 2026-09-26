@@ -1016,10 +1016,19 @@
     }),
   )
   let plot_series = $derived(with_visible_properties(base_plot_series, visible_properties))
-  // Publish defaults once property rows arrive; an explicit empty selection stays empty.
+  // Publish defaults once property rows arrive; an explicit empty selection stays empty. Only
+  // a host or legend selection persists: defaults written here are re-derived on a run swap
+  // instead of hiding the new run's series behind the old run's names.
+  let written_defaults: string | undefined
   $effect(() => {
-    if (visible_properties === undefined && plot_series.length > 0)
-      visible_properties = plot_series.filter((srs) => srs.visible).map((srs) => srs.id)
+    if (base_plot_series.length === 0) return
+    const current = visible_properties?.join(`\0`)
+    if (current !== undefined && current !== written_defaults) return
+    const ids = with_visible_properties(base_plot_series, undefined)
+      .filter((srs) => srs.visible)
+      .map((srs) => srs.id)
+    written_defaults = ids.join(`\0`)
+    if (written_defaults !== current) visible_properties = ids
   })
   const hidden_plot_series = () =>
     plot_series.filter((srs) => !srs.visible).map((srs) => srs.id)
@@ -1687,6 +1696,7 @@
               {#each DISPLAY_MODES as option (option.mode)}
                 <button
                   class={['view-mode-option', { selected: display_mode === option.mode }]}
+                  aria-pressed={display_mode === option.mode}
                   onclick={() => select_display_mode(option.mode)}
                 >
                   <Icon icon={option.icon} />

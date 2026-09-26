@@ -6,7 +6,13 @@ import {
   type DisplayMetrics,
 } from './site'
 import { characteristic_atom_spacing } from './density'
-import { EPS, normalize_vec, compute_in_plane_basis, type Vec3 } from '$lib/math'
+import {
+  EPS,
+  is_finite_vec3,
+  normalize_vec,
+  compute_in_plane_basis,
+  type Vec3,
+} from '$lib/math'
 import type { VectorLayerConfig } from '$lib/settings'
 import type { AnyStructure, Site } from './index'
 
@@ -76,12 +82,7 @@ export const default_vector_configs = (keys: string[]) =>
   )
 
 export function try_parse_vec3(val: unknown): Vec3 | null {
-  if (
-    Array.isArray(val) &&
-    val.length === 3 &&
-    val.every((elem) => typeof elem === `number` && isFinite(elem))
-  )
-    return val as Vec3
+  if (is_finite_vec3(val)) return val
   if (typeof val === `number` && isFinite(val)) return [0, 0, val]
   return null
 }

@@ -41,19 +41,14 @@ describe(`trajectory data extractors`, () => {
       { Step: 5, ...energies },
       true,
     ],
+    // per-atom vectors belong on the sites; a stray metadata array is not a statistic
     [
-      `force statistics and copied stress metadata`,
+      `copied stress metadata, ignoring a per-atom forces array`,
       force_stress_data_extractor,
       1,
       { forces, stress_max: 2.1, pressure: 0 },
       undefined,
-      {
-        Step: 1,
-        force_max: 3,
-        force_norm: expect.closeTo(Math.sqrt(14 / 3), 12),
-        stress_max: 2.1,
-        pressure: 0,
-      },
+      { Step: 1, stress_max: 2.1, pressure: 0 },
       true,
     ],
     [
@@ -73,6 +68,24 @@ describe(`trajectory data extractors`, () => {
       cubic,
       { Step: 4, ...cubic, density: 0, temperature: 300 },
       false,
+    ],
+    // every finite metadata scalar, not an allowlist; bookkeeping and non-numbers stay out
+    [
+      `every finite metadata scalar and nothing else`,
+      full_data_extractor,
+      3,
+      {
+        bandgap: 1.2,
+        ref_energy: -3,
+        step: 3,
+        total_atoms: 4,
+        label: `x`,
+        converged: true,
+        bad: Number.NaN,
+      },
+      undefined,
+      { Step: 3, bandgap: 1.2, ref_energy: -3 },
+      true,
     ],
     [
       `combined energy, force, SCF and structural fields`,

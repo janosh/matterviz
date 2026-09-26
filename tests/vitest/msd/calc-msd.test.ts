@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib/element'
-import { calc_msd, compute_msd_async, fit_einstein_diffusion } from '$lib/msd'
+import { calc_msd, compute_msd_async, fit_einstein_diffusion, fit_msd_curves } from '$lib/msd'
 import type { Pbc } from '$lib/structure'
 import { describe, expect, it } from 'vitest'
 import { cubic_matrix } from '../test-fixtures'
@@ -25,24 +25,18 @@ describe(`analytic MSD limits`, () => {
     const [total] = result.curves
     const expected = result.lags.map((lag) => speed_sq * lag * lag)
 
-    // Pure f64 arithmetic on an exact quadratic: only representation round-off
-    // separates the two, which is ~1e-16 relative, far under this bound.
+    // An exact quadratic through an FFT of length 2^k: S1 - 2 S2 cancels on the scale of the
+    // centred positions' variance, ~n_frames^2 / 12 = 530x the lag-1 MSD at 80 frames, so
+    // round-off stays near 1e-13 relative, under this bound.
     expect(max_rel_error(total.msd, expected)).toBeLessThan(1e-12)
-    // Every origin sees the same displacement, so the only spread left is the f64
-    // representation noise of v*(t+lag) - v*t: ~3e-17 of the MSD scale here.
-    // Naive sum-of-squares variance loses this to cancellation and reports ~1e-6 instead.
-    const msd_scale = Math.max(...total.msd)
-    expect(Math.max(...total.std_error)).toBeLessThan(1e-15 * msd_scale)
   })
 
-  it(`reports the unbiased standard error of the mean over time origins`, () => {
+  it(`averages every time origin at a lag`, () => {
     // One atom at x = 0, 1, 3 gives exactly two lag-1 origins with squared displacements
-    // 1 and 4: mean 2.5, sum of squared deviations 4.5, sample variance 4.5 / (2 - 1),
-    // SEM = sqrt(4.5 / 1 / 2) = 1.5. Dividing by n instead of n - 1 reports 1.0607.
+    // 1 and 4: mean 2.5
     const result = calc_msd(build_positions([[[0, 0, 0]], [[1, 0, 0]], [[3, 0, 0]]]))
     expect(result.curves[0].n_origins).toEqual([2])
     expect(result.curves[0].msd[0]).toBeCloseTo(2.5, 14)
-    expect(result.curves[0].std_error[0]).toBeCloseTo(1.5, 14)
   })
 
   it.each([
@@ -55,7 +49,6 @@ describe(`analytic MSD limits`, () => {
     const result = calc_msd(build_positions(frames, { lattice }))
     for (const curve of result.curves) {
       expect(curve.msd.every((value) => value === 0)).toBe(true)
-      expect(curve.std_error.every((value) => value === 0)).toBe(true)
     }
   })
 
@@ -80,7 +73,7 @@ describe(`analytic MSD limits`, () => {
     const expected_d = step_amplitude ** 2 / 6
 
     // MSD(dt) itself must track the analytic line closely over the fit window
-    const fit = total.fit
+    const [fit] = fit_msd_curves(result)
     expect(fit).not.toBeNull()
     if (!fit) return
     const rel_error = Math.abs(fit.diffusion_coefficient - expected_d) / expected_d
@@ -92,6 +85,64 @@ describe(`analytic MSD limits`, () => {
     expect(fit.r_squared).toBeGreaterThan(0.99)
     // Every origin from 0 to n_frames - 1 - lag inclusive contributes at lag 1
     expect(total.n_origins[0]).toBe(n_frames - result.lags[0])
+  })
+})
+
+describe(`FFT origin average`, () => {
+  // Brute-force <|r(t + lag) - r(t)|^2> over every origin and the given atoms
+  const direct_msd = (
+    positions: Float64Array,
+    n_frames: number,
+    n_atoms: number,
+    lag: number,
+    atoms: number[],
+  ): number => {
+    let total = 0
+    for (let origin = 0; origin + lag < n_frames; origin++) {
+      for (const atom_idx of atoms) {
+        for (let axis = 0; axis < 3; axis++) {
+          const from = (origin * n_atoms + atom_idx) * 3 + axis
+          const delta = positions[from + lag * n_atoms * 3] - positions[from]
+          total += delta * delta
+        }
+      }
+    }
+    return total / ((n_frames - lag) * atoms.length)
+  }
+
+  it.each([
+    [`near the origin`, 0],
+    // S1 - 2 S2 on raw coordinates would cancel ~1e6 Å² terms down to ~0.05 Å² MSDs
+    [`1000 Å from the origin`, 1000],
+  ])(`matches the direct loop for a mixed random walk %s`, (_label, offset) => {
+    const [n_frames, n_atoms] = [97, 7]
+    const rng = make_rng(7)
+    const elements = Array.from({ length: n_atoms }, (_unused, idx) =>
+      idx % 3 ? `O` : `Li`,
+    ) as ElementSymbol[]
+    const current = Array.from({ length: n_atoms }, () => [offset, offset, offset])
+    const frames = Array.from({ length: n_frames }, () => {
+      for (const xyz of current) for (let axis = 0; axis < 3; axis++) xyz[axis] += rng() - 0.5
+      return current.map((xyz) => [...xyz])
+    })
+    const stream = build_positions(frames, { elements })
+    const result = calc_msd(stream, { max_lag_fraction: 1 })
+    let [max_abs, max_rel] = [0, 0]
+    for (const curve of result.curves) {
+      const atoms = [...elements.keys()].filter(
+        (atom_idx) => curve.label === `Total` || elements[atom_idx] === curve.label,
+      )
+      for (const [lag_idx, lag] of result.lags.entries()) {
+        const expected = direct_msd(stream.positions, n_frames, n_atoms, lag, atoms)
+        const diff = Math.abs(curve.msd[lag_idx] - expected)
+        max_abs = Math.max(max_abs, diff)
+        max_rel = Math.max(max_rel, diff / expected)
+      }
+    }
+    // Centred coordinates keep the cancellation on the scale of the walk (~10 Å²), so
+    // round-off is ~1e-14 relative at the smallest (~0.2 Å²) MSD wherever the walk sits
+    expect(max_rel).toBeLessThan(1e-11)
+    expect(max_abs).toBeLessThan(1e-11)
   })
 })
 
@@ -240,7 +291,6 @@ describe(`time-origin averaging`, () => {
     expect(full.lag_stride).toBe(1)
     expect(thinned.lag_stride).toBe(4)
     expect(thinned.lags).toEqual(full.lags.filter((lag) => lag % 4 === 0))
-    expect(thinned.origin_stride).toBe(1)
     // Ballistic MSD is exact at every lag, so thinning only drops points
     const expected = thinned.lags.map((lag) => (0.2 * lag) ** 2)
     expect(max_rel_error(thinned.curves[0].msd, expected)).toBeLessThan(1e-12)
@@ -352,11 +402,9 @@ describe(`Einstein fit`, () => {
 
   it(`respects a user-adjusted fit window`, () => {
     // Ballistic (quadratic) MSD: a late window has a steeper local slope than an early one
-    const positions = ballistic([0.3, 0, 0], 200)
-    const early = calc_msd(positions, { fit: { start_fraction: 0.05, end_fraction: 0.25 } })
-    const late = calc_msd(positions, { fit: { start_fraction: 0.7, end_fraction: 1 } })
-    const early_fit = early.curves[0].fit
-    const late_fit = late.curves[0].fit
+    const result = calc_msd(ballistic([0.3, 0, 0], 200))
+    const [early_fit] = fit_msd_curves(result, { start_fraction: 0.05, end_fraction: 0.25 })
+    const [late_fit] = fit_msd_curves(result, { start_fraction: 0.7, end_fraction: 1 })
     expect(early_fit).not.toBeNull()
     expect(late_fit).not.toBeNull()
     if (!early_fit || !late_fit) return
@@ -377,10 +425,11 @@ describe(`time axis`, () => {
       expect(result.time_unit).toBe(unit)
       expect(result.x_label).toBe(x_label)
       expect(result.times).toEqual(result.lags.map((lag) => lag * delta_time))
-      expect(result.curves[0].fit?.units).toBe(`Å²/${unit}`)
+      expect(fit_msd_curves(result)[0]?.units).toBe(`Å²/${unit}`)
     },
   )
 
+  // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
   it(`refuses to invent a time unit when dt is supplied without one`, () => {
     expect(() => calc_msd(ballistic([0.1, 0, 0], 20), { dt: 0.5 })).toThrow(
       /dt was supplied .* without time_unit/,

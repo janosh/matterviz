@@ -42,7 +42,8 @@
     item_extents,
     style = ``,
     item_style = ``,
-    collapsed_groups = $bindable(new SvelteSet<string>()),
+    collapsed_groups = new SvelteSet<string>(),
+    group_click = `visibility`,
     on_toggle = () => {},
     on_double_click = () => {},
     on_fill_toggle,
@@ -72,8 +73,11 @@
     item_extents?: readonly (LegendItemExtent | undefined)[]
     style?: string // Inline styles forwarded to wrapper div
     item_style?: string
-    // Bindable set of collapsed group names (pass initial values to collapse groups by default)
-    collapsed_groups?: Set<string>
+    // Collapsed group names, toggled in place by the chevrons (seed it to start collapsed)
+    collapsed_groups?: SvelteSet<string>
+    // Group label click: `visibility` toggles all its series (on_group_toggle), `collapse`
+    // expands/collapses it like the chevron (never touching visibility)
+    group_click?: `visibility` | `collapse`
     on_toggle?: (series_idx: number) => void
     on_double_click?: (series_idx: number) => void
     on_fill_toggle?: (source_type: `fill_region` | `error_band`, source_idx: number) => void
@@ -173,15 +177,6 @@
     return groups
   })
 
-  function toggle_group_collapse(group_name: string) {
-    // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
-    if (!(collapsed_groups instanceof SvelteSet)) {
-      collapsed_groups = new SvelteSet(collapsed_groups)
-    }
-    // Set.delete returns true if element existed, so add if delete failed
-    if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
-  }
-
   const group_indices = (items: readonly LegendItem[]): number[] =>
     items.map(({ series_idx }) => series_idx)
   const handle_group_click = (group_name: string, items: readonly LegendItem[]) =>
@@ -265,15 +260,26 @@
     action()
   }
 
-  const keyboard_activate = (
-    event: KeyboardEvent,
-    action: () => void,
-    stop_propagation = false,
-  ): void => {
+  const keyboard_activate = (event: KeyboardEvent, action: () => void): void => {
     if (event.key !== `Enter` && event.key !== ` `) return
     event.preventDefault()
-    if (stop_propagation) event.stopPropagation()
     action()
+  }
+
+  // Expand/collapse button props: the chevron's, or in `collapse` mode the whole header's
+  const collapse_toggle = (group_name: string): HTMLAttributes<HTMLElement> => {
+    const is_collapsed = collapsed_groups.has(group_name)
+    const toggle = () => {
+      if (!collapsed_groups.delete(group_name)) collapsed_groups.add(group_name)
+    }
+    return {
+      onclick: (event) => stop_and_run(event, toggle),
+      onkeydown: (event) => keyboard_activate(event, toggle),
+      role: `button`,
+      tabindex: 0,
+      'aria-expanded': !is_collapsed,
+      'aria-label': `${is_collapsed ? `Expand` : `Collapse`} group ${strip_html(group_name)}`,
+    }
   }
 </script>
 
@@ -426,6 +432,7 @@
 
 <div
   bind:this={root_element}
+  data-export-overlay
   onmousedown={handle_legend_mouse_down}
   onmouseenter={() => on_hover_change?.(true)}
   onmouseleave={() => on_hover_change?.(false)}
@@ -455,33 +462,38 @@
       {@const group_items = items_by_group.get(cell.group) ?? []}
       {@const is_collapsed = collapsed_groups.has(cell.group)}
       {@const group_visible = group_items.some((item) => item.visible)}
+      {@const header_toggles = group_click === `collapse`}
+      <!-- Sibling controls, never nested: in visibility mode the chevron expands and the
+           label toggles visibility; in collapse mode the whole header is one expand toggle -->
       <div
         class={['legend-group-header', { hidden: !group_visible }]}
-        onclick={(event) =>
-          stop_and_run(event, () => handle_group_click(cell.group, group_items))}
-        ondblclick={(event) =>
-          stop_and_run(event, () =>
-            on_group_double_click?.(cell.group, group_indices(group_items)),
-          )}
-        onkeydown={(event) =>
-          keyboard_activate(event, () => handle_group_click(cell.group, group_items))}
-        role="button"
-        tabindex="0"
-        aria-expanded={!is_collapsed}
-        aria-label="Toggle group {strip_html(cell.group)}"
+        {...header_toggles ? collapse_toggle(cell.group) : {}}
       >
         <span
           class={['group-chevron', { collapsed: is_collapsed }]}
-          onclick={(event) => stop_and_run(event, () => toggle_group_collapse(cell.group))}
-          onkeydown={(event) =>
-            keyboard_activate(event, () => toggle_group_collapse(cell.group), true)}
-          role="button"
-          tabindex="0"
-          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {strip_html(cell.group)}"
+          {...header_toggles ? { 'aria-hidden': true } : collapse_toggle(cell.group)}>▶</span
         >
-          ▶
-        </span>
-        <span class="group-label">{@html sanitize_html(cell.group)}</span>
+        {#if header_toggles}
+          <span class="group-label">{@html sanitize_html(cell.group)}</span>
+        {:else}
+          <span
+            class="group-label"
+            onclick={(event) =>
+              stop_and_run(event, () => handle_group_click(cell.group, group_items))}
+            ondblclick={(event) =>
+              stop_and_run(event, () =>
+                on_group_double_click?.(cell.group, group_indices(group_items)),
+              )}
+            onkeydown={(event) =>
+              keyboard_activate(event, () => handle_group_click(cell.group, group_items))}
+            role="button"
+            tabindex="0"
+            aria-pressed={group_visible}
+            aria-label="Toggle group {strip_html(cell.group)}"
+          >
+            {@html sanitize_html(cell.group)}
+          </span>
+        {/if}
       </div>
     {:else}
       {@const series = series_data[cell.item_idx]}
@@ -600,8 +612,11 @@
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
   .legend-group-header:hover,
-  .legend-group-header:focus {
+  .legend-group-header:focus-within {
     background-color: var(--plot-legend-item-hover-bg-color);
+  }
+  .group-label {
+    flex: 1;
   }
   .group-chevron {
     display: inline-flex;

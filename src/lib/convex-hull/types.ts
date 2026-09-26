@@ -112,6 +112,8 @@ export type HullFaceColorMode = (typeof HULL_FACE_COLOR_MODES)[number]
 // Plot entry with 3D coordinates for quaternary diagrams
 export interface ConvexHullEntry extends PhaseData, Point3D {
   is_element: boolean
+  // E_form = 0 corner closing the hull where no unary anchors it, left out of phase counts
+  is_synthetic?: boolean
   size?: number
   marker?: MarkerSymbol // Optional marker symbol override (default: circle)
 }

@@ -115,7 +115,7 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
 
 export const SYNTHESIS_PLANNER_TOOL = {
   name: `plan_synthesis`,
-  description: `Rank solid-state synthesis routes to a target inorganic phase from simulated convex-hull data (formation energies per atom from DFT, ML potentials or experiment). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature at which gas-releasing reactions turn favorable, and an experiment card (calculated masses for each step, unreferenced precursor-library notes, editable experimental assumptions and checkpoints). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
+  description: `Rank solid-state synthesis routes to a target inorganic phase from simulated convex-hull data (formation energies per atom from DFT, ML potentials or experiment). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature window in which gas-exchanging reactions are downhill (above a lower bound for gas release, below an upper bound for gas uptake), and an experiment card (calculated masses for each step, unreferenced precursor-library notes, editable experimental assumptions and checkpoints). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
   input_schema: SYNTHESIS_PLAN_REQUEST_SCHEMA,
 } as const
 
@@ -128,11 +128,8 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
   lines.push(header)
   if (route.intermediate_step)
     lines.push(`   step 1: ${route.intermediate_step.reaction.equation}`)
-  const onset_text = thermodynamics.onset_temperature
-    ? `, favorable above ${thermodynamics.onset_temperature} K`
-    : ``
   lines.push(
-    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu)${onset_text}; gas exchange: ${thermodynamics.atmosphere}`,
+    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu); gas exchange: ${thermodynamics.atmosphere}`,
   )
   const competitor_text = selectivity.competitors
     .slice(0, 4)

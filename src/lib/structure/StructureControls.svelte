@@ -7,7 +7,9 @@
   import type { PaneProps, PaneToggleProps } from '$lib/overlays'
   import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
   import type { ColorSchemeName } from '$lib/colors'
-  import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+  import { AXIS_COLORS } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
+  import { scheme_colors } from './element-palette.svelte'
   import { ColorInput, Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
   import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
   import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
@@ -107,7 +109,7 @@
     supercell_scaling?: string
     background_color?: string
     background_opacity?: number
-    color_scheme?: string
+    color_scheme?: ColorSchemeName
     atom_color_config?: AtomColorConfig
     structure?: AnyStructure
     supercell_loading?: boolean
@@ -849,13 +851,6 @@
     })
   }
 
-  // Sample colors for common elements, used to preview an element color scheme
-  function get_representative_colors(scheme_name: string): string[] {
-    const scheme = ELEMENT_COLOR_SCHEMES[scheme_name as ColorSchemeName]
-    if (!scheme) return []
-    return [`H`, `C`, `N`, `O`].map((elem) => scheme[elem] || scheme.H || `#cccccc`)
-  }
-
   // Which top-level groups start expanded. Appearance is what people came for; camera and
   // scene are set-once topics, so they stay folded until asked for. Conditional groups open
   // when present — they only render at all because the data made them relevant.
@@ -1073,7 +1068,7 @@
         <label {...setting_row(`color_scheme`)}>
           <span>Color scheme</span>
           <Select
-            options={Object.keys(ELEMENT_COLOR_SCHEMES)}
+            options={[...ELEMENT_COLOR_SCHEME_NAMES]}
             mode="single"
             min_select={1}
             bind:value={color_scheme}
@@ -1087,9 +1082,10 @@
             {#snippet children({ option })}
               <div class="scheme-option">
                 {option}
+                <!-- common elements preview the scheme -->
                 <div class="scheme-swatches">
-                  {#each get_representative_colors(String(option)) as color (color)}
-                    <div style:background={color}></div>
+                  {#each [`H`, `C`, `N`, `O`] as elem (elem)}
+                    <div style:background={scheme_colors(option)[elem]}></div>
                   {/each}
                 </div>
               </div>

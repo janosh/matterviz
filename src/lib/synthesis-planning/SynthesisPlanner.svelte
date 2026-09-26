@@ -19,6 +19,7 @@
   import RecipeCard from './RecipeCard.svelte'
   import RouteTable from './RouteTable.svelte'
   import { DEFAULT_SCORE_WEIGHTS } from './scoring'
+  import { describe_downhill_windows } from './thermo'
   import type {
     PrecursorPoolOptions,
     RecipeAssumptions,
@@ -323,9 +324,7 @@
       [`Inverse hull`, format_mev(selectivity.inverse_hull_energy)],
       [`Selectivity margin`, format_mev(selectivity.selectivity_margin)],
       [`Net gas exchange`, thermodynamics.atmosphere],
-      ...(thermodynamics.onset_temperature
-        ? [[`Favorable above`, `${thermodynamics.onset_temperature} K`] as [string, string]]
-        : []),
+      [`Downhill window`, describe_downhill_windows(thermodynamics.downhill_windows)],
       [`Score`, format_num(score, `.2f`)],
     ]
   })

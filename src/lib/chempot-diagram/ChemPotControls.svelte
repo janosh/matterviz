@@ -21,7 +21,7 @@
     children?: Snippet
   } = $props()
 
-  // Partial input (``, `-`) parses to NaN; leave the value alone until the number is complete
+  // Commit on change, not per keystroke (typing -10 would compute at -1 first); ignore `-`
   const set_number = (key: `element_padding` | `default_min_limit`, event: Event) => {
     const value = (event.currentTarget as HTMLInputElement).valueAsNumber
     if (Number.isFinite(value)) set(key, value)
@@ -53,7 +53,7 @@
       min="0"
       step="0.1"
       value={values.element_padding}
-      oninput={(event) => set_number(`element_padding`, event)}
+      onchange={(event) => set_number(`element_padding`, event)}
     />
   </label>
   <label>
@@ -63,7 +63,7 @@
       max="0"
       step="1"
       value={values.default_min_limit}
-      oninput={(event) => set_number(`default_min_limit`, event)}
+      onchange={(event) => set_number(`default_min_limit`, event)}
     />
   </label>
 </div>

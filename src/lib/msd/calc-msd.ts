@@ -1,12 +1,20 @@
 // Mean squared displacement (MSD) and Einstein diffusion analysis for MD trajectories.
 //
 // MSD(Δt) = <|r(t0 + Δt) − r(t0)|²> averaged over every atom AND every time origin t0.
-// Longer lags have fewer origins, so `n_origins` and `std_error` are reported per lag
-// and callers are expected to show that the tail is statistically weak.
+// Longer lags have fewer origins, so `n_origins` is reported per lag and callers are
+// expected to show that the tail is statistically weak.
+//
+// Every origin at every lag is averaged exactly, in O(n log n) per coordinate, by expanding
+// the square: summed over origins, |r(t + m) - r(t)|² = S1(m) - 2 S2(m) with
+// S1(m) = Σ_t |r(t)|² + |r(t + m)|² (prefix sums) and S2(m) = Σ_t r(t) · r(t + m), an
+// autocorrelation taken with the same Wiener–Khinchin kernel as the VACF. Each coordinate is
+// centred on its time average first, so the difference cancels on the scale of the motion
+// rather than of the absolute position.
 import { mean as mean_of } from '$lib/math'
 import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
 import {
   analysis_fail,
+  autocorrelation_sums,
   curve_slots,
   group_atoms_by_element,
   lag_axis_label,
@@ -18,27 +26,7 @@ import {
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import type { EinsteinFit, EinsteinFitOptions, MsdCurve, MsdOptions, MsdResult } from './index'
 
-// Rough (origin x atom) operation budget the origin sub-sampling is tuned against, so a
-// 100k-frame run stays interactive. MSD can thin origins because it averages a monotone
-// displacement; the chosen stride is reported so a thinned average is never mistaken for a
-// full one.
-const WORK_BUDGET = 2e8
-
 const fail = analysis_fail(`fit_einstein_diffusion`)
-
-// One Welford step for slot `idx` of a running mean / sum-of-squared-deviations pair.
-// `count` is the sample number including this one.
-const welford_update = (
-  mean: Float64Array,
-  moment_2: Float64Array,
-  idx: number,
-  count: number,
-  value: number,
-): void => {
-  const delta = value - mean[idx]
-  mean[idx] += delta / count
-  moment_2[idx] += delta * (value - mean[idx])
-}
 
 // Ordinary least squares of msd against time over the requested lag window.
 // Returns null (not a widened window) when the window holds fewer than 2 points —
@@ -113,13 +101,7 @@ export function calc_msd(
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
-  const {
-    dt: delta_time = 1,
-    max_lag_fraction = 0.5,
-    // Cap on the number of distinct lags evaluated before lag sub-sampling kicks in
-    max_lags = 200,
-    fit: fit_options = {},
-  } = options
+  const { dt: delta_time = 1, max_lag_fraction = 0.5, max_lags = 200 } = options
 
   validate_position_stream_layout(input, `calc_msd`, 2)
   const time_unit = resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
@@ -134,86 +116,77 @@ export function calc_msd(
     throw new Error(`calc_msd: max_lags must be a positive integer, got ${max_lags}`)
   }
   const lag_stride = Math.max(1, Math.ceil(max_lag / max_lags))
-  // Evenly spaced lags 1..max_lag, thinned so at most `max_lags` are evaluated
+  // Evenly spaced lags 1..max_lag, thinned so at most `max_lags` are reported
   const lags: number[] = []
   for (let lag = lag_stride; lag <= max_lag; lag += lag_stride) lags.push(lag)
-
-  const unstrided_work = lags.reduce((total, lag) => total + (n_frames - lag) * n_atoms, 0)
-  const origin_stride = Math.max(1, Math.ceil(unstrided_work / WORK_BUDGET))
 
   // The total curve is the atom-count weighted combination of the element curves
   const { labels, group_sizes, atom_group } = group_atoms_by_element(elements)
   const n_groups = labels.length
+  const frame_size = n_atoms * 3
 
-  // Per-lag Welford accumulators over time origins. The naive sum/sum-of-squares form
-  // loses the whole variance to cancellation when every origin agrees (a ballistic run
-  // reports ~sqrt(eps) * msd instead of 0), so track the running mean and M2 instead.
-  // Slot n_groups is the all-atom total, so one loop feeds every curve.
-  const curve_sizes = [...group_sizes, n_atoms]
-  const mean_msd = Array.from(curve_sizes, () => new Float64Array(lags.length))
-  const m2_msd = Array.from(curve_sizes, () => new Float64Array(lags.length))
-  const origin_counts = new Int32Array(lags.length)
-  const origin_sums = new Float64Array(curve_sizes.length)
+  // Centre every coordinate on its time average (MSD is shift invariant)
+  const means = new Float64Array(frame_size)
+  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+    const base = frame_idx * frame_size
+    for (let comp = 0; comp < frame_size; comp++) means[comp] += coords[base + comp]
+  }
+  for (let comp = 0; comp < frame_size; comp++) means[comp] /= n_frames
 
-  for (let lag_idx = 0; lag_idx < lags.length; lag_idx++) {
-    const lag = lags[lag_idx]
-    const last_origin = n_frames - 1 - lag
-    let n_origins = 0
-    for (let origin = 0; origin <= last_origin; origin += origin_stride) {
-      origin_sums.fill(0)
-      const base_from = origin * n_atoms * 3
-      const base_to = (origin + lag) * n_atoms * 3
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-        const off_from = base_from + atom_idx * 3
-        const off_to = base_to + atom_idx * 3
-        const delta_x = coords[off_to] - coords[off_from]
-        const delta_y = coords[off_to + 1] - coords[off_from + 1]
-        const delta_z = coords[off_to + 2] - coords[off_from + 2]
-        origin_sums[atom_group[atom_idx]] +=
-          delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
-      }
-      n_origins++
-      let total_for_origin = 0
-      for (let group = 0; group < n_groups; group++) total_for_origin += origin_sums[group]
-      origin_sums[n_groups] = total_for_origin
-      for (const [slot, size] of curve_sizes.entries()) {
-        welford_update(
-          mean_msd[slot],
-          m2_msd[slot],
-          lag_idx,
-          n_origins,
-          origin_sums[slot] / size,
-        )
+  // Per-group prefix sums over frames of Σ_atoms |r(t) - <r>|², slot n_groups the total:
+  // square_prefix[slot][t] = Σ_{t' < t}, so any frame window sums in O(1)
+  const square_prefix = Array.from(
+    { length: n_groups + 1 },
+    () => new Float64Array(n_frames + 1),
+  )
+  const frame_squares = new Float64Array(n_groups)
+  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+    frame_squares.fill(0)
+    const base = frame_idx * frame_size
+    for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+      for (let comp = atom_idx * 3; comp < atom_idx * 3 + 3; comp++) {
+        const centred = coords[base + comp] - means[comp]
+        frame_squares[atom_group[atom_idx]] += centred * centred
       }
     }
-    origin_counts[lag_idx] = n_origins
+    let frame_total = 0
+    for (let group = 0; group < n_groups; group++) {
+      square_prefix[group][frame_idx + 1] =
+        square_prefix[group][frame_idx] + frame_squares[group]
+      frame_total += frame_squares[group]
+    }
+    square_prefix[n_groups][frame_idx + 1] = square_prefix[n_groups][frame_idx] + frame_total
   }
 
-  const times = lags.map((lag) => lag * delta_time)
+  const cross_sums = autocorrelation_sums(
+    coords,
+    n_frames,
+    n_atoms,
+    atom_group,
+    n_groups,
+    max_lag,
+    means,
+  )
+  const n_origins = lags.map((lag) => n_frames - lag)
+  const curve_sizes = [...group_sizes, n_atoms]
 
   const make_curve = ({ label, slot }: { label: string; slot: number }): MsdCurve => {
-    const msd = Array.from(mean_msd[slot])
-    const moment_2 = m2_msd[slot]
-    // Standard error of the mean over (overlapping, hence correlated) time origins.
-    // Welford's m2 is a sum of squared deviations, so the unbiased sample variance
-    // divides by count - 1; using count under-reports by 41% at the n = 2 tail.
-    const std_error = Array.from(origin_counts, (count, lag_idx) =>
-      count < 2 ? 0 : Math.sqrt(moment_2[lag_idx] / (count - 1) / count),
-    )
-    return {
-      label,
-      n_atoms: curve_sizes[slot],
-      msd,
-      std_error,
-      // A fresh array per curve: callers mutating one must not corrupt the others
-      n_origins: Array.from(origin_counts),
-      fit: fit_einstein_diffusion(lags, times, msd, { ...fit_options, time_unit }),
-    }
+    const prefix = square_prefix[slot]
+    const msd = lags.map((lag, lag_idx) => {
+      // S1: |r(t)|² over origins t < n - lag plus |r(t + lag)|² over t + lag >= lag
+      const squares = prefix[n_frames - lag] + (prefix[n_frames] - prefix[lag])
+      const value =
+        (squares - 2 * cross_sums[slot][lag]) / (n_origins[lag_idx] * curve_sizes[slot])
+      // a mean of squares is never negative; only round-off of the difference can dip below 0
+      return Math.max(0, value)
+    })
+    // A fresh array per curve: callers mutating one must not corrupt the others
+    return { label, n_atoms: curve_sizes[slot], msd, n_origins: [...n_origins] }
   }
 
   return {
     lags,
-    times,
+    times: lags.map((lag) => lag * delta_time),
     curves: curve_slots(labels).map(make_curve),
     dt: delta_time,
     time_unit,
@@ -222,7 +195,14 @@ export function calc_msd(
     n_atoms,
     unwrapped,
     lag_stride,
-    origin_stride,
     frame_stride: input.frame_stride,
   }
 }
+
+// Einstein fit of every curve of an MSD result, index-aligned with result.curves. Separate
+// from calc_msd so moving the fit window doesn't re-run the displacement analysis.
+export const fit_msd_curves = (
+  { lags, times, curves, time_unit }: MsdResult,
+  options: EinsteinFitOptions = {},
+): (EinsteinFit | null)[] =>
+  curves.map(({ msd }) => fit_einstein_diffusion(lags, times, msd, { ...options, time_unit }))

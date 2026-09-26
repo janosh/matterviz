@@ -253,8 +253,11 @@ describe(`helpers: thresholds and tooltips`, () => {
       entry_id: `mp-1`,
     })
     expect(param_2).toBe(
-      `\nComposition: Li: ½, O: ½\nE<sub>above hull</sub>: 0 eV/atom\nE<sub>form</sub>: −3 eV/atom\nID: mp-1`,
+      `\nComposition: Li: ½, O: ½\nE_above_hull: 0 eV/atom\nE_form: −3 eV/atom\nID: mp-1`,
     )
+    // an absolute energy_per_atom is not a formation energy, so it is not labelled as one
+    const absolute_only = { composition: { Li: 1, O: 1 }, energy: -12, energy_per_atom: -6 }
+    expect(helpers.build_entry_tooltip_text(absolute_only)).not.toContain(`E_form`)
   })
 })
 

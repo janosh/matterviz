@@ -1,6 +1,7 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '$lib/rdf'
 import {
+  calculate_all_pair_rdfs,
   calculate_pdf,
   calculate_rdf,
   calculate_total_pdf,
@@ -8,6 +9,7 @@ import {
   number_density,
   PDF_DEFAULT_N_BINS,
   site_composition,
+  weight_pdf_partials,
 } from '$lib/rdf'
 import { neutron_scattering_length } from '$lib/scattering'
 import type { Crystal } from '$lib/structure'
@@ -340,6 +342,19 @@ describe(`reduced PDF G(r)`, () => {
 describe(`total scattering-weighted PDF`, () => {
   const NACL_A = 5.63
   const nacl = () => rock_salt(`Na`, `Cl`, NACL_A)
+
+  test.each([`xray`, `neutron`] as const)(
+    `weighting precomputed partials equals the one-shot %s total`,
+    (radiation) => {
+      const structure = nacl()
+      const partial_rdfs = calculate_all_pair_rdfs(structure, { cutoff: 6, n_bins: 60 })
+      const rho_0 = number_density(structure)
+      expect(weight_pdf_partials(structure, partial_rdfs, { rho_0, radiation })).toEqual(
+        calculate_total_pdf(structure, { radiation, cutoff: 6, n_bins: 60 }),
+      )
+    },
+  )
+
   // calculate_all_pair_rdfs sorts the element list, so the unordered pair keys are Cl-* first
   const NACL_B: Record<string, Record<string, number>> = {
     // x-ray form factors at s = 0 reduce to Z

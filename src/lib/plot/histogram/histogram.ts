@@ -12,13 +12,16 @@ import {
 } from '$lib/plot/core/scales'
 import type { AxisConfig, ScaleType } from '$lib/plot/core/types'
 import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
+import { plot_color } from '$lib/colors'
 
 // One distribution to bin: `values` are the samples; everything else is legend/axis metadata.
 export interface HistogramSeries {
   id?: string | number // stable key for series reordering
   values: readonly number[]
+  // Per-sample weights aligned with `values` (default 1); non-finite ones drop their sample
+  weights?: readonly number[]
   label?: string
-  // Bar fill; defaults to the auto-cycled series palette (a lone series uses `bar.color`)
+  // Bar fill; without one a lone series uses `bar.color`, several the cycled palette
   color?: string
   pattern?: FillPattern // hatch/texture over the bar fill
   visible?: boolean
@@ -208,15 +211,32 @@ export function bin_values(
   return { edges, counts }
 }
 
-// Scale raw counts into bar heights. `probability` and `density` divide by the in-domain total,
-// density additionally by each bin's width in data units.
+// `bar.color` fills only a lone series without its own color (shared with the controls'
+// fill picker)
+export const uses_bar_color = (series: readonly Pick<HistogramSeries, `color`>[]): boolean =>
+  series.length === 1 && series[0].color === undefined
+
+export const histogram_series_color = (
+  series: readonly Pick<HistogramSeries, `color`>[],
+  series_idx: number,
+  bar_color: string,
+): string =>
+  series[series_idx]?.color ?? (uses_bar_color(series) ? bar_color : plot_color(series_idx))
+
+const count_total = (counts: Iterable<number>): number => {
+  let total = 0
+  for (const count of counts) total += count
+  return total
+}
+
+// Scale raw counts into bar heights. `probability` and `density` divide by `total` (default:
+// the counts' own sum), density additionally by each bin's width in data units.
 export function normalize_counts(
   edges: Float64Array,
   counts: Uint32Array | Float64Array,
   normalize: HistogramNormalize,
+  total = count_total(counts),
 ): HistogramBin[] {
-  let total = 0
-  for (const count of counts) total += count
   return Array.from(counts, (count, idx) => {
     const [coord_x_0, coord_x_1] = [edges[idx], edges[idx + 1]]
     const value =
@@ -249,19 +269,24 @@ export function compute_histogram_counts(
       use_x2 ? config.x2_domain : config.x_domain,
       config.bins,
       use_x2 ? config.x2_scale_type : config.x_scale_type,
+      series_data.weights,
     )
     return { series_data, series_idx, edges, counts }
   })
 }
 
 // Reuse raw counts when changing units or colors; only the small bin arrays change.
+// `full_counted` (aligned with `counted`) holds the counts over the full auto domain, whose
+// totals normalize every view so zoomed bins keep the heights they have in the full view.
 export function compute_histogram_bins(
   counted: ReturnType<typeof compute_histogram_counts>,
   normalize: HistogramNormalize,
-  series_color: (series_data: HistogramSeries, series_idx: number) => string,
+  series_color: (series_idx: number) => string,
+  full_counted: ReturnType<typeof compute_histogram_counts>,
 ): BinnedSeries[] {
-  return counted.map(({ series_data, series_idx, edges, counts }) => {
-    const bins = normalize_counts(edges, counts, normalize)
+  return counted.map(({ series_data, series_idx, edges, counts }, idx) => {
+    const total = count_total(full_counted[idx].counts)
+    const bins = normalize_counts(edges, counts, normalize, total)
     let max_value = 0
     let min_value = Infinity
     for (const { count, value } of bins) {
@@ -273,7 +298,7 @@ export function compute_histogram_bins(
       id: series_data.id ?? series_idx,
       series_idx,
       label: series_data.label ?? `Series ${series_idx + 1}`,
-      color: series_color(series_data, series_idx),
+      color: series_color(series_idx),
       bins,
       x_axis: series_data.x_axis,
       y_axis: series_data.y_axis,

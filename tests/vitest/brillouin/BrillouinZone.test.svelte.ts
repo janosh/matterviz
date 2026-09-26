@@ -377,6 +377,42 @@ test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, a
   await vi.waitFor(() => expect(viewer?.querySelector(`.status-message`)).toBeNull())
 })
 
+// A structure change must not leave the previous IBZ wedge on the new zone while symmetry
+// reruns, nor let a slow info-pane analysis overwrite the current space group
+const identity_op = { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }
+test(`a structure change drops the previous IBZ while symmetry reruns`, async () => {
+  analyze_structure_symmetry
+    .mockResolvedValueOnce({ operations: [identity_op] })
+    .mockReturnValueOnce(new Promise(() => {}))
+  const state = $state({
+    structure: cubic,
+    show_ibz: true,
+    ibz_data: null as ComponentProps<typeof BrillouinZone>[`ibz_data`],
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  await vi.waitFor(() => expect(state.ibz_data).not.toBeNull())
+  state.structure = make_crystal(4, si_site)
+  flushSync()
+  expect(state.ibz_data).toBeNull()
+})
+
+test(`the info pane ignores a symmetry result for a replaced structure`, async () => {
+  const late = Promise.withResolvers<unknown>()
+  analyze_structure_symmetry
+    .mockReturnValueOnce(late.promise)
+    .mockResolvedValueOnce({ operations: [identity_op], hm_symbol: `NEW` })
+  const state = $state({ structure: cubic, info_pane_open: true })
+  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  await tick()
+  state.structure = make_crystal(4, si_site)
+  await vi.waitFor(() => expect(document.body.textContent).toContain(`(NEW)`))
+  late.resolve({ operations: [identity_op], hm_symbol: `OLD` })
+  await tick()
+  await tick()
+  expect(document.body.textContent).toContain(`(NEW)`)
+  expect(document.body.textContent).not.toContain(`(OLD)`)
+})
+
 // Wiring check that a real viewer picks up the shared shortcut; the full key contract
 // (chords, repeats, nesting) is covered in layout/FullscreenButton.test
 test(`hovering the zone and pressing f fullscreens it`, async () => {

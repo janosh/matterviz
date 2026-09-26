@@ -1,34 +1,26 @@
-import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
 import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
+import { EV_PER_A3_TO_GPA } from '$lib/constants'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import type { Pbc } from '$lib/structure'
+import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
+  calc_force_stats,
+  checked_site_forces,
   convert_atomic_numbers,
-  copy_numeric_fields,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
-import type { TrajectoryFrame, TrajectoryMetadata } from '$lib/trajectory/index'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
-import type { ParsedTrajectory } from './shared'
+import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
 
 // A frame JSON header this large can only be a corrupt offsets table pointing into payload
 // bytes (a real header is a few KB)
 const MAX_ASE_HEADER_BYTES = 50 * 1024 * 1024
 const decoder = new TextDecoder()
-
-const ASE_PLOT_SCALARS = [
-  ...TRAJECTORY_ENERGY_KEYS,
-  `force_max`,
-  `force_norm`,
-  `stress_max`,
-  `stress_frobenius`,
-  `pressure`,
-  `temperature`,
-  `bandgap`,
-]
 
 export const read_ase_header = (view: DataView): { n_items: number; offsets_pos: number } => ({
   n_items: Number(view.getBigInt64(32, true)),
@@ -85,7 +77,10 @@ export const read_ndarray_from_view = (
 }
 
 export interface AseFrameOptions {
+  // ASE writes numbers and pbc into frame 0 only, repeating them when they change, so later
+  // frames inherit the last values seen
   fallback_numbers?: number[]
+  fallback_pbc?: Pbc
   max_json_length?: number
   base_offset?: number
 }
@@ -109,22 +104,45 @@ const read_frame_json = (
 }
 
 const SPECTROSCOPY_CALCULATOR_KEY = /dipole|polarizability|polarization|current/i
+// Calculator bookkeeping ASE stores next to the results; not per-frame properties
+const CALCULATOR_BOOKKEEPING_KEYS = new Set([`name`, `parameters`])
+
+type NdarrayReader = (ref: { ndarray: unknown[] }) => number[][]
+const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
+  Boolean(value && typeof value === `object` && `ndarray` in value)
+// Pressure (GPa, compression positive) from an ASE stress: a 6-component Voigt vector
+// [xx, yy, zz, yz, xz, xy] or a 3x3 tensor, both in eV/Å³ with tension positive
+const ase_pressure = (stress: unknown): number | undefined => {
+  const values = Array.isArray(stress) ? stress.flat() : []
+  const diagonal = values.length === 6 ? [0, 1, 2] : values.length === 9 ? [0, 4, 8] : null
+  if (
+    !diagonal ||
+    !values.every((value) => typeof value === `number` && Number.isFinite(value))
+  )
+    return undefined
+  const [xx, yy, zz] = diagonal.map((idx) => values[idx])
+  return (-(xx + yy + zz) / 3) * EV_PER_A3_TO_GPA
+}
 
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
-  read_ndarray?: (ref: { ndarray: unknown[] }) => number[][],
+  read_ndarray?: NdarrayReader,
 ): Record<string, unknown> => {
   const calculator = frame_data[`calculator.`] ?? frame_data.calculator
   if (!calculator || typeof calculator !== `object`) return {}
   const results: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(calculator as Record<string, unknown>)) {
-    if (!(value && typeof value === `object` && `ndarray` in value)) {
+    if (CALCULATOR_BOOKKEEPING_KEYS.has(key)) continue
+    if (!is_ndarray_ref(value)) {
       results[key] = value
       continue
     }
+    if (read_ndarray && (key === `stress.` || key === `forces.`)) {
+      results[key.slice(0, -1)] = read_ndarray(value)
+      continue
+    }
     if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
-    const reference = value as { ndarray: unknown[] }
-    const shape = reference.ndarray[0]
+    const shape = value.ndarray[0]
     if (
       !Array.isArray(shape) ||
       !shape.every((dimension) => Number.isInteger(dimension) && dimension > 0)
@@ -137,19 +155,45 @@ export const ase_calculator_data = (
     if (result_key in results) {
       throw new Error(`ASE calculator contains duplicate result key ${result_key}`)
     }
-    const array = read_ndarray(reference)
+    const array = read_ndarray(value)
     results[result_key] = shape.length === 1 ? array[0] : array
   }
+  const pressure = ase_pressure(results.stress)
+  if (pressure !== undefined && !(`pressure` in results)) results.pressure = pressure
   return results
 }
 
+// A frame's cell, or undefined for none: ASE stores a molecule's missing cell as all zeros
+const ase_cell = (frame_data: Record<string, unknown>): math.Matrix3x3 | undefined => {
+  if (!frame_data.cell) return undefined
+  const cell = matrix3x3_from_rows(frame_data.cell, `ASE cell`)
+  return cell.every((row) => row.every((value) => value === 0)) ? undefined : cell
+}
+
+const ase_pbc = (value: unknown): Pbc => {
+  if (!math.is_pbc(value))
+    throw new Error(`ASE PBC must contain three booleans, got ${JSON.stringify(value)}`)
+  return [...value]
+}
+
+const plot_row_numbers = new WeakMap<number[], Uint8Array>()
+
+// `plot_row: true` skips reading positions and building sites but keeps every check, the
+// metadata and the lattice, so its plot row equals the full decode's
 export function decode_ase_frame(
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,
-  { fallback_numbers, max_json_length, base_offset = 0 }: AseFrameOptions = {},
-): { frame: TrajectoryFrame; numbers: number[] } {
+  {
+    fallback_numbers,
+    fallback_pbc,
+    max_json_length,
+    base_offset = 0,
+    plot_row = false,
+    warn,
+  }: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
+): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
   const frame_data = JSON.parse(
     read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
   )
@@ -157,46 +201,91 @@ export function decode_ase_frame(
   const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
     read_ndarray_from_view(view, ref, base_offset)
 
-  const positions_ref = frame_data[`positions.`] ?? frame_data.positions
-  const positions = positions_ref?.ndarray
-    ? read_ndarray(positions_ref)
-    : (positions_ref as number[][])
+  const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
+  const positions = is_ndarray_ref(positions_ref)
+    ? plot_row
+      ? undefined
+      : read_ndarray(positions_ref)
+    : (positions_ref as number[][] | undefined)
+  // a plot row takes the atom count from the ndarray shape
+  const n_atoms =
+    positions?.length ??
+    (is_ndarray_ref(positions_ref)
+      ? ndarray_reader(view, positions_ref, base_offset).shape[0]
+      : undefined)
 
   const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
   const numbers: number[] = numbers_ref?.ndarray
     ? read_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
 
-  if (!numbers || !positions) {
+  if (!numbers || n_atoms === undefined) {
     throw new Error(`missing ${!numbers ? `numbers` : `positions`}`)
   }
+  if (numbers.length !== n_atoms)
+    throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
+  const pbc_value = frame_data.pbc ?? fallback_pbc
+  if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
+  const pbc = ase_pbc(pbc_value)
 
-  const cell = frame_data.cell ? matrix3x3_from_rows(frame_data.cell, `ASE cell`) : undefined
-  const frame = create_trajectory_frame(
-    positions,
-    convert_atomic_numbers(numbers),
-    cell,
-    frame_data.pbc ?? [true, true, true],
-    step,
-    { step, ...ase_calculator_data(frame_data, read_ndarray), ...frame_data.info },
+  // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
+  const { forces: raw_forces, ...calculator } = ase_calculator_data(frame_data, read_ndarray)
+  const forces = checked_site_forces(
+    raw_forces,
+    n_atoms,
+    `ASE calculator forces of frame ${step}`,
+    warn,
   )
-  return { frame, numbers }
+  const metadata = {
+    step,
+    ...calculator,
+    ...(forces && calc_force_stats(forces)),
+    ...frame_data.info,
+  }
+  const cell = ase_cell(frame_data)
+  if (!plot_row) {
+    const frame = create_trajectory_frame(
+      positions ?? [],
+      convert_atomic_numbers(numbers),
+      cell,
+      pbc,
+      step,
+      metadata,
+      forces?.map((force) => ({ force })),
+    )
+    return { frame, numbers, pbc }
+  }
+  // get_density counts a plot row's atoms from numeric atomic numbers, validated and counted
+  // once per numbers array (frames without their own share frame 0's)
+  let atomic_numbers = plot_row_numbers.get(numbers)
+  if (!atomic_numbers) {
+    convert_atomic_numbers(numbers)
+    atomic_numbers = Uint8Array.from(numbers)
+    plot_row_numbers.set(numbers, atomic_numbers)
+  }
+  const frame = create_trajectory_frame([], [], cell, pbc, step, metadata)
+  numeric_sites.set(
+    frame.structure,
+    new NumericSites(atomic_numbers, new Float64Array(0), [], []),
+  )
+  snapshot_topologies.set(frame.structure, atomic_numbers)
+  return { frame, numbers, pbc }
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
-// first frame's atomic numbers are cached because ASE writes them once) and `property_row`
-// reads a frame's plot scalars off its JSON header alone. `release` drops the buffer.
+// first frame's atomic numbers and pbc are cached because ASE writes them once);
+// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer.
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
-  property_row: (frame_idx: number) => TrajectoryMetadata
+  plot_row_frame: (frame_idx: number) => TrajectoryFrame
   release: () => void
   read_atoms?: ReadAtoms
   atom_masses?: number[]
   metadata?: Record<string, unknown>
 }
 
-export function open_ase_frames(data: ArrayBuffer): AseFrames {
+export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
   if (data.byteLength < 48 || decoder.decode(new Uint8Array(data, 0, 8)) !== `- of Ulm`) {
     throw new Error(`Invalid ASE trajectory`)
   }
@@ -223,16 +312,21 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       { cause: error },
     )
   let numbers: number[] | undefined
-  const decode = (frame_idx: number): TrajectoryFrame => {
-    if (frame_idx > 0 && !numbers) decode(0)
+  let pbc: Pbc | undefined
+  const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
+    if (frame_idx > 0 && !numbers) decode_frame(0, true)
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
         fallback_numbers: numbers,
+        fallback_pbc: pbc,
         max_json_length: MAX_ASE_HEADER_BYTES,
+        plot_row,
+        warn,
       })
       numbers = decoded.numbers
+      pbc = decoded.pbc
       return decoded.frame
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
@@ -308,22 +402,16 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       const time = info?.time_fs
       if (time !== undefined && (typeof time !== `number` || !Number.isFinite(time)))
         throw new Error(`ASE time_fs must be finite, got ${JSON.stringify(time)}`)
-      const pbc = topology.pbc
-      if (
-        !Array.isArray(pbc) ||
-        pbc.length !== 3 ||
-        pbc.some((value) => typeof value !== `boolean`)
-      )
-        throw new Error(`ASE PBC must contain three booleans, got ${JSON.stringify(pbc)}`)
+      const frame_pbc = ase_pbc(topology.pbc)
       const batch: AtomBatch = {
         positions: new Float64Array(count * 3),
         atomic_numbers: new Uint8Array(count),
         total_atoms,
         start,
         step: frame_idx,
-        cell: header.cell ? matrix3x3_from_rows(header.cell, `ASE cell`) : undefined,
+        cell: ase_cell(header),
         origin: [0, 0, 0],
-        pbc: [pbc[0], pbc[1], pbc[2]],
+        pbc: frame_pbc,
         ...(time !== undefined && { time }),
         ...(momenta && { velocities: new Float64Array(count * 3) }),
         ...(mass_source && { masses: new Float64Array(count) }),
@@ -365,23 +453,6 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       throw frame_error(frame_idx, offset, error)
     }
   }
-  const property_row = (frame_idx: number): TrajectoryMetadata => {
-    const frame_data = frame_header(frame_idx)
-    // ASE puts computed results in the calculator and user-set values in `info`, but which
-    // scalar lands where is up to whoever wrote the file, so both sections get every alias
-    const properties: Record<string, number> = {}
-    for (const section of [ase_calculator_data(frame_data), frame_data.info]) {
-      if (section && typeof section === `object`) {
-        copy_numeric_fields(properties, section as Record<string, unknown>, ASE_PLOT_SCALARS)
-      }
-    }
-    if (frame_data.cell) {
-      properties.volume = Math.abs(
-        math.det_3x3(matrix3x3_from_rows(frame_data.cell, `ASE cell`)),
-      )
-    }
-    return { frame_number: frame_idx, step: frame_idx, properties }
-  }
   return {
     frame_count: n_items,
     read_atoms,
@@ -390,8 +461,8 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
       mass_unit: `amu`,
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
-    decode,
-    property_row,
+    decode: (frame_idx) => decode_frame(frame_idx, false),
+    plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {
       source = null
     },
@@ -401,8 +472,8 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
 // Every frame materialised. ASE rewrites the ULM header only after a frame is fully written,
 // so every frame the offsets table points at should decode; one that does not is
 // corruption, not a torn tail.
-export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
-  const { frame_count, decode } = open_ase_frames(buffer)
+export function parse_ase_trajectory(buffer: ArrayBuffer, warn: WarnFn): ParsedTrajectory {
+  const { frame_count, decode } = open_ase_frames(buffer, warn)
   const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
   return { format: `ase`, frames, metadata: {} }
 }

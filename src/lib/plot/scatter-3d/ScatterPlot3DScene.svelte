@@ -4,7 +4,7 @@
 >
   import { TooltipValue } from '$lib/tooltip'
   import { format_num } from '$lib/labels'
-  import type { Vec2, Vec3 } from '$lib/math'
+  import { in_range, type Vec2, type Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -39,7 +39,15 @@
   import { first_point_style } from '$lib/plot/core/data-transform'
   import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
-  import { hover_marker_geometry, normalize_to_scene } from '$lib/plot/scatter-3d/scene-coords'
+  import {
+    box_clipping_planes,
+    hover_marker_geometry,
+    normalize_to_scene,
+  } from '$lib/plot/scatter-3d/scene-coords'
+  import PointInstances, {
+    type InstanceEvent,
+    type PointInstanceSpec,
+  } from '$lib/plot/scatter-3d/PointInstances.svelte'
   import { collect_size_range, create_size_scale } from '$lib/plot/core/scales'
   import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
 
@@ -80,6 +88,7 @@
     orbit_controls = $bindable(),
     width = 0,
     height = 0,
+    fullscreen = false,
   }: Omit<SceneControlProps, `zoom_to_cursor` | `initial_zoom`> & {
     series?: DataSeries3D<Metadata>[]
     // Final data-coordinate ranges, computed by the host alongside its controls.
@@ -105,6 +114,7 @@
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
     height?: number
+    fullscreen?: boolean // reported in handler events, like the 2D charts
   } = $props()
 
   // Mirrors scene/camera into bindable props and tags the canvas so export_canvas_as_png can re-render at export DPI
@@ -199,78 +209,133 @@
   const auto_size_range = $derived(collect_size_range(series))
   let size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
 
-  // Every point of every visible series in scene coordinates, built in one pass and in
-  // (series_idx, point_idx) order. Swap Y/Z for Three.js: user Z → Three.js Y (vertical),
-  // user Y → Three.js Z (depth).
-  let processed_points = $derived.by(() => {
-    const points: InternalPoint3D<Metadata>[] = []
+  type PointInstance = PointInstanceSpec & { point: InternalPoint3D<Metadata> }
+
+  const point_key = (point: Pick<InternalPoint3D<Metadata>, `series_idx` | `point_idx`>) =>
+    `${point.series_idx}-${point.point_idx}`
+  // User Z → Three.js Y (vertical), user Y → Three.js Z (depth)
+  const to_scene = ([coord_x, coord_y, coord_z]: Vec3): Vec3 => [
+    normalize_x(coord_x),
+    normalize_z(coord_z),
+    normalize_y(coord_y),
+  ]
+
+  // Every in-range point of every visible series, in (series_idx, point_idx) order, with its
+  // scene position, radius and color. Out-of-range and non-finite points are left out.
+  let point_instances = $derived.by(() => {
+    const instances: PointInstance[] = []
     series.forEach((srs, series_idx) => {
       if (!srs || !(srs.visible ?? true)) return
       const { metadata, point_style } = srs
       for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        points.push({
-          x: normalize_x(srs.x[point_idx]),
-          y: normalize_z(srs.z[point_idx]),
-          z: normalize_y(srs.y[point_idx]),
+        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
+        const [coord_x, coord_y, coord_z] = coords
+        if (!in_range(coord_x, x_range) || !in_range(coord_y, y_range)) continue
+        if (!in_range(coord_z, z_range)) continue
+        const point: InternalPoint3D<Metadata> = {
+          x: coord_x,
+          y: coord_y,
+          z: coord_z,
           series_idx,
           point_idx,
           color_value: srs.color_values?.[point_idx] ?? null,
           size_value: srs.size_values?.[point_idx] ?? null,
           metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
           point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
+        }
+        instances.push({
+          point,
+          position: to_scene(coords),
+          color:
+            point.color_value != null
+              ? color_scale_fn(point.color_value)
+              : (point.point_style?.fill ?? plot_color(series_idx)),
+          radius:
+            point.size_value != null
+              ? size_scale_fn(point.size_value)
+              : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05,
         })
       }
     })
-    return points
-  })
-
-  type PointInstance = {
-    point: InternalPoint3D<Metadata>
-    radius: number
-    color: string
-  }
-
-  const point_key = (point: InternalPoint3D<Metadata>) =>
-    `${point.series_idx}-${point.point_idx}`
-
-  // Instance transforms already carry scale: every radius shares one sphere mesh.
-  // Keep the hover lookup current when point styles or size scaling change.
-  const point_instances = $derived.by(() => {
-    const instances = new Map<string, PointInstance>()
-    for (const point of processed_points) {
-      const color =
-        point.color_value != null
-          ? color_scale_fn(point.color_value)
-          : (point.point_style?.fill ?? plot_color(point.series_idx))
-      const radius =
-        point.size_value != null
-          ? size_scale_fn(point.size_value)
-          : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05
-      instances.set(point_key(point), { point, radius, color })
-    }
     return instances
   })
+  const instance_by_key = $derived(
+    new Map(point_instances.map((instance) => [point_key(instance.point), instance])),
+  )
+
+  // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
+  // tracking the same logical point's current values and position, or drop it once gone
+  $effect.pre(() => {
+    const lookup = instance_by_key
+    untrack(() => {
+      if (!hovered_point) return
+      const next = lookup.get(point_key(hovered_point))?.point ?? null
+      if (next !== hovered_point) hovered_point = next
+    })
+  })
+
+  // One sphere mesh for every point: instance transforms carry each radius
+  const point_geometry = $derived(
+    new THREE.SphereGeometry(1, sphere_segments, sphere_segments),
+  )
+  const projection_geometry = new THREE.SphereGeometry(1, 8, 8)
+  const point_material = new THREE.MeshStandardMaterial()
+  const projection_material = new THREE.MeshBasicMaterial({
+    transparent: true,
+    depthWrite: false,
+  })
+  dispose_on_change(() => [point_geometry])
+  onDestroy(() => {
+    projection_geometry.dispose()
+    point_material.dispose()
+    projection_material.dispose()
+  })
+
+  const instance_point = (event: InstanceEvent) =>
+    point_instances[event.instanceId ?? -1]?.point ?? null
+  // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
+  const point_events = {
+    onpointerenter: (event: InstanceEvent) => {
+      const point = instance_point(event)
+      if (point) handle_point_enter(point)
+    },
+    onpointerleave: () => {
+      hovered_point = null
+      on_point_hover?.(null)
+    },
+    onclick: (event: InstanceEvent) => {
+      const point = instance_point(event)
+      if (!point) return
+      const native = event.nativeEvent
+      handle_point_click(point, native instanceof MouseEvent ? native : undefined)
+    },
+  }
 
   // Projection settings - render point shadows on background planes
   let proj_opacity = $derived(display.projection_opacity ?? 0.3)
   let proj_scale = $derived(display.projection_scale ?? 0.5)
 
-  // Projection plane configs: each fixes one axis to the backside position
-  type ProjectionConfig = {
-    key: `xy` | `xz` | `yz`
-    get_pos: (point: InternalPoint3D<Metadata>) => Vec3
-  }
-  let projection_configs = $derived(
+  $effect(() => {
+    projection_material.opacity = proj_opacity
+    invalidate()
+  })
+
+  // Point shadows on the enabled background planes: each fixes one scene axis at the
+  // backside position, at proj_scale of the point size
+  let projection_layers = $derived(
     ([`xy`, `xz`, `yz`] as const)
       .filter((key) => display.projections?.[key])
-      .map((key): ProjectionConfig => ({
+      .map((key) => ({
         key,
-        get_pos:
-          key === `xy`
-            ? (point) => [point.x, pos.y, point.z]
+        items: point_instances.map(({ position: [pos_x, pos_y, pos_z], radius, color }) => ({
+          position: (key === `xy`
+            ? [pos_x, pos.y, pos_z]
             : key === `xz`
-              ? (point) => [point.x, point.y, pos.z]
-              : (point) => [pos.x, point.y, point.z],
+              ? [pos_x, pos_y, pos.z]
+              : [pos.x, pos_y, pos_z]) as Vec3,
+          radius: radius * proj_scale,
+          color,
+        })),
       })),
   )
 
@@ -291,25 +356,27 @@
   // Per-series fat-line inputs (ordered positions + resolved stroke style) as a derived so
   // the effect below can diff against previous lines and only rebuild what changed
   let line_inputs = $derived.by((): SeriesLineInput[] => {
-    const inputs = new Map<number, SeriesLineInput>()
-    for (let series_idx = 0; series_idx < series.length; series_idx++) {
-      const srs = series[series_idx]
+    const inputs: SeriesLineInput[] = []
+    for (const [series_idx, srs] of series.entries()) {
       const line_style = srs?.line_style
       if (!line_style || !(srs.visible ?? true)) continue
-      const color = line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx)
-      inputs.set(series_idx, {
+      // Lines run through every finite point, in range or not: the box's clipping group cuts
+      // them at the axes instead of dropping whole segments
+      const positions: number[] = []
+      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
+        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
+        if (coords.every(Number.isFinite)) positions.push(...to_scene(coords))
+      }
+      if (positions.length < 6) continue // < 2 points
+      inputs.push({
         series_idx,
-        positions: [],
-        color,
+        positions,
+        color: line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx),
         width: line_style.stroke_width ?? 2,
         dashed: Boolean(line_style.line_dash),
       })
     }
-    // processed_points are in (series_idx, point_idx) order, so one pass fills every polyline
-    for (const point of processed_points) {
-      inputs.get(point.series_idx)?.positions.push(point.x, point.y, point.z)
-    }
-    return [...inputs.values()].filter((input) => input.positions.length >= 6) // >= 2 points
+    return inputs
   })
 
   const same_line_input = (prev: SeriesLineData, next: SeriesLineInput): boolean =>
@@ -384,23 +451,19 @@
   let y_ticks = $derived(gen_ticks(y_range, y_axis.ticks))
   let z_ticks = $derived(gen_ticks(z_range, z_axis.ticks))
 
-  // Build event data for point interactions. The point carries scene coordinates, so the
-  // original data values are read straight from the series (null if the series shrank under a
-  // stale hovered point).
+  // Build event data for point interactions (the point is in data coordinates)
   function make_event_data(
     point: InternalPoint3D<Metadata>,
     event?: MouseEvent,
-  ): Scatter3DHandlerEvent<Metadata> | null {
-    const { series_idx, point_idx } = point
+  ): Scatter3DHandlerEvent<Metadata> {
+    const { series_idx, x: coord_x, y: coord_y, z: coord_z } = point
     const srs = series[series_idx]
-    if (!srs || point_idx >= srs.x.length) return null
-    const [coord_x, coord_y, coord_z] = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
     return {
       x: coord_x,
       y: coord_y,
       z: coord_z,
       metadata: point.metadata ?? null,
-      label: srs.label ?? null,
+      label: srs?.label ?? null,
       series_idx,
       x_axis,
       y_axis,
@@ -409,7 +472,7 @@
       y_formatted: format_num(coord_y, y_axis.format || `.3~g`),
       z_formatted: format_num(coord_z, z_axis.format || `.3~g`),
       color_value: point.color_value,
-      fullscreen: false,
+      fullscreen,
       event,
       point,
     }
@@ -417,14 +480,20 @@
 
   function handle_point_enter(point: InternalPoint3D<Metadata>) {
     hovered_point = point
-    const data = make_event_data(point)
-    if (data) on_point_hover?.(data)
+    on_point_hover?.(make_event_data(point))
   }
 
-  function handle_point_click(point: InternalPoint3D<Metadata>, event: MouseEvent) {
-    const data = make_event_data(point, event)
-    if (data) on_point_click?.(data)
+  function handle_point_click(point: InternalPoint3D<Metadata>, event?: MouseEvent) {
+    on_point_click?.(make_event_data(point, event))
   }
+
+  // Everything drawn from data (lines, surfaces, reference lines/planes) stays inside the box
+  const box_clip = box_clipping_planes(scene_x, scene_y, scene_z)
+  // The box's 12 edges, for display.show_bounding_box (the BoxGeometry never reaches the GPU)
+  const bounding_box_geometry = new THREE.EdgesGeometry(
+    new THREE.BoxGeometry(scene_x, scene_z, scene_y),
+  )
+  onDestroy(() => bounding_box_geometry.dispose())
 
   // User x/y/z map to scene x/z/y. Each axis supplies its orientation and label offsets;
   // spine, tick, and grid geometry follow the same construction in that local frame.
@@ -601,103 +670,78 @@
   {/each}
 {/if}
 
-<!-- Surfaces -->
-{#each surfaces.filter((srf) => srf.visible !== false) as surface (surface.id ?? surfaces.indexOf(surface))}
-  <Surface3D config={surface} {x_range} {y_range} {z_range} {scene_x} {scene_y} {scene_z} />
+{#if display.show_bounding_box}
+  <T.LineSegments>
+    <T is={bounding_box_geometry} dispose={false} />
+    <T.LineBasicMaterial color="#888" />
+  </T.LineSegments>
+{/if}
+
+<T is={THREE.ClippingGroup} clippingPlanes={box_clip}>
+  <!-- Surfaces -->
+  {#each surfaces.filter((srf) => srf.visible !== false) as surface (surface.id ?? surfaces.indexOf(surface))}
+    <Surface3D config={surface} {x_range} {y_range} {z_range} {scene_x} {scene_y} {scene_z} />
+  {/each}
+
+  <!-- Reference Planes -->
+  {#each (ref_planes ?? []).filter((plane) => plane.visible !== false) as ref_plane, plane_idx (ref_plane.id ?? plane_idx)}
+    <ReferencePlane
+      {ref_plane}
+      scene_size={[scene_x, scene_y, scene_z]}
+      ranges={{ x: x_range, y: y_range, z: z_range }}
+    />
+  {/each}
+
+  <!-- Reference Lines -->
+  {#each (ref_lines ?? []).filter((line) => line.visible !== false) as ref_line, line_idx (ref_line.id ?? line_idx)}
+    <ReferenceLine3D
+      {ref_line}
+      scene_size={[scene_x, scene_y, scene_z]}
+      ranges={{ x: x_range, y: y_range, z: z_range }}
+    />
+  {/each}
+
+  <!-- Series lines connecting points (fat lines using Line2) -->
+  {#each series_lines as line_data (line_data.series_idx)}
+    <T is={line_data.line2} />
+  {/each}
+</T>
+
+<!-- All points in one InstancedMesh, picked by instanceId -->
+<PointInstances
+  items={point_instances}
+  geometry={point_geometry}
+  material={point_material}
+  {...point_events}
+/>
+
+<!-- Plane Projections - render point shadows on enabled background planes -->
+{#each projection_layers as { key, items } (key)}
+  <PointInstances {items} geometry={projection_geometry} material={projection_material} />
 {/each}
-
-<!-- Reference Planes -->
-{#each (ref_planes ?? []).filter((plane) => plane.visible !== false) as ref_plane, plane_idx (ref_plane.id ?? plane_idx)}
-  <ReferencePlane
-    {ref_plane}
-    scene_size={[scene_x, scene_y, scene_z]}
-    ranges={{ x: x_range, y: y_range, z: z_range }}
-  />
-{/each}
-
-<!-- Reference Lines -->
-{#each (ref_lines ?? []).filter((line) => line.visible !== false) as ref_line, line_idx (ref_line.id ?? line_idx)}
-  <ReferenceLine3D
-    {ref_line}
-    scene_size={[scene_x, scene_y, scene_z]}
-    ranges={{ x: x_range, y: y_range, z: z_range }}
-  />
-{/each}
-
-<!-- Series lines connecting points (fat lines using Line2) -->
-{#each series_lines as line_data (line_data.series_idx)}
-  <T is={line_data.line2} />
-{/each}
-
-<!-- Threlte allocates instance buffers at mount; rebuild them when the point count changes. -->
-{#key point_instances.size}
-  <!-- Instanced scatter points with per-instance colors and event handling -->
-  {#if point_instances.size > 0}
-    <extras.InstancedMesh
-      limit={point_instances.size}
-      range={point_instances.size}
-      frustumCulled={false}
-    >
-      <T.SphereGeometry args={[1, sphere_segments, sphere_segments]} />
-      <T.MeshStandardMaterial vertexColors={false} />
-      {#each point_instances as [key, { point, radius, color }] (key)}
-        <extras.Instance
-          position={[point.x, point.y, point.z]}
-          scale={radius}
-          {color}
-          onpointerenter={() => handle_point_enter(point)}
-          onpointerleave={() => {
-            hovered_point = null
-            on_point_hover?.(null)
-          }}
-          onclick={(evt: MouseEvent) => handle_point_click(point, evt)}
-        />
-      {/each}
-    </extras.InstancedMesh>
-
-    <!-- Plane Projections - render point shadows on enabled background planes -->
-    {#each projection_configs as { key, get_pos } (key)}
-      <extras.InstancedMesh
-        limit={point_instances.size}
-        range={point_instances.size}
-        frustumCulled={false}
-      >
-        <T.SphereGeometry args={[1, 8, 8]} />
-        <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
-        {#each point_instances as [key, { point, radius, color }] (key)}
-          <extras.Instance position={get_pos(point)} scale={radius * proj_scale} {color} />
-        {/each}
-      </extras.InstancedMesh>
-    {/each}
-  {/if}
-{/key}
 
 <!-- Hover highlight -->
 {#if hovered_point}
   {@const hover_point = hovered_point}
-  {@const hover_geometry = hover_marker_geometry(
-    point_instances.get(point_key(hover_point))?.radius ?? 0.1,
-  )}
-  <T.Mesh
-    position={[hover_point.x, hover_point.y, hover_point.z]}
-    scale={hover_geometry.radius}
-  >
-    <T.SphereGeometry args={[1, 16, 16]} />
-    <T.MeshStandardMaterial
-      color="white"
-      transparent
-      opacity={0.4}
-      emissive="white"
-      emissiveIntensity={0.3}
-      depthTest={false}
-      depthWrite={false}
-    />
-  </T.Mesh>
+  {@const hover_instance = instance_by_key.get(point_key(hover_point))}
+  {#if hover_instance}
+    {@const hover_geometry = hover_marker_geometry(hover_instance.radius)}
+    <T.Mesh position={hover_instance.position} scale={hover_geometry.radius}>
+      <T.SphereGeometry args={[1, 16, 16]} />
+      <T.MeshStandardMaterial
+        color="white"
+        transparent
+        opacity={0.4}
+        emissive="white"
+        emissiveIntensity={0.3}
+        depthTest={false}
+        depthWrite={false}
+      />
+    </T.Mesh>
 
-  {@const data = make_event_data(hover_point)}
-  {#if data}
+    {@const data = make_event_data(hover_point)}
     <extras.HTML
-      position={[hover_point.x, hover_point.y, hover_point.z]}
+      position={hover_instance.position}
       calculatePosition={hover_geometry.tooltip_position}
       style="translate: -50% -100%; pointer-events: none"
       portal={tooltip_portal}

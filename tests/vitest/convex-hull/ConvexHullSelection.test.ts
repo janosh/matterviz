@@ -3,6 +3,7 @@ import * as thermo from '$lib/convex-hull/thermodynamics'
 import * as canvas_draw from '$lib/convex-hull/canvas-draw'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -306,6 +307,33 @@ describe(`convex hull replacement state`, () => {
     }
   })
 
+  // 60 entries > label_threshold (50): unset label toggles get the large-dataset default
+  // (hidden) and an unset threshold the auto value, but passed values are the caller's choice
+  test.each([
+    [`nothing passed`, {}, [false, false], false],
+    [`only threshold passed`, { max_hull_dist_show_phases: 0.01 }, [false, false], true],
+    [`only a label toggle passed`, { show_unstable_labels: true }, [true, true], false],
+  ] as const)(`large datasets: %s`, async (_label, passed, labels, keeps_threshold) => {
+    const entries = [
+      make_phase({ Li: 1 }, 0),
+      make_phase({ O: 1 }, 0),
+      make_phase({ Li: 1, O: 1 }, -1),
+      ...Array.from({ length: 57 }, (_, idx) => make_phase({ Li: idx + 1, O: 58 - idx }, 0)),
+    ]
+    const state: Record<string, unknown> = {
+      show_stable_labels: undefined,
+      show_unstable_labels: undefined,
+      max_hull_dist_show_phases: undefined,
+      ...passed,
+    }
+    await mount_hull(
+      bind_props({ entries }, state as Partial<ComponentProps<typeof ConvexHull>>),
+    )
+    flushSync()
+    expect([state.show_stable_labels, state.show_unstable_labels]).toEqual(labels)
+    expect(state.max_hull_dist_show_phases === 0.01).toBe(keeps_threshold)
+  })
+
   test.each([
     [`spin + oxidation`, { 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, [`Fe`, `O`]],
     [`fractional oxidation`, { 'Fe2.5+': 2, 'O2-': 5 }, [`Fe`, `O`]],
@@ -594,11 +622,15 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     [[`FM`], 4],
     [[`FM`, `AFM`], 3],
   ] as [string[], number][])(
-    `hidden=%s renders %i markers`,
+    `hidden=%s renders %i markers in color_scale colors`,
     async (hidden, expected_markers) => {
       const plot = await mount_sized(
         ConvexHull,
-        { entries: magnetic_entries, hidden_categories: hidden },
+        {
+          entries: magnetic_entries,
+          hidden_categories: hidden,
+          color_scale: `interpolateReds`,
+        },
         { selector: `.scatter`, on_mount: track_component },
       )
       const marker_paths = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
@@ -608,6 +640,13 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
         const distinct_shapes = new Set(marker_paths.map((path) => path.getAttribute(`d`)))
         expect(distinct_shapes.size).toBeGreaterThanOrEqual(3)
       }
+      // ScatterPoint paints var(--point-fill-color) set on its wrapper; the uncategorized
+      // furthest entry (0.1 eV/atom) tops the [0, 0.1] hull-distance domain: darkest red
+      const fills = [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)]
+      const colors = fills.map((fill) =>
+        fill.style.getPropertyValue(`--point-fill-color`).trim(),
+      )
+      expect(colors).toEqual(expect.arrayContaining([interpolateReds(0), interpolateReds(1)]))
     },
   )
 

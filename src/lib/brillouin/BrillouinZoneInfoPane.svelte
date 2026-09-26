@@ -26,10 +26,16 @@
   $effect(() => {
     sym_data = null
     if (!pane_open || !structure || !(`lattice` in structure)) return
-
+    // An analysis still running for the previous structure must not overwrite the current one
+    let stale = false
     analyze_structure_symmetry(structure, {})
-      .then((data) => (sym_data = data))
+      .then((data) => {
+        if (!stale) sym_data = data
+      })
       .catch(console.error)
+    return () => {
+      stale = true
+    }
   })
 
   // A zone without a structure (caller-supplied `bz_data` only) shows the zone and reciprocal

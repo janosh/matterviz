@@ -394,9 +394,14 @@ describe(`ConvexHullStats`, () => {
       expect(doc_query(`.filter-count`).textContent).toContain(`2 entries`)
     })
 
-    // Optional columns only render when some entry carries the field
+    // Optional columns only render when some entry carries the field. Cells render once: an
+    // absolute energy is not repeated in the E_form column (mislabelled as a formation energy)
     test.each([
-      { header: `raw`, entry: { energy_per_atom: -5.2 }, cell: `−5.2` },
+      {
+        header: `raw`,
+        entry: { energy_per_atom: -5.2, e_form_per_atom: undefined },
+        cell: `−5.2`,
+      },
       { header: `raw`, entry: { energy_per_atom: undefined }, cell: null },
       { header: `ID`, entry: { entry_id: `mp-1234` }, cell: `mp-1234` },
       { header: `ID`, entry: { entry_id: undefined }, cell: null },
@@ -405,7 +410,7 @@ describe(`ConvexHullStats`, () => {
       ({ header, entry, cell }) => {
         mount_table_with_single_entry({ reduced_formula: `LiFeO2`, ...entry })
         expect(get_headers().some((text) => text?.includes(header))).toBe(cell !== null)
-        if (cell) expect(document.body.textContent).toContain(cell)
+        if (cell) expect(doc_query(`tbody`).textContent?.split(cell)).toHaveLength(2)
       },
     )
 
@@ -472,14 +477,12 @@ describe(`ConvexHullStats`, () => {
   })
 
   describe(`min N_el filter`, () => {
+    const binary = mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` })
+
     test(`dropdown visible for ternary+ systems, hidden for binary-only`, () => {
       const ternary = mock_entry({
         composition: { Li: 1, Fe: 1, O: 2 },
         reduced_formula: `LiFeO2`,
-      })
-      const binary = mock_entry({
-        composition: { Fe: 1, O: 1 },
-        reduced_formula: `FeO`,
       })
 
       mount_stats_table({ stable_entries: [ternary, binary] })
@@ -494,6 +497,14 @@ describe(`ConvexHullStats`, () => {
         document.querySelector(`.table-container .dropdown-wrapper .icon-btn`),
       ).toBeInstanceOf(HTMLElement)
     })
+
+    // Math.max(1, ...arities) threw RangeError past ~125k entries
+    test(`dropdown options span the max arity of 200k entries without a spread overflow`, () => {
+      const binaries = Array.from({ length: 200_000 }, () => binary)
+      mount_stats_table({ stable_entries: [...binaries, mock_entry()] })
+      const options = get_table_filter_select(`Min N`)?.options ?? []
+      expect(Array.from(options, (opt) => opt.value)).toEqual([`1`, `2`, `3`, `4`])
+    }, 15_000)
   })
 
   describe(`table export`, () => {

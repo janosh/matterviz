@@ -9,6 +9,7 @@ import {
 } from '$lib/isosurface/geometry'
 import { create_volume_sampler, prepare_geometry_grid } from '$lib/isosurface/sampling'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '$lib/isosurface/types'
+import { cross_3d, dot, subtract, type Vec3 } from '$lib/math'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { install_stub_worker } from '../setup'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
@@ -114,6 +115,22 @@ describe(`compute_isosurface_geometries`, () => {
     const [out_nx, out_ny, out_nz] = grid.dims
     for (const idx of [0, 1, out_nx >> 1, out_nx - 1]) {
       expect(grid.values[idx * out_ny * out_nz]).toBeCloseTo(idx / (out_nx - 1), 12)
+    }
+  })
+
+  // Otherwise the transparent back-then-front pass draws negative lobes inside-out
+  test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
+    const blob = blob_volume()
+    const volume = { ...blob, values: blob.values.map((val) => sign * val) }
+    const surfaces = [{ token: `s`, isovalue: sign * 0.5 }]
+    const input = { volumes: [{ ...blob_input(volume).volumes[0], range: null, surfaces }] }
+    const [{ positions, indices }] = compute_isosurface_geometries(input).volumes[0].surfaces
+    const vertex = (idx: number) => [...positions.subarray(3 * idx, 3 * idx + 3)] as Vec3
+    expect(indices.length).toBeGreaterThan(300)
+    for (let tri = 0; tri < indices.length; tri += 3) {
+      const [vert_a, vert_b, vert_c] = [0, 1, 2].map((corner) => vertex(indices[tri + corner]))
+      const normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
+      expect(dot(normal, subtract(vert_a, [5, 5, 5]))).toBeGreaterThan(0) // blob centre (Å)
     }
   })
 

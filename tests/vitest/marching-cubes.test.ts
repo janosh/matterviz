@@ -457,52 +457,63 @@ describe(`marching_cubes`, () => {
   })
 
   // Analytic sphere: value = distance from the grid center, iso = radius in grid units.
-  test(`analytic sphere: closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`, () => {
-    const size = 40
-    const center = (size - 1) / 2
-    const radius_idx = 14
-    const grid = make_grid(size, size, size, (idx_x, idx_y, idx_z) =>
-      Math.hypot(idx_x - center, idx_y - center, idx_z - center),
-    )
-    const lattice = cubic_matrix(10)
-    const spacing = 10 / (size - 1)
-    const radius = radius_idx * spacing
-    const { vertices, faces, normals } = marching_cubes(
-      grid,
-      radius_idx,
-      lattice,
-      NON_PERIODIC,
-    )
-
-    // Closed genus-0 triangle mesh: V - E + F = 2 with E = 3F/2, so F = 2V - 4
-    expect(vertices.length).toBeGreaterThan(1000)
-    expect(faces).toHaveLength(2 * vertices.length - 4)
-
-    let area = 0
-    let max_normal_error_deg = 0
-    for (const [idx_0, idx_1, idx_2] of faces) {
-      const [vert_a, vert_b, vert_c] = [vertices[idx_0], vertices[idx_1], vertices[idx_2]]
-      const face_normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
-      area += 0.5 * Math.hypot(...face_normal)
-      // Front face (CCW winding) must agree with the gradient normals at its corners
-      const corner_normal_sum = add(normals[idx_0], normals[idx_1], normals[idx_2])
-      expect(dot(face_normal, corner_normal_sum)).toBeGreaterThan(0)
-    }
-    expect(area / (4 * Math.PI * radius ** 2)).toBeCloseTo(1, 2)
-
-    // Values grow outward, so normals point inward (toward decreasing values), radially
-    const sphere_center = center * spacing
-    for (let idx = 0; idx < vertices.length; idx++) {
-      const radial = vertices[idx].map((coord) => coord - sphere_center) as Vec3
-      const cos_angle = -dot(radial, normals[idx]) / Math.hypot(...radial)
-      max_normal_error_deg = Math.max(
-        max_normal_error_deg,
-        (Math.acos(Math.min(1, cos_angle)) * 180) / Math.PI,
+  // Values grow outward, so front faces (CCW) and normals point inward, also on a left-handed
+  // lattice (which mirrors the winding)
+  const left_handed: Matrix3x3 = [
+    [0, 10, 0],
+    [10, 0, 0],
+    [0, 0, 10],
+  ]
+  test.each([
+    [`right`, cubic_matrix(10)],
+    [`left`, left_handed],
+  ] as const)(
+    `analytic sphere (%s-handed): closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`,
+    (_hand, lattice) => {
+      const size = 40
+      const center = (size - 1) / 2
+      const radius_idx = 14
+      const grid = make_grid(size, size, size, (idx_x, idx_y, idx_z) =>
+        Math.hypot(idx_x - center, idx_y - center, idx_z - center),
       )
-    }
-    // Edge-interpolated gradients: measured 0.03°; lower-endpoint-only gradients gave 2.6°
-    expect(max_normal_error_deg).toBeLessThan(0.1)
-  })
+      const spacing = 10 / (size - 1)
+      const radius = radius_idx * spacing
+      const { vertices, faces, normals } = marching_cubes(
+        grid,
+        radius_idx,
+        lattice,
+        NON_PERIODIC,
+      )
+
+      // Closed genus-0 triangle mesh: V - E + F = 2 with E = 3F/2, so F = 2V - 4
+      expect(vertices.length).toBeGreaterThan(1000)
+      expect(faces).toHaveLength(2 * vertices.length - 4)
+
+      let area = 0
+      let max_normal_error_deg = 0
+      for (const [idx_0, idx_1, idx_2] of faces) {
+        const [vert_a, vert_b, vert_c] = [vertices[idx_0], vertices[idx_1], vertices[idx_2]]
+        const face_normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
+        area += 0.5 * Math.hypot(...face_normal)
+        // Front face (CCW winding) must agree with the gradient normals at its corners
+        const corner_normal_sum = add(normals[idx_0], normals[idx_1], normals[idx_2])
+        expect(dot(face_normal, corner_normal_sum)).toBeGreaterThan(0)
+      }
+      expect(area / (4 * Math.PI * radius ** 2)).toBeCloseTo(1, 2)
+
+      const sphere_center = center * spacing
+      for (let idx = 0; idx < vertices.length; idx++) {
+        const radial = vertices[idx].map((coord) => coord - sphere_center) as Vec3
+        const cos_angle = -dot(radial, normals[idx]) / Math.hypot(...radial)
+        max_normal_error_deg = Math.max(
+          max_normal_error_deg,
+          (Math.acos(Math.min(1, cos_angle)) * 180) / Math.PI,
+        )
+      }
+      // Edge-interpolated gradients: measured 0.03°; lower-endpoint-only gradients gave 2.6°
+      expect(max_normal_error_deg).toBeLessThan(0.1)
+    },
+  )
 })
 
 describe(`compute_vertex_normals`, () => {

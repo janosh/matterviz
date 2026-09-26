@@ -743,7 +743,7 @@
                   clip-path="url(#{frame.clip_path_id})"
                 />
               {/if}
-              {#if polyline_str && points_in_view.length > 0 && !show_points && (on_point_hover || on_point_click)}
+              {#if polyline_str && points_in_view.length > 0 && !show_points && (on_point_hover || on_point_click || tooltip)}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <polyline

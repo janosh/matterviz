@@ -118,7 +118,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   fullscreen_toggle?: boolean // show/hide the fullscreen button
   enable_info_pane?: boolean
   wrapper?: HTMLDivElement
-  // Datasets with more entries than this start with labels hidden
+  // Datasets larger than this start with labels hidden, unless label toggles are passed
   label_threshold?: number
   // Visibility
   show_stable?: boolean

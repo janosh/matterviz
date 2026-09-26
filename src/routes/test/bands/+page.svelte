@@ -118,19 +118,20 @@
     scale: 1.0,
   }
 
-  // Simple electronic band structure with spin-up and spin-down channels
+  // Semiconducting electronic band structure with spin-up and spin-down channels
+  // (no band crosses E_F = 0, so the gap annotation renders)
   const electronic_bands_spin: BaseBandStructure = {
     ...mock_band_structure,
     bands: [
-      [-1.2, -0.8, -0.3, 0.2],
-      [-0.7, -0.2, 0.3, 0.8],
-      [0.2, 0.8, 1.4, 2.0],
+      [-1.2, -0.8, -0.5, -0.3],
+      [-0.9, -0.6, -0.4, -0.2],
+      [0.4, 0.8, 1.4, 2.0],
       [1.1, 1.7, 2.3, 2.9],
     ],
     spin_down_bands: [
-      [-1.0, -0.6, -0.1, 0.4],
-      [-0.5, 0.0, 0.5, 1.0],
-      [0.4, 1.0, 1.6, 2.2],
+      [-1.0, -0.7, -0.4, -0.1],
+      [-0.8, -0.5, -0.3, -0.15],
+      [0.6, 1.0, 1.6, 2.2],
       [1.3, 1.9, 2.5, 3.1],
     ],
   }

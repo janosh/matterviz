@@ -91,6 +91,7 @@
     compute_fill_segments,
     convert_error_band_to_fill_region,
     generate_fill_path,
+    resolve_fill_binding,
   } from '$lib/plot/core/fill-utils'
   import {
     get_relative_coords,
@@ -263,7 +264,8 @@
       marginals?: MarginalsProp
       facet_layout?: FacetLayoutContext
       // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
-      // Canvas keeps labelled, hovered, and selected points in an SVG overlay.
+      // Canvas keeps labelled, hovered, and selected points in an SVG overlay, and routes
+      // clicks to the nearest point; point_events other than onclick force SVG markers.
       marker_renderer?: `auto` | `svg` | `canvas`
       // Half-width of the T caps on error bars, in px (0 draws bare lines)
       error_bar_cap?: number
@@ -848,14 +850,15 @@
     return safe
   }
   // Canvas markers for every plain point, or null when markers must be SVG: canvas not
-  // requested, no points shown, DOM point handlers needed, or a paint value canvas can't
-  // parse. One pass decides the mode and builds the markers.
+  // requested, no points shown, per-point DOM handlers other than clicks needed, or a paint
+  // value canvas can't parse. One pass decides the mode and builds the markers.
   const canvas_markers = $derived.by((): CanvasMarker[] | null => {
     const canvas_requested =
       marker_renderer === `canvas` ||
       (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
-    const needs_svg_events =
-      on_point_click || (point_events && Object.values(point_events).some(Boolean))
+    const needs_svg_events = Object.entries(point_events ?? {}).some(
+      ([name, handler]) => name !== `onclick` && Boolean(handler),
+    )
     if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
@@ -964,29 +967,32 @@
       ),
     ]
 
-    // On log axes, clamp non-positive coords to the scale's domain floor (x_min/y_min) before
-    // scaling. A fixed tiny epsilon can sit far below the domain and map to extreme pixel coords.
-    const x_scale_type = final_x_axis.scale_type ?? `linear`
-    const y_scale_type = final_y_axis.scale_type ?? `linear`
-    const to_px = (pt: Pt): Pt => ({
-      x: x_scale_fn(x_scale_type === `log` && pt.x <= 0 ? x_min : pt.x),
-      y: y_scale_fn(y_scale_type === `log` && pt.y <= 0 ? y_min : pt.y),
-    })
-
-    // Each boundary is traced through its own points with the same curve the series line uses,
-    // so fill edges coincide exactly with the lines they border (x_domain anchors flat boundaries).
-    const domains = {
-      x_domain: [x_min, x_max] as Vec2,
-      y_domain: [y_min, y_max] as Vec2,
-      y2_domain: [y2_min, y2_max] as Vec2,
+    const axis_scales = {
+      x: { scale: x_scale_fn, config: final_x_axis, domain: [x_min, x_max] as Vec2 },
+      x2: { scale: x2_scale_fn, config: final_x2_axis, domain: [x2_min, x2_max] as Vec2 },
+      y: { scale: y_scale_fn, config: final_y_axis, domain: [y_min, y_max] as Vec2 },
+      y2: { scale: y2_scale_fn, config: final_y2_axis, domain: [y2_min, y2_max] as Vec2 },
     }
 
     return all_regions
       .filter((entry): entry is TaggedRegion & { region: FillRegion } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
+        // A region draws against its (series-implied) axes, and hides with its series
+        const { series_hidden, ...axes } = resolve_fill_binding(region, assigned_series)
+        const [x_ax, y_ax] = [axis_scales[axes.x_axis], axis_scales[axes.y_axis]]
+        // On log axes, non-positive coords are held at the domain floor before scaling
+        const x_px = log_floor_scale(x_ax.scale, x_ax.config.scale_type, x_ax.domain)
+        const y_px = log_floor_scale(y_ax.scale, y_ax.config.scale_type, y_ax.domain)
+        const to_px = (pt: Pt): Pt => ({ x: x_px(pt.x), y: y_px(pt.y) })
+        // x_domain anchors flat boundaries
+        const domains = {
+          x_domain: x_ax.domain,
+          y_domain: y_ax.domain,
+          y2_domain: axis_scales.y2.domain,
+        }
         // Hidden fills keep their entry (with empty path_segments -> nothing renders) so the
         // legend item persists greyed-out and can be toggled back on.
-        const hidden = region.visible === false
+        const hidden = region.visible === false || series_hidden
         const path_segments = hidden
           ? []
           : compute_fill_segments(region, assigned_series, domains)
@@ -1003,9 +1009,18 @@
         // Drop only visible fills with no geometry; keep hidden ones for the legend
         if (!hidden && path_segments.length === 0) return null
 
-        return { ...region, idx, source_type, source_idx, hover_key, path_segments }
+        return {
+          ...region,
+          ...(hidden && { visible: false }),
+          ...axes,
+          idx,
+          source_type,
+          source_idx,
+          hover_key,
+          path_segments,
+        }
       })
-      .filter((fill): fill is ComputedFill => fill !== null)
+      .filter((fill) => fill !== null)
   })
 
   let legend_data = $derived(
@@ -1144,7 +1159,9 @@
 
     const hit = closest_hit_at(x_rel, y_rel)
     const closest_point = hit?.point ?? null
-    plot_click_armed = Boolean(on_plot_click && plot_click_target(hit))
+    plot_click_armed = Boolean(
+      (on_plot_click || canvas_points_clickable) && plot_click_target(hit),
+    )
 
     if (!closest_point) {
       tooltip_point = null
@@ -1180,9 +1197,11 @@
     })
   }
 
+  // Canvas markers have no DOM node to click, so a plot-surface click activates the nearest
+  // point within the click radius instead of reaching on_plot_click
   function handle_plot_click(evt: MouseEvent) {
     if (
-      !on_plot_click ||
+      !(on_plot_click || canvas_points_clickable) ||
       pan_zoom.is_panning ||
       pan_zoom.drag_start ||
       pan_zoom.suppress_click
@@ -1192,8 +1211,10 @@
     const coords = get_relative_coords(evt)
     if (!coords) return
     const point = plot_click_target(closest_hit_at(coords.x, coords.y))
-    const props = point && construct_handler_props(point)
-    if (point && props) on_plot_click({ ...props, event: evt, point })
+    if (!point) return
+    if (canvas_points_clickable) return activate_point(point, evt)
+    const props = on_plot_click && construct_handler_props(point)
+    if (props) on_plot_click?.({ ...props, event: evt, point })
   }
 
   function end_queued_mouse_move(apply_pending: boolean) {
@@ -1277,6 +1298,7 @@
     const hovered_series = assigned_series[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
+    const finite_color_value = Number.isFinite(color_value) ? (color_value ?? null) : null
     const [cx, cy] = series_projector(hovered_series).point(point)
     const active_x_config = hovered_series.x_axis === `x2` ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
@@ -1296,9 +1318,9 @@
       x_formatted: format_value_or_num(x, active_x_config.format),
       y_formatted: format_value_or_num(y, active_y_config.format),
       raw_y: hovered_series.raw_y?.[point.point_idx],
-      color_value: color_value ?? null,
+      color_value: finite_color_value, // NaN/null draw in the series color
       color_bar: {
-        value: color_value ?? null,
+        value: finite_color_value,
         title: color_bar?.title ?? null,
         scale: color_scale,
         tick_format: color_bar?.tick_format ?? null,
@@ -1333,6 +1355,7 @@
       : [],
   )
   let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
+  const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
   // Set, not a scan per point: a rect drag can select thousands, and the membership test
   // runs once per rendered marker on every frame
@@ -1385,7 +1408,20 @@
   // navigable to a picture. Arrow keys therefore drive a cursor through the data
   // itself; the point it lands on becomes the hovered one, which the SVG overlay
   // draws back on top of the canvas (so it is focusable and shows a tooltip again).
-  let kbd_cursor = $state<number | null>(null)
+  // Named by identity, so a pan/zoom or data change never retargets it to another point
+  let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
+
+  // Index of `point_idx` in a list ascending in point_idx, or -1 when absent
+  const index_of_point = (points: readonly InternalPoint<Metadata>[], point_idx: number) => {
+    const idx = partition_point(points, (pt) => pt.point_idx < point_idx)
+    return points[idx]?.point_idx === point_idx ? idx : -1
+  }
+  // The currently plotted point with the same (series_idx, point_idx), else null
+  const plotted_point = ({ series_idx, point_idx }: InternalPoint<Metadata>) => {
+    const points =
+      materialized_series.find((srs) => srs.orig_series_idx === series_idx)?.points ?? []
+    return points[index_of_point(points, point_idx)] ?? null
+  }
 
   // Per-series point lists plus the offsets that flatten them into one index space.
   // Only the offsets are materialised - flattening 100k points on every keystroke
@@ -1411,22 +1447,45 @@
     return null
   }
 
+  // The cursor's point and its flat index among the in-range points, or null (inactive) while
+  // that point is out of view or no longer plotted
+  let kbd_cursor_at = $derived.by(() => {
+    if (!kbd_cursor) return null
+    const { series_idx, point_idx } = kbd_cursor
+    const series_pos = filtered_series.findIndex((srs) => srs.orig_series_idx === series_idx)
+    const list = kbd_nav.lists[series_pos] ?? []
+    const list_idx = index_of_point(list, point_idx)
+    if (list_idx < 0) return null
+    return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
+  })
+
+  // A data swap or host-hidden series fires no pointer event, so re-resolve the hovered point
+  // on every data change (tracking its new values, or closing once it is gone)
+  $effect.pre(() => {
+    void materialized_series
+    untrack(() => {
+      if (!tooltip_point) return
+      const next = plotted_point(tooltip_point)
+      if (next !== tooltip_point) tooltip_point = next
+    })
+  })
+
   function move_kbd_cursor(event: KeyboardEvent): boolean {
     const { total } = kbd_nav
     if (total === 0) return false
     const forward = event.key === `ArrowRight` || event.key === `ArrowDown`
     const backward = event.key === `ArrowLeft` || event.key === `ArrowUp`
+    const current = kbd_cursor_at?.nav_idx
     let next: number
     if (event.key === `Home`) next = 0
     else if (event.key === `End`) next = total - 1
     else if (forward || backward) {
       const step = forward ? 1 : -1
-      next =
-        kbd_cursor == null ? (forward ? 0 : total - 1) : (kbd_cursor + step + total) % total
+      next = current == null ? (forward ? 0 : total - 1) : (current + step + total) % total
     } else return false
     event.preventDefault()
-    kbd_cursor = next
     const point = kbd_point(next)
+    kbd_cursor = point && { series_idx: point.series_idx, point_idx: point.point_idx }
     if (!point) return true
     hovered = true
     tooltip_point = point
@@ -1442,10 +1501,9 @@
       hovered = false
       return true
     }
-    const cursor_point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
-    if (cursor_point && points_interactive && is_activation_key(event)) {
+    if (kbd_cursor_at && points_interactive && is_activation_key(event)) {
       event.preventDefault()
-      activate_point(cursor_point, new MouseEvent(`click`))
+      activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
       return true
     }
     return move_kbd_cursor(event)
@@ -1454,19 +1512,18 @@
   // Reads the cursor's own point, not the hovered one: `tooltip_point` also tracks the
   // mouse, so announcing that would re-announce every point the pointer swept over once
   // the cursor had been used at all.
-  let live_message = $derived.by(() => {
-    const point = kbd_cursor == null ? null : kbd_point(kbd_cursor)
-    return point ? point_accessible_label(point) : ``
-  })
+  let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
   // One tab stop for the whole point cloud instead of one per point: a 10k-point
   // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
+  // Only interactive points carry roving keys, so a plain plot needs no roving group. The
+  // hover overlay list only decides which marks exist in canvas mode.
   const roving = create_roving_focus({
-    container: () => frame.svg_element,
+    container: () => (points_interactive ? frame.svg_element : null),
     items: () => [
       filtered_series,
       use_canvas_markers,
-      svg_overlay_points_by_series,
+      use_canvas_markers ? svg_overlay_points_by_series : null,
       frame.ranges.current,
     ],
   })
@@ -1503,8 +1560,8 @@
         defs_id="{clip_path_id}-fill-{fill.idx}"
         path={path_d}
         {clip_path_id}
-        {x_scale_fn}
-        {y_scale_fn}
+        x_scale_fn={fill.x_axis === `x2` ? x2_scale_fn : x_scale_fn}
+        y_scale_fn={fill.y_axis === `y2` ? y2_scale_fn : y_scale_fn}
         tween_options={effective_line_tween}
         is_hovered={hovered_fill_key === fill.hover_key}
         on_click={on_fill_click}
@@ -1679,9 +1736,9 @@
       ></foreignObject>
     {/if}
 
-    <!-- Canvas mode retains only labelled/hovered/selected points here. Point centers are
-         range-filtered, but marker geometry may extend beyond the plot edge: keep complete
-         icons visible, only lines and area geometry are clipped. -->
+    <!-- Canvas mode retains only labelled/hovered/selected points here, drawn in full over
+         their canvas marker. Point centers are range-filtered, but marker geometry may extend
+         beyond the plot edge: keep complete icons visible, only lines and area are clipped. -->
     {#if show_points}
       {#each filtered_series as series_data, series_pos (series_data._id)}
         {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`points`)}
@@ -1709,8 +1766,6 @@
                 is_selected={same_logical_point(point, selected_point) ||
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
-                overlay_only={use_canvas_markers &&
-                  !needs_static_svg_overlay(point, selected_point, selected_keys)}
                 style={{
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,

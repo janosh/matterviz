@@ -17,7 +17,7 @@
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { build_diagram } from './build-diagram'
+  import { build_diagram, find_duplicate_id } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
@@ -135,6 +135,7 @@
   // 'liquid'), so two diagrams on one page would otherwise cross-reference each
   // other's gradients (first-in-document wins, with that instance's pixel coords)
   const gradient_uid = unique_id(`pd-gradient`)
+  const plot_clip = `url(#${gradient_uid}-plot-area)`
 
   // A diagram_input that fails to build is surfaced as an error banner rather than silently
   // falling back to the data prop.
@@ -146,11 +147,19 @@
       return { data: null, error: `Invalid phase diagram input: ${to_error(error).message}` }
     }
   })
+  // The data prop gets build_diagram's id check unless a built diagram_input replaces it
+  const duplicate_id = $derived(
+    rebuilt.data || !data_prop ? null : find_duplicate_id(data_prop),
+  )
   let drop_error = $state<string | null>(null)
-  const input_error = $derived(drop_error ?? rebuilt.error)
+  const input_error = $derived(
+    drop_error ??
+      rebuilt.error ??
+      (duplicate_id && `Invalid phase diagram data: ${duplicate_id}`),
+  )
 
   // Direct editor edits can override this value until either source changes.
-  let source_data = $derived(rebuilt.data ?? data_prop)
+  let source_data = $derived(rebuilt.data ?? (duplicate_id ? undefined : data_prop))
   const effective_data = $derived(source_data ?? missing_data_placeholder)
 
   // Handle SVG file drop directly on the component. The shared handler reads the file,
@@ -194,17 +203,25 @@
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
   const temp_range = $derived(effective_data.temperature_range)
 
+  // Visible temperature window in display units: each set y_axis.range end overrides the
+  // data's temperature_range
+  const y_domain_display = $derived(
+    temp_range.map(
+      (temp, idx) => y_axis.range?.[idx] ?? convert_temp(temp, data_temp_unit, temp_unit),
+    ),
+  )
+
   // y_scale maps data temperatures to SVG coordinates
   // We keep this in data units so region vertices render correctly
-  const y_scale = $derived(scaleLinear().domain(temp_range).range([bottom, top]))
+  const y_scale = $derived(
+    scaleLinear()
+      .domain(y_domain_display.map((temp) => convert_temp(temp, temp_unit, data_temp_unit)))
+      .range([bottom, top]),
+  )
 
   // y_scale_display maps display temperatures (after unit conversion) to SVG
   // Used for axis labels and ticks
-  const y_scale_display = $derived(
-    scaleLinear()
-      .domain(temp_range.map((temp) => convert_temp(temp, data_temp_unit, temp_unit)))
-      .range([bottom, top]),
-  )
+  const y_scale_display = $derived(scaleLinear().domain(y_domain_display).range([bottom, top]))
 
   const tick_count = (axis: AxisConfig, fallback: number): number =>
     typeof axis.ticks === `number` ? axis.ticks : fallback
@@ -247,12 +264,21 @@
     })),
   )
 
+  // Points outside a zoomed x/y window would sit on the axes or margins
   const transformed_special_points = $derived(
-    (effective_data.special_points ?? []).map((point) => ({
-      ...point,
-      svg_x: x_scale(point.position[0]),
-      svg_y: y_scale(point.position[1]),
-    })),
+    (effective_data.special_points ?? [])
+      .map((point) => ({
+        ...point,
+        svg_x: x_scale(point.position[0]),
+        svg_y: y_scale(point.position[1]),
+      }))
+      .filter(
+        ({ svg_x, svg_y }) =>
+          svg_x >= left - 0.5 &&
+          svg_x <= right + 0.5 &&
+          svg_y >= top - 0.5 &&
+          svg_y <= bottom + 0.5,
+      ),
   )
 
   let hover_info = $state<PhaseHoverInfo | null>(null)
@@ -517,6 +543,10 @@
     >
       <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>
+        <!-- zoomed axes (x_axis/y_axis.range) must not paint data over the axes and margins -->
+        <clipPath id="{gradient_uid}-plot-area">
+          <rect x={left} y={top} width={plot_width} height={plot_height} />
+        </clipPath>
         {#each transformed_regions as region (region.id)}
           {#if region.gradient}
             <linearGradient
@@ -554,7 +584,7 @@
         </g>
       {/if}
 
-      <g class="phase-regions">
+      <g class="phase-regions" clip-path={plot_clip}>
         {#each transformed_regions as region (region.id)}
           <path
             d={region.svg_path}
@@ -568,7 +598,7 @@
       </g>
 
       {#if show_boundaries}
-        <g class="boundaries">
+        <g class="boundaries" clip-path={plot_clip}>
           {#each transformed_boundaries as boundary (boundary.id)}
             <path
               d={boundary.svg_path}
@@ -584,7 +614,7 @@
       {/if}
 
       {#if show_labels}
-        <g class="region-labels" style="pointer-events: none">
+        <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
           {#each transformed_regions as region (region.id)}
             {@const line_height = merged_config.font_size * 1.2}
             <g
@@ -617,7 +647,7 @@
           endpoints: [start, end],
         } = tie_line}
         {@const top_left = merged_config.tie_line}
-        <g class="tie-line" class:locked={locked_hover_info}>
+        <g class="tie-line" class:locked={locked_hover_info} clip-path={plot_clip}>
           {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
             <line
               x1={start.cx}

@@ -13,6 +13,7 @@ import { DEFAULT_FIT_PADDING } from '$lib/structure/camera-fit'
 import {
   bz_fit_extent,
   cartesian_to_fractional,
+  bz_mark_sizes,
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
@@ -682,6 +683,7 @@ describe(`compute_irreducible_bz`, () => {
   test(`generated point groups have the right order`, () => {
     expect(group_closure(oh_ops)).toHaveLength(48)
     expect(D6H_OPS).toHaveLength(24)
+    expect(group_closure(td_ops)).toHaveLength(24)
     // fcc Oh ops are integer in the primitive basis and still form a 48-element group
     for (const w_frac of fcc_oh_frac) {
       for (const val of w_frac.flat())
@@ -704,24 +706,26 @@ describe(`compute_irreducible_bz`, () => {
 
   // The Dirichlet wedge is an exact fundamental domain: V_IBZ = V_BZ/|G|. 1e-8 relative leaves
   // room for the clip-then-rehull rounding while catching a single dropped plane (factor 2).
+  // Time reversal (the default) makes E(k) = E(−k), so the k-space group is the Laue group:
+  // P1 halves the zone and the 24-op non-centrosymmetric Td reduces it 48-fold like Oh
+  // Td: the Oh signed permutations with an even number of −1 entries (det · parity = +1)
+  const td_ops = oh_ops.filter((rot) => rot.flat().filter((val) => val < 0).length % 2 === 0)
   test.each([
-    [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops],
-    [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops],
-    [`hexagonal D6h`, 24, REAL_LATTICES.hexagonal, D6H_OPS],
-  ] as [string, number, Matrix3x3, Matrix3x3[]][])(
+    [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops, true],
+    [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops, true],
+    [`hexagonal D6h`, 24, REAL_LATTICES.hexagonal, D6H_OPS, true],
+    [`cubic Td`, 48, REAL_LATTICES.cubic, td_ops, true],
+    [`cubic Td without time reversal`, 24, REAL_LATTICES.cubic, td_ops, false],
+    [`P1`, 2, REAL_LATTICES.cubic, [IDENTITY_MAT], true],
+    [`P1 without time reversal`, 1, REAL_LATTICES.cubic, [IDENTITY_MAT], false],
+  ] as [string, number, Matrix3x3, Matrix3x3[], boolean][])(
     `%s: IBZ volume = BZ volume / %i`,
-    (_label, order, real, ops) => {
+    (_label, order, real, ops, time_reversal) => {
       const full_bz = compute_brillouin_zone(recip_2pi(real), 1)
-      const ibz = compute_irreducible_bz(full_bz, ops)
+      const ibz = compute_irreducible_bz(full_bz, ops, { time_reversal })
       expect(Math.abs(ibz.volume * order - full_bz.volume)).toBeLessThan(1e-8 * full_bz.volume)
     },
   )
-
-  test(`P1 (identity only) → full BZ`, () => {
-    const ibz = compute_irreducible_bz(basis_z, [IDENTITY_MAT])
-    expect(ibz.vertices).toHaveLength(basis_z.vertices.length)
-    expect(ibz.volume).toBeCloseTo(basis_z.volume, 6)
-  })
 
   test.each([
     {
@@ -744,7 +748,7 @@ describe(`compute_irreducible_bz`, () => {
       digits: 6,
     },
   ])(`$label → volume ratio $ratio`, ({ ops, ratio, digits, check_faces }) => {
-    const ibz = compute_irreducible_bz(basis_z, ops)
+    const ibz = compute_irreducible_bz(basis_z, ops, { time_reversal: false })
     expect(ibz.volume / basis_z.volume).toBeCloseTo(ratio, digits)
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
     if (check_faces) {
@@ -774,7 +778,9 @@ describe(`compute_irreducible_bz`, () => {
       reference_data.hexagonal.reciprocal_lattice as Matrix3x3,
       1,
     )
-    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ])
+    const ibz = compute_irreducible_bz(hex_bz, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ], {
+      time_reversal: false,
+    })
     expect(ibz.volume / hex_bz.volume).toBeCloseTo(1 / 3, 6)
   })
 })
@@ -926,6 +932,15 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
     expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
+  })
+
+  test(`bz_mark_sizes scale with the zone`, () => {
+    const [si, supercell] = [2, 0.0628].map((size) =>
+      Object.values(bz_mark_sizes(size, 0.002)),
+    )
+    expect(si).toHaveLength(4)
+    for (const [idx, size] of si.entries())
+      expect(size / supercell[idx]).toBeCloseTo(2 / 0.0628, 9)
   })
 
   test(`k_space_size is the mean k-vector magnitude, 10 when missing`, () => {

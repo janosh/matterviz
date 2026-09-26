@@ -18,13 +18,7 @@
 // tens of f64 eps), in 14 ms against 315 ms. The cost scales as n log n instead of n^2 in
 // the frame count, and no longer needs an origin-thinning budget: 2000 atoms x 2000 frames
 // run in 0.27 s.
-import {
-  correlation_window,
-  cosine_spectrum_length,
-  even_cosine_spectrum,
-  fft_in_place,
-  next_power_of_two,
-} from '$lib/fft'
+import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '$lib/fft'
 import {
   frequency_unit_label,
   md_frequency_factor,
@@ -34,6 +28,7 @@ import {
 } from '$lib/spectral/frequency-units'
 import {
   analysis_fail,
+  autocorrelation_sums,
   curve_slots,
   group_atoms_by_element,
   lag_axis_label,
@@ -92,77 +87,6 @@ export function central_difference_velocities(
     }
   }
   return velocities
-}
-
-// Per-group sums over atoms and time origins of v(t) . v(t + lag), for lags 0..max_lag.
-// Slot `group_sizes.length` is the all-atom total. One forward FFT per PAIR of velocity
-// components accumulates their |V(f)|^2 into the group's power spectrum; one inverse FFT per
-// group then yields the autocorrelation sums. Forward and inverse coincide up to 1/n_fft here
-// because a power spectrum is real and even.
-export function autocorrelation_sums(
-  velocities: Float64Array,
-  n_frames: number,
-  n_atoms: number,
-  atom_group: Int32Array,
-  n_groups: number,
-  max_lag: number,
-): Float64Array[] {
-  // >= 2 n_frames so the circular correlation of the padded series equals the linear one
-  // for every lag below n_frames
-  const n_fft = next_power_of_two(2 * n_frames)
-  const real = new Float64Array(n_fft)
-  const imaginary = new Float64Array(n_fft)
-  const power = Array.from({ length: n_groups }, () => new Float64Array(n_fft))
-  const frame_size = n_atoms * 3
-  // Component offsets within a frame, bucketed by group, so two components of the same
-  // group can share one complex transform
-  const group_components = Array.from({ length: n_groups }, (): number[] => [])
-  for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-    for (let axis = 0; axis < 3; axis++) {
-      group_components[atom_group[atom_idx]].push(atom_idx * 3 + axis)
-    }
-  }
-  for (const [group, components] of group_components.entries()) {
-    const group_power = power[group]
-    for (let pair_idx = 0; pair_idx < components.length; pair_idx += 2) {
-      // Two real series a, b packed as z = a + i b: with Z(k) their joint transform,
-      // |A(k)|^2 + |B(k)|^2 = (|Z(k)|^2 + |Z(-k)|^2) / 2, which halves the FFT count. An
-      // unpaired last component leaves b = 0, where the identity reduces to |Z(k)|^2.
-      const first = components[pair_idx]
-      const second = pair_idx + 1 < components.length ? components[pair_idx + 1] : null
-      real.fill(0)
-      imaginary.fill(0)
-      for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-        real[frame_idx] = velocities[frame_idx * frame_size + first]
-        if (second !== null) imaginary[frame_idx] = velocities[frame_idx * frame_size + second]
-      }
-      fft_in_place(real, imaginary)
-      for (let bin = 0; bin < n_fft; bin++) {
-        const mirror = bin === 0 ? 0 : n_fft - bin
-        group_power[bin] +=
-          (real[bin] ** 2 + imaginary[bin] ** 2 + real[mirror] ** 2 + imaginary[mirror] ** 2) /
-          2
-      }
-    }
-  }
-  // A lone species IS the total (0 + x is exact), so its sums are copied rather than paying
-  // a second n_fft buffer and inverse transform for the same numbers
-  if (n_groups > 1) {
-    const total_power = new Float64Array(n_fft)
-    for (const group_power of power) {
-      for (let bin = 0; bin < n_fft; bin++) total_power[bin] += group_power[bin]
-    }
-    power.push(total_power)
-  }
-  const sums = power.map((group_power) => {
-    imaginary.fill(0)
-    fft_in_place(group_power, imaginary)
-    const group_sums = new Float64Array(max_lag + 1)
-    for (let lag = 0; lag <= max_lag; lag++) group_sums[lag] = group_power[lag] / n_fft
-    return group_sums
-  })
-  if (n_groups === 1) sums.push(sums[0].slice())
-  return sums
 }
 
 export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResult {

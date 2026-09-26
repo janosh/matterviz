@@ -24,7 +24,6 @@
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
   import { resolve_plot_display } from '$lib/plot/core/display.svelte'
-  import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import type { FacetLayoutContext } from '$lib/plot/core/facets'
   import {
@@ -57,6 +56,7 @@
     compute_count_range,
     compute_histogram_bins,
     compute_histogram_counts,
+    histogram_series_color,
     log_safe_range,
   } from '$lib/plot/histogram/histogram'
   import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
@@ -245,8 +245,9 @@
       x2_scale_type: final_x2_axis.scale_type,
       bins,
     })
+  // Every view normalizes by the auto-domain totals, so zooming into a tail keeps its density
   const display_bins = (counted: ReturnType<typeof count_over>) =>
-    compute_histogram_bins(counted, normalize, series_color)
+    compute_histogram_bins(counted, normalize, series_color, auto_counts)
   const count_ranges = (binned: readonly BinnedSeries[]) => {
     const on_axis = (axis: `y` | `y2`) =>
       binned.filter((hist) => (hist.y_axis ?? `y`) === axis)
@@ -361,15 +362,14 @@
     }),
   )
 
-  // A lone series uses the configured bar color; with several, each gets its own (`color`, then
-  // the cycled palette). Keyed on `series`, not the visible subset the legend outlives, which
-  // painted every swatch `bar.color` once all but one series were hidden.
-  const series_color = (series_data: HistogramSeries, series_idx: number): string =>
-    series.length === 1 ? resolved_bar.color : (series_data.color ?? plot_color(series_idx))
+  // Keyed on all `series`, not the visible subset, so hiding all but one series doesn't
+  // repaint the survivor with `bar.color`
+  const series_color = (series_idx: number): string =>
+    histogram_series_color(series, series_idx, resolved_bar.color)
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
       x: series_data.values,
-      color: series_color(series_data, series_idx),
+      color: series_color(series_idx),
       label: series_data.label,
       visible: true,
       x_axis: series_data.x_axis,
@@ -398,7 +398,7 @@
   let legend_data = $derived(
     build_legend_items(series, (series_data, series_idx) => ({
       symbol_type: `Square`,
-      symbol_color: series_color(series_data, series_idx),
+      symbol_color: series_color(series_idx),
       pattern: series_data.pattern,
     })),
   )
@@ -410,11 +410,7 @@
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
       series_data.pattern
-        ? resolve_pattern(
-            series_data.pattern,
-            series_color(series_data, series_idx),
-            pattern_uid,
-          )
+        ? resolve_pattern(series_data.pattern, series_color(series_idx), pattern_uid)
         : null,
     ),
   )

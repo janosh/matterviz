@@ -190,7 +190,9 @@
   )
   const has_raw = $derived(table_entries.some((entry) => entry.energy_per_atom !== undefined))
   const has_ids = $derived(table_entries.some((entry) => entry.entry_id))
-  const max_n_el = $derived(Math.max(1, ...all_entries.map(get_arity)))
+  const max_n_el = $derived(
+    all_entries.reduce((max, entry) => Math.max(max, get_arity(entry)), 1),
+  )
 
   const is_highlighted = (entry: ModelEntry): boolean => {
     if (!highlighted_entry_id) return false
@@ -208,7 +210,7 @@
         '#': idx + 1,
         Formula: is_on_hull(entry) ? `<strong>${formula}</strong>` : formula,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
-        'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
+        'E<sub>form</sub>': entry.e_form_per_atom ?? null,
       }
       if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
       if (has_ids) {

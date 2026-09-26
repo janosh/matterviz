@@ -398,6 +398,23 @@ describe(`fitted saddle versus highest image`, () => {
     expect(spline.saddle_at_image).toBe(at_image)
   })
 
+  // A Hermite segment through an exact parabola with its analytic slopes has a cubic term of
+  // a few ulps, where the textbook quadratic formula divides round-off by round-off
+  test.each([0.3, 0.45, 0.6305, 0.95, 1.1, 1.55, 1.9])(
+    `locates the peak of an exact parabola at s0 = %s`,
+    (peak_coord) => {
+      const knots = [0, 0.7, 1.3, 2.1]
+      const spline = fit_path_spline(
+        knots,
+        knots.map((coord) => -((coord - peak_coord) ** 2)),
+        { slopes: knots.map((coord) => -2 * (coord - peak_coord)) },
+      )
+      // the stable roots are exact to a few eps of the knot spacing
+      expect(Math.abs(spline.fitted_max.coord - peak_coord)).toBeLessThan(1e-12)
+      expect(spline.saddle_at_image).toBe(false)
+    },
+  )
+
   test(`fitted saddle is distinct from, and above, the highest image`, () => {
     const spline = fit_path_spline(coords, energies)
     expect(spline.highest_image).toEqual({ idx: 1, coord: 1, energy: 0.9 })

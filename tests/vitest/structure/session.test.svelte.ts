@@ -326,6 +326,10 @@ describe(`selection validity`, () => {
       host.highlighted_sites = [1]
       host.hovered_site_idx = 1
       session.site_radius_overrides.set(0, 2)
+      // A LAMMPS type mapping and hidden legend values describe one file's atoms: carried
+      // over to the next file they would silently relabel its real H atoms
+      session.element_mapping = { H: `Fe` }
+      session.hidden_prop_vals.add(`H:1a`)
       flushSync()
       // Parsers allocate fresh species arrays per frame: equal content is the same topology
       host.structure = {
@@ -339,6 +343,8 @@ describe(`selection validity`, () => {
       flushSync()
       expect(host.selected_sites).toEqual([0])
       expect(session.site_radius_overrides.get(0)).toBe(2)
+      expect(session.element_mapping).toEqual({ H: `Fe` })
+      expect([...session.hidden_prop_vals]).toEqual([`H:1a`])
       // Same site count and labels, one element swapped: a different topology
       host.structure = {
         ...base,
@@ -364,6 +370,8 @@ describe(`selection validity`, () => {
       expect(host.highlighted_sites).toEqual([])
       expect(host.hovered_site_idx).toBeNull()
       expect(session.site_radius_overrides.size).toBe(0)
+      expect(session.element_mapping).toBeUndefined()
+      expect(session.hidden_prop_vals.size).toBe(0)
       host.selected_sites = [0]
       flushSync()
       host.series_key = {}

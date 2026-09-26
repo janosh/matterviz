@@ -47,6 +47,7 @@ afterEach(() => {
   threlte_stub.reset()
   document.body.innerHTML = ``
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -56,6 +57,13 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   const canvas = document.createElement(`canvas`)
   wrapper.append(canvas)
   vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
+  // the WebGPU frame is encoded (toBlob works where a 2D drawImage of the canvas reads no
+  // pixels) and the decoded bitmap composited, never the live canvas itself
+  const frame_blob = new Blob([`frame`], { type: `image/png` })
+  canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
+  const frame = { close: vi.fn() }
+  const decode = vi.fn(async () => frame)
+  vi.stubGlobal(`createImageBitmap`, decode)
   const context = { scale: vi.fn(), drawImage: vi.fn() }
   const blob = new Blob([`pixels`], { type: `image/png` })
   const output = {
@@ -74,7 +82,9 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   await vi.runAllTimersAsync()
   expect([output.width, output.height]).toEqual([400, 200])
   expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
-  expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(canvas, 0, 0, 200, 100)
+  expect(decode).toHaveBeenCalledExactlyOnceWith(frame_blob)
+  expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(frame, 0, 0, 200, 100)
+  expect(frame.close).toHaveBeenCalledOnce()
   if (outcome === `success`) {
     expect(settled).toHaveBeenCalledExactlyOnceWith(undefined)
     expect(save).toHaveBeenCalledExactlyOnceWith(blob, `diagram.png`, `image/png`)
@@ -169,8 +179,7 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
 })
 
 // Only formal_chempots/default_min_limit/limits/elements reach the worker, so label and overlay
-// toggles must not recompute (or rebuild any hull); a half-typed number (`-`) is NaN and must
-// not reach the computation either.
+// toggles must not recompute (or rebuild any hull)
 test(`display toggles and partial number input never recompute the diagram`, async () => {
   const scene = await mount_diagram<{ domain_labels: unknown[] }>({
     entries,
@@ -194,8 +203,12 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   }
   const min_limit = by_label(`Min limit`)
   if (!min_limit) throw new Error(`no min-limit input`)
-  min_limit.value = `-`
+  // keystrokes don't commit (typing -10 must not compute at -1 first), and an unparsable
+  // committed value is ignored
+  min_limit.value = `-1`
   min_limit.dispatchEvent(new Event(`input`, { bubbles: true }))
+  min_limit.value = `-`
+  min_limit.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
   await tick()
   expect(convex_builds.count - before).toBe(0)
@@ -204,19 +217,17 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
 })
 
-// A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave): the
-// camera-start callback must drop an unpinned tooltip while a click-pinned one survives
-test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, async () => {
+// A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)
+test(`camera start clears an unpinned domain tooltip, a pinned one survives and follows recomputes`, async () => {
   // plain object: the test only reads the bound value back, no reactivity needed
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
-  const scene = (
-    await mount_diagram<{
-      hover_meshes: { formula: string }[]
-      on_domain_hover: (mesh: unknown, event: unknown) => void
-      on_domain_press: (mesh: unknown, event: unknown) => void
-      on_camera_start: () => void
-    }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
-  )()
+  const get_scene = await mount_diagram<{
+    hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
+    on_domain_hover: (mesh: unknown, event: unknown) => void
+    on_domain_press: (mesh: unknown, event: unknown) => void
+    on_camera_start: () => void
+  }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
+  const scene = get_scene()
   const [domain] = scene.hover_meshes
   const event = {
     nativeEvent: new PointerEvent(`pointerdown`),
@@ -236,6 +247,18 @@ test(`camera start clears an unpinned domain tooltip but keeps a pinned one`, as
   scene.on_camera_start()
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)
+
+  const pinned_ranges = bound.hover_info?.axis_ranges
+  document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
+  flushSync()
+  const formal = [...document.querySelectorAll(`.draggable-pane label`)]
+    .find((label) => label.textContent?.includes(`Formal chempots`))
+    ?.querySelector(`input`)
+  formal?.click() // absolute chempots: recompute
+  await vi.waitFor(() => expect(bound.hover_info?.axis_ranges).not.toEqual(pinned_ranges))
+  const fresh = get_scene().hover_meshes.find(({ formula }) => formula === domain.formula)
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
 })
 
 // Each hull face lies on exactly one entry's hyperplane, so its owner is the domain whose

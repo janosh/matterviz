@@ -3,6 +3,7 @@ import { download } from '$lib/io/fetch'
 import {
   create_chart_exporter,
   export_filename,
+  parse_linear_gradient,
   series_to_csv_rows,
   to_csv,
 } from '$lib/plot/core/utils/chart-export'
@@ -123,4 +124,16 @@ describe(`create_chart_exporter`, () => {
     ])
     expect(vi.mocked(exporter).mock.lastCall?.at(-1)).toBe(save)
   })
+})
+
+// Computed ColorBar backgrounds, whose colors carry their own commas. Only ColorBar's
+// `to <side>` form is recognized.
+// oxfmt-ignore
+test.each([
+  [`linear-gradient(to right, rgb(0, 0, 255) 0%, rgb(255, 0, 0) 100%)`, { vector: [0, 0, 1, 0], stops: [[`rgb(0, 0, 255)`, `0%`], [`rgb(255, 0, 0)`, `100%`]] }],
+  [`linear-gradient(to top, red 0%, rgba(0, 128, 0, 0.5) 50%, blue 100%)`, { vector: [0, 1, 0, 0], stops: [[`red`, `0%`], [`rgba(0, 128, 0, 0.5)`, `50%`], [`blue`, `100%`]] }],
+  [`linear-gradient(red, blue)`, null],
+  [`none`, null],
+])(`parse_linear_gradient(%s)`, (css, expected) => {
+  expect(parse_linear_gradient(css)).toEqual(expected)
 })

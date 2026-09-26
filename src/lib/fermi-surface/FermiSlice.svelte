@@ -5,7 +5,7 @@
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import { compute_fermi_slice } from './compute'
+  import { compute_fermi_slice, slice_axis_label } from './compute'
   import { BAND_COLORS } from './constants'
   import type { FermiSliceData, FermiSurfaceData } from './types'
   import { to_error } from '$lib/utils'
@@ -40,16 +40,6 @@
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   let hidden_bands = new SvelteSet<number>()
 
-  // Compute axis labels from Miller indices (subscript z doesn't exist in Unicode)
-  const K_AXIS_LABELS = [`kₓ`, `kᵧ`, `kz`] as const
-  let labels = $derived.by((): [string, string] => {
-    if (axis_labels) return axis_labels
-    const zeros = miller_indices.flatMap((val, idx) => (val === 0 ? [idx] : []))
-    if (zeros.length === 2) return [K_AXIS_LABELS[zeros[0]], K_AXIS_LABELS[zeros[1]]]
-    if (zeros.length === 1) return [`k⊥`, K_AXIS_LABELS[zeros[0]]]
-    return [`k₁`, `k₂`]
-  })
-
   // Slice of the current surface; a failed slice (e.g. zero Miller indices) reports through
   // on_error and renders empty
   let slice_data = $derived.by((): FermiSliceData | null => {
@@ -60,6 +50,14 @@
       untrack(() => on_error?.(to_error(err)))
       return null
     }
+  })
+
+  // Axis labels from the directions points_2d actually use
+  let labels = $derived.by((): [string, string] => {
+    if (axis_labels) return axis_labels
+    if (!slice_data) return [`k₁`, `k₂`]
+    const [in_plane_u, in_plane_v] = slice_data.in_plane_basis
+    return [slice_axis_label(in_plane_u, `k₁`), slice_axis_label(in_plane_v, `k₂`)]
   })
 
   // Transform isolines to ScatterPlot series

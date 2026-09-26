@@ -158,7 +158,7 @@ describe(`parse_phase_diagram_svg`, () => {
     expect_points_close(input.regions[region_idx].bounds as DiagramPoint[], expected)
   })
 
-  it(`assigns labels to regions and cleans matplotlib LaTeX subscripts`, () => {
+  it(`assigns labels and unique ids to regions, cleans matplotlib LaTeX subscripts`, () => {
     const simple = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES))
     expect(simple.regions.map((region) => region.name)).toEqual([`α + β`, `L + α`])
     // Non-ASCII names slug to nothing, so ids fall back to region_N
@@ -170,6 +170,23 @@ describe(`parse_phase_diagram_svg`, () => {
       `La2NiO4 + NiO`,
     ])
     expect(mpl.regions.map((region) => region.id)).toEqual([`la2o3_la2nio4`, `la2nio4_nio`])
+
+    // separate fields sharing a label (or slugging alike) get suffixed ids
+    const shared_svg = simple_svg(
+      `<line class="phase-boundary" x1="233" y1="500" x2="233" y2="100"/>
+      <line class="phase-boundary" x1="366" y1="500" x2="366" y2="100"/>`,
+    )
+      .replace(`x="200" y="400">α + β`, `x="150" y="300">A + B`)
+      .replace(
+        `x="400" y="400">L + α`,
+        `x="300" y="300">L + B</text><text class="label-main" x="450" y="300">A+B`,
+      )
+    const shared = parse_phase_diagram_svg(shared_svg)
+    expect(shared.regions.map(({ id, name }) => [id, name])).toEqual([
+      [`a_b`, `A + B`],
+      [`l_b`, `L + B`],
+      [`a_b_2`, `A+B`],
+    ])
   })
 
   it(`reads region colours from the filled SVG shape under each region centroid`, () => {
@@ -212,6 +229,49 @@ describe(`parse_phase_diagram_svg`, () => {
     const thin_l = input.regions.find((region) => region.bounds.length === 6)
     expect(thin_l?.color).toBe(`#aabbcc`)
     expect(input.regions.find((region) => region.bounds.length === 4)?.color).toBe(`#112233`)
+  })
+
+  // Ticks at 500/1500 K (px 500/100) sit inside a plot area reaching 1600 K (px 60); the L + c
+  // field above the 1550 K boundary exists only between the last tick and the axes edge
+  it.each([
+    {
+      format: `simple`,
+      // a tinted page background also encloses every tick and boundary but is not the plot area
+      svg: simple_svg(
+        `${SIMPLE_BOUNDARIES}<line class="phase-boundary" x1="100" y1="80" x2="500" y2="80"/>`,
+        `<text class="label-main" x="300" y="70">L + c</text>
+        <rect x="100" y="60" width="400" height="440" fill="#dddddd"/>
+        <rect width="600" height="600" fill="#eeeeee"/>`,
+      ),
+    },
+    {
+      format: `matplotlib`,
+      svg: matplotlib_svg(
+        [...MPL_BOUNDARIES, `M 100 80 L 500 80`],
+        `<g id="text_9"><!-- L + c --><g transform="translate(300 70)"/></g>`,
+      ).replace(`M 100 100 L 500 100`, `M 100 60 L 500 60`),
+    },
+  ])(
+    `takes the axis range from the plot area, not the outermost ticks ($format)`,
+    ({ svg }) => {
+      const input = parse_phase_diagram_svg(svg)
+      expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
+      const top = input.regions.find(({ name }) => name === `L + c`)
+      expect(top?.bounds).toEqual([
+        [0, 1550],
+        [1, 1550],
+        [1, 1600],
+        [0, 1600],
+      ])
+    },
+  )
+
+  it.each([
+    [`vertical`, `x2="300" y2="300"`, `x2="300" y2="300.3"`],
+    [`horizontal`, `y1="300" x2="300"`, `y1="300" x2="299.7"`],
+  ])(`snaps sub-pixel gaps between boundaries (%s ends 0.3 px short)`, (_label, from, to) => {
+    const input = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES.replace(from, to)))
+    expect(input.regions.map(({ name }) => name)).toEqual([`α + β`, `L + α`])
   })
 
   it.each([

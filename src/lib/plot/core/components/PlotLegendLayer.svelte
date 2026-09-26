@@ -88,6 +88,7 @@
     {...rest}
     {...legend}
     bind:filter_query={frame.legend_filter_query}
+    collapsed_groups={frame.legend_collapsed_groups}
     layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, frame.legend_placement)}
     {layout}
     {series_data}

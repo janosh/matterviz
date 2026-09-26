@@ -206,6 +206,38 @@ describe(`create_file_drop_handler`, () => {
     },
   )
 
+  // a drop whose every file fails has no batch
+  test(`on_batch gets each drop's loaded files once, failures reported after it`, async () => {
+    vi.mocked(dropped_file_url).mockReturnValueOnce(`https://example.com/u.cif`)
+    vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
+      await callback(`remote`, `u.cif`, source_meta(`u.cif`, `https://example.com/u.cif`))
+    })
+    vi.mocked(decompress_file)
+      .mockResolvedValueOnce({ content: `first`, filename: `a.cube` })
+      .mockRejectedValueOnce(new Error(`corrupt`))
+      .mockRejectedValueOnce(new Error(`bad`))
+    const calls: unknown[] = []
+    const handler = create_file_drop_handler({
+      allow: () => true,
+      on_error: (msg) => calls.push(msg),
+      on_batch: (files) => void calls.push(files),
+    })
+    await handler(make_event([`a`, `b`].map((name) => new File([name], `${name}.cube`))))
+    await handler(make_event([new File([`d`], `d.cube`)]))
+    expect(calls).toEqual([
+      [
+        {
+          content: `remote`,
+          filename: `u.cif`,
+          metadata: source_meta(`u.cif`, `https://example.com/u.cif`),
+        },
+        { content: `first`, filename: `a.cube`, metadata: source_meta(`a.cube`) },
+      ],
+      `Failed to load 1 file — b.cube: corrupt`,
+      `Failed to load 1 file — d.cube: bad`,
+    ])
+  })
+
   test(`one failing file does not abort the rest of the batch`, async () => {
     vi.mocked(decompress_file)
       .mockRejectedValueOnce(new Error(`corrupt`))

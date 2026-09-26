@@ -6,6 +6,7 @@
     default_camera_position,
     k_cell_fit_extent,
     k_lattice_inverse,
+    bz_mark_sizes,
     k_space_size,
     polyhedron_centroid,
     PolyhedronMesh,
@@ -439,7 +440,7 @@
       color="#888888"
       opacity={bz_opacity}
       edge_color="#333333"
-      edge_width={0.002}
+      edge_width={bz_mark_sizes(scene_size, DEFAULTS.brillouin.edge_width).edge}
     />
   {/if}
 

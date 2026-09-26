@@ -19,7 +19,6 @@
   import { array_extent, array_max, type Vec2 } from '$lib/math'
   import { BarPlot, ScatterPlot } from '$lib/plot'
   import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { RadiationType } from '$lib/scattering'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
@@ -37,7 +36,7 @@
 
   let {
     patterns,
-    peak_width = 0.5,
+    peak_width = 0.8,
     annotate_peaks = 5,
     hkl_format = `compact`,
     show_angles = null,
@@ -60,7 +59,7 @@
       | XrdPattern
       | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
       | PatternEntry[]
-    peak_width?: number
+    peak_width?: number // stick width in degrees 2θ
     annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
     hkl_format?: HklFormat
     show_angles?: boolean | null
@@ -81,6 +80,8 @@
   } = $props()
 
   let dropped_entries = $state<PatternEntry[]>([])
+
+  const is_profile = (pattern: XrdPattern): boolean => pattern.kind === `profile`
 
   // Miller indices of one peak, joined for a bar label or a tooltip line
   const join_hkls = (hkls: Hkl[] | undefined): string =>
@@ -108,13 +109,13 @@
           ).map(([label, value]) =>
             `pattern` in value ? { label, ...value } : { label, pattern: value as XrdPattern },
           )
-    // Merge user-provided patterns with any dropped-on-the-fly entries. Only measured scans
-    // (no hkls) are thinned: every reflection of a computed stick pattern is a labelled peak
+    // Merge user-provided patterns with any dropped-on-the-fly entries. Only profiles are
+    // thinned: every reflection of a stick pattern is a peak, labelled or not
     return [...base_entries, ...dropped_entries].map((entry) => ({
       ...entry,
-      pattern: entry.pattern.hkls
-        ? entry.pattern
-        : decimate_pattern(entry.pattern, MAX_RENDERED_POINTS),
+      pattern: is_profile(entry.pattern)
+        ? decimate_pattern(entry.pattern, MAX_RENDERED_POINTS)
+        : entry.pattern,
     }))
   })
 
@@ -168,7 +169,7 @@
           if (!too_close) selected_indices.push(idx)
         }
       }
-      const selected = new SvelteSet(selected_indices)
+      const selected = new Set(selected_indices)
 
       for (let idx = 0; idx < x_values.length; idx++) {
         const hkls: Hkl[] = entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
@@ -182,11 +183,15 @@
         } else labels.push(null)
       }
 
+      // A profile is a sampled curve, not a set of reflections: draw it as a line
+      const shape = is_profile(entry.pattern)
+        ? { render_mode: `line` as const, markers: `line` as const }
+        : { bar_width: peak_width }
       return {
         x: x_values,
         y: y_values,
         ...series_style(entry, entry_idx),
-        bar_width: Math.max(peak_width, 0.8),
+        ...shape,
         visible: true,
         metadata,
         labels,
@@ -198,14 +203,18 @@
   // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static
   // input `min` enforces it). Uncaught in a $derived the throw blanks the whole component, so
   // return the message and let the banner render it.
+  // Profiles pass through untouched: they are already continuous, and broadening their
+  // samples as if each were a reflection would widen every measured peak a second time
   const broadened = $derived.by<XrdPattern[] | string>(() => {
     if (!broadening_enabled) return []
     try {
-      // Normalize so the highest peak across ALL broadened profiles is 100: per-profile
-      // normalization would lose relative scaling between patterns, while the stick-view
-      // global max would make broadened peaks tiny (broadening spreads intensity)
-      return pattern_entries.map((entry) =>
-        compute_broadened_pattern(entry.pattern, broadening_params, angle_range),
+      return pattern_entries.map(({ pattern }) =>
+        is_profile(pattern)
+          ? pattern
+          : {
+              ...compute_broadened_pattern(pattern, broadening_params, angle_range),
+              kind: `profile`,
+            },
       )
     } catch (exc) {
       return exc instanceof Error ? exc.message : String(exc)
@@ -217,26 +226,29 @@
   const scatter_series = $derived.by<DataSeries[]>(() => {
     if (typeof broadened === `string` || broadened.length === 0) return []
 
-    // The true maximum, not max(1, ...): broadening is area-normalized, so an already
-    // normalized pattern profiles well under 1 and a floor of 1 under-scales the whole curve
-    // (y max 0.01 rendered at 5.92 of the fixed [0, 110] axis) while the sticks filled it.
-    let max_y = 0
-    for (const profile of broadened) {
-      for (const y_val of profile.y) max_y = Math.max(max_y, y_val)
-    }
+    // Broadened sticks are area-normalized while input profiles carry their own (often
+    // count) scale, so the two groups share no unit: each is scaled so its true highest point
+    // (often < 1 for normalized profiles) is 100, keeping relative heights within a group.
+    const from_profile = pattern_entries.map(({ pattern }) => is_profile(pattern))
+    const [sticks_max, profiles_max] = [false, true].map((profiles) => {
+      const group = broadened.filter((_profile, idx) => from_profile[idx] === profiles)
+      return Math.max(0, ...group.map((profile) => array_max(profile.y)))
+    })
 
-    return broadened.map(
-      (profile, entry_idx) =>
-        ({
-          x: profile.x,
-          // broaden_peaks drops non-positive peaks, so max_y === 0 means an all-zero profile
-          y: max_y > 0 ? profile.y.map((y_val) => (y_val / max_y) * 100) : profile.y,
-          ...series_style(pattern_entries[entry_idx], entry_idx),
-          markers: `line`, // Only line for profile
-          line_style: { stroke_width: 2 },
-          visible: true,
-        }) as DataSeries,
-    )
+    return broadened.map((profile, entry_idx) => {
+      const max_y = from_profile[entry_idx] ? profiles_max : sticks_max
+      // broaden_peaks drops non-positive peaks, so max_y === 0 means an all-zero profile
+      const y_values = max_y > 0 ? profile.y.map((y_val) => (y_val / max_y) * 100) : profile.y
+      // ScatterPlot has no orientation of its own, so the horizontal layout swaps the data
+      return {
+        x: is_horizontal ? y_values : profile.x,
+        y: is_horizontal ? profile.x : y_values,
+        ...series_style(pattern_entries[entry_idx], entry_idx),
+        markers: `line`, // Only line for profile
+        line_style: { stroke_width: 2 },
+        visible: true,
+      } as DataSeries
+    })
   })
 
   // Dropped files: measured patterns are parsed, structure files get a computed pattern
@@ -375,21 +387,25 @@
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
       {#snippet tooltip(info: ScatterHandlerProps)}
-        {@render readout(info.label ?? ``, info.x, info.y)}
+        {@render readout(
+          info.label ?? ``,
+          is_horizontal ? info.y : info.x,
+          is_horizontal ? info.x : info.y,
+        )}
       {/snippet}
 
       <ScatterPlot
         {...rest}
         series={scatter_series}
         x_axis={{
-          label: angle_label,
-          ...x_axis,
-          range: angle_range,
+          label: is_horizontal ? intensity_label : angle_label,
+          ...(is_horizontal ? y_axis : x_axis),
+          range: is_horizontal ? intensity_range : angle_range,
         }}
         y_axis={{
-          label: intensity_label,
-          ...y_axis,
-          range: intensity_range,
+          label: is_horizontal ? angle_label : intensity_label,
+          ...(is_horizontal ? x_axis : y_axis),
+          range: is_horizontal ? angle_range : intensity_range,
         }}
         {tooltip}
         {@attach drop_zone}

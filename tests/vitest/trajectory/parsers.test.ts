@@ -9,7 +9,11 @@ import { structure_to_xyz_str } from '$lib/structure/export'
 import { get_element_counts } from '$lib/structure/density'
 import { parse_xyz } from '$lib/structure/parse'
 import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory'
+import {
+  is_loaded_signal,
+  is_signal_descriptor,
+  trajectory_from_frames,
+} from '$lib/trajectory'
 import {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
@@ -54,6 +58,7 @@ import {
   make_h5_buffer,
   make_reference_md_h5_buffer,
   make_torch_sim_signal_buffer,
+  make_ase_buffer,
   make_ase_md_buffer,
 } from './fixtures'
 
@@ -155,15 +160,16 @@ const FIXTURES = [
   { file: `pymatgen-LiMnO2-chgnet-relax.json.gz`, format: `pymatgen-json`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.868779, 4.634475, 5.832507]],
     volume: [77.54484024, 77.54484024], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
-    frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983,
-      stress_max: 0.0021019913256168365, pressure: -0.0012979226206274082 },
+    frame0_metadata: { energy: -58.97273254394531, force_max: 0.025402992964072665, force_norm: 0.021125332177999983 },
     last_metadata: { energy: -58.59364700317383, force_max: 1.2433049712799658 },
-    site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618 } },
+    site0_properties: { momenta: [0, 0, 0], final_magmom: 0.005215555429458618,
+      force: [4.470348358154297e-8, -2.7939677238464355e-8, 0.02407112345099449] } },
   // Same relaxation written by ASE: frame 1 has the relaxed (larger) cell
   { file: `ase-LiMnO2-chgnet-relax.traj`, format: `ase`, frame_count: 2, n_atoms: 8, steps: [0, 1], species: { Li: 2, Mn: 2, O: 4 },
     abc: [[2.868779, 4.634475, 5.832507], [2.876379428410527, 4.646357458548224, 5.846033084452466]],
     volume: [77.5448402400077, 78.13040242854699], site0_xyz: [1.4343895, 2.3172375, 2.2148974495035],
-    frame0_metadata: { step: 0, name: `chgnetcalculator`, energy: -58.97273254394531 }, last_metadata: { energy: -58.59364700317383 } },
+    // calculator forces give the same force_max as the pymatgen dump of this run
+    frame0_metadata: { step: 0, energy: -58.97273254394531, force_max: 0.025402992964072665 }, last_metadata: { energy: -58.59364700317383 } },
   { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
     volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105] },
@@ -1164,10 +1170,13 @@ describe(`XYZ`, () => {
     [`species:S:1:pos:R:3:forces:R:3`, `H 0 0 0 0.1 0 0\nH 1 0 0 0 0 0.3`, [[0.1, 0, 0], [0, 0, 0.3]]],
     [`species:S:1:pos:R:3:momenta:R:3:forces:R:3`, `H 0 0 0 9.9 9.9 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
     [`species:S:1:pos:R:3:node_energy:R:1:forces:R:3`, `H 0 0 0 9.9 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
+    // the libAtoms/QUIP/GAP column name
+    [`species:S:1:pos:R:3:force:R:3`, `H 0 0 0 0.1 0.2 0.3`, [[0.1, 0.2, 0.3]]],
   ])(`reads forces at Properties column offset: %s`, async (properties, atom_lines, expected_forces) => {
     const frame = xyz_frame(atom_lines.split(`\n`), `Properties=${properties}`)
     const { metadata, structure } = (await open(`${frame}\n${frame}`, `test.extxyz`)).preview
-    expect(metadata?.forces).toEqual(expected_forces)
+    // the per-atom vectors live on the sites only; metadata carries just their statistics
+    expect(metadata).not.toHaveProperty(`forces`)
     expect(structure.sites.map(({ properties: props }) => props.force)).toEqual(expected_forces)
     const norms = expected_forces.map((vec) => Math.hypot(...vec))
     expect(metadata?.force_max).toBeCloseTo(Math.max(...norms), 12)
@@ -1328,6 +1337,35 @@ describe(`XYZ`, () => {
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
   })
 
+  // Which reader opens a file is decided by its byte size alone, so the plot must not change
+  // with it: the in-memory rows are canonical
+  it(`extracts identical plot rows in memory and indexed`, async () => {
+    const npt_frame = (frame_idx: number) => {
+      const cell = 5 + 0.1 * frame_idx
+      return [
+        `2`,
+        `Lattice="${cell} 0 0 0 ${cell} 0 0 0 ${cell + 1}" Properties=species:S:1:pos:R:3:forces:R:3 ` +
+          `energy=${-10 - frame_idx} ref_energy=1.5 bandgap=${1 + 0.1 * frame_idx} temperature=${300 + frame_idx} step=${10 * frame_idx} pbc="T T T"`,
+        `Si 0 0 0 0.1 0 ${0.01 * frame_idx}`,
+        `O 1 1 1 0 -0.2 0`,
+      ].join(`\n`)
+    }
+    const content = [0, 1, 2].map(npt_frame).join(`\n`)
+    const [memory, indexed] = await Promise.all([
+      open(content, `npt.extxyz`),
+      open(content, `npt.extxyz`, { index_above_bytes: 0 }),
+    ])
+    await Promise.all([memory.properties.done, indexed.properties.done])
+    expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
+    // the canonical rows carry the lattice geometry and density, and every finite scalar the
+    // file records
+    expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
+      expect.arrayContaining([`energy`, `force_max`, `a`, `density`, `bandgap`, `ref_energy`]),
+    )
+    // bookkeeping is not a series: the step is the row's own axis
+    expect(memory.properties.rows[0].properties).not.toHaveProperty(`step`)
+  })
+
   // Tails that are not truncation are kept (or skipped silently, like a 0-atom frame anywhere)
   // oxfmt-ignore
   it.each([
@@ -1364,11 +1402,110 @@ describe(`XYZ`, () => {
 // === ASE ULM trajectories ===
 
 describe(`ASE`, () => {
+  // What ase.io.Trajectory writes: numbers and pbc in frame 0 only, a molecule's missing cell
+  // as zeros, and calculator results (forces as an ndarray) under `calculator.`
+  // `forces` is the calculator's forces ndarray as [shape, values]
+  const ase_frames = (pbc: boolean[], cell: number[][], forces?: [number[], number[]]) =>
+    make_ase_buffer(
+      [0, 1].map((frame_idx) => (array) => ({
+        ...(frame_idx === 0 && { pbc, [`numbers.`]: array([2], (idx) => [14, 8][idx]) }),
+        [`positions.`]: array([2, 3], (idx) => idx + 0.1 * frame_idx),
+        cell: cell.map((row) => row.map((value) => value * (1 + 0.025 * frame_idx))),
+        info: { bandgap: 1.5 - 0.1 * frame_idx, temperature: 300 },
+        ...(forces && {
+          [`calculator.`]: {
+            name: `unknown`,
+            parameters: {},
+            energy: -1 - frame_idx,
+            [`forces.`]: array(forces[0], (idx) => forces[1][idx]),
+            // eV/Å³, tension positive: 0.01 on the diagonal is -1.602 GPa of pressure
+            stress: [0.01, 0.01, 0.01, 0, 0, 0],
+          },
+        }),
+      })),
+    )
+  // oxfmt-ignore
+  const box = [[4, 0, 0], [0, 4, 0], [0, 0, 10]]
+  const no_warnings = (message: string) => expect.unreachable(message)
+
+  // ASE only repeats pbc when it changes, and writes a molecule's missing cell as zeros
+  // oxfmt-ignore
+  it.each([
+    [`a slab`, [true, true, false], box],
+    [`a cell with no periodic axis`, [false, false, false], box],
+    [`a molecule's all-zero cell`, [false, false, false], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
+  ])(`reads %s, every frame keeping the pbc written in frame 0`, (_label, pbc, cell) => {
+    const { frames } = parse_ase_trajectory(ase_frames(pbc, cell), no_warnings)
+    const has_cell = cell.flat().some(Boolean)
+    for (const { structure, metadata } of frames) {
+      expect(`lattice` in structure ? structure.lattice.pbc : `no lattice`).toEqual(
+        has_cell ? pbc : `no lattice`,
+      )
+      expect(metadata?.volume !== undefined).toBe(has_cell)
+    }
+  })
+
+  // ASE opens indexed only, but its rows must be the canonical rows of the decoded frames
+  it(`reads calculator forces and stress, and extracts the canonical plot rows`, async () => {
+    // oxfmt-ignore
+    const buffer = ase_frames([true, true, true], box, [[2, 3], [0.3, 0, 0, 0, 0.4, 0]])
+    const { frames } = parse_ase_trajectory(buffer, no_warnings)
+    const run = await open(buffer, `calc.traj`)
+    // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
+    // numbers and each frame's six force components, never a position
+    const reads = vi.spyOn(DataView.prototype, `getFloat64`)
+    onTestFinished(() => reads.mockRestore())
+    await run.properties.done
+    expect(reads).toHaveBeenCalledTimes(2 + 2 * 6)
+    expect(run.properties.rows).toStrictEqual(trajectory_from_frames(frames).properties.rows)
+    expect(Object.keys(run.properties.rows[1].properties)).toEqual(
+      expect.arrayContaining([`bandgap`, `temperature`, `a`, `volume`, `density`, `pressure`]),
+    )
+    for (const [frame_idx, { structure, metadata }] of frames.entries()) {
+      expect(structure.sites.map(({ properties }) => properties.force)).toEqual([
+        [0.3, 0, 0],
+        [0, 0.4, 0],
+      ])
+      expect(metadata).toMatchObject({ energy: -1 - frame_idx, force_max: 0.4 })
+      expect(metadata?.force_norm).toBeCloseTo(Math.sqrt((0.09 + 0.16) / 2), 14)
+      expect(metadata?.pressure).toBeCloseTo(-0.01 * 160.2176634, 12)
+      // calculator bookkeeping is not a frame property, and the vectors stay off metadata
+      for (const key of [`name`, `parameters`, `forces`])
+        expect(metadata).not.toHaveProperty(key)
+    }
+  })
+
+  // Like every other parser, unusable forces drop from their frame with a warning naming it,
+  // shown once although the indexed run decodes each frame for its row and again per read
+  // oxfmt-ignore
+  it.each<[string, [number[], number[]], string]>([
+    [`too few rows`, [[1, 3], [0.3, 0, 0]], `expected 2 finite 3-vectors, got 1`],
+    [`a NaN component`, [[2, 3], [0.3, 0, 0, 0, Number.NaN, 0]], `entry 1 of 2 is [0,null,0], not a finite 3-vector`],
+  ])(`drops ASE calculator forces with %s and warns`, async (_label, forces, detail) => {
+    const buffer = ase_frames([true, true, true], box, forces)
+    const warnings: string[] = []
+    const { frames } = parse_ase_trajectory(buffer, (message) => warnings.push(message))
+    const run = await open(buffer, `calc.traj`)
+    await run.properties.done
+    await materialize_frame_result(run.read_frame(1))
+    const expected = [0, 1].map(
+      (idx) => `Ignoring ASE calculator forces of frame ${idx}: ${detail}`,
+    )
+    expect(warnings).toEqual(expected)
+    expect(run.warnings).toEqual(expected)
+    expect(run.properties.rows).toStrictEqual(trajectory_from_frames(frames).properties.rows)
+    for (const [frame_idx, { structure, metadata }] of frames.entries()) {
+      expect(structure.sites.some(({ properties }) => `force` in properties)).toBe(false)
+      expect(metadata).not.toHaveProperty(`force_max`)
+      expect(metadata).toMatchObject({ energy: -1 - frame_idx })
+    }
+  })
+
   it.each([4, 70_000])(
     `analyzes %i atoms in bounded batches using stored momenta and masses`,
     async (n_atoms) => {
       const buffer = make_ase_md_buffer(n_atoms)
-      const source = open_ase_frames(buffer)
+      const source = open_ase_frames(buffer, no_warnings)
       onTestFinished(() => source.release())
       const run = await open(buffer, `md.traj`)
       assert(source.read_atoms && run.compute_hotspots)
@@ -1454,7 +1591,7 @@ describe(`ASE`, () => {
   )
 
   it(`uses ASE's elemental mass convention when no isotope masses are stored`, async () => {
-    const source = open_ase_frames(make_ase_md_buffer(2, false))
+    const source = open_ase_frames(make_ase_md_buffer(2, false), no_warnings)
     onTestFinished(() => source.release())
     expect(source.atom_masses).toBeUndefined()
     const batch = await source.read_atoms?.({
@@ -1509,7 +1646,7 @@ describe(`ASE`, () => {
         `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
       )
 
-      expect(() => parse_ase_trajectory(buffer)).toThrow(error)
+      expect(() => parse_ase_trajectory(buffer, no_warnings)).toThrow(error)
       const indexed = await open(buffer, `corrupt.traj`, { index_above_bytes: 0 })
       expect(indexed.frame_count).toBe(2)
       expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)
@@ -1539,6 +1676,8 @@ describe(`JSON`, () => {
       lattice: cubic(10),
       ...fields,
     })
+  // What MontyEncoder writes for pymatgen objects
+  const numpy = (data: unknown) => ({ '@module': `numpy`, '@class': `array`, data })
 
   // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
   // the shape validation -> clear error instead of a cryptic `.map` throw
@@ -1558,15 +1697,21 @@ describe(`JSON`, () => {
     await expect(open(pymatgen(fields), `test.json`)).rejects.toThrow(error)
   })
 
-  it(`applies per-frame lattices, site properties, stress and the femtosecond time step`, async () => {
+  // pymatgen stores no stress unit (VASP kB, compression positive; CHGNet GPa), so a GPa
+  // pressure or stress curve derived from it would be a guess
+  it(`applies per-frame lattices, site properties, raw stress and the femtosecond time step`, async () => {
     // oxfmt-ignore
-    const stress = { '@class': `array`, data: [[-1, 0, 0], [0, -2, 0], [0, 0, -3]] }
+    const stress = [[-1, 0, 0], [0, -2, 0], [0, 0, -3]]
     const run = await open(
       pymatgen({
         lattice: [cubic(4), cubic(8)],
         constant_lattice: false,
         site_properties: [{ magmom: [1] }, { magmom: [2] }],
-        frame_properties: [{ energy: -1, stress }, { energy: -2 }],
+        // MontyEncoder's numpy array and a plain list
+        frame_properties: [
+          { energy: -1, stress: numpy(stress) },
+          { energy: -2, stress },
+        ],
         time_step: 2,
       }),
       `variable-cell.json`,
@@ -1577,36 +1722,61 @@ describe(`JSON`, () => {
       [2, 2, 2],
       [4, 4, 4],
     ])
-    expect(frames.map((frame) => lattice_of(frame).volume)).toEqual([64, 512])
     expect(frames.map((frame) => frame.structure.sites[0].properties)).toEqual([
       { magmom: 1 },
       { magmom: 2 },
     ])
-    expect(frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
-    expect(frames[0].metadata).toMatchObject({
-      stress: stress.data,
-      stress_max: 3,
-      pressure: 2,
-    })
+    // plot rows copy every numeric metadata scalar, so none here means no curve either
+    expect(frames.map(({ metadata }) => metadata)).toEqual([
+      { energy: -1, stress, volume: 64 },
+      { energy: -2, stress, volume: 512 },
+    ])
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
   })
 
-  // coords_are_displacement: positions[i] = base_positions + cumsum(coords[0..i])
-  it(`integrates displacement coordinates from base_positions`, async () => {
-    const run = await open(
-      pymatgen({
-        coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]],
-        coords_are_displacement: true,
-        base_positions: [[0.5, 0.5, 0.5]],
-      }),
-      `displacement.json`,
-    )
-    expect((await frames_of(run)).map((frame) => frame.structure.sites[0].xyz)).toEqual([
-      [6, 5, 5],
-      [7, 5, 5],
-    ])
+  // oxfmt-ignore
+  it.each([
+    // coords_are_displacement: positions[i] = base_positions + cumsum(coords[0..i])
+    [`displacements from base_positions`, { coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]], coords_are_displacement: true, base_positions: [[0.5, 0.5, 0.5]] },
+      [[6, 5, 5], [7, 5, 5]]],
+    // Trajectory.to_displacements(): base_positions is a numpy array
+    [`numpy base_positions`, { coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]], coords_are_displacement: true, base_positions: numpy([[0.5, 0.5, 0.5]]) },
+      [[6, 5, 5], [7, 5, 5]]],
+    // Trajectory(lattice, species=["H"], coords): species serialize as plain strings
+    [`string species`, { species: [`H`] }, [[5, 5, 5], [5, 5, 5]]],
+    // Trajectory.from_molecules(): no lattice, Cartesian coords
+    [`a molecule trajectory`, { lattice: null, coords: [[[0.5, 0, 0]], [[0.7, 0, 0]]] }, [[0.5, 0, 0], [0.7, 0, 0]]],
+  ])(`reads %s`, async (_label, fields, expected_xyz) => {
+    const run = await open(pymatgen(fields), `test.json`)
     expect(run.time_step).toBeUndefined()
+    const frames = await frames_of(run)
+    expect(frames.map((frame) => frame.structure.sites[0].xyz)).toEqual(expected_xyz)
+    const periodic = (fields as { lattice?: unknown }).lattice !== null
+    expect(frames.every(({ structure }) => `lattice` in structure === periodic)).toBe(true)
   })
+
+  // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning
+  // naming the frame and the mismatch (same rule and wording as vaspout.h5)
+  // oxfmt-ignore
+  it.each([
+    [`numpy`, numpy([[0.3, 0, 0]]), [[0.3, 0, 0], [0, 0, 0]], `expected 1 finite 3-vectors, got 2`],
+    [`plain list`, [[0.3, 0, 0]], [[0.3, 0]], `entry 0 of 1 is [0.3,0], not a finite 3-vector`],
+  ])(
+    `reads %s frame forces onto the sites, ignoring bad ones`,
+    async (_label, forces, bad_forces, reason) => {
+      const run = await open(
+        pymatgen({ frame_properties: [{ forces }, { forces: bad_forces }] }),
+        `f.json`,
+      )
+      const [good, bad] = await frames_of(run)
+      expect(good.structure.sites[0].properties.force).toEqual([0.3, 0, 0])
+      expect(good.metadata).toMatchObject({ force_max: 0.3 })
+      for (const { metadata } of [good, bad]) expect(metadata).not.toHaveProperty(`forces`)
+      expect(bad.metadata).not.toHaveProperty(`force_max`)
+      expect(bad.structure.sites[0].properties).not.toHaveProperty(`force`)
+      expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 1: ${reason}`])
+    },
+  )
 
   // pymatgen's default verbosity writes matrix + pbc only; older dumps have no pbc at all.
   // Frames are promoted like single JSON structures (lattice params, pbc, abc+xyz) but are

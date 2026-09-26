@@ -1,5 +1,6 @@
 import type { PhaseData } from '$lib/convex-hull'
 import RouteComparison from '$lib/synthesis-planning/RouteComparison.svelte'
+import RouteTable from '$lib/synthesis-planning/RouteTable.svelte'
 import { plan_synthesis } from '$lib/synthesis-planning/plan'
 import type { SynthesisRoute } from '$lib/synthesis-planning/types'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
@@ -65,7 +66,7 @@ test(`shortlisting is limited to four, independent of the viewed route, and surv
   expect(select.options).toHaveLength(2)
 })
 
-test(`comparison explains weighted tradeoffs, two-step adjustments, zero onset and missing guidance`, async () => {
+test(`comparison explains weighted tradeoffs, two-step adjustments, downhill windows and missing guidance`, async () => {
   const better: SynthesisRoute = {
     ...routes[0],
     score: 4,
@@ -77,7 +78,7 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, zero onset a
       practicality: 1,
       simplicity: 0,
     },
-    thermodynamics: { ...base.thermodynamics, onset_temperature: 0 },
+    thermodynamics: { ...base.thermodynamics, downhill_windows: [[0, 1480]] },
   }
   const alternative: SynthesisRoute = {
     ...routes[1],
@@ -96,7 +97,7 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, zero onset a
         ...base.thermodynamics,
         temperature: 300,
         partial_pressures: { O2: 0.2 },
-        onset_temperature: 0,
+        downhill_windows: [[0, 2000]],
       },
     },
     score: 2,
@@ -105,7 +106,7 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, zero onset a
       ...base.thermodynamics,
       temperature: 1000,
       partial_pressures: { CO2: 0.01 },
-      onset_temperature: null,
+      downhill_windows: [],
     },
   }
   mount_comparison({
@@ -122,8 +123,8 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, zero onset a
     `Multi-step adjustment subtracts 3 from the weighted score.`,
   )
   expect(row_values(`Multi-step adjustment`)).toContain(`−3.00`)
-  expect(row_values(`Thermodynamic onset`)).toContain(`0 K`)
-  expect(row_values(`Thermodynamic onset`)).toContain(`No onset available`)
+  // wiring only: describe_downhill_windows' wording is tested in synthesis-planning.test
+  expect(row_values(`Downhill window`)).toContain(`downhill up to 1480 K`)
   expect(document.querySelector(`thead`)?.textContent).toContain(
     `Step 1: Intermediate synthesis`,
   )
@@ -184,3 +185,27 @@ test.each([0, -2])(
     for (const cell of cells) expect(cell.textContent).toContain(`Tied for highest score`)
   },
 )
+
+test(`route table sorts downhill windows by their lowest temperature, not alphabetically`, async () => {
+  const windows: [number, number][][] = [[[1105, 2000]], [], [[300, 2000]], [[0, 1480]]]
+  const component = mount(RouteTable, {
+    target: document.body,
+    props: {
+      routes: windows.map((downhill_windows, idx) => ({
+        ...routes[idx],
+        thermodynamics: { ...base.thermodynamics, downhill_windows },
+      })),
+    },
+  })
+  onTestFinished(() => unmount(component))
+  doc_query(`th[data-col-id="downhill"]`).click() // no `better` direction: sorts descending
+  await tick()
+  const cells = document.querySelectorAll(`td[data-col="Downhill window"]`)
+  // alphabetically `downhill up to 1480 K` would come right after `never downhill`
+  expect([...cells].map((cell) => cell.textContent?.trim())).toEqual([
+    `never downhill between 0 and 2000 K`,
+    `downhill from 1105 K`,
+    `downhill from 300 K`,
+    `downhill up to 1480 K`,
+  ])
+})

@@ -242,8 +242,15 @@ test.each([`signal`, `frame_count`] as const)(
     calculation_button(target).click()
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
     expect(mocks.collect).toHaveBeenCalledTimes(2)
-    if (field === `frame_count`)
+    if (field === `frame_count`) {
       expect(mocks.collect.mock.lastCall?.[1].frame_stride).toBeGreaterThan(1)
+      // striding folds vibrations above the reduced Nyquist frequency back as fake peaks
+      await vi.waitFor(() =>
+        expect(target.querySelector(`.status-message.warning`)?.textContent).toMatch(
+          /Nyquist frequency \d+-fold to 1 cm\^-1: vibrations above it alias/,
+        ),
+      )
+    } else expect(target.querySelector(`.status-message.warning`)).toBeNull()
   },
 )
 

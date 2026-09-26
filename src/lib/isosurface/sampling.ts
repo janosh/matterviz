@@ -146,9 +146,11 @@ function volume_sampler_xyz(
   const [[i00, i01, i02], [i10, i11, i12], [i20, i21, i22]] = reciprocal_lattice(
     volume.lattice,
   )
-  const { periodic } = volume
+  const { periodic, values, order } = volume
   const [origin_x, origin_y, origin_z] = volume.origin
   const fallback = out_of_bounds === `fallback`
+  // Read the grid once: per-sample reads through a $state volume's proxy are far slower
+  const grid: ScalarGrid3D = { values, dims: [...volume.dims], order }
 
   return (coord_x, coord_y, coord_z) => {
     const cart_x = coord_x - origin_x
@@ -178,7 +180,7 @@ function volume_sampler_xyz(
       frac_y = clamp01(frac_y)
       frac_z = clamp01(frac_z)
     }
-    return trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic)
+    return trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)
   }
 }
 

@@ -3,7 +3,7 @@
 // printed around it.
 import type { ElementSymbol } from '$lib/element'
 import { is_elem_symbol } from '$lib/element/helpers'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { is_finite_vec3_like, type Matrix3x3, type Vec3 } from '$lib/math'
 import { parse_float_token } from '$lib/structure/parsers/shared'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import {
@@ -85,8 +85,7 @@ const parse_species = (
 // numbers of each being the real-space vector
 const parse_lattice = (lines: string[], start: number): Matrix3x3 | null => {
   const rows = [1, 2, 3].map((offset) => numbers_of(lines[start + offset] ?? ``).slice(0, 3))
-  const is_row = (row: number[]) => row.length === 3 && row.every(Number.isFinite)
-  return rows.every(is_row) ? (rows as Matrix3x3) : null
+  return rows.every(is_finite_vec3_like) ? (rows as Matrix3x3) : null
 }
 
 export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajectory {
@@ -178,11 +177,7 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
         forces.push([values[3], values[4], values[5]])
       }
       line_idx = first_row + n_atoms - 1
-      const metadata: Record<string, unknown> = {
-        ...pending,
-        forces,
-        ...calc_force_stats(forces),
-      }
+      const metadata: Record<string, unknown> = { ...pending, ...calc_force_stats(forces) }
       if (n_scf_steps > 0) metadata.n_scf_steps = n_scf_steps
       pending = {}
       n_scf_steps = 0

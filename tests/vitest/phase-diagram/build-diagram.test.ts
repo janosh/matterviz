@@ -1,5 +1,6 @@
 import { apply_slice, build_diagram, parse_curve_ref } from '$lib/phase-diagram/build-diagram'
 import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
+import type { SpecialPoint } from '$lib/phase-diagram/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`parse_curve_ref`, () => {
@@ -114,6 +115,14 @@ describe(`build_diagram`, () => {
       regions: [{ id: `solid`, name: `Solid`, bounds: [`solvus`, [1, 300]] }],
     }
     expect(() => build_diagram(bad_input)).toThrow(/Unknown curve "solvus".*liquidus, solidus/)
+  })
+
+  const point: SpecialPoint = { id: `e`, type: `eutectic`, position: [0.5, 500] }
+  test.each<[string, Partial<DiagramInput>]>([
+    [`region`, { regions: [...minimal_input.regions, minimal_input.regions[0]] }],
+    [`special_point`, { special_points: [point, point] }],
+  ])(`throws on duplicate %s ids (they key rendered elements)`, (kind, patch) => {
+    expect(() => build_diagram({ ...minimal_input, ...patch })).toThrow(`Duplicate ${kind} id`)
   })
 
   test(`passes raw CSS region colors through and omits color when unset`, () => {

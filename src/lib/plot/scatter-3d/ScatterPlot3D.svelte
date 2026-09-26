@@ -146,18 +146,37 @@
 
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
   $effect.pre(() => series.forEach(assert_series_lengths))
+  // The scene maps every axis linearly; a log axis from an untyped caller (JSON, Python)
+  // would otherwise draw silently linear
+  $effect.pre(() => {
+    const scale_types = [x_axis, y_axis, z_axis].map((axis): unknown => axis.scale_type)
+    if (scale_types.some((scale_type) => (scale_type ?? `linear`) !== `linear`)) {
+      const got = JSON.stringify(scale_types)
+      throw new Error(`ScatterPlot3D axes are linear, got scale_type ${got}`)
+    }
+  })
 
-  const axis_defaults = { format: `.3~g`, scale_type: `linear` as const }
+  const axis_defaults = { format: `.3~g` }
   let resolved_x_axis = $derived({ label: `X`, ...axis_defaults, ...x_axis })
   let resolved_y_axis = $derived({ label: `Y`, ...axis_defaults, ...y_axis })
   let resolved_z_axis = $derived({ label: `Z`, ...axis_defaults, ...z_axis })
   let resolved_display = $derived({ ...DISPLAY_DEFAULTS_3D, ...display })
-  // Sample bounds once for both the scene and controls.
-  const surface_samples = $derived(surfaces.flatMap(sample_surface))
-  const auto_ranges = $derived(get_3d_auto_ranges(series, surface_samples))
+  // Bounds come from the very vertices Surface3D draws. A grid surface without its own x/y
+  // range spans the plot's, so x/y resolve first and such surfaces then only extend z.
+  const visible_surfaces = $derived(surfaces.filter((surface) => surface.visible !== false))
+  const auto_ranges_over = (plot_ranges: Parameters<typeof sample_surface>[1]) =>
+    get_3d_auto_ranges(
+      series,
+      visible_surfaces.flatMap((surface) => sample_surface(surface, plot_ranges)),
+    )
+  const auto_xy_ranges = $derived(auto_ranges_over(null))
+  const xy_ranges = $derived({
+    x: resolve_axis_range({ range: x_axis.range }, auto_xy_ranges.x),
+    y: resolve_axis_range({ range: y_axis.range }, auto_xy_ranges.y),
+  })
+  const auto_ranges = $derived({ ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z })
   const ranges = $derived({
-    x: resolve_axis_range({ range: x_axis.range }, auto_ranges.x),
-    y: resolve_axis_range({ range: y_axis.range }, auto_ranges.y),
+    ...xy_ranges,
     z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),
   })
   // Normalize color_scale to always be an object
@@ -258,6 +277,7 @@
           {ambient_light}
           {directional_light}
           {sphere_segments}
+          {fullscreen}
           gizmo={computed_gizmo}
           bind:hovered_point={tooltip_point}
           {on_point_click}

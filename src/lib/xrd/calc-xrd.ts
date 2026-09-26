@@ -487,6 +487,16 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const default_range: Vec2 = radiation === `electron` ? [0, 5] : [0, 90]
   const two_theta_range: Vec2 | null =
     options.two_theta_range === null ? null : (options.two_theta_range ?? default_range)
+  // 2·sin(2θ/2)/λ peaks at 180° and falls again past it, so [0, 200] would silently act as
+  // a 160° cap. Physical scattering angles live in [0, 180].
+  if (two_theta_range !== null) {
+    const [min_angle, max_angle] = two_theta_range
+    if (!(min_angle >= 0 && max_angle > min_angle && max_angle <= 180)) {
+      throw new Error(
+        `Invalid two_theta_range [${two_theta_range}]. Expected 0 <= min < max <= 180 degrees.`,
+      )
+    }
+  }
   const [min_radius, max_radius] =
     two_theta_range === null
       ? [0, 2 / wavelength]

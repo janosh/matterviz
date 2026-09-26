@@ -9,6 +9,8 @@ import {
   create_drop_event,
   doc_query,
   flush_render,
+  mouse,
+  plot_svg,
   query,
   resize_element,
 } from '../setup'
@@ -149,6 +151,40 @@ describe(`NebPlot`, () => {
   })
 })
 
+test(`hovering another path's spline selects an image of that path`, async () => {
+  // B is A with a 3x taller barrier, so its curve runs well above A's
+  const [initial] = direct_path.images
+  const taller = {
+    images: direct_path.images.map((image) => ({
+      ...image,
+      energy: initial.energy + 3 * (image.energy - initial.energy),
+    })),
+  }
+  const on_image_change = vi.fn()
+  const plot = await mount_plot({
+    paths: { A: direct_path, B: taller },
+    active_path_key: `A`,
+    point_tween: { duration: 0 },
+    on_image_change,
+  })
+  const svg = plot_svg(plot)
+  svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 340 })
+  // B's spline is the second 1.5 px line; hover a sample between its first two images, where
+  // the nearest plotted point is a spline sample rather than an image marker
+  const splines = [...plot.querySelectorAll(`path[stroke-width="1.5"]`)]
+  const samples = [
+    ...(splines[1]?.getAttribute(`d`) ?? ``).matchAll(/(?<x>-?[\d.e-]+),(?<y>-?[\d.e-]+)/g),
+  ]
+  expect(samples.length).toBeGreaterThan(100)
+  const { x = ``, y = `` } = samples[Math.round(samples.length * 0.1)].groups ?? {}
+  svg.dispatchEvent(mouse(`mousemove`, { clientX: Number(x), clientY: Number(y) }))
+  await vi.waitFor(() =>
+    expect(on_image_change).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path_key: `B` }),
+    ),
+  )
+})
+
 describe(`NebViewer`, () => {
   test(`shows a drop prompt when no path is supplied`, async () => {
     const viewer = await mount_viewer()
@@ -157,7 +193,11 @@ describe(`NebViewer`, () => {
   })
 
   test(`renders the plot, the structure and the barrier summary together`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths })
+    // a path it cannot profile is reported beside those that render
+    const [first, second] = direct_path.images
+    const dup = { images: [first, first, second] }
+    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup } })
+    expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
     expect(
@@ -354,25 +394,53 @@ describe(`NebViewer`, () => {
     }
   })
 
-  test(`loads valid drops and reports invalid ones`, async () => {
+  test(`loads valid drops, loose image batches, and reports invalid ones`, async () => {
     const state = $state({
       active_path_key: ``,
       active_image_idx: 1,
       error_msg: undefined as string | undefined,
     })
     const viewer = await mount_viewer(bind_props({}, state))
-    const content = JSON.stringify({
-      format: `matterviz-reaction-path`,
-      label: `dropped`,
-      images: direct_path.images,
-    })
-    viewer.dispatchEvent(create_drop_event(new File([content], `path.json`)))
+    const drop = (files: File | File[]) => viewer.dispatchEvent(create_drop_event(files))
+    const [first, second] = direct_path.images
+    const path_file = (label: string, images: unknown[]) =>
+      new File(
+        [JSON.stringify({ format: `matterviz-reaction-path`, label, images })],
+        `${label}.json`,
+      )
+    drop(path_file(`dropped`, direct_path.images))
     await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped`))
     expect(state.active_image_idx).toBe(0)
     expect(viewer.querySelector(`.scatter`)).not.toBeNull()
 
+    // pymatgen-style structure JSONs carrying their energy: only the batch forms a path
+    drop(
+      direct_path.images.slice(0, 3).map(
+        ({ structure, energy }, idx) =>
+          new File(
+            [
+              JSON.stringify({
+                ...structure,
+                properties: { ...structure.properties, energy },
+              }),
+            ],
+            `img-${idx}.json`,
+          ),
+      ),
+    )
+    await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped images`))
+    expect(state.error_msg).toBeUndefined()
+    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(1/3)`)
+
+    // identical consecutive images give no path tangent: refused with its reason
+    drop(path_file(`dup`, [first, first, second]))
+    await vi.waitFor(() =>
+      expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
+    )
+    expect(state.active_path_key).toBe(`dropped images`)
+
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    viewer.dispatchEvent(create_drop_event(new File([`{`], `bad.json`)))
+    drop(new File([`{`], `bad.json`))
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/bad\.json.*Failed to parse structure/),
     )

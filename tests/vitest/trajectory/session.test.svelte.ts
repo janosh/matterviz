@@ -544,6 +544,24 @@ describe(`scrub vs commit`, () => {
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
     raf.mockRestore()
   })
+
+  it(`drops a pending scrub when the run is swapped before the next animation frame`, () => {
+    const raf_callbacks: FrameRequestCallback[] = []
+    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback_fn) => {
+      raf_callbacks.push(callback_fn)
+      return raf_callbacks.length
+    })
+    const { host, session, events } = make_session({ run: trajectory_from_frames(frames(20)) })
+    session.scrub(7)
+    // the viewer adopts a new run and resets its index, as Trajectory's adopt() does
+    host.run = trajectory_from_frames(frames(20))
+    host.index = 0
+    flushSync()
+    raf_callbacks[0](16)
+    flushSync()
+    expect(host.index).toBe(0)
+    expect(events).toEqual([])
+  })
 })
 
 describe(`controller and playback`, () => {

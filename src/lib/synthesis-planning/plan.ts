@@ -26,7 +26,7 @@ import {
   balance_reaction,
   create_thermo_cache,
   make_reaction,
-  onset_temperature,
+  downhill_windows,
   reaction_energy_at_temperature,
 } from './thermo'
 import type {
@@ -150,19 +150,21 @@ function evaluate_route(
         : [],
     ),
   ) as Partial<Record<GasSpecies, number>>
-  // Only gas-exchanging reactions change with temperature, so only they can have an onset
-  const onset = Object.keys(gas_exchange).length
-    ? onset_temperature(
-        reaction_energy_at_temperature(
+  // Only gas-exchanging reactions change with temperature; the others are downhill at every
+  // temperature or at none
+  const windows = downhill_windows(
+    Object.keys(gas_exchange).length
+      ? reaction_energy_at_temperature(
           balanced,
           gases,
           gas_species,
           conditions,
           ctx.thermo_cache,
-        ),
-      )
-    : null
-  if (balanced.energy_per_fu >= 0 && onset === null) {
+        )
+      : () => balanced.energy_per_fu,
+  )
+  // Uphill here and at every scanned temperature: no conditions in range make it work
+  if (balanced.energy_per_fu >= 0 && windows.length === 0) {
     rejected.uphill++
     return null
   }
@@ -175,7 +177,7 @@ function evaluate_route(
         conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species],
       ]),
     ),
-    onset_temperature: onset,
+    downhill_windows: windows,
     gas_exchange,
     atmosphere: describe_atmosphere(gas_exchange),
   }
@@ -473,6 +475,7 @@ export function plan_synthesis(
     rejected: ctx.rejected,
     n_candidates,
     precursor_pool: pool.map(to_phase_ref),
-    warnings: ctx.warnings,
+    // repeated causes (e.g. a formula in both allow and block) produce identical warnings
+    warnings: [...new Set(ctx.warnings)],
   }
 }

@@ -125,17 +125,22 @@ describe(`collect_msd_positions`, () => {
 })
 
 describe(`MSD components`, () => {
-  it(`renders a curve and its Einstein fit`, async () => {
+  it.each([
+    [undefined, `R²`],
+    // 40 frames give lags 1..19: fractions 0.5-1 of the largest lag pick lags 10-19
+    [{ start_fraction: 0.5, end_fraction: 1 }, `10–19`],
+    [{ start_fraction: 0.8, end_fraction: 0.2 }, `must be below end_fraction`],
+  ])(`renders a curve and its Einstein fit for %o`, async (fit_options, expected) => {
     const result = calc_msd(drift_positions(40))
     mounted.push(
       mount(MsdPlot, {
         target: document.body,
-        props: { result, style: `width: 400px; height: 300px` },
+        props: { result, fit_options, style: `width: 400px; height: 300px` },
       }),
     )
     await tick()
     expect(document.querySelector(`.scatter`)).not.toBeNull()
-    expect(document.body.textContent).toContain(`R²`)
+    expect(document.body.textContent).toContain(expected)
   })
 
   it(`collects through TrajectoryMsdPane and carries the run timestep into units`, async () => {

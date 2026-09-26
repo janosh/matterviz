@@ -19,6 +19,8 @@ import {
   dot,
   first_non_increasing_index,
   IDENTITY_3X3,
+  is_finite_vec3_like,
+  is_pbc,
   mat3x3_vec3_multiply,
   median,
   partition_point,
@@ -224,19 +226,12 @@ const validate_position_stream = (stream: TrajectoryPositionStream): void => {
   require_strict_steps(stream.steps, `position`)
   for (const [frame_idx, lattice] of stream.lattice_matrices?.entries() ?? []) {
     if (lattice === null) continue
-    if (
-      lattice.length !== 3 ||
-      lattice.some((row) => row.length !== 3 || row.some((value) => !Number.isFinite(value)))
-    ) {
+    if (lattice.length !== 3 || !lattice.every(is_finite_vec3_like)) {
       fail(`lattice matrix ${frame_idx} must be a finite 3 × 3 matrix`)
     }
   }
-  if (
-    stream.pbc != null &&
-    (stream.pbc.length !== 3 || stream.pbc.some((periodic) => typeof periodic !== `boolean`))
-  ) {
+  if (stream.pbc != null && !is_pbc(stream.pbc))
     fail(`pbc must contain exactly 3 boolean values`)
-  }
 }
 
 const uniform_step_delta = (steps: number[], label: string): number => {

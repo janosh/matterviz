@@ -420,6 +420,11 @@ function compute_domains(
   return Object.fromEntries(Object.entries(domains).filter(([, domain]) => domain.length > 0))
 }
 
+// Whether a coordinate is the artificial default_min_limit bound, not a real vertex near it
+// (pymatgen's np.isclose(col, default_min_limit) with default tolerances)
+const at_min_limit = (val: number, default_min_limit: number): boolean =>
+  Math.abs(val - default_min_limit) <= 1e-8 + 1e-5 * Math.abs(default_min_limit)
+
 // Apply element padding: replace coordinates close to default_min_limit with
 // actual_min - padding for cleaner visual bounds. Single pass over all points.
 export function apply_element_padding(
@@ -428,14 +433,13 @@ export function apply_element_padding(
   padding: number,
   default_min_limit: number,
 ): number[] {
-  const replace_threshold = Math.max(Math.abs(padding), EPS)
   // Single-pass: track min per axis, skipping default_min_limit values
   const mins = elem_indices.map(() => Infinity)
   for (const pts of Object.values(domains)) {
     for (const point of pts) {
       for (let idx = 0; idx < elem_indices.length; idx++) {
         const val = point[elem_indices[idx]]
-        if (Math.abs(val - default_min_limit) > replace_threshold && val < mins[idx]) {
+        if (!at_min_limit(val, default_min_limit) && val < mins[idx]) {
           mins[idx] = val
         }
       }
@@ -452,16 +456,12 @@ export function pad_domain_points(
   elem_indices: number[],
   new_lims: number[],
   default_min_limit: number,
-  padding: number,
 ): number[][] {
-  const replace_threshold = Math.max(Math.abs(padding), EPS)
   return pts.map((point) => {
     const padded = [...point]
     for (let idx = 0; idx < elem_indices.length; idx++) {
       const col = elem_indices[idx]
-      if (Math.abs(padded[col] - default_min_limit) < replace_threshold) {
-        padded[col] = new_lims[idx]
-      }
+      if (at_min_limit(padded[col], default_min_limit)) padded[col] = new_lims[idx]
     }
     return padded
   })
@@ -1048,16 +1048,31 @@ export function compute_chempot_diagram(
 
   // Project domain vertices from N-D to display axes (column extraction; the identity in
   // subsystem mode, where compute_elements is display_elements)
-  const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
-  const domains = Object.fromEntries(
-    Object.entries(nd_domains).map(([formula, pts]) => [
-      formula,
-      pts.map((point) => col_indices.map((idx) => point[idx])),
-    ]),
+  return project_chempot_diagram(
+    { domains: nd_domains, elements: compute_elements, lims: compute_lims },
+    display_elements,
   )
+}
+
+// Column extraction of a diagram onto a subset of its axes, in the given order
+export function project_chempot_diagram(
+  data: ChemPotDiagramData,
+  elements: readonly string[],
+): ChemPotDiagramData {
+  const col_indices = elements.map((element) => {
+    const col_idx = data.elements.indexOf(element)
+    if (col_idx === -1)
+      throw new Error(`Cannot project onto ${element}: not in ${data.elements}`)
+    return col_idx
+  })
   return {
-    domains,
-    elements: display_elements,
-    lims: col_indices.map((col_idx) => compute_lims[col_idx]),
+    domains: Object.fromEntries(
+      Object.entries(data.domains).map(([formula, pts]) => [
+        formula,
+        pts.map((point) => col_indices.map((idx) => point[idx])),
+      ]),
+    ),
+    elements: [...elements],
+    lims: col_indices.map((col_idx) => data.lims[col_idx]),
   }
 }

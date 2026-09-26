@@ -12,6 +12,7 @@
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import {
     entry_is_stable,
+    hull_distance_range,
     hull_style_css,
     is_entry_highlighted,
     merge_highlight_style,
@@ -35,6 +36,7 @@
     wrapper = $bindable(),
     entry_category,
     color_mode = `energy`,
+    color_scale = `interpolateViridis`,
     display = $bindable({ x_grid: false, y_grid: false }),
     highlighted_entries = [],
     highlight_style = {},
@@ -52,6 +54,7 @@
     | `wrapper`
     | `entry_category`
     | `color_mode`
+    | `color_scale`
     | `display`
     | `highlighted_entries`
     | `highlight_style`
@@ -267,6 +270,7 @@
     ...y_axis,
   }}
   legend={null}
+  color_scale={{ scheme: color_scale, value_range: hull_distance_range(plot_entries) }}
   color_bar={{
     title: `E<sub>above hull</sub> (eV/atom)`,
     bar_style: `width: 220px; height: 16px;`,

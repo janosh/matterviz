@@ -21,7 +21,7 @@ const PAYLOAD_KEYS = [
   `reduced_formula`,
 ] as const
 
-const run_chempot = create_worker_client<
+export const compute_chempot_async = create_worker_client<
   PhaseData[],
   ChemPotDiagramConfig,
   ChemPotDiagramData
@@ -33,8 +33,3 @@ const run_chempot = create_worker_client<
   build_payload: (entries) => entries.map((entry) => slim_phase_entry(entry, PAYLOAD_KEYS)),
   dedupe_by_payload: `unordered`,
 })
-
-export const compute_chempot_async = (
-  entries: PhaseData[],
-  config: ChemPotDiagramConfig = {},
-): Promise<ChemPotDiagramData> => run_chempot(entries, config)

@@ -211,6 +211,8 @@
       })
     return () => controller.abort()
   })
+  // The module's worker outlives a finished sweep; terminate it once this diagram is gone
+  $effect(() => () => compute_ternary_phase_diagram_async.release())
   // Phase indices of a sweep over other entries mean nothing against the current model; a sweep
   // with stale options still shows the same phases while its replacement runs (dimmed, so
   // continuous option changes such as a pressure drag don't flicker the views)

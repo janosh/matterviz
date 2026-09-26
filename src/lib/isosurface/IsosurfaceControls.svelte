@@ -292,7 +292,7 @@
               value={layer.negative_color}
               onchange={(event) =>
                 update_layer(layer_idx, { negative_color: event.currentTarget.value })}
-              {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
+              {@attach tooltip({ content: `Color for the negative-valued lobe` })}
             />
           {/if}
           <label class="slider-field">

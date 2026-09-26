@@ -48,6 +48,7 @@ import { measured_axis, resolve_tick_layout } from '$lib/plot/core/tick-layout'
 import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '$lib/plot/core/types'
 import { unique_id } from '$lib/plot/core/utils'
 import { untrack } from 'svelte'
+import { SvelteSet } from 'svelte/reactivity'
 
 type FrameAxes = Record<FacetAxis, AxisConfig>
 type PerAxis<Value> = Partial<Record<FacetAxis, Value>>
@@ -132,6 +133,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // PlotLegendLayer binds this, so the frame owns the text and the legend config only seeds
   // it: a $derived would discard what the user typed on every new legend object.
   let legend_filter_query = $state(opts.legend()?.filter_query ?? ``)
+  // One collapse set (the caller's, else the frame's) shared by PlotLegend and the solver
+  const own_collapsed_groups = new SvelteSet<string>()
+  const legend_collapsed_groups = $derived(
+    opts.legend()?.collapsed_groups ?? own_collapsed_groups,
+  )
   const clip_path_id = unique_id(opts.clip_id_prefix ?? `plot-clip`)
 
   // `initial` is what the caller configured (axis.range pins over auto ranges) and doubles as
@@ -434,7 +440,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         !legend_manual_position,
       footprint: legend_footprint,
       items: opts.legend_items(),
-      config: { ...opts.legend(), filter_query: legend_filter_query },
+      config: {
+        ...opts.legend(),
+        collapsed_groups: legend_collapsed_groups,
+        filter_query: legend_filter_query,
+      },
     }),
   )
   const pinned_rects = $derived([...legend_pinned_rects, ...(opts.exclusion_rects?.() ?? [])])
@@ -603,6 +613,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     set legend_filter_query(query: string) {
       legend_filter_query = query
+    },
+    get legend_collapsed_groups() {
+      return legend_collapsed_groups
     },
     // Series the legend is hovering, dimmed by the charts' marks
     get hovered_series_idx() {

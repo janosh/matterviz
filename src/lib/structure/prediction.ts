@@ -2,7 +2,7 @@
 // the same contract as live tools. Undefined object fields are omitted; array holes are errors.
 import { grid_data_range, type VolumetricData } from '$lib/isosurface/types'
 import { grid_dimensions } from '$lib/isosurface/grid'
-import { det_3x3 } from '$lib/math'
+import { det_3x3, is_finite_matrix3x3, is_finite_vec3, is_pbc } from '$lib/math'
 import { is_elem_symbol } from '$lib/element/helpers'
 import type { AnyStructure } from './index'
 
@@ -73,11 +73,8 @@ function copy_prediction_metadata<T>(source: T, root_path: string): T {
   return copy(source, root_path) as T
 }
 
-const vec3 = (value: unknown): boolean =>
-  Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
 const matrix = (value: unknown, path: string): void => {
-  if (!Array.isArray(value) || value.length !== 3 || !value.every(vec3))
-    invalid(path, `expected a finite 3x3 lattice`)
+  if (!is_finite_matrix3x3(value)) invalid(path, `expected a finite 3x3 lattice`)
   // Only cast after checking every row; a singular lattice cannot locate a density grid.
   const determinant = det_3x3(value as VolumetricData[`lattice`])
   if (!Number.isFinite(determinant) || determinant === 0)
@@ -90,7 +87,7 @@ export function copy_prediction_input(value: unknown): AnyStructure {
     invalid(`input.sites`, `expected sites`)
   for (const [idx, raw] of (input.sites as unknown[]).entries()) {
     const site = record(raw, `input.sites[${idx}]`)
-    if (!vec3(site.xyz) || !vec3(site.abc))
+    if (!is_finite_vec3(site.xyz) || !is_finite_vec3(site.abc))
       invalid(`input.sites[${idx}]`, `expected xyz and abc vectors`)
     if (typeof site.label !== `string`)
       invalid(`input.sites[${idx}].label`, `expected a string`)
@@ -108,12 +105,7 @@ export function copy_prediction_input(value: unknown): AnyStructure {
   if (input.lattice !== undefined) {
     const lattice = record(input.lattice, `input.lattice`)
     matrix(lattice.matrix, `input.lattice.matrix`)
-    if (
-      !Array.isArray(lattice.pbc) ||
-      lattice.pbc.length !== 3 ||
-      !lattice.pbc.every((flag) => typeof flag === `boolean`)
-    )
-      invalid(`input.lattice.pbc`, `expected three booleans`)
+    if (!is_pbc(lattice.pbc)) invalid(`input.lattice.pbc`, `expected three booleans`)
     for (const key of [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`])
       if (typeof lattice[key] !== `number` || lattice[key] <= 0)
         invalid(`input.lattice.${key}`, `expected a positive finite number`)
@@ -179,7 +171,7 @@ export function copy_prediction_overlay(
     if (volume.order !== `z_fastest` || volume.dims.some((size) => size < 1))
       invalid(path, `expected positive dimensions and z_fastest ordering`)
     matrix(volume.lattice, `${path}.lattice`)
-    if (!vec3(volume.origin)) invalid(`${path}.origin`, `expected a finite Vec3`)
+    if (!is_finite_vec3(volume.origin)) invalid(`${path}.origin`, `expected a finite Vec3`)
     if (typeof volume.periodic !== `boolean`) invalid(`${path}.periodic`, `expected a boolean`)
     // Cached host statistics may be stale after a reused buffer was updated.
     volume.data_range = grid_data_range(values)

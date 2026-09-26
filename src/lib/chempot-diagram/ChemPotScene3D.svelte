@@ -7,6 +7,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import type { ThreltePointerEvent } from '$lib/scene'
   import {
+    bind_renderer,
     build_orbit_props,
     dispose_on_change,
     line_geometry,
@@ -92,6 +93,8 @@
     domain_labels: DomainLabel[]
     label_scale: number
   } = $props()
+
+  bind_renderer() // lets the PNG export re-render the frame
 
   const { enabled: hover_enabled } = extras.interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
@@ -365,7 +368,7 @@
       rotation_damping: 0,
       // No domain hover while orbiting: the tooltip popping between domains under the cursor
       // reads as flicker. A wheel zoom moves no pointer (no pointerleave), so the parent drops an
-      // unpinned tooltip itself; pointerdown reaches the mesh before OrbitControls' start
+      // unpinned tooltip itself. Flagged on the first camera change, so presses still pin
       set_camera_is_moving: (moving) => hover_enabled.set(!moving),
       on_start_extra: on_camera_start,
     }),

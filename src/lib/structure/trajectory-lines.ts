@@ -46,8 +46,8 @@ interface TrajectoryLinesOptions {
   // (so unchecking every box in a UI hides the layer rather than showing everything).
   elements?: readonly ElementSymbol[] | null
   color_mode?: TrajectoryLineColorMode
-  // Per-element CSS colors, normally the scene's live `colors.element` map so trails match
-  // their spheres. Defaults to the VESTA palette.
+  // Per-element CSS colors, normally the viewer's element palette so trails match their
+  // spheres. Defaults to the VESTA palette.
   element_colors?: Partial<Record<ElementSymbol, string>>
   wrap_mode?: TrajectoryLineWrapMode
   // Cartesian trail-head targets in stream atom order. Each whole polyline is translated
@@ -254,12 +254,14 @@ export function build_trajectory_lines(
 
   let index_offset = 0
   let dropped_segments = 0
-  let max_segment_length = 0
+  let max_segment_length_sq = 0
   const step: Vec3 = [0, 0, 0]
   // Reused across atoms; each atom gets either its anchor translation or zeros
   const shift: Vec3 = [0, 0, 0]
 
-  for (const [atom_slot, atom_idx] of atom_idxs.entries()) {
+  // Index loops, not entries(): this body runs once per drawn point, every playback frame
+  for (let atom_slot = 0; atom_slot < atom_idxs.length; atom_slot++) {
+    const atom_idx = atom_idxs[atom_slot]
     const point_base = atom_slot * n_sampled
     const rgb_base = time_mode ? 0 : atom_slot * 3
     // Constant per atom, so the polyline moves rigidly and every segment keeps its length
@@ -268,20 +270,22 @@ export function build_trajectory_lines(
       const anchor = anchor_positions?.[atom_idx * 3 + axis_idx]
       shift[axis_idx] = anchor === undefined ? 0 : anchor - coords[head + axis_idx]
     }
+    const [shift_x, shift_y, shift_z] = shift
 
-    for (const [sample_idx, frame_idx] of frame_idxs.entries()) {
+    for (let sample_idx = 0; sample_idx < n_sampled; sample_idx++) {
+      const frame_idx = frame_idxs[sample_idx]
       const source = (frame_idx * n_atoms + atom_idx) * 3
       const target = (point_base + sample_idx) * 3
-      positions[target] = coords[source] + shift[0]
-      positions[target + 1] = coords[source + 1] + shift[1]
-      positions[target + 2] = coords[source + 2] + shift[2]
+      positions[target] = coords[source] + shift_x
+      positions[target + 1] = coords[source + 1] + shift_y
+      positions[target + 2] = coords[source + 2] + shift_z
       const rgb_offset = rgb_base + sample_idx * rgb_stride
       colors[target] = rgb_table[rgb_offset]
       colors[target + 1] = rgb_table[rgb_offset + 1]
       colors[target + 2] = rgb_table[rgb_offset + 2]
 
       if (sample_idx === 0) continue
-      const from = (point_base + sample_idx - 1) * 3
+      const from = target - 3
       step[0] = positions[target] - positions[from]
       step[1] = positions[target + 1] - positions[from + 1]
       step[2] = positions[target + 2] - positions[from + 2]
@@ -291,12 +295,13 @@ export function build_trajectory_lines(
         continue
       }
 
-      const length = Math.hypot(step[0], step[1], step[2])
-      if (length > max_segment_length) max_segment_length = length
+      const length_sq = step[0] * step[0] + step[1] * step[1] + step[2] * step[2]
+      if (length_sq > max_segment_length_sq) max_segment_length_sq = length_sq
       indices[index_offset++] = point_base + sample_idx - 1
       indices[index_offset++] = point_base + sample_idx
     }
   }
+  const max_segment_length = Math.sqrt(max_segment_length_sq)
 
   return {
     positions,

@@ -11,7 +11,8 @@ import {
   hull_at,
   lookup_precursor_info,
   make_reaction,
-  onset_temperature,
+  describe_downhill_windows,
+  downhill_windows,
   plan_synthesis,
   PRECURSOR_LIBRARY,
   precursor_key,
@@ -96,15 +97,29 @@ describe(`prepare_phase_set`, () => {
     expect(co2.energy_per_atom).toBeLessThan(-1.6)
   })
 
-  test(`uses conventional formula units and names for library precursors`, () => {
-    const phase_set = prepare_phase_set([
-      make_phase({ Li: 1 }, 0),
-      make_phase({ O: 1 }, 0),
-      make_phase({ Li: 4, O: 4 }, -1.5, { entry_id: `peroxide` }),
-    ])
+  test(`uses conventional formula units and names for library precursors, resolvable by either formula`, () => {
+    const phase_set = prepare_phase_set(
+      [
+        make_phase({ Li: 1 }, 0),
+        make_phase({ O: 1 }, 0),
+        make_phase({ H: 1 }, 0),
+        make_phase({ Li: 4, O: 4 }, -1.5, { entry_id: `peroxide` }),
+        make_phase({ Li: 1, O: 1, H: 1 }, -1.8, { entry_id: `lioh` }),
+      ],
+      { open_species: [`O2`] },
+    )
     const li2o2 = find(phase_set.phases, `Li2O2`)
     expect(li2o2.common_name).toBe(`lithium peroxide`)
     expect(li2o2.n_atoms_per_fu).toBe(4)
+    // conventional (Li2O2, LiOH) or reduced (LiO, HLiO) formulas; gases are never resolved
+    const queries = [`Li2O2`, `LiO`, `LiOH`, `HLiO`, `O2`]
+    expect(queries.map((query) => resolve_phase(phase_set, query)?.id ?? null)).toEqual([
+      `peroxide`,
+      `peroxide`,
+      `lioh`,
+      `lioh`,
+      null,
+    ])
   })
 
   test(`skips entries without a computable formation energy and warns`, () => {
@@ -341,10 +356,11 @@ describe(`analyze_selectivity`, () => {
 })
 
 describe(`temperature dependence`, () => {
+  // Lower bound of CaCO3 → CaO + CO2's downhill window: gas release is downhill above it
   const decomposition_onset = (
     pressure: number,
     cache: ReturnType<typeof create_thermo_cache>,
-  ): number | null => {
+  ): number => {
     const conditions = {
       temperature: 300,
       open_species: [`CO2` as const],
@@ -364,27 +380,65 @@ describe(`temperature dependence`, () => {
     const temperatures = Array.from({ length: 2001 }, (_, idx) => idx)
     expect(temperatures.map(cached)).toEqual(temperatures.map(energy_at))
     expect(energy_at(300)).toBeCloseTo(balanced.energy_per_fu, 9)
-    return onset_temperature(energy_at)
+    const windows = downhill_windows(energy_at)
+    expect(windows).toHaveLength(1)
+    expect(windows[0][1]).toBe(2000) // open towards high T
+    return windows[0][0]
   }
 
   test(`CaCO3 decomposition onset drops with CO2 partial pressure`, () => {
     const cache = create_thermo_cache()
     const onset_1bar = decomposition_onset(1, cache)
     const onset_air = decomposition_onset(4e-4, cache)
-    expect(onset_1bar).not.toBeNull()
-    expect(onset_air).not.toBeNull()
-    if (onset_1bar === null || onset_air === null) return
     expect(onset_air).toBeLessThan(onset_1bar)
     // Experiment: ~1170 K at 1 bar CO2; raw PBE formation energies put it a few hundred K lower
     expect(onset_1bar).toBeGreaterThan(600)
     expect(onset_1bar).toBeLessThan(1500)
   })
 
-  test(`onset_temperature handles the trivial cases`, () => {
-    expect(onset_temperature(() => -1)).toBe(0)
-    expect(onset_temperature(() => 1)).toBeNull()
-    expect(onset_temperature((temperature) => 500 - temperature)).toBe(501)
-    expect(onset_temperature((temperature) => 500 - temperature, 400)).toBeNull()
+  test.each<[string, (temp: number) => number, [number, number][], string]>([
+    [`always`, () => -1, [[0, 2000]], `downhill at every temperature from 0 to 2000 K`],
+    [`never`, () => 1, [], `never downhill between 0 and 2000 K`],
+    [`gas release`, (temp) => 500 - temp, [[501, 2000]], `downhill from 501 K`],
+    [`gas uptake`, (temp) => temp - 1480, [[0, 1479]], `downhill up to 1479 K`],
+    [
+      `both`,
+      (temp) => (temp - 800) * (temp - 1300),
+      [[801, 1299]],
+      `downhill from 801 to 1299 K`,
+    ],
+  ])(`downhill_windows: %s`, (_label, energy_at, windows, text) => {
+    expect(downhill_windows(energy_at)).toEqual(windows)
+    expect(describe_downhill_windows(windows)).toBe(text)
+  })
+
+  // Oxidation takes O2 up, so ΔE rises with T: CoO + O2 → Co3O4 is uphill at 1500 K but
+  // downhill below some upper bound
+  test(`gas-consuming routes report an upper temperature limit`, () => {
+    const entries = [
+      make_phase({ Co: 1 }, 0, { entry_id: `Co` }),
+      make_phase({ O: 1 }, 0, { entry_id: `O` }),
+      make_phase({ Co: 1, O: 1 }, -1.2, { entry_id: `CoO` }),
+      make_phase({ Co: 3, O: 4 }, -1.3, { entry_id: `Co3O4` }),
+    ]
+    const plan_at = (temperature: number) =>
+      plan_synthesis({
+        entries,
+        target: `Co3O4`,
+        max_precursors: 1,
+        precursors: { only_common: false, allow: [`CoO`] },
+        conditions: { temperature, open_species: [`O2`] },
+      })
+    const [hot] = plan_at(1500).routes
+    expect(hot.reaction.equation).toBe(`6 CoO + O2 → 2 Co3O4`)
+    expect(hot.reaction.energy_per_atom).toBeGreaterThan(0)
+    const upper = hot.thermodynamics.downhill_windows[0][1]
+    expect(upper).toBeGreaterThan(300)
+    expect(upper).toBeLessThan(1500)
+    // the requested temperature only picks a point on the same window
+    for (const route of [hot, plan_at(300).routes[0]])
+      expect(route.thermodynamics.downhill_windows).toEqual([[0, upper]])
+    expect(format_recipe_text(hot)).toContain(`Downhill window: downhill up to ${upper} K`)
   })
 })
 
@@ -427,7 +481,7 @@ describe(`plan_synthesis`, () => {
     ).toEqual([best.id, kept.id])
     expect(best.reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(best.thermodynamics.gas_exchange.CO2).toBeCloseTo(1, 9)
-    expect(best.thermodynamics.onset_temperature).toBeGreaterThan(0)
+    expect(best.thermodynamics.downhill_windows[0][0]).toBeGreaterThan(0) // CO2 release
     for (const { phase } of [...best.reaction.reactants, ...best.reaction.products])
       expect(plan.phases).toContainEqual(phase)
     // Ba2TiO4 is the experimentally observed intermediate of this reaction
@@ -588,7 +642,12 @@ describe(`plan_synthesis`, () => {
       ),
     ).toBe(true)
     expect(single.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(false)
-    const bogus = plan_synthesis({ ...base_request, precursors: { allow: [`Xx9`] } })
+    const bogus = plan_synthesis({
+      ...base_request,
+      precursors: { allow: [`Xx9`, `Xx9`], block: [`Xx9`] },
+    })
+    // repeated causes give one warning each
+    expect(new Set(bogus.warnings).size).toBe(bogus.warnings.length)
     expect(bogus.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(true)
   })
 

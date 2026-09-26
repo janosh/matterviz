@@ -342,6 +342,55 @@ describe(`BoxPlot`, () => {
     expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
+  test(`violin KDEs survive legend toggles and report hidden series`, async () => {
+    const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
+    const on_hidden_series_change = vi.fn()
+    const plot = await mount_sized_box_plot({
+      series: [`A`, `B`, `C`].map((label, idx) => ({ ...basic, label, y: dist(80, idx) })),
+      kind: `violin`,
+      show_legend: true,
+      on_hidden_series_change,
+    })
+    await tick()
+    expect(kde_spy).toHaveBeenCalledTimes(3)
+    plot.querySelector<HTMLElement>(`.legend-item`)?.click()
+    await tick()
+    expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(2)
+    expect(on_hidden_series_change).toHaveBeenCalledExactlyOnceWith([0])
+    expect(kde_spy).toHaveBeenCalledTimes(3)
+  })
+
+  test.each([null, `y`] as const)(
+    `forwards axis_loading=%s and on_axis_change to the value axis`,
+    async (axis_loading) => {
+      const on_axis_change = vi.fn()
+      const options = [
+        { key: `energy`, label: `Energy`, unit: `eV` },
+        { key: `volume`, label: `Volume` },
+      ]
+      const plot = await with_measured_text(() =>
+        mount_sized_box_plot({
+          series: [basic],
+          y_axis: { selected_key: `energy`, options },
+          axis_loading,
+          on_axis_change,
+        }),
+      )
+      expect(plot.querySelector(`.interactive-axis-label.loading`) !== null).toBe(
+        axis_loading !== null,
+      )
+      if (axis_loading) return
+      plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)?.click()
+      await tick()
+      const volume = [...document.querySelectorAll<HTMLElement>(`[role="option"]`)].find(
+        (option) => option.textContent?.includes(`Volume`),
+      )
+      volume?.click()
+      await tick()
+      expect(on_axis_change).toHaveBeenCalledExactlyOnceWith(`y`, `volume`)
+    },
+  )
+
   // === Violin support ===
   const iqr_box = (plot: HTMLElement) => plot.querySelectorAll(`.box-series rect.iqr-box`)
 
@@ -466,29 +515,37 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(2)
   })
 
-  // on a log value axis, stats <= 0 (whisker_low is often exactly 0, outliers can be
-  // negative) must clamp to the log floor instead of rendering NaN coordinates, and the KDE
-  // grid must clamp to the smallest positive sample (its tail would otherwise map to NaN
-  // pixels and a LOG_EPS-polluted auto range would squash the violin to a few px)
-  test(`log value axis renders finite box glyphs and a full-height violin`, async () => {
+  // Stats <= 0 (whisker_low is exactly 0 here) clamp to the log floor instead of rendering NaN,
+  // and the violin is estimated in log10 space over the positive samples: its outline points
+  // are evenly spaced on screen and a numeric bandwidth is in decades
+  test(`log value axis: finite box glyphs and a violin sampled evenly per decade`, async () => {
+    const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
+    const exponents = dist(200, 0, 1.5)
     const plot = await mount_sized_box_plot({
-      series: [{ y: [0, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 10, 15], label: `Z` }],
-      y_axis: { scale_type: `log` },
+      series: [{ ...basic, y: [0, ...exponents.map((val) => 10 ** val)] }],
       kind: `violin+box`,
+      bandwidth: 0.25,
+      y_axis: { scale_type: `log` },
     })
     const attrs = [...plot.querySelectorAll(`.box-series line, .box-series rect`)].flatMap(
       (element) => [...element.attributes].map((attr) => attr.value),
     )
     expect(attrs.length).toBeGreaterThan(0)
-    expect(
-      attrs.some((val) => val.includes(`NaN`)),
-      `no NaN in box glyphs`,
-    ).toBe(false)
+    expect(attrs.filter((val) => val.includes(`NaN`))).toEqual([])
+    const [samples, opts] = kde_spy.mock.calls[0] ?? []
+    // log10(10 ** val) round-trips to within a few ulps
+    expect(samples).toHaveLength(exponents.length)
+    samples?.forEach((val, idx) => expect(val).toBeCloseTo(exponents[idx], 12))
+    expect(opts).toMatchObject({ ...kde_math.VIOLIN_KDE_OPTS, bandwidth: 0.25 })
+    expect(kde_spy.mock.results[0]?.value.bandwidth).toBe(0.25)
     const path = plot.querySelector(`.violin-area`)?.getAttribute(`d`) ?? ``
-    expect(path.length).toBeGreaterThan(0)
     expect(path).not.toContain(`NaN`)
-    const { ys: y_values } = path_coords(path)
-    expect(Math.max(...y_values) - Math.min(...y_values)).toBeGreaterThan(100)
+    const levels = [...new Set(path_coords(path).ys.map((val) => Math.round(val * 1e3) / 1e3))]
+    levels.sort((low, high) => low - high)
+    const gaps = levels.slice(1).map((val, idx) => val - levels[idx])
+    expect(levels.length).toBeGreaterThan(50)
+    expect((levels.at(-1) ?? 0) - levels[0]).toBeGreaterThan(100) // full height, not squashed
+    expect(Math.max(...gaps) / Math.min(...gaps)).toBeLessThan(1.1)
   })
 
   test(`series pattern fills the box body from a scoped <pattern> def`, async () => {

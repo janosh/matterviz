@@ -49,8 +49,13 @@ describe(`compute_box_stats`, () => {
     { desc: `8 points, interpolated`, data: [1, 2, 4, 8, 16, 32, 64, 128], q1: 3.5, median: 12, q3: 40, whiskers: [1, 64], outliers: [128] },
     // IQR = 13 -> fences [-14, 38]: 40 is an outlier and the upper whisker stops at 23
     { desc: `10 points with a 1.5 IQR outlier`, data: [40, 2, 3, 5, 7, 11, 13, 17, 19, 23], q1: 5.5, median: 12, q3: 18.5, whiskers: [2, 23], outliers: [40] },
-  ])(`type-7 quartiles and tukey whiskers: $desc`, ({ data, q1: quartile_1, median, q3: quartile_3, whiskers, outliers }) => {
-    const stats = compute_box_stats(data)
+    // fences [3.75, 13.75] keep only the 10s: the low whisker stops at q1 instead of running up into the box
+    { desc: `in-range data only above q1`, data: [0, 10, 10, 10], q1: 7.5, median: 10, q3: 10, whiskers: [7.5, 10], outliers: [0] },
+    { desc: `in-range data only below q3`, data: [0, 5, 2, 2], q1: 1.5, median: 2, q3: 2.75, whiskers: [0, 2.75], outliers: [5] },
+    // zero-width fences leave no datum in range: whiskers collapse onto the box, not onto the outliers
+    { desc: `whisker_range 0`, data: [0, 10], whisker_range: 0, q1: 2.5, median: 5, q3: 7.5, whiskers: [2.5, 7.5], outliers: [0, 10] },
+  ])(`type-7 quartiles and tukey whiskers: $desc`, ({ data, whisker_range, q1: quartile_1, median, q3: quartile_3, whiskers, outliers }) => {
+    const stats = compute_box_stats(data, { whisker_range })
     expect([stats.q1, stats.median, stats.q3]).toEqual([quartile_1, median, quartile_3])
     expect([stats.whisker_low, stats.whisker_high]).toEqual(whiskers)
     expect(stats.outliers).toEqual(outliers)
@@ -188,9 +193,16 @@ describe(`compute_box_stats`, () => {
       const iqr = quartile_3 - quartile_1
       const lower = quartile_1 - 1.5 * iqr
       const upper = quartile_3 + 1.5 * iqr
+      // matplotlib boxplot_stats: extreme in-fence datum, clamped so it never enters the box
       const in_bounds = sorted.filter((val) => val >= lower && val <= upper)
-      expect(stats.whisker_low).toBeCloseTo(in_bounds[0], 9)
-      expect(stats.whisker_high).toBeCloseTo(in_bounds[in_bounds.length - 1], 9)
+      expect(stats.whisker_low).toBeCloseTo(
+        Math.min(in_bounds[0] ?? quartile_1, quartile_1),
+        9,
+      )
+      expect(stats.whisker_high).toBeCloseTo(
+        Math.max(in_bounds.at(-1) ?? quartile_3, quartile_3),
+        9,
+      )
       expect(stats.outliers).toEqual(sorted.filter((val) => val < lower || val > upper))
     }
     expect(worst_quartile).toBeLessThan(1e-9)

@@ -6,6 +6,7 @@ import {
 import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import type * as math from '$lib/math'
+import { is_finite_vec3_like } from '$lib/math'
 import type { AnyStructure } from '$lib/structure/index'
 import {
   capitalize_symbol,
@@ -112,12 +113,7 @@ export const create_structure = (
     : null
 
   const sites = positions.map((pos, idx) => {
-    if (
-      pos.length !== 3 ||
-      !Number.isFinite(pos[0]) ||
-      !Number.isFinite(pos[1]) ||
-      !Number.isFinite(pos[2])
-    ) {
+    if (!is_finite_vec3_like(pos)) {
       throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
     }
     const xyz = pos as Vec3
@@ -223,6 +219,28 @@ export function calc_force_stats(
     sum_sq += magnitude ** 2
   }
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
+}
+
+// A frame's forces if they are one finite 3-vector per atom, else null, warning when present
+// but unusable. `context` names the frame, e.g. `pymatgen forces of frame 3`.
+export const checked_site_forces = (
+  forces: unknown,
+  n_atoms: number,
+  context: string,
+  warn: WarnFn,
+): number[][] | null => {
+  if (forces === undefined || forces === null) return null
+  if (!Array.isArray(forces) || forces.length !== n_atoms) {
+    const got = Array.isArray(forces) ? forces.length : typeof forces
+    warn(`Ignoring ${context}: expected ${n_atoms} finite 3-vectors, got ${got}`)
+    return null
+  }
+  const bad_idx = forces.findIndex((force) => !is_finite_vec3_like(force))
+  if (bad_idx === -1) return forces
+  warn(
+    `Ignoring ${context}: entry ${bad_idx} of ${n_atoms} is ${JSON.stringify(forces[bad_idx])}, not a finite 3-vector`,
+  )
+  return null
 }
 
 // Lines of a text payload. A plain `\n` split is several times faster than the `\r?\n`
@@ -334,13 +352,17 @@ export function parse_extxyz_columns(comment: string): {
   const species_col = layout?.species?.offset ?? 0
   const atomic_number_col = !layout?.species && layout?.z?.ncols === 1 ? layout.z.offset : -1
   const pos_col = layout?.pos?.offset ?? 1
-  const forces_col = layout?.forces && layout.forces.ncols >= 3 ? layout.forces.offset : -1
+  // `forces` is ASE's name, `force` the libAtoms/QUIP/GAP one (declaring both is rejected below)
+  const force_column = layout?.forces ?? layout?.force
+  const forces_col = force_column && force_column.ncols >= 3 ? force_column.offset : -1
   // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
   // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
   let spec_error: string | null = null
   if (spec !== undefined) {
     if (duplicate) spec_error = `Properties=${spec} declares '${duplicate}' more than once`
-    else if (layout?.pos?.ncols !== 3) {
+    else if (layout?.forces && layout.force) {
+      spec_error = `Properties=${spec} declares both 'forces' and 'force'; keep one`
+    } else if (layout?.pos?.ncols !== 3) {
       spec_error = `Properties=${spec} does not declare a 3-column pos field`
     }
   }

@@ -9,9 +9,13 @@ export function mount_scene(render: Component) {
   const Harness: Component = (anchor) => {
     const canvas = document.createElement(`canvas`)
     const info = { render: { calls: 0 } }
+    // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
+    const dom = document.createElement(`div`)
+    dom.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
+    document.body.append(dom)
     contexts.push(
       createThrelteContext({
-        dom: document.body,
+        dom,
         canvas,
         createRenderer: () =>
           ({
@@ -38,10 +42,17 @@ export function mount_scene(render: Component) {
     scene,
     camera,
     disposable_objects,
-    render_frame: () => {
+    // Runs one frame; returns whether the on-demand scheduler would render it (something
+    // invalidated during the frame), which catches scenes that never go idle
+    render_frame: (): boolean => {
       contexts[0].scheduler.run(performance.now())
+      const rendered = contexts[0].shouldRender()
       contexts[0].resetFrameInvalidation()
+      return rendered
     },
-    unmount_scene: () => unmount(component),
+    unmount_scene: async () => {
+      await unmount(component)
+      contexts[0].dom.remove()
+    },
   }
 }

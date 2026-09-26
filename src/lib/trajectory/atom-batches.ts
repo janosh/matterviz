@@ -1,6 +1,6 @@
 // Bounded numeric atom reads for spatial analysis.
 import { element_by_symbol } from '$lib/element/data'
-import { partition_point, type Matrix3x3, type Vec3 } from '$lib/math'
+import { finite_vec3_from_values, partition_point, type Matrix3x3, type Vec3 } from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { TrajectoryRunSignal } from './index'
 import type { NumericFrame } from './frame'
@@ -62,11 +62,7 @@ export function frame_atom_batch(
   const { sites, coordinates, vector_keys, header } = frame
   const { lattice } = frame.structure
   const { step, metadata } = header
-  const box_origin = metadata?.box_origin
-  const origin =
-    Array.isArray(box_origin) && box_origin.length === 3 && box_origin.every(Number.isFinite)
-      ? (box_origin as Vec3)
-      : ([0, 0, 0] as Vec3)
+  const origin: Vec3 = finite_vec3_from_values(metadata?.box_origin) ?? [0, 0, 0]
   const time = metadata?.time ?? metadata?.time_ps
   if (time !== undefined && (typeof time !== `number` || !Number.isFinite(time)))
     throw new Error(`Invalid time at step ${step}: ${JSON.stringify(time)}`)

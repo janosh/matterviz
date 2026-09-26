@@ -4,9 +4,10 @@ import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
 import { strip_compression_extensions } from '$lib/io/decompress'
-import type { Vec3 } from '$lib/math'
+import { is_pbc, type Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Pbc, Site } from '$lib/structure'
+import { shift_bonds_for_moved_sites } from '$lib/structure/bonding'
 import { is_lammps_data_content, is_lammps_dump_content } from '$lib/structure/format-detect'
 import { parse_lammps_data, parse_lammps_dump } from '$lib/structure/parsers/lammps'
 import { is_mmcif_content, parse_mmcif } from '$lib/structure/parsers/mmcif'
@@ -18,6 +19,7 @@ import {
   cart_to_frac_with_fallback,
   cell_params_to_matrix,
   cif_block_ids,
+  complete_lattice_matrix,
   count_elements,
   element_from_candidates,
   is_cif_data_header,
@@ -69,8 +71,47 @@ function parse_coordinate_line(line: string): number[] {
   return tokens.slice(0, 3).map(parse_coordinate)
 }
 
-const cif_coords_key = (coords: Vec3): string =>
-  `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
+// Symmetry images and atom-site rows closer than this (Å, minimum image) are one site:
+// published coordinates are rounded (0.3333 for 1/3), and no two real atoms sit this close.
+const CIF_SITE_TOLERANCE = 0.05
+
+// Fractional positions in [0, 1) bucketed at least `tolerance` Å wide per cell height, so a
+// site within `tolerance` (minimum image) is found in the 27 neighbouring buckets
+const create_frac_site_index = (lattice_matrix: math.Matrix3x3, tolerance: number) => {
+  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+  const n_bins = math
+    .cell_heights(lattice_matrix)
+    .map((height) =>
+      Number.isFinite(height) ? Math.max(1, Math.floor(height / tolerance)) : 1,
+    )
+  const buckets = new Map<string, { abc: Vec3; site_idx: number }[]>()
+  const bins_of = (abc: Vec3): number[] =>
+    abc.map((coord, axis) => Math.min(Math.floor(coord * n_bins[axis]), n_bins[axis] - 1))
+  const steps = [-1, 0, 1]
+  const offsets = steps.flatMap((off_a) =>
+    steps.flatMap((off_b) => steps.map((off_c) => [off_a, off_b, off_c])),
+  )
+  return {
+    find: (abc: Vec3): number | undefined => {
+      const bins = bins_of(abc)
+      for (const offset of offsets) {
+        const key = bins.map((bin, axis) => (bin + offset[axis] + n_bins[axis]) % n_bins[axis])
+        for (const entry of buckets.get(key.join(`,`)) ?? []) {
+          const delta = abc.map((coord, axis) => {
+            const diff = coord - entry.abc[axis]
+            return diff - Math.round(diff)
+          }) as Vec3
+          if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
+        }
+      }
+      return undefined
+    },
+    add: (abc: Vec3, site_idx: number): void => {
+      const key = bins_of(abc).join(`,`)
+      buckets.set(key, [...(buckets.get(key) ?? []), { abc, site_idx }])
+    },
+  }
+}
 // Bravais lattice centering translations (excluding the identity) keyed by the
 // leading letter of a space-group Hermann-Mauguin symbol. R is the obverse
 // hexagonal setting.
@@ -144,7 +185,7 @@ export const parse_poscar = (content: string): Crystal => {
   const { scale, lattice: scaled_lattice, elements, counts } = parsed.header
   const { has_selective_dynamics, is_direct } = parsed.header
 
-  const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
+  const poscar_frac_to_cart = math.create_frac_to_cart(complete_lattice_matrix(scaled_lattice))
   const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
   if (!is_direct && !poscar_cart_to_frac.exact) {
     console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
@@ -320,52 +361,26 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
     ]
   })
 
-// Apply symmetry operations (and optional lattice-centering translations) to generate all
-// equivalent positions, wrapped into [0, 1). Deduplication uses 6 decimal places to absorb
-// floating point error from compound ops like x-y, -x+y.
+// Positions of `coords` under every symmetry op and centering translation, wrapped into
+// [0, 1). The caller merges coincident images within CIF_SITE_TOLERANCE.
 const apply_symmetry_ops = (
-  atom: CifAtom,
+  coords: Vec3,
   symmetry_ops: ParsedSymOp[],
   centering: Vec3[] = [],
-): CifAtom[] => {
-  if (symmetry_ops.length === 0 && centering.length === 0) return [atom]
-
-  const equivalent_atoms: CifAtom[] = []
-  const seen = new Set<string>()
-  // Every generated position is also offset by each centering translation
+): Vec3[] => {
   const shifts: Vec3[] = [[0, 0, 0], ...centering]
-
-  // Record a position plus its centering images, deduplicating on wrapped coords. The base
-  // position keeps the row's _atom_site_label; generated images get a `_k` suffix so labels
-  // stay unique and a CIF written back out still reads as the same refinement.
-  const add_position = (coords: Vec3): void => {
-    for (const [delta_x, delta_y, delta_z] of shifts) {
-      const wrapped = wrap_to_unit_cell([
-        coords[0] + delta_x,
-        coords[1] + delta_y,
-        coords[2] + delta_z,
-      ])
-      const key = cif_coords_key(wrapped)
-      if (seen.has(key)) continue
-      seen.add(key)
-      const suffix = equivalent_atoms.length > 0 ? `_${equivalent_atoms.length}` : ``
-      const identifier = atom.id && `${atom.id}${suffix}`
-      equivalent_atoms.push({ ...atom, coords: wrapped, id: identifier })
-    }
-  }
-
-  add_position(atom.coords) // base atom (+ centering images)
-
+  const images: Vec3[] = [coords]
   for (const { coefficients, translations } of symmetry_ops) {
-    const new_coords: Vec3 = [0, 0, 0]
-    for (let dim = 0; dim < 3; dim++) {
-      // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-      new_coords[dim] = math.dot(coefficients[dim], atom.coords) + translations[dim]
-    }
-    add_position(new_coords)
+    // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
+    images.push(
+      [0, 1, 2].map((dim) => math.dot(coefficients[dim], coords) + translations[dim]) as Vec3,
+    )
   }
-
-  return equivalent_atoms
+  return images.flatMap((image) =>
+    shifts.map(([delta_x, delta_y, delta_z]) =>
+      wrap_to_unit_cell([image[0] + delta_x, image[1] + delta_y, image[2] + delta_z]),
+    ),
+  )
 }
 
 // Atom-site tag suffix -> field name (supports fract and Cartn coordinates). The residue /
@@ -751,7 +766,7 @@ export const parse_cif = (content: string): Crystal => {
       : []
 
   // Build all sites by expanding each atom row via the symmetry ops (+ optional
-  // centering). Positions coincide at 6 dp (absorbs float error from compound ops) are
+  // centering). Positions within CIF_SITE_TOLERANCE of each other (minimum image) are
   // ONE site: a symmetry image landing on an existing image of the same row is a
   // duplicate and dropped, while another row at that position contributes its species
   // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
@@ -762,35 +777,33 @@ export const parse_cif = (content: string): Crystal => {
   // `${element}${site_idx + 1}` like every other parser's.
   const build_sites = (extra_centering: Vec3[]): Site[] => {
     const sites: Site[] = []
-    const site_idx_by_coords = new Map<string, number>()
+    const site_index = create_frac_site_index(lattice_matrix, CIF_SITE_TOLERANCE)
     const rows_at_site: Set<number>[] = [] // atom-row indices merged into each site
     for (const [row_idx, atom] of atoms.entries()) {
-      const { element } = atom
+      const { element, occupancy, id } = atom
       const coords = wrap_to_unit_cell(
         atom.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
       )
-      const fractional_atom: CifAtom = { ...atom, coords, coords_type: `fract` }
-
-      const equiv_atoms = apply_symmetry_ops(fractional_atom, ops_to_use, extra_centering)
-      for (const equiv_atom of equiv_atoms) {
-        const abc = equiv_atom.coords
-        const key = cif_coords_key(abc)
-        const site_idx = site_idx_by_coords.get(key)
+      // the row's first site keeps its label, later images get a unique `_k` suffix
+      let n_row_sites = 0
+      for (const abc of apply_symmetry_ops(coords, ops_to_use, extra_centering)) {
+        const site_idx = site_index.find(abc)
         if (site_idx === undefined) {
-          site_idx_by_coords.set(key, sites.length)
+          site_index.add(abc, sites.length)
           rows_at_site.push(new Set([row_idx]))
-          const label = equiv_atom.id ?? `${element}${sites.length + 1}`
-          sites.push(
-            make_site(element, abc, frac_to_cart(abc), label, {}, equiv_atom.occupancy),
-          )
+          const label = id
+            ? `${id}${n_row_sites > 0 ? `_${n_row_sites}` : ``}`
+            : `${element}${sites.length + 1}`
+          n_row_sites++
+          sites.push(make_site(element, abc, frac_to_cart(abc), label, {}, occupancy))
           continue
         }
         if (rows_at_site[site_idx].has(row_idx)) continue // symmetry duplicate
         rows_at_site[site_idx].add(row_idx)
         const { species } = sites[site_idx]
         const same_element = species.find((spec) => spec.element === element)
-        if (same_element) same_element.occu += equiv_atom.occupancy
-        else species.push({ element, occu: equiv_atom.occupancy, oxidation_state: 0 })
+        if (same_element) same_element.occu += occupancy
+        else species.push({ element, occu: occupancy, oxidation_state: 0 })
       }
     }
     return sites
@@ -906,11 +919,6 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
   )
 }
 
-const is_pbc = (value: unknown): value is Pbc =>
-  Array.isArray(value) &&
-  value.length === 3 &&
-  value.every((flag) => typeof flag === `boolean`)
-
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
 // site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
@@ -936,7 +944,7 @@ export function structure_from_json(
   }
   const matrix = matrix3x3_from_rows(raw_lattice.matrix, `JSON lattice matrix`)
   const lattice = make_lattice(matrix, is_pbc(raw_lattice.pbc) ? raw_lattice.pbc : undefined)
-  const frac_to_cart = math.create_frac_to_cart(matrix)
+  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
     const site = { ...raw_site, properties: raw_site.properties ?? {} }
@@ -973,16 +981,23 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   if (!needs_wrapping) return structure
 
   const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
-  const sites = structure.sites.map((site) => {
+  const site_shifts: (Vec3 | undefined)[] = []
+  const sites = structure.sites.map((site, site_idx) => {
     const source = site.abc
     const abc: Vec3 = [
       wrap_a ? wrap_frac_coord(source[0]) : source[0],
       wrap_b ? wrap_frac_coord(source[1]) : source[1],
       wrap_c ? wrap_frac_coord(source[2]) : source[2],
     ]
+    const shift = abc.map((coord, axis) => Math.round(coord - source[axis])) as Vec3
+    if (shift.some(Boolean)) site_shifts[site_idx] = shift
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })
-  return { ...structure, sites }
+  const bonds = structure.properties?.bonds
+  if (!bonds) return { ...structure, sites }
+  // explicit bonds (PDB CONECT, mol2, pymatgen JSON) keep their geometry across the wrap
+  const moved_bonds = shift_bonds_for_moved_sites(bonds, (site_idx) => site_shifts[site_idx])
+  return { ...structure, sites, properties: { ...structure.properties, bonds: moved_bonds } }
 }
 
 // JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)

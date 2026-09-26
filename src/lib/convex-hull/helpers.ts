@@ -247,13 +247,12 @@ export function build_entry_tooltip_text(
     if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
   }
 
+  // Plain text for the clipboard: no markup, and no absolute energy passed off as E_form
   if (entry.e_above_hull !== undefined) {
-    text += `E<sub>above hull</sub>: ${format_num(entry.e_above_hull, `.3~`)} eV/atom\n`
+    text += `E_above_hull: ${format_num(entry.e_above_hull, `.3~`)} eV/atom\n`
   }
-  // Fallback to energy_per_atom if e_form_per_atom is absent
-  const e_form_display = entry.e_form_per_atom ?? entry.energy_per_atom
-  if (e_form_display !== undefined) {
-    text += `E<sub>form</sub>: ${format_num(e_form_display, `.3~`)} eV/atom`
+  if (entry.e_form_per_atom !== undefined) {
+    text += `E_form: ${format_num(entry.e_form_per_atom, `.3~`)} eV/atom`
   }
   const category_value = get_entry_category(entry, category)
   if (category && category_value) text += `\n${category.label}: ${category_value}`

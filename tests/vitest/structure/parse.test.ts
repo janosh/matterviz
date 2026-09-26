@@ -1,5 +1,6 @@
 import type { OptimadeStructure } from '$lib/api/optimade'
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { explicit_only } from '$lib/structure/bonding'
@@ -17,6 +18,7 @@ import {
 } from '$lib/structure/parse'
 import { structure_to_cif_str } from '$lib/structure/export'
 import {
+  complete_lattice_matrix,
   LineScanner,
   parse_coordinate,
   parse_float_token,
@@ -384,6 +386,53 @@ describe(`XYZ Parser`, () => {
       expect(normalize_fractional_coords(non_periodic)).toBe(non_periodic)
       expect(read_sites).not.toHaveBeenCalled()
     }
+  })
+
+  // ASE writes 2D sheets without vacuum with c = 0, a singular cell (1D chains: two zeros)
+  test(`completes the zero vectors of a 2D sheet and a 1D chain`, () => {
+    const graphene = `2
+Lattice="2.46 0.0 0.0 -1.23 2.130422493309719 0.0 0.0 0.0 0.0" Properties=species:S:1:pos:R:3 pbc="T T F"
+C 0.0 1.4202816622064793 0.0
+C 1.23 0.7101408311032397 0.0`
+    const sheet = parse_structure_file(graphene, `graphene.extxyz`)
+    assert(`lattice` in sheet, `extxyz with Lattice should parse as a crystal`)
+    expect(sheet.lattice.matrix[2]).toEqual([0, 0, 1])
+    const abcs = sheet.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(6))))
+    expect(abcs).toEqual([
+      [0.333333, 0.666667, 0],
+      [0.666667, 0.333333, 0],
+    ])
+    // A chain keeps its axis and gains an orthonormal right-handed pair (both seed branches)
+    // oxfmt-ignore
+    for (const [axis, vec] of [[0, [3, 0, 0]], [1, [1, 2, 2]]] as const) {
+      const chain: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+      chain[axis] = [...vec]
+      const completed = complete_lattice_matrix(chain)
+      expect(completed[axis]).toEqual(vec)
+      expect(math.det_3x3(completed)).toBeCloseTo(3, 14)
+      const gram = math.dot(completed, transpose_3x3_matrix(completed))
+      for (const [row, gram_row] of gram.entries())
+        for (const [col, value] of gram_row.entries())
+          expect(value).toBeCloseTo(row !== col ? 0 : row === axis ? 9 : 1, 14)
+    }
+  })
+
+  test(`wrapping sites keeps explicit bond lengths via cell_shift`, () => {
+    const pdb = [
+      `CRYST1   10.000   10.000   10.000  90.00  90.00  90.00 P 1           1`,
+      `HETATM    1  C1  LIG A   1      -0.700   5.000   5.000  1.00  0.00           C`,
+      `HETATM    2  C2  LIG A   1       0.700   5.000   5.000  1.00  0.00           C`,
+      `CONECT    1    2`,
+      `END`,
+    ].join(`\n`)
+    const wrapped = normalize_fractional_coords(parse_structure_file(pdb, `lig.pdb`))
+    assert(`lattice` in wrapped, `PDB with CRYST1 should parse as a crystal`)
+    expect(wrapped.sites.map(({ xyz }) => Number(xyz[0].toFixed(6)))).toEqual([9.3, 0.7])
+    const [bond] = wrapped.properties?.bonds ?? []
+    expect(bond).toEqual({ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] })
+    const to_cart = math.create_frac_to_cart(wrapped.lattice.matrix)
+    const end = to_cart(math.add<Vec3>(wrapped.sites[1].abc, bond.cell_shift ?? [0, 0, 0]))
+    expect(math.euclidean_dist(wrapped.sites[0].xyz, end)).toBeCloseTo(1.4, 12)
   })
 
   it(`still wraps into the cell when the file declares no pbc`, () => {
@@ -1419,6 +1468,31 @@ loop_
     expect(element_counts(result)).toEqual({ Cs: 1, K: 1, B: 8, O: 12, F: 2 })
     expect(result.lattice.gamma).toBeCloseTo(120, 1)
   })
+
+  // Published coordinates are rounded, so the images of an atom on a 3-fold axis land a few
+  // 1e-4 apart
+  test.each([`0.33333333`, `0.33333`, `0.3333`, `0.333`])(
+    `merges symmetry images of hcp Mg at x = %s into 2 sites`,
+    (third) => {
+      const two_thirds = (1 - Number(third)).toFixed(third.length - 2)
+      const ops = `x,y,z -y,x-y,z -x+y,-x,z -x,-y,z+1/2 y,-x+y,z+1/2 x-y,x,z+1/2`.split(` `)
+      const cif = `data_Mg
+${cif_cell(3.2094, 3.2094, 5.2108, [90, 90, 120])}
+loop_
+_symmetry_equiv_pos_as_xyz
+${ops.map((op) => `'${op}'`).join(`\n`)}
+${site_loop}
+Mg1 Mg ${third} ${two_thirds} 0.25`
+      const result = parse_cif(cif)
+      expect(result.sites.map((site) => site.label)).toEqual([`Mg1`, `Mg1_1`])
+      expect(
+        result.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(2)))),
+      ).toEqual([
+        [0.33, 0.67, 0.25],
+        [0.67, 0.33, 0.75],
+      ])
+    },
+  )
 
   // P1 CIF with a 5 Å cubic cell whose symop loop and single atom-site row are supplied
   const p1_cif = (symops: string[], atom_row: string) => {

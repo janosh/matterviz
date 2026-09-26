@@ -545,6 +545,24 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
   })
 
+  // With image atoms shown, the perceived bond ends on the O image
+  test(`explicit periodic bonds tag the bonds drawn to PBC image atoms`, () => {
+    const structure = make_crystal(10, [
+      [`Si`, [0.9, 0.5, 0.5]],
+      [`O`, [0.06, 0.5, 0.5]],
+    ])
+    structure.properties = {
+      bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+    }
+    const imaged = get_pbc_image_sites(structure)
+    const bonds = bonding.electroneg_ratio(imaged)
+    const lengths = bonds.map((bond) => math.euclidean_dist(bond.pos_1, bond.pos_2))
+    expect(lengths.map((length) => Number(length.toFixed(6)))).toEqual([1.6, 1.6])
+    expect(bonds.map(({ bond_order }) => bond_order)).toEqual([2, 2])
+    const drawn = bonds.map(({ pos_1, pos_2 }) => [...pos_1, ...pos_2].map(Math.round))
+    expect(new Set(drawn.map(String)).size).toBe(2)
+  })
+
   test(`keeps explicit periodic self-bonds distinct from zero-shift self-bonds`, () => {
     const structure = make_crystal(10, [[`C`, [0.5, 0.5, 0.5]]])
     structure.properties = {
@@ -1504,6 +1522,14 @@ describe(`compute_bonds memo`, () => {
   test(`matches the underlying strategy result`, () => {
     expect(bonding.compute_bonds(structure, `electroneg_ratio`)).toEqual(
       bonding.electroneg_ratio(structure),
+    )
+  })
+
+  test.each([`solid_angle`, `toString`])(`rejects unknown strategy %s by name`, (strategy) => {
+    expect(() =>
+      bonding.compute_bonds(structure, strategy as bonding.BondingStrategy),
+    ).toThrow(
+      `Unknown bonding strategy '${strategy}', expected one of electroneg_ratio, explicit_only`,
     )
   })
 

@@ -3,6 +3,7 @@ import { full_data_extractor } from '$lib/trajectory/extract'
 import { open_trajectory, VaspoutElectronicOnlyError } from '$lib/trajectory/open'
 import { expand_ion_types } from '$lib/trajectory/helpers'
 import { with_h5_file } from '$lib/trajectory/parse/h5-utils'
+import { electronic_band_gap } from '$lib/spectral/helpers'
 import { line_mode_labels, read_vaspout_bands } from '$lib/trajectory/parse/vaspout-electronic'
 import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
 import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
@@ -45,7 +46,8 @@ describe(`vaspout.h5 parsing`, () => {
       12, 8, 6, 5, 4,
     ])
     for (const frame of trajectory.frames) {
-      expect(Array.isArray(frame.metadata?.forces)).toBe(true)
+      expect(frame.structure.sites.every(({ properties }) => properties.force)).toBe(true)
+      expect(frame.metadata?.force_max).toBeGreaterThanOrEqual(0)
       expect(frame.metadata?.volume).toBeCloseTo(5.43 ** 3, 6)
     }
     // The fixture stores the final SCF residuals per ionic step as decades: charge RMS
@@ -116,8 +118,9 @@ describe(`vaspout.h5 parsing`, () => {
     expect(trajectory.frames.every((frame) => Number.isFinite(frame.metadata?.energy))).toBe(
       true,
     )
-    expect(Array.isArray(trajectory.frames[2].metadata?.forces)).toBe(true)
-    expect(trajectory.frames[3].metadata?.forces).toBeUndefined()
+    expect(trajectory.frames[2].structure.sites[0].properties.force).toHaveLength(3)
+    expect(trajectory.frames[3].structure.sites[0].properties.force).toBeUndefined()
+    expect(trajectory.frames[3].metadata?.force_max).toBeUndefined()
   })
 
   it(`throws electronic-only data for bands-only vaspout files`, async () => {
@@ -264,6 +267,47 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
       expect(bands.distance.at(-1)).toBeGreaterThan(0)
     },
   )
+
+  // No fixture carries fermiweights, so they are injected (1 spin, 306 k-points, 24 bands)
+  it.each([
+    [`matching`, 306, 24],
+    [`too few k-points`, 305, 24],
+    [`too few bands`, 306, 23],
+  ])(`reads fermiweights as occupations (%s)`, async (_case, n_kpoints, n_bands) => {
+    const n_filled = 9
+    const weights = [
+      Array.from({ length: n_kpoints }, () =>
+        Array.from({ length: n_bands }, (_, band_idx) => (band_idx < n_filled ? 1 : 0)),
+      ),
+    ]
+    const read = () =>
+      with_h5_file(read_vaspout(`vaspout-tinisn-bands-only.h5`), `vaspout.h5`, (h5_file) => {
+        const get_dataset = h5_file.get.bind(h5_file)
+        vi.spyOn(h5_file, `get`).mockImplementation((path) => {
+          if (!path.endsWith(`/fermiweights`)) return get_dataset(path)
+          const entity = get_dataset(path.replace(`fermiweights`, `eigenvalues`))
+          if (entity && `to_array` in entity)
+            vi.spyOn(entity, `to_array`).mockReturnValue(weights)
+          return entity
+        })
+        return read_vaspout_bands(h5_file)
+      })
+    if (n_kpoints !== 306 || n_bands !== 24) {
+      await expect(read()).rejects.toThrow(
+        /fermiweights shape does not match eigenvalues \(1, 306, 24\)/,
+      )
+      return
+    }
+    const bands = await read()
+    if (!bands?.occupations) throw new Error(`expected occupations`)
+    expect(bands.occupations).toHaveLength(24)
+    expect(bands.occupations[n_filled - 1].every((occ) => occ === 1)).toBe(true)
+    expect(bands.occupations[n_filled].every((occ) => occ === 0)).toBe(true)
+    expect(bands.spin_down_occupations).toBeUndefined()
+    const vbm = Math.max(...bands.bands[n_filled - 1])
+    const cbm = Math.min(...bands.bands[n_filled])
+    expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
+  })
 
   it(`expands single-point SCF runs into pseudo-frames and attaches DOS`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-static-scf.h5`)

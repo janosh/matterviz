@@ -50,16 +50,21 @@ describe(`build_orbit_props`, () => {
     expect(Math.log(0.01) / Math.log(1 - props.dampingFactor) / 60).toBeLessThan(0.5)
   })
 
-  test(`onstart/onend toggle camera_is_moving and run on_start_extra once`, () => {
+  // camera_is_moving turns on with the gesture's first camera change, not on `start`: the
+  // pointerdown behind `start` may not have reached the pressed mesh yet, and a click (or a press
+  // a scene claimed by disabling the controls) never moves the camera. Changes outside a gesture
+  // (damping tail, auto-rotation) and repeat changes within one leave it alone.
+  test.each<[string, (`start` | `change` | `end`)[], boolean[][]]>([
+    [`drag`, [`start`, `change`, `change`, `end`, `change`], [[true], [false]]],
+    [`click`, [`start`, `end`], [[false]]],
+    [`auto-rotate`, [`change`, `change`], []],
+  ])(`%s toggles camera_is_moving`, (_gesture, events, expected) => {
     const set_camera_is_moving = vi.fn()
     const on_start_extra = vi.fn()
     const props = build_orbit_props({ ...opts, set_camera_is_moving, on_start_extra })
-    props.onstart()
-    expect(set_camera_is_moving).toHaveBeenCalledWith(true)
-    expect(on_start_extra).toHaveBeenCalledOnce()
-    props.onend()
-    expect(set_camera_is_moving).toHaveBeenLastCalledWith(false)
-    expect(on_start_extra).toHaveBeenCalledOnce() // not re-run on end
+    for (const event of events) props[`on${event}`]()
+    expect(set_camera_is_moving.mock.calls).toEqual(expected)
+    expect(on_start_extra).toHaveBeenCalledTimes(events.includes(`start`) ? 1 : 0)
   })
 
   describe(`page visibility`, () => {

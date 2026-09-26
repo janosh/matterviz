@@ -152,10 +152,20 @@ describe(`Isosurface`, () => {
       settings: with_layers([layer(0.3)], { wireframe: true }),
       n_meshes: 1,
     },
-    { desc: `isovalue 0 renders nothing`, settings: with_layers([layer(0)]), n_meshes: 0 },
+    {
+      desc: `isovalue 0 renders the nodal surface once, even with show_negative`,
+      settings: with_layers([layer(0, { show_negative: true })]),
+      n_meshes: 2,
+    },
+    {
+      desc: `a non-finite isovalue renders nothing`,
+      settings: with_layers([layer(Number.NaN)]),
+      n_meshes: 0,
+    },
     { desc: `no layers render nothing`, settings: DEFAULT_ISOSURFACE_SETTINGS, n_meshes: 0 },
   ])(`$desc`, async ({ settings, n_meshes }) => {
-    mount_isosurface({ settings })
+    // the signed field has a positive and a negative lobe
+    mount_isosurface({ settings, volumes: [signed_volume()] })
     await settle()
     expect(meshes()).toHaveLength(n_meshes)
     if (settings.wireframe) {
@@ -167,17 +177,24 @@ describe(`Isosurface`, () => {
     }
   })
 
-  test(`negative lobe adds a second surface in negative_color`, async () => {
-    mount_isosurface({
-      volumes: [signed_volume()],
-      settings: with_layers([layer(0.3, { show_negative: true })]),
-    })
-    await settle()
-    expect(meshes()).toHaveLength(4)
-    const colors = materials().map((node) => node.props.color)
-    expect(colors).toEqual([`#3b82f6`, `#3b82f6`, `#ef4444`, `#ef4444`])
-    expect(geometry_of(meshes()[0])).not.toBe(geometry_of(meshes()[2]))
-  })
+  // Colour follows the sign of the value drawn, not which lobe mirrors the other
+  test.each([0.3, -0.3])(
+    `negative lobe adds a second surface in negative_color (isovalue %s)`,
+    async (isovalue) => {
+      mount_isosurface({
+        volumes: [signed_volume()],
+        settings: with_layers([layer(isovalue, { show_negative: true })]),
+      })
+      await settle()
+      expect(meshes()).toHaveLength(4)
+      const colors = materials().map((node) => node.props.color)
+      const x_of = (idx: number) => geometry_of(meshes()[idx]).getAttribute(`position`).getX(0)
+      // the positive blob sits at grid (3,3,3), the negative one at (7,7,7)
+      const [positive, negative] = x_of(0) < x_of(2) ? [0, 2] : [2, 0]
+      expect([colors[positive], colors[negative]]).toEqual([`#3b82f6`, `#ef4444`])
+      expect(colors[0]).toBe(colors[1]) // both passes of a lobe share its colour
+    },
+  )
 
   test(`layers skip missing volume IDs without retargeting`, async () => {
     const base = layer(0.3, { color: `#112233`, opacity: 1 })

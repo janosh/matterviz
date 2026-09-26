@@ -70,6 +70,15 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
+// Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
+// `edge_width` is a fraction of the zone's half-size ½·bz_size.
+export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
+  edge: edge_width * 0.5 * bz_size,
+  kpath: 0.006 * bz_size,
+  sym_point: 0.0075 * bz_size,
+  hovered_point: 0.015 * bz_size,
+})
+
 // Every size and extent below is a reciprocal-space length in 1/A (|b| ~ 2pi/a, so 0.05 for a
 // 120 A cell). A 1 1/A floor exceeded the true extent past a = 11.83 A, framing the zone
 // against a constant: 39% of the viewport at 30 A, 10% at 120 A.

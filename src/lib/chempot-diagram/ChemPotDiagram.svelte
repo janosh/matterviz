@@ -27,7 +27,7 @@
   const all_elements = $derived(entry_elements(entries))
 
   // How many display axes (2 = binary/2D, 3+ = ternary/3D)
-  const display_elements = $derived(config.elements ?? all_elements)
+  const display_elements = $derived(config.elements?.length ? config.elements : all_elements)
   const n_display = $derived(display_elements.length)
 
   const projection_mode = $derived(config.projection_mode ?? CHEMPOT_DEFAULTS.projection_mode)
@@ -80,6 +80,7 @@
             width={grid_width}
             height={grid_height}
             bind:temperature
+            bind:hover_info
           />
         </div>
       {/each}

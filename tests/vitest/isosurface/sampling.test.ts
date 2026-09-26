@@ -201,6 +201,21 @@ describe(`sample_volume_at_positions`, () => {
   })
 })
 
+// Every read of a $state volume runs a proxy trap, so reads must not scale with sample count
+test(`samplers read the volume a fixed number of times, not once per sample`, () => {
+  let n_reads = 0
+  const counted = new Proxy(linear_volume(11, cubic, false), {
+    get: (target, key, receiver) => {
+      n_reads++
+      return Reflect.get(target, key, receiver)
+    },
+  })
+  const sampler = create_volume_sampler(counted)
+  const reads_at_creation = n_reads
+  for (let idx = 0; idx < 1000; idx++) sampler([idx % 10, 5, 5])
+  expect(n_reads).toBe(reads_at_creation)
+})
+
 describe(`create_volume_sampler reads the current volume fields`, () => {
   // Pin lattice, origin, and periodic so a future cache keyed on volume identity
   // that misses one of them fails a test

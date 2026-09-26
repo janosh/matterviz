@@ -34,7 +34,7 @@ interface PhononModeTrajectoryOptions {
 // coordination completed and equilibrium bonds attached. Independent of the selected mode, so a viewer
 // keeps one per supercell (and its camera framing) while modes and amplitudes change.
 export interface PhononSupercell {
-  data: PhononModeData
+  n_atoms: number // of the unit cell, which the mode data must match
   scaling: Vec3
   structure: Crystal
   // Unit-cell atom each displayed site descends from, and its position in unit-cell fractional
@@ -265,8 +265,9 @@ export function phonon_mode_character(
 
 // Build the displayed supercell once per (data, scaling): tiling, image atoms and bonding
 // are the expensive steps and none of them depends on which mode is animated.
+// Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
 export function phonon_supercell(
-  data: PhononModeData,
+  data: Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>,
   supercell: Vec3 = DEFAULT_PHONON_SUPERCELL,
 ): PhononSupercell {
   if (!data.lattice) throw new Error(`Phonon mode animation needs a real-space lattice`)
@@ -334,7 +335,7 @@ export function phonon_supercell(
       cell_position[site_idx * 3 + axis] = site.abc[axis] * scaling[axis]
     }
   }
-  return { data, scaling, structure, atom_idx, cell_position }
+  return { n_atoms: data.n_atoms, scaling, structure, atom_idx, cell_position }
 }
 
 // Mass-unweight the eigenvector (phonopy convention), rotate away its arbitrary global phase
@@ -342,10 +343,18 @@ export function phonon_supercell(
 // largest cyclic excursion to 1 Å.
 export function phonon_mode_pattern(
   supercell: PhononSupercell,
+  data: PhononModeData,
   selection: PhononModeSelection,
 ): PhononModePattern {
-  const { data, scaling, atom_idx, cell_position } = supercell
-  const { eigenvector, frequency, q_position } = validate_selection(data, selection)
+  const { n_atoms, scaling, atom_idx, cell_position } = supercell
+  if (data.n_atoms !== n_atoms) {
+    throw new Error(
+      `Phonon mode data has ${data.n_atoms} atoms but the supercell was built for ${n_atoms}`,
+    )
+  }
+  const { eigenvector, frequency, q_position: q_source } = validate_selection(data, selection)
+  // Plain copies: a viewer may pass reactive proxies, and the pattern ends up in run metadata
+  const q_position: Vec3 = [...q_source]
 
   let anchor_re = 1
   let anchor_im = 0
@@ -405,7 +414,7 @@ export function phonon_mode_pattern(
 
   return {
     supercell,
-    selection,
+    selection: { ...selection },
     frequency,
     q_position,
     displacements,
@@ -503,7 +512,7 @@ export function phonon_mode_trajectory(
 ): TrajectoryRun {
   const { supercell, ...run_options } = options
   return phonon_mode_run(
-    phonon_mode_pattern(phonon_supercell(data, supercell), selection),
+    phonon_mode_pattern(phonon_supercell(data, supercell), data, selection),
     run_options,
   )
 }

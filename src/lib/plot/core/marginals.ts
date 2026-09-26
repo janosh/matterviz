@@ -3,7 +3,7 @@
 // kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
 // its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
 
-import { partition_point, type Vec2 } from '$lib/math'
+import { in_range, partition_point, type Vec2 } from '$lib/math'
 import { sorted_range } from '$lib/plot/core/interactions'
 import type { PlotScaleFn } from '$lib/plot/core/scales'
 import type { Rect, Sides } from '$lib/plot/core/layout'
@@ -296,9 +296,7 @@ export function create_marginal_hit_test(
     const kind = curves[0]?.curve.kind
     if (!kind) return null
     const contains_cross = (value_px: number) =>
-      Number.isFinite(value_px) &&
-      pointer_cross >= Math.min(baseline, value_px) &&
-      pointer_cross <= Math.max(baseline, value_px)
+      Number.isFinite(value_px) && in_range(pointer_cross, [baseline, value_px])
 
     const hover = (
       curve: MarginalSeriesCurve,
@@ -604,6 +602,7 @@ function compute_histogram(
   // 5000 log-uniform samples in one bar), and it returns nice thresholds, not the asked count.
   const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
+  // A strip summarizes the points in view, so it normalizes by the in-range total
   const bins = normalize_counts(edges, counts, config.normalize ?? `count`).map(
     ({ x0: pos0, x1: pos1, value }) => {
       if (value > max) max = value

@@ -1,5 +1,6 @@
 import Histogram from '$lib/plot/histogram/Histogram.svelte'
 import type { Vec2 } from '$lib'
+import { plot_color } from '$lib/colors'
 import type { HistogramSeries } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
@@ -15,6 +16,7 @@ import {
   bind_props,
   doc_query,
   mount_sized,
+  mouse,
   one_tab_stop,
   pattern_id_of,
   plot_svg,
@@ -86,12 +88,15 @@ const histogram_bins = (
   overrides: Partial<Parameters<typeof compute_histogram_counts>[1]> & {
     normalize?: Parameters<typeof compute_histogram_bins>[1]
   } = {},
-) =>
-  compute_histogram_bins(
-    compute_histogram_counts(entries, { ...histogram_cfg, ...overrides }),
+) => {
+  const counted = compute_histogram_counts(entries, { ...histogram_cfg, ...overrides })
+  return compute_histogram_bins(
+    counted,
     overrides.normalize ?? `count`,
     histogram_cfg.series_color,
+    counted,
   )
+}
 // count range of a set of series binned over histogram_cfg's domains
 const count_range = (
   series: HistogramSeries[],
@@ -232,6 +237,58 @@ describe(`Histogram`, () => {
     expect(swatches).toHaveLength(3)
     expect(new Set(swatches).size).toBe(3)
     expect(swatches).not.toContain(`rebeccapurple`)
+  })
+
+  // A series' own color wins over bar.color, and the fill picker only shows when bar.color
+  // is what the bars actually use (a lone series without its own color)
+  // oxfmt-ignore
+  test.each([
+    [`lone series color wins`, [{ values: [1, 2], color: `#00ff00` }], `#00ff00`, false],
+    [`lone series uses bar.color`, [{ values: [1, 2] }], `#123456`, true],
+    [`several series use the palette`, [{ values: [1, 2] }, { values: [2, 3], visible: false }], plot_color(0), false],
+  ])(`bar fill: %s`, async (_desc, series, expected_fill, picker_shown) => {
+    await mount_histogram({
+      series,
+      bins: 2,
+      bar: { color: `#123456` },
+      show_controls: true,
+      controls_open: true,
+    })
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    expect(new Set([...bars].map((bar) => bar.getAttribute(`fill`)))).toEqual(
+      new Set([expected_fill]),
+    )
+    const picker = document.querySelector(`input[aria-label="Fill color hex"]`)
+    expect(Boolean(picker)).toBe(picker_shown)
+  })
+
+  test(`probability bar heights survive a rect zoom`, async () => {
+    const on_bar_hover = vi.fn()
+    const values = Array.from({ length: 1000 }, (_, idx) => idx)
+    await mount_histogram({
+      series: [{ values }],
+      normalize: `probability`,
+      bins: 10,
+      on_bar_hover,
+    })
+    const svg = plot_svg()
+    const { left, top } = svg.getBoundingClientRect()
+    const at = (px_x: number, px_y: number) => ({
+      clientX: left + px_x,
+      clientY: top + px_y,
+      button: 0,
+      buttons: 1,
+    })
+    svg.dispatchEvent(mouse(`mousedown`, at(130, 40)))
+    window.dispatchEvent(mouse(`mousemove`, at(250, 240)))
+    window.dispatchEvent(mouse(`mouseup`, at(250, 240)))
+    await tick()
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
+    const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}
+    // the zoom re-binned into fewer samples per bin, each still a share of all 1000
+    expect(count).toBeLessThan(100)
+    expect(y).toBeCloseTo(count / 1000, 12)
   })
 
   test.each([
@@ -449,7 +506,6 @@ describe(`Histogram`, () => {
     await tick()
     expect(series_select.disabled).toBe(false)
     expect(series_select.value).toBe(`3`)
-    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).not.toBeNull()
     expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
       `3`,
     )
@@ -798,6 +854,13 @@ describe(`Histogram`, () => {
     expect(x2_hist.bins.map(({ count }) => count)).toEqual([0, 0, 1, 1, 0])
     expect(x2_hist.bins[0].x1).toBeCloseTo(100 * 2 ** (1 / 5), 12)
     expect(x2_hist.max_value).toBe(0.5)
+    // per-sample weights reach the counts and the probability total
+    const [weighted] = histogram_bins(
+      [{ series_data: series_of([1, 1, 9], { weights: [2, 0.5, 4] }), series_idx: 0 }],
+      { normalize: `probability` },
+    )
+    expect(weighted.bins.map(({ count }) => count)).toEqual([2.5, 0, 0, 0, 4])
+    expect(weighted.bins[0].value).toBeCloseTo(2.5 / 6.5, 12)
 
     for (const [_name, series, scale_type, expected] of [
       [`linear empty`, [], `linear`, [0, 1]],

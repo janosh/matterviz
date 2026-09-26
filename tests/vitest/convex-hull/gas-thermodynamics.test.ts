@@ -3,6 +3,7 @@ import {
   analyze_gas_data,
   apply_gas_corrections,
   compute_gas_chemical_potential,
+  compute_element_mu_shift,
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
   format_chemical_potential,
@@ -14,6 +15,7 @@ import {
 } from '$lib/convex-hull/gas-thermodynamics'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
+import type { ElementSymbol } from '$lib/element'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
@@ -272,6 +274,46 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
     // Higher pressure → higher chemical potential (less negative correction)
     expect(result_high_P.energy).toBeGreaterThan(result_low_P.energy)
+  })
+})
+
+describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
+  const provider = get_default_gas_provider()
+  const setup = (config: GasThermodynamicsConfig, temperature: number) => {
+    const pressures = get_effective_pressures(config)
+    const shift = (element: string) =>
+      compute_element_mu_shift(element as ElementSymbol, config, temperature, pressures)
+    // Δμ of a whole molecule at (T, P) relative to (0 K, 1 bar)
+    const molecule_shift = (gas: GasSpecies) =>
+      (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
+        provider.get_standard_chemical_potential(gas, 0)) *
+      Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
+    return { shift, molecule_shift }
+  }
+
+  // A gas fixes only the stoichiometric sum of its elements' shifts (Δμ_C + 2 Δμ_O = Δμ(CO2)):
+  // a partner pinned by its own reservoir (O by O2) leaves the element the remainder
+  test.each<[GasSpecies[], GasThermodynamicsConfig[`element_to_gas`], number]>([
+    [[`O2`, `CO2`], {}, 1000],
+    [[`CO2`], {}, 1000],
+    [[`O2`, `H2O`], { H: `H2O` }, 800],
+  ])(`sum rule holds for %o (%o) at %d K`, (enabled_gases, element_to_gas, temperature) => {
+    const { shift, molecule_shift } = setup({ enabled_gases, element_to_gas }, temperature)
+    for (const gas of enabled_gases) {
+      const sum = Object.entries(GAS_STOICHIOMETRY[gas]).reduce(
+        (acc, [element, count]) => acc + count * shift(element),
+        0,
+      )
+      expect(sum).toBeCloseTo(molecule_shift(gas), 12)
+    }
+  })
+
+  test.each([
+    [`C`, { O: `CO2`, C: `CO2` }, /depend on each other/],
+    [`N`, { N: `O2` }, /maps N to O2, which has no N/],
+  ] as const)(`%s: rejects element_to_gas %o`, (element, element_to_gas, message) => {
+    const { shift } = setup({ enabled_gases: [`O2`, `CO2`], element_to_gas }, 1000)
+    expect(() => shift(element)).toThrow(message)
   })
 })
 

@@ -1074,7 +1074,7 @@ Reference lines support hover effects and click handlers for interactivity:
 
 ## Legend Grouping
 
-When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group header to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group:
+When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group label to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group. Set `legend.group_click: 'collapse'` to make the whole header an expand/collapse toggle instead (what `create_collapsible_legend` does):
 
 ```svelte example
 <script lang="ts">

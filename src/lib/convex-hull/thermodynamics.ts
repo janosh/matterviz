@@ -118,24 +118,30 @@ export function compute_e_form_per_atom(
   return energy_per_atom - ref_sum
 }
 
+// Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
+// (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
+// without absolute-energy unaries, since their E_form is measured against those.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
-  const refs: Record<string, PhaseData> = {}
+  const refs: Record<string, { entry: PhaseData; score: number; absolute: boolean }> = {}
   for (const entry of entries) {
     if (!is_unary_entry(entry)) continue
-    const energy_per_atom = get_energy_per_atom(entry)
-    if (!Number.isFinite(energy_per_atom)) continue
+    const absolute =
+      typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
+    const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
+    if (!Number.isFinite(score)) continue
     const element = Object.keys(entry.composition).find(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
     if (!element) continue
     const current = refs[element]
-    if (!current || energy_per_atom < get_energy_per_atom(current)) {
-      refs[element] = entry
-    }
+    if (!current || (absolute === current.absolute ? score < current.score : absolute))
+      refs[element] = { entry, score, absolute }
   }
-  return refs
+  return Object.fromEntries(
+    Object.entries(refs).map(([element, { entry }]) => [element, entry]),
+  )
 }
 
 // Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure.
@@ -253,10 +259,11 @@ export function calculate_e_above_hull(
 }
 
 export function get_convex_hull_stats(
-  processed_entries: PhaseData[],
+  entries: (PhaseData & { is_synthetic?: boolean })[],
   elements: ElementSymbol[],
   max_arity: number = 4,
 ): PhaseStats | null {
+  const processed_entries = entries.filter((entry) => !entry.is_synthetic) // not data phases
   if (processed_entries.length === 0) return null
   max_arity = Math.max(1, max_arity)
 
@@ -568,38 +575,43 @@ export const compute_lower_hull_nd = (points: number[][]): HullFacet[] =>
 
 // Energy above the lower hull for each query point (last coordinate = energy), unclamped.
 // The lower hull is a convex function of the spatial coordinates, so its value is the max
-// over the facets' hyperplanes; the maximizing facet is then checked to actually contain the
-// query's projection, and queries outside the hull's composition domain get NaN.
+// over the facets' hyperplanes. Coplanar facets tie at that max while only some of them
+// contain the query's projection, so every facet within HULL_EPS of the max is checked for
+// containment; queries outside the hull's composition domain get NaN.
 export function compute_e_above_hull_nd(
   query_points: number[][],
   facets: HullFacet[],
   hull_points: number[][],
 ): number[] {
   const spatial_dim = (hull_points[0]?.length ?? 1) - 1
-  return query_points.map((query) => {
-    if (!query.every(Number.isFinite)) return NaN
-    let best: HullFacet | null = null
-    let e_hull = -Infinity
-    for (const facet of facets) {
-      // Solve normal · (x, e) + offset = 0 for e
-      let sum = facet.offset
-      for (let dim = 0; dim < spatial_dim; dim++) sum += facet.normal[dim] * query[dim]
-      const e_facet = -sum / facet.normal[spatial_dim]
-      if (e_facet > e_hull) [best, e_hull] = [facet, e_facet]
-    }
-    if (!best) return NaN
-    // Barycentric coordinates of the query's projection in the facet's projected simplex:
-    // [v1-v0 … vn-v0] · λ = x - v0, λ0 = 1 - Σλ
-    const verts = best.vertex_indices.map((idx) => hull_points[idx])
+  // Solve normal · (x, e) + offset = 0 for e
+  const facet_energy = (facet: HullFacet, query: number[]): number => {
+    let sum = facet.offset
+    for (let dim = 0; dim < spatial_dim; dim++) sum += facet.normal[dim] * query[dim]
+    return -sum / facet.normal[spatial_dim]
+  }
+  // Barycentric coordinates of the query's projection in the facet's projected simplex:
+  // [v1-v0 … vn-v0] · λ = x - v0, λ0 = 1 - Σλ
+  const contains = (facet: HullFacet, query: number[]): boolean => {
+    const verts = facet.vertex_indices.map((idx) => hull_points[idx])
     const matrix = Array.from({ length: spatial_dim }, (_, row) =>
       verts.slice(1).map((vert) => vert[row] - verts[0][row]),
     )
     const rhs = Array.from({ length: spatial_dim }, (_, row) => query[row] - verts[0][row])
     const lambda = math.solve_linear_system(matrix, rhs)
-    if (!lambda) return NaN
-    const inside =
-      lambda.every((val) => val >= -HULL_EPS) &&
-      1 - lambda.reduce((sum, val) => sum + val, 0) >= -HULL_EPS
-    return inside ? query[spatial_dim] - e_hull : NaN
+    return Boolean(
+      lambda?.every((val) => val >= -HULL_EPS) &&
+      1 - lambda.reduce((sum, val) => sum + val, 0) >= -HULL_EPS,
+    )
+  }
+  return query_points.map((query) => {
+    if (!query.every(Number.isFinite)) return NaN
+    const energies = facets.map((facet) => facet_energy(facet, query))
+    const e_hull = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
+    if (!Number.isFinite(e_hull)) return NaN
+    const covered = facets.some(
+      (facet, idx) => energies[idx] >= e_hull - HULL_EPS && contains(facet, query),
+    )
+    return covered ? query[spatial_dim] - e_hull : NaN
   })
 }
