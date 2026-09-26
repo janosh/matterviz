@@ -1043,15 +1043,10 @@
     ]
   }
   let scatter_point_limit = $derived(clamp(content_size.width / 2, 128, 1000))
-  let base_scatter_series = $derived(
-    prepare_trajectory_scatter_series(base_plot_series, scatter_point_limit),
-  )
+  // Only visible series are sampled; prepared arrays are cached per source series, so legend
+  // toggles reuse them and hidden columns cost nothing per streamed property batch.
   let scatter_series = $derived(
-    base_scatter_series.map((srs, idx) => ({
-      ...srs,
-      visible: plot_series[idx].visible,
-      y_axis: plot_series[idx].y_axis,
-    })),
+    prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
   )
   // A distribution has one value axis. Keep its selection separate from the time plot's
   // multi-property visibility so switching plots cannot mix units or discard that selection.

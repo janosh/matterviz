@@ -253,16 +253,49 @@ const stats_cache = new WeakMap<
   readonly TrajectoryMetadata[],
   Record<`all` | `time_series`, PropertyStats>
 >()
-function cached_properties(rows: readonly TrajectoryMetadata[]) {
-  const cached = stats_cache.get(rows)
-  if (cached) return cached
-  const stats: PropertyStats = new Map()
-  const coordinates = new Set<string>()
-  // Most properties cover every frame. Share their grid instead of allocating and growing
-  // an identical N-frame index array for each of a log's dozens of scalar columns.
-  const frame_numbers = rows.map((row) => row.frame_number)
-  for (let row_idx = 0; row_idx < rows.length; row_idx++) {
+
+// Scan state behind the published stats. Progressive runs publish a new rows array per batch
+// that extends the previous one, so the scan resumes at the first new row instead of
+// rescanning every earlier row (O(frames^2) over a stream). Accumulators are private and
+// mutable; every result gets its own copies so earlier results never change underneath
+// their consumers.
+interface PropertyAccumulator {
+  rows: readonly TrajectoryMetadata[]
+  frame_numbers: number[]
+  // null frame_indices: present in every row so far, so indices are the frame_numbers prefix
+  stats: Map<string, { values: number[]; frame_indices: number[] | null }>
+  coordinates: Set<string>
+}
+// Keyed weakly by a run's first row, which every later snapshot of the same stream shares,
+// so a disposed run's scan is collected with its rows. (A WeakRef list would pin every
+// snapshot of a synchronous burst of batches until the job ends.)
+const accumulators = new WeakMap<TrajectoryMetadata, PropertyAccumulator>()
+
+const extends_rows = (
+  rows: readonly TrajectoryMetadata[],
+  prefix: readonly TrajectoryMetadata[],
+): boolean => {
+  if (prefix.length > rows.length) return false
+  for (let row_idx = prefix.length - 1; row_idx >= 0; row_idx--) {
+    if (rows[row_idx] !== prefix[row_idx]) return false
+  }
+  return true
+}
+
+function claim_accumulator(rows: readonly TrajectoryMetadata[]): PropertyAccumulator {
+  const stored = rows.length > 0 ? accumulators.get(rows[0]) : undefined
+  const resumes = stored !== undefined && extends_rows(rows, stored.rows)
+  const accumulator: PropertyAccumulator = resumes
+    ? stored
+    : { rows: [], frame_numbers: [], stats: new Map(), coordinates: new Set() }
+  // A lagging snapshot (e.g. a throttled mirror of a longer live array) scans on its own
+  // rather than discarding the longer scan it is a prefix of.
+  if (rows.length > 0 && !(stored && stored.rows.length > rows.length))
+    accumulators.set(rows[0], accumulator)
+  const { frame_numbers, stats, coordinates } = accumulator
+  for (let row_idx = accumulator.rows.length; row_idx < rows.length; row_idx++) {
     const { frame_number, properties } = rows[row_idx]
+    frame_numbers.push(frame_number)
     for (const key of Object.keys(properties)) {
       const value = properties[key]
       if (typeof value !== `number` || coordinates.has(key)) continue
@@ -273,29 +306,43 @@ function cached_properties(rows: readonly TrajectoryMetadata[]) {
           coordinates.add(key)
           continue
         }
-        stats.set(key, (stat = { values: [], frame_indices: frame_numbers }))
-      }
-      if (stat.frame_indices === frame_numbers && stat.values.length !== row_idx) {
+        stats.set(key, (stat = { values: [], frame_indices: row_idx === 0 ? null : [] }))
+      } else if (stat.frame_indices === null && stat.values.length !== row_idx) {
+        // First gap: this property no longer shares the dense frame grid.
         stat.frame_indices = frame_numbers.slice(0, stat.values.length)
       }
       stat.values.push(value)
-      if (stat.frame_indices !== frame_numbers) stat.frame_indices.push(frame_number)
+      stat.frame_indices?.push(frame_number)
     }
   }
+  accumulator.rows = rows
+  return accumulator
+}
+
+function cached_properties(rows: readonly TrajectoryMetadata[]) {
+  const cached = stats_cache.get(rows)
+  if (cached) return cached
+  const accumulator = claim_accumulator(rows)
+  // Most properties cover every frame. Share their grid instead of allocating an identical
+  // N-frame index array for each of a log's dozens of scalar columns.
+  const frame_numbers = accumulator.frame_numbers.slice()
+  const stats: PropertyStats = new Map()
   const time_series: PropertyStats = new Map()
-  for (const [key, stat] of stats) {
-    const { values, frame_indices } = stat
+  for (const [key, stat] of accumulator.stats) {
+    const values = stat.values.slice()
     // A property missing only at the tail never encountered a later row to detect its gap.
-    if (frame_indices === frame_numbers && values.length < rows.length) {
-      stat.frame_indices = frame_numbers.slice(0, values.length)
-    }
+    const frame_indices =
+      stat.frame_indices?.slice() ??
+      (values.length === rows.length ? frame_numbers : frame_numbers.slice(0, values.length))
+    const entry = { values, frame_indices }
+    stats.set(key, entry)
     // Filter once per row batch; labels and energy references do not change eligibility.
     // Flat energy still matters for converged runs; distributions keep every property.
     if (
       values.length > 1 &&
       (is_energy_property(key) || get_coefficient_of_variation(values) >= 1e-6)
     )
-      time_series.set(key, stat)
+      time_series.set(key, entry)
   }
   const result = { all: stats, time_series }
   stats_cache.set(rows, result)
@@ -544,6 +591,29 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
     min_log_decades: 3,
   })
 
+type PreparedScatter = Pick<
+  DataSeries,
+  `x` | `y` | `raw_y` | `markers` | `line_underlays` | `line_style`
+>
+// Keyed by the source arrays (x, then y, then raw_y or y): visibility changes rebuild series
+// objects around the same arrays, so re-showing a series reuses its sampled arrays.
+type ScatterCache = WeakMap<
+  readonly number[],
+  WeakMap<readonly number[], WeakMap<readonly number[], Map<string, PreparedScatter>>>
+>
+const scatter_cache: ScatterCache = new WeakMap()
+const weak_entry = <Key extends object, Value>(
+  map: WeakMap<Key, Value>,
+  key: Key,
+  create: () => Value,
+): Value => {
+  let value = map.get(key)
+  if (value === undefined) map.set(key, (value = create()))
+  return value
+}
+
+// Downsample and smooth long series for display. Hidden series (visible === false) pass
+// through untouched: sampling ~20 unused columns on every property batch dominated streaming.
 export function prepare_trajectory_scatter_series(
   series: readonly DataSeries[],
   max_points: number,
@@ -554,35 +624,48 @@ export function prepare_trajectory_scatter_series(
   const limit = Math.floor(max_points)
   return series.map((data_series, series_idx) => {
     assert_series_lengths(data_series, series_idx)
-    if (data_series.x.length <= limit) return data_series
+    if (data_series.x.length <= limit || data_series.visible === false) return data_series
     const source_raw_y = data_series.raw_y ?? data_series.y
-    let window_size = Math.max(5, Math.round(data_series.x.length / 50))
-    if (window_size % 2 === 0) window_size++
-    const sampled = downsample_indices(data_series.x, source_raw_y, limit)
-    const smoothed_y = smooth_moving_average(data_series.y, window_size, sampled)
-    const sampled_x = sampled.map((idx) => data_series.x[idx])
-    const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
     const color = data_series.line_style?.stroke ?? `currentColor`
-    return {
-      ...data_series,
-      x: sampled_x,
-      y: smoothed_y,
-      raw_y: sampled_raw_y,
-      markers: `line`,
-      metadata: data_series.metadata,
-      line_underlays: [
-        {
-          x: sampled_x,
-          y: sampled_raw_y,
-          line_style: {
-            stroke: `color-mix(in srgb, ${color} 18%, transparent)`,
-            stroke_width: 1,
-            curve: `linear`,
+    const by_limit = weak_entry(
+      weak_entry(
+        weak_entry(scatter_cache, data_series.x, () => new WeakMap()),
+        data_series.y,
+        () => new WeakMap(),
+      ),
+      source_raw_y,
+      () => new Map(),
+    )
+    const cache_key = `${limit}\0${color}`
+    let prepared = by_limit.get(cache_key)
+    if (!prepared) {
+      let window_size = Math.max(5, Math.round(data_series.x.length / 50))
+      if (window_size % 2 === 0) window_size++
+      const sampled = downsample_indices(data_series.x, source_raw_y, limit)
+      const smoothed_y = smooth_moving_average(data_series.y, window_size, sampled)
+      const sampled_x = sampled.map((idx) => data_series.x[idx])
+      const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
+      prepared = {
+        x: sampled_x,
+        y: smoothed_y,
+        raw_y: sampled_raw_y,
+        markers: `line`,
+        line_underlays: [
+          {
+            x: sampled_x,
+            y: sampled_raw_y,
+            line_style: {
+              stroke: `color-mix(in srgb, ${color} 18%, transparent)`,
+              stroke_width: 1,
+              curve: `linear`,
+            },
           },
-        },
-      ],
-      line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
+        ],
+        line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
+      }
+      by_limit.set(cache_key, prepared)
     }
+    return { ...data_series, ...prepared, metadata: data_series.metadata }
   })
 }
 
