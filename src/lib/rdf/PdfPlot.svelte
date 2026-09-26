@@ -70,9 +70,9 @@
     struct_list.map(({ struct, label }) => {
       try {
         // the PDF's own message for a lattice-less or empty structure, before the search
-        number_density(struct)
+        const rho_0 = number_density(struct)
         const partial_rdfs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
-        return { struct, label, partial_rdfs }
+        return { struct, label, partial_rdfs, rho_0 }
       } catch (exc) {
         return { failure: to_error(exc).message }
       }
@@ -87,8 +87,9 @@
         continue
       }
       try {
-        const { struct, label, partial_rdfs } = entry
-        totals.push({ label, total: weight_pdf_partials(struct, partial_rdfs, { radiation }) })
+        const { struct, label, partial_rdfs, rho_0 } = entry
+        const total = weight_pdf_partials(struct, partial_rdfs, { radiation, rho_0 })
+        totals.push({ label, total })
       } catch (exc) {
         failure = to_error(exc).message
       }

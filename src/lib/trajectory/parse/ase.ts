@@ -7,13 +7,14 @@ import type { Pbc } from '$lib/structure'
 import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
   calc_force_stats,
+  checked_site_forces,
   convert_atomic_numbers,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
-import type { ParsedTrajectory } from './shared'
+import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
 
 // A frame JSON header this large can only be a corrupt offsets table pointing into payload
@@ -190,7 +191,8 @@ export function decode_ase_frame(
     max_json_length,
     base_offset = 0,
     plot_row = false,
-  }: AseFrameOptions & { plot_row?: boolean } = {},
+    warn,
+  }: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
 ): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
   const frame_data = JSON.parse(
     read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
@@ -227,15 +229,13 @@ export function decode_ase_frame(
   const pbc = ase_pbc(pbc_value)
 
   // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
-  const { forces, ...calculator } = ase_calculator_data(frame_data, read_ndarray)
-  const is_force_array = (value: unknown): value is number[][] =>
-    Array.isArray(value) &&
-    value.length === n_atoms &&
-    value.every((force) => Array.isArray(force) && force.length === 3)
-  if (forces !== undefined && !is_force_array(forces)) {
-    const rows = Array.isArray(forces) ? `${forces.length} rows` : typeof forces
-    throw new Error(`ASE calculator forces must be ${n_atoms} x 3, got ${rows}`)
-  }
+  const { forces: raw_forces, ...calculator } = ase_calculator_data(frame_data, read_ndarray)
+  const forces = checked_site_forces(
+    raw_forces,
+    n_atoms,
+    `ASE calculator forces of frame ${step}`,
+    warn,
+  )
   const metadata = {
     step,
     ...calculator,
@@ -285,7 +285,7 @@ export interface AseFrames {
   metadata?: Record<string, unknown>
 }
 
-export function open_ase_frames(data: ArrayBuffer): AseFrames {
+export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
   if (data.byteLength < 48 || decoder.decode(new Uint8Array(data, 0, 8)) !== `- of Ulm`) {
     throw new Error(`Invalid ASE trajectory`)
   }
@@ -323,6 +323,7 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
         fallback_pbc: pbc,
         max_json_length: MAX_ASE_HEADER_BYTES,
         plot_row,
+        warn,
       })
       numbers = decoded.numbers
       pbc = decoded.pbc
@@ -471,8 +472,8 @@ export function open_ase_frames(data: ArrayBuffer): AseFrames {
 // Every frame materialised. ASE rewrites the ULM header only after a frame is fully written,
 // so every frame the offsets table points at should decode; one that does not is
 // corruption, not a torn tail.
-export function parse_ase_trajectory(buffer: ArrayBuffer): ParsedTrajectory {
-  const { frame_count, decode } = open_ase_frames(buffer)
+export function parse_ase_trajectory(buffer: ArrayBuffer, warn: WarnFn): ParsedTrajectory {
+  const { frame_count, decode } = open_ase_frames(buffer, warn)
   const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
   return { format: `ase`, frames, metadata: {} }
 }

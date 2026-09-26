@@ -138,7 +138,7 @@ test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
 
 // A drag or wheel zoom used to keep raycasting the sheets on every pointermove, and the tooltip
 // popping in and out under the cursor flickered over the surface
-test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, async () => {
+test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {
   // only nullness of the tooltip is asserted, so a stub stands in for the full hover record
   const props = $state<{ hover_data: FermiHoverData | null }>({
     hover_data: { band_index: 0 } as FermiHoverData,
@@ -147,13 +147,13 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
 
   const orbit = threlte_stub.nodes.find(({ tag }) => tag === `OrbitControls`)
   if (!orbit) throw new Error(`OrbitControls not mounted`)
-  const { onstart, onend } = orbit.props as { onstart: () => void; onend: () => void }
+  const { onstart, onchange, onend } = orbit.props as Record<string, () => void>
   hover_enabled.set.mockClear()
 
   onstart()
-  // raycasts switch off only after the pointerdown that started the orbit reached the meshes
+  // raycasts switch off once the camera moves, so the press that started the orbit still hits
   expect(hover_enabled.set).not.toHaveBeenCalled()
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  onchange()
   flushSync()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(false)
   expect(props.hover_data).toBeNull()

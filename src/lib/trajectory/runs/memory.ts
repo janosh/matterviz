@@ -1,7 +1,7 @@
 import { encode_frame, type NumericFrame } from '../frame'
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
-import { first_non_increasing_index } from '$lib/math'
+import { first_non_increasing_index, is_finite_vec3_like } from '$lib/math'
 import { frame_property_row, full_data_extractor } from '../extract'
 import { is_supported_trajectory_signal_shape } from '../helpers'
 import type {
@@ -49,13 +49,7 @@ function validate_frames(
     if (!sites?.length) throw new Error(`Frame ${frame_idx} has no sites`)
     // indexed loop, no iterator or closure: this runs over every site of every frame
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
-      const { xyz } = sites[atom_idx]
-      if (
-        xyz.length !== 3 ||
-        !Number.isFinite(xyz[0]) ||
-        !Number.isFinite(xyz[1]) ||
-        !Number.isFinite(xyz[2])
-      ) {
+      if (!is_finite_vec3_like(sites[atom_idx].xyz)) {
         throw new Error(
           `Frame ${frame_idx} atom ${atom_idx} has invalid Cartesian coordinates`,
         )

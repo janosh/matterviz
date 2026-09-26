@@ -280,11 +280,12 @@ export function build_orbit_props(opts: {
     if (fov === undefined || !(fov > 0) || fov >= 180) return undefined
     return perspective_distance_for_zoom(zoom, viewport_px, fov)
   }
-  // Callers disable hover raycasts while the camera moves. Interactivity may listen on the
-  // canvas after OrbitControls, so doing that synchronously in `start` would swallow the
-  // pointerdown that began the gesture (e.g. a click deleting a bond). Defer it past this
-  // event's dispatch, and skip it for presses that ended first.
-  let moving_timer: ReturnType<typeof setTimeout> | undefined
+  // Callers disable hover raycasts while the camera moves. OrbitControls' `start` fires before
+  // threlte interactivity sees the same pointerdown, so flagging movement there would swallow
+  // the press (e.g. a click deleting a bond). Flag it on the gesture's first `change` instead:
+  // a click never moves the camera, nor does a press a scene claims by disabling the controls
+  // (TernaryPrismScene's plane drag).
+  let gesture_pending = false
   return {
     target: opts.target,
     enableRotate: opts.rotate_speed > 0,
@@ -308,11 +309,17 @@ export function build_orbit_props(opts: {
     enableDamping: Boolean(opts.rotation_damping),
     dampingFactor: opts.rotation_damping,
     onstart: () => {
-      moving_timer = setTimeout(() => opts.set_camera_is_moving?.(true), 0)
+      gesture_pending = true
       opts.on_start_extra?.()
     },
+    // damping and auto-rotation also dispatch `change`, but outside a gesture
+    onchange: () => {
+      if (!gesture_pending) return
+      gesture_pending = false
+      opts.set_camera_is_moving?.(true)
+    },
     onend: () => {
-      clearTimeout(moving_timer)
+      gesture_pending = false
       opts.set_camera_is_moving?.(false)
       opts.on_end_extra?.()
     },

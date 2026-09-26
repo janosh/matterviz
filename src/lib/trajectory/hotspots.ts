@@ -1,16 +1,22 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
-import { is_pbc, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
+import { AVOGADRO_PER_MOL, BOLTZMANN_EV_PER_K, ELEMENTARY_CHARGE_C } from '$lib/constants'
+import {
+  is_finite_vec3_like,
+  is_pbc,
+  matrix_inverse_3x3,
+  type Matrix3x3,
+  type Vec3,
+} from '$lib/math'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
-export const BOLTZMANN_EV = 1.380649e-23 / 1.602176634e-19
 const AMU_KG = 1.66053906892e-27
-const JOULE_EV = 1 / 1.602176634e-19
+const JOULE_EV = 1 / ELEMENTARY_CHARGE_C
 export const VELOCITY_UNITS = { 'A/fs': 1e5, 'A/ps': 100, 'm/s': 1 } as const
 export const ENERGY_UNITS = {
   eV: 1,
   J: JOULE_EV,
-  'kcal/mol': (4184 / 6.02214076e23) * JOULE_EV,
+  'kcal/mol': (4184 / AVOGADRO_PER_MOL) * JOULE_EV,
 } as const
 
 export interface HotspotGrid {
@@ -142,7 +148,7 @@ export function hotspot_values(
     )
       return NaN
     if (metric === `temperature`)
-      return result.dof[idx] > 0 ? (2 * energy) / (BOLTZMANN_EV * result.dof[idx]) : NaN
+      return result.dof[idx] > 0 ? (2 * energy) / (BOLTZMANN_EV_PER_K * result.dof[idx]) : NaN
     return energy / result.population[idx]
   })
 }
@@ -154,7 +160,7 @@ export const hotspot_mean = (result: HotspotResult, metric: HotspotMetric): numb
     0,
   )
   return denominator > 0
-    ? (energy / denominator) * (metric === `temperature` ? 2 / BOLTZMANN_EV : 1)
+    ? (energy / denominator) * (metric === `temperature` ? 2 / BOLTZMANN_EV_PER_K : 1)
     : NaN
 }
 
@@ -182,10 +188,9 @@ export function validate_hotspot_grid(grid: HotspotGrid): number {
   if (grid.dims.length !== 3 || grid.dims.some((size) => !Number.isInteger(size) || size < 1))
     throw new Error(`Hotspot grid dimensions must be positive integers: ${grid.dims}`)
   if (
-    grid.origin.length !== 3 ||
-    !grid.origin.every(Number.isFinite) ||
+    !is_finite_vec3_like(grid.origin) ||
     grid.cell.length !== 3 ||
-    grid.cell.some((row) => row.length !== 3 || !row.every(Number.isFinite)) ||
+    !grid.cell.every(is_finite_vec3_like) ||
     !is_pbc(grid.pbc)
   )
     throw new Error(

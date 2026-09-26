@@ -1220,7 +1220,7 @@
     viewport_px: () => height,
     fov: () => effective_fov,
     // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
-    // reads as flicker. Pointerdown reaches the meshes before OrbitControls' start, so presses work
+    // reads as flicker. Flagged on the first camera change, so presses still reach the meshes
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
       hover_enabled.set(!moving)

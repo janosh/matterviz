@@ -1,5 +1,5 @@
 import { interpolateInferno } from 'd3-scale-chromatic'
-import type { Vec3 } from '$lib/math'
+import { finite_vec3_from_values, type Vec3 } from '$lib/math'
 import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
 import { atom_field_bin, type AtomColorField } from '$lib/structure/atom-color-field'
 import { Matrix4 } from 'three/webgpu'
@@ -125,11 +125,9 @@ export function hotspot_field_geometry(
   result: HotspotResult,
   frame: NumericFrame,
 ): Omit<AtomColorField, `colors`> {
-  const box_origin = frame.header.metadata?.box_origin
-  const render_origin: Vec3 =
-    Array.isArray(box_origin) && box_origin.length === 3 && box_origin.every(Number.isFinite)
-      ? (box_origin as Vec3)
-      : [0, 0, 0]
+  const render_origin: Vec3 = finite_vec3_from_values(frame.header.metadata?.box_origin) ?? [
+    0, 0, 0,
+  ]
   const { lattice } = frame.structure
   const grid =
     result.options.coordinates === `cell` && lattice

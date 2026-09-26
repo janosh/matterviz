@@ -478,14 +478,12 @@ describe(`ConvexHullStats`, () => {
   })
 
   describe(`min N_el filter`, () => {
+    const binary = mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` })
+
     test(`dropdown visible for ternary+ systems, hidden for binary-only`, () => {
       const ternary = mock_entry({
         composition: { Li: 1, Fe: 1, O: 2 },
         reduced_formula: `LiFeO2`,
-      })
-      const binary = mock_entry({
-        composition: { Fe: 1, O: 1 },
-        reduced_formula: `FeO`,
       })
 
       mount_stats_table({ stable_entries: [ternary, binary] })
@@ -500,6 +498,14 @@ describe(`ConvexHullStats`, () => {
         document.querySelector(`.table-container .dropdown-wrapper .icon-btn`),
       ).toBeInstanceOf(HTMLElement)
     })
+
+    // Math.max(1, ...arities) threw RangeError past ~125k entries
+    test(`dropdown options span the max arity of 200k entries without a spread overflow`, () => {
+      const binaries = Array.from({ length: 200_000 }, () => binary)
+      mount_stats_table({ stable_entries: [...binaries, mock_entry()] })
+      const options = get_table_filter_select(`Min N`)?.options ?? []
+      expect(Array.from(options, (opt) => opt.value)).toEqual([`1`, `2`, `3`, `4`])
+    }, 15_000)
   })
 
   describe(`table export`, () => {

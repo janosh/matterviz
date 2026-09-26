@@ -368,7 +368,7 @@
       rotation_damping: 0,
       // No domain hover while orbiting: the tooltip popping between domains under the cursor
       // reads as flicker. A wheel zoom moves no pointer (no pointerleave), so the parent drops an
-      // unpinned tooltip itself; pointerdown reaches the mesh before OrbitControls' start
+      // unpinned tooltip itself. Flagged on the first camera change, so presses still pin
       set_camera_is_moving: (moving) => hover_enabled.set(!moving),
       on_start_extra: on_camera_start,
     }),

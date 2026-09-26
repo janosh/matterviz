@@ -13,6 +13,7 @@ import { describe, expect, test } from 'vitest'
 import { read_binary_test_file } from '../test-fixtures'
 
 const FIXTURE = `ase-LiMnO2-chgnet-relax.traj`
+const no_warnings = (message: string) => expect.unreachable(message)
 
 // Bytes the ULM header occupies before the first frame's payload data. Mirrors
 // ULM_HEADER_BYTES in Hive's src-tauri/src/trajectory.rs.
@@ -52,7 +53,10 @@ describe(`ASE frame slicing`, () => {
   // withhold `base_offset` to check the bounds guard.
   const decode_span = (span: FrameSpan, frame_idx: number, options: AseFrameOptions) => {
     const slice = buffer.slice(span.byte_offset, span.byte_offset + span.size)
-    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, options)
+    return decode_ase_frame(new DataView(slice), slice, span.header_offset, frame_idx, {
+      ...options,
+      warn: no_warnings,
+    })
   }
 
   test(`frame spans tile the data region and contain their own header`, () => {
@@ -75,7 +79,7 @@ describe(`ASE frame slicing`, () => {
   })
 
   test(`a frame decoded from its slice equals the whole-file parse exactly`, () => {
-    const whole_file = parse_ase_trajectory(buffer)
+    const whole_file = parse_ase_trajectory(buffer, no_warnings)
     expect(whole_file.frames).toHaveLength(spans.length)
 
     let cached: Pick<AseFrameOptions, `fallback_numbers` | `fallback_pbc`> = {}
@@ -110,7 +114,7 @@ describe(`ASE frame slicing`, () => {
       fallback_pbc: pbc,
     })
     expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
-      parse_ase_trajectory(buffer).frames[1].structure.sites.map(
+      parse_ase_trajectory(buffer, no_warnings).frames[1].structure.sites.map(
         (site) => site.species[0].element,
       ),
     )

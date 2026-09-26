@@ -1,4 +1,4 @@
-import { det_3x3, EPS } from '$lib/math'
+import { det_3x3, EPS, is_finite_matrix3x3 } from '$lib/math'
 import { is_plain_object } from '$lib/utils'
 import type { Crystal } from './index'
 import { numeric_sites } from './site'
@@ -25,13 +25,7 @@ export function is_periodic(obj: unknown): obj is Crystal {
 export function has_lattice_matrix(obj: unknown): obj is Crystal {
   if (!has_lattice(obj) || (!numeric_sites.has(obj) && !Array.isArray(obj.sites))) return false
   const { matrix } = obj.lattice
-  return (
-    Array.isArray(matrix) &&
-    matrix.length === 3 &&
-    [...matrix].every(
-      (row) => Array.isArray(row) && row.length === 3 && [...row].every(Number.isFinite),
-    )
-  )
+  return is_finite_matrix3x3(matrix)
 }
 
 export function has_usable_lattice(obj: unknown): obj is Crystal {

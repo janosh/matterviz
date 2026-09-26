@@ -50,6 +50,9 @@ export function mount_scene(render: Component) {
       contexts[0].resetFrameInvalidation()
       return rendered
     },
-    unmount_scene: () => unmount(component),
+    unmount_scene: async () => {
+      await unmount(component)
+      contexts[0].dom.remove()
+    },
   }
 }

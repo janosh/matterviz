@@ -124,6 +124,8 @@ export function calculate_total_pdf(
 export function weight_pdf_partials(
   structure: Crystal,
   partial_rdfs: readonly RdfPattern[],
+  // `rho_0`: the structure's number_density, for callers that already computed it to reject
+  // a lattice-less or empty structure before the neighbour search
   {
     radiation = `xray`,
     s_val = 0,

@@ -5,6 +5,7 @@ import {
   array_extent,
   array_max,
   euclidean_dist,
+  is_finite_matrix3x3,
   mat3x3_vec3_multiply,
   subtract,
   transpose_3x3_matrix,
@@ -253,11 +254,6 @@ export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null
   return { up: record[up_key], down: down_key !== undefined ? record[down_key] : null }
 }
 
-const is_matrix3x3 = (val: unknown): val is Matrix3x3 =>
-  Array.isArray(val) &&
-  val.length === 3 &&
-  val.every((row) => is_vec3(row) && row.length === 3)
-
 // pymatgen's `as_dict()` stores the reciprocal lattice as `lattice_rec` in the physics
 // convention (2π included), the phonon JSON dumped by phonopy/atomate2-style workflows as
 // `recip_lattice` in phonopy's crystallographic convention (no 2π). Both are producer formats,
@@ -269,7 +265,7 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   const scale = is_plain_object(pmg.lattice_rec) ? 1 : 2 * Math.PI
   const lattice = [pmg.lattice_rec, pmg.recip_lattice].find(is_plain_object)
   const matrix = lattice?.matrix
-  if (is_matrix3x3(matrix)) {
+  if (is_finite_matrix3x3(matrix)) {
     return matrix.map((row) => row.map((val) => val * scale)) as Matrix3x3
   }
   throw new Error(

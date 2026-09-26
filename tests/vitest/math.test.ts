@@ -837,6 +837,38 @@ test.each([
   expect(math.is_pbc(value)).toBe(expected)
 })
 
+test.each([
+  [[1, -0, 3], true, true],
+  [new Float64Array([1, 2, 3]), true, false], // typed arrays are only array-like
+  [{ length: 3, 0: 1, 1: 2, 2: 3 }, true, false],
+  [[1, NaN, 3], false, false],
+  [[Infinity, 0, 0], false, false],
+  [[`1`, 2, 3], false, false], // no string coercion
+  [Object.assign([], { 0: 1, 2: 3, length: 3 }), false, false], // sparse hole at 1
+  [[1, 2], false, false],
+  [[1, 2, 3, 4], false, false],
+  [null, false, false],
+])(`is_finite_vec3_like(%j) = %s, is_finite_vec3 = %s`, (value, like, vec3) => {
+  expect(math.is_finite_vec3_like(value)).toBe(like)
+  expect(math.is_finite_vec3(value)).toBe(vec3)
+  const row = [0, 0, 1]
+  expect(math.is_finite_matrix3x3([row, row, value])).toBe(vec3)
+})
+
+test.each([
+  [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+    ],
+    false,
+  ],
+  [Object.assign([], { 0: [1, 0, 0], 2: [0, 0, 1], length: 3 }), false], // sparse row
+  [`abc`, false],
+])(`is_finite_matrix3x3(%j) = %s`, (value, expected) => {
+  expect(math.is_finite_matrix3x3(value)).toBe(expected)
+})
+
 // mean / sample_std / median agree with the textbook definitions and with d3-array
 test.each([
   { values: [1, 2, 3, 4], mean: 2.5, std: Math.sqrt(5 / 3), median: 2.5 },

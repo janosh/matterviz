@@ -3,7 +3,7 @@
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
 import type { ElementSymbol } from '$lib/element'
 import { element_from_atomic_number } from '$lib/element/helpers'
-import { type Matrix3x3, reciprocal_lattice } from '$lib/math'
+import { is_finite_vec3, type Matrix3x3, reciprocal_lattice } from '$lib/math'
 import type { Pbc } from '$lib/structure/index'
 import { values_per_sample } from '../helpers'
 import type { NumericFrame } from '../frame'
@@ -374,12 +374,7 @@ export const parse_frame_signal = (
     return values.length === 3 ? { values, sample_shape: [3] } : null
   }
   if (!Array.isArray(value)) return null
-  const vector_rows = value.every(
-    (row) =>
-      Array.isArray(row) &&
-      row.length === 3 &&
-      row.every((entry) => typeof entry === `number` && Number.isFinite(entry)),
-  )
+  const vector_rows = value.every(is_finite_vec3)
   if (!vector_rows) return null
   if (value.length === 3 && (n_atoms !== 3 || tensor_key)) {
     return { values: (value as number[][]).flat(), sample_shape: [3, 3] }

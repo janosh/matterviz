@@ -62,7 +62,8 @@ export const indexed_text_run = (
     if (!(data instanceof ArrayBuffer)) {
       throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
     }
-    source = open_ase_frames(data)
+    // A frame decodes for its plot row and again on every read, so each warning shows once
+    source = open_ase_frames(data, (message) => collector.warn_once(message, message))
   }
   const { frame_count, decode } = source
   const properties = new TrajectoryProperties()

@@ -1413,19 +1413,20 @@ describe(`XYZ`, () => {
 describe(`ASE`, () => {
   // What ase.io.Trajectory writes: numbers and pbc in frame 0 only, a molecule's missing cell
   // as zeros, and calculator results (forces as an ndarray) under `calculator.`
-  const ase_frames = (pbc: boolean[], cell: number[][], with_calculator = false) =>
+  // `forces` is the calculator's forces ndarray as [shape, values]
+  const ase_frames = (pbc: boolean[], cell: number[][], forces?: [number[], number[]]) =>
     make_ase_buffer(
       [0, 1].map((frame_idx) => (array) => ({
         ...(frame_idx === 0 && { pbc, [`numbers.`]: array([2], (idx) => [14, 8][idx]) }),
         [`positions.`]: array([2, 3], (idx) => idx + 0.1 * frame_idx),
         cell: cell.map((row) => row.map((value) => value * (1 + 0.025 * frame_idx))),
         info: { bandgap: 1.5 - 0.1 * frame_idx, temperature: 300 },
-        ...(with_calculator && {
+        ...(forces && {
           [`calculator.`]: {
             name: `unknown`,
             parameters: {},
             energy: -1 - frame_idx,
-            [`forces.`]: array([2, 3], (idx) => [0.3, 0, 0, 0, 0.4, 0][idx]),
+            [`forces.`]: array(forces[0], (idx) => forces[1][idx]),
             // eV/Å³, tension positive: 0.01 on the diagonal is -1.602 GPa of pressure
             stress: [0.01, 0.01, 0.01, 0, 0, 0],
           },
@@ -1434,12 +1435,13 @@ describe(`ASE`, () => {
     )
   // oxfmt-ignore
   const box = [[4, 0, 0], [0, 4, 0], [0, 0, 10]]
+  const no_warnings = (message: string) => expect.unreachable(message)
 
   it.each([
     [`a slab`, [true, true, false]],
     [`a cell with no periodic axis`, [false, false, false]],
   ])(`every frame of %s keeps the pbc written in frame 0`, (_label, pbc) => {
-    const { frames } = parse_ase_trajectory(ase_frames(pbc, box))
+    const { frames } = parse_ase_trajectory(ase_frames(pbc, box), no_warnings)
     // ASE only repeats pbc when it changes
     expect(frames.map((frame) => lattice_of(frame).pbc)).toEqual([pbc, pbc])
   })
@@ -1447,7 +1449,10 @@ describe(`ASE`, () => {
   it(`reads a molecule's all-zero cell as no lattice`, () => {
     // oxfmt-ignore
     const zero_cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-    const { frames } = parse_ase_trajectory(ase_frames([false, false, false], zero_cell))
+    const { frames } = parse_ase_trajectory(
+      ase_frames([false, false, false], zero_cell),
+      no_warnings,
+    )
     for (const { structure, metadata } of frames) {
       expect(structure).not.toHaveProperty(`lattice`)
       expect(metadata).not.toHaveProperty(`volume`)
@@ -1456,8 +1461,11 @@ describe(`ASE`, () => {
 
   // ASE opens indexed only, but its rows must be the canonical rows of the decoded frames
   it(`reads calculator forces and stress, and extracts the canonical plot rows`, async () => {
-    const buffer = ase_frames([true, true, true], box, true)
-    const { frames } = parse_ase_trajectory(buffer)
+    const buffer = ase_frames([true, true, true], box, [
+      [2, 3],
+      [0.3, 0, 0, 0, 0.4, 0],
+    ])
+    const { frames } = parse_ase_trajectory(buffer, no_warnings)
     const run = await open(buffer, `calc.traj`)
     // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
     // numbers and each frame's six force components, never a position
@@ -1483,11 +1491,50 @@ describe(`ASE`, () => {
     }
   })
 
+  // Like every other parser, unusable forces drop from their frame with a warning naming it,
+  // shown once although the indexed run decodes each frame for its row and again per read
+  it.each<[string, [number[], number[]], string]>([
+    [
+      `too few rows`,
+      [
+        [1, 3],
+        [0.3, 0, 0],
+      ],
+      `expected 2 finite 3-vectors, got 1`,
+    ],
+    [
+      `a NaN component`,
+      [
+        [2, 3],
+        [0.3, 0, 0, 0, Number.NaN, 0],
+      ],
+      `entry 1 of 2 is [0,null,0], not a finite 3-vector`,
+    ],
+  ])(`drops ASE calculator forces with %s and warns`, async (_label, forces, detail) => {
+    const buffer = ase_frames([true, true, true], box, forces)
+    const warnings: string[] = []
+    const { frames } = parse_ase_trajectory(buffer, (message) => warnings.push(message))
+    const run = await open(buffer, `calc.traj`)
+    await run.properties.done
+    await materialize_frame_result(run.read_frame(1))
+    const expected = [0, 1].map(
+      (idx) => `Ignoring ASE calculator forces of frame ${idx}: ${detail}`,
+    )
+    expect(warnings).toEqual(expected)
+    expect(run.warnings).toEqual(expected)
+    expect(run.properties.rows).toStrictEqual(trajectory_from_frames(frames).properties.rows)
+    for (const [frame_idx, { structure, metadata }] of frames.entries()) {
+      expect(structure.sites.some(({ properties }) => `force` in properties)).toBe(false)
+      expect(metadata).not.toHaveProperty(`force_max`)
+      expect(metadata).toMatchObject({ energy: -1 - frame_idx })
+    }
+  })
+
   it.each([4, 70_000])(
     `analyzes %i atoms in bounded batches using stored momenta and masses`,
     async (n_atoms) => {
       const buffer = make_ase_md_buffer(n_atoms)
-      const source = open_ase_frames(buffer)
+      const source = open_ase_frames(buffer, no_warnings)
       onTestFinished(() => source.release())
       const run = await open(buffer, `md.traj`)
       assert(source.read_atoms && run.compute_hotspots)
@@ -1573,7 +1620,7 @@ describe(`ASE`, () => {
   )
 
   it(`uses ASE's elemental mass convention when no isotope masses are stored`, async () => {
-    const source = open_ase_frames(make_ase_md_buffer(2, false))
+    const source = open_ase_frames(make_ase_md_buffer(2, false), no_warnings)
     onTestFinished(() => source.release())
     expect(source.atom_masses).toBeUndefined()
     const batch = await source.read_atoms?.({
@@ -1628,7 +1675,7 @@ describe(`ASE`, () => {
         `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
       )
 
-      expect(() => parse_ase_trajectory(buffer)).toThrow(error)
+      expect(() => parse_ase_trajectory(buffer, no_warnings)).toThrow(error)
       const indexed = await open(buffer, `corrupt.traj`, { index_above_bytes: 0 })
       expect(indexed.frame_count).toBe(2)
       expect((await materialize_frame_result(indexed.read_frame(0))).step).toBe(0)

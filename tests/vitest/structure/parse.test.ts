@@ -19,6 +19,7 @@ import {
 import { structure_to_cif_str } from '$lib/structure/export'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import {
+  complete_lattice_matrix,
   LineScanner,
   parse_coordinate,
   parse_float_token,
@@ -388,8 +389,8 @@ describe(`XYZ Parser`, () => {
     }
   })
 
-  // ASE writes 2D sheets without vacuum with c = 0, a singular cell
-  test(`completes the zero c vector of a 2D sheet`, () => {
+  // ASE writes 2D sheets without vacuum with c = 0, a singular cell (1D chains: two zeros)
+  test(`completes the zero vectors of a 2D sheet and a 1D chain`, () => {
     const graphene = `2
 Lattice="2.46 0.0 0.0 -1.23 2.130422493309719 0.0 0.0 0.0 0.0" Properties=species:S:1:pos:R:3 pbc="T T F"
 C 0.0 1.4202816622064793 0.0
@@ -412,6 +413,19 @@ C 1.23 0.7101408311032397 0.0`
     for (const { xyz, provenance } of sites.slice(2)) {
       const offset = to_frac(math.subtract(xyz, sites[provenance?.image_of ?? -1].xyz))
       expect(offset.every((coord) => Math.abs(coord - Math.round(coord)) < 1e-9)).toBe(true)
+    }
+    // A chain keeps its axis and gains an orthonormal right-handed pair (both seed branches)
+    // oxfmt-ignore
+    for (const [axis, vec] of [[0, [3, 0, 0]], [1, [1, 2, 2]]] as const) {
+      const chain: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+      chain[axis] = [...vec]
+      const completed = complete_lattice_matrix(chain)
+      expect(completed[axis]).toEqual(vec)
+      expect(math.det_3x3(completed)).toBeCloseTo(3, 14)
+      const gram = math.dot(completed, math.transpose_3x3_matrix(completed))
+      for (const [row, gram_row] of gram.entries())
+        for (const [col, value] of gram_row.entries())
+          expect(value).toBeCloseTo(row !== col ? 0 : row === axis ? 9 : 1, 14)
     }
   })
 

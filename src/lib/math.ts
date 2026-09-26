@@ -16,9 +16,27 @@ export const grow_capacity = (capacity: number, required: number): number =>
 export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number> => {
   if (typeof values !== `object` || values === null) return false
   const array_like = values as ArrayLike<unknown>
-  // Number.isFinite does not coerce, so non-numbers fail too
-  return array_like.length === 3 && [0, 1, 2].every((idx) => Number.isFinite(array_like[idx]))
+  // Number.isFinite does not coerce, so non-numbers fail too. Unrolled so per-site hot loops
+  // (runs/memory.ts) allocate nothing.
+  return (
+    array_like.length === 3 &&
+    Number.isFinite(array_like[0]) &&
+    Number.isFinite(array_like[1]) &&
+    Number.isFinite(array_like[2])
+  )
 }
+
+// Plain-Array form for JSON-like input that is kept as-is (typed arrays rejected)
+export const is_finite_vec3 = (values: unknown): values is Vec3 =>
+  Array.isArray(values) && is_finite_vec3_like(values)
+
+// Indexed rather than .every so a sparse [row, , row] is rejected instead of skipped
+export const is_finite_matrix3x3 = (value: unknown): value is Matrix3x3 =>
+  Array.isArray(value) &&
+  value.length === 3 &&
+  is_finite_vec3(value[0]) &&
+  is_finite_vec3(value[1]) &&
+  is_finite_vec3(value[2])
 
 export const finite_vec3_from_values = (values: unknown): Vec3 | undefined => {
   if (!is_finite_vec3_like(values)) return undefined

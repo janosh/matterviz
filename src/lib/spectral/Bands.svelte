@@ -471,17 +471,9 @@
   // spin channels on display. Malformed occupations surface electronic_band_gap's message
   // instead of throwing out of the $derived and blanking the component.
   let gap_result = $derived.by(() => {
-    try {
-      return { gap: electronic_gap() }
-    } catch (exc) {
-      return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
-    }
-  })
-  let electronic_gap_annotation = $derived(gap_result.gap)
-  let data_error = $derived(strict_path_error ?? gap_result.error ?? null)
-  const electronic_gap = () => {
     const band_structure = structures[0]?.bs
-    if (!show_gap_annotation || band_type !== `electronic` || !band_structure) return null
+    if (!show_gap_annotation || band_type !== `electronic` || !band_structure)
+      return { gap: null }
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
     const shown = (up: number[][], down: number[][] | undefined): number[][] => [
       ...(effective_spin_mode !== `down_only` ? up : []),
@@ -490,9 +482,14 @@
     const filling = occupations
       ? shown(occupations, spin_down_occupations)
       : effective_fermi_level
-    if (filling === undefined) return null
-    return helpers.electronic_band_gap(shown(bands, spin_down_bands), filling)
-  }
+    if (filling === undefined) return { gap: null }
+    try {
+      return { gap: helpers.electronic_band_gap(shown(bands, spin_down_bands), filling) }
+    } catch (exc) {
+      return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
+    }
+  })
+  let data_error = $derived(strict_path_error ?? gap_result.error ?? null)
 
   let empty_state_msg = $derived(
     data_error ??
@@ -722,7 +719,7 @@
       {@const fermi_y =
         effective_fermi_level !== undefined ? y_scale_fn(effective_fermi_level) : NaN}
       {@const bands_x_end = x_scale_fn(x_range[1])}
-      {@const gap_data = electronic_gap_annotation}
+      {@const gap_data = gap_result.gap}
       {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
       {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
       {@const gap_mid_y = (vbm_y + cbm_y) / 2}

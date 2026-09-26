@@ -66,6 +66,39 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     await expect(page.locator(SECTION_CANVAS)).toBeVisible()
   })
 
+  // The plane's pointerdown pauses OrbitControls, but the controls see the press first and
+  // dispatch `start`; hover raycasts switched off on that start used to starve the drag of the
+  // pointermoves it follows, so the plane never moved
+  test(`dragging the cutting plane in the 3D prism changes the temperature`, async ({
+    page,
+  }) => {
+    await page
+      .locator(`${DIAGRAM} .view-toggle`)
+      .getByRole(`button`, { name: `3D prism` })
+      .click()
+    const canvas = page.locator(`${DIAGRAM} .prism-canvas canvas`)
+    await expect(canvas).toBeVisible({ timeout: LOAD_TIMEOUT })
+    await expect(page.locator(`${DIAGRAM} .phase-event-list li`).first()).toBeVisible({
+      timeout: LOAD_TIMEOUT,
+    })
+    // mid-sweep puts the plane through the orbit target, i.e. under the canvas center
+    const kelvin = page.getByLabel(`Temperature in Kelvin`)
+    const [t_min, t_max] = await kelvin.evaluate((input: HTMLInputElement) => [
+      Number(input.min),
+      Number(input.max),
+    ])
+    await kelvin.fill(String(Math.round((t_min + t_max) / 2)))
+    await kelvin.press(`Enter`)
+    const t_before = Number(await kelvin.inputValue())
+    const box = await require_bbox(canvas, `prism canvas`)
+    const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
+    await page.mouse.move(center_x, center_y)
+    await page.mouse.down()
+    await page.mouse.move(center_x, center_y - 80, { steps: 10 })
+    await page.mouse.up()
+    await expect.poll(async () => Number(await kelvin.inputValue())).toBeGreaterThan(t_before)
+  })
+
   test(`a dropped entries file recomputes the diagram`, async ({ page }) => {
     await drop_file(page, page.locator(DIAGRAM), TOY_ENTRIES, `toy.json`, `application/json`)
     // the demo titles the diagram by the dropped file's stem

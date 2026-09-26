@@ -113,12 +113,7 @@ export const create_structure = (
     : null
 
   const sites = positions.map((pos, idx) => {
-    if (
-      pos.length !== 3 ||
-      !Number.isFinite(pos[0]) ||
-      !Number.isFinite(pos[1]) ||
-      !Number.isFinite(pos[2])
-    ) {
+    if (!is_finite_vec3_like(pos)) {
       throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
     }
     const xyz = pos as Vec3

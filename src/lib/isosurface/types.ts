@@ -1,7 +1,13 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { D3InterpolateName } from '$lib/colors'
 import { strip_compression_extensions } from '$lib/io/decompress'
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import {
+  is_finite_matrix3x3,
+  is_finite_vec3,
+  type Matrix3x3,
+  type Vec2,
+  type Vec3,
+} from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { flatten_grid, type ScalarGrid3D } from './grid'
 
@@ -62,12 +68,9 @@ export function volume_from_json(raw: unknown): VolumetricData {
     throw new TypeError(`Volumetric data must be an object, got ${typeof raw}`)
   }
   const data = raw as Record<string, unknown>
-  const is_vec3 = (value: unknown): value is Vec3 =>
-    Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
-  const is_matrix = (value: unknown): value is Matrix3x3 =>
-    Array.isArray(value) && value.length === 3 && value.every(is_vec3)
-  if (!is_matrix(data.lattice)) throw new TypeError(`Volumetric data needs a 3x3 lattice`)
-  if (!is_vec3(data.origin)) throw new TypeError(`Volumetric data needs a Vec3 origin`)
+  if (!is_finite_matrix3x3(data.lattice))
+    throw new TypeError(`Volumetric data needs a 3x3 lattice`)
+  if (!is_finite_vec3(data.origin)) throw new TypeError(`Volumetric data needs a Vec3 origin`)
   if (typeof data.periodic !== `boolean`) {
     throw new TypeError(`Volumetric data needs a boolean periodic flag`)
   }
@@ -77,7 +80,8 @@ export function volume_from_json(raw: unknown): VolumetricData {
     grid = flatten_grid(data.grid as number[][][])
   } else if (data.values !== undefined) {
     const { dims } = data
-    if (!is_vec3(dims)) throw new TypeError(`Volumetric data with flat values needs dims`)
+    if (!is_finite_vec3(dims))
+      throw new TypeError(`Volumetric data with flat values needs dims`)
     const values =
       data.values instanceof Float64Array
         ? data.values
