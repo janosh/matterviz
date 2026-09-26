@@ -27,6 +27,7 @@ import {
   open_ase_frames,
   read_ase_header,
 } from '$lib/trajectory/parse/ase'
+import { AMU_KG, ELEMENTARY_CHARGE_C, FS_IN_ASE_TIME } from '$lib/constants'
 import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
 import { hotspot_mean } from '$lib/trajectory/hotspots'
 import {
@@ -1538,7 +1539,7 @@ describe(`ASE`, () => {
       )
       expect(batch.velocities).toEqual(
         Float64Array.from(
-          Array.from({ length: count }, () => [2 * 0.09822694788464063, 0, 0]).flat(),
+          Array.from({ length: count }, () => [2 * FS_IN_ASE_TIME, 0, 0]).flat(),
         ),
       )
       expect(batch.masses).toEqual(new Float64Array(count).fill(2))
@@ -1565,9 +1566,7 @@ describe(`ASE`, () => {
       expect(result.frames).toBe(2)
       expect(result.weighting).toBe(`recorded time`)
       expect(result.time_weight).toBe(4)
-      // Convert ASE's CODATA-2014 velocity to the reducer's declared SI constants.
-      const expected =
-        (2.5 * 0.09822694788464063 ** 2 * 1e10 * 1.66053906892e-27) / 1.602176634e-19
+      const expected = (2.5 * FS_IN_ASE_TIME ** 2 * 1e10 * AMU_KG) / ELEMENTARY_CHARGE_C
       expect(Math.abs(hotspot_mean(result, `energy`) - expected)).toBeLessThan(
         expected * 2e-12,
       )
@@ -1600,7 +1599,7 @@ describe(`ASE`, () => {
       velocity_key: `velocity`,
     })
     expect(batch?.masses).toEqual(Float64Array.of(1.008, 1.008))
-    expect(batch?.velocities?.[0]).toBe((4 / 1.008) * 0.09822694788464063)
+    expect(batch?.velocities?.[0]).toBe((4 / 1.008) * FS_IN_ASE_TIME)
   })
   // Result keys lose their ULM trailing dot; malformed ndarray descriptors are skipped
   // without dropping the scalar results next to them

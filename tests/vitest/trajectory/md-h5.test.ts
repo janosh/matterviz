@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { FS_IN_ASE_TIME } from '$lib/constants'
 import { FrameView, materialize_frame, materialize_frame_result } from '$lib/trajectory/frame'
 import { get_structure_vector_keys } from '$lib/structure/vectors'
 // Committed-prefix MD trajectories retain explicit units and static topology.
@@ -14,7 +15,8 @@ import process from 'node:process'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { h5_bytes } from './fixtures'
 
-const VELOCITY_FACTOR = 1 / 10.180505710759414
+// What the producer records: its CODATA 2018 factor, 7e-10 off the reader's CODATA 2022 one
+const PRODUCER_VELOCITY_FACTOR = 1 / 10.180505710759414
 const ATOMIC = { positions: 3, velocities: 3, forces: 3, charges: 1, spins: 1 }
 const units: Record<string, string> = {
   positions: `A; unwrapped Cartesian`,
@@ -59,7 +61,7 @@ const fixture = (
         expected_frames: frame_count,
         initial_step: 2300,
         timestep_fs: options.timestep_fs ?? 1,
-        velocity_to_A_per_fs: VELOCITY_FACTOR,
+        velocity_to_A_per_fs: PRODUCER_VELOCITY_FACTOR,
         ensemble: `NVE`,
         active_thermostat: `none`,
         metadata_json: JSON.stringify({ worker_sha256: `test-producer` }),
@@ -270,7 +272,7 @@ describe(`MD HDF5`, () => {
       region_label: 1,
       period_id: 0,
       force: [2.03, 2.04, 2.05],
-      velocity: [2.03, 2.04, 2.05].map((value) => value * VELOCITY_FACTOR),
+      velocity: [2.03, 2.04, 2.05].map((value) => value * FS_IN_ASE_TIME),
       charge: 2.01,
       spin: 2.01,
     })
@@ -286,7 +288,7 @@ describe(`MD HDF5`, () => {
       region_label: 1,
       period_id: 0,
       force: [1.03, 1.04, 1.05],
-      velocity: [1.03, 1.04, 1.05].map((value) => value * VELOCITY_FACTOR),
+      velocity: [1.03, 1.04, 1.05].map((value) => value * FS_IN_ASE_TIME),
       charge: 1.01,
       spin: 1.01,
     })
@@ -306,7 +308,7 @@ describe(`MD HDF5`, () => {
     })
     expect(Array.from(batch.positions)).toEqual([1.03, 1.04, 1.05, 1.06, 1.07, 1.08])
     expect(Array.from(batch.velocities ?? [])).toEqual(
-      [1.03, 1.04, 1.05, 1.06, 1.07, 1.08].map((value) => value * VELOCITY_FACTOR),
+      [1.03, 1.04, 1.05, 1.06, 1.07, 1.08].map((value) => value * FS_IN_ASE_TIME),
     )
     expect(Array.from(batch.masses ?? [])).toEqual([72.6308, 28.085])
     // Returned static columns belong to the caller; editing them must not poison later reads.
@@ -338,7 +340,7 @@ describe(`MD HDF5`, () => {
       steps: [2301, 2302],
     })
     expect(Array.from(stream.vectors?.velocity.slice(0, 3) ?? [])).toEqual(
-      [1, 1.01, 1.02].map((value) => value * VELOCITY_FACTOR),
+      [1, 1.01, 1.02].map((value) => value * FS_IN_ASE_TIME),
     )
     await expect(run.collect_positions({ max_bytes: 1 })).rejects.toThrow(/budget/)
   })
@@ -552,5 +554,23 @@ describe(`MD HDF5`, () => {
     ],
   ])(`rejects %s`, async (_label, options) => {
     await expect(open(await fixture(options))).rejects.toThrow(/MD|finite/)
+  })
+
+  // Producers record their own CODATA edition's factor, possibly float32-rounded (~6e-8 off);
+  // velocities already in A/fs (factor 1) are a wrong unit
+  it.each([
+    [`a float32-rounded producer factor`, Math.fround(PRODUCER_VELOCITY_FACTOR), undefined],
+    [`factor 1`, 1, /incompatible velocity conversion factor 1,/],
+  ])(`velocity conversion accepts or rejects %s`, async (_label, factor, error) => {
+    const run = open(
+      await fixture({
+        mutate: (file) => {
+          file.delete_attribute(`velocity_to_A_per_fs`)
+          file.create_attribute(`velocity_to_A_per_fs`, factor)
+        },
+      }),
+    )
+    if (error) await expect(run).rejects.toThrow(error)
+    else await expect(run).resolves.toBeDefined()
   })
 })

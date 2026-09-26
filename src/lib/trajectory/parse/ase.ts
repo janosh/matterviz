@@ -1,6 +1,6 @@
 import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
-import { EV_PER_A3_TO_GPA } from '$lib/constants'
+import { EV_PER_A3_TO_GPA, FS_IN_ASE_TIME } from '$lib/constants'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
@@ -436,7 +436,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
           // ASE momenta are in sqrt(amu*eV); ase.units.fs converts p/m to A/fs.
           if (batch.velocities && momenta && recorded_mass)
             batch.velocities[idx * 3 + axis] =
-              (momenta.value(atom_idx * 3 + axis) / recorded_mass) * 0.09822694788464063
+              (momenta.value(atom_idx * 3 + axis) / recorded_mass) * FS_IN_ASE_TIME
         }
         if (batch.energies && energies) batch.energies[idx] = energies.value(atom_idx)
         if (batch.selected && selection) {
