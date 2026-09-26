@@ -9,7 +9,7 @@ import { calc_lattice_params } from '$lib/math'
 import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
 import type { FrameRange, TrajectoryRun } from '$lib/trajectory'
 import { sweep_frames } from '$lib/trajectory/analysis'
-import { calc_frame_rdfs_async } from './async-compute.svelte'
+import { calc_frame_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
 import { coordination_number } from './calc-pdf'
 import type { FrameRdfOptions } from './calc-rdf'
 
@@ -155,19 +155,14 @@ export async function collect_trajectory_rdf(
         counts: Map<string, number>
       }
     | undefined
-  let accumulators: {
-    pair: [string, string]
-    sum: Float64Array
-    density_sum: Float64Array
-  }[] = []
-  let radius: number[] = []
   const {
-    results: volumes,
+    results: frames,
     frame_numbers,
     frame_stride,
   } = await sweep_frames(
     run,
-    { max_frames, on_progress, signal, start_frame, end_frame },
+    // Frames are independent, so each worker in the RDF pool gets one
+    { max_frames, on_progress, signal, start_frame, end_frame, concurrency: RDF_WORKER_COUNT },
     async ({ structure, step }, frame_number) => {
       if (!Number.isFinite(step)) {
         throw new TypeError(
@@ -213,35 +208,38 @@ export async function collect_trajectory_rdf(
           `collect_trajectory_rdf: frame ${frame_number}: ${lattice_unavailable_reason(structure, true)}`,
         )
       }
-      const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
-      if (accumulators.length === 0) {
-        radius = patterns[0]?.r ?? []
-        accumulators = patterns.map((pattern) => {
-          if (!pattern.element_pair) {
-            throw new Error(
-              `collect_trajectory_rdf: frame ${frame_number} returned an unlabelled g(r)`,
-            )
-          }
-          return {
-            pair: pattern.element_pair,
-            sum: new Float64Array(n_bins),
-            density_sum: new Float64Array(n_bins),
-          }
-        })
-      }
       const volume = calc_lattice_params(structure.lattice.matrix).volume
-      for (const [pair_idx, pattern] of patterns.entries()) {
-        const { sum, density_sum } = accumulators[pair_idx]
-        for (let bin = 0; bin < n_bins; bin++) {
-          sum[bin] += pattern.g_r[bin]
-          density_sum[bin] += pattern.g_r[bin] / volume
-        }
-      }
-      return volume
+      const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
+      return { frame_number, patterns, volume }
     },
   )
   const n_frames = frame_numbers.length
   if (!reference) throw new Error(`collect_trajectory_rdf: no frames were sampled`)
+  // Summed in frame order after the sweep: frames finish out of order across the worker pool,
+  // and float addition order would otherwise make repeated runs differ in the last bits
+  const radius = frames[0].patterns[0]?.r ?? []
+  const accumulators = frames[0].patterns.map((pattern) => {
+    if (!pattern.element_pair) {
+      throw new Error(
+        `collect_trajectory_rdf: frame ${frames[0].frame_number} returned an unlabelled g(r)`,
+      )
+    }
+    return {
+      pair: pattern.element_pair,
+      sum: new Float64Array(n_bins),
+      density_sum: new Float64Array(n_bins),
+    }
+  })
+  for (const { patterns, volume } of frames) {
+    for (const [pair_idx, pattern] of patterns.entries()) {
+      const { sum, density_sum } = accumulators[pair_idx]
+      for (let bin = 0; bin < n_bins; bin++) {
+        sum[bin] += pattern.g_r[bin]
+        density_sum[bin] += pattern.g_r[bin] / volume
+      }
+    }
+  }
+  const volumes = frames.map(({ volume }) => volume)
   // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
   const { counts } = reference
   const curves = accumulators.map(

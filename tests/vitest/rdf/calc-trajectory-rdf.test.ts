@@ -158,16 +158,14 @@ describe(`collect_trajectory_rdf`, () => {
     // compare all occupancies when that structure changes between frames.
     const generated = {
       ...run_of([mixed, mixed]),
-      read_frame: (step: number) => encode_frame({ step, structure: mixed }),
+      read_frame: (step: number) => {
+        if (step === 1) mixed.sites[0].species[0].occu = 0.6
+        return encode_frame({ step, structure: mixed })
+      },
     }
-    await expect(
-      collect_trajectory_rdf(generated, {
-        n_bins: 20,
-        on_progress: (done) => {
-          if (done === 1) mixed.sites[0].species[0].occu = 0.6
-        },
-      }),
-    ).rejects.toThrow(/frame 1 has a different composition/)
+    await expect(collect_trajectory_rdf(generated, { n_bins: 20 })).rejects.toThrow(
+      /frame 1 has a different composition/,
+    )
   })
 
   test.each<readonly [string, () => TrajectoryRun, RegExp]>([

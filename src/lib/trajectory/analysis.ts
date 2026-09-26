@@ -204,29 +204,56 @@ export function sweep_frame_plan(
 
 export interface FrameSweepOptions extends FrameRange {
   max_frames: number
+  // Frames in flight at once, for visitors backed by a worker pool. Visits still START in
+  // frame order (a visitor's synchronous prefix sees frames in sequence) and results come
+  // back in frame order; 1 keeps just one frame in memory.
+  concurrency?: number
   on_progress?: (done: number, total: number) => void
   // Stops the sweep between frames; the visitor gets it too for its worker request
   signal?: AbortSignal
 }
 
-// Visit `sweep_frame_plan`'s frames one at a time. Sequential, not Promise.all: one worker
-// serves every request anyway, so concurrency buys nothing but a progress bar that jumps from
-// 0 to 100 and n_frames structures snapshotted into memory at once.
+// Visit `sweep_frame_plan`'s frames, `concurrency` at a time (default one: a single worker
+// gains nothing from more, and each extra frame in flight is a structure held in memory).
 export async function sweep_frames<Result>(
   run: TrajectoryRun,
-  { max_frames, on_progress, signal, ...range }: FrameSweepOptions,
+  { max_frames, on_progress, signal, concurrency = 1, ...range }: FrameSweepOptions,
   visit: (frame: TrajectoryFrame, frame_number: number) => Promise<Result>,
 ): Promise<{ results: Result[]; frame_numbers: number[]; frame_stride: number }> {
   const { frame_numbers, frame_stride } = sweep_frame_plan(run.frame_count, max_frames, range)
-  const results: Result[] = []
-  for (const [done, frame_number] of frame_numbers.entries()) {
-    signal?.throwIfAborted()
-    const frame = await materialize_frame_result(run.read_frame(frame_number, signal))
-    signal?.throwIfAborted()
-    results.push(await visit(frame, frame_number))
-    signal?.throwIfAborted()
-    on_progress?.(done + 1, frame_numbers.length)
+  const results: Result[] = Array.from({ length: frame_numbers.length })
+  let [next_idx, done, failed] = [0, 0, false]
+  // Resolves once the previous frame's visit has started, so visits start in frame order
+  let started: Promise<unknown> = Promise.resolve()
+  const lane = async (): Promise<void> => {
+    while (next_idx < frame_numbers.length && !failed) {
+      const idx = next_idx++
+      const previous_started = started
+      const { promise: this_started, resolve } = Promise.withResolvers<null>()
+      const mark_started = () => resolve(null)
+      started = this_started
+      try {
+        signal?.throwIfAborted()
+        const frame = await materialize_frame_result(
+          run.read_frame(frame_numbers[idx], signal),
+        )
+        await previous_started
+        signal?.throwIfAborted()
+        const visited = visit(frame, frame_numbers[idx])
+        mark_started()
+        results[idx] = await visited
+        signal?.throwIfAborted()
+        on_progress?.(++done, frame_numbers.length)
+      } catch (error) {
+        failed = true
+        throw error
+      } finally {
+        mark_started() // a failed frame must not stall the frames queued behind it
+      }
+    }
   }
+  const lanes = Math.max(1, Math.min(concurrency, frame_numbers.length))
+  await Promise.all(Array.from({ length: lanes }, lane))
   signal?.throwIfAborted()
   return { results, frame_numbers, frame_stride }
 }
