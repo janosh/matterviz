@@ -21,7 +21,8 @@ import { compute_polyhedra, merge_polyhedra_buffers } from '$lib/structure/polyh
 import { make_supercell } from '$lib/structure/supercell'
 import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
-import { atom_range, type ReadAtoms } from '$lib/trajectory/atom-batches'
+import { atom_range, frame_atom_batch, type ReadAtoms } from '$lib/trajectory/atom-batches'
+import type { NumericFrame } from '$lib/trajectory/frame'
 import { calculate_hotspots } from '$lib/trajectory/hotspots'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
@@ -64,6 +65,9 @@ const BASELINES = {
   'make_supercell 1000 sites x 3x3x3': 25,
   // 2026-09-15: M5 Max/Node 24.21/Vitest 5; 170 ms median, normalized from its 32.4 ms reference.
   'hotspots 1M atoms x 4 frames': (170 * REFERENCE_MS) / 32.4,
+  // 2026-09-26: M5 Max/Node 24.21/Vitest 5; 20 ms median (171 ms with per-atom element and
+  // velocity-source lookups), normalized from its 55.5 ms reference.
+  'frame_atom_batch 50k atoms x 20 frames': (20 * REFERENCE_MS) / 55.5,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -511,7 +515,8 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     })
     await measure(`polyhedra 8000-site buffer merge`, () => {
       expect(
-        merge_polyhedra_buffers(polyhedra, () => `#ff0000`).triangle_count,
+        merge_polyhedra_buffers(polyhedra, { mode: `uniform`, color: `#ff0000` })
+          .triangle_count,
       ).toBeGreaterThan(0)
     })
   })
@@ -578,6 +583,34 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       // Allow 16 f64 eps for the weighted variance and summation, not a physical tolerance.
       expect(max_error).toBeLessThanOrEqual(16 * Number.EPSILON * expected_mean)
     })
+  })
+
+  // Packed MD frames: atomic-number bytes, one velocity vector column, standard masses
+  test(`frame_atom_batch 50k atoms x 20 frames`, async () => {
+    const n_atoms = 50_000
+    const rng = make_rng(9)
+    const sites = Uint8Array.from({ length: n_atoms }, () => 1 + Math.floor(rng() * 90))
+    const coordinates = Float64Array.from({ length: n_atoms * 9 }, () => rng() * 10)
+    const frame: NumericFrame = {
+      header: { step: 0 },
+      structure: {},
+      sites,
+      vector_keys: [`velocity`],
+      coordinates,
+    }
+    const read_frames = () => {
+      for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
+        const batch = frame_atom_batch(frame, {
+          frame_idx,
+          count: n_atoms,
+          velocity_key: `velocity`,
+          mass_source: `standard`,
+        })
+        expect(batch.velocities?.[3]).toBe(coordinates[15])
+      }
+    }
+    read_frames() // JIT warm-up: the first pass runs unoptimized
+    await measure(`frame_atom_batch 50k atoms x 20 frames`, read_frames)
   })
 
   test(`neighbor_query 39304 sites + flyaway atom`, async () => {

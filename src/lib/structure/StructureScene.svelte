@@ -89,7 +89,6 @@
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
-    BufferAttribute,
     BufferGeometry,
     Color,
     CylinderGeometry,
@@ -129,6 +128,7 @@
     compute_polyhedra,
     create_polyhedra_edges,
     update_polyhedra_edges,
+    update_polyhedra_faces,
     merge_polyhedra_buffers,
   } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
@@ -1613,15 +1613,17 @@
     const prop_colors = property_colors?.colors
     const element_colors = palette
     const mode = polyhedra_color_mode
-    const uniform_color = polyhedra_color
-    return merge_polyhedra_buffers(polyhedra, (poly, vertex_idx) => {
-      if (mode === `uniform`) return uniform_color
-      const site_idx =
-        mode === `center` ? poly.center_site_idx : poly.vertex_site_idxs[vertex_idx]
-      const element = columns
-        ? element_from_atomic_number(columns.numbers[site_idx])
-        : get_majority_element(get_site(source, site_idx))
-      return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
+    if (mode === `uniform`) {
+      return merge_polyhedra_buffers(polyhedra, { mode, color: polyhedra_color })
+    }
+    return merge_polyhedra_buffers(polyhedra, {
+      mode,
+      site_color: (site_idx) => {
+        const element = columns
+          ? element_from_atomic_number(columns.numbers[site_idx])
+          : get_majority_element(get_site(source, site_idx))
+        return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
+      },
     })
   })
 
@@ -1639,19 +1641,21 @@
     }
   })
 
-  let polyhedra_geometry: BufferGeometry | null = $state(null)
+  // One face geometry for the component's lifetime (replaced only when a frame outgrows its
+  // capacity): trajectory playback rewrites the attributes in place instead of allocating
+  // and uploading a fresh BufferGeometry per frame. Normals come precomputed from the merge.
+  let polyhedra_faces: BufferGeometry | null = $state.raw(null)
   $effect(() => {
-    let geo: BufferGeometry | null = null
-    if (polyhedra_buffers && polyhedra_buffers.triangle_count > 0) {
-      const { positions, colors: vertex_colors } = polyhedra_buffers
-      geo = new BufferGeometry()
-        .setAttribute(`position`, new BufferAttribute(positions, 3))
-        .setAttribute(`color`, new BufferAttribute(vertex_colors, 3))
-      geo.computeVertexNormals() // non-indexed -> per-face normals (flat shading)
+    if (!polyhedra_buffers?.triangle_count) return
+    const current = untrack(() => polyhedra_faces)
+    const next = update_polyhedra_faces(current, polyhedra_buffers)
+    if (next !== current) {
+      current?.dispose()
+      polyhedra_faces = next
     }
-    polyhedra_geometry = geo
-    return () => geo?.dispose()
+    threlte.invalidate()
   })
+  $effect(() => () => polyhedra_faces?.dispose())
 
   let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state.raw(null)
   $effect(() => {
@@ -2131,8 +2135,8 @@
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
         LineSegments2 (1-2 draw calls regardless of supercell size) -->
-      {#if polyhedra_geometry}
-        <T.Mesh geometry={polyhedra_geometry} frustumCulled={false} raycast={() => null}>
+      {#if polyhedra_faces && polyhedra_buffers?.triangle_count}
+        <T.Mesh geometry={polyhedra_faces} frustumCulled={false} raycast={() => null}>
           <!-- depthWrite when mostly opaque: VESTA-like occlusion between polyhedra;
             fully translucent settings fall back to see-through blending -->
           <T.MeshStandardMaterial

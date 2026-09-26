@@ -360,6 +360,20 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   })
   upload_colors()
   expect(uploaded).toEqual(colors_start.array)
+  // In-place palette edits recolor even though the bonds and palette array are unchanged
+  const rgb = (color: string) => css_to_linear_rgb(color).map(Math.fround)
+  expect(Array.from(colors_start.array.subarray(0, 6))).toEqual([
+    ...rgb(`lime`),
+    ...rgb(`blue`),
+  ])
+  // An identical bond topology with an identical palette skips the per-cylinder loop
+  bonds = make_frame(2, true)
+  const order = vi.spyOn(
+    untrack(() => bonds),
+    `order`,
+  )
+  flushSync()
+  expect(order).not.toHaveBeenCalled()
   const uploads = update.mock.calls.length
   const centers = mesh.centers.array.slice()
   for (const value of [-0.2, 0, 0.2]) {
@@ -620,6 +634,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     }),
   )
   const disposal = vi.fn()
+  const face_disposal = vi.fn()
   try {
     flushSync() // Initial camera fitting may inspect sites; subsequent colors must not.
     get_site.mockClear()
@@ -633,20 +648,29 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     if (!(edges instanceof LineSegments2) || !(faces instanceof Mesh))
       throw new Error(`Expected polyhedra faces and outlines`)
     edges.material.addEventListener(`dispose`, disposal)
+    const face_geometry = faces.geometry
+    face_geometry.addEventListener(`dispose`, face_disposal)
     for (const value of [`vertex`, `center`, `uniform`] as const) {
       mode = value
       flushSync()
       expect(scene.getObjectById(edges.id)).toBe(edges)
-      const expected = merge_polyhedra_buffers([poly], (_poly, idx) =>
-        value === `uniform`
-          ? `yellow`
-          : (property_colors.colors[value === `center` ? 0 : poly.vertex_site_idxs[idx]] ??
-            colors.element?.[idx % 2 === 0 ? `O` : `H`] ??
-            `#808080`),
+      // vertex sites 1-4 alternate O (odd) / H (even), see the atomic numbers above
+      const site_color = (site_idx: number) =>
+        property_colors.colors[site_idx] ??
+        colors.element?.[site_idx % 2 === 1 ? `O` : `H`] ??
+        `#808080`
+      const expected = merge_polyhedra_buffers(
+        [poly],
+        value === `uniform` ? { mode: value, color: `yellow` } : { mode: value, site_color },
       )
-      expect(faces.geometry.getAttribute(`color`).array).toEqual(expected.colors)
+      // recoloring rewrites the same face geometry in place rather than rebuilding it
+      expect(faces.geometry).toBe(face_geometry)
+      expect(face_geometry.drawRange.count).toBe(expected.triangle_count * 3)
+      expect(face_geometry.getAttribute(`color`).array).toEqual(expected.colors)
+      expect(face_geometry.getAttribute(`normal`).array).toEqual(expected.normals)
       expect(get_site).not.toHaveBeenCalled()
     }
+    expect(face_disposal).not.toHaveBeenCalled()
     for (const visible of [false, true]) {
       show_edges = visible
       flushSync()
@@ -659,11 +683,13 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(scene.getObjectById(edges.id)).toBe(edges)
       expect(edges.visible).toBe(visible)
       expect(disposal).not.toHaveBeenCalled()
+      expect(face_disposal).not.toHaveBeenCalled()
     }
   } finally {
     await unmount_scene()
   }
   expect(disposal).toHaveBeenCalledOnce()
+  expect(face_disposal).toHaveBeenCalledOnce()
 })
 
 test.each([`atoms`, `arrows`, `bonds`] as const)(
