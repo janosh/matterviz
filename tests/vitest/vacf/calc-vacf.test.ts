@@ -34,16 +34,18 @@ const direct_autocorrelation_sum = (
 }
 
 describe(`autocorrelation_sums (Wiener-Khinchin) against the direct origin loop`, () => {
+  // Lag windows shorter than the run pad the FFT only to n_frames + max_lag
   it.each([
-    [`ideal gas, mixed elements`, 60, 8, 12345],
-    [`ideal gas, odd frame count`, 37, 5, 777],
-    [`ideal gas, 2 frames`, 2, 3, 9],
-  ])(`matches the direct sum for %s to 1e-12`, (_label, n_frames, n_atoms, seed) => {
+    [`ideal gas, mixed elements`, 60, 8, 12345, 59],
+    [`ideal gas, odd frame count`, 37, 5, 777, 36],
+    [`ideal gas, 2 frames`, 2, 3, 9, 1],
+    [`half-length lag window`, 70, 4, 31, 35],
+    [`n_frames + max_lag exactly a power of two`, 100, 3, 5, 28],
+  ])(`matches the direct sum for %s to 1e-12`, (_label, n_frames, n_atoms, seed, max_lag) => {
     const { velocities } = ideal_gas(n_frames, n_atoms, seed)
     const flat = Float64Array.from(velocities.flat(2))
     const elements = Array.from({ length: n_atoms }, (_unused, idx) => (idx % 2 ? `He` : `H`))
     const { labels, atom_group } = group_atoms_by_element(elements)
-    const max_lag = n_frames - 1
     const sums = autocorrelation_sums(
       flat,
       n_frames,

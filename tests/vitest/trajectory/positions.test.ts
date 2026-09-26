@@ -5,13 +5,72 @@ import {
   curve_slots,
   lag_range,
   resolve_lag_time_unit,
+  unwrap_flat_positions,
   validate_position_stream_layout,
 } from '$lib/trajectory/positions'
+import {
+  create_lattice_converters,
+  type Matrix3x3,
+  min_image_displacement_into,
+  type Vec3,
+} from '$lib/math'
+import type { Pbc } from '$lib/structure'
+import { make_rng } from '../numeric-helpers'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
 import { encode_frame, materialize_frame, type NumericFrame } from '$lib/trajectory/frame'
 import { describe, expect, it } from 'vitest'
 import { make_frame, make_position_stream } from '../test-fixtures'
+
+// Orthogonal cells take an inlined per-frame loop; it must reproduce the generic
+// minimum-image path bit for bit, including a cell that changes mid-run (NPT) and open axes
+describe(`unwrap_flat_positions`, () => {
+  const [n_frames, n_atoms] = [12, 7]
+  const cell = (scale: number): Matrix3x3 => [
+    [4 * scale, 0, 0],
+    [0, 5 * scale, 0],
+    [0, 0, -6 * scale], // negative axis: rounding must still pick the nearest image
+  ]
+  const lattices = Array.from({ length: n_frames }, (_, idx) =>
+    idx < 6 ? cell(1) : cell(1.1),
+  )
+  const rng = make_rng(3)
+  // Wrapped coordinates: every frame redraws positions inside the cell, so steps cross faces
+  const positions = Float64Array.from({ length: n_frames * n_atoms * 3 }, (_, idx) => {
+    const lattice = lattices[Math.floor(idx / (n_atoms * 3))]
+    return rng() * lattice[idx % 3][idx % 3]
+  })
+  const reference = (pbc: Pbc): Float64Array => {
+    const out = positions.slice()
+    const [from, target, step]: Vec3[] = [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ]
+    for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
+      const converters = create_lattice_converters(lattices[frame_idx])
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+        const off = (frame_idx * n_atoms + atom_idx) * 3
+        const prev = off - n_atoms * 3
+        for (let axis = 0; axis < 3; axis++) {
+          from[axis] = positions[prev + axis]
+          target[axis] = positions[off + axis]
+        }
+        min_image_displacement_into(from, target, lattices[frame_idx], converters, pbc, step)
+        for (let axis = 0; axis < 3; axis++) out[off + axis] = out[prev + axis] + step[axis]
+      }
+    }
+    return out
+  }
+  it.each<Pbc>([
+    [true, true, true],
+    [true, false, true],
+  ])(`matches the generic minimum-image unwrap exactly for pbc %j`, (...pbc) => {
+    const unwrapped = unwrap_flat_positions(positions, n_frames, n_atoms, lattices, pbc)
+    expect(unwrapped).toEqual(reference(pbc))
+    expect(unwrapped).not.toEqual(positions) // steps did cross cell faces
+  })
+})
 
 describe(`curve_slots`, () => {
   it.each([

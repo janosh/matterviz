@@ -7,7 +7,9 @@
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
+  import { to_error } from '$lib/utils'
   import { compute_vacf_async } from './async-compute.svelte'
+  import { revise_vacf } from './calc-vacf'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
 
   let {
@@ -39,14 +41,36 @@
     vdos_controls_open?: boolean
   } & Omit<ScatterPlotOptions, `controls_open`> = $props()
 
+  // Only the options that shape the correlation reach the worker (keyed by value, so a
+  // recreated but equal options object does not recompute); dt, time_unit and the VDOS
+  // window/unit are applied to the finished result by revise_vacf
+  const compute_key = $derived(
+    JSON.stringify({
+      max_lag_fraction: vacf_options.max_lag_fraction,
+      max_lags: vacf_options.max_lags,
+      velocity_source: vacf_options.velocity_source,
+    }),
+  )
+  let frame_result = $state.raw<VacfResult>()
   use_async_result({
     input: () => input,
-    options: () => vacf_options,
+    options: (): VacfOptions => JSON.parse(compute_key),
     compute: (request_input, options, signal) =>
       compute_vacf_async(request_input, options, { signal }),
-    set_result: (computed) => (result = computed),
+    set_result: (computed) => (frame_result = computed),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
+  })
+  // Without an input `result` is the caller's precomputed curves, left untouched
+  $effect(() => {
+    if (!input) return
+    const { dt, time_unit, vdos } = vacf_options
+    try {
+      result = frame_result && revise_vacf(frame_result, { dt, time_unit, vdos })
+    } catch (exc) {
+      result = undefined
+      error_msg = to_error(exc).message
+    }
   })
 
   const curve_series = (

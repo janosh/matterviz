@@ -9,7 +9,7 @@
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import { compute_msd_async } from './async-compute.svelte'
-  import { fit_msd_curves } from './calc-msd'
+  import { fit_msd_curves, with_lag_time_axis } from './calc-msd'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
 
   let {
@@ -43,13 +43,33 @@
     error_msg?: string
   } & ScatterPlotOptions = $props()
 
+  // Only the lag-range options reach the worker (keyed by value, so a recreated but equal
+  // options object does not recompute); dt/time_unit relabel the finished curves
+  const compute_key = $derived(
+    JSON.stringify({
+      max_lag_fraction: msd_options.max_lag_fraction,
+      max_lags: msd_options.max_lags,
+    }),
+  )
+  let frame_result = $state.raw<MsdResult>()
   use_async_result({
     input: () => positions,
-    options: () => msd_options,
+    options: (): MsdOptions => JSON.parse(compute_key),
     compute: (input, options, signal) => compute_msd_async(input, options, { signal }),
-    set_result: (computed) => (result = computed),
+    set_result: (computed) => (frame_result = computed),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
+  })
+  // Without positions `result` is the caller's precomputed curves, left untouched
+  $effect(() => {
+    if (!positions) return
+    const { dt, time_unit } = msd_options
+    try {
+      result = frame_result && with_lag_time_axis(frame_result, { dt, time_unit })
+    } catch (exc) {
+      result = undefined
+      error_msg = to_error(exc).message
+    }
   })
 
   // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An

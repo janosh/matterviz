@@ -10,8 +10,8 @@
 // The origin average is taken with the Wiener–Khinchin theorem rather than a direct
 // lags x origins x atoms loop: the sum over origins of v(t) . v(t + lag) is the
 // autocorrelation of each velocity component, i.e. the inverse transform of its power
-// spectrum. Zero-padding every component to >= 2 n_frames makes the circular correlation
-// linear, so the result is the exact origin sum up to round-off: measured against the direct
+// spectrum. Zero-padding every component to >= n_frames + max_lag makes the circular
+// correlation linear at every reported lag, so the result is the exact origin sum up to round-off: measured against the direct
 // Welford loop at 2000 frames x 64 atoms (damped oscillators + noise, stored and
 // central-difference velocities), max |Δ| = 8e-16 on VACF values of magnitude 0.17 and
 // 8.5e-14 on VDOS values of magnitude 19 (both <= 5e-15 of the curve maximum, i.e. a few
@@ -98,7 +98,6 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     elements,
   } = input
   const {
-    dt: delta_time = 1,
     max_lag_fraction = 0.5,
     max_lags = 4096,
     velocity_source: requested_source = `auto`,
@@ -144,12 +143,8 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     // already-unwrapped flag though: re-folding LAMMPS xu/yu/zu truncates real motion.
     const coords = unwrapped_positions_of(input)
     unwrapped = coords.unwrapped
-    velocities = central_difference_velocities(
-      coords.coords,
-      n_position_frames,
-      n_atoms,
-      delta_time,
-    )
+    // Per frame: revise_vacf applies the timestep afterwards, so a dt edit skips all of this
+    velocities = central_difference_velocities(coords.coords, n_position_frames, n_atoms, 1)
     n_frames = n_position_frames - 2
   }
   if (n_frames < 2) fail(`need at least 2 velocity frames to form a lag, got ${n_frames}`)
@@ -173,17 +168,66 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     max_lag,
   )
 
-  // === axes ===
-  const times = lags.map((lag) => lag * delta_time)
-  // Differentiated velocities are Å per lag-axis time unit by construction. Stored ones
-  // carry whatever the file used, so without an explicit label the honest answer is that
-  // the unit is unknown rather than a guessed Å/ps.
-  const velocity_unit =
-    velocity_source === `central_difference`
-      ? `(Å/${time_unit})^2`
-      : input.velocity_unit
-        ? `(${input.velocity_unit})^2`
-        : `(file velocity units)^2`
+  // In frames: dt, time_unit and the VDOS settings are applied by revise_vacf
+  const frame_result: VacfResult = {
+    lags,
+    times: lags,
+    curves: curve_slots(labels).map(({ label, slot }): VacfCurve => {
+      const size = curve_sizes[slot]
+      const vacf = Array.from(sums[slot], (sum, lag) => sum / (n_origins[lag] * size))
+      // A group whose atoms are all exactly at rest has VACF(0) = 0 and no direction to
+      // normalize along. Zeros are the truthful answer; dividing would give NaN.
+      const zero_lag = vacf[0]
+      return {
+        label,
+        n_atoms: size,
+        vacf,
+        vacf_normalized:
+          zero_lag === 0 ? vacf.map(() => 0) : vacf.map((value) => value / zero_lag),
+        // A fresh array per curve: callers mutating one must not corrupt the others
+        n_origins: [...n_origins],
+        vdos: [],
+        peak_frequency: 0,
+      }
+    }),
+    dt: 1,
+    time_unit: `frame`,
+    x_label: lag_axis_label(`frame`),
+    frequencies: [],
+    frequency_unit: `1/frame`,
+    frequency_label: ``,
+    window: `none`,
+    n_fft: 0,
+    velocity_source,
+    // Stored velocities carry whatever the file used, so without an explicit label the honest
+    // answer is that the unit is unknown rather than a guessed Å/ps. revise_vacf relabels the
+    // differentiated case.
+    velocity_unit: input.velocity_unit
+      ? `(${input.velocity_unit})^2`
+      : `(file velocity units)^2`,
+    n_frames,
+    n_atoms,
+    unwrapped,
+    frame_stride: input.frame_stride,
+  }
+  return revise_vacf(frame_result, { dt: options.dt, time_unit, vdos: vdos_options })
+}
+
+// What calc_vacf returns for new dt / time_unit / VDOS settings, derived from a finished result
+// instead of re-running the correlation (seconds for a 10k-frame x 1k-atom run): the lag grid
+// and origin sums do not depend on them. Only a differentiated VACF carries the timestep, as
+// (Å/time)^2, so it is rescaled by (old dt / new dt)^2; stored velocities keep the file's units.
+export function revise_vacf(
+  result: VacfResult,
+  options: Pick<VacfOptions, 'dt' | 'time_unit' | 'vdos'>,
+): VacfResult {
+  const { dt: delta_time = 1, vdos: vdos_options = {} } = options
+  const time_unit = resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
+  const { lags, velocity_source } = result
+  const differentiated = velocity_source === `central_difference`
+  const scale = differentiated ? (result.dt / delta_time) ** 2 : 1
+  // Differentiated velocities are Å per lag-axis time unit by construction
+  const velocity_unit = differentiated ? `(Å/${time_unit})^2` : result.velocity_unit
 
   const { window = `hann` } = vdos_options
   const frequency_unit: VacfFrequencyUnit =
@@ -217,15 +261,8 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   const spacing = bin_spacing()
   const frequencies = Array.from({ length: n_fft / 2 + 1 }, (_unused, bin) => bin * spacing)
 
-  const make_curve = ({ label, slot }: { label: string; slot: number }): VacfCurve => {
-    const size = curve_sizes[slot]
-    const vacf = Array.from(sums[slot], (sum, lag) => sum / (n_origins[lag] * size))
-    // A group whose atoms are all exactly at rest has VACF(0) = 0 and no direction to
-    // normalize along. Zeros are the truthful answer; dividing would give NaN.
-    const zero_lag = vacf[0]
-    const vacf_normalized =
-      zero_lag === 0 ? vacf.map(() => 0) : vacf.map((value) => value / zero_lag)
-    const windowed = vacf_normalized.map((value, lag_idx) => value * weights[lag_idx])
+  const revise_curve = (curve: VacfCurve): VacfCurve => {
+    const windowed = curve.vacf_normalized.map((value, lag_idx) => value * weights[lag_idx])
     const { spectrum } = even_cosine_spectrum(windowed, VDOS_ZERO_PAD_FACTOR)
     // The cosine transform of a real even signal is real, but a VACF that has not decayed
     // inside the window can push a bin slightly negative; that is truncation, not a
@@ -235,21 +272,17 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
       if (spectrum[bin] > spectrum[peak_bin]) peak_bin = bin
     }
     return {
-      label,
-      n_atoms: size,
-      vacf,
-      vacf_normalized,
-      // A fresh array per curve: callers mutating one must not corrupt the others
-      n_origins: [...n_origins],
+      ...curve,
+      vacf: scale === 1 ? curve.vacf : curve.vacf.map((value) => value * scale),
       vdos: Array.from(spectrum),
       peak_frequency: frequencies[peak_bin],
     }
   }
 
   return {
-    lags,
-    times,
-    curves: curve_slots(labels).map(make_curve),
+    ...result,
+    times: lags.map((lag) => lag * delta_time),
+    curves: result.curves.map(revise_curve),
     dt: delta_time,
     time_unit,
     x_label: lag_axis_label(time_unit),
@@ -258,11 +291,6 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     frequency_label: `Frequency (${frequency_unit_label(frequency_unit)})`,
     window,
     n_fft,
-    velocity_source,
     velocity_unit,
-    n_frames,
-    n_atoms,
-    unwrapped,
-    frame_stride: input.frame_stride,
   }
 }

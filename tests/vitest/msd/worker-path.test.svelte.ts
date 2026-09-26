@@ -5,10 +5,12 @@
 // worker-client.test.ts; only the MSD-specific contract is asserted here.
 import type { compute_msd_async as ComputeMsdAsync } from '$lib/msd/async-compute.svelte'
 import { calc_msd } from '$lib/msd/calc-msd'
-import type { MsdOptions } from '$lib/msd/index'
+import type { MsdOptions, MsdResult } from '$lib/msd/index'
+import MsdPlot from '$lib/msd/MsdPlot.svelte'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
+import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { expect_module_worker, install_stub_worker } from '../setup'
+import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { drift_positions } from './helpers'
 
 const stub = install_stub_worker<{
@@ -43,4 +45,42 @@ describe(`worker code path`, () => {
       expect(positions.positions).toHaveLength(n_frames * 2 * 3)
     },
   )
+})
+
+// A timestep only relabels the lag axis, so editing it must not re-post the (possibly
+// hundreds of MB) position buffer and redo the analysis; a lag-range edit must
+it(`MsdPlot relabels dt edits without recomputing`, async () => {
+  const positions = drift_positions(30)
+  const state = $state<{ msd_options: MsdOptions; result?: MsdResult }>({
+    msd_options: { max_lag_fraction: 0.5 },
+    result: undefined,
+  })
+  const component = mount(MsdPlot, {
+    target: document.body,
+    props: bind_props({ positions }, state),
+  })
+  try {
+    await settle(6)
+    expect(stub.posted).toHaveLength(1)
+    const frame_times = state.result?.times
+    expect(frame_times).toEqual(state.result?.lags)
+    state.msd_options = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
+    await settle(6)
+    expect(stub.posted).toHaveLength(1)
+    expect(state.result?.times).toEqual(frame_times?.map((lag) => lag * 2))
+    expect(state.result).toMatchObject({ dt: 2, time_unit: `fs`, x_label: `Lag time (fs)` })
+    const expected = calc_msd(positions, { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` })
+    expect(state.result).toEqual(expected)
+    // an invalid timestep is reported in place of the curves, still without recomputing
+    state.msd_options = { max_lag_fraction: 0.5, dt: 2 }
+    await settle(6)
+    expect(state.result).toBeUndefined()
+    expect(document.body.textContent).toContain(`without time_unit`)
+    expect(stub.posted).toHaveLength(1)
+    state.msd_options = { max_lag_fraction: 0.3, dt: 2, time_unit: `fs` }
+    await settle(6)
+    expect(stub.posted).toHaveLength(2)
+  } finally {
+    await unmount(component)
+  }
 })
