@@ -51,11 +51,12 @@ export const cell_text = (val: CellVal): string => {
   return strip_html(String(val)).trim()
 }
 
-// A blank data-sort-value="" carries no sort key: Number('') is 0, which would sort and
-// color the cell as zero and pull the column's mean toward it.
-const get_data_sort_value = (val: string): string | null => {
+// undefined without a data-sort-value, null for a blank one: data-sort-value="" carries no
+// sort key (Number('') is 0, which would sort and color the cell as zero and pull the column's
+// mean toward it)
+const get_data_sort_value = (val: string): string | null | undefined => {
   const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
-  return captured?.trim() ? captured : null
+  return captured === undefined ? undefined : captured.trim() ? captured : null
 }
 
 const parse_numeric_string = (val: string): number | null => {
@@ -81,38 +82,40 @@ export function parse_numeric_val(val: CellVal): number | null {
 // sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
 // as a non-string it could only answer "the other one first" to in BOTH directions - not a
 // total order, so the same rows came out differently depending on the order they went in.
-const get_sort_val = (val: CellVal): string | number => {
+// null marks a missing sort key: an invalid value, or a blank data-sort-value on a cell whose
+// text isn't numeric (a blank key never falls back to the text).
+const get_sort_val = (val: CellVal): string | number | null => {
+  if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
   const num = parse_numeric_val(val)
   if (num !== null) return num
+  if (typeof val !== `string`) return cell_text(val)
   // a data-sort-value that isn't a number still overrides the visible text
-  if (typeof val === `string`) return get_data_sort_value(val) ?? cell_text(val)
-  return cell_text(val)
+  const sort_attr = get_data_sort_value(val)
+  return sort_attr === undefined ? cell_text(val) : sort_attr
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
 const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity: `base` })
 
-// Comparator over row keys: invalid values sink to the bottom regardless of direction,
+// Comparator over row keys: missing sort keys sink to the bottom regardless of direction,
 // numbers sort before strings, strings compare natural-order and case-insensitively.
 function compare_row_values(
   row1: RowData,
   row2: RowData,
   criteria: SortCriterion[],
-  sort_value: (val: CellVal) => string | number,
+  sort_value: (val: CellVal) => string | number | null,
 ): number {
   for (const { key, ascending } of criteria) {
     const val1 = row1[key]
     const val2 = row2[key]
     if (val1 === val2) continue
-    const invalid1 = is_invalid(val1)
-    const invalid2 = is_invalid(val2)
-    // both invalid ranks them equally low, so let the next criterion break the tie —
-    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
-    if (invalid1 && invalid2) continue
-    if (invalid1 || invalid2) return Number(invalid1) - Number(invalid2)
     const sort_val1 = sort_value(val1)
     const sort_val2 = sort_value(val2)
+    // both missing ranks them equally low, so let the next criterion break the tie —
+    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
+    if (sort_val1 === null && sort_val2 === null) continue
+    if (sort_val1 === null || sort_val2 === null) return sort_val1 === null ? 1 : -1
     const modifier = ascending ? 1 : -1
     if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
       const cmp = sort_collator.compare(sort_val1, sort_val2)
@@ -139,8 +142,8 @@ export function sort_table_rows<Row extends RowData>(
   rows: Row[],
   criteria: SortCriterion[],
 ): Row[] {
-  const values = new Map<CellVal, string | number>()
-  const sort_value = (val: CellVal): string | number => {
+  const values = new Map<CellVal, string | number | null>()
+  const sort_value = (val: CellVal): string | number | null => {
     if (typeof val === `number`) return get_sort_val(val)
     let parsed = values.get(val)
     if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))

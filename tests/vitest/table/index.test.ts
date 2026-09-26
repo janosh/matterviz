@@ -334,13 +334,16 @@ describe(`compare_rows`, () => {
     return sorted.map((row) => row.val)
   }
 
-  it.each([true, false])(`sinks invalid values with ascending=%s`, (ascending) => {
+  it.each([true, false])(`sinks missing sort keys with ascending=%s`, (ascending) => {
     const invalid_date = new Date(NaN)
     expect(cell_text(invalid_date)).toBe(``)
-    expect(order([null, 3, undefined, 1, NaN, 2, invalid_date], ascending)).toEqual([
-      ...(ascending ? [1, 2, 3] : [3, 2, 1]),
+    const no_key = `<span data-sort-value="">n/a</span>` // blank data-sort-value
+    const vals = [null, 3, undefined, `a`, no_key, 1, NaN, 2, invalid_date]
+    expect(order(vals, ascending)).toEqual([
+      ...(ascending ? [1, 2, 3, `a`] : [`a`, 3, 2, 1]),
       null,
       undefined,
+      no_key,
       NaN,
       invalid_date,
     ])
