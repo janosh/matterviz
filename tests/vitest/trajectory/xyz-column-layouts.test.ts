@@ -1,11 +1,23 @@
 // extXYZ files whose `Properties=` layout does not start with the species column: the frame
 // indexer must read the declared column layout rather than assume `symbol x y z`, and the
 // indexed (large-file) run must report the same per-frame scalars as the materialized one.
+import { frame_property_row } from '$lib/trajectory/extract'
+import { encode_frame } from '$lib/trajectory/frame'
 import { count_xyz_frames } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { index_xyz_frames, parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
+import {
+  build_xyz_frame,
+  index_xyz_frames,
+  parse_xyz_trajectory,
+  read_xyz_numeric_frame,
+  xyz_plot_row_frame,
+} from '$lib/trajectory/parse/xyz'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
-import { expect, test } from 'vitest'
+import { join } from 'node:path'
+import process from 'node:process'
+import { expect, onTestFinished, test, vi } from 'vitest'
+import { read_maybe_gz } from '../test-fixtures'
+import { synthetic_extxyz } from './fixtures'
 
 // Two frames of Si2, written with `columns` prefixed to each atom line
 const two_frames = (properties: string, columns: string[][]): string =>
@@ -141,4 +153,68 @@ test(`rejects a non-integer atomic number instead of truncating it to an element
   expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
     /no atom with a recognised element symbol/,
   )
+})
+
+// The indexed run's numeric read and plot-row scan skip Site records; both must equal the
+// Site path exactly (encode_frame of build_xyz_frame, and its frame_property_row), including
+// warnings, errors, -0 and every frame shape that has to fall back to that path
+const outcome = <T>(read: () => T): { value: T } | { error: string } => {
+  try {
+    return { value: read() }
+  } catch (error) {
+    return { error: String(error) }
+  }
+}
+const frame_text = (comment: string, lines: string[]): string =>
+  `${lines.length}\n${comment}\n${lines.join(`\n`)}\n`
+const cell = `Lattice="5 0 0 0 5 0 0 0 5"`
+const site_file = (dir: string, name: string) => () =>
+  read_maybe_gz(join(process.cwd(), `src/site`, dir, name))
+// oxfmt-ignore
+test.each<[string, () => string]>([
+  [`the V8Ta12W71Re8 MACE run`, site_file(`trajectories`, `V8Ta12W71Re8-mace-omat.xyz`)],
+  [`mp-1184225.extxyz`, site_file(`trajectories`, `mp-1184225.extxyz`)],
+  [`the Ag NEB images`, site_file(`trajectories`, `ase-images-Ag-0-to-97.xyz.gz`)],
+  [`the CrFeCoNi QHA run`, site_file(`trajectories`, `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)],
+  [`quartz.extxyz`, site_file(`structures`, `quartz.extxyz`)],
+  [`cyclohexane.xyz`, site_file(`molecules`, `cyclohexane.xyz`)],
+  [`C5-extra-data.xyz`, site_file(`molecules`, `C5-extra-data.xyz`)],
+  [`C2HO-scientific-notation.xyz`, site_file(`molecules`, `C2HO-scientific-notation.xyz`)],
+  [`synthetic forces`, () => synthetic_extxyz(3, 20)],
+  [`plain XYZ with -0 and Fortran exponents`, () => frame_text(`plain`, [`Si -0.0 0 1.0D-1`, `O 1 2 3`])],
+  [`numeric extra columns`, () => frame_text(`${cell} Properties=id:I:1:species:S:1:pos:R:3:velocities:R:3:charges:R:1:forces:R:3 fmax=9 stress="1 0 0 0 1 0 0 0 1" pbc="T F T"`, [`1 Si 0 0 0 1 2 3 0.5 0.1 -0 0.2`, `2 O 1 1 1 -1 -2 -3 -0.5 0.3 0.1 0`])],
+  [`atomic numbers and a string column`, () => frame_text(`${cell} Properties=Z:I:1:pos:R:3:tag:S:1`, [`14 0 0 0 a`, `8 1 1 1 b`])],
+  [`a move mask`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:move_mask:L:3`, [`Si 0 0 0 T F T`, `O 1 1 1 T T T`])],
+  [`a bool column`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:fixed:L:1`, [`Si 0 0 0 T`, `O 1 1 1 F`])],
+  [`a 2-column extra`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:uv:R:2`, [`Si 0 0 0 1 2`, `O 1 1 1 3 4`])],
+  [`aliased duplicate columns`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:velocities:R:3:velocity:R:3`, [`Si 0 0 0 1 2 3 4 5 6`, `O 1 1 1 1 2 3 4 5 6`])],
+  [`a NaN in an extra column`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:charges:R:1`, [`Si 0 0 0 nan`, `O 1 1 1 0.5`])],
+  [`a short extra column`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:velocities:R:3`, [`Si 0 0 0 1 2 3`, `O 1 1 1 1 2`])],
+  [`one atom without forces`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:forces:R:3`, [`Si 0 0 0 1 2 3`, `O 1 1 1`]) + frame_text(cell, [`Si 0 0 0`, `O 1 1 1`])],
+  [`unknown elements between frames`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:forces:R:3`, [`X 0 0 0 1 2 3`, `Si 1 1 1 1 0 0`, `O 2 2 2 0 1 0`]) + frame_text(cell, [`Si 0 0 0`, `Si 1 1 1`, `O 2 2 2`])],
+  [`only unknown elements`, () => frame_text(cell, [`X 0 0 0`, `Q 1 1 1`]) + frame_text(cell, [`Si 0 0 0`, `O 1 1 1`])],
+  [`a singular and an invalid-pbc cell`, () => frame_text(`Lattice="1 0 0 2 0 0 0 0 1" pbc="T X"`, [`Si 0 0 0`, `O 1 1 1`]) + frame_text(`${cell} pbc="nope"`, [`Si 0 0 0`, `O 1 1 1`])],
+  [`a short atom line mid-file`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3:forces:R:3`, [`Si 0 0 0 1 2 3`, `O 1 1 1 1 2 3`, `O 1 1 1 1 2 3`, `Si 1 1`]) + frame_text(cell, [`Si 0 0 0`])],
+  [`an overflowing coordinate mid-file`, () => frame_text(cell, [`Si 0 0 0`, `O 1 1 1`, `O 1e999 1 1`, `Si 1 1 1`]) + frame_text(cell, [`Si 0 0 0`])],
+  [`a bad Properties spec`, () => frame_text(`${cell} Properties=species:S:1:pos:R:3`, [`Si 0 0 0`]) + frame_text(`${cell} Properties=species:S:1:pos:R:3:pos:R:3`, [`Si 0 0 0 1 1 1`])],
+])(`numeric reads and plot rows of %s equal the Site path's`, (_label, make_text) => {
+  const text = make_text()
+  const index_collector = create_warning_collector()
+  const console_warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  onTestFinished(() => console_warn.mockRestore())
+  const specs = index_xyz_frames(text, index_collector.warn)
+  expect(specs.length).toBeGreaterThan(0)
+  const [site_reads, numeric_reads, site_rows, scan_rows] = Array.from({ length: 4 }, create_warning_collector)
+  const previous = {}
+  for (const [frame_idx, spec] of specs.entries()) {
+    const opts = { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx }
+    expect(outcome(() => read_xyz_numeric_frame(text, spec, opts, numeric_reads))).toStrictEqual(
+      outcome(() => encode_frame(build_xyz_frame(text, spec, opts, site_reads))),
+    )
+    expect(
+      outcome(() => frame_property_row(xyz_plot_row_frame(text, spec, opts, scan_rows, previous), frame_idx)),
+    ).toStrictEqual(outcome(() => frame_property_row(build_xyz_frame(text, spec, opts, site_rows), frame_idx)))
+  }
+  expect(numeric_reads.warnings).toStrictEqual(site_reads.warnings)
+  expect(scan_rows.warnings).toStrictEqual(site_rows.warnings)
 })

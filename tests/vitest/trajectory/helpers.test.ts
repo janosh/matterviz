@@ -6,9 +6,12 @@ import {
   convert_atomic_numbers,
   create_sampled_frame,
   create_structure,
+  split_lines,
+  TextLines,
 } from '$lib/trajectory/helpers'
 import { read_ndarray_from_view } from '$lib/trajectory/parse/ase'
 import { describe, expect, it } from 'vitest'
+import { make_rng } from '../numeric-helpers'
 
 describe(`trajectory helpers`, () => {
   it(`columns_to_csv writes one row per index, quotes delimiter/quote/newline keys and pads short columns`, () => {
@@ -145,5 +148,40 @@ describe(`trajectory helpers`, () => {
     expect(() => convert_atomic_numbers([atomic_number])).toThrow(
       `Unknown atomic number in trajectory data: ${atomic_number}`,
     )
+  })
+
+  // Line-offset index behind the indexed XDATCAR/LAMMPS readers: must split exactly like
+  // split_lines (trim, `\r\n` or `\n`, a lone `\r` kept) and bound each line for scanners
+  it.each([
+    ``,
+    `a`,
+    `  \n a \n\n b \r\n\r\nc\r \n `,
+    `x\r\r\ny\rz\n`,
+    `\n\n\n`,
+    `a\nb`,
+    `a\r\nb\r\n`,
+  ])(`TextLines splits %j like split_lines`, (text) => {
+    const lines = new TextLines(text)
+    const expected = split_lines(text)
+    expect(Array.from({ length: lines.count }, (_, idx) => lines.line(idx))).toEqual(expected)
+    expect(
+      Array.from({ length: lines.count }, (_, idx) => text.slice(...lines.bounds(idx))),
+    ).toEqual(expected)
+    expect([lines.line(-1), lines.line(lines.count)]).toEqual([undefined, undefined])
+  })
+
+  it(`TextLines matches split_lines on random line soup`, () => {
+    const rng = make_rng(3)
+    const alphabet = [`a`, ` `, `\n`, `\r`, `\r\n`, `\t`, `1`]
+    for (let trial = 0; trial < 300; trial++) {
+      const text = Array.from(
+        { length: Math.floor(rng() * 40) },
+        () => alphabet[Math.floor(rng() * alphabet.length)],
+      ).join(``)
+      const lines = new TextLines(text)
+      expect(Array.from({ length: lines.count }, (_, idx) => lines.line(idx))).toEqual(
+        split_lines(text),
+      )
+    }
   })
 })

@@ -1,13 +1,21 @@
-import { encode_frame } from '../frame'
-// Lazily decoded run over a large in-memory XYZ/EXTXYZ text or ASE .traj buffer. Owns the
-// payload and a private frame index (line offsets for XYZ, the ULM offsets table for ASE);
+// Lazily decoded run over a large in-memory XYZ/EXTXYZ, XDATCAR or LAMMPS dump text or ASE
+// .traj buffer. Owns the payload and a private frame index (line offsets for the text
+// formats, the ULM offsets table for ASE);
 // frames are decoded on read and cached by the session, never all at once. Per-frame scalars
 // for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
-import type { TrajectoryFrame, TrajectoryMetadata } from '../index'
+import { to_error } from '$lib/utils'
+import type { AtomTypeMapping, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
-import type { WarningCollector } from '../parse/shared'
+import { open_lammps_frames } from '../parse/lammps'
+import type { WarnFn, WarningCollector } from '../parse/shared'
+import { open_xdatcar_frames } from '../parse/vasp'
 import { frame_property_row } from '../extract'
-import { build_xyz_frame, index_xyz_frames } from '../parse/xyz'
+import {
+  build_xyz_frame,
+  index_xyz_frames,
+  read_xyz_numeric_frame,
+  xyz_plot_row_frame,
+} from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -26,18 +34,26 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
   let text = data
   const frames = index_xyz_frames(text, collector.warn)
-  const decode = (frame_idx: number): TrajectoryFrame =>
-    build_xyz_frame(
-      text,
-      frames[frame_idx],
-      { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
-      collector,
-    )
+  const frame_opts = (frame_idx: number) => ({
+    frame_label: `indexed frame ${frame_idx}`,
+    default_step: frame_idx,
+  })
+  // element bytes of the last plot row, reused while the species column is unchanged
+  const plot_row_topology: { numbers?: Uint8Array } = {}
   return {
     frame_count: frames.length,
-    decode,
-    // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
-    plot_row_frame: decode,
+    decode: (frame_idx) =>
+      build_xyz_frame(text, frames[frame_idx], frame_opts(frame_idx), collector),
+    read: (frame_idx) =>
+      read_xyz_numeric_frame(text, frames[frame_idx], frame_opts(frame_idx), collector),
+    plot_row_frame: (frame_idx) =>
+      xyz_plot_row_frame(
+        text,
+        frames[frame_idx],
+        frame_opts(frame_idx),
+        collector,
+        plot_row_topology,
+      ),
     // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
       text = ``
@@ -46,31 +62,40 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   }
 }
 
+export type IndexedFormat = `xyz` | `ase` | `xdatcar` | `lammps`
+
 export const indexed_text_run = (
   data: string | ArrayBuffer,
-  format: `xyz` | `ase`,
+  format: IndexedFormat,
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
+  atom_type_mapping?: AtomTypeMapping,
 ): TrajectoryRun => {
+  // A frame decodes for its plot row and again on every read, so each warning shows once
+  const warn_once: WarnFn = (message, error) => {
+    const text = error === undefined ? message : `${message}: ${to_error(error).message}`
+    collector.warn_once(text, text)
+  }
   let source: AseFrames
-  if (format === `xyz`) {
-    if (typeof data !== `string`) {
-      throw new TypeError(`Indexed XYZ trajectories need text data, got ArrayBuffer`)
-    }
-    source = xyz_source(data, collector)
-  } else {
+  if (format === `ase`) {
     if (!(data instanceof ArrayBuffer)) {
       throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
     }
-    // A frame decodes for its plot row and again on every read, so each warning shows once
-    source = open_ase_frames(data, (message) => collector.warn_once(message, message))
+    source = open_ase_frames(data, warn_once)
+  } else {
+    if (typeof data !== `string`) {
+      throw new TypeError(`Indexed ${format} trajectories need text data, got ArrayBuffer`)
+    }
+    if (format === `xyz`) source = xyz_source(data, collector)
+    else if (format === `xdatcar`) source = open_xdatcar_frames(data, warn_once)
+    else source = open_lammps_frames(data, warn_once, atom_type_mapping)
   }
-  const { frame_count, decode } = source
+  const { frame_count, decode, read } = source
   const properties = new TrajectoryProperties()
   const run = sync_run({
     label: `Indexed ${format} trajectory`,
     frame_count,
-    read: (frame_idx) => encode_frame(decode(frame_idx)),
+    read,
     read_atoms: source.read_atoms,
     atom_masses: source.atom_masses,
     provenance: { ...provenance, format },
@@ -92,7 +117,7 @@ export const indexed_text_run = (
         const batch: TrajectoryMetadata[] = []
         do {
           try {
-            // Exactly an in-memory run's row; ASE's plot-row frame skips positions and sites
+            // Exactly an in-memory run's row; plot-row frames skip positions and sites
             batch.push(frame_property_row(source.plot_row_frame(frame_idx), frame_idx))
           } catch (error) {
             collector.warn(`Skipping plot data of frame ${frame_idx}`, error)

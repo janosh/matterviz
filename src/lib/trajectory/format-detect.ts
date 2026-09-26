@@ -16,7 +16,7 @@ import { strip_compression_extensions } from '$lib/io/decompress'
 import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binary'
 import { is_lammps_data_content } from '$lib/structure/format-detect'
 import { parse_leading_num } from '$lib/utils'
-import { count_xyz_frames } from './helpers'
+import { has_multiple_xyz_frames } from './helpers'
 
 export const is_trajectory_filename = (filename: string): boolean => {
   if (CONFIG_DIRS_REGEX.test(filename)) return false
@@ -44,7 +44,7 @@ const KNOWN_FORMAT_EXT_REGEX = ext_regex([
   ...XYZ_EXTENSIONS, `traj`, `h5`, `hdf5`, `lammpstrj`, `json`, `cif`, `poscar`, `vasp`, `yaml`,
   `yml`, `xml`, `csv`,
 ])
-const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`])
+const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`, `lammpstrj`])
 // `outcar` anywhere in the basename (OUTCAR, OUTCAR_step2, relax.outcar), never in a
 // directory name — an `outcar/` folder must not claim the files inside it
 const OUTCAR_NAME_REGEX = /outcar[^/\\]*$/i
@@ -63,12 +63,18 @@ function ext_hint(filename: string | undefined, format_regex: RegExp): boolean |
 export const xyz_ext_hint = (filename: string | undefined): boolean | null =>
   ext_hint(filename, XYZ_EXTXYZ_REGEX)
 
-// Large-file frame indexing currently supports text XYZ/EXTXYZ and binary ASE .traj.
-export const indexed_trajectory_format = (filename: string): `ase` | `xyz` =>
-  /\.traj$/i.test(strip_compression_extensions(filename)) ? `ase` : `xyz`
+// Large-file frame indexing covers binary ASE .traj and text XYZ/EXTXYZ, LAMMPS dumps and
+// XDATCAR; which text format it is gets detected from the content once loaded.
+export const indexed_trajectory_format = (filename: string): `ase` | `text` =>
+  /\.traj$/i.test(strip_compression_extensions(filename)) ? `ase` : `text`
 
-export const is_indexable_trajectory_filename = (filename: string): boolean =>
-  INDEXABLE_EXT_REGEX.test(strip_compression_extensions(filename))
+export const is_indexable_trajectory_filename = (filename: string): boolean => {
+  const base = strip_compression_extensions(filename)
+  return (
+    INDEXABLE_EXT_REGEX.test(base) ||
+    (base.toLowerCase().split(/[/\\]/).pop() ?? ``).startsWith(`xdatcar`)
+  )
+}
 
 // Unified format detection. Each pattern trusts a matching file extension when present
 // but falls back to content/magic-byte detection when the filename gives no hint
@@ -134,7 +140,7 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   // (blob: URLs, extensionless endpoints) may still be recognized by its frames
   const xyz_hint = xyz_ext_hint(base_name)
   if (xyz_hint !== false) {
-    if (count_xyz_frames(content, 2) >= 2) return true
+    if (has_multiple_xyz_frames(content)) return true
     if (xyz_hint) return false
   }
 

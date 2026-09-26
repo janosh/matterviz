@@ -65,7 +65,7 @@ export const plan_host_file_transfer = ({
       ? indexed_trajectory_format(normalized_filename)
       : null
   const format_max_file_size =
-    is_large_file && trajectory_format === `xyz`
+    is_large_file && trajectory_format === `text`
       ? Math.min(max_text_file_size, max_file_size)
       : max_file_size
   if (file_size > format_max_file_size) {

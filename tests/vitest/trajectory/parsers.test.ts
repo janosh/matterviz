@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { encode_frame, materialize_frame_result } from '$lib/trajectory/frame'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
@@ -1071,6 +1071,96 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
 
 // === XYZ / extended XYZ ===
 
+// Above index_above_bytes, XDATCAR and LAMMPS dumps open indexed: frames decode on demand and
+// plot rows come from headers. Everything a run exposes must equal the eager run's.
+describe(`indexed XDATCAR and LAMMPS`, () => {
+  const site_text = (path: string) => () =>
+    read_maybe_gz(join(process.cwd(), `src/site`, path))
+  const variable_cell = (lat_a: number, idx: number) =>
+    `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n2\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 -0\n1.0D-1 0.2 0.3`
+  const xdatcar_head = `title\n1.0\n5 0 0\n0 5 0\n0 0 5\nH\n2`
+  // unsorted ids, scaled coordinates, velocities, forces, charges (q) and ITEM: TIME
+  const md_dump = (n_frames: number, torn = ``) =>
+    Array.from({ length: n_frames }, (_, frame_idx) =>
+      lammps_frame(
+        `id type xs ys zs vx vy vz fx fy fz q`,
+        [3, 1, 2].map(
+          (id) =>
+            `${id} ${1 + ((id + frame_idx) % 2)} 0.${id} 0.5 -0 ${id} 0 1 -1 0.5 ${frame_idx} 0.${id}`,
+        ),
+        { timestep: frame_idx * 10, time: frame_idx * 0.5, pbc: `xy xz yz pp pp ff` },
+      ).replace(`0.0 10.0\n0.0 10.0\n0.0 10.0`, `0.0 10.0 1.0\n0.0 10.0 0.5\n0.0 10.0 0.25`),
+    ).join(`\n`) + torn
+  const untyped_dump = Array.from({ length: 3 }, (_, frame_idx) =>
+    lammps_frame(`type x y z`, [`1 0 0 0`, `3 1 1 1`, `2 ${frame_idx} 2 2`], {
+      timestep: frame_idx,
+    }),
+  ).join(`\n`)
+  // oxfmt-ignore
+  it.each<[string, string, () => string, OpenOptions?]>([
+    [`vasp-XDATCAR.MD`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
+    [`vasp-XDATCAR-traj`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR-traj.gz`)],
+    [`a variable-cell XDATCAR with wrapped species`, `XDATCAR`, () => `${variable_cell(10, 1)}\n${variable_cell(20, 2)}\n${variable_cell(20, 3)}`],
+    [`an XDATCAR with CRLF endings and a torn last line`, `XDATCAR`, () => `${xdatcar_head}\nDirect configuration= 1\n0.5 0.5 0.5\n0.1 0.1 0.1\nDirect configuration= 2\n0.5 0.5 0.5\n0.1 0.1`.replaceAll(`\n`, `\r\n`)],
+    [`an XDATCAR missing its last coordinate lines`, `XDATCAR`, () => `${xdatcar_head}\nDirect configuration= 1\n0.5 0.5 0.5\n0.1 0.1 0.1\nDirect configuration= 2\n0.5 0.5 0.5`],
+    [`lammps-sample`, `sample.lammpstrj`, site_text(`trajectories/lammps-sample.lammpstrj.gz`)],
+    [`the SGCMC cell dump`, `cell.lammpstrj`, site_text(`trajectories/cell_0_T_800.0_dmu_0.3129032258064516.lammpstrj.gz`)],
+    [`mdanalysis-chain-dump`, `chain.lammpstrj`, site_text(`trajectories/mdanalysis-chain-dump.lammpstrj`)],
+    [`mdanalysis-additional-columns`, `extra.lammpstrj`, site_text(`trajectories/mdanalysis-additional-columns.lammpstrj`)],
+    [`Al-fcc.dump`, `Al-fcc.dump`, site_text(`structures/Al-fcc.dump`)],
+    [`unsorted scaled triclinic MD frames with a torn tail`, `md.lammpstrj`, () => md_dump(4, `\nITEM: TIMESTEP\n40\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 10`)],
+    [`CRLF MD frames with a half-written last atom line`, `md.lammpstrj`, () => `${md_dump(3)}\n9 1 0.5`.replaceAll(`\n`, `\r\n`)],
+    [`frames without ids or element names`, `untyped.lammpstrj`, () => untyped_dump, { atom_type_mapping: {} }],
+    // these frames cannot encode as dense columns, so the numeric read falls back to sites
+    [`a sparse velocity and clashing q/charge columns`, `sparse.lammpstrj`, () => [`1 1 0 0 0 1 2 3 0.5 0.1`, `2 2 1 1 1 nan 2 3 0.5 0.2`].map((line, frame_idx) =>
+      lammps_frame(`id type x y z vx vy vz q charge`, frame_idx ? [line.replace(`nan`, `1`), line.replace(`2 2 1`, `3 2 1`)] : [line, `3 1 2 2 2 1 1 1 0 0`], { timestep: frame_idx })).join(`\n`)],
+    [`a type mapped to a non-element`, `mapped.lammpstrj`, () => untyped_dump, { atom_type_mapping: { 1: `Xx` as ElementSymbol, 2: `O`, 3: `Fe` } }],
+  ])(`%s reads the same frames, plot rows and warnings`, async (_label, filename, make_text, options = {}) => {
+    const text = make_text()
+    const eager = await open(text, filename, { ...options, index_above_bytes: Infinity })
+    const indexed = await open(text, filename, { ...options, index_above_bytes: 0 })
+    // indexed plot rows arrive progressively, eager ones with the run
+    expect([eager.properties.complete, indexed.properties.complete]).toEqual([true, false])
+    expect(indexed.provenance.format).toBe(eager.provenance.format)
+    expect(indexed.frame_count).toBe(eager.frame_count)
+    for (let frame_idx = 0; frame_idx < eager.frame_count; frame_idx++)
+      expect(indexed.read_frame(frame_idx)).toStrictEqual(eager.read_frame(frame_idx))
+    await indexed.properties.done
+    expect(indexed.properties.rows).toStrictEqual(eager.properties.rows)
+    expect(indexed.metadata).toStrictEqual(eager.metadata)
+    expect(indexed.warnings).toStrictEqual(eager.warnings)
+    // velocity is absent from most inputs, so both runs must also reject alike
+    const collected = (run: TrajectoryRun) =>
+      collect(run, { vector_keys: [`velocity`] }).then(
+        (stream) => ({ stream }),
+        (error: unknown) => ({ error: String(error) }),
+      )
+    expect(await collected(indexed)).toStrictEqual(await collected(eager))
+  })
+
+  // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails that
+  // frame's read (and drops its plot row) with the error the eager open throws
+  it(`fails only the frame holding a corrupt XDATCAR coordinate line`, async () => {
+    const text = [1, 2, 3]
+      .map(
+        (step) =>
+          `Direct configuration= ${step}\n0.5 0.5 0.5\n${step === 2 ? `0.1 xx 0.1` : `0.1 0.1 0.1`}`,
+      )
+      .join(`\n`)
+    const content = `${xdatcar_head}\n${text}`
+    const error = `XDATCAR frame 2 line 13 is not a fractional coordinate triple: "0.1 xx 0.1"`
+    await expect(open(content, `XDATCAR`, { index_above_bytes: Infinity })).rejects.toThrow(
+      error,
+    )
+    const indexed = await open(content, `XDATCAR`, { index_above_bytes: 0 })
+    expect(() => indexed.read_frame(1)).toThrow(error)
+    expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
+    await indexed.properties.done
+    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
+    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
+  })
+})
+
 describe(`XYZ`, () => {
   const xyz_frame = (atoms: string[], comment = ``): string =>
     `${atoms.length}\n${comment}\n${atoms.join(`\n`)}`
@@ -1500,6 +1590,105 @@ describe(`ASE`, () => {
       expect(metadata).not.toHaveProperty(`force_max`)
       expect(metadata).toMatchObject({ energy: -1 - frame_idx })
     }
+  })
+
+  // The indexed run's direct read skips Site records; it must equal encoding the decoded
+  // frame exactly: values, -0, channels, metadata, warnings, errors and fallbacks
+  const outcome = <T>(read: () => T): { value: T } | { error: string } => {
+    try {
+      return { value: read() }
+    } catch (error) {
+      return { error: String(error) }
+    }
+  }
+  // oxfmt-ignore
+  const md_frame = (array: Parameters<Parameters<typeof make_ase_buffer>[0][number]>[0], frame_idx: number, extra: Record<string, unknown> = {}) => ({
+    [`positions.`]: array([3, 3], (idx) => (idx === 4 ? -0 : idx * 0.7 + frame_idx)),
+    cell: box,
+    ...extra,
+  })
+  // oxfmt-ignore
+  it.each<[string, () => ArrayBuffer]>([
+    [`the checked-in relaxation`, () => read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)],
+    [`a slab`, () => ase_frames([true, true, false], box)],
+    [`an all-zero molecule cell`, () => ase_frames([false, false, false], [[0, 0, 0], [0, 0, 0], [0, 0, 0]])],
+    [`calculator forces`, () => ase_frames([true, true, true], box, [[2, 3], [0.3, 0, -0, 0, 0.4, 0]])],
+    [`too few force rows`, () => ase_frames([true, true, true], box, [[1, 3], [0.3, 0, 0]])],
+    [`a NaN force`, () => ase_frames([true, true, true], box, [[2, 3], [0.3, 0, 0, 0, Number.NaN, 0]])],
+    [`momenta, masses and tags`, () => make_ase_md_buffer(5)],
+    [`numbers and pbc changing mid-run`, () => make_ase_buffer([
+      (array) => ({ [`numbers.`]: array([3], (idx) => [8, 1, 1][idx]), pbc: [true, true, true], ...md_frame(array, 0) }),
+      (array) => md_frame(array, 1),
+      (array) => ({ [`numbers.`]: array([2], (idx) => [26, 26][idx]), pbc: [true, false, true], [`positions.`]: array([2, 3], (idx) => idx), cell: box }),
+      (array) => ({ [`positions.`]: array([2, 3], (idx) => -idx), cell: [[3, 0, 0], [0, 3, 0], [0, 0, 0]] }),
+    ])],
+    [`int32 numbers and float32 positions and forces`, () => make_ase_buffer([0, 1].map((frame_idx) => (array) => ({
+      ...(frame_idx === 0 && { [`numbers.`]: array([3], (idx) => 6 + idx, `int32`), pbc: [true, true, true] }),
+      [`positions.`]: array([3, 3], (idx) => idx * 0.1 + frame_idx, `float32`),
+      [`calculator.`]: { energy: frame_idx, [`forces.`]: array([3, 3], (idx) => idx - 4, `float32`) },
+      cell: box,
+    })))],
+    [`unaligned float64 payloads after a float32 one`, () => make_ase_buffer([0, 1].map((frame_idx) => (array) => ({
+      ...(frame_idx === 0 && { [`numbers.`]: array([3], () => 14), pbc: [true, true, true] }),
+      [`initial_charges.`]: array([3], () => 0, `float32`),
+      ...md_frame(array, frame_idx),
+    })))],
+    [`inline positions and a 1-atom flat positions array`, () => make_ase_buffer([
+      () => ({ numbers: [1], pbc: [false, false, false], positions: [[0.5, -0, 2]], cell: box }),
+      (array) => ({ [`positions.`]: array([3], (idx) => idx) }),
+    ])],
+    [`a singular cell`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], () => 1), pbc: [true, true, true], ...md_frame(array, 0), cell: [[1, 0, 0], [2, 0, 0], [0, 0, 1]] })])],
+    [`an unknown atomic number`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], (idx) => idx), pbc: [true, true, true], ...md_frame(array, 0) })])],
+    [`a non-finite position`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], () => 1), pbc: [true, true, true], [`positions.`]: array([3, 3], (idx) => (idx === 5 ? Infinity : idx)) })])],
+    [`positions without 3 columns`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([2], () => 1), pbc: [true, true, true], [`positions.`]: array([2, 2], (idx) => idx) })])],
+  ])(`direct numeric reads of %s equal encoded decoded frames`, (_label, make_buffer) => {
+    const buffer = make_buffer()
+    const [decode_warnings, read_warnings]: string[][] = [[], []]
+    const decoded = open_ase_frames(buffer, (message) => decode_warnings.push(message))
+    const direct = open_ase_frames(buffer, (message) => read_warnings.push(message))
+    const console_warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => console_warn.mockRestore())
+    // forward then backward, so frames inheriting numbers/pbc see the same state in both
+    const order = [...Array(decoded.frame_count).keys()]
+    for (const frame_idx of [...order, ...order.toReversed()]) {
+      const expected = outcome(() => encode_frame(decoded.decode(frame_idx)))
+      const expected_console = console_warn.mock.calls.splice(0)
+      expect(outcome(() => direct.read(frame_idx))).toStrictEqual(expected)
+      expect(console_warn.mock.calls.splice(0)).toStrictEqual(expected_console)
+    }
+    expect(read_warnings).toStrictEqual(decode_warnings)
+  })
+
+  // ASE repeats numbers/pbc only where they change: a frame without them inherits the nearest
+  // EARLIER frame's, whatever was decoded last. Reading frame 2 (Fe2, slab) before frame 1 used
+  // to hand frame 1 two Fe atoms for its three positions.
+  it(`inherits numbers and pbc from the preceding frame under random access`, () => {
+    const buffer = make_ase_buffer([
+      (array) => ({
+        [`numbers.`]: array([3], (idx) => [8, 1, 1][idx]),
+        pbc: [true, true, true],
+        ...md_frame(array, 0),
+      }),
+      (array) => md_frame(array, 1),
+      (array) => ({
+        [`numbers.`]: array([2], () => 26),
+        pbc: [true, false, true],
+        [`positions.`]: array([2, 3], (idx) => idx),
+        cell: box,
+      }),
+      (array) => ({ [`positions.`]: array([2, 3], (idx) => -idx), cell: box }),
+    ])
+    const source = open_ase_frames(buffer, no_warnings)
+    const elements = (frame_idx: number) =>
+      source.decode(frame_idx).structure.sites.map(({ species }) => species[0].element)
+    expect(elements(3)).toEqual([`Fe`, `Fe`])
+    expect(elements(1)).toEqual([`O`, `H`, `H`])
+    const pbc = (frame_idx: number) => {
+      const { structure } = source.decode(frame_idx)
+      return `lattice` in structure ? structure.lattice.pbc : undefined
+    }
+    expect(pbc(1)).toEqual([true, true, true])
+    expect(pbc(3)).toEqual([true, false, true])
   })
 
   it.each([4, 70_000])(

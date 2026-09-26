@@ -133,7 +133,7 @@ export const read_indexed_trajectory_file = async (
   if (!is_indexable_trajectory_filename(normalized_filename)) {
     throw new Error(`Indexed loading is not supported for ${filename}`)
   }
-  const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `xyz`
+  const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `text`
   let buffer = await stream_file_to_buffer(file_path)
   for (
     let format = detect_compression_format(filename);

@@ -3,12 +3,16 @@ import * as math from '$lib/math'
 import { LineScanner } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import type { AtomTypeMapping, TrajectoryFrame } from '$lib/trajectory/index'
-import { element_from_lammps_type } from '$lib/element/helpers'
+import { element_from_lammps_type, symbol_to_atomic_number } from '$lib/element/helpers'
+import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
+import { encode_frame, type NumericFrame } from '$lib/trajectory/frame'
 import {
+  create_standard_numeric_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
-  split_lines,
+  TextLines,
 } from '$lib/trajectory/helpers'
+import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -87,27 +91,57 @@ class TornLammpsFrameError extends Error {
   }
 }
 
-export function parse_lammps_trajectory(
-  content: string,
+// What a frame's plot row needs, gathered by a scan without positions or sites: the header
+// fields that become its metadata and lattice, and its atoms' atomic numbers (file order)
+// `frame` builds Site records (the eager path), `numeric` the NumericFrame encode_frame would
+// make of them, `scan` only validates and summarises
+type LammpsReadMode = `frame` | `numeric` | `scan`
+
+type LammpsFrameSummary = {
+  timestep: number
+  time: number | null
+  pbc: Pbc
+  lattice_matrix: math.Matrix3x3
+  box_origin: math.Vec3
+  unwrapped: boolean
+  // null when a symbol has no atomic number: that frame's plot row takes the Site path
+  numbers: Uint8Array | null
+}
+
+const frame_metadata = ({ timestep, unwrapped, box_origin, time }: LammpsFrameSummary) => ({
+  timestep,
+  coords_unwrapped: unwrapped,
+  box_origin,
+  ...(time === null ? {} : { time }),
+})
+
+// Frame reader over the dump's lines with the state frames share. `parse_frame` reads the
+// frame starting at line `start` (an `ITEM: TIME...` line) and returns the line after it
+// with its frame, its numeric frame (null when sparse or clashing property columns need the
+// Site path) or its summary (every check a build makes, nothing per atom kept but the
+// atomic numbers).
+function create_lammps_reader(
+  lines: TextLines,
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
-): ParsedTrajectory {
-  const lines = split_lines(content)
-  const frames: TrajectoryFrame[] = []
+) {
   const atom_types_found = new Set<number>()
-  let identity_uses_ids: boolean | undefined
+  // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
+  // dump. An element per atom resolves as: the caller's atom_type_mapping (explicit intent),
+  // then an `element` column (`dump_modify element Si O`), then atomic number N like ASE's
+  // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
+  // showing up as H/He is traceable.
+  const guessed_types = new Set<number>()
+  const state: { identity_uses_ids?: boolean } = {}
+  const scanner = new LineScanner()
   let idx = 0
 
-  const read_line = (): string => lines[idx++]?.trim() ?? ``
-  const peek_line = (): string => lines[idx]?.trim() ?? ``
-  const skip_to = (prefix: string): boolean => {
-    while (idx < lines.length && !peek_line().startsWith(prefix)) idx++
-    return idx < lines.length
-  }
+  const read_line = (): string => lines.line(idx++)?.trim() ?? ``
+  const peek_line = (): string => lines.line(idx)?.trim() ?? ``
   // Header sections cut off by the end of the file are a torn tail; anything else missing
   // mid-file is corruption.
   const require_section = (prefix: string, timestep: number | null): void => {
-    while (idx < lines.length && !peek_line().startsWith(prefix)) {
+    while (idx < lines.count && !peek_line().startsWith(prefix)) {
       if (peek_line().startsWith(`ITEM: TIME`)) {
         throw new Error(
           `LAMMPS frame at timestep ${timestep} is missing "${prefix}" before line ${idx + 1}`,
@@ -115,21 +149,45 @@ export function parse_lammps_trajectory(
       }
       idx++
     }
-    if (idx < lines.length) return
+    if (idx < lines.count) return
     throw new TornLammpsFrameError(
       `LAMMPS frame${timestep === null ? `` : ` at timestep ${timestep}`} ends before "${prefix}"`,
     )
   }
 
-  // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
-  // dump. An element per atom resolves as: the caller's atom_type_mapping (explicit intent),
-  // then an `element` column (`dump_modify element Si O`), then atomic number N like ASE's
-  // read_lammps_dump and the LAMMPS data parser; the guess warns once per file so a Si/O dump
-  // showing up as H/He is traceable.
-  const guessed_types = new Set<number>()
-  const scanner = new LineScanner()
+  // First line at or after `from` that starts a frame, or lines.count
+  const skip_to_frame = (from: number): number => {
+    idx = from
+    while (idx < lines.count && !peek_line().startsWith(`ITEM: TIME`)) idx++
+    return idx
+  }
 
-  const parse_frame = (): void => {
+  function parse_frame(
+    start: number,
+    has_previous_frame: boolean,
+    mode: `frame`,
+  ): { next: number; frame: TrajectoryFrame }
+  function parse_frame(
+    start: number,
+    has_previous_frame: boolean,
+    mode: `numeric`,
+  ): { next: number; numeric: NumericFrame } | null
+  function parse_frame(
+    start: number,
+    has_previous_frame: boolean,
+    mode: `scan`,
+  ): { next: number; summary: LammpsFrameSummary }
+  function parse_frame(
+    start: number,
+    has_previous_frame: boolean,
+    mode: LammpsReadMode,
+  ): {
+    next: number
+    frame?: TrajectoryFrame
+    numeric?: NumericFrame
+    summary?: LammpsFrameSummary
+  } | null {
+    idx = start
     let time: number | null = null
     if (peek_line() === `ITEM: TIME`) {
       idx++
@@ -152,7 +210,7 @@ export function parse_lammps_trajectory(
     const num_atoms_text = read_line()
     const num_atoms = Math.trunc(Number(num_atoms_text))
     if (!(num_atoms > 0)) {
-      if (idx > lines.length) {
+      if (idx > lines.count) {
         throw new TornLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends after "ITEM: NUMBER OF ATOMS"`,
         )
@@ -183,7 +241,7 @@ export function parse_lammps_trajectory(
     const box_lines = [read_line(), read_line(), read_line()]
     const parsed_box = parse_lammps_box(box_lines, box_kind)
     if (!parsed_box) {
-      if (idx >= lines.length) {
+      if (idx >= lines.count) {
         throw new TornLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends inside BOX BOUNDS`,
         )
@@ -237,19 +295,41 @@ export function parse_lammps_trajectory(
     let positions: number[][] = []
     let elements: ElementSymbol[] = []
     let site_properties: Record<string, unknown>[] = []
+    // Scan and numeric modes keep columns instead of sites: atomic numbers always, ids for
+    // the duplicate check, and in numeric mode positions and every property column
+    const columnar = mode !== `frame`
+    const numbers = columnar ? new Uint8Array(num_atoms) : null
+    const ids = columnar && id_col !== undefined ? new Float64Array(num_atoms) : null
+    const numeric = mode === `numeric`
+    let unknown_symbol = false
+    const flat_positions = numeric ? new Float64Array(num_atoms * 3) : null
+    const vector_columns = vector_props.map(({ key }) => ({
+      key,
+      values: new Float64Array(numeric ? num_atoms * 3 : 0),
+    }))
+    const scalar_columns = scalar_props.map(({ key }) => ({
+      key,
+      values: new Float64Array(numeric ? num_atoms : 0),
+    }))
+    if (numeric) {
+      // Site property bags can only encode as these columns when every key is distinct
+      const keys = [...vector_props, ...scalar_props].map(({ key }) => key)
+      if (new Set(keys).size !== keys.length || keys.includes(`__proto__`)) return null
+    }
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
 
     for (let atom = 0; atom < num_atoms; atom++) {
-      if (idx >= lines.length) {
+      if (idx >= lines.count) {
         throw new TornLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends after ${atom} of ${num_atoms} atoms`,
         )
       }
       const line_number = idx + 1
-      const n_cols = scanner.scan(lines[idx++])
+      const [line_start, line_end] = lines.bounds(idx++)
+      const n_cols = scanner.scan(lines.text, line_start, line_end)
       // A malformed last line after at least one complete frame is a half-written tail, not
       // corruption; a lone frame still reports the line so the problem is visible
-      const torn_tail = idx >= lines.length && frames.length > 0
+      const torn_tail = idx >= lines.count && has_previous_frame
       if (n_cols < cols.length) {
         const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${n_cols} columns, expected ${cols.length}`
         throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
@@ -260,12 +340,9 @@ export function parse_lammps_trajectory(
         !Number.isFinite(coords[1]) ||
         !Number.isFinite(coords[2])
       ) {
-        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines[idx - 1]}"`
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${lines.line(idx - 1)}"`
         throw torn_tail ? new TornLammpsFrameError(message) : new TypeError(message)
       }
-      const xyz: math.Vec3 = frac_to_cart
-        ? frac_to_cart(coords)
-        : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
       let atom_type: number | undefined
       if (type_col !== undefined) {
         atom_type = scanner.num(type_col)
@@ -292,7 +369,50 @@ export function parse_lammps_trajectory(
         guessed_types.add(atom_type as number)
         element_symbol = element_from_lammps_type(atom_type as number)
       }
-      positions.push(xyz)
+      const xyz: math.Vec3 | null =
+        mode === `scan`
+          ? null
+          : frac_to_cart
+            ? frac_to_cart(coords)
+            : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
+      if (numbers) {
+        // an atom_type_mapping may name a non-element, which only Site records can hold
+        const atomic_number = symbol_to_atomic_number(element_symbol)
+        if (atomic_number === undefined) {
+          if (numeric) return null
+          unknown_symbol = true
+        } else numbers[atom] = atomic_number
+        if (flat_positions && xyz) flat_positions.set(xyz, atom * 3)
+        const n_vector_props = numeric ? vector_props.length : 0
+        for (let prop_idx = 0; prop_idx < n_vector_props; prop_idx++) {
+          const { indices } = vector_props[prop_idx]
+          const { values } = vector_columns[prop_idx]
+          for (let axis = 0; axis < 3; axis++) {
+            const value = scanner.num(indices[axis])
+            // a missing component leaves a sparse property the Site path must encode
+            if (!Number.isFinite(value)) return null
+            values[atom * 3 + axis] = value
+          }
+        }
+        // The id check is the only property read that throws; a scan reads no other column
+        for (let prop_idx = 0; prop_idx < scalar_props.length; prop_idx++) {
+          const { key, col_idx } = scalar_props[prop_idx]
+          if (!numeric && key !== `id`) continue
+          const value = scanner.num(col_idx)
+          if (key === `id` && (!Number.isInteger(value) || value <= 0)) {
+            throw new Error(
+              `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid ID "${scanner.str(col_idx)}"`,
+            )
+          }
+          if (numeric) {
+            if (!Number.isFinite(value)) return null
+            scalar_columns[prop_idx].values[atom] = value
+          }
+          if (key === `id` && ids) ids[atom] = value
+        }
+        continue
+      }
+      positions.push(xyz as math.Vec3)
       elements.push(element_symbol)
 
       const props: Record<string, unknown> = {}
@@ -315,10 +435,64 @@ export function parse_lammps_trajectory(
     }
 
     const frame_uses_ids = id_col !== undefined
-    if (identity_uses_ids !== undefined && frame_uses_ids !== identity_uses_ids) {
+    if (state.identity_uses_ids !== undefined && frame_uses_ids !== state.identity_uses_ids) {
       throw new Error(
         `LAMMPS frame at timestep ${timestep} ${frame_uses_ids ? `gained` : `lost`} the atom ID column; atom identity must be tracked the same way in every frame`,
       )
+    }
+    const next = idx
+    const metadata = {
+      timestep,
+      coords_unwrapped: pos_variant.unwrapped,
+      box_origin,
+      ...(time === null ? {} : { time }),
+    }
+    if (numbers) {
+      if (ids && new Set(ids).size !== num_atoms) {
+        throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
+      }
+      state.identity_uses_ids ??= frame_uses_ids
+      if (mode === `scan`) {
+        const summary = {
+          timestep,
+          time,
+          pbc,
+          lattice_matrix,
+          box_origin,
+          unwrapped: pos_variant.unwrapped,
+          numbers: unknown_symbol ? null : numbers,
+        }
+        return { next, summary }
+      }
+      if (!flat_positions) throw new Error(`LAMMPS numeric read built no positions`)
+      // Atoms in id order, as the Site path sorts them
+      const order = ids
+        ? Array.from({ length: num_atoms }, (_unused, atom_idx) => atom_idx).toSorted(
+            (left_idx, right_idx) => ids[left_idx] - ids[right_idx],
+          )
+        : null
+      const permute = <T extends Uint8Array | Float64Array>(values: T, width: number): T => {
+        if (!order) return values
+        const sorted = new (values.constructor as new (length: number) => T)(values.length)
+        for (let target = 0; target < num_atoms; target++)
+          for (let axis = 0; axis < width; axis++)
+            sorted[target * width + axis] = values[order[target] * width + axis]
+        return sorted
+      }
+      for (const column of vector_columns) column.values = permute(column.values, 3)
+      for (const column of scalar_columns) column.values = permute(column.values, 1)
+      const numeric_frame = create_standard_numeric_frame(
+        permute(flat_positions, 3),
+        permute(numbers, 1),
+        lattice_matrix,
+        pbc,
+        timestep,
+        metadata,
+        vector_columns,
+        scalar_columns,
+        warn,
+      )
+      return { next, numeric: numeric_frame }
     }
     if (frame_uses_ids) {
       const numeric_atom_ids = site_properties.map(
@@ -337,65 +511,157 @@ export function parse_lammps_trajectory(
       elements = order.map((atom_idx) => elements[atom_idx])
       site_properties = order.map((atom_idx) => site_properties[atom_idx])
     }
-    frames.push(
-      create_trajectory_frame(
-        positions,
-        elements,
-        lattice_matrix,
-        pbc,
-        timestep,
-        {
-          timestep,
-          coords_unwrapped: pos_variant.unwrapped,
-          box_origin,
-          ...(time === null ? {} : { time }),
-        },
-        site_properties,
-        warn,
-      ),
+    const frame = create_trajectory_frame(
+      positions,
+      elements,
+      lattice_matrix,
+      pbc,
+      timestep,
+      metadata,
+      site_properties,
+      warn,
     )
-    identity_uses_ids ??= frame_uses_ids
+    state.identity_uses_ids ??= frame_uses_ids
+    return { next, frame }
   }
 
-  while (skip_to(`ITEM: TIME`)) {
+  // Run-level checks and warnings once every frame has been read, in the eager order
+  const finish = (steps: readonly number[]): Record<string, unknown> => {
+    if (steps.length === 0) {
+      throw new Error(`No valid frames found in LAMMPS trajectory`)
+    }
+    if (guessed_types.size > 0) {
+      const guesses = Array.from(guessed_types)
+        .toSorted((left, right) => left - right)
+        .map((atom_type) => `${atom_type}→${element_from_lammps_type(atom_type)}`)
+      warn(
+        `LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
+      )
+    }
+    if (steps.length > 1 && state.identity_uses_ids === false) {
+      warn(
+        `LAMMPS dump has no atom ID column; frames display as written but atom identity cannot be verified across frames, so displacement analyses may be meaningless`,
+      )
+    }
+    for (let frame_idx = 1; frame_idx < steps.length; frame_idx++) {
+      if (!(steps[frame_idx] > steps[frame_idx - 1])) {
+        throw new Error(
+          `LAMMPS timestep ${steps[frame_idx]} at frame ${frame_idx} must be greater than ` +
+            `${steps[frame_idx - 1]} at frame ${frame_idx - 1}`,
+        )
+      }
+    }
+    return {
+      atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),
+    }
+  }
+
+  return { parse_frame, skip_to_frame, finish, line_count: lines.count }
+}
+
+export function parse_lammps_trajectory(
+  content: string,
+  warn: WarnFn,
+  atom_type_mapping?: AtomTypeMapping,
+): ParsedTrajectory {
+  const reader = create_lammps_reader(new TextLines(content), warn, atom_type_mapping)
+  const frames: TrajectoryFrame[] = []
+  const { line_count } = reader
+  for (let idx = reader.skip_to_frame(0); idx < line_count; idx = reader.skip_to_frame(idx)) {
     try {
-      parse_frame()
+      const parsed = reader.parse_frame(idx, frames.length > 0, `frame`)
+      frames.push(parsed.frame)
+      idx = parsed.next
     } catch (error) {
       if (!(error instanceof TornLammpsFrameError)) throw error
       warn(`Dropping truncated final LAMMPS frame`, error)
       break
     }
   }
+  const metadata = reader.finish(frames.map(({ step }) => step))
+  return { format: `lammps`, frames, metadata }
+}
 
-  if (frames.length === 0) {
-    throw new Error(`No valid frames found in LAMMPS trajectory`)
-  }
-  if (guessed_types.size > 0) {
-    const guesses = Array.from(guessed_types)
-      .toSorted((left, right) => left - right)
-      .map((atom_type) => `${atom_type}→${element_from_lammps_type(atom_type)}`)
-    warn(
-      `LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
-    )
-  }
-  if (frames.length > 1 && identity_uses_ids === false) {
-    warn(
-      `LAMMPS dump has no atom ID column; frames display as written but atom identity cannot be verified across frames, so displacement analyses may be meaningless`,
-    )
-  }
-  for (let frame_idx = 1; frame_idx < frames.length; frame_idx++) {
-    if (!(frames[frame_idx].step > frames[frame_idx - 1].step)) {
-      throw new Error(
-        `LAMMPS timestep ${frames[frame_idx].step} at frame ${frame_idx} must be greater than ` +
-          `${frames[frame_idx - 1].step} at frame ${frame_idx - 1}`,
-      )
+// Indexed LAMMPS dump: open scans every frame with all the eager parser's checks (so a
+// corrupt dump fails to open exactly as it would eagerly, and run-level warnings and
+// metadata match) but builds no positions or sites, keeping only each frame's first line and
+// a small plot-row summary. Frames decode on demand with the eager parser's frame builder.
+export function open_lammps_frames(
+  content: string,
+  warn: WarnFn,
+  atom_type_mapping?: AtomTypeMapping,
+): AseFrames {
+  // `release` drops the reader, the only holder of the text
+  let reader: ReturnType<typeof create_lammps_reader> | null = create_lammps_reader(
+    new TextLines(content),
+    warn,
+    atom_type_mapping,
+  )
+  const starts: number[] = []
+  const summaries: LammpsFrameSummary[] = []
+  const { line_count } = reader
+  for (let idx = reader.skip_to_frame(0); idx < line_count; idx = reader.skip_to_frame(idx)) {
+    try {
+      const { next, summary } = reader.parse_frame(idx, starts.length > 0, `scan`)
+      // Constant-topology dumps share one element array across frames
+      const previous = summaries.at(-1)?.numbers
+      if (previous && summary.numbers && equal_bytes(previous, summary.numbers))
+        summary.numbers = previous
+      starts.push(idx)
+      summaries.push(summary)
+      idx = next
+    } catch (error) {
+      if (!(error instanceof TornLammpsFrameError)) throw error
+      warn(`Dropping truncated final LAMMPS frame`, error)
+      break
     }
   }
+  const metadata = reader.finish(summaries.map(({ timestep }) => timestep))
+  const live = () => {
+    if (!reader) throw new Error(`LAMMPS trajectory text was released`)
+    return reader
+  }
+  const decode = (frame_idx: number): TrajectoryFrame =>
+    live().parse_frame(starts[frame_idx], frame_idx > 0, `frame`).frame
   return {
-    format: `lammps`,
-    frames,
-    metadata: {
-      atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),
+    frame_count: starts.length,
+    metadata,
+    decode,
+    read: (frame_idx) => {
+      const parsed = live().parse_frame(starts[frame_idx], frame_idx > 0, `numeric`)
+      return parsed ? parsed.numeric : encode_frame(decode(frame_idx))
+    },
+    plot_row_frame: (frame_idx) => {
+      const summary = summaries[frame_idx]
+      const { numbers } = summary
+      if (!numbers) return decode(frame_idx)
+      const frame = create_trajectory_frame(
+        [],
+        [],
+        summary.lattice_matrix,
+        summary.pbc,
+        summary.timestep,
+        frame_metadata(summary),
+        undefined,
+        warn,
+      )
+      numeric_sites.set(
+        frame.structure,
+        new NumericSites(numbers, new Float64Array(0), [], []),
+      )
+      snapshot_topologies.set(frame.structure, numbers)
+      return frame
+    },
+    release: () => {
+      reader = null
+      starts.length = 0
+      summaries.length = 0
     },
   }
+}
+
+const equal_bytes = (left: Uint8Array, right: Uint8Array): boolean => {
+  if (left.length !== right.length) return false
+  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
+  return true
 }

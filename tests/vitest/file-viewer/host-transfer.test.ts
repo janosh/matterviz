@@ -33,6 +33,15 @@ test.each([
   [`movie.traj`, 1000, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.traj:1000` }],
   [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
+  // Large LAMMPS dumps and XDATCARs are indexed text trajectories too
+  [`md.lammpstrj`, 500, { kind: `marker`, content: `LARGE_FILE:C:\\data\\md.lammpstrj:500` }],
+  [`md.lammpstrj`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  [`XDATCAR`, 200, { kind: `marker`, content: `LARGE_FILE:C:\\data\\XDATCAR:200` }],
+  [
+    `XDATCAR_nvt.gz`,
+    200,
+    { kind: `marker`, content: `LARGE_FILE:C:\\data\\XDATCAR_nvt.gz:200` },
+  ],
   [`movie.xyz.zip`, 101, { kind: `reject`, reason: `unsupported-compression` }],
   [
     `movie.xyz.gz.gz`,

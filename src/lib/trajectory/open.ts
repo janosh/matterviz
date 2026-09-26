@@ -40,8 +40,8 @@ export interface OpenTrajectoryOptions {
   hdf5_group_path?: string
   // Map LAMMPS atom types to element symbols, e.g. { 1: 'Na', 2: 'Cl' }
   atom_type_mapping?: AtomTypeMapping
-  // Index (decode on demand) XYZ payloads above this many bytes instead of parsing every
-  // frame up front. Defaults to DEFAULTS.trajectory.index_above_bytes.
+  // Index (decode on demand) XYZ, XDATCAR and LAMMPS payloads above this many bytes instead
+  // of parsing every frame up front. Defaults to DEFAULTS.trajectory.index_above_bytes.
   index_above_bytes?: number
 }
 
@@ -146,15 +146,17 @@ const parse_text = (
 ): TrajectoryRun => {
   const { filename, atom_type_mapping } = options
   const xyz_hint = xyz_ext_hint(filename)
+  // Eager parsing materialises every frame's sites (a 74 MB XDATCAR grew the heap by 800 MB),
+  // so large multi-frame text is indexed and decoded on demand
+  const index = (provenance.source_bytes ?? 0) > index_above_bytes
   const is_multi_xyz = xyz_hint !== false && has_multiple_xyz_frames(data)
   if (is_multi_xyz) {
-    if ((provenance.source_bytes ?? 0) > index_above_bytes) {
-      return indexed_text_run(data, `xyz`, provenance, collector)
-    }
+    if (index) return indexed_text_run(data, `xyz`, provenance, collector)
     return run_from_parsed(parse_xyz_trajectory(data, collector), provenance, collector)
   }
   const head = data.length > SNIFF_BYTES ? data.slice(0, SNIFF_BYTES) : data
   if (FORMAT_PATTERNS.vasp(head, filename)) {
+    if (index) return indexed_text_run(data, `xdatcar`, provenance, collector)
     return run_from_parsed(parse_vasp_xdatcar(data, collector.warn), provenance, collector)
   }
   if (FORMAT_PATTERNS.vasprun(head, filename)) {
@@ -164,6 +166,8 @@ const parse_text = (
     return run_from_parsed(parse_vasp_outcar(data, collector.warn), provenance, collector)
   }
   if (FORMAT_PATTERNS.lammpstrj(head, filename)) {
+    if (index)
+      return indexed_text_run(data, `lammps`, provenance, collector, atom_type_mapping)
     return run_from_parsed(
       parse_lammps_trajectory(data, collector.warn, atom_type_mapping),
       provenance,

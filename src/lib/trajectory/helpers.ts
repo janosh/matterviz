@@ -16,6 +16,7 @@ import {
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
+import type { NumericFrame } from './frame'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
 
@@ -158,6 +159,87 @@ export const create_trajectory_frame = (
   }
 }
 
+// Per-atom numeric channel of a directly decoded frame: `values` holds 3 (vector) or 1
+// (scalar) numbers per atom
+export type NumericColumn = { key: string; values: Float64Array }
+
+// encode_frame(create_trajectory_frame(...)) for standard sites (one element per atom, the
+// default label, only dense numeric properties) without building Site records. Hot readers
+// decode straight into typed arrays; the output, warnings and errors are identical.
+// `vectors` and `scalars` must be in the order the site property bags would list them.
+// `numbers` must hold valid atomic numbers; ownership of every buffer passes to the frame.
+export function create_standard_numeric_frame(
+  positions: Float64Array,
+  numbers: Uint8Array,
+  lattice_matrix: math.Matrix3x3 | undefined,
+  pbc: Pbc | undefined,
+  step: number,
+  metadata: Record<string, unknown>,
+  vectors: readonly NumericColumn[] = [],
+  scalars: readonly NumericColumn[] = [],
+  warn?: WarnFn,
+): NumericFrame {
+  const n_atoms = numbers.length
+  if (positions.length !== n_atoms * 3) {
+    throw new Error(
+      `create_structure requires matching positions and elements lengths, got positions=${positions.length / 3}, elements=${n_atoms}`,
+    )
+  }
+  const cart_to_frac = lattice_matrix
+    ? cart_to_frac_with_fallback(lattice_matrix, {
+        context: `lattice ${JSON.stringify(lattice_matrix)}`,
+        warn: warn ?? console.warn,
+      }).convert
+    : null
+  // encode_frame reads property keys off site 0, so an empty frame has no channels
+  const vector_columns = n_atoms > 0 ? vectors : []
+  const width = 6 + vector_columns.length * 3
+  const coordinates = new Float64Array(n_atoms * width)
+  const xyz: Vec3 = [0, 0, 0]
+  const abc: Vec3 = [0, 0, 0]
+  for (let idx = 0; idx < n_atoms; idx++) {
+    xyz[0] = positions[idx * 3]
+    xyz[1] = positions[idx * 3 + 1]
+    xyz[2] = positions[idx * 3 + 2]
+    if (!Number.isFinite(xyz[0]) || !Number.isFinite(xyz[1]) || !Number.isFinite(xyz[2]))
+      throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
+    const offset = idx * width
+    coordinates[offset] = xyz[0]
+    coordinates[offset + 1] = xyz[1]
+    coordinates[offset + 2] = xyz[2]
+    if (cart_to_frac) {
+      cart_to_frac(xyz, abc)
+      coordinates[offset + 3] = abc[0]
+      coordinates[offset + 4] = abc[1]
+      coordinates[offset + 5] = abc[2]
+    }
+    for (let column = 0; column < vector_columns.length; column++) {
+      const { values } = vector_columns[column]
+      const target = offset + 6 + column * 3
+      coordinates[target] = values[idx * 3]
+      coordinates[target + 1] = values[idx * 3 + 1]
+      coordinates[target + 2] = values[idx * 3 + 2]
+    }
+  }
+  const lattice = lattice_matrix ? make_lattice(lattice_matrix, pbc) : undefined
+  const header = {
+    step,
+    metadata: lattice ? { ...metadata, volume: lattice.volume } : metadata,
+  }
+  const scalar_columns = n_atoms > 0 ? scalars : []
+  return {
+    ...structuredClone({ header, structure: lattice ? { lattice } : {} }),
+    vector_keys: vector_columns.map(({ key }) => key),
+    coordinates,
+    ...(scalar_columns.length > 0 && {
+      scalar_columns: Object.fromEntries(
+        scalar_columns.map(({ key, values }) => [key, values]),
+      ),
+    }),
+    sites: numbers,
+  }
+}
+
 // A strided preview keeps full-topology indices without scanning every atom's species.
 export const create_sampled_frame = (
   positions: Float64Array,
@@ -221,6 +303,22 @@ export function calc_force_stats(
   return { force_max, force_norm: Math.sqrt(sum_sq / forces.length) }
 }
 
+// calc_force_stats of `n_atoms` forces stored flat (x, y, z per atom), same arithmetic order
+export function calc_flat_force_stats(
+  forces: ArrayLike<number>,
+  n_atoms: number,
+): { force_max: number; force_norm: number } | null {
+  if (n_atoms === 0) return null
+  let force_max = -Infinity
+  let sum_sq = 0
+  for (let idx = 0; idx < n_atoms; idx++) {
+    const magnitude = Math.hypot(forces[idx * 3], forces[idx * 3 + 1], forces[idx * 3 + 2])
+    if (magnitude > force_max) force_max = magnitude
+    sum_sq += magnitude ** 2
+  }
+  return { force_max, force_norm: Math.sqrt(sum_sq / n_atoms) }
+}
+
 // A frame's forces if they are one finite 3-vector per atom, else null, warning when present
 // but unusable. `context` names the frame, e.g. `pymatgen forces of frame 3`.
 export const checked_site_forces = (
@@ -268,6 +366,51 @@ const trimmed_bounds = (text: string): [number, number] => {
   while (from < target && text.charCodeAt(from) <= 32) from++
   while (target > from && text.charCodeAt(target - 1) <= 32) target--
   return [from, target]
+}
+
+// Lines of a text payload exactly as split_lines returns them, stored as one start offset per
+// line instead of one string: a 70 MB XDATCAR is ~2M lines, whose strings cost several times
+// the text itself. `line(idx)` slices on demand (undefined past the end, like the array).
+export class TextLines {
+  readonly count: number
+  private readonly starts: Uint32Array
+  private readonly target: number
+  constructor(readonly text: string) {
+    const [from, target] = trimmed_bounds(text)
+    this.target = target
+    let count = 1
+    for (
+      let pos = text.indexOf(`\n`, from);
+      pos !== -1 && pos < target;
+      pos = text.indexOf(`\n`, pos + 1)
+    )
+      count++
+    const starts = new Uint32Array(count)
+    starts[0] = from
+    for (let idx = 1, pos = from; idx < count; idx++) {
+      pos = text.indexOf(`\n`, pos) + 1
+      starts[idx] = pos
+    }
+    this.count = count
+    this.starts = starts
+  }
+  line(idx: number): string | undefined {
+    if (idx < 0 || idx >= this.count) return undefined
+    const start = this.starts[idx]
+    if (idx === this.count - 1) return this.text.slice(start, this.target)
+    // split_lines drops the `\r` of a `\r\n` ending (the last line has none after trim)
+    let end = this.starts[idx + 1] - 1
+    if (this.text.charCodeAt(end - 1) === 13) end--
+    return this.text.slice(start, end)
+  }
+  // Offset of line `idx` in `text` and the offset just past its content, for scanners
+  bounds(idx: number): [number, number] {
+    const start = this.starts[idx]
+    if (idx === this.count - 1) return [start, this.target]
+    let end = this.starts[idx + 1] - 1
+    if (this.text.charCodeAt(end - 1) === 13) end--
+    return [start, end]
+  }
 }
 
 // Non-negative integer written alone on the line (whitespace around it allowed), else -1
