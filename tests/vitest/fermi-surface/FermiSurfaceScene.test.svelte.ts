@@ -1,11 +1,11 @@
 // Mounts FermiSurfaceScene against the recording Threlte stub: the materials handed to the
-// meshes must survive an opacity-slider tick (they are shared per surface/pass and recompiled
-// on rebuild) and a surface whose geometry cannot be built must not get any.
+// meshes must survive an opacity-slider tick (they are shared per surface and recompiled on
+// rebuild) and a surface whose geometry cannot be built must not get a mesh.
 import FermiSurfaceScene from '$lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { FermiHoverData, FermiIsosurface } from '$lib/fermi-surface/types'
 import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import type { MeshStandardMaterial } from 'three/webgpu'
+import { DoubleSide, type MeshStandardMaterial, Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
@@ -28,14 +28,17 @@ vi.mock(`@threlte/core`, async (original) => {
   }
 })
 // OrbitControls is a Threlte component; interactivity() registers pointer plugins on a renderer,
-// so it is replaced by a recording `enabled` switch
+// so it is replaced by a recording `enabled` switch that also records the hit filter
 const hover_enabled = vi.hoisted(() => ({ set: vi.fn() }))
+const interactivity = vi.hoisted(() =>
+  vi.fn((_options?: unknown) => ({ enabled: hover_enabled })),
+)
 vi.mock(`@threlte/extras`, async () => ({
   OrbitControls: Reflect.get(
     (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
     `OrbitControls`,
   ),
-  interactivity: () => ({ enabled: hover_enabled }),
+  interactivity,
 }))
 
 let teardown: (() => void) | undefined
@@ -72,7 +75,7 @@ const mount_scene = (props: ComponentProps<typeof FermiSurfaceScene>) => {
   flushSync()
 }
 
-// Materials of the sheet meshes in mount order (surface-major, back pass before front pass)
+// Materials of the sheet meshes in mount order (surface-major)
 const mesh_materials = () =>
   threlte_stub.nodes
     .filter(({ tag }) => tag === `Mesh`)
@@ -82,11 +85,13 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   const props = $state({ surface_opacity: 0.6 })
   mount_scene(props)
 
-  // Two renderable surfaces × (back, front) passes; the empty sheet gets no mesh
+  // One mesh per renderable surface (the empty sheet gets none): three draws a transparent
+  // double-sided material as back- then front-face passes itself, and one raycast picks both
   const transparent = mesh_materials()
-  expect(transparent).toHaveLength(4)
-  expect(new Set(transparent).size).toBe(4)
+  expect(transparent).toHaveLength(2)
+  expect(new Set(transparent).size).toBe(2)
   for (const material of transparent) {
+    expect(material.side).toBe(DoubleSide)
     // depth writes stay on: they hide an outer sheet behind an inner one instead of blending it
     expect(material).toMatchObject({ transparent: true, opacity: 0.6, depthWrite: true })
     expect(material.polygonOffset).toBe(true)
@@ -94,17 +99,14 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
     expect(material.stencilWrite).toBe(false)
   }
   // Coincident sheets (spin-up/-down copies of one band) must not z-fight: each surface sits at
-  // its own depth bias (both passes on the same step) with a shared slope factor so genuinely
-  // different sheets keep their order at grazing angles
-  const [back_0, front_0, back_1, front_1] = transparent
-  expect(back_1.polygonOffsetUnits - back_0.polygonOffsetUnits).toBeGreaterThanOrEqual(4)
-  expect(front_0.polygonOffsetUnits).toBe(back_0.polygonOffsetUnits)
-  expect(front_1.polygonOffsetUnits).toBe(back_1.polygonOffsetUnits)
-  expect(new Set(transparent.map((material) => material.polygonOffsetFactor)).size).toBe(1)
+  // its own depth bias with a shared slope factor so genuinely different sheets keep their
+  // order at grazing angles
+  const [sheet_0, sheet_1] = transparent
+  expect(sheet_1.polygonOffsetUnits - sheet_0.polygonOffsetUnits).toBeGreaterThanOrEqual(4)
+  expect(sheet_0.polygonOffsetFactor).toBe(sheet_1.polygonOffsetFactor)
   // three's WebGPU pipeline cache key ignores the polygon offset (mrdoob/three.js#34405); a
   // per-surface stencil read mask (keyed but inert) keeps the surfaces from sharing one pipeline
-  expect(back_0.stencilFuncMask).not.toBe(back_1.stencilFuncMask)
-  expect(front_0.stencilFuncMask).toBe(back_0.stencilFuncMask)
+  expect(sheet_0.stencilFuncMask).not.toBe(sheet_1.stencilFuncMask)
   const dispose_spies = transparent.map((material) => vi.spyOn(material, `dispose`))
 
   invalidate.mockClear()
@@ -112,11 +114,11 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   flushSync()
   // Same instances, written in place
   expect(mesh_materials()).toEqual(transparent)
-  expect(transparent.map((material) => material.opacity)).toEqual([0.7, 0.7, 0.7, 0.7])
+  expect(transparent.map((material) => material.opacity)).toEqual([0.7, 0.7])
   expect(invalidate).toHaveBeenCalled() // on-demand renderer repaints the new uniform
   for (const spy of dispose_spies) expect(spy).not.toHaveBeenCalled()
 
-  // Fully opaque collapses to one double-sided pass per surface with fresh materials
+  // Fully opaque rebuilds fresh (non-transparent) materials
   props.surface_opacity = 1
   flushSync()
   const opaque = mesh_materials()
@@ -132,8 +134,8 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
 // $derived, which Svelte 5 rejects. Must stay the only tiled mount here: a warm cache hides it.
 test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
   mount_scene({ tile_bz: true })
-  // cubic (identity) k_lattice: 48 Oh operations × 2 renderable surfaces × (back, front) pass
-  expect(mesh_materials()).toHaveLength(48 * 2 * 2)
+  // cubic (identity) k_lattice: 48 Oh operations × 2 renderable surfaces
+  expect(mesh_materials()).toHaveLength(48 * 2)
 })
 
 // A drag or wheel zoom used to keep raycasting the sheets on every pointermove, and the tooltip
@@ -161,4 +163,23 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
   onend()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(true)
   expect(hover_enabled.set).toHaveBeenCalledTimes(2)
+})
+
+// Threlte hands a pointer event to every sheet under the cursor, nearest first: without the
+// filter the outer sheet behind an inner one overwrote the tooltip, and a clipped-off sheet
+// (raycasts ignore clipping) could win the pick
+test(`hover picks the front-most sheet that survives the clip plane`, () => {
+  const props = $state({ clip_enabled: false, clip_axis: `z` as const, clip_position: 0 })
+  mount_scene(props)
+  const { filter } = interactivity.mock.calls[0][0] as {
+    filter: (hits: { point: Vector3; label: string }[]) => { label: string }[]
+  }
+  const hits = [
+    { point: new Vector3(0, 0, -1), label: `inner` },
+    { point: new Vector3(0, 0, 1), label: `outer` },
+  ]
+  expect(filter(hits).map(({ label }) => label)).toEqual([`inner`])
+  props.clip_enabled = true // keeps z >= 0
+  flushSync()
+  expect(filter(hits).map(({ label }) => label)).toEqual([`outer`])
 })
