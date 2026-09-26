@@ -329,12 +329,29 @@ export function create_numeric_md_frame(
   }
 }
 
+const equal_bytes = (left: Uint8Array, right: Uint8Array): boolean => {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
+  return true
+}
+
 // A viewer projection never enters a run cache or an analysis result. Fixed topology reuses
 // species and labels; coordinates/properties get fresh references so Svelte invalidates
 // tooltips, measurements and tables and retained display frames never change underneath them.
+// Text formats (extxyz, XDATCAR, LAMMPS, ...) declare no topology, but their standard sites
+// encode as element bytes whose labels ARE the elements: byte-identical frames therefore share
+// row identity, which keeps the scene on its in-place coordinate path instead of rebuilding
+// every site record per frame (104k atoms: 114 -> 26 ms per frame switch).
 export class FrameView {
   private topology:
-    | { revision?: number; count: number; identities: Pick<Site, 'species' | 'label'>[] }
+    | {
+        revision?: number
+        count: number
+        identities: Pick<Site, 'species' | 'label'>[]
+        // element bytes of a topology-less frame, compared against the next one
+        elements?: Uint8Array
+      }
     | undefined
 
   clear(): void {
@@ -343,29 +360,32 @@ export class FrameView {
 
   update(data: NumericFrame): TrajectoryFrame {
     data = wrap_frame_coordinates(data)
-    const topology =
-      data.topology?.kind === `fixed-order` && data.sites instanceof Uint8Array
+    const { sites } = data
+    const fixed =
+      data.topology?.kind === `fixed-order` && sites instanceof Uint8Array
         ? data.topology
         : undefined
-    if (
-      !this.topology ||
-      !topology ||
-      topology.revision !== this.topology.revision ||
-      data.sites.length !== this.topology.count
-    ) {
-      this.topology = {
-        revision: topology?.revision,
-        count: data.sites.length,
-        identities: [],
-      }
-    }
+    const elements = !data.topology && sites instanceof Uint8Array ? sites : undefined
+    const previous = this.topology
+    const same_rows = fixed
+      ? fixed.revision === previous?.revision && sites.length === previous.count
+      : Boolean(elements && previous?.elements && equal_bytes(elements, previous.elements))
+    const topology =
+      previous && same_rows
+        ? previous
+        : (this.topology = {
+            revision: fixed?.revision,
+            count: sites.length,
+            identities: [],
+            elements,
+          })
     let frame: TrajectoryFrame
-    if (data.sites instanceof Uint8Array) {
+    if (sites instanceof Uint8Array) {
       const columns = new NumericSites(
-        data.sites,
+        sites,
         data.coordinates,
         data.vector_keys,
-        this.topology.identities,
+        topology.identities,
         data.scalar_columns,
       )
       const structure: AnyStructure = {
@@ -375,7 +395,7 @@ export class FrameView {
         },
       }
       numeric_sites.set(structure, columns)
-      if (data.topology) snapshot_topologies.set(structure, this.topology)
+      if (data.topology || elements) snapshot_topologies.set(structure, topology)
       // Fresh top-level references for Svelte; a deep clone is too slow for large frames
       frame = {
         ...data.header,
