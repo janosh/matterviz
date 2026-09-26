@@ -16,6 +16,7 @@
   import {
     bind_renderer,
     create_scene_camera,
+    front_hit,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -26,11 +27,9 @@
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {
-    BackSide,
     BufferGeometry,
     ClippingGroup,
     DoubleSide,
-    FrontSide,
     Matrix4,
     MeshBasicMaterial,
     MeshStandardMaterial,
@@ -132,7 +131,10 @@
     threlte.invalidate()
   })
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  // Only the front-most visible sheet gets the pointer event (see front_hit)
+  const { enabled: hover_enabled } = extras.interactivity({
+    filter: (hits) => front_hit(hits, clip_plane),
+  })
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
@@ -276,7 +278,7 @@
     measured: () => measured,
     camera: () => camera,
     // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
-    // a drag would raycast up to 96 tiled meshes per pointermove, and the tooltip popping in
+    // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
       hover_enabled.set(!moving)
@@ -284,32 +286,18 @@
     },
   })
 
-  // Render passes per surface: transparent surfaces draw back faces first and front faces on
-  // top (two passes), opaque and wireframe surfaces draw both sides in one. Only the
-  // transparency flag feeds the material set: the opacity value itself is written in place
-  // below, so an opacity-slider tick does not rebuild (and recompile) every material.
-  type MaterialPass = `wireframe` | `front` | `back`
+  // Only the transparency flag feeds the material set: the opacity value itself is written in
+  // place below, so an opacity-slider tick does not rebuild (and recompile) every material.
   const is_transparent = $derived(surface_opacity < 1)
-  const material_passes = $derived<MaterialPass[]>(
-    representation === `wireframe`
-      ? [`wireframe`]
-      : is_transparent
-        ? [`back`, `front`]
-        : [`front`],
-  )
   // Translucent sheets keep writing depth, which layers inner and outer bands but makes
   // (nearly) coincident sheets — up and down channels of a non-magnetic calculation exported as
   // two spin surfaces — z-fight, so each surface gets its own depth bias. WebGPU truncates the
   // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
   // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
   const SURFACE_DEPTH_BIAS_STEP = 8
-  const make_material = (
-    surface: FermiIsosurface,
-    surface_idx: number,
-    pass: MaterialPass,
-  ) => {
+  const make_material = (surface: FermiIsosurface, surface_idx: number) => {
     const material =
-      pass === `wireframe`
+      representation === `wireframe`
         ? new MeshBasicMaterial({ wireframe: true })
         : new MeshStandardMaterial({
             metalness: 0.1,
@@ -328,33 +316,27 @@
     material.vertexColors = use_vertex_colors && has_vertex_properties(surface)
     if (!material.vertexColors) material.color.set(get_surface_color(surface))
     material.transparent = is_transparent
-    material.side =
-      pass === `back` ? BackSide : pass === `front` && is_transparent ? FrontSide : DoubleSide
+    // A transparent double-sided material is drawn by three as a back-face then a front-face
+    // pass of the same object, so one mesh covers both passes and a single raycast picks either
+    // side (an open sheet seen from its concave side only presents back faces)
+    material.side = DoubleSide
     return material
   }
-  // One material per (surface, pass), shared by every symmetry copy so a tiled cubic surface
-  // needs 2 materials rather than 96 — hence built here instead of via <T.Mesh*Material>, which
+  // One material per surface, shared by every symmetry copy so a tiled cubic surface needs 1
+  // material rather than 48 — hence built here instead of via <T.Mesh*Material>, which
   // would instantiate one per <T.Mesh>. Rebuilt whenever colouring, transparency or
   // representation change (a handful of objects; three reuses the compiled pipeline for
-  // identical parameters) and the previous set is disposed by the effect below. A surface whose
-  // geometry failed to build never renders, so it gets no materials.
-  const materials = $derived(
-    visible_surfaces.map((surface, surface_idx) =>
-      geometries[surface_idx]
-        ? material_passes.map((pass) => make_material(surface, surface_idx, pass))
-        : null,
-    ),
-  )
-  const live_materials = $derived(materials.flatMap((passes) => passes ?? []))
+  // identical parameters) and the previous set is disposed by the effect below
+  const materials = $derived(visible_surfaces.map(make_material))
   $effect(() => {
-    const current = live_materials
+    const current = materials
     return () => {
       for (const material of current) material.dispose()
     }
   })
   // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
   $effect(() => {
-    for (const material of live_materials) material.opacity = surface_opacity
+    for (const material of materials) material.opacity = surface_opacity
     threlte.invalidate()
   })
 
@@ -411,10 +393,6 @@
       n_symmetry_ops: symmetry_ops.length,
     }
   }
-
-  const clear_hover = () => {
-    hover_data = null
-  }
 </script>
 
 <SceneCamera
@@ -457,22 +435,17 @@
 
     {#if geometry}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
-        <!-- Passes of one surface draw consecutively (back before front) and inner surfaces
-             before outer ones -->
-        {#each material_passes as pass, pass_idx (pass)}
-          <!-- Both passes stay pickable: the raycast honours material.side, and an open sheet
-               seen from its concave side only hits the back-face pass -->
-          <T.Mesh
-            {geometry}
-            material={materials[surface_idx]?.[pass_idx]}
-            matrix={sym_matrix}
-            matrixAutoUpdate={false}
-            renderOrder={renderOrder * material_passes.length + pass_idx}
-            onpointermove={(event: ThreltePointerEvent) =>
-              handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
-            onpointerleave={clear_hover}
-          />
-        {/each}
+        <!-- Inner surfaces draw before outer ones -->
+        <T.Mesh
+          {geometry}
+          material={materials[surface_idx]}
+          matrix={sym_matrix}
+          matrixAutoUpdate={false}
+          {renderOrder}
+          onpointermove={(event: ThreltePointerEvent) =>
+            handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
+          onpointerleave={() => (hover_data = null)}
+        />
       {/each}
     {/if}
   {/each}

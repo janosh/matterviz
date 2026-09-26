@@ -24,6 +24,7 @@
     bind_renderer,
     create_scene_camera,
     dispose_on_change,
+    front_hit,
     line_geometry,
     SceneCamera,
     SceneLights,
@@ -125,7 +126,7 @@
 
   const { enabled: hover_enabled } = extras.interactivity({
     // Overlapping points must pick the front surface, not the last (farthest) hit.
-    filter: (hits) => hits.slice(0, 1),
+    filter: (hits) => front_hit(hits),
   })
 
   type AxisKey = `x` | `y` | `z`

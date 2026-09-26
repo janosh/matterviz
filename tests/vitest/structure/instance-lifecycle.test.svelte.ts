@@ -25,7 +25,7 @@ import { colors } from '$lib/state.svelte'
 import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
 import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
-import { mount_scene } from '../scene/mount'
+import { mount_scene, pointer_move_along } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
 import type { SphereGeometry } from 'three/webgpu'
@@ -111,6 +111,38 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
     flushSync()
     expect(enabled.current, JSON.stringify(state)).toBe(hover)
   }
+})
+
+// Threlte hands the pointer event to every atom on the ray, nearest first: the atom behind
+// used to take over the hover and tooltip
+test.each([
+  [10, 0],
+  [-10, 1], // same ray from behind
+])(`hover picks the front atom on a ray from z=%i (site %i)`, (origin_z, front_idx) => {
+  const capture = vi.spyOn(extras, `interactivity`)
+  onTestFinished(() => capture.mockRestore())
+  let hovered_idx = $state<number | null>(null)
+  const { unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: {
+        sites: [0, -3].map((z_coord) => make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`)),
+      },
+      get hovered_idx() {
+        return hovered_idx
+      },
+      set hovered_idx(value) {
+        hovered_idx = value
+      },
+      show_bonds: `never`,
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const captured = capture.mock.results[0]
+  if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
+  pointer_move_along(captured.value, [0, 0, origin_z], [0, 0, -origin_z])
+  expect(hovered_idx).toBe(front_idx)
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy

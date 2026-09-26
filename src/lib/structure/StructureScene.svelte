@@ -563,14 +563,29 @@
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
-  const atom_hover_props = (site_idx: number | null) =>
-    !interactive || site_idx == null
-      ? {}
-      : {
-          onpointerenter: () => set_atom_hover(site_idx),
-          onpointermove: () => set_atom_hover(site_idx),
-          onpointerleave: () => schedule_atom_hover_clear(site_idx),
-        }
+  // Threlte hands a pointer event to every atom under the cursor, nearest first, so the atom
+  // behind would take over the hover unless the front one stops it
+  type StoppableEvent = { stopPropagation: () => void }
+  function hover_front_atom(site_idx: number, event: StoppableEvent): void {
+    event.stopPropagation()
+    set_atom_hover(site_idx)
+  }
+
+  // Same for editable bonds: the front-most one keeps the hover from bonds and atoms behind it
+  function hover_front_bond(bond_key: string, event: StoppableEvent): void {
+    event.stopPropagation()
+    hovered_bond_key = bond_key
+  }
+
+  const atom_hover_props = (site_idx: number | null) => {
+    if (!interactive || site_idx == null) return {}
+    const hover = (event: StoppableEvent) => hover_front_atom(site_idx, event)
+    return {
+      onpointerenter: hover,
+      onpointermove: hover,
+      onpointerleave: () => schedule_atom_hover_clear(site_idx),
+    }
+  }
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
@@ -958,9 +973,10 @@
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
+    const hover = wrap<StoppableEvent & InstanceEvent>(hover_front_atom)
     return {
-      onpointerenter: wrap(set_atom_hover),
-      onpointermove: wrap(set_atom_hover),
+      onpointerenter: hover,
+      onpointermove: hover,
       onpointerleave: wrap(schedule_atom_hover_clear),
       onpointerdown: wrap<PointerEvent & InstanceEvent>(handle_atom_pointerdown),
       onclick: wrap<MouseEvent & InstanceEvent>(handle_atom_click),
@@ -2176,8 +2192,8 @@
               event.stopPropagation?.()
               open_bond_context_menu(bond, event)
             }}
-            onpointerenter={() => (hovered_bond_key = bond_key)}
-            onpointermove={() => (hovered_bond_key = bond_key)}
+            onpointerenter={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
+            onpointermove={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
             onpointerleave={() => (hovered_bond_key = null)}
           />
           {#if is_hovered}
