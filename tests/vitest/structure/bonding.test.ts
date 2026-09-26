@@ -1239,10 +1239,12 @@ describe(`compute_bonds memo`, () => {
     `rebuilds after cumulative diagonal motion exceeds the skin (numeric: %s)`,
     (numeric) => {
       const search = new bonding.BondSearch()
-      for (const displacement of [0, 0.1, 0.2, 0.3, 0.6]) {
+      // Si-Si reaches 3.33 A; 3.9 A lies beyond it plus the 0.5 A skin
+      const separation = 3.9 / Math.sqrt(3)
+      for (const displacement of [0, 0.05, 0.1, 0.2]) {
         const source = make_struct([
           { element: `Si`, xyz: [displacement, displacement, displacement] },
-          { element: `Si`, xyz: Array(3).fill(3 - displacement) as Vec3 },
+          { element: `Si`, xyz: Array(3).fill(separation - displacement) as Vec3 },
         ])
         const frame = create_numeric_md_frame(
           Float64Array.from(source.sites.flatMap(({ xyz }) => xyz)),
@@ -1258,8 +1260,10 @@ describe(`compute_bonds memo`, () => {
         const expected = pack_bonds(bonding.electroneg_ratio(structure))
         expect(actual).toEqual(expected)
         // The initial pair lies beyond the candidate skin. Both atoms approach by
-        // 0.6 A on each axis: below skin/2 per axis, but above it in total distance.
-        expect(actual.lengths).toHaveLength(displacement === 0.6 ? 1 : 0)
+        // 0.2 A on each axis: below skin/2 per axis, but above it in total distance.
+        expect(actual.lengths).toHaveLength(displacement === 0.2 ? 1 : 0)
+        // two reuses paid for the list, so the rebuild keeps its skin
+        expect(Reflect.get(search, `candidates`)).toBeDefined()
       }
     },
   )
@@ -1500,6 +1504,103 @@ describe(`compute_bonds memo`, () => {
       )
     },
   )
+
+  // Thermal jitter around fcc sites (atoms cross the periodic faces): slow frames reuse the
+  // skinned list, fast ones make it fail before paying off and switch to plain searches,
+  // slow motion again restores the skin. Every frame matches a fresh full search.
+  test.each([false, true])(`adapts its skin to the motion (numeric: %s)`, (numeric) => {
+    const search = new bonding.BondSearch()
+    const view = new FrameView()
+    const lattice_const = 3.61
+    const reps = 6
+    const box = lattice_const * reps
+    const basis = [
+      [0, 0, 0],
+      [0.5, 0.5, 0],
+      [0.5, 0, 0.5],
+      [0, 0.5, 0.5],
+    ]
+    const sites: number[] = []
+    for (let idx = 0; idx < reps ** 3; idx++)
+      for (const offset of basis)
+        sites.push(
+          ...[idx % reps, Math.floor(idx / reps) % reps, Math.floor(idx / reps ** 2)].map(
+            (cell, axis) => (cell + offset[axis]) * lattice_const,
+          ),
+        )
+    const rand = make_rng(11)
+    const gauss = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand())
+    const sigmas = [0.01, 0.01, 0.01, 0.01, 0.3, 0.3, 0.3, 0.01, 0.01, 0.01, 0.01]
+    const skinned = sigmas.map((sigma) => {
+      const frame = wrap_frame_coordinates(
+        create_numeric_md_frame(
+          Float64Array.from(sites, (coord) => coord + sigma * gauss()),
+          new Uint8Array(sites.length / 3).fill(29),
+          [
+            [box, 0, 0],
+            [0, box, 0],
+            [0, 0, box],
+          ],
+          [true, true, true],
+          0,
+          {},
+          [],
+        ),
+      )
+      const structure = numeric
+        ? view.update(frame).structure
+        : materialize_frame(frame).structure
+      const canonical = (columns: ReturnType<typeof search.compute_columns>) =>
+        Array.from({ length: columns.lengths.length }, (_, idx) => [
+          columns.indices[idx * 2],
+          columns.indices[idx * 2 + 1],
+          columns.lengths[idx],
+        ]).toSorted((left, right) => left[0] - right[0] || left[1] - right[1])
+      const actual = search.compute_columns(structure)
+      const expected = pack_bonds(bonding.electroneg_ratio(structure))
+      expect(canonical(actual)).toEqual(canonical(expected))
+      expect(actual.lengths.length).toBeGreaterThan(sites.length / 3)
+      return Reflect.get(search, `candidates`) !== undefined
+    })
+    // build, 3 reuses | rebuild (paid off), rebuilt without reuse -> plain, plain |
+    // plain (big jump from the last fast frame), slow again -> skinned build, 2 reuses
+    expect(skinned).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ])
+  })
+
+  // 4600 atoms inside 0.2 A: every pair lies below min_bond_dist, so the plain band keeps none,
+  // while the skin-widened band keeps all 10.6M, past the pair budget
+  test(`falls back to a plain search when skinned candidates exceed the pair budget`, () => {
+    const blob = make_molecule(
+      Array.from({ length: 4600 }, (_, idx) => [
+        `H`,
+        [
+          (idx % 17) * 0.012,
+          (Math.floor(idx / 17) % 17) * 0.012,
+          Math.floor(idx / 289) * 0.012,
+        ],
+      ]),
+    )
+    const search = new bonding.BondSearch()
+    expect(search.compute_columns(blob)).toEqual(pack_bonds([]))
+    expect(bonding.electroneg_ratio(blob)).toEqual([])
+    expect(Reflect.get(search, `candidates`)).toBeUndefined()
+    // a separate, bondable pair still gets found by the plain frames that follow
+    blob.sites[0].xyz = [5, 5, 5]
+    blob.sites[1].xyz = [5.7, 5, 5]
+    expect(search.compute_columns(blob)).toEqual(pack_bonds(bonding.electroneg_ratio(blob)))
+  })
 
   test(`captures newly entering contacts and cumulative motion beyond the skin`, () => {
     const search = new bonding.BondSearch()
@@ -2218,6 +2319,31 @@ describe(`neighbor_query`, () => {
     let n_visits = 0
     bonding.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
     expect(n_visits).toBe(4600 * 4599)
+  })
+
+  // Cs-Cs reaches 39 A under these options, which puts all 10.6M pairs of the dense H grid
+  // inside the longest reach; only ~60k H-H pairs lie in their own band. Pairs outside
+  // their element pair's band must not count towards the pair budget.
+  test(`bond perception stores only contacts inside their element pair's band`, () => {
+    const hydrogen = Array.from({ length: 4600 }, (_, idx): [string, Vec3] => [
+      `H`,
+      [(idx % 17) * 0.5, (Math.floor(idx / 17) % 17) * 0.5, Math.floor(idx / 289) * 0.5],
+    ])
+    const options = { metal_metal_penalty: 1e100, max_distance_ratio: 100 }
+    const mixed = make_molecule([...hydrogen, [`Cs`, [40, 0, 0]], [`Cs`, [45, 0, 0]]])
+    // discovery order follows the bin width, i.e. the longest reach
+    const canonical = (bonds: BondPair[]) =>
+      bonds.toSorted(
+        (left, right) =>
+          left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
+      )
+    const bonds = canonical(bonding.electroneg_ratio(mixed, options))
+    const hydrogen_bonds = canonical(
+      bonding.electroneg_ratio(make_molecule(hydrogen), options),
+    )
+    expect(hydrogen_bonds.length).toBeGreaterThan(4600 * 2)
+    expect(bonds.slice(0, -1)).toEqual(hydrogen_bonds)
+    expect(bonds.at(-1)).toMatchObject({ site_idx_1: 4600, site_idx_2: 4601, bond_length: 5 })
   })
 
   // The refusal estimate counts the images that will actually be built (only those within
