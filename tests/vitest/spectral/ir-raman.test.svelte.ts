@@ -1017,11 +1017,9 @@ describe(`IrRamanSpectrum component`, () => {
       expect(props.fwhm).toBe(25)
       const canonical = parse_frequency_unit(unit) // resolves the cm-1/cm⁻¹ aliases
       if (!canonical) throw new Error(`unknown unit ${unit}`)
-      const slider_width = Number(doc_query<HTMLInputElement>(`#ir-raman-fwhm`).value)
-      expect(slider_width / convert_frequencies([25], canonical, `cm^-1`)[0]).toBeCloseTo(
-        1,
-        12,
-      )
+      const expected_width = convert_frequencies([25], canonical, `cm^-1`)[0]
+      const slider = doc_query<HTMLInputElement>(`#ir-raman-fwhm`)
+      expect(Number(slider.value) / expected_width).toBeCloseTo(1, 12)
       expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(3)
     }
   })

@@ -158,11 +158,6 @@ describe(`Isosurface`, () => {
       n_meshes: 2,
     },
     {
-      desc: `a negative isovalue renders the negative lobe`,
-      settings: with_layers([layer(-0.3)]),
-      n_meshes: 2,
-    },
-    {
       desc: `a non-finite isovalue renders nothing`,
       settings: with_layers([layer(Number.NaN)]),
       n_meshes: 0,

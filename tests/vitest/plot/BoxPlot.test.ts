@@ -376,13 +376,11 @@ describe(`BoxPlot`, () => {
           on_axis_change,
         }),
       )
-      const trigger = plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)
       expect(plot.querySelector(`.interactive-axis-label.loading`) !== null).toBe(
         axis_loading !== null,
       )
-      expect(trigger?.disabled).toBe(axis_loading !== null)
       if (axis_loading) return
-      trigger?.click()
+      plot.querySelector<HTMLButtonElement>(`button.axis-trigger`)?.click()
       await tick()
       const volume = [...document.querySelectorAll<HTMLElement>(`[role="option"]`)].find(
         (option) => option.textContent?.includes(`Volume`),

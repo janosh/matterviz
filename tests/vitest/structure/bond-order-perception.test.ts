@@ -229,8 +229,7 @@ describe(`aromaticity`, () => {
   // max_atoms bounds each fragment, not the whole structure
   test(`perceives every molecule of a molecular crystal larger than max_atoms`, () => {
     const benzene = with_hydrogens(carbons(6), ring(0, 6), Array(6).fill(1))
-    const n_molecules = 500
-    const molecules = Array.from({ length: n_molecules }, (_, mol_idx) => mol_idx)
+    const molecules = [0, 1, 2]
     const { sites, bonds } = make_input(
       molecules.flatMap(() => benzene.elements),
       molecules.flatMap((mol_idx) => circle(12, 2, mol_idx * 4)),
@@ -241,11 +240,8 @@ describe(`aromaticity`, () => {
         ]),
       ),
     )
-    const result = perceive_bond_orders(sites, bonds, { max_atoms: 5000 })
-    expect(sites).toHaveLength(6000)
-    expect(result.filter((bond) => bond.bond_order === `aromatic`)).toHaveLength(
-      6 * n_molecules,
-    )
+    const result = perceive_bond_orders(sites, bonds, { max_atoms: 12 })
+    expect(result.filter((bond) => bond.bond_order === `aromatic`)).toHaveLength(18)
   })
 
   const make_saturated_six_ring = (

@@ -78,6 +78,41 @@ test.each([`plane`, `slab`] as const)(
   },
 )
 
+// Hover raycasts stay off while the camera moves or atoms are dragged, so tooltips don't flicker
+test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
+  const capture = vi.spyOn(extras, `interactivity`)
+  onTestFinished(() => capture.mockRestore())
+  const state = $state({ camera_is_moving: false, dragging_atoms: false })
+  const { unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
+      get camera_is_moving() {
+        return state.camera_is_moving
+      },
+      get dragging_atoms() {
+        return state.dragging_atoms
+      },
+      show_bonds: `never`,
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const captured = capture.mock.results[0]
+  if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
+  const { enabled } = captured.value
+  for (const [camera_is_moving, dragging_atoms, hover] of [
+    [false, false, true],
+    [false, true, false],
+    [true, false, false],
+    [false, false, true],
+  ]) {
+    Object.assign(state, { camera_is_moving, dragging_atoms })
+    flushSync()
+    expect(enabled.current, JSON.stringify(state)).toBe(hover)
+  }
+})
+
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
 test(`Scene draws one wedge per species of a site listing an element twice`, () => {
   const species = [2, 3].map((oxidation_state) => ({

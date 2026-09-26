@@ -323,27 +323,21 @@ describe(`XrdPlot`, () => {
     expect(label_texts).toEqual([`45.82°`])
   })
 
-  // Every reflection of a stick pattern is a peak, so sticks (with or without hkls) are never
+  // Every reflection of a stick pattern is a peak, so sticks (even without hkls) are never
   // thinned; a profile is a sampled curve, drawn as one line capped at 1000 vertices
   test.each([
-    [`sticks with hkls`, 1500, 1500, 0, { hkls: true }],
-    [`sticks without hkls`, 1500, 1500, 0, {}],
-    [`profile`, 130_000, 0, 1000, { kind: `profile` }],
+    [`sticks`, 1500, 1500, 0, undefined],
+    [`profile`, 130_000, 0, 1000, `profile`],
   ] as const)(
     `%s (%i points) renders %i bars and at most %i line vertices`,
-    async (_desc, n_points, expected_bars, max_vertices, opts) => {
+    async (_desc, n_points, expected_bars, max_vertices, kind) => {
       const coord_x = Array.from(
         { length: n_points },
         (_, idx) => 5 + (80 * idx) / (n_points - 1),
       )
       const coord_y = Array.from({ length: n_points }, (_, idx) => 1 + (idx % 7))
-      const long_pattern: XrdPattern = {
-        x: coord_x,
-        y: coord_y,
-        ...(`hkls` in opts && { hkls: coord_x.map(() => [{ hkl: [1, 0, 0] }]) }),
-        ...(`kind` in opts && { kind: opts.kind }),
-      }
-      const target = await mount_xrd({ patterns: long_pattern, annotate_peaks: 0 })
+      const patterns = { x: coord_x, y: coord_y, kind }
+      const target = await mount_xrd({ patterns, annotate_peaks: 0 })
       expect(target.querySelectorAll(`path[aria-label^="bar "]`)).toHaveLength(expected_bars)
       const line = target.querySelector(`.line-series polyline`)
       if (max_vertices === 0) expect(line).toBeNull()
@@ -423,23 +417,19 @@ describe(`XrdPlot`, () => {
       })
       const paths = profile_paths(target)
       expect(paths).toHaveLength(2)
-      const coords = paths.map((path) =>
-        (path.getAttribute(`d`)?.match(/-?[\d.]+/g) ?? []).map(Number),
-      )
       // horizontal plots intensity on x (largest px = top), vertical on y (smallest px = top)
-      const value_axis = orientation === `horizontal` ? 0 : 1
-      const tops = coords.map((nums) => {
-        const values = nums.filter((_value, idx) => idx % 2 === value_axis)
-        return orientation === `horizontal` ? Math.max(...values) : Math.min(...values)
+      const horizontal = orientation === `horizontal`
+      const tops = paths.map((path) => {
+        const coords = (path.getAttribute(`d`)?.match(/-?[\d.]+/g) ?? []).map(Number)
+        const values = coords.filter((_value, idx) => idx % 2 === (horizontal ? 0 : 1))
+        return horizontal ? Math.max(...values) : Math.min(...values)
       })
       expect(tops[0]).toBeCloseTo(tops[1], 3)
       // the scan keeps its own 501 samples instead of being resampled onto the 0.02° grid
       const n_segments = paths[1].getAttribute(`d`)?.match(/[LC]/g)?.length ?? 0
       expect(n_segments + 1).toBe(501)
-      const [angle_axis, value_axis_name] =
-        orientation === `horizontal` ? ([`y`, `x`] as const) : ([`x`, `y`] as const)
-      expect(axis_text(target, angle_axis)).toContain(angle_label)
-      expect(axis_text(target, value_axis_name)).toContain(intensity_label)
+      expect(axis_text(target, horizontal ? `y` : `x`)).toContain(angle_label)
+      expect(axis_text(target, horizontal ? `x` : `y`)).toContain(intensity_label)
     },
   )
 

@@ -348,7 +348,8 @@ describe(`total scattering-weighted PDF`, () => {
     (radiation) => {
       const structure = nacl()
       const partial_rdfs = calculate_all_pair_rdfs(structure, { cutoff: 6, n_bins: 60 })
-      expect(weight_pdf_partials(structure, partial_rdfs, { radiation })).toEqual(
+      const rho_0 = number_density(structure)
+      expect(weight_pdf_partials(structure, partial_rdfs, { rho_0, radiation })).toEqual(
         calculate_total_pdf(structure, { radiation, cutoff: 6, n_bins: 60 }),
       )
     },

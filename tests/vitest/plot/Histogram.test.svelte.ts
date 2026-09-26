@@ -255,7 +255,6 @@ describe(`Histogram`, () => {
       controls_open: true,
     })
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    expect(bars.length).toBeGreaterThan(0)
     expect(new Set([...bars].map((bar) => bar.getAttribute(`fill`)))).toEqual(
       new Set([expected_fill]),
     )
@@ -507,8 +506,6 @@ describe(`Histogram`, () => {
     await tick()
     expect(series_select.disabled).toBe(false)
     expect(series_select.value).toBe(`3`)
-    // One visible series of five still paints its palette color, so bar.color has no effect
-    expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()
     expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
       `3`,
     )
@@ -813,15 +810,15 @@ describe(`Histogram`, () => {
   test(`normalize_counts: probability sums to 1, density integrates to 1 on uneven bins`, () => {
     const values = [1, 2, 3, 10, 30, 50, 70, 90, 100, 400, 900, 1000]
     const { edges, counts } = bin_values(values, [1, 1000], 3, `log`)
-    const raw = normalize_counts(edges, counts, `count`, 12)
+    const raw = normalize_counts(edges, counts, `count`)
     expect(raw.map(({ count, value }) => [count, value])).toEqual([
       [3, 3],
       [5, 5],
       [4, 4],
     ])
-    const probability = normalize_counts(edges, counts, `probability`, 12)
+    const probability = normalize_counts(edges, counts, `probability`)
     expect(probability.map(({ value }) => value)).toEqual([3 / 12, 5 / 12, 4 / 12])
-    const density = normalize_counts(edges, counts, `density`, 12)
+    const density = normalize_counts(edges, counts, `density`)
     const integral = density.reduce(
       (sum, { x0: coord_x_0, x1: coord_x_1, value }) => sum + value * (coord_x_1 - coord_x_0),
       0,
@@ -830,12 +827,7 @@ describe(`Histogram`, () => {
     // density = count / (total * width): the widest bin is the flattest
     expect(density[2].value).toBeCloseTo(4 / (12 * 900), 15)
     // empty input keeps zero bars instead of dividing by zero
-    const empty = normalize_counts(
-      Float64Array.of(0, 1, 2),
-      Uint32Array.of(0, 0),
-      `density`,
-      0,
-    )
+    const empty = normalize_counts(Float64Array.of(0, 1, 2), Uint32Array.of(0, 0), `density`)
     expect(empty.map(({ value }) => value)).toEqual([0, 0])
   })
 

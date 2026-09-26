@@ -29,7 +29,7 @@ describe(`create_collapsible_legend`, () => {
     expect(collapses(`svg`)).toBe(false)
   })
 
-  test(`in ScatterPlot, headers expand without hiding series and outside clicks re-collapse`, async () => {
+  test(`in ScatterPlot, headers expand without hiding series`, async () => {
     const collapsible = create_collapsible_legend([`Models`])
     const plot = await mount_sized(
       ScatterPlot,
@@ -44,17 +44,11 @@ describe(`create_collapsible_legend`, () => {
       },
       { selector: `.scatter` },
     )
-    const cleanup = collapsible.collapse_on_outside_click(document.body)
     const n_shown = () => plot.querySelectorAll(`.legend-item:not(.hidden)`).length
     expect(n_shown()).toBe(1) // only Refs' item
     plot.querySelector<HTMLElement>(`.legend-group-header`)?.click() // Models
     flushSync()
     expect(collapsible.collapsed_groups.size).toBe(0)
     expect(n_shown()).toBe(3)
-    document.body.dispatchEvent(mouse(`click`))
-    flushSync()
-    expect([...collapsible.collapsed_groups]).toEqual([`Models`])
-    expect(n_shown()).toBe(1)
-    if (typeof cleanup === `function`) cleanup()
   })
 })

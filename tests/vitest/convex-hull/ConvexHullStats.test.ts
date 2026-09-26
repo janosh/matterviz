@@ -394,9 +394,14 @@ describe(`ConvexHullStats`, () => {
       expect(doc_query(`.filter-count`).textContent).toContain(`2 entries`)
     })
 
-    // Optional columns only render when some entry carries the field
+    // Optional columns only render when some entry carries the field. Cells render once: an
+    // absolute energy is not repeated in the E_form column (mislabelled as a formation energy)
     test.each([
-      { header: `raw`, entry: { energy_per_atom: -5.2 }, cell: `−5.2` },
+      {
+        header: `raw`,
+        entry: { energy_per_atom: -5.2, e_form_per_atom: undefined },
+        cell: `−5.2`,
+      },
       { header: `raw`, entry: { energy_per_atom: undefined }, cell: null },
       { header: `ID`, entry: { entry_id: `mp-1234` }, cell: `mp-1234` },
       { header: `ID`, entry: { entry_id: undefined }, cell: null },
@@ -405,15 +410,9 @@ describe(`ConvexHullStats`, () => {
       ({ header, entry, cell }) => {
         mount_table_with_single_entry({ reduced_formula: `LiFeO2`, ...entry })
         expect(get_headers().some((text) => text?.includes(header))).toBe(cell !== null)
-        if (cell) expect(document.body.textContent).toContain(cell)
+        if (cell) expect(doc_query(`tbody`).textContent?.split(cell)).toHaveLength(2)
       },
     )
-
-    test(`E_form column stays empty for an entry with only an absolute energy`, () => {
-      mount_table_with_single_entry({ e_form_per_atom: undefined, energy_per_atom: -5.2 })
-      // −5.2 only under E_raw, not repeated as a (mislabelled) formation energy
-      expect(doc_query(`tbody`).textContent?.split(`−5.2`).length).toBe(2)
-    })
 
     test(`composition fallback when reduced_formula missing`, () => {
       mount_stats_table({

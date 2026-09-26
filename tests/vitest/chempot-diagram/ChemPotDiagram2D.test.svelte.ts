@@ -3,7 +3,7 @@ import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '$lib/chempot-diagra
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { mouse, resize_element } from '../setup'
 
 // Every compute request is held until the test resolves it, so "while recomputing" states are
@@ -53,70 +53,68 @@ const mount_2d = async (props: ComponentProps<typeof ChemPotDiagram>): Promise<v
   await tick()
 }
 
-describe(`ChemPotDiagram2D recomputes`, () => {
-  test(`run only for compute-relevant changes, keep the plot, abort superseded requests, re-read a pinned tooltip`, async () => {
-    const props = $state({
-      entries: binary_temp_entries,
-      temperature: 300,
-      config: { default_min_limit: -25 },
-      hover_info: null as ChemPotHoverInfo | null,
-    })
-    await mount_2d(props)
-    expect(document.querySelector(`.spinner`)).not.toBeNull() // first load: nothing to show yet
-    await resolve_latest()
-    // display-only keys and fresh-but-equal config objects must not recompute
-    for (const config of [
-      { default_min_limit: -25, label_stable: false },
-      { default_min_limit: -25, element_padding: 2, color_mode: `arity` as const },
-      { default_min_limit: -25 },
-    ]) {
-      props.config = config
-      flushSync()
-      await tick()
-    }
-    expect(calls.list).toHaveLength(1)
-    await size_plot()
-    document
-      .querySelector(`g[data-series-id="Li2O"] [role="button"]`)
-      ?.dispatchEvent(mouse(`click`))
-    flushSync()
-    expect(props.hover_info?.formula).toBe(`Li2O`)
-    const pinned_ranges = props.hover_info?.axis_ranges
-    props.temperature = 900
+test(`recomputes run only for compute-relevant changes, keep the plot, abort superseded requests, re-read a pinned tooltip`, async () => {
+  const props = $state({
+    entries: binary_temp_entries,
+    temperature: 300,
+    config: { default_min_limit: -25 },
+    hover_info: null as ChemPotHoverInfo | null,
+  })
+  await mount_2d(props)
+  expect(document.querySelector(`.spinner`)).not.toBeNull() // first load: nothing to show yet
+  await resolve_latest()
+  // display-only keys and fresh-but-equal config objects must not recompute
+  for (const config of [
+    { default_min_limit: -25, label_stable: false },
+    { default_min_limit: -25, element_padding: 2, color_mode: `arity` as const },
+    { default_min_limit: -25 },
+  ]) {
+    props.config = config
     flushSync()
     await tick()
-    expect(calls.list).toHaveLength(2)
-    expect(document.querySelector(`.chempot-diagram-2d`)).not.toBeNull()
-    expect(document.querySelector(`.chempot-temp-slider`)).not.toBeNull()
-    expect(document.querySelector(`.spinner`)).toBeNull()
-    await resolve_latest()
-    expect(props.hover_info?.formula).toBe(`Li2O`)
-    expect(props.hover_info?.axis_ranges).not.toEqual(pinned_ranges)
+  }
+  expect(calls.list).toHaveLength(1)
+  await size_plot()
+  document
+    .querySelector(`g[data-series-id="Li2O"] [role="button"]`)
+    ?.dispatchEvent(mouse(`click`))
+  flushSync()
+  expect(props.hover_info?.formula).toBe(`Li2O`)
+  const pinned_ranges = props.hover_info?.axis_ranges
+  props.temperature = 900
+  flushSync()
+  await tick()
+  expect(calls.list).toHaveLength(2)
+  expect(document.querySelector(`.chempot-diagram-2d`)).not.toBeNull()
+  expect(document.querySelector(`.chempot-temp-slider`)).not.toBeNull()
+  expect(document.querySelector(`.spinner`)).toBeNull()
+  await resolve_latest()
+  expect(props.hover_info?.formula).toBe(`Li2O`)
+  expect(props.hover_info?.axis_ranges).not.toEqual(pinned_ranges)
 
-    props.config = { default_min_limit: -20 }
-    flushSync()
-    props.config = { default_min_limit: -15 }
-    flushSync()
-    await tick()
-    expect(calls.list.map(({ config }) => config.default_min_limit)).toEqual([
-      -25, -25, -20, -15,
-    ])
-    // the unfinished -20 request is dropped once -15 supersedes it
-    expect(calls.list.slice(2).map(({ signal }) => signal?.aborted)).toEqual([true, false])
-  })
+  props.config = { default_min_limit: -20 }
+  flushSync()
+  props.config = { default_min_limit: -15 }
+  flushSync()
+  await tick()
+  expect(calls.list.map(({ config }) => config.default_min_limit)).toEqual([
+    -25, -25, -20, -15,
+  ])
+  // the unfinished -20 request is dropped once -15 supersedes it
+  expect(calls.list.slice(2).map(({ signal }) => signal?.aborted)).toEqual([true, false])
+})
 
-  test(`an error state keeps the controls, so the setting that caused it can be undone`, async () => {
-    // a floor above every formation energy leaves no domains; an empty elements list means all
-    // elements (not an unsupported 0-element system that never reaches the 2D error state)
-    await mount_2d({
-      entries: binary_temp_entries,
-      config: { elements: [], default_min_limit: 5 },
-    })
-    calls.list.at(-1)?.resolve()
-    await vi.waitFor(() => expect(document.querySelector(`.error-state`)).not.toBeNull())
-    const labels = [...document.querySelectorAll(`.error-state label`)]
-    expect(labels.some((label) => label.textContent?.includes(`Min limit`))).toBe(true)
+test(`an error state keeps the controls, so the setting that caused it can be undone`, async () => {
+  // a floor above every formation energy leaves no domains; an empty elements list means all
+  // elements (not an unsupported 0-element system that never reaches the 2D error state)
+  await mount_2d({
+    entries: binary_temp_entries,
+    config: { elements: [], default_min_limit: 5 },
   })
+  calls.list.at(-1)?.resolve()
+  await vi.waitFor(() => expect(document.querySelector(`.error-state`)).not.toBeNull())
+  const labels = [...document.querySelectorAll(`.error-state label`)]
+  expect(labels.some((label) => label.textContent?.includes(`Min limit`))).toBe(true)
 })
 
 test(`a projection from a larger system draws closed straight outlines, switching needs no recompute`, async () => {

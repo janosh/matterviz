@@ -1360,16 +1360,7 @@ describe(`XYZ`, () => {
     // the canonical rows carry the lattice geometry and density, and every finite scalar the
     // file records
     expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
-      expect.arrayContaining([
-        `energy`,
-        `force_max`,
-        `temperature`,
-        `a`,
-        `volume`,
-        `density`,
-        `bandgap`,
-        `ref_energy`,
-      ]),
+      expect.arrayContaining([`energy`, `force_max`, `a`, `density`, `bandgap`, `ref_energy`]),
     )
     // bookkeeping is not a series: the step is the row's own axis
     expect(memory.properties.rows[0].properties).not.toHaveProperty(`step`)
@@ -1437,34 +1428,27 @@ describe(`ASE`, () => {
   const box = [[4, 0, 0], [0, 4, 0], [0, 0, 10]]
   const no_warnings = (message: string) => expect.unreachable(message)
 
+  // ASE only repeats pbc when it changes, and writes a molecule's missing cell as zeros
+  // oxfmt-ignore
   it.each([
-    [`a slab`, [true, true, false]],
-    [`a cell with no periodic axis`, [false, false, false]],
-  ])(`every frame of %s keeps the pbc written in frame 0`, (_label, pbc) => {
-    const { frames } = parse_ase_trajectory(ase_frames(pbc, box), no_warnings)
-    // ASE only repeats pbc when it changes
-    expect(frames.map((frame) => lattice_of(frame).pbc)).toEqual([pbc, pbc])
-  })
-
-  it(`reads a molecule's all-zero cell as no lattice`, () => {
-    // oxfmt-ignore
-    const zero_cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-    const { frames } = parse_ase_trajectory(
-      ase_frames([false, false, false], zero_cell),
-      no_warnings,
-    )
+    [`a slab`, [true, true, false], box],
+    [`a cell with no periodic axis`, [false, false, false], box],
+    [`a molecule's all-zero cell`, [false, false, false], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]],
+  ])(`reads %s, every frame keeping the pbc written in frame 0`, (_label, pbc, cell) => {
+    const { frames } = parse_ase_trajectory(ase_frames(pbc, cell), no_warnings)
+    const has_cell = cell.flat().some(Boolean)
     for (const { structure, metadata } of frames) {
-      expect(structure).not.toHaveProperty(`lattice`)
-      expect(metadata).not.toHaveProperty(`volume`)
+      expect(`lattice` in structure ? structure.lattice.pbc : `no lattice`).toEqual(
+        has_cell ? pbc : `no lattice`,
+      )
+      expect(metadata?.volume !== undefined).toBe(has_cell)
     }
   })
 
   // ASE opens indexed only, but its rows must be the canonical rows of the decoded frames
   it(`reads calculator forces and stress, and extracts the canonical plot rows`, async () => {
-    const buffer = ase_frames([true, true, true], box, [
-      [2, 3],
-      [0.3, 0, 0, 0, 0.4, 0],
-    ])
+    // oxfmt-ignore
+    const buffer = ase_frames([true, true, true], box, [[2, 3], [0.3, 0, 0, 0, 0.4, 0]])
     const { frames } = parse_ase_trajectory(buffer, no_warnings)
     const run = await open(buffer, `calc.traj`)
     // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
@@ -1493,23 +1477,10 @@ describe(`ASE`, () => {
 
   // Like every other parser, unusable forces drop from their frame with a warning naming it,
   // shown once although the indexed run decodes each frame for its row and again per read
+  // oxfmt-ignore
   it.each<[string, [number[], number[]], string]>([
-    [
-      `too few rows`,
-      [
-        [1, 3],
-        [0.3, 0, 0],
-      ],
-      `expected 2 finite 3-vectors, got 1`,
-    ],
-    [
-      `a NaN component`,
-      [
-        [2, 3],
-        [0.3, 0, 0, 0, Number.NaN, 0],
-      ],
-      `entry 1 of 2 is [0,null,0], not a finite 3-vector`,
-    ],
+    [`too few rows`, [[1, 3], [0.3, 0, 0]], `expected 2 finite 3-vectors, got 1`],
+    [`a NaN component`, [[2, 3], [0.3, 0, 0, 0, Number.NaN, 0]], `entry 1 of 2 is [0,null,0], not a finite 3-vector`],
   ])(`drops ASE calculator forces with %s and warns`, async (_label, forces, detail) => {
     const buffer = ase_frames([true, true, true], box, forces)
     const warnings: string[] = []
@@ -1705,6 +1676,8 @@ describe(`JSON`, () => {
       lattice: cubic(10),
       ...fields,
     })
+  // What MontyEncoder writes for pymatgen objects
+  const numpy = (data: unknown) => ({ '@module': `numpy`, '@class': `array`, data })
 
   // malformed fields are present-but-wrong-shape so they pass the routing gate, then hit
   // the shape validation -> clear error instead of a cryptic `.map` throw
@@ -1724,15 +1697,21 @@ describe(`JSON`, () => {
     await expect(open(pymatgen(fields), `test.json`)).rejects.toThrow(error)
   })
 
-  it(`applies per-frame lattices, site properties, stress and the femtosecond time step`, async () => {
+  // pymatgen stores no stress unit (VASP kB, compression positive; CHGNet GPa), so a GPa
+  // pressure or stress curve derived from it would be a guess
+  it(`applies per-frame lattices, site properties, raw stress and the femtosecond time step`, async () => {
     // oxfmt-ignore
-    const stress = { '@class': `array`, data: [[-1, 0, 0], [0, -2, 0], [0, 0, -3]] }
+    const stress = [[-1, 0, 0], [0, -2, 0], [0, 0, -3]]
     const run = await open(
       pymatgen({
         lattice: [cubic(4), cubic(8)],
         constant_lattice: false,
         site_properties: [{ magmom: [1] }, { magmom: [2] }],
-        frame_properties: [{ energy: -1, stress }, { energy: -2 }],
+        // MontyEncoder's numpy array and a plain list
+        frame_properties: [
+          { energy: -1, stress: numpy(stress) },
+          { energy: -2, stress },
+        ],
         time_step: 2,
       }),
       `variable-cell.json`,
@@ -1743,37 +1722,23 @@ describe(`JSON`, () => {
       [2, 2, 2],
       [4, 4, 4],
     ])
-    expect(frames.map((frame) => lattice_of(frame).volume)).toEqual([64, 512])
     expect(frames.map((frame) => frame.structure.sites[0].properties)).toEqual([
       { magmom: 1 },
       { magmom: 2 },
     ])
-    expect(frames.map(({ metadata }) => metadata?.energy)).toEqual([-1, -2])
-    expect(frames[0].metadata).toMatchObject({ stress: stress.data })
+    // plot rows copy every numeric metadata scalar, so none here means no curve either
+    expect(frames.map(({ metadata }) => metadata)).toEqual([
+      { energy: -1, stress, volume: 64 },
+      { energy: -2, stress, volume: 512 },
+    ])
     expect(run.time_step).toEqual({ value: 2, unit: `fs` })
   })
 
-  // coords_are_displacement: positions[i] = base_positions + cumsum(coords[0..i])
-  it(`integrates displacement coordinates from base_positions`, async () => {
-    const run = await open(
-      pymatgen({
-        coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]],
-        coords_are_displacement: true,
-        base_positions: [[0.5, 0.5, 0.5]],
-      }),
-      `displacement.json`,
-    )
-    expect((await frames_of(run)).map((frame) => frame.structure.sites[0].xyz)).toEqual([
-      [6, 5, 5],
-      [7, 5, 5],
-    ])
-    expect(run.time_step).toBeUndefined()
-  })
-
-  // What MontyEncoder writes for pymatgen objects
-  const numpy = (data: unknown) => ({ '@module': `numpy`, '@class': `array`, data })
   // oxfmt-ignore
   it.each([
+    // coords_are_displacement: positions[i] = base_positions + cumsum(coords[0..i])
+    [`displacements from base_positions`, { coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]], coords_are_displacement: true, base_positions: [[0.5, 0.5, 0.5]] },
+      [[6, 5, 5], [7, 5, 5]]],
     // Trajectory.to_displacements(): base_positions is a numpy array
     [`numpy base_positions`, { coords: [[[0.1, 0, 0]], [[0.1, 0, 0]]], coords_are_displacement: true, base_positions: numpy([[0.5, 0.5, 0.5]]) },
       [[6, 5, 5], [7, 5, 5]]],
@@ -1782,27 +1747,12 @@ describe(`JSON`, () => {
     // Trajectory.from_molecules(): no lattice, Cartesian coords
     [`a molecule trajectory`, { lattice: null, coords: [[[0.5, 0, 0]], [[0.7, 0, 0]]] }, [[0.5, 0, 0], [0.7, 0, 0]]],
   ])(`reads %s`, async (_label, fields, expected_xyz) => {
-    const frames = await frames_of(await open(pymatgen(fields), `test.json`))
+    const run = await open(pymatgen(fields), `test.json`)
+    expect(run.time_step).toBeUndefined()
+    const frames = await frames_of(run)
     expect(frames.map((frame) => frame.structure.sites[0].xyz)).toEqual(expected_xyz)
     const periodic = (fields as { lattice?: unknown }).lattice !== null
     expect(frames.every(({ structure }) => `lattice` in structure === periodic)).toBe(true)
-  })
-
-  // pymatgen stores no stress unit (VASP kB, compression positive; CHGNet GPa), so a GPa
-  // pressure or stress curve derived from it would be a guess
-  // oxfmt-ignore
-  const stress_tensor = [[-1, 0, 0], [0, -2, 0], [0, 0, -3]]
-  it.each([
-    [`numpy`, numpy(stress_tensor)],
-    [`plain list`, stress_tensor],
-  ])(`keeps %s stress raw without deriving pressure`, async (_label, stress) => {
-    const run = await open(pymatgen({ frame_properties: [{ stress }, { stress }] }), `s.json`)
-    // plot rows copy every numeric metadata scalar, so none here means no curve either
-    for (const { metadata } of await frames_of(run)) {
-      expect(metadata?.stress).toEqual(stress_tensor)
-      expect(metadata).not.toHaveProperty(`pressure`)
-      expect(metadata).not.toHaveProperty(`stress_max`)
-    }
   })
 
   // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning

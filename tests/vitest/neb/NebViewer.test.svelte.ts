@@ -193,7 +193,11 @@ describe(`NebViewer`, () => {
   })
 
   test(`renders the plot, the structure and the barrier summary together`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths })
+    // a path it cannot profile is reported beside those that render
+    const [first, second] = direct_path.images
+    const dup = { images: [first, first, second] }
+    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup } })
+    expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
     expect(
@@ -449,14 +453,6 @@ describe(`NebViewer`, () => {
     expect(state.error_msg).toBeUndefined()
     expect(viewer.querySelector(`.viewer-error`)).toBeNull()
     expect(query(viewer, `.scatter`)).toBe(plot)
-  })
-
-  test(`reports a path prop it cannot profile beside those that do`, async () => {
-    const [first, second] = direct_path.images
-    const dup = { images: [first, first, second] }
-    const viewer = await mount_viewer({ paths: { dup, ok: direct_path } })
-    expect(viewer.querySelector(`.scatter`)).not.toBeNull()
-    expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
   })
 
   test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {

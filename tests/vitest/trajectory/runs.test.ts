@@ -258,15 +258,6 @@ describe(`numeric frames`, () => {
     expect(materialize_frame(frame)).toEqual(source)
   })
 
-  it(`publishes a fresh header without deep-copying its metadata`, () => {
-    const per_atom = [[0.1, 0.2, 0.3]]
-    const frame = encode_frame(make_trajectory_frame(0, 1, { energy: -1, per_atom }))
-    const { metadata } = new FrameView().update(frame)
-    expect(metadata).toEqual({ energy: -1, per_atom })
-    expect(metadata).not.toBe(frame.header.metadata)
-    expect(metadata?.per_atom).toBe(frame.header.metadata?.per_atom)
-  })
-
   it.each([
     [true, true, true],
     [true, false, true],
@@ -296,7 +287,7 @@ describe(`numeric frames`, () => {
       ],
       pbc,
       1,
-      {},
+      { energy: -1, per_atom: [[0.1, 0.2, 0.3]] },
       [`force`],
     )
     next.coordinates.set([1, 2, 3], 6)
@@ -327,6 +318,9 @@ describe(`numeric frames`, () => {
     expect(identity).toBeDefined()
     expect(snapshot_topologies.get(result.structure)).toBe(identity)
     expect(result.structure.sites).not.toBe(atoms)
+    // a fresh header for Svelte, without deep-copying its metadata
+    expect(result.metadata).not.toBe(next.header.metadata)
+    expect(result.metadata?.per_atom).toBe(next.header.metadata?.per_atom)
     expect(result.structure.sites[0].species).toBe(atoms[0].species)
     expect(atoms).toStrictEqual(first_snapshot)
     const reference = normalize_fractional_coords(materialize_frame(next).structure)

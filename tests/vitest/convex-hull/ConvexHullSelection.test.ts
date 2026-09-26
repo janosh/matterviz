@@ -622,11 +622,15 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     [[`FM`], 4],
     [[`FM`, `AFM`], 3],
   ] as [string[], number][])(
-    `hidden=%s renders %i markers`,
+    `hidden=%s renders %i markers in color_scale colors`,
     async (hidden, expected_markers) => {
       const plot = await mount_sized(
         ConvexHull,
-        { entries: magnetic_entries, hidden_categories: hidden },
+        {
+          entries: magnetic_entries,
+          hidden_categories: hidden,
+          color_scale: `interpolateReds`,
+        },
         { selector: `.scatter`, on_mount: track_component },
       )
       const marker_paths = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
@@ -636,23 +640,15 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
         const distinct_shapes = new Set(marker_paths.map((path) => path.getAttribute(`d`)))
         expect(distinct_shapes.size).toBeGreaterThanOrEqual(3)
       }
+      // ScatterPoint paints var(--point-fill-color) set on its wrapper; the uncategorized
+      // furthest entry (0.1 eV/atom) tops the [0, 0.1] hull-distance domain: darkest red
+      const fills = [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)]
+      const colors = fills.map((fill) =>
+        fill.style.getPropertyValue(`--point-fill-color`).trim(),
+      )
+      expect(colors).toEqual(expect.arrayContaining([interpolateReds(0), interpolateReds(1)]))
     },
   )
-
-  test(`2D energy coloring uses color_scale over the hull-distance range`, async () => {
-    const plot = await mount_sized(
-      ConvexHull,
-      { entries: magnetic_entries, color_scale: `interpolateReds` },
-      { selector: `.scatter`, on_mount: track_component },
-    )
-    // ScatterPoint paints var(--point-fill-color) set on its wrapper
-    const fills = [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)].map(
-      (element) => element.style.getPropertyValue(`--point-fill-color`).trim(),
-    )
-    // the furthest entry (0.1 eV/atom) sits at the top of the [0, 0.1] domain: darkest red
-    expect(fills).toContain(interpolateReds(1))
-    expect(fills).toContain(interpolateReds(0))
-  })
 
   test(`hull facets are straight segments, never splined`, async () => {
     const entries: PhaseData[] = [

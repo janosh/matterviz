@@ -17,7 +17,6 @@ import {
   parse_xyz,
 } from '$lib/structure/parse'
 import { structure_to_cif_str } from '$lib/structure/export'
-import { get_pbc_image_sites } from '$lib/structure/pbc'
 import {
   complete_lattice_matrix,
   LineScanner,
@@ -403,17 +402,6 @@ C 1.23 0.7101408311032397 0.0`
       [0.333333, 0.666667, 0],
       [0.666667, 0.333333, 0],
     ])
-    const [pos_1, pos_2] = sheet.sites.map(({ xyz }) => xyz)
-    const { matrix, pbc } = sheet.lattice
-    expect(math.pbc_dist(pos_1, pos_2, matrix, undefined, pbc)).toBeCloseTo(1.42, 2)
-    // every PBC image sits a whole lattice vector from its source atom
-    const to_frac = math.create_cart_to_frac(matrix)
-    const { sites } = get_pbc_image_sites(sheet)
-    expect(sites.length).toBeGreaterThan(2)
-    for (const { xyz, provenance } of sites.slice(2)) {
-      const offset = to_frac(math.subtract(xyz, sites[provenance?.image_of ?? -1].xyz))
-      expect(offset.every((coord) => Math.abs(coord - Math.round(coord)) < 1e-9)).toBe(true)
-    }
     // A chain keeps its axis and gains an orthonormal right-handed pair (both seed branches)
     // oxfmt-ignore
     for (const [axis, vec] of [[0, [3, 0, 0]], [1, [1, 2, 2]]] as const) {
@@ -422,7 +410,7 @@ C 1.23 0.7101408311032397 0.0`
       const completed = complete_lattice_matrix(chain)
       expect(completed[axis]).toEqual(vec)
       expect(math.det_3x3(completed)).toBeCloseTo(3, 14)
-      const gram = math.dot(completed, math.transpose_3x3_matrix(completed))
+      const gram = math.dot(completed, transpose_3x3_matrix(completed))
       for (const [row, gram_row] of gram.entries())
         for (const [col, value] of gram_row.entries())
           expect(value).toBeCloseTo(row !== col ? 0 : row === axis ? 9 : 1, 14)

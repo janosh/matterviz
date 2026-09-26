@@ -1096,6 +1096,9 @@
   })
 
   const { enabled: hover_enabled } = extras.interactivity()
+  // No hover raycasts while orbiting or dragging atoms: the highlight and tooltip hopping
+  // between atoms under the cursor read as flicker
+  $effect(() => hover_enabled.set(!camera_is_moving && !dragging_atoms))
   let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
 
@@ -1219,12 +1222,8 @@
     // is a property of the picture, not of the projection (perspective_distance_for_zoom)
     viewport_px: () => height,
     fov: () => effective_fov,
-    // No hover raycasts while orbiting: the highlight hopping between atoms under the cursor
-    // reads as flicker. Flagged on the first camera change, so presses still reach the meshes
-    set_camera_is_moving: (moving) => {
-      camera_is_moving = moving
-      hover_enabled.set(!moving)
-    },
+    // Flagged on the first camera change, so presses still reach the meshes
+    set_camera_is_moving: (moving) => (camera_is_moving = moving),
     // Close hover tooltips + bond context menu while the camera moves. Only hide the
     // VISIBLE menu (not bond_context_target): clicking a menu button fires this
     // orbit-controls start handler before the button's own handler runs, which still
@@ -2386,6 +2385,8 @@
             }}
             onmouseDown={() => {
               dragging_atoms = true
+              cancel_atom_hover_clear()
+              hovered_idx = null
               drag_start_centroid = frozen_centroid = [...centroid] as Vec3
               on_operation_start?.()
             }}

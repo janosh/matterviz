@@ -507,23 +507,22 @@ test.each([
   }
 })
 
-// Regression test for large unit cells (e.g. MOFs) using physical tolerance
-test(`find_image_atoms uses physical tolerance for large cells`, () => {
+// Regression: the face tolerance is a physical 0.5 Å, so large cells (e.g. MOFs) don't
+// over-generate, measured along the cell height (0.87 |a| in a hexagonal cell)
+test(`find_image_atoms uses a 0.5 Å physical tolerance along the cell heights`, () => {
   const structure = make_crystal(100, [
-    [`C`, [0.04, 0.5, 0.5]], // 4 Angstroms from edge (0.04 * 100)
-    [`H`, [0.001, 0.5, 0.5]], // 0.1 Angstroms from edge (0.001 * 100)
+    [`C`, [0.04, 0.5, 0.5]], // 4 Å from the face: no image
+    [`H`, [0.001, 0.5, 0.5]], // 0.1 Å from the face: imaged
   ])
-
-  // Default behavior: physical tolerance (~0.5 Angstroms)
-  // C1 at 4A should NOT image (too far)
-  // H1 at 0.1A SHOULD image (close enough)
-  const image_atoms = find_image_atoms(structure)
-
-  const c_images = image_atoms.filter(([idx]) => idx === 0)
-  const h_images = image_atoms.filter(([idx]) => idx === 1)
-
-  expect(c_images).toHaveLength(0)
-  expect(h_images.length).toBeGreaterThan(0)
+  expect(find_image_atoms(structure).map(([idx]) => idx)).toEqual([1])
+  const hexagonal: Matrix3x3 = [
+    [4, 0, 0],
+    [-2, 2 * Math.sqrt(3), 0],
+    [0, 0, 10],
+  ]
+  // 0.13 * cell height 2√3 Å = 0.45 Å from the face
+  const skewed = make_crystal(hexagonal, [[`C`, [0.13, 0.5, 0.5]]])
+  expect(find_image_atoms(skewed).map(([, , abc]) => abc)).toEqual([[1.13, 0.5, 0.5]])
 })
 
 describe(`wrap_to_unit_cell`, () => {
@@ -577,42 +576,20 @@ describe(`wrap_to_unit_cell`, () => {
   })
 })
 
-// A buckled sheet reaches past its cell along the vacuum axis: not a scattered trajectory
-test(`atoms outside the cell along an aperiodic axis keep image generation`, () => {
-  const sheet = make_crystal(
-    5,
-    Array.from({ length: 4 }, (_, idx) => ({
-      element: `C`,
-      abc: [0.02, idx / 4, idx % 2 ? 0.15 : -0.15] as Vec3,
-    })),
-    { pbc: [true, true, false] },
-  )
-  expect(find_image_atoms(sheet).length).toBeGreaterThan(0)
-})
-
-// In a hexagonal cell (height 0.87 |a|), an atom 0.45 Å from the face must get an image
-test(`face tolerance is 0.5 Å along the cell height of a skewed cell`, () => {
-  const hexagonal: Matrix3x3 = [
-    [4, 0, 0],
-    [-2, 2 * Math.sqrt(3), 0],
-    [0, 0, 10],
-  ]
-  const structure = make_crystal(hexagonal, [[`C`, [0.13, 0.5, 0.5]]])
-  expect(0.13 * math.cell_heights(hexagonal)[0]).toBeCloseTo(0.45, 2)
-  expect(find_image_atoms(structure).map(([, , abc]) => abc)).toEqual([[1.13, 0.5, 0.5]])
-})
-
 test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {
   // Corner atom in a fully periodic cell generates images along all 3 dims
   const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
   const periodic_images = find_image_atoms(periodic)
   expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
 
-  // Slab with vacuum along z: no image may be shifted along z
-  const slab = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [true, true, false] })
-  const slab_images = find_image_atoms(slab)
-  expect(slab_images).toHaveLength(3) // 2^2 - 1 in-plane images
-  for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(0)
+  // Slab with vacuum along z: no image may be shifted along z, also for an atom reaching past
+  // the cell along z (a buckled sheet, not a scattered trajectory)
+  for (const z_coord of [0, -0.3]) {
+    const slab = make_crystal(5, [[`Na`, [0, 0, z_coord]]], { pbc: [true, true, false] })
+    const slab_images = find_image_atoms(slab)
+    expect(slab_images).toHaveLength(3) // 2^2 - 1 in-plane images
+    for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(z_coord)
+  }
 
   // Fully non-periodic: no images at all
   const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [false, false, false] })

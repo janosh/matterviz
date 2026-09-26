@@ -8,8 +8,6 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mock_parse_worker, create_drop_event, doc_query, mock_fullscreen } from '../setup'
 import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
 
-type BrillouinZoneProps = ComponentProps<typeof BrillouinZone>
-
 beforeEach(mock_parse_worker)
 
 // The IBZ needs moyo's point group; stand in for the WASM analysis so a test can make it fail
@@ -389,7 +387,7 @@ test(`a structure change drops the previous IBZ while symmetry reruns`, async ()
   const state = $state({
     structure: cubic,
     show_ibz: true,
-    ibz_data: null as BrillouinZoneProps[`ibz_data`],
+    ibz_data: null as ComponentProps<typeof BrillouinZone>[`ibz_data`],
   })
   mounted_component = mount(BrillouinZone, { target: document.body, props: state })
   await vi.waitFor(() => expect(state.ibz_data).not.toBeNull())

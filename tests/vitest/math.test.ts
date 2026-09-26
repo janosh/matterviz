@@ -855,18 +855,13 @@ test.each([
   expect(math.is_finite_matrix3x3([row, row, value])).toBe(vec3)
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-    ],
-    false,
-  ],
-  [Object.assign([], { 0: [1, 0, 0], 2: [0, 0, 1], length: 3 }), false], // sparse row
-  [`abc`, false],
-])(`is_finite_matrix3x3(%j) = %s`, (value, expected) => {
-  expect(math.is_finite_matrix3x3(value)).toBe(expected)
+  [[[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]],
+  [Object.assign([], { 0: [1, 0, 0], 2: [0, 0, 1], length: 3 })], // sparse row
+  [{ 0: [1, 0, 0], 1: [0, 1, 0], 2: [0, 0, 1], length: 3 }], // array-like, not an array
+])(`is_finite_matrix3x3 rejects %j`, (value) => {
+  expect(math.is_finite_matrix3x3(value)).toBe(false)
 })
 
 // mean / sample_std / median agree with the textbook definitions and with d3-array

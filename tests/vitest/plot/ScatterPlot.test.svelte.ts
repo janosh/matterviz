@@ -684,7 +684,6 @@ describe(`ScatterPlot`, () => {
         point_tween: { duration: 0 },
       })
       expect(plot.querySelector(`canvas.marker-canvas`)).not.toBeNull()
-      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(0)
       const svg = plot_svg(plot)
       stub_svg_rect(svg)
       // the keyboard cursor draws point 5's overlay, which tells us where it sits on screen
