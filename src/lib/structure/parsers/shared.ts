@@ -468,7 +468,8 @@ export const resolve_bonds = (
 
 // Parse a CIF numeric token, stripping a trailing uncertainty like "1.234(5)"
 export const parse_cif_uncertain_number = (token: string): number | null => {
-  const value = parse_float_token(token.split(`(`)[0])
+  const paren_idx = token.indexOf(`(`) // slice, not split: no array per CIF number
+  const value = parse_float_token(paren_idx === -1 ? token : token.slice(0, paren_idx))
   return Number.isNaN(value) ? null : value
 }
 
