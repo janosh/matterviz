@@ -269,36 +269,26 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
   )
 
   // No fixture carries fermiweights, so they are injected (1 spin, 306 k-points, 24 bands)
-  it.each([
-    [`matching`, 306, 24],
-    [`too few k-points`, 305, 24],
-    [`too few bands`, 306, 23],
-  ])(`reads fermiweights as occupations (%s)`, async (_case, n_kpoints, n_bands) => {
-    const n_filled = 9
-    const weights = [
-      Array.from({ length: n_kpoints }, () =>
-        Array.from({ length: n_bands }, (_, band_idx) => (band_idx < n_filled ? 1 : 0)),
-      ),
-    ]
-    const read = () =>
-      with_h5_file(read_vaspout(`vaspout-tinisn-bands-only.h5`), `vaspout.h5`, (h5_file) => {
-        const get_dataset = h5_file.get.bind(h5_file)
-        vi.spyOn(h5_file, `get`).mockImplementation((path) => {
-          if (!path.endsWith(`/fermiweights`)) return get_dataset(path)
-          const entity = get_dataset(path.replace(`fermiweights`, `eigenvalues`))
-          if (entity && `to_array` in entity)
-            vi.spyOn(entity, `to_array`).mockReturnValue(weights)
-          return entity
-        })
-        return read_vaspout_bands(h5_file)
+  const read_with_fermiweights = (weights: number[][][]) =>
+    with_h5_file(read_vaspout(`vaspout-tinisn-bands-only.h5`), `vaspout.h5`, (h5_file) => {
+      const get_dataset = h5_file.get.bind(h5_file)
+      vi.spyOn(h5_file, `get`).mockImplementation((path) => {
+        if (!path.endsWith(`/fermiweights`)) return get_dataset(path)
+        const entity = get_dataset(path.replace(`fermiweights`, `eigenvalues`))
+        if (entity && `to_array` in entity)
+          vi.spyOn(entity, `to_array`).mockReturnValue(weights)
+        return entity
       })
-    if (n_kpoints !== 306 || n_bands !== 24) {
-      await expect(read()).rejects.toThrow(
-        /fermiweights shape does not match eigenvalues \(1, 306, 24\)/,
-      )
-      return
-    }
-    const bands = await read()
+      return read_vaspout_bands(h5_file)
+    })
+
+  it(`reads fermiweights as occupations`, async () => {
+    const n_filled = 9
+    const bands = await read_with_fermiweights([
+      Array.from({ length: 306 }, () =>
+        Array.from({ length: 24 }, (_, band_idx) => (band_idx < n_filled ? 1 : 0)),
+      ),
+    ])
     if (!bands?.occupations) throw new Error(`expected occupations`)
     expect(bands.occupations).toHaveLength(24)
     expect(bands.occupations[n_filled - 1].every((occ) => occ === 1)).toBe(true)
@@ -307,6 +297,17 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     const vbm = Math.max(...bands.bands[n_filled - 1])
     const cbm = Math.min(...bands.bands[n_filled])
     expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
+  })
+
+  // A malformed dataset still loads the bands; the gap check reports it (Bands shows a notice)
+  it(`leaves an empty fermiweights dataset to the gap check`, async () => {
+    const bands = await read_with_fermiweights([])
+    const occupations = bands?.occupations
+    if (!bands || !occupations) throw new Error(`expected occupations`)
+    expect(bands.bands).toHaveLength(24)
+    expect(() => electronic_band_gap(bands.bands, occupations)).toThrow(
+      `occupation row 0 needs 306 finite values`,
+    )
   })
 
   it(`expands single-point SCF runs into pseudo-frames and attaches DOS`, async () => {

@@ -169,16 +169,10 @@ export const read_vaspout_bands = (
         ? transpose(spin_down)
         : undefined
     // Occupations (FERWE, 0..1) decide the band gap when E_F from the SCF mesh misses a
-    // band-path VBM. Same (n_spin, n_kpoints, n_bands) layout as the eigenvalues.
+    // band-path VBM. Same (n_spin, n_kpoints, n_bands) layout as the eigenvalues; any shape
+    // mismatch (even an empty dataset) is left to electronic_band_gap, whose error Bands shows
+    // over the still-plotted bands
     const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as number[][][] | null
-    const n_spins = spin_down_bands ? 2 : 1
-    const kpoint_ok = (kpt: number[]) => kpt.length === n_bands
-    const spin_ok = (spin: number[][]) => spin.length === n_kpoints && spin.every(kpoint_ok)
-    if (fermiweights && (fermiweights.length !== n_spins || !fermiweights.every(spin_ok))) {
-      throw new Error(
-        `${group}/fermiweights shape does not match eigenvalues (${n_spins}, ${n_kpoints}, ${n_bands})`,
-      )
-    }
 
     const recip_lattice = band_recip_lattice(read_lattice(h5_file))
     const line_mode = line_mode_labels(
@@ -237,7 +231,7 @@ export const read_vaspout_bands = (
       distance,
       bands,
       ...(spin_down_bands ? { spin_down_bands } : {}),
-      ...(fermiweights ? { occupations: transpose(fermiweights[0]) } : {}),
+      ...(fermiweights ? { occupations: transpose(fermiweights[0] ?? []) } : {}),
       ...(fermiweights?.[1] ? { spin_down_occupations: transpose(fermiweights[1]) } : {}),
       nb_bands: n_bands,
       labels_dict,

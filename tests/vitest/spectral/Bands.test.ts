@@ -474,16 +474,18 @@ describe(`Bands component`, () => {
     },
   )
 
-  it(`rejects occupations missing a spin-down channel instead of crashing`, async () => {
+  it(`keeps plotting with a notice when occupations miss a spin-down channel`, async () => {
     await mount_bands({
       band_structs: { '': { ...spin_polarized_electronic, occupations: filled_below_band_2 } },
       band_spin_mode: `overlay`,
       show_gap_annotation: true,
     })
-    expect(document.body.textContent).toMatch(
-      /Invalid band occupations: .*must be finite and match bands/,
+    expect(document.querySelector(`.gap-error`)?.textContent).toMatch(
+      /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
     )
-    expect(document.querySelector(`.scatter`)).toBeNull()
+    expect(document.querySelector(`.scatter`)).not.toBeNull()
+    expect(line_count()).toBeGreaterThan(0)
+    expect(document.body.textContent).not.toMatch(/Eg:/)
   })
 
   const tick_labels = () => [

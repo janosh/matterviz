@@ -825,9 +825,9 @@ describe(`electronic_band_gap`, () => {
 
   // oxfmt-ignore
   it.each([
-    [`too few bands (e.g. a missing spin-down channel)`, [[1, 1]], /lengths \[2\] must be finite and match bands \[2,2\]/],
-    [`a ragged band`, [[1, 1], [0]], /lengths \[2,1\]/],
-    [`non-finite values`, [[1, NaN], [0, 0]], /must be finite/],
+    [`too few bands (e.g. a missing spin-down channel)`, [[1, 1]], /1 occupation rows for 2 bands/],
+    [`a ragged band`, [[1, 1], [0]], /occupation row 1 needs 2 finite values/],
+    [`non-finite values`, [[1, NaN], [0, 0]], /occupation row 0 needs 2 finite values/],
   ])(`throws for occupations with %s`, (_desc, occupations, error) => {
     expect(() => electronic_band_gap([[-1, 0], [1, 2]], occupations)).toThrow(error)
   })

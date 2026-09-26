@@ -845,17 +845,21 @@ export function electronic_band_gap(
   bands: readonly (readonly number[])[],
   filling: number | readonly (readonly number[])[],
 ): { vbm: number; cbm: number; gap: number } | null {
-  if (
-    typeof filling !== `number` &&
-    (filling.length !== bands.length ||
-      filling.some(
-        (row, band_idx) =>
-          row.length !== bands[band_idx].length || !row.every(Number.isFinite),
-      ))
-  ) {
-    throw new Error(
-      `electronic_band_gap: occupations with per-band lengths [${filling.map((row) => row.length)}] must be finite and match bands [${bands.map((band) => band.length)}]`,
+  if (typeof filling !== `number`) {
+    // Name only the first mismatch: real band structures have ~100 bands per channel
+    if (filling.length !== bands.length) {
+      throw new Error(
+        `electronic_band_gap: ${filling.length} occupation rows for ${bands.length} bands`,
+      )
+    }
+    const bad_idx = filling.findIndex(
+      (row, band_idx) => row.length !== bands[band_idx].length || !row.every(Number.isFinite),
     )
+    if (bad_idx !== -1) {
+      throw new Error(
+        `electronic_band_gap: occupation row ${bad_idx} needs ${bands[bad_idx].length} finite values`,
+      )
+    }
   }
   let [vbm, cbm] = [-Infinity, Infinity]
   for (const [band_idx, band] of bands.entries()) {
