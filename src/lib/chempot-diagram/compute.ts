@@ -1048,31 +1048,16 @@ export function compute_chempot_diagram(
 
   // Project domain vertices from N-D to display axes (column extraction; the identity in
   // subsystem mode, where compute_elements is display_elements)
-  return project_chempot_diagram(
-    { domains: nd_domains, elements: compute_elements, lims: compute_lims },
-    display_elements,
+  const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
+  const domains = Object.fromEntries(
+    Object.entries(nd_domains).map(([formula, pts]) => [
+      formula,
+      pts.map((point) => col_indices.map((idx) => point[idx])),
+    ]),
   )
-}
-
-// Column extraction of a diagram onto a subset of its axes, in the given order
-export function project_chempot_diagram(
-  data: ChemPotDiagramData,
-  elements: readonly string[],
-): ChemPotDiagramData {
-  const col_indices = elements.map((element) => {
-    const col_idx = data.elements.indexOf(element)
-    if (col_idx === -1)
-      throw new Error(`Cannot project onto ${element}: not in ${data.elements}`)
-    return col_idx
-  })
   return {
-    domains: Object.fromEntries(
-      Object.entries(data.domains).map(([formula, pts]) => [
-        formula,
-        pts.map((point) => col_indices.map((idx) => point[idx])),
-      ]),
-    ),
-    elements: [...elements],
-    lims: col_indices.map((col_idx) => data.lims[col_idx]),
+    domains,
+    elements: display_elements,
+    lims: col_indices.map((col_idx) => compute_lims[col_idx]),
   }
 }

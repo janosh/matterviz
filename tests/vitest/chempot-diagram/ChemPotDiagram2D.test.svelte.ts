@@ -117,7 +117,7 @@ test(`an error state keeps the controls, so the setting that caused it can be un
   expect(labels.some((label) => label.textContent?.includes(`Min limit`))).toBe(true)
 })
 
-test(`a projection from a larger system draws closed straight outlines, switching needs no recompute`, async () => {
+test(`projections from a larger system draw closed straight outlines, switching recomputes with the new axes`, async () => {
   const props = $state({
     entries: [
       { composition: { Li: 1 }, energy: -1.9 },
@@ -130,22 +130,35 @@ test(`a projection from a larger system draws closed straight outlines, switchin
     config: { elements: [`Li`, `O`] },
   })
   await mount_2d(props)
-  expect(calls.list[0].config.elements).toBeUndefined() // one N-D compute shared by projections
   await resolve_latest()
   await size_plot()
   // the series' stroked line paths (the area paths are unstroked)
-  const line_paths = () => [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)]
-  const li_o_paths = line_paths().map((path) => path.getAttribute(`d`) ?? ``)
+  const line_paths = () =>
+    [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map(
+      (path) => path.getAttribute(`d`) ?? ``,
+    )
   // domains are polygons here: each closed (ends where it starts), with no spline (C) segments
-  const polygons = li_o_paths
-    .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
-    .filter((coords) => coords.length > 4)
-  expect(polygons.length).toBeGreaterThan(0)
-  for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
-  for (const path of li_o_paths) expect(path).not.toContain(`C`)
+  const expect_outlines = (paths: string[]): void => {
+    const polygons = paths
+      .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
+      .filter((coords) => coords.length > 4)
+    expect(polygons.length).toBeGreaterThan(0)
+    for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
+    for (const path of paths) expect(path).not.toContain(`C`)
+  }
+  const li_o_paths = line_paths()
+  expect_outlines(li_o_paths)
   props.config = { elements: [`Co`, `O`] }
   flushSync()
   await tick()
-  expect(calls.list).toHaveLength(1)
-  expect(line_paths().map((path) => path.getAttribute(`d`))).not.toEqual(li_o_paths)
+  expect(calls.list.map(({ config }) => config.elements)).toEqual([
+    [`Li`, `O`],
+    [`Co`, `O`],
+  ])
+  // the previous projection stays drawn until its replacement arrives
+  expect(line_paths()).toEqual(li_o_paths)
+  await resolve_latest()
+  const co_o_paths = line_paths()
+  expect(co_o_paths).not.toEqual(li_o_paths)
+  expect_outlines(co_o_paths)
 })
