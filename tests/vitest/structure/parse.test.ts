@@ -1494,21 +1494,25 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     },
   )
 
-  // Rows straddling the periodic boundary merge exactly when their minimum-image distance is
-  // under the 0.05 Å site tolerance, whatever the site-index bucketing: 2 and 3 buckets per
-  // axis (repeated neighbour keys), a normal cell, and a 3e5 Å cell whose buckets get coarsened
+  // Rows straddling the periodic boundary (along each axis) merge exactly when their
+  // minimum-image distance is under the 0.05 Å site tolerance, whatever the site-index
+  // bucketing: 2 and 3 buckets per axis (repeated neighbour keys), a normal cell, and a 3e5 Å
+  // cell whose buckets get coarsened
   test.each(
     [0.12, 0.16, 5, 3e5].flatMap((len) => [
       [len, 0.049, 1],
       [len, 0.051, 2],
     ]),
   )(`cell %s A: rows %s A apart across the boundary give %i site(s)`, (len, sep, n_sites) => {
-    const [frac_lo, frac_hi] = [sep / (2 * len), 1 - sep / (2 * len)]
-    const rows = `Fe1 Fe ${frac_hi} 0.5 0.5\nCo1 Co ${frac_lo} 0.5 0.5`
-    const { sites } = parse_cif(`data_x\n${cif_cell(len)}\n${site_loop}\n${rows}`)
-    expect(sites.map((site) => site.species.map((spec) => spec.element))).toEqual(
-      n_sites === 1 ? [[`Fe`, `Co`]] : [[`Fe`], [`Co`]],
-    )
+    for (const axis of [0, 1, 2]) {
+      const row = (label: string, frac: number) =>
+        `${label}1 ${label} ${[0.5, 0.5, 0.5].with(axis, frac).join(` `)}`
+      const rows = `${row(`Fe`, 1 - sep / (2 * len))}\n${row(`Co`, sep / (2 * len))}`
+      const { sites } = parse_cif(`data_x\n${cif_cell(len)}\n${site_loop}\n${rows}`)
+      expect(sites.map((site) => site.species.map((spec) => spec.element))).toEqual(
+        n_sites === 1 ? [[`Fe`, `Co`]] : [[`Fe`], [`Co`]],
+      )
+    }
   })
 
   // P1 CIF with a 5 Å cubic cell whose symop loop and single atom-site row are supplied

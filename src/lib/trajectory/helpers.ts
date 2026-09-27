@@ -311,21 +311,15 @@ export class TextLines {
   constructor(readonly text: string) {
     const [from, target] = trimmed_bounds(text)
     this.target = target
+    // two passes (count, then fill) keep the peak at 4 bytes per line
     let count = 1
-    for (
-      let pos = text.indexOf(`\n`, from);
-      pos !== -1 && pos < target;
+    for (let pos = text.indexOf(`\n`, from); pos !== -1 && pos < target; count++)
       pos = text.indexOf(`\n`, pos + 1)
-    )
-      count++
-    const starts = new Uint32Array(count)
-    starts[0] = from
-    for (let idx = 1, pos = from; idx < count; idx++) {
-      pos = text.indexOf(`\n`, pos) + 1
-      starts[idx] = pos
-    }
     this.count = count
-    this.starts = starts
+    this.starts = new Uint32Array(count)
+    this.starts[0] = from
+    for (let idx = 1; idx < count; idx++)
+      this.starts[idx] = text.indexOf(`\n`, this.starts[idx - 1]) + 1
   }
   // Offset just past line `idx`'s content: split_lines drops the `\r` of a `\r\n` ending
   // (the last line has none after trim)

@@ -688,10 +688,10 @@ const MAX_IMAGE_CLOUD = 4_000_000
 // the same. Refuse past this many stored pairs (~1.2 GB peak) instead of exhausting memory on
 // the main thread; a 10k-atom MD frame at 15 A is ~3M pairs.
 const MAX_NEIGHBOR_PAIRS = 10_000_000
-// Large supercells get a budget proportional to their size. A band-filtered bond search keeps
-// ~6 pairs per site in rocksalt and ~9 in a skinned fcc metal (first + second shell), so 16
-// leaves ~2x headroom for any legitimate bond search while a unit mix-up (hundreds of pairs
-// per site) is still refused. Bond lists without image geometry cost ~32 B per pair.
+// Large supercells get a budget proportional to their size. Band-filtered bond searches store
+// up to ~10 pairs per site and skinned BondSearch lists ~12 (measured on 13 metal, ionic and
+// covalent lattices, with and without 0.15 A thermal noise), while a unit mix-up stores
+// hundreds. Bond lists without image geometry cost ~32 B per pair.
 const MAX_PAIRS_PER_SITE = 16
 // The dense grid holds at most this many bins per cloud position; sparser clouds (a tiny
 // cutoff on a far-flung cluster) get bins wider than `cutoff`, which stays correct since a
@@ -804,19 +804,12 @@ type PairBand = { elem_ids: Int32Array; n_elem: number; lo: Float64Array; hi: Fl
 type CutoffQuery = {
   pbc?: Pbc
   sorted?: boolean
-  // list each pair once, under its lower-index base endpoint
+  // List each pair once, under its lower-index base endpoint, and skip image geometry
+  // (empty `images`/`deltas`): for finite bond candidates, whose images are all zero
   unique_pairs?: boolean
-  // drop pairs outside their element pair's band during the sweep, before any storage
+  // Drop pairs outside their element pair's band during the sweep, before any storage
   band?: PairBand
-  // `always`: images/deltas for every slot (the public NeighborList). `periodic`: only when
-  // an axis is periodic, since finite images are all zero and deltas are position
-  // differences. `none`: never (callers that recompute distances themselves).
-  geometry?: `always` | `periodic` | `none`
-  // Return undefined instead of throwing once the pair budget is exhausted
-  abort_on_overflow?: boolean
 }
-
-type CutoffList = Pick<NeighborList, 'n_centers' | 'cutoff'> & BondNeighborList
 
 // Fixed-radius query. Base positions are wrapped into the cell on periodic axes (a
 // trajectory frame may sit far outside it) and only images that can reach within `cutoff`
@@ -825,13 +818,8 @@ type CutoffList = Pick<NeighborList, 'n_centers' | 'cutoff'> & BondNeighborList
 function neighbor_query_cutoff(
   structure: AnyStructure,
   cutoff: number,
-  query: CutoffQuery & { abort_on_overflow: true },
-): CutoffList | undefined
-function neighbor_query_cutoff(
-  structure: AnyStructure,
-  cutoff: number,
   query: CutoffQuery,
-): CutoffList
+): NeighborList
 function neighbor_query_cutoff(
   structure: AnyStructure,
   cutoff: number,
@@ -841,16 +829,9 @@ function neighbor_query_cutoff(
 function neighbor_query_cutoff(
   structure: AnyStructure,
   cutoff: number,
-  {
-    pbc: pbc_override,
-    sorted = false,
-    unique_pairs = false,
-    band,
-    geometry = `always`,
-    abort_on_overflow = false,
-  }: CutoffQuery,
+  { pbc: pbc_override, sorted = false, unique_pairs = false, band }: CutoffQuery,
   visit?: NeighborDistanceVisitor,
-): CutoffList | undefined | void {
+): NeighborList | void {
   const { sites, n_sites, coordinates, stride } = site_positions(structure)
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
     throw new Error(`neighbor_query: cutoff must be a positive finite number, got ${cutoff}`)
@@ -981,8 +962,6 @@ function neighbor_query_cutoff(
     }
   }
 
-  const with_geometry =
-    geometry === `always` || (geometry === `periodic` && lattice !== null && pbc.some(Boolean))
   if (n_cloud === 0) {
     if (visit) return
     return {
@@ -990,10 +969,9 @@ function neighbor_query_cutoff(
       cutoff,
       offsets: new Int32Array(1),
       neighbors: new Int32Array(0),
+      images: new Int32Array(0),
+      deltas: new Float64Array(0),
       distances: new Float64Array(0),
-      ...(with_geometry && {
-        image_geometry: { images: new Int32Array(0), deltas: new Float64Array(0) },
-      }),
     }
   }
 
@@ -1180,7 +1158,6 @@ function neighbor_query_cutoff(
           }
           if (n_pairs === pair_a.length) {
             if (n_pairs >= max_pairs) {
-              if (abort_on_overflow) return undefined
               throw new Error(
                 `neighbor_query: more than ${max_pairs.toLocaleString()} pairs within ` +
                   `${cutoff} A of ${n_sites} sites; the neighbor lists would not fit in memory, ` +
@@ -1222,8 +1199,8 @@ function neighbor_query_cutoff(
       entry_at[center_cursor[slot_b]++] = pair * 2 + 1
   }
   const neighbors = new Int32Array(total)
-  const images = new Int32Array(with_geometry ? total * 3 : 0)
-  const deltas = new Float64Array(with_geometry ? total * 3 : 0)
+  const images = new Int32Array(unique_pairs ? 0 : total * 3)
+  const deltas = new Float64Array(unique_pairs ? 0 : total * 3)
   const distances = new Float64Array(total)
   // per-block scratch: sort keys copied out so the insertion sort touches contiguous memory
   let block_partner: Int32Array = new Int32Array(256)
@@ -1285,7 +1262,7 @@ function neighbor_query_cutoff(
       const out = start + idx
       neighbors[out] = cloud_src[partner]
       distances[out] = Math.sqrt(block_dist_sq[rank])
-      if (!with_geometry) continue
+      if (unique_pairs) continue
       // image = partner's total shift - center's wrap shift, so that
       // sites[partner].xyz + image·L - sites[center].xyz === delta
       images[out * 3] = cloud_shift[partner * 3] - center_shift_a
@@ -1296,30 +1273,7 @@ function neighbor_query_cutoff(
       deltas[out * 3 + 2] = cloud_pos[partner * 3 + 2] - center_z
     }
   }
-  return {
-    n_centers: n_sites,
-    cutoff,
-    offsets,
-    neighbors,
-    distances,
-    ...(with_geometry && { image_geometry: { images, deltas } }),
-  }
-}
-
-// Public lists always carry image geometry
-const public_cutoff_query = (
-  structure: AnyStructure,
-  cutoff: number,
-  pbc: Pbc | undefined,
-  sorted: boolean,
-): NeighborList => {
-  const { image_geometry, ...list } = neighbor_query_cutoff(structure, cutoff, {
-    pbc,
-    sorted,
-    geometry: `always`,
-  })
-  if (!image_geometry) throw new Error(`neighbor_query: list was built without image geometry`)
-  return { ...list, ...image_geometry }
+  return { n_centers: n_sites, cutoff, offsets, neighbors, images, deltas, distances }
 }
 
 // Search bounds of the k-nearest query. The seed radius comes from the mean volume per atom;
@@ -1388,21 +1342,22 @@ export function neighbor_query(
   options: NeighborQueryOptions,
 ): NeighborList {
   if (`cutoff` in options) {
-    return public_cutoff_query(structure, options.cutoff, options.pbc, options.sorted ?? true)
+    const { cutoff, pbc, sorted = true } = options
+    return neighbor_query_cutoff(structure, cutoff, { pbc, sorted })
   }
   const { k: order, pbc } = options
   if (!Number.isInteger(order) || order < 1) {
     throw new Error(`neighbor_query: k must be a positive integer, got ${order}`)
   }
   const n_sites = structure.sites.length
-  if (n_sites === 0) return public_cutoff_query(structure, 1, pbc, true)
+  if (n_sites === 0) return neighbor_query_cutoff(structure, 1, { pbc, sorted: true })
   const { total_volume, max_cutoff } = k_search_bounds(structure)
   const atom_volume = total_volume / n_sites
   // radius of the sphere holding k+1 atoms at the mean density, widened 30% so the first
   // pass usually suffices even for an anisotropic first shell
   let cutoff = 1.3 * ((3 * (order + 1) * atom_volume) / (4 * Math.PI)) ** (1 / 3)
   for (;;) {
-    const list = public_cutoff_query(structure, cutoff, pbc, true)
+    const list = neighbor_query_cutoff(structure, cutoff, { pbc, sorted: true })
     let short = false
     for (let center = 0; center < n_sites && !short; center++) {
       short = list.offsets[center + 1] - list.offsets[center] < order
@@ -1493,13 +1448,11 @@ type BondNeighborQuery = (
   band: PairBand,
 ) => BondNeighborList
 
-const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) =>
-  neighbor_query_cutoff(structure, cutoff, {
-    pbc,
-    unique_pairs: !pbc.some(Boolean),
-    band,
-    geometry: `periodic`,
-  })
+const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) => {
+  const periodic = pbc.some(Boolean)
+  const list = neighbor_query_cutoff(structure, cutoff, { pbc, unique_pairs: !periodic, band })
+  return periodic ? { ...list, image_geometry: list } : list
+}
 
 // Verlet skin (A) of trajectory candidate lists. Measured on a 186k-atom fcc frame: a plain
 // search takes ~190 ms, a skinned rebuild 310-390 ms and a reuse frame 95-120 ms, so a list
@@ -1508,9 +1461,6 @@ const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) =
 // in the third shell (21.6 pairs per site, beyond the pair budget at 500k atoms).
 const BOND_SKIN = 0.5
 const MIN_REUSES = 2
-// Slack on the widened candidate band: stored candidate distances come from wrapped
-// coordinates and differ from the finite ones by round-off (~1e-13 A at MD cell sizes).
-const SKIN_BAND_SLACK = 1e-6
 
 // Whether two bands filter identically (same site elements and per-pair tables)
 const same_band = (left: PairBand | undefined, right: PairBand): boolean =>
@@ -1519,24 +1469,19 @@ const same_band = (left: PairBand | undefined, right: PairBand): boolean =>
   math.same_values(left.lo, right.lo) &&
   math.same_values(left.hi, right.hi)
 
-// A Verlet list for finite displayed sites. Keep geometric candidates, including contacts
-// rejected by chemistry, and rebuild when either endpoint could cross the extra skin.
-// Queries that explicitly request periodic image bonds retain their complete image search.
-// The skin adapts to the motion: a list rebuilt before serving MIN_REUSES frames cost more
-// than plain searches would have, so the search drops to plain (skin 0) frames until the
-// per-frame motion falls below skin / (2 * MIN_REUSES), at which even steady drift lets a
-// skinned list survive MIN_REUSES frames. A skinned list that would exceed the pair budget
-// also falls back to plain frames (until the inputs change) instead of throwing.
+// A Verlet list for finite displayed sites: candidates are all contacts within the skin of
+// their pair's band (chemistry filters them per frame), rebuilt once an endpoint could have
+// crossed the skin. Queries for periodic image bonds always run the full image search.
+// A list rebuilt before serving MIN_REUSES frames cost more than plain searches would have,
+// so the next frames search plain (no skin) until the per-frame motion falls below
+// skin / (2 * MIN_REUSES), at which even steady drift lets a list survive MIN_REUSES frames.
 export class BondSearch {
   private readonly scratch = create_bond_scratch()
   private candidates: BondNeighborList | undefined
-  // Positions at the last skinned build, or of the previous frame in plain mode
+  // Positions at the last candidate build, or of the previous frame after a plain search
   private reference = new Float64Array(0)
-  private cutoff = 0
-  private skin = 0 // skin of the current candidates
-  private target_skin = BOND_SKIN // skin of the next build (0 = plain search)
   private reuses = 0 // frames the current candidates served after their build
-  private overflowed = false // a skinned list exceeded the pair budget for these inputs
+  private cutoff = 0
   private cell_key = ``
   private band: PairBand | undefined
 
@@ -1579,23 +1524,20 @@ export class BondSearch {
   }
 
   private readonly query: BondNeighborQuery = (structure, cutoff, pbc, band) => {
-    if (pbc.some(Boolean)) {
-      this.candidates = undefined
-      this.band = undefined
-      return query_bond_neighbors(structure, cutoff, pbc, band)
-    }
+    if (pbc.some(Boolean)) return query_bond_neighbors(structure, cutoff, pbc, band)
     const { sites, n_sites, coordinates, stride } = site_positions(structure)
     const lattice = `lattice` in structure ? structure.lattice : undefined
-    // The finite path never reaches lattice_pbc_or_throw, yet periodic_for reads lattice.pbc
-    lattice_pbc_or_throw(structure)
+    // Validated here since finite queries never reach lattice_pbc_or_throw
+    const lattice_pbc = lattice_pbc_or_throw(structure)
     const cell_key = JSON.stringify(lattice)
     // A periodic candidate superset survives wrapping. Use it only when each source pair
     // has at most one image inside the search radius; the output still bonds finite sites.
-    const periodic_for = (skin: number) =>
-      lattice?.pbc.some(Boolean) &&
+    const periodic =
+      lattice &&
+      lattice_pbc.some(Boolean) &&
       math
         .cell_heights(lattice.matrix)
-        .every((height, axis) => !lattice.pbc[axis] || height > 2 * (cutoff + skin))
+        .every((height, axis) => !lattice_pbc[axis] || height > 2 * (cutoff + BOND_SKIN))
         ? lattice
         : undefined
     const same_inputs =
@@ -1603,22 +1545,17 @@ export class BondSearch {
       cell_key === this.cell_key &&
       n_sites * 3 === this.reference.length &&
       same_band(this.band, band)
-    if (!same_inputs) {
-      this.overflowed = false
-      this.target_skin = BOND_SKIN
-    } else if (this.candidates) {
+    let plain = false
+    if (same_inputs && this.candidates) {
       // Compare against the build frame, not the last frame; cumulative drift counts.
-      if (!this.moved_beyond(structure, this.skin / 2, periodic_for(this.skin))) {
+      if (!this.moved_beyond(structure, BOND_SKIN / 2, periodic)) {
         this.reuses++
         return this.refresh_candidates(structure, this.candidates)
       }
-      if (this.reuses < MIN_REUSES) this.target_skin = 0
-    } else if (
-      !this.overflowed &&
-      !this.moved_beyond(structure, BOND_SKIN / (2 * MIN_REUSES), periodic_for(BOND_SKIN))
-    ) {
-      // Plain mode, `reference` holds the previous frame: motion is slow enough again
-      this.target_skin = BOND_SKIN
+      plain = this.reuses < MIN_REUSES
+    } else if (same_inputs) {
+      // After a plain search `reference` holds the previous frame
+      plain = this.moved_beyond(structure, BOND_SKIN / (2 * MIN_REUSES), periodic)
     }
     this.cutoff = cutoff
     this.cell_key = cell_key
@@ -1630,33 +1567,22 @@ export class BondSearch {
         this.reference[idx * 3 + axis] = coordinates
           ? coordinates[idx * stride + axis]
           : sites[idx].xyz[axis]
-    const skin = this.target_skin
-    const periodic = periodic_for(skin)
-    // Any contact that can enter the band before an endpoint moves skin/2 lies within
-    // skin of it now
-    const slack = skin + SKIN_BAND_SLACK
-    const list =
-      skin > 0
-        ? neighbor_query_cutoff(structure, cutoff + skin, {
-            pbc: periodic?.pbc ?? pbc,
-            unique_pairs: true,
-            band: {
-              ...band,
-              lo: band.lo.map((dist) => dist - slack),
-              hi: band.hi.map((dist) => dist + slack),
-            },
-            geometry: `none`,
-            abort_on_overflow: true,
-          })
-        : undefined
-    if (!list) {
-      if (skin > 0) {
-        this.overflowed = true
-        this.target_skin = 0
-      }
+    if (plain) {
       this.candidates = undefined
       return query_bond_neighbors(structure, cutoff, pbc, band)
     }
+    // Any contact that can enter the band before an endpoint moves skin/2 lies within skin
+    // of it now. 1e-6 A absorbs the round-off between wrapped and finite distances.
+    const slack = BOND_SKIN + 1e-6
+    const list = neighbor_query_cutoff(structure, cutoff + BOND_SKIN, {
+      pbc: periodic?.pbc ?? pbc,
+      unique_pairs: true,
+      band: {
+        ...band,
+        lo: band.lo.map((dist) => dist - slack),
+        hi: band.hi.map((dist) => dist + slack),
+      },
+    })
     if (periodic) {
       let read_start = 0
       let write_slot = 0
@@ -1670,11 +1596,8 @@ export class BondSearch {
       }
       list.offsets[n_sites] = write_slot
     }
-    // Finite candidates need only pair identity and distance; distances are recomputed from
-    // the finite sites.
     const { offsets, neighbors, distances } = list
     this.candidates = { offsets, neighbors, distances }
-    this.skin = skin
     return this.refresh_candidates(structure, this.candidates)
   }
 
@@ -1957,7 +1880,8 @@ function perceive_bonds(
   const pair_factor = new Float64Array(n_elem * n_elem)
   const pair_metallic = new Uint8Array(n_elem * n_elem)
   const reach_hi = new Float64Array(n_elem * n_elem)
-  const reach_lo = new Float64Array(n_elem * n_elem)
+  // Floors include min_bond_dist, also for pairs that cannot bond at all
+  const reach_lo = new Float64Array(n_elem * n_elem).fill(min_bond_dist)
   let max_reach = 0
   for (let id_a = 0; id_a < n_elem; id_a++) {
     for (let id_b = 0; id_b < n_elem; id_b++) {
@@ -1983,24 +1907,21 @@ function perceive_bonds(
       if (strength <= strength_threshold) continue
       const spread = Math.sqrt(-0.18 * Math.log(strength_threshold / strength))
       reach_hi[pair] = expected * Math.min(1 + spread, max_distance_ratio)
-      reach_lo[pair] = spread >= 1 ? 0 : expected * (1 - spread)
+      const floor = spread >= 1 ? 0 : expected * (1 - spread)
+      reach_lo[pair] = min_bond_dist > floor ? min_bond_dist : floor
       if (reach_hi[pair] > max_reach) max_reach = reach_hi[pair]
     }
   }
-  // The query drops contacts outside their pair's band (or under min_bond_dist) during the
-  // sweep: a single cutoff at the longest reach stored e.g. every Na-Na and Cl-Cl contact
-  // within Na-Na's metallic 5.2 A in rocksalt, 2x the pairs that can bond. Pass 1 re-tests
-  // the same band on the same distances, so filtering early changes nothing downstream.
-  const band_lo = new Float64Array(n_elem * n_elem)
-  for (let pair = 0; pair < band_lo.length; pair++)
-    band_lo[pair] = Math.max(reach_lo[pair], min_bond_dist)
-  // A zero/non-finite reach (no known radius, or a degenerate ratio) still needs a
-  // positive cutoff for the query to be well-formed.
+  // The query drops contacts outside their pair's band during the sweep: a single cutoff at
+  // the longest reach stored e.g. every Na-Na and Cl-Cl contact within Na-Na's metallic
+  // 5.2 A in rocksalt, 2x the pairs that can bond. Pass 1 re-tests the same band on the
+  // same distances (BondSearch candidates carry a wider one). A zero/non-finite reach (no
+  // known radius, or a degenerate ratio) still needs a positive cutoff for the query.
   const { offsets, neighbors, image_geometry, distances } = query(
     structure,
     max_reach > 0 && Number.isFinite(max_reach) ? max_reach : 1,
     pbc,
-    { elem_ids, n_elem, lo: band_lo, hi: reach_hi },
+    { elem_ids, n_elem, lo: reach_lo, hi: reach_hi },
   )
 
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
@@ -2038,9 +1959,8 @@ function perceive_bonds(
       )
         continue
       const dist = distances[slot]
-      if (dist < min_bond_dist) continue
-      // Two table reads replace the radius sum, the ratio cutoff and the whole
-      // metal/nonmetal/electronegativity branch chain
+      // Two table reads replace min_bond_dist, the radius sum, the ratio cutoff and the
+      // whole metal/nonmetal/electronegativity branch chain
       const pair = pair_row + elem_ids[partner]
       if (dist > reach_hi[pair] || dist < reach_lo[pair]) continue
 

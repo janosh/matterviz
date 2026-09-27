@@ -1043,8 +1043,7 @@
     ]
   }
   let scatter_point_limit = $derived(clamp(content_size.width / 2, 128, 1000))
-  // Only visible series are sampled; prepared arrays are cached per source series, so legend
-  // toggles reuse them and hidden columns cost nothing per streamed property batch.
+  // Samples visible series only, cached per source array so legend toggles resample nothing
   let scatter_series = $derived(
     prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
   )

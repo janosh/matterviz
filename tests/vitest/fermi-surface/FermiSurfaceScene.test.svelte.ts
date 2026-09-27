@@ -85,8 +85,7 @@ test(`an opacity tick reuses the materials; crossing opaque rebuilds them`, () =
   const props = $state({ surface_opacity: 0.6 })
   mount_scene(props)
 
-  // One mesh per renderable surface (the empty sheet gets none): three draws a transparent
-  // double-sided material as back- then front-face passes itself, and one raycast picks both
+  // One double-sided mesh per renderable surface (the empty sheet gets none)
   const transparent = mesh_materials()
   expect(transparent).toHaveLength(2)
   expect(new Set(transparent).size).toBe(2)
@@ -172,14 +171,11 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   const props = $state({ clip_enabled: false, clip_axis: `z` as const, clip_position: 0 })
   mount_scene(props)
   const { filter } = interactivity.mock.calls[0][0] as {
-    filter: (hits: { point: Vector3; label: string }[]) => { label: string }[]
+    filter: (hits: { point: Vector3 }[]) => unknown[]
   }
-  const hits = [
-    { point: new Vector3(0, 0, -1), label: `inner` },
-    { point: new Vector3(0, 0, 1), label: `outer` },
-  ]
-  expect(filter(hits).map(({ label }) => label)).toEqual([`inner`])
+  const [inner, outer] = [-1, 1].map((z_coord) => ({ point: new Vector3(0, 0, z_coord) }))
+  expect(filter([inner, outer])).toStrictEqual([inner])
   props.clip_enabled = true // keeps z >= 0
   flushSync()
-  expect(filter(hits).map(({ label }) => label)).toEqual([`outer`])
+  expect(filter([inner, outer])).toStrictEqual([outer])
 })

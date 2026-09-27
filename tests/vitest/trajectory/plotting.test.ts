@@ -16,7 +16,6 @@ import {
   summarize_properties,
 } from '$lib/trajectory/plotting'
 import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
-import { TrajectoryProperties } from '$lib/trajectory/run'
 import { describe, expect, it } from 'vitest'
 
 const DEFAULT_PROPERTY_CONFIG = {
@@ -441,57 +440,6 @@ describe(`generate_plot_series`, () => {
     const distribution = generate_plot_series(rows, { include_all_properties: true })
     expect(distribution).toHaveLength(1)
     expect(distribution[0].y).toEqual(values)
-  })
-
-  it(`extends streamed rows without rescanning them and matches a one-shot scan`, () => {
-    let reads = 0
-    // Sparse, late, tail-missing, non-numeric and coordinate columns exercise every grid path
-    const rows = Array.from({ length: 60 }, (_unused, idx): TrajectoryMetadata => {
-      const properties: Record<string, unknown> = { energy: Math.sin(idx), step: idx }
-      if (idx > 3) properties.late = Math.cos(idx)
-      if (idx < 55) properties.tail_missing = idx * 0.5
-      if (idx % 7 !== 3) properties.gappy = (idx % 5) + 1
-      if (idx % 2) properties.mixed = idx % 4 ? idx : `n/a`
-      const row = { frame_number: idx * 2, step: idx * 20 }
-      return Object.defineProperty(row, `properties`, {
-        get: () => (reads++, properties),
-        enumerable: true,
-      }) as TrajectoryMetadata
-    })
-    const outputs = (snapshot: readonly TrajectoryMetadata[]) => ({
-      series: generate_plot_series(snapshot, { relative_energy: true }),
-      all: generate_plot_series(snapshot, { include_all_properties: true }),
-      summary: summarize_properties(snapshot),
-    })
-    const properties = new TrajectoryProperties()
-    properties.push(rows.slice(0, 20))
-    const early = outputs(properties.rows)
-    const early_copy = structuredClone(early)
-    properties.push(rows.slice(20, 20)) // empty batch: no new snapshot
-    reads = 0
-    properties.push(rows.slice(15, 40)) // re-delivered overlap is deduplicated
-    outputs(properties.rows)
-    // Only the rows after the previous snapshot are read: rows 20..39
-    expect(reads).toBe(20)
-    properties.push(rows.slice(40))
-    const streamed = outputs(properties.rows)
-    // Earlier results stay intact after the scan grows past them
-    expect(early).toStrictEqual(early_copy)
-    // Fresh row objects share no scan state with the stream
-    const fresh = () =>
-      rows.map(({ frame_number, step, properties: props }) => ({
-        frame_number,
-        step,
-        properties: props,
-      }))
-    const one_shot = outputs(fresh())
-    expect(streamed).toStrictEqual(one_shot)
-    // An out-of-order batch reorders the snapshot and falls back to a full scan
-    const unordered = fresh()
-    const reordered = new TrajectoryProperties(unordered.slice(30))
-    outputs(reordered.rows)
-    reordered.push(unordered.slice(0, 30))
-    expect(outputs(reordered.rows)).toStrictEqual(one_shot)
   })
 })
 

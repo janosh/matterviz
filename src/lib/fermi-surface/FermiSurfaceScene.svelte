@@ -316,9 +316,8 @@
     material.vertexColors = use_vertex_colors && has_vertex_properties(surface)
     if (!material.vertexColors) material.color.set(get_surface_color(surface))
     material.transparent = is_transparent
-    // A transparent double-sided material is drawn by three as a back-face then a front-face
-    // pass of the same object, so one mesh covers both passes and a single raycast picks either
-    // side (an open sheet seen from its concave side only presents back faces)
+    // three draws a transparent DoubleSide material as back- then front-face passes, and one
+    // raycast picks either side (an open sheet seen from its concave side shows only back faces)
     material.side = DoubleSide
     return material
   }

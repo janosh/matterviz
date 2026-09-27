@@ -1645,12 +1645,10 @@
   let polyhedra_faces: BufferGeometry | null = $state.raw(null)
   $effect(() => {
     if (!polyhedra_buffers?.triangle_count) return
-    const current = untrack(() => polyhedra_faces)
-    const next = update_polyhedra_faces(current, polyhedra_buffers)
-    if (next !== current) {
-      current?.dispose()
-      polyhedra_faces = next
-    }
+    polyhedra_faces = update_polyhedra_faces(
+      untrack(() => polyhedra_faces),
+      polyhedra_buffers,
+    )
     threlte.invalidate()
   })
   $effect(() => () => polyhedra_faces?.dispose())

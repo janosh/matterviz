@@ -938,7 +938,7 @@ describe(`merge_polyhedra_buffers`, () => {
     },
   )
 
-  test(`update_polyhedra_faces rewrites one geometry in place and grows by 1.5x`, () => {
+  test(`update_polyhedra_faces rewrites one geometry in place and replaces it 1.5x larger`, () => {
     const merged = (hulls: Vec3[][], shift: number) => {
       const polys = hulls.map((pts) =>
         poly_from_hull(
@@ -953,6 +953,7 @@ describe(`merge_polyhedra_buffers`, () => {
     const small = merged([octahedron_points], 5) // 8 triangles, shifted +x
     const dispose = vi.spyOn(geometry, `dispose`)
     expect(update_polyhedra_faces(geometry, small)).toBe(geometry)
+    expect(dispose).not.toHaveBeenCalled()
     expect(geometry.drawRange).toEqual({ start: 0, count: 24 })
     for (const [name, values] of [
       [`position`, small.positions],
@@ -973,7 +974,7 @@ describe(`merge_polyhedra_buffers`, () => {
     )
     expect(grown).not.toBe(geometry)
     expect(grown.getAttribute(`normal`).count).toBe(72) // max(72, 1.5 * 48)
-    expect(dispose).not.toHaveBeenCalled() // retiring the old geometry is the caller's call
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   test(`empty input yields empty buffers`, () => {

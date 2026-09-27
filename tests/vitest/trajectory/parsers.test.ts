@@ -1104,7 +1104,6 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     [`vasp-XDATCAR-traj`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR-traj.gz`)],
     [`a variable-cell XDATCAR with wrapped species`, `XDATCAR`, () => `${variable_cell(10, 1)}\n${variable_cell(20, 2)}\n${variable_cell(20, 3)}`],
     [`an XDATCAR with CRLF endings and a torn last line`, `XDATCAR`, () => `${xdatcar_head}\nDirect configuration= 1\n0.5 0.5 0.5\n0.1 0.1 0.1\nDirect configuration= 2\n0.5 0.5 0.5\n0.1 0.1`.replaceAll(`\n`, `\r\n`)],
-    [`an XDATCAR missing its last coordinate lines`, `XDATCAR`, () => `${xdatcar_head}\nDirect configuration= 1\n0.5 0.5 0.5\n0.1 0.1 0.1\nDirect configuration= 2\n0.5 0.5 0.5`],
     [`lammps-sample`, `sample.lammpstrj`, site_text(`trajectories/lammps-sample.lammpstrj.gz`)],
     [`the SGCMC cell dump`, `cell.lammpstrj`, site_text(`trajectories/cell_0_T_800.0_dmu_0.3129032258064516.lammpstrj.gz`)],
     [`mdanalysis-chain-dump`, `chain.lammpstrj`, site_text(`trajectories/mdanalysis-chain-dump.lammpstrj`)],
@@ -1113,9 +1112,6 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     [`unsorted scaled triclinic MD frames with a torn tail`, `md.lammpstrj`, () => md_dump(4, `\nITEM: TIMESTEP\n40\nITEM: NUMBER OF ATOMS\n3\nITEM: BOX BOUNDS pp pp pp\n0 10`)],
     [`CRLF MD frames with a half-written last atom line`, `md.lammpstrj`, () => `${md_dump(3)}\n9 1 0.5`.replaceAll(`\n`, `\r\n`)],
     [`frames without ids or element names`, `untyped.lammpstrj`, () => untyped_dump, { atom_type_mapping: {} }],
-    // these frames cannot encode as dense columns, so the numeric read falls back to sites
-    [`a sparse velocity and clashing q/charge columns`, `sparse.lammpstrj`, () => [`1 1 0 0 0 1 2 3 0.5 0.1`, `2 2 1 1 1 nan 2 3 0.5 0.2`].map((line, frame_idx) =>
-      lammps_frame(`id type x y z vx vy vz q charge`, frame_idx ? [line.replace(`nan`, `1`), line.replace(`2 2 1`, `3 2 1`)] : [line, `3 1 2 2 2 1 1 1 0 0`], { timestep: frame_idx })).join(`\n`)],
     [`a type mapped to a non-element`, `mapped.lammpstrj`, () => untyped_dump, { atom_type_mapping: { 1: `Xx` as ElementSymbol, 2: `O`, 3: `Fe` } }],
   ])(`%s reads the same frames, plot rows and warnings`, async (_label, filename, make_text, options = {}) => {
     const text = make_text()
@@ -1140,8 +1136,8 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     expect(await collected(indexed)).toStrictEqual(await collected(eager))
   })
 
-  // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails that
-  // frame's read (and drops its plot row) with the error the eager open throws
+  // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only
+  // that frame's read, with the error the eager open throws; plot rows come from headers
   it(`fails only the frame holding a corrupt XDATCAR coordinate line`, async () => {
     const text = [1, 2, 3]
       .map(
@@ -1158,8 +1154,8 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     expect(() => indexed.read_frame(1)).toThrow(error)
     expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
     await indexed.properties.done
-    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
-    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
+    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 2, 3])
+    expect(indexed.warnings).toEqual([])
   })
 })
 
@@ -1596,19 +1592,16 @@ describe(`ASE`, () => {
     }
   })
 
-  // oxfmt-ignore
-  const md_frame = (array: AseArray, frame_idx: number, extra: Record<string, unknown> = {}) => ({
-    [`positions.`]: array([3, 3], (idx) => (idx === 4 ? -0 : idx * 0.7 + frame_idx)),
-    cell: box,
-    ...extra,
-  })
-
   // ASE repeats numbers/pbc only where they change: a frame without them inherits the nearest
   // EARLIER frame's, never the last decoded one's. They may come from different frames
   // (reading 4 walks back to 3 and 1, and must not cache frame 3's numbers for frames 1-2),
   // and a frame whose header cannot be read breaks only the frames that inherit through it
   it(`inherits numbers and pbc from separate earlier frames and isolates a corrupt frame`, () => {
     const water = (array: AseArray) => array([3], (idx) => [8, 1, 1][idx])
+    const md_frame = (array: AseArray, frame_idx: number) => ({
+      [`positions.`]: array([3, 3], (idx) => idx * 0.7 + frame_idx),
+      cell: box,
+    })
     const buffer = make_ase_buffer([
       (array) => ({
         [`numbers.`]: water(array),

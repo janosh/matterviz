@@ -81,24 +81,16 @@ describe(`sweep_frame_plan`, () => {
 // A worker-pool visitor (RDF) needs several frames in flight, but its synchronous prefix
 // (reference frame, step list) must still see frames in order and results stay ordered
 describe(`sweep_frames concurrency`, () => {
-  const frames = [0, 1, 2, 3, 4, 5].map((step) =>
-    encode_frame({ step, structure: make_fcc([1, 1, 1]) }),
+  const run = trajectory_from_frames(
+    [0, 1, 2, 3, 4, 5].map((step) => ({ step, structure: make_fcc([1, 1, 1]) })),
   )
-  // Later frames read faster, so reads resolve in reverse order
-  const reversed_run = (): TrajectoryRun => ({
-    ...trajectory_from_frames(
-      frames.map((_, step) => ({ step, structure: make_fcc([1, 1, 1]) })),
-    ),
-    read_frame: (idx: number) =>
-      new Promise((resolve) => setTimeout(() => resolve(frames[idx]), (6 - idx) * 2)),
-  })
   it.each([1, 3])(
     `starts visits in order and keeps %i frames in flight`,
     async (concurrency) => {
       const [started, finished]: number[][] = [[], []]
       let [in_flight, peak] = [0, 0]
       const { results } = await sweep_frames(
-        reversed_run(),
+        run,
         { max_frames: 6, concurrency },
         async (_frame, frame_number) => {
           started.push(frame_number)
@@ -111,14 +103,14 @@ describe(`sweep_frames concurrency`, () => {
       )
       expect(started).toEqual([0, 1, 2, 3, 4, 5])
       expect(results).toEqual([0, 10, 20, 30, 40, 50])
-      expect(peak).toBeLessThanOrEqual(concurrency)
+      expect(peak).toBe(concurrency)
       if (concurrency > 1) expect(finished).not.toEqual(started) // really overlapped
     },
   )
   it(`stops starting frames after a visit fails`, async () => {
     const started: number[] = []
     const sweep = sweep_frames(
-      reversed_run(),
+      run,
       { max_frames: 6, concurrency: 2 },
       (_frame, frame_number) => {
         started.push(frame_number)

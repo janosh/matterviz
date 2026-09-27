@@ -7,7 +7,6 @@
   import { ScatterPlot } from '$lib/plot'
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
-  import { to_error } from '$lib/utils'
   import { compute_vacf_async } from './async-compute.svelte'
   import { revise_vacf } from './calc-vacf'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
@@ -41,38 +40,20 @@
     vdos_controls_open?: boolean
   } & Omit<ScatterPlotOptions, `controls_open`> = $props()
 
-  // Only the options that shape the correlation reach the worker (keyed by value, so a
-  // recreated but equal options object does not recompute); dt, time_unit and the VDOS
-  // window/unit are applied to the finished result by revise_vacf
-  const compute_key = $derived(
-    JSON.stringify({
+  use_async_result({
+    input: () => input,
+    // dt, time_unit and the VDOS window/unit are applied to the finished correlation (revise)
+    options: (): VacfOptions => ({
       max_lag_fraction: vacf_options.max_lag_fraction,
       max_lags: vacf_options.max_lags,
       velocity_source: vacf_options.velocity_source,
     }),
-  )
-  let frame_result = $state.raw<VacfResult>()
-  use_async_result({
-    input: () => input,
-    options: (): VacfOptions => JSON.parse(compute_key),
     compute: (request_input, options, signal) =>
       compute_vacf_async(request_input, options, { signal }),
-    set_result: (computed) => (frame_result = computed),
+    revise: (computed) => revise_vacf(computed, vacf_options),
+    set_result: (value) => (result = value),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
-  })
-  // Without an input `result` is the caller's precomputed curves, left untouched
-  $effect(() => {
-    if (!input) return
-    result = undefined
-    // No frame_result while computing or after a failure, whose error only a new compute clears
-    if (!frame_result) return
-    try {
-      result = revise_vacf(frame_result, vacf_options)
-      error_msg = undefined // a corrected dt/unit edit starts no compute that would clear it
-    } catch (exc) {
-      error_msg = to_error(exc).message
-    }
   })
 
   const curve_series = (

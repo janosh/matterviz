@@ -20,6 +20,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   DynamicDrawUsage,
+  type InterleavedBuffer,
   type InterleavedBufferAttribute,
   Line2NodeMaterial,
   Sphere,
@@ -57,7 +58,7 @@ export function update_polyhedra_edges(
 ): void {
   const capacity = edges.geometry.getAttribute(`instanceStart`).count * 6
   if (positions.length > capacity) {
-    const length = Math.max(positions.length, Math.ceil((capacity / 6) * 1.5) * 6)
+    const length = grown_length(positions.length, capacity, 6)
     const geometry = new LineSegmentsGeometry()
       .setPositions(new Float32Array(length))
       .setColors(new Float32Array(length))
@@ -69,43 +70,15 @@ export function update_polyhedra_edges(
     [`instanceColorStart`, colors],
   ] as const) {
     const { data } = edges.geometry.getAttribute(name) as InterleavedBufferAttribute
-    data.setUsage(DynamicDrawUsage)
-    data.array.set(values)
-    data.clearUpdateRanges()
-    data.addUpdateRange(0, values.length)
-    data.needsUpdate = true
+    overwrite(data.setUsage(DynamicDrawUsage), values)
   }
   edges.geometry.instanceCount = positions.length / 6
   set_bounds(edges.geometry, positions)
 }
 
-// Bounds from the drawn xyz triples only: the stock computeBounding* walk every capacity slot
-// (stale data from earlier, larger frames included) through per-point Vector3 reads, which
-// dominated in-place updates. The sphere encloses the box (same center as three's own).
-function set_bounds(geometry: BufferGeometry, positions: Float32Array): void {
-  let [min_x, min_y, min_z] = [Infinity, Infinity, Infinity]
-  let [max_x, max_y, max_z] = [-Infinity, -Infinity, -Infinity]
-  for (let idx = 0; idx < positions.length; idx += 3) {
-    const [pos_x, pos_y, pos_z] = [positions[idx], positions[idx + 1], positions[idx + 2]]
-    if (pos_x < min_x) min_x = pos_x
-    if (pos_x > max_x) max_x = pos_x
-    if (pos_y < min_y) min_y = pos_y
-    if (pos_y > max_y) max_y = pos_y
-    if (pos_z < min_z) min_z = pos_z
-    if (pos_z > max_z) max_z = pos_z
-  }
-  // no positions leave min/max at +-Infinity, which is exactly Box3.makeEmpty()
-  geometry.boundingBox ??= new Box3()
-  geometry.boundingBox.min.set(min_x, min_y, min_z)
-  geometry.boundingBox.max.set(max_x, max_y, max_z)
-  geometry.boundingSphere ??= new Sphere()
-  geometry.boundingBox.getBoundingSphere(geometry.boundingSphere)
-}
-
 // Merged polyhedra faces as one geometry kept across frames: attributes are overwritten in
-// place and the draw range trimmed, so only growth (1.5x, like update_polyhedra_edges)
-// allocates. Returns the geometry to render: `geometry` itself, or on growth (or when null)
-// a new one, in which case the caller disposes the old one.
+// place and the draw range trimmed. Returns `geometry` itself unless it is null or too small,
+// in which case it is disposed and replaced by a new one with 1.5x headroom.
 export function update_polyhedra_faces(
   geometry: BufferGeometry | null,
   buffers: Pick<MergedPolyhedraBuffers, `positions` | `normals` | `colors`>,
@@ -114,7 +87,8 @@ export function update_polyhedra_faces(
   const capacity = geometry?.getAttribute(`position`).array.length ?? 0
   let target = geometry
   if (!target || positions.length > capacity) {
-    const length = Math.max(positions.length, Math.ceil((capacity / 9) * 1.5) * 9)
+    const length = grown_length(positions.length, capacity, 9)
+    geometry?.dispose()
     target = new BufferGeometry()
     for (const name of [`position`, `normal`, `color`]) {
       const attribute = new BufferAttribute(new Float32Array(length), 3)
@@ -125,16 +99,33 @@ export function update_polyhedra_faces(
     [`position`, positions],
     [`normal`, normals],
     [`color`, colors],
-  ] as const) {
-    const attribute = target.getAttribute(name) as BufferAttribute
-    attribute.array.set(values)
-    attribute.clearUpdateRanges()
-    attribute.addUpdateRange(0, values.length)
-    attribute.needsUpdate = true
-  }
+  ] as const)
+    overwrite(target.getAttribute(name) as BufferAttribute, values)
   target.setDrawRange(0, positions.length / 3)
   set_bounds(target, positions)
   return target
+}
+
+// 1.5x headroom, in whole segments/triangles of `stride` floats, so growing frames rarely
+// reallocate
+const grown_length = (needed: number, capacity: number, stride: number): number =>
+  Math.max(needed, Math.ceil((capacity / stride) * 1.5) * stride)
+
+// Overwrite the leading values of a kept buffer and upload only that range
+function overwrite(buffer: BufferAttribute | InterleavedBuffer, values: Float32Array): void {
+  buffer.array.set(values)
+  buffer.clearUpdateRanges()
+  buffer.addUpdateRange(0, values.length)
+  buffer.needsUpdate = true
+}
+
+// Bounds from the drawn positions only: the stock computeBounding* walk every capacity slot,
+// stale data from earlier, larger frames included. The sphere encloses the box.
+function set_bounds(geometry: BufferGeometry, positions: Float32Array): void {
+  geometry.boundingBox = (geometry.boundingBox ?? new Box3()).setFromArray(positions)
+  geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(
+    geometry.boundingSphere ?? new Sphere(),
+  )
 }
 
 export interface PolyhedraOptions {
@@ -846,40 +837,21 @@ export type PolyhedraColoring =
   | { mode: `uniform`; color: string }
   | { mode: `vertex` | `center`; site_color: (site_idx: number) => string }
 
-// Grow-only scratch shared by every merge (synchronous, so never used re-entrantly).
-// Crease detection keys undirected hull edges as lo * 2^16 + hi (< 2^32, fits Uint32) in an
-// open-addressed table whose slots hold edge_idx + 1 (0 = empty), and records per edge the
-// first adjacent face normal plus whether it is hidden, in first-encounter order.
-let edge_slots = new Int32Array(64)
-let edge_keys = new Uint32Array(32)
-let edge_normals = new Float64Array(96)
-let edge_hidden = new Uint8Array(32) // 1 = a later face shares it coplanar with the first
-let site_rgb = new Float32Array(0) // linear rgb per site (vertex/center modes)
-let site_rgb_ready = new Uint8Array(0)
-let vert_rgb = new Float32Array(48)
-
 // Merge all polyhedra into single non-indexed position/normal/color arrays (one draw call)
 // plus crease-edge segments for outlines. Edges interior to coplanar face groups
 // (e.g. quad diagonals on a cube) are omitted. Normals are the flat per-face normals
 // BufferGeometry.computeVertexNormals would derive from the float32 positions, bit for bit,
-// so callers can upload them directly. Colors resolve once per site (or once for uniform).
+// so callers can upload them directly.
 export function merge_polyhedra_buffers(
   polyhedra: readonly Polyhedron[],
   coloring: PolyhedraColoring,
   coplanar_tol = 1e-3,
 ): MergedPolyhedraBuffers {
-  let triangle_count = 0
-  let max_faces = 0
-  let max_verts = 0
-  let max_site = -1
-  for (const poly of polyhedra) {
-    triangle_count += poly.faces.length
-    if (poly.faces.length > max_faces) max_faces = poly.faces.length
-    if (poly.vertices.length > max_verts) max_verts = poly.vertices.length
-    if (coloring.mode === `center`) max_site = Math.max(max_site, poly.center_site_idx)
-    else if (coloring.mode === `vertex`)
-      for (const site_idx of poly.vertex_site_idxs)
-        if (site_idx > max_site) max_site = site_idx
+  let [triangle_count, max_faces, max_verts] = [0, 0, 0]
+  for (const { faces, vertices } of polyhedra) {
+    triangle_count += faces.length
+    max_faces = Math.max(max_faces, faces.length)
+    max_verts = Math.max(max_verts, vertices.length)
   }
   const positions = new Float32Array(triangle_count * 9)
   const normals = new Float32Array(triangle_count * 9)
@@ -887,30 +859,23 @@ export function merge_polyhedra_buffers(
   // A closed triangulated surface has at most 3F/2 unique edges
   const edge_positions = new Float32Array(Math.ceil(triangle_count * 1.5) * 6)
   const edge_colors = new Float32Array(edge_positions.length)
-
-  // Size scratch for the largest hull: at most 3F edges, table load factor <= 1/2
-  let table_size = 16
-  while (table_size < max_faces * 6) table_size *= 2
-  if (edge_slots.length < table_size) edge_slots = new Int32Array(table_size)
-  if (edge_keys.length < max_faces * 3) {
-    edge_keys = new Uint32Array(max_faces * 3)
-    edge_hidden = new Uint8Array(max_faces * 3)
-    edge_normals = new Float64Array(max_faces * 9)
-  }
-  if (vert_rgb.length < max_verts * 3) vert_rgb = new Float32Array(max_verts * 3)
-  if (site_rgb_ready.length <= max_site) {
-    site_rgb = new Float32Array((max_site + 1) * 3)
-    site_rgb_ready = new Uint8Array(max_site + 1)
-  } else site_rgb_ready.fill(0, 0, max_site + 1)
-  const table_mask = table_size - 1
-  const uniform_rgb = coloring.mode === `uniform` ? css_to_linear_rgb(coloring.color) : null
-  // Resolve (and memoize) one site's linear rgb, returning its offset into site_rgb
-  const site_offset = (site_idx: number): number => {
-    if (!site_rgb_ready[site_idx] && coloring.mode !== `uniform`) {
-      site_rgb.set(css_to_linear_rgb(coloring.site_color(site_idx)), site_idx * 3)
-      site_rgb_ready[site_idx] = 1
+  // Per-polyhedron scratch. Crease detection indexes each undirected hull edge (lo, hi) at
+  // cell lo * n_verts + hi of edge_at (edge_idx + 1, 0 = unseen) and records per edge, in
+  // first-encounter order, its cell, first adjacent face normal and whether it is hidden.
+  const vert_rgb = new Float32Array(max_verts * 3)
+  const edge_at = new Int32Array(max_verts * max_verts)
+  const edge_cells = new Int32Array(max_faces * 3)
+  const edge_normals = new Float64Array(max_faces * 9)
+  const edge_hidden = new Uint8Array(max_faces * 3) // 1 = the last face on it is coplanar
+  // Linear rgb per site, resolved once per distinct site
+  const site_rgb = new Map<number, ArrayLike<number>>()
+  const rgb_of = (site_idx: number): ArrayLike<number> => {
+    let rgb = site_rgb.get(site_idx)
+    if (!rgb) {
+      const css = coloring.mode === `uniform` ? coloring.color : coloring.site_color(site_idx)
+      site_rgb.set(site_idx, (rgb = css_to_linear_rgb(css)))
     }
-    return site_idx * 3
+    return rgb
   }
 
   let offset = 0
@@ -920,19 +885,17 @@ export function merge_polyhedra_buffers(
     // Rewind mark, in case this polyhedron turns out not to fit the shared edge pool below
     const poly_offset = offset
     const { vertices: verts, faces } = poly
-    // Per-hull-vertex colors
-    for (let v_idx = 0; v_idx < verts.length; v_idx++) {
-      let src: ArrayLike<number> = site_rgb
-      let src_off = 0
-      if (uniform_rgb) src = uniform_rgb
-      else if (coloring.mode === `center`) src_off = site_offset(poly.center_site_idx)
-      else src_off = site_offset(poly.vertex_site_idxs[v_idx])
-      vert_rgb[v_idx * 3] = src[src_off]
-      vert_rgb[v_idx * 3 + 1] = src[src_off + 1]
-      vert_rgb[v_idx * 3 + 2] = src[src_off + 2]
+    const n_verts = verts.length
+    for (let v_idx = 0; v_idx < n_verts; v_idx++) {
+      const rgb = rgb_of(
+        coloring.mode === `vertex` ? poly.vertex_site_idxs[v_idx] : poly.center_site_idx,
+      )
+      vert_rgb[v_idx * 3] = rgb[0]
+      vert_rgb[v_idx * 3 + 1] = rgb[1]
+      vert_rgb[v_idx * 3 + 2] = rgb[2]
     }
 
-    edge_slots.fill(0, 0, table_size)
+    edge_at.fill(0, 0, n_verts * n_verts)
     let n_poly_edges = 0
     for (const face of faces) {
       // Indexed reads, not destructuring: this loop runs once per rendered triangle
@@ -1003,11 +966,8 @@ export function merge_polyhedra_buffers(
       for (let side = 0; side < 3; side++) {
         const from = face[side]
         const target = face[(side + 1) % 3]
-        const key = from < target ? from * 65536 + target : target * 65536 + from
-        let slot = Math.imul(key, 0x9e3779b1) & table_mask
-        while (edge_slots[slot] !== 0 && edge_keys[edge_slots[slot] - 1] !== key)
-          slot = (slot + 1) & table_mask
-        let edge_idx = edge_slots[slot] - 1 // -1: empty slot, first face on this edge
+        const cell = from < target ? from * n_verts + target : target * n_verts + from
+        let edge_idx = edge_at[cell] - 1
         if (edge_idx >= 0) {
           const dot =
             normal_x * edge_normals[edge_idx * 3] +
@@ -1017,8 +977,8 @@ export function merge_polyhedra_buffers(
           edge_hidden[edge_idx] = dot < 1 - coplanar_tol ? 0 : 1
         } else {
           edge_idx = n_poly_edges++
-          edge_slots[slot] = edge_idx + 1
-          edge_keys[edge_idx] = key
+          edge_at[cell] = edge_idx + 1
+          edge_cells[edge_idx] = cell
           edge_hidden[edge_idx] = 0
           edge_normals[edge_idx * 3] = normal_x
           edge_normals[edge_idx * 3 + 1] = normal_y
@@ -1041,24 +1001,16 @@ export function merge_polyhedra_buffers(
     }
     for (let edge_idx = 0; edge_idx < n_poly_edges; edge_idx++) {
       if (edge_hidden[edge_idx]) continue
-      const key = edge_keys[edge_idx]
-      const from_idx = key >>> 16
-      const to_idx = key & 0xffff
-      const from = verts[from_idx]
-      const target = verts[to_idx]
-      edge_positions[edge_offset] = from[0]
-      edge_positions[edge_offset + 1] = from[1]
-      edge_positions[edge_offset + 2] = from[2]
-      edge_positions[edge_offset + 3] = target[0]
-      edge_positions[edge_offset + 4] = target[1]
-      edge_positions[edge_offset + 5] = target[2]
-      edge_colors[edge_offset] = vert_rgb[from_idx * 3]
-      edge_colors[edge_offset + 1] = vert_rgb[from_idx * 3 + 1]
-      edge_colors[edge_offset + 2] = vert_rgb[from_idx * 3 + 2]
-      edge_colors[edge_offset + 3] = vert_rgb[to_idx * 3]
-      edge_colors[edge_offset + 4] = vert_rgb[to_idx * 3 + 1]
-      edge_colors[edge_offset + 5] = vert_rgb[to_idx * 3 + 2]
-      edge_offset += 6
+      const cell = edge_cells[edge_idx]
+      for (let end = 0; end < 2; end++) {
+        const v_idx = end ? cell % n_verts : Math.floor(cell / n_verts)
+        const vert = verts[v_idx]
+        for (let axis = 0; axis < 3; axis++) {
+          edge_positions[edge_offset + axis] = vert[axis]
+          edge_colors[edge_offset + axis] = vert_rgb[v_idx * 3 + axis]
+        }
+        edge_offset += 3
+      }
     }
   }
 

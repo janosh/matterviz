@@ -73,8 +73,7 @@ export function parse_numeric_val(val: CellVal): number | null {
   if (typeof val === `number`) return Number.isFinite(val) ? val : null
   if (typeof val !== `string`) return null
   const sort_attr = get_data_sort_value(val)
-  // a blank data-sort-value marks "no sort key": it must not fall back to numeric text
-  if (sort_attr === null) return null
+  if (sort_attr === null) return null // no sort key, and no fallback to the text either
   const num =
     sort_attr === undefined ? parse_numeric_string(strip_html(val)) : Number(sort_attr)
   return num !== null && Number.isFinite(num) ? num : null
@@ -85,8 +84,7 @@ export function parse_numeric_val(val: CellVal): number | null {
 // sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
 // as a non-string it could only answer "the other one first" to in BOTH directions - not a
 // total order, so the same rows came out differently depending on the order they went in.
-// null marks a missing sort key: an invalid value or a blank data-sort-value (which never
-// falls back to the text).
+// null marks a missing sort key: an invalid value or a blank data-sort-value.
 const get_sort_val = (val: CellVal): string | number | null => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()

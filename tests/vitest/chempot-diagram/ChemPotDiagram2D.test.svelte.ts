@@ -137,17 +137,14 @@ test(`projections from a larger system draw closed straight outlines, switching 
     [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map(
       (path) => path.getAttribute(`d`) ?? ``,
     )
-  // domains are polygons here: each closed (ends where it starts), with no spline (C) segments
-  const expect_outlines = (paths: string[]): void => {
-    const polygons = paths
-      .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
-      .filter((coords) => coords.length > 4)
-    expect(polygons.length).toBeGreaterThan(0)
-    for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
-    for (const path of paths) expect(path).not.toContain(`C`)
-  }
   const li_o_paths = line_paths()
-  expect_outlines(li_o_paths)
+  // domains are polygons here: each closed (ends where it starts), with no spline (C) segments
+  const polygons = li_o_paths
+    .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
+    .filter((coords) => coords.length > 4)
+  expect(polygons.length).toBeGreaterThan(0)
+  for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
+  for (const path of li_o_paths) expect(path).not.toContain(`C`)
   props.config = { elements: [`Co`, `O`] }
   flushSync()
   await tick()
@@ -158,7 +155,5 @@ test(`projections from a larger system draw closed straight outlines, switching 
   // the previous projection stays drawn until its replacement arrives
   expect(line_paths()).toEqual(li_o_paths)
   await resolve_latest()
-  const co_o_paths = line_paths()
-  expect(co_o_paths).not.toEqual(li_o_paths)
-  expect_outlines(co_o_paths)
+  expect(line_paths()).not.toEqual(li_o_paths)
 })

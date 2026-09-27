@@ -89,6 +89,21 @@ export function central_difference_velocities(
   return velocities
 }
 
+// A VacfResult before revise_vacf applies dt, time_unit and the VDOS settings (a finished
+// VacfResult qualifies too, which is how a dt edit revises it)
+type FrameVacf = Omit<
+  VacfResult,
+  | 'times'
+  | 'time_unit'
+  | 'x_label'
+  | 'frequencies'
+  | 'frequency_unit'
+  | 'frequency_label'
+  | 'window'
+  | 'n_fft'
+  | 'curves'
+> & { curves: Omit<VacfCurve, 'vdos' | 'peak_frequency'>[] }
+
 export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResult {
   const {
     positions,
@@ -169,10 +184,9 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
   )
 
   // In frames: dt, time_unit and the VDOS settings are applied by revise_vacf
-  const frame_result: VacfResult = {
+  const frame_result: FrameVacf = {
     lags,
-    times: lags,
-    curves: curve_slots(labels).map(({ label, slot }): VacfCurve => {
+    curves: curve_slots(labels).map(({ label, slot }) => {
       const size = curve_sizes[slot]
       const vacf = Array.from(sums[slot], (sum, lag) => sum / (n_origins[lag] * size))
       // A group whose atoms are all exactly at rest has VACF(0) = 0 and no direction to
@@ -186,18 +200,9 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
           zero_lag === 0 ? vacf.map(() => 0) : vacf.map((value) => value / zero_lag),
         // A fresh array per curve: callers mutating one must not corrupt the others
         n_origins: [...n_origins],
-        vdos: [],
-        peak_frequency: 0,
       }
     }),
     dt: 1,
-    time_unit: `frame`,
-    x_label: lag_axis_label(`frame`),
-    frequencies: [],
-    frequency_unit: `1/frame`,
-    frequency_label: ``,
-    window: `none`,
-    n_fft: 0,
     velocity_source,
     // Stored velocities carry whatever the file used, so without an explicit label the honest
     // answer is that the unit is unknown rather than a guessed Å/ps. revise_vacf relabels the
@@ -218,7 +223,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
 // and origin sums do not depend on them. Only a differentiated VACF carries the timestep, as
 // (Å/time)^2, so it is rescaled by (old dt / new dt)^2; stored velocities keep the file's units.
 export function revise_vacf(
-  result: VacfResult,
+  result: FrameVacf,
   options: Pick<VacfOptions, 'dt' | 'time_unit' | 'vdos'>,
 ): VacfResult {
   const { dt: delta_time = 1, vdos: vdos_options = {} } = options
@@ -261,7 +266,7 @@ export function revise_vacf(
   const spacing = bin_spacing()
   const frequencies = Array.from({ length: n_fft / 2 + 1 }, (_unused, bin) => bin * spacing)
 
-  const revise_curve = (curve: VacfCurve): VacfCurve => {
+  const revise_curve = (curve: FrameVacf[`curves`][number]): VacfCurve => {
     const windowed = curve.vacf_normalized.map((value, lag_idx) => value * weights[lag_idx])
     const { spectrum } = even_cosine_spectrum(windowed, VDOS_ZERO_PAD_FACTOR)
     // The cosine transform of a real even signal is real, but a VACF that has not decayed

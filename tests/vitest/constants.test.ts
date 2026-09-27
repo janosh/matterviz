@@ -7,9 +7,8 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`derived physical constants`, () => {
-  // Pin the derived constants to published values (CODATA 2018; ase.units.fs from ASE's
-  // CODATA 2014 default): every consumer test derives its expectation from the same
-  // constant, so a wrong derivation would otherwise pass
+  // Pin derived constants to published values (CODATA 2018; ase.units.fs on ASE's CODATA 2014
+  // default): consumer tests reuse the constant, so a wrong derivation would pass them all
   test.each([
     [`k_B eV/K`, BOLTZMANN_EV_PER_K, 8.617333262e-5],
     [`eV -> kJ/mol`, EV_TO_KJ_PER_MOL, 96.485332],

@@ -9,17 +9,15 @@ import { element_from_atomic_number } from '$lib/element/helpers'
 export const ATOM_BATCH_SIZE = 65_536
 // Packed sites store atomic numbers as bytes: index both tables by that byte directly.
 // Unknown numbers resolve to atomic number 0 and a NaN mass, which the mass check rejects.
-const ELEMENT_TABLES = (() => {
-  const numbers = new Uint8Array(256)
-  const masses = new Float64Array(256).fill(Number.NaN)
-  for (let atomic_number = 0; atomic_number < 256; atomic_number++) {
-    const symbol = element_from_atomic_number(atomic_number)
-    const element = symbol ? element_by_symbol.get(symbol) : undefined
-    numbers[atomic_number] = element?.number ?? 0
-    masses[atomic_number] = element?.atomic_mass ?? Number.NaN
-  }
-  return { numbers, masses }
-})()
+const packed_elements = Array.from({ length: 256 }, (_unused, byte) => {
+  const symbol = element_from_atomic_number(byte)
+  return symbol && element_by_symbol.get(symbol)
+})
+const PACKED_NUMBERS = Uint8Array.from(packed_elements, (element) => element?.number ?? 0)
+const PACKED_MASSES = Float64Array.from(
+  packed_elements,
+  (element) => element?.atomic_mass ?? Number.NaN,
+)
 export interface AtomReadOptions {
   frame_idx: number
   start?: number
@@ -142,11 +140,10 @@ export function frame_atom_batch(
   // elements leave a NaN mass for the check below.
   const standard_masses = mass_source === `standard` ? masses : undefined
   if (sites instanceof Uint8Array) {
-    const { numbers, masses: element_masses } = ELEMENT_TABLES
     for (let idx = 0; idx < count; idx++) {
       const atomic_number = sites[start + idx]
-      atomic_numbers[idx] = numbers[atomic_number]
-      if (standard_masses) standard_masses[idx] = element_masses[atomic_number]
+      atomic_numbers[idx] = PACKED_NUMBERS[atomic_number]
+      if (standard_masses) standard_masses[idx] = PACKED_MASSES[atomic_number]
     }
   } else {
     for (let idx = 0; idx < count; idx++) {
@@ -161,9 +158,8 @@ export function frame_atom_batch(
     velocities && velocity_key && !velocity_signal && velocity_column < 0
       ? property_reader(velocity_key)
       : undefined
-  const energy_property = energies && energy_key ? property_reader(energy_key) : undefined
-  const selection_property =
-    selected && selection_key ? property_reader(selection_key) : undefined
+  const energy_property = energy_key ? property_reader(energy_key) : undefined
+  const selection_property = selection_key ? property_reader(selection_key) : undefined
   // Per-atom validation keeps its original order (mass, velocity, energy, selection) so the
   // first invalid atom reports the same error as a one-atom-at-a-time reader.
   for (let idx = 0; idx < count; idx++) {

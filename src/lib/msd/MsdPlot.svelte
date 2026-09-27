@@ -43,35 +43,18 @@
     error_msg?: string
   } & ScatterPlotOptions = $props()
 
-  // Only the lag-range options reach the worker (keyed by value, so a recreated but equal
-  // options object does not recompute); dt/time_unit relabel the finished curves
-  const compute_key = $derived(
-    JSON.stringify({
+  use_async_result({
+    input: () => positions,
+    // dt and time_unit only label the lag axis (revise), so editing them never recomputes
+    options: (): MsdOptions => ({
       max_lag_fraction: msd_options.max_lag_fraction,
       max_lags: msd_options.max_lags,
     }),
-  )
-  let frame_result = $state.raw<MsdResult>()
-  use_async_result({
-    input: () => positions,
-    options: (): MsdOptions => JSON.parse(compute_key),
     compute: (input, options, signal) => compute_msd_async(input, options, { signal }),
-    set_result: (computed) => (frame_result = computed),
+    revise: (computed) => with_lag_time_axis(computed, msd_options),
+    set_result: (value) => (result = value),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
-  })
-  // Without positions `result` is the caller's precomputed curves, left untouched
-  $effect(() => {
-    if (!positions) return
-    result = undefined
-    // No frame_result while computing or after a failure, whose error only a new compute clears
-    if (!frame_result) return
-    try {
-      result = with_lag_time_axis(frame_result, msd_options)
-      error_msg = undefined // a corrected dt/unit edit starts no compute that would clear it
-    } catch (exc) {
-      error_msg = to_error(exc).message
-    }
   })
 
   // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An

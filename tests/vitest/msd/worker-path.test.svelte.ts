@@ -63,13 +63,9 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
   try {
     await settle(6)
     expect(stub.posted).toHaveLength(1)
-    const frame_times = state.result?.times
-    expect(frame_times).toEqual(state.result?.lags)
     state.msd_options = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
     await settle(6)
     expect(stub.posted).toHaveLength(1)
-    expect(state.result?.times).toEqual(frame_times?.map((lag) => lag * 2))
-    expect(state.result).toMatchObject({ dt: 2, time_unit: `fs`, x_label: `Lag time (fs)` })
     const expected = calc_msd(positions, { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` })
     expect(state.result).toEqual(expected)
     // an invalid timestep is reported in place of the curves, still without recomputing

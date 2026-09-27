@@ -83,7 +83,7 @@ export interface AseFrameOptions {
   fallback_pbc?: Pbc
   // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
   // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
-  inherit?: () => { numbers?: number[]; pbc?: Pbc } | undefined
+  inherit?: () => { numbers?: number[]; pbc?: Pbc }
   max_json_length?: number
   base_offset?: number
 }
@@ -315,57 +315,45 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       `ASE trajectory frame ${frame_idx} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
       { cause: error },
     )
-  // Numbers and pbc in effect at each frame, filled in as frames are decoded or scanned. ASE
-  // repeats them only in frames where they change, so a frame without its own inherits them
-  // from the nearest EARLIER frame in the file, never from whichever frame was decoded last:
-  // random access (scrubbing, strided analysis) would otherwise give a frame the elements of a
-  // later composition change.
-  const topologies: ({ numbers: number[]; pbc: Pbc } | undefined)[] = []
-  // Walks headers back only until both are found (or a frame whose topology is known), so a
-  // corrupt frame breaks just the frames that really inherit through it, then caches every
-  // frame it passed so later seeks stop early
-  const inherited_topology = (frame_idx: number) => {
-    let [numbers, pbc]: [number[] | undefined, Pbc | undefined] = [undefined, undefined]
-    let base: { numbers?: number[]; pbc?: Pbc } = {}
-    const passed: { idx: number; numbers?: number[]; pbc?: Pbc }[] = []
-    for (let idx = frame_idx - 1; idx >= 0 && (!numbers || !pbc); idx--) {
-      const known = topologies[idx]
-      if (known) {
-        numbers ??= known.numbers
-        pbc ??= known.pbc
-        base = known
-        break
+  // Numbers and pbc in effect at each frame, cached once both are known. ASE repeats them only
+  // in frames where they change, so a frame without its own inherits them from the nearest
+  // EARLIER frame in the file, never from whichever frame was decoded last: random access
+  // (scrubbing, strided analysis) would otherwise give a frame a later composition change.
+  type Topology = { numbers?: number[]; pbc?: Pbc }
+  const topologies: Topology[] = []
+  // Walks headers back only until both are found, so a corrupt frame breaks just the frames
+  // that inherit through it, then caches (earliest first) each walked frame they determine
+  const inherited_topology = (frame_idx: number): Topology => {
+    const walked: [number, Topology][] = []
+    let found: Topology = {}
+    for (let idx = frame_idx - 1; idx >= 0 && !(found.numbers && found.pbc); idx--) {
+      let own = topologies[idx]
+      if (!own) {
+        const header = frame_header(idx)
+        const numbers_ref = header[`numbers.`] ?? header.numbers
+        own = {
+          numbers: is_ndarray_ref(numbers_ref)
+            ? read_ndarray_from_view(live().view, numbers_ref).flat()
+            : (numbers_ref as number[] | undefined),
+          pbc: header.pbc === undefined ? undefined : ase_pbc(header.pbc),
+        }
       }
-      const header = frame_header(idx)
-      const own_ref = header[`numbers.`] ?? header.numbers
-      const own = {
-        idx,
-        numbers: is_ndarray_ref(own_ref)
-          ? read_ndarray_from_view(live().view, own_ref).flat()
-          : (own_ref as number[] | undefined),
-        pbc: header.pbc === undefined ? undefined : ase_pbc(header.pbc),
-      }
-      passed.push(own)
-      numbers ??= own.numbers
-      pbc ??= own.pbc
+      walked.push([idx, own])
+      found = { numbers: found.numbers ?? own.numbers, pbc: found.pbc ?? own.pbc }
     }
-    // Forward over the passed frames, earliest first, from the known frame the walk stopped at
-    // (if any): each takes its own values or carries the previous ones, and is cached once
-    // both are determined. Frames before a value's source never are: theirs lie further back.
-    let carried = base
-    for (const { idx, ...own } of passed.toReversed()) {
+    let carried: Topology = {}
+    for (const [idx, own] of walked.toReversed()) {
       carried = { numbers: own.numbers ?? carried.numbers, pbc: own.pbc ?? carried.pbc }
-      if (carried.numbers && carried.pbc)
-        topologies[idx] = { numbers: carried.numbers, pbc: carried.pbc }
+      if (carried.numbers && carried.pbc) topologies[idx] = carried
     }
-    return { numbers, pbc }
+    return found
   }
   const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
-        inherit: () => (frame_idx > 0 ? inherited_topology(frame_idx) : undefined),
+        inherit: () => inherited_topology(frame_idx),
         max_json_length: MAX_ASE_HEADER_BYTES,
         plot_row,
         warn,

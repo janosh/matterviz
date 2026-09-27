@@ -45,6 +45,8 @@ const KNOWN_FORMAT_EXT_REGEX = ext_regex([
   `yml`, `xml`, `csv`,
 ])
 const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`, `lammpstrj`])
+// basename starting with `xdatcar` (XDATCAR, XDATCAR_nvt), as FORMAT_PATTERNS.vasp reads it
+const XDATCAR_NAME_REGEX = /(?:^|[/\\])xdatcar[^/\\]*$/i
 // `outcar` anywhere in the basename (OUTCAR, OUTCAR_step2, relax.outcar), never in a
 // directory name — an `outcar/` folder must not claim the files inside it
 const OUTCAR_NAME_REGEX = /outcar[^/\\]*$/i
@@ -70,10 +72,7 @@ export const indexed_trajectory_format = (filename: string): `ase` | `text` =>
 
 export const is_indexable_trajectory_filename = (filename: string): boolean => {
   const base = strip_compression_extensions(filename)
-  return (
-    INDEXABLE_EXT_REGEX.test(base) ||
-    (base.toLowerCase().split(/[/\\]/).pop() ?? ``).startsWith(`xdatcar`)
-  )
+  return INDEXABLE_EXT_REGEX.test(base) || XDATCAR_NAME_REGEX.test(base)
 }
 
 // Unified format detection. Each pattern trusts a matching file extension when present
