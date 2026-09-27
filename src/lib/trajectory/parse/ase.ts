@@ -9,11 +9,9 @@ import {
   checked_site_forces,
   convert_atomic_numbers,
   create_plot_row_frame,
-  create_standard_numeric_frame,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
-import { encode_frame, type NumericFrame } from '$lib/trajectory/frame'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { to_error } from '$lib/utils'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -181,82 +179,11 @@ const ase_pbc = (value: unknown): Pbc => {
   return [...value]
 }
 
-// Validated element bytes per atomic-numbers array (frames without their own share frame 0's)
-const validated_numbers = new WeakMap<number[], Uint8Array>()
-const numbers_bytes = (numbers: number[]): Uint8Array => {
-  let atomic_numbers = validated_numbers.get(numbers)
-  if (!atomic_numbers) {
-    convert_atomic_numbers(numbers)
-    atomic_numbers = Uint8Array.from(numbers)
-    validated_numbers.set(numbers, atomic_numbers)
-  }
-  return atomic_numbers
-}
-
-const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1
-
-// An [n_atoms, 3] positions ndarray as one flat Float64Array, or null for any other shape
-// (those take the generic Site path, which reports them exactly as before)
-const read_positions = (
-  view: DataView,
-  ref: { ndarray: unknown[] },
-  base_offset: number,
-): Float64Array | null => {
-  const { shape, value } = ndarray_reader(view, ref, base_offset)
-  if (shape.length !== 2 || shape[1] !== 3) return null
-  const total = shape[0] * 3
-  const [, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
-  if (dtype === `float64` && IS_LITTLE_ENDIAN) {
-    // slice copies into a fresh 8-byte aligned buffer the frame owns
-    const start = view.byteOffset + absolute_offset - base_offset
-    return new Float64Array(view.buffer.slice(start, start + total * 8))
-  }
-  const positions = new Float64Array(total)
-  for (let idx = 0; idx < total; idx++) positions[idx] = value(idx)
-  return positions
-}
-
-type AseDecodeMode = `frame` | `plot_row` | `numeric`
-type AseDecoded<Result> = { frame: Result; numbers: number[]; pbc: Pbc }
+const plot_row_numbers = new WeakMap<number[], Uint8Array>()
 
 // `plot_row: true` skips reading positions and building sites but keeps every check, the
 // metadata and the lattice, so its plot row equals the full decode's
 export function decode_ase_frame(
-  view: DataView,
-  buffer: ArrayBuffer,
-  frame_offset: number,
-  step: number,
-  options: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
-): AseDecoded<TrajectoryFrame> {
-  return decode_ase(
-    view,
-    buffer,
-    frame_offset,
-    step,
-    options,
-    options.plot_row ? `plot_row` : `frame`,
-  )
-}
-
-// `numeric` mode returns the NumericFrame encode_frame would make of the full decode, read
-// straight from the ndarray bytes into typed arrays without Site records
-function decode_ase(
-  view: DataView,
-  buffer: ArrayBuffer,
-  frame_offset: number,
-  step: number,
-  options: AseFrameOptions & { warn: WarnFn },
-  mode: `numeric`,
-): AseDecoded<NumericFrame>
-function decode_ase(
-  view: DataView,
-  buffer: ArrayBuffer,
-  frame_offset: number,
-  step: number,
-  options: AseFrameOptions & { warn: WarnFn },
-  mode: `frame` | `plot_row`,
-): AseDecoded<TrajectoryFrame>
-function decode_ase(
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
@@ -267,10 +194,10 @@ function decode_ase(
     inherit,
     max_json_length,
     base_offset = 0,
+    plot_row = false,
     warn,
-  }: AseFrameOptions & { warn: WarnFn },
-  mode: AseDecodeMode,
-): AseDecoded<TrajectoryFrame | NumericFrame> {
+  }: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
+): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
   const frame_data = JSON.parse(
     read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
   )
@@ -279,17 +206,12 @@ function decode_ase(
     read_ndarray_from_view(view, ref, base_offset)
 
   const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
-  // numeric mode reads [n, 3] ndarrays flat; any other positions go through the Site path
-  const flat_positions =
-    mode === `numeric` && is_ndarray_ref(positions_ref)
-      ? read_positions(view, positions_ref, base_offset)
-      : null
   const positions = is_ndarray_ref(positions_ref)
-    ? mode === `plot_row` || flat_positions
+    ? plot_row
       ? undefined
       : read_ndarray(positions_ref)
     : (positions_ref as number[][] | undefined)
-  // a plot row (and a flat read) takes the atom count from the ndarray shape
+  // a plot row takes the atom count from the ndarray shape
   const n_atoms =
     positions?.length ??
     (is_ndarray_ref(positions_ref)
@@ -330,22 +252,7 @@ function decode_ase(
     ...frame_data.info,
   }
   const cell = ase_cell(frame_data)
-  if (flat_positions) {
-    // numbers_bytes validates like create_trajectory_frame's convert_atomic_numbers
-    const atomic_numbers = numbers_bytes(numbers).slice()
-    const vectors = forces ? [{ key: `force`, values: Float64Array.from(forces.flat()) }] : []
-    const frame = create_standard_numeric_frame(
-      flat_positions,
-      atomic_numbers,
-      cell,
-      pbc,
-      step,
-      metadata,
-      vectors,
-    )
-    return { frame, numbers, pbc }
-  }
-  if (mode !== `plot_row`) {
+  if (!plot_row) {
     const frame = create_trajectory_frame(
       positions ?? [],
       convert_atomic_numbers(numbers),
@@ -355,11 +262,17 @@ function decode_ase(
       metadata,
       forces?.map((force) => ({ force })),
     )
-    return { frame: mode === `numeric` ? encode_frame(frame) : frame, numbers, pbc }
+    return { frame, numbers, pbc }
   }
   // get_density counts a plot row's atoms from numeric atomic numbers, validated and counted
   // once per numbers array (frames without their own share frame 0's)
-  const frame = create_plot_row_frame(numbers_bytes(numbers), cell, pbc, step, metadata)
+  let atomic_numbers = plot_row_numbers.get(numbers)
+  if (!atomic_numbers) {
+    convert_atomic_numbers(numbers)
+    atomic_numbers = Uint8Array.from(numbers)
+    plot_row_numbers.set(numbers, atomic_numbers)
+  }
+  const frame = create_plot_row_frame(atomic_numbers, cell, pbc, step, metadata)
   return { frame, numbers, pbc }
 }
 
@@ -369,8 +282,6 @@ function decode_ase(
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
-  // encode_frame(decode(frame_idx)), decoded without the intermediate Site records
-  read: (frame_idx: number) => NumericFrame
   plot_row_frame: (frame_idx: number) => TrajectoryFrame
   release: () => void
   read_atoms?: ReadAtoms
@@ -449,24 +360,16 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     }
     return { numbers, pbc }
   }
-  function decode_frame(frame_idx: number, mode: `numeric`): NumericFrame
-  function decode_frame(frame_idx: number, mode: `frame` | `plot_row`): TrajectoryFrame
-  function decode_frame(
-    frame_idx: number,
-    mode: AseDecodeMode,
-  ): TrajectoryFrame | NumericFrame {
+  const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
-      const options = {
+      const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
         inherit: () => (frame_idx > 0 ? inherited_topology(frame_idx) : undefined),
         max_json_length: MAX_ASE_HEADER_BYTES,
+        plot_row,
         warn,
-      }
-      const decoded =
-        mode === `numeric`
-          ? decode_ase(view, buffer, offset, frame_idx, options, mode)
-          : decode_ase(view, buffer, offset, frame_idx, options, mode)
+      })
       topologies[frame_idx] = { numbers: decoded.numbers, pbc: decoded.pbc }
       return decoded.frame
     } catch (error) {
@@ -602,9 +505,8 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       mass_unit: `amu`,
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
-    decode: (frame_idx) => decode_frame(frame_idx, `frame`),
-    read: (frame_idx) => decode_frame(frame_idx, `numeric`),
-    plot_row_frame: (frame_idx) => decode_frame(frame_idx, `plot_row`),
+    decode: (frame_idx) => decode_frame(frame_idx, false),
+    plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {
       source = null
     },

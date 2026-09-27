@@ -1,16 +1,11 @@
-import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
+import { element_from_atomic_number } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
-import { same_values } from '$lib/math'
 import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import { encode_frame, type NumericFrame } from '$lib/trajectory/frame'
-import type { ExtxyzColumn, NumericColumn, XyzFrameSpec } from '$lib/trajectory/helpers'
+import type { ExtxyzColumn, XyzFrameSpec } from '$lib/trajectory/helpers'
 import {
-  calc_flat_force_stats,
   calc_force_stats,
-  create_plot_row_frame,
-  create_standard_numeric_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
   iter_xyz_frames,
@@ -318,17 +313,13 @@ function parse_xyz_atom_lines(
   return { elements, positions, forces, site_properties }
 }
 
-// Comment-line fields every decode of a frame shares; warns once about an invalid pbc
-function xyz_frame_header(
-  comment: string,
+export function build_xyz_frame(
+  text: string,
+  frame: XyzFrameSpec,
   opts: { frame_label: string; default_step: number },
   collector: WarningCollector,
-): {
-  step: number
-  lattice_matrix: Matrix3x3 | undefined
-  pbc: Pbc | undefined
-  metadata: Record<string, unknown>
-} {
+): TrajectoryFrame {
+  const { comment } = frame
   const { step, properties, flags, signals } = parse_xyz_comment_metadata(comment)
   const lattice_matrix = parse_extxyz_lattice(comment)
   const parsed_pbc = parse_extxyz_pbc(comment)
@@ -339,221 +330,25 @@ function xyz_frame_header(
     )
   }
   const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
-  return {
-    step: step ?? opts.default_step,
-    lattice_matrix,
-    pbc: lattice_matrix ? pbc : undefined,
-    metadata: { ...properties, ...flags, ...signals },
-  }
-}
-
-export function build_xyz_frame(
-  text: string,
-  frame: XyzFrameSpec,
-  opts: { frame_label: string; default_step: number },
-  collector: WarningCollector,
-): TrajectoryFrame {
-  const { step, lattice_matrix, pbc, metadata } = xyz_frame_header(
-    frame.comment,
-    opts,
-    collector,
-  )
   const { elements, positions, forces, site_properties } = parse_xyz_atom_lines(
     text,
     frame,
     opts.frame_label,
     collector.warn,
   )
+  const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
   // The vectors themselves live on the sites (`force`); only their statistics go here
   Object.assign(metadata, calc_force_stats(forces))
   return create_trajectory_frame(
     positions,
     elements,
     lattice_matrix,
-    pbc,
-    step,
+    lattice_matrix ? pbc : undefined,
+    step ?? opts.default_step,
     metadata,
     site_properties,
     collector.warn,
   )
-}
-
-// === Direct numeric decode ===
-// The indexed reader's hot paths: atom lines scanned straight into typed arrays, no Site,
-// species record or per-atom array. Output equals the Site path's (encode_frame of it, or its
-// plot row), so any frame outside the common all-numeric shape is handed to that path.
-
-type NumericXyzAtoms = {
-  numbers: Uint8Array
-  // null for a plot-row scan, which reads coordinates only to validate them
-  positions: Float64Array | null
-  // null unless every kept atom has a finite force
-  forces: Float64Array | null
-  // `offset` is the column's first token on an atom line
-  extras: (NumericColumn & { ncols: 1 | 3; offset: number })[]
-  // unknown-element warnings, emitted by the caller once the scan succeeded
-  warnings: string[]
-}
-
-const numeric_scanner = new LineScanner()
-
-// null when the frame needs the Site path: a bad or string/bool/move-flag column spec,
-// extra columns other than dense finite 1- or 3-vectors, or any line that path rejects (it
-// then throws its own error, after its own warnings). A plot-row scan ignores extra columns
-// and tokenizes each line only as far as the element, coordinate and force columns.
-function scan_numeric_xyz_atoms(
-  text: string,
-  { atoms_start, end, line, num_atoms, comment }: XyzFrameSpec,
-  frame_label: string,
-  plot_row: boolean,
-): NumericXyzAtoms | null {
-  const { atomic_number_col, symbol_col, pos_col, forces_col, min_cols, layout, spec_error } =
-    parse_extxyz_columns(comment)
-  if (spec_error) return null
-  const extras: NumericXyzAtoms[`extras`] = []
-  if (!plot_row) {
-    for (const [name, column] of Object.entries(layout ?? {})) {
-      if ((MOVE_FLAG_COLUMNS as readonly string[]).includes(name)) return null
-      if (RESERVED_EXTXYZ_COLUMNS.has(name)) continue
-      const key = EXTXYZ_COLUMN_ALIASES[name] ?? name
-      const { type, ncols, offset } = column
-      if (type === `s` || type === `l` || (ncols !== 1 && ncols !== 3)) return null
-      if (key === `__proto__` || extras.some((extra) => extra.key === key)) return null
-      extras.push({ key, ncols, offset, values: new Float64Array(num_atoms * ncols) })
-    }
-  }
-  const max_columns = plot_row
-    ? Math.max(min_cols, symbol_col + 1, forces_col >= 0 ? forces_col + 3 : 0)
-    : Infinity
-  const scanner = numeric_scanner
-  const numbers = new Uint8Array(num_atoms)
-  const positions = plot_row ? null : new Float64Array(num_atoms * 3)
-  const forces = forces_col >= 0 ? new Float64Array(num_atoms * 3) : null
-  const warnings: string[] = []
-  let kept = 0
-  let n_forces = 0
-  let cursor = atoms_start
-  for (let idx = 0; idx < num_atoms; idx++) {
-    const line_start = cursor
-    const eol = line_end(text, line_start, end)
-    cursor = eol + 1
-    const n_cols = scanner.scan(text, line_start, eol, max_columns)
-    if (n_cols < min_cols) return null
-    const pos_x = scanner.num(pos_col)
-    const pos_y = scanner.num(pos_col + 1)
-    const pos_z = scanner.num(pos_col + 2)
-    if (!Number.isFinite(pos_x) || !Number.isFinite(pos_y) || !Number.isFinite(pos_z))
-      return null
-    const element_symbol = scanned_element(scanner, symbol_col, atomic_number_col)
-    if (!element_symbol) {
-      warnings.push(
-        `Skipping XYZ atom with unknown element symbol "${scanner.str(symbol_col)}" in ${frame_label} at line ${line + 2 + idx}`,
-      )
-      continue
-    }
-    const atomic_number = symbol_to_atomic_number(element_symbol)
-    if (atomic_number === undefined)
-      throw new Error(`Element ${element_symbol} has no atomic number (${frame_label})`)
-    numbers[kept] = atomic_number
-    if (positions) {
-      positions[kept * 3] = pos_x
-      positions[kept * 3 + 1] = pos_y
-      positions[kept * 3 + 2] = pos_z
-    }
-    if (forces && n_cols >= forces_col + 3) {
-      const force_x = scanner.num(forces_col)
-      const force_y = scanner.num(forces_col + 1)
-      const force_z = scanner.num(forces_col + 2)
-      if (Number.isFinite(force_x) && Number.isFinite(force_y) && Number.isFinite(force_z)) {
-        forces[kept * 3] = force_x
-        forces[kept * 3 + 1] = force_y
-        forces[kept * 3 + 2] = force_z
-        n_forces++
-      }
-    }
-    for (const { offset, ncols, values } of extras) {
-      if (scanner.count < offset + ncols) return null
-      for (let col = 0; col < ncols; col++) {
-        const value = scanner.num(offset + col)
-        if (!Number.isFinite(value)) return null
-        values[kept * ncols + col] = value
-      }
-    }
-    kept++
-  }
-  if (kept === 0) return null
-  const trim = <T extends Uint8Array | Float64Array>(values: T, width: number): T =>
-    (kept < num_atoms ? values.slice(0, kept * width) : values) as T
-  for (const extra of extras) extra.values = trim(extra.values, extra.ncols)
-  return {
-    numbers: trim(numbers, 1),
-    positions: positions && trim(positions, 3),
-    forces: forces && n_forces === kept ? trim(forces, 3) : null,
-    extras,
-    warnings,
-  }
-}
-
-// encode_frame(build_xyz_frame(...)) without building Site records
-export function read_xyz_numeric_frame(
-  text: string,
-  frame: XyzFrameSpec,
-  opts: { frame_label: string; default_step: number },
-  collector: WarningCollector,
-): NumericFrame {
-  const { step, lattice_matrix, pbc, metadata } = xyz_frame_header(
-    frame.comment,
-    opts,
-    collector,
-  )
-  const atoms = scan_numeric_xyz_atoms(text, frame, opts.frame_label, false)
-  if (!atoms?.positions) return encode_frame(build_xyz_frame(text, frame, opts, collector))
-  const { numbers, positions, forces, extras, warnings } = atoms
-  for (const message of warnings) collector.warn(message)
-  if (forces) Object.assign(metadata, calc_flat_force_stats(forces, numbers.length))
-  // site property order: force, then the extra columns as the spec declares them
-  const vectors = [
-    ...(forces ? [{ key: `force`, values: forces }] : []),
-    ...extras.filter(({ ncols }) => ncols === 3),
-  ]
-  return create_standard_numeric_frame(
-    positions,
-    numbers,
-    lattice_matrix,
-    pbc,
-    step,
-    metadata,
-    vectors,
-    extras.filter(({ ncols }) => ncols === 1),
-    collector.warn,
-  )
-}
-
-// A frame whose plot row (frame_property_row) equals build_xyz_frame's: metadata, force
-// statistics, lattice and element counts, without positions or sites. `previous` holds the
-// last frame's element bytes: an unchanged species column reuses them as the topology key so
-// get_density counts elements once, not per frame.
-export function xyz_plot_row_frame(
-  text: string,
-  frame: XyzFrameSpec,
-  opts: { frame_label: string; default_step: number },
-  collector: WarningCollector,
-  previous: { numbers?: Uint8Array } = {},
-): TrajectoryFrame {
-  const { step, lattice_matrix, pbc, metadata } = xyz_frame_header(
-    frame.comment,
-    opts,
-    collector,
-  )
-  const atoms = scan_numeric_xyz_atoms(text, frame, opts.frame_label, true)
-  if (!atoms) return build_xyz_frame(text, frame, opts, collector)
-  const { forces, warnings } = atoms
-  let { numbers } = atoms
-  for (const message of warnings) collector.warn(message)
-  if (forces) Object.assign(metadata, calc_flat_force_stats(forces, numbers.length))
-  if (previous.numbers && same_values(previous.numbers, numbers)) numbers = previous.numbers
-  previous.numbers = numbers
-  return create_plot_row_frame(numbers, lattice_matrix, pbc, step, metadata, collector.warn)
 }
 
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:

@@ -5,11 +5,10 @@ import { symbol_to_atomic_number } from '$lib/element/helpers'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
-import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
+import { parse_float_token } from '$lib/structure/parsers/shared'
 import { parse_vasp_header } from '$lib/structure/parsers/vasp-header'
 import {
   create_plot_row_frame,
-  create_standard_numeric_frame,
   create_trajectory_frame,
   expand_ion_types,
   TextLines,
@@ -220,16 +219,6 @@ export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
   }
   const unexpected_tear = (spec: XdatcarFrameSpec) =>
     new Error(`XDATCAR frame ${spec.step} ends in a partial line`)
-  const positions_of = (frame_idx: number): Float64Array => {
-    const spec = frames[frame_idx]
-    const positions = new Float64Array(spec.cell.elements.length * 3)
-    const complete = read_xdatcar_positions(live(), spec, (idx, xyz) =>
-      positions.set(xyz, idx * 3),
-    )
-    if (!complete) throw unexpected_tear(spec)
-    return positions
-  }
-  const scanner = new LineScanner()
   return {
     frame_count: frames.length,
     decode: (frame_idx) => {
@@ -238,38 +227,11 @@ export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
       if (!positions) throw unexpected_tear(spec)
       return xdatcar_frame(positions, spec, warn)
     },
-    read: (frame_idx) => {
-      const spec = frames[frame_idx]
-      const { lattice, numbers } = spec.cell
-      return create_standard_numeric_frame(
-        positions_of(frame_idx),
-        numbers.slice(),
-        lattice,
-        [true, true, true],
-        spec.step,
-        {},
-        [],
-        [],
-        warn,
-      )
-    },
     plot_row_frame: (frame_idx) => {
-      const text_lines = live()
       const spec = frames[frame_idx]
-      // A frame whose read would fail gets no plot row: validate every coordinate line with
-      // the allocation-free scanner, and let the real reader report any failure it finds
-      for (let idx = 0; idx < spec.cell.elements.length; idx++) {
-        const [start, end] = text_lines.bounds(spec.line + idx)
-        scanner.scan(text_lines.text, start, end, 3)
-        if (
-          !Number.isFinite(scanner.num(0)) ||
-          !Number.isFinite(scanner.num(1)) ||
-          !Number.isFinite(scanner.num(2))
-        ) {
-          positions_of(frame_idx)
-          break
-        }
-      }
+      // A frame whose read would fail gets no plot row: its coordinate lines are validated
+      // (allocation-free) but not kept
+      if (!read_xdatcar_positions(live(), spec, () => {})) throw unexpected_tear(spec)
       const { lattice, numbers } = spec.cell
       return create_plot_row_frame(numbers, lattice, [true, true, true], spec.step, {}, warn)
     },

@@ -4,18 +4,14 @@
 // session, never all at once. Per-frame scalars for the plot are extracted progressively in
 // chunks so a 100k-frame open stays responsive.
 import { to_error } from '$lib/utils'
-import type { AtomTypeMapping, TrajectoryMetadata } from '../index'
+import { encode_frame } from '../frame'
+import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
 import { open_lammps_frames } from '../parse/lammps'
 import type { WarnFn, WarningCollector } from '../parse/shared'
 import { open_xdatcar_frames } from '../parse/vasp'
 import { frame_property_row } from '../extract'
-import {
-  build_xyz_frame,
-  index_xyz_frames,
-  read_xyz_numeric_frame,
-  xyz_plot_row_frame,
-} from '../parse/xyz'
+import { build_xyz_frame, index_xyz_frames } from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -34,26 +30,18 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
   let text = data
   const frames = index_xyz_frames(text, collector.warn)
-  const frame_opts = (frame_idx: number) => ({
-    frame_label: `indexed frame ${frame_idx}`,
-    default_step: frame_idx,
-  })
-  // element bytes of the last plot row, reused while the species column is unchanged
-  const plot_row_topology: { numbers?: Uint8Array } = {}
+  const decode = (frame_idx: number): TrajectoryFrame =>
+    build_xyz_frame(
+      text,
+      frames[frame_idx],
+      { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
+      collector,
+    )
   return {
     frame_count: frames.length,
-    decode: (frame_idx) =>
-      build_xyz_frame(text, frames[frame_idx], frame_opts(frame_idx), collector),
-    read: (frame_idx) =>
-      read_xyz_numeric_frame(text, frames[frame_idx], frame_opts(frame_idx), collector),
-    plot_row_frame: (frame_idx) =>
-      xyz_plot_row_frame(
-        text,
-        frames[frame_idx],
-        frame_opts(frame_idx),
-        collector,
-        plot_row_topology,
-      ),
+    decode,
+    // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
+    plot_row_frame: decode,
     // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
       text = ``
@@ -88,12 +76,12 @@ export const indexed_text_run = (
     else if (format === `xdatcar`) source = open_xdatcar_frames(data, warn_once)
     else source = open_lammps_frames(data, warn_once, atom_type_mapping)
   }
-  const { frame_count, decode, read } = source
+  const { frame_count, decode } = source
   const properties = new TrajectoryProperties()
   const run = sync_run({
     label: `Indexed ${format} trajectory`,
     frame_count,
-    read,
+    read: (frame_idx) => encode_frame(decode(frame_idx)),
     read_atoms: source.read_atoms,
     atom_masses: source.atom_masses,
     provenance: { ...provenance, format },

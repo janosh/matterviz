@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { encode_frame, materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '$lib/trajectory/frame'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
@@ -61,7 +61,6 @@ import {
   make_torch_sim_signal_buffer,
   make_ase_buffer,
   make_ase_md_buffer,
-  outcome,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
@@ -1597,64 +1596,11 @@ describe(`ASE`, () => {
     }
   })
 
-  // The indexed run's direct read skips Site records; it must equal encoding the decoded
-  // frame exactly: values, -0, channels, metadata, warnings, errors and fallbacks
   // oxfmt-ignore
   const md_frame = (array: AseArray, frame_idx: number, extra: Record<string, unknown> = {}) => ({
     [`positions.`]: array([3, 3], (idx) => (idx === 4 ? -0 : idx * 0.7 + frame_idx)),
     cell: box,
     ...extra,
-  })
-  // oxfmt-ignore
-  it.each<[string, () => ArrayBuffer]>([
-    [`the checked-in relaxation`, () => read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)],
-    [`a slab`, () => ase_frames([true, true, false], box)],
-    [`an all-zero molecule cell`, () => ase_frames([false, false, false], [[0, 0, 0], [0, 0, 0], [0, 0, 0]])],
-    [`calculator forces`, () => ase_frames([true, true, true], box, [[2, 3], [0.3, 0, -0, 0, 0.4, 0]])],
-    [`too few force rows`, () => ase_frames([true, true, true], box, [[1, 3], [0.3, 0, 0]])],
-    [`a NaN force`, () => ase_frames([true, true, true], box, [[2, 3], [0.3, 0, 0, 0, Number.NaN, 0]])],
-    [`momenta, masses and tags`, () => make_ase_md_buffer(5)],
-    [`numbers and pbc changing mid-run`, () => make_ase_buffer([
-      (array) => ({ [`numbers.`]: array([3], (idx) => [8, 1, 1][idx]), pbc: [true, true, true], ...md_frame(array, 0) }),
-      (array) => md_frame(array, 1),
-      (array) => ({ [`numbers.`]: array([2], (idx) => [26, 26][idx]), pbc: [true, false, true], [`positions.`]: array([2, 3], (idx) => idx), cell: box }),
-      (array) => ({ [`positions.`]: array([2, 3], (idx) => -idx), cell: [[3, 0, 0], [0, 3, 0], [0, 0, 0]] }),
-    ])],
-    [`int32 numbers and float32 positions and forces`, () => make_ase_buffer([0, 1].map((frame_idx) => (array) => ({
-      ...(frame_idx === 0 && { [`numbers.`]: array([3], (idx) => 6 + idx, `int32`), pbc: [true, true, true] }),
-      [`positions.`]: array([3, 3], (idx) => idx * 0.1 + frame_idx, `float32`),
-      [`calculator.`]: { energy: frame_idx, [`forces.`]: array([3, 3], (idx) => idx - 4, `float32`) },
-      cell: box,
-    })))],
-    [`unaligned float64 payloads after a float32 one`, () => make_ase_buffer([0, 1].map((frame_idx) => (array) => ({
-      ...(frame_idx === 0 && { [`numbers.`]: array([3], () => 14), pbc: [true, true, true] }),
-      [`initial_charges.`]: array([3], () => 0, `float32`),
-      ...md_frame(array, frame_idx),
-    })))],
-    [`inline positions and a 1-atom flat positions array`, () => make_ase_buffer([
-      () => ({ numbers: [1], pbc: [false, false, false], positions: [[0.5, -0, 2]], cell: box }),
-      (array) => ({ [`positions.`]: array([3], (idx) => idx) }),
-    ])],
-    [`a singular cell`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], () => 1), pbc: [true, true, true], ...md_frame(array, 0), cell: [[1, 0, 0], [2, 0, 0], [0, 0, 1]] })])],
-    [`an unknown atomic number`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], (idx) => idx), pbc: [true, true, true], ...md_frame(array, 0) })])],
-    [`a non-finite position`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([3], () => 1), pbc: [true, true, true], [`positions.`]: array([3, 3], (idx) => (idx === 5 ? Infinity : idx)) })])],
-    [`positions without 3 columns`, () => make_ase_buffer([(array) => ({ [`numbers.`]: array([2], () => 1), pbc: [true, true, true], [`positions.`]: array([2, 2], (idx) => idx) })])],
-  ])(`direct numeric reads of %s equal encoded decoded frames`, (_label, make_buffer) => {
-    const buffer = make_buffer()
-    const [decode_warnings, read_warnings]: string[][] = [[], []]
-    const decoded = open_ase_frames(buffer, (message) => decode_warnings.push(message))
-    const direct = open_ase_frames(buffer, (message) => read_warnings.push(message))
-    const console_warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    onTestFinished(() => console_warn.mockRestore())
-    // forward then backward, so frames inheriting numbers/pbc see the same state in both
-    const order = [...Array(decoded.frame_count).keys()]
-    for (const frame_idx of [...order, ...order.toReversed()]) {
-      const expected = outcome(() => encode_frame(decoded.decode(frame_idx)))
-      const expected_console = console_warn.mock.calls.splice(0)
-      expect(outcome(() => direct.read(frame_idx))).toStrictEqual(expected)
-      expect(console_warn.mock.calls.splice(0)).toStrictEqual(expected_console)
-    }
-    expect(read_warnings).toStrictEqual(decode_warnings)
   })
 
   // ASE repeats numbers/pbc only where they change: a frame without them inherits the nearest
