@@ -1691,6 +1691,47 @@ describe(`ASE`, () => {
     expect(pbc(3)).toEqual([true, false, true])
   })
 
+  // numbers and pbc may come from different earlier frames (reading 4 walks back to 3 and 1,
+  // and must not cache frame 3's numbers for frames 1-2), and a frame whose header cannot be
+  // read breaks only the frames that inherit through it
+  it(`resolves numbers and pbc from separate frames and isolates a corrupt frame`, () => {
+    const water = (array: Parameters<Parameters<typeof make_ase_buffer>[0][number]>[0]) =>
+      array([3], (idx) => [8, 1, 1][idx])
+    const buffer = make_ase_buffer([
+      (array) => ({
+        [`numbers.`]: water(array),
+        pbc: [true, true, true],
+        ...md_frame(array, 0),
+      }),
+      (array) => ({ pbc: [true, false, true], ...md_frame(array, 1) }),
+      (array) => md_frame(array, 2),
+      (array) => ({ [`numbers.`]: array([3], () => 26), ...md_frame(array, 3) }),
+      (array) => md_frame(array, 4),
+      (array) => ({
+        [`numbers.`]: water(array),
+        pbc: [false, false, false],
+        ...md_frame(array, 5),
+      }),
+      (array) => md_frame(array, 6),
+    ])
+    const summary = (source: ReturnType<typeof open_ase_frames>, frame_idx: number) => {
+      const { structure } = source.decode(frame_idx)
+      return {
+        elements: structure.sites.map(({ species }) => species[0].element).join(``),
+        pbc: `lattice` in structure ? structure.lattice.pbc : undefined,
+      }
+    }
+    const source = open_ase_frames(buffer, no_warnings)
+    expect(summary(source, 4)).toEqual({ elements: `FeFeFe`, pbc: [true, false, true] })
+    expect(summary(source, 2)).toEqual({ elements: `OHH`, pbc: [true, false, true] })
+    // frame 4's header length now claims more bytes than any header may hold
+    const view = new DataView(buffer)
+    view.setBigInt64(Number(view.getBigInt64(48 + 4 * 8, true)), 2n ** 40n, true)
+    const corrupt = open_ase_frames(buffer, no_warnings)
+    expect(summary(corrupt, 6)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
+    expect(() => corrupt.decode(4)).toThrow(`frame 4 of 7`)
+  })
+
   it.each([4, 70_000])(
     `analyzes %i atoms in bounded batches using stored momenta and masses`,
     async (n_atoms) => {

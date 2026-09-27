@@ -1339,6 +1339,14 @@ describe(`compute_bonds memo`, () => {
     expect(search.compute_columns(changed_cell)).toEqual(
       pack_bonds(bonding.electroneg_ratio(changed_cell)),
     )
+    // A malformed pbc fails as clearly on this finite path as on the periodic ones
+    for (const pbc of [undefined, [1, 0, 1]]) {
+      const malformed = structuredClone(changed_cell)
+      Object.assign(malformed.lattice, { pbc })
+      expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(
+        `lattice.pbc must be a [boolean, boolean, boolean]`,
+      )
+    }
   })
   test.each([7, 42, 123])(
     `reuses geometric candidates without losing bonds (seed %i)`,

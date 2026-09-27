@@ -83,6 +83,9 @@ export interface AseFrameOptions {
   // frames inherit the last values seen
   fallback_numbers?: number[]
   fallback_pbc?: Pbc
+  // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
+  // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
+  inherit?: () => { numbers?: number[]; pbc?: Pbc } | undefined
   max_json_length?: number
   base_offset?: number
 }
@@ -261,6 +264,7 @@ function decode_ase(
   {
     fallback_numbers,
     fallback_pbc,
+    inherit,
     max_json_length,
     base_offset = 0,
     warn,
@@ -292,7 +296,12 @@ function decode_ase(
       ? ndarray_reader(view, positions_ref, base_offset).shape[0]
       : undefined)
 
-  const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
+  const own_numbers = frame_data[`numbers.`] ?? frame_data.numbers
+  const inherited =
+    (own_numbers === undefined || frame_data.pbc === undefined) && inherit
+      ? inherit()
+      : undefined
+  const numbers_ref = own_numbers ?? fallback_numbers ?? inherited?.numbers
   const numbers: number[] = numbers_ref?.ndarray
     ? read_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
@@ -302,7 +311,7 @@ function decode_ase(
   }
   if (numbers.length !== n_atoms)
     throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
-  const pbc_value = frame_data.pbc ?? fallback_pbc
+  const pbc_value = frame_data.pbc ?? fallback_pbc ?? inherited?.pbc
   if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
   const pbc = ase_pbc(pbc_value)
 
@@ -401,17 +410,50 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       `ASE trajectory frame ${frame_idx} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
       { cause: error },
     )
-  // Numbers and pbc in effect AFTER each decoded frame. ASE repeats them only in frames where
-  // they change, so a frame without its own inherits them from the nearest EARLIER frame in
-  // the file, not from whichever frame was decoded last: random access (scrubbing, strided
-  // analysis) would otherwise give a frame the elements of a later composition change.
+  // Numbers and pbc in effect at each frame, filled in as frames are decoded or scanned. ASE
+  // repeats them only in frames where they change, so a frame without its own inherits them
+  // from the nearest EARLIER frame in the file, never from whichever frame was decoded last:
+  // random access (scrubbing, strided analysis) would otherwise give a frame the elements of a
+  // later composition change.
   const topologies: ({ numbers: number[]; pbc: Pbc } | undefined)[] = []
+  // Walks headers back only until both are found (or a frame whose topology is known), so a
+  // corrupt frame breaks just the frames that really inherit through it, then caches every
+  // frame it passed so later seeks stop early
   const inherited_topology = (frame_idx: number) => {
-    let known = frame_idx - 1
-    while (known >= 0 && !topologies[known]) known--
-    // Resolve the unknown frames in between in file order; each finds its predecessor known
-    for (let idx = known + 1; idx < frame_idx; idx++) decode_frame(idx, `plot_row`)
-    return topologies[frame_idx - 1]
+    let [numbers, pbc]: [number[] | undefined, Pbc | undefined] = [undefined, undefined]
+    let base: { numbers?: number[]; pbc?: Pbc } = {}
+    const passed: { idx: number; numbers?: number[]; pbc?: Pbc }[] = []
+    for (let idx = frame_idx - 1; idx >= 0 && (!numbers || !pbc); idx--) {
+      const known = topologies[idx]
+      if (known) {
+        numbers ??= known.numbers
+        pbc ??= known.pbc
+        base = known
+        break
+      }
+      const header = frame_header(idx)
+      const own_ref = header[`numbers.`] ?? header.numbers
+      const own = {
+        idx,
+        numbers: is_ndarray_ref(own_ref)
+          ? read_ndarray_from_view(live().view, own_ref).flat()
+          : (own_ref as number[] | undefined),
+        pbc: header.pbc === undefined ? undefined : ase_pbc(header.pbc),
+      }
+      passed.push(own)
+      numbers ??= own.numbers
+      pbc ??= own.pbc
+    }
+    // Forward over the passed frames, earliest first, from the known frame the walk stopped at
+    // (if any): each takes its own values or carries the previous ones, and is cached once
+    // both are determined. Frames before a value's source never are: theirs lie further back.
+    let carried = base
+    for (const { idx, ...own } of passed.toReversed()) {
+      carried = { numbers: own.numbers ?? carried.numbers, pbc: own.pbc ?? carried.pbc }
+      if (carried.numbers && carried.pbc)
+        topologies[idx] = { numbers: carried.numbers, pbc: carried.pbc }
+    }
+    return { numbers, pbc }
   }
   function decode_frame(frame_idx: number, mode: `numeric`): NumericFrame
   function decode_frame(frame_idx: number, mode: `frame` | `plot_row`): TrajectoryFrame
@@ -419,13 +461,11 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     frame_idx: number,
     mode: AseDecodeMode,
   ): TrajectoryFrame | NumericFrame {
-    const inherited = frame_idx > 0 ? inherited_topology(frame_idx) : undefined
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
       const options = {
-        fallback_numbers: inherited?.numbers,
-        fallback_pbc: inherited?.pbc,
+        inherit: () => (frame_idx > 0 ? inherited_topology(frame_idx) : undefined),
         max_json_length: MAX_ASE_HEADER_BYTES,
         warn,
       }

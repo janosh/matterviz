@@ -70,6 +70,18 @@ describe(`unwrap_flat_positions`, () => {
     expect(unwrapped).toEqual(reference(pbc))
     expect(unwrapped).not.toEqual(positions) // steps did cross cell faces
   })
+  // Fractional steps are checked one by one: 1e308 + 1e308 overflows, each alone is finite
+  it(`accepts huge but finite steps like the generic path`, () => {
+    const unit: Matrix3x3 = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    const huge = Float64Array.of(0, 0, 0, 1e308, 1e308, 0)
+    expect(unwrap_flat_positions(huge, 2, 1, [unit, unit], [true, true, true])).toEqual(
+      Float64Array.of(0, 0, 0, 0, 0, 0),
+    )
+  })
 })
 
 describe(`curve_slots`, () => {

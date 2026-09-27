@@ -51,9 +51,10 @@ describe(`worker code path`, () => {
 // hundreds of MB) position buffer and redo the analysis; a lag-range edit must
 it(`MsdPlot relabels dt edits without recomputing`, async () => {
   const positions = drift_positions(30)
-  const state = $state<{ msd_options: MsdOptions; result?: MsdResult }>({
+  const state = $state<{ msd_options: MsdOptions; result?: MsdResult; error_msg?: string }>({
     msd_options: { max_lag_fraction: 0.5 },
     result: undefined,
+    error_msg: undefined,
   })
   const component = mount(MsdPlot, {
     target: document.body,
@@ -76,6 +77,12 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
     await settle(6)
     expect(state.result).toBeUndefined()
     expect(document.body.textContent).toContain(`without time_unit`)
+    expect(stub.posted).toHaveLength(1)
+    // correcting it restores the curves and clears the message, still without recomputing
+    state.msd_options = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
+    await settle(6)
+    expect(state.result).toEqual(expected)
+    expect(state.error_msg).toBeUndefined()
     expect(stub.posted).toHaveLength(1)
     state.msd_options = { max_lag_fraction: 0.3, dt: 2, time_unit: `fs` }
     await settle(6)

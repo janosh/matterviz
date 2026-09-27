@@ -145,7 +145,8 @@ function unwrap_diagonal_frame(
     const frac_a = inv_a * (positions[off] - positions[prev])
     const frac_b = inv_b * (positions[off + 1] - positions[prev + 1])
     const frac_c = inv_c * (positions[off + 2] - positions[prev + 2])
-    if (!Number.isFinite(frac_a + frac_b + frac_c)) {
+    // Each on its own: a sum of two finite 1e308 steps overflows to Infinity
+    if (!Number.isFinite(frac_a) || !Number.isFinite(frac_b) || !Number.isFinite(frac_c)) {
       throw new TypeError(
         `Minimum-image displacement is non-finite: from=[${positions.subarray(prev, prev + 3)}], ` +
           `target=[${positions.subarray(off, off + 3)}], fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,

@@ -73,7 +73,10 @@ export function parse_numeric_val(val: CellVal): number | null {
   if (typeof val === `number`) return Number.isFinite(val) ? val : null
   if (typeof val !== `string`) return null
   const sort_attr = get_data_sort_value(val)
-  const num = sort_attr == null ? parse_numeric_string(strip_html(val)) : Number(sort_attr)
+  // a blank data-sort-value marks "no sort key": it must not fall back to numeric text
+  if (sort_attr === null) return null
+  const num =
+    sort_attr === undefined ? parse_numeric_string(strip_html(val)) : Number(sort_attr)
   return num !== null && Number.isFinite(num) ? num : null
 }
 

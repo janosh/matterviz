@@ -171,8 +171,17 @@ export const read_vaspout_bands = (
     // Occupations (FERWE, 0..1) decide the band gap when E_F from the SCF mesh misses a
     // band-path VBM. Same (n_spin, n_kpoints, n_bands) layout as the eigenvalues; any shape
     // mismatch (even an empty dataset) is left to electronic_band_gap, whose error Bands shows
-    // over the still-plotted bands
-    const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as number[][][] | null
+    // over the still-plotted bands. So they are transposed on their OWN shape: cutting them to
+    // the eigenvalue grid would drop an extra band and hand the gap check a plausible table,
+    // and a spin that is not [n_kpoints][n_bands] becomes an empty table it rejects.
+    const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as unknown[] | null
+    const transpose_weights = (spin: unknown): number[][] => {
+      if (!Array.isArray(spin) || !spin.every(Array.isArray)) return []
+      const width = Math.max(0, ...spin.map((kpt: unknown[]) => kpt.length))
+      return Array.from({ length: width }, (_, band_idx) =>
+        spin.map((kpt: number[]) => kpt[band_idx]),
+      )
+    }
 
     const recip_lattice = band_recip_lattice(read_lattice(h5_file))
     const line_mode = line_mode_labels(
@@ -231,8 +240,10 @@ export const read_vaspout_bands = (
       distance,
       bands,
       ...(spin_down_bands ? { spin_down_bands } : {}),
-      ...(fermiweights ? { occupations: transpose(fermiweights[0] ?? []) } : {}),
-      ...(fermiweights?.[1] ? { spin_down_occupations: transpose(fermiweights[1]) } : {}),
+      ...(fermiweights ? { occupations: transpose_weights(fermiweights[0]) } : {}),
+      ...(fermiweights?.[1] !== undefined
+        ? { spin_down_occupations: transpose_weights(fermiweights[1]) }
+        : {}),
       nb_bands: n_bands,
       labels_dict,
       is_spin_polarized: spin_down_bands !== undefined,

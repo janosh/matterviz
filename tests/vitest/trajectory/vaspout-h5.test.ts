@@ -299,15 +299,21 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
   })
 
-  // A malformed dataset still loads the bands; the gap check reports it (Bands shows a notice)
-  it(`leaves an empty fermiweights dataset to the gap check`, async () => {
-    const bands = await read_with_fermiweights([])
+  // A malformed dataset still loads the bands; the gap check reports it (Bands shows a notice).
+  // Occupations keep their own shape: an extra band must not be cut to the eigenvalue grid
+  const grid = (n_kpoints: number, n_bands: number) =>
+    Array.from({ length: n_kpoints }, () => Array.from({ length: n_bands }, () => 1))
+  it.each([
+    [`an empty dataset`, [], `0 occupation rows for 24 bands`],
+    [`an extra band per k-point`, [grid(306, 25)], `25 occupation rows for 24 bands`],
+    [`a missing k-point`, [grid(305, 24)], `occupation row 0 needs 306 finite values`],
+    [`a 1-D dataset`, [1, 0, 1], `0 occupation rows for 24 bands`],
+  ])(`leaves %s to the gap check`, async (_label, weights, message) => {
+    const bands = await read_with_fermiweights(weights as number[][][])
     const occupations = bands?.occupations
     if (!bands || !occupations) throw new Error(`expected occupations`)
     expect(bands.bands).toHaveLength(24)
-    expect(() => electronic_band_gap(bands.bands, occupations)).toThrow(
-      `occupation row 0 needs 306 finite values`,
-    )
+    expect(() => electronic_band_gap(bands.bands, occupations)).toThrow(message)
   })
 
   it(`expands single-point SCF runs into pseudo-frames and attaches DOS`, async () => {

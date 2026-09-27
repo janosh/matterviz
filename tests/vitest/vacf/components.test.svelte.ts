@@ -166,9 +166,14 @@ it.each([true, false])(
   async (stored) => {
     const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
     const input = orbit_input(60, stored)
-    const state = $state<{ vacf_options: VacfOptions; result?: VacfResult }>({
+    const state = $state<{
+      vacf_options: VacfOptions
+      result?: VacfResult
+      error_msg?: string
+    }>({
       vacf_options: {},
       result: undefined,
+      error_msg: undefined,
     })
     const component = mount(VacfPlot, {
       target: document.body,
@@ -187,6 +192,12 @@ it.each([true, false])(
       await settle(6)
       expect(state.result).toBeUndefined()
       expect(document.body.textContent).toContain(`without time_unit`)
+      expect(compute).toHaveBeenCalledTimes(1)
+      // correcting it restores the curves and clears the message, still without recomputing
+      state.vacf_options = edited
+      await settle(6)
+      expect(state.result).toEqual(calc_vacf(input, edited))
+      expect(state.error_msg).toBeUndefined()
       expect(compute).toHaveBeenCalledTimes(1)
       state.vacf_options = { ...edited, max_lag_fraction: 0.3 }
       await settle(6)

@@ -65,8 +65,15 @@
   $effect(() => {
     if (!input) return
     const { dt, time_unit, vdos } = vacf_options
+    // Without a frame_result (computing, or failed) any error is the worker's own, which only
+    // a new compute clears
+    if (!frame_result) {
+      result = undefined
+      return
+    }
     try {
-      result = frame_result && revise_vacf(frame_result, { dt, time_unit, vdos })
+      result = revise_vacf(frame_result, { dt, time_unit, vdos })
+      error_msg = undefined // a corrected dt/unit edit starts no compute that would clear it
     } catch (exc) {
       result = undefined
       error_msg = to_error(exc).message

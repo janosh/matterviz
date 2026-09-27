@@ -1596,6 +1596,8 @@ export class BondSearch {
     const stride = columns?.stride ?? 0
     // Inline column reads avoid millions of accessor calls during candidate reuse.
     const lattice = `lattice` in structure ? structure.lattice : undefined
+    // The finite path never reaches lattice_pbc_or_throw, yet periodic_for reads lattice.pbc
+    if (lattice) lattice_pbc_or_throw(structure)
     const cell_key = JSON.stringify(lattice)
     // A periodic candidate superset survives wrapping. Use it only when each source pair
     // has at most one image inside the search radius; the output still bonds finite sites.

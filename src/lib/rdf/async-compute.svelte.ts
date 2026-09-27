@@ -26,11 +26,21 @@ export const RDF_WORKER_COUNT = Math.max(
   Math.min(6, (globalThis.navigator?.hardwareConcurrency ?? 2) - 2),
 )
 const pool = Array.from({ length: RDF_WORKER_COUNT }, create_rdf_client)
-let next_client = 0
+// Requests in flight per client: each goes to the least loaded one, so a lane that finishes
+// early never queues behind a busy worker while another sits idle
+const in_flight = pool.map(() => 0)
 
 export const calc_frame_rdfs_async: WorkerClient<AnyStructure, FrameRdfOptions, RdfPattern[]> =
   Object.assign(
-    (...args: Parameters<(typeof pool)[number]>) => pool[next_client++ % pool.length](...args),
+    async (...args: Parameters<(typeof pool)[number]>) => {
+      const client_idx = in_flight.indexOf(Math.min(...in_flight))
+      in_flight[client_idx]++
+      try {
+        return await pool[client_idx](...args)
+      } finally {
+        in_flight[client_idx]--
+      }
+    },
     {
       cancel: (reason?: string) => {
         for (const client of pool) client.cancel(reason)
