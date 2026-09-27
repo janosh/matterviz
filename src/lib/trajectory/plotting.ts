@@ -284,10 +284,10 @@ const extends_rows = (
 
 function claim_accumulator(rows: readonly TrajectoryMetadata[]): PropertyAccumulator {
   const stored = rows.length > 0 ? accumulators.get(rows[0]) : undefined
-  const resumes = stored !== undefined && extends_rows(rows, stored.rows)
-  const accumulator: PropertyAccumulator = resumes
-    ? stored
-    : { rows: [], frame_numbers: [], stats: new Map(), coordinates: new Set() }
+  const accumulator: PropertyAccumulator =
+    stored && extends_rows(rows, stored.rows)
+      ? stored
+      : { rows: [], frame_numbers: [], stats: new Map(), coordinates: new Set() }
   // A lagging snapshot (e.g. a throttled mirror of a longer live array) scans on its own
   // rather than discarding the longer scan it is a prefix of.
   if (rows.length > 0 && !(stored && stored.rows.length > rows.length))
@@ -595,22 +595,13 @@ type PreparedScatter = Pick<
   DataSeries,
   `x` | `y` | `raw_y` | `markers` | `line_underlays` | `line_style`
 >
-// Keyed by the source arrays (x, then y, then raw_y or y): visibility changes rebuild series
-// objects around the same arrays, so re-showing a series reuses its sampled arrays.
-type ScatterCache = WeakMap<
+// Last preparation per y array, reused while x, raw_y, limit and color also match: visibility
+// changes rebuild series objects around the same arrays, so re-showing a series reuses its
+// sampled arrays.
+const scatter_cache = new WeakMap<
   readonly number[],
-  WeakMap<readonly number[], WeakMap<readonly number[], Map<string, PreparedScatter>>>
->
-const scatter_cache: ScatterCache = new WeakMap()
-const weak_entry = <Key extends object, Value>(
-  map: WeakMap<Key, Value>,
-  key: Key,
-  create: () => Value,
-): Value => {
-  let value = map.get(key)
-  if (value === undefined) map.set(key, (value = create()))
-  return value
-}
+  { key: unknown[]; prepared: PreparedScatter }
+>()
 
 // Downsample and smooth long series for display. Hidden series (visible === false) pass
 // through untouched: sampling ~20 unused columns on every property batch dominated streaming.
@@ -627,17 +618,11 @@ export function prepare_trajectory_scatter_series(
     if (data_series.x.length <= limit || data_series.visible === false) return data_series
     const source_raw_y = data_series.raw_y ?? data_series.y
     const color = data_series.line_style?.stroke ?? `currentColor`
-    const by_limit = weak_entry(
-      weak_entry(
-        weak_entry(scatter_cache, data_series.x, () => new WeakMap()),
-        data_series.y,
-        () => new WeakMap(),
-      ),
-      source_raw_y,
-      () => new Map(),
-    )
-    const cache_key = `${limit}\0${color}`
-    let prepared = by_limit.get(cache_key)
+    const key = [data_series.x, source_raw_y, limit, color]
+    const cached = scatter_cache.get(data_series.y)
+    let prepared = cached?.key.every((part, idx) => part === key[idx])
+      ? cached.prepared
+      : undefined
     if (!prepared) {
       let window_size = Math.max(5, Math.round(data_series.x.length / 50))
       if (window_size % 2 === 0) window_size++
@@ -663,9 +648,9 @@ export function prepare_trajectory_scatter_series(
         ],
         line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
       }
-      by_limit.set(cache_key, prepared)
+      scatter_cache.set(data_series.y, { key, prepared })
     }
-    return { ...data_series, ...prepared, metadata: data_series.metadata }
+    return { ...data_series, ...prepared }
   })
 }
 

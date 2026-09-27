@@ -577,15 +577,14 @@
     hovered_bond_key = bond_key
   }
 
-  const atom_hover_props = (site_idx: number | null) => {
-    if (!interactive || site_idx == null) return {}
-    const hover = (event: StoppableEvent) => hover_front_atom(site_idx, event)
-    return {
-      onpointerenter: hover,
-      onpointermove: hover,
-      onpointerleave: () => schedule_atom_hover_clear(site_idx),
-    }
-  }
+  const atom_hover_props = (site_idx: number | null) =>
+    !interactive || site_idx == null
+      ? {}
+      : {
+          onpointerenter: (event: StoppableEvent) => hover_front_atom(site_idx, event),
+          onpointermove: (event: StoppableEvent) => hover_front_atom(site_idx, event),
+          onpointerleave: () => schedule_atom_hover_clear(site_idx),
+        }
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
@@ -1641,9 +1640,8 @@
     }
   })
 
-  // One face geometry for the component's lifetime (replaced only when a frame outgrows its
-  // capacity): trajectory playback rewrites the attributes in place instead of allocating
-  // and uploading a fresh BufferGeometry per frame. Normals come precomputed from the merge.
+  // One face geometry rewritten in place across frames (replaced only when a frame outgrows
+  // it) instead of a fresh BufferGeometry per playback frame; normals come from the merge.
   let polyhedra_faces: BufferGeometry | null = $state.raw(null)
   $effect(() => {
     if (!polyhedra_buffers?.triangle_count) return

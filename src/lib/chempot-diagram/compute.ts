@@ -1049,14 +1049,13 @@ export function compute_chempot_diagram(
   // Project domain vertices from N-D to display axes (column extraction; the identity in
   // subsystem mode, where compute_elements is display_elements)
   const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
-  const domains = Object.fromEntries(
-    Object.entries(nd_domains).map(([formula, pts]) => [
-      formula,
-      pts.map((point) => col_indices.map((idx) => point[idx])),
-    ]),
-  )
   return {
-    domains,
+    domains: Object.fromEntries(
+      Object.entries(nd_domains).map(([formula, pts]) => [
+        formula,
+        pts.map((point) => col_indices.map((idx) => point[idx])),
+      ]),
+    ),
     elements: display_elements,
     lims: col_indices.map((col_idx) => compute_lims[col_idx]),
   }

@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { read_maybe_gz } from '../test-fixtures'
-import { synthetic_extxyz } from './fixtures'
+import { outcome, synthetic_extxyz } from './fixtures'
 
 // Two frames of Si2, written with `columns` prefixed to each atom line
 const two_frames = (properties: string, columns: string[][]): string =>
@@ -158,13 +158,6 @@ test(`rejects a non-integer atomic number instead of truncating it to an element
 // The indexed run's numeric read and plot-row scan skip Site records; both must equal the
 // Site path exactly (encode_frame of build_xyz_frame, and its frame_property_row), including
 // warnings, errors, -0 and every frame shape that has to fall back to that path
-const outcome = <T>(read: () => T): { value: T } | { error: string } => {
-  try {
-    return { value: read() }
-  } catch (error) {
-    return { error: String(error) }
-  }
-}
 const frame_text = (comment: string, lines: string[]): string =>
   `${lines.length}\n${comment}\n${lines.join(`\n`)}\n`
 const cell = `Lattice="5 0 0 0 5 0 0 0 5"`

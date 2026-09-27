@@ -64,18 +64,13 @@
   // Without an input `result` is the caller's precomputed curves, left untouched
   $effect(() => {
     if (!input) return
-    const { dt, time_unit, vdos } = vacf_options
-    // Without a frame_result (computing, or failed) any error is the worker's own, which only
-    // a new compute clears
-    if (!frame_result) {
-      result = undefined
-      return
-    }
+    result = undefined
+    // No frame_result while computing or after a failure, whose error only a new compute clears
+    if (!frame_result) return
     try {
-      result = revise_vacf(frame_result, { dt, time_unit, vdos })
+      result = revise_vacf(frame_result, vacf_options)
       error_msg = undefined // a corrected dt/unit edit starts no compute that would clear it
     } catch (exc) {
-      result = undefined
       error_msg = to_error(exc).message
     }
   })

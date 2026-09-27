@@ -116,6 +116,7 @@ export function frame_atom_batch(
       (sample_idx + 1) * sites.length * width,
     )
   })
+  const [velocity_signal, energy_signal, selection_signal] = channels
   const frame_width = 6 + 3 * vector_keys.length
   const velocity_column =
     velocity_key && !Object.hasOwn(frame.scalar_columns ?? {}, velocity_key)
@@ -137,9 +138,9 @@ export function frame_atom_batch(
     positions[idx * 3 + 2] = coordinates[offset + 2] + origin_z
   }
   // Standard elements by atomic number: packed sites take two table reads per atom instead
-  // of a symbol lookup followed by a Map lookup. Missing elements leave a NaN mass.
-  const standard_masses =
-    mass_source === `standard` ? new Float64Array(count).fill(Number.NaN) : undefined
+  // of a symbol lookup followed by a Map lookup. Written straight into the batch; missing
+  // elements leave a NaN mass for the check below.
+  const standard_masses = mass_source === `standard` ? masses : undefined
   if (sites instanceof Uint8Array) {
     const { numbers, masses: element_masses } = ELEMENT_TABLES
     for (let idx = 0; idx < count; idx++) {
@@ -156,14 +157,11 @@ export function frame_atom_batch(
     }
   }
   const mass_property = masses && !standard_masses ? property_reader(`mass`) : undefined
-  const velocity_signal = channels[0]
   const velocity_property =
     velocities && velocity_key && !velocity_signal && velocity_column < 0
       ? property_reader(velocity_key)
       : undefined
-  const energy_signal = channels[1]
   const energy_property = energies && energy_key ? property_reader(energy_key) : undefined
-  const selection_signal = channels[2]
   const selection_property =
     selected && selection_key ? property_reader(selection_key) : undefined
   // Per-atom validation keeps its original order (mass, velocity, energy, selection) so the

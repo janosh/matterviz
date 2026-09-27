@@ -50,7 +50,7 @@ import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { rejection_of } from '../setup'
 import { make_crystal, read_binary_test_file, read_maybe_gz } from '../test-fixtures'
-import type { H5Spec } from './fixtures'
+import type { AseArray, H5Spec } from './fixtures'
 import {
   create_dataset,
   flat_frames,
@@ -61,6 +61,7 @@ import {
   make_torch_sim_signal_buffer,
   make_ase_buffer,
   make_ase_md_buffer,
+  outcome,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
@@ -870,7 +871,9 @@ describe(`LAMMPS`, () => {
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
       `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {
-    await expect(open(content, `bad.lammpstrj`)).rejects.toThrow(error)
+    // the indexed open's scan makes every check the eager parse does
+    for (const index_above_bytes of [Infinity, 0])
+      await expect(open(content, `bad.lammpstrj`, { index_above_bytes })).rejects.toThrow(error)
   })
 
   // Only the final frame of a dump may be incomplete: the writer is still appending
@@ -1069,7 +1072,7 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
   })
 })
 
-// === XYZ / extended XYZ ===
+// === Indexed XDATCAR and LAMMPS dumps ===
 
 // Above index_above_bytes, XDATCAR and LAMMPS dumps open indexed: frames decode on demand and
 // plot rows come from headers. Everything a run exposes must equal the eager run's.
@@ -1160,6 +1163,8 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
   })
 })
+
+// === XYZ / extended XYZ ===
 
 describe(`XYZ`, () => {
   const xyz_frame = (atoms: string[], comment = ``): string =>
@@ -1594,15 +1599,8 @@ describe(`ASE`, () => {
 
   // The indexed run's direct read skips Site records; it must equal encoding the decoded
   // frame exactly: values, -0, channels, metadata, warnings, errors and fallbacks
-  const outcome = <T>(read: () => T): { value: T } | { error: string } => {
-    try {
-      return { value: read() }
-    } catch (error) {
-      return { error: String(error) }
-    }
-  }
   // oxfmt-ignore
-  const md_frame = (array: Parameters<Parameters<typeof make_ase_buffer>[0][number]>[0], frame_idx: number, extra: Record<string, unknown> = {}) => ({
+  const md_frame = (array: AseArray, frame_idx: number, extra: Record<string, unknown> = {}) => ({
     [`positions.`]: array([3, 3], (idx) => (idx === 4 ? -0 : idx * 0.7 + frame_idx)),
     cell: box,
     ...extra,
@@ -1660,43 +1658,11 @@ describe(`ASE`, () => {
   })
 
   // ASE repeats numbers/pbc only where they change: a frame without them inherits the nearest
-  // EARLIER frame's, whatever was decoded last. Reading frame 2 (Fe2, slab) before frame 1 used
-  // to hand frame 1 two Fe atoms for its three positions.
-  it(`inherits numbers and pbc from the preceding frame under random access`, () => {
-    const buffer = make_ase_buffer([
-      (array) => ({
-        [`numbers.`]: array([3], (idx) => [8, 1, 1][idx]),
-        pbc: [true, true, true],
-        ...md_frame(array, 0),
-      }),
-      (array) => md_frame(array, 1),
-      (array) => ({
-        [`numbers.`]: array([2], () => 26),
-        pbc: [true, false, true],
-        [`positions.`]: array([2, 3], (idx) => idx),
-        cell: box,
-      }),
-      (array) => ({ [`positions.`]: array([2, 3], (idx) => -idx), cell: box }),
-    ])
-    const source = open_ase_frames(buffer, no_warnings)
-    const elements = (frame_idx: number) =>
-      source.decode(frame_idx).structure.sites.map(({ species }) => species[0].element)
-    expect(elements(3)).toEqual([`Fe`, `Fe`])
-    expect(elements(1)).toEqual([`O`, `H`, `H`])
-    const pbc = (frame_idx: number) => {
-      const { structure } = source.decode(frame_idx)
-      return `lattice` in structure ? structure.lattice.pbc : undefined
-    }
-    expect(pbc(1)).toEqual([true, true, true])
-    expect(pbc(3)).toEqual([true, false, true])
-  })
-
-  // numbers and pbc may come from different earlier frames (reading 4 walks back to 3 and 1,
-  // and must not cache frame 3's numbers for frames 1-2), and a frame whose header cannot be
-  // read breaks only the frames that inherit through it
-  it(`resolves numbers and pbc from separate frames and isolates a corrupt frame`, () => {
-    const water = (array: Parameters<Parameters<typeof make_ase_buffer>[0][number]>[0]) =>
-      array([3], (idx) => [8, 1, 1][idx])
+  // EARLIER frame's, never the last decoded one's. They may come from different frames
+  // (reading 4 walks back to 3 and 1, and must not cache frame 3's numbers for frames 1-2),
+  // and a frame whose header cannot be read breaks only the frames that inherit through it
+  it(`inherits numbers and pbc from separate earlier frames and isolates a corrupt frame`, () => {
+    const water = (array: AseArray) => array([3], (idx) => [8, 1, 1][idx])
     const buffer = make_ase_buffer([
       (array) => ({
         [`numbers.`]: water(array),
@@ -1724,6 +1690,11 @@ describe(`ASE`, () => {
     const source = open_ase_frames(buffer, no_warnings)
     expect(summary(source, 4)).toEqual({ elements: `FeFeFe`, pbc: [true, false, true] })
     expect(summary(source, 2)).toEqual({ elements: `OHH`, pbc: [true, false, true] })
+    // own numbers without own pbc still inherit the pbc
+    expect(summary(source, 3)).toEqual({ elements: `FeFeFe`, pbc: [true, false, true] })
+    // a walk stopping at an already decoded frame takes that frame's topology
+    expect(summary(source, 5)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
+    expect(summary(source, 6)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
     // frame 4's header length now claims more bytes than any header may hold
     const view = new DataView(buffer)
     view.setBigInt64(Number(view.getBigInt64(48 + 4 * 8, true)), 2n ** 40n, true)

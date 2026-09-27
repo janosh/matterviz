@@ -4,11 +4,20 @@
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { make_rng } from '../numeric-helpers'
 
+// A call's value or its error message, so a fast path and its reference compare as one outcome
+export const outcome = <T>(read: () => T): { value: T } | { error: string } => {
+  try {
+    return { value: read() }
+  } catch (error) {
+    return { error: String(error) }
+  }
+}
+
 // ULM container (what ASE's Trajectory writes) of the given frame headers. Each header is
 // built with `array`, which appends a payload (float64 unless a dtype is given) and returns
 // its ndarray descriptor.
 type AseDtype = `float64` | `float32` | `int32`
-type AseArray = (
+export type AseArray = (
   shape: number[],
   value: (idx: number) => number,
   dtype?: AseDtype,

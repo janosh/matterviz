@@ -7,8 +7,8 @@ import * as math from '$lib/math'
 import type { TrajectoryFrame } from '$lib/trajectory/index'
 import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import { parse_vasp_header } from '$lib/structure/parsers/vasp-header'
-import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
+  create_plot_row_frame,
   create_standard_numeric_frame,
   create_trajectory_frame,
   expand_ion_types,
@@ -271,22 +271,7 @@ export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
         }
       }
       const { lattice, numbers } = spec.cell
-      const frame = create_trajectory_frame(
-        [],
-        [],
-        lattice,
-        [true, true, true],
-        spec.step,
-        {},
-        undefined,
-        warn,
-      )
-      numeric_sites.set(
-        frame.structure,
-        new NumericSites(numbers, new Float64Array(0), [], []),
-      )
-      snapshot_topologies.set(frame.structure, numbers)
-      return frame
+      return create_plot_row_frame(numbers, lattice, [true, true, true], spec.step, {}, warn)
     },
     release: () => {
       lines = null

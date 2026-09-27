@@ -1,5 +1,6 @@
 import { wrap_frac_coord } from '$lib/structure/pbc'
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import { same_values } from '$lib/math'
 import { cart_to_frac_with_fallback, make_lattice } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
 import type { AnyStructure, LatticeType, Site } from '$lib/structure'
@@ -329,13 +330,6 @@ export function create_numeric_md_frame(
   }
 }
 
-const equal_bytes = (left: Uint8Array, right: Uint8Array): boolean => {
-  if (left === right) return true
-  if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
-  return true
-}
-
 // A viewer projection never enters a run cache or an analysis result. Fixed topology reuses
 // species and labels; coordinates/properties get fresh references so Svelte invalidates
 // tooltips, measurements and tables and retained display frames never change underneath them.
@@ -369,7 +363,7 @@ export class FrameView {
     const previous = this.topology
     const same_rows = fixed
       ? fixed.revision === previous?.revision && sites.length === previous.count
-      : Boolean(elements && previous?.elements && equal_bytes(elements, previous.elements))
+      : Boolean(elements && previous?.elements && same_values(elements, previous.elements))
     const topology =
       previous && same_rows
         ? previous

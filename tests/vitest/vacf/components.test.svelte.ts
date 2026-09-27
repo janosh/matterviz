@@ -157,56 +157,56 @@ describe(`VacfPlot`, () => {
       await unmount(component)
     }
   })
-})
 
-// dt, time_unit and the VDOS window only relabel/rescale a finished correlation, so editing
-// them must not re-run it; the relabelled result is exactly calc_vacf's for the new options
-it.each([true, false])(
-  `VacfPlot applies dt and VDOS edits without recomputing (stored=%s)`,
-  async (stored) => {
-    const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
-    const input = orbit_input(60, stored)
-    const state = $state<{
-      vacf_options: VacfOptions
-      result?: VacfResult
-      error_msg?: string
-    }>({
-      vacf_options: {},
-      result: undefined,
-      error_msg: undefined,
-    })
-    const component = mount(VacfPlot, {
-      target: document.body,
-      props: bind_props({ input }, state),
-    })
-    try {
-      await settle(6)
-      expect(compute).toHaveBeenCalledTimes(1)
-      const edited: VacfOptions = { dt: 2, time_unit: `fs`, vdos: { window: `gaussian` } }
-      state.vacf_options = edited
-      await settle(6)
-      expect(compute).toHaveBeenCalledTimes(1)
-      expect(state.result).toEqual(calc_vacf(input, edited))
-      // an invalid timestep is reported in place of the curves, still without recomputing
-      state.vacf_options = { dt: 2 }
-      await settle(6)
-      expect(state.result).toBeUndefined()
-      expect(document.body.textContent).toContain(`without time_unit`)
-      expect(compute).toHaveBeenCalledTimes(1)
-      // correcting it restores the curves and clears the message, still without recomputing
-      state.vacf_options = edited
-      await settle(6)
-      expect(state.result).toEqual(calc_vacf(input, edited))
-      expect(state.error_msg).toBeUndefined()
-      expect(compute).toHaveBeenCalledTimes(1)
-      state.vacf_options = { ...edited, max_lag_fraction: 0.3 }
-      await settle(6)
-      expect(compute).toHaveBeenCalledTimes(2)
-    } finally {
-      await unmount(component)
-    }
-  },
-)
+  // dt, time_unit and the VDOS window only relabel/rescale a finished correlation, so editing
+  // them must not re-run it; the relabelled result is exactly calc_vacf's for the new options
+  it.each([true, false])(
+    `applies dt and VDOS edits without recomputing (stored=%s)`,
+    async (stored) => {
+      const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
+      const input = orbit_input(60, stored)
+      const state = $state<{
+        vacf_options: VacfOptions
+        result?: VacfResult
+        error_msg?: string
+      }>({
+        vacf_options: {},
+        result: undefined,
+        error_msg: undefined,
+      })
+      const component = mount(VacfPlot, {
+        target: document.body,
+        props: bind_props({ input }, state),
+      })
+      try {
+        await settle(6)
+        expect(compute).toHaveBeenCalledTimes(1)
+        const edited: VacfOptions = { dt: 2, time_unit: `fs`, vdos: { window: `gaussian` } }
+        state.vacf_options = edited
+        await settle(6)
+        expect(compute).toHaveBeenCalledTimes(1)
+        expect(state.result).toEqual(calc_vacf(input, edited))
+        // an invalid timestep is reported in place of the curves, still without recomputing
+        state.vacf_options = { dt: 2 }
+        await settle(6)
+        expect(state.result).toBeUndefined()
+        expect(document.body.textContent).toContain(`without time_unit`)
+        expect(compute).toHaveBeenCalledTimes(1)
+        // correcting it restores the curves and clears the message, still without recomputing
+        state.vacf_options = edited
+        await settle(6)
+        expect(state.result).toEqual(calc_vacf(input, edited))
+        expect(state.error_msg).toBeUndefined()
+        expect(compute).toHaveBeenCalledTimes(1)
+        state.vacf_options = { ...edited, max_lag_fraction: 0.3 }
+        await settle(6)
+        expect(compute).toHaveBeenCalledTimes(2)
+      } finally {
+        await unmount(component)
+      }
+    },
+  )
+})
 
 describe(`TrajectoryVacfPane`, () => {
   const run_collect = async () => {

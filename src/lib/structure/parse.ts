@@ -846,11 +846,8 @@ export const parse_cif = (content: string): Crystal => {
   // discards as same-row duplicates: dropping it halves the index lookups of a P1 file
   const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops).filter(
     ({ coefficients, translations }) =>
-      !(
-        coefficients.every((row, dim) =>
-          row.every((coef, col) => coef === (dim === col ? 1 : 0)),
-        ) && translations.every((shift) => shift === 0)
-      ),
+      translations.some((shift) => shift !== 0) ||
+      coefficients.some((row, dim) => row.some((coef, col) => coef !== (dim === col ? 1 : 0))),
   )
 
   // Candidate lattice-centering translations from the space-group symbol (R

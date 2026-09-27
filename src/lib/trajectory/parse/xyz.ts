@@ -1,14 +1,15 @@
 import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
 import type { ElementSymbol } from '$lib/element/types'
 import type { Matrix3x3 } from '$lib/math'
+import { same_values } from '$lib/math'
 import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import { encode_frame, type NumericFrame } from '$lib/trajectory/frame'
 import type { ExtxyzColumn, NumericColumn, XyzFrameSpec } from '$lib/trajectory/helpers'
 import {
   calc_flat_force_stats,
   calc_force_stats,
+  create_plot_row_frame,
   create_standard_numeric_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
@@ -388,7 +389,8 @@ type NumericXyzAtoms = {
   positions: Float64Array | null
   // null unless every kept atom has a finite force
   forces: Float64Array | null
-  extras: (NumericColumn & { ncols: 1 | 3 })[]
+  // `offset` is the column's first token on an atom line
+  extras: (NumericColumn & { ncols: 1 | 3; offset: number })[]
   // unknown-element warnings, emitted by the caller once the scan succeeded
   warnings: string[]
 }
@@ -409,17 +411,15 @@ function scan_numeric_xyz_atoms(
     parse_extxyz_columns(comment)
   if (spec_error) return null
   const extras: NumericXyzAtoms[`extras`] = []
-  const extra_columns: ExtxyzColumn[] = []
   if (!plot_row) {
     for (const [name, column] of Object.entries(layout ?? {})) {
       if ((MOVE_FLAG_COLUMNS as readonly string[]).includes(name)) return null
       if (RESERVED_EXTXYZ_COLUMNS.has(name)) continue
       const key = EXTXYZ_COLUMN_ALIASES[name] ?? name
-      const { type, ncols } = column
+      const { type, ncols, offset } = column
       if (type === `s` || type === `l` || (ncols !== 1 && ncols !== 3)) return null
       if (key === `__proto__` || extras.some((extra) => extra.key === key)) return null
-      extras.push({ key, ncols, values: new Float64Array(num_atoms * ncols) })
-      extra_columns.push(column)
+      extras.push({ key, ncols, offset, values: new Float64Array(num_atoms * ncols) })
     }
   }
   const max_columns = plot_row
@@ -471,10 +471,8 @@ function scan_numeric_xyz_atoms(
         n_forces++
       }
     }
-    for (let extra_idx = 0; extra_idx < extras.length; extra_idx++) {
-      const { offset, ncols } = extra_columns[extra_idx]
+    for (const { offset, ncols, values } of extras) {
       if (scanner.count < offset + ncols) return null
-      const { values } = extras[extra_idx]
       for (let col = 0; col < ncols; col++) {
         const value = scanner.num(offset + col)
         if (!Number.isFinite(value)) return null
@@ -553,30 +551,9 @@ export function xyz_plot_row_frame(
   let { numbers } = atoms
   for (const message of warnings) collector.warn(message)
   if (forces) Object.assign(metadata, calc_flat_force_stats(forces, numbers.length))
-  const row_frame = create_trajectory_frame(
-    [],
-    [],
-    lattice_matrix,
-    pbc,
-    step,
-    metadata,
-    undefined,
-    collector.warn,
-  )
-  if (previous.numbers && equal_bytes(previous.numbers, numbers)) numbers = previous.numbers
+  if (previous.numbers && same_values(previous.numbers, numbers)) numbers = previous.numbers
   previous.numbers = numbers
-  numeric_sites.set(
-    row_frame.structure,
-    new NumericSites(numbers, new Float64Array(0), [], []),
-  )
-  snapshot_topologies.set(row_frame.structure, numbers)
-  return row_frame
-}
-
-const equal_bytes = (left: Uint8Array, right: Uint8Array): boolean => {
-  if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
-  return true
+  return create_plot_row_frame(numbers, lattice_matrix, pbc, step, metadata, collector.warn)
 }
 
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:

@@ -101,10 +101,11 @@ export function calc_msd(
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
-  const { dt: delta_time = 1, max_lag_fraction = 0.5, max_lags = 200 } = options
+  const { max_lag_fraction = 0.5, max_lags = 200 } = options
 
   validate_position_stream_layout(input, `calc_msd`, 2)
-  const time_unit = resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
+  // Up front so a bad dt/time_unit fails before the analysis; with_lag_time_axis applies them
+  resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
 
   // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
   // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
@@ -184,26 +185,25 @@ export function calc_msd(
     return { label, n_atoms: curve_sizes[slot], msd, n_origins: [...n_origins] }
   }
 
-  return {
-    lags,
-    times: lags.map((lag) => lag * delta_time),
-    curves: curve_slots(labels).map(make_curve),
-    dt: delta_time,
-    time_unit,
-    x_label: lag_axis_label(time_unit),
-    n_frames,
-    n_atoms,
-    unwrapped,
-    lag_stride,
-    frame_stride: input.frame_stride,
-  }
+  return with_lag_time_axis(
+    {
+      lags,
+      curves: curve_slots(labels).map(make_curve),
+      n_frames,
+      n_atoms,
+      unwrapped,
+      lag_stride,
+      frame_stride: input.frame_stride,
+    },
+    options,
+  )
 }
 
 // dt and time_unit only label the lag axis: the curves are in frames either way. Relabelling a
 // finished result lets a dt edit skip the whole displacement analysis (a 10k-frame x 1k-atom
-// MSD takes seconds); the time axis is exactly what calc_msd would have produced with them.
+// MSD takes seconds); calc_msd labels its own result through this too.
 export function with_lag_time_axis(
-  result: MsdResult,
+  result: Omit<MsdResult, 'times' | 'dt' | 'time_unit' | 'x_label'>,
   { dt, time_unit }: Pick<MsdOptions, 'dt' | 'time_unit'>,
 ): MsdResult {
   const unit = resolve_lag_time_unit(`calc_msd`, dt, time_unit, `ps`)

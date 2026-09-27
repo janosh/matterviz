@@ -435,7 +435,6 @@
 
     {#if geometry}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
-        <!-- Inner surfaces draw before outer ones -->
         <T.Mesh
           {geometry}
           material={materials[surface_idx]}

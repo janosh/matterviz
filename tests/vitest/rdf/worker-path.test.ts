@@ -41,7 +41,7 @@ test(`ships positions, lattice and species, and matches the sync per-pair histog
 })
 
 // Each frame goes to the least-loaded worker of the pool: sequential requests keep reusing the
-// idle first worker (round-robin spawned a new one per request), concurrent ones spread out
+// idle first worker, concurrent ones spread out
 test(`dispatches each request to the least-loaded pool worker`, async () => {
   const crystal = make_crystal(4, [[`Na`, [0, 0, 0]]])
   const options = { cutoff: 4, n_bins: 10 }

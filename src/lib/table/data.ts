@@ -56,7 +56,7 @@ export const cell_text = (val: CellVal): string => {
 // mean toward it)
 const get_data_sort_value = (val: string): string | null | undefined => {
   const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
-  return captured === undefined ? undefined : captured.trim() ? captured : null
+  return captured?.trim() === `` ? null : captured
 }
 
 const parse_numeric_string = (val: string): number | null => {
@@ -85,16 +85,15 @@ export function parse_numeric_val(val: CellVal): number | null {
 // sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
 // as a non-string it could only answer "the other one first" to in BOTH directions - not a
 // total order, so the same rows came out differently depending on the order they went in.
-// null marks a missing sort key: an invalid value, or a blank data-sort-value on a cell whose
-// text isn't numeric (a blank key never falls back to the text).
+// null marks a missing sort key: an invalid value or a blank data-sort-value (which never
+// falls back to the text).
 const get_sort_val = (val: CellVal): string | number | null => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
   const num = parse_numeric_val(val)
   if (num !== null) return num
-  if (typeof val !== `string`) return cell_text(val)
   // a data-sort-value that isn't a number still overrides the visible text
-  const sort_attr = get_data_sort_value(val)
+  const sort_attr = typeof val === `string` ? get_data_sort_value(val) : undefined
   return sort_attr === undefined ? cell_text(val) : sort_attr
 }
 

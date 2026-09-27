@@ -351,6 +351,8 @@ describe(`generate_plot_series`, () => {
     )
     expect(reshown.x).toBe(smoothed.x)
     expect(reshown.visible).toBe(true)
+    // a new point limit (plot resize) must not reuse the cached samples
+    expect(prepare_trajectory_scatter_series([raw_series[0]], 250)[0].x).toHaveLength(250)
   })
 
   it.each([

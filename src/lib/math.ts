@@ -129,6 +129,17 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
   return null
 }
 
+// Element-wise === of two array-likes (typed columns, palettes); cheaper than hashing for the
+// "did this column change" checks on hot playback paths
+export const same_values = <Value>(
+  left: ArrayLike<Value>,
+  right: ArrayLike<Value>,
+): boolean => {
+  if (left.length !== right.length) return false
+  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
+  return true
+}
+
 // Calculate all lattice parameters in a single efficient pass
 export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix

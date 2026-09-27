@@ -206,7 +206,7 @@ export interface FrameSweepOptions extends FrameRange {
   max_frames: number
   // Frames in flight at once, for visitors backed by a worker pool. Visits still START in
   // frame order (a visitor's synchronous prefix sees frames in sequence) and results come
-  // back in frame order; 1 keeps just one frame in memory.
+  // back in frame order.
   concurrency?: number
   on_progress?: (done: number, total: number) => void
   // Stops the sweep between frames; the visitor gets it too for its worker request

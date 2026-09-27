@@ -817,7 +817,6 @@
   </ScatterPlot>
   {#snippet frame_children(ctx: UserContentProps)}
     {@render user_children?.(ctx)}
-    <!-- non-fatal: bad occupations only drop the gap annotation, the bands still render -->
     {#if gap_result.error}
       {@const { t: top, r: right } = ctx.pad}
       <StatusMessage

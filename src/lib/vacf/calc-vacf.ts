@@ -11,13 +11,13 @@
 // lags x origins x atoms loop: the sum over origins of v(t) . v(t + lag) is the
 // autocorrelation of each velocity component, i.e. the inverse transform of its power
 // spectrum. Zero-padding every component to >= n_frames + max_lag makes the circular
-// correlation linear at every reported lag, so the result is the exact origin sum up to round-off: measured against the direct
-// Welford loop at 2000 frames x 64 atoms (damped oscillators + noise, stored and
-// central-difference velocities), max |Δ| = 8e-16 on VACF values of magnitude 0.17 and
-// 8.5e-14 on VDOS values of magnitude 19 (both <= 5e-15 of the curve maximum, i.e. a few
-// tens of f64 eps), in 14 ms against 315 ms. The cost scales as n log n instead of n^2 in
-// the frame count, and no longer needs an origin-thinning budget: 2000 atoms x 2000 frames
-// run in 0.27 s.
+// correlation linear at every reported lag, so the result is the exact origin sum up to
+// round-off: measured against the direct Welford loop at 2000 frames x 64 atoms (damped
+// oscillators + noise, stored and central-difference velocities), max |Δ| = 8e-16 on VACF
+// values of magnitude 0.17 and 8.5e-14 on VDOS values of magnitude 19 (both <= 5e-15 of the
+// curve maximum, i.e. a few tens of f64 eps), in 14 ms against 315 ms. The cost scales as
+// n log n instead of n^2 in the frame count, and no longer needs an origin-thinning budget:
+// 2000 atoms x 2000 frames run in 0.27 s.
 import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '$lib/fft'
 import {
   frequency_unit_label,
@@ -101,11 +101,11 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     max_lag_fraction = 0.5,
     max_lags = 4096,
     velocity_source: requested_source = `auto`,
-    vdos: vdos_options = {},
   } = options
 
   validate_position_stream_layout(input, `calc_vacf`, 1)
-  const time_unit = resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
+  // Up front so a bad dt/time_unit fails before the correlation; revise_vacf applies them
+  resolve_lag_time_unit(`calc_vacf`, options.dt, options.time_unit, `fs`)
   if (!Number.isInteger(max_lags) || max_lags < 2) {
     fail(`max_lags must be an integer >= 2, got ${max_lags}`)
   }
@@ -210,7 +210,7 @@ export function calc_vacf(input: VacfInput, options: VacfOptions = {}): VacfResu
     unwrapped,
     frame_stride: input.frame_stride,
   }
-  return revise_vacf(frame_result, { dt: options.dt, time_unit, vdos: vdos_options })
+  return revise_vacf(frame_result, options)
 }
 
 // What calc_vacf returns for new dt / time_unit / VDOS settings, derived from a finished result

@@ -26,6 +26,7 @@ import {
   type BondData,
   type BondPlacements,
 } from './bond-rendering'
+import { same_values } from '$lib/math'
 import { InstanceColors } from './instance-colors'
 import type { BondPair } from './index'
 
@@ -40,14 +41,11 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   readonly instanceColor = null
   override count = 0
   thickness = 1
-  // Bond topology and palette the colors were last written for. Playback frames mostly keep
-  // their bonds, and the per-cylinder loop was ~70% of a 100k-atom frame switch (18 of 26 ms)
-  // while changing nothing, so an identical topology and palette skip it. Copies, because
-  // equal contents are what matter: columns arrive fresh per frame and palettes are edited in
-  // place.
-  private colored:
-    | { indices: Uint32Array; orders: Uint8Array; site_colors: string[] }
-    | undefined
+  // Bond topology and palette the colors were last written for: playback frames mostly keep
+  // their bonds, so an identical topology and palette skip the per-cylinder loop (~70% of a
+  // 100k-atom frame switch). Copies, since columns arrive fresh per frame and palettes are
+  // edited in place.
+  private colored?: { indices: Uint32Array; orders: Uint8Array; site_colors: string[] }
 
   constructor(source = new BufferGeometry(), material?: Material, capacity = 0) {
     const geometry = new InstancedBufferGeometry()
@@ -202,12 +200,6 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   dispose(): void {
     this.geometry.dispose()
   }
-}
-
-const same_values = <Value>(left: ArrayLike<Value>, right: ArrayLike<Value>): boolean => {
-  if (left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
-  return true
 }
 
 let bond_picker: { instances: BondMesh; candidate: Mesh } | undefined

@@ -1,8 +1,8 @@
 // Lazily decoded run over a large in-memory XYZ/EXTXYZ, XDATCAR or LAMMPS dump text or ASE
 // .traj buffer. Owns the payload and a private frame index (line offsets for the text
-// formats, the ULM offsets table for ASE);
-// frames are decoded on read and cached by the session, never all at once. Per-frame scalars
-// for the plot are extracted progressively in chunks so a 100k-frame open stays responsive.
+// formats, the ULM offsets table for ASE); frames are decoded on read and cached by the
+// session, never all at once. Per-frame scalars for the plot are extracted progressively in
+// chunks so a 100k-frame open stays responsive.
 import { to_error } from '$lib/utils'
 import type { AtomTypeMapping, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
@@ -62,11 +62,9 @@ const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
   }
 }
 
-export type IndexedFormat = `xyz` | `ase` | `xdatcar` | `lammps`
-
 export const indexed_text_run = (
   data: string | ArrayBuffer,
-  format: IndexedFormat,
+  format: `xyz` | `ase` | `xdatcar` | `lammps`,
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
   atom_type_mapping?: AtomTypeMapping,

@@ -40,6 +40,23 @@ const find_bond = (bonds: BondPair[], idx_a: number, idx_b: number): BondPair | 
       (bond.site_idx_1 === idx_b && bond.site_idx_2 === idx_a),
   )
 
+// Order-independent bond list (discovery order follows the search's bin width)
+const sort_bonds = (bonds: BondPair[]): BondPair[] =>
+  bonds.toSorted(
+    (left, right) => left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
+  )
+
+// 4600 H atoms (10.6M pairs) on a 17 x 17 x 16 grid
+const hydrogen_grid = (spacing: number): [string, Vec3][] =>
+  Array.from({ length: 4600 }, (_, idx) => [
+    `H`,
+    [
+      (idx % 17) * spacing,
+      (Math.floor(idx / 17) % 17) * spacing,
+      Math.floor(idx / 289) * spacing,
+    ],
+  ])
+
 describe(`Bonding Algorithms`, () => {
   test(`electroneg_ratio returns valid BondPair format`, () => {
     const structure = make_struct([
@@ -1283,14 +1300,9 @@ describe(`compute_bonds memo`, () => {
         make_struct([{ element: element === `Fe` ? `O` : `Fe`, xyz: [1e6, 1e6, 1e6] }])
           .sites[0],
       )
-      const canonical = (bonds: BondPair[]) =>
-        bonds.toSorted(
-          (left, right) =>
-            left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
-        )
       for (const strength_threshold of [0, 0.1, 0.3, 0.8, 1.2]) {
-        const actual = canonical(bonding.electroneg_ratio(source, { strength_threshold }))
-        const expected = canonical(bonding.electroneg_ratio(mixed, { strength_threshold }))
+        const actual = sort_bonds(bonding.electroneg_ratio(source, { strength_threshold }))
+        const expected = sort_bonds(bonding.electroneg_ratio(mixed, { strength_threshold }))
         expect(actual).toEqual(expected)
       }
     },
@@ -1314,18 +1326,13 @@ describe(`compute_bonds memo`, () => {
       { element: `Si`, xyz: [4, 0, 0] },
     ])
     source.lattice.matrix = matrix as math.Matrix3x3
-    const canonical = (bonds: BondPair[]) =>
-      bonds.toSorted(
-        (left, right) =>
-          left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
-      )
     for (const position of [39.9, 0.1, 0.2, 0.3, 39.8, 0.4, 1, 2, 3]) {
       const structure = structuredClone(source)
       structure.sites[0].xyz[0] = position
-      const actual = canonical(
+      const actual = sort_bonds(
         new BondFrame(structure, search.compute_columns(structure)).materialize(),
       )
-      const expected = canonical(bonding.electroneg_ratio(structure))
+      const expected = sort_bonds(bonding.electroneg_ratio(structure))
       expect(actual).toEqual(expected)
       expect(actual.every(({ cell_shift }) => cell_shift === undefined)).toBe(true)
       if (position === 0.1) expect(find_bond(actual, 0, 1)).toBeDefined()
@@ -1339,14 +1346,6 @@ describe(`compute_bonds memo`, () => {
     expect(search.compute_columns(changed_cell)).toEqual(
       pack_bonds(bonding.electroneg_ratio(changed_cell)),
     )
-    // A malformed pbc fails as clearly on this finite path as on the periodic ones
-    for (const pbc of [undefined, [1, 0, 1]]) {
-      const malformed = structuredClone(changed_cell)
-      Object.assign(malformed.lattice, { pbc })
-      expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(
-        `lattice.pbc must be a [boolean, boolean, boolean]`,
-      )
-    }
   })
   test.each([7, 42, 123])(
     `reuses geometric candidates without losing bonds (seed %i)`,
@@ -1539,6 +1538,12 @@ describe(`compute_bonds memo`, () => {
     const rand = make_rng(11)
     const gauss = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand())
     const sigmas = [0.01, 0.01, 0.01, 0.01, 0.3, 0.3, 0.3, 0.01, 0.01, 0.01, 0.01]
+    const canonical = (columns: ReturnType<typeof search.compute_columns>) =>
+      Array.from({ length: columns.lengths.length }, (_, idx) => [
+        columns.indices[idx * 2],
+        columns.indices[idx * 2 + 1],
+        columns.lengths[idx],
+      ]).toSorted((left, right) => left[0] - right[0] || left[1] - right[1])
     const skinned = sigmas.map((sigma) => {
       const frame = wrap_frame_coordinates(
         create_numeric_md_frame(
@@ -1558,48 +1563,22 @@ describe(`compute_bonds memo`, () => {
       const structure = numeric
         ? view.update(frame).structure
         : materialize_frame(frame).structure
-      const canonical = (columns: ReturnType<typeof search.compute_columns>) =>
-        Array.from({ length: columns.lengths.length }, (_, idx) => [
-          columns.indices[idx * 2],
-          columns.indices[idx * 2 + 1],
-          columns.lengths[idx],
-        ]).toSorted((left, right) => left[0] - right[0] || left[1] - right[1])
       const actual = search.compute_columns(structure)
       const expected = pack_bonds(bonding.electroneg_ratio(structure))
       expect(canonical(actual)).toEqual(canonical(expected))
       expect(actual.lengths.length).toBeGreaterThan(sites.length / 3)
-      return Reflect.get(search, `candidates`) !== undefined
+      return Number(Reflect.get(search, `candidates`) !== undefined)
     })
-    // build, 3 reuses | rebuild (paid off), rebuilt without reuse -> plain, plain |
-    // plain (big jump from the last fast frame), slow again -> skinned build, 2 reuses
-    expect(skinned).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-    ])
+    // 1 = frame served by skinned candidates. build, 3 reuses | rebuild (paid off), rebuilt
+    // without reuse -> plain, plain | plain (big jump from the last fast frame), slow again
+    // -> skinned build, 2 reuses
+    expect(skinned.join(``)).toBe(`11111000111`)
   })
 
   // 4600 atoms inside 0.2 A: every pair lies below min_bond_dist, so the plain band keeps none,
   // while the skin-widened band keeps all 10.6M, past the pair budget
   test(`falls back to a plain search when skinned candidates exceed the pair budget`, () => {
-    const blob = make_molecule(
-      Array.from({ length: 4600 }, (_, idx) => [
-        `H`,
-        [
-          (idx % 17) * 0.012,
-          (Math.floor(idx / 17) % 17) * 0.012,
-          Math.floor(idx / 289) * 0.012,
-        ],
-      ]),
-    )
+    const blob = make_molecule(hydrogen_grid(0.012))
     const search = new bonding.BondSearch()
     expect(search.compute_columns(blob)).toEqual(pack_bonds([]))
     expect(bonding.electroneg_ratio(blob)).toEqual([])
@@ -2314,12 +2293,7 @@ describe(`neighbor_query`, () => {
     )
     // The cloud is small but every one of 4600 sites sees every other: 10.6M pairs, more
     // than the lists could hold in memory. Refused mid-sweep rather than allocated.
-    const dense = make_molecule(
-      Array.from({ length: 4600 }, (_, idx) => [
-        `H`,
-        [(idx % 17) * 0.5, (Math.floor(idx / 17) % 17) * 0.5, Math.floor(idx / 289) * 0.5],
-      ]),
-    )
+    const dense = make_molecule(hydrogen_grid(0.5))
     expect(() => bonding.neighbor_query(dense, { cutoff: 100 })).toThrow(
       /more than 10,000,000 pairs within 100 A of 4600 sites/,
     )
@@ -2333,20 +2307,11 @@ describe(`neighbor_query`, () => {
   // inside the longest reach; only ~60k H-H pairs lie in their own band. Pairs outside
   // their element pair's band must not count towards the pair budget.
   test(`bond perception stores only contacts inside their element pair's band`, () => {
-    const hydrogen = Array.from({ length: 4600 }, (_, idx): [string, Vec3] => [
-      `H`,
-      [(idx % 17) * 0.5, (Math.floor(idx / 17) % 17) * 0.5, Math.floor(idx / 289) * 0.5],
-    ])
+    const hydrogen = hydrogen_grid(0.5)
     const options = { metal_metal_penalty: 1e100, max_distance_ratio: 100 }
     const mixed = make_molecule([...hydrogen, [`Cs`, [40, 0, 0]], [`Cs`, [45, 0, 0]]])
-    // discovery order follows the bin width, i.e. the longest reach
-    const canonical = (bonds: BondPair[]) =>
-      bonds.toSorted(
-        (left, right) =>
-          left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
-      )
-    const bonds = canonical(bonding.electroneg_ratio(mixed, options))
-    const hydrogen_bonds = canonical(
+    const bonds = sort_bonds(bonding.electroneg_ratio(mixed, options))
+    const hydrogen_bonds = sort_bonds(
       bonding.electroneg_ratio(make_molecule(hydrogen), options),
     )
     expect(hydrogen_bonds.length).toBeGreaterThan(4600 * 2)
@@ -2503,6 +2468,8 @@ describe(`neighbor_query`, () => {
       } as unknown as typeof crystal
       expect(() => bonding.neighbor_query(malformed, { cutoff: 3 })).toThrow(/lattice\.pbc/)
       expect(() => calc_coordination_nums(malformed)).toThrow(/lattice\.pbc/)
+      // BondSearch's finite path reads lattice.pbc for its periodic candidate superset
+      expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(/lattice\.pbc/)
       // an explicit override still works on the same object
       expect(
         bonding.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] }).n_centers,

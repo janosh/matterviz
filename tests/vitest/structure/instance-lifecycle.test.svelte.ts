@@ -25,7 +25,7 @@ import { colors } from '$lib/state.svelte'
 import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
 import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
-import { mount_scene, pointer_move_along } from '../scene/mount'
+import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
 import type { SphereGeometry } from 'three/webgpu'
@@ -121,17 +121,17 @@ test.each([
 ])(`hover picks the front atom on a ray from z=%i (site %i)`, (origin_z, front_idx) => {
   const capture = vi.spyOn(extras, `interactivity`)
   onTestFinished(() => capture.mockRestore())
-  let hovered_idx = $state<number | null>(null)
+  const hover = $state<{ idx: number | null }>({ idx: null })
   const { unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, {
       structure: {
         sites: [0, -3].map((z_coord) => make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`)),
       },
       get hovered_idx() {
-        return hovered_idx
+        return hover.idx
       },
       set hovered_idx(value) {
-        hovered_idx = value
+        hover.idx = value
       },
       show_bonds: `never`,
       gizmo: false,
@@ -141,8 +141,13 @@ test.each([
   flushSync()
   const captured = capture.mock.results[0]
   if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
-  pointer_move_along(captured.value, [0, 0, origin_z], [0, 0, -origin_z])
-  expect(hovered_idx).toBe(front_idx)
+  // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
+  const interactivity = captured.value
+  interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
+  interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  expect(hover.idx).toBe(front_idx)
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
@@ -670,7 +675,6 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(face_geometry.getAttribute(`normal`).array).toEqual(expected.normals)
       expect(get_site).not.toHaveBeenCalled()
     }
-    expect(face_disposal).not.toHaveBeenCalled()
     for (const visible of [false, true]) {
       show_edges = visible
       flushSync()

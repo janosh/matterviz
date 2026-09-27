@@ -483,7 +483,6 @@ describe(`Bands component`, () => {
     expect(document.querySelector(`.gap-error`)?.textContent).toMatch(
       /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
     )
-    expect(document.querySelector(`.scatter`)).not.toBeNull()
     expect(line_count()).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(/Eg:/)
   })

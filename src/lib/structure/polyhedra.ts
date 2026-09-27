@@ -94,13 +94,11 @@ function set_bounds(geometry: BufferGeometry, positions: Float32Array): void {
     if (pos_z < min_z) min_z = pos_z
     if (pos_z > max_z) max_z = pos_z
   }
+  // no positions leave min/max at +-Infinity, which is exactly Box3.makeEmpty()
   geometry.boundingBox ??= new Box3()
+  geometry.boundingBox.min.set(min_x, min_y, min_z)
+  geometry.boundingBox.max.set(max_x, max_y, max_z)
   geometry.boundingSphere ??= new Sphere()
-  if (positions.length === 0) geometry.boundingBox.makeEmpty()
-  else {
-    geometry.boundingBox.min.set(min_x, min_y, min_z)
-    geometry.boundingBox.max.set(max_x, max_y, max_z)
-  }
   geometry.boundingBox.getBoundingSphere(geometry.boundingSphere)
 }
 
@@ -129,7 +127,7 @@ export function update_polyhedra_faces(
     [`color`, colors],
   ] as const) {
     const attribute = target.getAttribute(name) as BufferAttribute
-    ;(attribute.array as Float32Array).set(values)
+    attribute.array.set(values)
     attribute.clearUpdateRanges()
     attribute.addUpdateRange(0, values.length)
     attribute.needsUpdate = true
@@ -851,16 +849,14 @@ export type PolyhedraColoring =
 // Grow-only scratch shared by every merge (synchronous, so never used re-entrantly).
 // Crease detection keys undirected hull edges as lo * 2^16 + hi (< 2^32, fits Uint32) in an
 // open-addressed table whose slots hold edge_idx + 1 (0 = empty), and records per edge the
-// first adjacent face normal plus shared/crease flags, in first-encounter order.
+// first adjacent face normal plus whether it is hidden, in first-encounter order.
 let edge_slots = new Int32Array(64)
 let edge_keys = new Uint32Array(32)
 let edge_normals = new Float64Array(96)
-let edge_flags = new Uint8Array(32) // bit 0 = shared by a second face, bit 1 = crease
+let edge_hidden = new Uint8Array(32) // 1 = a later face shares it coplanar with the first
 let site_rgb = new Float32Array(0) // linear rgb per site (vertex/center modes)
 let site_rgb_ready = new Uint8Array(0)
 let vert_rgb = new Float32Array(48)
-const EDGE_SHARED = 1
-const EDGE_CREASE = 2
 
 // Merge all polyhedra into single non-indexed position/normal/color arrays (one draw call)
 // plus crease-edge segments for outlines. Edges interior to coplanar face groups
@@ -898,7 +894,7 @@ export function merge_polyhedra_buffers(
   if (edge_slots.length < table_size) edge_slots = new Int32Array(table_size)
   if (edge_keys.length < max_faces * 3) {
     edge_keys = new Uint32Array(max_faces * 3)
-    edge_flags = new Uint8Array(max_faces * 3)
+    edge_hidden = new Uint8Array(max_faces * 3)
     edge_normals = new Float64Array(max_faces * 9)
   }
   if (vert_rgb.length < max_verts * 3) vert_rgb = new Float32Array(max_verts * 3)
@@ -940,12 +936,9 @@ export function merge_polyhedra_buffers(
     let n_poly_edges = 0
     for (const face of faces) {
       // Indexed reads, not destructuring: this loop runs once per rendered triangle
-      const idx_a = face[0]
-      const idx_b = face[1]
-      const idx_c = face[2]
-      const vert_a = verts[idx_a]
-      const vert_b = verts[idx_b]
-      const vert_c = verts[idx_c]
+      const vert_a = verts[face[0]]
+      const vert_b = verts[face[1]]
+      const vert_c = verts[face[2]]
       const axis_x = vert_a[0]
       const axis_y = vert_a[1]
       const axis_z = vert_a[2]
@@ -980,65 +973,53 @@ export function merge_polyhedra_buffers(
       positions[offset + 8] = pixel_z
       // Render normal replicating computeVertexNormals on the stored float32 positions:
       // (c - b) x (a - b), rounded to float32, then Vector3.normalize (length || 1) in float32
-      const a_x = positions[offset]
-      const a_y = positions[offset + 1]
-      const a_z = positions[offset + 2]
       const b_x = positions[offset + 3]
       const b_y = positions[offset + 4]
       const b_z = positions[offset + 5]
       const cb_x = positions[offset + 6] - b_x
       const cb_y = positions[offset + 7] - b_y
       const cb_z = positions[offset + 8] - b_z
-      const ab_x = a_x - b_x
-      const ab_y = a_y - b_y
-      const ab_z = a_z - b_z
+      const ab_x = positions[offset] - b_x
+      const ab_y = positions[offset + 1] - b_y
+      const ab_z = positions[offset + 2] - b_z
       const cross_x = Math.fround(cb_y * ab_z - cb_z * ab_y)
       const cross_y = Math.fround(cb_z * ab_x - cb_x * ab_z)
       const cross_z = Math.fround(cb_x * ab_y - cb_y * ab_x)
       const inv_len =
         // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- matches Vector3.length bit for bit
         1 / (Math.sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z) || 1)
-      for (let corner = 0; corner < 9; corner += 3) {
-        normals[offset + corner] = cross_x * inv_len
-        normals[offset + corner + 1] = cross_y * inv_len
-        normals[offset + corner + 2] = cross_z * inv_len
+      for (let corner = 0; corner < 3; corner++) {
+        const out = offset + corner * 3
+        const rgb = face[corner] * 3
+        normals[out] = cross_x * inv_len
+        normals[out + 1] = cross_y * inv_len
+        normals[out + 2] = cross_z * inv_len
+        colors[out] = vert_rgb[rgb]
+        colors[out + 1] = vert_rgb[rgb + 1]
+        colors[out + 2] = vert_rgb[rgb + 2]
       }
-      colors[offset] = vert_rgb[idx_a * 3]
-      colors[offset + 1] = vert_rgb[idx_a * 3 + 1]
-      colors[offset + 2] = vert_rgb[idx_a * 3 + 2]
-      colors[offset + 3] = vert_rgb[idx_b * 3]
-      colors[offset + 4] = vert_rgb[idx_b * 3 + 1]
-      colors[offset + 5] = vert_rgb[idx_b * 3 + 2]
-      colors[offset + 6] = vert_rgb[idx_c * 3]
-      colors[offset + 7] = vert_rgb[idx_c * 3 + 1]
-      colors[offset + 8] = vert_rgb[idx_c * 3 + 2]
       offset += 9
 
       for (let side = 0; side < 3; side++) {
-        const from = side === 0 ? idx_a : side === 1 ? idx_b : idx_c
-        const target = side === 0 ? idx_b : side === 1 ? idx_c : idx_a
+        const from = face[side]
+        const target = face[(side + 1) % 3]
         const key = from < target ? from * 65536 + target : target * 65536 + from
-        let slot = (Math.imul(key, 0x9e3779b1) >>> 0) & table_mask
-        let edge_idx = -1
-        while (edge_slots[slot] !== 0) {
-          if (edge_keys[edge_slots[slot] - 1] === key) {
-            edge_idx = edge_slots[slot] - 1
-            break
-          }
+        let slot = Math.imul(key, 0x9e3779b1) & table_mask
+        while (edge_slots[slot] !== 0 && edge_keys[edge_slots[slot] - 1] !== key)
           slot = (slot + 1) & table_mask
-        }
+        let edge_idx = edge_slots[slot] - 1 // -1: empty slot, first face on this edge
         if (edge_idx >= 0) {
           const dot =
             normal_x * edge_normals[edge_idx * 3] +
             normal_y * edge_normals[edge_idx * 3 + 1] +
             normal_z * edge_normals[edge_idx * 3 + 2]
-          // the last face to reach an edge decides its crease flag, as before
-          edge_flags[edge_idx] = EDGE_SHARED | (dot < 1 - coplanar_tol ? EDGE_CREASE : 0)
+          // the last face to reach an edge decides whether it is hidden
+          edge_hidden[edge_idx] = dot < 1 - coplanar_tol ? 0 : 1
         } else {
           edge_idx = n_poly_edges++
           edge_slots[slot] = edge_idx + 1
           edge_keys[edge_idx] = key
-          edge_flags[edge_idx] = 0
+          edge_hidden[edge_idx] = 0
           edge_normals[edge_idx * 3] = normal_x
           edge_normals[edge_idx * 3 + 1] = normal_y
           edge_normals[edge_idx * 3 + 2] = normal_z
@@ -1051,7 +1032,7 @@ export function merge_polyhedra_buffers(
     // shared 3F/2 pool is dropped whole, triangles included, else the buffers would gap.
     let n_edges = 0
     for (let edge_idx = 0; edge_idx < n_poly_edges; edge_idx++) {
-      if (edge_flags[edge_idx] !== EDGE_SHARED) n_edges++
+      if (!edge_hidden[edge_idx]) n_edges++
     }
     if (edge_offset + n_edges * 6 > edge_positions.length) {
       skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
@@ -1059,7 +1040,7 @@ export function merge_polyhedra_buffers(
       continue
     }
     for (let edge_idx = 0; edge_idx < n_poly_edges; edge_idx++) {
-      if (edge_flags[edge_idx] === EDGE_SHARED) continue
+      if (edge_hidden[edge_idx]) continue
       const key = edge_keys[edge_idx]
       const from_idx = key >>> 16
       const to_idx = key & 0xffff

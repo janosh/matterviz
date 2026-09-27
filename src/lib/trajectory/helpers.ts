@@ -15,7 +15,12 @@ import {
   make_lattice,
 } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
+import {
+  make_site,
+  numeric_sites,
+  NumericSites,
+  snapshot_topologies,
+} from '$lib/structure/site'
 import type { NumericFrame } from './frame'
 import type { TrajectoryFrame, TrajectoryPositionStream } from './index'
 import type { WarnFn } from './parse/shared'
@@ -240,6 +245,32 @@ export function create_standard_numeric_frame(
   }
 }
 
+// A frame holding only what its plot row reads (metadata, lattice and element counts), no
+// positions or sites. `numbers` doubles as the topology key, so frames sharing one array get
+// their elements counted once.
+export const create_plot_row_frame = (
+  numbers: Uint8Array,
+  lattice_matrix: math.Matrix3x3 | undefined,
+  pbc: Pbc | undefined,
+  step: number,
+  metadata: Record<string, unknown>,
+  warn?: WarnFn,
+): TrajectoryFrame => {
+  const frame = create_trajectory_frame(
+    [],
+    [],
+    lattice_matrix,
+    pbc,
+    step,
+    metadata,
+    undefined,
+    warn,
+  )
+  numeric_sites.set(frame.structure, new NumericSites(numbers, new Float64Array(0), [], []))
+  snapshot_topologies.set(frame.structure, numbers)
+  return frame
+}
+
 // A strided preview keeps full-topology indices without scanning every atom's species.
 export const create_sampled_frame = (
   positions: Float64Array,
@@ -394,22 +425,20 @@ export class TextLines {
     this.count = count
     this.starts = starts
   }
+  // Offset just past line `idx`'s content: split_lines drops the `\r` of a `\r\n` ending
+  // (the last line has none after trim)
+  private end(idx: number): number {
+    if (idx === this.count - 1) return this.target
+    const end = this.starts[idx + 1] - 1
+    return this.text.charCodeAt(end - 1) === 13 ? end - 1 : end
+  }
   line(idx: number): string | undefined {
     if (idx < 0 || idx >= this.count) return undefined
-    const start = this.starts[idx]
-    if (idx === this.count - 1) return this.text.slice(start, this.target)
-    // split_lines drops the `\r` of a `\r\n` ending (the last line has none after trim)
-    let end = this.starts[idx + 1] - 1
-    if (this.text.charCodeAt(end - 1) === 13) end--
-    return this.text.slice(start, end)
+    return this.text.slice(this.starts[idx], this.end(idx))
   }
   // Offset of line `idx` in `text` and the offset just past its content, for scanners
   bounds(idx: number): [number, number] {
-    const start = this.starts[idx]
-    if (idx === this.count - 1) return [start, this.target]
-    let end = this.starts[idx + 1] - 1
-    if (this.text.charCodeAt(end - 1) === 13) end--
-    return [start, end]
+    return [this.starts[idx], this.end(idx)]
   }
 }
 

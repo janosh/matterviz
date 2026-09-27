@@ -210,7 +210,7 @@ export async function collect_trajectory_rdf(
       }
       const volume = calc_lattice_params(structure.lattice.matrix).volume
       const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
-      return { frame_number, patterns, volume }
+      return { patterns, volume }
     },
   )
   const n_frames = frame_numbers.length
@@ -221,7 +221,7 @@ export async function collect_trajectory_rdf(
   const accumulators = frames[0].patterns.map((pattern) => {
     if (!pattern.element_pair) {
       throw new Error(
-        `collect_trajectory_rdf: frame ${frames[0].frame_number} returned an unlabelled g(r)`,
+        `collect_trajectory_rdf: frame ${frame_numbers[0]} returned an unlabelled g(r)`,
       )
     }
     return {
@@ -239,7 +239,6 @@ export async function collect_trajectory_rdf(
       }
     }
   }
-  const volumes = frames.map(({ volume }) => volume)
   // Occupancy-weighted atom counts, as the per-frame normalisation weighted them
   const { counts } = reference
   const curves = accumulators.map(
@@ -272,6 +271,6 @@ export async function collect_trajectory_rdf(
     cutoff,
     n_bins,
     n_atoms: reference.species.length,
-    mean_volume: volumes.reduce((total, volume) => total + volume, 0) / n_frames,
+    mean_volume: frames.reduce((total, { volume }) => total + volume, 0) / n_frames,
   }
 }

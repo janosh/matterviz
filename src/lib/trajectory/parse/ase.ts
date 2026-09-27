@@ -4,11 +4,11 @@ import { EV_PER_A3_TO_GPA, FS_IN_ASE_TIME } from '$lib/constants'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
-import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
   calc_force_stats,
   checked_site_forces,
   convert_atomic_numbers,
+  create_plot_row_frame,
   create_standard_numeric_frame,
   create_trajectory_frame,
   values_per_sample,
@@ -359,13 +359,7 @@ function decode_ase(
   }
   // get_density counts a plot row's atoms from numeric atomic numbers, validated and counted
   // once per numbers array (frames without their own share frame 0's)
-  const atomic_numbers = numbers_bytes(numbers)
-  const frame = create_trajectory_frame([], [], cell, pbc, step, metadata)
-  numeric_sites.set(
-    frame.structure,
-    new NumericSites(atomic_numbers, new Float64Array(0), [], []),
-  )
-  snapshot_topologies.set(frame.structure, atomic_numbers)
+  const frame = create_plot_row_frame(numbers_bytes(numbers), cell, pbc, step, metadata)
   return { frame, numbers, pbc }
 }
 
