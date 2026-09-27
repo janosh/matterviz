@@ -14,6 +14,7 @@
 - Phonon `hovered_frequency`, `reference_frequency` and `sigma` are in THz; `IrRamanSpectrum.fwhm` is in cm⁻¹; `two_theta_range` must lie within [0, 180]; the irreducible Brillouin zone applies time reversal by default
 - `pad_domain_points` drops its `padding` argument; duplicate phase-diagram ids throw
 - `RouteThermodynamics.onset_temperature` and `onset_temperature()` → `downhill_windows` (the old onset is `downhill_windows[0]?.[0]`)
+- `merge_polyhedra_buffers(polyhedra, coloring)` takes a `PolyhedraColoring` (`{ mode: 'uniform', color }` or `{ mode: 'vertex' | 'center', site_color(site_idx) }`) instead of a per-vertex color callback, and also returns flat face `normals`
 
 ## [v0.7.0](https://github.com/janosh/matterviz/compare/v0.6.0...v0.7.0)
 
