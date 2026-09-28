@@ -1137,7 +1137,7 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
   })
 
   // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only
-  // that frame's read, with the error the eager open throws; plot rows come from headers
+  // that frame's read and plot row, with the error the eager open throws
   it(`fails only the frame holding a corrupt XDATCAR coordinate line`, async () => {
     const text = [1, 2, 3]
       .map(
@@ -1154,8 +1154,8 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     expect(() => indexed.read_frame(1)).toThrow(error)
     expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
     await indexed.properties.done
-    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 2, 3])
-    expect(indexed.warnings).toEqual([])
+    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
+    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
   })
 })
 

@@ -151,7 +151,8 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 }
 
 // Indexed XDATCAR: open walks only headers and frame markers; a frame's coordinate lines are
-// read on demand. Plot rows need no coordinates: lattice and species come from the header.
+// read on demand. Plot rows take lattice and species from the header, but still parse the
+// coordinates so a frame that cannot be read gets no plot point either.
 export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
   let lines: TextLines | null = new TextLines(content)
   const frames = index_xdatcar_frames(lines, warn)
@@ -180,6 +181,7 @@ export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
     },
     plot_row_frame: (frame_idx) => {
       const { step, cell } = frames[frame_idx]
+      read_positions(live(), frames[frame_idx]) // a frame whose read throws gets no plot row
       return create_plot_row_frame(
         cell.numbers,
         cell.lattice,

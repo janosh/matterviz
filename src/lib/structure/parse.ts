@@ -418,19 +418,28 @@ const apply_symmetry_ops = (
   symmetry_ops: ParsedSymOp[],
   centering: Vec3[] = [],
 ): Vec3[] => {
-  const shifts: Vec3[] = [[0, 0, 0], ...centering]
-  const images: Vec3[] = [coords]
+  const [coord_x, coord_y, coord_z] = coords
+  const wrapped: Vec3[] = []
+  // one image per (op, shift) pair, ops outer; built with scalar math since this runs per atom
+  const push_shifted = (image_x: number, image_y: number, image_z: number): void => {
+    wrapped.push(wrap_to_unit_cell([image_x, image_y, image_z]))
+    for (const [delta_x, delta_y, delta_z] of centering) {
+      wrapped.push(
+        wrap_to_unit_cell([image_x + delta_x, image_y + delta_y, image_z + delta_z]),
+      )
+    }
+  }
+  push_shifted(coord_x, coord_y, coord_z)
   for (const { coefficients, translations } of symmetry_ops) {
     // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-    images.push(
-      [0, 1, 2].map((dim) => math.dot(coefficients[dim], coords) + translations[dim]) as Vec3,
+    const [row_x, row_y, row_z] = coefficients
+    push_shifted(
+      row_x[0] * coord_x + row_x[1] * coord_y + row_x[2] * coord_z + translations[0],
+      row_y[0] * coord_x + row_y[1] * coord_y + row_y[2] * coord_z + translations[1],
+      row_z[0] * coord_x + row_z[1] * coord_y + row_z[2] * coord_z + translations[2],
     )
   }
-  return images.flatMap((image) =>
-    shifts.map(([delta_x, delta_y, delta_z]) =>
-      wrap_to_unit_cell([image[0] + delta_x, image[1] + delta_y, image[2] + delta_z]),
-    ),
-  )
+  return wrapped
 }
 
 // Atom-site tag suffix -> field name (supports fract and Cartn coordinates). The residue /
