@@ -186,10 +186,11 @@ describe(`trajectory helpers`, () => {
         const lines = new TextLines(chunks)
         const indices = Array.from({ length: lines.count }, (_, idx) => idx)
         expect(indices.map((idx) => lines.line(idx))).toEqual(expected)
-        // read back to front too, so chunk lookups are not only sequential
-        expect(indices.toReversed().map((idx) => lines.line(idx))).toEqual(
-          expected.toReversed(),
-        )
+        // read back to front and in random order too, so chunk lookups also seek backward
+        for (const order of [indices.toReversed(), indices.toSorted(() => rng() - 0.5)])
+          expect(order.map((idx) => lines.line(idx))).toEqual(
+            order.map((idx) => expected[idx]),
+          )
         expect(indices.map((idx) => tokens(scanner, lines.scan(scanner, idx)))).toEqual(
           expected.map((line) => tokens(reference, reference.scan(line))),
         )

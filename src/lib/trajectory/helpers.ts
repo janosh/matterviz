@@ -307,7 +307,7 @@ export class TextLines {
   private readonly chunk_lines: Uint32Array
   // offset just past the last line's content in its chunk
   private readonly target: number
-  // chunk of the last line looked up, so sequential reads skip the search
+  // chunk of the last line looked up
   private cursor = 0
 
   constructor(text: string | readonly string[]) {
@@ -358,20 +358,14 @@ export class TextLines {
   static of(text: string | TextLines): TextLines {
     return typeof text === `string` ? new TextLines(text) : text
   }
-  // Chunk holding line `idx`: the cached one, else the last chunk whose first line is at or
-  // before it (chunks holding no line share their successor's first line)
+  // Chunk holding line `idx`, walked to from the last one looked up: chunks are 64 MB, so there
+  // are few, and reads are mostly sequential (a chunk holding no line starts where it ends)
   private chunk_of(idx: number): number {
     const { chunk_lines } = this
-    if (idx >= chunk_lines[this.cursor] && idx < chunk_lines[this.cursor + 1])
-      return this.cursor
-    let low = 0
-    let high = this.chunks.length - 1
-    while (low < high) {
-      const mid = (low + high + 1) >> 1
-      if (chunk_lines[mid] <= idx) low = mid
-      else high = mid - 1
-    }
-    return (this.cursor = low)
+    let chunk_idx = this.cursor
+    while (idx < chunk_lines[chunk_idx]) chunk_idx--
+    while (idx >= chunk_lines[chunk_idx + 1]) chunk_idx++
+    return (this.cursor = chunk_idx)
   }
   // Offset just past line `idx`'s content in its chunk: split_lines drops the `\r` of a `\r\n`
   // ending (the last line has none after trim)

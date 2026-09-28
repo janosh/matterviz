@@ -911,8 +911,7 @@
       })
     return () => trail_controller.abort()
   })
-  // Convert the source-frame playhead to collected frames. Trails follow scrubs too: moving
-  // their window costs O(atoms), not a rebuild
+  // Source-frame playhead in collected frames; trails follow scrubs (a window move is O(atoms))
   let trajectory_line_end_frame = $derived(
     trail_stream ? collected_frame_idx(trail_stream, current_step_idx) : undefined,
   )

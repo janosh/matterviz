@@ -112,11 +112,10 @@ describe(`sweep_frames concurrency`, () => {
     const sweep = sweep_frames(
       run,
       { max_frames: 6, concurrency: 2 },
-      (_frame, frame_number) => {
+      async (_frame, frame_number) => {
         started.push(frame_number)
-        return frame_number === 1
-          ? Promise.reject(new Error(`bad frame 1`))
-          : Promise.resolve(0)
+        if (frame_number === 1) throw new Error(`bad frame 1`)
+        return 0
       },
     )
     await expect(sweep).rejects.toThrow(`bad frame 1`)

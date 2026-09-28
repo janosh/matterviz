@@ -4,11 +4,10 @@ Drop this inside a Threlte scene that renders the structure in absolute Cartesia
 coordinates — StructureScene's rotation group preserves world coordinates, so trails line
 up with the atoms without any extra transform.
 
-The whole run's polylines are uploaded ONCE per stream and options (trajectory-lines.ts lays
-them out frame-major), so playback only moves a draw range, rewrites the off-grid window
-ends and uploads one offset texel per atom. The shader applies those anchor offsets and the
-time ramp, which depend on the window. One LineSegments, one draw call for the grid part of
-the window plus one for its off-grid ends, regardless of atom or frame count.
+The whole run's polylines are uploaded ONCE per stream and options (see trajectory-lines.ts),
+so playback moves a draw range and re-uploads only the off-grid window ends and one anchor
+offset per atom; the shader applies those offsets and the time ramp. One LineSegments, one
+draw call (two with off-grid ends) regardless of atom or frame count.
 
 WebGPU rasterizes lines at 1 device pixel. The fat-line alternative expands every segment
 into an instanced quad and costs three times the attributes, so this layer keeps a fixed
@@ -127,13 +126,8 @@ subtle opacity instead of exposing width and opacity controls. -->
   material.colorNode = vertexStage(color_texel.xyz)
 
   const data_texture = (texels: Float32Array) => {
-    const texture = new DataTexture(
-      texels,
-      TRAIL_TEXEL_ROW,
-      texels.length / 4 / TRAIL_TEXEL_ROW,
-      RGBAFormat,
-      FloatType,
-    )
+    const rows = texels.length / 4 / TRAIL_TEXEL_ROW
+    const texture = new DataTexture(texels, TRAIL_TEXEL_ROW, rows, RGBAFormat, FloatType)
     texture.needsUpdate = true
     return texture
   }
@@ -219,13 +213,11 @@ subtle opacity instead of exposing width and opacity controls. -->
       upload(indices, trail.ends_start, shown.ends_count)
     }
     if (shown.offsets_changed) offsets.needsUpdate = true
-    if (shown.head_box_changed) {
-      sort_box.min.fromArray(trail.head_box.min)
-      sort_box.max.fromArray(trail.head_box.max)
-      geometry.boundingSphere = sort_box.getBoundingSphere(
-        geometry.boundingSphere ?? new Sphere(),
-      )
-    }
+    sort_box.min.fromArray(trail.head_box.min)
+    sort_box.max.fromArray(trail.head_box.max)
+    geometry.boundingSphere = sort_box.getBoundingSphere(
+      geometry.boundingSphere ?? new Sphere(),
+    )
     window_start.value = shown.start_frame
     window_end.value = shown.end_frame
     build_result = shown.stats

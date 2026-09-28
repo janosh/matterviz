@@ -43,8 +43,7 @@ export function pack_bonds(bonds: readonly BondPair[]): BondColumns {
 // One immutable column snapshot, shared by rendering and on-demand rich consumers.
 export class BondFrame {
   private records: BondPair[] | undefined
-  // Offset of each image bond's row in columns.images, -1 for in-cell bonds: an array read
-  // per bond, where a Map lookup cost periodic structures more than the rest of materialize
+  // Offset of each image bond's row in columns.images, -1 in-cell (a per-bond Map was slower)
   private readonly image_offsets: Int32Array
   private readonly sites
   constructor(
@@ -74,15 +73,14 @@ export class BondFrame {
   cell_shift(idx: number): Vec3 | undefined {
     return this.image_vec(idx, 4)
   }
-  position_1(idx: number): Vec3 {
-    const site_idx = this.columns.indices[idx * 2]
+  private site_xyz(site_idx: number): Vec3 {
     return this.sites ? this.sites.position(site_idx) : this.structure.sites[site_idx].xyz
   }
+  position_1(idx: number): Vec3 {
+    return this.site_xyz(this.columns.indices[idx * 2])
+  }
   position_2(idx: number): Vec3 {
-    const image = this.image_vec(idx, 1)
-    if (image) return image
-    const site_idx = this.columns.indices[idx * 2 + 1]
-    return this.sites ? this.sites.position(site_idx) : this.structure.sites[site_idx].xyz
+    return this.image_vec(idx, 1) ?? this.site_xyz(this.columns.indices[idx * 2 + 1])
   }
   write_endpoints(idx: number, start: Vec3, end: Vec3): void {
     const first = this.columns.indices[idx * 2]

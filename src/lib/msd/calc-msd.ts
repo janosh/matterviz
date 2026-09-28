@@ -199,9 +199,8 @@ export function calc_msd(
   )
 }
 
-// dt and time_unit only label the lag axis: the curves are in frames either way. Relabelling a
-// finished result lets a dt edit skip the whole displacement analysis (a 10k-frame x 1k-atom
-// MSD takes seconds); calc_msd labels its own result through this too.
+// dt and time_unit only label the lag axis, so relabelling a finished result lets a dt edit
+// skip the displacement analysis (seconds at 10k frames x 1k atoms); calc_msd uses it as well
 export function with_lag_time_axis(
   result: Omit<MsdResult, 'times' | 'dt' | 'time_unit' | 'x_label'>,
   { dt, time_unit }: Pick<MsdOptions, 'dt' | 'time_unit'>,

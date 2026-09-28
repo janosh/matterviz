@@ -1,19 +1,17 @@
 // Per-atom trajectory trails — the path each atom traces over an MD run, the same thing
 // OVITO calls "generate trajectory lines".
 //
-// The trail window moves on every playback frame, so the layout makes moving it cheap.
-// TrajectoryTrail samples the WHOLE run once onto the frame_stride grid in FRAME-MAJOR rows
-// (vertex row k holds every atom at frame k * frame_stride), which makes the segments of any
-// window of grid frames one contiguous index range: sliding the window is a draw-range change.
-// Two extra rows hold the window's start and end frames, which usually fall between grid
-// frames; their segments live in a small index block rewritten per window, O(atoms). Anchor
-// translations and time-mode colors are applied in the shader (TrajectoryLines.svelte) from
-// per-atom offsets and the window bounds, so no per-frame work scales with atoms x frames.
+// TrajectoryTrail samples the WHOLE run once onto the frame_stride grid in frame-major vertex
+// rows (row k holds every drawn atom at frame k * frame_stride), so the segments of any window
+// of grid frames are one contiguous index range and sliding the window moves a draw range. Two
+// extra rows hold the window's start and end when they fall between grid frames; their
+// segments live in a small index block rewritten per window, O(atoms). Anchor translations and
+// time colors are applied in the shader (TrajectoryLines.svelte) from per-atom offsets and the
+// window bounds, so no per-window work scales with atoms x frames.
 //
-// Everything is one indexed line-segment buffer for the whole scene: a 500-atom x 5000-frame
-// run is one draw call (two while an off-grid window end is drawn), not 500 objects. Indexed
-// because each interior point is shared by two segments, so it is stored and shaded once.
-// Plain typed arrays only, so this module is unit tested without a WebGPU context.
+// One indexed line-segment buffer serves the whole scene (one draw call, two while an off-grid
+// end is drawn, not one object per atom); indexed because each interior point is shared by two
+// segments. Plain typed arrays only, so this module is unit tested without a WebGPU context.
 import { default_element_colors, get_d3_interpolator } from '$lib/colors'
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -49,15 +47,13 @@ interface TrajectoryTrailOptions {
 
 // The part that moves during playback
 interface TrajectoryTrailWindow {
-  // Newest collected-frame index the trail reaches. Defaults to the last collected frame.
-  // This is an index into the STREAM's frames, which are already `stream.frame_stride`
-  // apart in the source file.
+  // Newest collected-frame index the trail reaches, defaulting to the last. This indexes the
+  // STREAM's frames, which are already `stream.frame_stride` apart in the source file.
   end_frame?: number
   // How many collected frames the trail spans back from `end_frame`; null draws the whole run
   trail_frames?: number | null
   // Cartesian trail-head targets in stream atom order. Each whole polyline is translated
-  // onto its anchor without changing its shape. Compared by identity: pass a new array for
-  // new anchors (as a reactive prop does anyway).
+  // onto its anchor without changing its shape.
   anchor_positions?: Float64Array | null
 }
 
@@ -77,22 +73,20 @@ export interface TrajectoryLinesStats {
   max_segment_length: number
 }
 
-// Where one window sits in a trail's buffers, and which of them the window rewrote
+// Where one window sits in a trail's buffers
 export interface TrajectoryTrailFrame {
   stats: TrajectoryLinesStats
   // Window bounds in collected frames; the shader's time ramp spans them
   start_frame: number
   end_frame: number
-  // Index range of the window's grid segments
+  // Index ranges of the window's grid segments and of its off-grid ends (from `ends_start`)
   grid_start: number
   grid_count: number
-  // Indices of the off-grid window-end segments, written from `ends_start`
   ends_count: number
-  // What this update rewrote, so the renderer re-uploads only that. `ends_changed` covers
-  // the ends block and the two end vertex rows it joins (unused rows need no upload).
+  // What the renderer must re-upload: a rewritten ends block (and its two vertex rows), and
+  // offsets unless they were and stay zero without anchors
   ends_changed: boolean
   offsets_changed: boolean
-  head_box_changed: boolean
 }
 
 // Texels per row of the per-atom data textures (anchor offsets, colors). A constant the
@@ -146,14 +140,8 @@ export const collected_frame_idx = (
   source_idx: number,
 ): number => clamp(Math.floor(source_idx / stream.frame_stride), 0, stream.n_frames - 1)
 
-// Longest segment and drop count of one batch of segments
-interface SegmentTally {
-  dropped: number
-  max_sq: number
-}
-
 // A whole run's trail polylines, built once per stream and options; update() then moves the
-// window. Vertex v is atom slot v % atom_count at vertex row floor(v / atom_count): rows
+// window. Vertex v is atom slot v % atom_count in vertex row floor(v / atom_count): rows
 // [0, n_grid) hold grid frame row * frame_stride, row n_grid the window's start frame and
 // row n_grid + 1 its end frame.
 export class TrajectoryTrail {
@@ -168,27 +156,24 @@ export class TrajectoryTrail {
   readonly ends_start: number
   // Per-atom translation onto the anchors, as rgba texels (TRAIL_TEXEL_ROW per row)
   readonly offsets: Float32Array
-  // Box around the drawn trail heads: the depth-sort key against other translucent layers.
-  // The shader moves the stored points onto their anchors, so a box over `positions` would
-  // not say where the trail is drawn.
+  // Box around the drawn trail heads, the depth-sort key against other translucent layers
+  // (a box over `positions` would miss the shader's anchor translation)
   readonly head_box: { min: Vec3; max: Vec3 } = { min: [0, 0, 0], max: [0, 0, 0] }
   readonly stream: TrajectoryPositionStream
   private readonly coords: Float64Array
   private readonly is_wrap_jump: ((step: Vec3, frame_idx: number) => boolean) | null
-  // Per grid row: index count through its incoming segments, drops through it, and its
-  // longest incoming segment squared
+  // Per grid row: index count through its incoming segments and the longest of them squared
   private readonly row_ends: Uint32Array
-  private readonly dropped_through: Uint32Array
   private readonly row_max_sq: Float64Array
   private readonly step: Vec3 = [0, 0, 0]
-  // The window the ends block was written for, and its tally
-  private ends_window = { start: -1, end: -1, count: 0 }
-  private readonly ends_tally: SegmentTally = { dropped: 0, max_sq: 0 }
-  // The anchors and end frame the heads were placed for
-  private heads_for: { anchors: Float64Array | null; end_frame: number } = {
-    anchors: null,
-    end_frame: -1,
-  }
+  // The window's off-grid start and end frames (rows n_grid and n_grid + 1), -1 when on-grid
+  private tail_frame = -1
+  private head_frame = -1
+  // join() state: the next index slot and the longest segment squared since the last reset
+  private cursor = 0
+  private max_sq = 0
+  // Whether the offsets hold an anchor translation rather than zeros
+  private anchored = false
 
   constructor(stream: TrajectoryPositionStream, options: TrajectoryTrailOptions = {}) {
     const { n_frames, n_atoms, elements: atom_elements } = stream
@@ -220,11 +205,10 @@ export class TrajectoryTrail {
     this.stream = stream
     this.frame_stride = frame_stride
     this.n_grid = Math.floor((n_frames - 1) / frame_stride) + 1
-    // `break` mode is the only consumer of wrapped coordinates — it exists precisely to show
-    // where the wrapping happened, so unwrapping first would leave it nothing to break on.
-    this.coords =
-      wrap_mode === `break` ? stream.positions : unwrapped_positions_of(stream).coords
-    this.is_wrap_jump = wrap_mode === `break` ? make_wrap_jump_test(stream) : null
+    // `break` mode shows where the wrapping happened, so it keeps the wrapped coordinates
+    const break_mode = wrap_mode === `break`
+    this.coords = break_mode ? stream.positions : unwrapped_positions_of(stream).coords
+    this.is_wrap_jump = break_mode ? make_wrap_jump_test(stream) : null
 
     const atom_count = this.atom_idxs.length
     const { n_grid } = this
@@ -233,35 +217,31 @@ export class TrajectoryTrail {
     this.indices = new Uint32Array(((n_grid - 1) * 2 + 4) * atom_count)
     this.offsets = texel_buffer(atom_count)
     this.row_ends = new Uint32Array(n_grid)
-    this.dropped_through = new Uint32Array(n_grid)
     this.row_max_sq = new Float64Array(n_grid)
-    this.write_row(0, 0)
-    let cursor = 0
-    const tally: SegmentTally = { dropped: 0, max_sq: 0 }
+    this.write_row(0)
     for (let row = 1; row < n_grid; row++) {
-      this.write_row(row, row * frame_stride)
-      tally.dropped = 0
-      tally.max_sq = 0
-      cursor = this.join_rows(
-        row - 1,
-        row,
-        (row - 1) * frame_stride,
-        row * frame_stride,
-        cursor,
-        tally,
-      )
-      this.row_ends[row] = cursor
-      this.dropped_through[row] = this.dropped_through[row - 1] + tally.dropped
-      this.row_max_sq[row] = tally.max_sq
+      this.write_row(row * frame_stride)
+      this.max_sq = 0
+      this.join((row - 1) * frame_stride, row * frame_stride)
+      this.row_ends[row] = this.cursor
+      this.row_max_sq[row] = this.max_sq
     }
-    this.ends_start = cursor
+    // join() state now describes an empty ends block, matching the on-grid initial ends
+    this.ends_start = this.cursor
+    this.max_sq = 0
   }
 
-  // Copy every drawn atom's coordinates at `frame_idx` into vertex row `row`
-  private write_row(row: number, frame_idx: number): void {
+  // Vertex row of a sampled frame: its grid row, or the row of an off-grid window end
+  private row_of(frame_idx: number): number {
+    if (frame_idx === this.tail_frame) return this.n_grid
+    return frame_idx === this.head_frame ? this.n_grid + 1 : frame_idx / this.frame_stride
+  }
+
+  // Copy every drawn atom's coordinates at `frame_idx` into that frame's vertex row
+  private write_row(frame_idx: number): void {
     const { atom_idxs, coords, positions } = this
     const frame_base = frame_idx * this.stream.n_atoms * 3
-    const row_base = row * atom_idxs.length * 3
+    const row_base = this.row_of(frame_idx) * atom_idxs.length * 3
     for (let slot = 0; slot < atom_idxs.length; slot++) {
       const source = frame_base + atom_idxs[slot] * 3
       const target = row_base + slot * 3
@@ -271,41 +251,33 @@ export class TrajectoryTrail {
     }
   }
 
-  // Write the segments joining each atom's point in vertex row `from_row` (frame
-  // `from_frame`) to row `to_row` (frame `to_frame`) at `cursor`, skipping `break`-mode wrap
-  // jumps; returns the cursor after them. Lengths come from the float64 source coordinates,
-  // which no anchor translation can change.
-  private join_rows(
-    from_row: number,
-    to_row: number,
-    from_frame: number,
-    to_frame: number,
-    cursor: number,
-    tally: SegmentTally,
-  ): number {
+  // Write the segments joining each atom's points at two sampled frames, skipping `break`-mode
+  // wrap jumps. Lengths come from the float64 source coordinates, which anchors never change.
+  private join(from_frame: number, to_frame: number): void {
     const { atom_idxs, coords, indices, step, is_wrap_jump } = this
     const atom_count = atom_idxs.length
     const { n_atoms } = this.stream
+    const from_vertex = this.row_of(from_frame) * atom_count
+    const to_vertex = this.row_of(to_frame) * atom_count
+    let { cursor, max_sq } = this
     for (let slot = 0; slot < atom_count; slot++) {
       const from = (from_frame * n_atoms + atom_idxs[slot]) * 3
       const to = (to_frame * n_atoms + atom_idxs[slot]) * 3
       step[0] = coords[to] - coords[from]
       step[1] = coords[to + 1] - coords[from + 1]
       step[2] = coords[to + 2] - coords[from + 2]
-      if (is_wrap_jump?.(step, to_frame)) {
-        tally.dropped++
-        continue
-      }
+      if (is_wrap_jump?.(step, to_frame)) continue
       const length_sq = step[0] * step[0] + step[1] * step[1] + step[2] * step[2]
-      if (length_sq > tally.max_sq) tally.max_sq = length_sq
-      indices[cursor++] = from_row * atom_count + slot
-      indices[cursor++] = to_row * atom_count + slot
+      if (length_sq > max_sq) max_sq = length_sq
+      indices[cursor++] = from_vertex + slot
+      indices[cursor++] = to_vertex + slot
     }
-    return cursor
+    this.cursor = cursor
+    this.max_sq = max_sq
   }
 
-  // Point the trail at a new window. O(1) for its grid part, O(atoms) for an off-grid end or
-  // new anchors, and nothing is rewritten that the previous window already left in place.
+  // Point the trail at a new window: O(1) for its grid part, O(atoms) for its off-grid ends
+  // and trail heads
   update(window: TrajectoryTrailWindow = {}): TrajectoryTrailFrame {
     const { n_frames, n_atoms } = this.stream
     const { trail_frames = null, anchor_positions = null } = window
@@ -340,100 +312,66 @@ export class TrajectoryTrail {
       ends_count: 0,
       ends_changed: false,
       offsets_changed: false,
-      head_box_changed: false,
     }
     // A single sampled point has no segment; an explicit empty filter is a legitimate UI state
     if (atom_count === 0 || end_frame <= start_frame) return frame
 
-    // Grid rows inside the window; the ends join it through rows n_grid and n_grid + 1
-    const { frame_stride, n_grid } = this
+    const { frame_stride, row_ends, row_max_sq } = this
     const first_row = Math.ceil(start_frame / frame_stride)
     const last_row = Math.floor(end_frame / frame_stride)
-    const tail = start_frame % frame_stride !== 0
-    const head = end_frame % frame_stride !== 0
+    const tail_frame = start_frame % frame_stride ? start_frame : -1
+    const head_frame = end_frame % frame_stride ? end_frame : -1
     const { frame_idxs } = frame.stats
-    if (tail) frame_idxs.push(start_frame)
+    if (tail_frame >= 0) frame_idxs.push(start_frame)
     for (let row = first_row; row <= last_row; row++) frame_idxs.push(row * frame_stride)
-    if (head) frame_idxs.push(end_frame)
+    if (head_frame >= 0) frame_idxs.push(end_frame)
+    const last = frame_idxs.length - 1
 
-    let dropped = 0
-    let max_sq = 0
+    let grid_max_sq = 0
     if (first_row < last_row) {
-      frame.grid_start = this.row_ends[first_row]
-      frame.grid_count = this.row_ends[last_row] - frame.grid_start
-      dropped = this.dropped_through[last_row] - this.dropped_through[first_row]
+      frame.grid_start = row_ends[first_row]
+      frame.grid_count = row_ends[last_row] - frame.grid_start
       for (let row = first_row + 1; row <= last_row; row++) {
-        max_sq = Math.max(max_sq, this.row_max_sq[row])
+        grid_max_sq = Math.max(grid_max_sq, row_max_sq[row])
       }
     }
-
-    const { ends_window, ends_tally } = this
-    if (ends_window.start !== start_frame || ends_window.end !== end_frame) {
-      ends_tally.dropped = 0
-      ends_tally.max_sq = 0
-      let cursor = this.ends_start
-      if (tail) this.write_row(n_grid, start_frame)
-      if (head) this.write_row(n_grid + 1, end_frame)
-      if (first_row > last_row) {
-        // No grid frame inside the window: one segment straight from start to end
-        cursor = this.join_rows(n_grid, n_grid + 1, start_frame, end_frame, cursor, ends_tally)
-      } else {
-        const [first_grid, last_grid] = [first_row * frame_stride, last_row * frame_stride]
-        if (tail) {
-          cursor = this.join_rows(
-            n_grid,
-            first_row,
-            start_frame,
-            first_grid,
-            cursor,
-            ends_tally,
-          )
-        }
-        if (head) {
-          cursor = this.join_rows(
-            last_row,
-            n_grid + 1,
-            last_grid,
-            end_frame,
-            cursor,
-            ends_tally,
-          )
-        }
+    // The ends block depends only on the off-grid end frames, so it is rewritten (with its
+    // vertex rows) only when they move. Each joins its grid neighbour, or the other end when
+    // no grid row lies between. cursor and max_sq then hold the block's extent until next time.
+    if (tail_frame !== this.tail_frame || head_frame !== this.head_frame) {
+      this.tail_frame = tail_frame
+      this.head_frame = head_frame
+      this.cursor = this.ends_start
+      this.max_sq = 0
+      if (tail_frame >= 0) {
+        this.write_row(start_frame)
+        this.join(start_frame, frame_idxs[1])
       }
-      this.ends_window = {
-        start: start_frame,
-        end: end_frame,
-        count: cursor - this.ends_start,
+      if (head_frame >= 0) {
+        this.write_row(end_frame)
+        if (tail_frame < 0 || last > 1) this.join(frame_idxs[last - 1], end_frame)
       }
-      frame.ends_changed = cursor > this.ends_start
+      frame.ends_changed = this.cursor > this.ends_start
     }
-    frame.ends_count = this.ends_window.count
+    frame.ends_count = this.cursor - this.ends_start
+    frame.offsets_changed = this.place_heads(anchor_positions, end_frame)
 
-    const heads = this.write_heads(anchor_positions, end_frame)
-    frame.offsets_changed = heads.offsets
-    frame.head_box_changed = heads.box
+    const segment_count = (frame.grid_count + frame.ends_count) / 2
     Object.assign(frame.stats, {
       point_count: atom_count * frame_idxs.length,
-      segment_count: (frame.grid_count + frame.ends_count) / 2,
+      segment_count,
       atom_count,
-      dropped_segments: dropped + ends_tally.dropped,
-      max_segment_length: Math.sqrt(Math.max(max_sq, ends_tally.max_sq)),
+      // Consecutive sampled frames join every atom once, unless `break` mode dropped it
+      dropped_segments: atom_count * last - segment_count,
+      max_segment_length: Math.sqrt(Math.max(grid_max_sq, this.max_sq)),
     })
     return frame
   }
 
-  // Where each atom's trail head (its point at `end_frame`) is drawn: on its anchor, or in
-  // place without anchors. Writes the per-atom offsets that put it there and the box around
-  // the heads. The box follows every new end frame; the offsets only change with anchors.
-  private write_heads(
-    anchors: Float64Array | null,
-    end_frame: number,
-  ): { offsets: boolean; box: boolean } {
-    const previous = this.heads_for
-    if (anchors === previous.anchors && end_frame === previous.end_frame) {
-      return { offsets: false, box: false }
-    }
-    this.heads_for = { anchors, end_frame }
+  // Put each trail head (its point at `end_frame`) on its anchor, or leave it in place
+  // without anchors: writes the per-atom offsets and the box around the drawn heads, and
+  // returns whether the offsets changed
+  private place_heads(anchors: Float64Array | null, end_frame: number): boolean {
     const { atom_idxs, coords, offsets } = this
     const { min, max } = this.head_box
     min.fill(Infinity)
@@ -449,8 +387,9 @@ export class TrajectoryTrail {
         if (drawn > max[axis]) max[axis] = drawn
       }
     }
-    // Unanchored offsets stay zero, so only anchors (or dropping them) need a re-upload
-    return { offsets: Boolean(anchors ?? previous.anchors), box: true }
+    const changed = Boolean(anchors) || this.anchored
+    this.anchored = Boolean(anchors)
+    return changed
   }
 }
 

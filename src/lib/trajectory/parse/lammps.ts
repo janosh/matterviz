@@ -452,16 +452,7 @@ export function open_lammps_frames(
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ): AseFrames {
-  // `release` drops the reader, the only holder of the text
-  let reader: ReturnType<typeof create_lammps_reader> | null = create_lammps_reader(
-    lines,
-    warn,
-    atom_type_mapping,
-  )
-  const live = () => {
-    if (!reader) throw new Error(`LAMMPS trajectory text was released`)
-    return reader
-  }
+  const reader = create_lammps_reader(lines, warn, atom_type_mapping)
   const frames: { start: number; header: LammpsFrameHeader; numbers: Uint8Array | null }[] = []
   const run_metadata = reader.read_run(false, ({ header, elements }, start) => {
     // 0 marks a symbol an atom_type_mapping gave no atomic number, whose plot row needs sites
@@ -471,7 +462,7 @@ export function open_lammps_frames(
     frames.push({ start, header, numbers: numbers.includes(0) ? null : numbers })
   })
   const decode = (frame_idx: number): TrajectoryFrame =>
-    lammps_frame(live().read_frame(frames[frame_idx].start, frame_idx > 0, true), warn)
+    lammps_frame(reader.read_frame(frames[frame_idx].start, frame_idx > 0, true), warn)
   return {
     frame_count: frames.length,
     metadata: run_metadata,
@@ -482,10 +473,6 @@ export function open_lammps_frames(
       return numbers
         ? create_plot_row_frame(numbers, lattice_matrix, pbc, timestep, metadata, warn)
         : decode(frame_idx)
-    },
-    release: () => {
-      reader = null
-      frames.length = 0
     },
   }
 }

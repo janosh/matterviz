@@ -205,13 +205,10 @@ test(`route table sorts downhill windows by their lowest temperature, never-down
     )
   // alphabetically `downhill up to 1480 K` would come right after `downhill from 300 K`
   const downhill = [`downhill up to 1480 K`, `downhill from 300 K`, `downhill from 1105 K`]
-  header.click() // no `better` direction: sorts descending
-  await tick()
-  expect(cell_texts()).toEqual([
-    ...downhill.toReversed(),
-    `never downhill between 0 and 2000 K`,
-  ])
-  header.click()
-  await tick()
-  expect(cell_texts()).toEqual([...downhill, `never downhill between 0 and 2000 K`])
+  // no `better` direction: the first click sorts descending, the second ascending
+  for (const order of [downhill.toReversed(), downhill]) {
+    header.click()
+    await tick()
+    expect(cell_texts()).toEqual([...order, `never downhill between 0 and 2000 K`])
+  }
 })

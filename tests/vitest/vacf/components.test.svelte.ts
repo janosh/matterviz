@@ -178,29 +178,22 @@ describe(`VacfPlot`, () => {
         target: document.body,
         props: bind_props({ input }, state),
       })
+      const edit = async (vacf_options: VacfOptions) => {
+        state.vacf_options = vacf_options
+        await settle(6)
+        return [state.result, state.error_msg, compute.mock.calls.length]
+      }
+      const edited: VacfOptions = { dt: 2, time_unit: `fs`, vdos: { window: `gaussian` } }
+      const invalid = [undefined, expect.stringContaining(`without time_unit`), 1]
       try {
         await settle(6)
         expect(compute).toHaveBeenCalledTimes(1)
-        const edited: VacfOptions = { dt: 2, time_unit: `fs`, vdos: { window: `gaussian` } }
-        state.vacf_options = edited
-        await settle(6)
-        expect(compute).toHaveBeenCalledTimes(1)
-        expect(state.result).toEqual(calc_vacf(input, edited))
-        // an invalid timestep is reported in place of the curves, still without recomputing
-        state.vacf_options = { dt: 2 }
-        await settle(6)
-        expect(state.result).toBeUndefined()
-        expect(document.body.textContent).toContain(`without time_unit`)
-        expect(compute).toHaveBeenCalledTimes(1)
-        // correcting it restores the curves and clears the message, still without recomputing
-        state.vacf_options = edited
-        await settle(6)
-        expect(state.result).toEqual(calc_vacf(input, edited))
-        expect(state.error_msg).toBeUndefined()
-        expect(compute).toHaveBeenCalledTimes(1)
-        state.vacf_options = { ...edited, max_lag_fraction: 0.3 }
-        await settle(6)
-        expect(compute).toHaveBeenCalledTimes(2)
+        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        // an invalid timestep is reported in place of the curves, and correcting it restores
+        // them and clears the message, both without recomputing; a lag-range edit recomputes
+        expect(await edit({ dt: 2 })).toEqual(invalid)
+        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        expect((await edit({ ...edited, max_lag_fraction: 0.3 }))[2]).toBe(2)
       } finally {
         await unmount(component)
       }

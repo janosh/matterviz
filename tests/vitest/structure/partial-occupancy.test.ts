@@ -107,18 +107,25 @@ describe(`partial occupancy render-site logic`, () => {
     }
   })
 
-  // Still O(n): the scan grew 4x per doubling, so 8k sites would blow far past this budget
-  test(`groups 8k split-partial sites in linear time`, () => {
-    const sites = Array.from({ length: 8000 }, (_unused, idx) =>
-      make_site(
-        [{ element: `Na`, occu: 0.5, oxidation_state: 0 }],
-        [idx * 3, 0, 0],
-        `Na${idx}`,
-      ),
-    )
-    const start = performance.now()
-    expect(merge_split_partial_sites(sites)).toHaveLength(8000)
-    expect(performance.now() - start).toBeLessThan(100)
+  // Still O(n): the scan was quadratic. A ratio against a base run instead of a wall-clock
+  // budget, so CI load mostly cancels: 16x the sites measured 17-27x when linear (41x under
+  // heavy load), 200-300x when quadratic (77x under heavy load). Min of 7 sheds load spikes.
+  test(`groups split-partial sites in linear time`, () => {
+    const min_ms = (n_sites: number) => {
+      const sites = Array.from({ length: n_sites }, (_unused, idx) =>
+        make_site([{ element: `Na`, occu: 0.5, oxidation_state: 0 }], [idx * 3, 0, 0], `Na`),
+      )
+      const samples = Array.from({ length: 7 }, () => {
+        const start = performance.now()
+        const n_groups = merge_split_partial_sites(sites).length
+        const elapsed = performance.now() - start
+        expect(n_groups).toBe(n_sites)
+        return elapsed
+      })
+      return Math.min(...samples)
+    }
+    min_ms(500) // JIT warm-up
+    expect(min_ms(8000) / min_ms(500)).toBeLessThan(64)
   })
 })
 
@@ -227,50 +234,42 @@ describe(`PartialAtoms`, () => {
     const atoms = to_partial_atoms(wedge_sites)
     const partial = new PartialAtoms()
     partial.update(atoms, false, segments)
+    // World-space vertex positions and normals, in f64 from the f32 geometry and matrix
     const transformed = (geometry: BufferGeometry, matrix: Matrix4) => {
       const normal_matrix = new Matrix3().getNormalMatrix(matrix)
       const { position, normal } = geometry.attributes
       return Array.from({ length: position.count }, (_unused, idx) => [
         new Vector3().fromBufferAttribute(position, idx).applyMatrix4(matrix),
         new Vector3().fromBufferAttribute(normal, idx).applyMatrix3(normal_matrix).normalize(),
-      ])
+      ]).flat()
     }
-    let [max_position_error, max_normal_error, n_instances] = [0, 0, 0]
+    const instance_matrix = new Matrix4()
+    let [max_error, n_instances] = [0, 0]
     for (const mesh of meshes(partial)) {
+      const is_cap = mesh.geometry instanceof CircleGeometry
       const expected = expected_instances(mesh, atoms)
       expect(mesh.count).toBe(expected.length)
       for (const [slot, { atom, phi }] of expected.entries()) {
         const { position, radius, start_phi, phi_length } = atom
-        const is_cap = mesh.geometry instanceof CircleGeometry
-        const old_matrix = new Matrix4()
-          .makeScale(radius, radius, radius)
-          .setPosition(...position)
+        const old_matrix = new Matrix4().makeScale(radius, radius, radius)
+        old_matrix.setPosition(...position)
         if (is_cap) old_matrix.multiply(new Matrix4().makeRotationY(phi))
         const old_geometry = is_cap
           ? new CircleGeometry(0.5, segments, Math.PI / 2, Math.PI)
           : new SphereGeometry(0.5, segments, segments, start_phi, phi_length)
-        const instance_matrix = new Matrix4()
         mesh.getMatrixAt(slot, instance_matrix)
         const reference = transformed(old_geometry, old_matrix)
         const actual = transformed(mesh.geometry, instance_matrix)
         expect(actual).toHaveLength(reference.length)
-        for (const [idx, [ref_position, ref_normal]] of reference.entries()) {
-          const [act_position, act_normal] = actual[idx]
-          max_position_error = Math.max(
-            max_position_error,
-            ref_position.distanceTo(act_position),
-          )
-          max_normal_error = Math.max(max_normal_error, ref_normal.distanceTo(act_normal))
-        }
+        for (const [idx, vector] of reference.entries())
+          max_error = Math.max(max_error, vector.distanceTo(actual[idx]))
         n_instances++
       }
     }
-    // 8 wedges + 4 caps (sites 0 and 2 each close a vacancy)
-    expect(n_instances).toBe(12)
+    expect(n_instances).toBe(12) // 8 wedges + 4 caps (sites 0 and 2 each close a vacancy)
     // Float32 matrices and vertices round both sides at unit scale (translations here are
     // exact in f32): 2 ulp of 1 bounds it, measured 4.9e-8 (positions) and 6.6e-8 (normals)
-    expect(max_position_error).toBeLessThan(2 ** -22)
-    expect(max_normal_error).toBeLessThan(2 ** -22)
+    expect(max_error).toBeLessThan(2 ** -22)
     partial.dispose()
   })
 
@@ -412,7 +411,12 @@ describe(`PartialAtoms`, () => {
     partial.update(atoms, false, 12)
     // A cutaway through a vacancy plane leaves the cap behind the clipped front pickable, but
     // only on its own half: site 2's start cap spans -x of its center, its wedges +x
-    const cartesian_to_fractional = new Matrix4()
+    const cut = {
+      mode: `plane`,
+      axis: 2,
+      thickness: 0,
+      cartesian_to_fractional: new Matrix4(),
+    } as const
     for (const [atom_idx, offset_x, cut_z, distance] of [
       [0, -0.1, 0.1, 5],
       [0, -0.1, -0.3, undefined],
@@ -421,14 +425,7 @@ describe(`PartialAtoms`, () => {
       [3, 0.1, 0.1, undefined],
     ] as const) {
       const [site_x, site_y, site_z] = atoms[atom_idx].position
-      const position = site_z + cut_z
-      group.set_cutaway({
-        mode: `plane`,
-        axis: 2,
-        thickness: 0,
-        position,
-        cartesian_to_fractional,
-      })
+      group.set_cutaway({ ...cut, position: site_z + cut_z })
       const hits = pick([site_x + offset_x, site_y, site_z + 5], [0, 0, -1])
       const expected_ids = distance === undefined ? [] : [atom_idx]
       expect(hits.map(({ instanceId }) => instanceId)).toEqual(expected_ids)

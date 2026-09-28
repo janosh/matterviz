@@ -161,35 +161,8 @@ test.each([
   expect(hover.idx).toBe(front_idx)
 })
 
-// Open cylinders halve the bond triangles; capped ones close the ends no atom covers
-test.each([
-  [true, 32],
-  [false, 16],
-])(`Bond capped=%s draws %i triangles per cylinder`, (capped, triangles) => {
-  const bond: BondPair = {
-    pos_1: [0, 0, 0],
-    pos_2: [1, 0, 0],
-    site_idx_1: 0,
-    site_idx_2: 1,
-    bond_length: 1,
-  }
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    Bond(anchor, {
-      bonds: [bond],
-      site_colors: [`red`, `blue`],
-      thickness: 0.1,
-      ambient_light: 0.7,
-      directional_light: 0.3,
-      capped,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  const mesh = scene.children.find((child): child is BondMesh => child instanceof BondMesh)
-  expect((mesh?.geometry.index?.count ?? 0) / 3).toBe(triangles)
-})
-
-// Scene bonds stay open-ended unless an end could show: hidden, translucent or tiny atoms
+// Open cylinders halve the bond triangles; scene bonds close their ends only where one could
+// show: hidden, translucent or tiny atoms
 test.each([
   [`default atoms`, 16, {}],
   [`hidden atoms`, 32, { show_atoms: false }],
@@ -211,9 +184,8 @@ test.each([
   flushSync()
   const mesh = scene
     .getObjectsByProperty(`type`, `Mesh`)
-    .find((child) => child instanceof BondMesh)
-  expect(mesh).toBeInstanceOf(BondMesh)
-  expect(((mesh as BondMesh).geometry.index?.count ?? 0) / 3).toBe(triangles)
+    .find((obj) => obj instanceof BondMesh)
+  expect(mesh?.geometry.index?.count).toBe(triangles * 3)
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
@@ -243,9 +215,7 @@ test(`Scene draws one wedge per species of a site listing an element twice`, () 
     wedges[0].getMatrixAt(idx, matrix)
     return Math.atan2(matrix.elements[8], matrix.elements[0])
   })
-  expect(wedge_phis).toHaveLength(2)
-  expect(wedge_phis[0]).toBeCloseTo(0, 2)
-  expect(Math.abs(wedge_phis[1])).toBeCloseTo(Math.PI, 2)
+  expect(wedge_phis.map(Math.abs)).toEqual([expect.closeTo(0, 2), expect.closeTo(Math.PI, 2)])
 })
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {

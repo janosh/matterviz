@@ -15,8 +15,9 @@ import process from 'node:process'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { h5_bytes } from './fixtures'
 
-// What the producer records: its CODATA 2018 factor, 7e-10 off the reader's CODATA 2022 one
-const PRODUCER_VELOCITY_FACTOR = 1 / 10.180505710759414
+// What producers record: their own CODATA edition's factor (2018 is 7e-10 off the reader's
+// 2022 one), possibly float32-rounded (~6e-8 off); a wrong unit is off by orders of magnitude
+const PRODUCER_VELOCITY_FACTOR = Math.fround(1 / 10.180505710759414)
 const ATOMIC = { positions: 3, velocities: 3, forces: 3, charges: 1, spins: 1 }
 const units: Record<string, string> = {
   positions: `A; unwrapped Cartesian`,
@@ -47,6 +48,7 @@ const fixture = (
     committed?: number
     successful?: boolean
     float32?: boolean
+    velocity_factor?: number
     mutate?: (file: H5File) => void
   } = {},
 ) =>
@@ -61,7 +63,7 @@ const fixture = (
         expected_frames: frame_count,
         initial_step: 2300,
         timestep_fs: options.timestep_fs ?? 1,
-        velocity_to_A_per_fs: PRODUCER_VELOCITY_FACTOR,
+        velocity_to_A_per_fs: options.velocity_factor ?? PRODUCER_VELOCITY_FACTOR,
         ensemble: `NVE`,
         active_thermostat: `none`,
         metadata_json: JSON.stringify({ worker_sha256: `test-producer` }),
@@ -519,6 +521,7 @@ describe(`MD HDF5`, () => {
     ),
     [`invalid success count`, { committed: 2, successful: true }],
     [`incorrect float32 dtype`, { float32: true }],
+    [`velocities already in A/fs (conversion factor 1)`, { velocity_factor: 1 }],
     [
       `short committed channel`,
       { mutate: (file) => (file.get(`/frames/positions`) as Dataset).resize([2, 4, 3]) },
@@ -554,23 +557,5 @@ describe(`MD HDF5`, () => {
     ],
   ])(`rejects %s`, async (_label, options) => {
     await expect(open(await fixture(options))).rejects.toThrow(/MD|finite/)
-  })
-
-  // Producers record their own CODATA edition's factor, possibly float32-rounded (~6e-8 off);
-  // velocities already in A/fs (factor 1) are a wrong unit
-  it.each([
-    [`a float32-rounded producer factor`, Math.fround(PRODUCER_VELOCITY_FACTOR), undefined],
-    [`factor 1`, 1, /incompatible velocity conversion factor 1,/],
-  ])(`velocity conversion accepts or rejects %s`, async (_label, factor, error) => {
-    const run = open(
-      await fixture({
-        mutate: (file) => {
-          file.delete_attribute(`velocity_to_A_per_fs`)
-          file.create_attribute(`velocity_to_A_per_fs`, factor)
-        },
-      }),
-    )
-    if (error) await expect(run).rejects.toThrow(error)
-    else await expect(run).resolves.toBeDefined()
   })
 })

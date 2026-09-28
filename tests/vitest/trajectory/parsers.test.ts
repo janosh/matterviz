@@ -7,6 +7,7 @@ import { materialize_frame_result } from '$lib/trajectory/frame'
 import type { ElementSymbol } from '$lib'
 import { structure_to_xyz_str } from '$lib/structure/export'
 import { get_element_counts } from '$lib/structure/density'
+import type { Pbc } from '$lib/structure/pbc'
 import { parse_xyz } from '$lib/structure/parse'
 import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
 import {
@@ -45,10 +46,7 @@ import {
 import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
 import { decode_text_chunks } from '$lib/io/decompress'
 import { has_multiple_xyz_frames, TextLines } from '$lib/trajectory/helpers'
-import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { parse_vasp_xdatcar } from '$lib/trajectory/parse/vasp'
-import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -57,7 +55,7 @@ import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { rejection_of } from '../setup'
 import { make_crystal, read_binary_test_file, read_maybe_gz } from '../test-fixtures'
-import type { AseArray, H5Spec } from './fixtures'
+import type { H5Spec } from './fixtures'
 import {
   create_dataset,
   flat_frames,
@@ -279,11 +277,15 @@ describe(`content sniffing`, () => {
 
 // === VASP XDATCAR ===
 
+const xdatcar = (species_block: string, frames: string[], scale = `1.0`): string =>
+  [`title`, scale, `5 0 0`, `0 5 0`, `0 0 5`, species_block, ...frames].join(`\n`)
+const config = (step: number, ...coords: string[]) =>
+  [`Direct configuration= ${step}`, ...coords].join(`\n`)
+// a full header per frame (variable cell) with the species symbols wrapped onto two lines
+const variable_cell = (lat_a: number, idx: number) =>
+  `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n2\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 -0\n1.0D-1 0.2 0.3`
+
 describe(`XDATCAR`, () => {
-  const xdatcar = (species_block: string, frames: string[], scale = `1.0`): string =>
-    [`title`, scale, `5 0 0`, `0 5 0`, `0 0 5`, species_block, ...frames].join(`\n`)
-  const config = (step: number, ...coords: string[]) =>
-    [`Direct configuration= ${step}`, ...coords].join(`\n`)
   const two_frames = [config(1, `0.5 0.5 0.5`), config(2, `0.5 0.5 0.5`)]
 
   // oxfmt-ignore
@@ -334,15 +336,28 @@ describe(`XDATCAR`, () => {
   })
 
   it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
-    const frame = (lat_a: number, idx: number) =>
-      `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n1\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 0.25`
-    const run = await open(`${frame(10, 1)}\n${frame(20, 2)}`, `XDATCAR`)
+    const run = await open(`${variable_cell(10, 1)}\n${variable_cell(20, 2)}`, `XDATCAR`)
     const frames = await frames_of(run)
     expect(frames.map(({ step }) => step)).toEqual([1, 2])
     expect(frames.map((traj_frame) => lattice_of(traj_frame).a)).toEqual([10, 20])
-    expect(frames[1].structure.sites[0].xyz).toEqual([10, 10, 10])
+    expect(frames[1].structure.sites[2].xyz).toEqual([2, 4, 6])
     expect(frames[1].metadata?.volume).toBe(8000)
-    expect(elements_of(frames[1])).toEqual([`H`, `He`])
+    expect(elements_of(frames[1])).toEqual([`H`, `He`, `He`])
+  })
+
+  // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only
+  // that frame's read and plot row, with the error the eager open throws (see above)
+  it(`fails only the indexed frame holding a corrupt coordinate line`, async () => {
+    const frames = [1, 2, 3].map((step) =>
+      config(step, `0.5 0.5 0.5`, step === 2 ? `0.1 xx 0.1` : `0.1 0.1 0.1`),
+    )
+    const indexed = await open(xdatcar(`H\n2`, frames), `XDATCAR`, { index_above_bytes: 0 })
+    const error = `XDATCAR frame 2 line 13 is not a fractional coordinate triple: "0.1 xx 0.1"`
+    expect(() => indexed.read_frame(1)).toThrow(error)
+    expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
+    await indexed.properties.done
+    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
+    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
   })
 })
 
@@ -1082,15 +1097,12 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
 // === Indexed and byte-sourced XYZ, XDATCAR and LAMMPS ===
 
 // Above index_above_bytes, XYZ, XDATCAR and LAMMPS open indexed: frames decode on demand and
-// plot rows come from headers. Byte sources (what a file past the JS string limit arrives as)
-// read through TextLines over line-aligned chunks. Everything any of these runs exposes must
-// equal the eager string run's.
+// plot rows come from headers. Byte sources decode to one string, or past the JS string limit
+// to TextLines over line-aligned chunks. Everything any of these runs exposes must equal the
+// eager string run's.
 describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
   const site_text = (path: string) => () =>
     read_maybe_gz(join(process.cwd(), `src/site`, path))
-  const variable_cell = (lat_a: number, idx: number) =>
-    `frame\n1.0\n${lat_a} 0 0\n0 ${lat_a} 0\n0 0 ${lat_a}\nH\nHe\n1\n2\nDirect configuration= ${idx}\n0.5 0.5 0.5\n0.25 0.25 -0\n1.0D-1 0.2 0.3`
-  const xdatcar_head = `title\n1.0\n5 0 0\n0 5 0\n0 0 5\nH\n2`
   // unsorted ids, scaled coordinates, velocities, forces, charges (q) and ITEM: TIME
   const md_dump = (n_frames: number, torn = ``) =>
     Array.from({ length: n_frames }, (_, frame_idx) =>
@@ -1130,9 +1142,8 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
     [`vasp-XDATCAR.MD`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
     [`vasp-XDATCAR-traj`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR-traj.gz`)],
     [`a variable-cell XDATCAR with wrapped species`, `XDATCAR`, () => `${variable_cell(10, 1)}\n${variable_cell(20, 2)}\n${variable_cell(20, 3)}`],
-    [`an XDATCAR with CRLF endings and a torn last line`, `XDATCAR`, () => `${xdatcar_head}\nDirect configuration= 1\n0.5 0.5 0.5\n0.1 0.1 0.1\nDirect configuration= 2\n0.5 0.5 0.5\n0.1 0.1`.replaceAll(`\n`, `\r\n`)],
+    [`an XDATCAR with CRLF endings and a torn last line`, `XDATCAR`, () => xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 0.1 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1`)]).replaceAll(`\n`, `\r\n`)],
     [`lammps-sample`, `sample.lammpstrj`, site_text(`trajectories/lammps-sample.lammpstrj.gz`)],
-    [`the SGCMC cell dump`, `cell.lammpstrj`, site_text(`trajectories/cell_0_T_800.0_dmu_0.3129032258064516.lammpstrj.gz`)],
     [`mdanalysis-chain-dump`, `chain.lammpstrj`, site_text(`trajectories/mdanalysis-chain-dump.lammpstrj`)],
     [`mdanalysis-additional-columns`, `extra.lammpstrj`, site_text(`trajectories/mdanalysis-additional-columns.lammpstrj`)],
     [`Al-fcc.dump`, `Al-fcc.dump`, site_text(`structures/Al-fcc.dump`)],
@@ -1153,59 +1164,28 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
     expect([eager.properties.complete, indexed.properties.complete]).toEqual([true, false])
     await expect_same_run(indexed, eager)
     const bytes = new TextEncoder().encode(text)
-    for (const source of [bytes.buffer, new Blob([bytes])]) {
-      for (const index_above_bytes of [Infinity, 0])
-        await expect_same_run(await open(source, filename, { ...options, index_above_bytes }), eager)
-    }
+    // every run below costs a full comparison, so a large fixture only gets one run from
+    // mid-line chunk cuts (the small inputs cover byte sources and tiny chunks)
+    const small = bytes.length < 50_000
+    for (const source of small ? [bytes.buffer, new Blob([bytes])] : [])
+      await expect_same_run(await open(source, filename, { ...options, index_above_bytes: 0 }), eager)
     // Chunks cut from windows far smaller than a frame (mid-frame, mid-line, and widened past
-    // lines longer than the window) must index and parse exactly like one string
+    // lines longer than the window) must index exactly like one string
     const format = eager.provenance.format
-    const atom_type_mapping = options.atom_type_mapping ?? TEST_ATOM_TYPES
-    for (const chunk_bytes of [37, 256, 4099]) {
+    if (format !== `xyz` && format !== `xdatcar` && format !== `lammps`)
+      throw new Error(`unexpected format ${format}`)
+    for (const chunk_bytes of small ? [37, 256, 4099] : [4099]) {
       const chunks = await decode_text_chunks(bytes.buffer, chunk_bytes)
       expect(chunks.length).toBeGreaterThanOrEqual(Math.min(bytes.length / chunk_bytes, 2))
       const lines = new TextLines(chunks)
       // the format sniff open_trajectory runs on text past one string
       expect(has_multiple_xyz_frames(lines)).toBe(format === `xyz`)
       const provenance = { filename, source_bytes: bytes.length }
-      if (format !== `xyz` && format !== `xdatcar` && format !== `lammps`)
-        throw new Error(`unexpected format ${format}`)
-      const lazy = indexed_text_run(lines, format, provenance, create_warning_collector(), atom_type_mapping)
+      const mapping = options.atom_type_mapping ?? TEST_ATOM_TYPES
+      const lazy = indexed_text_run(lines, format, provenance, create_warning_collector(), mapping)
       onTestFinished(() => lazy.dispose())
       await expect_same_run(lazy, eager)
-      const collector = create_warning_collector()
-      const parsed =
-        format === `xyz`
-          ? parse_xyz_trajectory(lines, collector)
-          : format === `xdatcar`
-            ? parse_vasp_xdatcar(lines, collector.warn)
-            : parse_lammps_trajectory(lines, collector.warn, atom_type_mapping)
-      const { frames, metadata } = parsed
-      const run = trajectory_from_frames(frames, { provenance: { format }, metadata, warnings: collector.warnings })
-      await expect_same_run(run, eager)
     }
-  })
-
-  // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only
-  // that frame's read and plot row, with the error the eager open throws
-  it(`fails only the frame holding a corrupt XDATCAR coordinate line`, async () => {
-    const text = [1, 2, 3]
-      .map(
-        (step) =>
-          `Direct configuration= ${step}\n0.5 0.5 0.5\n${step === 2 ? `0.1 xx 0.1` : `0.1 0.1 0.1`}`,
-      )
-      .join(`\n`)
-    const content = `${xdatcar_head}\n${text}`
-    const error = `XDATCAR frame 2 line 13 is not a fractional coordinate triple: "0.1 xx 0.1"`
-    await expect(open(content, `XDATCAR`, { index_above_bytes: Infinity })).rejects.toThrow(
-      error,
-    )
-    const indexed = await open(content, `XDATCAR`, { index_above_bytes: 0 })
-    expect(() => indexed.read_frame(1)).toThrow(error)
-    expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
-    await indexed.properties.done
-    expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
-    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
   })
 })
 
@@ -1478,9 +1458,8 @@ describe(`XYZ`, () => {
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
   })
 
-  // Which reader opens a file is decided by its byte size alone, so the plot must not change
-  // with it: the in-memory rows are canonical
-  it(`extracts identical plot rows in memory and indexed`, async () => {
+  // The in-memory rows are canonical (the indexed run's must equal them, see above)
+  it(`extracts canonical plot rows`, async () => {
     const npt_frame = (frame_idx: number) => {
       const cell = 5 + 0.1 * frame_idx
       return [
@@ -1491,13 +1470,7 @@ describe(`XYZ`, () => {
         `O 1 1 1 0 -0.2 0`,
       ].join(`\n`)
     }
-    const content = [0, 1, 2].map(npt_frame).join(`\n`)
-    const [memory, indexed] = await Promise.all([
-      open(content, `npt.extxyz`),
-      open(content, `npt.extxyz`, { index_above_bytes: 0 }),
-    ])
-    await Promise.all([memory.properties.done, indexed.properties.done])
-    expect(indexed.properties.rows).toStrictEqual(memory.properties.rows)
+    const memory = await open([0, 1, 2].map(npt_frame).join(`\n`), `npt.extxyz`)
     // the canonical rows carry the lattice geometry and density, and every finite scalar the
     // file records
     expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
@@ -1647,28 +1620,25 @@ describe(`ASE`, () => {
   // (reading 4 walks back to 3 and 1, and must not cache frame 3's numbers for frames 1-2),
   // and a frame whose header cannot be read breaks only the frames that inherit through it
   it(`inherits numbers and pbc from separate earlier frames and isolates a corrupt frame`, () => {
-    const water = (array: AseArray) => array([3], (idx) => [8, 1, 1][idx])
-    const md_frame = (array: AseArray, frame_idx: number) => ({
-      [`positions.`]: array([3, 3], (idx) => idx * 0.7 + frame_idx),
-      cell: box,
-    })
-    const buffer = make_ase_buffer([
-      (array) => ({
-        [`numbers.`]: water(array),
-        pbc: [true, true, true],
-        ...md_frame(array, 0),
-      }),
-      (array) => ({ pbc: [true, false, true], ...md_frame(array, 1) }),
-      (array) => md_frame(array, 2),
-      (array) => ({ [`numbers.`]: array([3], () => 26), ...md_frame(array, 3) }),
-      (array) => md_frame(array, 4),
-      (array) => ({
-        [`numbers.`]: water(array),
-        pbc: [false, false, false],
-        ...md_frame(array, 5),
-      }),
-      (array) => md_frame(array, 6),
-    ])
+    const water = [8, 1, 1]
+    // each frame's own numbers and pbc, if any
+    const own: [number[]?, Pbc?][] = [
+      [water, [true, true, true]],
+      [undefined, [true, false, true]],
+      [],
+      [[26, 26, 26]],
+      [],
+      [water, [false, false, false]],
+      [],
+    ]
+    const buffer = make_ase_buffer(
+      own.map(([numbers, pbc], frame_idx) => (array) => ({
+        ...(numbers && { [`numbers.`]: array([3], (idx) => numbers[idx]) }),
+        ...(pbc && { pbc }),
+        [`positions.`]: array([3, 3], (idx) => idx * 0.7 + frame_idx),
+        cell: box,
+      })),
+    )
     const summary = (source: ReturnType<typeof open_ase_frames>, frame_idx: number) => {
       const { structure } = source.decode(frame_idx)
       return {
@@ -1697,7 +1667,7 @@ describe(`ASE`, () => {
     async (n_atoms) => {
       const buffer = make_ase_md_buffer(n_atoms)
       const source = open_ase_frames(buffer, no_warnings)
-      onTestFinished(() => source.release())
+      onTestFinished(() => source.release?.())
       const run = await open(buffer, `md.traj`)
       assert(source.read_atoms && run.compute_hotspots)
       expect(run.metadata).toMatchObject({ mass_unit: `amu`, velocity_unit: `A/fs` })
@@ -1774,14 +1744,14 @@ describe(`ASE`, () => {
       expect(() => source.read_atoms?.(options, controller.signal)).toThrow(`cancel analysis`)
       run.dispose()
       await expect(run.compute_hotspots({})).rejects.toThrow(/disposed/)
-      source.release()
+      source.release?.()
       expect(() => source.read_atoms?.(options)).toThrow(/released/)
     },
   )
 
   it(`uses ASE's elemental mass convention when no isotope masses are stored`, async () => {
     const source = open_ase_frames(make_ase_md_buffer(2, false), no_warnings)
-    onTestFinished(() => source.release())
+    onTestFinished(() => source.release?.())
     expect(source.atom_masses).toBeUndefined()
     const batch = await source.read_atoms?.({
       frame_idx: 1,

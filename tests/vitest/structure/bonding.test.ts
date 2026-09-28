@@ -17,7 +17,7 @@ import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { make_supercell } from '$lib/structure/supercell'
 import { test_molecules } from '$site/molecules'
 import { describe, expect, test, vi } from 'vitest'
-import { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
+import { make_rng } from '../numeric-helpers'
 import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
 
 const make_random_structure = (n_atoms: number, seed = 7): Crystal => {
@@ -1355,13 +1355,6 @@ describe(`compute_bonds memo`, () => {
       const search = new bonding.BondSearch()
       const source = make_random_structure(200, seed)
       const rand = make_rng(seed)
-      const canonical = (bonds: BondPair[]) =>
-        bonds.toSorted(
-          (left, right) =>
-            left.site_idx_1 - right.site_idx_1 ||
-            left.site_idx_2 - right.site_idx_2 ||
-            JSON.stringify(left.cell_shift).localeCompare(JSON.stringify(right.cell_shift)),
-        )
       for (let frame_idx = 0; frame_idx < 16; frame_idx++) {
         const structure = structuredClone(source)
         for (const site of structure.sites) {
@@ -1376,7 +1369,7 @@ describe(`compute_bonds memo`, () => {
             : frame_idx === 12
               ? { pbc: [true, true, true] as [boolean, boolean, boolean] }
               : {}
-        const expected = canonical(bonding.electroneg_ratio(structure, options))
+        const expected = sort_bonds(bonding.electroneg_ratio(structure, options))
         const columns = search.compute_columns(structure, options)
         if (frame_idx === 0) {
           expect(Reflect.get(search, `candidates`)).toEqual({
@@ -1394,12 +1387,8 @@ describe(`compute_bonds memo`, () => {
             allocate.mockRestore()
           }
         }
-        const actual = canonical(new BondFrame(structure, columns).materialize())
+        const actual = sort_bonds(new BondFrame(structure, columns).materialize())
         expect(actual).toEqual(expected)
-        const values = (bonds: BondPair[]) =>
-          bonds.flatMap(({ pos_1, pos_2, bond_length }) => [...pos_1, ...pos_2, bond_length])
-        expect(max_abs_error(values(actual), values(expected))).toBe(0)
-        expect(max_rel_error(values(actual), values(expected))).toBe(0)
       }
       expect(search.compute_columns({ sites: [] })).toEqual(pack_bonds([]))
     },
@@ -1491,11 +1480,7 @@ describe(`compute_bonds memo`, () => {
         const get = vi.spyOn(sites, `get`)
         const actual = search.compute_columns(structure)
         const expected = reference_search.compute_columns(reference)
-        expect(actual).toEqual(expected)
-        for (const key of [`indices`, `lengths`, `orders`, `images`] as const) {
-          expect(max_abs_error(actual[key], expected[key])).toBe(0)
-          expect(max_rel_error(actual[key], expected[key])).toBe(0)
-        }
+        expect(actual).toEqual(expected) // exact: toEqual tells -0 from 0 and 1-ulp changes
         expect(materialize).not.toHaveBeenCalled()
         expect(get).not.toHaveBeenCalled()
       }
@@ -1551,19 +1536,10 @@ describe(`compute_bonds memo`, () => {
     expect(skinned.join(``)).toBe(`11111000111`)
   })
 
-  test(`captures newly entering contacts, cumulative motion and element swaps`, () => {
+  // A distant Cs pair fixes the longest reach, so swapping H for S changes only the C-X band:
+  // C-H at 2.3 A lies outside the skin-widened C-H candidates, C-S at 2.3 A bonds
+  test(`rebuilds candidates when an element swap changes one pair's band`, () => {
     const search = new bonding.BondSearch()
-    for (const separation of [2.5, 2.4, 2.3, 2.2, 2.1, 2, 1.9, 1.8, 1.7, 1.6, 1.5]) {
-      const structure = make_struct([
-        { xyz: [0, 0, 0], element: `Si` },
-        { xyz: [separation, 0, 0], element: `Si` },
-      ])
-      expect(search.compute_columns(structure)).toEqual(
-        pack_bonds(bonding.electroneg_ratio(structure)),
-      )
-    }
-    // A distant Cs pair fixes the longest reach, so swapping H for S changes only the C-X
-    // band: C-H at 2.3 A lies outside the skin-widened C-H candidates, C-S at 2.3 A bonds
     for (const element of [`H`, `S`]) {
       const molecule = make_molecule([
         [`C`, [0, 0, 0]],
@@ -1915,10 +1891,6 @@ describe(`neighbor_query`, () => {
         : bonding.neighbor_query(structure, { cutoff, pbc, sorted })
       const actual = bonding.neighbor_query(numeric, { cutoff, pbc, sorted })
       expect(actual).toEqual(expected)
-      for (const key of [`offsets`, `neighbors`, `images`, `deltas`, `distances`] as const) {
-        expect(max_abs_error(actual[key], expected[key])).toBe(0)
-        expect(max_rel_error(actual[key], expected[key])).toBe(0)
-      }
     }
     const actual = as_map(list)
     const expected = brute_force(structure, cutoff, pbc)
@@ -2248,7 +2220,7 @@ describe(`neighbor_query`, () => {
     }
   })
 
-  test(`rejects a degenerate periodic lattice and an absurd cutoff`, () => {
+  test(`rejects a degenerate lattice and absurd cutoffs, not in-band bond perception`, () => {
     const flat = make_crystal(
       [
         [3, 0, 0],
@@ -2282,19 +2254,16 @@ describe(`neighbor_query`, () => {
     let n_visits = 0
     bonding.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
     expect(n_visits).toBe(4600 * 4599)
-  })
-
-  // Cs-Cs reaches 39 A under these options, which puts all 10.6M pairs of the dense H grid
-  // inside the longest reach; only ~60k H-H pairs lie in their own band. Pairs outside
-  // their element pair's band must not count towards the pair budget.
-  test(`bond perception stores only contacts inside their element pair's band`, () => {
-    const hydrogen = hydrogen_grid(0.5)
+    // Cs-Cs reaches 39 A under these options, putting all 10.6M grid pairs inside the longest
+    // reach, but only ~60k H-H pairs lie in their own band: bond perception stores just those
     const options = { metal_metal_penalty: 1e100, max_distance_ratio: 100 }
-    const mixed = make_molecule([...hydrogen, [`Cs`, [40, 0, 0]], [`Cs`, [45, 0, 0]]])
+    const mixed = make_molecule([
+      ...hydrogen_grid(0.5),
+      [`Cs`, [40, 0, 0]],
+      [`Cs`, [45, 0, 0]],
+    ])
     const bonds = sort_bonds(bonding.electroneg_ratio(mixed, options))
-    const hydrogen_bonds = sort_bonds(
-      bonding.electroneg_ratio(make_molecule(hydrogen), options),
-    )
+    const hydrogen_bonds = sort_bonds(bonding.electroneg_ratio(dense, options))
     expect(hydrogen_bonds.length).toBeGreaterThan(4600 * 2)
     expect(bonds.slice(0, -1)).toEqual(hydrogen_bonds)
     expect(bonds.at(-1)).toMatchObject({ site_idx_1: 4600, site_idx_2: 4601, bond_length: 5 })

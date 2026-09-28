@@ -4,20 +4,17 @@ import { finite_vec3_from_values, partition_point, type Matrix3x3, type Vec3 } f
 import type { Pbc } from '$lib/structure'
 import type { TrajectoryRunSignal } from './index'
 import type { NumericFrame } from './frame'
-import { element_from_atomic_number } from '$lib/element/helpers'
+import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
 
 export const ATOM_BATCH_SIZE = 65_536
-// Packed sites store atomic numbers as bytes: index both tables by that byte directly.
-// Unknown numbers resolve to atomic number 0 and a NaN mass, which the mass check rejects.
-const packed_elements = Array.from({ length: 256 }, (_unused, byte) => {
-  const symbol = element_from_atomic_number(byte)
+// Indexed by atomic number (packed sites' bytes): typed tables, since reading the element
+// objects themselves in the atom loop is ~5x slower. Unknown numbers map to 0 and a NaN mass.
+const elements = Array.from({ length: 256 }, (_unused, number) => {
+  const symbol = element_from_atomic_number(number)
   return symbol && element_by_symbol.get(symbol)
 })
-const PACKED_NUMBERS = Uint8Array.from(packed_elements, (element) => element?.number ?? 0)
-const PACKED_MASSES = Float64Array.from(
-  packed_elements,
-  (element) => element?.atomic_mass ?? Number.NaN,
-)
+const ATOMIC_NUMBERS = Uint8Array.from(elements, (element) => element?.number ?? 0)
+const MASSES = Float64Array.from(elements, (element) => element?.atomic_mass ?? Number.NaN)
 export interface AtomReadOptions {
   frame_idx: number
   start?: number
@@ -120,54 +117,39 @@ export function frame_atom_batch(
     velocity_key && !Object.hasOwn(frame.scalar_columns ?? {}, velocity_key)
       ? vector_keys.indexOf(velocity_key)
       : -1
-  const records = sites instanceof Uint8Array ? undefined : sites
-  // Resolve each channel's source once per batch; the atom loop only indexes into it.
+  const [packed, records] =
+    sites instanceof Uint8Array ? [sites, undefined] : [undefined, sites]
+  // Resolve each channel's source once per batch; the atom loop only indexes into it
   const property_reader = (key: string) => {
     const column = frame.scalar_columns?.[key]
     return (atom_idx: number): unknown =>
       column?.[atom_idx] ?? records?.[atom_idx].properties[key]
   }
-  const { positions, atomic_numbers, masses, velocities, energies, selected } = batch
-  const [origin_x, origin_y, origin_z] = origin
-  for (let idx = 0; idx < count; idx++) {
-    const offset = (start + idx) * frame_width
-    positions[idx * 3] = coordinates[offset] + origin_x
-    positions[idx * 3 + 1] = coordinates[offset + 1] + origin_y
-    positions[idx * 3 + 2] = coordinates[offset + 2] + origin_z
-  }
-  // Standard elements by atomic number: packed sites take two table reads per atom instead
-  // of a symbol lookup followed by a Map lookup. Written straight into the batch; missing
-  // elements leave a NaN mass for the check below.
-  const standard_masses = mass_source === `standard` ? masses : undefined
-  if (sites instanceof Uint8Array) {
-    for (let idx = 0; idx < count; idx++) {
-      const atomic_number = sites[start + idx]
-      atomic_numbers[idx] = PACKED_NUMBERS[atomic_number]
-      if (standard_masses) standard_masses[idx] = PACKED_MASSES[atomic_number]
-    }
-  } else {
-    for (let idx = 0; idx < count; idx++) {
-      const symbol = sites[start + idx].species[0]?.element
-      const element = symbol ? element_by_symbol.get(symbol) : undefined
-      atomic_numbers[idx] = element?.number ?? 0
-      if (standard_masses) standard_masses[idx] = element?.atomic_mass ?? Number.NaN
-    }
-  }
-  const mass_property = masses && !standard_masses ? property_reader(`mass`) : undefined
+  const mass_property = mass_source === `recorded` ? property_reader(`mass`) : undefined
   const velocity_property =
-    velocities && velocity_key && !velocity_signal && velocity_column < 0
+    velocity_key && !velocity_signal && velocity_column < 0
       ? property_reader(velocity_key)
       : undefined
   const energy_property = energy_key ? property_reader(energy_key) : undefined
   const selection_property = selection_key ? property_reader(selection_key) : undefined
-  // Per-atom validation keeps its original order (mass, velocity, energy, selection) so the
-  // first invalid atom reports the same error as a one-atom-at-a-time reader.
+  const { positions, atomic_numbers, masses, velocities, energies, selected } = batch
+  const [origin_x, origin_y, origin_z] = origin
+  const velocity_values = velocity_signal ?? coordinates
+  const velocity_start = 6 + velocity_column * 3
   for (let idx = 0; idx < count; idx++) {
     const atom_idx = start + idx
+    const offset = atom_idx * frame_width
+    positions[idx * 3] = coordinates[offset] + origin_x
+    positions[idx * 3 + 1] = coordinates[offset + 1] + origin_y
+    positions[idx * 3 + 2] = coordinates[offset + 2] + origin_z
+    const atomic_number = packed
+      ? packed[atom_idx]
+      : (symbol_to_atomic_number(records?.[atom_idx].species[0]?.element ?? ``) ?? 0)
+    atomic_numbers[idx] = ATOMIC_NUMBERS[atomic_number]
     if (masses) {
-      const mass = standard_masses
-        ? standard_masses[idx]
-        : (recorded_masses?.[atom_idx] ?? mass_property?.(atom_idx))
+      const mass = mass_property
+        ? (recorded_masses?.[atom_idx] ?? mass_property(atom_idx))
+        : MASSES[atomic_number]
       if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0)
         throw new Error(
           `Missing or invalid ${mass_source} mass at atom ${atom_idx}, step ${step}`,
@@ -175,22 +157,19 @@ export function frame_atom_batch(
       masses[idx] = mass
     }
     if (velocities && velocity_key) {
-      let velocity: ArrayLike<unknown> = coordinates
-      let offset = atom_idx * frame_width + 6 + velocity_column * 3
-      if (velocity_signal) {
-        velocity = velocity_signal
-        offset = atom_idx * 3
-      } else if (velocity_property) {
+      let velocity: ArrayLike<unknown> = velocity_values
+      let velocity_offset = velocity_signal ? atom_idx * 3 : offset + velocity_start
+      if (velocity_property) {
         const value = velocity_property(atom_idx)
         if ((!Array.isArray(value) && !(value instanceof Float64Array)) || value.length !== 3)
           throw new Error(
             `Missing or invalid ${velocity_key} at atom ${atom_idx}, step ${step}`,
           )
         velocity = value
-        offset = 0
+        velocity_offset = 0
       }
       for (let axis = 0; axis < 3; axis++) {
-        const component = velocity[offset + axis]
+        const component = velocity[velocity_offset + axis]
         if (typeof component !== `number` || !Number.isFinite(component))
           throw new Error(
             `Invalid ${velocity_key} at atom ${atom_idx}, step ${step}, axis ${axis}`,

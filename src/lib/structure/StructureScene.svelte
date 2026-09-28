@@ -541,7 +541,11 @@
   }
   $effect(() => cancel_atom_hover_clear)
 
-  function set_atom_hover(site_idx: number): void {
+  // Threlte hands a pointer event to every object under the cursor, nearest first, so the atom
+  // or editable bond behind would take over the hover unless the front one stops it
+  type StoppableEvent = { stopPropagation: () => void }
+  function set_atom_hover(site_idx: number, event?: StoppableEvent): void {
+    event?.stopPropagation()
     cancel_atom_hover_clear()
     if (hovered_idx !== site_idx) hovered_idx = site_idx
     if (!atom_tooltip_active) atom_tooltip_active = true
@@ -557,15 +561,6 @@
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
-  // Threlte hands a pointer event to every atom under the cursor, nearest first, so the atom
-  // behind would take over the hover unless the front one stops it
-  type StoppableEvent = { stopPropagation: () => void }
-  function hover_front_atom(site_idx: number, event: StoppableEvent): void {
-    event.stopPropagation()
-    set_atom_hover(site_idx)
-  }
-
-  // Same for editable bonds: the front-most one keeps the hover from bonds and atoms behind it
   function hover_front_bond(bond_key: string, event: StoppableEvent): void {
     event.stopPropagation()
     hovered_bond_key = bond_key
@@ -575,8 +570,8 @@
     !interactive || site_idx == null
       ? {}
       : {
-          onpointerenter: (event: StoppableEvent) => hover_front_atom(site_idx, event),
-          onpointermove: (event: StoppableEvent) => hover_front_atom(site_idx, event),
+          onpointerenter: (event: StoppableEvent) => set_atom_hover(site_idx, event),
+          onpointermove: (event: StoppableEvent) => set_atom_hover(site_idx, event),
           onpointerleave: () => schedule_atom_hover_clear(site_idx),
         }
 
@@ -961,7 +956,7 @@
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
-    const hover = wrap<StoppableEvent & InstanceEvent>(hover_front_atom)
+    const hover = wrap<StoppableEvent & InstanceEvent>(set_atom_hover)
     return {
       onpointerenter: hover,
       onpointermove: hover,
@@ -1594,18 +1589,16 @@
     const prop_colors = property_colors?.colors
     const element_colors = palette
     const mode = polyhedra_color_mode
-    if (mode === `uniform`) {
-      return merge_polyhedra_buffers(polyhedra, { mode, color: polyhedra_color })
+    const site_color = (site_idx: number) => {
+      const element = columns
+        ? element_from_atomic_number(columns.numbers[site_idx])
+        : get_majority_element(get_site(source, site_idx))
+      return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
     }
-    return merge_polyhedra_buffers(polyhedra, {
-      mode,
-      site_color: (site_idx) => {
-        const element = columns
-          ? element_from_atomic_number(columns.numbers[site_idx])
-          : get_majority_element(get_site(source, site_idx))
-        return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
-      },
-    })
+    return merge_polyhedra_buffers(
+      polyhedra,
+      mode === `uniform` ? { mode, color: polyhedra_color } : { mode, site_color },
+    )
   })
 
   let polyhedra_center_site_idxs = $derived(
@@ -1622,8 +1615,7 @@
     }
   })
 
-  // One face geometry rewritten in place across frames (replaced only when a frame outgrows
-  // it) instead of a fresh BufferGeometry per playback frame; normals come from the merge.
+  // One face geometry rewritten in place across frames, replaced only when a frame outgrows it
   let polyhedra_faces: BufferGeometry | null = $state.raw(null)
   $effect(() => {
     if (!polyhedra_buffers?.triangle_count) return

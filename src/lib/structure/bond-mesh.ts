@@ -41,10 +41,8 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   readonly instanceColor = null
   override count = 0
   thickness = 1
-  // Bond topology and palette the colors were last written for: playback frames mostly keep
-  // their bonds, so an identical topology and palette skip the per-cylinder loop (~70% of a
-  // 100k-atom frame switch). Copies, since columns arrive fresh per frame and palettes are
-  // edited in place.
+  // Copies of the topology and palette the colors were last written for (columns arrive fresh
+  // per frame, palettes are edited in place): playback frames keeping both skip the loop
   private colored?: { indices: Uint32Array; orders: Uint8Array; site_colors: string[] }
 
   constructor(source = new BufferGeometry(), material?: Material, capacity = 0) {

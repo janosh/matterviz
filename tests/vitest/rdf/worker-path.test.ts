@@ -45,10 +45,9 @@ test(`ships positions, lattice and species, and matches the sync per-pair histog
 test(`dispatches each request to the least-loaded pool worker`, async () => {
   const crystal = make_crystal(4, [[`Na`, [0, 0, 0]]])
   const options = { cutoff: 4, n_bins: 10 }
+  const posted_per_worker = () => stub.instances.map((worker) => worker.posted.length)
   for (let request = 0; request < 3; request++) await calc_frame_rdfs_async(crystal, options)
-  expect(stub.instances).toHaveLength(1)
-  expect(stub.instances[0].posted).toHaveLength(3)
+  expect(posted_per_worker()).toEqual([3])
   await Promise.all([0, 1].map(() => calc_frame_rdfs_async(crystal, options)))
-  expect(stub.instances).toHaveLength(2)
-  expect(stub.instances.map((worker) => worker.posted.length)).toEqual([4, 1])
+  expect(posted_per_worker()).toEqual([4, 1])
 })

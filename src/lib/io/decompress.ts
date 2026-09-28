@@ -185,27 +185,26 @@ export const as_text = (content: string | ArrayBuffer): string =>
 // longer strings, so this is the size past which no text payload decodes into one string
 export const MAX_STRING_CHARS = 0x1fffffe8
 
-// Bytes per chunk of decode_text_chunks: a Blob is read one window at a time, so its bytes and
-// its text only ever coexist for one window
-export const TEXT_CHUNK_BYTES = 64 * 1024 * 1024
-
-// UTF-8 text of `source` as strings of at most `chunk_bytes` bytes each (a line longer than
-// that widens its chunk), every chunk but the last ending just after a `\n` so no line spans
-// two: the form in which text past MAX_STRING_CHARS stays readable (see TextLines). A 0x0A byte
-// never sits inside a multi-byte UTF-8 sequence, so the chunks join to exactly what one decode
-// returns (a leading BOM dropped, like blob.text()).
+// UTF-8 text of `source` as one string when it fits one, else as line-aligned chunks of
+// `chunk_bytes` (a Blob is read one window at a time, so its bytes and text only coexist for
+// one window). A line longer than a chunk widens it; every chunk but the last ends just after
+// a `\n`, so no line spans two (see TextLines). A 0x0A byte never sits inside a multi-byte
+// UTF-8 sequence, so the chunks join to exactly what one decode returns (a leading BOM
+// dropped, like blob.text()).
 export const decode_text_chunks = async (
   source: ArrayBuffer | Blob,
-  chunk_bytes = TEXT_CHUNK_BYTES,
+  chunk_bytes?: number,
 ): Promise<string[]> => {
   const size = source instanceof Blob ? source.size : source.byteLength
+  const window_bytes = chunk_bytes ?? (size > MAX_STRING_CHARS ? 64 * 1024 * 1024 : size)
   const read = async (from: number, to: number): Promise<Uint8Array> =>
     source instanceof Blob
       ? new Uint8Array(await source.slice(from, to).arrayBuffer())
       : new Uint8Array(source, from, to - from)
   const chunks: string[] = []
-  let decoder = new TextDecoder()
-  for (let from = 0, window = chunk_bytes; from < size;) {
+  // streamed, so only the first chunk drops a BOM (a later one is mid-text in one decode)
+  const decoder = new TextDecoder()
+  for (let from = 0, window = window_bytes; from < size;) {
     const to = Math.min(from + window, size)
     const bytes = await read(from, to)
     const cut = to === size ? bytes.length : bytes.lastIndexOf(10) + 1
@@ -213,11 +212,9 @@ export const decode_text_chunks = async (
       window *= 2
       continue
     }
-    chunks.push(decoder.decode(bytes.subarray(0, cut)))
-    // a BOM opening a later chunk is text, as it is mid-string in one decode
-    decoder = new TextDecoder(`utf-8`, { ignoreBOM: true })
+    chunks.push(decoder.decode(bytes.subarray(0, cut), { stream: to < size }))
     from += cut
-    window = chunk_bytes
+    window = window_bytes
   }
   return chunks.length > 0 ? chunks : [``]
 }

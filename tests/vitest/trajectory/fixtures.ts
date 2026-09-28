@@ -6,10 +6,7 @@ import { make_rng } from '../numeric-helpers'
 
 // ULM container (what ASE's Trajectory writes) of the given frame headers. Each header is
 // built with `array`, which appends a float64 payload and returns its ndarray descriptor.
-export type AseArray = (
-  shape: number[],
-  value: (idx: number) => number,
-) => { ndarray: unknown[] }
+type AseArray = (shape: number[], value: (idx: number) => number) => { ndarray: unknown[] }
 export function make_ase_buffer(
   frame_headers: ((array: AseArray) => Record<string, unknown>)[],
 ): ArrayBuffer {

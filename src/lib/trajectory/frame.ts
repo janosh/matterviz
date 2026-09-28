@@ -333,20 +333,16 @@ export function create_numeric_md_frame(
 // A viewer projection never enters a run cache or an analysis result. Fixed topology reuses
 // species and labels; coordinates/properties get fresh references so Svelte invalidates
 // tooltips, measurements and tables and retained display frames never change underneath them.
-// Text formats (extxyz, XDATCAR, LAMMPS, ...) declare no topology, but their standard sites
-// encode as element bytes whose labels ARE the elements: byte-identical frames therefore share
-// row identity, which keeps the scene on its in-place coordinate path instead of rebuilding
-// every site record per frame (104k atoms: 114 -> 26 ms per frame switch).
+// Topology-less text formats (extxyz, XDATCAR, LAMMPS) encode standard sites as element bytes,
+// so byte-identical frames share row identity too and the scene keeps its in-place coordinate
+// path instead of rebuilding every site record (104k atoms: 114 -> 26 ms per frame switch).
 export class FrameView {
-  private topology:
-    | {
-        revision?: number
-        count: number
-        identities: Pick<Site, 'species' | 'label'>[]
-        // element bytes of a topology-less frame, compared against the next one
-        elements?: Uint8Array
-      }
-    | undefined
+  private topology?: {
+    revision?: number
+    count: number
+    identities: Pick<Site, 'species' | 'label'>[]
+    elements?: Uint8Array // element bytes of a topology-less frame
+  }
 
   clear(): void {
     this.topology = undefined

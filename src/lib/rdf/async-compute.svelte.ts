@@ -18,13 +18,10 @@ const create_rdf_client = () =>
     build_payload: (structure) => to_structure_id_payload(structure, true),
   })
 
-// Trajectory frames are independent, so a sweep keeps several workers busy (one left for the
-// main thread and the parse worker). Workers start lazily on their first request, so a
-// single-frame caller still spawns only one.
-export const RDF_WORKER_COUNT = Math.max(
-  1,
-  Math.min(6, (globalThis.navigator?.hardwareConcurrency ?? 2) - 2),
-)
+// Frames are independent, so a sweep keeps several workers busy (sparing the main thread and
+// parse worker); workers start lazily, so a single-frame caller still spawns only one
+const n_cores = globalThis.navigator?.hardwareConcurrency ?? 2
+export const RDF_WORKER_COUNT = Math.max(1, Math.min(6, n_cores - 2))
 const pool = Array.from({ length: RDF_WORKER_COUNT }, create_rdf_client)
 // Requests in flight per client: each goes to the least loaded one, so a lane that finishes
 // early never queues behind a busy worker while another sits idle

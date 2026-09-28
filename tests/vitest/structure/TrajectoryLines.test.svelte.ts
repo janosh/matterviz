@@ -4,8 +4,9 @@ import { TrajectoryTrail } from '$lib/structure/trajectory-lines'
 import { mount_scene } from '../scene/mount'
 import { make_position_stream } from '../test-fixtures'
 import { flushSync } from 'svelte'
+import type { BufferGeometry } from 'three/webgpu'
 import { BufferAttribute, LineSegments } from 'three/webgpu'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, test } from 'vitest'
 
 // Three atoms on straight lines through a 10 Å cell, never wrapping
 const stream = make_position_stream(
@@ -23,17 +24,20 @@ const anchors_at = (frame_idx: number) =>
     (coord) => coord + 0.5,
   )
 
-test(`playback moves the window in place, re-uploading only the window ends and offsets`, () => {
+test(`playback moves the window in place, re-uploading only the window ends and offsets`, async () => {
   const props = $state({
     end_frame: 10,
     anchor_positions: anchors_at(10),
     frame_stride: 3,
+    trail_frames: 5,
   })
   const bound: { stats: TrajectoryLinesStats | null } = { stats: null }
   const { scene, unmount_scene } = mount_scene((anchor) =>
     TrajectoryLines(anchor, {
       position_stream: stream,
-      trail_frames: 5,
+      get trail_frames() {
+        return props.trail_frames
+      },
       get frame_stride() {
         return props.frame_stride
       },
@@ -51,7 +55,6 @@ test(`playback moves the window in place, re-uploading only the window ends and 
       },
     }),
   )
-  onTestFinished(unmount_scene)
   flushSync()
   const lines = () => {
     const found: LineSegments[] = []
@@ -105,38 +108,22 @@ test(`playback moves the window in place, re-uploading only the window ends and 
   }
 
   // A polyline option rebuilds the buffers and disposes the old ones
-  let disposed = false
-  geometry.addEventListener(`dispose`, () => (disposed = true))
+  const disposed: BufferGeometry[] = []
+  const on_dispose = ({ target }: { target: BufferGeometry }) => disposed.push(target)
+  geometry.addEventListener(`dispose`, on_dispose)
   props.frame_stride = 2
   flushSync()
-  expect(disposed).toBe(true)
-  expect(lines()).toHaveLength(1)
-  expect(lines()[0].geometry).not.toBe(geometry)
+  const [rebuilt] = lines()
+  expect(lines()).toEqual([rebuilt])
+  expect(disposed).toEqual([geometry])
   expect(bound.stats?.frame_idxs).toEqual([12, 14, 16])
-})
-
-test(`unmounting clears the bound stats and disposes the buffers`, async () => {
-  const bound: { stats: TrajectoryLinesStats | null } = { stats: null }
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    TrajectoryLines(anchor, {
-      position_stream: stream,
-      get build_result() {
-        return bound.stats
-      },
-      set build_result(value) {
-        bound.stats = value
-      },
-    }),
-  )
+  // The slider's 0 end stop draws the whole run: frames 0, 2, …, 16 of all three atoms
+  props.trail_frames = 0
   flushSync()
-  expect(bound.stats?.segment_count).toBe(3 * 29)
-  let line: LineSegments | undefined
-  scene.traverse((obj) => {
-    if (obj instanceof LineSegments) line = obj
-  })
-  let disposed = false
-  line?.geometry.addEventListener(`dispose`, () => (disposed = true))
+  expect(bound.stats?.segment_count).toBe(3 * 8)
+  // Unmounting clears the bound stats and disposes the buffers
+  rebuilt.geometry.addEventListener(`dispose`, on_dispose)
   await unmount_scene()
   expect(bound.stats).toBeNull()
-  expect(disposed).toBe(true)
+  expect(disposed).toEqual([geometry, rebuilt.geometry])
 })

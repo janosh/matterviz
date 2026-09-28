@@ -129,8 +129,7 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
   return null
 }
 
-// Element-wise === of two array-likes (typed columns, palettes); cheaper than hashing for the
-// "did this column change" checks on hot playback paths
+// Element-wise === of two array-likes; cheaper than hashing for hot "column changed?" checks
 export const same_values = <Value>(
   left: ArrayLike<Value>,
   right: ArrayLike<Value>,

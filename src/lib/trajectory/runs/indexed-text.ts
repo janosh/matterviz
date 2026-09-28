@@ -27,30 +27,19 @@ const yield_to_event_loop = (): Promise<void> =>
 
 // === XYZ / EXTXYZ ===
 
-const xyz_source = (text_lines: TextLines, collector: WarningCollector): AseFrames => {
+const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames => {
   // Line indices, never an array of line strings (see iter_xyz_frames); a torn tail is
   // dropped now so frame_count excludes it, rather than failing on the seek
-  let lines: TextLines | null = text_lines
   const frames = index_xyz_frames(lines, collector.warn)
-  const decode = (frame_idx: number): TrajectoryFrame => {
-    if (!lines) throw new Error(`XYZ trajectory text was released`)
-    return build_xyz_frame(
+  const decode = (frame_idx: number): TrajectoryFrame =>
+    build_xyz_frame(
       lines,
       frames[frame_idx],
       { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
       collector,
     )
-  }
-  return {
-    frame_count: frames.length,
-    decode,
-    // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
-    plot_row_frame: decode,
-    release: () => {
-      lines = null
-      frames.length = 0
-    },
-  }
+  // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
+  return { frame_count: frames.length, decode, plot_row_frame: decode }
 }
 
 export const indexed_text_run = (
@@ -65,7 +54,8 @@ export const indexed_text_run = (
     const text = error === undefined ? message : `${message}: ${to_error(error).message}`
     collector.warn_once(text, text)
   }
-  let source: AseFrames
+  // dispose drops `source`, the only holder of the payload and its frame index
+  let source: AseFrames | null
   if (format === `ase`) {
     if (!(data instanceof ArrayBuffer)) {
       throw new TypeError(`Indexed ASE trajectories need binary data, got text`)
@@ -80,7 +70,11 @@ export const indexed_text_run = (
     else if (format === `xdatcar`) source = open_xdatcar_frames(lines, warn_once)
     else source = open_lammps_frames(lines, warn_once, atom_type_mapping)
   }
-  const { frame_count, decode } = source
+  const { frame_count } = source
+  const decode = (frame_idx: number): TrajectoryFrame => {
+    if (!source) throw new Error(`Indexed ${format} trajectory was released`)
+    return source.decode(frame_idx)
+  }
   const properties = new TrajectoryProperties()
   const run = sync_run({
     label: `Indexed ${format} trajectory`,
@@ -93,7 +87,10 @@ export const indexed_text_run = (
     metadata: source.metadata ?? {},
     warnings: collector.warnings,
     collect_positions: (options) => accumulate_positions(frame_count, decode, options),
-    release: source.release,
+    release: () => {
+      source?.release?.()
+      source = null
+    },
   })
   // Yield before each batch so the preview appears before scanning property columns.
   // Disposal finishes `properties`, stopping work on the next event-loop turn.
@@ -101,7 +98,7 @@ export const indexed_text_run = (
     try {
       for (let frame_idx = 0; frame_idx < frame_count;) {
         await yield_to_event_loop()
-        if (properties.complete) return
+        if (properties.complete || !source) return
         const end = Math.min(frame_idx + PROPERTY_BATCH, frame_count)
         const deadline = performance.now() + PROPERTY_BUDGET_MS
         const batch: TrajectoryMetadata[] = []

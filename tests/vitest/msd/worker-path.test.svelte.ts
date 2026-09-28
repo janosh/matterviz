@@ -60,29 +60,23 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
     target: document.body,
     props: bind_props({ positions }, state),
   })
+  const edit = async (msd_options: MsdOptions) => {
+    state.msd_options = msd_options
+    await settle(6)
+    return [state.result, state.error_msg, stub.posted.length]
+  }
+  const relabelled: MsdOptions = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
+  const expected = calc_msd(positions, relabelled)
+  const invalid = [undefined, expect.stringContaining(`without time_unit`), 1]
   try {
     await settle(6)
     expect(stub.posted).toHaveLength(1)
-    state.msd_options = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
-    await settle(6)
-    expect(stub.posted).toHaveLength(1)
-    const expected = calc_msd(positions, { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` })
-    expect(state.result).toEqual(expected)
-    // an invalid timestep is reported in place of the curves, still without recomputing
-    state.msd_options = { max_lag_fraction: 0.5, dt: 2 }
-    await settle(6)
-    expect(state.result).toBeUndefined()
-    expect(document.body.textContent).toContain(`without time_unit`)
-    expect(stub.posted).toHaveLength(1)
-    // correcting it restores the curves and clears the message, still without recomputing
-    state.msd_options = { max_lag_fraction: 0.5, dt: 2, time_unit: `fs` }
-    await settle(6)
-    expect(state.result).toEqual(expected)
-    expect(state.error_msg).toBeUndefined()
-    expect(stub.posted).toHaveLength(1)
-    state.msd_options = { max_lag_fraction: 0.3, dt: 2, time_unit: `fs` }
-    await settle(6)
-    expect(stub.posted).toHaveLength(2)
+    expect(await edit(relabelled)).toEqual([expected, undefined, 1])
+    // an invalid timestep is reported in place of the curves, and correcting it restores them
+    // and clears the message, both without recomputing
+    expect(await edit({ max_lag_fraction: 0.5, dt: 2 })).toEqual(invalid)
+    expect(await edit(relabelled)).toEqual([expected, undefined, 1])
+    expect((await edit({ ...relabelled, max_lag_fraction: 0.3 }))[2]).toBe(2)
   } finally {
     await unmount(component)
   }

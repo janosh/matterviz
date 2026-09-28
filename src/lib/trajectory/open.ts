@@ -272,13 +272,9 @@ export async function open_trajectory(
     }
     report(10, `Parsing trajectory…`)
     // Text that fits one string reads exactly like a string source; past that, only as lines
-    const text =
-      source_bytes > MAX_STRING_CHARS
-        ? new TextLines(await decode_text_chunks(source))
-        : source instanceof Blob
-          ? await source.text()
-          : new TextDecoder().decode(source)
+    const chunks = await decode_text_chunks(source)
     signal?.throwIfAborted()
+    const text = chunks.length > 1 ? new TextLines(chunks) : chunks[0]
     run = parse_text(text, options, provenance, collector, index_above_bytes)
   }
   if (signal?.aborted) {

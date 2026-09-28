@@ -23,9 +23,7 @@
     thickness: number
     ambient_light: number
     directional_light: number
-    // End discs only show where no opaque atom sphere covers the bond ends; open cylinders
-    // halve the bond triangles (8 radial segments: 32 -> 16)
-    capped?: boolean
+    capped?: boolean // end discs, needed only where no opaque atom covers a bond end
   } = $props()
 
   const { invalidate } = useThrelte()

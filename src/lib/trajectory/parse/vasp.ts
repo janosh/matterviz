@@ -4,6 +4,7 @@ import type { ElementSymbol } from '$lib/element/types'
 import { symbol_to_atomic_number } from '$lib/element/helpers'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import type { Pbc } from '$lib/structure/pbc'
 import { parse_float_token } from '$lib/structure/parsers/shared'
 import { parse_vasp_header } from '$lib/structure/parsers/vasp-header'
 import {
@@ -12,6 +13,7 @@ import {
   expand_ion_types,
   TextLines,
 } from '$lib/trajectory/helpers'
+import type { TrajectoryFrame } from '$lib/trajectory/index'
 import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
@@ -153,48 +155,22 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 // Indexed XDATCAR: open walks only headers and frame markers; a frame's coordinate lines are
 // read on demand. Plot rows take lattice and species from the header, but still parse the
 // coordinates so a frame that cannot be read gets no plot point either.
-export function open_xdatcar_frames(text_lines: TextLines, warn: WarnFn): AseFrames {
-  let lines: TextLines | null = text_lines
+export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
   const frames = index_xdatcar_frames(lines, warn)
-  const live = (): TextLines => {
-    if (!lines) throw new Error(`XDATCAR trajectory text was released`)
-    return lines
+  const frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
+    const { step, cell } = frames[frame_idx]
+    // only the last frame can hold the torn final line, and a torn last frame was dropped
+    const coords = read_positions(lines, frames[frame_idx])
+    if (!coords) throw new Error(`XDATCAR frame ${step} ends in a partial line`)
+    const { lattice, elements, numbers } = cell
+    const pbc: Pbc = [true, true, true]
+    if (plot_row) return create_plot_row_frame(numbers, lattice, pbc, step, {}, warn)
+    return create_trajectory_frame(coords, elements, lattice, pbc, step, {}, undefined, warn)
   }
   return {
     frame_count: frames.length,
-    decode: (frame_idx) => {
-      const spec = frames[frame_idx]
-      const { step, cell } = spec
-      // only the last frame can hold the torn final line, and a torn last frame was dropped
-      const positions = read_positions(live(), spec)
-      if (!positions) throw new Error(`XDATCAR frame ${step} ends in a partial line`)
-      return create_trajectory_frame(
-        positions,
-        cell.elements,
-        cell.lattice,
-        [true, true, true],
-        step,
-        {},
-        undefined,
-        warn,
-      )
-    },
-    plot_row_frame: (frame_idx) => {
-      const { step, cell } = frames[frame_idx]
-      read_positions(live(), frames[frame_idx]) // a frame whose read throws gets no plot row
-      return create_plot_row_frame(
-        cell.numbers,
-        cell.lattice,
-        [true, true, true],
-        step,
-        {},
-        warn,
-      )
-    },
-    release: () => {
-      lines = null
-      frames.length = 0
-    },
+    decode: (frame_idx) => frame(frame_idx, false),
+    plot_row_frame: (frame_idx) => frame(frame_idx, true),
   }
 }
 

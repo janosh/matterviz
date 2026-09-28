@@ -8,31 +8,22 @@ import {
   unwrap_flat_positions,
   validate_position_stream_layout,
 } from '$lib/trajectory/positions'
-import {
-  create_lattice_converters,
-  type Matrix3x3,
-  min_image_displacement_into,
-  type Vec3,
-} from '$lib/math'
+import { min_image_displacement_into, scale_lattice_matrix, type Vec3 } from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import { make_rng } from '../numeric-helpers'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
 import { encode_frame, materialize_frame, type NumericFrame } from '$lib/trajectory/frame'
 import { describe, expect, it } from 'vitest'
-import { make_frame, make_position_stream } from '../test-fixtures'
+import { IDENTITY_MATRIX3, make_frame, make_position_stream } from '../test-fixtures'
 
 // Orthogonal cells take an inlined per-frame loop; it must reproduce the generic
 // minimum-image path bit for bit, including a cell that changes mid-run (NPT) and open axes
 describe(`unwrap_flat_positions`, () => {
   const [n_frames, n_atoms] = [12, 7]
-  const cell = (scale: number): Matrix3x3 => [
-    [4 * scale, 0, 0],
-    [0, 5 * scale, 0],
-    [0, 0, -6 * scale], // negative axis: rounding must still pick the nearest image
-  ]
+  // negative c axis: rounding must still pick the nearest image
   const lattices = Array.from({ length: n_frames }, (_, idx) =>
-    idx < 6 ? cell(1) : cell(1.1),
+    scale_lattice_matrix(IDENTITY_MATRIX3, idx < 6 ? [4, 5, -6] : [4.4, 5.5, -6.6]),
   )
   const rng = make_rng(3)
   // Wrapped coordinates: every frame redraws positions inside the cell, so steps cross faces
@@ -40,25 +31,14 @@ describe(`unwrap_flat_positions`, () => {
     const lattice = lattices[Math.floor(idx / (n_atoms * 3))]
     return rng() * lattice[idx % 3][idx % 3]
   })
+  const vec = (off: number): Vec3 => [positions[off], positions[off + 1], positions[off + 2]]
   const reference = (pbc: Pbc): Float64Array => {
     const out = positions.slice()
-    const [from, target, step]: Vec3[] = [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
-    ]
-    for (let frame_idx = 1; frame_idx < n_frames; frame_idx++) {
-      const converters = create_lattice_converters(lattices[frame_idx])
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-        const off = (frame_idx * n_atoms + atom_idx) * 3
-        const prev = off - n_atoms * 3
-        for (let axis = 0; axis < 3; axis++) {
-          from[axis] = positions[prev + axis]
-          target[axis] = positions[off + axis]
-        }
-        min_image_displacement_into(from, target, lattices[frame_idx], converters, pbc, step)
-        for (let axis = 0; axis < 3; axis++) out[off + axis] = out[prev + axis] + step[axis]
-      }
+    const step: Vec3 = [0, 0, 0]
+    for (let off = n_atoms * 3; off < positions.length; off += 3) {
+      const [prev, lattice] = [off - n_atoms * 3, lattices[Math.floor(off / (n_atoms * 3))]]
+      min_image_displacement_into(vec(prev), vec(off), lattice, undefined, pbc, step)
+      for (let axis = 0; axis < 3; axis++) out[off + axis] = out[prev + axis] + step[axis]
     }
     return out
   }
@@ -72,14 +52,10 @@ describe(`unwrap_flat_positions`, () => {
   })
   // Fractional steps are checked one by one: 1e308 + 1e308 overflows, each alone is finite
   it(`accepts huge but finite steps like the generic path`, () => {
-    const unit: Matrix3x3 = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
     const huge = Float64Array.of(0, 0, 0, 1e308, 1e308, 0)
-    expect(unwrap_flat_positions(huge, 2, 1, [unit, unit], [true, true, true])).toEqual(
-      Float64Array.of(0, 0, 0, 0, 0, 0),
+    const cells = [IDENTITY_MATRIX3, IDENTITY_MATRIX3]
+    expect(unwrap_flat_positions(huge, 2, 1, cells, [true, true, true])).toEqual(
+      new Float64Array(6),
     )
   })
 })

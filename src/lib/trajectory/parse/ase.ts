@@ -276,14 +276,14 @@ export function decode_ase_frame(
   return { frame, numbers, pbc }
 }
 
-// The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
-// first frame's atomic numbers and pbc are cached because ASE writes them once);
-// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer.
+// The ULM container of an ASE .traj, validated and indexed: frames decode on demand;
+// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer, which
+// read_atoms keeps alive in its run (a text source's payload goes with the source).
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
   plot_row_frame: (frame_idx: number) => TrajectoryFrame
-  release: () => void
+  release?: () => void
   read_atoms?: ReadAtoms
   atom_masses?: number[]
   metadata?: Record<string, unknown>

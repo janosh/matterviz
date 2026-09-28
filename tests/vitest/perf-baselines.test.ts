@@ -22,9 +22,8 @@ import { make_supercell } from '$lib/structure/supercell'
 import { HeatmapTable, type RowData } from '$lib/table'
 import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$lib/trajectory'
 import { atom_range, frame_atom_batch, type ReadAtoms } from '$lib/trajectory/atom-batches'
-import type { NumericFrame } from '$lib/trajectory/frame'
 import { calculate_hotspots } from '$lib/trajectory/hotspots'
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result, type NumericFrame } from '$lib/trajectory/frame'
 import { open_trajectory } from '$lib/trajectory/open'
 import { MAX_STRING_CHARS } from '$lib/io/decompress'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
@@ -71,9 +70,8 @@ const BASELINES = {
   // 2026-09-26: M5 Max/Node 24.21/Vitest 5; 20 ms median (171 ms with per-atom element and
   // velocity-source lookups), normalized from its 55.5 ms reference.
   'frame_atom_batch 50k atoms x 20 frames': (20 * REFERENCE_MS) / 55.5,
-  // 2026-09-28: M5 Max/Node 24.21/Vitest 5; 260 ms median (538 MB, 21k frames of 1000 atoms,
-  // opened indexed; the median of 5 runs' ratios to their own reference, under load), normalized
-  // from its 32.8 ms reference.
+  // 2026-09-28: M5 Max/Node 24.21/Vitest 5; 260 ms median (538 MB: 21k frames of 1000 atoms,
+  // opened indexed; median of 5 loaded runs' reference ratios), normalized from 32.8 ms.
   'XYZ Blob past the string limit open': (260 * REFERENCE_MS) / 32.8,
 } as const
 type Case = keyof typeof BASELINES
@@ -594,8 +592,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
 
   // Packed MD frames: atomic-number bytes, one velocity vector column, standard masses
   test(`frame_atom_batch 50k atoms x 20 frames`, async () => {
-    const n_atoms = 50_000
-    const rng = make_rng(9)
+    const [n_atoms, rng] = [50_000, make_rng(9)]
     const sites = Uint8Array.from({ length: n_atoms }, () => 1 + Math.floor(rng() * 90))
     const coordinates = Float64Array.from({ length: n_atoms * 9 }, () => rng() * 10)
     const frame: NumericFrame = {
@@ -605,16 +602,10 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       vector_keys: [`velocity`],
       coordinates,
     }
+    const query = { frame_idx: 0, velocity_key: `velocity`, mass_source: `standard` } as const
     const read_frames = () => {
-      for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
-        const batch = frame_atom_batch(frame, {
-          frame_idx,
-          count: n_atoms,
-          velocity_key: `velocity`,
-          mass_source: `standard`,
-        })
-        expect(batch.velocities?.[3]).toBe(coordinates[15])
-      }
+      for (let rep = 0; rep < 20; rep++)
+        expect(frame_atom_batch(frame, query).velocities?.[3]).toBe(coordinates[15])
     }
     read_frames() // JIT warm-up: the first pass runs unoptimized
     await measure(`frame_atom_batch 50k atoms x 20 frames`, read_frames)
@@ -663,10 +654,8 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   // opens from its Blob through TextLines chunks. The payload is assembled from byte parts, so
   // no JS string ever holds more than one frame.
   test(`XYZ Blob past the string limit open`, async () => {
-    const n_atoms = 1000
-    const rng = make_rng(9)
+    const [n_atoms, rng, encoder] = [1000, make_rng(9), new TextEncoder()]
     const coord = () => (rng() * 20).toFixed(4)
-    const encoder = new TextEncoder()
     const atom_lines = Array.from(
       { length: n_atoms },
       (_, idx) => `${idx % 2 ? `Cu` : `Au`} ${coord()} ${coord()} ${coord()}`,

@@ -9,8 +9,8 @@ import {
   Color,
   DoubleSide,
   DynamicDrawUsage,
+  FrontSide,
   Group,
-  InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   MeshStandardNodeMaterial,
@@ -36,11 +36,9 @@ const gray = new Color(0x999999)
 const color = new Color()
 const matrix = new Matrix4()
 const scale = new Vector3()
-const inverse = new Matrix4()
 const local_ray = new Ray()
 const sphere = new Sphere()
 const cap_plane = new Plane()
-const cap_normal = new Vector3()
 const local_hit = new Vector3()
 
 // Disordered sites as rotated copies of a few shared wedges: the wedge of length L starting at
@@ -53,10 +51,9 @@ export class PartialAtoms extends Group {
   private ghost_images = false
   private segments = 0
   private readonly meshes = new Map<number, InstancedMesh>()
-  // [regular, ghosted edit-mode image]; white bases tinted by per-instance colors
-  private readonly wedge_materials = [0, 1].map(() => new MeshStandardNodeMaterial())
-  private readonly cap_materials = [0, 1].map(
-    () => new MeshStandardNodeMaterial({ side: DoubleSide }),
+  // [wedge, ghosted wedge, cap, ghosted cap]: white bases tinted by per-instance colors
+  private readonly materials = [FrontSide, FrontSide, DoubleSide, DoubleSide].map(
+    (side) => new MeshStandardNodeMaterial({ side }),
   )
 
   // Wedges of one site must be consecutive. Buffers are rewritten in place while each mesh's
@@ -69,11 +66,8 @@ export class PartialAtoms extends Group {
   ): void {
     this.atoms = atoms
     this.ghost_images = ghost_images
-    if (segments !== this.segments) {
-      for (const mesh of this.meshes.values()) this.retire(mesh)
-      this.meshes.clear()
-      this.segments = segments
-    }
+    const retessellate = segments !== this.segments
+    this.segments = segments
     const buckets = new Map<number, Bucket>()
     const add = (phi_length: number | null, ghost: boolean, atom_idx: number, phi: number) => {
       const key = mesh_key(phi_length, ghost)
@@ -90,7 +84,7 @@ export class PartialAtoms extends Group {
       if (atom.render_end_cap) add(null, ghost, atom_idx, atom.end_phi)
     }
     for (const [key, mesh] of this.meshes) {
-      if (buckets.has(key)) continue
+      if (buckets.has(key) && !retessellate) continue
       this.retire(mesh)
       this.meshes.delete(key)
     }
@@ -113,7 +107,7 @@ export class PartialAtoms extends Group {
         color.setRGB(...css_to_linear_rgb(css ?? `#999999`))
         if (bucket.ghost) color.lerp(gray, 0.4)
         if (color_field) atom_field_color(color_field, position, color)
-        mesh.setColorAt(slot, color)
+        mesh.setColorAt(slot, color) // allocates instanceColor before the first render
       }
       mesh.count = bucket.atoms.length
       mesh.instanceMatrix.needsUpdate = true
@@ -122,32 +116,27 @@ export class PartialAtoms extends Group {
   }
 
   set_opacity(opacity: number): void {
-    for (const materials of [this.wedge_materials, this.cap_materials]) {
-      for (const [ghost, material] of materials.entries()) {
-        const alpha = opacity * (ghost ? 0.5 : 1)
-        if (material.transparent !== alpha < 1) {
-          material.transparent = alpha < 1
-          material.needsUpdate = true
-        }
-        material.opacity = alpha
-        material.visible = alpha > 0
-      }
+    for (const [idx, material] of this.materials.entries()) {
+      const alpha = opacity * (idx % 2 ? 0.5 : 1)
+      if (material.transparent !== alpha < 1) material.needsUpdate = true
+      material.transparent = alpha < 1
+      material.opacity = alpha
+      material.visible = alpha > 0
     }
   }
 
   dispose(): void {
     for (const mesh of this.meshes.values()) this.retire(mesh)
     this.meshes.clear()
-    for (const material of [...this.wedge_materials, ...this.cap_materials]) material.dispose()
+    for (const material of this.materials) material.dispose()
   }
 
   // Invisible full-sphere hit test per site, which a pointer at a pole cannot slip through.
   // Where a cutaway removed the sphere's front, the vacancy caps behind it stay pickable.
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
     const { atoms } = this
-    if (atoms.length === 0) return
     this.updateWorldMatrix(true, false)
-    local_ray.copy(raycaster.ray).applyMatrix4(inverse.copy(this.matrixWorld).invert())
+    local_ray.copy(raycaster.ray).applyMatrix4(matrix.copy(this.matrixWorld).invert())
     const planes = cutaway_planes(this)
     for (let first = 0, last = 0; first < atoms.length; first = ++last) {
       const { site_idx, position, radius, is_image_atom, render_start_cap, start_phi } =
@@ -158,12 +147,12 @@ export class PartialAtoms extends Group {
       sphere.radius = radius / 2
       if (!local_ray.intersectSphere(sphere, local_hit)) continue
       // Caps lie inside the sphere, so they can only be nearest once its front is clipped
-      let hit = this.world_hit(raycaster, local_hit, planes)
+      let hit = this.world_hit(raycaster, planes)
       if (!hit && planes.length) {
         const { render_end_cap, end_phi } = atoms[last]
         for (const phi of [render_start_cap && start_phi, render_end_cap && end_phi]) {
-          if (phi === false || !this.hit_cap(phi)) continue
-          const cap_hit = this.world_hit(raycaster, local_hit, planes)
+          if (phi === false || !hit_cap(phi)) continue
+          const cap_hit = this.world_hit(raycaster, planes)
           if (cap_hit && (!hit || cap_hit.distance < hit.distance)) hit = cap_hit
         }
       }
@@ -171,21 +160,8 @@ export class PartialAtoms extends Group {
     }
   }
 
-  // Half-disc through the Y axis on the side of azimuth phi, i.e. (-cos phi, 0, sin phi)
-  private hit_cap(phi: number): boolean {
-    cap_normal.set(Math.sin(phi), 0, Math.cos(phi))
-    cap_plane.setFromNormalAndCoplanarPoint(cap_normal, sphere.center)
-    if (!local_ray.intersectPlane(cap_plane, local_hit)) return false
-    const offset_x = local_hit.x - sphere.center.x
-    const offset_z = local_hit.z - sphere.center.z
-    return (
-      local_hit.distanceToSquared(sphere.center) <= sphere.radius ** 2 &&
-      offset_z * Math.sin(phi) - offset_x * Math.cos(phi) >= 0
-    )
-  }
-
-  private world_hit(raycaster: Raycaster, local_point: Vector3, planes: Plane[]) {
-    const point = local_point.clone().applyMatrix4(this.matrixWorld)
+  private world_hit(raycaster: Raycaster, planes: Plane[]) {
+    const point = local_hit.clone().applyMatrix4(this.matrixWorld)
     if (cutaway_excludes(planes, point)) return null
     const distance = raycaster.ray.origin.distanceTo(point)
     return distance < raycaster.near || distance > raycaster.far ? null : { distance, point }
@@ -197,11 +173,9 @@ export class PartialAtoms extends Group {
       phi_length === null
         ? new CircleGeometry(0.5, this.segments, Math.PI / 2, Math.PI)
         : new SphereGeometry(0.5, this.segments, this.segments, 0, phi_length)
-    const materials = phi_length === null ? this.cap_materials : this.wedge_materials
-    const mesh = new InstancedMesh(geometry, materials[Number(ghost)], capacity)
+    const material = this.materials[(phi_length === null ? 2 : 0) + Number(ghost)]
+    const mesh = new InstancedMesh(geometry, material, capacity)
     mesh.instanceMatrix.setUsage(DynamicDrawUsage)
-    // Before the first render: three builds the instancing shader once per mesh
-    mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(capacity * 3), 3)
     mesh.frustumCulled = false
     mesh.raycast = () => undefined // the group picks whole sites
     this.add(mesh)
@@ -213,4 +187,17 @@ export class PartialAtoms extends Group {
     mesh.geometry.dispose()
     mesh.dispose()
   }
+}
+
+// Half-disc through the Y axis on the side of azimuth phi, i.e. (-cos phi, 0, sin phi), of the
+// current sphere; leaves the crossing in local_hit
+function hit_cap(phi: number): boolean {
+  cap_plane.normal.set(Math.sin(phi), 0, Math.cos(phi))
+  cap_plane.constant = -sphere.center.dot(cap_plane.normal)
+  if (!local_ray.intersectPlane(cap_plane, local_hit)) return false
+  const offset_x = local_hit.x - sphere.center.x
+  const offset_z = local_hit.z - sphere.center.z
+  return (
+    sphere.containsPoint(local_hit) && offset_z * Math.sin(phi) >= offset_x * Math.cos(phi)
+  )
 }

@@ -14,45 +14,27 @@ const plan = (filename: string, file_size: number) =>
     max_file_size: 1000,
   })
 
+// `marker` stands for the planned file's own large-file marker
 test.each([
   [`movie.xyz`, 100, { kind: `inline`, is_base64: false }],
   [`movie.traj`, 100, { kind: `inline`, is_base64: true }],
-  [
-    `movie.extxyz.gz`,
-    500,
-    {
-      kind: `marker`,
-      content: `LARGE_FILE:C:\\data\\movie.extxyz.gz:500`,
-    },
-  ],
+  [`movie.extxyz.gz`, 500, `marker`],
   // text trajectories decode in chunks, so they share the binary size cap
-  [
-    `movie.extxyz`,
-    1000,
-    { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.extxyz:1000` },
-  ],
+  [`movie.extxyz`, 1000, `marker`],
   [`movie.extxyz`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
-  [`movie.traj`, 1000, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.traj:1000` }],
+  [`movie.traj`, 1000, `marker`],
   [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
   // Large LAMMPS dumps and XDATCARs are indexed text trajectories too
-  [`md.lammpstrj`, 500, { kind: `marker`, content: `LARGE_FILE:C:\\data\\md.lammpstrj:500` }],
-  [`md.lammpstrj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
-  [`XDATCAR`, 200, { kind: `marker`, content: `LARGE_FILE:C:\\data\\XDATCAR:200` }],
-  [
-    `XDATCAR_nvt.gz`,
-    200,
-    { kind: `marker`, content: `LARGE_FILE:C:\\data\\XDATCAR_nvt.gz:200` },
-  ],
+  [`md.lammpstrj`, 500, `marker`],
+  [`XDATCAR`, 200, `marker`],
+  [`XDATCAR_nvt.gz`, 200, `marker`],
   [`movie.xyz.zip`, 101, { kind: `reject`, reason: `unsupported-compression` }],
-  [
-    `movie.xyz.gz.gz`,
-    101,
-    { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.xyz.gz.gz:101` },
-  ],
+  [`movie.xyz.gz.gz`, 101, `marker`],
   [`movie.xyz.xz.gz`, 101, { kind: `reject`, reason: `unsupported-compression` }],
 ] as const)(`plans %s at %d bytes`, (filename, file_size, expected) => {
-  expect(plan(filename, file_size)).toEqual(expected)
+  const marker = { kind: `marker`, content: `LARGE_FILE:C:\\data\\${filename}:${file_size}` }
+  expect(plan(filename, file_size)).toEqual(expected === `marker` ? marker : expected)
 })
 
 test.each([

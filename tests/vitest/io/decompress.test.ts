@@ -164,8 +164,8 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     const file = new File([`2\ncomment\nH 0 0 0\nH 1 0 0`], `huge.xyz`)
     Object.defineProperty(file, `size`, { value: MAX_STRING_CHARS + 1 })
     const { content, filename } = await decompress_trajectory_file(file)
-    expect([content, filename]).toEqual([file, `huge.xyz`])
     expect(content).toBe(file)
+    expect(filename).toBe(`huge.xyz`)
     await expect(decompress_file(file)).rejects.toThrow(
       `exceeds the ${MAX_STRING_CHARS}-character JS string limit`,
     )
@@ -314,11 +314,9 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   })
 })
 
-// gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
-// a 10 MiB upload expands to 10 GB with no error until the tab dies
 // Cuts land only just after a newline, so the chunks join to exactly one decode's text:
-// multi-byte UTF-8, CRLF, a leading BOM (dropped) or a later one (kept), and lines longer than a
-// chunk (which widen it)
+// multi-byte UTF-8, CRLF, a leading BOM (dropped) or a later one (kept), and lines longer than
+// a chunk (which widen it)
 describe(`decode_text_chunks`, () => {
   test.each([
     ``,
@@ -333,8 +331,10 @@ describe(`decode_text_chunks`, () => {
     const bytes = encode(text)
     const expected = new TextDecoder().decode(bytes)
     const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
-    for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
-      for (const source of [bytes.buffer, new Blob([bytes])]) {
+    for (const source of [bytes.buffer, new Blob([bytes])]) {
+      // by default, text that fits one string decodes to one
+      expect(await decode_text_chunks(source)).toEqual([expected])
+      for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
         const chunks = await decode_text_chunks(source, chunk_bytes)
         expect(chunks.join(``)).toBe(expected)
         expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
@@ -345,6 +345,8 @@ describe(`decode_text_chunks`, () => {
   })
 })
 
+// gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
+// a 10 MiB upload expands to 10 GB with no error until the tab dies
 describe(`inflated size limit`, () => {
   // 4 MiB fed 64 KiB at a time; `emitted` records how much was pulled before an abort
   let emitted = 0

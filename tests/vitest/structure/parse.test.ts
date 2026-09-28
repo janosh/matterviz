@@ -1494,10 +1494,9 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     },
   )
 
-  // Rows straddling the periodic boundary (along each axis) merge exactly when their
-  // minimum-image distance is under the 0.05 Å site tolerance, whatever the site-index
-  // bucketing: 2 and 3 buckets per axis (repeated neighbour keys), a normal cell, and a 3e5 Å
-  // cell whose buckets get coarsened
+  // Rows straddling the periodic boundary merge exactly when their minimum-image distance is
+  // under the 0.05 Å tolerance, whatever the bucketing: 2 and 3 buckets per axis (repeated
+  // neighbour keys), a normal cell, and a 3e5 Å cell whose buckets get coarsened
   test.each(
     [0.12, 0.16, 5, 3e5].flatMap((len) => [
       [len, 0.049, 1],

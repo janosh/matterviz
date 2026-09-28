@@ -101,7 +101,6 @@ const create_frac_site_index = (
   const slot_key = new Float64Array(slot_mask + 1).fill(-1) // -1 = empty
   const slot_abc = new Float64Array(3 * (slot_mask + 1))
   const slot_site = new Int32Array(slot_mask + 1)
-  let n_entries = 0
   // First slot to probe for bucket `column + bin_c` (column = packed (a, b) part, a multiple
   // of n_c). Only the column is hashed (low/high 32 bits mixed Murmur3-finalizer style) and
   // bin_c added on, so the three c-neighbours `find` probes share a cache line.
@@ -149,9 +148,6 @@ const create_frac_site_index = (
       return undefined
     },
     add: (abc: Vec3, site_idx: number): void => {
-      // a full table would make the probe below spin forever
-      if (++n_entries > max_entries)
-        throw new RangeError(`CIF site index full at ${max_entries}`)
       const column = (bin_of(abc[0], n_a) * n_b + bin_of(abc[1], n_b)) * n_c
       const bin_c = bin_of(abc[2], n_c)
       let slot = first_slot(column, bin_c)
@@ -408,11 +404,10 @@ const apply_symmetry_ops = (
   // one image per (op, shift) pair, ops outer; built with scalar math since this runs per atom
   const push_shifted = (image_x: number, image_y: number, image_z: number): void => {
     wrapped.push(wrap_to_unit_cell([image_x, image_y, image_z]))
-    for (const [delta_x, delta_y, delta_z] of centering) {
+    for (const [delta_x, delta_y, delta_z] of centering)
       wrapped.push(
         wrap_to_unit_cell([image_x + delta_x, image_y + delta_y, image_z + delta_z]),
       )
-    }
   }
   push_shifted(coord_x, coord_y, coord_z)
   for (const { coefficients, translations } of symmetry_ops) {
@@ -796,9 +791,8 @@ export const parse_cif = (content: string): Crystal => {
       ([element, exp]) => (observed_counts[element] ?? 0) >= exp,
     )
 
-  // apply_symmetry_ops always emits the untransformed position, so an identity op (`x,y,z`,
-  // listed by nearly every CIF) only re-emits bit-identical images, which build_sites
-  // discards as same-row duplicates: dropping it halves the index lookups of a P1 file
+  // apply_symmetry_ops always emits the untransformed position, so an identity op (`x,y,z`)
+  // only re-emits same-row duplicates: dropping it halves the index lookups of a P1 file
   const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops).filter(
     ({ coefficients, translations }) =>
       translations.some((shift) => shift !== 0) ||

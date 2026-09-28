@@ -75,13 +75,8 @@ test.each([`#222222`, `#ff8800`])(
         update_polyhedra_edges(edges, moved, recolored)
         // bounds cover the drawn edges only, never stale capacity from the larger frame before
         const { boundingBox: box, boundingSphere: sphere } = edges.geometry
-        if (count)
-          expect([box?.min.x, box?.max.x, sphere?.radius]).toEqual([
-            count + 0.5,
-            count + 0.5,
-            0,
-          ])
-        else expect(box?.isEmpty()).toBe(true)
+        const bounds = count ? [count + 0.5, count + 0.5, 0] : [Infinity, -Infinity, -1] // empty
+        expect([box?.min.x, box?.max.x, sphere?.radius]).toEqual(bounds)
         expect(edges.material).toBe(material)
         expect(edges.geometry.instanceCount).toBe(count)
         if (count > geometry.getAttribute(`instanceStart`).count) {
@@ -894,13 +889,9 @@ describe(`merge_polyhedra_buffers`, () => {
       pos_y + 0.17 * pos_z + 0.011 * Math.cos(idx),
       pos_z + 0.23 * pos_x,
     ])
-    const sliver: Polyhedron = {
+    const sliver = {
       ...loose_triangles(1),
-      vertices: [
-        [0, 0, 0],
-        [1, 1, 1],
-        [2, 2, 2],
-      ],
+      vertices: [0, 1, 2].map((val): Vec3 => [val, val, val]),
     }
     const buffers = merge_polyhedra_buffers(
       [poly_from_hull(skewed), poly_from_hull(octahedron_points), sliver],
@@ -930,10 +921,8 @@ describe(`merge_polyhedra_buffers`, () => {
       )
       // center mode paints each polyhedron entirely in its center's color (0 blue, 7 red)
       if (mode === `center`) {
-        const half = colors.length / 2
-        for (let idx = 0; idx < colors.length; idx += 3) {
-          expect(colors[idx]).toBe(idx < half ? 0 : 1)
-        }
+        for (let idx = 0; idx < colors.length; idx += 3)
+          expect(colors[idx]).toBe(idx < colors.length / 2 ? 0 : 1)
       }
     },
   )
