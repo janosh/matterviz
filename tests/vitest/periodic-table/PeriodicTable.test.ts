@@ -720,6 +720,21 @@ describe(`PeriodicTable`, () => {
     }
   })
 
+  // happy-dom has no layout: stub a 200px tooltip whose text spans 80.2px, both scaled
+  test.each([1, 0.5])(`tooltip shrinks to its text at scale %s`, async (scale) => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, `getBoundingClientRect`).mockReturnValue(
+      new DOMRect(0, 0, 200 * scale),
+    )
+    vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(
+      new DOMRect(0, 0, 80.2 * scale),
+    )
+    mount(PeriodicTable, { target: document.body, props: { tooltip: true } })
+    doc_query(`.element-tile`).dispatchEvent(mouseenter)
+    await tick()
+    expect(doc_query(`.tooltip`).style.width).toBe(`81px`)
+  })
+
   describe(`multi-value heatmaps`, () => {
     test.each([
       {
