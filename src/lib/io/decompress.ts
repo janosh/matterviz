@@ -181,6 +181,60 @@ export const decompress_data_binary = (
 export const as_text = (content: string | ArrayBuffer): string =>
   content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
 
+// V8's string length limit in UTF-16 units (Chrome, Node, VS Code); Firefox and Safari allow
+// longer strings, so this is the size past which no text payload decodes into one string
+export const MAX_STRING_CHARS = 0x1fffffe8
+
+// Bytes per chunk of decode_text_chunks: a Blob is read one window at a time, so its bytes and
+// its text only ever coexist for one window
+export const TEXT_CHUNK_BYTES = 64 * 1024 * 1024
+
+// UTF-8 text of `source` as strings of at most `chunk_bytes` bytes each (a line longer than
+// that widens its chunk), every chunk but the last ending just after a `\n` so no line spans
+// two: the form in which text past MAX_STRING_CHARS stays readable (see TextLines). A 0x0A byte
+// never sits inside a multi-byte UTF-8 sequence, so the chunks join to exactly what one decode
+// returns (a leading BOM dropped, like blob.text()).
+export const decode_text_chunks = async (
+  source: ArrayBuffer | Blob,
+  chunk_bytes = TEXT_CHUNK_BYTES,
+): Promise<string[]> => {
+  const size = source instanceof Blob ? source.size : source.byteLength
+  const read = async (from: number, to: number): Promise<Uint8Array> =>
+    source instanceof Blob
+      ? new Uint8Array(await source.slice(from, to).arrayBuffer())
+      : new Uint8Array(source, from, to - from)
+  const chunks: string[] = []
+  let decoder = new TextDecoder()
+  for (let from = 0, window = chunk_bytes; from < size;) {
+    const to = Math.min(from + window, size)
+    const bytes = await read(from, to)
+    const cut = to === size ? bytes.length : bytes.lastIndexOf(10) + 1
+    if (cut === 0) {
+      window *= 2
+      continue
+    }
+    chunks.push(decoder.decode(bytes.subarray(0, cut)))
+    // a BOM opening a later chunk is text, as it is mid-string in one decode
+    decoder = new TextDecoder(`utf-8`, { ignoreBOM: true })
+    from += cut
+    window = chunk_bytes
+  }
+  return chunks.length > 0 ? chunks : [``]
+}
+
+// A text payload as one string, or the Blob itself when it is past the string limit and the
+// caller reads large text in chunks (the trajectory loaders, see decode_text_chunks)
+export const text_or_blob = async (
+  blob: Blob,
+  keep_large: boolean,
+): Promise<string | Blob> => {
+  if (blob.size <= MAX_STRING_CHARS) return blob.text()
+  if (keep_large) return blob
+  throw new Error(
+    `Text payload of ${blob.size} bytes exceeds the ${MAX_STRING_CHARS}-character JS string limit; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past it`,
+  )
+}
+
 // Byte size of loaded content, for the file-size readout in info panes. Strings are measured
 // as UTF-8 (what they were decoded from), not as UTF-16 code units.
 export const content_byte_size = (content: string | ArrayBuffer | Blob): number =>
@@ -202,7 +256,8 @@ export const hdf5_compression_format = (filename: string): CompressionFormat | n
 
 interface ClassifyPayloadOptions {
   // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
-  // instead of materializing the whole file (trajectory viewers)
+  // instead of materializing the whole file, and likewise text past one JS string, which the
+  // indexed text readers decode in chunks (trajectory viewers)
   hdf5_as_blob?: boolean
   // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding.
   // Inspect remaining bytes for HTTP payloads; dropped files use their declared wrappers.
@@ -279,7 +334,7 @@ export async function classify_payload(
   // dropped name): matching any candidate let a URL basename force a text entry to ArrayBuffer
   const is_binary = is_binary_payload(payload_names[0] ?? ``, magic)
   return {
-    content: is_binary ? await blob.arrayBuffer() : await blob.text(),
+    content: is_binary ? await blob.arrayBuffer() : await text_or_blob(blob, hdf5_as_blob),
     filename: payload_names[0],
   }
 }

@@ -24,6 +24,9 @@ import { Trajectory, type TrajectoryController, trajectory_from_frames } from '$
 import { atom_range, frame_atom_batch, type ReadAtoms } from '$lib/trajectory/atom-batches'
 import type { NumericFrame } from '$lib/trajectory/frame'
 import { calculate_hotspots } from '$lib/trajectory/hotspots'
+import { materialize_frame_result } from '$lib/trajectory/frame'
+import { open_trajectory } from '$lib/trajectory/open'
+import { MAX_STRING_CHARS } from '$lib/io/decompress'
 import { compute_xrd_pattern } from '$lib/xrd/calc-xrd'
 import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
@@ -68,6 +71,10 @@ const BASELINES = {
   // 2026-09-26: M5 Max/Node 24.21/Vitest 5; 20 ms median (171 ms with per-atom element and
   // velocity-source lookups), normalized from its 55.5 ms reference.
   'frame_atom_batch 50k atoms x 20 frames': (20 * REFERENCE_MS) / 55.5,
+  // 2026-09-28: M5 Max/Node 24.21/Vitest 5; 260 ms median (538 MB, 21k frames of 1000 atoms,
+  // opened indexed; the median of 5 runs' ratios to their own reference, under load), normalized
+  // from its 32.8 ms reference.
+  'XYZ Blob past the string limit open': (260 * REFERENCE_MS) / 32.8,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -650,5 +657,40 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     await measure(`make_supercell 1000 sites x 3x3x3`, () => {
       expect(make_supercell(structure, `3x3x3`).sites).toHaveLength(27_000)
     })
+  })
+
+  // Text past V8's string limit cannot be decoded into one string (blob.text() throws), so it
+  // opens from its Blob through TextLines chunks. The payload is assembled from byte parts, so
+  // no JS string ever holds more than one frame.
+  test(`XYZ Blob past the string limit open`, async () => {
+    const n_atoms = 1000
+    const rng = make_rng(9)
+    const coord = () => (rng() * 20).toFixed(4)
+    const encoder = new TextEncoder()
+    const atom_lines = Array.from(
+      { length: n_atoms },
+      (_, idx) => `${idx % 2 ? `Cu` : `Au`} ${coord()} ${coord()} ${coord()}`,
+    )
+    const atoms = encoder.encode(`${atom_lines.join(`\n`)}\n`)
+    const n_frames = Math.ceil(MAX_STRING_CHARS / atoms.length) + 1
+    const header = (idx: number) =>
+      encoder.encode(`${n_atoms}\nLattice="20 0 0 0 20 0 0 0 20" energy=${-idx} pbc="T T T"\n`)
+    const parts = Array.from({ length: n_frames }, (_, idx) => [header(idx), atoms]).flat()
+    const blob = new Blob(parts)
+    expect(blob.size).toBeGreaterThan(MAX_STRING_CHARS)
+    await measure(
+      `XYZ Blob past the string limit open`,
+      async () => {
+        const run = await open_trajectory(blob, { filename: `big.extxyz` })
+        expect([run.provenance.format, run.frame_count]).toEqual([`xyz`, n_frames])
+        const last = await materialize_frame_result(run.read_frame(n_frames - 1))
+        expect([last.structure.sites.length, last.metadata?.energy]).toEqual([
+          n_atoms,
+          1 - n_frames,
+        ])
+        run.dispose()
+      },
+      3,
+    )
   })
 })

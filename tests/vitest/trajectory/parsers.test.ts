@@ -43,6 +43,13 @@ import {
   to_scalar_number,
 } from '$lib/trajectory/parse/h5-utils'
 import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
+import { decode_text_chunks } from '$lib/io/decompress'
+import { has_multiple_xyz_frames, TextLines } from '$lib/trajectory/helpers'
+import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
+import { create_warning_collector } from '$lib/trajectory/parse/shared'
+import { parse_vasp_xdatcar } from '$lib/trajectory/parse/vasp'
+import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
+import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
 import { join } from 'node:path'
 import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
@@ -61,6 +68,7 @@ import {
   make_torch_sim_signal_buffer,
   make_ase_buffer,
   make_ase_md_buffer,
+  synthetic_extxyz,
 } from './fixtures'
 
 const read_fixture = (filename: string): string | ArrayBuffer =>
@@ -74,7 +82,7 @@ type OpenOptions = Parameters<typeof open_trajectory>[1]
 // mapping (other formats ignore the mapping)
 const TEST_ATOM_TYPES: Record<number, ElementSymbol> = { 1: `H`, 2: `He`, 3: `Li` }
 const open = async (
-  content: string | ArrayBuffer,
+  content: string | ArrayBuffer | Blob,
   filename?: string,
   options: OpenOptions = {},
 ): Promise<TrajectoryRun> => {
@@ -1071,11 +1079,13 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
   })
 })
 
-// === Indexed XDATCAR and LAMMPS dumps ===
+// === Indexed and byte-sourced XYZ, XDATCAR and LAMMPS ===
 
-// Above index_above_bytes, XDATCAR and LAMMPS dumps open indexed: frames decode on demand and
-// plot rows come from headers. Everything a run exposes must equal the eager run's.
-describe(`indexed XDATCAR and LAMMPS`, () => {
+// Above index_above_bytes, XYZ, XDATCAR and LAMMPS open indexed: frames decode on demand and
+// plot rows come from headers. Byte sources (what a file past the JS string limit arrives as)
+// read through TextLines over line-aligned chunks. Everything any of these runs exposes must
+// equal the eager string run's.
+describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
   const site_text = (path: string) => () =>
     read_maybe_gz(join(process.cwd(), `src/site`, path))
   const variable_cell = (lat_a: number, idx: number) =>
@@ -1098,6 +1108,23 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
       timestep: frame_idx,
     }),
   ).join(`\n`)
+  const collected = (run: TrajectoryRun) =>
+    collect(run, { vector_keys: [`velocity`] }).then(
+      (stream) => ({ stream }),
+      (error: unknown) => ({ error: String(error) }),
+    )
+  const expect_same_run = async (run: TrajectoryRun, eager: TrajectoryRun): Promise<void> => {
+    expect(run.provenance.format).toBe(eager.provenance.format)
+    expect(run.frame_count).toBe(eager.frame_count)
+    for (let frame_idx = 0; frame_idx < eager.frame_count; frame_idx++)
+      expect(run.read_frame(frame_idx)).toStrictEqual(eager.read_frame(frame_idx))
+    await run.properties.done
+    expect(run.properties.rows).toStrictEqual(eager.properties.rows)
+    expect(run.metadata).toStrictEqual(eager.metadata)
+    expect(run.warnings).toStrictEqual(eager.warnings)
+    // velocity is absent from most inputs, so both runs must also reject alike
+    expect(await collected(run)).toStrictEqual(await collected(eager))
+  }
   // oxfmt-ignore
   it.each<[string, string, () => string, OpenOptions?]>([
     [`vasp-XDATCAR.MD`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
@@ -1113,27 +1140,50 @@ describe(`indexed XDATCAR and LAMMPS`, () => {
     [`CRLF MD frames with a half-written last atom line`, `md.lammpstrj`, () => `${md_dump(3)}\n9 1 0.5`.replaceAll(`\n`, `\r\n`)],
     [`frames without ids or element names`, `untyped.lammpstrj`, () => untyped_dump, { atom_type_mapping: {} }],
     [`a type mapped to a non-element`, `mapped.lammpstrj`, () => untyped_dump, { atom_type_mapping: { 1: `Xx` as ElementSymbol, 2: `O`, 3: `Fe` } }],
+    [`V8Ta12W71Re8-mace-omat`, `mace.xyz`, site_text(`trajectories/V8Ta12W71Re8-mace-omat.xyz`)],
+    [`ase-images-Ag-0-to-97`, `images.xyz`, site_text(`trajectories/ase-images-Ag-0-to-97.xyz.gz`)],
+    [`mp-1184225`, `mp.extxyz`, site_text(`trajectories/mp-1184225.extxyz`)],
+    [`EXTXYZ frames with a torn tail`, `md.extxyz`, () => `${synthetic_extxyz(6, 5)}5\nLattice="1 0 0 0 1 0 0 0 1"\nAu 0 0 0`],
+    [`CRLF EXTXYZ with non-ASCII comments and a half-written last line`, `md.extxyz`, () => `${synthetic_extxyz(4, 3).replaceAll(`pbc=`, `note="Å→漢 🎉" pbc=`)}3\nstep=9\nAu 0 0 0\nCu 1 1 1\nAu 2 2`.replaceAll(`\n`, `\r\n`)],
   ])(`%s reads the same frames, plot rows and warnings`, async (_label, filename, make_text, options = {}) => {
     const text = make_text()
     const eager = await open(text, filename, { ...options, index_above_bytes: Infinity })
     const indexed = await open(text, filename, { ...options, index_above_bytes: 0 })
     // indexed plot rows arrive progressively, eager ones with the run
     expect([eager.properties.complete, indexed.properties.complete]).toEqual([true, false])
-    expect(indexed.provenance.format).toBe(eager.provenance.format)
-    expect(indexed.frame_count).toBe(eager.frame_count)
-    for (let frame_idx = 0; frame_idx < eager.frame_count; frame_idx++)
-      expect(indexed.read_frame(frame_idx)).toStrictEqual(eager.read_frame(frame_idx))
-    await indexed.properties.done
-    expect(indexed.properties.rows).toStrictEqual(eager.properties.rows)
-    expect(indexed.metadata).toStrictEqual(eager.metadata)
-    expect(indexed.warnings).toStrictEqual(eager.warnings)
-    // velocity is absent from most inputs, so both runs must also reject alike
-    const collected = (run: TrajectoryRun) =>
-      collect(run, { vector_keys: [`velocity`] }).then(
-        (stream) => ({ stream }),
-        (error: unknown) => ({ error: String(error) }),
-      )
-    expect(await collected(indexed)).toStrictEqual(await collected(eager))
+    await expect_same_run(indexed, eager)
+    const bytes = new TextEncoder().encode(text)
+    for (const source of [bytes.buffer, new Blob([bytes])]) {
+      for (const index_above_bytes of [Infinity, 0])
+        await expect_same_run(await open(source, filename, { ...options, index_above_bytes }), eager)
+    }
+    // Chunks cut from windows far smaller than a frame (mid-frame, mid-line, and widened past
+    // lines longer than the window) must index and parse exactly like one string
+    const format = eager.provenance.format
+    const atom_type_mapping = options.atom_type_mapping ?? TEST_ATOM_TYPES
+    for (const chunk_bytes of [37, 256, 4099]) {
+      const chunks = await decode_text_chunks(bytes.buffer, chunk_bytes)
+      expect(chunks.length).toBeGreaterThanOrEqual(Math.min(bytes.length / chunk_bytes, 2))
+      const lines = new TextLines(chunks)
+      // the format sniff open_trajectory runs on text past one string
+      expect(has_multiple_xyz_frames(lines)).toBe(format === `xyz`)
+      const provenance = { filename, source_bytes: bytes.length }
+      if (format !== `xyz` && format !== `xdatcar` && format !== `lammps`)
+        throw new Error(`unexpected format ${format}`)
+      const lazy = indexed_text_run(lines, format, provenance, create_warning_collector(), atom_type_mapping)
+      onTestFinished(() => lazy.dispose())
+      await expect_same_run(lazy, eager)
+      const collector = create_warning_collector()
+      const parsed =
+        format === `xyz`
+          ? parse_xyz_trajectory(lines, collector)
+          : format === `xdatcar`
+            ? parse_vasp_xdatcar(lines, collector.warn)
+            : parse_lammps_trajectory(lines, collector.warn, atom_type_mapping)
+      const { frames, metadata } = parsed
+      const run = trajectory_from_frames(frames, { provenance: { format }, metadata, warnings: collector.warnings })
+      await expect_same_run(run, eager)
+    }
   })
 
   // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only

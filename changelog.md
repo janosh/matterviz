@@ -15,6 +15,8 @@
 - `pad_domain_points` drops its `padding` argument; duplicate phase-diagram ids throw
 - `RouteThermodynamics.onset_temperature` and `onset_temperature()` → `downhill_windows` (the old onset is `downhill_windows[0]?.[0]`)
 - `merge_polyhedra_buffers(polyhedra, coloring)` takes a `PolyhedraColoring` (`{ mode: 'uniform', color }` or `{ mode: 'vertex' | 'center', site_color(site_idx) }`) instead of a per-vertex color callback, and also returns flat face `normals`
+- `build_trajectory_lines` and `trajectory_lines_stats` → `new TrajectoryTrail(stream, options)`, laid out once per stream and options; `trail.update({ end_frame, trail_frames, ... }).stats` replaces per-frame rebuilds (`TrajectoryLines` props are unchanged)
+- Text trajectories past the JS string limit (`MAX_STRING_CHARS`, V8's 536,870,888 chars) open from their bytes, decoded in line-aligned chunks (`decode_text_chunks`) as XYZ/EXTXYZ, LAMMPS dump or XDATCAR: `open_trajectory` reads any `ArrayBuffer`/`Blob` that is neither ASE nor HDF5 as text (a non-HDF5 `Blob` used to throw), the trajectory loaders (`decompress_trajectory_file`, `load_trajectory_from_url`, `classify_payload` with `hdf5_as_blob`) return such text as a `Blob` while `decompress_file` throws, and `plan_host_file_transfer` drops `max_text_file_size` (text trajectories share `max_file_size`)
 
 ## [v0.7.0](https://github.com/janosh/matterviz/compare/v0.6.0...v0.7.0)
 

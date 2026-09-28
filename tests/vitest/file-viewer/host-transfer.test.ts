@@ -12,7 +12,6 @@ const plan = (filename: string, file_size: number) =>
     file_size,
     large_file_threshold: 100,
     max_file_size: 1000,
-    max_text_file_size: 500,
   })
 
 test.each([
@@ -26,16 +25,19 @@ test.each([
       content: `LARGE_FILE:C:\\data\\movie.extxyz.gz:500`,
     },
   ],
-  [`movie.extxyz.gz`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
-  [`movie.extxyz`, 500, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.extxyz:500` }],
-  [`movie.extxyz`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
-  [`movie.extxyz`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  // text trajectories decode in chunks, so they share the binary size cap
+  [
+    `movie.extxyz`,
+    1000,
+    { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.extxyz:1000` },
+  ],
+  [`movie.extxyz`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.traj`, 1000, { kind: `marker`, content: `LARGE_FILE:C:\\data\\movie.traj:1000` }],
   [`movie.traj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`movie.h5`, 101, { kind: `reject`, reason: `unsupported-large-format` }],
   // Large LAMMPS dumps and XDATCARs are indexed text trajectories too
   [`md.lammpstrj`, 500, { kind: `marker`, content: `LARGE_FILE:C:\\data\\md.lammpstrj:500` }],
-  [`md.lammpstrj`, 501, { kind: `reject`, reason: `file-too-large`, max_file_size: 500 }],
+  [`md.lammpstrj`, 1001, { kind: `reject`, reason: `file-too-large`, max_file_size: 1000 }],
   [`XDATCAR`, 200, { kind: `marker`, content: `LARGE_FILE:C:\\data\\XDATCAR:200` }],
   [
     `XDATCAR_nvt.gz`,

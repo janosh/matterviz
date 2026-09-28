@@ -1,10 +1,12 @@
-// Lazily decoded run over a large in-memory XYZ/EXTXYZ, XDATCAR or LAMMPS dump text or ASE
-// .traj buffer. Owns the payload and a private frame index (line offsets for the text
-// formats, the ULM offsets table for ASE); frames are decoded on read and cached by the
-// session, never all at once. Per-frame scalars for the plot are extracted progressively in
-// chunks so a 100k-frame open stays responsive.
+// Lazily decoded run over a large in-memory XYZ/EXTXYZ, XDATCAR or LAMMPS dump text (a string,
+// or TextLines over the chunks of text past one string) or ASE .traj buffer. Owns the payload
+// and a private frame index (line offsets for the text formats, the ULM offsets table for
+// ASE); frames are decoded on read and cached by the session, never all at once. Per-frame
+// scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
+// responsive.
 import { to_error } from '$lib/utils'
 import { encode_frame } from '../frame'
+import { TextLines } from '../helpers'
 import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
 import { open_lammps_frames } from '../parse/lammps'
@@ -25,33 +27,34 @@ const yield_to_event_loop = (): Promise<void> =>
 
 // === XYZ / EXTXYZ ===
 
-const xyz_source = (data: string, collector: WarningCollector): AseFrames => {
-  // Offsets into the untouched text, never an array of line strings (see iter_xyz_frames);
-  // a torn tail is dropped now so frame_count excludes it, rather than failing on the seek
-  let text = data
-  const frames = index_xyz_frames(text, collector.warn)
-  const decode = (frame_idx: number): TrajectoryFrame =>
-    build_xyz_frame(
-      text,
+const xyz_source = (text_lines: TextLines, collector: WarningCollector): AseFrames => {
+  // Line indices, never an array of line strings (see iter_xyz_frames); a torn tail is
+  // dropped now so frame_count excludes it, rather than failing on the seek
+  let lines: TextLines | null = text_lines
+  const frames = index_xyz_frames(lines, collector.warn)
+  const decode = (frame_idx: number): TrajectoryFrame => {
+    if (!lines) throw new Error(`XYZ trajectory text was released`)
+    return build_xyz_frame(
+      lines,
       frames[frame_idx],
       { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
       collector,
     )
+  }
   return {
     frame_count: frames.length,
     decode,
     // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
     plot_row_frame: decode,
-    // sync_run refuses reads after dispose, so dropping the text here only frees it
     release: () => {
-      text = ``
+      lines = null
       frames.length = 0
     },
   }
 }
 
 export const indexed_text_run = (
-  data: string | ArrayBuffer,
+  data: string | TextLines | ArrayBuffer,
   format: `xyz` | `ase` | `xdatcar` | `lammps`,
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
@@ -69,12 +72,13 @@ export const indexed_text_run = (
     }
     source = open_ase_frames(data, warn_once)
   } else {
-    if (typeof data !== `string`) {
+    if (data instanceof ArrayBuffer) {
       throw new TypeError(`Indexed ${format} trajectories need text data, got ArrayBuffer`)
     }
-    if (format === `xyz`) source = xyz_source(data, collector)
-    else if (format === `xdatcar`) source = open_xdatcar_frames(data, warn_once)
-    else source = open_lammps_frames(data, warn_once, atom_type_mapping)
+    const lines = TextLines.of(data)
+    if (format === `xyz`) source = xyz_source(lines, collector)
+    else if (format === `xdatcar`) source = open_xdatcar_frames(lines, warn_once)
+    else source = open_lammps_frames(lines, warn_once, atom_type_mapping)
   }
   const { frame_count, decode } = source
   const properties = new TrajectoryProperties()

@@ -153,8 +153,8 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 // Indexed XDATCAR: open walks only headers and frame markers; a frame's coordinate lines are
 // read on demand. Plot rows take lattice and species from the header, but still parse the
 // coordinates so a frame that cannot be read gets no plot point either.
-export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
-  let lines: TextLines | null = new TextLines(content)
+export function open_xdatcar_frames(text_lines: TextLines, warn: WarnFn): AseFrames {
+  let lines: TextLines | null = text_lines
   const frames = index_xdatcar_frames(lines, warn)
   const live = (): TextLines => {
     if (!lines) throw new Error(`XDATCAR trajectory text was released`)
@@ -198,8 +198,11 @@ export function open_xdatcar_frames(content: string, warn: WarnFn): AseFrames {
   }
 }
 
-export function parse_vasp_xdatcar(content: string, warn: WarnFn): ParsedTrajectory {
-  const { frame_count, decode } = open_xdatcar_frames(content, warn)
+export function parse_vasp_xdatcar(
+  content: string | TextLines,
+  warn: WarnFn,
+): ParsedTrajectory {
+  const { frame_count, decode } = open_xdatcar_frames(TextLines.of(content), warn)
   const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
   return { format: `xdatcar`, frames, metadata: {} }
 }

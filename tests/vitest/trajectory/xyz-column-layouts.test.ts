@@ -1,7 +1,7 @@
 // extXYZ files whose `Properties=` layout does not start with the species column: the frame
 // indexer must read the declared column layout rather than assume `symbol x y z`, and the
 // indexed (large-file) run must report the same per-frame scalars as the materialized one.
-import { count_xyz_frames } from '$lib/trajectory/helpers'
+import { count_xyz_frames, TextLines } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 import { index_xyz_frames, parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
 import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
@@ -27,7 +27,7 @@ test.each([
   [`atomic numbers and no species column`, two_frames(`Z:I:1:pos:R:3`, [[`14`], [`14`]])],
 ])(`indexes and parses both frames of an extXYZ with %s`, (_case, text) => {
   const collector = create_warning_collector()
-  expect(index_xyz_frames(text, collector.warn)).toHaveLength(2)
+  expect(index_xyz_frames(new TextLines(text), collector.warn)).toHaveLength(2)
   expect(count_xyz_frames(text)).toBe(2)
   const { frames } = parse_xyz_trajectory(text, collector)
   expect(frames).toHaveLength(2)

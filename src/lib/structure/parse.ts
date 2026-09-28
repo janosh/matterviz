@@ -42,7 +42,7 @@ import {
 } from '$lib/structure/parsers/vasp-header'
 import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import { is_xyz_atom_line, line_end } from '$lib/trajectory/helpers'
+import { is_xyz_atom_line, TextLines } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '$lib/trajectory/parse/xyz'
@@ -297,35 +297,20 @@ export const parse_poscar = (content: string): Crystal => {
 // file, or a half-written last line) is dropped with a warning by index_xyz_frames, and a
 // file with no complete frame at all is an error, not a silently empty structure.
 export const parse_xyz = (content: string): AnyStructure => {
-  const text = content.trim()
+  // content.trim() also drops Unicode whitespace such as a BOM, which TextLines keeps
+  const lines = new TextLines(content.trim())
   const collector = create_warning_collector()
-  const frames = index_xyz_frames(text, collector.warn)
+  const frames = index_xyz_frames(lines, collector.warn)
   // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
   // Tinker-style title after the count (`6 methane`) or a Properties layout with another
   // leading column (`id:I:1:species:S:1:pos:R:3`) hides the frame from it. A file whose
   // leading atom count accounts for exactly every remaining line is still one complete
   // frame; a count larger than that is a torn frame and stays an error.
-  const count_end = line_end(text, 0)
-  const leading_count = Math.trunc(parse_leading_num(text.slice(0, count_end)))
-  if (frames.length === 0 && leading_count > 0) {
-    const comment_start = Math.min(count_end + 1, text.length)
-    const comment_end = line_end(text, comment_start)
-    const atoms_start = Math.min(comment_end + 1, text.length)
-    let remaining_lines = 0
-    for (let pos = atoms_start; pos < text.length; pos = line_end(text, pos) + 1) {
-      remaining_lines++
-    }
-    if (leading_count === remaining_lines) {
-      const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
-      frames.push({
-        start: 0,
-        line: 1,
-        num_atoms: leading_count,
-        comment,
-        atoms_start,
-        end: text.length,
-      })
-    }
+  const leading_count = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
+  const remaining_lines = lines.count - Math.min(2, lines.count)
+  if (frames.length === 0 && leading_count > 0 && leading_count === remaining_lines) {
+    const comment = lines.line(1) ?? ``
+    frames.push({ start: 0, num_atoms: leading_count, comment, end: lines.count })
   }
   const last = frames.at(-1)
   if (!last) {
@@ -334,9 +319,9 @@ export const parse_xyz = (content: string): AnyStructure => {
   }
   const frame_idx = frames.length - 1
   const { structure } = build_xyz_frame(
-    text,
+    lines,
     last,
-    { frame_label: `frame ${frame_idx} (line ${last.line})`, default_step: frame_idx },
+    { frame_label: `frame ${frame_idx} (line ${last.start + 1})`, default_step: frame_idx },
     collector,
   )
   // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary

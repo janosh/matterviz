@@ -283,8 +283,7 @@ function create_lammps_reader(
         )
       }
       const line_number = idx + 1
-      const [line_start, line_end] = lines.bounds(idx++)
-      const n_cols = scanner.scan(lines.text, line_start, line_end)
+      const n_cols = lines.scan(scanner, idx++)
       // A malformed last line after at least one complete frame is a half-written tail, not
       // corruption; a lone frame still reports the line so the problem is visible
       const torn_tail = idx >= lines.count && has_previous_frame
@@ -435,12 +434,12 @@ function create_lammps_reader(
 }
 
 export function parse_lammps_trajectory(
-  content: string,
+  content: string | TextLines,
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ): ParsedTrajectory {
   const frames: TrajectoryFrame[] = []
-  const reader = create_lammps_reader(new TextLines(content), warn, atom_type_mapping)
+  const reader = create_lammps_reader(TextLines.of(content), warn, atom_type_mapping)
   const metadata = reader.read_run(true, (read) => frames.push(lammps_frame(read, warn)))
   return { format: `lammps`, frames, metadata }
 }
@@ -449,13 +448,13 @@ export function parse_lammps_trajectory(
 // dump fails to open as it would eagerly, and run-level warnings and metadata match) but builds
 // no positions or sites, keeping each frame's first line and what its plot row needs.
 export function open_lammps_frames(
-  content: string,
+  lines: TextLines,
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ): AseFrames {
   // `release` drops the reader, the only holder of the text
   let reader: ReturnType<typeof create_lammps_reader> | null = create_lammps_reader(
-    new TextLines(content),
+    lines,
     warn,
     atom_type_mapping,
   )

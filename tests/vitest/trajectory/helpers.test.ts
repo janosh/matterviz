@@ -1,7 +1,7 @@
 import type { ElementSymbol } from '$lib/element'
 import type { Matrix3x3 } from '$lib/math'
 import { columns_to_csv } from '$lib/trajectory/analysis'
-import { parse_float_token } from '$lib/structure/parsers/shared'
+import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
@@ -150,9 +150,10 @@ describe(`trajectory helpers`, () => {
     )
   })
 
-  // Line-offset index behind the XDATCAR/LAMMPS readers: must split exactly like split_lines
-  // (trim, `\r\n` or `\n`, a lone `\r` kept) and bound each line for scanners
-  it(`TextLines splits edge cases and random line soup like split_lines`, () => {
+  // Line-offset index behind the XYZ/XDATCAR/LAMMPS readers: must split exactly like
+  // split_lines (trim, `\r\n` or `\n`, a lone `\r` kept) and tokenize each line like the
+  // sliced string, whether it holds one string or chunks cut after any of its newlines
+  it(`TextLines splits edge cases and random line soup like split_lines, in chunks too`, () => {
     const rng = make_rng(3)
     const alphabet = [`a`, ` `, `\n`, `\r`, `\r\n`, `\t`, `1`]
     const soup = Array.from({ length: 300 }, () =>
@@ -168,14 +169,34 @@ describe(`trajectory helpers`, () => {
       `x\r\r\ny\rz\n`,
       `\n\n\n`,
       `a\r\nb\r\n`,
+      // one long line fills the density sample, so the line buffer starts small and grows
+      `${`x`.repeat(2 ** 16)}\n${`a b\n`.repeat(3000)}`,
     ]
+    const [scanner, reference] = [new LineScanner(), new LineScanner()]
+    const tokens = (line_scanner: LineScanner, count: number): string[] =>
+      Array.from({ length: count }, (_, idx) => line_scanner.str(idx))
     for (const text of [...edges, ...soup]) {
-      const lines = new TextLines(text)
       const expected = split_lines(text)
-      const indices = Array.from({ length: lines.count }, (_, idx) => idx)
-      expect(indices.map((idx) => lines.line(idx))).toEqual(expected)
-      expect(indices.map((idx) => text.slice(...lines.bounds(idx)))).toEqual(expected)
-      expect([lines.line(-1), lines.line(lines.count)]).toEqual([undefined, undefined])
+      const newline_ends = [...text.matchAll(/\n/g)].map(({ index }) => index + 1)
+      const random_ends = newline_ends.filter(() => rng() < 0.5)
+      for (const ends of [null, newline_ends, random_ends]) {
+        const chunks = ends
+          ? [0, ...ends].map((from, idx) => text.slice(from, ends[idx])).filter(Boolean)
+          : text
+        const lines = new TextLines(chunks)
+        const indices = Array.from({ length: lines.count }, (_, idx) => idx)
+        expect(indices.map((idx) => lines.line(idx))).toEqual(expected)
+        // read back to front too, so chunk lookups are not only sequential
+        expect(indices.toReversed().map((idx) => lines.line(idx))).toEqual(
+          expected.toReversed(),
+        )
+        expect(indices.map((idx) => tokens(scanner, lines.scan(scanner, idx)))).toEqual(
+          expected.map((line) => tokens(reference, reference.scan(line))),
+        )
+        expect([lines.line(-1), lines.line(lines.count)]).toEqual([undefined, undefined])
+        expect(lines.scan(scanner, lines.count)).toBe(0)
+        expect(lines.head(7)).toBe(text.slice(0, 7))
+      }
     }
   })
 })

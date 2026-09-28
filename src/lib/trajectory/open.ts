@@ -1,14 +1,18 @@
 // The one way to turn bytes into a TrajectoryRun. Format detection stays direct (no plugin
 // registry); large text files and all ASE files are indexed lazily instead of materialised.
+// Text arrives as a string or as bytes; bytes past the JS string limit decode into line-aligned
+// chunks (TextLines), so such a file still opens as XYZ, LAMMPS or XDATCAR.
 // Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
 import { HDF5_EXT_REGEX } from '$lib/constants'
+import { decode_text_chunks, MAX_STRING_CHARS } from '$lib/io/decompress'
+import { is_binary } from '$lib/io/is-binary'
 import { DEFAULTS } from '$lib/settings'
 import { is_plain_object, to_error } from '$lib/utils'
 import type { AnyStructure } from '$lib/structure/index'
 import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structure/parse'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
-import { count_xyz_frames, has_multiple_xyz_frames } from './helpers'
+import { count_xyz_frames, has_multiple_xyz_frames, TextLines } from './helpers'
 import type {
   AtomTypeMapping,
   ParseProgress,
@@ -138,7 +142,7 @@ export const trajectory_from_json = (
 }
 
 const parse_text = (
-  data: string,
+  text: string | TextLines,
   options: OpenTrajectoryOptions,
   provenance: TrajectoryProvenance,
   collector: WarningCollector,
@@ -149,31 +153,36 @@ const parse_text = (
   // Eager parsing materialises every frame's sites (a 74 MB XDATCAR grew the heap by 800 MB),
   // so large multi-frame text is indexed and decoded on demand
   const index = (provenance.source_bytes ?? 0) > index_above_bytes
-  const is_multi_xyz = xyz_hint !== false && has_multiple_xyz_frames(data)
-  if (is_multi_xyz) {
-    if (index) return indexed_text_run(data, `xyz`, provenance, collector)
-    return run_from_parsed(parse_xyz_trajectory(data, collector), provenance, collector)
-  }
-  const head = data.length > SNIFF_BYTES ? data.slice(0, SNIFF_BYTES) : data
-  if (FORMAT_PATTERNS.vasp(head, filename)) {
-    if (index) return indexed_text_run(data, `xdatcar`, provenance, collector)
-    return run_from_parsed(parse_vasp_xdatcar(data, collector.warn), provenance, collector)
-  }
-  if (FORMAT_PATTERNS.vasprun(head, filename)) {
-    return run_from_parsed(parse_vasprun_xml(data, collector.warn), provenance, collector)
-  }
-  if (FORMAT_PATTERNS.outcar(head, filename)) {
-    return run_from_parsed(parse_vasp_outcar(data, collector.warn), provenance, collector)
-  }
-  if (FORMAT_PATTERNS.lammpstrj(head, filename)) {
-    if (index)
-      return indexed_text_run(data, `lammps`, provenance, collector, atom_type_mapping)
-    return run_from_parsed(
-      parse_lammps_trajectory(data, collector.warn, atom_type_mapping),
-      provenance,
-      collector,
+  const indexed = (format: `xyz` | `xdatcar` | `lammps`): TrajectoryRun =>
+    indexed_text_run(text, format, provenance, collector, atom_type_mapping)
+  const parsed = (result: ParsedTrajectory): TrajectoryRun =>
+    run_from_parsed(result, provenance, collector)
+  // XYZ, XDATCAR and LAMMPS read the text line by line in either form; every other format
+  // parses one string, which text in TextLines chunks is too long to be
+  const whole = (): string => {
+    if (typeof text === `string`) return text
+    throw new Error(
+      `${filename ?? `Text`} (${provenance.source_bytes} bytes) is too long for one JS string; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past ${MAX_STRING_CHARS} bytes`,
     )
   }
+  if (xyz_hint !== false && has_multiple_xyz_frames(text)) {
+    return index ? indexed(`xyz`) : parsed(parse_xyz_trajectory(text, collector))
+  }
+  const head = typeof text === `string` ? text.slice(0, SNIFF_BYTES) : text.head(SNIFF_BYTES)
+  if (FORMAT_PATTERNS.vasp(head, filename)) {
+    return index ? indexed(`xdatcar`) : parsed(parse_vasp_xdatcar(text, collector.warn))
+  }
+  if (FORMAT_PATTERNS.vasprun(head, filename)) {
+    return parsed(parse_vasprun_xml(whole(), collector.warn))
+  }
+  if (FORMAT_PATTERNS.outcar(head, filename)) {
+    return parsed(parse_vasp_outcar(whole(), collector.warn))
+  }
+  if (FORMAT_PATTERNS.lammpstrj(head, filename)) {
+    if (index) return indexed(`lammps`)
+    return parsed(parse_lammps_trajectory(text, collector.warn, atom_type_mapping))
+  }
+  const data = whole()
   if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
     let structure: AnyStructure | undefined
     try {
@@ -186,15 +195,11 @@ const parse_text = (
         })
     }
     if (structure)
-      return run_from_parsed(
-        {
-          format: `xyz`,
-          frames: [{ structure, step: 0, metadata: {} }],
-          metadata: {},
-        },
-        provenance,
-        collector,
-      )
+      return parsed({
+        format: `xyz`,
+        frames: [{ structure, step: 0, metadata: {} }],
+        metadata: {},
+      })
   }
   let value: unknown
   try {
@@ -202,8 +207,11 @@ const parse_text = (
   } catch (error) {
     throw new Error(`Unsupported text format`, { cause: error })
   }
-  return run_from_parsed(parse_json_value(value, collector), provenance, collector)
+  return parsed(parse_json_value(value, collector))
 }
+
+// Leading bytes of a binary source, enough for is_binary's sniff
+const BINARY_SNIFF_BYTES = 8192
 
 export async function open_trajectory(
   source: TrajectorySource,
@@ -243,21 +251,35 @@ export async function open_trajectory(
   }
 
   let run: TrajectoryRun
-  if (source instanceof Blob) {
-    if (!HDF5_EXT_REGEX.test(filename ?? ``)) {
-      throw new Error(`Blob trajectory sources require an HDF5 filename, got ${filename}`)
-    }
-    run = await open_hdf5(source)
-  } else if (source instanceof ArrayBuffer) {
-    if (FORMAT_PATTERNS.ase(source, filename)) {
-      report(10, `Parsing ASE trajectory…`)
-      run = indexed_text_run(source, `ase`, provenance, collector)
-    } else if (FORMAT_PATTERNS.hdf5(source, filename)) {
-      run = await open_hdf5(source)
-    } else throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
-  } else {
+  if (typeof source === `string`) {
     report(10, `Parsing trajectory…`)
     run = parse_text(source, options, provenance, collector, index_above_bytes)
+  } else if (source instanceof Blob && HDF5_EXT_REGEX.test(filename ?? ``)) {
+    run = await open_hdf5(source)
+  } else if (source instanceof ArrayBuffer && FORMAT_PATTERNS.ase(source, filename)) {
+    report(10, `Parsing ASE trajectory…`)
+    run = indexed_text_run(source, `ase`, provenance, collector)
+  } else if (source instanceof ArrayBuffer && FORMAT_PATTERNS.hdf5(source, filename)) {
+    run = await open_hdf5(source)
+  } else {
+    // Any other bytes are text
+    const head =
+      source instanceof Blob
+        ? await source.slice(0, BINARY_SNIFF_BYTES).arrayBuffer()
+        : source.slice(0, BINARY_SNIFF_BYTES)
+    if (is_binary(new TextDecoder().decode(head))) {
+      throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
+    }
+    report(10, `Parsing trajectory…`)
+    // Text that fits one string reads exactly like a string source; past that, only as lines
+    const text =
+      source_bytes > MAX_STRING_CHARS
+        ? new TextLines(await decode_text_chunks(source))
+        : source instanceof Blob
+          ? await source.text()
+          : new TextDecoder().decode(source)
+    signal?.throwIfAborted()
+    run = parse_text(text, options, provenance, collector, index_above_bytes)
   }
   if (signal?.aborted) {
     run.dispose()
