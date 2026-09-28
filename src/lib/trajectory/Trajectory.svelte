@@ -911,15 +911,11 @@
       })
     return () => trail_controller.abort()
   })
-  // Convert the source-frame playhead to collected frames; held still while scrubbing
-  let settled_trail_end: number | undefined
-  let trajectory_line_end_frame = $derived.by(() => {
-    if (!trail_stream) return (settled_trail_end = undefined)
-    if (!scrub_active || settled_trail_end === undefined) {
-      settled_trail_end = collected_frame_idx(trail_stream, current_step_idx)
-    }
-    return settled_trail_end
-  })
+  // Convert the source-frame playhead to collected frames. Trails follow scrubs too: moving
+  // their window costs O(atoms), not a rebuild
+  let trajectory_line_end_frame = $derived(
+    trail_stream ? collected_frame_idx(trail_stream, current_step_idx) : undefined,
+  )
   let spectroscopy_open = $derived(active_pane === `spectroscopy`)
   let trail_scene_props = $derived({
     ...structure_props.scene_props,
