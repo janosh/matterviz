@@ -5,7 +5,6 @@
     enable_atom_sphere_picking,
     update_atom_coordinates,
     update_ordered_atom_positions,
-    type InstancedAtom,
   } from './atom-instances'
   import type { D3InterpolateName } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
@@ -16,7 +15,7 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { atom_field_color, type AtomColorField } from './atom-color-field'
+  import type { AtomColorField } from './atom-color-field'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
   import {
     cutaway_contains,
@@ -78,19 +77,14 @@
   import * as measure from '$lib/structure/measure'
   import { is_crystal } from '$lib/structure/validation'
   import { to_error } from '$lib/utils'
-  import {
-    compute_slice_geometry,
-    merge_split_partial_sites,
-    CAP_ARC_LENGTH,
-    CAP_ARC_START,
-  } from '$lib/structure/partial-occupancy'
+  import { compute_slice_geometry, merge_split_partial_sites } from './partial-occupancy'
+  import { PartialAtoms, type PartialAtom } from './partial-atoms'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
     BufferGeometry,
-    Color,
     CylinderGeometry,
     DoubleSide,
     Euler,
@@ -607,11 +601,6 @@
     return `default`
   })
 
-  // Desaturate a color by blending it toward gray (for ghosting image atoms in edit mode)
-  const gray = new Color(0x999999)
-  const desaturate = (hex: string | undefined, amount = 0.4): string =>
-    `#${new Color(hex ?? 0x999999).lerp(gray, amount).getHexString()}`
-
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)
   // Plain variable — only used imperatively in TransformControls drag handlers
@@ -982,17 +971,6 @@
     }
   }
 
-  // Pointer props (hover + select) for per-site hit-target meshes (partial-occupancy
-  // sites), with the same interactivity gating as atom_instance_events
-  const atom_pointer_props = (site_idx: number, is_edit_image: boolean) =>
-    !interactive || is_edit_image
-      ? {}
-      : {
-          ...atom_hover_props(site_idx),
-          onpointerdown: (event: PointerEvent) => handle_atom_pointerdown(site_idx, event),
-          onclick: (event: MouseEvent) => handle_atom_click(site_idx, event),
-        }
-
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
     const event_with_native = evt as (Event & { nativeEvent?: unknown }) | undefined
@@ -1324,13 +1302,8 @@
   // One reactive read per palette entry instead of one proxy access per atom/bond.
   const element_palette = get_element_palette()
   const palette = $derived({ ...element_palette.colors })
-  type RenderAtom = InstancedAtom &
-    ReturnType<typeof compute_slice_geometry>[number] & {
-      site_idx: number
-      slice_idx: number // wedge index within its site (a site may list one element twice)
-      species: Site[`species`]
-      is_image_atom: boolean
-    }
+  // One record per wedge; an ordered atom is a single full-turn wedge
+  type RenderAtom = PartialAtom & { species: Site[`species`] }
   type AtomGroups = {
     first_by_site: Map<number, RenderAtom>
     base: RenderAtom[]
@@ -1433,13 +1406,10 @@
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
-      for (const [slice_idx, slice_data] of compute_slice_geometry(
-        visible_species,
-      ).entries()) {
+      for (const slice_data of compute_slice_geometry(visible_species)) {
         const atom = {
           ...slice_data,
           site_idx,
-          slice_idx,
           species: site.species,
           position: [...site.xyz] as Vec3,
           radius,
@@ -1567,6 +1537,18 @@
     const added_keys = new Set(added_bonds.map(bond_key_for))
     return bond_records(filtered_bond_pairs).filter((bond) =>
       added_keys.has(bond_key_for(bond)),
+    )
+  })
+
+  // Open bond cylinders halve their triangles, but their hollow ends show wherever no opaque
+  // sphere covers a bond end: hidden or translucent atoms, vacancy gaps, cutaways, or an atom
+  // smaller than a bond's reach (2.35 x thickness: a triple bond's outer copy, offset + radius)
+  let bonds_capped = $derived.by(() => {
+    if (!show_atoms || atom_opacity < 1 || atom_groups.partial.length > 0) return true
+    if (cutaway && cutaway.mode !== `off`) return true
+    const reach = 2.35 * bond_thickness
+    return [atom_groups.base, atom_groups.image].some((atoms) =>
+      atoms.some((atom) => atom.radius < reach),
     )
   })
 
@@ -1735,17 +1717,18 @@
     radius,
   })
 
-  // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
-  // to a point at the sphere's poles, leaving the ball hard to hover from some
-  // angles. Give each such site one invisible full-sphere hit target so it's as
-  // reliably hoverable as an ordered atom (single solid sphere). One per site.
-  let partial_hit_targets = $derived(
-    interactive && atom_groups.partial.length > 0
-      ? [...atom_groups.first_by_site.values()]
-          .filter((atom) => atom.occupancy < 1)
-          .map((atom) => ({ ...site_anchor(atom), is_image_atom: atom.is_image_atom }))
-      : [],
-  )
+  // Partial-occupancy wedges: a few instanced meshes regardless of site count, picked per site
+  const partial_atoms = new PartialAtoms()
+  $effect(() => {
+    const ghost_images = measure_mode === `edit-atoms`
+    partial_atoms.update(atom_groups.partial, ghost_images, sphere_segments, atom_color_field)
+    threlte.invalidate()
+  })
+  $effect(() => {
+    partial_atoms.set_opacity(atom_opacity)
+    threlte.invalidate()
+  })
+  $effect(() => () => partial_atoms.dispose())
 
   let editable_atom_hit_targets = $derived(
     interactive &&
@@ -2015,64 +1998,14 @@
           {/if}
         {/each}
 
-        <!-- Regular rendering for partial occupancy atoms -->
-        {#each atom_groups.partial as atom (`${atom.site_idx}-${atom.slice_idx}`)}
-          {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
-          {@const opacity = atom_opacity * (partial_edit_image ? 0.5 : 1)}
-          <!-- Clipping can expose a cap behind the rejected sphere-front hit.
-            Keep the sphere target below for pole-safe hover, and pick retained surfaces too. -->
-          <T.Group
-            position={atom.position}
-            scale={atom.radius}
-            {...cutaway && cutaway.mode !== `off`
-              ? atom_pointer_props(atom.site_idx, partial_edit_image)
-              : {}}
-          >
-            {@const partial_base = partial_edit_image ? desaturate(atom.color) : atom.color}
-            {@const partial_color = atom_color_field
-              ? atom_field_color(atom_color_field, atom.position, partial_base)
-              : partial_base}
-            {@const material_props = {
-              color: partial_color,
-              opacity,
-              transparent: opacity < 1,
-              visible: opacity > 0,
-            }}
-            <T.Mesh oncreate={enable_cutaway_picking}>
-              <T.SphereGeometry
-                args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
-              />
-              <T.MeshStandardMaterial {...material_props} />
-            </T.Mesh>
-
-            <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
-            {#each [[atom.render_start_cap, atom.start_phi], [atom.render_end_cap, atom.end_phi]] as const as [render_cap, phi], cap_idx (cap_idx)}
-              {#if render_cap}
-                <T.Mesh rotation={[0, phi, 0]} oncreate={enable_cutaway_picking}>
-                  <T.CircleGeometry
-                    args={[0.5, sphere_segments, CAP_ARC_START, CAP_ARC_LENGTH]}
-                  />
-                  <T.MeshStandardMaterial {...material_props} side={2} />
-                </T.Mesh>
-              {/if}
-            {/each}
-          </T.Group>
-        {/each}
-
-        <!-- Invisible full-sphere hit targets for partial-occupancy sites so the
-          whole ball is hoverable/clickable (wedge meshes leave gaps at the poles). -->
-        {#each partial_hit_targets as hit (hit.site_idx)}
-          {@const hit_edit_image = measure_mode === `edit-atoms` && hit.is_image_atom}
-          <T.Mesh
-            geometry={atom_hit_geometry}
-            oncreate={enable_atom_sphere_picking}
-            material={hit_material}
-            visible={false}
-            position={hit.position}
-            scale={hit.radius}
-            {...atom_pointer_props(hit.site_idx, hit_edit_image)}
+        <!-- Partial-occupancy wedges and vacancy caps; instanceId is a site's first wedge -->
+        {#if atom_groups.partial.length > 0}
+          <T
+            is={partial_atoms}
+            {...atom_instance_events(atom_groups.partial, false)}
+            dispose={false}
           />
-        {/each}
+        {/if}
 
         <!-- Site labels/indices: single overlay for all labels (one DOM container
           + one per-frame position pass instead of one threlte <HTML> per label) -->
@@ -2107,6 +2040,7 @@
           bonds={bonds_to_render}
           site_colors={bond_site_colors}
           thickness={bond_thickness}
+          capped={bonds_capped}
           {ambient_light}
           {directional_light}
         />

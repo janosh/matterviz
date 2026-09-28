@@ -16,17 +16,21 @@
     thickness,
     ambient_light,
     directional_light,
+    capped = true,
   }: {
     bonds: BondData
     site_colors: string[]
     thickness: number
     ambient_light: number
     directional_light: number
+    // End discs only show where no opaque atom sphere covers the bond ends; open cylinders
+    // halve the bond triangles (8 radial segments: 32 -> 16)
+    capped?: boolean
   } = $props()
 
   const { invalidate } = useThrelte()
 
-  const cylinder_geometry = new CylinderGeometry(1, 1, 1, 8)
+  const cylinder_geometry = $derived(new CylinderGeometry(1, 1, 1, 8, 1, !capped))
   const uniform_color = $derived.by(() => {
     const color = site_colors[0]
     for (let idx = 1; idx < site_colors.length; idx++)
@@ -94,10 +98,11 @@
     const current = mesh
     return () => current.dispose()
   })
-  $effect(() => () => {
-    cylinder_geometry.dispose()
-    bond_material.dispose()
+  $effect(() => {
+    const current = cylinder_geometry
+    return () => current.dispose()
   })
+  $effect(() => () => bond_material.dispose())
 </script>
 
 <T is={mesh} dispose={false} />

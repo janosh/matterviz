@@ -27,7 +27,7 @@ type RenderSite = {
   source_site_indices: number[]
 }
 
-type SliceGeometry = {
+export type SliceGeometry = {
   element: string
   occupancy: number
   start_phi: number
@@ -36,11 +36,6 @@ type SliceGeometry = {
   render_start_cap: boolean
   render_end_cap: boolean
 }
-
-// Flat caps closing a partial-occupancy wedge: a half-disc from CAP_ARC_START spanning
-// CAP_ARC_LENGTH at the wedge's start and end azimuth
-export const CAP_ARC_START = Math.PI / 2
-export const CAP_ARC_LENGTH = Math.PI
 
 // Allocation-free: runs for every site of every trajectory frame
 const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {

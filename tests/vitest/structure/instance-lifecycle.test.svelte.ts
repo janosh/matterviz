@@ -27,8 +27,14 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
-import type { SphereGeometry } from 'three/webgpu'
+import {
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  Raycaster,
+  Vector3,
+} from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -114,18 +120,23 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
 })
 
 // Threlte hands the pointer event to every atom on the ray, nearest first: the atom behind
-// used to take over the hover and tooltip
+// used to take over the hover and tooltip. A partial-occupancy site 0 resolves through the
+// wedge group's instanceId and must also win over, or yield to, an ordered atom.
 test.each([
-  [10, 0],
-  [-10, 1], // same ray from behind
-])(`hover picks the front atom on a ray from z=%i (site %i)`, (origin_z, front_idx) => {
+  [10, 0, 1],
+  [-10, 1, 1], // same ray from behind
+  [10, 0, 0.5],
+  [-10, 1, 0.5],
+])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
   const capture = vi.spyOn(extras, `interactivity`)
   onTestFinished(() => capture.mockRestore())
   const hover = $state<{ idx: number | null }>({ idx: null })
   const { unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, {
       structure: {
-        sites: [0, -3].map((z_coord) => make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`)),
+        sites: [0, -3].map((z_coord, idx) =>
+          make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+        ),
       },
       get hovered_idx() {
         return hover.idx
@@ -150,6 +161,61 @@ test.each([
   expect(hover.idx).toBe(front_idx)
 })
 
+// Open cylinders halve the bond triangles; capped ones close the ends no atom covers
+test.each([
+  [true, 32],
+  [false, 16],
+])(`Bond capped=%s draws %i triangles per cylinder`, (capped, triangles) => {
+  const bond: BondPair = {
+    pos_1: [0, 0, 0],
+    pos_2: [1, 0, 0],
+    site_idx_1: 0,
+    site_idx_2: 1,
+    bond_length: 1,
+  }
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    Bond(anchor, {
+      bonds: [bond],
+      site_colors: [`red`, `blue`],
+      thickness: 0.1,
+      ambient_light: 0.7,
+      directional_light: 0.3,
+      capped,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const mesh = scene.children.find((child): child is BondMesh => child instanceof BondMesh)
+  expect((mesh?.geometry.index?.count ?? 0) / 3).toBe(triangles)
+})
+
+// Scene bonds stay open-ended unless an end could show: hidden, translucent or tiny atoms
+test.each([
+  [`default atoms`, 16, {}],
+  [`hidden atoms`, 32, { show_atoms: false }],
+  [`translucent atoms`, 32, { atom_opacity: 0.5 }],
+  [`atoms thinner than the bonds`, 32, { atom_radius: 0.1 }],
+])(`Scene bonds with %s draw %i triangles per cylinder`, (_label, triangles, props) => {
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: {
+        sites: [0, 1.4].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      gizmo: false,
+      ...props,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const mesh = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find((child) => child instanceof BondMesh)
+  expect(mesh).toBeInstanceOf(BondMesh)
+  expect(((mesh as BondMesh).geometry.index?.count ?? 0) / 3).toBe(triangles)
+})
+
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
 test(`Scene draws one wedge per species of a site listing an element twice`, () => {
   const species = [2, 3].map((oxidation_state) => ({
@@ -167,15 +233,19 @@ test(`Scene draws one wedge per species of a site listing an element twice`, () 
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const wedge_phis: number[] = []
-  scene.traverse((object) => {
-    const { geometry } = object as Mesh
-    if (geometry?.type === `SphereGeometry`) {
-      wedge_phis.push((geometry as SphereGeometry).parameters.phiStart)
-    }
+  // Both wedges are instances of one shared lune, turned about Y to their start azimuths
+  const wedges = scene
+    .getObjectsByProperty(`isInstancedMesh`, true)
+    .filter((object) => object instanceof InstancedMesh)
+  expect(wedges.map(({ geometry }) => geometry.type)).toEqual([`SphereGeometry`])
+  const matrix = new Matrix4()
+  const wedge_phis = Array.from({ length: wedges[0].count }, (_unused, idx) => {
+    wedges[0].getMatrixAt(idx, matrix)
+    return Math.atan2(matrix.elements[8], matrix.elements[0])
   })
   expect(wedge_phis).toHaveLength(2)
-  expect(wedge_phis[1]).toBeCloseTo(Math.PI, 2)
+  expect(wedge_phis[0]).toBeCloseTo(0, 2)
+  expect(Math.abs(wedge_phis[1])).toBeCloseTo(Math.PI, 2)
 })
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {

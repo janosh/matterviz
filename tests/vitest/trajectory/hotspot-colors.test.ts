@@ -239,11 +239,13 @@ it.each([`energy`, `temperature`] as const)(
       colors,
     }
     // Nonperiodic out-of-grid and missing-data atoms retain their base color.
-    expect(atom_field_color(field, [10, -21, 30], `blue`)).toEqual(new Color(`blue`))
+    expect(atom_field_color(field, [10, -21, 30], new Color(`blue`))).toEqual(
+      new Color(`blue`),
+    )
     const empty_position = new Vector3(0.1, 0.1, 0.3).applyMatrix4(
       field.cartesian_to_fractional.clone().invert(),
     )
-    expect(atom_field_color(field, empty_position.toArray(), `blue`)).toEqual(
+    expect(atom_field_color(field, empty_position.toArray(), new Color(`blue`))).toEqual(
       new Color(`blue`),
     )
     data.energy.fill(0)
@@ -292,7 +294,7 @@ it.each([`device`, `cell`] as const)(
         : data.grid
     const field = { ...hotspot_field_geometry(data, frame), colors }
     const display = hotspot_display_values(data, `energy`, 1)
-    const first_color = atom_field_color(field, [0, 0, 0], `blue`)
+    const first_color = atom_field_color(field, [0, 0, 0], new Color(`blue`))
     const first_components = first_color.toArray()
     for (let idx = 0; idx < 24; idx++) {
       for (const image of [-1, 0, 1]) {
@@ -314,7 +316,7 @@ it.each([`device`, `cell`] as const)(
           average_atoms: 2,
           occupied_frames: 1,
         })
-        expect(atom_field_color(field, relative, `blue`).toArray()).toEqual([
+        expect(atom_field_color(field, relative, new Color(`blue`)).toArray()).toEqual([
           idx / 32,
           idx / 32,
           idx / 32,
@@ -325,7 +327,7 @@ it.each([`device`, `cell`] as const)(
     const endpoint = new Vector3(0.25, 1, 0.125).applyMatrix4(
       field.cartesian_to_fractional.clone().invert(),
     )
-    expect(atom_field_color(field, endpoint.toArray(), `blue`).toArray()).toEqual([
+    expect(atom_field_color(field, endpoint.toArray(), new Color(`blue`)).toArray()).toEqual([
       8 / 32,
       8 / 32,
       8 / 32,

@@ -144,8 +144,8 @@ export class AtomFieldMaterial {
   }
 }
 
-// Partial-occupancy atoms use separate wedge meshes. Sampling their centers on the CPU
-// keeps those uncommon meshes consistent without rebuilding the large instance buffers.
+// Partial-occupancy wedges sample their site centers on the CPU into per-instance colors,
+// keeping those uncommon meshes consistent without the full-sphere shader attributes.
 const field_coords = new Vector3()
 const field_color = new Color()
 export function atom_field_bin(field: Omit<AtomColorField, `colors`>, position: Vec3): number {
@@ -162,12 +162,10 @@ export function atom_field_bin(field: Omit<AtomColorField, `colors`>, position: 
   return bin
 }
 
-export function atom_field_color(field: AtomColorField, position: Vec3, base?: string): Color {
+// Blends `color` in place toward the field color at `position`
+export function atom_field_color(field: AtomColorField, position: Vec3, color: Color): Color {
   const bin = atom_field_bin(field, position)
-  if (bin < 0) return new Color(base)
+  if (bin < 0) return color
   const offset = bin * 4
-  return new Color(base).lerp(
-    field_color.fromArray(field.colors, offset),
-    field.colors[offset + 3],
-  )
+  return color.lerp(field_color.fromArray(field.colors, offset), field.colors[offset + 3])
 }
