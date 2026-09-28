@@ -140,17 +140,6 @@ const canonical_self_bond_shift = (cell_shift: Vec3): Vec3 => {
     : cell_shift
 }
 
-// Whether the image shift at neighbor-list `slot` is the canonical one of a self-image
-// pair (first non-zero component positive), i.e. the one canonical_self_bond_shift keeps.
-// A site's periodic image appears in its own list under both s and -s.
-const is_canonical_self_image = (images: Int32Array, slot: number): boolean => {
-  for (let axis = 0; axis < 3; axis++) {
-    const shift = images[slot * 3 + axis]
-    if (shift !== 0) return shift > 0
-  }
-  return false // the unshifted self is never listed, so this is unreachable
-}
-
 const NO_PBC: Pbc = [false, false, false]
 
 const normalize_bond_endpoints = (
@@ -804,9 +793,11 @@ type PairBand = { elem_ids: Int32Array; n_elem: number; lo: Float64Array; hi: Fl
 type CutoffQuery = {
   pbc?: Pbc
   sorted?: boolean
-  // List each pair once, under its lower-index base endpoint, and skip image geometry
-  // (empty `images`/`deltas`): for finite bond candidates, whose images are all zero
+  // List each site pair once, from its lower site index; a site's own image pair (shift s and
+  // -s) only under the canonical s. Halves the lists bond perception reads.
   unique_pairs?: boolean
+  // Fill `images`/`deltas` (default: unless unique_pairs); bond candidates need neither
+  image_geometry?: boolean
   // Drop pairs outside their element pair's band during the sweep, before any storage
   band?: PairBand
 }
@@ -829,7 +820,13 @@ function neighbor_query_cutoff(
 function neighbor_query_cutoff(
   structure: AnyStructure,
   cutoff: number,
-  { pbc: pbc_override, sorted = false, unique_pairs = false, band }: CutoffQuery,
+  {
+    pbc: pbc_override,
+    sorted = false,
+    unique_pairs = false,
+    image_geometry = !unique_pairs,
+    band,
+  }: CutoffQuery,
   visit?: NeighborDistanceVisitor,
 ): NeighborList | void {
   const { sites, n_sites, coordinates, stride } = site_positions(structure)
@@ -1051,6 +1048,19 @@ function neighbor_query_cutoff(
     if (!visit) item_of[slot] = item
   }
 
+  // Whether `partner` is listed under base slot `center` (see CutoffQuery.unique_pairs)
+  const listed = (center: number, partner: number): boolean => {
+    if (center >= n_sites) return false
+    if (!unique_pairs || partner < n_sites) return !unique_pairs || partner > center
+    const partner_site = cloud_src[partner]
+    if (partner_site !== center) return partner_site > center
+    for (let axis = 0; axis < 3; axis++) {
+      const shift = cloud_shift[partner * 3 + axis] - cloud_shift[center * 3 + axis]
+      if (shift !== 0) return shift > 0
+    }
+    return false
+  }
+
   // Pair sweep: every pair within cutoff once, from the lexicographically lower bin (own
   // bin: from the lower slot). Pairs between two images are skipped, since images are never
   // centers. Streaming histograms reuse adjacent ranges for every slot in an occupied bin.
@@ -1171,8 +1181,8 @@ function neighbor_query_cutoff(
           pair_a[n_pairs] = slot_a
           pair_b[n_pairs] = slot_b
           pair_dist_sq[n_pairs] = dist_sq
-          if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b)) offsets[slot_a + 1]++
-          if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a)) offsets[slot_b + 1]++
+          if (listed(slot_a, slot_b)) offsets[slot_a + 1]++
+          if (listed(slot_b, slot_a)) offsets[slot_b + 1]++
           n_pairs++
         }
       }
@@ -1193,14 +1203,12 @@ function neighbor_query_cutoff(
   for (let pair = 0; pair < n_pairs; pair++) {
     const slot_a = pair_a[pair]
     const slot_b = pair_b[pair]
-    if (slot_a < n_sites && (!unique_pairs || slot_a < slot_b))
-      entry_at[center_cursor[slot_a]++] = pair * 2
-    if (slot_b < n_sites && (!unique_pairs || slot_b < slot_a))
-      entry_at[center_cursor[slot_b]++] = pair * 2 + 1
+    if (listed(slot_a, slot_b)) entry_at[center_cursor[slot_a]++] = pair * 2
+    if (listed(slot_b, slot_a)) entry_at[center_cursor[slot_b]++] = pair * 2 + 1
   }
   const neighbors = new Int32Array(total)
-  const images = new Int32Array(unique_pairs ? 0 : total * 3)
-  const deltas = new Float64Array(unique_pairs ? 0 : total * 3)
+  const images = new Int32Array(image_geometry ? total * 3 : 0)
+  const deltas = new Float64Array(image_geometry ? total * 3 : 0)
   const distances = new Float64Array(total)
   // per-block scratch: sort keys copied out so the insertion sort touches contiguous memory
   let block_partner: Int32Array = new Int32Array(256)
@@ -1262,7 +1270,7 @@ function neighbor_query_cutoff(
       const out = start + idx
       neighbors[out] = cloud_src[partner]
       distances[out] = Math.sqrt(block_dist_sq[rank])
-      if (unique_pairs) continue
+      if (!image_geometry) continue
       // image = partner's total shift - center's wrap shift, so that
       // sites[partner].xyz + image·L - sites[center].xyz === delta
       images[out * 3] = cloud_shift[partner * 3] - center_shift_a
@@ -1439,8 +1447,8 @@ export function cache_prepared_bonds(
 type BondNeighborList = Pick<NeighborList, 'offsets' | 'neighbors' | 'distances'> & {
   image_geometry?: Pick<NeighborList, 'images' | 'deltas'>
 }
-// Every contact within `cutoff` whose distance lies in its element pair's band. Finite
-// queries (no periodic axis) list each pair once, from its lower site index.
+// Every contact within `cutoff` whose distance lies in its element pair's band, listed once
+// from its lower site index (a site's own periodic image under its canonical shift only).
 type BondNeighborQuery = (
   structure: AnyStructure,
   cutoff: number,
@@ -1450,7 +1458,12 @@ type BondNeighborQuery = (
 
 const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) => {
   const periodic = pbc.some(Boolean)
-  const list = neighbor_query_cutoff(structure, cutoff, { pbc, unique_pairs: !periodic, band })
+  const list = neighbor_query_cutoff(structure, cutoff, {
+    pbc,
+    unique_pairs: true,
+    image_geometry: periodic,
+    band,
+  })
   return periodic ? { ...list, image_geometry: list } : list
 }
 
@@ -1949,15 +1962,6 @@ function perceive_bonds(
     const pair_row = elem_ids[center] * n_elem
     for (let slot = offsets[center]; slot < offsets[center + 1]; slot++) {
       const partner = neighbors[slot]
-      // The list holds both ends of every pair; take each unordered pair once, from its
-      // lower site index. A site's own periodic image shows up twice (shift s and -s),
-      // so only the shift normalize_bond_endpoints calls canonical is kept.
-      if (partner < center) continue
-      if (
-        partner === center &&
-        (!image_geometry || !is_canonical_self_image(image_geometry.images, slot))
-      )
-        continue
       const dist = distances[slot]
       // Two table reads replace min_bond_dist, the radius sum, the ratio cutoff and the
       // whole metal/nonmetal/electronegativity branch chain

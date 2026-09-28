@@ -43,7 +43,9 @@ export function pack_bonds(bonds: readonly BondPair[]): BondColumns {
 // One immutable column snapshot, shared by rendering and on-demand rich consumers.
 export class BondFrame {
   private records: BondPair[] | undefined
-  private readonly shifted = new Map<number, { position: Vec3; shift: Vec3 }>()
+  // Offset of each image bond's row in columns.images, -1 for in-cell bonds: an array read
+  // per bond, where a Map lookup cost periodic structures more than the rest of materialize
+  private readonly image_offsets: Int32Array
   private readonly sites
   constructor(
     readonly structure: AnyStructure,
@@ -52,11 +54,16 @@ export class BondFrame {
   ) {
     this.sites = numeric_sites.get(structure)
     const { images } = columns
+    this.image_offsets = new Int32Array(columns.lengths.length).fill(-1)
     for (let offset = 0; offset < images.length; offset += 7)
-      this.shifted.set(images[offset], {
-        position: [images[offset + 1], images[offset + 2], images[offset + 3]],
-        shift: [images[offset + 4], images[offset + 5], images[offset + 6]],
-      })
+      this.image_offsets[images[offset]] = offset
+  }
+  // Image bond `idx`'s position (column 1) or cell shift (column 4)
+  private image_vec(idx: number, column: 1 | 4): Vec3 | undefined {
+    const offset = this.image_offsets[idx]
+    if (offset < 0) return undefined
+    const { images } = this.columns
+    return [images[offset + column], images[offset + column + 1], images[offset + column + 2]]
   }
   get length(): number {
     return this.columns.lengths.length
@@ -65,37 +72,38 @@ export class BondFrame {
     return BOND_ORDERS[this.columns.orders[idx]]
   }
   cell_shift(idx: number): Vec3 | undefined {
-    return this.shifted.get(idx)?.shift
+    return this.image_vec(idx, 4)
   }
   position_1(idx: number): Vec3 {
     const site_idx = this.columns.indices[idx * 2]
     return this.sites ? this.sites.position(site_idx) : this.structure.sites[site_idx].xyz
   }
   position_2(idx: number): Vec3 {
-    const image = this.shifted.get(idx)
-    if (image) return image.position
+    const image = this.image_vec(idx, 1)
+    if (image) return image
     const site_idx = this.columns.indices[idx * 2 + 1]
     return this.sites ? this.sites.position(site_idx) : this.structure.sites[site_idx].xyz
   }
   write_endpoints(idx: number, start: Vec3, end: Vec3): void {
     const first = this.columns.indices[idx * 2]
     const second = this.columns.indices[idx * 2 + 1]
-    const image = this.shifted.get(idx)?.position
+    const image = this.image_offsets[idx]
     for (let axis = 0; axis < 3; axis++) {
       start[axis] = this.sites
         ? this.sites.coordinates[first * this.sites.stride + axis]
         : this.structure.sites[first].xyz[axis]
-      end[axis] = image
-        ? image[axis]
-        : this.sites
-          ? this.sites.coordinates[second * this.sites.stride + axis]
-          : this.structure.sites[second].xyz[axis]
+      end[axis] =
+        image >= 0
+          ? this.columns.images[image + 1 + axis]
+          : this.sites
+            ? this.sites.coordinates[second * this.sites.stride + axis]
+            : this.structure.sites[second].xyz[axis]
     }
   }
   materialize(): BondPair[] {
     return (this.records ??= Array.from({ length: this.length }, (_unused, idx) => {
       const order = this.order(idx)
-      const shift = this.shifted.get(idx)?.shift
+      const shift = this.cell_shift(idx)
       return {
         site_idx_1: this.columns.indices[idx * 2],
         site_idx_2: this.columns.indices[idx * 2 + 1],
