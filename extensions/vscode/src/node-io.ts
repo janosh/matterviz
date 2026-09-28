@@ -11,7 +11,6 @@ import {
   is_indexable_trajectory_filename,
 } from '$lib/trajectory/format-detect'
 import { format_bytes } from 'svelte-widgets/format'
-import { constants as buffer_constants } from 'node:buffer'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'
 import * as vscode from 'vscode'
@@ -19,7 +18,6 @@ import * as vscode from 'vscode'
 // vscode.workspace.fs.readFile() has no streaming API, so the whole file lands in memory: cap
 // it at 1 GiB to keep the extension host from OOMing
 export const MAX_STREAMING_FILE_SIZE = 1024 * 1024 * 1024
-export const MAX_TEXT_TRAJECTORY_SIZE = buffer_constants.MAX_STRING_LENGTH
 const LARGE_FILE_WARNING_SIZE = 512 * 1024 * 1024
 const TEXT_DECODING_BYTES_PER_OUTPUT_BYTE = 2
 
@@ -29,18 +27,6 @@ const to_array_buffer = (data: Uint8Array): ArrayBuffer =>
   data.byteLength === data.buffer.byteLength
     ? data.buffer
     : Uint8Array.from(data).buffer
-
-export const decode_indexed_trajectory_text = (
-  data: ArrayBuffer,
-  max_byte_length: number = MAX_TEXT_TRAJECTORY_SIZE,
-): string => {
-  if (data.byteLength > max_byte_length) {
-    throw new Error(
-      `Text trajectory too large to decode (${data.byteLength} bytes). Maximum: ${max_byte_length} bytes`,
-    )
-  }
-  return new TextDecoder().decode(data)
-}
 
 export const decompress_host_buffer = async (
   data: ArrayBuffer,
@@ -117,8 +103,10 @@ export const stream_file_to_buffer = async (file_path: string): Promise<ArrayBuf
   return to_array_buffer(uint8array)
 }
 
+// Text trajectories stay bytes too: open_trajectory decodes them in line-aligned chunks, so a
+// file past the JS string limit still opens
 interface IndexedTrajectoryFile {
-  data: string | ArrayBuffer
+  data: ArrayBuffer
   filename: string
 }
 
@@ -133,7 +121,7 @@ export const read_indexed_trajectory_file = async (
   if (!is_indexable_trajectory_filename(normalized_filename)) {
     throw new Error(`Indexed loading is not supported for ${filename}`)
   }
-  const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `xyz`
+  const is_text_trajectory = indexed_trajectory_format(normalized_filename) === `text`
   let buffer = await stream_file_to_buffer(file_path)
   for (
     let format = detect_compression_format(filename);
@@ -146,13 +134,9 @@ export const read_indexed_trajectory_file = async (
     buffer = await decompress_host_buffer(
       buffer,
       format,
-      is_text_trajectory ? MAX_TEXT_TRAJECTORY_SIZE : MAX_STREAMING_FILE_SIZE,
+      MAX_STREAMING_FILE_SIZE,
       is_text_trajectory && filename === normalized_filename,
     )
   }
-
-  return {
-    data: is_text_trajectory ? decode_indexed_trajectory_text(buffer) : buffer,
-    filename: normalized_filename,
-  }
+  return { data: buffer, filename: normalized_filename }
 }

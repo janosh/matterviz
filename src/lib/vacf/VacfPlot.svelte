@@ -8,6 +8,7 @@
   import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import { compute_vacf_async } from './async-compute.svelte'
+  import { revise_vacf } from './calc-vacf'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
 
   let {
@@ -41,10 +42,16 @@
 
   use_async_result({
     input: () => input,
-    options: () => vacf_options,
+    // dt, time_unit and the VDOS window/unit are applied to the finished correlation (revise)
+    options: (): VacfOptions => ({
+      max_lag_fraction: vacf_options.max_lag_fraction,
+      max_lags: vacf_options.max_lags,
+      velocity_source: vacf_options.velocity_source,
+    }),
     compute: (request_input, options, signal) =>
       compute_vacf_async(request_input, options, { signal }),
-    set_result: (computed) => (result = computed),
+    revise: (computed) => revise_vacf(computed, vacf_options),
+    set_result: (value) => (result = value),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
   })

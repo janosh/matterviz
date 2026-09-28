@@ -27,8 +27,14 @@ import { cache_prepared_bonds } from '$lib/structure/bonding'
 import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
-import { InstancedBufferAttribute, Matrix4, Mesh, Raycaster, Vector3 } from 'three/webgpu'
-import type { SphereGeometry } from 'three/webgpu'
+import {
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  Raycaster,
+  Vector3,
+} from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -113,6 +119,75 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
   }
 })
 
+// Threlte hands the pointer event to every atom on the ray, nearest first: the atom behind
+// used to take over the hover and tooltip. A partial-occupancy site 0 resolves through the
+// wedge group's instanceId and must also win over, or yield to, an ordered atom.
+test.each([
+  [10, 0, 1],
+  [-10, 1, 1], // same ray from behind
+  [10, 0, 0.5],
+  [-10, 1, 0.5],
+])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
+  const capture = vi.spyOn(extras, `interactivity`)
+  onTestFinished(() => capture.mockRestore())
+  const hover = $state<{ idx: number | null }>({ idx: null })
+  const { unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: {
+        sites: [0, -3].map((z_coord, idx) =>
+          make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+        ),
+      },
+      get hovered_idx() {
+        return hover.idx
+      },
+      set hovered_idx(value) {
+        hover.idx = value
+      },
+      show_bonds: `never`,
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const captured = capture.mock.results[0]
+  if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
+  // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
+  const interactivity = captured.value
+  interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
+  interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  expect(hover.idx).toBe(front_idx)
+})
+
+// Open cylinders halve the bond triangles; scene bonds close their ends only where one could
+// show: hidden, translucent or tiny atoms
+test.each([
+  [`default atoms`, 16, {}],
+  [`hidden atoms`, 32, { show_atoms: false }],
+  [`translucent atoms`, 32, { atom_opacity: 0.5 }],
+  [`atoms thinner than the bonds`, 32, { atom_radius: 0.1 }],
+])(`Scene bonds with %s draw %i triangles per cylinder`, (_label, triangles, props) => {
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: {
+        sites: [0, 1.4].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      gizmo: false,
+      ...props,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const mesh = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find((obj) => obj instanceof BondMesh)
+  expect(mesh?.geometry.index?.count).toBe(triangles * 3)
+})
+
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
 test(`Scene draws one wedge per species of a site listing an element twice`, () => {
   const species = [2, 3].map((oxidation_state) => ({
@@ -130,15 +205,17 @@ test(`Scene draws one wedge per species of a site listing an element twice`, () 
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const wedge_phis: number[] = []
-  scene.traverse((object) => {
-    const { geometry } = object as Mesh
-    if (geometry?.type === `SphereGeometry`) {
-      wedge_phis.push((geometry as SphereGeometry).parameters.phiStart)
-    }
+  // Both wedges are instances of one shared lune, turned about Y to their start azimuths
+  const wedges = scene
+    .getObjectsByProperty(`isInstancedMesh`, true)
+    .filter((object) => object instanceof InstancedMesh)
+  expect(wedges.map(({ geometry }) => geometry.type)).toEqual([`SphereGeometry`])
+  const matrix = new Matrix4()
+  const wedge_phis = Array.from({ length: wedges[0].count }, (_unused, idx) => {
+    wedges[0].getMatrixAt(idx, matrix)
+    return Math.atan2(matrix.elements[8], matrix.elements[0])
   })
-  expect(wedge_phis).toHaveLength(2)
-  expect(wedge_phis[1]).toBeCloseTo(Math.PI, 2)
+  expect(wedge_phis.map(Math.abs)).toEqual([expect.closeTo(0, 2), expect.closeTo(Math.PI, 2)])
 })
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {
@@ -328,6 +405,20 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   })
   upload_colors()
   expect(uploaded).toEqual(colors_start.array)
+  // In-place palette edits recolor even though the bonds and palette array are unchanged
+  const rgb = (color: string) => css_to_linear_rgb(color).map(Math.fround)
+  expect(Array.from(colors_start.array.subarray(0, 6))).toEqual([
+    ...rgb(`lime`),
+    ...rgb(`blue`),
+  ])
+  // An identical bond topology with an identical palette skips the per-cylinder loop
+  bonds = make_frame(2, true)
+  const order = vi.spyOn(
+    untrack(() => bonds),
+    `order`,
+  )
+  flushSync()
+  expect(order).not.toHaveBeenCalled()
   const uploads = update.mock.calls.length
   const centers = mesh.centers.array.slice()
   for (const value of [-0.2, 0, 0.2]) {
@@ -588,6 +679,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     }),
   )
   const disposal = vi.fn()
+  const face_disposal = vi.fn()
   try {
     flushSync() // Initial camera fitting may inspect sites; subsequent colors must not.
     get_site.mockClear()
@@ -601,18 +693,26 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     if (!(edges instanceof LineSegments2) || !(faces instanceof Mesh))
       throw new Error(`Expected polyhedra faces and outlines`)
     edges.material.addEventListener(`dispose`, disposal)
+    const face_geometry = faces.geometry
+    face_geometry.addEventListener(`dispose`, face_disposal)
     for (const value of [`vertex`, `center`, `uniform`] as const) {
       mode = value
       flushSync()
       expect(scene.getObjectById(edges.id)).toBe(edges)
-      const expected = merge_polyhedra_buffers([poly], (_poly, idx) =>
-        value === `uniform`
-          ? `yellow`
-          : (property_colors.colors[value === `center` ? 0 : poly.vertex_site_idxs[idx]] ??
-            colors.element?.[idx % 2 === 0 ? `O` : `H`] ??
-            `#808080`),
+      // vertex sites 1-4 alternate O (odd) / H (even), see the atomic numbers above
+      const site_color = (site_idx: number) =>
+        property_colors.colors[site_idx] ??
+        colors.element?.[site_idx % 2 === 1 ? `O` : `H`] ??
+        `#808080`
+      const expected = merge_polyhedra_buffers(
+        [poly],
+        value === `uniform` ? { mode: value, color: `yellow` } : { mode: value, site_color },
       )
-      expect(faces.geometry.getAttribute(`color`).array).toEqual(expected.colors)
+      // recoloring rewrites the same face geometry in place rather than rebuilding it
+      expect(faces.geometry).toBe(face_geometry)
+      expect(face_geometry.drawRange.count).toBe(expected.triangle_count * 3)
+      expect(face_geometry.getAttribute(`color`).array).toEqual(expected.colors)
+      expect(face_geometry.getAttribute(`normal`).array).toEqual(expected.normals)
       expect(get_site).not.toHaveBeenCalled()
     }
     for (const visible of [false, true]) {
@@ -627,11 +727,13 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(scene.getObjectById(edges.id)).toBe(edges)
       expect(edges.visible).toBe(visible)
       expect(disposal).not.toHaveBeenCalled()
+      expect(face_disposal).not.toHaveBeenCalled()
     }
   } finally {
     await unmount_scene()
   }
   expect(disposal).toHaveBeenCalledOnce()
+  expect(face_disposal).toHaveBeenCalledOnce()
 })
 
 test.each([`atoms`, `arrows`, `bonds`] as const)(

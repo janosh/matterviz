@@ -1,7 +1,7 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
 import { BINARY_VIEWER_EXT_REGEX, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
-import { classify_payload } from '$lib/io/decompress'
+import { classify_payload, content_byte_size, MAX_STRING_CHARS } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
 import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
 import { prediction_from_json, type StructureToolPrediction } from '$lib/structure/prediction'
@@ -145,7 +145,8 @@ export const parse_file_content = async (
   }
 
   // Raw binary payloads come from open_material after decompression/classification. HDF5
-  // stays Blob-backed for lazy reads; all other non-binary formats continue as decoded text.
+  // stays Blob-backed for lazy reads, as does text past one JS string, which only the indexed
+  // trajectory readers take (in chunks); all other formats continue as decoded text.
   if (typeof source !== `string`) {
     if (is_vaspwave_filename(filename)) {
       const buffer = source instanceof Blob ? await source.arrayBuffer() : source
@@ -155,7 +156,10 @@ export const parse_file_content = async (
         filename,
       }
     }
-    if (BINARY_VIEWER_EXT_REGEX.test(filename)) {
+    if (
+      BINARY_VIEWER_EXT_REGEX.test(filename) ||
+      content_byte_size(source) > MAX_STRING_CHARS
+    ) {
       return trajectory_result(source, filename, load_options, on_progress)
     }
     source = source instanceof Blob ? await source.text() : new TextDecoder().decode(source)

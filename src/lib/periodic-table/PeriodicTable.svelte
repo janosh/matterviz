@@ -364,6 +364,17 @@
       backdrop: page_backdrop.current,
     }),
   )
+  // CSS keeps wrapped text at the full max-width, so shrink the (content-box) tooltip to
+  // its lines, whose union is the range's bounding rect. Scale undoes ancestor transforms.
+  $effect(() => {
+    void tooltip_element // re-fit for each hovered tile
+    if (!tooltip_node) return
+    tooltip_node.style.width = ``
+    const range = document.createRange()
+    range.selectNodeContents(tooltip_node)
+    const scale = tooltip_node.getBoundingClientRect().width / tooltip_node.offsetWidth
+    tooltip_node.style.width = `${Math.ceil(range.getBoundingClientRect().width / scale)}px`
+  })
 </script>
 
 <div
@@ -548,6 +559,11 @@
     --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     position: absolute;
     transform: translate(-50%, -10%);
+    /* auto width would stop at the table edge right of `left`, wrapping near it */
+    width: max-content;
+    box-sizing: content-box;
+    max-width: var(--tooltip-max-width, 280px);
+    text-wrap: balance;
     background: var(--_bg);
     color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);

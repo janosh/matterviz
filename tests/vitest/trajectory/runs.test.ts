@@ -349,6 +349,21 @@ describe(`numeric frames`, () => {
     expect(snapshot_topologies.get(view.update(first).structure)).not.toBe(identity)
   })
 
+  // Text formats declare no topology: byte-identical element rows still share it, so the scene
+  // keeps its in-place coordinate path instead of rebuilding site records every frame
+  it(`shares topology across topology-less frames with identical elements`, () => {
+    const view = new FrameView()
+    const [first, second] = [0, 1].map((step) => encode_frame(make_trajectory_frame(step)))
+    expect(first.topology).toBeUndefined()
+    expect(first.sites).toBeInstanceOf(Uint8Array)
+    const identity = snapshot_topologies.get(view.update(first).structure)
+    expect(identity).toBeDefined()
+    expect(snapshot_topologies.get(view.update(second).structure)).toBe(identity)
+    const changed = view.update({ ...second, sites: Uint8Array.of(1, 1, 2) }).structure
+    expect(snapshot_topologies.get(changed)).not.toBe(identity)
+    expect(get_site(changed, 2)?.species[0].element).toBe(`He`)
+  })
+
   it.each([0, 1, 2, 3, 4, 5, 6, 7])(
     `preserves wrapping boundaries for PBC mask %i`,
     (mask) => {

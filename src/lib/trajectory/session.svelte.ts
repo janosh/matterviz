@@ -52,6 +52,8 @@ interface TrajectorySessionOptions {
   prefetch_delay_ms?: number
 }
 
+const PROPERTY_MIRROR_MS = 250
+
 const site_record_count = ({ frame }: DisplayFrame): number =>
   Array.isArray(frame.sites) ? frame.sites.length : 0
 
@@ -123,13 +125,31 @@ export function create_trajectory_session(
     rows: [],
     complete: true,
   })
+  // Every mirror write re-derives plot series, statistics and panes from all rows so far, so a
+  // streaming run coalesces its batches to one write per PROPERTY_MIRROR_MS instead of paying
+  // O(frames^2). The first batch after a quiet period and completion write immediately.
   $effect(() => {
     const source = inputs.run()?.properties
-    const update = () => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let last_batch_write = -Infinity
+    const write = (batch = false) => {
+      if (batch) last_batch_write = performance.now()
+      clearTimeout(timer)
+      timer = undefined
       properties = { rows: source?.rows ?? [], complete: source?.complete ?? true }
     }
-    update()
-    return source?.subscribe(update)
+    write()
+    const unsubscribe = source?.subscribe((_batch, complete) => {
+      if (complete) return write()
+      if (timer !== undefined) return
+      const wait = last_batch_write + PROPERTY_MIRROR_MS - performance.now()
+      if (wait <= 0) write(true)
+      else timer = setTimeout(() => write(true), wait)
+    })
+    return () => {
+      clearTimeout(timer)
+      unsubscribe?.()
+    }
   })
 
   // === frame cache (per run; swapping runs drops it) ===

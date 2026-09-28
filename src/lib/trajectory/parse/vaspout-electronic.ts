@@ -158,8 +158,8 @@ export const read_vaspout_bands = (
     if (n_bands === 0) continue
 
     // [n_kpoints][n_bands] -> [n_bands][n_kpoints] as the spectral components expect
-    const transpose = (spin_eigs: number[][]): number[][] =>
-      Array.from({ length: n_bands }, (_, band_idx) =>
+    const transpose = (spin_eigs: number[][], width = n_bands): number[][] =>
+      Array.from({ length: width }, (_, band_idx) =>
         spin_eigs.map((kpt_eigs) => kpt_eigs[band_idx]),
       )
     const bands = transpose(spin_up)
@@ -169,16 +169,14 @@ export const read_vaspout_bands = (
         ? transpose(spin_down)
         : undefined
     // Occupations (FERWE, 0..1) decide the band gap when E_F from the SCF mesh misses a
-    // band-path VBM. Same (n_spin, n_kpoints, n_bands) layout as the eigenvalues.
-    const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as number[][][] | null
-    const n_spins = spin_down_bands ? 2 : 1
-    const kpoint_ok = (kpt: number[]) => kpt.length === n_bands
-    const spin_ok = (spin: number[][]) => spin.length === n_kpoints && spin.every(kpoint_ok)
-    if (fermiweights && (fermiweights.length !== n_spins || !fermiweights.every(spin_ok))) {
-      throw new Error(
-        `${group}/fermiweights shape does not match eigenvalues (${n_spins}, ${n_kpoints}, ${n_bands})`,
-      )
-    }
+    // band-path VBM. They are transposed on their OWN shape, so any mismatch with the
+    // eigenvalue grid (an extra band, a non-2D spin: empty) reaches electronic_band_gap, whose
+    // error Bands shows over the still-plotted bands, instead of being cut to a plausible table.
+    const fermiweights = read_dataset(h5_file, `${group}/fermiweights`) as unknown[] | null
+    const transpose_weights = (spin: unknown): number[][] =>
+      Array.isArray(spin) && spin.every(Array.isArray)
+        ? transpose(spin, Math.max(0, ...spin.map((kpt: unknown[]) => kpt.length)))
+        : []
 
     const recip_lattice = band_recip_lattice(read_lattice(h5_file))
     const line_mode = line_mode_labels(
@@ -237,8 +235,10 @@ export const read_vaspout_bands = (
       distance,
       bands,
       ...(spin_down_bands ? { spin_down_bands } : {}),
-      ...(fermiweights ? { occupations: transpose(fermiweights[0]) } : {}),
-      ...(fermiweights?.[1] ? { spin_down_occupations: transpose(fermiweights[1]) } : {}),
+      ...(fermiweights ? { occupations: transpose_weights(fermiweights[0]) } : {}),
+      ...(fermiweights?.[1] !== undefined
+        ? { spin_down_occupations: transpose_weights(fermiweights[1]) }
+        : {}),
       nb_bands: n_bands,
       labels_dict,
       is_spin_polarized: spin_down_bands !== undefined,

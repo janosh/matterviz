@@ -1,5 +1,10 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
-import { AVOGADRO_PER_MOL, BOLTZMANN_EV_PER_K, ELEMENTARY_CHARGE_C } from '$lib/constants'
+import {
+  AMU_KG,
+  AVOGADRO_PER_MOL,
+  BOLTZMANN_EV_PER_K,
+  ELEMENTARY_CHARGE_C,
+} from '$lib/constants'
 import {
   is_finite_vec3_like,
   is_pbc,
@@ -10,7 +15,6 @@ import {
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
-const AMU_KG = 1.66053906892e-27
 const JOULE_EV = 1 / ELEMENTARY_CHARGE_C
 export const VELOCITY_UNITS = { 'A/fs': 1e5, 'A/ps': 100, 'm/s': 1 } as const
 export const ENERGY_UNITS = {

@@ -1,11 +1,13 @@
 import {
   classify_payload,
+  decode_text_chunks,
   decompress_data,
   decompress_file,
   decompress_trajectory_file,
   detect_compression_format,
   inflation_limiter,
   MAX_INFLATED_BYTES,
+  MAX_STRING_CHARS,
 } from '$lib/io/decompress'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
@@ -156,6 +158,19 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     })
   })
 
+  // Text past one JS string stays a Blob for the chunked trajectory readers; other loaders
+  // cannot use it and say so instead of hitting the engine's string-length RangeError
+  test(`keeps text past the string limit Blob-backed for trajectory loaders only`, async () => {
+    const file = new File([`2\ncomment\nH 0 0 0\nH 1 0 0`], `huge.xyz`)
+    Object.defineProperty(file, `size`, { value: MAX_STRING_CHARS + 1 })
+    const { content, filename } = await decompress_trajectory_file(file)
+    expect(content).toBe(file)
+    expect(filename).toBe(`huge.xyz`)
+    await expect(decompress_file(file)).rejects.toThrow(
+      `exceeds the ${MAX_STRING_CHARS}-character JS string limit`,
+    )
+  })
+
   test.each([
     [`POSCAR`, `H 0 0 0\nO 1 1 1`], // extensionless VASP text
     [`empty.txt`, ``], // 0-byte file resolves to empty content
@@ -296,6 +311,37 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
     expect(result.filename).toBe(`payload`)
+  })
+})
+
+// Cuts land only just after a newline, so the chunks join to exactly one decode's text:
+// multi-byte UTF-8, CRLF, a leading BOM (dropped) or a later one (kept), and lines longer than
+// a chunk (which widen it)
+describe(`decode_text_chunks`, () => {
+  test.each([
+    ``,
+    `a`,
+    `\n`,
+    `x\ny\n`,
+    `\uFEFFH 0 0 0\r\nÅ 1 1 1\n`,
+    `x\n\uFEFFy\n`,
+    `漢字 🎉 é\nlong line ${`z`.repeat(40)}\nend`,
+    `no newline at all ${`q`.repeat(30)}`,
+  ])(`chunks %j at every size and source type`, async (text) => {
+    const bytes = encode(text)
+    const expected = new TextDecoder().decode(bytes)
+    const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
+    for (const source of [bytes.buffer, new Blob([bytes])]) {
+      // by default, text that fits one string decodes to one
+      expect(await decode_text_chunks(source)).toEqual([expected])
+      for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
+        const chunks = await decode_text_chunks(source, chunk_bytes)
+        expect(chunks.join(``)).toBe(expected)
+        expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
+        if (longest_line <= chunk_bytes)
+          expect(chunks.every((chunk) => encode(chunk).length <= chunk_bytes)).toBe(true)
+      }
+    }
   })
 })
 

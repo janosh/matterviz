@@ -9,6 +9,7 @@
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { to_error } from '$lib/utils'
+  import { StatusMessage } from 'svelte-widgets'
   import { clamp, in_range, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
@@ -468,8 +469,8 @@
   })
 
   // One gap per system, from the first one (which also supplies the default E_F) and only the
-  // spin channels on display. Malformed occupations surface electronic_band_gap's message
-  // instead of throwing out of the $derived and blanking the component.
+  // spin channels on display. Malformed occupations only drop the gap annotation and surface
+  // electronic_band_gap's message as a notice over the still-rendered bands.
   let gap_result = $derived.by(() => {
     const band_structure = structures[0]?.bs
     if (!show_gap_annotation || band_type !== `electronic` || !band_structure)
@@ -489,10 +490,8 @@
       return { gap: null, error: `Invalid band occupations: ${to_error(exc).message}` }
     }
   })
-  let data_error = $derived(strict_path_error ?? gap_result.error ?? null)
-
   let empty_state_msg = $derived(
-    data_error ??
+    strict_path_error ??
       (num_structures === 0
         ? `No band structure data to display.`
         : `No plottable band segments were found in the provided data.`),
@@ -532,7 +531,7 @@
   )
 </script>
 
-{#if series_data.length > 0 && !data_error}
+{#if series_data.length > 0 && !strict_path_error}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
@@ -818,6 +817,15 @@
   </ScatterPlot>
   {#snippet frame_children(ctx: UserContentProps)}
     {@render user_children?.(ctx)}
+    {#if gap_result.error}
+      {@const { t: top, r: right } = ctx.pad}
+      <StatusMessage
+        message={gap_result.error}
+        type="warning"
+        class="gap-error"
+        style="position: absolute; top: {top}px; right: {right}px; max-width: 60%; font-size: 0.75rem; padding: 0.3rem 0.6rem; pointer-events: none"
+      />
+    {/if}
     <!-- hidden while zoomed away from its tick -->
     {#if k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
       <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot

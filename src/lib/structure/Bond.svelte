@@ -16,17 +16,19 @@
     thickness,
     ambient_light,
     directional_light,
+    capped = true,
   }: {
     bonds: BondData
     site_colors: string[]
     thickness: number
     ambient_light: number
     directional_light: number
+    capped?: boolean // end discs, needed only where no opaque atom covers a bond end
   } = $props()
 
   const { invalidate } = useThrelte()
 
-  const cylinder_geometry = new CylinderGeometry(1, 1, 1, 8)
+  const cylinder_geometry = $derived(new CylinderGeometry(1, 1, 1, 8, 1, !capped))
   const uniform_color = $derived.by(() => {
     const color = site_colors[0]
     for (let idx = 1; idx < site_colors.length; idx++)
@@ -94,10 +96,11 @@
     const current = mesh
     return () => current.dispose()
   })
-  $effect(() => () => {
-    cylinder_geometry.dispose()
-    bond_material.dispose()
+  $effect(() => {
+    const current = cylinder_geometry
+    return () => current.dispose()
   })
+  $effect(() => () => bond_material.dispose())
 </script>
 
 <T is={mesh} dispose={false} />

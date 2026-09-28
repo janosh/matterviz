@@ -1,5 +1,23 @@
 # Changelog
 
+## [v0.8.0](https://github.com/janosh/matterviz/compare/v0.7.0...v0.8.0)
+
+### Migration to 0.8
+
+- Removed exports: `TrajectoryFileViewer`, `to_histogram_series`/`LegacyHistogramSeries`/`HistogramSeriesInput`, `band_struct_entries`, `dos_entries`, `format_sigma`, `DosInput`, `get_column_id`, `SpecialCells` and `HeatmapTable.special_cells` (use `Column.cell`), `RepresentationMode` and `R_EV_PER_K` (use `BOLTZMANN_EV_PER_K` from `matterviz/constants`); moved: `autocorrelation_sums` → `matterviz/trajectory`, `parse_axis_label` → `matterviz/labels`, `strip_html` → `matterviz/utils`; renamed: `Label` → `Column<Row>` (with a required `id`), `nearest_vertex_index` → `nearest_face_vertex(geometry, face, point)`
+- `element_groups`, `element_group_keys` and `ElementGroup` are exported again (removed in 0.7), with a new `ElementGroupKey` type
+- `PlotLegend.collapsed_groups` is a non-bindable `SvelteSet` you mutate (e.g. from `create_collapsible_legend()`); with the default `group_click='visibility'` the header toggle is `.group-label`
+- `compute_histogram_bins(counted, normalize, series_color, full_counted)` takes `compute_histogram_counts()` output plus the full-domain counts instead of `(entries, config)`; `ScatterPoint.overlay_only` is gone; 3D axes accept only `scale_type: 'linear'`; `AxisConfig3D.show_plane`/`plane_opacity`, `DisplayConfig3D.z_grid`/`z_zero_line` and `StyleOverrides3D.point.sphere_segments` are gone (pass `sphere_segments` as a prop)
+- BoxPlot on a log value axis estimates violins in log10 space, so a numeric `bandwidth` is in decades; duplicate phase-diagram region, boundary and special-point ids throw
+- `Structure`/`StructureControls` type `color_scheme` as `ColorSchemeName` (was `string`); `Structure` throws on unknown names and no longer writes the global element colors
+- `parse_ase_trajectory(buffer, warn)` requires a `warn` callback; `TrajHandlerData.frame` is a `NumericFrame` (was `TrajectoryFrame`); frame `metadata.forces` → per-site `properties.force`; `full_data_extractor` emits every finite numeric metadata key, not a fixed list; `NebViewer`'s `metric` → `coord_options.metric`
+- `MsdCurve.std_error`/`fit`, `MsdOptions.fit` and `MsdResult.origin_stride` are gone (MSD averages all origins; fit with `fit_msd_curves(result, options)`); MSD and VACF throw on a `time_unit` other than `'frame'` without `dt`
+- Phonon `hovered_frequency`, `reference_frequency`, `sigma` and `Dos.sigma_range` are in THz; `IrRamanSpectrum.fwhm` is in cm⁻¹; `two_theta_range` must lie within [0, 180]; `PhononExplorerView` drops `'modes'`; `compute_irreducible_bz`'s third argument is `{ time_reversal = true, edge_sharp_angle_deg }` (was a positional `edge_sharp_angle_deg`), so the irreducible zone applies time reversal by default
+- `RouteThermodynamics.onset_temperature` and `onset_temperature()` → `downhill_windows` (the old onset is `downhill_windows[0]?.[0]`)
+- `merge_polyhedra_buffers(polyhedra, coloring)` takes a `PolyhedraColoring` (`{ mode: 'uniform', color }` or `{ mode: 'vertex' | 'center', site_color(site_idx) }`) instead of a per-vertex color callback, and also returns flat face `normals`
+- `build_trajectory_lines` and `trajectory_lines_stats` → `new TrajectoryTrail(stream, options)`, laid out once per stream and options: `trail.update({ end_frame, trail_frames, ... }).stats` replaces per-frame rebuilds and `trail_color_texels(trail, color_mode, element_colors)` the `color_mode`/`element_colors` options (`TrajectoryLines` props are unchanged)
+- Text trajectories past V8's string limit (`MAX_STRING_CHARS` = 536,870,888 chars) open from their bytes, decoded in line-aligned chunks (`decode_text_chunks`) as XYZ/EXTXYZ, LAMMPS dump or XDATCAR: `open_trajectory` reads any `ArrayBuffer`/`Blob` that is neither ASE nor HDF5 as text instead of throwing, the trajectory loaders (`decompress_trajectory_file`, `load_trajectory_from_url`, `classify_payload` with `hdf5_as_blob`) return such text as a `Blob` while `decompress_file` throws, and `plan_host_file_transfer` drops `max_text_file_size` (text trajectories share `max_file_size`)
+
 ## [v0.7.0](https://github.com/janosh/matterviz/compare/v0.6.0...v0.7.0)
 
 > 29 August 2026

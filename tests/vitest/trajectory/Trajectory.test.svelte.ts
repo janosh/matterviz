@@ -842,7 +842,12 @@ describe(`plot`, () => {
     props.visible_properties = [`volume`]
     await tick()
     expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
-    expect(prepare_scatter).toHaveBeenCalledTimes(preparations)
+    // Visibility changes re-run the (cached) scatter preparation over the same data arrays
+    const first_prepared = prepare_scatter.mock.calls[preparations - 1][0]
+    expect(prepare_scatter.mock.lastCall?.[0]).toHaveLength(first_prepared.length)
+    prepare_scatter.mock.lastCall?.[0].forEach((srs, idx) =>
+      expect(srs.y).toBe(first_prepared[idx].y),
+    )
     props.plot_type = `distribution`
     props.distribution_property = `force_max`
     await tick()

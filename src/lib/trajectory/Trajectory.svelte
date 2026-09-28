@@ -911,15 +911,10 @@
       })
     return () => trail_controller.abort()
   })
-  // Convert the source-frame playhead to collected frames; held still while scrubbing
-  let settled_trail_end: number | undefined
-  let trajectory_line_end_frame = $derived.by(() => {
-    if (!trail_stream) return (settled_trail_end = undefined)
-    if (!scrub_active || settled_trail_end === undefined) {
-      settled_trail_end = collected_frame_idx(trail_stream, current_step_idx)
-    }
-    return settled_trail_end
-  })
+  // Source-frame playhead in collected frames; trails follow scrubs (a window move is O(atoms))
+  let trajectory_line_end_frame = $derived(
+    trail_stream ? collected_frame_idx(trail_stream, current_step_idx) : undefined,
+  )
   let spectroscopy_open = $derived(active_pane === `spectroscopy`)
   let trail_scene_props = $derived({
     ...structure_props.scene_props,
@@ -1043,15 +1038,9 @@
     ]
   }
   let scatter_point_limit = $derived(clamp(content_size.width / 2, 128, 1000))
-  let base_scatter_series = $derived(
-    prepare_trajectory_scatter_series(base_plot_series, scatter_point_limit),
-  )
+  // Samples visible series only, cached per source array so legend toggles resample nothing
   let scatter_series = $derived(
-    base_scatter_series.map((srs, idx) => ({
-      ...srs,
-      visible: plot_series[idx].visible,
-      y_axis: plot_series[idx].y_axis,
-    })),
+    prepare_trajectory_scatter_series(plot_series, scatter_point_limit),
   )
   // A distribution has one value axis. Keep its selection separate from the time plot's
   // multi-property visibility so switching plots cannot mix units or discard that selection.

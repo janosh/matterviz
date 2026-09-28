@@ -4,6 +4,8 @@ import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/par
 import type { ParseResult } from '$lib/file-viewer/parse'
 import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import type { DownloadData } from '$lib/io/fetch'
+import { MAX_STRING_CHARS } from '$lib/io/decompress'
+import * as trajectory_parse from '$lib/trajectory/parse'
 import { parse_structure_file } from '$lib/structure/parse'
 import type * as structure_parse_module from '$lib/structure/parse'
 import type { TrajectoryRun } from '$lib/trajectory'
@@ -19,7 +21,7 @@ import {
 import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { IDENTITY_MATRIX3, make_crystal, read_binary_test_file } from '../test-fixtures'
 
 // parse_structure_file throws on parse failure but can still return a structure with
@@ -123,6 +125,23 @@ test(`multi-frame XYZ text opens as a trajectory run`, async () => {
   expect(run.provenance).toMatchObject({ filename: `h2.xyz`, format: `xyz` })
   expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
   run.dispose()
+})
+
+// Text past one JS string reaches only the chunked trajectory reader, whatever its name: nothing
+// else can parse it, and decoding it first throws the engine's string-length RangeError
+test(`routes a byte payload past the string limit to the trajectory reader`, async () => {
+  const blob = new Blob([`data_big`])
+  Object.defineProperty(blob, `size`, { value: MAX_STRING_CHARS + 1 })
+  const decode = vi.spyOn(blob, `text`)
+  const open = vi
+    .spyOn(trajectory_parse, `open_trajectory`)
+    .mockRejectedValue(new Error(`trajectory reader reached`))
+  onTestFinished(() => open.mockRestore())
+  await expect(parse_file_content(blob, `big.cif`)).rejects.toThrow(
+    `trajectory reader reached`,
+  )
+  expect(open).toHaveBeenCalledWith(blob, expect.objectContaining({ filename: `big.cif` }))
+  expect(decode).not.toHaveBeenCalled()
 })
 
 // The host's matterviz.trajectory.atom_type_mapping arrives in load_options with string keys

@@ -9,7 +9,7 @@
   import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import type { TrajectoryPositionStream } from '$lib/trajectory'
   import { compute_msd_async } from './async-compute.svelte'
-  import { fit_msd_curves } from './calc-msd'
+  import { fit_msd_curves, with_lag_time_axis } from './calc-msd'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
 
   let {
@@ -45,9 +45,14 @@
 
   use_async_result({
     input: () => positions,
-    options: () => msd_options,
+    // dt and time_unit only label the lag axis (revise), so editing them never recomputes
+    options: (): MsdOptions => ({
+      max_lag_fraction: msd_options.max_lag_fraction,
+      max_lags: msd_options.max_lags,
+    }),
     compute: (input, options, signal) => compute_msd_async(input, options, { signal }),
-    set_result: (computed) => (result = computed),
+    revise: (computed) => with_lag_time_axis(computed, msd_options),
+    set_result: (value) => (result = value),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
   })

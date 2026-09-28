@@ -10,6 +10,7 @@
     bind_renderer,
     build_orbit_props,
     dispose_on_change,
+    front_hit,
     line_geometry,
     SceneCamera,
     SceneLights,
@@ -96,7 +97,10 @@
 
   bind_renderer() // lets the PNG export re-render the frame
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  // The tooltip names the domain in front, not the farthest one the pick ray passes through
+  const { enabled: hover_enabled } = extras.interactivity({
+    filter: (hits) => front_hit(hits),
+  })
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))

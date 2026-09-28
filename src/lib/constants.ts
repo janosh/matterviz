@@ -21,6 +21,11 @@ export const BOLTZMANN_EV_PER_K = BOLTZMANN_J_PER_K / ELEMENTARY_CHARGE_C
 export const EV_TO_KJ_PER_MOL = (ELEMENTARY_CHARGE_C * AVOGADRO_PER_MOL) / 1000
 // 1 eV/A^3 in GPa (160.2176634): EOS bulk moduli (eos/fit.ts) and ASE stresses
 export const EV_PER_A3_TO_GPA = ELEMENTARY_CHARGE_C * 1e21
+// CODATA 2022 atomic mass constant (MD hotspot masses, ASE time unit)
+export const AMU_KG = 1.66053906892e-27
+// One fs in ASE's time unit A*sqrt(amu/eV) (ase.units.fs): velocity in sqrt(eV/amu) times
+// this is A/fs, for ASE momenta and MD HDF5 velocities
+export const FS_IN_ASE_TIME = 1e-5 * Math.sqrt(ELEMENTARY_CHARGE_C / AMU_KG)
 
 // Wavenumber of a 1 THz vibration, i.e. 1e12 Hz over c in cm/s (phonon unit table, VDOS axis)
 export const THZ_TO_INVERSE_CM = 1e12 / (SPEED_OF_LIGHT_M_S * 100)

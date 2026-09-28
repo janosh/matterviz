@@ -5,13 +5,60 @@ import {
   curve_slots,
   lag_range,
   resolve_lag_time_unit,
+  unwrap_flat_positions,
   validate_position_stream_layout,
 } from '$lib/trajectory/positions'
+import { min_image_displacement_into, scale_lattice_matrix, type Vec3 } from '$lib/math'
+import type { Pbc } from '$lib/structure'
+import { make_rng } from '../numeric-helpers'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
 import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
 import { encode_frame, materialize_frame, type NumericFrame } from '$lib/trajectory/frame'
 import { describe, expect, it } from 'vitest'
-import { make_frame, make_position_stream } from '../test-fixtures'
+import { IDENTITY_MATRIX3, make_frame, make_position_stream } from '../test-fixtures'
+
+// Orthogonal cells take an inlined per-frame loop; it must reproduce the generic
+// minimum-image path bit for bit, including a cell that changes mid-run (NPT) and open axes
+describe(`unwrap_flat_positions`, () => {
+  const [n_frames, n_atoms] = [12, 7]
+  // negative c axis: rounding must still pick the nearest image
+  const lattices = Array.from({ length: n_frames }, (_, idx) =>
+    scale_lattice_matrix(IDENTITY_MATRIX3, idx < 6 ? [4, 5, -6] : [4.4, 5.5, -6.6]),
+  )
+  const rng = make_rng(3)
+  // Wrapped coordinates: every frame redraws positions inside the cell, so steps cross faces
+  const positions = Float64Array.from({ length: n_frames * n_atoms * 3 }, (_, idx) => {
+    const lattice = lattices[Math.floor(idx / (n_atoms * 3))]
+    return rng() * lattice[idx % 3][idx % 3]
+  })
+  const vec = (off: number): Vec3 => [positions[off], positions[off + 1], positions[off + 2]]
+  const reference = (pbc: Pbc): Float64Array => {
+    const out = positions.slice()
+    const step: Vec3 = [0, 0, 0]
+    for (let off = n_atoms * 3; off < positions.length; off += 3) {
+      const [prev, lattice] = [off - n_atoms * 3, lattices[Math.floor(off / (n_atoms * 3))]]
+      min_image_displacement_into(vec(prev), vec(off), lattice, undefined, pbc, step)
+      for (let axis = 0; axis < 3; axis++) out[off + axis] = out[prev + axis] + step[axis]
+    }
+    return out
+  }
+  it.each<Pbc>([
+    [true, true, true],
+    [true, false, true],
+  ])(`matches the generic minimum-image unwrap exactly for pbc %j`, (...pbc) => {
+    const unwrapped = unwrap_flat_positions(positions, n_frames, n_atoms, lattices, pbc)
+    expect(unwrapped).toEqual(reference(pbc))
+    expect(unwrapped).not.toEqual(positions) // steps did cross cell faces
+  })
+  // Fractional steps are checked one by one: 1e308 + 1e308 overflows, each alone is finite
+  it(`accepts huge but finite steps like the generic path`, () => {
+    const huge = Float64Array.of(0, 0, 0, 1e308, 1e308, 0)
+    const cells = [IDENTITY_MATRIX3, IDENTITY_MATRIX3]
+    expect(unwrap_flat_positions(huge, 2, 1, cells, [true, true, true])).toEqual(
+      new Float64Array(6),
+    )
+  })
+})
 
 describe(`curve_slots`, () => {
   it.each([

@@ -42,7 +42,7 @@ import {
 } from '$lib/structure/parsers/vasp-header'
 import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
 import { make_site } from '$lib/structure/site'
-import { is_xyz_atom_line, line_end } from '$lib/trajectory/helpers'
+import { is_xyz_atom_line, TextLines } from '$lib/trajectory/helpers'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '$lib/trajectory/parse/xyz'
@@ -76,39 +76,85 @@ function parse_coordinate_line(line: string): number[] {
 const CIF_SITE_TOLERANCE = 0.05
 
 // Fractional positions in [0, 1) bucketed at least `tolerance` Å wide per cell height, so a
-// site within `tolerance` (minimum image) is found in the 27 neighbouring buckets
-const create_frac_site_index = (lattice_matrix: math.Matrix3x3, tolerance: number) => {
-  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-  const n_bins = math
+// site within `tolerance` (minimum image) is found in the 27 neighbouring buckets, visited in
+// (a, b, c) offset order. Entries sit in one linear-probing table under their packed bucket
+// key, sized once for `max_entries` at load <= 1/2: probing from a bucket's hash meets all its
+// entries, in insertion order, before the next empty slot, so `find` returns the first match.
+// Allocation-free: string keys made 1M-atom P1 files take 20+ s, a Map of buckets 4-7 s.
+const create_frac_site_index = (
+  lattice_matrix: math.Matrix3x3,
+  tolerance: number,
+  max_entries: number,
+) => {
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = lattice_matrix
+  let [n_a, n_b, n_c] = math
     .cell_heights(lattice_matrix)
     .map((height) =>
       Number.isFinite(height) ? Math.max(1, Math.floor(height / tolerance)) : 1,
     )
-  const buckets = new Map<string, { abc: Vec3; site_idx: number }[]>()
-  const bins_of = (abc: Vec3): number[] =>
-    abc.map((coord, axis) => Math.min(Math.floor(coord * n_bins[axis]), n_bins[axis] - 1))
-  const steps = [-1, 0, 1]
-  const offsets = steps.flatMap((off_a) =>
-    steps.flatMap((off_b) => steps.map((off_c) => [off_a, off_b, off_c])),
-  )
+  // Packed keys are exact while n_a * n_b * n_c stays a safe integer; beyond that (cells of
+  // ~10^4 Å per axis) coarsen every axis, which keeps buckets at least `tolerance` wide
+  const excess = Math.cbrt((n_a * n_b * n_c) / Number.MAX_SAFE_INTEGER)
+  if (excess > 1)
+    [n_a, n_b, n_c] = [n_a, n_b, n_c].map((n_bins) => Math.max(1, Math.floor(n_bins / excess)))
+  const slot_mask = 2 ** Math.ceil(Math.log2(2 * max_entries + 2)) - 1
+  const slot_key = new Float64Array(slot_mask + 1).fill(-1) // -1 = empty
+  const slot_abc = new Float64Array(3 * (slot_mask + 1))
+  const slot_site = new Int32Array(slot_mask + 1)
+  // First slot to probe for bucket `column + bin_c` (column = packed (a, b) part, a multiple
+  // of n_c). Only the column is hashed (low/high 32 bits mixed Murmur3-finalizer style) and
+  // bin_c added on, so the three c-neighbours `find` probes share a cache line.
+  const first_slot = (column: number, bin_c: number): number => {
+    const hash = Math.imul(
+      (column >>> 0) ^ Math.imul(Math.floor(column / 4294967296), 0x9e3779b1),
+      0x85ebca6b,
+    )
+    return ((hash ^ (hash >>> 15)) + bin_c) & slot_mask
+  }
+  const bin_of = (coord: number, n_bins: number): number =>
+    Math.min(Math.floor(coord * n_bins), n_bins - 1)
   return {
-    find: (abc: Vec3): number | undefined => {
-      const bins = bins_of(abc)
-      for (const offset of offsets) {
-        const key = bins.map((bin, axis) => (bin + offset[axis] + n_bins[axis]) % n_bins[axis])
-        for (const entry of buckets.get(key.join(`,`)) ?? []) {
-          const delta = abc.map((coord, axis) => {
-            const diff = coord - entry.abc[axis]
-            return diff - Math.round(diff)
-          }) as Vec3
-          if (Math.hypot(...frac_to_cart(delta)) < tolerance) return entry.site_idx
+    find: ([coord_a, coord_b, coord_c]: Vec3): number | undefined => {
+      const bin_a = bin_of(coord_a, n_a)
+      const bin_b = bin_of(coord_b, n_b)
+      const bin_c = bin_of(coord_c, n_c)
+      for (const off_a of [-1, 0, 1]) {
+        const key_a = ((bin_a + off_a + n_a) % n_a) * n_b
+        for (const off_b of [-1, 0, 1]) {
+          const column = (key_a + ((bin_b + off_b + n_b) % n_b)) * n_c
+          for (const off_c of [-1, 0, 1]) {
+            const bin = (bin_c + off_c + n_c) % n_c
+            for (
+              let slot = first_slot(column, bin);
+              slot_key[slot] !== -1;
+              slot = (slot + 1) & slot_mask
+            ) {
+              if (slot_key[slot] !== column + bin) continue
+              let delta_a = coord_a - slot_abc[3 * slot]
+              let delta_b = coord_b - slot_abc[3 * slot + 1]
+              let delta_c = coord_c - slot_abc[3 * slot + 2]
+              delta_a -= Math.round(delta_a)
+              delta_b -= Math.round(delta_b)
+              delta_c -= Math.round(delta_c)
+              // Cartesian delta = lattice^T · fractional delta
+              const cart_x = m00 * delta_a + m10 * delta_b + m20 * delta_c
+              const cart_y = m01 * delta_a + m11 * delta_b + m21 * delta_c
+              const cart_z = m02 * delta_a + m12 * delta_b + m22 * delta_c
+              if (Math.hypot(cart_x, cart_y, cart_z) < tolerance) return slot_site[slot]
+            }
+          }
         }
       }
       return undefined
     },
     add: (abc: Vec3, site_idx: number): void => {
-      const key = bins_of(abc).join(`,`)
-      buckets.set(key, [...(buckets.get(key) ?? []), { abc, site_idx }])
+      const column = (bin_of(abc[0], n_a) * n_b + bin_of(abc[1], n_b)) * n_c
+      const bin_c = bin_of(abc[2], n_c)
+      let slot = first_slot(column, bin_c)
+      while (slot_key[slot] !== -1) slot = (slot + 1) & slot_mask
+      slot_key[slot] = column + bin_c
+      slot_abc.set(abc, 3 * slot)
+      slot_site[slot] = site_idx
     },
   }
 }
@@ -247,35 +293,20 @@ export const parse_poscar = (content: string): Crystal => {
 // file, or a half-written last line) is dropped with a warning by index_xyz_frames, and a
 // file with no complete frame at all is an error, not a silently empty structure.
 export const parse_xyz = (content: string): AnyStructure => {
-  const text = content.trim()
+  // content.trim() also drops Unicode whitespace such as a BOM, which TextLines keeps
+  const lines = new TextLines(content.trim())
   const collector = create_warning_collector()
-  const frames = index_xyz_frames(text, collector.warn)
+  const frames = index_xyz_frames(lines, collector.warn)
   // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
   // Tinker-style title after the count (`6 methane`) or a Properties layout with another
   // leading column (`id:I:1:species:S:1:pos:R:3`) hides the frame from it. A file whose
   // leading atom count accounts for exactly every remaining line is still one complete
   // frame; a count larger than that is a torn frame and stays an error.
-  const count_end = line_end(text, 0)
-  const leading_count = Math.trunc(parse_leading_num(text.slice(0, count_end)))
-  if (frames.length === 0 && leading_count > 0) {
-    const comment_start = Math.min(count_end + 1, text.length)
-    const comment_end = line_end(text, comment_start)
-    const atoms_start = Math.min(comment_end + 1, text.length)
-    let remaining_lines = 0
-    for (let pos = atoms_start; pos < text.length; pos = line_end(text, pos) + 1) {
-      remaining_lines++
-    }
-    if (leading_count === remaining_lines) {
-      const comment = text.slice(comment_start, comment_end).replace(/\r$/, ``)
-      frames.push({
-        start: 0,
-        line: 1,
-        num_atoms: leading_count,
-        comment,
-        atoms_start,
-        end: text.length,
-      })
-    }
+  const leading_count = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
+  const remaining_lines = lines.count - Math.min(2, lines.count)
+  if (frames.length === 0 && leading_count > 0 && leading_count === remaining_lines) {
+    const comment = lines.line(1) ?? ``
+    frames.push({ start: 0, num_atoms: leading_count, comment, end: lines.count })
   }
   const last = frames.at(-1)
   if (!last) {
@@ -284,9 +315,9 @@ export const parse_xyz = (content: string): AnyStructure => {
   }
   const frame_idx = frames.length - 1
   const { structure } = build_xyz_frame(
-    text,
+    lines,
     last,
-    { frame_label: `frame ${frame_idx} (line ${last.line})`, default_step: frame_idx },
+    { frame_label: `frame ${frame_idx} (line ${last.start + 1})`, default_step: frame_idx },
     collector,
   )
   // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary
@@ -368,19 +399,27 @@ const apply_symmetry_ops = (
   symmetry_ops: ParsedSymOp[],
   centering: Vec3[] = [],
 ): Vec3[] => {
-  const shifts: Vec3[] = [[0, 0, 0], ...centering]
-  const images: Vec3[] = [coords]
+  const [coord_x, coord_y, coord_z] = coords
+  const wrapped: Vec3[] = []
+  // one image per (op, shift) pair, ops outer; built with scalar math since this runs per atom
+  const push_shifted = (image_x: number, image_y: number, image_z: number): void => {
+    wrapped.push(wrap_to_unit_cell([image_x, image_y, image_z]))
+    for (const [delta_x, delta_y, delta_z] of centering)
+      wrapped.push(
+        wrap_to_unit_cell([image_x + delta_x, image_y + delta_y, image_z + delta_z]),
+      )
+  }
+  push_shifted(coord_x, coord_y, coord_z)
   for (const { coefficients, translations } of symmetry_ops) {
     // new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-    images.push(
-      [0, 1, 2].map((dim) => math.dot(coefficients[dim], coords) + translations[dim]) as Vec3,
+    const [row_x, row_y, row_z] = coefficients
+    push_shifted(
+      row_x[0] * coord_x + row_x[1] * coord_y + row_x[2] * coord_z + translations[0],
+      row_y[0] * coord_x + row_y[1] * coord_y + row_y[2] * coord_z + translations[1],
+      row_z[0] * coord_x + row_z[1] * coord_y + row_z[2] * coord_z + translations[2],
     )
   }
-  return images.flatMap((image) =>
-    shifts.map(([delta_x, delta_y, delta_z]) =>
-      wrap_to_unit_cell([image[0] + delta_x, image[1] + delta_y, image[2] + delta_z]),
-    ),
-  )
+  return wrapped
 }
 
 // Atom-site tag suffix -> field name (supports fract and Cartn coordinates). The residue /
@@ -752,7 +791,13 @@ export const parse_cif = (content: string): Crystal => {
       ([element, exp]) => (observed_counts[element] ?? 0) >= exp,
     )
 
-  const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops)
+  // apply_symmetry_ops always emits the untransformed position, so an identity op (`x,y,z`)
+  // only re-emits same-row duplicates: dropping it halves the index lookups of a P1 file
+  const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops).filter(
+    ({ coefficients, translations }) =>
+      translations.some((shift) => shift !== 0) ||
+      coefficients.some((row, dim) => row.some((coef, col) => coef !== (dim === col ? 1 : 0))),
+  )
 
   // Candidate lattice-centering translations from the space-group symbol (R
   // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
@@ -777,8 +822,15 @@ export const parse_cif = (content: string): Crystal => {
   // `${element}${site_idx + 1}` like every other parser's.
   const build_sites = (extra_centering: Vec3[]): Site[] => {
     const sites: Site[] = []
-    const site_index = create_frac_site_index(lattice_matrix, CIF_SITE_TOLERANCE)
-    const rows_at_site: Set<number>[] = [] // atom-row indices merged into each site
+    const n_images = (ops_to_use.length + 1) * (extra_centering.length + 1)
+    const site_index = create_frac_site_index(
+      lattice_matrix,
+      CIF_SITE_TOLERANCE,
+      atoms.length * n_images,
+    )
+    // Latest atom row merged into each site. Rows are visited in order, so a site already
+    // holds the current row exactly when this equals its index (no Set per site needed)
+    const last_row_at_site: number[] = []
     for (const [row_idx, atom] of atoms.entries()) {
       const { element, occupancy, id } = atom
       const coords = wrap_to_unit_cell(
@@ -790,7 +842,7 @@ export const parse_cif = (content: string): Crystal => {
         const site_idx = site_index.find(abc)
         if (site_idx === undefined) {
           site_index.add(abc, sites.length)
-          rows_at_site.push(new Set([row_idx]))
+          last_row_at_site.push(row_idx)
           const label = id
             ? `${id}${n_row_sites > 0 ? `_${n_row_sites}` : ``}`
             : `${element}${sites.length + 1}`
@@ -798,8 +850,8 @@ export const parse_cif = (content: string): Crystal => {
           sites.push(make_site(element, abc, frac_to_cart(abc), label, {}, occupancy))
           continue
         }
-        if (rows_at_site[site_idx].has(row_idx)) continue // symmetry duplicate
-        rows_at_site[site_idx].add(row_idx)
+        if (last_row_at_site[site_idx] === row_idx) continue // symmetry duplicate
+        last_row_at_site[site_idx] = row_idx
         const { species } = sites[site_idx]
         const same_element = species.find((spec) => spec.element === element)
         if (same_element) same_element.occu += occupancy

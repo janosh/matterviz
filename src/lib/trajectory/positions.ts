@@ -69,6 +69,7 @@ export function unwrap_flat_positions(
   const from: Vec3 = [0, 0, 0]
   const target: Vec3 = [0, 0, 0]
   const step: Vec3 = [0, 0, 0]
+  const [wrap_a, wrap_b, wrap_c] = pbc
   // A fixed cell hands back the same matrix every frame; only NPT rebuilds the inverse.
   // Seeded from frame 0 because the loop starts at 1: without it, a null lattice at frame 1
   // has no cell to fall back on and takes the plain difference the fallback below exists to
@@ -92,6 +93,34 @@ export function unwrap_flat_positions(
     const lattice = frame_lattice ?? cached_lattice
     const prev_base = (frame_idx - 1) * n_atoms * 3
     const base = frame_idx * n_atoms * 3
+    if (converters && (wrap_a || wrap_b || wrap_c) && is_diagonal(converters.lattice)) {
+      // min_image_displacement_into's diagonal branch with the cell hoisted out of the atom loop
+      // for the common orthogonal MD box: bit-identical and ~2x faster (2000 frames x 2000
+      // atoms: 206 -> 105 ms) without the per-atom scratch copies, cell-shape check and call
+      const { lattice: cell, reciprocal } = converters
+      const [len_a, len_b, len_c] = [cell[0][0], cell[1][1], cell[2][2]]
+      const [inv_a, inv_b, inv_c] = [reciprocal[0][0], reciprocal[1][1], reciprocal[2][2]]
+      for (let off = base; off < base + n_atoms * 3; off += 3) {
+        const prev = off - n_atoms * 3
+        const frac_a = inv_a * (positions[off] - positions[prev])
+        const frac_b = inv_b * (positions[off + 1] - positions[prev + 1])
+        const frac_c = inv_c * (positions[off + 2] - positions[prev + 2])
+        // Each on its own: a sum of two finite 1e308 steps overflows to Infinity
+        if (!Number.isFinite(frac_a) || !Number.isFinite(frac_b) || !Number.isFinite(frac_c))
+          throw new TypeError(
+            `Minimum-image displacement is non-finite: from=[${positions.subarray(prev, prev + 3)}], ` +
+              `target=[${positions.subarray(off, off + 3)}], fractional=[${frac_a}, ${frac_b}, ${frac_c}]`,
+          )
+        // `+ 0` matches the positive zero min_image_displacement_into returns
+        unwrapped[off] =
+          unwrapped[prev] + ((wrap_a ? frac_a - Math.round(frac_a) : frac_a) * len_a + 0)
+        unwrapped[off + 1] =
+          unwrapped[prev + 1] + ((wrap_b ? frac_b - Math.round(frac_b) : frac_b) * len_b + 0)
+        unwrapped[off + 2] =
+          unwrapped[prev + 2] + ((wrap_c ? frac_c - Math.round(frac_c) : frac_c) * len_c + 0)
+      }
+      continue
+    }
     for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
       const prev_off = prev_base + atom_idx * 3
       const off = base + atom_idx * 3
@@ -112,6 +141,9 @@ export function unwrap_flat_positions(
   }
   return unwrapped
 }
+
+const is_diagonal = ([[, ab, ac], [ba, , bc], [ca, cb]]: Matrix3x3): boolean =>
+  ab === 0 && ac === 0 && ba === 0 && bc === 0 && ca === 0 && cb === 0
 
 // Unwrapping allocates a second copy of the whole trajectory, so it must not rerun every
 // time the playhead moves or a second analysis reads the same stream. Keyed on the stream
@@ -250,9 +282,9 @@ export function autocorrelation_sums(
   max_lag: number,
   offsets: Float64Array | null = null,
 ): Float64Array[] {
-  // >= 2 n_frames so the circular correlation of the padded series equals the linear one
-  // for every lag below n_frames
-  const n_fft = next_power_of_two(2 * n_frames)
+  // >= n_frames + max_lag: no circular wrap reaches a kept lag, so the padded circular
+  // correlation is the linear one (2 n_frames doubled the FFT for half-length lag windows)
+  const n_fft = next_power_of_two(n_frames + max_lag)
   const real = new Float64Array(n_fft)
   const imaginary = new Float64Array(n_fft)
   const power = Array.from({ length: n_groups }, () => new Float64Array(n_fft))

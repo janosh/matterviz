@@ -1,6 +1,7 @@
 import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
+import { FS_IN_ASE_TIME } from '$lib/constants'
 import { element_by_symbol } from '$lib/element/data'
 import { calc_lattice_params, det_3x3, is_pbc } from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
@@ -24,7 +25,9 @@ import type { TrajectoryRunSummary } from '../run'
 
 const SCHEMA = `md-trajectory-v1`
 const FORMAT = `MD HDF5`
-const VELOCITY_FACTOR = 1 / 10.180505710759414
+// Producers record their own CODATA edition's factor: editions differ by < 1e-8 relative,
+// float32 storage by ~6e-8, while a wrong unit is off by orders of magnitude
+const VELOCITY_FACTOR_RTOL = 1e-6
 // Dataset width, stored unit and exposed property (absent for coordinates/step axes).
 const FIELDS: Record<string, [number, string, string?]> = {
   positions: [3, `A; unwrapped Cartesian`],
@@ -98,8 +101,14 @@ export const parse_md_h5_file = (
   const timestep_fs = to_scalar_number(attr(file, `timestep_fs`))
   if (timestep_fs === null || timestep_fs <= 0)
     throw new Error(`${FORMAT} has invalid timestep_fs ${timestep_fs}`)
-  if (to_scalar_number(attr(file, `velocity_to_A_per_fs`)) !== VELOCITY_FACTOR)
-    throw new Error(`${FORMAT} has incompatible velocity conversion factor`)
+  const velocity_factor = to_scalar_number(attr(file, `velocity_to_A_per_fs`))
+  if (
+    velocity_factor === null ||
+    !(Math.abs(velocity_factor / FS_IN_ASE_TIME - 1) <= VELOCITY_FACTOR_RTOL)
+  )
+    throw new Error(
+      `${FORMAT} has incompatible velocity conversion factor ${velocity_factor}, expected ${FS_IN_ASE_TIME}`,
+    )
 
   const numbers_dataset = required(file, `/static/atomic_numbers`)
   const n_atoms = numbers_dataset.shape?.[0] ?? 0
@@ -201,7 +210,7 @@ export const parse_md_h5_file = (
       end,
     )
     if (name === `velocities`)
-      for (let idx = 0; idx < values.length; idx++) values[idx] *= VELOCITY_FACTOR
+      for (let idx = 0; idx < values.length; idx++) values[idx] *= FS_IN_ASE_TIME
     return values
   }
   // The primary validates all axes and plot samples once. Replicas open the same immutable
@@ -268,7 +277,7 @@ export const parse_md_h5_file = (
         [start, start + count],
       ])
       if (name === `velocities`)
-        for (let idx = 0; idx < values.length; idx++) values[idx] *= VELOCITY_FACTOR
+        for (let idx = 0; idx < values.length; idx++) values[idx] *= FS_IN_ASE_TIME
       return values
     }
     const batch_numbers = new Uint8Array(count)
@@ -417,7 +426,7 @@ export const parse_md_h5_file = (
       active_thermostat: string_value(attr(file, `active_thermostat`)),
       velocity_source_unit: `sqrt(eV/amu)`,
       mass_unit: `amu`,
-      velocity_to_A_per_fs: VELOCITY_FACTOR,
+      velocity_to_A_per_fs: FS_IN_ASE_TIME,
     },
     read_frame: load_frame,
     read_atoms,

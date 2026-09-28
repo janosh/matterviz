@@ -101,10 +101,11 @@ export function calc_msd(
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
-  const { dt: delta_time = 1, max_lag_fraction = 0.5, max_lags = 200 } = options
+  const { max_lag_fraction = 0.5, max_lags = 200 } = options
 
   validate_position_stream_layout(input, `calc_msd`, 2)
-  const time_unit = resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
+  // Up front so a bad dt/time_unit fails before the analysis; with_lag_time_axis applies them
+  resolve_lag_time_unit(`calc_msd`, options.dt, options.time_unit, `ps`)
 
   // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
   // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
@@ -184,18 +185,34 @@ export function calc_msd(
     return { label, n_atoms: curve_sizes[slot], msd, n_origins: [...n_origins] }
   }
 
+  return with_lag_time_axis(
+    {
+      lags,
+      curves: curve_slots(labels).map(make_curve),
+      n_frames,
+      n_atoms,
+      unwrapped,
+      lag_stride,
+      frame_stride: input.frame_stride,
+    },
+    options,
+  )
+}
+
+// dt and time_unit only label the lag axis, so relabelling a finished result lets a dt edit
+// skip the displacement analysis (seconds at 10k frames x 1k atoms); calc_msd uses it as well
+export function with_lag_time_axis(
+  result: Omit<MsdResult, 'times' | 'dt' | 'time_unit' | 'x_label'>,
+  { dt, time_unit }: Pick<MsdOptions, 'dt' | 'time_unit'>,
+): MsdResult {
+  const unit = resolve_lag_time_unit(`calc_msd`, dt, time_unit, `ps`)
+  const delta_time = dt ?? 1
   return {
-    lags,
-    times: lags.map((lag) => lag * delta_time),
-    curves: curve_slots(labels).map(make_curve),
+    ...result,
+    times: result.lags.map((lag) => lag * delta_time),
     dt: delta_time,
-    time_unit,
-    x_label: lag_axis_label(time_unit),
-    n_frames,
-    n_atoms,
-    unwrapped,
-    lag_stride,
-    frame_stride: input.frame_stride,
+    time_unit: unit,
+    x_label: lag_axis_label(unit),
   }
 }
 

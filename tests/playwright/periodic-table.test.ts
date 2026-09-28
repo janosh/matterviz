@@ -133,8 +133,8 @@ test.describe(`Periodic Table`, () => {
     test.describe.configure({ retries: 2 })
 
     // test utilities
-    const get_element_tile = (page: Page, selector: string) =>
-      page.locator(`.element-tile`).filter({ hasText: selector }).first()
+    const get_element_tile = (page: Page, symbol: string) =>
+      page.locator(`.periodic-table [data-element-symbol="${symbol}"]`).first()
 
     const get_tooltip = (page: Page) => page.locator(`.tooltip`)
 
@@ -190,7 +190,8 @@ test.describe(`Periodic Table`, () => {
       await page.goto(`/periodic-table`)
 
       const hydrogen_tile = get_element_tile(page, `H`)
-      const helium_tile = get_element_tile(page, `He`)
+      // right-edge tile, where the tooltip used to wrap "Ne • 10" onto a third line
+      const neon_tile = get_element_tile(page, `Ne`)
 
       const tooltip = await hover_until_tooltip(page, hydrogen_tile)
       await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
@@ -198,13 +199,15 @@ test.describe(`Periodic Table`, () => {
       const initial_box = await tooltip.boundingBox()
       expect(initial_box).not.toBeNull()
 
-      await hover_until_tooltip(page, helium_tile)
-      await expect(tooltip).toContainText(`Helium`)
+      await hover_until_tooltip(page, neon_tile)
+      await expect(tooltip).toContainText(`Neon`)
+      await expect(tooltip).toContainText(`Ne • 10`)
       const new_box = await tooltip.boundingBox()
       expect(new_box).not.toBeNull()
       if (!initial_box || !new_box) throw new Error(`Tooltip bounding box not found`)
 
       expect(new_box.x).not.toBe(initial_box.x)
+      expect(new_box.height).toBeCloseTo(initial_box.height, 0) // same two lines
     })
   })
 })

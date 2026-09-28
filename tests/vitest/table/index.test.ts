@@ -313,7 +313,7 @@ describe(`parse_numeric_val`, () => {
     [`<b>10</b>`, 10],
     [`<span data-sort-value="1000">1,000</span>`, 1000],
     [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
-    [`<span data-sort-value="">n/a</span>`, null], // blank is no sort key, but Number('') is 0
+    [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
     [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
     [`abc`, null],
     [``, null],
@@ -334,14 +334,17 @@ describe(`compare_rows`, () => {
     return sorted.map((row) => row.val)
   }
 
-  it.each([true, false])(`sinks invalid values with ascending=%s`, (ascending) => {
+  it.each([true, false])(`sinks missing sort keys with ascending=%s`, (ascending) => {
     const invalid_date = new Date(NaN)
     expect(cell_text(invalid_date)).toBe(``)
-    expect(order([null, 3, undefined, 1, NaN, 2, invalid_date], ascending)).toEqual([
-      ...(ascending ? [1, 2, 3] : [3, 2, 1]),
+    const blank_key = `<span data-sort-value="">42</span>` // not sorted by its numeric text
+    const vals = [null, 3, undefined, `a`, 1, NaN, 2, blank_key, invalid_date]
+    expect(order(vals, ascending)).toEqual([
+      ...(ascending ? [1, 2, 3, `a`] : [`a`, 3, 2, 1]),
       null,
       undefined,
       NaN,
+      blank_key,
       invalid_date,
     ])
   })

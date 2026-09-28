@@ -83,11 +83,9 @@
   ]
 
   // Prose for display, search and export; the lowest downhill temperature as numeric sort key.
-  // Never-downhill routes have none, so they rank as if infinitely hot (last when ascending).
-  const downhill_cell = (windows: [number, number][]): string => {
-    const text = describe_downhill_windows(windows)
-    return windows.length ? `<span data-sort-value="${windows[0][0]}">${text}</span>` : text
-  }
+  // Never-downhill routes have none: a blank sort key sorts them last in both directions.
+  const downhill_cell = (windows: [number, number][]): string =>
+    `<span data-sort-value="${windows[0]?.[0] ?? ``}">${describe_downhill_windows(windows)}</span>`
 
   const data = $derived<RowData[]>(
     routes.map((route, idx) => ({

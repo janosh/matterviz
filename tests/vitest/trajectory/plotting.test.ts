@@ -337,6 +337,16 @@ describe(`generate_plot_series`, () => {
       64,
     )
     expect(large_smoothed.y).toEqual(Array(64).fill(1e306))
+
+    // Hidden series skip sampling; re-showing one reuses its cached samples, but a new point
+    // limit (plot resize) must not
+    const prepare_first = (visible: boolean, limit = 500) =>
+      prepare_trajectory_scatter_series([{ ...raw_series[0], visible }], limit)[0]
+    expect(prepare_first(false).x).toBe(raw_series[0].x)
+    const reshown = prepare_first(true)
+    expect(reshown.x).toBe(smoothed.x)
+    expect(reshown.visible).toBe(true)
+    expect(prepare_first(true, 250).x).toHaveLength(250)
   })
 
   it.each([

@@ -13,6 +13,7 @@ import {
   BufferGeometry,
   Color,
   ConeGeometry,
+  DoubleSide,
   Float32BufferAttribute,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -181,7 +182,7 @@ describe(`export_scene_as`, () => {
       const instanced_scene = new Scene()
       const spheres = new InstancedMesh(
         new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
+        new MeshStandardMaterial({ color: new Color(0, 1, 0), side: DoubleSide }),
         3,
       )
       if (instance_colors)
@@ -197,6 +198,7 @@ describe(`export_scene_as`, () => {
       expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1)
       const material = meshes[0].material as MeshStandardMaterial
       expect([material.color.r, material.color.g, material.color.b]).toEqual([0, 1, 0])
+      expect(material.side).toBe(DoubleSide)
     },
   )
 })

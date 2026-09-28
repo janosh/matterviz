@@ -34,11 +34,7 @@ import * as file_system from 'node:fs'
 import * as operating_system from 'node:os'
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import {
-  MAX_STREAMING_FILE_SIZE,
-  MAX_TEXT_TRAJECTORY_SIZE,
-  read_indexed_trajectory_file,
-} from './node-io'
+import { MAX_STREAMING_FILE_SIZE, read_indexed_trajectory_file } from './node-io'
 
 // Files above this many bytes are not copied into the webview; the host indexes them and
 // serves frames over postMessage (see request_large_file below)
@@ -158,7 +154,6 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     file_size,
     large_file_threshold: LARGE_FILE_THRESHOLD,
     max_file_size: MAX_STREAMING_FILE_SIZE,
-    max_text_file_size: MAX_TEXT_TRAJECTORY_SIZE,
   })
   if (transfer.kind === `reject`)
     throw host_transfer_error(transfer.reason, filename, file_size, transfer.max_file_size)

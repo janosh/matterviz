@@ -13,6 +13,7 @@ import {
   cache_prepared_polyhedra,
   create_polyhedra_edges,
   update_polyhedra_edges,
+  update_polyhedra_faces,
   convex_hull_3d,
   merge_polyhedra_buffers,
 } from '$lib/structure/polyhedra'
@@ -21,9 +22,17 @@ import { make_supercell } from '$lib/structure/supercell'
 import { BondFrame, pack_bonds } from '$lib/structure/bond-rendering'
 import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
 import { numeric_sites } from '$lib/structure/site'
-import { Color, InterleavedBufferAttribute, Vector3 } from 'three/webgpu'
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  InterleavedBufferAttribute,
+  Vector3,
+} from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
+
+const uniform_red = { mode: `uniform`, color: `#ff0000` } as const
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
 
@@ -64,6 +73,10 @@ test.each([`#222222`, `#ff8800`])(
         const moved = new Float32Array(count * 6).fill(count + 0.5)
         const recolored = new Float32Array(count * 6).fill(0.25)
         update_polyhedra_edges(edges, moved, recolored)
+        // bounds cover the drawn edges only, never stale capacity from the larger frame before
+        const { boundingBox: box, boundingSphere: sphere } = edges.geometry
+        const bounds = count ? [count + 0.5, count + 0.5, 0] : [Infinity, -Infinity, -1] // empty
+        expect([box?.min.x, box?.max.x, sphere?.radius]).toEqual(bounds)
         expect(edges.material).toBe(material)
         expect(edges.geometry.instanceCount).toBe(count)
         if (count > geometry.getAttribute(`instanceStart`).count) {
@@ -624,9 +637,7 @@ describe(`compute_polyhedra`, () => {
     const supercell = make_supercell(make_rocksalt(), [10, 10, 10])
     const polyhedra = compute_polyhedra(supercell, electroneg_ratio(supercell))
     expect(polyhedra.length).toBeGreaterThan(500) // most interior Na render
-    expect(merge_polyhedra_buffers(polyhedra, () => `#ff0000`).triangle_count).toBeGreaterThan(
-      0,
-    )
+    expect(merge_polyhedra_buffers(polyhedra, uniform_red).triangle_count).toBeGreaterThan(0)
   })
 })
 
@@ -781,7 +792,6 @@ describe(`VESTA-style detection rules`, () => {
 })
 
 describe(`merge_polyhedra_buffers`, () => {
-  const uniform_red = () => `#ff0000`
   const poly_from_hull = (points: Vec3[]): Polyhedron => {
     const hull = convex_hull_3d(points)
     return {
@@ -837,7 +847,7 @@ describe(`merge_polyhedra_buffers`, () => {
     const expected_rgb = new Float32Array(new Color(`#57178f`).toArray())
     const { colors, edge_colors } = merge_polyhedra_buffers(
       [poly_from_hull(octahedron_points)],
-      () => `#57178f`,
+      { mode: `uniform`, color: `#57178f` },
     )
     for (const buffer of [colors, edge_colors]) {
       for (let idx = 0; idx < buffer.length; idx++) {
@@ -852,9 +862,12 @@ describe(`merge_polyhedra_buffers`, () => {
     const target_idx = poly.vertices.findIndex(
       (vert) => vert[0] === 1 && vert[1] === 0 && vert[2] === 0,
     )
-    const buffers = merge_polyhedra_buffers([poly], (_poly, vertex_idx) =>
-      vertex_idx === target_idx ? `#ff0000` : `#0000ff`,
-    )
+    // vertex_site_idxs are hull input idx + 1 (see poly_from_hull)
+    const target_site = poly.vertex_site_idxs[target_idx]
+    const buffers = merge_polyhedra_buffers([poly], {
+      mode: `vertex`,
+      site_color: (site_idx) => (site_idx === target_site ? `#ff0000` : `#0000ff`),
+    })
     for (const [positions, colors] of [
       [buffers.positions, buffers.colors],
       [buffers.edge_positions, buffers.edge_colors],
@@ -867,6 +880,90 @@ describe(`merge_polyhedra_buffers`, () => {
         expect(colors[off + 2]).toBe(is_target ? 0 : 1) // blue channel
       }
     }
+  })
+
+  test(`normals match computeVertexNormals bit for bit, degenerate faces included`, () => {
+    // skewed, jittered hull: no axis-aligned faces, float32 rounding matters
+    const skewed = cube_points(1.7).map(([pos_x, pos_y, pos_z], idx): Vec3 => [
+      pos_x + 0.31 * pos_y + 0.013 * Math.sin(idx),
+      pos_y + 0.17 * pos_z + 0.011 * Math.cos(idx),
+      pos_z + 0.23 * pos_x,
+    ])
+    const sliver = {
+      ...loose_triangles(1),
+      vertices: [0, 1, 2].map((val): Vec3 => [val, val, val]),
+    }
+    const buffers = merge_polyhedra_buffers(
+      [poly_from_hull(skewed), poly_from_hull(octahedron_points), sliver],
+      uniform_red,
+    )
+    const reference = new BufferGeometry().setAttribute(
+      `position`,
+      new BufferAttribute(buffers.positions, 3),
+    )
+    reference.computeVertexNormals()
+    expect(buffers.normals).toEqual(reference.getAttribute(`normal`).array)
+    expect(Array.from(buffers.normals.slice(-9))).toEqual(Array(9).fill(0))
+  })
+
+  test.each([`vertex`, `center`] as const)(
+    `%s colors resolve once per distinct site`,
+    (mode) => {
+      // two octahedra sharing vertex sites 1-6, centers at sites 0 and 7
+      const first = poly_from_hull(octahedron_points)
+      const second = { ...first, center_site_idx: 7 }
+      const site_color = vi.fn((site_idx: number) => (site_idx % 2 ? `#ff0000` : `#0000ff`))
+      const { colors } = merge_polyhedra_buffers([first, second], { mode, site_color })
+      const sites = mode === `vertex` ? first.vertex_site_idxs : [0, 7]
+      const by_idx = (left: number, right: number) => left - right
+      expect(site_color.mock.calls.map(([site_idx]) => site_idx).toSorted(by_idx)).toEqual(
+        sites.toSorted(by_idx),
+      )
+      // center mode paints each polyhedron entirely in its center's color (0 blue, 7 red)
+      if (mode === `center`) {
+        for (let idx = 0; idx < colors.length; idx += 3)
+          expect(colors[idx]).toBe(idx < colors.length / 2 ? 0 : 1)
+      }
+    },
+  )
+
+  test(`update_polyhedra_faces rewrites one geometry in place and replaces it 1.5x larger`, () => {
+    const merged = (hulls: Vec3[][], shift: number) => {
+      const polys = hulls.map((pts) =>
+        poly_from_hull(
+          pts.map(([pos_x, pos_y, pos_z]): Vec3 => [pos_x + shift, pos_y, pos_z]),
+        ),
+      )
+      return merge_polyhedra_buffers(polys, uniform_red)
+    }
+    const big = merged([octahedron_points, octahedron_points], 0) // 16 triangles
+    const geometry = update_polyhedra_faces(null, big)
+    expect(geometry.getAttribute(`position`).count).toBe(48)
+    const small = merged([octahedron_points], 5) // 8 triangles, shifted +x
+    const dispose = vi.spyOn(geometry, `dispose`)
+    expect(update_polyhedra_faces(geometry, small)).toBe(geometry)
+    expect(dispose).not.toHaveBeenCalled()
+    expect(geometry.drawRange).toEqual({ start: 0, count: 24 })
+    for (const [name, values] of [
+      [`position`, small.positions],
+      [`normal`, small.normals],
+      [`color`, small.colors],
+    ] as const) {
+      const attribute = geometry.getAttribute(name)
+      if (!(attribute instanceof BufferAttribute)) throw new Error(`Expected ${name}`)
+      expect(attribute.array.slice(0, values.length)).toEqual(values)
+      expect(attribute.updateRanges).toEqual([{ start: 0, count: values.length }])
+    }
+    // bounds follow the drawn octahedron at x = 5 +- 1, not the stale capacity left at x = 0
+    expect(geometry.boundingBox?.min.toArray()).toEqual([4, -1, -1])
+    expect(geometry.boundingSphere?.center.toArray()).toEqual([5, 0, 0])
+    const grown = update_polyhedra_faces(
+      geometry,
+      merged([octahedron_points, octahedron_points, octahedron_points], 0),
+    )
+    expect(grown).not.toBe(geometry)
+    expect(grown.getAttribute(`normal`).count).toBe(72) // max(72, 1.5 * 48)
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   test(`empty input yields empty buffers`, () => {

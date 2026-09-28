@@ -178,7 +178,9 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
         : ``
       const cached = materials.get(key)
       if (cached) return cached
-      const material = new MeshStandardMaterial({ metalness: 0.1, roughness: 0.5 })
+      // Keep the face culling: double-sided partial-occupancy caps vanish from behind otherwise
+      const { side } = source_material
+      const material = new MeshStandardMaterial({ metalness: 0.1, roughness: 0.5, side })
       material.name = `material_${mesh_idx}_${materials.size}`
       if (color) material.color.copy(color)
       materials.set(key, material)

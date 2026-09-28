@@ -177,22 +177,28 @@ describe(`Isosurface`, () => {
     }
   })
 
-  // Colour follows the sign of the value drawn, not which lobe mirrors the other
-  test.each([0.3, -0.3])(
-    `negative lobe adds a second surface in negative_color (isovalue %s)`,
-    async (isovalue) => {
+  // A mirrored pair colours each lobe by the sign of the value drawn, not which lobe mirrors
+  // the other; a lone surface keeps `color` even at a negative isovalue
+  const [blue, red] = [`#3b82f6`, `#ef4444`]
+  test.each([
+    [0.3, true, [blue, blue, red, red]],
+    [-0.3, true, [blue, blue, red, red]],
+    [-0.3, false, [blue, blue]],
+  ])(
+    `lobe colours for isovalue %s with show_negative=%s`,
+    async (isovalue, show_negative, expected_colors) => {
       mount_isosurface({
         volumes: [signed_volume()],
-        settings: with_layers([layer(isovalue, { show_negative: true })]),
+        settings: with_layers([layer(isovalue, { show_negative })]),
       })
       await settle()
-      expect(meshes()).toHaveLength(4)
-      const colors = materials().map((node) => node.props.color)
       const x_of = (idx: number) => geometry_of(meshes()[idx]).getAttribute(`position`).getX(0)
-      // the positive blob sits at grid (3,3,3), the negative one at (7,7,7)
-      const [positive, negative] = x_of(0) < x_of(2) ? [0, 2] : [2, 0]
-      expect([colors[positive], colors[negative]]).toEqual([`#3b82f6`, `#ef4444`])
-      expect(colors[0]).toBe(colors[1]) // both passes of a lobe share its colour
+      // ordered by x: the positive blob sits at grid (3,3,3), the negative one at (7,7,7), and
+      // both passes of a lobe share its colour
+      const colors = [...meshes().keys()]
+        .toSorted((idx_a, idx_b) => x_of(idx_a) - x_of(idx_b))
+        .map((idx) => materials()[idx].props.color)
+      expect(colors).toEqual(expected_colors)
     },
   )
 

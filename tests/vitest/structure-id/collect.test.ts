@@ -8,7 +8,7 @@ import {
   DEFAULT_MAX_SWEEP_FRAMES,
 } from '$lib/structure-id/collect'
 import { trajectory_from_frames, type FrameRange, type TrajectoryRun } from '$lib/trajectory'
-import { sweep_frame_plan } from '$lib/trajectory/analysis'
+import { sweep_frame_plan, sweep_frames } from '$lib/trajectory/analysis'
 import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
@@ -75,6 +75,52 @@ describe(`sweep_frame_plan`, () => {
     [10, 1.5, /max_frames must be a positive integer, got 1.5/],
   ])(`rejects total=%s max=%s`, (total, max_frames, pattern) => {
     expect(() => sweep_frame_plan(total, max_frames)).toThrow(pattern)
+  })
+})
+
+// A worker-pool visitor (RDF) needs several frames in flight, but its synchronous prefix
+// (reference frame, step list) must still see frames in order and results stay ordered
+describe(`sweep_frames concurrency`, () => {
+  const run = trajectory_from_frames(
+    [0, 1, 2, 3, 4, 5].map((step) => ({ step, structure: make_fcc([1, 1, 1]) })),
+  )
+  it.each([1, 3])(
+    `starts visits in order and keeps %i frames in flight`,
+    async (concurrency) => {
+      const [started, finished]: number[][] = [[], []]
+      let [in_flight, peak] = [0, 0]
+      const { results } = await sweep_frames(
+        run,
+        { max_frames: 6, concurrency },
+        async (_frame, frame_number) => {
+          started.push(frame_number)
+          peak = Math.max(peak, ++in_flight)
+          await new Promise((resolve) => setTimeout(resolve, frame_number % 2 ? 1 : 6))
+          in_flight--
+          finished.push(frame_number)
+          return frame_number * 10
+        },
+      )
+      expect(started).toEqual([0, 1, 2, 3, 4, 5])
+      expect(results).toEqual([0, 10, 20, 30, 40, 50])
+      expect(peak).toBe(concurrency)
+      if (concurrency > 1) expect(finished).not.toEqual(started) // really overlapped
+    },
+  )
+  it(`stops starting frames after a visit fails`, async () => {
+    const started: number[] = []
+    const sweep = sweep_frames(
+      run,
+      { max_frames: 6, concurrency: 2 },
+      async (_frame, frame_number) => {
+        started.push(frame_number)
+        if (frame_number === 1) throw new Error(`bad frame 1`)
+        return 0
+      },
+    )
+    await expect(sweep).rejects.toThrow(`bad frame 1`)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(started.length).toBeLessThan(6)
   })
 })
 

@@ -544,6 +544,15 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
     min_log_decades: 3,
   })
 
+// Last sampling per source y array, reused while x, raw_y, limit and color also match: legend
+// toggles rebuild series objects around the same arrays, so they resample nothing
+const scatter_cache = new WeakMap<
+  readonly number[],
+  { key: unknown[]; prepared: Pick<DataSeries, `x` | `y` | `raw_y` | `line_underlays`> }
+>()
+
+// Downsample and smooth long series for display. Hidden series (visible === false) pass
+// through untouched: sampling ~20 unused columns on every property batch dominated streaming.
 export function prepare_trajectory_scatter_series(
   series: readonly DataSeries[],
   max_points: number,
@@ -554,33 +563,37 @@ export function prepare_trajectory_scatter_series(
   const limit = Math.floor(max_points)
   return series.map((data_series, series_idx) => {
     assert_series_lengths(data_series, series_idx)
-    if (data_series.x.length <= limit) return data_series
+    if (data_series.x.length <= limit || data_series.visible === false) return data_series
     const source_raw_y = data_series.raw_y ?? data_series.y
-    let window_size = Math.max(5, Math.round(data_series.x.length / 50))
-    if (window_size % 2 === 0) window_size++
-    const sampled = downsample_indices(data_series.x, source_raw_y, limit)
-    const smoothed_y = smooth_moving_average(data_series.y, window_size, sampled)
-    const sampled_x = sampled.map((idx) => data_series.x[idx])
-    const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
     const color = data_series.line_style?.stroke ?? `currentColor`
+    const key = [data_series.x, source_raw_y, limit, color]
+    const cached = scatter_cache.get(data_series.y)
+    let prepared = cached?.key.every((part, idx) => part === key[idx]) && cached.prepared
+    if (!prepared) {
+      let window_size = Math.max(5, Math.round(data_series.x.length / 50))
+      if (window_size % 2 === 0) window_size++
+      const sampled = downsample_indices(data_series.x, source_raw_y, limit)
+      const sampled_x = sampled.map((idx) => data_series.x[idx])
+      const sampled_raw_y = sampled.map((idx) => source_raw_y[idx])
+      const underlay_stroke = `color-mix(in srgb, ${color} 18%, transparent)`
+      prepared = {
+        x: sampled_x,
+        y: smooth_moving_average(data_series.y, window_size, sampled),
+        raw_y: sampled_raw_y,
+        line_underlays: [
+          {
+            x: sampled_x,
+            y: sampled_raw_y,
+            line_style: { stroke: underlay_stroke, stroke_width: 1, curve: `linear` },
+          },
+        ],
+      }
+      scatter_cache.set(data_series.y, { key, prepared })
+    }
     return {
       ...data_series,
-      x: sampled_x,
-      y: smoothed_y,
-      raw_y: sampled_raw_y,
+      ...prepared,
       markers: `line`,
-      metadata: data_series.metadata,
-      line_underlays: [
-        {
-          x: sampled_x,
-          y: sampled_raw_y,
-          line_style: {
-            stroke: `color-mix(in srgb, ${color} 18%, transparent)`,
-            stroke_width: 1,
-            curve: `linear`,
-          },
-        },
-      ],
       line_style: { stroke: color, stroke_width: 2.5, curve: `monotone` },
     }
   })

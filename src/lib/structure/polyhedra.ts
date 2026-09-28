@@ -11,14 +11,19 @@ import { get_element_counts } from './density'
 import type { ElementSymbol } from '$lib/element'
 import { element_by_symbol } from '$lib/element/data'
 import type { Vec3 } from '$lib/math'
-import { array_extent, array_max } from '$lib/math'
+import { array_extent, array_max, grow_capacity } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure } from '$lib/structure'
 import { css_to_linear_rgb } from '$lib/scene/colors'
 import {
+  Box3,
+  BufferAttribute,
+  BufferGeometry,
   DynamicDrawUsage,
+  type InterleavedBuffer,
   type InterleavedBufferAttribute,
   Line2NodeMaterial,
+  Sphere,
 } from 'three/webgpu'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
@@ -53,7 +58,7 @@ export function update_polyhedra_edges(
 ): void {
   const capacity = edges.geometry.getAttribute(`instanceStart`).count * 6
   if (positions.length > capacity) {
-    const length = Math.max(positions.length, Math.ceil((capacity / 6) * 1.5) * 6)
+    const length = grow_capacity(capacity / 6, positions.length / 6) * 6
     const geometry = new LineSegmentsGeometry()
       .setPositions(new Float32Array(length))
       .setColors(new Float32Array(length))
@@ -65,15 +70,53 @@ export function update_polyhedra_edges(
     [`instanceColorStart`, colors],
   ] as const) {
     const { data } = edges.geometry.getAttribute(name) as InterleavedBufferAttribute
-    data.setUsage(DynamicDrawUsage)
-    data.array.set(values)
-    data.clearUpdateRanges()
-    data.addUpdateRange(0, values.length)
-    data.needsUpdate = true
+    overwrite(data.setUsage(DynamicDrawUsage), values)
   }
   edges.geometry.instanceCount = positions.length / 6
-  edges.geometry.computeBoundingBox()
-  edges.geometry.computeBoundingSphere()
+  set_bounds(edges.geometry, positions)
+}
+
+// Merged polyhedra faces as one geometry kept across frames: attributes are overwritten in
+// place and the draw range trimmed. Returns `geometry` itself unless it is null or too small,
+// in which case it is disposed and replaced by a new one with 1.5x headroom.
+export function update_polyhedra_faces(
+  geometry: BufferGeometry | null,
+  buffers: Pick<MergedPolyhedraBuffers, `positions` | `normals` | `colors`>,
+): BufferGeometry {
+  const { positions, normals, colors } = buffers
+  const capacity = geometry?.getAttribute(`position`).array.length ?? 0
+  const grow = !geometry || positions.length > capacity
+  if (grow) geometry?.dispose()
+  const target = grow ? new BufferGeometry() : geometry
+  const length = grow_capacity(capacity / 9, positions.length / 9) * 9
+  const attributes = { position: positions, normal: normals, color: colors }
+  for (const [name, values] of Object.entries(attributes)) {
+    if (grow) {
+      const attribute = new BufferAttribute(new Float32Array(length), 3)
+      target.setAttribute(name, attribute.setUsage(DynamicDrawUsage))
+    }
+    overwrite(target.getAttribute(name) as BufferAttribute, values)
+  }
+  target.setDrawRange(0, positions.length / 3)
+  set_bounds(target, positions)
+  return target
+}
+
+// Overwrite the leading values of a kept buffer and upload only that range
+function overwrite(buffer: BufferAttribute | InterleavedBuffer, values: Float32Array): void {
+  buffer.array.set(values)
+  buffer.clearUpdateRanges()
+  buffer.addUpdateRange(0, values.length)
+  buffer.needsUpdate = true
+}
+
+// Bounds from the drawn positions only: the stock computeBounding* walk every capacity slot,
+// stale data from earlier, larger frames included. The sphere encloses the box.
+function set_bounds(geometry: BufferGeometry, positions: Float32Array): void {
+  geometry.boundingBox = (geometry.boundingBox ?? new Box3()).setFromArray(positions)
+  geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(
+    geometry.boundingSphere ?? new Sphere(),
+  )
 }
 
 export interface PolyhedraOptions {
@@ -129,6 +172,7 @@ export interface Polyhedron {
 
 interface MergedPolyhedraBuffers {
   positions: Float32Array // 9 floats per triangle (non-indexed, flat-shaded)
+  normals: Float32Array // flat per-face unit normals matching positions
   colors: Float32Array // per-vertex rgb matching positions
   edge_positions: Float32Array // 6 floats per crease edge for LineSegments
   edge_colors: Float32Array // per-endpoint rgb matching face vertex colors
@@ -777,123 +821,165 @@ export function compute_polyhedra(
 
 // === Merged render buffers ===
 
-// Merge all polyhedra into single non-indexed position/color arrays (one draw call)
+// How merged polyhedra are colored: one CSS color for everything, or a per-site color taken
+// from each hull vertex's own site (`vertex`) or the polyhedron's center site (`center`).
+// site_color must be a pure function of site_idx: it is resolved once per distinct site.
+export type PolyhedraColoring =
+  | { mode: `uniform`; color: string }
+  | { mode: `vertex` | `center`; site_color: (site_idx: number) => string }
+
+// Merge all polyhedra into single non-indexed position/normal/color arrays (one draw call)
 // plus crease-edge segments for outlines. Edges interior to coplanar face groups
-// (e.g. quad diagonals on a cube) are omitted. `get_vertex_color` resolves the
-// color of each hull vertex (e.g. the vertex atom's element color, the center
-// atom's color, or a uniform custom color) - parsed colors are cached by string.
+// (e.g. quad diagonals on a cube) are omitted. Normals are the flat per-face normals
+// BufferGeometry.computeVertexNormals would derive from the float32 positions, bit for bit,
+// so callers can upload them directly.
 export function merge_polyhedra_buffers(
   polyhedra: readonly Polyhedron[],
-  get_vertex_color: (poly: Polyhedron, vertex_idx: number) => string,
+  coloring: PolyhedraColoring,
   coplanar_tol = 1e-3,
 ): MergedPolyhedraBuffers {
-  let triangle_count = 0
-  for (const poly of polyhedra) triangle_count += poly.faces.length
+  let [triangle_count, max_faces, max_verts] = [0, 0, 0]
+  for (const { faces, vertices } of polyhedra) {
+    triangle_count += faces.length
+    max_faces = Math.max(max_faces, faces.length)
+    max_verts = Math.max(max_verts, vertices.length)
+  }
   const positions = new Float32Array(triangle_count * 9)
+  const normals = new Float32Array(triangle_count * 9)
   const colors = new Float32Array(triangle_count * 9)
   // A closed triangulated surface has at most 3F/2 unique edges
   const edge_positions = new Float32Array(Math.ceil(triangle_count * 1.5) * 6)
   const edge_colors = new Float32Array(edge_positions.length)
+  // Per-polyhedron scratch. Crease detection indexes each undirected hull edge (lo, hi) at
+  // cell lo * n_verts + hi of edge_at (edge_idx + 1, 0 = unseen) and records per edge, in
+  // first-encounter order, its cell, first adjacent face normal and whether it is hidden.
+  const vert_rgb = new Float32Array(max_verts * 3)
+  const edge_at = new Int32Array(max_verts * max_verts)
+  const edge_cells = new Int32Array(max_faces * 3)
+  const edge_normals = new Float64Array(max_faces * 9)
+  const edge_hidden = new Uint8Array(max_faces * 3) // 1 = the last face on it is coplanar
+  // Linear rgb per site, resolved once per distinct site
+  const site_rgb = new Map<number, ArrayLike<number>>()
+  const site_color = coloring.mode === `uniform` ? () => coloring.color : coloring.site_color
 
   let offset = 0
   let edge_offset = 0
   const skipped_sites: string[] = []
-  // Per-polyhedron scratch: crease detection tracks the first face normal seen
-  // per undirected edge (packed vert_a * 2^16 + vert_b key)
-  const edge_normals = new Map<
-    number,
-    { nx: number; ny: number; nz: number; crease: boolean; shared: boolean }
-  >()
   for (const poly of polyhedra) {
-    // Rewind mark, in case this polyhedron turns out not to fit the shared edge pool below
-    const poly_offset = offset
-    const verts = poly.vertices
-    // Resolve per-hull-vertex colors once
-    const vert_rgb = new Float32Array(verts.length * 3)
-    for (let v_idx = 0; v_idx < verts.length; v_idx++) {
-      const channels = css_to_linear_rgb(get_vertex_color(poly, v_idx))
-      vert_rgb[v_idx * 3] = channels[0]
-      vert_rgb[v_idx * 3 + 1] = channels[1]
-      vert_rgb[v_idx * 3 + 2] = channels[2]
+    // Rewind marks, in case this polyhedron turns out not to fit the shared edge pool below
+    const [poly_offset, poly_edge_offset] = [offset, edge_offset]
+    const { vertices: verts, faces } = poly
+    const n_verts = verts.length
+    for (let v_idx = 0; v_idx < n_verts; v_idx++) {
+      const site_idx =
+        coloring.mode === `vertex` ? poly.vertex_site_idxs[v_idx] : poly.center_site_idx
+      let rgb = site_rgb.get(site_idx)
+      if (!rgb) site_rgb.set(site_idx, (rgb = css_to_linear_rgb(site_color(site_idx))))
+      vert_rgb[v_idx * 3] = rgb[0]
+      vert_rgb[v_idx * 3 + 1] = rgb[1]
+      vert_rgb[v_idx * 3 + 2] = rgb[2]
     }
 
-    edge_normals.clear()
-    for (const [idx_a, idx_b, idx_c] of poly.faces) {
-      const [axis_x, axis_y, axis_z] = verts[idx_a]
-      const [basis_x, basis_y, basis_z] = verts[idx_b]
-      const [pixel_x, pixel_y, pixel_z] = verts[idx_c]
-      // Scalar face normal for crease detection
-      let normal_x =
-        (basis_y - axis_y) * (pixel_z - axis_z) - (basis_z - axis_z) * (pixel_y - axis_y)
-      let size_y =
-        (basis_z - axis_z) * (pixel_x - axis_x) - (basis_x - axis_x) * (pixel_z - axis_z)
-      let size_z =
-        (basis_x - axis_x) * (pixel_y - axis_y) - (basis_y - axis_y) * (pixel_x - axis_x)
-      const len = Math.hypot(normal_x, size_y, size_z)
+    edge_at.fill(0, 0, n_verts * n_verts)
+    let n_poly_edges = 0
+    for (const face of faces) {
+      // Indexed reads, not destructuring: this loop runs once per rendered triangle
+      const vert_a = verts[face[0]]
+      const vert_b = verts[face[1]]
+      const vert_c = verts[face[2]]
+      // Unit face normal (float64, unrounded input) for crease detection
+      const side_1_x = vert_b[0] - vert_a[0]
+      const side_1_y = vert_b[1] - vert_a[1]
+      const side_1_z = vert_b[2] - vert_a[2]
+      const side_2_x = vert_c[0] - vert_a[0]
+      const side_2_y = vert_c[1] - vert_a[1]
+      const side_2_z = vert_c[2] - vert_a[2]
+      let normal_x = side_1_y * side_2_z - side_1_z * side_2_y
+      let normal_y = side_1_z * side_2_x - side_1_x * side_2_z
+      let normal_z = side_1_x * side_2_y - side_1_y * side_2_x
+      const len = Math.hypot(normal_x, normal_y, normal_z)
       if (len > 0) {
         normal_x /= len
-        size_y /= len
-        size_z /= len
+        normal_y /= len
+        normal_z /= len
       }
 
-      for (const v_idx of [idx_a, idx_b, idx_c]) {
-        const vert = verts[v_idx]
+      // Render normal replicating computeVertexNormals on the stored float32 positions:
+      // (c - b) x (a - b), rounded to float32, then Vector3.normalize (length || 1) in float32
+      const b_x = Math.fround(vert_b[0])
+      const b_y = Math.fround(vert_b[1])
+      const b_z = Math.fround(vert_b[2])
+      const cb_x = Math.fround(vert_c[0]) - b_x
+      const cb_y = Math.fround(vert_c[1]) - b_y
+      const cb_z = Math.fround(vert_c[2]) - b_z
+      const ab_x = Math.fround(vert_a[0]) - b_x
+      const ab_y = Math.fround(vert_a[1]) - b_y
+      const ab_z = Math.fround(vert_a[2]) - b_z
+      const cross_x = Math.fround(cb_y * ab_z - cb_z * ab_y)
+      const cross_y = Math.fround(cb_z * ab_x - cb_x * ab_z)
+      const cross_z = Math.fround(cb_x * ab_y - cb_y * ab_x)
+      const inv_len =
+        // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- matches Vector3.length bit for bit
+        1 / (Math.sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z) || 1)
+      for (let corner = 0; corner < 3; corner++) {
+        const vert = verts[face[corner]]
+        const rgb = face[corner] * 3
         positions[offset] = vert[0]
         positions[offset + 1] = vert[1]
         positions[offset + 2] = vert[2]
-        colors[offset] = vert_rgb[v_idx * 3]
-        colors[offset + 1] = vert_rgb[v_idx * 3 + 1]
-        colors[offset + 2] = vert_rgb[v_idx * 3 + 2]
+        colors[offset] = vert_rgb[rgb]
+        colors[offset + 1] = vert_rgb[rgb + 1]
+        colors[offset + 2] = vert_rgb[rgb + 2]
+        normals[offset] = cross_x * inv_len
+        normals[offset + 1] = cross_y * inv_len
+        normals[offset + 2] = cross_z * inv_len
         offset += 3
       }
 
-      for (const [from, target] of [
-        [idx_a, idx_b],
-        [idx_b, idx_c],
-        [idx_c, idx_a],
-      ]) {
-        const key = from < target ? from * 65536 + target : target * 65536 + from
-        const entry = edge_normals.get(key)
-        if (entry) {
-          entry.shared = true
-          entry.crease =
-            normal_x * entry.nx + size_y * entry.ny + size_z * entry.nz < 1 - coplanar_tol
-        } else
-          edge_normals.set(key, {
-            nx: normal_x,
-            ny: size_y,
-            nz: size_z,
-            crease: false,
-            shared: false,
-          })
+      for (let side = 0; side < 3; side++) {
+        const from = face[side]
+        const target = face[(side + 1) % 3]
+        const cell = from < target ? from * n_verts + target : target * n_verts + from
+        let edge_idx = edge_at[cell] - 1
+        if (edge_idx >= 0) {
+          const dot =
+            normal_x * edge_normals[edge_idx * 3] +
+            normal_y * edge_normals[edge_idx * 3 + 1] +
+            normal_z * edge_normals[edge_idx * 3 + 2]
+          // the last face to reach an edge decides whether it is hidden
+          edge_hidden[edge_idx] = dot < 1 - coplanar_tol ? 0 : 1
+        } else {
+          edge_idx = n_poly_edges++
+          edge_at[cell] = edge_idx + 1
+          edge_cells[edge_idx] = cell
+          edge_hidden[edge_idx] = 0
+          edge_normals[edge_idx * 3] = normal_x
+          edge_normals[edge_idx * 3 + 1] = normal_y
+          edge_normals[edge_idx * 3 + 2] = normal_z
+        }
       }
     }
 
     // An edge is drawn unless both adjacent faces are coplanar (quad diagonal). Float32Array
-    // drops out-of-range writes silently, so a polyhedron whose outline no longer fits the
-    // shared 3F/2 pool is dropped whole, triangles included, else the buffers would gap.
-    let n_edges = 0
-    for (const entry of edge_normals.values()) if (!entry.shared || entry.crease) n_edges++
-    if (edge_offset + n_edges * 6 > edge_positions.length) {
+    // drops out-of-range writes silently, so a polyhedron whose outline overflows the shared
+    // 3F/2 pool is rewound whole, triangles included, else the buffers would gap.
+    for (let edge_idx = 0; edge_idx < n_poly_edges; edge_idx++) {
+      if (edge_hidden[edge_idx]) continue
+      const cell = edge_cells[edge_idx]
+      for (let end = 0; end < 2; end++) {
+        const v_idx = end ? cell % n_verts : Math.floor(cell / n_verts)
+        const vert = verts[v_idx]
+        for (let axis = 0; axis < 3; axis++) {
+          edge_positions[edge_offset + axis] = vert[axis]
+          edge_colors[edge_offset + axis] = vert_rgb[v_idx * 3 + axis]
+        }
+        edge_offset += 3
+      }
+    }
+    if (edge_offset > edge_positions.length) {
       skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
       offset = poly_offset
-      continue
-    }
-    for (const [key, entry] of edge_normals) {
-      if (entry.shared && !entry.crease) continue
-      const from_idx = Math.floor(key / 65536)
-      const to_idx = key % 65536
-      const from = verts[from_idx]
-      const target = verts[to_idx]
-      edge_positions[edge_offset] = from[0]
-      edge_positions[edge_offset + 1] = from[1]
-      edge_positions[edge_offset + 2] = from[2]
-      edge_positions[edge_offset + 3] = target[0]
-      edge_positions[edge_offset + 4] = target[1]
-      edge_positions[edge_offset + 5] = target[2]
-      edge_colors.set(vert_rgb.subarray(from_idx * 3, from_idx * 3 + 3), edge_offset)
-      edge_colors.set(vert_rgb.subarray(to_idx * 3, to_idx * 3 + 3), edge_offset + 3)
-      edge_offset += 6
+      edge_offset = poly_edge_offset
     }
   }
 
@@ -905,13 +991,15 @@ export function merge_polyhedra_buffers(
         `polyhedra at ${skipped_sites.join(`, `)}`,
     )
   }
-  // Trim only if a polyhedron was dropped: slice copies the whole buffer
+  // Trim only if a polyhedron was dropped: slice copies the whole buffer. Edge outputs are
+  // views, not copies, since the pool is almost always larger than the drawn edge count.
   const dropped = offset < positions.length
   return {
     positions: dropped ? positions.slice(0, offset) : positions,
+    normals: dropped ? normals.slice(0, offset) : normals,
     colors: dropped ? colors.slice(0, offset) : colors,
-    edge_positions: edge_positions.slice(0, edge_offset),
-    edge_colors: edge_colors.slice(0, edge_offset),
+    edge_positions: edge_positions.subarray(0, edge_offset),
+    edge_colors: edge_colors.subarray(0, edge_offset),
     triangle_count: offset / 9,
     edge_count: edge_offset / 6,
   }

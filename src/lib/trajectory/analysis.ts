@@ -204,29 +204,39 @@ export function sweep_frame_plan(
 
 export interface FrameSweepOptions extends FrameRange {
   max_frames: number
+  // Visits in flight at once, for visitors backed by a worker pool (default one: a single
+  // worker gains nothing from more, and each frame in flight is a structure held in memory)
+  concurrency?: number
   on_progress?: (done: number, total: number) => void
   // Stops the sweep between frames; the visitor gets it too for its worker request
   signal?: AbortSignal
 }
 
-// Visit `sweep_frame_plan`'s frames one at a time. Sequential, not Promise.all: one worker
-// serves every request anyway, so concurrency buys nothing but a progress bar that jumps from
-// 0 to 100 and n_frames structures snapshotted into memory at once.
+// Visit `sweep_frame_plan`'s frames. Frames are read and visits start in frame order (a
+// visitor's synchronous prefix sees frames in sequence); results come back in frame order.
 export async function sweep_frames<Result>(
   run: TrajectoryRun,
-  { max_frames, on_progress, signal, ...range }: FrameSweepOptions,
+  { max_frames, on_progress, signal, concurrency = 1, ...range }: FrameSweepOptions,
   visit: (frame: TrajectoryFrame, frame_number: number) => Promise<Result>,
 ): Promise<{ results: Result[]; frame_numbers: number[]; frame_stride: number }> {
   const { frame_numbers, frame_stride } = sweep_frame_plan(run.frame_count, max_frames, range)
-  const results: Result[] = []
-  for (const [done, frame_number] of frame_numbers.entries()) {
+  const visits: Promise<Result>[] = []
+  let done = 0
+  for (const frame_number of frame_numbers) {
+    // A slot frees once the visit `concurrency` frames back settles; a failure throws here
+    await visits[visits.length - concurrency]
     signal?.throwIfAborted()
     const frame = await materialize_frame_result(run.read_frame(frame_number, signal))
     signal?.throwIfAborted()
-    results.push(await visit(frame, frame_number))
-    signal?.throwIfAborted()
-    on_progress?.(done + 1, frame_numbers.length)
+    const visiting = visit(frame, frame_number).then((result) => {
+      signal?.throwIfAborted()
+      on_progress?.(++done, frame_numbers.length)
+      return result
+    })
+    visiting.catch(() => {}) // rethrown by the slot wait or Promise.all, never unhandled
+    visits.push(visiting)
   }
+  const results = await Promise.all(visits)
   signal?.throwIfAborted()
   return { results, frame_numbers, frame_stride }
 }

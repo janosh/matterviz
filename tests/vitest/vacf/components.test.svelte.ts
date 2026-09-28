@@ -157,6 +157,48 @@ describe(`VacfPlot`, () => {
       await unmount(component)
     }
   })
+
+  // dt, time_unit and the VDOS window only relabel/rescale a finished correlation, so editing
+  // them must not re-run it; the relabelled result is exactly calc_vacf's for the new options
+  it.each([true, false])(
+    `applies dt and VDOS edits without recomputing (stored=%s)`,
+    async (stored) => {
+      const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
+      const input = orbit_input(60, stored)
+      const state = $state<{
+        vacf_options: VacfOptions
+        result?: VacfResult
+        error_msg?: string
+      }>({
+        vacf_options: {},
+        result: undefined,
+        error_msg: undefined,
+      })
+      const component = mount(VacfPlot, {
+        target: document.body,
+        props: bind_props({ input }, state),
+      })
+      const edit = async (vacf_options: VacfOptions) => {
+        state.vacf_options = vacf_options
+        await settle(6)
+        return [state.result, state.error_msg, compute.mock.calls.length]
+      }
+      const edited: VacfOptions = { dt: 2, time_unit: `fs`, vdos: { window: `gaussian` } }
+      const invalid = [undefined, expect.stringContaining(`without time_unit`), 1]
+      try {
+        await settle(6)
+        expect(compute).toHaveBeenCalledTimes(1)
+        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        // an invalid timestep is reported in place of the curves, and correcting it restores
+        // them and clears the message, both without recomputing; a lag-range edit recomputes
+        expect(await edit({ dt: 2 })).toEqual(invalid)
+        expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        expect((await edit({ ...edited, max_lag_fraction: 0.3 }))[2]).toBe(2)
+      } finally {
+        await unmount(component)
+      }
+    },
+  )
 })
 
 describe(`TrajectoryVacfPane`, () => {

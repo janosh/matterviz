@@ -26,6 +26,7 @@ import {
   type BondData,
   type BondPlacements,
 } from './bond-rendering'
+import { same_values } from '$lib/math'
 import { InstanceColors } from './instance-colors'
 import type { BondPair } from './index'
 
@@ -40,6 +41,9 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   readonly instanceColor = null
   override count = 0
   thickness = 1
+  // Copies of the topology and palette the colors were last written for (columns arrive fresh
+  // per frame, palettes are edited in place): playback frames keeping both skip the loop
+  private colored?: { indices: Uint32Array; orders: Uint8Array; site_colors: string[] }
 
   constructor(source = new BufferGeometry(), material?: Material, capacity = 0) {
     const geometry = new InstancedBufferGeometry()
@@ -130,6 +134,7 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
     this.colors_end = this.geometry.getAttribute(`instanceColorEnd`) as InstanceColors
     this.count = source.count
     this.thickness = source.thickness
+    this.colored = undefined // the cloned color attributes start with fresh history
     return this
   }
 
@@ -147,9 +152,20 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
       bonds instanceof BondFrame &&
       placements.max_site_idx < site_colors.length
     ) {
+      this.colored = undefined
       const changed = this.colors_start.fill_color(uniform_color)
       return this.colors_end.fill_color(uniform_color) || changed
     }
+    const columns = bonds instanceof BondFrame ? bonds.columns : undefined
+    const last = this.colored
+    if (
+      columns &&
+      last &&
+      same_values(site_colors, last.site_colors) &&
+      same_values(columns.indices, last.indices) &&
+      same_values(columns.orders, last.orders)
+    )
+      return false
     let instance_idx = 0
     for (let idx = 0; idx < bonds.length; idx++) {
       const site_idx_1 =
@@ -169,6 +185,11 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
         this.colors_start.write_color(instance_idx, color_start)
         this.colors_end.write_color(instance_idx, color_end)
       }
+    }
+    this.colored = columns && {
+      indices: columns.indices.slice(),
+      orders: columns.orders.slice(),
+      site_colors: site_colors.slice(),
     }
     const changed = this.colors_start.flush(placements.instance_count)
     return this.colors_end.flush(placements.instance_count) || changed

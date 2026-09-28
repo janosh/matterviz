@@ -52,10 +52,14 @@ export const plain_position_stream = ({
 })
 
 interface AsyncResultBinding<Input, Options, Result> {
-  // Reactive reads; the effect re-runs whenever either changes identity
+  // Reactive reads: a new input identity recomputes, options only when their JSON changes (so
+  // a recreated but equal object does not). Options must therefore be JSON-serializable.
   input: () => Input | undefined
   options: () => Options
   compute: (input: Input, options: Options, signal: AbortSignal) => Promise<Result>
+  // Main-thread edits of the computed result (e.g. relabelling the lag axis for a new dt):
+  // reruns on its own reactive reads without recomputing, and reports a throw as the error
+  revise: (result: Result) => Result
   // Writers onto the component's bindable props
   set_result: (result: Result | undefined) => void
   set_loading: (loading: boolean) => void
@@ -65,8 +69,11 @@ interface AsyncResultBinding<Input, Options, Result> {
 export function use_async_result<Input, Options, Result>(
   binding: AsyncResultBinding<Input, Options, Result>,
 ): void {
+  const options_key = $derived(JSON.stringify(binding.options()))
+  let computed = $state.raw<Result>()
   $effect(() => {
-    const [input, options] = [binding.input(), binding.options()]
+    const input = binding.input()
+    const options: Options = JSON.parse(options_key)
     // Aborted by the cleanup below, so `signal.aborted` is exactly "superseded or unmounted":
     // nobody will read that answer (nor its abort rejection)
     const controller = new AbortController()
@@ -76,12 +83,12 @@ export function use_async_result<Input, Options, Result>(
       binding.set_error(undefined)
       binding
         .compute(input, options, signal)
-        .then((computed) => {
-          if (!signal.aborted) binding.set_result(computed)
+        .then((value) => {
+          if (!signal.aborted) computed = value
         })
         .catch((err: unknown) => {
           if (signal.aborted) return
-          binding.set_result(undefined)
+          computed = undefined
           binding.set_error(to_error(err).message)
         })
         .finally(() => {
@@ -89,5 +96,18 @@ export function use_async_result<Input, Options, Result>(
         })
     }
     return () => controller.abort()
+  })
+  // Without an input the result prop holds the caller's precomputed curves, left untouched
+  $effect(() => {
+    if (!binding.input()) return
+    binding.set_result(undefined)
+    // Nothing computed yet, or a failure whose error only a new compute clears
+    if (!computed) return
+    try {
+      binding.set_result(binding.revise(computed))
+      binding.set_error(undefined) // a corrected revise-only edit starts no compute to clear it
+    } catch (exc) {
+      binding.set_error(to_error(exc).message)
+    }
   })
 }

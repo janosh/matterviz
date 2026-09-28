@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { deflateRawSync, deflateSync, gzipSync } from 'node:zlib'
 import {
-  decode_indexed_trajectory_text,
   decompress_host_buffer,
   MAX_STREAMING_FILE_SIZE,
   read_indexed_trajectory_file,
@@ -56,12 +55,6 @@ describe(`stream_file_to_buffer`, () => {
 })
 
 describe(`read_indexed_trajectory_file`, () => {
-  test(`rejects text payloads above the decoder limit`, () => {
-    expect(() => decode_indexed_trajectory_text(new Uint8Array([1, 2]).buffer, 1)).toThrow(
-      `Text trajectory too large to decode`,
-    )
-  })
-
   test.each([
     [`movie.extxyz.gz`, gzipSync],
     [`movie.xyz.gzip`, gzipSync],
@@ -69,16 +62,15 @@ describe(`read_indexed_trajectory_file`, () => {
     [`movie.xyz.z`, deflateRawSync],
     [`movie.xyz.gz.gz`, (text: string) => gzipSync(gzipSync(text))],
     [`movie.xyz.deflate.gz`, (text: string) => gzipSync(deflateSync(text))],
-  ])(`decompresses and decodes indexed text trajectory %s`, async (filename, compress) => {
+  ])(`decompresses indexed text trajectory %s to bytes`, async (filename, compress) => {
     const text = `1\nframe\nH 0 0 0\n`
     const compressed = new Uint8Array(compress(text))
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength })
     mock_vscode.workspace.fs.readFile.mockResolvedValue(compressed)
 
-    await expect(read_indexed_trajectory_file(`/tmp/${filename}`, filename)).resolves.toEqual({
-      data: text,
-      filename: filename.replace(/(?:\.(?:gz|gzip|deflate|z))+$/, ``),
-    })
+    const result = await read_indexed_trajectory_file(`/tmp/${filename}`, filename)
+    expect(result.filename).toBe(filename.replace(/(?:\.(?:gz|gzip|deflate|z))+$/, ``))
+    expect(new TextDecoder().decode(result.data)).toBe(text)
   })
 
   test(`keeps decompressed ASE trajectories binary`, async () => {
@@ -90,7 +82,7 @@ describe(`read_indexed_trajectory_file`, () => {
     const result = await read_indexed_trajectory_file(`/tmp/movie.traj.gz`, `movie.traj.gz`)
 
     expect(result.filename).toBe(`movie.traj`)
-    expect(Array.from(new Uint8Array(result.data as ArrayBuffer))).toEqual([...raw])
+    expect(Array.from(new Uint8Array(result.data))).toEqual([...raw])
   })
 
   test(`enforces decompression and text-decoding memory budgets`, async () => {

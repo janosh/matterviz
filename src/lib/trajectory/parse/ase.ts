@@ -1,14 +1,14 @@
 import { element_by_symbol } from '$lib/element/data'
 import { element_from_atomic_number } from '$lib/element/helpers'
-import { EV_PER_A3_TO_GPA } from '$lib/constants'
+import { EV_PER_A3_TO_GPA, FS_IN_ASE_TIME } from '$lib/constants'
 import * as math from '$lib/math'
 import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
 import type { Pbc } from '$lib/structure'
-import { numeric_sites, NumericSites, snapshot_topologies } from '$lib/structure/site'
 import {
   calc_force_stats,
   checked_site_forces,
   convert_atomic_numbers,
+  create_plot_row_frame,
   create_trajectory_frame,
   values_per_sample,
 } from '$lib/trajectory/helpers'
@@ -81,6 +81,9 @@ export interface AseFrameOptions {
   // frames inherit the last values seen
   fallback_numbers?: number[]
   fallback_pbc?: Pbc
+  // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
+  // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
+  inherit?: () => { numbers?: number[]; pbc?: Pbc }
   max_json_length?: number
   base_offset?: number
 }
@@ -188,6 +191,7 @@ export function decode_ase_frame(
   {
     fallback_numbers,
     fallback_pbc,
+    inherit,
     max_json_length,
     base_offset = 0,
     plot_row = false,
@@ -214,7 +218,12 @@ export function decode_ase_frame(
       ? ndarray_reader(view, positions_ref, base_offset).shape[0]
       : undefined)
 
-  const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? fallback_numbers
+  const own_numbers = frame_data[`numbers.`] ?? frame_data.numbers
+  const inherited =
+    (own_numbers === undefined || frame_data.pbc === undefined) && inherit
+      ? inherit()
+      : undefined
+  const numbers_ref = own_numbers ?? fallback_numbers ?? inherited?.numbers
   const numbers: number[] = numbers_ref?.ndarray
     ? read_ndarray(numbers_ref).flat()
     : (numbers_ref as number[])
@@ -224,7 +233,7 @@ export function decode_ase_frame(
   }
   if (numbers.length !== n_atoms)
     throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
-  const pbc_value = frame_data.pbc ?? fallback_pbc
+  const pbc_value = frame_data.pbc ?? fallback_pbc ?? inherited?.pbc
   if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
   const pbc = ase_pbc(pbc_value)
 
@@ -263,23 +272,18 @@ export function decode_ase_frame(
     atomic_numbers = Uint8Array.from(numbers)
     plot_row_numbers.set(numbers, atomic_numbers)
   }
-  const frame = create_trajectory_frame([], [], cell, pbc, step, metadata)
-  numeric_sites.set(
-    frame.structure,
-    new NumericSites(atomic_numbers, new Float64Array(0), [], []),
-  )
-  snapshot_topologies.set(frame.structure, atomic_numbers)
+  const frame = create_plot_row_frame(atomic_numbers, cell, pbc, step, metadata)
   return { frame, numbers, pbc }
 }
 
-// The ULM container of an ASE .traj, validated and indexed: frames decode on demand (the
-// first frame's atomic numbers and pbc are cached because ASE writes them once);
-// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer.
+// The ULM container of an ASE .traj, validated and indexed: frames decode on demand;
+// `plot_row_frame` is decode_ase_frame's plot_row mode. `release` drops the buffer, which
+// read_atoms keeps alive in its run (a text source's payload goes with the source).
 export interface AseFrames {
   frame_count: number
   decode: (frame_idx: number) => TrajectoryFrame
   plot_row_frame: (frame_idx: number) => TrajectoryFrame
-  release: () => void
+  release?: () => void
   read_atoms?: ReadAtoms
   atom_masses?: number[]
   metadata?: Record<string, unknown>
@@ -311,22 +315,50 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       `ASE trajectory frame ${frame_idx} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
       { cause: error },
     )
-  let numbers: number[] | undefined
-  let pbc: Pbc | undefined
+  // Numbers and pbc in effect at each frame, cached once both are known. ASE repeats them only
+  // in frames where they change, so a frame without its own inherits them from the nearest
+  // EARLIER frame in the file, never from whichever frame was decoded last: random access
+  // (scrubbing, strided analysis) would otherwise give a frame a later composition change.
+  type Topology = { numbers?: number[]; pbc?: Pbc }
+  const topologies: Topology[] = []
+  // Walks headers back only until both are found, so a corrupt frame breaks just the frames
+  // that inherit through it, then caches (earliest first) each walked frame they determine
+  const inherited_topology = (frame_idx: number): Topology => {
+    const walked: [number, Topology][] = []
+    let found: Topology = {}
+    for (let idx = frame_idx - 1; idx >= 0 && !(found.numbers && found.pbc); idx--) {
+      let own = topologies[idx]
+      if (!own) {
+        const header = frame_header(idx)
+        const numbers_ref = header[`numbers.`] ?? header.numbers
+        own = {
+          numbers: is_ndarray_ref(numbers_ref)
+            ? read_ndarray_from_view(live().view, numbers_ref).flat()
+            : (numbers_ref as number[] | undefined),
+          pbc: header.pbc === undefined ? undefined : ase_pbc(header.pbc),
+        }
+      }
+      walked.push([idx, own])
+      found = { numbers: found.numbers ?? own.numbers, pbc: found.pbc ?? own.pbc }
+    }
+    let carried: Topology = {}
+    for (const [idx, own] of walked.toReversed()) {
+      carried = { numbers: own.numbers ?? carried.numbers, pbc: own.pbc ?? carried.pbc }
+      if (carried.numbers && carried.pbc) topologies[idx] = carried
+    }
+    return found
+  }
   const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
-    if (frame_idx > 0 && !numbers) decode_frame(0, true)
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
-        fallback_numbers: numbers,
-        fallback_pbc: pbc,
+        inherit: () => inherited_topology(frame_idx),
         max_json_length: MAX_ASE_HEADER_BYTES,
         plot_row,
         warn,
       })
-      numbers = decoded.numbers
-      pbc = decoded.pbc
+      topologies[frame_idx] = { numbers: decoded.numbers, pbc: decoded.pbc }
       return decoded.frame
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
@@ -436,7 +468,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
           // ASE momenta are in sqrt(amu*eV); ase.units.fs converts p/m to A/fs.
           if (batch.velocities && momenta && recorded_mass)
             batch.velocities[idx * 3 + axis] =
-              (momenta.value(atom_idx * 3 + axis) / recorded_mass) * 0.09822694788464063
+              (momenta.value(atom_idx * 3 + axis) / recorded_mass) * FS_IN_ASE_TIME
         }
         if (batch.energies && energies) batch.energies[idx] = energies.value(atom_idx)
         if (batch.selected && selection) {

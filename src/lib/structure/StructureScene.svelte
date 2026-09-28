@@ -5,7 +5,6 @@
     enable_atom_sphere_picking,
     update_atom_coordinates,
     update_ordered_atom_positions,
-    type InstancedAtom,
   } from './atom-instances'
   import type { D3InterpolateName } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
@@ -16,7 +15,7 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { atom_field_color, type AtomColorField } from './atom-color-field'
+  import type { AtomColorField } from './atom-color-field'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
   import {
     cutaway_contains,
@@ -78,20 +77,14 @@
   import * as measure from '$lib/structure/measure'
   import { is_crystal } from '$lib/structure/validation'
   import { to_error } from '$lib/utils'
-  import {
-    compute_slice_geometry,
-    merge_split_partial_sites,
-    CAP_ARC_LENGTH,
-    CAP_ARC_START,
-  } from '$lib/structure/partial-occupancy'
+  import { compute_slice_geometry, merge_split_partial_sites } from './partial-occupancy'
+  import { PartialAtoms, type PartialAtom } from './partial-atoms'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
-    BufferAttribute,
     BufferGeometry,
-    Color,
     CylinderGeometry,
     DoubleSide,
     Euler,
@@ -129,6 +122,7 @@
     compute_polyhedra,
     create_polyhedra_edges,
     update_polyhedra_edges,
+    update_polyhedra_faces,
     merge_polyhedra_buffers,
   } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
@@ -547,7 +541,11 @@
   }
   $effect(() => cancel_atom_hover_clear)
 
-  function set_atom_hover(site_idx: number): void {
+  // Threlte hands a pointer event to every object under the cursor, nearest first, so the atom
+  // or editable bond behind would take over the hover unless the front one stops it
+  type StoppableEvent = { stopPropagation: () => void }
+  function set_atom_hover(site_idx: number, event?: StoppableEvent): void {
+    event?.stopPropagation()
     cancel_atom_hover_clear()
     if (hovered_idx !== site_idx) hovered_idx = site_idx
     if (!atom_tooltip_active) atom_tooltip_active = true
@@ -563,12 +561,17 @@
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
+  function hover_front_bond(bond_key: string, event: StoppableEvent): void {
+    event.stopPropagation()
+    hovered_bond_key = bond_key
+  }
+
   const atom_hover_props = (site_idx: number | null) =>
     !interactive || site_idx == null
       ? {}
       : {
-          onpointerenter: () => set_atom_hover(site_idx),
-          onpointermove: () => set_atom_hover(site_idx),
+          onpointerenter: (event: StoppableEvent) => set_atom_hover(site_idx, event),
+          onpointermove: (event: StoppableEvent) => set_atom_hover(site_idx, event),
           onpointerleave: () => schedule_atom_hover_clear(site_idx),
         }
 
@@ -592,11 +595,6 @@
     }
     return `default`
   })
-
-  // Desaturate a color by blending it toward gray (for ghosting image atoms in edit mode)
-  const gray = new Color(0x999999)
-  const desaturate = (hex: string | undefined, amount = 0.4): string =>
-    `#${new Color(hex ?? 0x999999).lerp(gray, amount).getHexString()}`
 
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)
@@ -958,25 +956,15 @@
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
+    const hover = wrap<StoppableEvent & InstanceEvent>(set_atom_hover)
     return {
-      onpointerenter: wrap(set_atom_hover),
-      onpointermove: wrap(set_atom_hover),
+      onpointerenter: hover,
+      onpointermove: hover,
       onpointerleave: wrap(schedule_atom_hover_clear),
       onpointerdown: wrap<PointerEvent & InstanceEvent>(handle_atom_pointerdown),
       onclick: wrap<MouseEvent & InstanceEvent>(handle_atom_click),
     }
   }
-
-  // Pointer props (hover + select) for per-site hit-target meshes (partial-occupancy
-  // sites), with the same interactivity gating as atom_instance_events
-  const atom_pointer_props = (site_idx: number, is_edit_image: boolean) =>
-    !interactive || is_edit_image
-      ? {}
-      : {
-          ...atom_hover_props(site_idx),
-          onpointerdown: (event: PointerEvent) => handle_atom_pointerdown(site_idx, event),
-          onclick: (event: MouseEvent) => handle_atom_click(site_idx, event),
-        }
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
@@ -1309,13 +1297,8 @@
   // One reactive read per palette entry instead of one proxy access per atom/bond.
   const element_palette = get_element_palette()
   const palette = $derived({ ...element_palette.colors })
-  type RenderAtom = InstancedAtom &
-    ReturnType<typeof compute_slice_geometry>[number] & {
-      site_idx: number
-      slice_idx: number // wedge index within its site (a site may list one element twice)
-      species: Site[`species`]
-      is_image_atom: boolean
-    }
+  // One record per wedge; an ordered atom is a single full-turn wedge
+  type RenderAtom = PartialAtom & { species: Site[`species`] }
   type AtomGroups = {
     first_by_site: Map<number, RenderAtom>
     base: RenderAtom[]
@@ -1418,13 +1401,10 @@
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
-      for (const [slice_idx, slice_data] of compute_slice_geometry(
-        visible_species,
-      ).entries()) {
+      for (const slice_data of compute_slice_geometry(visible_species)) {
         const atom = {
           ...slice_data,
           site_idx,
-          slice_idx,
           species: site.species,
           position: [...site.xyz] as Vec3,
           radius,
@@ -1555,6 +1535,18 @@
     )
   })
 
+  // Open bond cylinders halve their triangles, but their hollow ends show wherever no opaque
+  // sphere covers a bond end: hidden or translucent atoms, vacancy gaps, cutaways, or an atom
+  // smaller than a bond's reach (2.35 x thickness: a triple bond's outer copy, offset + radius)
+  let bonds_capped = $derived.by(() => {
+    if (!show_atoms || atom_opacity < 1 || atom_groups.partial.length > 0) return true
+    if (cutaway && cutaway.mode !== `off`) return true
+    const reach = 2.35 * bond_thickness
+    return [atom_groups.base, atom_groups.image].some((atoms) =>
+      atoms.some((atom) => atom.radius < reach),
+    )
+  })
+
   let editable_bond_pairs = $derived(
     interactive && bond_edits_enabled && measure_mode === `edit-bonds`
       ? bond_records(bonds_to_render).filter(can_edit_bond)
@@ -1597,16 +1589,16 @@
     const prop_colors = property_colors?.colors
     const element_colors = palette
     const mode = polyhedra_color_mode
-    const uniform_color = polyhedra_color
-    return merge_polyhedra_buffers(polyhedra, (poly, vertex_idx) => {
-      if (mode === `uniform`) return uniform_color
-      const site_idx =
-        mode === `center` ? poly.center_site_idx : poly.vertex_site_idxs[vertex_idx]
+    const site_color = (site_idx: number) => {
       const element = columns
         ? element_from_atomic_number(columns.numbers[site_idx])
         : get_majority_element(get_site(source, site_idx))
       return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
-    })
+    }
+    return merge_polyhedra_buffers(
+      polyhedra,
+      mode === `uniform` ? { mode, color: polyhedra_color } : { mode, site_color },
+    )
   })
 
   let polyhedra_center_site_idxs = $derived(
@@ -1623,19 +1615,17 @@
     }
   })
 
-  let polyhedra_geometry: BufferGeometry | null = $state(null)
+  // One face geometry rewritten in place across frames, replaced only when a frame outgrows it
+  let polyhedra_faces: BufferGeometry | null = $state.raw(null)
   $effect(() => {
-    let geo: BufferGeometry | null = null
-    if (polyhedra_buffers && polyhedra_buffers.triangle_count > 0) {
-      const { positions, colors: vertex_colors } = polyhedra_buffers
-      geo = new BufferGeometry()
-        .setAttribute(`position`, new BufferAttribute(positions, 3))
-        .setAttribute(`color`, new BufferAttribute(vertex_colors, 3))
-      geo.computeVertexNormals() // non-indexed -> per-face normals (flat shading)
-    }
-    polyhedra_geometry = geo
-    return () => geo?.dispose()
+    if (!polyhedra_buffers?.triangle_count) return
+    polyhedra_faces = update_polyhedra_faces(
+      untrack(() => polyhedra_faces),
+      polyhedra_buffers,
+    )
+    threlte.invalidate()
   })
+  $effect(() => () => polyhedra_faces?.dispose())
 
   let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state.raw(null)
   $effect(() => {
@@ -1719,17 +1709,18 @@
     radius,
   })
 
-  // Partial-occupancy atoms render as separate wedge (lune) meshes that converge
-  // to a point at the sphere's poles, leaving the ball hard to hover from some
-  // angles. Give each such site one invisible full-sphere hit target so it's as
-  // reliably hoverable as an ordered atom (single solid sphere). One per site.
-  let partial_hit_targets = $derived(
-    interactive && atom_groups.partial.length > 0
-      ? [...atom_groups.first_by_site.values()]
-          .filter((atom) => atom.occupancy < 1)
-          .map((atom) => ({ ...site_anchor(atom), is_image_atom: atom.is_image_atom }))
-      : [],
-  )
+  // Partial-occupancy wedges: a few instanced meshes regardless of site count, picked per site
+  const partial_atoms = new PartialAtoms()
+  $effect(() => {
+    const ghost_images = measure_mode === `edit-atoms`
+    partial_atoms.update(atom_groups.partial, ghost_images, sphere_segments, atom_color_field)
+    threlte.invalidate()
+  })
+  $effect(() => {
+    partial_atoms.set_opacity(atom_opacity)
+    threlte.invalidate()
+  })
+  $effect(() => () => partial_atoms.dispose())
 
   let editable_atom_hit_targets = $derived(
     interactive &&
@@ -1999,64 +1990,14 @@
           {/if}
         {/each}
 
-        <!-- Regular rendering for partial occupancy atoms -->
-        {#each atom_groups.partial as atom (`${atom.site_idx}-${atom.slice_idx}`)}
-          {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
-          {@const opacity = atom_opacity * (partial_edit_image ? 0.5 : 1)}
-          <!-- Clipping can expose a cap behind the rejected sphere-front hit.
-            Keep the sphere target below for pole-safe hover, and pick retained surfaces too. -->
-          <T.Group
-            position={atom.position}
-            scale={atom.radius}
-            {...cutaway && cutaway.mode !== `off`
-              ? atom_pointer_props(atom.site_idx, partial_edit_image)
-              : {}}
-          >
-            {@const partial_base = partial_edit_image ? desaturate(atom.color) : atom.color}
-            {@const partial_color = atom_color_field
-              ? atom_field_color(atom_color_field, atom.position, partial_base)
-              : partial_base}
-            {@const material_props = {
-              color: partial_color,
-              opacity,
-              transparent: opacity < 1,
-              visible: opacity > 0,
-            }}
-            <T.Mesh oncreate={enable_cutaway_picking}>
-              <T.SphereGeometry
-                args={[0.5, sphere_segments, sphere_segments, atom.start_phi, atom.phi_length]}
-              />
-              <T.MeshStandardMaterial {...material_props} />
-            </T.Mesh>
-
-            <!-- Flat caps closing the wedge at its start/end azimuthal angles -->
-            {#each [[atom.render_start_cap, atom.start_phi], [atom.render_end_cap, atom.end_phi]] as const as [render_cap, phi], cap_idx (cap_idx)}
-              {#if render_cap}
-                <T.Mesh rotation={[0, phi, 0]} oncreate={enable_cutaway_picking}>
-                  <T.CircleGeometry
-                    args={[0.5, sphere_segments, CAP_ARC_START, CAP_ARC_LENGTH]}
-                  />
-                  <T.MeshStandardMaterial {...material_props} side={2} />
-                </T.Mesh>
-              {/if}
-            {/each}
-          </T.Group>
-        {/each}
-
-        <!-- Invisible full-sphere hit targets for partial-occupancy sites so the
-          whole ball is hoverable/clickable (wedge meshes leave gaps at the poles). -->
-        {#each partial_hit_targets as hit (hit.site_idx)}
-          {@const hit_edit_image = measure_mode === `edit-atoms` && hit.is_image_atom}
-          <T.Mesh
-            geometry={atom_hit_geometry}
-            oncreate={enable_atom_sphere_picking}
-            material={hit_material}
-            visible={false}
-            position={hit.position}
-            scale={hit.radius}
-            {...atom_pointer_props(hit.site_idx, hit_edit_image)}
+        <!-- Partial-occupancy wedges and vacancy caps; instanceId is a site's first wedge -->
+        {#if atom_groups.partial.length > 0}
+          <T
+            is={partial_atoms}
+            {...atom_instance_events(atom_groups.partial, false)}
+            dispose={false}
           />
-        {/each}
+        {/if}
 
         <!-- Site labels/indices: single overlay for all labels (one DOM container
           + one per-frame position pass instead of one threlte <HTML> per label) -->
@@ -2091,6 +2032,7 @@
           bonds={bonds_to_render}
           site_colors={bond_site_colors}
           thickness={bond_thickness}
+          capped={bonds_capped}
           {ambient_light}
           {directional_light}
         />
@@ -2115,8 +2057,8 @@
 
       <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
         LineSegments2 (1-2 draw calls regardless of supercell size) -->
-      {#if polyhedra_geometry}
-        <T.Mesh geometry={polyhedra_geometry} frustumCulled={false} raycast={() => null}>
+      {#if polyhedra_faces && polyhedra_buffers?.triangle_count}
+        <T.Mesh geometry={polyhedra_faces} frustumCulled={false} raycast={() => null}>
           <!-- depthWrite when mostly opaque: VESTA-like occlusion between polyhedra;
             fully translucent settings fall back to see-through blending -->
           <T.MeshStandardMaterial
@@ -2176,8 +2118,8 @@
               event.stopPropagation?.()
               open_bond_context_menu(bond, event)
             }}
-            onpointerenter={() => (hovered_bond_key = bond_key)}
-            onpointermove={() => (hovered_bond_key = bond_key)}
+            onpointerenter={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
+            onpointermove={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
             onpointerleave={() => (hovered_bond_key = null)}
           />
           {#if is_hovered}

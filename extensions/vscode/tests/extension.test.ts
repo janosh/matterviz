@@ -16,7 +16,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { WebviewToHostMessage } from '$lib/file-viewer/host-protocol'
-import { MAX_TEXT_TRAJECTORY_SIZE } from '../src/node-io'
 import {
   activate,
   active_auto_render_panels,
@@ -468,8 +467,7 @@ describe(`MatterViz Extension`, () => {
 
   test.each([
     [`large-structure.cif`, LARGE_FILE_THRESHOLD + 1, `supports trajectories only`],
-    [`large.extxyz`, MAX_TEXT_TRAJECTORY_SIZE + 1, `Maximum supported size: 512.00 MiB`],
-    [`huge.extxyz`, 1024 ** 3 + 1, `Maximum supported size: 512.00 MiB`],
+    [`huge.extxyz`, 1024 ** 3 + 1, `Maximum supported size: 1.00 GiB`],
     [`large-trajectory.traj`, 1024 ** 3 + 1, `Maximum supported size`],
   ])(`file reading: rejects unsupported large file %s`, async (filename, file_size, error) => {
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: file_size, type: 1 })
