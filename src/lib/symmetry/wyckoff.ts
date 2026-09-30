@@ -260,9 +260,9 @@ function candidate_display_frames(
 }
 
 // Spatial hash over wrapped fractional coordinates for tolerance-based, mod-1 position
-// lookups. Cell size is chosen ≥ tolerance so probing the ±1 neighbor cells (with
-// wraparound) covers every point within tolerance of the query. An optional `transform`
-// is applied to the stored coordinates and to every query alike.
+// lookups with a per-axis tolerance. Cell size is chosen ≥ the largest tolerance so probing
+// the ±1 neighbor cells (with wraparound) covers every point within tolerance of the query.
+// An optional `transform` is applied to the stored coordinates and to every query alike.
 class WrappedPositionIndex {
   private readonly buckets = new Map<string, number[]>()
   private readonly n_cells: number
@@ -270,11 +270,11 @@ class WrappedPositionIndex {
 
   constructor(
     coords: Vec3[],
-    private readonly tolerance: number,
+    private readonly tolerance: Vec3,
     private readonly transform?: (pos: Vec3) => Vec3,
   ) {
     this.coords = transform ? coords.map(transform) : coords
-    this.n_cells = math.clamp(Math.floor(1 / Math.max(tolerance, 1e-9)), 1, 64)
+    this.n_cells = math.clamp(Math.floor(1 / Math.max(...tolerance, 1e-9)), 1, 64)
     this.coords.forEach((pos, idx) => {
       const key = this.cell_key(pos, 0, 0, 0)
       const bucket = this.buckets.get(key)
@@ -295,7 +295,7 @@ class WrappedPositionIndex {
   // Indices of stored positions within `tolerance` of `query` modulo ℤ³
   query(raw_query: Vec3, out: Set<number>): void {
     const query = this.transform ? this.transform(raw_query) : raw_query
-    const tol = this.tolerance
+    const [tol_0, tol_1, tol_2] = this.tolerance
     for (let delta_x = -1; delta_x <= 1; delta_x++) {
       for (let delta_y = -1; delta_y <= 1; delta_y++) {
         for (let delta_z = -1; delta_z <= 1; delta_z++) {
@@ -307,9 +307,9 @@ class WrappedPositionIndex {
             const distance_1 = pos[1] - query[1]
             const distance_2 = pos[2] - query[2]
             if (
-              Math.abs(distance_0 - Math.round(distance_0)) < tol &&
-              Math.abs(distance_1 - Math.round(distance_1)) < tol &&
-              Math.abs(distance_2 - Math.round(distance_2)) < tol
+              Math.abs(distance_0 - Math.round(distance_0)) < tol_0 &&
+              Math.abs(distance_1 - Math.round(distance_1)) < tol_1 &&
+              Math.abs(distance_2 - Math.round(distance_2)) < tol_2
             )
               out.add(idx)
           }
@@ -326,7 +326,9 @@ class WrappedPositionIndex {
 // S = L_disp·L_F⁻¹ (S must be near-integer), displayed coords are converted into the
 // frame via x_F = x_disp·S, and matches allow crystal translations of both the frame
 // lattice (d ∈ ℤ³) and the input lattice (P·d ∈ ℤ³). Matching uses spatial hashing:
-// O(N_disp + N_orig·N_ops) instead of O(N_orig·N_disp·N_ops).
+// O(N_disp + N_orig·N_ops) instead of O(N_orig·N_disp·N_ops). Positions match within
+// `tolerance` (fractional) or, if larger, 2·sym_data.symprec (Å): moyo accepts input sites up
+// to symprec off their symmetrized positions, which are what standardized cells display.
 export function map_wyckoff_to_all_atoms(
   wyckoff_positions: WyckoffPos[],
   displayed_structure: Crystal,
@@ -340,14 +342,19 @@ export function map_wyckoff_to_all_atoms(
     // Supercell factor S = L_disp·L_F⁻¹ must be a near-integer matrix with |det| ≥ 1. A
     // degenerate frame lattice (zero-volume cell) fits nothing.
     if (Math.abs(math.det_3x3(frame.lattice)) < 1e-12) return null
-    const scaling = math.dot(
-      displayed_structure.lattice.matrix,
-      math.matrix_inverse_3x3(frame.lattice),
-    )
+    const frame_inverse = math.matrix_inverse_3x3(frame.lattice)
+    const scaling = math.dot(displayed_structure.lattice.matrix, frame_inverse)
     const is_integer_scaling = scaling.every((row) =>
       row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
     )
     if (!is_integer_scaling || Math.abs(math.det_3x3(scaling)) < 0.99) return null
+    // Fractional coords are x_F = L_F⁻ᵀ·x_cart, so a 2·symprec displacement moves coord k by at
+    // most 2·symprec·‖row_k(L_F⁻ᵀ)‖: a long axis gets a proportionally tighter tolerance
+    const frame_inverse_t = math.transpose_3x3_matrix(frame_inverse)
+    const axis_tolerances = (to_frac: Matrix3x3): Vec3 =>
+      to_frac.map((row) =>
+        Math.max(tolerance, 2 * sym_data.symprec * Math.hypot(...row)),
+      ) as Vec3
 
     // Displayed site coords expressed in frame-F fractional coordinates: x_F = x_disp·S
     const scaling_transpose = math.transpose_3x3_matrix(scaling)
@@ -360,12 +367,18 @@ export function map_wyckoff_to_all_atoms(
 
     // Spatial hashes: one over the frame coords directly (matches d ∈ ℤ³), and one over
     // P·x_F (matches input-lattice translations: d ∈ P⁻¹ℤ³ ⟺ P·d ∈ ℤ³)
-    const direct_index = new WrappedPositionIndex(displayed_frame_coords, tolerance)
+    const direct_index = new WrappedPositionIndex(
+      displayed_frame_coords,
+      axis_tolerances(frame_inverse_t),
+    )
     const check = frame.input_translation_check
+    // input-lattice coords P·x_F = P·L_F⁻ᵀ·x_cart
     const check_index =
       check &&
-      new WrappedPositionIndex(displayed_frame_coords, tolerance, (pos) =>
-        math.mat3x3_vec3_multiply(check, pos),
+      new WrappedPositionIndex(
+        displayed_frame_coords,
+        axis_tolerances(math.dot(check, frame_inverse_t)),
+        (pos) => math.mat3x3_vec3_multiply(check, pos),
       )
 
     let any_matched = false

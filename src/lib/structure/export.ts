@@ -257,6 +257,13 @@ function get_cif_block_name(structure: AnyStructure): string {
     : `structure`
 }
 
+// A CIF value as one token: whitespace splits a row and a leading `_#$'";[]` reads as syntax
+// (data name, comment, quote, text field), so such values are quoted
+const cif_token = (value: string): string => {
+  if (!/\s|^[_#$'";[\]]/.test(value)) return value
+  return value.includes(`'`) ? `"${value}"` : `'${value}'`
+}
+
 export function structure_to_cif_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   if (!has_lattice_matrix(structure)) {
@@ -322,7 +329,9 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
         species_list.length > 1
           ? `${elem}${idx + 1}_${spec_idx}`
           : site.label || `${elem}${idx + 1}`
-      lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
+      lines.push(
+        `${cif_token(label)} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`,
+      )
     }
   }
 

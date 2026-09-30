@@ -458,25 +458,31 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
     map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
-  test(`conventional-cell display: all 4 FCC copies map to the 4a row`, async () => {
-    const orig = prim_fcc_cu()
-    const sym_data = await analyze_crystal(orig)
-    const displayed = transform_cell(orig, `conventional`, sym_data)
-    expect(displayed.sites).toHaveLength(4)
-
-    const rows = map_rows(orig, displayed, sym_data)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].site_indices).toEqual([0, 1, 2, 3])
-  })
-
-  test(`primitive-cell display maps correctly`, async () => {
-    const orig = prim_fcc_cu()
-    const sym_data = await analyze_crystal(orig)
-    const displayed = transform_cell(orig, `primitive`, sym_data)
-    expect(displayed.sites).toHaveLength(1)
-
-    expect(map_rows(orig, displayed, sym_data)[0].site_indices).toEqual([0])
-  })
+  // hcp Mg (in the wurtzite cell) with 4-decimal coordinates: moyo accepts #194 at symprec
+  // 1e-3 and returns standardized positions (1/3 exactly) that sit 3.3e-5 (fractional) off
+  // the input's 0.3333, beyond a fixed 1e-5 match tolerance but well inside symprec
+  const off_ideal_hcp_mg = () =>
+    make_crystal(wurtzite_zno().lattice.matrix, [
+      [`Mg`, [0.3333, 0.6667, 0.25]],
+      [`Mg`, [0.6667, 0.3333, 0.75]],
+    ])
+  test.each([
+    [`conventional`, `primitive FCC Cu`, prim_fcc_cu, 1e-4, 225, 4],
+    [`primitive`, `primitive FCC Cu`, prim_fcc_cu, 1e-4, 225, 1],
+    [`conventional`, `off-ideal hcp Mg`, off_ideal_hcp_mg, 1e-3, 194, 2],
+    [`primitive`, `off-ideal hcp Mg`, off_ideal_hcp_mg, 1e-3, 194, 2],
+  ] as const)(
+    `%s display of %s maps every site to the one row`,
+    async (cell_type, _label, build, symprec, spg_num, n_displayed) => {
+      const orig = build()
+      const sym_data = await analyze_crystal(orig, symprec)
+      expect(sym_data.number).toBe(spg_num)
+      const displayed = transform_cell(orig, cell_type, sym_data)
+      expect(displayed.sites).toHaveLength(n_displayed)
+      const rows = map_rows(orig, displayed, sym_data)
+      expect(rows.map((row) => row.site_indices)).toEqual([[...Array(n_displayed).keys()]])
+    },
+  )
 
   test(`conventional display of primitive diamond: origin shift forces conv-frame matching`, async () => {
     // diamond's std_origin_shift is (1/8,1/8,1/8), so the original-frame lattice match

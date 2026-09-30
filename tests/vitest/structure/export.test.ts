@@ -590,6 +590,23 @@ describe(`Export functionality`, () => {
       expect(lines[ops_idx + 1]).toBe(`'x, y, z'`)
     })
 
+    // A CIF row splits on whitespace, and a leading `#`/`_` makes a row a comment/data name,
+    // so such labels are quoted: unquoted, `Fe site` shifted every column and dropped the atom
+    it.each([`Fe site`, `#1`, `_Fe`, `C1' A`])(
+      `quotes CIF label %j to keep its atom`,
+      (label) => {
+        const structure = {
+          sites: [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5], label), make_site(`O`)],
+          lattice: diag_lattice(5),
+        } as AnyStructure
+        const reparsed = parse_cif(structure_to_cif_str(structure))
+        expect(reparsed.sites.map((site) => [site.label, site.species[0].element])).toEqual([
+          [label, `Fe`],
+          [`O1`, `O`],
+        ])
+      },
+    )
+
     it(`exports one CIF row per species on disordered sites and round-trips`, () => {
       const disordered: AnyStructure = {
         ...simple_structure,

@@ -126,11 +126,19 @@ test.each([
         return read_point()
       },
       axis: [0, 0, 1],
+      plane_normal: null,
       translation: null,
     }
     const elements: SymmetryElement[] = [
       element,
-      { ...element, kind: `mirror`, point: [0.5, 0, 0], axis: [1, 0, 0], locus: `plane-x` },
+      {
+        ...element,
+        kind: `mirror`,
+        point: [0.5, 0, 0],
+        axis: [1, 0, 0],
+        plane_normal: [1, 0, 0],
+        locus: `plane-x`,
+      },
       { ...element, kind: `inversion`, point: [0.5, 0.5, 0.5], axis: null, locus: `center` },
     ]
     const show_kinds: ShowSymmetryKinds = { rotation: true, mirror: true, inversion: true }
@@ -139,14 +147,13 @@ test.each([
       lattice: structuredClone(cubic),
       tiling,
       show_kinds,
-      tiling_result: shared ? tile_symmetry_elements(elements, tiling, cubic) : undefined,
+      tiling_result: shared ? tile_symmetry_elements(elements, tiling) : undefined,
     })
     const update = () => {
       if (shared)
         props.tiling_result = tile_symmetry_elements(
           props.elements.filter((item) => props.show_kinds[item.kind]),
           props.tiling,
-          props.lattice,
         )
       flushSync()
     }
@@ -263,7 +270,8 @@ test.each([
       }))
       props.show_kinds = { [kind]: true }
       update()
-      expect(geometries()[0].index?.count).toBe((kind === `screw` ? 11 : 1) * 144)
+      // An axis on a cell edge is drawn on all four lattice-equivalent vertical edges
+      expect(geometries()[0].index?.count).toBe(4 * (kind === `screw` ? 11 : 1) * 144)
     }
     props.elements = [{ ...element, kind: `rotoinversion`, order: 4, label: `-4` }]
     props.show_kinds = { rotoinversion: true }
@@ -271,8 +279,8 @@ test.each([
     update()
     expect(recovered_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1, 1])
     expect(geometries()).toHaveLength(1)
-    // One cylinder (48 triangles) and three octahedral centers (8 triangles each).
-    expect(geometries()[0].index?.count).toBe(144 + 3 * 24)
+    // One cylinder (48 triangles) per block edge and three octahedral centers (8 triangles each).
+    expect(geometries()[0].index?.count).toBe(4 * 144 + 3 * 24)
     const positions = geometries()[0].getAttribute(`position`)
     const heights = Array.from({ length: positions.count }, (_unused, idx) =>
       positions.getZ(idx),
@@ -285,18 +293,60 @@ test.each([
     props.show_kinds = { rotoinversion: true, rotation: true, screw: true }
     update()
     // The coincident rotation reuses the solid cylinder; the screw retains its 34 dashes.
-    expect(geometries()[0].index?.count).toBe(35 * 144 + 3 * 24)
+    expect(geometries()[0].index?.count).toBe(4 * 35 * 144 + 3 * 24)
     props.elements = [
       { ...props.elements[0], order: 3, label: `-3` },
       { ...props.elements[1], order: 6, label: `6` },
     ]
     update()
     // A higher-order axis hides sub-axis cylinders, but retains their center markers.
-    expect(geometries().map((item) => item.index?.count)).toEqual([3 * 24, 144])
+    expect(geometries().map((item) => item.index?.count)).toEqual([3 * 24, 4 * 144])
     const final_disposed = geometries().map((item) => vi.spyOn(item, `dispose`))
     await unmount(component)
     teardown = undefined
     expect(final_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
+  },
+)
+
+// Tiled lattice-translated copies of a plane clip to identical polygons; drawing each more than
+// once stacks the translucent (depthWrite=false) fills into a darker, more opaque wash
+test.each([
+  [`mirror`, [1, -1, 0], null, [2, 1, 1], 4],
+  [`glide`, [1, -1, 0], [0, 0, 0.5], [2, 1, 1], 4],
+] as const)(
+  `draws each tiled %s plane (normal %j) once`,
+  (kind, axis, translation, tiling, n_triangles) => {
+    const elements: SymmetryElement[] = [
+      {
+        kind,
+        order: 2,
+        label: `m`,
+        locus: `plane`,
+        point: [0, 0, 0],
+        axis: [...axis],
+        plane_normal: [...axis],
+        translation: translation && [...translation],
+      },
+    ]
+    const props = $state({
+      elements,
+      lattice: cubic,
+      tiling: [...tiling] as Vec3,
+      show_kinds: { [kind]: true },
+    })
+    const component = mount(SymmetryElements, { target: document.body, props })
+    teardown = () => void unmount(component)
+    flushSync()
+    const fill = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
+      .geometry as BufferGeometry
+    const positions = Array.from(fill.getAttribute(`position`).array, (coord) =>
+      Math.round(coord * 1e6),
+    )
+    const triangles = Array.from({ length: positions.length / 9 }, (_unused, idx) =>
+      positions.slice(idx * 9, idx * 9 + 9).join(`,`),
+    )
+    expect(triangles).toHaveLength(n_triangles)
+    expect(new Set(triangles).size).toBe(n_triangles)
   },
 )
 

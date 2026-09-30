@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
 import {
@@ -451,6 +451,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       orbits: [],
       site_symmetry_symbols: [],
       std_origin_shift: [0, 0, 0],
+      symprec: 1e-6,
     }) as unknown as MoyoDataset
 
   test.each([
@@ -582,6 +583,37 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       ).toEqual(expected)
     },
   )
+
+  // symprec (Å) widens the match by its fractional size per axis: along a 30 Å axis 2·symprec
+  // is 1/10 of what it is along a 3 Å one, so an upright N2 (1.1 Å) keeps its two rows while a
+  // copy 0.15 Å off the first N still joins it at symprec 0.1
+  test.each([
+    [1e-6, [[0], [1], [2]]],
+    [0.1, [[0], [1, 3], [2]]],
+  ])(`scales the symprec tolerance per axis (symprec %s)`, (symprec, expected) => {
+    const lattice: Matrix3x3 = [
+      [3, 0, 0],
+      [0, 3, 0],
+      [0, 0, 30],
+    ]
+    const sites: { element: ElementSymbol; abc: Vec3 }[] = [
+      { element: `Cu`, abc: [0, 0, 0.4] },
+      { element: `N`, abc: [0.5, 0.5, 0.5] },
+      { element: `N`, abc: [0.5, 0.5, 0.5 + 1.1 / 30] },
+    ]
+    const rows = map_wyckoff_to_all_atoms(
+      sites.map(({ element, abc }, idx) => ({
+        wyckoff: `1a`,
+        elem: element,
+        abc,
+        site_indices: [idx],
+      })),
+      make_crystal(lattice, [...sites, { element: `N`, abc: [0.5, 0.5, 0.5 + 0.15 / 30] }]),
+      make_crystal(lattice, sites),
+      { ...mock_sym_data(), symprec },
+    )
+    expect(rows.map((row) => row.site_indices)).toEqual(expected)
+  })
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
     // displayed site sits 1e-7 below 1.0; the equivalent position wraps to 0.0 —

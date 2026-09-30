@@ -6,7 +6,7 @@ only drawn while the viewer renders the analyzed (input) cell; pass `in_input_fr
 while a conventional/primitive cell is shown to disable the toggles and say why. -->
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Matrix3x3, Vec3 } from '$lib/math'
+  import type { Vec3 } from '$lib/math'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,
@@ -23,7 +23,6 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     show_kinds = $bindable({ ...DEFAULT_SHOW_SYM_KINDS }),
     in_input_frame = true,
     tiling = [1, 1, 1],
-    lattice,
     tiling_result,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -32,7 +31,6 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
     // Whether the viewer currently renders the original (input) cell the elements belong to
     in_input_frame?: boolean
     tiling?: Vec3
-    lattice?: Matrix3x3
     // Share the selected overlay with the renderer when both use the same inputs.
     tiling_result?: ReturnType<typeof tile_symmetry_elements>
   } = $props()
@@ -43,13 +41,10 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
   const selected_reason = $derived(
     tiling_result
       ? tiling_result.unavailable_reason
-      : lattice
-        ? symmetry_tiling_reason(
-            elements.filter((element) => show_kinds[element.kind]),
-            tiling,
-            lattice,
-          )
-        : null,
+      : symmetry_tiling_reason(
+          elements.filter((element) => show_kinds[element.kind]),
+          tiling,
+        ),
   )
   const reasons = $derived(
     Object.fromEntries(
@@ -57,19 +52,14 @@ while a conventional/primitive cell is shown to disable the toggles and say why.
         kind,
         !in_input_frame
           ? SYM_ELEMENTS_INPUT_FRAME_NOTE
-          : lattice
-            ? show_kinds[kind]
-              ? selected_reason
-              : symmetry_tiling_reason(
-                  elements.filter(
-                    (element) => show_kinds[element.kind] || element.kind === kind,
-                  ),
-                  tiling,
-                  lattice,
-                )
-            : tiling.some((count) => count > 1)
-              ? `Provide the input lattice to preview tiled symmetry elements.`
-              : null,
+          : show_kinds[kind]
+            ? selected_reason
+            : symmetry_tiling_reason(
+                elements.filter(
+                  (element) => show_kinds[element.kind] || element.kind === kind,
+                ),
+                tiling,
+              ),
       ]),
     ),
   )

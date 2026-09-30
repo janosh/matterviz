@@ -28,11 +28,12 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   import { polygon_edge_vertices, polygon_fan_vertices } from '$lib/structure/lattice-planes'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
-    clip_line_to_cell,
-    clip_plane_to_cell,
+    clip_axis_family,
+    clip_plane_family,
     dash_segments,
     DEFAULT_SHOW_SYM_KINDS,
     frac_to_cart_direction,
+    piece_key,
     SYM_ELEM_COLORS,
     tile_symmetry_elements,
   } from './symmetry-elements'
@@ -103,20 +104,20 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   })
   const element_key = (items: SymmetryElement[]) =>
     JSON.stringify(
-      items.map(({ kind, order, label, locus, point, axis, translation }) => [
+      items.map(({ kind, order, label, locus, point, axis, plane_normal, translation }) => [
         kind,
         order,
         label,
         locus,
         point.join(`,`),
         axis?.join(`,`),
+        plane_normal?.join(`,`),
         translation?.join(`,`),
       ]),
     )
   const visible_elements = $derived(elements.filter((element) => show_kinds[element.kind]))
   const tiling_input_key = $derived(
     JSON.stringify([
-      matrix_key,
       tiling_key,
       Boolean(tiling_result),
       tiling_result?.unavailable_reason,
@@ -128,9 +129,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     // Keep a non-reactive snapshot: later proxy mutations are tracked by the value key,
     // never by geometry consumers that would otherwise bypass that gate.
     return untrack(() =>
-      $state.snapshot(
-        tiling_result ?? tile_symmetry_elements(visible_elements, tile_counts, lattice),
-      ),
+      $state.snapshot(tiling_result ?? tile_symmetry_elements(visible_elements, tile_counts)),
     )
   })
   const tiled_elements = $derived(resolved_tiling.elements)
@@ -145,7 +144,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   )
   const plane_elements = $derived(
     tiled_elements.filter(
-      (element) => (element.kind === `mirror` || element.kind === `glide`) && element.axis,
+      (element) =>
+        (element.kind === `mirror` || element.kind === `glide`) && element.plane_normal,
     ),
   )
   const center_elements = $derived(
@@ -220,14 +220,6 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     for (const elem of axes) {
       const show_axis = elem.order >= (max_order_by_line.get(elem.locus) ?? 0)
       if (!show_axis && elem.kind !== `rotoinversion`) continue
-      const clipped = clip_line_to_cell(elem.point, elem.axis as Vec3, cell)
-      if (!clipped) continue
-      const [start, end] = clipped
-      const span = new Vector3(...math.subtract(end, start))
-      const length = span.length()
-      if (length < 1e-6) continue
-      const dir_unit = span.clone().normalize()
-      const start_vec = new Vector3(...start)
 
       // Radius is baked into each geometry, so one merged group per color suffices
       const color = SYM_ELEM_COLORS.axis_by_order[elem.order] ?? `#777777`
@@ -248,21 +240,27 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
         group.push(marker)
       }
       if (!show_axis) continue // Hiding a sub-axis must not hide its distinct centers.
-      // Distinct centers may share a cylinder. Keep solid and dashed styles separate.
-      const endpoints = [String(start), String(end)].toSorted().join(`|`)
-      const line_key = `${color}|${elem.kind === `screw`}|${endpoints}`
-      if (drawn_axes.has(line_key)) continue
-      drawn_axes.add(line_key)
+      for (const [start, end] of clip_axis_family(elem.point, elem.axis as Vec3, cell)) {
+        const span = new Vector3(...math.subtract(end, start))
+        const length = span.length()
+        if (length < 1e-6) continue
+        const dir_unit = span.clone().normalize()
+        const start_vec = new Vector3(...start)
+        // Distinct centers may share a cylinder. Keep solid and dashed styles separate.
+        const line_key = `${color}|${elem.kind === `screw`}|${piece_key([start, end])}`
+        if (drawn_axes.has(line_key)) continue
+        drawn_axes.add(line_key)
 
-      if (elem.kind === `screw`) {
-        // Dashed cylinder: segments along the axis, touching both cell faces
-        for (const dash of dash_segments(length, ...SCREW_DASH)) {
-          const center = start_vec.clone().addScaledVector(dir_unit, dash.center)
-          group.push(oriented_cylinder(center, dir_unit, SCREW_RADIUS, dash.length))
+        if (elem.kind === `screw`) {
+          // Dashed cylinder: segments along the axis, touching both cell faces
+          for (const dash of dash_segments(length, ...SCREW_DASH)) {
+            const center = start_vec.clone().addScaledVector(dir_unit, dash.center)
+            group.push(oriented_cylinder(center, dir_unit, SCREW_RADIUS, dash.length))
+          }
+        } else {
+          const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
+          group.push(oriented_cylinder(center, dir_unit, AXIS_RADIUS, length))
         }
-      } else {
-        const center = start_vec.clone().addScaledVector(dir_unit, length / 2)
-        group.push(oriented_cylinder(center, dir_unit, AXIS_RADIUS, length))
       }
     }
 
@@ -284,18 +282,25 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       opacity: number
       stripe_dir: Vec3 | null
     }[] = []
+    // Tiled lattice translates clip to identical polygons; stacking translucent fills (no depth
+    // write) would darken them, so like drawn_axes each styled polygon is drawn once
+    const drawn_planes = new Set<string>()
     for (const elem of untrack(() => plane_elements)) {
-      const polygon = clip_plane_to_cell(elem.point, elem.axis as Vec3, cell)
-      if (polygon.length < 3) continue
       const is_mirror = elem.kind === `mirror`
-      planes.push({
-        polygon,
+      const style = {
         color: is_mirror ? SYM_ELEM_COLORS.mirror : SYM_ELEM_COLORS.glide,
         opacity: is_mirror ? PLANE_OPACITY : GLIDE_OPACITY,
         stripe_dir: elem.translation
           ? math.normalize_vec(frac_to_cart_direction(elem.translation, cell))
           : null,
-      })
+      }
+      const style_key = `${style.color}|${style.opacity}|${style.stripe_dir?.join(`,`)}`
+      for (const polygon of clip_plane_family(elem.point, elem.plane_normal as Vec3, cell)) {
+        const plane_key = `${style_key}|${piece_key(polygon)}`
+        if (drawn_planes.has(plane_key)) continue
+        drawn_planes.add(plane_key)
+        planes.push({ polygon, ...style })
+      }
     }
     return planes
   })
