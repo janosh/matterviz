@@ -643,6 +643,78 @@ export function reduce_miller_indices(hkl: Vec3): Vec3 {
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
+// Euclid and Lagrange reduction converge in a handful of steps; a cap turns a hypothetical
+// non-terminating case into a loud failure instead of a frozen tab.
+const MAX_REDUCTION_STEPS = 64
+
+// Unimodular integer matrix U with U · vec = (1, 0, 0) for a primitive integer vector `vec`
+// (gcd 1): row 0 is a dual d with d · vec = 1 and rows 1, 2 generate the annihilator
+// {n ∈ ℤ³ : n · vec = 0}. Built by the extended Euclidean algorithm: every integer row
+// operation that shrinks the working copy of vec is mirrored on U (starting from the
+// identity), so U · vec tracks the working copy at all times and det U = ±1.
+export function unimodular_completion(vec: Vec3): Matrix3x3 {
+  const working: Vec3 = [...vec]
+  const rows: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  // Repeatedly reduce every entry modulo the smallest non-zero one until one entry is left.
+  // Scalar loops: symmetry classification runs this for every distinct rotation matrix.
+  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
+    let [pivot, n_non_zero] = [-1, 0]
+    for (let axis = 0; axis < 3; axis++) {
+      if (working[axis] === 0) continue
+      n_non_zero++
+      if (pivot === -1 || Math.abs(working[axis]) < Math.abs(working[pivot])) pivot = axis
+    }
+    if (n_non_zero <= 1) break
+    for (let axis = 0; axis < 3; axis++) {
+      if (axis === pivot || working[axis] === 0) continue
+      const quotient = Math.trunc(working[axis] / working[pivot])
+      working[axis] -= quotient * working[pivot]
+      for (let col = 0; col < 3; col++) rows[axis][col] -= quotient * rows[pivot][col]
+    }
+  }
+  const pivot = working.findIndex((val) => val !== 0)
+  if (pivot === -1 || Math.abs(working[pivot]) !== 1) {
+    throw new Error(
+      `Expected a primitive integer vector (gcd 1), got ${JSON.stringify(vec)}: Euclidean ` +
+        `reduction ended at ${JSON.stringify(working)}`,
+    )
+  }
+  if (working[pivot] < 0) rows[pivot] = scale(rows[pivot], -1)
+  const others = [0, 1, 2].filter((axis) => axis !== pivot).map((axis) => rows[axis])
+  return [rows[pivot], others[0], others[1]]
+}
+
+// Shortest basis of the 2D lattice spanned by two integer vectors (Lagrange/Gauss reduction,
+// optimal in 2D), with lengths measured after mapping through `embed`: the identity measures
+// the integer vectors themselves, a frac→Cartesian converter the metric of a crystal lattice.
+// Only unimodular steps are taken, so the spanned lattice is unchanged.
+export function gauss_reduce_pair(
+  first: Vec3,
+  second: Vec3,
+  embed: (vec: Vec3) => Vec3 = (vec) => vec,
+): [Vec3, Vec3] {
+  let [short, long] = [first, second]
+  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
+    const [cart_short, cart_long] = [embed(short), embed(long)]
+    const norm_short = dot(cart_short, cart_short)
+    if (dot(cart_long, cart_long) < norm_short) {
+      ;[short, long] = [long, short]
+      continue
+    }
+    const factor = Math.round(dot(cart_short, cart_long) / norm_short)
+    if (factor === 0) return [short, long]
+    long = subtract(long, scale(short, factor))
+  }
+  throw new Error(
+    `Basis reduction did not converge in ${MAX_REDUCTION_STEPS} steps for ` +
+      `${JSON.stringify(first)} and ${JSON.stringify(second)}`,
+  )
+}
+
 // Miller indices that pick out a plane: three safe integers, not all zero. Not gcd-reduced
 // here: (222) is a valid half-spacing stack for lattice planes.
 export function validate_miller_indices(hkl: Vec3): void {
