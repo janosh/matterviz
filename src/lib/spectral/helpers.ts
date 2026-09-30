@@ -99,22 +99,31 @@ export function scale_segment_distances(
   )
 }
 
+// Normalization divisor shared by all channels on a grid (e.g. both spins of a DOS, so their
+// relative scale survives): the max, sum or integral over every channel together. 1 when
+// there is nothing to divide by (no mode or channels, a zero total, a single-point integral).
 // array_max, not Math.max(...densities): DOS grids reach 1e7 points, past the argument limit
-export function normalize_densities(
-  densities: number[],
-  freqs_or_energies: number[],
+export function density_divisor(
+  channels: readonly (readonly number[])[],
+  freqs_or_energies: readonly number[],
   mode: types.NormalizationMode,
-): number[] {
+): number {
+  const weighted_total = (weight: (idx: number) => number) =>
+    channels.reduce(
+      (acc, densities) => densities.reduce((sum, dens, idx) => sum + dens * weight(idx), acc),
+      0,
+    )
   let divisor = 0
-  if (mode === `max`) divisor = array_max(densities)
-  else if (mode === `sum`) divisor = densities.reduce((acc, dens) => acc + dens, 0)
+  if (mode === `max`) divisor = Math.max(...channels.map((densities) => array_max(densities)))
+  else if (mode === `sum`) divisor = weighted_total(() => 1)
   else if (mode === `integral` && freqs_or_energies.length >= 2) {
     // trapezoid, not a left-Riemann sum off x[1] - x[0]: the latter assumed a uniform grid
     // and dropped half an endpoint bin
     const weights = trapezoid_weights(freqs_or_energies)
-    divisor = densities.reduce((acc, dens, idx) => acc + dens * weights[idx], 0)
+    divisor = weighted_total((idx) => weights[idx])
   }
-  return divisor === 0 ? densities : densities.map((dens) => dens / divisor)
+  // -Infinity: the max over no values
+  return divisor === 0 || divisor === -Infinity ? 1 : divisor
 }
 
 // Trapezoid quadrature weights for an arbitrary 1D grid: each point covers half the gap to
@@ -774,49 +783,24 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   }
 }
 
-// Generate an SVG path for a fat band ribbon.
-// Creates a closed polygon by tracing the upper edge (y - half_width) forward,
-// then tracing the lower edge (y + half_width) backward.
-// Non-finite or non-positive widths are clamped to 0.
+// SVG path of a fat-band ribbon: a closed polygon around the band line tracing the upper edge
+// (y - half-width: SVG y grows downward) forward and the lower edge back. Half-widths are in
+// pixels, so the caller picks one width normalization for all its ribbons.
 export function generate_ribbon_path(
   x_values: number[],
   y_values: number[],
-  width_values: number[],
+  half_widths_px: number[],
   x_scale_fn: (coord_x: number) => number,
   y_scale_fn: (coord_y: number) => number,
-  max_width_px: number,
-  scale: number = 1,
 ): string {
   const len = x_values.length
-  if (len < 2 || len !== y_values.length || len !== width_values.length) return ``
-
-  // Normalize width values to [0, 1] range based on the max positive finite value
-  const finite_positive_widths = width_values.filter(
-    (width) => Number.isFinite(width) && width > 0,
-  )
-  if (finite_positive_widths.length === 0) return ``
-  const max_width_val = array_max(finite_positive_widths)
-
-  const upper_points: string[] = []
-  const lower_points: string[] = []
-
-  for (let idx = 0; idx < x_values.length; idx++) {
-    const x_px = x_scale_fn(x_values[idx])
-    const y_data = y_values[idx]
-    const raw_width = width_values[idx] ?? 0
-    const width_normalized =
-      Number.isFinite(raw_width) && raw_width > 0 ? raw_width / max_width_val : 0
-    const half_width_px = width_normalized * max_width_px * scale
-
-    // In SVG, y increases downward, so upper edge has smaller y value
-    const y_upper_px = y_scale_fn(y_data) - half_width_px
-    const y_lower_px = y_scale_fn(y_data) + half_width_px
-
-    upper_points.push(`${x_px.toFixed(2)},${y_upper_px.toFixed(2)}`)
-    lower_points.push(`${x_px.toFixed(2)},${y_lower_px.toFixed(2)}`)
-  }
-
-  return closed_edge_path(upper_points, lower_points)
+  if (len < 2 || len !== y_values.length || len !== half_widths_px.length) return ``
+  const edge = (side: -1 | 1): string[] =>
+    x_values.map((x_val, idx) => {
+      const y_px = y_scale_fn(y_values[idx]) + side * half_widths_px[idx]
+      return `${x_scale_fn(x_val).toFixed(2)},${y_px.toFixed(2)}`
+    })
+  return closed_edge_path(edge(-1), edge(1))
 }
 
 // SVG path tracing the upper edge forward and the lower edge backward, closed (edge points

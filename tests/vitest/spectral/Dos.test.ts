@@ -5,6 +5,7 @@ import {
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
+  normalize_dos,
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
@@ -259,6 +260,46 @@ describe(`Dos component`, () => {
   it(`shows EmptyState for an empty canonical collection`, () => {
     mount(Dos, { target: document.body, props: { doses: {} } })
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // The density axis is pinned to the plotted extent, so view.y reads the drawn densities:
+  // - one normalization divisor per DOS from both spins (up peak 2, down peak 1 keep 2:1)
+  // - spin-down stacks on the previous DOS' spin-down in mirror mode too
+  // - phonon densities are per displayed unit, so a DOS loaded in cm⁻¹ or meV and shown in
+  //   its own unit round-trips (stored per THz)
+  const spin_split: ElectronicDos = {
+    type: `electronic`,
+    energies: [-1, 0, 1],
+    densities: [0, 2, 0],
+    spin_down_densities: [0, 1, 0],
+    spin_polarized: true,
+  }
+  const half_spin_split = {
+    ...spin_split,
+    densities: [0, 1, 0],
+    spin_down_densities: [0, 0.5, 0],
+  }
+  const phonon_in = (frequency_unit: string, frequencies: number[]) =>
+    normalize_dos({ frequencies, densities: [0, 1, 0.5], frequency_unit }) as PhononDos
+  it.each([
+    [`max`, { doses: { '': spin_split }, normalize: `max` }, [-0.5, 1]],
+    // only drawn spins set the divisor: a hidden spin-up (peak 2) can't hold spin-down below 1
+    [
+      `max down_only`,
+      { doses: { '': spin_split }, normalize: `max`, spin_mode: `down_only` },
+      [0, 1],
+    ],
+    // trapezoid ∫ = 2 (up) + 1 (down)
+    [`integral`, { doses: { '': spin_split }, normalize: `integral` }, [-1 / 3, 2 / 3]],
+    [`mirror stack`, { doses: { A: spin_split, B: half_spin_split }, stack: true }, [-1.5, 3]],
+    [`cm^-1`, { doses: { '': phonon_in(`cm^-1`, [0, 100, 200]) }, units: `cm^-1` }, [0, 1]],
+    [`meV`, { doses: { '': phonon_in(`meV`, [0, 10, 20]) }, units: `meV` }, [0, 1]],
+  ] as const)(`density axis spans the drawn densities: %s`, async (_desc, props, expected) => {
+    const state: { view?: { y?: Vec2 } } = { view: undefined }
+    await mount_sized(Dos, bind_props({ ...props }, state), { selector: `.scatter` })
+    const [y_min = NaN, y_max = NaN] = state.view?.y ?? []
+    expect(y_min).toBeCloseTo(expected[0], 12)
+    expect(y_max).toBeCloseTo(expected[1], 12)
   })
 
   it(`stacks spin-up and spin-down independently in overlay mode`, async () => {

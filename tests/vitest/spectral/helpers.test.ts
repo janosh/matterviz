@@ -1,5 +1,5 @@
 import { THZ_TO_INVERSE_CM } from '$lib/constants'
-import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import { convert_frequencies } from '$lib/spectral/frequency-units'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
@@ -11,6 +11,7 @@ import {
   build_point_metadata,
   classify_acoustic,
   compute_frequency_range,
+  density_divisor,
   extract_k_path_points,
   find_gamma_indices,
   find_qpoint_at_rescaled_x,
@@ -20,7 +21,6 @@ import {
   k_path_labels,
   negative_fraction,
   normalize_band_structure,
-  normalize_densities,
   trapezoid_weights,
   electronic_band_gap,
   normalize_dos,
@@ -123,23 +123,27 @@ describe(`convert_frequencies`, () => {
   })
 })
 
-describe(`normalize_densities`, () => {
+describe(`density_divisor`, () => {
   const densities = [1, 2, 3, 2, 1]
   const energies = [0, 1, 2, 3, 4]
-  // trapezoid weights [0.5, 1, 1, 1, 0.5] give ∫ = 8, not the 9 a left-Riemann sum reports
+  // trapezoid weights [0.5, 1, 1, 1, 0.5] give ∫ = 8, not the 9 a left-Riemann sum reports.
+  // Channels (e.g. both spins) share one divisor: the max over all, or their summed sum/∫
   it.each([
-    [`max`, densities.map((val) => val / 3)],
-    [`sum`, densities.map((val) => val / 9)],
-    [`integral`, densities.map((val) => val / 8)],
-    [null, densities],
-  ] as const)(`mode %s`, (mode, expected) => {
-    expect(normalize_densities(densities, energies, mode)).toEqual(expected)
+    [`max`, 3, 3],
+    [`sum`, 9, 9 + 4.5],
+    [`integral`, 8, 8 + 4],
+    [null, 1, 1],
+  ] as const)(`mode %s`, (mode, divisor, two_channel_divisor) => {
+    expect(density_divisor([densities], energies, mode)).toBe(divisor)
+    const half = densities.map((val) => val / 2)
+    expect(density_divisor([densities, half], energies, mode)).toBe(two_channel_divisor)
   })
 
   // the old left-Riemann sum read only x[1] - x[0]: 11.1% low on a uniform grid, 245% off here
-  it(`integral mode makes ∫ = 1 on a non-uniform grid, and leaves degenerate input alone`, () => {
+  it(`integral mode makes ∫ = 1 on a non-uniform grid, and is 1 for degenerate input`, () => {
     const grid = [0, 0.1, 0.2, 3, 10]
-    const normalized = normalize_densities(densities, grid, `integral`)
+    const divisor = density_divisor([densities], grid, `integral`)
+    const normalized = densities.map((val) => val / divisor)
     const integral = grid
       .slice(1)
       .reduce(
@@ -148,14 +152,15 @@ describe(`normalize_densities`, () => {
         0,
       )
     expect(integral).toBeCloseTo(1, 12)
-    expect(normalize_densities([0, 0], [0, 1], `max`)).toEqual([0, 0])
-    expect(normalize_densities([1], [0], `integral`)).toEqual([1])
+    expect(density_divisor([[0, 0]], [0, 1], `max`)).toBe(1)
+    expect(density_divisor([[1]], [0], `integral`)).toBe(1)
+    expect(density_divisor([], [0, 1], `max`)).toBe(1)
   })
 
   // Math.max(...densities) overflows the argument limit; DOS grids reach 1e7 points
   it(`max mode handles grids beyond the spread-argument limit`, () => {
     const large = Array.from({ length: 300_000 }, (_, idx) => (idx % 97) + 1)
-    expect(array_max(normalize_densities(large, large, `max`))).toBe(1)
+    expect(density_divisor([large], large, `max`)).toBe(97)
   })
 })
 
@@ -976,35 +981,22 @@ it.each([
 
 describe(`generate_ribbon_path`, () => {
   const identifier = (val: number) => val
-  it(`traces the upper edge forward and the lower edge back, widths normalised to the max`, () => {
-    // max width 2 at x = 1: half-width 10 px, so y = 5 ± 10; width 1 gives ± 5
-    const path = generate_ribbon_path(
-      [0, 1, 2],
-      [5, 5, 5],
-      [1, 2, 1],
-      identifier,
-      identifier,
-      10,
-    )
+  it(`traces the upper edge forward and the lower edge back at y ∓ half-width px`, () => {
+    const path = generate_ribbon_path([0, 1, 2], [5, 5, 5], [5, 10, 5], identifier, identifier)
     expect(path).toBe(
       `M0.00,0.00 L1.00,-5.00 L2.00,0.00 L2.00,10.00 L1.00,15.00 L0.00,10.00 Z`,
     )
-    expect(
-      generate_ribbon_path([0, 1], [5, 5], [1, 1], (val) => 2 * val, identifier, 10, 2),
-    ).toBe(`M0.00,-15.00 L2.00,-15.00 L2.00,25.00 L0.00,25.00 Z`)
-    // non-finite widths count as 0
-    expect(
-      generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, Infinity, 1], identifier, identifier, 10),
-    ).toContain(`L1.00,0.00`)
+    expect(generate_ribbon_path([0, 1], [5, 5], [20, 20], (val) => 2 * val, identifier)).toBe(
+      `M0.00,-15.00 L2.00,-15.00 L2.00,25.00 L0.00,25.00 Z`,
+    )
   })
 
   it.each([
     [`too few points`, [0], [0], [1]],
     [`mismatched y`, [0, 1, 2], [0, 1], [1, 1, 1]],
     [`mismatched widths`, [0, 1, 2], [0, 1, 2], [1, 1]],
-    [`no positive width`, [0, 1, 2], [0, 1, 0], [0, -1, NaN]],
-  ])(`returns "" for %s`, (_label, x_vals, y_vals, widths) => {
-    expect(generate_ribbon_path(x_vals, y_vals, widths, identifier, identifier, 10)).toBe(``)
+  ])(`returns "" for %s`, (_label, x_vals, y_vals, half_widths) => {
+    expect(generate_ribbon_path(x_vals, y_vals, half_widths, identifier, identifier)).toBe(``)
   })
 })
 
