@@ -39,24 +39,17 @@ const MIN_DIR_LENGTH = 1e-12
 // sin of the angle between start and end direction below which they count as (anti)parallel
 const MIN_SIN_ANGLE = 1e-6
 
-// Gizmo and scene each own a fly-to on one shared OrbitControls, but only one flight steers it:
-// a new one takes over mid-air (as a restart does on one instance) and inherits the host's
-// setting from before the first of them disabled orbiting, to restore when it lands.
+// The one fly-to steering each OrbitControls (gizmo and scene share one) and the host's
+// `enabled` from before any took over, restored when the last lands
 const flights = new WeakMap<FlyToControls, { enabled: boolean; release: () => void }>()
+const locked = new WeakSet<FlyToControls>() // held by a camera flight
 
-// Controls a camera flight holds: no fly-to may steer them until it lets go
-const locked = new WeakSet<FlyToControls>()
-
-// A camera flight taking over the camera ends whichever fly-to steers `controls` where it is
-// (handing back the host's setting) and refuses new ones until it lets go, so neither a swing
-// still in the air nor one started mid-flight fights it.
+// A camera flight ends the fly-to steering `controls` where it is and blocks new ones
 export function lock_fly_to(controls: FlyToControls, lock: boolean): void {
-  if (!lock) {
-    locked.delete(controls)
-    return
-  }
-  locked.add(controls)
-  flights.get(controls)?.release()
+  if (lock) {
+    locked.add(controls)
+    flights.get(controls)?.release()
+  } else locked.delete(controls)
 }
 
 // `start` takes a direction that need not be normalized; only its direction is used.

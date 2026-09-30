@@ -1,4 +1,4 @@
-import { create_camera_flight_controller } from '$lib/scene/camera-flight'
+import { type CameraPose, create_camera_flight_controller } from '$lib/scene/camera-flight'
 import {
   create_camera_flight_session,
   type FlightTimeline,
@@ -17,12 +17,8 @@ function setup() {
     vi.fn(),
   )
   const original = controller.capture()
-  // A sideways move OrbitControls can hold (target on the view axis), so commits keep it as is
-  const moved = {
-    ...original,
-    position: [5, 0, 10] as [number, number, number],
-    target: [5, 0, 0] as [number, number, number],
-  }
+  // Target on the view axis, so OrbitControls holds it and commits keep it as is
+  const moved: CameraPose = { ...original, position: [5, 0, 10], target: [5, 0, 0] }
   let playing = true
   const timeline: FlightTimeline = {
     start: 0,
