@@ -1436,9 +1436,7 @@
             >
               {#each distribution_properties as srs (srs.id)}
                 <option value={srs.id}
-                  >{html_to_text(srs.label ?? srs.id)}{srs.unit
-                    ? ` (${srs.unit})`
-                    : ``}</option
+                  >{html_to_text(srs.label ?? srs.id)}{srs.unit && ` (${srs.unit})`}</option
                 >
               {/each}
             </select>

@@ -36,10 +36,10 @@ export function suggest_analysis_frame_stride(
   return n_atoms ? suggest_frame_stride(frame_count, n_atoms * buffers, max_bytes) : null
 }
 
-// Whether unwrapped_positions_of will cache a same-size unwrapped copy of the run's collected
-// positions (wrapped coordinates in a cell), predicted from the preview for a stride budget
-export const unwraps_positions = ({ preview }: TrajectoryRun): boolean =>
-  is_crystal(preview.structure) && preview.metadata?.coords_unwrapped !== true
+// Position-sized buffers a lag analysis holds for the run's positions: 2 when
+// unwrapped_positions_of will cache an unwrapped copy of wrapped ones in a cell
+export const position_buffers = ({ preview }: TrajectoryRun): 1 | 2 =>
+  is_crystal(preview.structure) && preview.metadata?.coords_unwrapped !== true ? 2 : 1
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
   // Names the analysis in the errors below, e.g. `MSD`

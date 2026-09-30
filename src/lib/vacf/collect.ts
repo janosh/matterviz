@@ -3,8 +3,8 @@ import { is_finite_vec3_like } from '$lib/math'
 import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
 import {
   collect_trajectory_positions,
+  position_buffers,
   suggest_analysis_frame_stride,
-  unwraps_positions,
 } from '$lib/trajectory/analysis'
 import type { TrajectoryFrame, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
 import type { VacfInput } from './index'
@@ -28,7 +28,7 @@ export const suggest_vacf_frame_stride = (
   suggest_analysis_frame_stride(
     run,
     max_bytes,
-    has_velocities(run.preview) || !unwraps_positions(run) ? 2 : 3,
+    has_velocities(run.preview) ? 2 : 1 + position_buffers(run),
     frame_count,
   )
 

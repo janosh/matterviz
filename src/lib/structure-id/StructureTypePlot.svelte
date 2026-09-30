@@ -53,8 +53,6 @@
   // results came in through the prop instead
   let computed_labels = $state<string[]>([])
 
-  // Without entries this is results-only mode: id_results/loading/error_msg are the parent's
-  // one-way props. Once entries are withdrawn, their results and failure go with them.
   use_async_result({
     input: () => (entries.length > 0 ? entries : undefined),
     options: () => id_options,

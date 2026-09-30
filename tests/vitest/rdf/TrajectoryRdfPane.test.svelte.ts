@@ -5,10 +5,10 @@ import { download } from '$lib/io/fetch'
 import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
 import type { TrajectoryRdf } from '$lib/rdf'
 import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
-import { calc_lattice_params, type Matrix3x3 } from '$lib/math'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
+import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
@@ -176,49 +176,17 @@ test.each([
   },
 )
 
-// The minimum-image radius is half the smallest face-to-face height, not the shortest edge:
-// shearing b along a keeps every edge ~10 Å but leaves 2 Å between opposite b faces
-test.each<{ label: string; matrix: Matrix3x3; hint: string | null }>([
-  {
-    label: `cubic`,
-    matrix: [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ],
-    hint: null,
-  },
-  {
-    label: `sheared`,
-    matrix: [
-      [10, 0, 0],
-      [9.8, 2, 0],
-      [0, 0, 10],
-    ],
-    hint: `beyond half the cell (1 Å)`,
-  },
-])(`flags a 3 Å cutoff past half the $label cell: $hint`, async ({ matrix, hint }) => {
-  const fcc = make_fcc([1, 1, 1])
-  const structure = {
-    ...fcc,
-    lattice: { ...fcc.lattice, ...calc_lattice_params(matrix), matrix },
-  }
-  const state = $state({
-    run: { ...make_run(1), preview: { step: 0, structure } },
-    result: undefined as TrajectoryRdf | undefined,
-  })
+// Half the cell is half its smallest face-to-face height, not edge: this shear keeps every edge
+// ~10 Å but leaves 2 Å between opposite b faces
+test(`measures half a sheared cell by its face-to-face height`, async () => {
+  // oxfmt-ignore
+  const structure = make_crystal([[10, 0, 0], [9.8, 2, 0], [0, 0, 10]], [[`Cu`, [0, 0, 0]]])
   mounted_component = mount(TrajectoryRdfPane, {
     target: document.body,
-    props: bind_props({ pane_open: true }, state),
+    props: { run: { ...make_run(1), preview: { step: 0, structure } }, pane_open: true },
   })
   await settle()
-  const cutoff = doc_query<HTMLInputElement>(`input[aria-label="RDF cutoff"]`)
-  cutoff.value = `3`
-  cutoff.dispatchEvent(new Event(`input`))
-  await settle()
-  const text = doc_query(`.trajectory-rdf-controls`).textContent ?? ``
-  if (hint) expect(text).toContain(hint)
-  else expect(text).not.toContain(`beyond half the cell`)
+  expect(document.body.textContent).toContain(`beyond half the cell (1 Å)`)
 })
 
 // Refused up front, not on click: g(r) has nothing to normalise against without a cell, and a

@@ -301,8 +301,7 @@ export const to_string_array = (data: unknown): string[] | null => {
   return strings
 }
 
-// h5py writes bools as a FALSE/TRUE int8 enum, which h5wasm's to_array() hands back as JS
-// booleans rather than the 0/1 its `value` holds
+// h5wasm's to_array() hands h5py's FALSE/TRUE int8 bool enum back as JS booleans, not 0/1
 const to_finite_or_bool_number = (value: unknown): number | null =>
   typeof value === `boolean` ? Number(value) : to_finite_number(value)
 

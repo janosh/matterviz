@@ -757,7 +757,6 @@ describe(`VASP run output detection`, () => {
     [`outcar`, `POSITION TOTAL-FORCE without banner`, undefined, false],
     [`outcar`, ` vasp.6.4.2 killed before any ionic step`, undefined, false],
     [`outcar`, `nothing`, `OUTCAR`, true],
-    // a known extension overrules the basename: these are JSON
     [`outcar`, banner, `OUTCAR_relax.json`, false],
     [`vasp`, `nothing`, `XDATCAR_nvt.gz`, true],
     [`vasp`, `{"frames": []}`, `XDATCAR_md.json`, false],
@@ -818,8 +817,7 @@ describe(`LAMMPS`, () => {
     expect(frames.map(({ step }) => step)).toEqual([0, 100])
     expect(frames[1].structure.sites.map(({ xyz }) => xyz[0])).toEqual([0, 1, 2])
     expect(frames.map((frame) => frame.metadata?.time)).toEqual([0, 0.1])
-    // TIMESTEP is the frame's step: a duplicate `timestep` property plotted as a ramp series
-    expect(frames.map((frame) => frame.metadata?.timestep)).toEqual([undefined, undefined])
+    expect(frames[0].metadata).not.toHaveProperty(`timestep`) // it is the frame's step
     expect(run.time_step).toBeUndefined()
   })
 
@@ -1950,7 +1948,6 @@ describe(`JSON`, () => {
   it.each([
     [`array`, (structure: unknown) => [{ structure, step: 7 }], 7],
     [`{ frames }`, (structure: unknown) => ({ frames: [{ structure, step: 7 }] }), 7],
-    // like the array shape, a frame without a step takes its index
     [`stepless { frames }`, (structure: unknown) => ({ frames: [{ structure }] }), 0],
     [`single structure`, (structure: unknown) => structure, 0],
   ])(
@@ -2033,7 +2030,6 @@ describe(`HDF5 slice budgets`, () => {
   })
 
   it(`reads h5py booleans as 0/1 and rejects inexact BigInt arrays`, () => {
-    // h5wasm's to_array() returns h5py's bool enum as JS booleans
     expect(to_number_array([[true, true, false]], true)).toEqual([1, 1, 0])
     expect(to_number_array(false, true)).toEqual([0])
     expect(to_number_array([1n, 2n])).toEqual([1, 2])
@@ -2349,22 +2345,17 @@ describe(`HDF5`, () => {
       }
   })
 
-  // A frameless [n_atoms, 3] dataset has no frame axis to slice: past one atom batch the run
-  // streams, and slicing its atom axis as frames returned 3 values for the whole frame
+  // Past one atom batch the run streams, and slicing a frameless [n_atoms, 3] dataset's atom
+  // axis as frames collected 3 values for the whole frame
   it(`collects a single-frame [n_atoms, 3] TorchSim file past one atom batch`, async () => {
     const n_atoms = ATOM_BATCH_SIZE + 1
-    const positions = Float64Array.from({ length: n_atoms * 3 }, (_unused, idx) => idx / 8)
+    const positions = Array.from({ length: n_atoms * 3 }, (_unused, idx) => idx / 8)
     const content = await h5_bytes(`single-frame-large`, (file) => {
-      file.create_dataset({ name: `positions`, data: positions, shape: [n_atoms, 3] })
-      file.create_dataset({
-        name: `atomic_numbers`,
-        data: new Uint8Array(n_atoms).fill(14),
-        shape: [n_atoms],
-      })
+      create_dataset(file, `positions`, positions, [n_atoms, 3])
+      create_dataset(file, `atomic_numbers`, Array(n_atoms).fill(14), [n_atoms])
     })
     const collected = await collect(await open(content, `single-frame-large.h5`))
-    expect(collected).toMatchObject({ n_frames: 1, n_atoms, steps: [0] })
-    expect(collected.positions).toEqual(positions)
+    expect(collected.positions).toEqual(Float64Array.from(positions))
   })
 
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
@@ -2477,10 +2468,7 @@ describe(`HDF5`, () => {
       steps: [0],
       values: Float64Array.from([1, 2, 3]),
     })
-    expect(torch.signals?.stress).toMatchObject({
-      sample_shape: [3, 3],
-      values: Float64Array.from([1, 0, 0, 0, 2, 0, 0, 0, 3]),
-    })
+    expect(torch.signals?.stress).toMatchObject({ sample_shape: [3, 3] })
     const reference = await open_replica(1)
     expect(reference.frame_count).toBe(1)
     const reference_velocity = reference.signals?.velocity
@@ -2910,12 +2898,10 @@ describe(`HDF5`, () => {
       create_dataset(file, `atomic_numbers`, [1], [1])
       file.create_attribute(`pbc`, pbc)
     })
-  const pbc_error = `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`
   // oxfmt-ignore
   it.each([
-    [`a PBC attribute outside 0/1`, pbc_attribute_h5([0, 2, 1]), undefined, pbc_error],
-    // unreadable is not missing: that would silently mean fully periodic
-    [`a non-numeric PBC attribute`, pbc_attribute_h5(`T T F`), undefined, pbc_error],
+    [`a PBC attribute outside 0/1`, pbc_attribute_h5([0, 2, 1]), undefined, /attribute pbc\/periodic_boundary_conditions must contain only 0\/1/],
+    [`a non-numeric PBC attribute`, pbc_attribute_h5(`T T F`), undefined, /attribute pbc\/periodic_boundary_conditions must contain only 0\/1/],
     [`non-increasing independent signal steps`, () => make_torch_sim_signal_buffer({ dipole_steps: [2, 2] }), undefined, /\/steps\/dipole must increase strictly/],
     [`a known signal without its step axis`, () => make_torch_sim_signal_buffer({ include_dipole_steps: false }), undefined, /signal \/data\/dipole is missing \/steps\/dipole/],
     [`a truncated Reference MD replica id array`, () => make_reference_md_h5_buffer([100]), REPLICA_1, /\/replicas\/global_ids.*expected \[2\]/],

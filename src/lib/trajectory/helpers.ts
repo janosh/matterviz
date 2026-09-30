@@ -606,25 +606,23 @@ export function count_xyz_frames(
 
 // Whether `data` holds at least two XYZ frames, reading as little of it as settles the
 // answer: a head is conclusive unless its cut fell inside a frame (the torn frame is the
-// generator's return value) or right at the end of the last complete one (whose last atom line
-// the cut may have shortened), in which case the next larger head is tried. Each head is line
-// indexed whole, so they grow 4x at a time, up to one leaving room for two frames of 30k atoms
-// (~1.5 MB each).
+// generator's return value) or at the end of one (maybe mid atom line), in which case the next
+// larger head is tried. Each head is line indexed whole, so they grow 4x at a time, up to one
+// leaving room for two frames of 30k atoms (~1.5 MB each).
 const SNIFF_HEADS = [2 ** 16, 2 ** 18, 2 ** 20, 2 ** 23]
 export function has_multiple_xyz_frames(data: string | TextLines): boolean {
   for (const head_chars of SNIFF_HEADS) {
     const head = typeof data === `string` ? data.slice(0, head_chars) : data.head(head_chars)
     const lines = new TextLines(head)
     const frames = iter_xyz_frames(lines)
-    let first: XyzFrameSpec | undefined
+    let end = -1 // of the first complete frame
     let next = frames.next()
     for (; !next.done; next = frames.next()) {
-      if (first) return true
-      first = next.value
+      if (end >= 0) return true
+      end = next.value.end
     }
     // a head holding the whole text, or cut past its frame outside any other, settles it
-    if (head.length < head_chars || (next.value === null && (first?.end ?? 0) < lines.count))
-      return false
+    if (head.length < head_chars || (next.value === null && end < lines.count)) return false
   }
   return count_xyz_frames(data, 2) >= 2
 }

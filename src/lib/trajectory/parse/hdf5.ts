@@ -265,14 +265,11 @@ const discover_torch_sim_signals = (
       steps_raw = steps_raw.slice(0, geometry_counts.valid)
     }
     validate_steps(steps_raw, step_path)
-    // A one-system run's per-system signal keeps its size-1 system axis: [n, 1], [n, 1, 3] and
-    // [n, 1, 3, 3] hold a scalar, vector or tensor per sample. A one-atom run's [n, 1, 3] stays
-    // the per-atom vector it always read as.
-    const raw_sample_shape = shape.slice(1)
+    // Squeeze a one-system run's size-1 system axis ([n, 1], [n, 1, 3], [n, 1, 3, 3]), except
+    // in a one-atom run, whose [n, 1, 3] is a per-atom vector
+    const sample_shape = shape.slice(1)
     const squeezed_shapes = [`1`, `1,3,3`, ...(n_atoms === 1 ? [] : [`1,3`])]
-    const sample_shape = squeezed_shapes.includes(raw_sample_shape.join(`,`))
-      ? raw_sample_shape.slice(1)
-      : raw_sample_shape
+    if (squeezed_shapes.includes(sample_shape.join(`,`))) sample_shape.shift()
     if (!is_supported_trajectory_signal_shape(sample_shape, n_atoms)) {
       throw new Error(
         `TorchSim HDF5 signal ${path} has unsupported sample shape ` +

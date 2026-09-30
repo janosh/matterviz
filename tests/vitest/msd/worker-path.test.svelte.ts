@@ -51,16 +51,12 @@ describe(`worker code path`, () => {
 // hundreds of MB) position buffer and redo the analysis; a lag-range edit must
 it(`MsdPlot relabels dt edits without recomputing`, async () => {
   const positions = drift_positions(30)
-  const state = $state<{
-    positions: TrajectoryPositionStream
-    msd_options: MsdOptions
-    result?: MsdResult
-    error_msg?: string
-  }>({
+  const initial_options: MsdOptions = { max_lag_fraction: 0.5 }
+  const state = $state({
     positions,
-    msd_options: { max_lag_fraction: 0.5 },
-    result: undefined,
-    error_msg: undefined,
+    msd_options: initial_options,
+    result: undefined as MsdResult | undefined,
+    error_msg: undefined as string | undefined,
   })
   const component = mount(MsdPlot, { target: document.body, props: bind_props({}, state) })
   const edit = async (msd_options: MsdOptions) => {
@@ -80,8 +76,7 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
     expect(await edit({ max_lag_fraction: 0.5, dt: 2 })).toEqual(invalid)
     expect(await edit(relabelled)).toEqual([expected, undefined, 1])
     expect((await edit({ ...relabelled, max_lag_fraction: 0.3 }))[2]).toBe(2)
-    // new positions (e.g. recollected at another stride) with their own dt: the previous
-    // curves must not be relabelled onto them while their compute is still in flight
+    // recollected positions blank the old curves until their own compute lands, not relabel them
     const recollected = drift_positions(20)
     state.positions = recollected
     state.msd_options = { ...relabelled, dt: 4 }

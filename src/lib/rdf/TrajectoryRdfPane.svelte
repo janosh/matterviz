@@ -43,9 +43,8 @@
   let safe_cutoff = $derived(
     cutoff !== null && Number.isFinite(cutoff) && cutoff > 0 ? cutoff : DEFAULT_RDF_CUTOFF,
   )
-  // A cutoff past half the cell is legal (the neighbour search images as far as needed) but
-  // g(r) there averages over periodic replicas, so say so rather than refuse. The minimum-image
-  // radius is half the smallest face-to-face height, which a skewed cell keeps below its edges.
+  // A cutoff past half the smallest face-to-face height is legal (the neighbour search images
+  // as far as needed) but g(r) there averages over periodic replicas: warn, don't refuse
   let half_cell = $derived.by(() => {
     const structure = run?.preview.structure
     if (!has_usable_lattice(structure)) return null

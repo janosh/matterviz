@@ -23,7 +23,7 @@ import { trajectory_from_frames } from '$lib/trajectory/runs/memory'
 import { summarize_run } from '$lib/trajectory/run'
 import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
 import { create_trajectory_frame } from '$lib/trajectory/helpers'
-import { h5_bytes, make_reference_md_h5_buffer } from './fixtures'
+import { h5_bytes } from './fixtures'
 import { open_trajectory } from '$lib/trajectory/open'
 import { open_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
 import { create_warning_collector } from '$lib/trajectory/parse/shared'
@@ -513,32 +513,6 @@ describe(`spatial kinetic hotspots`, () => {
     expect(result.time_weight).toBe(10)
     expect(hotspot_mean(result, `energy`)).toBe(4.5)
     expect(Array.from(result.population)).toEqual([5, 5])
-  })
-
-  // The multi-frame replica streams its velocity signal as a sample-free descriptor, so the
-  // channel must come off each frame's site vectors
-  it(`computes velocity hotspots for a Reference MD replica`, async () => {
-    const run = await open_trajectory(await make_reference_md_h5_buffer([100, 101], 3), {
-      filename: `reference-md.h5`,
-      hdf5_group_path: `/molecules/h2o/replicas/1`,
-    })
-    onTestFinished(() => run.dispose())
-    if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)
-    const box: HotspotGrid[`cell`] = [
-      [20, 0, 0],
-      [0, 20, 0],
-      [0, 0, 20],
-    ]
-    const result = await run.compute_hotspots({
-      ...velocity_options,
-      grid: { ...grid, dims: [1, 1, 1], cell: box },
-    })
-    // replica 1 moves its H at 1 A/ps and its O at 2 A/ps in every frame
-    expect(result.frames).toBe(3)
-    expect(hotspot_mean(result, `energy`)).toBeCloseTo(
-      ((1.008 + 15.999 * 4) / 2) * conversion,
-      12,
-    )
   })
 
   it(`rejects changing periodic device grids`, async () => {

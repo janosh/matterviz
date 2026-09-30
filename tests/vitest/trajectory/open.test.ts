@@ -123,9 +123,7 @@ describe(`loading policy`, () => {
     `opens both XYZ frames when frame 1 ends %i chars past the first sniff head`,
     async (overhang) => {
       const body = Array(2000).fill(`H 10.123456 1.000000 2.000000`).join(`\n`)
-      const comment = `c`.repeat(2 ** 16 + overhang - `2000\n\n`.length - body.length)
-      const frame = `2000\n${comment}\n${body}`
-      expect(frame).toHaveLength(2 ** 16 + overhang)
+      const frame = `2000\n${`c`.repeat(2 ** 16 + overhang - 6 - body.length)}\n${body}`
       expect((await open(`${frame}\n${frame}\n`, `md.xyz`)).frame_count).toBe(2)
     },
   )

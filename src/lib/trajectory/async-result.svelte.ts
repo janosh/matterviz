@@ -53,9 +53,8 @@ export const plain_position_stream = ({
 
 interface AsyncResultBinding<Input, Options, Result> {
   // Reactive reads: a new input identity recomputes, options only when their JSON changes (so
-  // a recreated but equal object does not). Options must therefore be JSON-serializable. No
-  // input is results-only mode: result, loading and error are then the caller's one-way props,
-  // left untouched unless an input was just withdrawn.
+  // a recreated but equal object does not). Options must therefore be JSON-serializable.
+  // Without input, result/loading/error are the caller's props, reset only on its withdrawal.
   input: () => Input | undefined
   options: () => Options
   compute: (input: Input, options: Options, signal: AbortSignal) => Promise<Result>
@@ -66,9 +65,8 @@ interface AsyncResultBinding<Input, Options, Result> {
   set_result: (result: Result | undefined) => void
   set_loading: (loading: boolean) => void
   set_error: (message: string | undefined) => void
-  // Whether withdrawing the input also clears the error. Off where a parent shares the error
-  // slot and reports its own failure as it withdraws the input (TrajectoryAnalysisPane's failed
-  // collect), which the reset would wipe.
+  // Off where the parent reports its own failure into the shared error slot as it withdraws
+  // the input (TrajectoryAnalysisPane's failed collect)
   clear_error_on_withdraw?: boolean
 }
 
@@ -78,20 +76,17 @@ export function use_async_result<Input, Options, Result>(
   const options_key = $derived(JSON.stringify(binding.options()))
   // Dropped whenever the input changes, so a superseded result is never revised onto the next
   let computed = $state.raw<Result>()
-  // The input of the effect's previous run. Not reactive, and never a withdrawn input: holding
-  // one would keep its (possibly hundreds of MB) position buffer alive.
+  // Non-reactive, and reset on withdrawal so it never pins a (maybe hundreds of MB) buffer
   let last_input: Input | undefined
   $effect(() => {
     const input = binding.input()
-    const withdrawn = Boolean(last_input) && !input
+    const options: Options = JSON.parse(options_key)
     if (input !== last_input) computed = undefined
-    last_input = input
     // Aborted by the cleanup below, so `signal.aborted` is exactly "superseded or unmounted":
     // nobody will read that answer (nor its abort rejection)
     const controller = new AbortController()
     const { signal } = controller
     if (input) {
-      const options: Options = JSON.parse(options_key)
       binding.set_loading(true)
       binding.set_error(undefined)
       binding
@@ -107,18 +102,19 @@ export function use_async_result<Input, Options, Result>(
         .finally(() => {
           if (!signal.aborted) binding.set_loading(false)
         })
-    } else if (withdrawn) {
+    } else if (last_input) {
       binding.set_result(undefined)
       binding.set_loading(false)
       if (binding.clear_error_on_withdraw) binding.set_error(undefined)
     }
+    last_input = input
     return () => controller.abort()
   })
   // Without an input the result prop holds the caller's precomputed curves, left untouched
   $effect(() => {
     if (!binding.input()) return
     binding.set_result(undefined)
-    // Nothing computed for this input yet, or a failure whose error only a new compute clears
+    // Nothing computed yet, or a failure whose error only a new compute clears
     if (!computed) return
     try {
       binding.set_result(binding.revise ? binding.revise(computed) : computed)

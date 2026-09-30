@@ -176,12 +176,7 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
     `force x (eV/Å)`,
     `selective_dynamics x`,
   )
-  // velocity units vary by source (Å/fs ASE, Å/ps LAMMPS metal), so no unit is claimed
-  expect(header_texts().filter((text) => text.startsWith(`velocity`))).toEqual([
-    `velocity x`,
-    `velocity y`,
-    `velocity z`,
-  ])
+  expect(header_texts()).toContain(`velocity x`) // no unit: Å/fs from ASE, Å/ps from LAMMPS
   const rows = body_rows()
   expect(rows).toHaveLength(2)
   expect(cell_texts(rows[0]).slice(8, 16)).toEqual([

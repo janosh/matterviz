@@ -88,26 +88,18 @@ describe(`collect_vacf_input`, () => {
     await expect(collect_vacf_input(run)).rejects.toThrow(error)
   })
 
-  // Stored velocities are used as they are (positions + velocities = 2 trajectory-sized
-  // buffers); a file WITHOUT them derives the central-difference series from the positions,
-  // via a cached unwrapped copy when they are wrapped in a cell (3). Budgeting that path at 1
-  // told a 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
+  // positions + velocities = 2 trajectory-sized buffers, plus the unwrapped copy that deriving
+  // velocities from wrapped positions in a cell caches (3). Budgeting that path at 1 told a
+  // 20k-frame x 1k-atom run to stride 1 and hold ~1.4 GB against a 512 MB budget.
   it.each([
-    [
-      `stored velocities in a cell`,
-      { box_length: 5, velocities: [[1, 0, 0]] },
-      [1, 1, 2],
-      [1, 1, 1],
-    ],
-    [`derived velocities without a cell`, {}, [1, 1, 2], [1, 1, 1]],
-    [`derived velocities in a cell`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
+    [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1]],
+    [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1]],
+    [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
   ])(
-    `budgets every buffer calc_vacf holds for %s`,
+    `budgets every buffer calc_vacf holds for %s velocities`,
     (_label, frame_options, strides, window_strides) => {
       const run = trajectory_from_frames(
-        Array.from({ length: 1000 }, (_unused, frame_idx) =>
-          make_frame(frame_idx, [[0, 0, 0]], frame_options),
-        ),
+        Array.from({ length: 1000 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),
       )
       const budgets = [72_000, 48_000, 24_000]
       expect(budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes))).toEqual(

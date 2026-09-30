@@ -91,8 +91,7 @@ const frame_structure = (structure: unknown, label: string | number): AnyStructu
   return structure_from_json(structure, { wrap: false })
 }
 
-// Entries of a JSON array or `{ frames }` alike: a frame object or a bare structure, whose
-// step defaults to its index
+// Frame objects or bare structures from a JSON array or `{ frames }`; step defaults to index
 const json_frames = (entries: unknown[]): TrajectoryFrame[] =>
   entries.map((entry, idx) => {
     const frame = entry as Record<string, unknown> | null

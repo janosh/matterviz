@@ -62,8 +62,7 @@ function ext_hint(filename: string | undefined, format_regex: RegExp): boolean |
   return KNOWN_FORMAT_EXT_REGEX.test(base) ? false : null
 }
 
-// A basename pattern (XDATCAR*, *OUTCAR*) names its format only when no extension names
-// another: XDATCAR_md.json is JSON
+// ext_hint for a basename pattern (XDATCAR*, *OUTCAR*), which a known extension overrules
 const name_hint = (filename: string | undefined, name_regex: RegExp): boolean | null =>
   ext_hint(filename, KNOWN_FORMAT_EXT_REGEX) ? false : ext_hint(filename, name_regex)
 

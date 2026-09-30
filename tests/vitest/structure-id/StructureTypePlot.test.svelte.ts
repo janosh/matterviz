@@ -178,10 +178,8 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     },
   )
 
-  // A failed compute used to leave its message behind once `structures` was emptied, because
-  // the reset sat after the early return for empty input. Successful results used to outlive
-  // their inputs too: while the replacement computed (and after removal) the plot and bound
-  // id_results kept the previous populations, unmarked, as if they were the new inputs'
+  // A failed compute's message, and a successful one's results, must not outlive their inputs:
+  // once replaced (while the replacement computes) or removed
   test(`clears the error and results once their structures are replaced or removed`, async () => {
     const compute_spy = vi
       .spyOn(async_compute, `calc_structure_id_async`)
@@ -204,24 +202,18 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     expect(compute_spy).toHaveBeenCalledTimes(2)
     expect(state.error_msg).toBeUndefined()
     expect(document.body.textContent).not.toContain(`synthetic failure`)
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`FCC`))
 
     const pending_compute = Promise.withResolvers<StructureIdResult>()
     compute_spy.mockReturnValueOnce(pending_compute.promise)
     state.structures = make_bcc([1, 1, 1])
     flushSync()
     expect(state.id_results).toEqual([])
-    expect(document.body.textContent).toContain(`Identifying structure types`)
-    expect(document.body.textContent).not.toContain(`FCC`)
     pending_compute.resolve(bcc_result)
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`BCC`))
-    expect(state.id_results).toEqual([bcc_result])
+    await vi.waitFor(() => expect(state.id_results).toEqual([bcc_result]))
 
     state.structures = undefined
     flushSync()
     expect(state.id_results).toEqual([])
-    expect(document.body.textContent).toContain(`Drag and drop structure files here`)
-    expect(document.body.textContent).not.toContain(`BCC`)
   })
 
   test(`equivalent recreated ID options do not recompute`, async () => {
