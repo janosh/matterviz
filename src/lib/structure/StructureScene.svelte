@@ -1097,9 +1097,7 @@
   let rotation_target = $derived(
     lattice
       ? math.scale(math.add(...lattice.matrix), 0.5)
-      : structure && site_count(structure)
-        ? get_center_of_mass(structure)
-        : ([0, 0, 0] as Vec3),
+      : ((structure && get_center_of_mass(structure)) ?? ([0, 0, 0] as Vec3)),
   )
   // Negated target for the inner un-translate group (recomputed only on target change)
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)

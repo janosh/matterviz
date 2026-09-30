@@ -84,10 +84,14 @@ test.each([`plane`, `slab`] as const)(
   },
 )
 
-// no sites (e.g. all deleted in edit mode) means no center of mass: rotate about the origin
-test(`Scene keeps finite transforms for a structure without sites`, () => {
+// no weighted sites (all deleted in edit mode, or only empty species) means no center of
+// mass: rotate about the origin
+test.each([
+  [`no sites`, []],
+  [`a site without species`, [{ ...make_site(`C`, [0, 0, 0], [0, 0, 0], `C`), species: [] }]],
+])(`Scene keeps finite transforms for a structure with %s`, (_desc, sites) => {
   const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, { structure: { sites: [] }, gizmo: false }),
+    StructureScene(anchor, { structure: { sites }, gizmo: false }),
   )
   onTestFinished(unmount_scene)
   flushSync()

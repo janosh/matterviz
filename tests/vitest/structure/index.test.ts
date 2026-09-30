@@ -26,7 +26,7 @@ import {
 } from '$lib/structure/site'
 import { generate_lattice_points } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { describe, expect, test, vi } from 'vitest'
+import { assert, describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 import {
   create_numeric_md_frame,
@@ -115,7 +115,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
 
     const com = struct_utils.get_center_of_mass(structure)
     expect(
-      com.map((val) => Math.round(val * 1e3) / 1e3),
+      com?.map((val) => Math.round(val * 1e3) / 1e3),
       `${identifier} center_of_mass`,
     ).toEqual(expected.center_of_mass)
   })
@@ -220,6 +220,7 @@ describe(`get_center_of_mass`, () => {
       },
     })
     const actual = struct_utils.get_center_of_mass(structure)
+    assert(actual && expected)
     expect(actual).toEqual(expected)
     expect(max_abs_error(actual, expected)).toBe(0)
     expect(max_rel_error(actual, expected)).toBe(0)
@@ -269,13 +270,18 @@ describe(`get_center_of_mass`, () => {
   ])(`should calculate center of mass for $desc`, ({ sites, expected }) => {
     const structure = create_simple_structure(sites)
     const result = struct_utils.get_center_of_mass(structure)
-    expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
+    expected.forEach((val, idx) => expect(result?.[idx]).toBeCloseTo(val, 3))
   })
 
-  test(`throws instead of returning NaN for a structure without sites`, () => {
-    expect(() => struct_utils.get_center_of_mass(create_simple_structure([]))).toThrow(
-      `Center of mass needs sites of positive total weight, got 0`,
-    )
+  // null instead of [NaN, NaN, NaN] when nothing carries weight
+  test.each([
+    [`no sites`, []],
+    [
+      `a zero-occupancy site`,
+      [{ element: `H` as const, occu: 0, oxidation_state: 0, xyz: [1, 2, 3] as Vec3 }],
+    ],
+  ])(`returns null for %s`, (_desc, sites) => {
+    expect(struct_utils.get_center_of_mass(create_simple_structure(sites))).toBeNull()
   })
 })
 
