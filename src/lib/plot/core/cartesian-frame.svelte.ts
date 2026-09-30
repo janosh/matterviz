@@ -107,7 +107,7 @@ interface CartesianFrameOptions {
   // Alt+drag rect, in svg pixel space. Charts that can enumerate their marks implement
   // this to turn the gesture into a selection; omitting it leaves Alt+drag as a zoom.
   on_rect_select?: (start: { x: number; y: number }, current: { x: number; y: number }) => void
-  // Replace an axis's generated ticks (categorical axes plot one tick per category). An
+  // Replace a shown axis's generated ticks (categorical axes plot one tick per category). An
   // empty array falls back to generated ticks, since a categorical axis with no categories
   // has nothing to label.
   tick_override?: (axis: FacetAxis) => number[] | undefined
@@ -179,10 +179,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     axis_ranges: AxisRanges,
   ): Record<FacetAxis, number[]> => {
     const axis_ticks = (axis: FacetAxis): number[] => {
-      if (!width || !height) return []
+      if (!width || !height || !axis_shown(axis)) return []
       const override = opts.tick_override?.(axis)
       if (override?.length) return override
-      if (!axis_shown(axis)) return []
       const config = opts.axes()[axis]
       return generate_ticks(
         axis_ranges[axis],

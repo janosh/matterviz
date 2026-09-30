@@ -267,8 +267,9 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     ? visible_series.filter((srs) => srs.x_axis !== `x2`)
     : visible_series
   const cat_axis = vertical ? axes.x : axes.y
-  // Categorical axes reserve one unit per slot, expanding for explicitly wider bars.
-  const categorical_edges = get_bar_edge_range(cat_series, `linear`)
+  // Categorical axes reserve one unit per slot, expanding for explicitly wider bars. Every
+  // series shares the category slots, so x and x2 share this range to keep their bars aligned.
+  const categorical_edges = get_bar_edge_range(visible_series, `linear`)
   const cat_range: Vec2 =
     category_count > 0
       ? [
@@ -285,10 +286,13 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     vertical ? axes.y2 : axes.x2,
   )
   if (!vertical) return { x: val_range, x2: val2_range, y: cat_range, y2: [0, 1] }
-  const cat2_range = calc_category_range(
-    visible_series.filter((srs) => srs.x_axis === `x2`),
-    axes.x2,
-  )
+  const cat2_range =
+    category_count > 0
+      ? cat_range
+      : calc_category_range(
+          visible_series.filter((srs) => srs.x_axis === `x2`),
+          axes.x2,
+        )
   return { x: cat_range, x2: cat2_range, y: val_range, y2: val2_range }
 }
 

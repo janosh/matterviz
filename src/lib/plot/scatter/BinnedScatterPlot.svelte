@@ -24,6 +24,7 @@
   import {
     axis_transform,
     get_relative_coords,
+    orient_range,
     range_bounds,
   } from '$lib/plot/core/interactions'
   import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
@@ -858,8 +859,8 @@
     const bin = bin_at(coords)
     if (!bin || density_settings.bin_click === `none`) return
     if (bin.count > 1 && density_settings.bin_click === `zoom`) {
-      facet.update_range(`x`, bin.x_range)
-      facet.update_range(`y`, bin.y_range)
+      facet.update_range(`x`, orient_range(bin.x_range, x_range))
+      facet.update_range(`y`, orient_range(bin.y_range, y_range))
       hovered_bin = null
       on_density_zoom?.({ bin, event })
       return

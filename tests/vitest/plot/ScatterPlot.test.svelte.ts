@@ -1442,6 +1442,51 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // secondary-axis data (e.g. photon energy on x2 over wavelength on x) must not stretch
+  // the primary axis
+  test.each([`x`, `y`] as const)(`%s axis spans only its own series`, async (axis) => {
+    const secondary = axis === `x` ? { x_axis: `x2` as const } : { y_axis: `y2` as const }
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [400, 800], y: [400, 800] },
+        { x: [1, 3], y: [1, 3], ...secondary },
+      ],
+    })
+    const ticks = axis_tick_labels(plot, axis).map(Number)
+    expect(Math.min(...ticks)).toBeGreaterThanOrEqual(300)
+  })
+
+  test(`input warnings fire once, not on every pan or data update that keeps them`, async () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const line_style = { stroke: `red` }
+    const segment = () => ({
+      x: [0, 1],
+      y: [0, 1],
+      label: `Band`,
+      markers: `line` as const,
+      line_style,
+    })
+    const state = $state({ x_axis: { range: [0, 1] as Vec2 }, series: [segment(), segment()] })
+    const typo_ref = { type: `series`, series_id: `typo` } as const
+    const fill_regions = [
+      { upper: 1, lower: 0 },
+      { upper: typo_ref, lower: 0 },
+    ]
+    await mount_sized_scatter_plot(bind_props({ fill_regions }, state))
+    for (const shift of [0.1, 0.2, 0.3]) {
+      state.x_axis = { range: [shift, 1 + shift] }
+      state.series = [segment(), segment()]
+      flushSync()
+    }
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith(
+      `ScatterPlot: fill references no series: ${JSON.stringify(typo_ref)}`,
+    )
+    expect(warn).toHaveBeenCalledWith(
+      `ScatterPlot: identical legend rows "Band", give them a shared legend_id`,
+    )
+  })
+
   test(`reassigns visible unit groups and inferred axes after visibility changes`, async () => {
     const state = $state({
       series: [
@@ -1683,6 +1728,8 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`invalid data`, async () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // null entries hold their index, draw nothing and break neither underlays nor series_id refs
     const invalid = [
       {
         x: [1, 2, null, 4, 5] as (number | null)[],
@@ -1690,11 +1737,26 @@ describe(`ScatterPlot`, () => {
       },
       null,
       undefined,
-      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN] },
-      { x: [100, 200, 300], y: [10, 20, 30] },
+      // a JSON null x_axis (e.g. Python None) means the primary one
+      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN], x_axis: null },
+      {
+        id: `a`,
+        x: [100, 200, 300],
+        y: [10, 20, 30],
+        line_underlays: [{ x: [100, 300], y: [10, 30] }],
+      },
     ] as DataSeries[]
-    const invalid_plot = await mount_sized_scatter_plot({ series: invalid })
+    const invalid_plot = await mount_sized_scatter_plot({
+      series: invalid,
+      fill_regions: [{ upper: { type: `series`, series_id: `a` }, lower: 0 }],
+      // a typo'd reference draws nothing, so it warns instead of vanishing silently
+      error_bands: [{ series: { type: `series`, series_id: `typo` }, error: 1 }],
+    })
     expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
+    expect(invalid_plot.querySelectorAll(`.fill-region path`).length).toBeGreaterThan(0)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      `ScatterPlot: fill references no series: {"type":"series","series_id":"typo"}`,
+    )
     document.body.replaceChildren()
 
     // Null entries must survive the auto-label scan. A throw there only kills the placement
@@ -2024,20 +2086,27 @@ describe(`ScatterPlot`, () => {
     expect(fills[1].classList.contains(`hovered`)).toBe(true)
   })
 
-  test(`keeps duplicate fill IDs keyed and hovered independently`, async () => {
-    const fill_regions: FillRegion[] = [
-      { id: `duplicate`, lower: 0, upper: 0.2, fill: `steelblue` },
-      { id: `duplicate`, lower: 0.4, upper: 0.6, fill: `slategray` },
-    ]
-    await mount_sized_scatter_plot({ ...fill_plot_props(), fill_regions })
+  // ids 1 and `1` would both key as `1`
+  test.each([
+    [`duplicate`, `duplicate`],
+    [1, `1`],
+  ])(
+    `keeps duplicate fill IDs %j and %j keyed and hovered independently`,
+    async (first_id, second_id) => {
+      const fill_regions: FillRegion[] = [
+        { id: first_id, lower: 0, upper: 0.2, fill: `steelblue` },
+        { id: second_id, lower: 0.4, upper: 0.6, fill: `slategray` },
+      ]
+      await mount_sized_scatter_plot({ ...fill_plot_props(), fill_regions })
 
-    const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
-    expect(fills).toHaveLength(fill_regions.length)
+      const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
+      expect(fills).toHaveLength(fill_regions.length)
 
-    await hover(fills[0])
-    expect(fills[0].classList.contains(`hovered`)).toBe(true)
-    expect(fills[1].classList.contains(`hovered`)).toBe(false)
-  })
+      await hover(fills[0])
+      expect(fills[0].classList.contains(`hovered`)).toBe(true)
+      expect(fills[1].classList.contains(`hovered`)).toBe(false)
+    },
+  )
 
   test(`legend clicks toggle and isolate fills, and a hidden fill keeps its legend item`, async () => {
     const state = $state({

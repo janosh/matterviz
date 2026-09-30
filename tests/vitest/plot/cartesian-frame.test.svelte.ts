@@ -544,11 +544,14 @@ describe(`cartesian frame`, () => {
   test.each(frame_charts)(
     `$name legend stays inside sparse marks and moves below dense ones`,
     async (chart) => {
-      const sparse = await mount_chart(chart, {
-        ...chart.props(),
-        show_legend: true,
-        legend: {},
-      })
+      // 800px wide: at 400px the Histogram's full-height edge bins sit ~83px apart, so every
+      // interior spot for the 120px legend covers one and it rightly moves out (a crowding
+      // rule relative to the plot-wide obstacle count used to keep it over a bin)
+      const sparse = await mount_chart(
+        chart,
+        { ...chart.props(), show_legend: true, legend: {} },
+        { width: 800 },
+      )
       expect(legend_outside(sparse)).toBe(false)
       const dense = await mount_chart(chart, {
         ...chart.dense_props(),

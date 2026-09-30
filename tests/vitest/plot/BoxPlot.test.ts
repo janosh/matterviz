@@ -4,14 +4,17 @@ import * as box_math from '$lib/plot/box/box-plot'
 import type { Vec2 } from '$lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
 import { type ComponentProps, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { type Rect, rects_overlap } from '$lib/plot/core/layout'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   expect_plot_controls,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
+  query,
   roving_tabindexes,
+  svg_rect,
   with_measured_text,
 } from '../setup'
 
@@ -43,6 +46,7 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
     .length
 
 describe(`BoxPlot`, () => {
+  afterEach(() => vi.restoreAllMocks())
   // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
   // one press per bin/point/box. Exactly one mark holds the group's tab stop.
   test(`marks are reachable by Tab exactly once`, async () => {
@@ -342,6 +346,55 @@ describe(`BoxPlot`, () => {
     expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
+  // Each glyph's drawn extent: a box's hover target spans its whiskers and body width, a
+  // violin its outline
+  const glyph_rect = (group: Element): Rect => {
+    const violin = group.querySelector(`path.violin-area`)
+    if (!violin) return svg_rect(query(group, `rect.hover-target`))
+    const { xs, ys } = path_coords(violin.getAttribute(`d`) ?? ``)
+    const [x_min, y_min] = [Math.min(...xs), Math.min(...ys)]
+    return {
+      x: x_min,
+      y: y_min,
+      width: Math.max(...xs) - x_min,
+      height: Math.max(...ys) - y_min,
+    }
+  }
+  // geometric samples from 1e-3 up to `max`, so minmax whiskers span all their decades
+  const decades = (max: number) =>
+    Array.from({ length: 21 }, (_, idx) => 1e-3 * (max / 1e-3) ** (idx / 20))
+  // two interleaved uniform grids summed: a triangular density whose shoulders reach well
+  // past the IQR
+  const triangular = Array.from(
+    { length: 80 },
+    (_, idx) => ((idx * 37) % 80) / 80 + ((idx * 53) % 80) / 80,
+  )
+  // On a log axis the obstacle field once mapped whiskers linearly, so boxes spanning several
+  // decades looked like slivers at the floor. With whole boxes as obstacles, a crowding rule
+  // relative to the plot-wide obstacle count then called the spot over a whisker sparse. A
+  // violin modeled as its whisker line, or its IQR, let the legend sit on its shoulders.
+  test.each([
+    [
+      `boxes on a log value axis`,
+      {
+        series: [100, 100, 1000].map((max) => ({ y: decades(max) })),
+        whisker_mode: `minmax`,
+        y_axis: { scale_type: `log` },
+      },
+    ],
+    [`a violin`, { series: [{ y: triangular }], kind: `violin` }],
+  ] as const)(`automatic legend placement avoids %s`, async (_name, props) => {
+    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
+    const plot = await mount_sized_box_plot({ ...props, show_legend: true })
+    const { left, top } = query(plot, `.legend`).style
+    const [legend_x, legend_y] = [left, top].map((px) => Number(px.replace(`px`, ``)))
+    const legend_rect = { x: legend_x, y: legend_y, width: 120, height: 60 }
+    const glyphs = [...plot.querySelectorAll(`g.box-series`)].map(glyph_rect)
+    expect(glyphs).toHaveLength(props.series.length)
+    for (const glyph of glyphs) expect(rects_overlap(legend_rect, glyph)).toBe(false)
+  })
+
   test(`violin KDEs survive legend toggles and report hidden series`, async () => {
     const kde_spy = vi.spyOn(kde_math, `gaussian_kde`)
     const on_hidden_series_change = vi.fn()
@@ -506,13 +559,20 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
   })
 
-  test(`distinct categories produce one slot each`, async () => {
-    const series: BoxPlotSeries[] = [
-      { y: dist(80, 0, 1), category: `A`, label: `A`, color: `#4e79a7` },
-      { y: dist(80, 1, 1), category: `B`, label: `B`, color: `#e15759` },
-    ]
-    const plot = await mount_sized_box_plot({ series, kind: `violin` })
-    expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(2)
+  // A series without `category` used to key its slot by index: it took the index as its tick
+  // label, and merged into a category spelled like that index
+  // oxfmt-ignore
+  test.each([
+    [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`]],
+    [`an uncategorized series`, [{ category: `X` }, { category: `X` }, { label: `Baseline` }], [`X`, `Baseline`]],
+    [`a category spelled like an index`, [{ category: `1` }, { label: `other` }], [`1`, `other`]],
+  ] as const)(`category slots and tick labels with %s`, async (_name, specs, expected_ticks) => {
+    const plot = await mount_sized_box_plot({
+      series: specs.map((spec, idx) => ({ y: dist(80, idx, 1), ...spec })),
+      kind: `violin`,
+    })
+    const ticks = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
+    expect(ticks.map((node) => node.textContent?.trim())).toEqual(expected_ticks)
   })
 
   // Stats <= 0 (whisker_low is exactly 0 here) clamp to the log floor instead of rendering NaN,

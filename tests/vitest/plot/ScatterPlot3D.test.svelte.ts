@@ -174,6 +174,21 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
+// axis labels are HTML like the 2D axes': a plain-text span showed `&alpha;<sub>x</sub>` verbatim
+test(`ScatterPlot3DScene renders HTML axis labels`, async () => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      ranges: { x: [0, 1], y: [0, 1], z: [0, 1] },
+      x_axis: { ticks: [0, 1], label: `&alpha;<sub>x</sub>` },
+      gizmo: false,
+    }),
+  )
+  flushSync()
+  const labels = [...document.querySelectorAll(`.axis-label`)].map((label) => label.innerHTML)
+  await unmount_scene()
+  expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
+})
+
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [

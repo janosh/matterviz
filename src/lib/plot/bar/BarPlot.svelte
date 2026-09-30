@@ -40,7 +40,7 @@
   import { normalize_marginals } from '$lib/plot/core/marginals'
   import { category_tick_labels, merge_secondary_axes } from '$lib/plot/core/axis-utils'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import type { FacetAxis, FacetLayoutContext } from '$lib/plot/core/facets'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -54,7 +54,7 @@
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '$lib/plot/core/axis-assignment'
   import type { ObstacleSeries } from '$lib/plot/core/decorations'
-  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
+  import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
     collect_scale_ranges,
@@ -67,6 +67,7 @@
   import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
   import { DEFAULTS } from '$lib/settings'
   import { clamp01 } from '$lib/utils'
+  import type { Vec2 } from '$lib/math'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '$lib/plot/core/display.svelte'
@@ -217,6 +218,12 @@
   const frame = create_cartesian_frame({
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
+    // Categorical x2 shares x's category slots, so it takes x's pinned range as well as its
+    // auto range (see compute_bar_auto_ranges)
+    range_sources: () =>
+      vertical && category_list.length > 0
+        ? { ...plot_axes, x2: { ...plot_axes.x2, range: x_axis.range } }
+        : plot_axes,
     has_x2: () => show_x2,
     has_y2: () => show_y2,
     padding: () => padding,
@@ -231,15 +238,16 @@
     facet_layout: () => facet_layout,
     // Categorical axes show one tick per category instead of generated numeric ticks
     tick_override: (axis) =>
-      cat_tick_indices.length > 0 && axis === cat_axis ? cat_tick_indices : undefined,
+      cat_tick_indices.length > 0 && cat_axes.includes(axis) ? cat_tick_indices : undefined,
     // Numeric x keeps its own ticks: measuring `undefined` would size the padding from the
     // numeric values instead of the user's custom labels
-    measured_axes: () => ({
-      [cat_axis]: {
-        ...plot_axes[cat_axis],
-        ticks: effective_cat_ticks ?? plot_axes[cat_axis].ticks,
-      },
-    }),
+    measured_axes: () =>
+      Object.fromEntries(
+        cat_axes.map((axis) => [
+          axis,
+          { ...plot_axes[axis], ticks: effective_cat_ticks ?? plot_axes[axis].ticks },
+        ]),
+      ),
     clip_id_prefix: `chart-clip`,
   })
 
@@ -320,6 +328,8 @@
   let show_y2 = $derived(
     vertical && visible_series.some((srs) => srs.y_axis === `y2` && has_finite_point(srs)),
   )
+  // Vertical categorical series may sit on x2, which shares x's category slots and labels
+  let cat_axes: FacetAxis[] = $derived(vertical ? [`x`, `x2`] : [`y`])
 
   let auto_ranges = $derived(
     compute_bar_auto_ranges({
@@ -403,27 +413,19 @@
   // line series contribute sampled polylines.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
-      const { width, height, effective_base_pad } = frame
+      // Pixel scales over the base plot box (origin at its top-left): unlike the unit square
+      // Histogram and BoxPlot use, pixels keep compute_bar_rect's 1px floors
+      const { current } = frame.ranges
+      const zero_pad = { l: 0, r: 0, t: 0, b: 0 }
+      const scales = create_axis_scales(plot_axes, current, zero_pad, base_w, base_h)
       const obstacle_series: ObstacleSeries[] = []
-      const obstacle_scales = create_axis_scales(
-        plot_axes,
-        frame.ranges.current,
-        effective_base_pad,
-        width,
-        height,
-      )
       internal_series.forEach((srs, series_idx) => {
         if (!(srs?.visible ?? true)) return
         const is_line = srs.render_mode === `line`
         const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
         const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
-        const category_scale = vertical
-          ? (value: number) => obstacle_scales[x_axis_key](value) - effective_base_pad.l
-          : (value: number) => obstacle_scales.y(value) - effective_base_pad.t
-        const value_px = value_scale_for(vertical ? y_axis_key : x_axis_key, obstacle_scales)
-        const value_scale = vertical
-          ? (value: number) => value_px(value) - effective_base_pad.t
-          : (value: number) => value_px(value) - effective_base_pad.l
+        const category_scale = vertical ? scales[x_axis_key] : scales.y
+        const value_scale = value_scale_for(vertical ? y_axis_key : x_axis_key, scales)
 
         if (is_line) {
           const line_points = srs.x.map((x_val, point_idx) => {
@@ -448,15 +450,10 @@
         srs.x.forEach((x_val, bar_idx) => {
           if (!Number.isFinite(x_val) || !Number.isFinite(srs.y[bar_idx])) return
           const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
-          // cross = across the bar, value = along it; sample both edges and the middle
-          const [cross0, cross_len, value_start, value_len] = vertical
-            ? [rect_x / base_w, rect_w / base_w, rect_y / base_h, rect_h / base_h]
-            : [rect_y / base_h, rect_h / base_h, rect_x / base_w, rect_w / base_w]
-          const value_end = value_start + value_len
-          for (const frac of [0, 0.5, 1]) {
-            const seg = clip_bar(vertical, cross0 + frac * cross_len, value_start, value_end)
-            if (seg) obstacle_series.push(seg)
-          }
+          const x_span: Vec2 = [rect_x / base_w, (rect_x + rect_w) / base_w]
+          const y_span: Vec2 = [rect_y / base_h, (rect_y + rect_h) / base_h]
+          const [cross, span] = vertical ? [x_span, y_span] : [y_span, x_span]
+          obstacle_series.push(...bar_obstacles(vertical, cross, span))
         })
       })
       return obstacle_series
@@ -521,8 +518,14 @@
   }
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
-  // Tooltip state
-  let hover_info = $state<BarHandlerProps<Metadata> | null>(null)
+  // Only the hovered mark's indices (and its fill) are state: the tooltip payload and anchor
+  // derive from them, so they follow new data under a resting pointer and close once it's gone
+  let hover_key = $state<{ series_idx: number; bar_idx: number; color: string } | null>(null)
+  const hover_info = $derived(
+    hover_key && hover_key.bar_idx < (internal_series[hover_key.series_idx]?.x.length ?? 0)
+      ? get_bar_data(hover_key.series_idx, hover_key.bar_idx, hover_key.color)
+      : null,
+  )
 
   function get_bar_data(
     series_idx: number,
@@ -558,6 +561,21 @@
     }
   }
 
+  // Tooltip anchor: a line point where it is drawn, a bar at its drawn tip from the geometry
+  // that draws it (grouped slot, stack base and log-floored value axis included)
+  const tooltip_anchor = $derived.by((): Vec2 | null => {
+    if (!hover_info || !hovered) return null
+    const { series_idx, bar_idx, orient_x, orient_y } = hover_info
+    const srs = internal_series[series_idx]
+    if (srs.render_mode === `line`) {
+      const x_key = srs.x_axis === `x2` ? `x2` : `x`
+      const y_key = vertical && srs.y_axis === `y2` ? `y2` : `y`
+      return [frame.scales[x_key](orient_x), frame.scales[y_key](orient_y)]
+    }
+    const { c0, c1, v1 } = bar_geometry(srs, series_idx)(bar_idx)
+    return vertical ? [(c0 + c1) / 2, v1] : [v1, (c0 + c1) / 2]
+  })
+
   // Resolve a cursor event over a polyline overlay to its nearest vertex.
   function find_closest_point(
     evt: MouseEvent,
@@ -578,18 +596,18 @@
     (series_idx: number, bar_idx: number, color: string) =>
     (event: MouseEvent | FocusEvent) => {
       hovered = true
-      hover_info = get_bar_data(series_idx, bar_idx, color)
-      on_bar_hover?.({ ...hover_info, event })
+      hover_key = { series_idx, bar_idx, color }
+      on_bar_hover?.({ ...get_bar_data(series_idx, bar_idx, color), event })
     }
 
   const clear_hover = () => {
-    hover_info = null
+    hover_key = null
     on_bar_hover?.(null)
   }
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const clear_point_hover = () => {
-    hover_info = null
+    hover_key = null
     on_point_hover?.(null)
   }
 
@@ -634,7 +652,7 @@
   marginals={resolved_marginals}
   {marginal_series}
   marginal_tick_label={{
-    [cat_axis === `x` ? `x` : `y`]: (pos: number) => category_list[Math.round(pos)],
+    [cat_axis]: (pos: number) => category_list[Math.round(pos)],
   }}
   on_mouse_leave={() => {
     hovered = false
@@ -654,7 +672,7 @@
     <PlotAxes
       {frame}
       display={category_display.resolved}
-      label_ticks={{ [cat_axis]: effective_cat_ticks }}
+      label_ticks={Object.fromEntries(cat_axes.map((axis) => [axis, effective_cat_ticks]))}
       {axis_loading}
       {on_axis_change}
     />
@@ -723,8 +741,12 @@
                 if (!point) return clear_point_hover()
                 hovered = true
                 const fill = line_point_fill(point, color)
-                hover_info = get_bar_data(series_idx, point.idx, fill)
-                on_point_hover?.({ ...hover_info, event: evt, point: point })
+                hover_key = { series_idx, bar_idx: point.idx, color: fill }
+                on_point_hover?.({
+                  ...get_bar_data(series_idx, point.idx, fill),
+                  event: evt,
+                  point,
+                })
               }}
               {@const do_click = (point: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
                 const fill = line_point_fill(point, color)
@@ -983,27 +1005,12 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && hovered}
-      <!-- Anchor at the bar's drawn end: in stacked mode that is the value plus what sits below -->
-      {@const stack_base =
-        mode === `stacked`
-          ? (stacked_offsets[hover_info.series_idx]?.[hover_info.bar_idx] ?? 0)
-          : 0}
-      {@const tip_x_key = hover_info.active_x_axis === `x2` ? `x2` : `x`}
-      {@const tip_y_key = hover_info.active_y_axis === `y2` ? `y2` : `y`}
-      <!-- Value axis via value_scale_for, like the bars: a non-positive value on a log axis
-      draws at the 1px floor where the raw scale anchors the tooltip at NaN. The category axis
-      keeps the bars' raw scale, so a log one cannot floor the anchor off its bar. -->
-      {@const center_x = (vertical ? frame.scales[tip_x_key] : value_scale_for(tip_x_key))(
-        hover_info.orient_x + (orientation === `horizontal` ? stack_base : 0),
-      )}
-      {@const center_y = (vertical ? value_scale_for(tip_y_key) : frame.scales.y)(
-        hover_info.orient_y + (vertical ? stack_base : 0),
-      )}
+    {#if hover_info && tooltip_anchor}
+      {@const [anchor_x, anchor_y] = tooltip_anchor}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
-        x={center_x}
-        y={center_y}
+        x={anchor_x}
+        y={anchor_y}
         avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width: frame.width, height: frame.height }}

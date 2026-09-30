@@ -1,6 +1,7 @@
 // Obstacle fields the decoration solver routes around, plus the DOM footprint helpers the
 // hosts use to size auto-placed decorations before and after first render.
 
+import type { Vec2 } from '$lib/math'
 import type { Rect, Sides } from '$lib/plot/core/layout'
 import { sample_series_obstacle_points } from '$lib/plot/core/layout'
 import type { DecorationPoint, DecorationSize } from './types'
@@ -126,27 +127,42 @@ export function build_obstacles_norm(
   return obstacles
 }
 
-// Clip bars before sampling so zoomed, off-screen spans cannot emit millions of points.
-export function clip_bar(
+// Widest gap (plot fraction) between a bar's obstacle lines: wider bars get interior lines,
+// else a legend could sit inside the bar between its edge and center lines
+const MAX_BAR_LINE_GAP = 0.25
+
+// A bar as segments along both long edges and its center line, since a lone center line let a
+// legend sit inside a wide bar. Clipped to the unit square before sampling so zoomed, off-screen
+// spans cannot emit millions of points. A zero-width cross span (a box whisker) gives one segment.
+export function bar_obstacles(
   vertical: boolean,
-  cross: number,
-  span_start: number,
-  span_end: number,
-): ObstacleSeries | null {
-  if (!(cross >= 0 && cross <= 1)) return null
-  const lower = Math.max(0, Math.min(span_start, span_end))
-  const upper = Math.min(1, Math.max(span_start, span_end))
-  if (upper < lower) return null
-  const points = vertical
-    ? [
-        { x: cross, y: lower },
-        { x: cross, y: upper },
-      ]
-    : [
-        { x: lower, y: cross },
-        { x: upper, y: cross },
-      ]
-  return { points, draws_line: true }
+  [cross_start, cross_end]: Vec2,
+  [span_start, span_end]: Vec2,
+): ObstacleSeries[] {
+  const clamp_to_plot = (start: number, end: number): Vec2 => [
+    Math.max(0, Math.min(start, end)),
+    Math.min(1, Math.max(start, end)),
+  ]
+  const [lower, upper] = clamp_to_plot(span_start, span_end)
+  const [left, right] = clamp_to_plot(cross_start, cross_end)
+  if (!(upper >= lower && right >= left)) return []
+  // Edges and center of the visible part (a zoomed-in bar covering the view still counts),
+  // plus interior lines so no gap between them exceeds MAX_BAR_LINE_GAP
+  const n_gaps = right > left ? Math.max(2, Math.ceil((right - left) / MAX_BAR_LINE_GAP)) : 0
+  return Array.from({ length: n_gaps + 1 }, (_, idx) =>
+    n_gaps ? left + ((right - left) * idx) / n_gaps : left,
+  ).map((cross) => ({
+    points: vertical
+      ? [
+          { x: cross, y: lower },
+          { x: cross, y: upper },
+        ]
+      : [
+          { x: lower, y: cross },
+          { x: upper, y: cross },
+        ],
+    draws_line: true,
+  }))
 }
 
 // Project a decoration-independent normalized obstacle field into the final plot rectangle.

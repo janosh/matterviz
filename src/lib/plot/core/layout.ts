@@ -1,12 +1,14 @@
 import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
 import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
 import {
+  BREAKABLE_SPACE_SRC,
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
 } from '$lib/plot/core/text-metrics'
 import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
 import type { AxisConfig } from '$lib/plot/core/types'
+import { html_to_text } from '$lib/utils'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
@@ -53,17 +55,6 @@ interface AxisTitleLayout {
   readonly interactive: boolean
 }
 
-const HTML_ENTITIES: Record<string, string> = {
-  '&nbsp;': `\u00A0`,
-  '&amp;': `&`,
-  '&lt;': `<`,
-  '&gt;': `>`,
-  '&quot;': `"`,
-  '&#39;': `'`,
-}
-const decode_axis_title_text = (value: string): string =>
-  value.replaceAll(/&(?:nbsp|amp|lt|gt|quot|#39);/gu, (entity) => HTML_ENTITIES[entity])
-
 const append_axis_title_segment = (
   segments: AxisTitleSegment[],
   text: string,
@@ -86,7 +77,7 @@ const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
     const active_tag = active_tags.at(-1)
     append_axis_title_segment(
       segments,
-      decode_axis_title_text(value.slice(cursor, match_idx)),
+      html_to_text(value.slice(cursor, match_idx)),
       active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
     )
     const tag = match.groups?.tag?.toLowerCase() as `sub` | `sup` | undefined
@@ -99,7 +90,7 @@ const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
   const active_tag = active_tags.at(-1)
   append_axis_title_segment(
     segments,
-    decode_axis_title_text(value.slice(cursor)),
+    html_to_text(value.slice(cursor)),
     active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
   )
 
@@ -144,6 +135,9 @@ const split_axis_title_paragraphs = (
   return paragraphs
 }
 
+// Same whitespace wrap_text_paragraph breaks at: a no-break space is part of its word, else it
+// collapsed into the next space here but not there, shifting every later line's characters
+const BREAKABLE_SPACE_RE = new RegExp(BREAKABLE_SPACE_SRC, `u`)
 const segments_for_wrapped_lines = (
   paragraph: readonly AxisTitleSegment[],
   lines: readonly string[],
@@ -152,7 +146,7 @@ const segments_for_wrapped_lines = (
   let pending_space = false
   for (const { text, shift } of paragraph) {
     for (const character of text) {
-      if (/\s/u.test(character)) {
+      if (BREAKABLE_SPACE_RE.test(character)) {
         pending_space = normalized.length > 0
         continue
       }

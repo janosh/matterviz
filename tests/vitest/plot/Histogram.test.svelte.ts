@@ -1,6 +1,7 @@
 import Histogram from '$lib/plot/histogram/Histogram.svelte'
 import type { Vec2 } from '$lib'
 import { plot_color } from '$lib/colors'
+import type { AxisConfig } from '$lib/plot/core/types'
 import type { HistogramSeries } from '$lib/plot/histogram/histogram'
 import {
   bin_values,
@@ -130,6 +131,8 @@ describe(`Histogram`, () => {
     [`spread-out values`, { series: [{ values: [1000, 2000, 3000, 4000, 5000], label: `B` }], bins: 5 }, 1, 20],
     [`two series`, { series: [{ values: [0, 0, 0, 0, 0], label: `A` }, { values: [1, 2, 3, 4, 5], label: `B` }], bins: 5 }, 5, 50],
     [`an explicit y range`, { series: [{ values: [1, 1, 1, 1, 1] }], bins: 5, y_axis: { range: [0, 3] } }, 1, 3],
+    // weighted counts are fractional: the raw-count `d` default rounded every tick to 0
+    [`fractional weights`, { series: [{ values: [1, 2, 3, 4], weights: [0.1, 0.2, 0.3, 0.4] }], bins: 4 }, 0.4, 0.5],
   ] as const)(`count axis spans the tallest bin for %s`, async (_name, props, lower, upper) => {
     const ticks = await y_ticks_after(props)
     expect(ticks.length).toBeGreaterThan(0)
@@ -416,24 +419,27 @@ describe(`Histogram`, () => {
   })
 
   // Regression: the obstacle field feeding automatic decoration placement rejected any
-  // reversed axis range as degenerate, so on a flipped count axis it came out empty and the
-  // auto-placed legend landed on top of the bars.
-  test(`automatic legend placement avoids the bars on a reversed y range`, async () => {
+  // reversed axis range as degenerate, so on a flipped count axis it came out empty, and it
+  // mapped counts linearly, so on a log count axis tall bars looked short. It also modeled each
+  // bar by its center line alone, so a legend between two center lines covered both bars' inner
+  // halves. Each time the auto-placed legend landed on top of the bars.
+  test(`automatic legend placement avoids the bars on reversed and log y axes`, async () => {
     const [legend_width, legend_height] = [120, 60]
     vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(legend_width)
     vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(legend_height)
-    const legend_overlaps_bars = async (y_range: Vec2) => {
+    const spread = [1, 3, 5, 7, 9]
+    const legend_overlaps_bars = async (y_axis: AxisConfig, values = spread, bins = 5) => {
       await mount_histogram({
-        series: [{ values: [1, 3, 5, 7, 9], label: `A` }],
-        bins: 5,
+        series: [{ values, label: `A` }],
+        bins,
         show_legend: true,
-        y_axis: { range: y_range },
+        y_axis,
       })
       const legend = doc_query(`.legend`)
       const left = Number(legend.style.left.replace(`px`, ``))
       const top = Number(legend.style.top.replace(`px`, ``))
       const bars = bar_boxes()
-      expect(bars).toHaveLength(5)
+      expect(bars).toHaveLength(bins)
       return bars.some(
         (bar) =>
           left < bar.right &&
@@ -444,8 +450,15 @@ describe(`Histogram`, () => {
     }
     // bars stand on the bottom baseline on [0, 2] and hang from the top one on [2, 0], so the
     // solver has to see the obstacles move to keep the legend clear in both
-    expect(await legend_overlaps_bars([0, 2])).toBe(false)
-    expect(await legend_overlaps_bars([2, 0])).toBe(false)
+    expect(await legend_overlaps_bars({ range: [0, 2] })).toBe(false)
+    expect(await legend_overlaps_bars({ range: [2, 0] })).toBe(false)
+    // counts [1, 300, 1, 300, 1]: linearly the 300s fill under a third of the ~[1, 1000] axis,
+    // on the log axis over four fifths
+    const peaks = [...spread, ...Array(299).fill(3), ...Array(299).fill(7)]
+    expect(await legend_overlaps_bars({ scale_type: `log` }, peaks)).toBe(false)
+    // counts [20, 1, 1, 20]: wide outer bars whose center lines leave room between them
+    const bimodal = [...Array(20).fill(1), 4, 6, ...Array(20).fill(9)]
+    expect(await legend_overlaps_bars({}, bimodal, 4)).toBe(false)
   })
 
   test(`single mode selects exactly one series by its original index, including duplicate and empty labels`, async () => {
@@ -580,8 +593,9 @@ describe(`Histogram`, () => {
     const on_bar_hover = vi.fn()
     const on_bar_click = vi.fn()
     await mount_histogram({
-      // 5 bins over [0, 10]: [0,2) holds two samples
-      series: [series_of([0, 1, 5, 9], { label: `A` })],
+      // 5 bins over [0, 10]: [0,2) holds two samples of total weight 2.5 out of 5. The
+      // tooltip used to format that weighted count as an integer.
+      series: [series_of([0, 1, 5, 9], { label: `A`, weights: [1.25, 1.25, 1.5, 1] })],
       bins: 5,
       normalize: `probability`,
       x_axis: { range: [0, 10] },
@@ -596,7 +610,7 @@ describe(`Histogram`, () => {
     expect(on_bar_hover).toHaveBeenLastCalledWith(
       expect.objectContaining({
         value: 1,
-        count: 2,
+        count: 2.5,
         property: `A`,
         label: `A`,
         series_idx: 0,
@@ -605,7 +619,7 @@ describe(`Histogram`, () => {
       }),
     )
     const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    expect(tooltip_text).toContain(`Count: 2`)
+    expect(tooltip_text).toContain(`Count: 2.5`)
     expect(tooltip_text).toContain(`Probability: 0.5`)
     expect(tooltip_text).toContain(`A`)
     // Enter/Space activate the bar like a click, other keys are ignored
@@ -617,7 +631,7 @@ describe(`Histogram`, () => {
     expect(on_bar_click).toHaveBeenLastCalledWith(
       expect.objectContaining({
         value: 1,
-        count: 2,
+        count: 2.5,
         property: `A`,
         series_idx: 0,
         event: expect.any(MouseEvent),
@@ -628,6 +642,33 @@ describe(`Histogram`, () => {
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
     expect(document.querySelector(`.plot-tooltip`)).toBeNull()
   })
+
+  // The arithmetic mean of [1, 10] is 5.5, which a log axis draws ~74% across the bar
+  test.each([
+    [`log`, [1, 1000], 3, Math.sqrt(10)],
+    [`arcsinh`, [-10, 10], 2, Math.sinh(Math.asinh(-10) / 2)],
+  ] as const)(
+    `%s x axis centers the bin at its scale-space midpoint`,
+    async (scale_type, range, bins, center) => {
+      const on_bar_hover = vi.fn()
+      await mount_histogram({
+        series: [series_of([-5, 2, 5, 20, 200])],
+        bins,
+        x_axis: { scale_type, range: [...range] },
+        on_bar_hover,
+      })
+      const [first_bar] = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+      first_bar.dispatchEvent(mouse(`mousemove`))
+      await tick()
+      const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
+      expect(value).toBeCloseTo(center, 12)
+      expect(x).toBe(value)
+      // the tooltip anchors at the drawn bar's pixel midpoint (plus its 5px offset)
+      const [{ left, right }] = bar_boxes()
+      const tooltip_left = document.querySelector<HTMLElement>(`.plot-tooltip`)?.style.left
+      expect(Number(tooltip_left?.replace(`px`, ``))).toBeCloseTo((left + right) / 2 + 5, 5)
+    },
+  )
 
   // oxfmt-ignore
   test.each([

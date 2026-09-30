@@ -1,7 +1,9 @@
 import BarPlot from '$lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '$lib/plot/bar/SpacegroupBarPlot.svelte'
 import type { BarHandlerProps, BarSeries } from '$lib/plot'
-import { type ComponentProps, createRawSnippet, tick } from 'svelte'
+import type { Vec2 } from '$lib/math'
+import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   inside_clip_path,
@@ -21,6 +23,30 @@ const basic: BarSeries = {
   label: `Test Series`,
   color: `steelblue`,
 }
+
+// Screen rects of square-cornered (`M x,y h w v h`) bars, optionally of one series only
+const bar_rects = (plot: HTMLElement, series_idx?: number) =>
+  [
+    ...plot.querySelectorAll(
+      `.bar-series${series_idx === undefined ? `` : `[data-series-idx="${series_idx}"]`} path[role="button"]`,
+    ),
+  ].map((path) => {
+    const path_data = path.getAttribute(`d`) ?? ``
+    const match = /^M(?<x>[\d.-]+),(?<y>[\d.-]+)h(?<width>[\d.-]+)v(?<height>[\d.-]+)/.exec(
+      path_data,
+    )?.groups
+    if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
+    const coord_x = Number(match.x)
+    const coord_y = Number(match.y)
+    const width = Number(match.width)
+    const height = Number(match.height)
+    return {
+      x: Math.min(coord_x, coord_x + width),
+      y: Math.min(coord_y, coord_y + height),
+      width: Math.abs(width),
+      height: Math.abs(height),
+    }
+  })
 
 const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
@@ -409,15 +435,6 @@ describe(`BarPlot`, () => {
     expect(b_rects[1].bottom).toBeCloseTo(a_rects[2].top, 4)
     // B bar at x=4 has no A bar below it -> starts at baseline 0 (same bottom as A bars)
     expect(b_rects[2].bottom).toBeCloseTo(a_rects[0].bottom, 4)
-
-    // Hovering B's x=2 bar anchors the tooltip at its stacked top (above A's bar), not at the
-    // unstacked value 5 near the baseline
-    const b_bar = plot.querySelector(`.bar-series[data-series-idx="1"] path[role="button"]`)
-    b_bar?.dispatchEvent(mouse(`mousemove`))
-    await tick()
-    const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
-    expect(tooltip).not.toBeNull()
-    expect(Number(tooltip?.style.top.replace(`px`, ``))).toBeLessThan(a_rects[1].top)
   })
 
   test.each([`vertical`, `horizontal`] as const)(
@@ -465,47 +482,81 @@ describe(`BarPlot`, () => {
     },
   )
 
-  // The bar renders at the 1px floor and stays hoverable, but scaleLog()(-5) is NaN
-  test(`tooltip anchors a negative bar on a log value axis at finite coords`, async () => {
-    const plot = await mount_sized_bar_plot({
-      series: [{ x: [1, 2], y: [-5, 100], label: `A` }],
-      y_axis: { scale_type: `log` },
-    })
-    plot.querySelector(`path[role="button"]`)?.dispatchEvent(mouse(`mousemove`))
-    await tick()
-    const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
-    expect(tooltip).not.toBeNull()
-    // match the px strings, not Number(): an unset style is `` and Number(``) is a finite 0
-    for (const edge of [tooltip?.style.top, tooltip?.style.left]) {
-      expect(edge).toMatch(/^-?[\d.]+px$/)
+  // The tooltip anchors at the hovered bar's drawn tip, taken from the geometry that draws the
+  // bar. happy-dom lays nothing out, so the bar's own path is the only witness: assert the exact
+  // anchor. Grouped bars sit off their category center by a per-series slot offset (the anchor
+  // used to land on the middle bar), stacked ones end on top of the bars below, a negative bar
+  // on a log value axis draws at the 1px floor where the raw scale gives NaN, and a log floor on
+  // the category axis pinned the anchor to the range minimum while the bar kept its raw pixel.
+  const grouped = [0, 1, 2].map((idx) => ({ x: [1, 2], y: [5 + idx, 20], label: `S${idx}` }))
+  test.each<[string, Partial<ComponentProps<typeof BarPlot>>]>([
+    [`grouped vertical bars`, { series: grouped, mode: `grouped` }],
+    [
+      `grouped horizontal bars`,
+      { series: grouped, mode: `grouped`, orientation: `horizontal` },
+    ],
+    [`stacked bars`, { series: grouped, mode: `stacked` }],
+    [
+      `a negative bar on a log value axis`,
+      { series: [{ x: [1, 2], y: [-5, 100] }], y_axis: { scale_type: `log` } },
+    ],
+    [
+      `a log category axis`, // 1.9 sits below the range floor
+      { series: [{ x: [1.9, 4], y: [10, 20] }], x_axis: { scale_type: `log`, range: [2, 5] } },
+    ],
+  ])(`tooltip anchors at the hovered bar's tip for %s`, async (_name, props) => {
+    const plot = await mount_sized_bar_plot(
+      { bar: { border_radius: 0 }, padding: { l: 50, r: 20, t: 20, b: 80 }, ...props },
+      { width: 800, height: 400 },
+    )
+    const series_groups = [...plot.querySelectorAll(`.bar-series`)]
+    expect(series_groups.length).toBeGreaterThan(0)
+    // each series' first bar leaves the 140x50 fallback tooltip room to sit at anchor + offset
+    for (const [series_idx, group] of series_groups.entries()) {
+      const [{ x: rect_x, y: rect_y, width, height }] = bar_rects(plot, series_idx)
+      query(group, `path[role="button"]`).dispatchEvent(mouse(`mousemove`))
+      await tick()
+      const { left, top } = query(plot, `.plot-tooltip`).style
+      const [anchor_x, anchor_y] =
+        props.orientation === `horizontal`
+          ? [rect_x + width, rect_y + height / 2]
+          : [rect_x + width / 2, rect_y]
+      // anchor + the tooltip's { x: 10, y: 5 } offset
+      expect(Number(left.replace(`px`, ``))).toBeCloseTo(anchor_x + 10, 6)
+      expect(Number(top.replace(`px`, ``))).toBeCloseTo(anchor_y + 5, 6)
     }
   })
 
-  // The log floor belongs to the VALUE axis only: on the category axis it pinned the anchor to
-  // the range minimum while the bar stayed at its raw pixel. happy-dom lays nothing out, so the
-  // bar's own path is the only witness to the mapping - assert the exact anchor, not "inside".
-  test(`tooltip follows the bar when the category axis is log`, async () => {
+  // Only the hovered bar's indices are state: a snapshot payload kept showing the old value
+  // under a resting pointer, and anchored at NaN (or threw) once its bar or series was gone
+  test(`a resting hover follows replaced data and closes once its bar is gone`, async () => {
+    // a reactive getter lets this plain .ts test replace the series under the resting pointer
+    const [s0, s1] = grouped
+    const current = new SvelteMap<string, BarSeries[]>([[`series`, [s0, s1]]])
     const plot = await mount_sized_bar_plot({
-      series: [{ x: [1.9, 4], y: [10, 20], label: `A` }], // 1.9 sits below the range floor
-      x_axis: { scale_type: `log`, range: [2, 5] },
-      bar: { border_radius: 0 },
-      // roomy on the value axis so the tooltip is placed at anchor + offset without flipping
-      padding: { l: 50, r: 20, t: 20, b: 40 },
+      get series() {
+        return current.get(`series`)
+      },
     })
-    const [out_of_range_bar] = plot.querySelectorAll(`path[role="button"]`)
-    const path = out_of_range_bar?.getAttribute(`d`) ?? ``
-    const match = /^M(?<x>[\d.-]+),[\d.-]+h(?<w>[\d.-]+)/.exec(path)
-    if (!match?.groups) throw new Error(`unexpected bar path ${path}`)
-    // The bar's edges are the category scale at 1.9 +- half the default 0.5 bar width, so
-    // they pin down the log mapping; the anchor must land on it at 1.9 itself.
-    const lo_px = Number(match.groups.x)
-    const log_frac = Math.log(1.9 / 1.65) / Math.log(2.15 / 1.65)
-    const anchor = lo_px + Number(match.groups.w) * log_frac
-    out_of_range_bar?.dispatchEvent(mouse(`mousemove`))
+    const tooltip_text = () => plot.querySelector(`.plot-tooltip`)?.textContent ?? null
+    const replace = (series: BarSeries[]) => {
+      current.set(`series`, series)
+      flushSync()
+    }
+    // S1's second bar (y = 20)
+    plot
+      .querySelectorAll(`.bar-series[data-series-idx="1"] path[role="button"]`)[1]
+      .dispatchEvent(mouse(`mousemove`))
     await tick()
-    const left = plot.querySelector<HTMLElement>(`.plot-tooltip`)?.style.left ?? ``
-    // anchor + the tooltip's offset; a floored anchor sits ~19px away at the range minimum
-    expect(Number(left.replace(`px`, ``))).toBeCloseTo(anchor + 10, 3)
+    expect(tooltip_text()).toMatch(/y: 20/)
+    replace([s0, { ...s1, y: [6, 37] }])
+    expect(tooltip_text()).toMatch(/y: 37/)
+    for (const fewer of [[s0, { ...s1, x: [1], y: [6] }], [s0]]) {
+      replace([s0, s1])
+      expect(tooltip_text()).toMatch(/y: 20/)
+      replace(fewer)
+      expect(tooltip_text()).toBeNull()
+    }
   })
 
   test(`default tooltip shows series label for multi-series on hover`, async () => {
@@ -578,6 +629,52 @@ describe(`BarPlot`, () => {
         expect(tick_count).toBeLessThanOrEqual(max_ticks)
       },
     )
+
+    // x2 used to get a numeric auto range over the category indices, so its bars drifted off
+    // their categories and its ticks read 0, 0.5, 1, ... It then copied only x's auto range, so
+    // a pinned x range left x2 on the full one.
+    test.each([
+      { x_axis: {}, labels: [`a`, `b`, `c`] },
+      { x_axis: { range: [0.5, 2.5] as Vec2 }, labels: [`b`, `c`] },
+    ])(
+      `categorical x2 series share the slots and labels of x (x_axis=$x_axis)`,
+      async ({ x_axis, labels }) => {
+        const plot = await mount_sized_bar_plot(
+          {
+            series: ([`x`, `x2`] as const).map((axis) => ({
+              x: [`a`, `b`, `c`],
+              y: [1, 2, 3],
+              x_axis: axis,
+            })),
+            x_axis,
+            bar: { border_radius: 0 },
+          },
+          { width: 600 },
+        )
+        const centers = (series_idx: number) =>
+          bar_rects(plot, series_idx).map(({ x: rect_x, width }) => rect_x + width / 2)
+        expect(centers(0)).toHaveLength(3)
+        expect(centers(1)).toEqual(centers(0))
+        for (const axis of [`x`, `x2`]) {
+          const tick_labels = [...plot.querySelectorAll(`g.${axis}-axis g.tick text`)].map(
+            (node) => node.textContent?.trim(),
+          )
+          expect(tick_labels).toEqual(labels)
+        }
+      },
+    )
+
+    // a hidden x2 takes no padding: categorical x must not measure category ticks for it
+    test(`categorical x without x2 series reserves no top padding`, async () => {
+      const clip_top = async (x: (string | number)[]) => {
+        const plot = await mount_sized_bar_plot(
+          { series: [{ x, y: [1, 2, 3] }] },
+          { width: 600 },
+        )
+        return plot.querySelector(`clipPath rect`)?.getAttribute(`y`)
+      }
+      expect(await clip_top([`alpha`, `beta`, `gamma`])).toBe(await clip_top([0, 1, 2]))
+    })
 
     // categorical ticks are generated for every category regardless of the view, so
     // a panned/zoomed range must cull the ones that fall outside the plot area
@@ -679,25 +776,6 @@ describe(`BarPlot`, () => {
       y: Number(legend.style.top.replace(`px`, ``)),
     }
   }
-
-  const bar_rects = (plot: HTMLElement) =>
-    [...plot.querySelectorAll(`.bar-series path[role="button"]`)].map((path) => {
-      const path_data = path.getAttribute(`d`) ?? ``
-      const match = /^M(?<x>[\d.-]+),(?<y>[\d.-]+)h(?<width>[\d.-]+)v(?<height>[\d.-]+)/.exec(
-        path_data,
-      )?.groups
-      if (!match) throw new Error(`unexpected square bar path: ${path_data}`)
-      const coord_x = Number(match.x)
-      const coord_y = Number(match.y)
-      const width = Number(match.width)
-      const height = Number(match.height)
-      return {
-        x: Math.min(coord_x, coord_x + width),
-        y: Math.min(coord_y, coord_y + height),
-        width: Math.abs(width),
-        height: Math.abs(height),
-      }
-    })
 
   test(`automatic legend placement avoids sparse bar and line obstacles`, async () => {
     vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)

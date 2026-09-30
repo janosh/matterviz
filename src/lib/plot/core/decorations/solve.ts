@@ -1,4 +1,5 @@
 import { compute_element_placement, type Rect } from '$lib/plot/core/layout'
+import { first_duplicate } from '$lib/utils'
 import { project_obstacles } from './obstacles'
 import { get_outside_placement, place_outside_decorations } from './outside'
 import { place_reference_annotation } from './reference-annotations'
@@ -30,10 +31,9 @@ const ordered_items = (items: readonly DecorationItem[]): DecorationItem[] =>
   })
 
 const validate_unique_ids = (items: readonly DecorationItem[]): void => {
-  const ids = items.map((item) => item.id)
-  const duplicate_id = ids.find((identifier, idx) => ids.indexOf(identifier) !== idx)
-  if (duplicate_id !== undefined) {
-    throw new Error(`Decoration ids must be unique, got duplicate id "${duplicate_id}"`)
+  const duplicate = first_duplicate(items, (item) => item.id)
+  if (duplicate) {
+    throw new Error(`Decoration ids must be unique, got duplicate id "${duplicate.id}"`)
   }
 }
 

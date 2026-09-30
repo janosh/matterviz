@@ -1090,6 +1090,34 @@ describe(`BinnedScatterPlot`, () => {
     },
   )
 
+  test(`bin-click zoom keeps a descending x axis descending`, async () => {
+    const on_density_zoom = vi.fn()
+    mount_plot({
+      series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+      ...density_mode({ bin_px: 100 }),
+      x_axis: { range: [1, 0] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      on_density_zoom,
+    })
+    await settle()
+    // tick values in on-screen order, left to right
+    const x_ticks_on_screen = () =>
+      [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
+        .map((tick_el) => {
+          const px = /translate\((?<px>[-\d.e]+)/.exec(tick_el.getAttribute(`transform`) ?? ``)
+          return [Number(px?.groups?.px), Number(tick_el.textContent)]
+        })
+        .toSorted(([px_a], [px_b]) => px_a - px_b)
+        .map(([, value]) => value)
+    const is_descending = (values: number[]) => values[0] > values[values.length - 1]
+    expect(is_descending(x_ticks_on_screen())).toBe(true)
+    const center = plot_center()
+    click_plot(center.x - 1, center.y - 1)
+    await tick()
+    expect(on_density_zoom).toHaveBeenCalledOnce()
+    expect(is_descending(x_ticks_on_screen())).toBe(true)
+  })
+
   test(`can disable automatic point mode switching`, async () => {
     mount_plot({
       series: [{ x: [0.5], y: [0.5] }],

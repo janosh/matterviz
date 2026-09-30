@@ -4,6 +4,7 @@
 >
   import { TooltipValue } from '$lib/tooltip'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { in_range, type Vec2, type Vec3 } from '$lib/math'
   import type {
     AxisConfig3D,
@@ -665,7 +666,10 @@
     <!-- Axis label -->
     {#if display.show_axis_labels !== false}
       <extras.HTML position={axis_label_pos} center zIndexRange={[1, 0]}>
-        <span class="axis-label" style:color>{axis.label || key.toUpperCase()}</span>
+        <!-- labels are HTML like the 2D axes' (sub/sup, entities) -->
+        <span class="axis-label" style:color
+          >{@html sanitize_html(axis.label || key.toUpperCase())}</span
+        >
       </extras.HTML>
     {/if}
   {/each}

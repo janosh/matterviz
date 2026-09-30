@@ -91,6 +91,19 @@ describe(`decoration solver`, () => {
     expect(solve_decorations(sparse_scene).placements[0]).toMatchObject(direct)
   })
 
+  test(`rejects duplicate decoration ids, naming the first repeat`, () => {
+    const note = (identifier: string): DecorationItem => ({
+      id: identifier,
+      kind: `free-annotation`,
+      footprint: { width: 40, height: 20 },
+    })
+    const items = [note(`a`), note(`b`), note(`b`), note(`a`)]
+    expect(() => solve_decorations(scene_for(items))).toThrow(
+      `Decoration ids must be unique, got duplicate id "b"`,
+    )
+    expect(() => solve_decorations(scene_for(items.slice(0, 2)))).not.toThrow()
+  })
+
   const expect_no_overlaps = (rects: readonly Rect[]): void => {
     for (let left_idx = 0; left_idx < rects.length; left_idx++) {
       for (let right_idx = left_idx + 1; right_idx < rects.length; right_idx++) {

@@ -13,7 +13,7 @@
   import { resolve_pattern } from '$lib/plot/core/patterns'
   import { unique_id } from '$lib/plot/core/utils'
   import { sanitize_html } from '$lib/sanitize'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import {
     symbol as d3_symbol,
     symbolAsterisk,
@@ -115,13 +115,13 @@
     if (kind === `filter`) return { width: 160, height: 25 }
     const chrome_width =
       kind === `group` ? 27 : kind === `indented-item` ? 52 : kind === `item` ? 39 : 11
-    return { width: Array.from(strip_html(label)).length * 7 + chrome_width, height: 20 }
+    return { width: Array.from(html_to_text(label)).length * 7 + chrome_width, height: 20 }
   }
 
   let legend_grid_cells = $derived(
     get_legend_grid_cells({
       items: series_data.map((item) => ({
-        label: strip_html(item.label),
+        label: html_to_text(item.label),
         legend_group: item.legend_group,
       })),
       collapsed_groups,
@@ -278,7 +278,7 @@
       role: `button`,
       tabindex: 0,
       'aria-expanded': !is_collapsed,
-      'aria-label': `${is_collapsed ? `Expand` : `Collapse`} group ${strip_html(group_name)}`,
+      'aria-label': `${is_collapsed ? `Expand` : `Collapse`} group ${html_to_text(group_name)}`,
     }
   }
 </script>
@@ -305,7 +305,7 @@
     role="button"
     tabindex="0"
     aria-pressed={series.visible}
-    aria-label="Toggle visibility for {strip_html(series.label)}"
+    aria-label="Toggle visibility for {html_to_text(series.label)}"
   >
     <span
       class="legend-marker"
@@ -489,7 +489,7 @@
             role="button"
             tabindex="0"
             aria-pressed={group_visible}
-            aria-label="Toggle group {strip_html(cell.group)}"
+            aria-label="Toggle group {html_to_text(cell.group)}"
           >
             {@html sanitize_html(cell.group)}
           </span>

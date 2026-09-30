@@ -83,7 +83,8 @@ export function accumulate_error_extent(
     const get = side_getter(sides[side_idx])
     for (let idx = 0; idx < count; idx++) {
       const value = side_idx === 0 ? values[idx] - get(idx) : values[idx] + get(idx)
-      if (!Number.isFinite(value)) continue
+      // a gap (null/NaN) plus its error is still no point: null - 1 is a finite -1
+      if (!Number.isFinite(values[idx]) || !Number.isFinite(value)) continue
       extent.n_finite++
       if (extent.min === undefined || value < extent.min) extent.min = value
       if (extent.max === undefined || value > extent.max) extent.max = value

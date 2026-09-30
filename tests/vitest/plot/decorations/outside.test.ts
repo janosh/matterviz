@@ -5,11 +5,12 @@ import type {
 } from '$lib/plot/core/decorations'
 import {
   build_obstacles_norm,
-  clip_bar,
+  bar_obstacles,
   clip_segment_to_unit_square,
   get_outside_placement,
   place_outside_decorations,
 } from '$lib/plot/core/decorations'
+import type { Vec2 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -125,6 +126,24 @@ describe(`place_outside_decorations`, () => {
     expect(layout.pad).toEqual(base_pad)
   })
 
+  // Crowding counts the samples under the chosen spot: a pile of samples elsewhere used to
+  // raise a plot-wide threshold until a spot over a line passed as sparse
+  test.each([0, 2000])(
+    `a legend over data moves outside with %i samples elsewhere`,
+    (n_pile) => {
+      // lines at every quarter of the 330px width leave no gap for a 120px legend
+      const lines = [0.25, 0.5, 0.75].flatMap((line_x) =>
+        Array.from({ length: 21 }, (_, idx) => ({ x: line_x, y: idx / 20 })),
+      )
+      const pile = Array.from({ length: n_pile }, () => ({ x: 0.5, y: 0.5 }))
+      const layout = place({
+        obstacles_norm: [...lines, ...pile],
+        legend: { footprint: { width: 120, height: 60 } },
+      })
+      expect(layout.legend_outside).toBe(true)
+    },
+  )
+
   test(`never reduces a large base padding when reserving a right legend`, () => {
     const large_right_pad = { ...base_pad, r: 180 }
     const layout = place({
@@ -147,60 +166,47 @@ describe(`place_outside_decorations`, () => {
   })
 })
 
-describe(`clip_bar`, () => {
-  test.each([
-    [`off-plot to the left`, -0.2, 0, 1],
-    [`off-plot to the right`, 1.5, 0, 1],
-    [`fully above`, 0.5, -0.8, -0.2],
-  ] as const)(`returns null when %s`, (_name, cross, span_start, span_end) => {
-    expect(clip_bar(true, cross, span_start, span_end)).toBeNull()
+describe(`bar_obstacles`, () => {
+  const crosses = (vertical: boolean, cross: Vec2, span: Vec2): number[] =>
+    bar_obstacles(vertical, cross, span).map(({ points }) => points[0][vertical ? `x` : `y`])
+
+  test.each<[string, Vec2, Vec2]>([
+    [`off-plot to the left`, [-0.4, -0.2], [0, 1]],
+    [`off-plot to the right`, [1.2, 1.5], [0, 1]],
+    [`fully above`, [0.4, 0.6], [-0.8, -0.2]],
+    [`a NaN span`, [0.4, 0.6], [NaN, 0.5]],
+  ])(`returns no segments when %s`, (_name, cross, span) => {
+    expect(bar_obstacles(true, cross, span)).toEqual([])
   })
 
+  // a lone center line let an auto-placed legend sit over a wide bar's sides
   test.each([
-    [
-      `vertical`,
-      true,
-      0.5,
-      -0.4,
-      1.6,
-      [
-        { x: 0.5, y: 0 },
-        { x: 0.5, y: 1 },
-      ],
-    ],
-    [
-      `horizontal`,
-      false,
-      0.3,
-      -0.5,
-      0.7,
-      [
-        { x: 0, y: 0.3 },
-        { x: 0.7, y: 0.3 },
-      ],
-    ],
+    [`vertical`, true, { x: 0.4, y: 0 }, { x: 0.4, y: 1 }],
+    [`horizontal`, false, { x: 0, y: 0.4 }, { x: 1, y: 0.4 }],
   ] as const)(
-    `clamps a %s bar segment to the visible box`,
-    (_name, vertical, cross, span_start, span_end, points) => {
-      expect(clip_bar(vertical, cross, span_start, span_end)).toEqual({
-        points,
-        draws_line: true,
-      })
+    `clamps a %s bar to the visible box and traces both edges and its center`,
+    (_name, vertical, start, end) => {
+      const segments = bar_obstacles(vertical, [0.4, 0.6], [-0.4, 1.6])
+      expect(segments).toHaveLength(3)
+      expect(segments[0]).toEqual({ points: [start, end], draws_line: true })
+      expect(crosses(vertical, [0.4, 0.6], [-0.4, 1.6])).toEqual([0.4, 0.5, 0.6])
     },
   )
 
-  // bars flush to a plot edge (first/last bar or bin) have cross exactly at 0 or 1 and must be
-  // kept as obstacles, else the legend could land on top of an edge bar
-  test.each([
-    [`vertical bar at the left edge`, true, 0],
-    [`vertical bar at the right edge`, true, 1],
-    [`horizontal bar at the bottom edge`, false, 0],
-    [`horizontal bar at the top edge`, false, 1],
-  ] as const)(`keeps an edge bar (%s)`, (_name, vertical, cross) => {
-    const seg = clip_bar(vertical, cross, 0, 1)
-    expect(seg).not.toBeNull()
-    const fixed_axis = vertical ? `x` : `y`
-    expect(seg?.points.every((point) => point[fixed_axis] === cross)).toBe(true)
+  // bars flush to a plot edge (first/last bar or bin) keep their edge at 0 or 1; a bar past the
+  // plot is traced over its visible part (a zoomed-in bar covering the view still counts); a
+  // wide bar gets interior lines so no legend fits between them; a zero-width bar (a whisker)
+  // is a single segment
+  test.each<[string, boolean, Vec2, number[]]>([
+    [`left edge`, true, [0, 0.2], [0, 0.1, 0.2]],
+    [`right edge`, true, [0.8, 1], [0.8, 0.9, 1]],
+    [`bottom edge`, false, [0, 0.2], [0, 0.1, 0.2]],
+    [`partly off-plot`, true, [-0.25, 0.5], [0, 0.25, 0.5]],
+    [`covering the whole view`, true, [-3, 2], [0, 0.25, 0.5, 0.75, 1]],
+    [`wide`, false, [0.25, 1], [0.25, 0.5, 0.75, 1]],
+    [`zero width`, false, [0.7, 0.7], [0.7]],
+  ])(`keeps the in-plot segments (%s)`, (_name, vertical, cross, expected) => {
+    expect(crosses(vertical, cross, [0, 1])).toEqual(expected)
   })
 })
 
@@ -216,9 +222,9 @@ describe(`clip_segment_to_unit_square`, () => {
 describe(`build_obstacles_norm`, () => {
   test(`samples a long line without overflowing (clip prevents runaway point counts)`, () => {
     // a near-vertical segment clipped to [0,1] should yield a bounded number of samples
-    const seg = clip_bar(true, 0.5, -1000, 1000) // huge span clamps to [0,1]
-    expect(seg).not.toBeNull()
-    const pts = build_obstacles_norm(seg ? [seg] : [], 300, 200)
+    const segs = bar_obstacles(true, [0.5, 0.5], [-1000, 1000]) // huge span clamps to [0,1]
+    expect(segs).toHaveLength(1)
+    const pts = build_obstacles_norm(segs, 300, 200)
     expect(pts.length).toBeGreaterThan(0)
     expect(pts.length).toBeLessThan(100)
     expect(pts.every((point) => isFinite(point.x) && isFinite(point.y))).toBe(true)

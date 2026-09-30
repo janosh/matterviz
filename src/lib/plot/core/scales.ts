@@ -270,6 +270,13 @@ export function create_axis_scales<A extends { scale_type?: ScaleType }>(
   }
 }
 
+// Unpadded axis scales onto the unit square (y inverted: 0 is the top), mapping data straight to
+// normalized plot coords through each axis' real (log, arcsinh, reversed) mapping
+export const unit_axis_scales = <A extends { scale_type?: ScaleType }>(
+  axes: { x: A; x2: A; y: A; y2: A },
+  ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },
+) => create_axis_scales(axes, ranges, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
+
 // Unified tick generation function
 export function generate_ticks(
   domain: Vec2,

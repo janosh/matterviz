@@ -148,6 +148,18 @@ export function assert_aligned_lengths(
   throw new RangeError(`${where}: aligned arrays must have equal lengths, got ${detail}`)
 }
 
+// Series props that are indexed per point when given as arrays; a non-array value applies to
+// every point and an empty array (e.g. `point_label: []` to hide labels) to none
+export const PER_POINT_KEYS = [
+  `metadata`,
+  `color_values`,
+  `size_values`,
+  `point_style`,
+  `point_hover`,
+  `point_label`,
+  `point_offset`,
+] as const
+
 // Per-point arrays of any plot series (bar, scatter, 3D, dense). Only the aligned fields matter.
 type AlignedSeries = {
   id?: string | number
@@ -159,7 +171,7 @@ type AlignedSeries = {
   x_error?: ErrorValues
   y_error?: ErrorValues
   line_underlays?: readonly { x: ArrayLike<unknown>; y: ArrayLike<unknown> }[]
-}
+} & Partial<Record<(typeof PER_POINT_KEYS)[number], unknown>>
 
 export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
   const { id: identifier, label, x: coord_x, y: coord_y, z: coord_z, raw_y } = series
@@ -168,17 +180,22 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
       : `Series "${name}"`
+  // Per-point props align only in their non-empty array form (see PER_POINT_KEYS).
   // Errors are scalar-or-array; only their array form is indexed in lockstep with x/y.
   // An asymmetric error contributes both sides separately - they are indexed
   // independently, so checking only one lets the other run short unnoticed.
-  const error_arrays = Object.fromEntries(
-    ([`x_error`, `y_error`] as const).flatMap((key) =>
+  const aligned = Object.fromEntries([
+    ...PER_POINT_KEYS.flatMap((key) => {
+      const values = series[key]
+      return Array.isArray(values) && values.length > 0 ? [[key, values] as const] : []
+    }),
+    ...([`x_error`, `y_error`] as const).flatMap((key) =>
       error_lengths(series[key]).map(
         (length, side) => [`${key}[${side}]`, { length }] as const,
       ),
     ),
-  )
-  assert_aligned_lengths(where, { x: coord_x, y: coord_y, z: coord_z, raw_y, ...error_arrays })
+  ])
+  assert_aligned_lengths(where, { x: coord_x, y: coord_y, z: coord_z, raw_y, ...aligned })
   series.line_underlays?.forEach((underlay, idx) =>
     assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
       x: underlay.x,

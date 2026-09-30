@@ -1128,9 +1128,18 @@ describe(`layout utility functions`, () => {
       expect(layout.width).toBeGreaterThan(plain_width)
     })
 
-    it(`decodes escaped axis-title entities exactly once`, () => {
-      const { label } = resolve_axis_title_layout({ label: `A &amp;lt; B &lt; C` })
-      expect(label).toBe(`A &lt; B < C`)
+    // Only six entities used to decode, so `&alpha;` rendered and measured verbatim
+    it.each([
+      [`A &amp;lt; B &lt; C`, `A &lt; B < C`],
+      [`&alpha; F<sub>max</sub> (eV/&Aring;)`, `α Fmax (eV/Å)`],
+      [`<i>T</i> &#8804; 300 K`, `T ≤ 300 K`],
+    ])(`decodes axis title %s exactly once`, (raw, text) => {
+      mock_text_measurement(6)
+      const layout = resolve_axis_title_layout({ label: raw })
+      expect(layout.label).toBe(text)
+      const rendered = layout.lines.flatMap((line) => line.segments.map((seg) => seg.text))
+      expect(rendered.join(``)).toBe(text)
+      expect(layout.width).toBe(6 * text.length) // measured as shown, 6px per character
     })
 
     it(`retains subscript and superscript segments when axis titles wrap`, () => {
@@ -1145,6 +1154,17 @@ describe(`layout utility functions`, () => {
       expect(layout.label).toBe(`Formation Ehull relative to x2`)
       expect(segments).toContainEqual({ text: `hull`, shift: `sub` })
       expect(segments).toContainEqual({ text: `2`, shift: `super` })
+    })
+
+    // a no-break space next to a normal one collapsed into one space in the segments but not in
+    // the wrapped lines, shifting every later line's characters by one
+    it(`keeps wrapped title segments aligned with their lines around no-break spaces`, () => {
+      mock_text_measurement(7)
+      const label = `Energy 10\u00A0 eV per atom of the cell`
+      const layout = resolve_axis_title_layout({ label }, 60)
+      expect(layout.lines.length).toBeGreaterThan(1)
+      for (const { text, segments } of layout.lines)
+        expect(segments.map((seg) => seg.text).join(``)).toBe(text)
     })
   })
 

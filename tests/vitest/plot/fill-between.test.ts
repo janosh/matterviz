@@ -112,6 +112,7 @@ describe(`resolve_series_ref`, () => {
     { x: [1, 2, 3], y: [10, 20, 30], id: `series-a` },
     { x: [1, 2, 3], y: [5, 15, 25], id: `series-b` },
     { x: [1, 2, 3], y: [100, 200, 300] },
+    null as unknown as DataSeries, // null entries hold their index and match no id
   ]
 
   it.each([
@@ -265,6 +266,15 @@ describe(`compute_fill_segments`, () => {
     ])
     expect(segments[0].upper_curve).toBe(`monotoneX`)
   })
+
+  // flat edges span the x domain, which a reversed x axis (XPS, NMR) hands over descending
+  it.each<[Vec2]>([[[0, 20]], [[20, 0]]])(
+    `spans flat edges across x domain %j`,
+    (x_domain) => {
+      const region = { upper: 5, lower: 0 }
+      expect(compute_fill_segments(region, series, { ...domains, x_domain })).toHaveLength(1)
+    },
+  )
 
   it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
     const segments = compute_fill_segments(
@@ -465,6 +475,18 @@ describe(`convert_error_band_to_fill_region`, () => {
     )
     expect(result?.upper).toEqual({ type: `data`, x: [1, 2, 3], values: upper })
     expect(result?.lower).toEqual({ type: `data`, x: [1, 2, 3], values: lower })
+  })
+
+  it(`a null y gap stays a gap in both edges`, () => {
+    const gap_series = [{ x: [1, 2, 3], y: [10, null, 30] }] as unknown as DataSeries[]
+    const result = convert_error_band_to_fill_region(
+      { series: base_ref, error: 1 },
+      gap_series,
+    )
+    expect([result?.upper, result?.lower]).toMatchObject([
+      { values: [11, NaN, 31] },
+      { values: [9, NaN, 29] },
+    ])
   })
 
   it(`returns null for invalid series reference`, () => {

@@ -6,8 +6,10 @@ import { plot_color } from '$lib/colors'
 import { get_series_symbol } from '$lib/plot/core/data-transform'
 import type { LegendFill } from '$lib/plot/scatter/scatter-data'
 import {
-  build_legend_data,
+  build_fill_legend_items,
+  build_series_legend_items,
   filter_series_to_ranges,
+  lookalike_legend_label,
   materialize_series_points,
   pick_tooltip_bg,
   project_line_points,
@@ -166,6 +168,16 @@ describe(`filter_series_to_ranges`, () => {
     [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
     [`hidden series`, { id: `energy`, x: [0, 1], y: [2], visible: false }, `x=2, y=1`],
     [
+      `short color_values`,
+      { id: `energy`, x: [0, 1], y: [2, 3], color_values: [1] },
+      `x=2, y=2, color_values=1`,
+    ],
+    [
+      `long point_style`,
+      { id: `energy`, x: [0], y: [1], point_style: [{}, {}] },
+      `x=1, y=1, point_style=2`,
+    ],
+    [
       `misaligned underlay`,
       { id: `energy`, x: [0, 1], y: [2, 3], line_underlays: [{ x: [0, 1], y: [2] }] },
       `x=2, y=1`,
@@ -206,7 +218,16 @@ describe(`filter_series_to_ranges`, () => {
     })
     expect(
       filter_to_ranges(
-        [{ x: [1, 2], y: [3, 4], point_style: { fill: `red` }, metadata: { tag: `shared` } }],
+        // an empty per-point array means none, like an absent prop, and passes the length check
+        [
+          {
+            x: [1, 2],
+            y: [3, 4],
+            point_style: { fill: `red` },
+            metadata: { tag: `shared` },
+            point_label: [],
+          },
+        ],
         ranges,
       )[0].filtered_data,
     ).toMatchObject([
@@ -216,7 +237,7 @@ describe(`filter_series_to_ranges`, () => {
   })
 })
 
-describe(`build_legend_data`, () => {
+describe(`build_series_legend_items and build_fill_legend_items`, () => {
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], label: `alpha`, point_style: { symbol_type: `Square` } },
@@ -225,7 +246,10 @@ describe(`build_legend_data`, () => {
     const fills = [
       { idx: 0, source_type: `fill_region`, source_idx: 0, label: `band`, fill: `orange` },
     ] as unknown as LegendFill[]
-    expect(build_legend_data(series, fills, color_scale)).toMatchObject([
+    expect([
+      ...build_series_legend_items(series, color_scale),
+      ...build_fill_legend_items(fills),
+    ]).toMatchObject([
       {
         series_idx: 0,
         label: `alpha`,
@@ -254,7 +278,7 @@ describe(`build_legend_data`, () => {
     ])
   })
 
-  test(`labels cannot merge independent series or hide a fill entry`, () => {
+  test(`labels merge no independent series; fill rows need a label and show_in_legend`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], label: `dup`, point_style: { fill: `red` } },
       { x: [2], y: [2], label: `dup`, point_style: { fill: `blue` } },
@@ -266,13 +290,24 @@ describe(`build_legend_data`, () => {
       { idx: 2, source_type: `error_band`, source_idx: 0 }, // no label -> dropped
       { idx: 3, source_type: `error_band`, source_idx: 1, label: `kept`, visible: false },
     ] as unknown as LegendFill[]
-    const items = build_legend_data(series, fills, color_scale)
-    expect(items.map((item) => item.label)).toEqual([`dup`, `dup`, `dup`, `dup`, `kept`])
-    expect(items[0]).toMatchObject({ series_idx: 0, display_style: { symbol_color: `red` } })
-    expect(items[1]).toMatchObject({ series_idx: 1, display_style: { symbol_color: `blue` } })
-    expect(items[2]).toMatchObject({ series_idx: 2, legend_group: `g1` })
-    expect(items[3]).toMatchObject({ item_type: `fill`, fill_idx: 0, visible: true })
-    expect(items[4]).toMatchObject({ item_type: `fill`, visible: false })
+    const items = build_series_legend_items(series, color_scale)
+    expect(items).toMatchObject([
+      { series_idx: 0, label: `dup`, display_style: { symbol_color: `red` } },
+      { series_idx: 1, label: `dup`, display_style: { symbol_color: `blue` } },
+      { series_idx: 2, label: `dup`, legend_group: `g1` },
+    ])
+    expect(build_fill_legend_items(fills)).toMatchObject([
+      { item_type: `fill`, fill_idx: 0, label: `dup`, visible: true },
+      { item_type: `fill`, label: `kept`, visible: false },
+    ])
+    // same labels are no lookalikes while swatches or groups tell the rows apart, but rows that
+    // match in all three are (one entry split into segments that lack a shared legend_id)
+    expect(lookalike_legend_label(items)).toBeUndefined()
+    const line_style = { stroke: `red` }
+    const segment: DataSeries = { x: [1], y: [1], label: `seg`, markers: `line`, line_style }
+    expect(
+      lookalike_legend_label(build_series_legend_items([segment, segment], color_scale)),
+    ).toBe(`seg`)
   })
 
   test(`markers control which styles appear; line color cascades`, () => {
@@ -282,7 +317,9 @@ describe(`build_legend_data`, () => {
       // no line stroke -> first non-null color_value through the scale
       { x: [3], y: [3], markers: `line`, color_values: [null, 0.5] },
     ]
-    const styles = build_legend_data(series, [], color_scale).map((item) => item.display_style)
+    const styles = build_series_legend_items(series, color_scale).map(
+      (item) => item.display_style,
+    )
     // toEqual ignores undefined-valued keys, so it pins the other marker's styles as unset
     expect(styles[0]).toEqual({ symbol_type: get_series_symbol(0), symbol_color: `red` })
     expect(styles[1]).toEqual({ line_color: `green`, line_dash: `4 2` })
@@ -309,7 +346,7 @@ describe(`build_legend_data`, () => {
           },
         },
       ]
-      const items = build_legend_data(series, [], color_scale)
+      const items = build_series_legend_items(series, color_scale)
       expect(items.map((item) => item.display_style.symbol_color)).toEqual([
         `purple`,
         `teal`,
@@ -318,7 +355,7 @@ describe(`build_legend_data`, () => {
       ])
       expect(items[3].display_style.symbol_opacity).toBe(0.75)
       const styles = { point: { stroke_color: `orange`, stroke_opacity: 0.25 } }
-      const overridden = build_legend_data(series, [], color_scale, styles, 3)
+      const overridden = build_series_legend_items(series, color_scale, styles, 3)
       expect(overridden[3].display_style).toMatchObject({
         symbol_color: `orange`,
         symbol_opacity: 0.25,
@@ -332,7 +369,7 @@ describe(`build_legend_data`, () => {
       null,
       { x: [3], y: [3], label: `B` },
     ] as unknown as DataSeries[]
-    const items = build_legend_data(series, [], color_scale)
+    const items = build_series_legend_items(series, color_scale)
     // no phantom `Series 2` row, and B keeps index 2 so toggling it hits the right series
     expect(items.map((item) => [item.label, item.series_idx])).toEqual([
       [`A`, 0],

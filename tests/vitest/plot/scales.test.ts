@@ -263,6 +263,12 @@ describe(`scales`, () => {
       },
       { values: [-0], error: 0, count: 3, expected: { min: -0, max: -0, n_finite: 2 } },
       { values: [1, 2], error: undefined, expected: { n_finite: 0 } },
+      // a null gap is no point, though null - 1 is a finite -1
+      {
+        values: [100, null, 102] as number[],
+        error: 1,
+        expected: { min: 99, max: 103, min_positive: 99, n_finite: 4 },
+      },
     ])(`accumulates error-bar bounds for %j`, ({ values, error, count, expected }) => {
       const extent = empty_extent()
       accumulate_error_extent(extent, values, error, count)

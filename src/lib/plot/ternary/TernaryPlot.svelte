@@ -109,7 +109,8 @@
   let svg_element: SVGSVGElement | null = $state(null)
   let colorbar_size = $state({ width: 0, height: 0 })
 
-  let hover_info = $state<TernaryPointProps<Metadata> | null>(null)
+  // Only the hovered point's indices are state: the tooltip payload derives from them below
+  let hover_key = $state<{ series_idx: number; point_idx: number } | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
   // Keyboard focus anchors at the marker, where there is no pointer glyph to dodge
   let hover_at_pointer = $state(false)
@@ -221,7 +222,7 @@
     return { x: pad.l + px_x, y: pad.t + px_y }
   }
   const is_hovered = (point: PlacedPoint): boolean =>
-    hover_info?.series_idx === point.series_idx && hover_info.point_idx === point.point_idx
+    hover_key?.series_idx === point.series_idx && hover_key.point_idx === point.point_idx
 
   // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
@@ -260,6 +261,15 @@
         : (srs?.metadata as Metadata | undefined),
     }
   }
+  // Follows new data at the hovered indices and closes once that point is no longer drawn
+  const hover_info = $derived.by(() => {
+    if (!hover_key) return null
+    const { series_idx, point_idx } = hover_key
+    const point = placed.groups[series_idx]?.[point_idx]
+    return point && is_visible(series_idx) && draws_points(series_idx)
+      ? point_props(point)
+      : null
+  })
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels
       .map((label, idx) => `${label} ${format_value(point.fractions[idx], tick_format)}`)
@@ -278,13 +288,13 @@
     hover_at_pointer = Boolean(cursor)
     hover_pos = cursor ?? svg_pixel(point)
     if (is_hovered(point)) return
-    hover_info = point_props(point)
-    on_point_hover?.({ ...hover_info, event })
+    hover_key = { series_idx: point.series_idx, point_idx: point.point_idx }
+    on_point_hover?.({ ...point_props(point), event })
   }
 
   function clear_hover() {
-    if (!hover_info) return
-    hover_info = null
+    if (!hover_key) return
+    hover_key = null
     hovered = false
     on_point_hover?.(null)
   }
