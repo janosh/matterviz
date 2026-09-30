@@ -198,7 +198,7 @@ describe(`numeric composition`, () => {
 })
 
 describe(`get_center_of_mass`, () => {
-  test.each([0, 1, 128])(`reads %i numeric sites without materializing records`, (count) => {
+  test.each([1, 128])(`reads %i numeric sites without materializing records`, (count) => {
     const positions = Float64Array.from(
       { length: count * 3 },
       (_unused, idx) => Math.sin(idx) * (idx % 2 ? 1e8 : 1e-8),
@@ -272,6 +272,13 @@ describe(`get_center_of_mass`, () => {
     const structure = create_simple_structure(sites)
     const result = struct_utils.get_center_of_mass(structure)
     expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
+  })
+
+  // no sites means no center of mass: fail fast instead of returning [NaN, NaN, NaN]
+  test(`throws for a structure without sites`, () => {
+    expect(() => struct_utils.get_center_of_mass(create_simple_structure([]))).toThrow(
+      `Center of mass needs sites of positive total weight, got 0`,
+    )
   })
 })
 

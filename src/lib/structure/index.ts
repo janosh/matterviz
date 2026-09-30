@@ -190,6 +190,8 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
         total_weight += weight
       }
     }
+  if (!(total_weight > 0))
+    throw new Error(`Center of mass needs sites of positive total weight, got ${total_weight}`)
   return [sum_x / total_weight, sum_y / total_weight, sum_z / total_weight]
 }
 
