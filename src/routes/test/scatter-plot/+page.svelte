@@ -123,7 +123,6 @@
     {
       x: [...dense_cluster.x, ...sparse_points.x, ...single_point.x],
       y: [...dense_cluster.y, ...sparse_points.y, ...single_point.y],
-      // one style per point: sparse and single points each repeat their shared style
       point_style: [
         ...dense_cluster.point_style,
         ...sparse_points.x.map(() => sparse_points.point_style),
@@ -131,12 +130,8 @@
       ],
       point_label: [
         ...dense_cluster.point_label,
-        ...(Array.isArray(sparse_points.point_label)
-          ? sparse_points.point_label
-          : [sparse_points.point_label]),
-        ...(Array.isArray(single_point.point_label)
-          ? single_point.point_label
-          : [single_point.point_label]),
+        ...sparse_points.point_label,
+        ...single_point.point_label,
       ],
     },
   ]

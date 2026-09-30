@@ -127,42 +127,27 @@ export function build_obstacles_norm(
   return obstacles
 }
 
-// Widest gap (plot fraction) between a bar's obstacle lines: wider bars get interior lines,
-// else a legend could sit inside the bar between its edge and center lines
+// Widest gap (plot fraction) between a bar's obstacle lines, so no legend fits in a wide bar
 const MAX_BAR_LINE_GAP = 0.25
 
-// A bar as segments along both long edges and its center line, since a lone center line let a
-// legend sit inside a wide bar. Clipped to the unit square before sampling so zoomed, off-screen
-// spans cannot emit millions of points. A zero-width cross span (a box whisker) gives one segment.
-export function bar_obstacles(
-  vertical: boolean,
-  [cross_start, cross_end]: Vec2,
-  [span_start, span_end]: Vec2,
-): ObstacleSeries[] {
-  const clamp_to_plot = (start: number, end: number): Vec2 => [
+// A bar's visible part as lines along both edges, its center and as many interior lines as the
+// gap limit needs (one line for a zero-width bar like a whisker). Clipped to the unit square
+// before sampling so zoomed, off-screen spans cannot emit millions of points.
+export function bar_obstacles(vertical: boolean, cross: Vec2, span: Vec2): ObstacleSeries[] {
+  const clamp_to_plot = ([start, end]: Vec2): Vec2 => [
     Math.max(0, Math.min(start, end)),
     Math.min(1, Math.max(start, end)),
   ]
-  const [lower, upper] = clamp_to_plot(span_start, span_end)
-  const [left, right] = clamp_to_plot(cross_start, cross_end)
+  const [lower, upper] = clamp_to_plot(span)
+  const [left, right] = clamp_to_plot(cross)
   if (!(upper >= lower && right >= left)) return []
-  // Edges and center of the visible part (a zoomed-in bar covering the view still counts),
-  // plus interior lines so no gap between them exceeds MAX_BAR_LINE_GAP
   const n_gaps = right > left ? Math.max(2, Math.ceil((right - left) / MAX_BAR_LINE_GAP)) : 0
-  return Array.from({ length: n_gaps + 1 }, (_, idx) =>
-    n_gaps ? left + ((right - left) * idx) / n_gaps : left,
-  ).map((cross) => ({
-    points: vertical
-      ? [
-          { x: cross, y: lower },
-          { x: cross, y: upper },
-        ]
-      : [
-          { x: lower, y: cross },
-          { x: upper, y: cross },
-        ],
-    draws_line: true,
-  }))
+  return Array.from({ length: n_gaps + 1 }, (_, idx) => {
+    const line_at = left + ((right - left) * idx) / (n_gaps || 1)
+    const point = (along: number) =>
+      vertical ? { x: line_at, y: along } : { x: along, y: line_at }
+    return { points: [point(lower), point(upper)], draws_line: true }
+  })
 }
 
 // Project a decoration-independent normalized obstacle field into the final plot rectangle.

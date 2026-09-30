@@ -297,14 +297,11 @@
   // `label` or index. Override tick labels via x_axis.ticks (a Record).
   let { slot_list, slot_of } = $derived.by(() => {
     const labels: string[] = []
-    const slot_by_category = new Map<string, number>()
-    const slots = series.map((srs, idx) => {
-      if (srs.category == null) return labels.push(srs.label ?? `${idx}`) - 1
-      let slot = slot_by_category.get(srs.category)
-      if (slot === undefined) {
-        slot = labels.push(srs.category) - 1
-        slot_by_category.set(srs.category, slot)
-      }
+    const category_slots = new Map<string, number>()
+    const slots = series.map(({ category, label }, idx) => {
+      if (category == null) return labels.push(label ?? `${idx}`) - 1
+      const slot = category_slots.get(category) ?? labels.push(category) - 1
+      category_slots.set(category, slot)
       return slot
     })
     return { slot_list: labels, slot_of: slots }
@@ -472,9 +469,8 @@
       : { x: value_primary, x2: value_secondary, y: cat_range, y2: [0, 1] as Vec2 }
   })
 
-  // Obstacle field in normalized [0,1] coords (y=0 at top): each box as its drawn body (the IQR
-  // box, or a violin's whole KDE extent, across its drawn width) plus its whiskers as a bar as
-  // wide as their caps
+  // Obstacle field in normalized [0,1] coords (y=0 at top): each drawn body (IQR box or whole
+  // violin) plus its whiskers as a cap-wide bar
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_boxes.length > 0, () => {
       const norm = unit_axis_scales(plot_axes, frame.ranges.current)
@@ -482,7 +478,7 @@
       return visible_boxes.flatMap(({ series: srs, idx, slot, stats }) => {
         if (!Number.isFinite(stats.median)) return []
         const val_scale = box_val_scale(srs, norm)
-        const bar = (width: number, [low, high]: Vec2) =>
+        const bar = (width: number, low: number, high: number) =>
           bar_obstacles(
             vertical,
             [cat_scale(slot - width / 2), cat_scale(slot + width / 2)],
@@ -490,16 +486,11 @@
           )
         const kde = violin_kdes.get(idx)
         const box_width = box_width_of(srs, idx)
+        const body = kde
+          ? bar(srs.violin_width ?? violin_width, kde.grid[0], kde.grid[kde.grid.length - 1])
+          : bar(box_width, stats.q1, stats.q3)
         const cap_width = box_width * (whisker_state.cap_fraction ?? 0.5)
-        return [
-          ...(kde
-            ? bar(srs.violin_width ?? violin_width, [
-                kde.grid[0],
-                kde.grid[kde.grid.length - 1],
-              ])
-            : bar(box_width, [stats.q1, stats.q3])),
-          ...bar(cap_width, [stats.whisker_low, stats.whisker_high]),
-        ]
+        return [...body, ...bar(cap_width, stats.whisker_low, stats.whisker_high)]
       })
     }),
   )
@@ -530,10 +521,7 @@
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
   // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
   // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
-  const box_val_scale = (
-    srs: BoxPlotSeries<Metadata>,
-    scales: typeof frame.scales = frame.scales,
-  ): ((val: number) => number) => {
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) => {
     const axis_key = val_axis_key(srs)
     return log_floor_scale(
       scales[axis_key],

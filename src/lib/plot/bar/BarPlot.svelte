@@ -218,8 +218,7 @@
   const frame = create_cartesian_frame({
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
-    // Categorical x2 shares x's category slots, so it takes x's pinned range as well as its
-    // auto range (see compute_bar_auto_ranges)
+    // Categorical x2 shares x's category slots, pinned range included
     range_sources: () =>
       vertical && category_list.length > 0
         ? { ...plot_axes, x2: { ...plot_axes.x2, range: x_axis.range } }
@@ -413,8 +412,7 @@
   // line series contribute sampled polylines.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
-      // Pixel scales over the base plot box (origin at its top-left): unlike the unit square
-      // Histogram and BoxPlot use, pixels keep compute_bar_rect's 1px floors
+      // Base-box pixel scales (not unit ones) keep compute_bar_rect's 1px floors
       const { current } = frame.ranges
       const zero_pad = { l: 0, r: 0, t: 0, b: 0 }
       const scales = create_axis_scales(plot_axes, current, zero_pad, base_w, base_h)
@@ -518,8 +516,7 @@
   }
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
-  // Only the hovered mark's indices (and its fill) are state: the tooltip payload and anchor
-  // derive from them, so they follow new data under a resting pointer and close once it's gone
+  // Hover state is indices only: the tooltip follows new data and closes once its mark is gone
   let hover_key = $state<{ series_idx: number; bar_idx: number; color: string } | null>(null)
   const hover_info = $derived(
     hover_key && hover_key.bar_idx < (internal_series[hover_key.series_idx]?.x.length ?? 0)
@@ -561,8 +558,7 @@
     }
   }
 
-  // Tooltip anchor: a line point where it is drawn, a bar at its drawn tip from the geometry
-  // that draws it (grouped slot, stack base and log-floored value axis included)
+  // Line points anchor where drawn, bars at their drawn tip (group slot, stack base, log floor)
   const tooltip_anchor = $derived.by((): Vec2 | null => {
     if (!hover_info || !hovered) return null
     const { series_idx, bar_idx, orient_x, orient_y } = hover_info
@@ -742,11 +738,8 @@
                 hovered = true
                 const fill = line_point_fill(point, color)
                 hover_key = { series_idx, bar_idx: point.idx, color: fill }
-                on_point_hover?.({
-                  ...get_bar_data(series_idx, point.idx, fill),
-                  event: evt,
-                  point,
-                })
+                const point_data = get_bar_data(series_idx, point.idx, fill)
+                on_point_hover?.({ ...point_data, event: evt, point })
               }}
               {@const do_click = (point: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
                 const fill = line_point_fill(point, color)
@@ -1006,11 +999,10 @@
     />
 
     {#if hover_info && tooltip_anchor}
-      {@const [anchor_x, anchor_y] = tooltip_anchor}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
-        x={anchor_x}
-        y={anchor_y}
+        x={tooltip_anchor[0]}
+        y={tooltip_anchor[1]}
         avoid_cursor={false}
         offset={{ x: 10, y: 5 }}
         constrain_to={{ width: frame.width, height: frame.height }}

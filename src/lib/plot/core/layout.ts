@@ -1,7 +1,7 @@
 import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
 import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
 import {
-  BREAKABLE_SPACE_SRC,
+  BREAKABLE_SPACE_RE,
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
@@ -135,9 +135,7 @@ const split_axis_title_paragraphs = (
   return paragraphs
 }
 
-// Same whitespace wrap_text_paragraph breaks at: a no-break space is part of its word, else it
-// collapsed into the next space here but not there, shifting every later line's characters
-const BREAKABLE_SPACE_RE = new RegExp(BREAKABLE_SPACE_SRC, `u`)
+// Spaces collapse only where wrap_text_paragraph breaks, so segments stay aligned with lines
 const segments_for_wrapped_lines = (
   paragraph: readonly AxisTitleSegment[],
   lines: readonly string[],

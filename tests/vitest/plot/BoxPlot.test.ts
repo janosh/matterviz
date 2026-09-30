@@ -302,21 +302,6 @@ describe(`BoxPlot`, () => {
     expect(arg.category_label).toBe(`Box A`)
   })
 
-  test(`one category tick per series even when x_axis.categories is shorter`, async () => {
-    // Each box is positioned by its index in `series`; the category axis must always
-    // have one slot/tick per series, regardless of any x_axis.categories override.
-    const series = [
-      { ...basic, label: `A` },
-      { ...basic, label: `B`, color: `tomato` },
-      { ...basic, label: `C`, color: `green` },
-    ]
-    const plot = await mount_sized_box_plot({ series, x_axis: { categories: [`A`, `B`] } })
-    expect(plot.querySelectorAll(`.box-series`)).toHaveLength(3)
-    const x_ticks = plot.querySelectorAll(`g.x-axis g.tick`)
-    expect(x_ticks).toHaveLength(3)
-    expect([...x_ticks].map((tick_el) => tick_el.textContent?.trim())).toEqual([`A`, `B`, `C`])
-  })
-
   // Hiding series shrinks the obstacle field the frame's solver reads, so an outside legend
   // moves back inside once the remaining boxes leave room for it
   test(`legend returns inside the plot once dense boxes are isolated`, async () => {
@@ -346,43 +331,24 @@ describe(`BoxPlot`, () => {
     expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
   })
 
-  // Each glyph's drawn extent: a box's hover target spans its whiskers and body width, a
-  // violin its outline
+  // Drawn extent of a glyph: a box's hover target (whiskers x body width), a violin's outline
   const glyph_rect = (group: Element): Rect => {
     const violin = group.querySelector(`path.violin-area`)
     if (!violin) return svg_rect(query(group, `rect.hover-target`))
     const { xs, ys } = path_coords(violin.getAttribute(`d`) ?? ``)
-    const [x_min, y_min] = [Math.min(...xs), Math.min(...ys)]
-    return {
-      x: x_min,
-      y: y_min,
-      width: Math.max(...xs) - x_min,
-      height: Math.max(...ys) - y_min,
-    }
+    const [left, top] = [Math.min(...xs), Math.min(...ys)]
+    return { x: left, y: top, width: Math.max(...xs) - left, height: Math.max(...ys) - top }
   }
-  // geometric samples from 1e-3 up to `max`, so minmax whiskers span all their decades
-  const decades = (max: number) =>
-    Array.from({ length: 21 }, (_, idx) => 1e-3 * (max / 1e-3) ** (idx / 20))
-  // two interleaved uniform grids summed: a triangular density whose shoulders reach well
-  // past the IQR
-  const triangular = Array.from(
-    { length: 80 },
-    (_, idx) => ((idx * 37) % 80) / 80 + ((idx * 53) % 80) / 80,
-  )
-  // On a log axis the obstacle field once mapped whiskers linearly, so boxes spanning several
-  // decades looked like slivers at the floor. With whole boxes as obstacles, a crowding rule
-  // relative to the plot-wide obstacle count then called the spot over a whisker sparse. A
-  // violin modeled as its whisker line, or its IQR, let the legend sit on its shoulders.
+  // geometric samples from 1e-3 up to 100 or 1000, so minmax whiskers span all their decades
+  const log_boxes = [100, 100, 1000].map((max) => ({
+    y: Array.from({ length: 21 }, (_, idx) => 1e-3 * (max / 1e-3) ** (idx / 20)),
+  }))
+  // Obstacles once mapped log whiskers linearly (slivers at the floor), rated a whisker's spot
+  // sparse against the plot-wide count, and reduced a violin to its whisker line or IQR
+  // oxfmt-ignore
   test.each([
-    [
-      `boxes on a log value axis`,
-      {
-        series: [100, 100, 1000].map((max) => ({ y: decades(max) })),
-        whisker_mode: `minmax`,
-        y_axis: { scale_type: `log` },
-      },
-    ],
-    [`a violin`, { series: [{ y: triangular }], kind: `violin` }],
+    [`boxes on a log value axis`, { series: log_boxes, whisker_mode: `minmax`, y_axis: { scale_type: `log` } }],
+    [`a violin`, { series: [{ y: basic.y }], kind: `violin` }],
   ] as const)(`automatic legend placement avoids %s`, async (_name, props) => {
     vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
     vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
@@ -559,17 +525,18 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
   })
 
-  // A series without `category` used to key its slot by index: it took the index as its tick
-  // label, and merged into a category spelled like that index
+  // Uncategorized series once keyed slots by index: index tick labels, merging with category
+  // `1`. Each series keeps its own slot despite a shorter x_axis.categories override.
   // oxfmt-ignore
   test.each([
-    [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`]],
-    [`an uncategorized series`, [{ category: `X` }, { category: `X` }, { label: `Baseline` }], [`X`, `Baseline`]],
-    [`a category spelled like an index`, [{ category: `1` }, { label: `other` }], [`1`, `other`]],
-  ] as const)(`category slots and tick labels with %s`, async (_name, specs, expected_ticks) => {
+    [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`], {}],
+    [`an uncategorized series`, [{ category: `X` }, { category: `X` }, { label: `Baseline` }], [`X`, `Baseline`], {}],
+    [`a category spelled like an index`, [{ category: `1` }, { label: `other` }], [`1`, `other`], {}],
+    [`a shorter x_axis.categories`, [{ label: `A` }, { label: `B` }, { label: `C` }], [`A`, `B`, `C`], { categories: [`A`, `B`] }],
+  ] as const)(`category slots and tick labels with %s`, async (_name, specs, expected_ticks, x_axis) => {
     const plot = await mount_sized_box_plot({
       series: specs.map((spec, idx) => ({ y: dist(80, idx, 1), ...spec })),
-      kind: `violin`,
+      x_axis,
     })
     const ticks = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
     expect(ticks.map((node) => node.textContent?.trim())).toEqual(expected_ticks)

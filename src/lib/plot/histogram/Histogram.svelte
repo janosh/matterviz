@@ -31,7 +31,6 @@
     legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import type { ObstacleSeries } from '$lib/plot/core/decorations'
   import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
@@ -185,8 +184,7 @@
     label: `Value`,
     ...x2_axis,
   })
-  // Counts are integers unless per-sample weights make them fractional (a closure: the
-  // entries are declared further down)
+  // Weighted counts can be fractional ($derived.by: the entries are declared further down)
   const count_format = $derived.by(() =>
     selected_series_entries.some(({ series_data }) => series_data.weights) ? undefined : `d`,
   )
@@ -344,25 +342,22 @@
   const bar_foot = ([lower, upper]: Vec2): number =>
     clamp(0, Math.min(lower, upper), Math.max(lower, upper))
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top): each filled bar's edges and
-  // center line (top -> baseline), so the legend can't hide inside a bar. Built from
-  // histogram_bins (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top) spanning each filled bar, so the
+  // legend can't hide inside one. Built from histogram_bins (pad-independent) + ranges so the
+  // crowding decision can't see its own reservation.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, histogram_bins.length > 0, () => {
       const { current } = frame.ranges
       const norm = unit_axis_scales(frame.axes, current)
-      const bars: ObstacleSeries[] = []
-      for (const hist of histogram_bins) {
+      return histogram_bins.flatMap((hist) => {
         const x_scale = norm[hist.x_axis ?? `x`]
         const y_scale = norm[hist.y_axis ?? `y`]
         const baseline = y_scale(bar_foot(current[hist.y_axis ?? `y`]))
-        for (const { x0: coord_x_0, x1: coord_x_1, value } of hist.bins) {
-          if (value <= 0) continue
+        return hist.bins.flatMap(({ x0: coord_x_0, x1: coord_x_1, value }) => {
           const cross: Vec2 = [x_scale(coord_x_0), x_scale(coord_x_1)]
-          bars.push(...bar_obstacles(true, cross, [y_scale(value), baseline]))
-        }
-      }
-      return bars
+          return value <= 0 ? [] : bar_obstacles(true, cross, [y_scale(value), baseline])
+        })
+      })
     }),
   )
 
@@ -420,8 +415,7 @@
   )
 
   // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height.
-  // The center is the edges' midpoint in the axis' scale space, where the bar is drawn: log bin
-  // [10, 100] centers at 31.6, not at 55 (~74% across the bar).
+  // The center is the edges' scale-space midpoint, where the bar is drawn (log [10, 100]: 31.6)
   const bar_data = (
     hist: BinnedSeries,
     { x0: coord_x_0, x1: coord_x_1, count, value }: HistogramBin,

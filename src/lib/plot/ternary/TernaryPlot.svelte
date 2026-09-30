@@ -109,7 +109,7 @@
   let svg_element: SVGSVGElement | null = $state(null)
   let colorbar_size = $state({ width: 0, height: 0 })
 
-  // Only the hovered point's indices are state: the tooltip payload derives from them below
+  // Hover state is indices only: the payload follows new data and closes once the point is gone
   let hover_key = $state<{ series_idx: number; point_idx: number } | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
   // Keyboard focus anchors at the marker, where there is no pointer glyph to dodge
@@ -261,14 +261,9 @@
         : (srs?.metadata as Metadata | undefined),
     }
   }
-  // Follows new data at the hovered indices and closes once that point is no longer drawn
   const hover_info = $derived.by(() => {
-    if (!hover_key) return null
-    const { series_idx, point_idx } = hover_key
-    const point = placed.groups[series_idx]?.[point_idx]
-    return point && is_visible(series_idx) && draws_points(series_idx)
-      ? point_props(point)
-      : null
+    const point = rendered.find(is_hovered)
+    return point ? point_props(point) : null
   })
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels

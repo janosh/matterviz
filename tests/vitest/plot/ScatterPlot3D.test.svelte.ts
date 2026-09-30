@@ -174,21 +174,6 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
-// axis labels are HTML like the 2D axes': a plain-text span showed `&alpha;<sub>x</sub>` verbatim
-test(`ScatterPlot3DScene renders HTML axis labels`, async () => {
-  const { unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      ranges: { x: [0, 1], y: [0, 1], z: [0, 1] },
-      x_axis: { ticks: [0, 1], label: `&alpha;<sub>x</sub>` },
-      gizmo: false,
-    }),
-  )
-  flushSync()
-  const labels = [...document.querySelectorAll(`.axis-label`)].map((label) => label.innerHTML)
-  await unmount_scene()
-  expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
-})
-
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [
@@ -232,6 +217,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
         return state.series
       },
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      x_axis: { label: `&alpha;<sub>x</sub>` },
       gizmo: false,
       display: { show_bounding_box: true },
       surfaces: [hemisphere],
@@ -259,6 +245,9 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
   const tip_text = () => portal.querySelector(`.tip`)?.textContent
   try {
+    // axis labels are HTML like the 2D axes' (a plain-text span showed the markup verbatim)
+    const labels = [...document.querySelectorAll(`.axis-label`)].map((node) => node.innerHTML)
+    expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
     expect(instances().count).toBe(4)
     expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
     const [group, ...others] = find_objects(scene, ClippingGroup)

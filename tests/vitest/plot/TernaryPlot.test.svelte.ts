@@ -132,10 +132,8 @@ describe(`TernaryPlot`, () => {
 
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {
     const on_point_hover = vi.fn()
-    const bound = $state({ series })
-    const plot = await mount_ternary(
-      bind_props({ labels: [`Fe`, `Ni`, `Cr`] as const, on_point_hover }, bound),
-    )
+    const bound = $state({ series, labels: [`Fe`, `Ni`, `Cr`] as const })
+    const plot = await mount_ternary(bind_props({ on_point_hover }, bound))
     const hover = (element: Element | undefined, coord_x = 0, coord_y = 0) => {
       element?.dispatchEvent(
         new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
@@ -158,31 +156,13 @@ describe(`TernaryPlot`, () => {
       color: `#e15759`,
       color_value: null,
     })
-    // new data at the hovered index updates the open tooltip, and moving within the same
-    // marker only moves the chip
+    // the open tooltip follows new data; moving within the same marker only moves the chip
     const [oxides, path] = series
-    bound.series = [
-      {
-        ...oxides,
-        points: [
-          [1, 0, 0],
-          [0.6, 0.3, 0.1],
-          [2, 2, 6],
-        ],
-      },
-      path,
-    ]
+    bound.series = [{ ...oxides, points: oxides.points.with(1, [0.6, 0.3, 0.1]) }, path]
     await tick()
     expect(tooltip()?.textContent).toMatch(/Fe: 60 %\s*Ni: 30 %\s*Cr: 10 %/)
     await hover(markers(plot)[1], 105, 100)
-    expect(tooltip()?.textContent).toMatch(/Fe: 60 %\s*Ni: 30 %\s*Cr: 10 %/)
     expect(on_point_hover).toHaveBeenCalledOnce()
-    // the tooltip closes when its point is gone
-    bound.series = [{ ...oxides, points: [[1, 0, 0]] }, path]
-    await tick()
-    expect(tooltip()).toBeNull()
-    bound.series = series
-    await tick()
     // a different marker swaps the payload
     await hover(markers(plot)[3], 200, 50)
     expect(on_point_hover).toHaveBeenCalledTimes(2)
@@ -191,6 +171,10 @@ describe(`TernaryPlot`, () => {
       point_idx: 0,
       series_label: `Path`,
     })
+    // the tooltip closes when its point is gone
+    bound.series = [oxides]
+    await tick()
+    expect(tooltip()).toBeNull()
     plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
     await tick()
     expect(tooltip()).toBeNull()

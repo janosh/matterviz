@@ -203,6 +203,10 @@ describe(`resolve_boundary_points`, () => {
     )
     expect(result?.curve).toBe(`linear`)
     expect(result?.points).toEqual([make_point(0, coord_y), make_point(20, coord_y)])
+    // without one it spans the x domain in ascending order, even a reversed one (XPS, NMR)
+    const reversed = { ...domains, x_domain: [20, 0] as Vec2 }
+    const unpaired = resolve_boundary_points(boundary as FillBoundary, series, reversed)
+    expect(unpaired?.points).toEqual(result?.points)
   })
 
   it(`samples a function boundary across the span`, () => {
@@ -266,15 +270,6 @@ describe(`compute_fill_segments`, () => {
     ])
     expect(segments[0].upper_curve).toBe(`monotoneX`)
   })
-
-  // flat edges span the x domain, which a reversed x axis (XPS, NMR) hands over descending
-  it.each<[Vec2]>([[[0, 20]], [[20, 0]]])(
-    `spans flat edges across x domain %j`,
-    (x_domain) => {
-      const region = { upper: 5, lower: 0 }
-      expect(compute_fill_segments(region, series, { ...domains, x_domain })).toHaveLength(1)
-    },
-  )
 
   it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
     const segments = compute_fill_segments(
@@ -461,13 +456,17 @@ describe(`resolve_fill_binding`, () => {
 })
 
 describe(`convert_error_band_to_fill_region`, () => {
-  const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test-series` }]
+  const mock_series: DataSeries[] = [
+    { x: [1, 2, 3], y: [10, 20, 30], id: `test-series` },
+    { x: [1, 2, 3], y: [10, null, 30] as number[] }, // a null y gap stays a gap in both edges
+  ]
   const base_ref = series_ref(0)
 
   it.each([
     [`symmetric constant`, { error: 5 }, [15, 25, 35], [5, 15, 25]],
     [`symmetric per-point`, { error: [1, 2, 3] }, [11, 22, 33], [9, 18, 27]],
     [`asymmetric`, { error: { upper: 10, lower: 5 } }, [20, 30, 40], [5, 15, 25]],
+    [`gapped`, { series: series_ref(1), error: 1 }, [11, NaN, 31], [9, NaN, 29]],
   ])(`converts %s error carrying the series x`, (_, extra, upper, lower) => {
     const result = convert_error_band_to_fill_region(
       { series: base_ref, ...extra },
@@ -475,18 +474,6 @@ describe(`convert_error_band_to_fill_region`, () => {
     )
     expect(result?.upper).toEqual({ type: `data`, x: [1, 2, 3], values: upper })
     expect(result?.lower).toEqual({ type: `data`, x: [1, 2, 3], values: lower })
-  })
-
-  it(`a null y gap stays a gap in both edges`, () => {
-    const gap_series = [{ x: [1, 2, 3], y: [10, null, 30] }] as unknown as DataSeries[]
-    const result = convert_error_band_to_fill_region(
-      { series: base_ref, error: 1 },
-      gap_series,
-    )
-    expect([result?.upper, result?.lower]).toMatchObject([
-      { values: [11, NaN, 31] },
-      { values: [9, NaN, 29] },
-    ])
   })
 
   it(`returns null for invalid series reference`, () => {

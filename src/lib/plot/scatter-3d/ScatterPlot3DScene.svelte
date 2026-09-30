@@ -666,7 +666,6 @@
     <!-- Axis label -->
     {#if display.show_axis_labels !== false}
       <extras.HTML position={axis_label_pos} center zIndexRange={[1, 0]}>
-        <!-- labels are HTML like the 2D axes' (sub/sup, entities) -->
         <span class="axis-label" style:color
           >{@html sanitize_html(axis.label || key.toUpperCase())}</span
         >

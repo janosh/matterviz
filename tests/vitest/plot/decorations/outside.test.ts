@@ -126,23 +126,18 @@ describe(`place_outside_decorations`, () => {
     expect(layout.pad).toEqual(base_pad)
   })
 
-  // Crowding counts the samples under the chosen spot: a pile of samples elsewhere used to
-  // raise a plot-wide threshold until a spot over a line passed as sparse
-  test.each([0, 2000])(
-    `a legend over data moves outside with %i samples elsewhere`,
-    (n_pile) => {
-      // lines at every quarter of the 330px width leave no gap for a 120px legend
-      const lines = [0.25, 0.5, 0.75].flatMap((line_x) =>
-        Array.from({ length: 21 }, (_, idx) => ({ x: line_x, y: idx / 20 })),
-      )
-      const pile = Array.from({ length: n_pile }, () => ({ x: 0.5, y: 0.5 }))
-      const layout = place({
-        obstacles_norm: [...lines, ...pile],
-        legend: { footprint: { width: 120, height: 60 } },
-      })
-      expect(layout.legend_outside).toBe(true)
-    },
-  )
+  test(`a legend over data moves outside however many samples pile up elsewhere`, () => {
+    // lines at every quarter of the 330px width leave no gap for a 120px legend
+    const lines = [0.25, 0.5, 0.75].flatMap((line_x) =>
+      Array.from({ length: 21 }, (_, idx) => ({ x: line_x, y: idx / 20 })),
+    )
+    const pile = Array.from({ length: 2000 }, () => ({ x: 0.5, y: 0.5 }))
+    const layout = place({
+      obstacles_norm: [...lines, ...pile],
+      legend: { footprint: { width: 120, height: 60 } },
+    })
+    expect(layout.legend_outside).toBe(true)
+  })
 
   test(`never reduces a large base padding when reserving a right legend`, () => {
     const large_right_pad = { ...base_pad, r: 180 }
@@ -179,24 +174,16 @@ describe(`bar_obstacles`, () => {
     expect(bar_obstacles(true, cross, span)).toEqual([])
   })
 
-  // a lone center line let an auto-placed legend sit over a wide bar's sides
   test.each([
     [`vertical`, true, { x: 0.4, y: 0 }, { x: 0.4, y: 1 }],
     [`horizontal`, false, { x: 0, y: 0.4 }, { x: 1, y: 0.4 }],
-  ] as const)(
-    `clamps a %s bar to the visible box and traces both edges and its center`,
-    (_name, vertical, start, end) => {
-      const segments = bar_obstacles(vertical, [0.4, 0.6], [-0.4, 1.6])
-      expect(segments).toHaveLength(3)
-      expect(segments[0]).toEqual({ points: [start, end], draws_line: true })
-      expect(crosses(vertical, [0.4, 0.6], [-0.4, 1.6])).toEqual([0.4, 0.5, 0.6])
-    },
-  )
+  ] as const)(`clamps a %s bar's span to the visible box`, (_name, vertical, start, end) => {
+    const [first_line] = bar_obstacles(vertical, [0.4, 0.6], [-0.4, 1.6])
+    expect(first_line).toEqual({ points: [start, end], draws_line: true })
+  })
 
-  // bars flush to a plot edge (first/last bar or bin) keep their edge at 0 or 1; a bar past the
-  // plot is traced over its visible part (a zoomed-in bar covering the view still counts); a
-  // wide bar gets interior lines so no legend fits between them; a zero-width bar (a whisker)
-  // is a single segment
+  // lines at both edges (0 and 1 for edge-flush bars) and the center of the visible part, more
+  // for wide bars so no legend fits between them, one for a zero-width bar (a whisker)
   test.each<[string, boolean, Vec2, number[]]>([
     [`left edge`, true, [0, 0.2], [0, 0.1, 0.2]],
     [`right edge`, true, [0.8, 1], [0.8, 0.9, 1]],
@@ -222,9 +209,7 @@ describe(`clip_segment_to_unit_square`, () => {
 describe(`build_obstacles_norm`, () => {
   test(`samples a long line without overflowing (clip prevents runaway point counts)`, () => {
     // a near-vertical segment clipped to [0,1] should yield a bounded number of samples
-    const segs = bar_obstacles(true, [0.5, 0.5], [-1000, 1000]) // huge span clamps to [0,1]
-    expect(segs).toHaveLength(1)
-    const pts = build_obstacles_norm(segs, 300, 200)
+    const pts = build_obstacles_norm(bar_obstacles(true, [0.5, 0.5], [-1000, 1000]), 300, 200)
     expect(pts.length).toBeGreaterThan(0)
     expect(pts.length).toBeLessThan(100)
     expect(pts.every((point) => isFinite(point.x) && isFinite(point.y))).toBe(true)

@@ -20,6 +20,7 @@ import {
   resize_element,
   svg_query,
   svg_rect,
+  translate_of,
   trigger_intersection,
   trigger_resize_observer,
 } from '../setup'
@@ -1095,27 +1096,23 @@ describe(`BinnedScatterPlot`, () => {
     mount_plot({
       series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
       ...density_mode({ bin_px: 100 }),
+      ...unit_axes,
       x_axis: { range: [1, 0] as Vec2 },
-      y_axis: { range: [0, 1] as Vec2 },
       on_density_zoom,
     })
     await settle()
-    // tick values in on-screen order, left to right
-    const x_ticks_on_screen = () =>
-      [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
-        .map((tick_el) => {
-          const px = /translate\((?<px>[-\d.e]+)/.exec(tick_el.getAttribute(`transform`) ?? ``)
-          return [Number(px?.groups?.px), Number(tick_el.textContent)]
-        })
-        .toSorted(([px_a], [px_b]) => px_a - px_b)
-        .map(([, value]) => value)
-    const is_descending = (values: number[]) => values[0] > values[values.length - 1]
-    expect(is_descending(x_ticks_on_screen())).toBe(true)
+    // true while the x tick values fall from left to right on screen
+    const x_descending = () => {
+      const values = [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
+        .toSorted((tick_a, tick_b) => translate_of(tick_a).x - translate_of(tick_b).x)
+        .map((tick_el) => Number(tick_el.textContent))
+      return values[0] > values[values.length - 1]
+    }
     const center = plot_center()
     click_plot(center.x - 1, center.y - 1)
     await tick()
     expect(on_density_zoom).toHaveBeenCalledOnce()
-    expect(is_descending(x_ticks_on_screen())).toBe(true)
+    expect(x_descending()).toBe(true)
   })
 
   test(`can disable automatic point mode switching`, async () => {

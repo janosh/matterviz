@@ -378,12 +378,11 @@
 
     for (const srs of assigned_series) {
       if (!srs || srs.visible === false) continue
-      const { line_underlays = [] } = srs
       // anything but x2/y2 (incl. a null from JSON) is the primary axis
       const x_ax = srs.x_axis === `x2` ? `x2` : `x`
       const series_y_axis = srs.y_axis === `y2` ? `y2` : `y`
       const [x_extent, y_extent] = [extents[x_ax], extents[series_y_axis]]
-      for (const { x: layer_x, y: layer_y } of [srs, ...line_underlays]) {
+      for (const { x: layer_x, y: layer_y } of [srs, ...(srs.line_underlays ?? [])]) {
         // x drives the point count: a y array of a different length is read through x.length
         const n_points = layer_x.length
         accumulate_extent(x_extent, layer_x, n_points)
@@ -947,8 +946,8 @@
           ? `${source_type}:id:${item.id}`
           : `${source_type}:idx:${source_idx}`,
     }))
-  // A series boundary matching no series would drop its fill and legend entry without a trace.
-  // Joined to a string, so data updates that keep the same broken refs don't warn again.
+  // Series refs matching no series, whose fills would vanish silently. A string, so data
+  // updates that keep the same broken refs don't warn again.
   const missing_fill_refs = $derived(
     assigned_series.length === 0
       ? ``

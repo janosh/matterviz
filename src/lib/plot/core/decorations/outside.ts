@@ -24,11 +24,8 @@ type OutsideLayout = {
   colorbar_outside: boolean
 }
 
-// True when the interior spot the solver would pick for `footprint` (px) covers drawn data.
-// Judged on the obstacle samples under that spot, not on a share of the plot-wide total: a
-// relative rule let series elsewhere in the plot make a spot over data count as sparse. The
-// spot is searched in the base plot box's pixels, as the interior placement does, so the
-// decision checks where the decoration would actually land.
+// True when the interior spot the solver would pick for `footprint` (px), searched in the base
+// plot box's pixels like the interior placement, covers any obstacle sample
 function is_crowded(
   obstacles: readonly DecorationPoint[],
   footprint: DecorationSize,

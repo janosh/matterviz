@@ -216,22 +216,19 @@ export function remove_drag_listeners(
   document.body.style.cursor = ``
 }
 
-// [min, max] of a pair in either order: an inverted axis (e.g. [1, 0]) stores its range
-// high-to-low and a drag rect's edges arrive in drag order.
-// Returns the input itself when already sorted so callers can keep identity.
+// [min, max] of a pair in either order (an inverted axis stores its range high-to-low, a drag
+// rect its edges in drag order). Returns the input itself when sorted to keep identity.
 export const range_bounds = (range: Vec2): Vec2 =>
   range[0] <= range[1] ? range : [range[1], range[0]]
 
-// Point a range (either order) the way `current` runs, so a zoom written back onto a
-// descending axis keeps it descending instead of silently mirroring the plot until reset
+// Point a range the way `current` runs, so a zoom keeps a descending axis descending
 export const orient_range = (range: Vec2, current?: Vec2): Vec2 => {
   const [lower, upper] = range_bounds(range)
   return current && current[0] > current[1] ? [upper, lower] : [lower, upper]
 }
 
-// Invert a drag-rect edge pair through a scale to a finite data range oriented like `current`,
-// the range being replaced (see orient_range). Time scales invert to Dates, coerced to epoch
-// numbers. Returns null when either bound is non-finite or the range is degenerate (zero span).
+// Invert a drag-rect edge pair through a scale (Dates from time scales become epoch numbers)
+// to a range oriented like `current`, which it replaces. Null if non-finite or zero-span.
 export function invert_rect_range(
   scale: { invert: (pixel_x: number) => number | Date },
   a_px: number,

@@ -273,9 +273,8 @@ export function scatter_line_style<Metadata>(
   }
 }
 
-// Legend rows of the series, first matching identity wins. Kept apart from the fill rows
-// (which can't collide: series rows always carry a legend_key) so a pan, which rebuilds the
-// fills, doesn't rebuild these.
+// Legend rows of the series, first matching identity wins. Their legend_key never collides
+// with a fill row's key, so they dedupe apart from the fills.
 export function build_series_legend_items<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
   color_scale_fn: (value: number) => string,
@@ -373,9 +372,8 @@ export const build_fill_legend_items = (computed_fills: readonly LegendFill[]): 
       }
     })
 
-// Label of the first series row identical to an earlier one in group, label and swatch. Readers
-// can't tell such rows apart: almost always one entry drawn as several series that lack a
-// shared legend_id.
+// Label of the first series row matching an earlier one in group, label and swatch, so readers
+// can't tell them apart: usually one entry drawn as several series lacking a shared legend_id
 export const lookalike_legend_label = (
   series_items: readonly LegendItem[],
 ): string | undefined =>

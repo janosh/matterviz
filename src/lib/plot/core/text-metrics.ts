@@ -286,8 +286,7 @@ const split_overlong_word = (
 }
 
 // Whitespace a line may wrap at: no-break spaces stay within words
-export const BREAKABLE_SPACE_SRC = String.raw`[^\S\u00A0\u202F]`
-const BREAKABLE_SPACES_RE = new RegExp(`${BREAKABLE_SPACE_SRC}+`, `u`)
+export const BREAKABLE_SPACE_RE = /[^\S\u00A0\u202F]/u
 
 // Greedily wrap one paragraph at word boundaries, splitting only words wider than the line.
 // Callers choose whether an empty paragraph contributes a blank line.
@@ -300,7 +299,7 @@ export function wrap_text_paragraph(
 ): string[] {
   const trimmed = paragraph.trim()
   if (!trimmed) return preserve_empty_line ? [``] : []
-  const words = trimmed.split(BREAKABLE_SPACES_RE)
+  const words = trimmed.split(BREAKABLE_SPACE_RE).filter(Boolean)
   if (available_width <= 0) return [words.join(` `)]
 
   const lines: string[] = []
