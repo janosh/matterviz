@@ -308,47 +308,29 @@ test.each([
   },
 )
 
-// Tiled lattice-translated copies of a plane clip to identical polygons; drawing each more than
-// once stacks the translucent (depthWrite=false) fills into a darker, more opaque wash
+// Both tiled copies of (1-10) clip to the same two quadrilaterals in a 2x1x1 block, and stacking
+// the translucent fills twice would darken them: 4 triangles, not 8
 test.each([
-  [`mirror`, [1, -1, 0], null, [2, 1, 1], 4],
-  [`glide`, [1, -1, 0], [0, 0, 0.5], [2, 1, 1], 4],
-] as const)(
-  `draws each tiled %s plane (normal %j) once`,
-  (kind, axis, translation, tiling, n_triangles) => {
-    const elements: SymmetryElement[] = [
-      {
-        kind,
-        order: 2,
-        label: `m`,
-        locus: `plane`,
-        point: [0, 0, 0],
-        axis: [...axis],
-        plane_normal: [...axis],
-        translation: translation && [...translation],
-      },
-    ]
-    const props = $state({
-      elements,
-      lattice: cubic,
-      tiling: [...tiling] as Vec3,
-      show_kinds: { [kind]: true },
-    })
-    const component = mount(SymmetryElements, { target: document.body, props })
-    teardown = () => void unmount(component)
-    flushSync()
-    const fill = threlte_stub.nodes.find((node) => node.tag === `Mesh`)?.props
-      .geometry as BufferGeometry
-    const positions = Array.from(fill.getAttribute(`position`).array, (coord) =>
-      Math.round(coord * 1e6),
-    )
-    const triangles = Array.from({ length: positions.length / 9 }, (_unused, idx) =>
-      positions.slice(idx * 9, idx * 9 + 9).join(`,`),
-    )
-    expect(triangles).toHaveLength(n_triangles)
-    expect(new Set(triangles).size).toBe(n_triangles)
-  },
-)
+  [`mirror`, null],
+  [`glide`, [0, 0, 0.5]],
+] as const)(`draws each tiled %s plane once`, (kind, translation) => {
+  const plane: SymmetryElement = {
+    kind,
+    order: 2,
+    label: `m`,
+    locus: `plane`,
+    point: [0, 0, 0],
+    axis: [1, -1, 0],
+    plane_normal: [1, -1, 0],
+    translation: translation && [...translation],
+  }
+  const show_kinds = { [kind]: true }
+  const props = { elements: [plane], lattice: cubic, tiling: [2, 1, 1] as Vec3, show_kinds }
+  const component = mount(SymmetryElements, { target: document.body, props })
+  teardown = () => void unmount(component)
+  flushSync()
+  expect(vertex_counts(`Mesh`)).toEqual([4 * 3])
+})
 
 test.each([
   [2, 3, 1],

@@ -187,13 +187,11 @@ function create_change_tracker() {
 export class StructureSession {
   // === display pipeline ===
   // Periodic fractional coordinates wrap into the cell; non-periodic axes keep out-of-cell
-  // values (unwrapped trajectories)
+  // values (unwrapped trajectories). The bonds binding addresses these wrapped sites.
   normalized_structure = $derived.by(() => {
     const structure = this.inputs.structure()
     return structure && normalize_fractional_coords(structure)
   })
-  // The bonds binding addresses these wrapped sites (normalization shifts the structure's own
-  // bonds to match), so every bond set the session hands out or edits comes from here
   private readonly structure_with_bonds = $derived.by((): AnyStructure | undefined => {
     const bonds = this.inputs.bonds()
     const struct = this.normalized_structure
@@ -399,15 +397,12 @@ export class StructureSession {
   bond_order_overrides = $state<StructureBond[]>([])
   bond_history = new History<BondEditSnapshot>()
   // Source bonds captured when the first edit begins; edits merge onto these. Wrapped so an
-  // undefined source still counts as captured. from_caller: the binding held them.
-  private bond_edit_base = $state.raw<
-    { bonds: StructureBond[] | undefined; from_caller: boolean } | undefined
-  >()
+  // undefined source still counts as captured. own: not a caller's set.
+  private bond_edit_base = $state.raw<{ bonds: StructureBond[] | undefined; own: boolean }>()
   // What this session last wrote to the bonds binding, read back so a proxied binding
   // compares equal; anything else in the binding is a caller-supplied source
   private emitted_bonds: StructureBond[] | undefined
-  // emitted_bonds while they are the session's own (re-derived when the structure changes),
-  // not a caller's set handed back once its edits are undone
+  // emitted_bonds unless they are a caller's set handed back by an undo
   private own_bonds: StructureBond[] | undefined
   has_bond_edits = $derived(
     this.added_bonds.length > 0 ||
@@ -580,7 +575,7 @@ export class StructureSession {
   private restore_bond_edit_base(): void {
     const base = this.bond_edit_base
     if (!base) return
-    this.emit_bonds(base.bonds, !base.from_caller)
+    this.emit_bonds(base.bonds, base.own)
     this.bond_edit_base = undefined
   }
   // $state.snapshot: the edit arrays are deep proxies; history keeps plain copies
@@ -606,7 +601,7 @@ export class StructureSession {
     const bound = this.inputs.bonds()
     this.bond_edit_base ??= {
       bonds: bound ?? this.normalized_structure?.properties?.bonds,
-      from_caller: bound !== undefined && bound !== this.own_bonds,
+      own: bound === undefined || bound === this.own_bonds,
     }
   }
   // Called by the scene before each bond edit
@@ -804,10 +799,9 @@ export class StructureSession {
     )
   }
 
-  // Drag moves from TransformControls: apply the Cartesian delta and wrap fractional
-  // coordinates inline so normalize_fractional_coords hits its fast path. Only the moved sites
-  // wrap (unmoved ones keep the caller's coordinates, e.g. unwrapped LAMMPS data); explicit
-  // bonds follow a site wrapped across a face with a cell_shift.
+  // Drag moves from TransformControls: apply the Cartesian delta and wrap only the moved sites'
+  // fractional coordinates, inline so normalize_fractional_coords hits its fast path; explicit
+  // bonds follow a site wrapped across a face with a cell_shift
   move_sites = (scene_indices: number[], delta: Vec3): void => {
     const structure = this.inputs.structure()
     const normalized_sites = this.normalized_structure?.sites
@@ -819,10 +813,8 @@ export class StructureSession {
     const to_frac = this.cart_to_frac()
     const to_cart =
       to_frac && has_lattice ? create_frac_to_cart(structure.lattice.matrix) : null
-    // Cell shift of each wrapped site from its raw position (the structure's own bonds) and
-    // from its normalized one (bound bonds address the normalized sites)
-    const own_shifts = new Map<number, Vec3>()
-    const bound_shifts = new Map<number, Vec3>()
+    // Wrap shifts relative to the raw sites (own bonds) and the normalized ones (bound bonds)
+    const [own_shifts, bound_shifts] = [new Map<number, Vec3>(), new Map<number, Vec3>()]
     const sites = structure.sites.map((site, idx) => {
       if (!targets.has(idx)) return site
       const xyz: Vec3 = [
@@ -843,8 +835,7 @@ export class StructureSession {
       if (bound_shift.some(Boolean)) bound_shifts.set(idx, bound_shift)
       return { ...site, xyz: to_cart(abc), abc }
     })
-    // The session's own emitted set is re-derived from the written structure's bonds when the
-    // structure changes (and so stays its own), leaving only a caller's set to shift here
+    // Only a caller's set: the session's own is re-derived from the written structure's bonds
     const bound_bonds = this.inputs.bonds()
     if (bound_bonds && bound_bonds !== this.own_bonds && bound_shifts.size > 0) {
       this.inputs.set_bonds(

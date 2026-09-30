@@ -221,10 +221,8 @@ describe(`get_center_of_mass`, () => {
     })
     const actual = struct_utils.get_center_of_mass(structure)
     expect(actual).toEqual(expected)
-    if (count) {
-      expect(max_abs_error(actual, expected)).toBe(0)
-      expect(max_rel_error(actual, expected)).toBe(0)
-    }
+    expect(max_abs_error(actual, expected)).toBe(0)
+    expect(max_rel_error(actual, expected)).toBe(0)
   })
 
   const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
@@ -274,8 +272,7 @@ describe(`get_center_of_mass`, () => {
     expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
   })
 
-  // no sites means no center of mass: fail fast instead of returning [NaN, NaN, NaN]
-  test(`throws for a structure without sites`, () => {
+  test(`throws instead of returning NaN for a structure without sites`, () => {
     expect(() => struct_utils.get_center_of_mass(create_simple_structure([]))).toThrow(
       `Center of mass needs sites of positive total weight, got 0`,
     )

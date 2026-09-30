@@ -13,7 +13,7 @@ import {
 } from '$lib/symmetry'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_wyckoff_dataset } from '../test-fixtures'
+import { cubic_matrix, make_crystal, make_wyckoff_dataset } from '../test-fixtures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has
@@ -584,32 +584,21 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     },
   )
 
-  // symprec (Å) widens the match by its fractional size per axis: along a 30 Å axis 2·symprec
-  // is 1/10 of what it is along a 3 Å one, so an upright N2 (1.1 Å) keeps its two rows while a
-  // copy 0.15 Å off the first N still joins it at symprec 0.1
+  // symprec (Å) widens the match by its fractional size per axis: along a 30 Å c an upright N2
+  // (1.1 Å) keeps its two rows while a copy 0.15 Å off the first N joins it at symprec 0.1
   test.each([
-    [1e-6, [[0], [1], [2]]],
-    [0.1, [[0], [1, 3], [2]]],
+    [1e-6, [[0], [1]]],
+    [0.1, [[0, 2], [1]]],
   ])(`scales the symprec tolerance per axis (symprec %s)`, (symprec, expected) => {
-    const lattice: Matrix3x3 = [
-      [3, 0, 0],
-      [0, 3, 0],
-      [0, 0, 30],
-    ]
-    const sites: { element: ElementSymbol; abc: Vec3 }[] = [
-      { element: `Cu`, abc: [0, 0, 0.4] },
-      { element: `N`, abc: [0.5, 0.5, 0.5] },
-      { element: `N`, abc: [0.5, 0.5, 0.5 + 1.1 / 30] },
+    const lattice = cubic_matrix(3).with(2, [0, 0, 30]) as Matrix3x3
+    const dimer: [ElementSymbol, Vec3][] = [
+      [`N`, [0.5, 0.5, 0.5]],
+      [`N`, [0.5, 0.5, 0.5 + 1.1 / 30]],
     ]
     const rows = map_wyckoff_to_all_atoms(
-      sites.map(({ element, abc }, idx) => ({
-        wyckoff: `1a`,
-        elem: element,
-        abc,
-        site_indices: [idx],
-      })),
-      make_crystal(lattice, [...sites, { element: `N`, abc: [0.5, 0.5, 0.5 + 0.15 / 30] }]),
-      make_crystal(lattice, sites),
+      dimer.map(([elem, abc], idx) => ({ wyckoff: `1a`, elem, abc, site_indices: [idx] })),
+      make_crystal(lattice, [...dimer, [`N`, [0.5, 0.5, 0.5 + 0.15 / 30]]]),
+      make_crystal(lattice, dimer),
       { ...mock_sym_data(), symprec },
     )
     expect(rows.map((row) => row.site_indices)).toEqual(expected)

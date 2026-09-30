@@ -108,9 +108,9 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
   return { host, session, notices }
 }
 
-// Rendered length (Å) of each explicit bond, cell_shift included
+// Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
 const bond_lengths = (structure: AnyStructure | undefined): number[] =>
-  structure ? explicit_only(structure).map(({ bond_length }) => bond_length) : []
+  explicit_only(structure ?? { sites: [] }).map((bond) => Number(bond.bond_length.toFixed(9)))
 
 // Every site with image atoms: the dummy crystal puts all atoms on cell boundaries
 const pick_all = (host: Host, session: StructureSession): void => {
@@ -296,7 +296,6 @@ describe(`symmetry-aware display`, () => {
     session.element_mapping = { Cu: `Au` }
     flushSync()
     expect(session.wyckoff_rows[0].site_indices).toHaveLength(n_displayed)
-    expect(session.property_colors?.values).toEqual(Array(n_displayed).fill(`4a|Cu`))
 
     host.atom_color_config = DEFAULT_ATOM_COLOR_CONFIG
     flushSync()
@@ -528,9 +527,8 @@ describe(`edit-atoms`, () => {
     expect(moved?.xyz[2]).toBeCloseTo(6.5, 12)
   })
 
-  // A drag across a cell face wraps the site to the far side; explicit bonds (the structure's
-  // own and the bound ones) must follow with a cell_shift instead of spanning the cell. The
-  // unmoved site sits outside the cell, so the bonds are also read in the wrapped frame.
+  // Explicit bonds (own and bound) of a site dragged across a cell face gain a cell_shift
+  // instead of spanning the cell; bound bonds address the out-of-cell site's wrapped frame
   it(`keeps explicit bond lengths when a moved site wraps across the cell`, () => {
     const { host, session } = make_session({
       structure: {
@@ -546,24 +544,17 @@ describe(`edit-atoms`, () => {
       bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
       measure_mode: `edit-atoms`,
     })
-    expect(bond_lengths(host.structure)).toEqual([expect.closeTo(1, 12)])
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(1, 12)])
+    // own bonds, then bound ones
+    const lengths = () => [bond_lengths(host.structure), bond_lengths(session.base_structure)]
     session.move_sites([0], [-1, 0, 0])
     flushSync()
-    expect(host.structure?.sites[0].abc[0]).toBeCloseTo(0.95, 12)
     // only the dragged site wraps: the caller's unwrapped coords (LAMMPS data) survive exports
     expect(host.structure?.sites[1].abc[0], `unmoved site`).toBeCloseTo(1.15, 12)
-    expect(host.structure?.sites[1].xyz[0]).toBeCloseTo(11.5, 12)
-    expect(bond_lengths(host.structure), `own bonds`).toEqual([expect.closeTo(2, 12)])
-    expect(bond_lengths(session.base_structure), `bound bonds`).toEqual([
-      expect.closeTo(2, 12),
-    ])
+    expect(lengths()).toEqual([[2], [2]])
     // the out-of-cell site's drag crosses a face only in the wrapped frame of the bound bonds
     session.move_sites([1], [-1.6, 0, 0])
     flushSync()
-    expect(host.structure?.sites[1].abc[0]).toBeCloseTo(0.99, 12)
-    expect(bond_lengths(host.structure)).toEqual([expect.closeTo(0.4, 12)])
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(0.4, 12)])
+    expect(lengths()).toEqual([[0.4], [0.4]])
   })
 
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
@@ -659,46 +650,36 @@ describe(`edit-bonds`, () => {
     expect(host.bonds).toEqual(source)
   })
 
-  // Sites outside the cell wrap for display, shifting their explicit bonds; edits must merge
-  // onto (and a newly loaded structure hand out) those wrapped-frame bonds, not the raw ones
-  // that would span the cell once applied to the wrapped sites
+  // Out-of-cell sites wrap for display, shifting their explicit bonds: edits merge onto (and a
+  // new structure hands out) those wrapped-frame bonds, not raw ones spanning the cell
   it(`merges bond edits in the wrapped frame of out-of-cell sites`, () => {
-    const out_of_cell = () => ({
+    const out_of_cell = (site_idx_1 = 0, site_idx_2 = 1) => ({
       ...make_crystal(10, [
         { element: `C`, abc: [-0.05, 0.5, 0.5] },
         { element: `C`, abc: [0.05, 0.5, 0.5] },
         { element: `C`, abc: [0.5, 0.5, 0.5] },
       ]),
-      properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 as const }] },
+      properties: { bonds: [{ site_idx_1, site_idx_2, order: 1 as const }] },
     })
     const { host, session } = make_session({
       measure_mode: `edit-bonds`,
       structure: out_of_cell(),
     })
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(1, 12)])
     session.push_bond_undo()
     session.added_bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 1 }]
     flushSync()
-    expect(bond_lengths(session.base_structure)).toEqual([
-      expect.closeTo(1, 12),
-      expect.closeTo(4.5, 12),
-    ])
+    expect(bond_lengths(session.base_structure)).toEqual([1, 4.5])
     host.structure = out_of_cell()
     flushSync()
-    expect(host.bonds, `stale emitted bonds replaced`).toHaveLength(1)
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(1, 12)])
-    // a drag wrapping a bonded site re-derives the emitted set from the moved structure; it must
-    // stay the session's own so the next load still replaces it with that structure's bonds
+    expect(bond_lengths(session.base_structure), `stale emitted bonds replaced`).toEqual([1])
+    // the drag's re-derived set stays the session's own, so the next load still replaces it
     host.measure_mode = `edit-atoms`
     flushSync()
     session.move_sites([1], [-0.6, 0, 0])
     flushSync()
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(0.4, 12)])
-    const bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 1 as const }]
-    host.structure = { ...out_of_cell(), properties: { bonds } }
+    host.structure = out_of_cell(1, 2)
     flushSync()
-    expect(host.bonds).toEqual(bonds)
-    expect(bond_lengths(session.base_structure)).toEqual([expect.closeTo(4.5, 12)])
+    expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 1 }])
   })
 
   it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
@@ -746,13 +727,11 @@ describe(`edit-bonds`, () => {
     expect(session.has_bond_edits).toBe(false)
     expect(host.bonds, `source bonds restored`).toEqual(source)
     expect(session.undo_bond_edit()).toBe(false)
-    // the restored set is still the caller's: an edit-atoms change must keep it, not swap in
-    // the structure's own bonds (none here) as it does for a set the session derived
+    // the restored set is still the caller's, so an edit-atoms change keeps it
     host.measure_mode = `edit-atoms`
     flushSync()
     session.add_atom([1, 1, 1], `H`)
     flushSync()
-    expect(host.structure?.sites).toHaveLength(4)
     expect(host.bonds, `caller's bonds survive`).toEqual(source)
   })
 

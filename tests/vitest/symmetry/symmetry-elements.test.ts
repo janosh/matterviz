@@ -18,6 +18,7 @@ import {
   symmetry_tiling_reason,
   tile_symmetry_elements,
 } from '$lib/symmetry'
+import type { Crystal } from '$lib/structure'
 import type { SymmetryElement } from '$lib/symmetry'
 import { clip_frac_plane_to_cell } from '$lib/structure/lattice-planes'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -176,12 +177,8 @@ describe(`classify_symmetry_op`, () => {
 
   test(`hexagonal mirror: fractional normal converts to a true Cartesian normal`, () => {
     const elem = classify_symmetry_op(col_major(MIRROR_HEX_SWAP), [0, 0, 0])
-    expect(elem).toMatchObject({
-      kind: `mirror`,
-      label: `m`,
-      axis: [1, -1, 0],
-      plane_normal: [1, -1, 0],
-    })
+    expect(elem).toMatchObject({ kind: `mirror`, label: `m`, axis: [1, -1, 0] })
+    expect(elem?.plane_normal).toEqual([1, -1, 0])
 
     // The plane of the a1↔a2 swap mirror contains (a1+a2) and c. Its fractional normal
     // [1,-1,0] must convert via the DIRECT lattice to a Cartesian vector orthogonal to
@@ -206,14 +203,20 @@ describe(`classify_symmetry_op`, () => {
 describe(`symmetry_elements_from_ops: space group inventories`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const elements_for = (spg_num: number): SymmetryElement[] =>
-    symmetry_elements_from_ops(operations_from_number(spg_num, { type: `Standard` }, false))
+  const elements_for = (spg_num: number, primitive = false): SymmetryElement[] =>
+    symmetry_elements_from_ops(
+      operations_from_number(spg_num, { type: `Standard` }, primitive),
+    )
 
   // A group's operations re-expressed in the sheared basis b' = b + shear·a (x = M·x')
-  const sheared_ops = (spg: number, shear: number): MoyoDataset[`operations`] => {
+  const sheared_ops = (
+    spg: number,
+    shear: number,
+    primitive = false,
+  ): MoyoDataset[`operations`] => {
     // oxfmt-ignore
     const [to_old, to_new]: Matrix3x3[] = [[[1, shear, 0], [0, 1, 0], [0, 0, 1]], [[1, -shear, 0], [0, 1, 0], [0, 0, 1]]]
-    const ops = operations_from_number(spg, { type: `Standard` }, false)
+    const ops = operations_from_number(spg, { type: `Standard` }, primitive)
     return ops.map(({ rotation, translation }) => {
       const rot = math.dot(to_new, mat3_from_flat_col_major(rotation))
       return {
@@ -284,22 +287,25 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(directions).toEqual(new Set([`1,0,0`, `0,1,0`, `0,0,1`]))
   })
 
-  // ITA's N_p advances p/N of the period per +2π/N turn, so 3⁻ with 2/3 c lies on a 3_1
-  // axis: enantiomorphs carry mirror-image screw inventories, never both hands, while I4_1
-  // (its own mirror image) holds both hands in equal numbers
+  // One tally per geometric element, whichever operations reach it. ITA's N_p advances p/N of the
+  // period per +2π/N turn, so enantiomorphs carry mirror-image screws (I4_1 holds both hands);
+  // Fm-3m's double glides (a/2 and b/2) and R3c's origin glides (c/2 and the equally short
+  // (1/3,-1/3,1/6)) are listed once each
   test.each([
-    [`P3_1`, 144, { '3_1': 3 }],
-    [`P3_2`, 145, { '3_2': 3 }],
-    [`P4_1`, 76, { '4_1': 2, '2_1': 4 }],
-    [`P4_3`, 78, { '4_3': 2, '2_1': 4 }],
-    [`P6_1`, 169, { '6_1': 1, '3_1': 3, '2_1': 4 }],
-    [`P6_5`, 170, { '6_5': 1, '3_2': 3, '2_1': 4 }],
-    [`P6_2`, 171, { '6_2': 1, '3_2': 3 }],
-    [`P6_4`, 172, { '6_4': 1, '3_1': 3 }],
-    [`I4_1`, 80, { '4_1': 2, '4_3': 2, '2_1': 4 }],
-  ])(`%s (#%i) screw axes follow the rotation sense`, (_, spg, expected) => {
-    const screws = elements_for(spg).filter((elem) => elem.kind === `screw`)
-    expect(count_by(screws, `label`)).toEqual(expected)
+    [`P3_1`, 144, `screw`, { '3_1': 3 }],
+    [`P3_2`, 145, `screw`, { '3_2': 3 }],
+    [`P4_1`, 76, `screw`, { '4_1': 2, '2_1': 4 }],
+    [`P4_3`, 78, `screw`, { '4_3': 2, '2_1': 4 }],
+    [`P6_1`, 169, `screw`, { '6_1': 1, '3_1': 3, '2_1': 4 }],
+    [`P6_5`, 170, `screw`, { '6_5': 1, '3_2': 3, '2_1': 4 }],
+    [`P6_2`, 171, `screw`, { '6_2': 1, '3_2': 3 }],
+    [`P6_4`, 172, `screw`, { '6_4': 1, '3_1': 3 }],
+    [`I4_1`, 80, `screw`, { '4_1': 2, '4_3': 2, '2_1': 4 }],
+    [`Fm-3m`, 225, `glide`, { a: 4, b: 2, d: 12 }],
+    [`R3c`, 161, `glide`, { c: 3, g: 3 }],
+  ])(`%s (#%i) %s labels`, (_, spg, kind, expected) => {
+    const matching = elements_for(spg).filter((elem) => elem.kind === kind)
+    expect(count_by(matching, `label`)).toEqual(expected)
   })
 
   test(`P2_13 (#198): 3-fold axes along ⟨111⟩ + 2_1 screws, no improper elements`, () => {
@@ -380,17 +386,6 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements_for(spg)).toHaveLength(expected)
   })
 
-  // One entry per geometric glide, whichever operation reaches it: Fm-3m's double glide planes
-  // hold both a/2 and b/2 and R3c's origin planes both c/2 and the equally short (1/3,-1/3,1/6),
-  // which a representative kept per operation listed twice (a4 b4 c4 and c3 g4)
-  test.each([
-    [`Fm-3m`, 225, { a: 4, b: 2, d: 12 }],
-    [`R3c`, 161, { c: 3, g: 3 }],
-  ])(`%s (#%i) lists each glide plane once`, (_, spg, expected) => {
-    const glides = elements_for(spg).filter((elem) => elem.kind === `glide`)
-    expect(count_by(glides, `label`)).toEqual(expected)
-  })
-
   // R-3m is the metric-sensitive case: in the hexagonal setting the plane-equation normal
   // is G·axis, not axis, and keying the offset off the direct-space normal used the wrong
   // period. The hexagonal cell holds 3 primitive rhombohedral cells, so every element
@@ -401,8 +396,7 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     const elements = elements_for(166)
     const by_kind = count_by(elements, `label`)
     expect(by_kind).toEqual({
-      // the 3-folds sit on the 9 threefold points of the R-centred net: 3 rotation axes
-      // through lattice points, 3 3_1 and 3 3_2 axes on the triangle centres
+      // 3-folds on the 9 threefold points of the R-centred net: 3 of each of 3, 3_1 and 3_2
       '3': 3,
       '2': 18,
       '3_1': 3,
@@ -518,13 +512,11 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(order_4.some((elem) => !two_fold_intercepts.has(intercept_key(elem)))).toBe(true)
   })
 
-  // moyo reports operations in the input frame, where an equivalent but sheared basis
-  // b' = b + k·a turns cubic [110] into [k+1,-1,0]. Searches sized for reduced cells failed there:
-  // a covector box threw, glide reduction over {-1,0,1}³ missed a mirror's in-plane period
-  // (-4,1,0) (Pm-3m at k = 4: 11 m + 14 glides, not 12 m + 6 n), the same box missed half periods
-  // along centered axes (Fm-3m reported "2_0" screws), and re-anchoring over t ∈ {0,1}³ lost a 3_2
-  // axis of R-3m at k ≡ 2 (mod 3). Glide letters name cell axes (the cubic n-glide on x = y has
-  // vector (a + b)/2 = b'/2 at k = 1), so glides tally as one kind.
+  // moyo reports operations in the input frame, where a sheared basis b' = b + k·a turns cubic
+  // [110] into [k+1,-1,0] and searches sized for reduced cells failed: glide periods, half periods
+  // along centered axes, re-anchoring over t ∈ {0,1}³ (drops e.g. one of Fm-3m's 100 elements in
+  // the primitive frame at k = 50). Glide letters name cell axes (the n-glide on x = y is b'/2 at
+  // k = 1), so glides tally as one kind.
   test.each([1, 4, 50])(
     `sheared cell (b' = b + %da) keeps every element inventory`,
     async (shear) => {
@@ -533,44 +525,32 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
           elements.map((elem) => (elem.kind === `glide` ? { ...elem, label: `glide` } : elem)),
           `label`,
         )
-      // every space group, operations re-expressed in the sheared basis
       for (let spg = 1; spg <= 230; spg++) {
-        const sheared = symmetry_elements_from_ops(sheared_ops(spg, shear))
-        expect(tally(sheared), `#${spg}`).toEqual(tally(elements_for(spg)))
+        for (const primitive of [false, true]) {
+          const sheared = symmetry_elements_from_ops(sheared_ops(spg, shear, primitive))
+          const expected = tally(elements_for(spg, primitive))
+          expect(tally(sheared), `#${spg} primitive=${primitive}`).toEqual(expected)
+        }
       }
       // and moyo itself on sheared simple-cubic, bcc (Im-3m) and hcp (P6_3/mmc) cells
-      const moyo_tally = async (lattice: Matrix3x3, xyz_sites: Vec3[]) => {
-        const sites = xyz_sites.map((xyz) => ({ element: `Cu` as const, xyz }))
-        const { operations } = await analyze_structure_symmetry(make_crystal(lattice, sites))
+      const moyo_tally = async (crystal: Crystal) => {
+        const { operations } = await analyze_structure_symmetry(crystal)
         return tally(symmetry_elements_from_ops(operations))
       }
       // oxfmt-ignore
       const hexagonal: Matrix3x3 = [[3.2, 0, 0], [-1.6, 1.6 * Math.sqrt(3), 0], [0, 0, 5.2]]
-      const cells: [Matrix3x3, Vec3[]][] = [
-        [cubic_matrix(4), [[0, 0, 0]]],
-        [
-          cubic_matrix(2.9),
-          [
-            [0, 0, 0],
-            [0.5, 0.5, 0.5],
-          ],
-        ],
-        [
-          hexagonal,
-          [
-            [1 / 3, 2 / 3, 0.25],
-            [2 / 3, 1 / 3, 0.75],
-          ],
-        ],
+      // oxfmt-ignore
+      const crystals = [
+        make_crystal(4, [[`Cu`, [0, 0, 0]]]),
+        make_crystal(2.9, [[`Cu`, [0, 0, 0]], [`Cu`, [0.5, 0.5, 0.5]]]),
+        make_crystal(hexagonal, [[`Cu`, [1 / 3, 2 / 3, 0.25]], [`Cu`, [2 / 3, 1 / 3, 0.75]]]),
       ]
-      for (const [lattice, frac_sites] of cells) {
-        const to_cart = math.create_frac_to_cart(lattice)
-        const xyz_sites = frac_sites.map((abc) => to_cart(abc))
-        const [vec_a, vec_b, vec_c] = lattice
-        const sheared: Matrix3x3 = [vec_a, math.add(vec_b, math.scale(vec_a, shear)), vec_c]
-        expect(await moyo_tally(sheared, xyz_sites)).toEqual(
-          await moyo_tally(lattice, xyz_sites),
-        )
+      for (const crystal of crystals) {
+        const [vec_a, vec_b, vec_c] = crystal.lattice.matrix
+        const lattice: Matrix3x3 = [vec_a, math.add(vec_b, math.scale(vec_a, shear)), vec_c]
+        const sites = crystal.sites.map(({ xyz }) => ({ element: `Cu` as const, xyz }))
+        const sheared = await moyo_tally(make_crystal(lattice, sites))
+        expect(sheared).toEqual(await moyo_tally(crystal))
       }
     },
   )
@@ -602,37 +582,17 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(labels).toContain(`2_1`)
   })
 
-  // Pm-3m keys its [1-11]-type 3-folds and (110) mirror at the origin, where the line only
-  // touches a corner and the plane an edge; their lattice translates cross the cell. The
-  // overlay drew one body diagonal of four and no x + y = 1 mirror.
-  test(`the family clippers draw every translate of a family that crosses the cell`, () => {
-    const lattice = cubic_matrix(4)
-    const elements = elements_for(221)
-    const diagonals = elements
-      .filter((elem) => elem.kind === `rotation` && elem.order === 3)
-      .flatMap((elem) => clip_axis_family(elem.point, elem.axis as Vec3, lattice))
-    const body_diagonal = expect.closeTo(4 * Math.sqrt(3), 12)
-    expect(diagonals.map(([start, end]) => math.euclidean_dist(start, end))).toEqual(
-      Array(4).fill(body_diagonal),
-    )
-    const polygons = elements
-      .filter((elem) => elem.kind === `mirror` && String(elem.plane_normal) === `1,1,0`)
-      .flatMap((elem) => clip_plane_family(elem.point, [1, 1, 0], lattice))
-    expect(polygons).toHaveLength(1)
-    for (const vert of polygons[0]) expect(vert[0] + vert[1]).toBeCloseTo(4, 12)
-  })
-
-  // A box of translates around the representative misses pieces once the cell is sheared: at
-  // b' = b + 4a the ±1 box drew 1732 of the 2103 pieces of these three groups. References are
-  // brute force: a line crossing the cell at q is the translate through q − f·axis (f ∈ [0, 1)),
-  // which lies in the box −point + [0, 1]³ − [0, 1]·axis; planes scan a wide range of levels.
-  test.each([221, 225, 229])(
-    `sheared #%i: the family clippers draw every in-cell piece`,
-    (spg) => {
+  // Against brute force: a representative alone can merely graze the cell (Pm-3m's [1-11] 3-fold
+  // touches one corner) and a box of translates misses pieces of sheared cells. A line crossing
+  // the cell at q is the translate through q − f·axis (f ∈ [0, 1)), which lies in the box
+  // −point + [0, 1]³ − [0, 1]·axis; planes scan a wide range of levels.
+  test.each([221, 225, 229].flatMap((spg) => [0, 4].map((shear) => [spg, shear])))(
+    `#%i sheared by %i: the family clippers draw every in-cell piece`,
+    (spg, shear) => {
       // oxfmt-ignore
-      const lattice: Matrix3x3 = [[4, 0, 0], [16, 4, 0], [0, 0, 4]]
+      const lattice: Matrix3x3 = [[4, 0, 0], [4 * shear, 4, 0], [0, 0, 4]]
       for (const { kind, point, axis, plane_normal } of symmetry_elements_from_ops(
-        sheared_ops(spg, 4),
+        sheared_ops(spg, shear),
       )) {
         if (!axis) continue
         const expected = new Set<string>()
@@ -722,12 +682,8 @@ describe(`cell clipping helpers`, () => {
       [0, 0, 1],
     ]
     const elem = classify_symmetry_op(col_major(skew_mirror), [0, 0, 0])
-    expect(elem).toMatchObject({
-      kind: `mirror`,
-      label: `m`,
-      axis: [1, -2, 0],
-      plane_normal: [0, 1, 0],
-    })
+    expect(elem).toMatchObject({ kind: `mirror`, label: `m`, axis: [1, -2, 0] })
+    expect(elem?.plane_normal).toEqual([0, 1, 0])
 
     const lattice: Matrix3x3 = [
       [1, 0, 0],
@@ -887,43 +843,26 @@ describe(`tile_symmetry_elements`, () => {
     expect(tile_symmetry_elements([screw], [1, 1, 4]).elements).toHaveLength(1)
     expect(tile_symmetry_elements([mirror], [1, 4, 4]).elements).toHaveLength(1)
 
-    // Cartesian screw/glide translations survive the basis change, as do the directions of
-    // axes and plane normals, which stay primitive integer vectors for the family clippers:
-    // [1,1,0] reads (1/2, 1, 0) ∥ [1,2,0] as an axis and (2,1,0) as plane indices
-    const oblique: SymmetryElement = { ...mirror, axis: [1, 1, 0], plane_normal: [1, 1, 0] }
-    const unit = (vec: Vec3) => math.normalize_vec(vec).map((val) => expect.closeTo(val, 12))
-    for (const source of [mirror, screw, oblique]) {
-      for (const copy of tile_symmetry_elements([source], tiling).elements) {
-        if (source.translation) {
-          expect(frac_to_cart_direction(copy.translation as Vec3, block)).toEqual(
-            frac_to_cart_direction(source.translation, cell).map((val) =>
-              expect.closeTo(val, 9),
-            ),
-          )
-        }
-        const axis = copy.axis as Vec3
-        expect(math.gcd_all(axis)).toBe(1)
-        expect(math.normalize_vec(frac_to_cart_direction(axis, block))).toEqual(
-          unit(frac_to_cart_direction(source.axis as Vec3, cell)),
-        )
-        if (!source.plane_normal) continue
-        const plane_normal = copy.plane_normal as Vec3
-        expect(math.gcd_all(plane_normal)).toBe(1)
-        expect(math.normalize_vec(math.miller_plane_normal(block, plane_normal))).toEqual(
-          unit(math.miller_plane_normal(cell, source.plane_normal)),
-        )
-      }
+    // Cartesian screw/glide translations survive the basis change, while directions stay primitive
+    // integer vectors for the family clippers: [1,1,0] reads (1/2, 1, 0) ∥ [1,2,0] as an axis and
+    // (2,1,0) as plane indices
+    for (const copy of tiled) {
+      const source = copy.locus === mirror.locus ? mirror : screw
+      expect([copy.axis, copy.plane_normal]).toEqual([source.axis, source.plane_normal])
+      if (!source.translation) continue
+      expect(frac_to_cart_direction(copy.translation as Vec3, block)).toEqual(
+        frac_to_cart_direction(source.translation, cell).map((val) => expect.closeTo(val, 9)),
+      )
     }
+    const oblique: SymmetryElement = { ...mirror, axis: [1, 1, 0], plane_normal: [1, 1, 0] }
     expect(tile_symmetry_elements([oblique], tiling).elements[0]).toMatchObject({
       axis: [1, 2, 0],
       plane_normal: [2, 1, 0],
     })
   })
 
-  // A plane shifts by the exact integer plane_normal · offset. The direction `axis` is no guide
-  // in a non-orthogonal cell, and the metric pullback G·axis it replaced split planes whenever
-  // the lattice was only nearly symmetric: with b tilted by 1e-5 (a relaxed structure within
-  // symprec) it tiled the x = 1/4 mirror 1x3x1 into three coincident copies.
+  // A plane shifts by the exact integer plane_normal · offset. The metric pullback G·axis it
+  // replaced split nearly symmetric cells (b tilted by 1e-5 tiled x = 1/4 1x3x1 into 3 copies).
   test(`tiles planes by their integer covector, independent of the metric`, () => {
     const hexagonal: Matrix3x3 = [
       [3, 0, 0],
@@ -956,16 +895,12 @@ describe(`tile_symmetry_elements`, () => {
 
   // Rotoinversion centers repeat along the axis, unlike plain rotation lines.
   test(`repeats a rotoinversion along its axis but not a rotation`, () => {
-    const shared = {
-      order: 4,
-      axis: [0, 0, 1] as Vec3,
-      plane_normal: null,
-      point: [0, 0, 0] as Vec3,
-    }
     const rotation: SymmetryElement = {
-      ...shared,
+      ...screw,
       kind: `rotation`,
+      order: 4,
       label: `4`,
+      point: [0, 0, 0],
       translation: null,
       locus: `line-z`,
     }
@@ -1002,12 +937,8 @@ describe(`tile_symmetry_elements`, () => {
     expect(tile_symmetry_elements([], [1e9, 1e9, 1e9]).elements).toEqual([])
     expect(tile_symmetry_elements([mirror], [1, 1e9, 1e9]).elements).toHaveLength(1)
     expect(tile_symmetry_elements([screw], [1, 1, 1e9]).elements).toHaveLength(1)
-    expect(
-      tile_symmetry_elements(
-        [{ ...mirror, axis: [1, 1, 1], plane_normal: [1, 1, 1] }],
-        [100, 100, 100],
-      ).elements,
-    ).toHaveLength(298)
+    const diagonal: SymmetryElement = { ...mirror, axis: [1, 1, 1], plane_normal: [1, 1, 1] }
+    expect(tile_symmetry_elements([diagonal], [100, 100, 100]).elements).toHaveLength(298)
   })
 
   test(`treats a null axis (inversion centre) and fractional counts safely`, () => {

@@ -241,15 +241,14 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       }
       if (!show_axis) continue // Hiding a sub-axis must not hide its distinct centers.
       for (const [start, end] of clip_axis_family(elem.point, elem.axis as Vec3, cell)) {
-        const span = new Vector3(...math.subtract(end, start))
-        const length = span.length()
-        if (length < 1e-6) continue
-        const dir_unit = span.clone().normalize()
-        const start_vec = new Vector3(...start)
         // Distinct centers may share a cylinder. Keep solid and dashed styles separate.
         const line_key = `${color}|${elem.kind === `screw`}|${piece_key([start, end])}`
-        if (drawn_axes.has(line_key)) continue
+        const span = new Vector3(...math.subtract(end, start))
+        const length = span.length()
+        if (length < 1e-6 || drawn_axes.has(line_key)) continue
         drawn_axes.add(line_key)
+        const dir_unit = span.clone().normalize()
+        const start_vec = new Vector3(...start)
 
         if (elem.kind === `screw`) {
           // Dashed cylinder: segments along the axis, touching both cell faces
@@ -294,9 +293,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
           ? math.normalize_vec(frac_to_cart_direction(elem.translation, cell))
           : null,
       }
-      const style_key = `${style.color}|${style.opacity}|${style.stripe_dir?.join(`,`)}`
       for (const polygon of clip_plane_family(elem.point, elem.plane_normal as Vec3, cell)) {
-        const plane_key = `${style_key}|${piece_key(polygon)}`
+        const plane_key = `${is_mirror}|${style.stripe_dir}|${piece_key(polygon)}`
         if (drawn_planes.has(plane_key)) continue
         drawn_planes.add(plane_key)
         planes.push({ polygon, ...style })

@@ -73,11 +73,8 @@ export const shorten_in_plane = (cart_out: Vec3, cart_1: Vec3, cart_2: Vec3): Ve
 // cell holds the same lattice points, hence the same atoms, as the input cell.
 // `miller` must already be reduced by reduced_miller_indices.
 export function slab_basis_transform(lattice_matrix: Matrix3x3, miller: Vec3): Matrix3x3 {
-  // Row 0 crosses a single (hkl) plane, rows 1 and 2 lie in it; the in-plane pair is then
-  // shortened in the Cartesian metric, which keeps the atom count (same lattice)
-  const [out_of_plane, plane_row_1, plane_row_2] = math.unimodular_completion(miller)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-  const [row_a, row_b] = math.gauss_reduce_pair(plane_row_1, plane_row_2, frac_to_cart)
+  const [out_of_plane, row_a, row_b] = math.unimodular_completion(miller, frac_to_cart)
   const [mult_a, mult_b] = in_plane_reduction_multiples(
     frac_to_cart(out_of_plane),
     frac_to_cart(row_a),

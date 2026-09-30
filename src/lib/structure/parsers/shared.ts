@@ -359,17 +359,15 @@ export function validate_element_symbol(symbol: string, index: number): ElementS
 
 // First candidate that coerces to a real element wins, so callers list their columns
 // most-authoritative first (PDB's element field before its atom name, mmCIF's type_symbol
-// before its label). Candidates are case-normalized on the way (`FE` -> `Fe`) and the
-// hydrogen isotopes D/T read as H; when none is an element, validate_element_symbol warns
-// and substitutes a default.
+// before its label). Candidates are case-normalized (`FE` -> `Fe`, isotopes D/T -> H); when
+// none is an element, validate_element_symbol warns and substitutes a default.
 export const element_from_candidates = (
   candidates: readonly (string | undefined)[],
   atom_idx: number,
 ): ElementSymbol => {
   for (const candidate of candidates) {
     if (!candidate) continue
-    const normalized = capitalize_symbol(candidate)
-    const symbol = [`D`, `T`].includes(normalized) ? `H` : coerce_elem_symbol(normalized)
+    const symbol = coerce_elem_symbol(capitalize_symbol(candidate).replace(/^[DT]$/, `H`))
     if (symbol) return symbol
   }
   return validate_element_symbol(candidates.find(Boolean) ?? `?`, atom_idx)
@@ -537,9 +535,7 @@ const cif_quote_end = (line: string, quote: string, from: number): number => {
 // as one token and dropping only its enclosing delimiters. Stripping every quote in the token
 // instead corrupted primed labels (`C1'` -> `C1`, and `H2'`/`H2''` both -> `H2`, though those
 // are different atoms), and letting `'[^']*'` span two unrelated apostrophes swallowed a whole
-// row into one token, which the short-row filter then dropped without a word. A `#` opening
-// a token starts a comment running to the end of the line (unquoted values cannot start with
-// one), so a commented symop row no longer glues the comment onto its op.
+// row into one token, which the short-row filter then dropped without a word.
 export const split_cif_tokens = (line: string): string[] => {
   const tokens: string[] = []
   let pos = 0
@@ -548,7 +544,7 @@ export const split_cif_tokens = (line: string): string[] => {
       pos++
       continue
     }
-    if (line[pos] === `#`) break
+    if (line[pos] === `#`) break // a token-leading `#` comments out the rest of the line
     const quote = line[pos]
     const close = quote === `'` || quote === `"` ? cif_quote_end(line, quote, pos + 1) : -1
     if (close !== -1) {

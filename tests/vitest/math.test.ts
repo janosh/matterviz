@@ -1561,8 +1561,7 @@ describe(`gcd and Miller index reduction`, () => {
     expect(() => math.validate_miller_indices(hkl)).toThrow(message)
   })
 
-  // Shared by slab cell construction and symmetry-element classification. Components beyond
-  // the crystallographic range matter: sheared input cells read cubic [110] as [5,-1,0].
+  // Components beyond the crystallographic range matter: sheared cells read cubic [110] as [5,-1,0]
   it.each([
     [0, 0, 1],
     [1, 1, 1],
@@ -1570,16 +1569,12 @@ describe(`gcd and Miller index reduction`, () => {
     [-3, 4, 7],
     [51, -1, 0],
     [0, 12, -35],
-  ] as Vec3[])(`unimodular_completion + gauss_reduce_pair frame [%i, %i, %i]`, (...vec) => {
+  ] as Vec3[])(`unimodular_completion frames [%i, %i, %i]`, (...vec) => {
+    // U · vec = e₁ and det U = ±1, so rows 1 and 2 generate the whole annihilator, Gauss-reduced
     const unimodular = math.unimodular_completion(vec)
     expect(math.mat3x3_vec3_multiply(unimodular, vec)).toEqual([1, 0, 0])
     expect(Math.abs(math.det_3x3(unimodular))).toBe(1)
-    // the reduced pair still generates the annihilator (cross product ±vec) and is reduced
-    const [first, second] = math.gauss_reduce_pair(unimodular[1], unimodular[2])
-    const cross = math.cross_3d(first, second)
-    expect([math.dot(cross, cross), Math.abs(math.dot(cross, vec))]).toEqual(
-      Array(2).fill(math.dot(vec, vec)),
-    )
+    const [, first, second] = unimodular
     expect(2 * Math.abs(math.dot(first, second))).toBeLessThanOrEqual(math.dot(first, first))
     expect(math.dot(first, first)).toBeLessThanOrEqual(math.dot(second, second))
   })

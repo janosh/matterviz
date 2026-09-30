@@ -601,13 +601,10 @@ const parse_cif_atom_data = (
   }
 }
 
-// Every spelling of the symop column tag: old `_symmetry_equiv_pos_as_xyz`, current
-// `_space_group_symop_operation_xyz`, their dotted CIF2/DDLm forms and the magnetic-CIF op
-// loops (`_space_group_symop_magn_operation.xyz`, older `_space_group_symop.magn_operation_xyz`).
-// mcif lists lattice (anti-)translations in a separate centering loop.
+// The symop column tag (old `_symmetry_` and current `_space_group_` spellings, dotted CIF2
+// forms) plus the magnetic-CIF op and (anti-)translation centering loops
 const CIF_SYMOP_TAG_RE =
-  /_symmetry_equiv[._]pos_as_xyz|_space_group_symop[._](?:magn_)?operation[._]xyz/i
-const CIF_MAGN_CENTERING_TAG_RE = /_space_group_symop[._]magn_centering[._]xyz/i
+  /_symmetry_equiv[._]pos_as_xyz|_space_group_symop[._](?:(?:magn_)?operation|magn_centering)[._]xyz/i
 
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
 // which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
@@ -670,23 +667,22 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
 
 // Keep one disorder group per assembly (the lowest-numbered, by absolute value since a minus
 // prefix marks a site disordered about a special position) and drop the mutually exclusive
-// others; rows without a group (`.`, `?`, blank) are always kept. Rows without an assembly
-// (no column, `.` or `?`) share one: the CIF dictionary only asks for the assembly when
-// several independently disordered clusters exist, so absent it all groups are alternatives.
+// others; rows without a group (`.`, `?`, blank) are always kept, rows without an assembly
+// (no column, `.` or `?`) share one
 const keep_one_disorder_group = (
   rows: string[][],
-  disorder_col: number,
-  assembly_col: number | undefined,
+  { disorder, assembly }: Record<string, number>,
 ): string[][] => {
-  const group_of = (row: string[]): number => Math.abs(parse_float_token(row[disorder_col]))
+  if (disorder === undefined) return rows
+  const group_of = (row: string[]): number => Math.abs(parse_float_token(row[disorder]))
   const assembly_of = (row: string[]): string | undefined => {
-    const assembly = assembly_col === undefined ? undefined : row[assembly_col]
-    return assembly === `.` || assembly === `?` ? undefined : assembly
+    const value = assembly === undefined ? undefined : row[assembly]
+    return value === `.` || value === `?` ? undefined : value
   }
   const kept = new Map<string | undefined, number>()
   for (const row of rows) {
-    const [group, assembly] = [group_of(row), assembly_of(row)]
-    if (group < (kept.get(assembly) ?? Infinity)) kept.set(assembly, group)
+    const [group, key] = [group_of(row), assembly_of(row)]
+    if (group < (kept.get(key) ?? Infinity)) kept.set(key, group)
   }
   return rows.filter((row) => {
     const group = group_of(row)
@@ -729,31 +725,22 @@ export const parse_cif = (content: string): Crystal => {
   const symmetry_ops: string[] = []
   const centering_ops: string[] = []
   for (const { headers, data_start } of iter_cif_loops(block_lines)) {
-    for (const [tag_re, ops] of [
-      [CIF_SYMOP_TAG_RE, symmetry_ops],
-      [CIF_MAGN_CENTERING_TAG_RE, centering_ops],
-    ] as const) {
-      const symop_col = headers.findIndex((header) => tag_re.test(header))
-      if (symop_col === -1) continue
-      for (const line of cif_loop_lines(block_lines, data_start)) {
-        ops.push(cif_symop_of(line, headers.length, symop_col))
-      }
+    const symop_col = headers.findIndex((header) => CIF_SYMOP_TAG_RE.test(header))
+    if (symop_col === -1) continue
+    const ops = /centering/i.test(headers[symop_col]) ? centering_ops : symmetry_ops
+    for (const line of cif_loop_lines(block_lines, data_start)) {
+      ops.push(cif_symop_of(line, headers.length, symop_col))
     }
   }
 
   const max_required_idx = Math.max(...coord_cols.columns)
-  const { disorder, assembly } = header_indices
 
   // Rows too short to reach their coordinate columns wrapped a value onto a continuation
   // line (multi-line records are not supported) and are dropped
   const complete_rows = atom_data_lines
     .map(split_cif_tokens)
     .filter((tokens) => tokens.length > max_required_idx)
-  const rows =
-    disorder === undefined
-      ? complete_rows
-      : keep_one_disorder_group(complete_rows, disorder, assembly)
-  const atoms = rows
+  const atoms = keep_one_disorder_group(complete_rows, header_indices)
     .map((tokens, atom_idx) => {
       try {
         return parse_cif_atom_data(
@@ -833,8 +820,7 @@ export const parse_cif = (content: string): Crystal => {
     centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
       ? CENTERING_VECTORS[centering_letter]
       : []
-  // mcif centering ops are pure translations applied on top of every op, which is exactly how
-  // build_sites applies its centering vectors
+  // mcif centering ops are pure translations applied on top of every op, like centering vectors
   const magn_centering = parse_symmetry_ops(already_enumerated ? [] : centering_ops)
     .map(({ translations }) => translations)
     .filter((shift) => shift.some((coord) => coord !== 0))
@@ -899,8 +885,7 @@ export const parse_cif = (content: string): Crystal => {
   let sites = build_sites(magn_centering)
   const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
   if (centering.length > 0 && expected_total > sites.length) {
-    // The letter's translations add to explicit mcif centerings, never replace them: all sums
-    // of two translation groups form the smallest group containing both
+    // The letter's translations add to explicit mcif centerings (with all their sums)
     const centered_sites = build_sites([
       ...magn_centering,
       ...centering,
@@ -1247,10 +1232,9 @@ function optimade_with_sites(raw: unknown, allow_empty = false): OptimadeStructu
     : null
 }
 
-// Lattice of an OPTIMADE entry, or null when it has no cell. dimension_types flags each
-// direction periodic (1) or not (0), and a non-periodic direction's lattice_vectors row may be
-// all null: it becomes a zero vector, which make_lattice completes to a unit normal (ASE's
-// complete_cell, as for a sheet's c = 0). With every row null there is no cell (a molecule).
+// Lattice of an OPTIMADE entry with pbc from dimension_types (1 = periodic), or null without a
+// cell. An all-null row along a non-periodic direction becomes a zero vector that make_lattice
+// completes to a unit normal; all-null rows mean no cell (a molecule).
 const optimade_lattice = ({
   lattice_vectors,
   dimension_types,

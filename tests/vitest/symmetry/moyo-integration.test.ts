@@ -458,9 +458,8 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
     map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
-  // hcp Mg (in the wurtzite cell) with 4-decimal coordinates: moyo accepts #194 at symprec
-  // 1e-3 and returns standardized positions (1/3 exactly) that sit 3.3e-5 (fractional) off
-  // the input's 0.3333, beyond a fixed 1e-5 match tolerance but well inside symprec
+  // hcp Mg with 4-decimal coordinates: moyo's standardized 1/3 sits 3.3e-5 off the input's
+  // 0.3333, beyond a fixed 1e-5 match tolerance but well inside symprec 1e-3
   const off_ideal_hcp_mg = () =>
     make_crystal(wurtzite_zno().lattice.matrix, [
       [`Mg`, [0.3333, 0.6667, 0.25]],

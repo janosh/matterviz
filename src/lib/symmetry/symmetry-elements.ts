@@ -44,10 +44,9 @@ export type SymmetryElement = {
   // Fractional direction: rotation/screw/rotoinversion axis, or mirror/glide plane
   // normal. Reduced integer vector with canonical sign. Null for inversion centers.
   axis: Vec3 | null
-  // Mirror/glide planes only (else null): the plane's Miller indices, i.e. the primitive integer
-  // covector n with plane {x : n·x = n·point}. Exact and metric-free, unlike the normal
-  // direction `axis` (parallel to n only under a metric the operation preserves), so the
-  // overlay clips with it and steps n·x through its lattice translates n·point + k.
+  // Mirror/glide planes only (else null): Miller indices n of the plane {x : n·x = n·point}, the
+  // −1 eigenvector of Wᵀ. Exact and metric-free, unlike the normal direction `axis` (−1
+  // eigenvector of W), which is parallel to n only under a metric the operation preserves.
   plane_normal: Vec3 | null
   // A fractional point on the element (on the axis / in the plane / the center),
   // wrapped into [0, 1)
@@ -201,26 +200,9 @@ const is_integer = (val: number): boolean => Math.abs(val - Math.round(val)) < E
 
 const is_zero_vec = (vec: Vec3): boolean => vec.every((val) => Math.abs(val) < ELEM_TOL)
 
-// Integer frame of a primitive integer vector v: a dual d with d·v = 1 and a basis [n₁, n₂] of
-// the annihilator {n ∈ ℤ³ : n·v = 0}. For a rotation axis, (n₁·x mod 1, n₂·x mod 1) is exactly
-// the lattice-invariant identity of the line through x: nᵢ·x is constant along it and a lattice
-// translation shifts it by an integer (a perpendicular foot wrapped mod 1 is not
-// lattice-covariant, so parallel lines one translation apart would key differently), while d·x
-// measures position along the axis. For a plane-equation normal the same algebra gives a basis
-// of ℤ³ ∩ plane and a lift d one plane over.
-//
-// Built exactly, not searched for: a search box assumed tiny components, which a sheared input
-// cell breaks (moyo reports ops in the input frame, so cubic [110] reads [5,-1,0] once
-// b' = b + 4a). Lagrange-Gauss reduction shortens the pair to the smallest representatives,
-// which keeps round-off in nᵢ·x small and is what reduce_glide's ±1 search relies on.
-function integer_frame(vec: Vec3): { dual: Vec3; basis: [Vec3, Vec3] } {
-  const [dual, first, second] = math.unimodular_completion(vec)
-  return { dual, basis: math.gauss_reduce_pair(first, second) }
-}
-
 // Order on glide representatives so every operation of one geometric glide gets the same vector
-// and letter: shorter first, then fewer nonzero components (R3c's c/2 over the equally short
-// (1/3,-1/3,1/6) keeps its three origin planes all c), then lexicographically larger
+// and letter: shorter, then sparser (R3c's c/2 beats the equally short (1/3,-1/3,1/6)), then
+// lexicographically larger
 const n_nonzero = (vec: Vec3): number => vec.filter((val) => Math.abs(val) > ELEM_TOL).length
 const precedes = (cand: Vec3, best: Vec3): boolean => {
   const shorter = math.dot(best, best) - math.dot(cand, cand)
@@ -231,21 +213,17 @@ const precedes = (cand: Vec3, best: Vec3): boolean => {
   return decisive !== undefined && decisive > 0
 }
 
-// Shortest representative of the glide class w_i + (Λ ∩ plane), exactly: Λ ∩ plane is the union
-// of the centering cosets offset + ℤ-span(basis), and for a Gauss-reduced 2D basis every closest
-// point to a target lies within ±1 of its rounded coordinates. A search over {-1,0,1}³ lattice
-// vectors missed the in-plane periods of sheared cells: at b' = b + 4a the period (-4,1,0) of a
-// cubic mirror was out of reach and the mirror reported an n-glide.
+// Shortest representative of the glide class w_i + (Λ ∩ plane), exact even in sheared cells:
+// Λ ∩ plane is the union of the centering cosets offset + ℤ-span(basis), and for a Gauss-reduced
+// 2D basis every closest point to a target lies within ±1 of its rounded coordinates
 function reduce_glide(
   w_intrinsic: Vec3,
   [first, second]: [Vec3, Vec3],
   offsets: readonly Vec3[],
 ): Vec3 {
-  const [g_11, g_12, g_22] = [
-    math.dot(first, first),
-    math.dot(first, second),
-    math.dot(second, second),
-  ]
+  const g_11 = math.dot(first, first)
+  const g_12 = math.dot(first, second)
+  const g_22 = math.dot(second, second)
   const det = g_11 * g_22 - g_12 * g_12
   let best = w_intrinsic
   for (const offset of offsets) {
@@ -290,7 +268,7 @@ type RotationInfo = { mat: Matrix3x3; proj: Matrix3x3; mat_order: number; order:
   | {
       kind: `proper`
       axis: Vec3
-      // annihilating covectors that key the axis line, and the dual (see integer_frame)
+      // the rows [dual, ...covectors] of math.unimodular_completion(axis)
       covectors: [Vec3, Vec3]
       dual: Vec3
       // shortest lattice period along the axis in units of `axis` (1 for primitive lattices)
@@ -302,11 +280,8 @@ type RotationInfo = { mat: Matrix3x3; proj: Matrix3x3; mat_order: number; order:
   | {
       kind: `mirror`
       axis: Vec3
-      // Plane-equation normal as an integer COVECTOR: the plane is {x : normal_eq·x = const}.
-      // This is the −1 eigenvector of Wᵀ, not of W. `axis` is the −1 eigenvector of W, i.e.
-      // the normal DIRECTION in direct space; the two are parallel only when the metric
-      // leaves `axis` an eigenvector (essentially cubic), so keying a plane offset off `axis`
-      // gets the wrong period.
+      // Plane-equation covector, SymmetryElement.plane_normal: keying a plane offset off the
+      // direction `axis` instead gets the wrong period in non-cubic metrics
       normal_eq: Vec3
       // the in-plane lattice Λ ∩ plane as plane_offsets + ℤ-span(plane_basis): plane_basis
       // spans ℤ³ ∩ plane and plane_offsets are the centerings lifted into the plane
@@ -339,7 +314,7 @@ function build_rotation_info(
     if (!order) throw new Error(`Invalid proper rotation trace ${mat_trace}`)
     const axis = axis_from_projector(proj, mat_order)
     if (!axis) throw new Error(`Failed to extract rotation axis`)
-    const { dual, basis: covectors } = integer_frame(axis)
+    const [dual, ...covectors] = math.unimodular_completion(axis)
     // Shortest lattice period along the axis (1 for primitive lattices; 1/2 for (1/2,1/2,1/2)
     // along ⟨111⟩ in body-centered cells). A centering c lies on the axis line mod ℤ³ iff both
     // covectors map it to integers, and then sits at dual·c mod 1 along it.
@@ -367,13 +342,13 @@ function build_rotation_info(
   if (mat_trace === 1) {
     // Plane-equation normal: the −1 eigenvector of Wᵀ, obtained as the +1 eigenvector of
     // −Wᵀ exactly the way `axis` above is the +1 eigenvector of −W. Integer and primitive
-    // like `axis`, but a covector — see the normal_eq field docs for why they differ.
+    // like `axis`, but a covector — see SymmetryElement.plane_normal for why they differ.
     const transposed = math.transpose_3x3_matrix(proper_part)
     const { proj: t_proj, order: t_order } = invariant_projector(transposed)
     const normal_eq = axis_from_projector(t_proj, t_order)
     if (!normal_eq) throw new Error(`Failed to extract mirror plane-equation normal`)
     // A centering with integer height normal_eq·c has a translate in the plane: c − height·lift
-    const { dual: lift, basis: plane_basis } = integer_frame(normal_eq)
+    const [lift, ...plane_basis] = math.unimodular_completion(normal_eq)
     const plane_offsets: Vec3[] = [[0, 0, 0]]
     for (const centering of centerings) {
       const height = math.dot(normal_eq, centering)
@@ -387,7 +362,8 @@ function build_rotation_info(
   const rotoinv_order_by_trace: Record<number, number> = { 0: 3, [-1]: 4, [-2]: 6 }
   const order = rotoinv_order_by_trace[mat_trace]
   if (!order) throw new Error(`Invalid improper rotation trace ${mat_trace}`)
-  return { ...base, kind: `rotoinversion`, order, axis, covectors: integer_frame(axis).basis }
+  const [, ...covectors] = math.unimodular_completion(axis)
+  return { ...base, kind: `rotoinversion`, order, axis, covectors }
 }
 
 // Snap both ends of [0, 1): 1 - 1e-9 and 0 identify the same in-cell locus.
@@ -399,8 +375,8 @@ const locus_coord = (val: number) =>
 // - inversion centers: the wrapped center
 // - planes: (normal, offset s = x₀·normal_eq mod 1) — lattice translations change s by an
 //   integer since normal_eq is an integer covector
-// - axis lines: (direction, covector coordinates of x₀ mod 1) — wrapping merges
-//   lattice-equivalent parallel lines, see integer_frame
+// - axis lines: (direction, n·x₀ mod 1 for the covector basis n₁, n₂ annihilating the axis,
+//   constant along the line) — a wrapped perpendicular foot would split equivalent lines
 function element_locus_key(point: Vec3, info: RotationInfo): string {
   // Fractional coordinate of an integer covector against the element point, mod 1. Both
   // operands are lattice quantities, so a lattice translation shifts this by an integer
@@ -424,7 +400,7 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
   const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
   const locus = element_locus_key(point, info)
 
-  if (info.kind === `inversion`) {
+  if (info.kind === `inversion`)
     return {
       kind: `inversion`,
       order,
@@ -435,7 +411,6 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
       translation: null,
       locus,
     }
-  }
   const { kind, axis } = info
 
   if (kind === `proper`) {
@@ -445,10 +420,9 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
     let lambda = lambda_raw - period * Math.floor(lambda_raw / period + ELEM_TOL)
     if (Math.abs(lambda) < ELEM_TOL) lambda = 0
     const is_screw = lambda > ELEM_TOL
-    // ITA's N_p advances p/N of the period per +2π/N turn about +axis, so an operation turning
-    // the other way (3⁻ with 2/3 c) lies on the N_(N−p) axis (3₁). The sense is taken in the
-    // cell basis, so a left-handed cell mirrors the labels exactly like moyo's space-group
-    // number (a P3_1 crystal in a left-handed cell reads P3_2 with 3_2 axes).
+    // ITA's N_p advances p/N of the period per +2π/N turn about +axis, so 3⁻ with 2/3 c lies on a
+    // 3_1 axis. The sense is taken in the cell basis: a left-handed cell mirrors the labels like
+    // moyo's space-group number (a P3_1 crystal reads P3_2 with 3_2 axes).
     const turn_part = Math.round((order * lambda) / period) % order
     const screw_part = negative_sense ? (order - turn_part) % order : turn_part
     return {
@@ -543,10 +517,8 @@ export function symmetry_elements_from_ops(
       info_cache.set(rot_key, info)
     }
     if (info === null) continue // identity / pure translation
-    // Offsets differing by (I − W)ℤ³ or by lattice vectors along the element give the same
-    // family member, so the members form a finite group generated by the unit offsets: closing
-    // under +eⱼ until no new key appears visits each exactly. A fixed box such as t ∈ {0,1}³
-    // misses members once the cell is sheared (a 3_2 axis of R-3m at b' = b + 2a).
+    // Family members are the offsets modulo (I − W)ℤ³ and lattice vectors along the element, a
+    // finite group: closing under +eⱼ visits each, where a fixed t ∈ {0,1}³ misses sheared ones
     const [w_x, w_y, w_z] = translation
     const shifts: Vec3[] = [[0, 0, 0]]
     for (const [s_x, s_y, s_z] of shifts) {
@@ -635,9 +607,8 @@ export const piece_key = (piece: readonly Vec3[]): string =>
     .toSorted()
     .join(`|`)
 
-// Integer shifts k with lower ≤ value + k ≤ upper, where [lower, upper] is the range of the
-// integer covector's value over the unit cell (reached at corners: its summed negative and
-// positive components). A shift landing on a face or edge is kept for the clipper to judge.
+// Integer k with value + k in the range of the integer covector over the unit cell (its summed
+// negative and positive components). Face or edge touches are left for the clipper to drop.
 function shifts_into_cell(value: number, covector: Vec3): number[] {
   const lower = covector.reduce((sum, val) => sum + Math.min(val, 0), 0)
   const upper = covector.reduce((sum, val) => sum + Math.max(val, 0), 0)
@@ -649,17 +620,12 @@ function shifts_into_cell(value: number, covector: Vec3): number[] {
 }
 
 // Every in-cell Cartesian segment of the lattice translates of the axis line through `point`
-// along the primitive integer `axis`. With [n₁, n₂] the annihilator basis of integer_frame, a
-// translate is fixed by its covector coordinates (n₁·x, n₂·x), which lattice translations step
-// through all of ℤ², so exactly the integer steps into each coordinate's cell range can cross
-// the cell. The family's representative alone can merely graze the cell (a [1-11] axis through
-// the origin touches one corner) while its translates cross it; a fixed box of translates
-// misses them in sheared cells (over half of the cubic groups' pieces at b' = b + 4a).
+// along the primitive integer `axis`. A translate is fixed by its coordinates (n₁·x, n₂·x) for
+// the covectors annihilating the axis, which lattice translations step through all of ℤ², so
+// exactly the integer steps into each coordinate's cell range can cross the cell.
 export function clip_axis_family(point: Vec3, axis: Vec3, lattice: Matrix3x3): [Vec3, Vec3][] {
-  const { dual, basis } = integer_frame(axis)
-  const [first, second] = basis
-  // Lattice steps moving (n₁·x, n₂·x) by (1, 0) and (0, 1) without sliding along the axis:
-  // columns of the inverse of the unimodular [n₁; n₂; d] (its determinant is ±1)
+  const [dual, first, second] = math.unimodular_completion(axis)
+  // Lattice steps moving (n₁·x, n₂·x) by (1, 0) and (0, 1): columns of [n₁; n₂; d]⁻¹ (det ±1)
   const sign = math.det_3x3([first, second, dual])
   const [step_1, step_2] = [math.cross_3d(second, dual), math.cross_3d(dual, first)]
   const segments: [Vec3, Vec3][] = []
@@ -675,9 +641,8 @@ export function clip_axis_family(point: Vec3, axis: Vec3, lattice: Matrix3x3): [
   return segments
 }
 
-// Every in-cell Cartesian polygon of the lattice translates of the plane through `point` with
-// primitive integer covector `plane_normal` (SymmetryElement.plane_normal): lattice
-// translations move n·x by every integer, so the translates are the planes n·x = n·point + k.
+// Every in-cell Cartesian polygon of the lattice translates n·x = n·point + k (k ∈ ℤ) of the
+// plane through `point` with primitive integer covector n = `plane_normal`
 export function clip_plane_family(
   point: Vec3,
   plane_normal: Vec3,
@@ -740,9 +705,8 @@ function symmetry_tiling(
     vec[1] / counts[1],
     vec[2] / counts[2],
   ]
-  // Directions stay primitive integer vectors in the block basis, which the family clippers
-  // step through lattice translates with: axis_i / counts_i times the lcm of the counts it
-  // divides, while a plane covector's indices multiply by the counts
+  // Directions stay primitive integer vectors in the block basis, as the family clippers need:
+  // axis_i / counts_i times the lcm of its nonzero components' counts; plane indices × counts
   const block_axis = (axis: Vec3): Vec3 => {
     const lcm = axis.reduce(
       (acc, val, idx) => (val === 0 ? acc : (acc / math.gcd(acc, counts[idx])) * counts[idx]),

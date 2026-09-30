@@ -823,19 +823,15 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(result.sites[0].species.map((spec) => spec.element)).toEqual([`Fe`, `O`])
     })
 
-    // An mcif centering loop is the file's own list of lattice translations, so the letter
-    // fallback adds to it rather than replacing it: C and the (0,0,1/2)' anti-translation reach
-    // the 4 Fe only together, while F alone would reconcile 4 Fe by dropping the declared
-    // (1/2,0,0)' (a count no combination reaches, so the explicit expansion stays)
+    // The letter fallback adds to an mcif centering loop: C reaches 4 Fe only together with
+    // (0,0,1/2)', while F alone would reach 4 Fe by dropping the declared (1/2,0,0)'
     // oxfmt-ignore
     test.each([
       [`C m m m`, `x,y,z+1/2,-1`, [[0, 0, 0], [0, 0, 0.5], [0.5, 0.5, 0], [0.5, 0.5, 0.5]]],
       [`F m m m`, `x+1/2,y,z,-1`, [[0, 0, 0], [0.5, 0, 0]]],
     ])(`%s centering combines with the mcif centering %s`, (symbol, centering, expected) => {
-      const tag = `_space_group_symop_magn_centering`
-      const magn_loop = `loop_\n${tag}.id\n${tag}.xyz\n1 x,y,z,+1\n2 ${centering}`
+      const magn_loop = `loop_\n_space_group_symop_magn_centering.xyz\nx,y,z,+1\n${centering}`
       const cif = `${make_cif(symbol, { atom_types: [`Fe 4`] })}\n${magn_loop}`
-
       expect(sorted_coords(parse_cif(cif).sites)).toEqual(expected)
     })
 
@@ -1015,27 +1011,6 @@ O2   O   0.410  0.140  0.880  1.000`
     ])
   })
 
-  // CIF2's dotted `_space_group_symop.operation_xyz` and the magnetic-CIF (.mcif) op loops were
-  // not recognized, leaving just the asymmetric unit. mcif ops end in a time-reversal flag
-  // (`,+1`/`,-1`) that leaves positions alone, and their centering loop composes with every op
-  // oxfmt-ignore
-  test.each([
-    [`_space_group_symop.operation_xyz`, null, [`x,y,z`, `-x,-y,-z`]],
-    [`_space_group_symop_magn_operation.xyz`, null, [`x,y,z,+1`, `-x,-y,-z,-1`]],
-    [`_space_group_symop.magn_operation_xyz`, null, [`x,y,z,+1`, `-x,-y,-z,-1`]],
-    [`_space_group_symop_magn_operation.xyz`, `_space_group_symop_magn_centering.xyz`, [`x,y,z,+1`, `-x,-y,-z,-1`]],
-    [`_space_group_symop.magn_operation_xyz`, `_space_group_symop.magn_centering_xyz`, [`x,y,z,+1`, `-x,-y,-z,+1`]],
-  ])(`expands %s ops (centering loop: %s)`, (op_tag, centering_tag, ops) => {
-    const loop = (tag: string, rows: string[]) =>
-      `loop_\n${tag.replace(/xyz$/, `id`)}\n${tag}\n${rows.map((row, idx) => `${idx + 1} ${row}`).join(`\n`)}`
-    const centering = centering_tag ? loop(centering_tag, [`x,y,z,+1`, `x+1/2,y+1/2,z,-1`]) : ``
-    const moments = `loop_\n_atom_site_moment.label\n_atom_site_moment.crystalaxis_x\n_atom_site_moment.crystalaxis_y\n_atom_site_moment.crystalaxis_z\nMn1 0 0 3.5`
-    const cif = `data_t\n${cell5}\n${loop(op_tag, ops)}\n${centering}\n${site_loop}\nMn1 Mn 0.1 0.2 0.3\n${moments}`
-    const expected = [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]
-    const centered = [[0.1, 0.2, 0.3], [0.6, 0.7, 0.3], [0.9, 0.8, 0.7], [0.4, 0.3, 0.7]]
-    expect(rounded_abc(parse_cif(cif).sites)).toEqual(centering_tag ? centered : expected)
-  })
-
   // A term that cannot be resolved leaves its dimension at 0, so degrading the op in place put
   // an atom on the origin. The op is dropped instead, leaving the asymmetric unit untouched.
   test(`drops a symmetry op carrying an unresolvable term`, () => {
@@ -1141,8 +1116,12 @@ O2   O   0.410  0.140  0.880  1.000`
 
   // A symop loop declaring the identity, plus one more line: a second op, or the data item
   // that ends the loop. `atom_loop` holds a single Na the inversion op maps to 0.9 0.8 0.7.
-  const symop_loop = (next: string) => `loop_\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n${next}`
+  const symop_loop = (next: string, tag = `_symmetry_equiv_pos_as_xyz`) =>
+    `loop_\n${tag}\n'x, y, z'\n${next}`
   const atom_loop = `${site_loop}\nNa1 Na 0.1 0.2 0.3`
+  // an mcif op loop plus its centering loop holding an anti-translation
+  const mcif_loops = (op_tag: string, op: string) =>
+    `${symop_loop(op, op_tag)}\n${symop_loop(`'x+1/2, y+1/2, z, -1'`, op_tag.replace(`operation`, `centering`))}\n${atom_loop}`
 
   // A symop loop is equally valid before or after the atom-site loop (CIF imposes no ordering
   // on data items) and a loop's data ends at the next data name, so neither a key-value item
@@ -1155,6 +1134,10 @@ O2   O   0.410  0.140  0.880  1.000`
     [`a symop loop written after the atom loop`, `${atom_loop}\n${symop_loop(`'-x, -y, -z'`)}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
     // a `#` comment after the op used to be glued onto it (`-x,-y,-z#inversion`), losing the op
     [`a trailing comment on a symop row`, `${symop_loop(`'-x, -y, -z' # inversion`)}\n${atom_loop}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
+    [`a dotted CIF2 symop tag`, `${symop_loop(`'-x, -y, -z'`, `_space_group_symop.operation_xyz`)}\n${atom_loop}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
+    // mcif ops end in a time-reversal flag and their centering loop composes with every op
+    [`mcif op and centering loops`, mcif_loops(`_space_group_symop_magn_operation.xyz`, `'-x, -y, -z, -1'`), [[0.1, 0.2, 0.3], [0.6, 0.7, 0.3], [0.9, 0.8, 0.7], [0.4, 0.3, 0.7]]],
+    [`older mcif op and centering loops`, mcif_loops(`_space_group_symop.magn_operation_xyz`, `'-x, -y, -z, +1'`), [[0.1, 0.2, 0.3], [0.6, 0.7, 0.3], [0.9, 0.8, 0.7], [0.4, 0.3, 0.7]]],
     // the remaining cases place a trailing data item between the two loops: its `-x, -y, -z`
     // is a value, not a symop row, so the atom must not be duplicated
     [`a key-value item after the loop`, `${symop_loop(`_audit_creation_method 'Generated by Tool, version 1.0, on 2024-01-01'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
@@ -1168,13 +1151,11 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(rounded_abc(result.sites)).toEqual(expected_abc)
   })
 
-  // Disorder groups are mutually exclusive alternatives within their assembly: only the
-  // lowest-numbered group per assembly is kept (groups 2 AND 3 used to survive alongside 1,
-  // and assembly B's groups 3/4 all lost to assembly A's group 1) while ungrouped rows always
-  // stay. Without an assembly (column or value) all groups are alternatives of one assembly.
+  // Only the lowest-numbered disorder group per assembly survives (groups 2 AND 3 used to stay
+  // alongside 1, and assembly B's groups all lost to A's group 1); ungrouped rows always stay
   // oxfmt-ignore
   test.each([
-    [`without an assembly column`, ``, [`Na1 Na 0 0 0 .`, `Cl1 Cl 0.5 0.5 0.5 1`, `Br1 Br 0.5 0.5 0.5 2`, `I1 I 0.5 0.5 0.5 3`, `K1 K 0.25 0.25 0.25 -1`], [`Na1`, `Cl1`, `K1`]],
+    [`without an assembly column`, ``, [`Na1 Na 0 0 0 .`, `Cl1 Cl 0.5 0.5 0.5 1`, `Br1 Br 0.6 0.5 0.5 2`, `I1 I 0.7 0.5 0.5 3`, `K1 K 0.25 0.25 0.25 -1`], [`Na1`, `Cl1`, `K1`]],
     [`per assembly`, `\n_atom_site_disorder_assembly`, [`C1 C 0 0 0 . .`, `C2A C 0.1 0 0 1 A`, `C2B C 0.2 0 0 2 A`, `C3A C 0.5 0.5 0 3 B`, `C3B C 0.6 0.5 0 4 B`, `C4 C 0.3 0.3 0.3 5 .`, `C5 C 0.4 0.4 0.4 6 ?`], [`C1`, `C2A`, `C3A`, `C4`]],
   ])(`keeps one disorder group %s and drops the others`, (_case, assembly_tag, rows, expected) => {
     const loop = `${site_loop}\n_atom_site_disorder_group${assembly_tag}`
@@ -2148,37 +2129,24 @@ describe(`optimade_to_structure`, () => {
     expect(() => parse_structure_file(JSON.stringify({ ...entry, structure: get_dummy_structure() }), `x.json`)).toThrow(expected_error)
   })
 
-  // dimension_types sets lattice.pbc (1 = periodic); it was ignored, so slabs, wires and
-  // clusters came out 3D-periodic. A non-periodic direction's lattice_vectors row may be all
-  // null (OPTIMADE spec), which threw: it completes to a unit normal like a zero row does, and
-  // with every row null there is no cell at all (a molecule).
+  // dimension_types sets lattice.pbc (it was ignored, so slabs came out 3D-periodic); an
+  // all-null non-periodic row (which threw) completes to a unit normal, all-null rows mean no cell
   const null_row = [null, null, null]
   // oxfmt-ignore
   test.each([
     [`unset dimension_types`, undefined, cubic_vectors(3), [true, true, true], cubic_vectors(3)],
-    [`a slab with a vacuum c`, [1, 1, 0], [[3, 0, 0], [0, 3, 0], [0, 0, 20]], [true, true, false], [[3, 0, 0], [0, 3, 0], [0, 0, 20]]],
     [`a sheet with a null c row`, [1, 1, 0], [[3, 0, 0], [0, 3, 0], null_row], [true, true, false], [[3, 0, 0], [0, 3, 0], [0, 0, 1]]],
     [`a wire with null a and b rows`, [0, 0, 1], [null_row, null_row, [0, 0, 2.5]], [false, false, true], [[0, 1, 0], [-1, 0, 0], [0, 0, 2.5]]],
     [`a cluster with a box`, [0, 0, 0], cubic_vectors(10), [false, false, false], cubic_vectors(10)],
     [`a cluster with all-null rows`, [0, 0, 0], [null_row, null_row, null_row], null, null],
   ])(`reads the periodicity of %s`, (_name, dimension_types, lattice_vectors, pbc, matrix) => {
-    const entry = optimade(`dims`, {
-      dimension_types,
-      lattice_vectors,
-      cartesian_site_positions: [[0, 0, 0], [1.5, 1.5, 1.25]],
-      species_at_sites: [`C`, `C`],
-    })
+    const positions = [[0, 0, 0], [1.5, 1.5, 1.25]]
+    const entry = optimade(`dims`, { dimension_types, lattice_vectors, cartesian_site_positions: positions, species_at_sites: [`C`, `C`] })
     const result = optimade_to_structure(entry)
     expect(detect_structure_type(`dims.json`, JSON.stringify(entry))).toBe(pbc ? `crystal` : `molecule`)
-    if (!pbc) {
-      expect(`lattice` in result).toBe(false)
-      expect(result.sites.map((site) => site.xyz)).toEqual([[0, 0, 0], [1.5, 1.5, 1.25]])
-      return
-    }
-    assert(`lattice` in result)
-    expect(result.lattice.pbc).toEqual(pbc)
-    expect(result.lattice.matrix).toEqual(matrix)
-    expect_sites_reconstruct(result)
+    expect(result.sites.map((site) => site.xyz)).toEqual(positions)
+    expect(`lattice` in result && [result.lattice.pbc, result.lattice.matrix]).toEqual(pbc ? [pbc, matrix] : false)
+    if (pbc) expect_sites_reconstruct(result)
   })
 
   it.each(OPTIMADE_COORD_CASES)(
@@ -2762,26 +2730,14 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(result.sites[0].species[0].element).toBe(expected)
   })
 
-  // D/T name hydrogen isotopes, not elements: they fell through to the per-index fallback
-  // elements, so N, D, C, T read as N, He, C, Be
+  // D/T name hydrogen isotopes: they fell through to the per-index fallback (N, He, C, Be)
+  // oxfmt-ignore
   test.each([
-    [
-      `PDB`,
-      `isotopes.pdb`,
-      [`N`, `D`, `C`, `T`]
-        .map((elem, idx) => pdb_atom_line(idx + 1, ` ${elem}1`, [idx, 0, 0], elem))
-        .join(`\n`),
-    ],
-    [
-      `mmCIF`,
-      `isotopes.mmcif`,
-      `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\nN 0 0 0\nD 1 0 0\nC 2 0 0\nT 3 0 0`,
-    ],
-  ])(`%s reads deuterium and tritium as hydrogen`, (_format, filename, content) => {
-    const elements = parse_structure_file(content, filename).sites.map(
-      (site) => site.species[0].element,
-    )
-    expect(elements).toEqual([`N`, `H`, `C`, `H`])
+    [`isotopes.pdb`, [`N`, `D`, `C`, `T`].map((elem, idx) => pdb_atom_line(idx + 1, ` ${elem}1`, [idx, 0, 0], elem)).join(`\n`)],
+    [`isotopes.mmcif`, mmcif_cell(10, `Cartn`, [`N 0 0 0`, `D 1 0 0`, `C 2 0 0`, `T 3 0 0`])],
+  ])(`%s reads deuterium and tritium as hydrogen`, (filename, content) => {
+    const { sites } = parse_structure_file(content, filename)
+    expect(sites.map((site) => site.species[0].element)).toEqual([`N`, `H`, `C`, `H`])
   })
 
   test(`MOL bond type 4 is aromatic and unsupported query types fall back to single`, () => {

@@ -84,17 +84,14 @@ test.each([`plane`, `slab`] as const)(
   },
 )
 
-// A molecule without sites (e.g. every atom deleted in edit mode) has no center of mass: the
-// scene rotates about the origin instead of translating everything by NaN
+// no sites (e.g. all deleted in edit mode) means no center of mass: rotate about the origin
 test(`Scene keeps finite transforms for a structure without sites`, () => {
   const { scene, unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, { structure: { sites: [] }, gizmo: false }),
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const coords: number[] = []
-  scene.traverse((object) => coords.push(...object.position.toArray()))
-  expect(coords.every(Number.isFinite)).toBe(true)
+  scene.traverse((node) => expect(node.position.toArray().every(Number.isFinite)).toBe(true))
 })
 
 // Hover raycasts stay off while the camera moves or atoms are dragged, so tooltips don't flicker
