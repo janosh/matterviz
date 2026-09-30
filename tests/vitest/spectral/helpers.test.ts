@@ -155,6 +155,9 @@ describe(`density_divisor`, () => {
     expect(density_divisor([[0, 0]], [0, 1], `max`)).toBe(1)
     expect(density_divisor([[1]], [0], `integral`)).toBe(1)
     expect(density_divisor([], [0, 1], `max`)).toBe(1)
+    // all-negative channels must not flip the curve's sign
+    expect(density_divisor([[-2, -1]], [0, 1], `max`)).toBe(1)
+    expect(density_divisor([[-2, -1]], [0, 1], `sum`)).toBe(1)
   })
 
   // Math.max(...densities) overflows the argument limit; DOS grids reach 1e7 points

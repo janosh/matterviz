@@ -785,6 +785,31 @@ describe(`milestone feature props`, () => {
     },
   )
 
+  // a search that hides both brushed columns before mouseup reports no brush, rather than
+  // undefined ranges
+  test(`a brush whose corners a search hid reports nothing`, () => {
+    const brush_handler = vi.fn()
+    const search = fromStore(writable(``))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: make_items([`Fe`, `O`, `Fe2`]),
+        y_items: make_items([`Fe`, `Ni`]),
+        values: numbered_values,
+        enable_brush: true,
+        on_brush: brush_handler,
+        get search_query() {
+          return search.current
+        },
+      },
+    })
+    cell_at(1, 0).dispatchEvent(mouse(`mousedown`))
+    cell_at(1, 1).dispatchEvent(mouse(`mouseover`))
+    flushSync(() => (search.current = `fe`)) // hides the brushed O column
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).not.toHaveBeenCalled()
+  })
+
   test(`selected outline color token contrasts with dark cell backgrounds`, () => {
     mount_matrix({
       x: [`A`],

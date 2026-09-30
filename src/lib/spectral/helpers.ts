@@ -122,8 +122,9 @@ export function density_divisor(
     const weights = trapezoid_weights(freqs_or_energies)
     divisor = weighted_total((idx) => weights[idx])
   }
-  // -Infinity: the max over no values
-  return divisor === 0 || divisor === -Infinity ? 1 : divisor
+  // Only a positive finite divisor normalizes: -Infinity is the max over no values, and a
+  // negative one (all-non-positive channels) would flip the plotted curve
+  return Number.isFinite(divisor) && divisor > 0 ? divisor : 1
 }
 
 // Trapezoid quadrature weights for an arbitrary 1D grid: each point covers half the gap to

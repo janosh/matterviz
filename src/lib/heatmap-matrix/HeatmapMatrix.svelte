@@ -514,7 +514,8 @@
   let brush_end: CellPos | null = null
 
   // Rectangle spanned by two corners in rendered order and its cells, minus the hidden
-  // triangle. A corner no longer visible (e.g. a range anchor the search hid) drops out.
+  // triangle. A corner no longer visible (e.g. a range anchor the search hid) drops out, and
+  // with both corners of an axis hidden there is no rectangle (null).
   function cells_between(corner_a: CellPos, corner_b: CellPos) {
     const span = (order: number[], ...idxs: number[]): number[] => {
       const positions = idxs.map((idx) => order.indexOf(idx)).filter((pos) => pos >= 0)
@@ -522,6 +523,7 @@
     }
     const x_span = span(vis_x, corner_a.x_idx, corner_b.x_idx)
     const y_span = span(vis_y, corner_a.y_idx, corner_b.y_idx)
+    if (x_span.length === 0 || y_span.length === 0) return null
     const cells = y_span.flatMap((y_idx) =>
       x_span.flatMap((x_idx) => (is_hidden_cell(x_idx, y_idx) ? [] : [{ x_idx, y_idx }])),
     )
@@ -532,7 +534,7 @@
   function update_selected_cells(event: MouseEvent, clicked: CellPos): void {
     const clicked_key = cell_pos_key(clicked.x_idx, clicked.y_idx)
     if (selection_mode === `range` && event.shiftKey && last_selected_cell) {
-      selected_cells = cells_between(last_selected_cell, clicked).cells
+      selected_cells = cells_between(last_selected_cell, clicked)?.cells ?? [clicked]
     } else if (selection_mode === `multi` && (event.metaKey || event.ctrlKey)) {
       selected_cells = selected_key_set.has(clicked_key)
         ? selected_cells.filter((pos) => cell_pos_key(pos.x_idx, pos.y_idx) !== clicked_key)
@@ -681,8 +683,10 @@
     brush_end = brush_start
   })
   function handle_mouseup(): void {
-    if (enable_brush && brush_start && brush_end && on_brush) {
-      const { x_range, y_range, cells } = cells_between(brush_start, brush_end)
+    const rect =
+      enable_brush && brush_start && brush_end && cells_between(brush_start, brush_end)
+    if (rect && on_brush) {
+      const { x_range, y_range, cells } = rect
       on_brush({
         x_range,
         y_range,
