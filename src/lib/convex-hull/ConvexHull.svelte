@@ -13,6 +13,7 @@
   import { ViewerChrome } from '$lib/layout'
   import { PlotTooltip } from '$lib/plot'
   import { sanitize_html } from '$lib/sanitize'
+  import { first_duplicate } from '$lib/utils'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -89,6 +90,13 @@
   }: ConvexHullProps = $props()
 
   const entries = $derived(entries_prop ?? [])
+  // entry_id keys selection, highlighting and structure previews: a repeat resolves to the first
+  $effect(() => {
+    const repeat = first_duplicate(
+      entries.flatMap(({ entry_id }) => (entry_id ? [entry_id] : [])),
+    )
+    if (repeat !== undefined) console.warn(`ConvexHull: duplicate entry_id "${repeat}"`)
+  })
 
   // Passed values are the caller's choice: data-dependent defaults only fill unset ones
   const { max_hull_dist_explicit, labels_explicit } = untrack(() => ({

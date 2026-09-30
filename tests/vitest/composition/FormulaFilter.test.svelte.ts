@@ -159,6 +159,12 @@ describe(`FormulaFilter`, () => {
     [`Fe[+3]2O[-2]3`, `elements`, `Fe,O`],
     [`Fe2^3+O3^2-`, `chemsys`, `Fe-O`],
     [`Li0Fe2O3`, `elements`, `Fe,O`],
+    // only included elements carry over: an exclusion must not flip into an inclusion, and
+    // a range constraint (Fe:1-2) must not hide its element
+    [`+Li,-O`, `chemsys`, `Li`],
+    [`Li,-O,Fe`, `chemsys`, `Fe-Li`],
+    [`Fe:1-2,Li`, `chemsys`, `Fe-Li`],
+    [`Fe:1-2,Li,-*,*`, `exact`, `FeLi*`],
   ] as const)(`reformats "%s" to %s mode as "%s"`, async (from, to_mode, expected) => {
     const on_change = vi.fn()
     await mount_bound(from, { on_change })

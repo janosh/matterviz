@@ -3,6 +3,7 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
+import { first_duplicate } from '$lib/utils'
 import { composition_to_barycentric_nd } from './barycentric-coords'
 import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './entry-stability'
 import type { ConvexHullEntry, PhaseData, PhaseStats, ProcessedPhaseData } from './types'
@@ -255,6 +256,8 @@ export function calculate_e_above_hull(
   if (!Array.isArray(input)) return e_above_hull_distances([input], reference_entries)[0]
   if (input.length === 0) return {} // Empty input → empty result (not an error)
   const distances = e_above_hull_distances(input, reference_entries)
+  const repeat = first_duplicate(input.flatMap(({ entry_id }) => (entry_id ? [entry_id] : [])))
+  if (repeat) console.warn(`calculate_e_above_hull: duplicate entry_id "${repeat}", last wins`)
   return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
 }
 
@@ -272,7 +275,7 @@ export function get_convex_hull_stats(
   const [, unary, binary, ternary, quaternary, quinary_plus] = arity_counts
   const stable = processed_entries.filter((entry) => is_on_hull(entry)).length
 
-  // E_form only: falling back to absolute DFT energies puts ~-8 and ~-1 eV/atom in one stat
+  // E_form only: absolute computed energies would put ~-8 and ~-1 eV/atom in one stat
   const e_forms = processed_entries
     .map((entry) => entry.e_form_per_atom)
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
