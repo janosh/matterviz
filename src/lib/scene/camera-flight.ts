@@ -142,18 +142,27 @@ export function create_camera_flight_sampler(
   }
 }
 
+// Level turntable about world up, like OrbitControls and the movie `orbit` preset: constant
+// elevation and distance, no roll (a rolled start view is leveled).
 export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlight {
   const target = new Vector3(...pose.target)
   const offset = new Vector3(...pose.position).sub(target)
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
-  const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...pose.quaternion))
+  const up = new Vector3(0, 1, 0)
+  const elevation_deg = (Math.asin(offset.dot(up) / offset.length()) * 180) / Math.PI
+  if (Math.abs(elevation_deg) >= 89)
+    throw new RangeError(`Orbit needs |elevation| < 89°, got ${elevation_deg}°`)
   // 45° steps suffice: smooth flights orbit exactly (see create_camera_flight_sampler)
   const keyframes = Array.from({ length: 9 }, (_unused, idx): CameraKeyframe => {
-    const position = offset
-      .clone()
-      .applyAxisAngle(up, (idx * Math.PI) / 4)
-      .add(target)
+    // The closing position is exact, avoiding a visible seam when the video loops.
+    const position =
+      idx % 8 === 0
+        ? new Vector3(...pose.position)
+        : offset
+            .clone()
+            .applyAxisAngle(up, (idx * Math.PI) / 4)
+            .add(target)
     return {
       ...copy_pose(pose),
       time: (duration * idx) / 8,
@@ -163,9 +172,6 @@ export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlig
         .toArray(),
     }
   })
-  // The closing pose is exact, avoiding a visible seam when the video loops.
-  keyframes[0] = { ...copy_pose(pose), time: 0 }
-  keyframes[8] = { ...copy_pose(pose), time: duration }
   const flight: CameraFlight = { keyframes, interpolation: `smooth` }
   validate_camera_flight(flight)
   return flight
@@ -217,6 +223,18 @@ export function create_camera_flight_controller(
     camera.updateMatrixWorld()
     invalidate()
   }
+  // OrbitControls re-aims the camera at its target with a level `camera.up` on every update, so
+  // a sampled view it cannot hold (target off the view axis mid linear flight, rolled keyframe)
+  // would snap on the next one. Keep position and view direction, move the pivot onto the view
+  // axis at the same distance and level the roll: the controls then hold exactly this view.
+  const hand_over = (): void => {
+    const distance = camera.position.distanceTo(controls.target)
+    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    controls.target.copy(camera.position).addScaledVector(forward, distance)
+    camera.lookAt(controls.target)
+    camera.updateMatrixWorld()
+    invalidate()
+  }
   return {
     capture,
     begin() {
@@ -229,7 +247,9 @@ export function create_camera_flight_controller(
         if (released) return
         released = true
         try {
-          if (restore && !disposed) apply(original)
+          if (disposed) return
+          if (restore) apply(original)
+          else hand_over()
         } finally {
           active = false
           set_active(false)
@@ -241,7 +261,8 @@ export function create_camera_flight_controller(
           apply(pose)
         },
         restore: () => release(true),
-        // Inspection leaves the selected view in place and hands orbiting back to the user.
+        // Inspection leaves the selected view in place (minus any roll OrbitControls cannot
+        // hold) and hands orbiting back to the user.
         commit: () => release(false),
       }
     },

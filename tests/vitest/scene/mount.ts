@@ -6,8 +6,8 @@ import type { WebGLRenderer } from 'three'
 export function mount_scene(render: Component) {
   const contexts: ReturnType<typeof createThrelteContext>[] = []
   const noop = () => {}
+  const canvas = document.createElement(`canvas`)
   const Harness: Component = (anchor) => {
-    const canvas = document.createElement(`canvas`)
     const info = { render: { calls: 0 } }
     // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
     const dom = document.createElement(`div`)
@@ -39,6 +39,7 @@ export function mount_scene(render: Component) {
   const component = mount(Harness, { target: document.body })
   const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
   return {
+    canvas,
     scene,
     camera,
     disposable_objects,

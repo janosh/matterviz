@@ -82,7 +82,7 @@ describe(`InfoPaneCards`, () => {
               {
                 label: `Force`,
                 value: `Value 0`,
-                tooltip: `Force vector: 1, 2, 3 <small>eV/Å</small>`,
+                tooltip: `Force vector: 1, 2, 3 <small>eV/&Aring;</small>`,
               },
             ],
           },
@@ -96,6 +96,9 @@ describe(`InfoPaneCards`, () => {
     expect(section.getAttribute(`data-key`)).toBe(`k0`)
     expect(doc_query(`.info-card h4 .subtitle`).textContent).toBe(`sub`)
     expect(doc_query(`.info-row span:nth-child(2)`).textContent).toBe(`Value 0`)
+    expect(doc_query(`.info-row span:nth-child(2)`).getAttribute(`aria-label`)).toBe(
+      `Value 0: Force vector: 1, 2, 3 eV/Å`,
+    )
     flushSync()
     doc_query(`.info-row span:nth-child(2)`).dispatchEvent(new MouseEvent(`pointerenter`))
     flushSync()

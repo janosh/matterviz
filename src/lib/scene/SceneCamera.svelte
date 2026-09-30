@@ -10,6 +10,7 @@
   import { attach_pan_gesture, read_pan_offset, set_pan_offset } from './pan'
   import type { build_orbit_props } from './props.svelte'
   import { camera_flight_registry, create_camera_flight_controller } from './camera-flight'
+  import { lock_fly_to } from './fly-to'
   import { OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
   let {
@@ -73,6 +74,7 @@
       { object: camera, target: controls.target },
       () => size.current,
       (active) => {
+        lock_fly_to(controls, active) // no gizmo or zone-axis swing fights the flight
         flight_active = active
       },
       invalidate,

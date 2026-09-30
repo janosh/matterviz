@@ -1,4 +1,6 @@
 import { create_fit_zoom, create_orthographic_zoom, create_scene_camera } from '$lib/scene'
+import { type CameraPose, camera_flight_registry } from '$lib/scene/camera-flight'
+import { create_fly_to } from '$lib/scene/fly-to'
 import SceneCamera from '$lib/scene/SceneCamera.svelte'
 import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
 import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '$lib/scene/props.svelte'
@@ -36,6 +38,58 @@ test.each([`orthographic`, `perspective`] as const)(
     }
   },
 )
+
+// Gizmo and zone-axis fly-tos steer the OrbitControls a movie flight leases. One still in the
+// air when the lease starts must end there, not swing the camera away from the flight's poses
+// and re-enable orbiting mid-flight when it lands.
+test(`a camera flight ends the fly-to in progress on its controls and blocks new ones`, () => {
+  const props = $state<ComponentProps<typeof SceneCamera>>({
+    position: [0, 0, 10],
+    orbit_props: build_orbit_props({
+      ...SCENE_CONTROL_DEFAULTS,
+      camera_projection: `perspective`,
+      target: [0, 0, 0],
+      min_zoom: undefined,
+      max_zoom: undefined,
+    }),
+    orbit_controls: undefined,
+  })
+  const { canvas, unmount_scene } = mount_scene((anchor) => SceneCamera(anchor, props))
+  onTestFinished(unmount_scene)
+  flushSync()
+  const controls = props.orbit_controls
+  const controller = camera_flight_registry.get(canvas)
+  if (!controls || !controller) throw new Error(`SceneCamera set up no camera flight`)
+  const fly = create_fly_to({
+    camera: () => controls.object,
+    controls: () => controls,
+    duration_ms: () => 400,
+    invalidate: () => {},
+  })
+  fly.start([1, 0, 0])
+  fly.step(0.1)
+  expect(controls.enabled).toBe(false)
+  const lease = controller.begin()
+  flushSync()
+  expect(fly.active).toBe(false)
+  const pose: CameraPose = {
+    ...controller.capture(),
+    position: [0, 0, 20],
+    quaternion: [0, 0, 0, 1],
+  }
+  lease.apply(pose)
+  fly.step(10)
+  fly.start([0, 1, 0]) // a zone-axis click mid-flight must not start a swing
+  fly.step(10)
+  expect(fly.active).toBe(false)
+  expect(controller.capture()).toEqual(pose)
+  expect(controls.enabled).toBe(false)
+  lease.commit()
+  flushSync()
+  expect(controls.enabled).toBe(true)
+  fly.start([0, 1, 0]) // after the flight lets go, fly-to works again
+  expect(fly.active).toBe(true)
+})
 
 // Shared by BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene, so a
 // regression here hits four renderers at once — and both bugs this replaced lived in exactly

@@ -399,17 +399,52 @@ describe(`camera fly-to`, () => {
     expect(offset().z).toBeLessThan(0.05)
   })
 
-  test(`restores orbit controls when released mid-flight`, () => {
-    const { controls, fly, hook_calls } = make_rig()
-    fly.start([1, 0, 0])
-    fly.step(0.1)
-    expect(controls.enabled).toBe(false)
-    fly.release()
-    expect([controls.enabled, fly.active]).toEqual([true, false])
-    expect(hook_calls).toEqual([`start`, `change`, `end`])
-    fly.release()
-    expect(hook_calls).toEqual([`start`, `change`, `end`]) // no duplicate end
-  })
+  // Controls get back the host's own state, which a mid-air takeover must not overwrite with
+  // the flight's disabling: a host that locked orbiting used to find it re-enabled
+  test.each([true, false])(
+    `restores orbit controls (enabled: %s) when released mid-flight`,
+    (enabled) => {
+      const { camera, controls, fly, hook_calls } = make_rig()
+      controls.enabled = enabled
+      fly.start([1, 0, 0])
+      fly.step(0.1)
+      fly.start([0, 0, -1])
+      expect(controls.enabled).toBe(false)
+      fly.release()
+      expect([controls.enabled, fly.active]).toEqual([enabled, false])
+      expect(hook_calls).toEqual([`start`, `change`, `start`, `end`])
+      fly.release()
+      expect(hook_calls).toEqual([`start`, `change`, `start`, `end`]) // no duplicate end
+      // Gizmo and scene each own a fly-to on the same controls. A flight from one takes over
+      // the other's mid-air: that one stops where it is (reporting its end) rather than
+      // steering the camera on and snapping it back when it lands, and the host's setting
+      // still comes back, not the disabling the second found from the first's flight
+      const other = create_fly_to({
+        camera: () => camera,
+        controls: () => controls,
+        duration_ms: () => 400,
+        invalidate: () => {},
+      })
+      for (const [first, second] of [
+        [fly, other],
+        [other, fly],
+      ]) {
+        first.start([1, 0, 0])
+        first.step(0.1)
+        second.start([0, 0, -1])
+        const taken_over = to_array(camera.position)
+        first.step(10)
+        expect([first.active, to_array(camera.position), controls.enabled]).toEqual([
+          false,
+          taken_over,
+          false,
+        ])
+        second.step(10)
+        expect(controls.enabled).toBe(enabled)
+      }
+      expect(hook_calls.slice(4)).toEqual([`start`, `change`, `end`, `start`, `change`, `end`])
+    },
+  )
 
   test.each([
     [`a zero-length direction`, [0, 0, 0] as Vec3],

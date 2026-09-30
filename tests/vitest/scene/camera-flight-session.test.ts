@@ -17,7 +17,12 @@ function setup() {
     vi.fn(),
   )
   const original = controller.capture()
-  const moved = { ...original, position: [5, 0, 10] as [number, number, number] }
+  // A sideways move OrbitControls can hold (target on the view axis), so commits keep it as is
+  const moved = {
+    ...original,
+    position: [5, 0, 10] as [number, number, number],
+    target: [5, 0, 0] as [number, number, number],
+  }
   let playing = true
   const timeline: FlightTimeline = {
     start: 0,
