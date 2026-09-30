@@ -5,7 +5,7 @@ import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, mount_sized } from '../setup'
+import { doc_query, fire, mount_sized, mouse } from '../setup'
 import {
   BOX_TRI_FACES,
   BOX_VERTICES,
@@ -33,6 +33,38 @@ describe(`FermiSlice`, () => {
     )
     await tick()
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
+  })
+
+  test(`a band sliced into several isolines gets one legend item that toggles them all`, async () => {
+    const shifted = (dx: number): Vec3[] =>
+      BOX_VERTICES.map(([kx, ky, kz]) => [kx + dx, ky, kz])
+    const box = (dx: number, band_index: number) =>
+      make_fermi_isosurface(shifted(dx), BOX_TRI_FACES, { band_index })
+    const fermi_data = make_fermi_surface([box(0, 0), box(2, 0), box(-2, 1)])
+    const plot = await mount_sized(
+      FermiSlice,
+      { fermi_data, distance: 0.05 },
+      { selector: `.fermi-slice` },
+    )
+    await tick()
+    const legend_items = () => [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+    // drawn isoline count per band
+    const drawn = () =>
+      [0, 1].map((band) => plot.querySelectorAll(`g[data-series-id^="iso-${band}-"]`).length)
+
+    expect(legend_items().map((item) => item.textContent?.trim())).toEqual([
+      `Band 1`,
+      `Band 2`,
+    ])
+    expect(drawn()).toEqual([2, 1])
+    await fire(legend_items()[0])
+    expect(drawn()).toEqual([0, 1])
+    await fire(legend_items()[0])
+    expect(drawn()).toEqual([2, 1])
+    await fire(legend_items()[1], mouse(`dblclick`))
+    expect(drawn()).toEqual([0, 1])
+    await fire(legend_items()[1], mouse(`dblclick`))
+    expect(drawn()).toEqual([2, 1])
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

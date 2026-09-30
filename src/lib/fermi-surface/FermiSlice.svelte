@@ -4,7 +4,6 @@
   import { ScatterPlot } from '$lib/plot'
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteSet } from 'svelte/reactivity'
   import { compute_fermi_slice, slice_axis_label } from './compute'
   import { BAND_COLORS } from './constants'
   import type { FermiSliceData, FermiSurfaceData } from './types'
@@ -38,7 +37,6 @@
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
-  let hidden_bands = new SvelteSet<number>()
 
   // Slice of the current surface; a failed slice (e.g. zero Miller indices) reports through
   // on_error and renders empty
@@ -60,14 +58,15 @@
     return [slice_axis_label(in_plane_u, `k₁`), slice_axis_label(in_plane_v, `k₂`)]
   })
 
-  // Transform isolines to ScatterPlot series
+  // One series per isoline; the shared legend_id folds a band's segments into a single legend
+  // row that toggles and isolates them together
   let series: DataSeries[] = $derived(
     slice_data?.isolines.map((iso, idx) => ({
       id: `iso-${iso.band_index}-${idx}`,
+      legend_id: iso.band_index,
       x: iso.points_2d.map((point) => point[0]),
       y: iso.points_2d.map((point) => point[1]),
       markers: `line` as const,
-      visible: !hidden_bands.has(iso.band_index),
       label: `Band ${iso.band_index + 1}`,
       line_style: {
         stroke: band_colors[iso.band_index % band_colors.length],
@@ -96,23 +95,6 @@
     const pad_y = 0.1 * (y_max - y_min || 1)
     return { min: [x_min - pad_x, y_min - pad_y], max: [x_max + pad_x, y_max + pad_y] }
   })
-  function toggle_band(series_idx: number) {
-    const band = slice_data?.isolines[series_idx]?.band_index
-    if (band === undefined) return
-    if (hidden_bands.has(band)) hidden_bands.delete(band)
-    else hidden_bands.add(band)
-  }
-
-  function isolate_band(series_idx: number) {
-    const band = slice_data?.isolines[series_idx]?.band_index
-    if (band === undefined) return
-    const all_bands = [...new Set(slice_data?.isolines.map((iso) => iso.band_index))]
-    const is_solo = all_bands.every((other) => other === band || hidden_bands.has(other))
-    hidden_bands.clear()
-    if (!is_solo) {
-      for (const other of all_bands) if (other !== band) hidden_bands.add(other)
-    }
-  }
 
   // Returns null if SVG not found, making export failures explicit
   const export_svg = (): string | null => wrapper?.querySelector(`svg`)?.outerHTML ?? null
@@ -131,8 +113,6 @@
   fullscreen_toggle={false}
   {show_legend}
   legend={{
-    on_toggle: toggle_band,
-    on_double_click: isolate_band,
     draggable: false,
     // pin bottom-right so it clears the top-left title/controls overlay (e.g. in the demo)
     style: `left: auto; top: auto; right: 8px; bottom: 8px`,
