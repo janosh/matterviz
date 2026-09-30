@@ -447,10 +447,8 @@
   }
 
   // Distinct valid elements of any input format (formula, comma- or dash-separated list),
-  // alphabetical, with one trailing `*` per wildcard. Of a list, only valid included tokens
-  // count: an excluded element re-expressed in another mode would flip into an included one.
-  // Invalid formulas yield nothing: an invalid exact formula is committed verbatim and this
-  // runs on it from a $derived.
+  // alphabetical, with one trailing `*` per wildcard. Lists count only included tokens (an
+  // exclusion would flip into an inclusion); an invalid formula, committed verbatim, yields [].
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
     const mode = infer_mode(trimmed)

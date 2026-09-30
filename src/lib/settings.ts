@@ -1295,8 +1295,7 @@ const valid_array = (value: unknown, setting: SettingType, reference: readonly u
 
 // Whether `value` may stand in for the schema default: enum membership, a finite number inside
 // minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems
-// (each item inside `items` bounds), a plain object for free-form maps, else the default's
-// primitive type.
+// (items inside `items`), a plain object for free-form maps, else the default's primitive type.
 export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)

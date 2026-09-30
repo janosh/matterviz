@@ -45,8 +45,7 @@ const NUMERIC_WITH_ERROR_RE =
   /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
 const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
 
-// Plain text of a cell: markup stripped, entities decoded, dates as ISO, objects as JSON,
-// invalid as ``
+// Plain text of a cell: markup stripped and decoded, dates as ISO, objects as JSON, invalid ``
 export const cell_text = (val: CellVal): string => {
   if (is_invalid(val)) return ``
   if (val instanceof Date) return val.toISOString()
@@ -157,8 +156,7 @@ export function sort_table_rows<Row extends RowData>(
 
 // === Search and per-column filters ===
 
-// Substring (with fuzzy also subsequence, e.g. "mdla" matches "model a") match of a lower-cased
-// query against lower-cased cell text
+// Substring match of a lower-cased query, or with fuzzy also subsequence ("mdla" in "model a")
 export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
   text.includes(query) || (fuzzy && fuzzy_match(query, text))
 

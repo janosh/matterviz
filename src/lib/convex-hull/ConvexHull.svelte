@@ -92,10 +92,8 @@
   const entries = $derived(entries_prop ?? [])
   // entry_id keys selection, highlighting and structure previews: a repeat resolves to the first
   $effect(() => {
-    const repeat = first_duplicate(
-      entries.flatMap(({ entry_id }) => (entry_id ? [entry_id] : [])),
-    )
-    if (repeat !== undefined) console.warn(`ConvexHull: duplicate entry_id "${repeat}"`)
+    const repeat = first_duplicate(entries.map(({ entry_id }) => entry_id).filter(Boolean))
+    if (repeat) console.warn(`ConvexHull: duplicate entry_id "${repeat}"`)
   })
 
   // Passed values are the caller's choice: data-dependent defaults only fill unset ones

@@ -55,8 +55,7 @@ export const table_to_json = (
 // line break would end the table row mid-cell.
 export function table_to_markdown({ headers, rows, numeric }: TableMatrix): string {
   const align = numeric.map((is_numeric) => (is_numeric ? `---:` : `:---`))
-  // `<` and entity-starting `&` first, so decoded text like `<b>` or `&lt;` stays literal
-  // instead of rendering as markup (before the newline <br> is added)
+  // escape `<` and entity-like `&` (before adding <br>) so decoded `<b>` or `&lt;` stays text
   const escape_md = (text: string) =>
     text
       .replaceAll(/&(?=#?[\da-z]+;)/gi, `&amp;`)

@@ -307,15 +307,10 @@ describe(`strip_html`, () => {
     [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
     [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
     [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
-    [
-      `&bogus; &constructor; &#x110000; AT&T; a & b`,
-      `&bogus; &constructor; &#x110000; AT&T; a & b`,
-    ],
-  ])(`html_to_text(%j) = %j`, (input, expected) => {
+    [`&bogus; &constructor; &#x110000; a & b`, `&bogus; &constructor; &#x110000; a & b`],
+  ])(`html_to_text and cell_text: %j -> %j`, (input, expected) => {
     expect(html_to_text(input)).toBe(expected)
-  })
-  it(`decodes entities in cell text`, () => {
-    expect(cell_text(`AT&amp;T`)).toBe(`AT&T`)
+    expect(cell_text(input)).toBe(expected)
   })
 })
 
@@ -667,12 +662,8 @@ describe(`table exporters`, () => {
     expect(row_1).toBe(`| x, "q" | multi<br>line | 1 |`)
     expect(row_2).toBe(`| 50% & $3_{} | ^~\\\\ | 2 |`)
     // decoded escaped markup stays text: `<br>` must not become a live line break
-    const [, , literal] = table_to_markdown({
-      headers: [`H`],
-      rows: [[`use <br> or &lt;`]],
-      numeric: [false],
-    }).split(`\n`)
-    expect(literal).toBe(`| use &lt;br> or &amp;lt; |`)
+    const markdown = table_to_markdown({ headers: [`<br> &lt;`], rows: [], numeric: [false] })
+    expect(markdown.split(`\n`)[0]).toBe(`| &lt;br> &amp;lt; |`)
   })
 
   it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {

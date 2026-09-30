@@ -137,8 +137,7 @@ describe(`HeatmapTable`, () => {
       const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
       onTestFinished(() => warn.mockRestore())
       mount_sample({ columns, show_row_numbers })
-      flushSync()
-      // only the column whose key is in no row warns (it would render all n/a)
+      flushSync() // only the column whose key is in no row warns (it would render all n/a)
       expect(warn).toHaveBeenCalledExactlyOnceWith(
         `HeatmapTable column Hidden: key Hidden is in no row`,
       )

@@ -221,14 +221,12 @@ describe(`convex hull replacement state`, () => {
     const entries = [
       make_phase({ Li: 1 }, 0, { entry_id: `dup` }),
       make_phase({ O: 1 }, 0, { entry_id: `dup` }),
-      make_phase({ Li: 2, O: 1 }, -6, { entry_id: `unique` }),
     ]
     await mount_hull({ entries })
     expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
   })
 
-  // Synthetic corners close the hull but are no data entries: the info pane and the controls
-  // legend leave them out like phase_stats does
+  // synthetic corners close the hull but are no data entries, so info pane and legend skip them
   test(`pane counts leave out synthetic corners`, async () => {
     const entries = [
       make_phase({ Li: 1 }, 0),

@@ -24,7 +24,6 @@ describe(`PropertyFilter`, () => {
     const [min_input, max_input] = inputs()
     expect([min_input.step, max_input.step]).toEqual([`any`, `any`])
     expect([min_input.placeholder, max_input.placeholder]).toEqual([`0`, `100`])
-    // entities decode like the rendered label rather than reading out verbatim
     expect(min_input.getAttribute(`aria-label`)).toBe(`ΔEhull minimum`)
     expect(max_input.getAttribute(`aria-label`)).toBe(`ΔEhull maximum`)
     expect(container().dataset.testid).toBe(`property-filter`)

@@ -256,7 +256,7 @@ export function calculate_e_above_hull(
   if (!Array.isArray(input)) return e_above_hull_distances([input], reference_entries)[0]
   if (input.length === 0) return {} // Empty input → empty result (not an error)
   const distances = e_above_hull_distances(input, reference_entries)
-  const repeat = first_duplicate(input.flatMap(({ entry_id }) => (entry_id ? [entry_id] : [])))
+  const repeat = first_duplicate(input.map(({ entry_id }) => entry_id).filter(Boolean))
   if (repeat) console.warn(`calculate_e_above_hull: duplicate entry_id "${repeat}", last wins`)
   return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
 }

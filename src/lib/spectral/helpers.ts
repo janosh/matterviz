@@ -99,9 +99,8 @@ export function scale_segment_distances(
   )
 }
 
-// Normalization divisor shared by all channels on a grid (e.g. both spins of a DOS, so their
-// relative scale survives): the max, sum or integral over every channel together. 1 when
-// there is nothing to divide by (no mode or channels, a zero total, a single-point integral).
+// One normalization divisor (max, sum or integral) over all channels on a grid, e.g. both
+// spins of a DOS so their relative scale survives; 1 when there is nothing to divide by
 // array_max, not Math.max(...densities): DOS grids reach 1e7 points, past the argument limit
 export function density_divisor(
   channels: readonly (readonly number[])[],
@@ -114,7 +113,7 @@ export function density_divisor(
       0,
     )
   let divisor = 0
-  if (mode === `max`) divisor = Math.max(...channels.map((densities) => array_max(densities)))
+  if (mode === `max`) divisor = Math.max(...channels.map(array_max))
   else if (mode === `sum`) divisor = weighted_total(() => 1)
   else if (mode === `integral` && freqs_or_energies.length >= 2) {
     // trapezoid, not a left-Riemann sum off x[1] - x[0]: the latter assumed a uniform grid
@@ -122,8 +121,7 @@ export function density_divisor(
     const weights = trapezoid_weights(freqs_or_energies)
     divisor = weighted_total((idx) => weights[idx])
   }
-  // Only a positive finite divisor normalizes: -Infinity is the max over no values, and a
-  // negative one (all-non-positive channels) would flip the plotted curve
+  // -Infinity (max over no values) and negative divisors (which flip the curve) don't normalize
   return Number.isFinite(divisor) && divisor > 0 ? divisor : 1
 }
 
@@ -784,9 +782,8 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   }
 }
 
-// SVG path of a fat-band ribbon: a closed polygon around the band line tracing the upper edge
-// (y - half-width: SVG y grows downward) forward and the lower edge back. Half-widths are in
-// pixels, so the caller picks one width normalization for all its ribbons.
+// SVG path of a fat-band ribbon: the upper edge (y - half-width px, as SVG y grows downward)
+// forward, then the lower edge back. The caller scales widths so ribbons share one scale.
 export function generate_ribbon_path(
   x_values: number[],
   y_values: number[],

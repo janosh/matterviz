@@ -470,7 +470,6 @@ describe(`PeriodicTable`, () => {
     expect(error).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining(`length should be 118 or less`),
     )
-    error.mockRestore()
   })
 
   test.each([
@@ -488,7 +487,6 @@ describe(`PeriodicTable`, () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       `PeriodicTable ${prop}: keys must be element symbols, got fe`,
     )
-    warn.mockRestore()
   })
 
   // missing-color resolution for the first tile (H), which is missing whenever a heatmap
@@ -513,7 +511,7 @@ describe(`PeriodicTable`, () => {
 
   // 0 is a real, colorable value (not missing); only absent/null/<=0-in-log are missing
   test(`zero maps through the color scale, absent elements use the missing fallback`, () => {
-    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
     // a key that is not an element symbol is ignored, not a reason to drop the whole heatmap
     const heatmap_values = { H: 0, He: 10, nope: 5 }
     mount(PeriodicTable, {
@@ -521,7 +519,6 @@ describe(`PeriodicTable`, () => {
       props: { heatmap_values, missing: { color: `#666` } },
     })
     flushSync()
-    warn.mockRestore()
     const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
     expect(tiles[0].style.backgroundColor).not.toBe(`#666`) // H=0 -> scale color, not missing
     expect(tiles[0].style.backgroundColor).not.toBe(``) // a real color is applied

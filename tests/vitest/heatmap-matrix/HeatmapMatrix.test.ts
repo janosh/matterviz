@@ -8,7 +8,14 @@ import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  form_controls,
+  keydown,
+  mouse,
+  trigger_resize_observer,
+} from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: readonly string[]): AxisItem[] =>
@@ -207,7 +214,6 @@ describe(`values and colors`, () => {
     expect(cells[3].style.backgroundColor).toBe(`red`)
   })
 
-  // nested like `values`: y key, then x key
   test(`color_overrides takes precedence over computed color`, () => {
     mount_matrix({
       x: [`A`, `B`],
@@ -653,29 +659,18 @@ describe(`milestone feature props`, () => {
     }
     mount(HeatmapMatrix, { target: document.body, props: bind_props(props, state) })
     await tick()
-    const select_with = (value: string) =>
-      Array.from(
-        document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
-      ).find((sel) => sel.querySelector(`option[value="${value}"]`))
-    const [position_select, normalize_select] = [select_with(`right`), select_with(`log`)]
-    if (!position_select || !normalize_select) throw new Error(`controls selects not rendered`)
-    expect(normalize_select.value).toBe(`log`)
-    expect(get_data_cells().map(red_of)).toEqual([0, 128, 255])
-    normalize_select.value = `linear`
-    normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    flushSync()
-    expect(get_data_cells().map(red_of)).toEqual([0, 23, 255])
+    const { control, set_value } = form_controls()
+    const reds = () => get_data_cells().map(red_of)
+    expect(reds()).toEqual([0, 128, 255])
+    await set_value(`Normalize`, `linear`)
+    expect(reds()).toEqual([0, 23, 255])
     flushSync(() => (log.current = false))
     flushSync(() => (log.current = true)) // a later change (e.g. widget trait) applies again
-    expect(normalize_select.value).toBe(`log`)
-    expect(get_data_cells().map(red_of)).toEqual([0, 128, 255])
+    expect([control(`Normalize`).value, ...reds()]).toEqual([`log`, 0, 128, 255])
 
-    position_select.value = `right`
-    position_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    flushSync()
+    await set_value(`Color bar side`, `right`)
     expect(state.color_bar_position).toBe(`right`)
-
-    doc_query<HTMLInputElement>(`.heatmap-controls input[type="checkbox"]`).click()
+    control(`Color bar`).click()
     flushSync()
     expect(state.show_color_bar).toBe(false)
   })
@@ -727,16 +722,7 @@ describe(`milestone feature props`, () => {
   // hidden triangle of a symmetric matrix and columns filtered out by the search are left out
   test.each([
     [`symmetric lower`, { symmetric: `lower` }, [1, 2], `0:0 0:1 1:1 0:2 1:2`],
-    [
-      `search hides the middle column`,
-      {
-        x_items: make_items([`Fe`, `O`, `Fe2`]),
-        y_items: make_items([`Fe`]),
-        search_query: `fe`,
-      },
-      [2, 0],
-      `0:0 2:0`,
-    ],
+    [`search hides a column`, { x: [`Ax`, `B`, `Cx`], search_query: `x` }, [2, 0], `0:0 2:0`],
   ] as const)(
     `selection_mode range spans a rectangle: %s`,
     (_desc, props, [end_x, end_y], expected) => {
@@ -754,7 +740,6 @@ describe(`milestone feature props`, () => {
     },
   )
 
-  // ranges are the item indices of the first and last spanned track in rendered order
   test.each([
     [`item order`, x_items, undefined, 1, [1, 2], [2, 3, 5, 6]],
     // C A B renders as A B C, so dragging B..C must not pick up A from between their indices
@@ -785,27 +770,18 @@ describe(`milestone feature props`, () => {
     },
   )
 
-  // a search that hides both brushed columns before mouseup reports no brush, rather than
-  // undefined ranges
-  test(`a brush whose corners a search hid reports nothing`, () => {
+  // a search hiding the brushed cells before mouseup leaves no rectangle (not undefined ranges)
+  test(`a brush whose corners a search hid reports nothing`, async () => {
     const brush_handler = vi.fn()
-    const search = fromStore(writable(``))
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: {
-        x_items: make_items([`Fe`, `O`, `Fe2`]),
-        y_items: make_items([`Fe`, `Ni`]),
-        values: numbered_values,
-        enable_brush: true,
-        on_brush: brush_handler,
-        get search_query() {
-          return search.current
-        },
-      },
+    mount_matrix({
+      values: numbered_values,
+      enable_brush: true,
+      on_brush: brush_handler,
+      show_controls: true,
+      controls_open: true,
     })
     cell_at(1, 0).dispatchEvent(mouse(`mousedown`))
-    cell_at(1, 1).dispatchEvent(mouse(`mouseover`))
-    flushSync(() => (search.current = `fe`)) // hides the brushed O column
+    await form_controls().set_value(`Search`, `Z`) // hides every column and the brushed row
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).not.toHaveBeenCalled()
   })

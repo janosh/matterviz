@@ -224,8 +224,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     ),
   )
 
-  // Data entries for the panes' counts: synthetic corners only close the hull, so they count
-  // nowhere, as in phase_stats
+  // synthetic corners only close the hull, so the panes' counts skip them like phase_stats
   const data_entries = $derived(plot_entries.filter((entry) => !entry.is_synthetic))
   const stable_entries = $derived(data_entries.filter(helpers.entry_is_stable))
   const unstable_entries = $derived(

@@ -428,9 +428,8 @@ describe(`Bands component`, () => {
     expect(fill_region_paths).toHaveLength(1)
   })
 
-  // One width normalization for the whole structure: a band of tiny weights stays thin, and a
-  // segment is not blown up to max_width by its own local maximum. Non-finite and negative
-  // widths draw nothing (Infinity must not become the max), a segment of only those no ribbon.
+  // One width scale per structure: tiny weights stay thin and no segment is blown up to
+  // max_width by its local max; non-finite/negative widths draw nothing (Infinity isn't the max)
   it(`scales fat-band ribbons by one max width across bands and segments`, async () => {
     const band_widths = [
       [0.1, 0.2, 1, 0.5],
@@ -440,26 +439,16 @@ describe(`Bands component`, () => {
       band_structs: { '': { ...make_unlabeled_band_structure(), band_widths } },
       ribbon_config: { max_width: 100 },
     })
-    // the ribbon traces its upper edge forward and its lower edge back
+    // half-widths between the upper edge (traced forward) and the lower edge (traced back)
     const half_widths = [...document.querySelectorAll(`path.fat-band-ribbon`)].map((path) => {
-      const edge_y = [...(path.getAttribute(`d`) ?? ``).matchAll(/,(?<y>-?[\d.]+)/g)].map(
+      const ys = [...(path.getAttribute(`d`) ?? ``).matchAll(/,(?<y>-?[\d.]+)/g)].map(
         (match) => Number(match.groups?.y),
       )
-      const n_points = edge_y.length / 2
-      return edge_y
-        .slice(0, n_points)
-        .map((upper_y, idx) => (edge_y[edge_y.length - 1 - idx] - upper_y) / 2)
+      const upper = ys.slice(0, ys.length / 2)
+      return upper.map((upper_y, idx) => Math.round((ys[ys.length - 1 - idx] - upper_y) / 2))
     })
-    // 100 px at the structure-wide max weight 1 (segment by segment, band by band); path
-    // coords are rounded to 0.01 px, so each half-width is within 0.005 px
-    const expected = [
-      [10, 20],
-      [1, 0],
-      [100, 50],
-    ]
-    expect(half_widths).toEqual(
-      expected.map((widths) => widths.map((width) => expect.closeTo(width, 1))),
-    )
+    // 100 px at the structure-wide max weight 1, ribbons segment by segment, band by band
+    expect(half_widths.map(String)).toEqual([`10,20`, `1,0`, `100,50`])
   })
 
   it(`emphasizes the selection and extends clickable marker hit areas`, async () => {

@@ -21,6 +21,7 @@
   import { ColorBar } from '$lib/plot'
   import { resolve_color_ramp, to_color_bar_scale } from '$lib/plot/core/color-ramp'
   import { colors } from '$lib/state.svelte'
+  import { is_plain_object } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '$lib/heatmap-matrix'
@@ -158,14 +159,10 @@
   )
   // Keys that aren't element symbols (`fe`, `FE`, `Xx`) match no tile, so they're ignored
   $effect(() => {
-    const keyed = {
-      heatmap_values: Array.isArray(heatmap_values) ? null : heatmap_values,
-      color_overrides,
-      labels,
-      links: typeof links === `object` ? links : null,
-    }
+    const keyed = { heatmap_values, color_overrides, labels, links }
     for (const [prop, record] of Object.entries(keyed)) {
-      const bad_keys = Object.keys(record ?? {}).filter((key) => !is_elem_symbol(key))
+      if (!is_plain_object(record)) continue // arrays, links templates and unset props
+      const bad_keys = Object.keys(record).filter((key) => !is_elem_symbol(key))
       if (bad_keys.length)
         console.warn(`PeriodicTable ${prop}: keys must be element symbols, got ${bad_keys}`)
     }

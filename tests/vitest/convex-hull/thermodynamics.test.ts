@@ -409,8 +409,7 @@ describe(`calculate_e_above_hull`, () => {
     expect(results.Fe3O).toBeCloseTo(0.5, 10)
     expect(results[`Fe-test`]).toBeCloseTo(0, 10)
     expect(results[`Fe-high`]).toBeCloseTo(0.5, 10)
-    // a repeated entry_id would silently overwrite the earlier entry's result; empty ids are
-    // no ids (keyed by content), so a pair of them must not mask the real repeat
+    // a repeated entry_id overwrites the earlier result; a pair of empty ids isn't a repeat
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const dupes = [``, ``, `x`, `x`].map((entry_id, idx) =>
       make_phase({ [idx % 2 ? `O` : `Fe`]: 1 }, -1, { entry_id }),

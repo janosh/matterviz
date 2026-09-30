@@ -129,8 +129,7 @@
             ? dos.spin_down_densities
             : null
 
-        // Densities per display unit (a phonon DOS is stored per THz, so the frequency
-        // conversion's Jacobian divides them), then smeared. Hidden spins are skipped.
+        // per display unit (a phonon DOS is stored per THz), then smeared
         const smear = (raw: number[]): number[] => {
           const densities = raw.map((density) => density / display_factor)
           return display_sigma > 0
@@ -142,25 +141,14 @@
           raw_down && effective_spin_mode && effective_spin_mode !== `up_only`
             ? smear(raw_down)
             : null
-        // One divisor from the drawn spins keeps their relative scale, and a hidden channel
-        // can't hold the shown one below max = 1
-        const divisor = density_divisor(
-          [up, down].filter((densities) => densities !== null),
-          x_values,
-          normalize,
-        )
+        // one divisor over only the drawn spins keeps their relative scale
+        const drawn = [up, down].filter((curve) => curve !== null)
+        const divisor = density_divisor(drawn, x_values, normalize)
 
-        // Normalize one spin channel (mirror mode negates spin-down, so it also stacks and
-        // fills downward) and, when stacking, stack it on the previous DOS' same spin and
-        // record the area fill between the two
-        const draw = (
-          smeared: number[],
-          spin: `up` | `down`,
-          stroke: string,
-          dash?: string,
-        ) => {
+        // mirror negates spin-down before stacking, so it also stacks and fills downward
+        const draw = (curve: number[], spin: `up` | `down`, stroke: string, dash?: string) => {
           const sign = spin === `down` && effective_spin_mode === `mirror` ? -1 : 1
-          let densities = smeared.map((density) => (sign * density) / divisor)
+          let densities = curve.map((density) => (sign * density) / divisor)
           if (stack) {
             const below = cumulative[spin]
             if (below?.length === densities.length) {

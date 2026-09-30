@@ -233,8 +233,7 @@
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
         band_type === `phonon` ? helpers.find_gamma_indices(band_structure) : []
-      // One width normalization per structure (max_width px at its largest finite width) so
-      // ribbons compare across bands and segments
+      // one px-per-width scale per structure so ribbons compare across bands and segments
       const width_max = array_max(
         (band_structure.band_widths ?? []).flat().filter(Number.isFinite),
       )
@@ -311,7 +310,6 @@
             })
           }
 
-          // non-finite and non-positive widths draw nothing
           const half_widths = (band_structure.band_widths?.[band_idx] ?? [])
             .slice(start_idx, end_idx)
             .map((width) => (Number.isFinite(width) && width > 0 ? width * px_per_width : 0))

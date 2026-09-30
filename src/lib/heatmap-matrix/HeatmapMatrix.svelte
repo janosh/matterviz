@@ -53,7 +53,7 @@
     missing = {},
     backdrop = undefined,
     log = false,
-    normalize = $bindable(log ? `log` : `linear`),
+    normalize = $bindable(log ? `log` : `linear`), // seeded for SSR, where effects never run
     domain_mode = $bindable(`auto`),
     show_color_bar = $bindable(false),
     color_bar_position = $bindable(`bottom`),
@@ -134,8 +134,7 @@
     on_double_click?: (cell: CellContext) => void
     on_select?: (cells: CellPos[]) => void
     on_context_menu?: (cell: CellContext, event: MouseEvent) => void
-    // Drag a rectangle of cells and report them through on_brush. x_range/y_range are the item
-    // indices of the first and last spanned column/row in rendered order.
+    // Drag a cell rectangle for on_brush; x/y_range are its end item indices in rendered order
     enable_brush?: boolean
     on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
     tile_size?: string
@@ -198,8 +197,7 @@
   let get_value = $derived(cell_value_getter(values, x_items, y_items))
 
   // === Visible rows/columns: search filter, empty removal, ordering ===
-  // Item indices in an axis' rendered order
-  function sorted_indices(items: AxisItem[], order?: AxisOrder): number[] {
+  function sort_order(items: AxisItem[], order?: AxisOrder): number[] {
     const indices = items.map((_item, idx) => idx)
     if (!order) return indices
     const text = order === `key` ? axis_key : (item: AxisItem) => item.label
@@ -212,13 +210,9 @@
           : (left_value, right_value) => text(left_value).localeCompare(text(right_value))
     return indices.toSorted((idx_a, idx_b) => cmp(items[idx_a], items[idx_b]))
   }
-  let sorted = $derived({
-    x: sorted_indices(x_items, x_order),
-    y: sorted_indices(y_items, y_order),
-  })
-  // Each item's position in the rendered order: its grid track under `gaps` and the side of the
-  // diagonal it falls on in symmetric mode. Filtering keeps relative order, so ranks over all
-  // items compare like rendered positions.
+  let sorted = $derived({ x: sort_order(x_items, x_order), y: sort_order(y_items, y_order) })
+  // item index -> rendered position (grid track under `gaps`, side of the symmetric diagonal);
+  // filtering keeps relative order, so ranks over all items compare like visible positions
   const to_ranks = (order: number[]): number[] => {
     const ranks = Array<number>(order.length)
     for (const [rank, idx] of order.entries()) ranks[idx] = rank
@@ -262,8 +256,7 @@
   })
 
   // === Color domain ===
-  // `log` only writes normalize when it changes (e.g. a driven widget trait), so the Normalize
-  // control can still switch a log matrix back to linear
+  // `log` writes normalize only when it changes, so the Normalize control can still undo it
   let applied_log = false
   $effect.pre(() => {
     if (log === applied_log) return
@@ -397,16 +390,14 @@
   let col_count = $derived(gaps_mode ? x_items.length : vis_x.length)
   let row_count = $derived(gaps_mode ? y_items.length : vis_y.length)
 
-  // item index -> grid track (0-based), or null when the item is hidden. `gaps` keeps every
-  // item on the track of its rank.
+  // item index -> grid track (0-based; its rank under `gaps`), or null when the item is hidden
   let track_pos = $derived({
     x: new Map(vis_x.map((item_idx, pos) => [item_idx, pos])),
     y: new Map(vis_y.map((item_idx, pos) => [item_idx, pos])),
   })
   const track = (axis: Axis, idx: number): number | null =>
     (gaps_mode ? ranks[axis][idx] : track_pos[axis].get(idx)) ?? null
-  // split labels on odd tracks move to the far edge
-  const track_parity = (axis: Axis, idx: number): number => (track(axis, idx) ?? 0) % 2
+  const parity = (axis: Axis, idx: number): number => (track(axis, idx) ?? 0) % 2
   // grid lines are 1-based and the first track holds the axis labels
   const grid_line = (axis: Axis, idx: number): number | undefined => {
     const pos = track(axis, idx)
@@ -419,12 +410,12 @@
       // upper triangle: label below the diagonal (empty lower-left); lower: above it
       return symmetric === `upper` ? Math.min(row_count + 1, pos + 3) : Math.max(1, pos + 1)
     }
-    if (split_labels.x && track_parity(`x`, x_idx))
+    if (split_labels.x && parity(`x`, x_idx))
       return row_count + 2 + (show_col_summaries ? 1 : 0)
     return 1
   }
   const y_label_grid_col = (y_idx: number): number =>
-    symmetric === `upper` || (split_labels.y && track_parity(`y`, y_idx))
+    symmetric === `upper` || (split_labels.y && parity(`y`, y_idx))
       ? col_count + 2 + (show_row_summaries ? 1 : 0)
       : 1
 
@@ -513,9 +504,8 @@
   let brush_start: CellPos | null = $state(null)
   let brush_end: CellPos | null = null
 
-  // Rectangle spanned by two corners in rendered order and its cells, minus the hidden
-  // triangle. A corner no longer visible (e.g. a range anchor the search hid) drops out, and
-  // with both corners of an axis hidden there is no rectangle (null).
+  // Rectangle between two corners in rendered order and its cells, minus the hidden triangle.
+  // Hidden corners (e.g. filtered out by search) drop out; null once an axis has none left.
   function cells_between(corner_a: CellPos, corner_b: CellPos) {
     const span = (order: number[], ...idxs: number[]): number[] => {
       const positions = idxs.map((idx) => order.indexOf(idx)).filter((pos) => pos >= 0)
@@ -683,14 +673,11 @@
     brush_end = brush_start
   })
   function handle_mouseup(): void {
-    const rect =
-      enable_brush && brush_start && brush_end && cells_between(brush_start, brush_end)
-    if (rect && on_brush) {
-      const { x_range, y_range, cells } = rect
+    const rect = brush_start && brush_end && cells_between(brush_start, brush_end)
+    if (enable_brush && on_brush && rect) {
       on_brush({
-        x_range,
-        y_range,
-        cells: cells.map(({ x_idx, y_idx }) => build_cell_context(x_idx, y_idx)),
+        ...rect,
+        cells: rect.cells.map(({ x_idx, y_idx }) => build_cell_context(x_idx, y_idx)),
       })
     }
     brush_start = null
@@ -879,10 +866,7 @@
     {#snippet axis_label(axis: Axis, idx: number)}
       {@const { label } = (axis === `x` ? x_items : y_items)[idx]}
       <div
-        class={[
-          `${axis}-label`,
-          split_labels[axis] && EDGE_CLASSES[axis][track_parity(axis, idx)],
-        ]}
+        class={[`${axis}-label`, split_labels[axis] && EDGE_CLASSES[axis][parity(axis, idx)]]}
         style={label_style || undefined}
         style:grid-column={axis === `x` ? grid_line(`x`, idx) : y_label_grid_col(idx)}
         style:grid-row={axis === `x` ? x_label_grid_row(idx) : grid_line(`y`, idx)}
