@@ -227,9 +227,17 @@ export function create_camera_flight_controller(
   // a sampled view it cannot hold (target off the view axis mid linear flight, rolled keyframe)
   // would snap on the next one. Keep position and view direction, move the pivot onto the view
   // axis at the same distance and level the roll: the controls then hold exactly this view.
+  // A pose the controls already hold (target on the view axis, no roll) stays bit-identical:
+  // re-deriving its pivot through the view axis only adds round-off. Held poses deviate by
+  // round-off (~1e-15 relative), sampled ones by far more than this.
+  const HELD_POSE_TOL = 1e-9
   const hand_over = (): void => {
-    const distance = camera.position.distanceTo(controls.target)
+    const to_target = controls.target.clone().sub(camera.position)
+    const distance = to_target.length()
     const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+    const on_axis = to_target.cross(forward).length() <= HELD_POSE_TOL * distance
+    if (on_axis && Math.abs(right.dot(camera.up)) <= HELD_POSE_TOL) return
     controls.target.copy(camera.position).addScaledVector(forward, distance)
     camera.lookAt(controls.target)
     camera.updateMatrixWorld()

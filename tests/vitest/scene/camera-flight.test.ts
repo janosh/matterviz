@@ -302,6 +302,27 @@ it.each([`perspective`, `orthographic`] as const)(
   },
 )
 
+// "Return to original view" re-applies the captured pose and commits: a pose OrbitControls
+// already holds must come back bit-identical, not re-derived through the view axis
+it(`committing a pose the controls already hold keeps it exactly`, () => {
+  const camera = new PerspectiveCamera(50)
+  const controls = new OrbitControls(camera)
+  camera.position.set(3, 4, 12)
+  controls.target.set(Math.PI, Math.E, 1 / 3)
+  controls.update()
+  const controller = create_camera_flight_controller(
+    { object: camera, target: controls.target },
+    () => ({ width: 800, height: 600 }),
+    vi.fn(),
+    vi.fn(),
+  )
+  const original = controller.capture()
+  const lease = controller.begin()
+  lease.apply(original)
+  lease.commit()
+  expect(controller.capture()).toEqual(original)
+})
+
 // `path()` samples aim past their target, which commit must move onto the view axis; a level
 // orbit sample (from the rolled 30° elevated start) is one OrbitControls holds as is.
 it.each([
