@@ -5,7 +5,7 @@
   import { to_structure_entries } from '$lib/plot/core/structure-input'
   import type { StructureEntry, StructureInput } from '$lib/plot/core/structure-input'
   import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
-  import { to_error } from '$lib/utils'
+  import { use_async_result } from '$lib/trajectory/async-result.svelte'
   import { calc_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
@@ -49,55 +49,28 @@
 
   let dropped_entries = $state<StructureEntry[]>([])
   const entries = $derived([...to_structure_entries(structures), ...dropped_entries])
-  const id_options_snapshot = $derived(JSON.stringify(id_options))
   // Labels of the entries the current id_results were computed from; empty when the
   // results came in through the prop instead
   let computed_labels = $state<string[]>([])
 
-  // Cleanup aborts superseded inputs and guards every settlement, including after unmount.
-  // Whether the previous run had inputs to compute. Only then does a run without inputs reset
-  // loading/error_msg: in results-only mode (id_results from the parent, no `structures`) those
-  // are the parent's one-way props and must not be clobbered
-  let owns_status = false
-  $effect(() => {
-    const inputs = entries
-    const options: StructureIdOptions = JSON.parse(id_options_snapshot)
-    if (inputs.length === 0) {
-      computed_labels = []
-      // A failure of the previous inputs must not outlive them: clear so an empty `structures`
-      // after a failed compute shows the empty state, not the stale error
-      if (owns_status) {
-        loading = false
-        error_msg = undefined
-      }
-      owns_status = false
-      return
-    }
-    owns_status = true
-    loading = true
-    error_msg = undefined
-    const controller = new AbortController()
-    const { signal } = controller
-    Promise.all(
-      inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
-    )
-      .then((computed) => {
-        if (signal.aborted) return
-        id_results = computed
-        computed_labels = inputs.map(({ label }) => label)
-      })
-      .catch((err) => {
-        if (signal.aborted) return
-        // drop the stale populations, else `series` stays non-empty and the plot keeps
-        // showing the previous inputs next to the error
-        id_results = []
-        computed_labels = []
-        error_msg = to_error(err).message
-      })
-      .finally(() => {
-        if (!signal.aborted) loading = false
-      })
-    return () => controller.abort()
+  // Without entries this is results-only mode: id_results/loading/error_msg are the parent's
+  // one-way props. Once entries are withdrawn, their results and failure go with them.
+  use_async_result({
+    input: () => (entries.length > 0 ? entries : undefined),
+    options: () => id_options,
+    compute: async (inputs, options, signal) => ({
+      results: await Promise.all(
+        inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
+      ),
+      labels: inputs.map(({ label }) => label),
+    }),
+    set_result: (value) => {
+      id_results = value?.results ?? []
+      computed_labels = value?.labels ?? []
+    },
+    set_loading: (value) => (loading = value),
+    set_error: (message) => (error_msg = message),
+    clear_error_on_withdraw: true,
   })
 
   const value_of = (result: StructureIdResult, name: CnaTypeName) =>

@@ -117,6 +117,19 @@ describe(`loading policy`, () => {
     },
   )
 
+  // The format sniff first reads 64 KiB: a cut that ends frame 1 (inside its last atom line, at
+  // its end, or just past its newline) must not pass for a single-frame file
+  it.each([-1, 0, 1, 28])(
+    `opens both XYZ frames when frame 1 ends %i chars past the first sniff head`,
+    async (overhang) => {
+      const body = Array(2000).fill(`H 10.123456 1.000000 2.000000`).join(`\n`)
+      const comment = `c`.repeat(2 ** 16 + overhang - `2000\n\n`.length - body.length)
+      const frame = `2000\n${comment}\n${body}`
+      expect(frame).toHaveLength(2 ** 16 + overhang)
+      expect((await open(`${frame}\n${frame}\n`, `md.xyz`)).frame_count).toBe(2)
+    },
+  )
+
   it.each([`info`, `calculator.`])(
     `indexes ASE energy fields stored in %s`,
     async (section) => {

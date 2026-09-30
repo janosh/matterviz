@@ -8,7 +8,7 @@
   import { ScatterPlot } from '$lib/plot'
   import type { RadiationType } from '$lib/scattering'
   import type { Crystal, Pbc } from '$lib/structure'
-  import { strip_html, to_error } from '$lib/utils'
+  import { html_to_text, to_error } from '$lib/utils'
   import {
     calculate_all_pair_rdfs,
     label_structures,
@@ -129,13 +129,13 @@
   })
 
   // get_electro_neg_formula returns <sub>-tagged markup, which the legend renders but a plain
-  // text caption would show verbatim. strip_html rather than {@html}, since dictionary keys
+  // text caption would show verbatim. html_to_text rather than {@html}, since dictionary keys
   // passed as structure labels are caller-supplied strings.
   const weight_summary = $derived(
     computed.totals
       .map(({ label, total }) =>
         [
-          `${strip_html(label)} ⟨b⟩ = ${format_num(total.mean_scattering_length, `.4~f`)}`,
+          `${html_to_text(label)} ⟨b⟩ = ${format_num(total.mean_scattering_length, `.4~f`)}`,
           ...Object.entries(total.pair_weights).map(
             ([pair, weight]) => `w(${pair}) = ${format_num(weight, `.4~f`)}`,
           ),

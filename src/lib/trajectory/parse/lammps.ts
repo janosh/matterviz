@@ -368,8 +368,8 @@ function create_lammps_reader(
       throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
     }
     identity_uses_ids ??= frame_uses_ids
+    // TIMESTEP is the frame's `step` only: a duplicate `timestep` key here plotted as a ramp
     const metadata = {
-      timestep,
       coords_unwrapped: pos_variant.unwrapped,
       box_origin,
       ...(time === null ? {} : { time }),

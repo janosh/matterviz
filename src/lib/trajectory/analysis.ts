@@ -9,6 +9,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
+import { is_crystal } from '$lib/structure/validation'
 import { csv_line } from 'svelte-widgets/csv'
 import type { TrajectoryRun } from './run'
 import {
@@ -34,6 +35,11 @@ export function suggest_analysis_frame_stride(
   const n_atoms = run.atom_count
   return n_atoms ? suggest_frame_stride(frame_count, n_atoms * buffers, max_bytes) : null
 }
+
+// Whether unwrapped_positions_of will cache a same-size unwrapped copy of the run's collected
+// positions (wrapped coordinates in a cell), predicted from the preview for a stride budget
+export const unwraps_positions = ({ preview }: TrajectoryRun): boolean =>
+  is_crystal(preview.structure) && preview.metadata?.coords_unwrapped !== true
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
   // Names the analysis in the errors below, e.g. `MSD`

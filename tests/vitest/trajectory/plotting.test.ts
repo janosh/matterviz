@@ -410,6 +410,7 @@ describe(`generate_plot_series`, () => {
     { name: `constant kinetic energy`, key: `kinetic_energy`, values: [0, 0, 0], should_include: true },
     { name: `constant energy per atom`, key: `energy_per_atom`, values: [-9, -9, -9], should_include: true },
     { name: `normalized constant energy`, key: `Potential (Energy)`, values: [10, 10, 10], should_include: true },
+    { name: `entity-spaced constant energy`, key: `Kinetic&nbsp;energy`, values: [0, 0, 0], should_include: true },
     { name: `nearly constant`, key: `test_prop`, values: [10.000001, 10.000002, 10.000001], should_include: false },
     { name: `varying`, key: `test_prop`, values: [10.0, 10.1, 10.2], should_include: true },
     {

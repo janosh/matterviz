@@ -265,9 +265,14 @@ const discover_torch_sim_signals = (
       steps_raw = steps_raw.slice(0, geometry_counts.valid)
     }
     validate_steps(steps_raw, step_path)
+    // A one-system run's per-system signal keeps its size-1 system axis: [n, 1], [n, 1, 3] and
+    // [n, 1, 3, 3] hold a scalar, vector or tensor per sample. A one-atom run's [n, 1, 3] stays
+    // the per-atom vector it always read as.
     const raw_sample_shape = shape.slice(1)
-    const sample_shape =
-      raw_sample_shape.length === 1 && raw_sample_shape[0] === 1 ? [] : raw_sample_shape
+    const squeezed_shapes = [`1`, `1,3,3`, ...(n_atoms === 1 ? [] : [`1,3`])]
+    const sample_shape = squeezed_shapes.includes(raw_sample_shape.join(`,`))
+      ? raw_sample_shape.slice(1)
+      : raw_sample_shape
     if (!is_supported_trajectory_signal_shape(sample_shape, n_atoms)) {
       throw new Error(
         `TorchSim HDF5 signal ${path} has unsupported sample shape ` +
@@ -406,13 +411,18 @@ const parse_torch_sim_datasets = (
   const pbc_dataset = dataset_at(h5_file, pbc_path)
   const pbc_shape = pbc_dataset && pbc_path ? dataset_shape(pbc_dataset, pbc_path) : null
   const pbc_sample_size = pbc_shape ? values_per_sample(pbc_shape.slice(1)) : 0
+  const pbc_attribute = inherited_attribute(PBC_ALIASES)
   const pbc_values =
     pbc_dataset && pbc_path && pbc_shape
       ? Array.from(
           read_numeric_samples(pbc_dataset, pbc_path, pbc_shape[0], pbc_sample_size, 1),
         )
-      : to_number_array(inherited_attribute(PBC_ALIASES), true)
-  if (pbc_values?.some((value) => value !== 0 && value !== 1)) {
+      : to_number_array(pbc_attribute, true)
+  // an unreadable attribute must not pass for a missing one (which means fully periodic)
+  if (
+    (!pbc_values && pbc_attribute !== undefined) ||
+    pbc_values?.some((value) => value !== 0 && value !== 1)
+  ) {
     const source = pbc_dataset ? `dataset ${pbc_path}` : `attribute ${PBC_ALIASES.join(`/`)}`
     throw new Error(`HDF5 PBC ${source} must contain only 0/1 values`)
   }
@@ -926,7 +936,8 @@ const parse_torch_sim_datasets = (
       valid_frame_count,
       position_values_per_frame,
       frame_stride,
-      undefined,
+      // a frameless [n_atoms, 3] dataset is its one frame: read it whole, not its atom axis
+      positions_have_frame_axis ? undefined : () => [],
       start_frame,
       end_frame,
     )

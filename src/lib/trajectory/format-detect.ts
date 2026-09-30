@@ -62,6 +62,11 @@ function ext_hint(filename: string | undefined, format_regex: RegExp): boolean |
   return KNOWN_FORMAT_EXT_REGEX.test(base) ? false : null
 }
 
+// A basename pattern (XDATCAR*, *OUTCAR*) names its format only when no extension names
+// another: XDATCAR_md.json is JSON
+const name_hint = (filename: string | undefined, name_regex: RegExp): boolean | null =>
+  ext_hint(filename, KNOWN_FORMAT_EXT_REGEX) ? false : ext_hint(filename, name_regex)
+
 export const xyz_ext_hint = (filename: string | undefined): boolean | null =>
   ext_hint(filename, XYZ_EXTXYZ_REGEX)
 
@@ -96,8 +101,7 @@ export const FORMAT_PATTERNS = {
   // Only the header lines are split: a whole-file split would scan every coordinate line
   // of a multi-hundred-MB MD run just to read five lines.
   vasp: (data: string, filename?: string) => {
-    const basename = filename?.toLowerCase().split(`/`).pop() ?? ``
-    if (basename.startsWith(`xdatcar`)) return true
+    if (name_hint(filename, XDATCAR_NAME_REGEX)) return true
     if (!data.includes(`Direct configuration=`)) return false
     const lines = data.trimStart().split(/\r?\n/, 10)
     return (
@@ -118,7 +122,7 @@ export const FORMAT_PATTERNS = {
   // OUTCARs open with the `vasp.6.4.2 ...` build banner; the position table proves the run
   // got as far as one ionic step, without which there is nothing to show
   outcar: (data: string, filename?: string) =>
-    ext_hint(filename, OUTCAR_NAME_REGEX) ??
+    name_hint(filename, OUTCAR_NAME_REGEX) ??
     (/^\s*vasp\.\d/.test(data.slice(0, 256)) &&
       data.includes(`POSITION`) &&
       data.includes(`TOTAL-FORCE`)),

@@ -301,15 +301,20 @@ export const to_string_array = (data: unknown): string[] | null => {
   return strings
 }
 
+// h5py writes bools as a FALSE/TRUE int8 enum, which h5wasm's to_array() hands back as JS
+// booleans rather than the 0/1 its `value` holds
+const to_finite_or_bool_number = (value: unknown): number | null =>
+  typeof value === `boolean` ? Number(value) : to_finite_number(value)
+
 // `deep` flattens nesting and accepts a bare scalar: an HDF5 attribute comes back as any of
 // `[[1, 0, 0]]`, `[1, 0, 0]` or `1` depending on how it was written
 export const to_number_array = (data: unknown, deep = false): number[] | null => {
   const values = numeric_values(data)
   if (!values) {
-    const scalar = deep ? to_finite_number(data) : null
+    const scalar = deep ? to_finite_or_bool_number(data) : null
     return scalar === null ? null : [scalar]
   }
-  const numbers = Array.from(values, to_finite_number)
+  const numbers = Array.from(values, to_finite_or_bool_number)
   if (numbers.every((item): item is number => item !== null)) return numbers
   if (!deep) return null
   const flattened: number[] = []

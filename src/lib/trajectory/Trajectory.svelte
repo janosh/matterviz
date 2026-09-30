@@ -35,7 +35,7 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, strip_html, to_error } from '$lib/utils'
+  import { handle_and_prevent, html_to_text, to_error } from '$lib/utils'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
     parse_axis_label,
@@ -1436,7 +1436,9 @@
             >
               {#each distribution_properties as srs (srs.id)}
                 <option value={srs.id}
-                  >{strip_html(srs.label ?? srs.id)}{srs.unit ? ` (${srs.unit})` : ``}</option
+                  >{html_to_text(srs.label ?? srs.id)}{srs.unit
+                    ? ` (${srs.unit})`
+                    : ``}</option
                 >
               {/each}
             </select>

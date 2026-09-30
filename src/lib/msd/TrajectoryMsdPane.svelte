@@ -2,9 +2,8 @@
   import type { ViewerPaneOptions } from '$lib/overlays'
   import type { TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
   import type { AnalysisPaneContext } from '$lib/trajectory/analysis'
-  import { suggest_analysis_frame_stride } from '$lib/trajectory/analysis'
   import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
-  import { collect_msd_positions } from './collect'
+  import { collect_msd_positions, suggest_msd_frame_stride } from './collect'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
   import MsdPlot from './MsdPlot.svelte'
 
@@ -58,7 +57,7 @@
   collect={collect_msd_positions}
   frame_steps={(input) => input.steps}
   suggest_stride={(source, frame_count) =>
-    suggest_analysis_frame_stride(source, undefined, undefined, frame_count)}
+    suggest_msd_frame_stride(source, undefined, frame_count)}
   compute_label="Compute MSD"
   recollect_label="Recollect positions"
   {default_dt}

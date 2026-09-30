@@ -135,7 +135,7 @@ const FIXTURES = [
   { file: `lammps-sample.lammpstrj.gz`, format: `lammps`, frame_count: 5, n_atoms: 864, steps: [0, 40000], species: { H: 778, He: 86 },
     abc: [[21.12, 21.12, 21.12], [21.33040849885696, 21.33040849885696, 21.33040849885696]],
     volume: [9420.668928, 9705.044210504973], site0_xyz: [0, 0, 0],
-    frame0_metadata: { timestep: 0, coords_unwrapped: false, box_origin: [0, 0, 0] },
+    frame0_metadata: { coords_unwrapped: false, box_origin: [0, 0, 0] },
     metadata: { atom_types: [1, 2] } },
   { file: `mdanalysis-chain-dump.lammpstrj`, format: `lammps`, frame_count: 6, n_atoms: 22, steps: [0, 5], species: { H: 2, He: 20 },
     abc: [[10, 10, 10], [10, 10, 10]], volume: [1000, 1000],
@@ -757,6 +757,10 @@ describe(`VASP run output detection`, () => {
     [`outcar`, `POSITION TOTAL-FORCE without banner`, undefined, false],
     [`outcar`, ` vasp.6.4.2 killed before any ionic step`, undefined, false],
     [`outcar`, `nothing`, `OUTCAR`, true],
+    // a known extension overrules the basename: these are JSON
+    [`outcar`, banner, `OUTCAR_relax.json`, false],
+    [`vasp`, `nothing`, `XDATCAR_nvt.gz`, true],
+    [`vasp`, `{"frames": []}`, `XDATCAR_md.json`, false],
   ] as const)(`FORMAT_PATTERNS.%s(%j, %s) -> %s`, (format, data, filename, expected) => {
     expect(FORMAT_PATTERNS[format](data, filename)).toBe(expected)
   })
@@ -814,6 +818,8 @@ describe(`LAMMPS`, () => {
     expect(frames.map(({ step }) => step)).toEqual([0, 100])
     expect(frames[1].structure.sites.map(({ xyz }) => xyz[0])).toEqual([0, 1, 2])
     expect(frames.map((frame) => frame.metadata?.time)).toEqual([0, 0.1])
+    // TIMESTEP is the frame's step: a duplicate `timestep` property plotted as a ramp series
+    expect(frames.map((frame) => frame.metadata?.timestep)).toEqual([undefined, undefined])
     expect(run.time_step).toBeUndefined()
   })
 
@@ -1944,6 +1950,8 @@ describe(`JSON`, () => {
   it.each([
     [`array`, (structure: unknown) => [{ structure, step: 7 }], 7],
     [`{ frames }`, (structure: unknown) => ({ frames: [{ structure, step: 7 }] }), 7],
+    // like the array shape, a frame without a step takes its index
+    [`stepless { frames }`, (structure: unknown) => ({ frames: [{ structure }] }), 0],
     [`single structure`, (structure: unknown) => structure, 0],
   ])(
     `parses the %s shape as format json with rebuilt lattices`,
@@ -2024,7 +2032,10 @@ describe(`HDF5 slice budgets`, () => {
     expect(to_scalar_number(value)).toBe(expected)
   })
 
-  it(`rejects BigInt arrays that cannot be represented exactly`, () => {
+  it(`reads h5py booleans as 0/1 and rejects inexact BigInt arrays`, () => {
+    // h5wasm's to_array() returns h5py's bool enum as JS booleans
+    expect(to_number_array([[true, true, false]], true)).toEqual([1, 1, 0])
+    expect(to_number_array(false, true)).toEqual([0])
     expect(to_number_array([1n, 2n])).toEqual([1, 2])
     expect(to_number_array([2n ** 60n])).toBeNull()
   })
@@ -2338,6 +2349,24 @@ describe(`HDF5`, () => {
       }
   })
 
+  // A frameless [n_atoms, 3] dataset has no frame axis to slice: past one atom batch the run
+  // streams, and slicing its atom axis as frames returned 3 values for the whole frame
+  it(`collects a single-frame [n_atoms, 3] TorchSim file past one atom batch`, async () => {
+    const n_atoms = ATOM_BATCH_SIZE + 1
+    const positions = Float64Array.from({ length: n_atoms * 3 }, (_unused, idx) => idx / 8)
+    const content = await h5_bytes(`single-frame-large`, (file) => {
+      file.create_dataset({ name: `positions`, data: positions, shape: [n_atoms, 3] })
+      file.create_dataset({
+        name: `atomic_numbers`,
+        data: new Uint8Array(n_atoms).fill(14),
+        shape: [n_atoms],
+      })
+    })
+    const collected = await collect(await open(content, `single-frame-large.h5`))
+    expect(collected).toMatchObject({ n_frames: 1, n_atoms, steps: [0] })
+    expect(collected.positions).toEqual(positions)
+  })
+
   it(`collects TorchSim signals with independent steps, shapes, units, and provenance`, async () => {
     const run = await open(await make_torch_sim_signal_buffer(), `torch-sim.h5`)
     expect(run.provenance.format).toBe(`hdf5`)
@@ -2437,6 +2466,9 @@ describe(`HDF5`, () => {
       await h_walk_h5(`singleton-torch`, [0], (data, steps) => {
         create_dataset(data, `dipole`, [1, 2, 3], [1, 3])
         create_dataset(steps, `dipole`, [0], [1])
+        // per-system tensor with TorchSim's size-1 system axis
+        create_dataset(data, `stress`, [1, 0, 0, 0, 2, 0, 0, 0, 3], [1, 1, 3, 3])
+        create_dataset(steps, `stress`, [0], [1])
       }),
       `singleton.h5`,
     )
@@ -2444,6 +2476,10 @@ describe(`HDF5`, () => {
     expect(torch.signals?.dipole).toMatchObject({
       steps: [0],
       values: Float64Array.from([1, 2, 3]),
+    })
+    expect(torch.signals?.stress).toMatchObject({
+      sample_shape: [3, 3],
+      values: Float64Array.from([1, 0, 0, 0, 2, 0, 0, 0, 3]),
     })
     const reference = await open_replica(1)
     expect(reference.frame_count).toBe(1)
@@ -2868,13 +2904,18 @@ describe(`HDF5`, () => {
     await expect(open(await make_h5_buffer(datasets), `invalid.h5`)).rejects.toThrow(expected)
   })
 
+  const pbc_attribute_h5 = (pbc: number[] | string) => () =>
+    h5_bytes(`pbc-attribute`, (file) => {
+      create_dataset(file, `positions`, [0, 0, 0], [1, 1, 3])
+      create_dataset(file, `atomic_numbers`, [1], [1])
+      file.create_attribute(`pbc`, pbc)
+    })
+  const pbc_error = `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`
   // oxfmt-ignore
   it.each([
-    [`a PBC attribute outside 0/1`, () => h5_bytes(`invalid-pbc-attribute`, (file) => {
-        create_dataset(file, `positions`, [0, 0, 0], [1, 1, 3])
-        create_dataset(file, `atomic_numbers`, [1], [1])
-        file.create_attribute(`pbc`, [0, 2, 1])
-      }), undefined, `HDF5 PBC attribute pbc/periodic_boundary_conditions must contain only 0/1 values`],
+    [`a PBC attribute outside 0/1`, pbc_attribute_h5([0, 2, 1]), undefined, pbc_error],
+    // unreadable is not missing: that would silently mean fully periodic
+    [`a non-numeric PBC attribute`, pbc_attribute_h5(`T T F`), undefined, pbc_error],
     [`non-increasing independent signal steps`, () => make_torch_sim_signal_buffer({ dipole_steps: [2, 2] }), undefined, /\/steps\/dipole must increase strictly/],
     [`a known signal without its step axis`, () => make_torch_sim_signal_buffer({ include_dipole_steps: false }), undefined, /signal \/data\/dipole is missing \/steps\/dipole/],
     [`a truncated Reference MD replica id array`, () => make_reference_md_h5_buffer([100]), REPLICA_1, /\/replicas\/global_ids.*expected \[2\]/],

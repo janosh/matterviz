@@ -6,7 +6,11 @@ import type {
   TrajectoryPositionStream,
   TrajectoryRun,
 } from '$lib/trajectory'
-import { suggest_analysis_frame_stride, trajectory_from_frames } from '$lib/trajectory'
+import {
+  suggest_analysis_frame_stride,
+  trajectory_from_frames,
+  unwrapped_positions_of,
+} from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -143,7 +147,7 @@ describe(`MSD components`, () => {
     expect(document.body.textContent).toContain(expected)
   })
 
-  it(`collects through TrajectoryMsdPane and carries the run timestep into units`, async () => {
+  it(`collects through TrajectoryMsdPane with the run timestep and reports a failed recollect`, async () => {
     const run = make_run(20)
     mounted.push(
       mount(TrajectoryMsdPane, {
@@ -162,5 +166,42 @@ describe(`MSD components`, () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Å²/fs`))
     expect(button.disabled).toBe(false)
     expect(document.body.textContent).toContain(`2 fs per collected frame`)
+    // A failed recollect withdraws the plot's positions while reporting into the error slot
+    // they share, so the plot's withdrawal reset must leave that message standing
+    vi.spyOn(run, `collect_positions`).mockRejectedValueOnce(new Error(`recollect failed`))
+    button.click()
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
+    expect(document.body.textContent).not.toContain(`Å²/fs`)
   })
+
+  // calc_msd holds a same-size unwrapped copy of wrapped periodic positions, so the pane
+  // budgets those twice: 20 frames x 1M atoms is 480 MB of positions, inside the 512 MB
+  // budget alone but ~960 MB once unwrapped
+  it.each([
+    [`non-periodic`, {}, false],
+    [`pre-unwrapped`, { box_length: 5, coords_unwrapped: true }, false],
+    [`wrapped periodic`, { box_length: 5 }, true],
+  ])(
+    `budgets the unwrapped copy calc_msd holds for %s positions`,
+    async (_label, frame_options, copies) => {
+      const backing = trajectory_from_frames(
+        Array.from({ length: 20 }, (_unused, frame_idx) =>
+          make_frame(frame_idx, on_x_axis(0.1 * frame_idx, 1), frame_options),
+        ),
+      )
+      const stream = await collect_msd_positions(backing)
+      const { coords } = unwrapped_positions_of(stream)
+      expect(coords !== stream.positions).toBe(copies)
+      expect(coords).toHaveLength(stream.positions.length)
+      mounted.push(
+        mount(TrajectoryMsdPane, {
+          target: document.body,
+          props: { run: { ...backing, atom_count: 1_000_000 }, pane_open: true },
+        }),
+      )
+      await tick()
+      const controls = doc_query(`.trajectory-msd-controls`).textContent ?? ``
+      expect(controls.includes(`needs ≥ 2`)).toBe(copies)
+    },
+  )
 })

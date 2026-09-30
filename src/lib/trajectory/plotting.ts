@@ -12,7 +12,7 @@ import {
 } from '$lib/plot/core/axis-assignment'
 import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
 import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
-import { strip_html } from '$lib/utils'
+import { html_to_text } from '$lib/utils'
 import type { TrajectoryMetadata } from './index'
 
 // Configuration constants
@@ -239,7 +239,8 @@ type PropertyStats = Map<string, { values: number[]; frame_indices: number[] }>
 
 // Normalize property keys for robust matching (handles case, underscores, and common aliases)
 function normalize_property_key(key: string): string {
-  const normalized = strip_html(key.toLowerCase())
+  const normalized = html_to_text(key)
+    .toLowerCase()
     .replaceAll(/[_()[\]]/g, ` `)
     .replaceAll(/\s+/g, ` `)
     .trim()
