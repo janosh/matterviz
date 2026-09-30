@@ -284,6 +284,7 @@ describe(`strip_html`, () => {
     [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
     [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
     [`<!-- note -->kept`, `kept`],
+    [`<span title="x>0" data-y='a>b'>Si</span>`, `Si`], // `>` inside quoted attributes
   ])(`strip_html(%j) = %j`, (input, expected) => {
     expect(strip_html(input)).toBe(expected)
   })
@@ -307,6 +308,7 @@ describe(`strip_html`, () => {
     [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
     [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
     [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
+    [`<span title="x>0">Si</span> &amp; Ge`, `Si & Ge`], // `>` inside a quoted attribute
     [`&bogus; &constructor; &#x110000; a & b`, `&bogus; &constructor; &#x110000; a & b`],
   ])(`html_to_text and cell_text: %j -> %j`, (input, expected) => {
     expect(html_to_text(input)).toBe(expected)
