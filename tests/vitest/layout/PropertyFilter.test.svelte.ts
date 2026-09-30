@@ -13,7 +13,7 @@ describe(`PropertyFilter`, () => {
 
   test(`renders an HTML label, two any-step number inputs with plain aria-labels, spreads attrs`, () => {
     mount_filter({
-      label: `E<sub>hull</sub>`,
+      label: `&Delta;E<sub>hull</sub>`,
       title: `Filter`,
       placeholders: { min: `0`, max: `100` },
       style: `margin: 10px`,
@@ -24,8 +24,9 @@ describe(`PropertyFilter`, () => {
     const [min_input, max_input] = inputs()
     expect([min_input.step, max_input.step]).toEqual([`any`, `any`])
     expect([min_input.placeholder, max_input.placeholder]).toEqual([`0`, `100`])
-    expect(min_input.getAttribute(`aria-label`)).toBe(`Ehull minimum`)
-    expect(max_input.getAttribute(`aria-label`)).toBe(`Ehull maximum`)
+    // entities decode like the rendered label rather than reading out verbatim
+    expect(min_input.getAttribute(`aria-label`)).toBe(`ΔEhull minimum`)
+    expect(max_input.getAttribute(`aria-label`)).toBe(`ΔEhull maximum`)
     expect(container().dataset.testid).toBe(`property-filter`)
     expect(container().style.margin).toBe(`10px`)
   })

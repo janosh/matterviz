@@ -220,6 +220,11 @@ describe(`PeriodicTable`, () => {
     [`Na`, `ArrowUp`, `H`],
     [`Y`, `ArrowDown`, `La`],
     [`La`, `ArrowUp`, `Y`],
+    // vertical moves stay in their column instead of jumping between main table and f-block
+    [`Hf`, `ArrowDown`, `Rf`],
+    [`Tl`, `ArrowDown`, `Nh`],
+    [`Th`, `ArrowUp`, `Ce`],
+    [`Ce`, `ArrowUp`, `Rf`],
   ])(`arrow navigation skips gaps and unlinked tiles: %s %s → %s`, async (from, key, to) => {
     mount(PeriodicTable, {
       target: document.body,
@@ -456,21 +461,34 @@ describe(`PeriodicTable`, () => {
     expect(active_symbols).toEqual([`H`, `He`, `Li`, `Na`, `K`, `Rb`, `Cs`, `Fr`])
   })
 
-  test.each([
-    [[...Array(119).keys()], `length should be 118 or less`],
-    [{ foo: 42 }, `keys should be element symbols`],
-  ] as const)(`error handling for invalid heatmap_values`, (heatmap_values, error_msg) => {
-    const orig_console_error = console.error
-    console.error = vi.fn()
-
+  test(`error handling for heatmap_values arrays longer than 118`, () => {
+    const error = vi.spyOn(console, `error`).mockImplementation(() => {})
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: heatmap_values as never },
+      props: { heatmap_values: [...Array(119).keys()] },
     })
+    expect(error).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(`length should be 118 or less`),
+    )
+    error.mockRestore()
+  })
 
-    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(error_msg))
-
-    console.error = orig_console_error
+  test.each([
+    [`color_overrides`, `x`],
+    [`labels`, `x`],
+    [`links`, `x`],
+    [`heatmap_values`, 1],
+  ] as const)(`warns on %s keys that are not element symbols`, async (prop, value) => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { [prop]: { Fe: value, fe: value } },
+    })
+    await tick()
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      `PeriodicTable ${prop}: keys must be element symbols, got fe`,
+    )
+    warn.mockRestore()
   })
 
   // missing-color resolution for the first tile (H), which is missing whenever a heatmap
@@ -495,10 +513,15 @@ describe(`PeriodicTable`, () => {
 
   // 0 is a real, colorable value (not missing); only absent/null/<=0-in-log are missing
   test(`zero maps through the color scale, absent elements use the missing fallback`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // a key that is not an element symbol is ignored, not a reason to drop the whole heatmap
+    const heatmap_values = { H: 0, He: 10, nope: 5 }
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: { H: 0, He: 10 }, missing: { color: `#666` } },
+      props: { heatmap_values, missing: { color: `#666` } },
     })
+    flushSync()
+    warn.mockRestore()
     const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
     expect(tiles[0].style.backgroundColor).not.toBe(`#666`) // H=0 -> scale color, not missing
     expect(tiles[0].style.backgroundColor).not.toBe(``) // a real color is applied

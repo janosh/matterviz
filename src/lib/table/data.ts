@@ -1,7 +1,12 @@
 // Headless row logic for HeatmapTable: one numeric reading of a cell, sort comparison,
 // search/filter predicates and date-time parsing/formatting. No DOM, so it's unit-testable
 // and the component only wires these to events and markup.
-import { HTML_TAG_SRC, normalize_unicode_minus, strip_html } from '$lib/utils'
+import {
+  HTML_ENTITY_SRC,
+  HTML_TAG_SRC,
+  html_to_text,
+  normalize_unicode_minus,
+} from '$lib/utils'
 import { fuzzy_match } from 'svelte-widgets/utils'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
 
@@ -30,10 +35,7 @@ export const is_invalid = (val: unknown): boolean =>
   (typeof val === `number` && Number.isNaN(val)) ||
   (val instanceof Date && Number.isNaN(val.getTime()))
 
-const HTML_MARKUP_RE = new RegExp(
-  `${HTML_TAG_SRC}|&(?:#\\d+|#x[\\da-f]+|[a-z][\\da-z]+);`,
-  `i`,
-)
+const HTML_MARKUP_RE = new RegExp(`${HTML_TAG_SRC}|${HTML_ENTITY_SRC}`, `i`)
 // Distinguish actual tags/entities from ordinary comparison and ampersand text so plain
 // strings still receive middle ellipsis and a direct data-sort-value.
 export const is_html_str = (val: unknown): val is string =>
@@ -43,12 +45,13 @@ const NUMERIC_WITH_ERROR_RE =
   /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
 const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
 
-// Plain text of a cell: markup stripped, dates as ISO, objects as JSON, invalid as ``
+// Plain text of a cell: markup stripped, entities decoded, dates as ISO, objects as JSON,
+// invalid as ``
 export const cell_text = (val: CellVal): string => {
   if (is_invalid(val)) return ``
   if (val instanceof Date) return val.toISOString()
   if (typeof val === `object`) return JSON.stringify(val)
-  return strip_html(String(val)).trim()
+  return html_to_text(String(val)).trim()
 }
 
 // undefined without a data-sort-value, null for a blank one: data-sort-value="" carries no
@@ -75,7 +78,7 @@ export function parse_numeric_val(val: CellVal): number | null {
   const sort_attr = get_data_sort_value(val)
   if (sort_attr === null) return null // no sort key, and no fallback to the text either
   const num =
-    sort_attr === undefined ? parse_numeric_string(strip_html(val)) : Number(sort_attr)
+    sort_attr === undefined ? parse_numeric_string(html_to_text(val)) : Number(sort_attr)
   return num !== null && Number.isFinite(num) ? num : null
 }
 
@@ -154,20 +157,10 @@ export function sort_table_rows<Row extends RowData>(
 
 // === Search and per-column filters ===
 
+// Substring (with fuzzy also subsequence, e.g. "mdla" matches "model a") match of a lower-cased
+// query against lower-cased cell text
 export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
   text.includes(query) || (fuzzy && fuzzy_match(query, text))
-
-// Case-insensitive substring (optionally subsequence, e.g. "mdla" matches "Model A") match of
-// a lower-cased query against the row's values, or only the given keys.
-export const row_matches_query = (
-  row: RowData,
-  query: string,
-  { keys, fuzzy = false }: { keys?: string[]; fuzzy?: boolean } = {},
-): boolean =>
-  (keys ? keys.map((key) => row[key]) : Object.values(row)).some((val) => {
-    if (val == null) return false
-    return text_matches_query(cell_text(val).toLowerCase(), query, fuzzy)
-  })
 
 export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
   if (filter.kind === `numeric`) {
@@ -266,7 +259,7 @@ const normalize_timestamp = (val: number): number | null => {
 }
 
 const parse_datetime_string = (val: string): number | null => {
-  const clean = strip_html(val).trim()
+  const clean = html_to_text(val).trim()
   if (!DATE_TIME_RE.test(clean)) return null
   const [year, month, day] = clean.slice(0, 10).split(`-`).map(Number)
   // Date constructors normalize impossible dates (February 30 becomes March 1) and the
@@ -299,7 +292,7 @@ export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): num
   const parsed_text = parse_datetime_string(val)
   if (parsed_text !== null) return parsed_text
   if (!col.datetime_format) return null
-  return normalize_timestamp(Number(get_data_sort_value(val) ?? strip_html(val).trim()))
+  return normalize_timestamp(Number(get_data_sort_value(val) ?? html_to_text(val).trim()))
 }
 
 // A column's date/time kind from its config, else from a sample of its values: a single
@@ -315,7 +308,7 @@ export function infer_datetime_kind(
   let has_date_value = false
   for (const val of sample) {
     if (parse_datetime_val(val, col) === null) continue
-    if (typeof val === `string` && DATE_ONLY_RE.test(strip_html(val).trim()))
+    if (typeof val === `string` && DATE_ONLY_RE.test(html_to_text(val).trim()))
       has_date_value = true
     else return `datetime`
   }
