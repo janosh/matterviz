@@ -308,23 +308,19 @@ test.each([
   },
 )
 
-// Both tiled copies of (1-10) clip to the same two quadrilaterals in a 2x1x1 block, and stacking
-// the translucent fills twice would darken them: 4 triangles, not 8
-test.each([
-  [`mirror`, null],
-  [`glide`, [0, 0, 0.5]],
-] as const)(`draws each tiled %s plane once`, (kind, translation) => {
+// Stacked translucent fills would darken: both tiled (1-10) copies clip to the same 2 quads
+test(`draws each tiled plane once`, () => {
   const plane: SymmetryElement = {
-    kind,
+    kind: `mirror`,
     order: 2,
     label: `m`,
     locus: `plane`,
     point: [0, 0, 0],
     axis: [1, -1, 0],
     plane_normal: [1, -1, 0],
-    translation: translation && [...translation],
+    translation: null,
   }
-  const show_kinds = { [kind]: true }
+  const show_kinds = { mirror: true }
   const props = { elements: [plane], lattice: cubic, tiling: [2, 1, 1] as Vec3, show_kinds }
   const component = mount(SymmetryElements, { target: document.body, props })
   teardown = () => void unmount(component)

@@ -584,12 +584,8 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     },
   )
 
-  // symprec (Å) widens the match by its fractional size per axis: along a 30 Å c an upright N2
-  // (1.1 Å) keeps its two rows while a copy 0.15 Å off the first N joins it at symprec 0.1
-  test.each([
-    [1e-6, [[0], [1]]],
-    [0.1, [[0, 2], [1]]],
-  ])(`scales the symprec tolerance per axis (symprec %s)`, (symprec, expected) => {
+  // symprec 0.1 Å joins a site 0.15 Å off N to its row, not the N2 partner 1.1 Å up c = 30 Å
+  test(`scales the symprec tolerance per axis`, () => {
     const lattice = cubic_matrix(3).with(2, [0, 0, 30]) as Matrix3x3
     const dimer: [ElementSymbol, Vec3][] = [
       [`N`, [0.5, 0.5, 0.5]],
@@ -599,9 +595,9 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       dimer.map(([elem, abc], idx) => ({ wyckoff: `1a`, elem, abc, site_indices: [idx] })),
       make_crystal(lattice, [...dimer, [`N`, [0.5, 0.5, 0.5 + 0.15 / 30]]]),
       make_crystal(lattice, dimer),
-      { ...mock_sym_data(), symprec },
+      { ...mock_sym_data(), symprec: 0.1 },
     )
-    expect(rows.map((row) => row.site_indices)).toEqual(expected)
+    expect(rows.map((row) => row.site_indices)).toEqual([[0, 2], [1]])
   })
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {

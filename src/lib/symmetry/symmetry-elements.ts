@@ -399,18 +399,9 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
   const w_loc = math.subtract(width_value, w_intrinsic)
   const point = wrap_to_unit_cell(fixed_point(mat, w_loc, mat_order))
   const locus = element_locus_key(point, info)
+  const base = { order, point, locus, plane_normal: null, translation: null }
 
-  if (info.kind === `inversion`)
-    return {
-      kind: `inversion`,
-      order,
-      label: `-1`,
-      axis: null,
-      plane_normal: null,
-      point,
-      translation: null,
-      locus,
-    }
+  if (info.kind === `inversion`) return { ...base, kind: `inversion`, label: `-1`, axis: null }
   const { kind, axis } = info
 
   if (kind === `proper`) {
@@ -420,20 +411,16 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
     let lambda = lambda_raw - period * Math.floor(lambda_raw / period + ELEM_TOL)
     if (Math.abs(lambda) < ELEM_TOL) lambda = 0
     const is_screw = lambda > ELEM_TOL
-    // ITA's N_p advances p/N of the period per +2π/N turn about +axis, so 3⁻ with 2/3 c lies on a
-    // 3_1 axis. The sense is taken in the cell basis: a left-handed cell mirrors the labels like
-    // moyo's space-group number (a P3_1 crystal reads P3_2 with 3_2 axes).
+    // ITA's N_p advances p/N of the period per +2π/N turn about +axis (3⁻ with 2/3 c is 3_1). In a
+    // left-handed cell the labels mirror, like moyo's space-group number (P3_1 reads P3_2).
     const turn_part = Math.round((order * lambda) / period) % order
     const screw_part = negative_sense ? (order - turn_part) % order : turn_part
     return {
+      ...base,
       kind: is_screw ? `screw` : `rotation`,
-      order,
       label: is_screw ? `${order}_${screw_part}` : `${order}`,
       axis,
-      plane_normal: null,
-      point,
       translation: is_screw ? math.scale(axis, lambda) : null,
-      locus,
     }
   }
 
@@ -441,28 +428,17 @@ function classify_with_rotation_info(info: RotationInfo, width_value: Vec3): Sym
     const glide_vec = reduce_glide(w_intrinsic, info.plane_basis, info.plane_offsets)
     const is_glide = !is_zero_vec(glide_vec)
     return {
+      ...base,
       kind: is_glide ? `glide` : `mirror`,
-      order,
       label: is_glide ? glide_letter(glide_vec) : `m`,
       axis,
       plane_normal: info.normal_eq,
-      point,
       translation: is_glide ? glide_vec : null,
-      locus,
     }
   }
 
   // Rotoinversion −3/−4/−6 (no intrinsic translation: P = 0, so w_i = 0)
-  return {
-    kind,
-    order,
-    label: `-${order}`,
-    axis,
-    plane_normal: null,
-    point,
-    translation: null,
-    locus,
-  }
+  return { ...base, kind, label: `-${order}`, axis }
 }
 
 // Classify a single operation (rotation as flat column-major 9-array, translation
@@ -481,12 +457,12 @@ export function classify_symmetry_op(
 }
 
 // Derive all distinct symmetry elements (modulo lattice translations) from a list of
-// space-group operations. Each operation is classified, then re-anchored with lattice
-// offsets t to enumerate the distinct in-cell instances of its element family (e.g. the
-// inversion centers of P-1 sit at all 8 half-lattice points; 2-fold axes recur at quarter
-// positions). Elements sharing the same geometric locus but different symbols (e.g. a 2-fold
-// axis inside a 4-fold axis) are kept as separate entries — filter by `order`/`label`
-// downstream if desired.
+// space-group operations. Each operation is classified, then re-anchored with the
+// lattice offsets t ∈ ℤ³ to enumerate the distinct in-cell instances of its element
+// family (e.g. the inversion centers of P-1 sit at all 8 half-lattice points; 2-fold
+// axes recur at quarter positions). Elements sharing the same geometric locus but
+// different symbols (e.g. a 2-fold axis inside a 4-fold axis) are kept as separate
+// entries — filter by `order`/`label` downstream if desired.
 export function symmetry_elements_from_ops(
   operations: MoyoDataset[`operations`],
 ): SymmetryElement[] {

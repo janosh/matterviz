@@ -342,19 +342,19 @@ export function map_wyckoff_to_all_atoms(
     // Supercell factor S = L_disp·L_F⁻¹ must be a near-integer matrix with |det| ≥ 1. A
     // degenerate frame lattice (zero-volume cell) fits nothing.
     if (Math.abs(math.det_3x3(frame.lattice)) < 1e-12) return null
-    const frame_inverse = math.matrix_inverse_3x3(frame.lattice)
-    const scaling = math.dot(displayed_structure.lattice.matrix, frame_inverse)
+    const scaling = math.dot(
+      displayed_structure.lattice.matrix,
+      math.matrix_inverse_3x3(frame.lattice),
+    )
     const is_integer_scaling = scaling.every((row) =>
       row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
     )
     if (!is_integer_scaling || Math.abs(math.det_3x3(scaling)) < 0.99) return null
-    // Fractional coords are x_F = L_F⁻ᵀ·x_cart, so a 2·symprec displacement moves coord k by at
-    // most 2·symprec·‖row_k(L_F⁻ᵀ)‖: a long axis gets a proportionally tighter tolerance
-    const frame_inverse_t = math.transpose_3x3_matrix(frame_inverse)
-    const axis_tolerances = (to_frac: Matrix3x3): Vec3 =>
-      to_frac.map((row) =>
-        Math.max(tolerance, 2 * sym_data.symprec * Math.hypot(...row)),
-      ) as Vec3
+    // A 2·symprec displacement moves fractional coordinate k by 2·symprec / height_k
+    const axis_tolerances = (lattice: Matrix3x3): Vec3 =>
+      math
+        .frac_cutoff_per_axis(lattice, 2 * sym_data.symprec)
+        .map((frac_tol) => Math.max(tolerance, frac_tol)) as Vec3
 
     // Displayed site coords expressed in frame-F fractional coordinates: x_F = x_disp·S
     const scaling_transpose = math.transpose_3x3_matrix(scaling)
@@ -369,15 +369,15 @@ export function map_wyckoff_to_all_atoms(
     // P·x_F (matches input-lattice translations: d ∈ P⁻¹ℤ³ ⟺ P·d ∈ ℤ³)
     const direct_index = new WrappedPositionIndex(
       displayed_frame_coords,
-      axis_tolerances(frame_inverse_t),
+      axis_tolerances(frame.lattice),
     )
     const check = frame.input_translation_check
-    // input-lattice coords P·x_F = P·L_F⁻ᵀ·x_cart
+    // P·x_F are input-lattice fractional coordinates
     const check_index =
       check &&
       new WrappedPositionIndex(
         displayed_frame_coords,
-        axis_tolerances(math.dot(check, frame_inverse_t)),
+        axis_tolerances(orig_structure.lattice.matrix),
         (pos) => math.mat3x3_vec3_multiply(check, pos),
       )
 
