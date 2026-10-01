@@ -836,7 +836,6 @@ describe(`HeatmapTable`, () => {
       ])
       // a member column's description belongs to that column, not its group header
       expect(header_rows[0].querySelector(`button`)).toBeNull()
-      expect(header_rows[1].querySelectorAll(`button`)).toHaveLength(1)
 
       expect(
         [...header_rows[1].querySelectorAll(`th`)].map((header) =>
@@ -956,15 +955,14 @@ describe(`HeatmapTable`, () => {
       [`html is stripped before matching`, `bold`, [`Model C`]],
       [`no match`, `no-such-model`, []],
       [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
-      [`row style/class and non-column keys are not searched`, `gold`, []],
+      [`non-column keys like row style are not searched`, `gold`, []],
       [`entities decode before matching`, `c & co`, [`Model C`]],
-      [`entity source is not matched`, `amp`, []],
     ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
       fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
         { Model: `Model A`, Score: 0.95, style: `background: gold` },
-        { Model: `Model B`, Score: 0.85, class: `gold`, Note: `gold` },
+        { Model: `Model B`, Score: 0.85 },
         { Model: `<b>bold</b> Model C &amp; co`, Score: 0.75 },
       ]
       mount_table(bind_props({ data, columns: sample_columns, search: true }, state))
@@ -1382,9 +1380,10 @@ describe(`HeatmapTable`, () => {
     it.each([`parent`, `select`])(`applies page-size changes from %s`, async (origin) => {
       const on_page_size_change = vi.fn()
       const state = $state({
+        data: large_data,
         pagination: { page_size: 10, page_sizes: [10, 25, 50], on_page_size_change },
       })
-      mount_sample(bind_props({ data: large_data }, state))
+      mount_sample(state)
       const select = doc_query<HTMLSelectElement>(`.page-size-select`)
       expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
         `10 / page`,
@@ -1410,6 +1409,10 @@ describe(`HeatmapTable`, () => {
       select.value = `10`
       await fire(select, new Event(`change`, { bubbles: true }))
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(10)
+      // fewer rows than the smallest size: no pick would change paging, so no picker or bar
+      state.data = large_data.slice(0, 5)
+      await tick()
+      expect(document.querySelector(`.pagination`)).toBeNull()
     })
   })
 

@@ -622,6 +622,12 @@
   })
   let total_pages = $derived(Math.max(1, Math.ceil(sorted_data.length / page_size)))
   let page = $derived(Math.min(current_page, total_pages))
+  // The size picker stays while some size (or the current one) splits the rows, so picking a
+  // size that fits them all can be undone; once every size fits, no pick would change anything
+  let page_sizes = $derived.by(() => {
+    const sizes = pagination_config?.page_sizes
+    return sizes && sorted_data.length > Math.min(page_size, ...sizes) ? sizes : null
+  })
 
   let scroll_el = $state<HTMLDivElement>()
   let scroll_top = $state(0)
@@ -1941,9 +1947,8 @@
     </button>
   {/snippet}
 
-  {#if pagination_config && (total_pages > 1 || pagination_config.page_sizes)}
+  {#if pagination_config && (total_pages > 1 || page_sizes)}
     <div class="pagination">
-      <!-- the size picker stays when one page fits all rows, so that size can be undone -->
       {#if total_pages > 1}
         {@render page_btn(`«`, `First page`, 1, page === 1)}
         {@render page_btn(`‹`, `Previous page`, page - 1, page === 1)}
@@ -1967,7 +1972,7 @@
         {@render page_btn(`›`, `Next page`, page + 1, page === total_pages)}
         {@render page_btn(`»`, `Last page`, total_pages, page === total_pages)}
       {/if}
-      {#if pagination_config.page_sizes}
+      {#if page_sizes}
         <select
           class="page-size-select"
           onchange={(event) => {
@@ -1976,7 +1981,7 @@
             pagination_config.on_page_size_change?.(page_size)
           }}
         >
-          {#each pagination_config.page_sizes as size (size)}
+          {#each page_sizes as size (size)}
             <option value={size} selected={size === page_size}>{size} / page</option>
           {/each}
         </select>

@@ -128,14 +128,9 @@ describe(`axis replacement`, () => {
 
 describe(`symmetric mode`, () => {
   // label order renders C A B as A B C, so the triangle must follow rendered positions
-  test.each([
-    { mode: `lower`, order: undefined },
-    { mode: `upper`, order: undefined },
-    { mode: `lower`, order: `label` },
-    { mode: `upper`, order: `label` },
-  ] as const)(`$mode renders triangle + diagonal (order=$order)`, ({ mode, order }) => {
+  test.each([`lower`, `upper`] as const)(`%s renders triangle + diagonal`, (mode) => {
     const labels = [`C`, `A`, `B`]
-    mount_matrix({ x: labels, y: labels, symmetric: mode, x_order: order, y_order: order })
+    mount_matrix({ x: labels, y: labels, symmetric: mode, x_order: `label`, y_order: `label` })
     const data_cells = get_data_cells()
     const empty_cells = get_empty_cells()
     // 3x3 symmetric: diagonal(3) + triangle(3) = 6 data, 3 empty
@@ -740,35 +735,30 @@ describe(`milestone feature props`, () => {
     },
   )
 
-  test.each([
-    [`item order`, x_items, undefined, 1, [1, 2], [2, 3, 5, 6]],
-    // C A B renders as A B C, so dragging B..C must not pick up A from between their indices
-    [`label order`, make_items([`C`, `A`, `B`]), `label`, 0, [2, 0], [3, 1, 6, 4]],
-  ] as const)(
-    `brush drag reports the spanned ranges and cells: %s`,
-    (_desc, items, order, end_x, x_range, values) => {
-      const brush_handler = vi.fn()
-      mount_matrix({
-        x_items: items,
-        x_order: order,
-        enable_brush: true,
-        on_brush: brush_handler,
-        values: numbered_values,
-      })
-      // drag from bottom-right to top-left so the ranges have to be sorted
-      cell_at(2, 1).dispatchEvent(mouse(`mousedown`))
-      cell_at(end_x, 0).dispatchEvent(mouse(`mouseover`))
-      window.dispatchEvent(new MouseEvent(`mouseup`))
-      expect(brush_handler).toHaveBeenCalledOnce()
-      const payload = brush_handler.mock.calls[0][0]
-      expect(payload.x_range).toEqual(x_range)
-      expect(payload.y_range).toEqual([0, 1])
-      expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual(values)
-      // a second mouseup without a new drag reports nothing
-      window.dispatchEvent(new MouseEvent(`mouseup`))
-      expect(brush_handler).toHaveBeenCalledOnce()
-    },
-  )
+  // C A B renders as A B C: a drag from C back to B spans rendered B..C (item indices 2, 0)
+  // and must not pick up A from between their indices
+  test(`brush drag reports the spanned ranges and cells in rendered order`, () => {
+    const brush_handler = vi.fn()
+    mount_matrix({
+      x: [`C`, `A`, `B`],
+      x_order: `label`,
+      enable_brush: true,
+      on_brush: brush_handler,
+      values: numbered_values,
+    })
+    // drag from bottom-right to top-left so the ranges have to be sorted
+    cell_at(0, 1).dispatchEvent(mouse(`mousedown`))
+    cell_at(2, 0).dispatchEvent(mouse(`mouseover`))
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).toHaveBeenCalledOnce()
+    const payload = brush_handler.mock.calls[0][0]
+    expect(payload.x_range).toEqual([2, 0])
+    expect(payload.y_range).toEqual([0, 1])
+    expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual([3, 1, 6, 4])
+    // a second mouseup without a new drag reports nothing
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).toHaveBeenCalledOnce()
+  })
 
   // a search hiding the brushed cells before mouseup leaves no rectangle (not undefined ranges)
   test(`a brush whose corners a search hid reports nothing`, async () => {

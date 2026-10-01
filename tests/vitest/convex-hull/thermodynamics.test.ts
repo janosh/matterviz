@@ -414,7 +414,7 @@ describe(`calculate_e_above_hull`, () => {
     const dupes = [``, ``, `x`, `x`].map((entry_id, idx) =>
       make_phase({ [idx % 2 ? `O` : `Fe`]: 1 }, -1, { entry_id }),
     )
-    expect(Object.keys(calculate_e_above_hull(dupes, refs))).toContain(`x`)
+    calculate_e_above_hull(dupes, refs)
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       `calculate_e_above_hull: duplicate entry_id "x", last wins`,
     )

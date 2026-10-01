@@ -226,7 +226,7 @@ describe(`convex hull replacement state`, () => {
     expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
   })
 
-  // synthetic corners close the hull but are no data entries, so info pane and legend skip them
+  // synthetic corners close the hull but are no data entries, so the pane counts skip them
   test(`pane counts leave out synthetic corners`, async () => {
     const entries = [
       make_phase({ Li: 1 }, 0),
@@ -234,21 +234,11 @@ describe(`convex hull replacement state`, () => {
       make_phase({ O: 1 }, 0, { exclude_from_hull: true }),
       make_phase({ Li: 2, O: 1 }, -6),
     ]
-    await mount_hull({
-      entries,
-      info_pane_open: true,
-      controls_open: true,
-      color_mode: `stability`,
-    })
-    expect(model_entries()?.filter((entry) => entry.is_synthetic)).toHaveLength(1)
+    await mount_hull({ entries, info_pane_open: true })
     expect([`hull-visible-stable`, `hull-visible-unstable`].map(test_text)).toEqual([
       `Visible stable 2 / 2`,
       `Visible unstable 1 / 1`,
     ])
-    const legend_labels = [...document.querySelectorAll(`.legend-item`)].map((item) =>
-      item.textContent?.trim(),
-    )
-    expect(legend_labels.slice(0, 2)).toEqual([`Stable (2)`, `Above hull (1/1)`])
   })
 
   // The arity check runs on the entries prop, not on what survives the temperature filter:

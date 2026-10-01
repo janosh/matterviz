@@ -329,12 +329,9 @@ describe(`ConvexHullStats`, () => {
     })
 
     test(`table lists every visible entry: numbered rows, subscripted formulas, bold stable ones`, () => {
-      // a synthetic corner only closes the hull, so neither the table nor the stats count it
-      const synthetic_corner = mock_entry({ composition: { O: 1 }, is_synthetic: true })
-      mount_stats_table({
-        stable_entries: [...stable, synthetic_corner],
-        unstable_entries: unstable,
-      })
+      // a synthetic corner only closes the hull, so the table leaves it out
+      const corner = mock_entry({ composition: { O: 1 }, is_synthetic: true })
+      mount_stats_table({ stable_entries: [...stable, corner], unstable_entries: unstable })
 
       const rows = Array.from(document.querySelectorAll(`tbody tr`))
       expect(rows).toHaveLength(4)

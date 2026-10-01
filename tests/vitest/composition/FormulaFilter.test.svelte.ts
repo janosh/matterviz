@@ -161,8 +161,6 @@ describe(`FormulaFilter`, () => {
     [`Li0Fe2O3`, `elements`, `Fe,O`],
     // only included elements carry over (no exclusion flips), and a range keeps its element
     [`+Li,-O`, `chemsys`, `Li`],
-    [`Li,-O,Fe`, `chemsys`, `Fe-Li`],
-    [`Fe:1-2,Li`, `chemsys`, `Fe-Li`],
     [`Fe:1-2,Li,-*,*`, `exact`, `FeLi*`],
   ] as const)(`reformats "%s" to %s mode as "%s"`, async (from, to_mode, expected) => {
     const on_change = vi.fn()

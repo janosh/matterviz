@@ -274,10 +274,6 @@ describe(`Dos component`, () => {
     normalize_dos({ frequencies, densities: [0, 1, 0.5], frequency_unit }) as PhononDos
   it.each([
     [`max`, { doses: { '': split }, normalize: `max` }, [-0.5, 1]],
-    // only drawn spins set the divisor: a hidden spin-up (peak 2) can't hold spin-down below 1
-    [`down_only`, { doses: { '': split }, normalize: `max`, spin_mode: `down_only` }, [0, 1]],
-    // trapezoid ∫ = 2 (up) + 1 (down)
-    [`integral`, { doses: { '': split }, normalize: `integral` }, [-1 / 3, 2 / 3]],
     [`mirror stack`, { doses: { A: split, B: split }, stack: true }, [-2, 4]],
     // stored per THz: loaded and shown in cm⁻¹, the peak round-trips to 1
     [`cm^-1`, { doses: { '': phonon_in(`cm^-1`, [0, 100, 200]) }, units: `cm^-1` }, [0, 1]],

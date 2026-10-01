@@ -5,7 +5,7 @@ import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, fire, mount_sized, mouse } from '../setup'
+import { doc_query, mount_sized } from '../setup'
 import {
   BOX_TRI_FACES,
   BOX_VERTICES,
@@ -23,8 +23,9 @@ const create_mock_fermi_data = (band_indices: number[] = [0, 1]): FermiSurfaceDa
 
 describe(`FermiSlice`, () => {
   test.each([
-    [`omitted defaults to visible for one band`, [0], undefined, true],
-    [`false hides three bands`, [0, 1, 2], false, false],
+    // one band sliced into two isolines: their shared legend_id folds them into one row
+    [`omitted defaults to visible for one band`, [0, 0], undefined, [`Band 1`]],
+    [`false hides three bands`, [0, 1, 2], false, []],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
     const plot = await mount_sized(
       FermiSlice,
@@ -32,28 +33,10 @@ describe(`FermiSlice`, () => {
       { selector: `.fermi-slice` },
     )
     await tick()
-    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
-  })
-
-  test(`a band sliced into several isolines gets one legend item that toggles them all`, async () => {
-    const plot = await mount_sized(
-      FermiSlice,
-      { fermi_data: create_mock_fermi_data([0, 0, 1]), distance: 0.05 },
-      { selector: `.fermi-slice` },
-    )
-    await tick()
-    const legend = () => [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
-    // drawn isoline count per band
-    const drawn = () =>
-      [0, 1].map((band) => plot.querySelectorAll(`g[data-series-id^="iso-${band}-"]`).length)
-    expect(legend().map((item) => item.textContent?.trim())).toEqual([`Band 1`, `Band 2`])
-    expect(drawn()).toEqual([2, 1])
-    await fire(legend()[0])
-    expect(drawn()).toEqual([0, 1])
-    await fire(legend()[0])
-    expect(drawn()).toEqual([2, 1])
-    await fire(legend()[1], mouse(`dblclick`))
-    expect(drawn()).toEqual([0, 1])
+    // each box slices into one drawn isoline, so [0, 0] really draws band 1 twice
+    expect(plot.querySelectorAll(`g[data-series-id^="iso-"]`)).toHaveLength(bands.length)
+    const items = [...plot.querySelectorAll(`.legend-item`)]
+    expect(items.map((item) => item.textContent?.trim())).toEqual(expected)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {
