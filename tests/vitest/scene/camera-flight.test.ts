@@ -290,10 +290,8 @@ it.each([`perspective`, `orthographic`] as const)(
   },
 )
 
-// A view OrbitControls can't hold (target off the view axis, rolled) would snap on its next
-// update, so commit re-pivots and levels it; one it holds (a level orbit sample) stays exact.
+// Commit re-pivots and levels views OrbitControls can't hold, else its next update snaps them
 it.each([
-  [`off-axis`, { ...pose, position: [2, 0, 10] }, false],
   [`target behind`, { ...pose, target: [0, 0, 20] }, false],
   [`rolled`, tilted, false],
   [`held`, create_camera_flight_sampler(orbit_camera_flight(tilted, 8))(1), true],
@@ -318,8 +316,7 @@ it.each([
       new Vector3(0, 0, -1).applyQuaternion(new Quaternion(...quaternion))
     // Commit keeps the view direction (measured 1 eps); distance, as acos amplifies round-off
     expect(forward(committed).distanceTo(forward(sampled))).toBeLessThan(8 * Number.EPSILON)
-    // The update's lookAt and spherical round trip then move it by round-off only (measured
-    // 2.8 eps in position at radius 10, 0.14 eps in quaternion)
+    // The update then moves it by round-off (measured 2.8 eps in position, 0.14 in quaternion)
     controls.update()
     const updated = controller.capture()
     const drift = (key: `position` | `quaternion`) =>

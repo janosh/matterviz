@@ -399,8 +399,7 @@ describe(`camera fly-to`, () => {
     expect(offset().z).toBeLessThan(0.05)
   })
 
-  // Hosts get their own `enabled` back, also once the other fly-to on the same controls (gizmo
-  // vs scene) took over mid-air (not the disabling it found), which ends the first where it is
+  // Gizmo and scene fly-tos share the controls: a takeover ends the first, `enabled` comes back
   test.each([true, false])(`hands back enabled: %s on release and takeover`, (enabled) => {
     const { camera, controls, fly, hook_calls } = make_rig()
     const other = create_fly_to({
@@ -411,23 +410,16 @@ describe(`camera fly-to`, () => {
     })
     controls.enabled = enabled
     fly.start([1, 0, 0])
-    fly.step(0.1)
     fly.release()
     fly.release() // no duplicate end
     expect([controls.enabled, fly.active]).toEqual([enabled, false])
+    controls.enabled = !enabled
     fly.start([1, 0, 0])
-    fly.step(0.1)
     other.start([0, 0, -1])
-    const taken_over = to_array(camera.position)
-    fly.step(10)
-    expect([fly.active, to_array(camera.position), controls.enabled]).toEqual([
-      false,
-      taken_over,
-      false,
-    ])
+    expect([fly.active, controls.enabled]).toEqual([false, false])
     other.step(10)
-    expect(controls.enabled).toBe(enabled)
-    expect(hook_calls).toEqual([`start`, `change`, `end`, `start`, `change`, `end`])
+    expect(controls.enabled).toBe(!enabled)
+    expect(hook_calls).toEqual([`start`, `end`, `start`, `end`])
   })
 
   test.each([

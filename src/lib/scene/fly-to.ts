@@ -54,12 +54,7 @@ export function lock_fly_to(controls: FlyToControls, lock: boolean): void {
 
 // `start` takes a direction that need not be normalized; only its direction is used.
 export function create_fly_to(hooks: FlyToHooks) {
-  let animation: {
-    angle: number
-    distance: number
-    elapsed: number
-    controls: FlyToControls | undefined
-  } | null = null
+  let animation: { angle: number; distance: number; elapsed: number } | null = null
   const from_dir = new THREE.Vector3()
   const to_dir = new THREE.Vector3()
   const axis = new THREE.Vector3()
@@ -95,14 +90,13 @@ export function create_fly_to(hooks: FlyToHooks) {
       axis.copy(up_vector).addScaledVector(from_dir, -up_vector.dot(from_dir))
     axis.normalize()
 
-    if (animation && animation.controls !== controls) release() // controls swapped mid-air
+    animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0 }
     if (controls) {
       const flight = flights.get(controls)
       flights.set(controls, { enabled: flight?.enabled ?? controls.enabled, release })
       if (flight && flight.release !== release) flight.release() // ends where it is
       controls.enabled = false
     }
-    animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0, controls }
     hooks.on_start?.()
     hooks.invalidate()
   }
@@ -130,9 +124,9 @@ export function create_fly_to(hooks: FlyToHooks) {
   // tearing down mid-flight strands the caller's controls disabled for good.
   function release(): void {
     if (!animation) return
-    const { controls } = animation
     animation = null
     // Only the flight steering the controls hands them back; one taken over just ends
+    const controls = hooks.controls()
     const flight = controls && flights.get(controls)
     if (controls && flight?.release === release) {
       flights.delete(controls)

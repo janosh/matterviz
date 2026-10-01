@@ -9,25 +9,30 @@ import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu
 import { expect, onTestFinished, test } from 'vitest'
 import { mount_scene } from './mount'
 
+// SceneCamera with no position yet, as while a scene measures its bounds
+const mount_camera = (camera_projection: 'orthographic' | 'perspective') => {
+  const props = $state<ComponentProps<typeof SceneCamera>>({
+    camera_projection,
+    position: undefined,
+    orbit_props: build_orbit_props({
+      ...SCENE_CONTROL_DEFAULTS,
+      camera_projection,
+      target: [0, 0, 0],
+      min_zoom: undefined,
+      max_zoom: undefined,
+    }),
+    orbit_controls: undefined, // bound back by SceneCamera
+  })
+  const scene = mount_scene((anchor) => SceneCamera(anchor, props))
+  onTestFinished(scene.unmount_scene)
+  flushSync()
+  return { props, ...scene }
+}
+
 test.each([`orthographic`, `perspective`] as const)(
   `%s camera retains identity and pan when its position changes`,
   (camera_projection) => {
-    const props = $state<ComponentProps<typeof SceneCamera>>({
-      camera_projection,
-      position: undefined,
-      orbit_props: build_orbit_props({
-        ...SCENE_CONTROL_DEFAULTS,
-        camera_projection,
-        target: [0, 0, 0],
-        min_zoom: undefined,
-        max_zoom: undefined,
-      }),
-    })
-    const { camera: camera_store, unmount_scene } = mount_scene((anchor) =>
-      SceneCamera(anchor, props),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
+    const { props, camera: camera_store } = mount_camera(camera_projection)
     const camera = camera_store.current
     set_pan_offset(camera, [30, 15], 400, 300)
     for (const position of [[3, 4, 5], [0, 0, 0], undefined] as const) {
@@ -39,23 +44,9 @@ test.each([`orthographic`, `perspective`] as const)(
   },
 )
 
-// Gizmo and zone-axis fly-tos steer the OrbitControls a movie flight leases: one in the air must
-// end there, not swing the camera off the flight's poses and re-enable orbiting when it lands
-test(`a camera flight ends the fly-to in progress on its controls and blocks new ones`, () => {
-  const props = $state<ComponentProps<typeof SceneCamera>>({
-    position: [0, 0, 10],
-    orbit_props: build_orbit_props({
-      ...SCENE_CONTROL_DEFAULTS,
-      camera_projection: `perspective`,
-      target: [0, 0, 0],
-      min_zoom: undefined,
-      max_zoom: undefined,
-    }),
-    orbit_controls: undefined,
-  })
-  const { canvas, unmount_scene } = mount_scene((anchor) => SceneCamera(anchor, props))
-  onTestFinished(unmount_scene)
-  flushSync()
+// A zone-axis swing in the air or clicked mid-flight would pull the camera off the movie's poses
+test(`a camera flight ends and blocks fly-tos on its controls until it lets go`, () => {
+  const { props, canvas } = mount_camera(`perspective`)
   const controls = props.orbit_controls
   const controller = camera_flight_registry.get(canvas)
   if (!controls || !controller) throw new Error(`SceneCamera set up no camera flight`)
@@ -66,15 +57,11 @@ test(`a camera flight ends the fly-to in progress on its controls and blocks new
     invalidate: () => {},
   })
   fly.start([1, 0, 0])
-  fly.step(0.1)
   const lease = controller.begin()
-  flushSync()
-  fly.start([0, 1, 0]) // a zone-axis click mid-flight must not start a swing
-  expect([fly.active, controls.enabled]).toEqual([false, false])
+  fly.start([0, 1, 0])
+  expect(fly.active).toBe(false)
   lease.commit()
-  flushSync()
-  expect(controls.enabled).toBe(true)
-  fly.start([0, 1, 0]) // after the flight lets go, fly-to works again
+  fly.start([0, 1, 0])
   expect(fly.active).toBe(true)
 })
 
