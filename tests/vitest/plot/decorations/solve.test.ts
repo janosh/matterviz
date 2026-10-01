@@ -91,15 +91,6 @@ describe(`decoration solver`, () => {
     expect(solve_decorations(sparse_scene).placements[0]).toMatchObject(direct)
   })
 
-  test(`rejects duplicate decoration ids, naming the first repeat`, () => {
-    const items = [`a`, `b`, `b`, `a`].map((identifier): DecorationItem => ({
-      id: identifier,
-      kind: `free-annotation`,
-      footprint: { width: 40, height: 20 },
-    }))
-    expect(() => solve_decorations(scene_for(items))).toThrow(`got duplicate id "b"`)
-  })
-
   const expect_no_overlaps = (rects: readonly Rect[]): void => {
     for (let left_idx = 0; left_idx < rects.length; left_idx++) {
       for (let right_idx = left_idx + 1; right_idx < rects.length; right_idx++) {

@@ -413,9 +413,8 @@
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
       // Base-box pixel scales (not unit ones) keep compute_bar_rect's 1px floors
-      const { current } = frame.ranges
-      const zero_pad = { l: 0, r: 0, t: 0, b: 0 }
-      const scales = create_axis_scales(plot_axes, current, zero_pad, base_w, base_h)
+      const pad = { l: 0, r: 0, t: 0, b: 0 }
+      const scales = create_axis_scales(plot_axes, frame.ranges.current, pad, base_w, base_h)
       const obstacle_series: ObstacleSeries[] = []
       internal_series.forEach((srs, series_idx) => {
         if (!(srs?.visible ?? true)) return

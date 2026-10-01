@@ -180,7 +180,6 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
       : `Series "${name}"`
-  // Per-point props align only in their non-empty array form (see PER_POINT_KEYS).
   // Errors are scalar-or-array; only their array form is indexed in lockstep with x/y.
   // An asymmetric error contributes both sides separately - they are indexed
   // independently, so checking only one lets the other run short unnoticed.

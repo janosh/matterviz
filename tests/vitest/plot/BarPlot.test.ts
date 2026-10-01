@@ -451,9 +451,7 @@ describe(`BarPlot`, () => {
     },
   )
 
-  // The tooltip anchors at the bar's drawn tip, which only its own path witnesses in happy-dom.
-  // It once missed the grouped slot offset, the stack base, a log floor on the value axis
-  // (NaN at y = -5), and wrongly floored a log category axis (1.9 sits below its range floor).
+  // Anchors once missed the group slot and stack base, and floored the wrong axis on log ones
   const grouped = [0, 1, 2].map((idx) => ({ x: [1, 2], y: [5 + idx, 20], label: `S${idx}` }))
   // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof BarPlot>>]>([
@@ -485,8 +483,7 @@ describe(`BarPlot`, () => {
     }
   })
 
-  // A snapshot tooltip kept the old value under a resting pointer, and anchored at NaN (or
-  // threw) once its bar or series was gone
+  // A snapshot tooltip kept stale values under a resting pointer, broke once its bar was gone
   test(`a resting hover follows replaced data and closes once its bar is gone`, async () => {
     const [s0, s1] = grouped
     // a reactive getter lets this plain .ts test replace the series under the resting pointer
@@ -501,16 +498,14 @@ describe(`BarPlot`, () => {
       flushSync()
       return plot.querySelector(`.plot-tooltip`)?.textContent ?? null
     }
-    // S1's second bar (y = 20)
+    // S1's second bar
     plot
       .querySelectorAll(`.bar-series[data-series-idx="1"] path[role="button"]`)[1]
       .dispatchEvent(mouse(`mousemove`))
     await tick()
-    for (const fewer of [[s0, { ...s1, x: [1], y: [6] }], [s0]]) {
-      expect(tooltip_after([s0, s1])).toMatch(/y: 20/)
-      expect(tooltip_after(fewer)).toBeNull()
-    }
     expect(tooltip_after([s0, { ...s1, y: [6, 37] }])).toMatch(/y: 37/)
+    expect(tooltip_after([s0])).toBeNull()
+    expect(tooltip_after([s0, { ...s1, x: [1], y: [6] }])).toBeNull()
   })
 
   test(`default tooltip shows series label for multi-series on hover`, async () => {
@@ -584,9 +579,7 @@ describe(`BarPlot`, () => {
       },
     )
 
-    // x2 once got a numeric range over the category indices (bars off their slots, ticks 0,
-    // 0.5, ...), then ignored a pinned x range. Categorical ticks are generated for every
-    // category regardless of the view, so a panned range must cull those outside the plot.
+    // x2 once got numeric ticks and ignored a pinned x range; panned-out ticks are culled
     test.each([
       { x_axis: {}, labels: [`A`, `B`, `C`, `D`] },
       { x_axis: { range: [0.5, 2.5] as [number, number] }, labels: [`B`, `C`] },

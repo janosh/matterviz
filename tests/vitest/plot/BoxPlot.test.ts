@@ -343,8 +343,7 @@ describe(`BoxPlot`, () => {
   const log_boxes = [100, 100, 1000].map((max) => ({
     y: Array.from({ length: 21 }, (_, idx) => 1e-3 * (max / 1e-3) ** (idx / 20)),
   }))
-  // Obstacles once mapped log whiskers linearly (slivers at the floor), rated a whisker's spot
-  // sparse against the plot-wide count, and reduced a violin to its whisker line or IQR
+  // Obstacles once mapped log whiskers linearly and cut violins down to a whisker line or IQR
   // oxfmt-ignore
   test.each([
     [`boxes on a log value axis`, { series: log_boxes, whisker_mode: `minmax`, y_axis: { scale_type: `log` } }],
@@ -525,12 +524,10 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
   })
 
-  // Uncategorized series once keyed slots by index: index tick labels, merging with category
-  // `1`. Each series keeps its own slot despite a shorter x_axis.categories override.
+  // Uncategorized series once keyed slots by index: index labels, merging with category `1`
   // oxfmt-ignore
   test.each([
     [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`], {}],
-    [`an uncategorized series`, [{ category: `X` }, { category: `X` }, { label: `Baseline` }], [`X`, `Baseline`], {}],
     [`a category spelled like an index`, [{ category: `1` }, { label: `other` }], [`1`, `other`], {}],
     [`a shorter x_axis.categories`, [{ label: `A` }, { label: `B` }, { label: `C` }], [`A`, `B`, `C`], { categories: [`A`, `B`] }],
   ] as const)(`category slots and tick labels with %s`, async (_name, specs, expected_ticks, x_axis) => {

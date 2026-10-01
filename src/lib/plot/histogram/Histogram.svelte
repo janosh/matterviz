@@ -35,9 +35,9 @@
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
     accumulate_extent,
+    create_axis_scales,
     empty_extent,
     nice_range_from_extent,
-    unit_axis_scales,
   } from '$lib/plot/core/scales'
   import type {
     AxisConfig,
@@ -348,7 +348,7 @@
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, histogram_bins.length > 0, () => {
       const { current } = frame.ranges
-      const norm = unit_axis_scales(frame.axes, current)
+      const norm = create_axis_scales(frame.axes, current, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
       return histogram_bins.flatMap((hist) => {
         const x_scale = norm[hist.x_axis ?? `x`]
         const y_scale = norm[hist.y_axis ?? `y`]

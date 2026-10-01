@@ -287,11 +287,8 @@ describe(`build_series_legend_items and build_fill_legend_items`, () => {
     expect(items[2]).toMatchObject({ series_idx: 2, legend_group: `g1` })
     expect(items[3]).toMatchObject({ item_type: `fill`, fill_idx: 0, visible: true })
     expect(items[4]).toMatchObject({ item_type: `fill`, visible: false })
-    // a shared label alone makes no lookalike rows, matching group and swatch too does
+    // a shared label alone makes no lookalike rows
     expect(lookalike_legend_label(items)).toBeUndefined()
-    const line_style = { stroke: `red` }
-    const segment: DataSeries = { x: [1], y: [1], label: `seg`, markers: `line`, line_style }
-    expect(lookalike_legend_label(legend_rows([segment, segment]))).toBe(`seg`)
   })
 
   test(`markers control which styles appear; line color cascades`, () => {

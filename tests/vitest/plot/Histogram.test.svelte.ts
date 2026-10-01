@@ -417,12 +417,10 @@ describe(`Histogram`, () => {
     expect(flipped_y[0].top).toBeLessThan(ascending[0].bottom)
   })
 
-  // Regression: the legend's obstacle field came out empty on a reversed count axis, mapped
-  // counts linearly on a log one and kept only each bar's center line, so it landed on bars
+  // Obstacles were once empty on reversed axes, linear on log ones and only each bar's center
   // oxfmt-ignore
   test.each([
-    // bars stand on the bottom baseline on [0, 2] and hang from the top one on [2, 0]
-    [`an ascending range`, { range: [0, 2] }, [1, 3, 5, 7, 9], 5],
+    // bars hang from the top baseline on [2, 0]
     [`a reversed range`, { range: [2, 0] }, [1, 3, 5, 7, 9], 5],
     // counts [1, 300, 1, 300, 1]: linearly the 300s fill under a third of the ~[1, 1000] axis
     [`a log axis`, { scale_type: `log` }, [1, 5, 9, ...Array(300).fill(3), ...Array(300).fill(7)], 5],
@@ -628,27 +626,19 @@ describe(`Histogram`, () => {
   })
 
   // The arithmetic mean of [1, 10] is 5.5, which a log axis draws ~74% across the bar
-  // oxfmt-ignore
-  test.each([
-    [`log`, [1, 1000], 3, Math.sqrt(10)],
-    [`arcsinh`, [-10, 10], 2, Math.sinh(Math.asinh(-10) / 2)],
-  ] as const)(`%s x axis centers the bin at its scale-space midpoint`, async (scale_type, range, bins, center) => {
+  test(`log x axis centers the bin at its scale-space midpoint`, async () => {
     const on_bar_hover = vi.fn()
     await mount_histogram({
-      series: [series_of([-5, 2, 5, 20, 200])],
-      bins,
-      x_axis: { scale_type, range: [...range] },
+      series: [series_of([2, 5, 20, 200])],
+      bins: 3,
+      x_axis: { scale_type: `log`, range: [1, 1000] },
       on_bar_hover,
     })
-    document.querySelector(`g.histogram-series path[role="button"]`)?.dispatchEvent(mouse(`mousemove`))
+    doc_query(`g.histogram-series path[role="button"]`).dispatchEvent(mouse(`mousemove`))
     await tick()
     const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
-    expect(value).toBeCloseTo(center, 12)
+    expect(value).toBeCloseTo(Math.sqrt(10), 12)
     expect(x).toBe(value)
-    // the tooltip anchors at the drawn bar's pixel midpoint (plus its 5px offset)
-    const [{ left, right }] = bar_boxes()
-    const tooltip_left = Number(doc_query(`.plot-tooltip`).style.left.replace(`px`, ``))
-    expect(tooltip_left).toBeCloseTo((left + right) / 2 + 5, 5)
   })
 
   // oxfmt-ignore

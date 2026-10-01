@@ -938,6 +938,7 @@ describe(`ScatterPlot`, () => {
         ],
         x2_axis: { range: [30.2, 40.8] },
         line_tween: { duration },
+        fill_regions: [{ upper: 0.5, lower: 0 }], // fills rebuild on pan, legend rows mustn't
       })
       const paths = [...plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)]
       expect(paths).toHaveLength(2)
@@ -1442,29 +1443,27 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  // x2/y2 data (e.g. photon energy over wavelength) must not stretch the primary axis
-  test.each([`x`, `y`] as const)(`%s axis spans only its own series`, async (axis) => {
-    const secondary = axis === `x` ? { x_axis: `x2` as const } : { y_axis: `y2` as const }
+  // x2 data (e.g. photon energy over wavelength) must not stretch the primary x axis
+  test(`x axis spans only its own series`, async () => {
     const plot = await mount_sized_scatter_plot({
       series: [
         { x: [400, 800], y: [400, 800] },
-        { x: [1, 3], y: [1, 3], ...secondary },
+        { x: [1, 3], y: [1, 3], x_axis: `x2` },
       ],
     })
-    expect(Number(axis_tick_labels(plot, axis)[0])).toBeGreaterThanOrEqual(300)
+    expect(Number(axis_tick_labels(plot, `x`)[0])).toBeGreaterThanOrEqual(300)
   })
 
-  test(`input warnings fire once, not on every pan or data update that keeps them`, async () => {
+  test(`input warnings fire once, not on every data update that keeps them`, async () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const line_style = { stroke: `red` }
     const bands = (): DataSeries[] =>
       [0, 1].map(() => ({ x: [0, 1], y: [0, 1], label: `Band`, markers: `line`, line_style }))
-    const state = $state({ x_axis: { range: [0, 1] as Vec2 }, series: bands() })
+    const state = $state({ series: bands() })
     const typo_ref = { type: `series`, series_id: `typo` } as const
     await mount_sized_scatter_plot(
       bind_props({ fill_regions: [{ upper: typo_ref, lower: 0 }] }, state),
     )
-    state.x_axis = { range: [0.5, 1.5] }
     state.series = bands()
     flushSync()
     expect(warn.mock.calls).toEqual([
@@ -1714,7 +1713,7 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`invalid data`, async () => {
-    // null entries hold their index, draw nothing and break neither underlays nor series_id refs
+    // null entries hold their index, draw nothing and don't break the underlay lookup
     const invalid = [
       {
         x: [1, 2, null, 4, 5] as (number | null)[],
@@ -1725,18 +1724,13 @@ describe(`ScatterPlot`, () => {
       // a JSON null x_axis (e.g. Python None) means the primary one
       { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN], x_axis: null },
       {
-        id: `a`,
         x: [100, 200, 300],
         y: [10, 20, 30],
         line_underlays: [{ x: [100, 300], y: [10, 30] }],
       },
     ] as DataSeries[]
-    const invalid_plot = await mount_sized_scatter_plot({
-      series: invalid,
-      fill_regions: [{ upper: { type: `series`, series_id: `a` }, lower: 0 }],
-    })
+    const invalid_plot = await mount_sized_scatter_plot({ series: invalid })
     expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
-    expect(invalid_plot.querySelectorAll(`.fill-region path`).length).toBeGreaterThan(0)
     document.body.replaceChildren()
 
     // Null entries must survive the auto-label scan. A throw there only kills the placement

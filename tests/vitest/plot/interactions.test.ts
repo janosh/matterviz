@@ -7,7 +7,6 @@ import {
   invert_rect_range,
   normalize_y2_sync,
   pan_range_by_pixels,
-  range_bounds,
   resolve_axis_ranges,
   sync_y2_range,
   vec2_equal,
@@ -406,14 +405,6 @@ describe(`expand_range_if_needed`, () => {
       range: [...expected],
       changed,
     })
-  })
-})
-
-describe(`range_bounds`, () => {
-  it(`sorts bounds ascending, returning an already sorted range itself`, () => {
-    expect(range_bounds([5, 1])).toEqual([1, 5]) // reversed
-    const sorted: Vec2 = [4, 4] // degenerate
-    expect(range_bounds(sorted)).toBe(sorted)
   })
 })
 

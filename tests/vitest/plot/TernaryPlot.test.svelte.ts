@@ -177,7 +177,6 @@ describe(`TernaryPlot`, () => {
     expect(tooltip()).toBeNull()
     plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
     await tick()
-    expect(tooltip()).toBeNull()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 

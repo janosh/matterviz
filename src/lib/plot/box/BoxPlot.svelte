@@ -59,10 +59,10 @@
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
+    create_axis_scales,
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
-    unit_axis_scales,
   } from '$lib/plot/core/scales'
   import { get_scale_type_name } from '$lib/plot/core/types'
   import { create_category_display } from '$lib/plot/core/display.svelte'
@@ -473,7 +473,8 @@
   // violin) plus its whiskers as a cap-wide bar
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_boxes.length > 0, () => {
-      const norm = unit_axis_scales(plot_axes, frame.ranges.current)
+      const { current } = frame.ranges
+      const norm = create_axis_scales(plot_axes, current, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
       const cat_scale = vertical ? norm.x : norm.y
       return visible_boxes.flatMap(({ series: srs, idx, slot, stats }) => {
         if (!Number.isFinite(stats.median)) return []

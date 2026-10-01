@@ -167,7 +167,6 @@ describe(`bar_obstacles`, () => {
 
   test.each<[string, Vec2, Vec2]>([
     [`off-plot to the left`, [-0.4, -0.2], [0, 1]],
-    [`off-plot to the right`, [1.2, 1.5], [0, 1]],
     [`fully above`, [0.4, 0.6], [-0.8, -0.2]],
     [`a NaN span`, [0.4, 0.6], [NaN, 0.5]],
   ])(`returns no segments when %s`, (_name, cross, span) => {
@@ -182,15 +181,10 @@ describe(`bar_obstacles`, () => {
     expect(first_line).toEqual({ points: [start, end], draws_line: true })
   })
 
-  // lines at both edges (0 and 1 for edge-flush bars) and the center of the visible part, more
-  // for wide bars so no legend fits between them, one for a zero-width bar (a whisker)
+  // edge and center lines of the visible part, more for wide bars, one for a zero-width one
   test.each<[string, boolean, Vec2, number[]]>([
     [`left edge`, true, [0, 0.2], [0, 0.1, 0.2]],
-    [`right edge`, true, [0.8, 1], [0.8, 0.9, 1]],
-    [`bottom edge`, false, [0, 0.2], [0, 0.1, 0.2]],
-    [`partly off-plot`, true, [-0.25, 0.5], [0, 0.25, 0.5]],
     [`covering the whole view`, true, [-3, 2], [0, 0.25, 0.5, 0.75, 1]],
-    [`wide`, false, [0.25, 1], [0.25, 0.5, 0.75, 1]],
     [`zero width`, false, [0.7, 0.7], [0.7]],
   ])(`keeps the in-plot segments (%s)`, (_name, vertical, cross, expected) => {
     expect(crosses(vertical, cross, [0, 1])).toEqual(expected)

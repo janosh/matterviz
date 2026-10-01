@@ -1101,18 +1101,15 @@ describe(`BinnedScatterPlot`, () => {
       on_density_zoom,
     })
     await settle()
-    // true while the x tick values fall from left to right on screen
-    const x_descending = () => {
-      const values = [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
-        .toSorted((tick_a, tick_b) => translate_of(tick_a).x - translate_of(tick_b).x)
-        .map((tick_el) => Number(tick_el.textContent))
-      return values[0] > values[values.length - 1]
-    }
     const center = plot_center()
     click_plot(center.x - 1, center.y - 1)
     await tick()
     expect(on_density_zoom).toHaveBeenCalledOnce()
-    expect(x_descending()).toBe(true)
+    // x tick values still fall from left to right on screen
+    const values = [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
+      .toSorted((tick_a, tick_b) => translate_of(tick_a).x - translate_of(tick_b).x)
+      .map((tick_el) => Number(tick_el.textContent))
+    expect(values[0]).toBeGreaterThan(values[values.length - 1])
   })
 
   test(`can disable automatic point mode switching`, async () => {
