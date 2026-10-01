@@ -176,8 +176,7 @@ test.each([
   },
 )
 
-// Half the cell is half its smallest face-to-face height, not edge: this shear keeps every edge
-// ~10 Å but leaves 2 Å between opposite b faces
+// Half the cell is half its smallest face-to-face height (2 Å here), not edge (~10 Å)
 test(`measures half a sheared cell by its face-to-face height`, async () => {
   // oxfmt-ignore
   const structure = make_crystal([[10, 0, 0], [9.8, 2, 0], [0, 0, 10]], [[`Cu`, [0, 0, 0]]])

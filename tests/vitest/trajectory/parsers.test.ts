@@ -20,7 +20,11 @@ import {
   open_trajectory,
   trajectory_from_json,
 } from '$lib/trajectory/open'
-import { FORMAT_PATTERNS, is_trajectory_file } from '$lib/trajectory/format-detect'
+import {
+  FORMAT_PATTERNS,
+  is_indexable_trajectory_filename,
+  is_trajectory_file,
+} from '$lib/trajectory/format-detect'
 import { get_unsupported_format_message } from '$lib/trajectory/parse'
 import {
   ase_calculator_data,
@@ -758,10 +762,18 @@ describe(`VASP run output detection`, () => {
     [`outcar`, ` vasp.6.4.2 killed before any ionic step`, undefined, false],
     [`outcar`, `nothing`, `OUTCAR`, true],
     [`outcar`, banner, `OUTCAR_relax.json`, false],
-    [`vasp`, `nothing`, `XDATCAR_nvt.gz`, true],
     [`vasp`, `{"frames": []}`, `XDATCAR_md.json`, false],
   ] as const)(`FORMAT_PATTERNS.%s(%j, %s) -> %s`, (format, data, filename, expected) => {
     expect(FORMAT_PATTERNS[format](data, filename)).toBe(expected)
+  })
+
+  // indexing agrees with FORMAT_PATTERNS.vasp: a known extension overrules an XDATCAR* name
+  it.each([
+    [`XDATCAR_nvt.gz`, true],
+    [`XDATCAR_md.json`, false],
+    [`md.xyz`, true],
+  ] as const)(`is_indexable_trajectory_filename(%s) -> %s`, (filename, expected) => {
+    expect(is_indexable_trajectory_filename(filename)).toBe(expected)
   })
 })
 
@@ -2345,8 +2357,7 @@ describe(`HDF5`, () => {
       }
   })
 
-  // Past one atom batch the run streams, and slicing a frameless [n_atoms, 3] dataset's atom
-  // axis as frames collected 3 values for the whole frame
+  // a streamed run sliced this frameless dataset's atom axis as frames: 3 values in all
   it(`collects a single-frame [n_atoms, 3] TorchSim file past one atom batch`, async () => {
     const n_atoms = ATOM_BATCH_SIZE + 1
     const positions = Array.from({ length: n_atoms * 3 }, (_unused, idx) => idx / 8)
@@ -2419,6 +2430,20 @@ describe(`HDF5`, () => {
         },
       },
     })
+  })
+
+  // with one atom, a [n, 1, 3] signal is that atom's vector, not TorchSim's size-1 system axis
+  it(`keeps a one-atom TorchSim velocity per atom`, async () => {
+    const buffer = await h5_bytes(`one-atom`, (file) => {
+      const [data, steps] = [file.create_group(`data`), file.create_group(`steps`)]
+      create_dataset(data, `positions`, [0, 0, 0, 0.1, 0, 0], [2, 1, 3])
+      create_dataset(data, `atomic_numbers`, [1], [1])
+      create_dataset(data, `velocities`, [1, 2, 3, 4, 5, 6], [2, 1, 3])
+      create_dataset(steps, `positions`, [0, 1], [2])
+      create_dataset(steps, `velocities`, [0, 1], [2])
+    })
+    const run = await open(buffer, `one-atom.h5`)
+    expect(run.signals?.velocity).toMatchObject({ sample_shape: [1, 3], frame_aligned: true })
   })
 
   it(`streams a frame-aligned TorchSim velocity strided through vector_keys but not one on its own step axis`, async () => {

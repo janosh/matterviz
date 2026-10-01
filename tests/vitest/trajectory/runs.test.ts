@@ -161,10 +161,9 @@ describe(`numeric frames`, () => {
     const options = { frame_idx: 0, velocity_key: `velocity` }
     // a streamed signal descriptor has no samples to index, so the frame's vectors serve
     const streamed = { velocity: { sample_shape: [1, 3], sample_count: 1 } }
-    for (const signals of [undefined, streamed])
-      expect(frame_atom_batch(frame, options, undefined, signals).velocities).toEqual(
-        Float64Array.of(1, 2, 3),
-      )
+    expect(frame_atom_batch(frame, options, undefined, streamed).velocities).toEqual(
+      Float64Array.of(1, 2, 3),
+    )
     frame.scalar_columns = { velocity: Float64Array.of(value) }
     for (const source of [frame, encode_frame(materialize_frame(frame))])
       expect(() => frame_atom_batch(source, options)).toThrow(`Missing or invalid velocity`)

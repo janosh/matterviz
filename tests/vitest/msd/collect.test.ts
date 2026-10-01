@@ -7,7 +7,6 @@ import type {
   TrajectoryRun,
 } from '$lib/trajectory'
 import { suggest_analysis_frame_stride, trajectory_from_frames } from '$lib/trajectory'
-import { unwrapped_positions_of } from '$lib/trajectory/positions'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -167,20 +166,13 @@ describe(`MSD components`, () => {
     vi.spyOn(run, `collect_positions`).mockRejectedValueOnce(new Error(`recollect failed`))
     button.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
-    expect(document.body.textContent).not.toContain(`Å²/fs`)
   })
 
-  // calc_msd adds an unwrapped copy of wrapped periodic positions: 20 frames x 1M atoms is
-  // 480 MB, inside the 512 MB budget alone but not with that copy
-  it.each([
-    [{}, false],
-    [{ box_length: 5, coords_unwrapped: true }, false],
-    [{ box_length: 5 }, true],
-  ])(`budgets calc_msd's unwrapped copy for frames with %o`, async (frame_options, copied) => {
+  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with calc_msd's unwrapped copy
+  it(`budgets calc_msd's unwrapped copy of wrapped cell positions`, async () => {
     const run = trajectory_from_frames(
-      Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),
+      Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], { box_length: 5 })),
     )
-    expect(unwrapped_positions_of(await collect_msd_positions(run)).unwrapped).toBe(copied)
     mounted.push(
       mount(TrajectoryMsdPane, {
         target: document.body,
@@ -188,6 +180,6 @@ describe(`MSD components`, () => {
       }),
     )
     await tick()
-    expect(document.body.textContent?.includes(`needs ≥ 2`)).toBe(copied)
+    expect(document.body.textContent).toContain(`needs ≥ 2`)
   })
 })

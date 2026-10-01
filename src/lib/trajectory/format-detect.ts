@@ -76,7 +76,7 @@ export const indexed_trajectory_format = (filename: string): `ase` | `text` =>
 
 export const is_indexable_trajectory_filename = (filename: string): boolean => {
   const base = strip_compression_extensions(filename)
-  return INDEXABLE_EXT_REGEX.test(base) || XDATCAR_NAME_REGEX.test(base)
+  return INDEXABLE_EXT_REGEX.test(base) || name_hint(base, XDATCAR_NAME_REGEX) === true
 }
 
 // Unified format detection. Each pattern trusts a matching file extension when present

@@ -334,8 +334,7 @@ describe(`PdfPlot`, () => {
     const caption = () => target.querySelector(`.weights`)?.textContent ?? ``
     const y_label = () => target.querySelector(`.y-axis .axis-label`)?.textContent ?? ``
 
-    // a caller-supplied label reads as the legend shows it, entities decoded
-    expect(caption()).toMatch(/^β-NiH ⟨b⟩ = /)
+    expect(caption()).toMatch(/^β-NiH ⟨b⟩ = /) // caller-supplied label, entities decoded
     // b_coh(H) < 0, so switching to neutrons is what flips w(H-Ni) negative. format_num emits
     // U+2212 MINUS SIGN, not ASCII hyphen.
     expect(caption()).not.toContain(`w(H-Ni) = −`)

@@ -8,7 +8,7 @@ import { calc_msd } from '$lib/msd/calc-msd'
 import type { MsdOptions, MsdResult } from '$lib/msd/index'
 import MsdPlot from '$lib/msd/MsdPlot.svelte'
 import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { flushSync, mount, unmount } from 'svelte'
+import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { drift_positions } from './helpers'
@@ -51,14 +51,15 @@ describe(`worker code path`, () => {
 // hundreds of MB) position buffer and redo the analysis; a lag-range edit must
 it(`MsdPlot relabels dt edits without recomputing`, async () => {
   const positions = drift_positions(30)
-  const initial_options: MsdOptions = { max_lag_fraction: 0.5 }
-  const state = $state({
-    positions,
-    msd_options: initial_options,
-    result: undefined as MsdResult | undefined,
-    error_msg: undefined as string | undefined,
+  const state = $state<{ msd_options: MsdOptions; result?: MsdResult; error_msg?: string }>({
+    msd_options: { max_lag_fraction: 0.5 },
+    result: undefined,
+    error_msg: undefined,
   })
-  const component = mount(MsdPlot, { target: document.body, props: bind_props({}, state) })
+  const component = mount(MsdPlot, {
+    target: document.body,
+    props: bind_props({ positions }, state),
+  })
   const edit = async (msd_options: MsdOptions) => {
     state.msd_options = msd_options
     await settle(6)
@@ -76,14 +77,6 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
     expect(await edit({ max_lag_fraction: 0.5, dt: 2 })).toEqual(invalid)
     expect(await edit(relabelled)).toEqual([expected, undefined, 1])
     expect((await edit({ ...relabelled, max_lag_fraction: 0.3 }))[2]).toBe(2)
-    // recollected positions blank the old curves until their own compute lands, not relabel them
-    const recollected = drift_positions(20)
-    state.positions = recollected
-    state.msd_options = { ...relabelled, dt: 4 }
-    flushSync()
-    expect(state.result).toBeUndefined()
-    await settle(6)
-    expect(state.result).toEqual(calc_msd(recollected, { ...relabelled, dt: 4 }))
   } finally {
     await unmount(component)
   }

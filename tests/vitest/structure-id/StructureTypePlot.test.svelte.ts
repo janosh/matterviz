@@ -203,15 +203,13 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     expect(state.error_msg).toBeUndefined()
     expect(document.body.textContent).not.toContain(`synthetic failure`)
 
-    const pending_compute = Promise.withResolvers<StructureIdResult>()
-    compute_spy.mockReturnValueOnce(pending_compute.promise)
-    state.structures = make_bcc([1, 1, 1])
+    state.structures = undefined
     flushSync()
     expect(state.id_results).toEqual([])
-    pending_compute.resolve(bcc_result)
-    await vi.waitFor(() => expect(state.id_results).toEqual([bcc_result]))
-
-    state.structures = undefined
+    state.structures = make_fcc([2, 2, 2])
+    await vi.waitFor(() => expect(state.id_results).toHaveLength(1))
+    compute_spy.mockReturnValueOnce(new Promise(() => {}))
+    state.structures = make_bcc([1, 1, 1])
     flushSync()
     expect(state.id_results).toEqual([])
   })

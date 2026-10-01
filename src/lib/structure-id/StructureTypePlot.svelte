@@ -49,23 +49,18 @@
 
   let dropped_entries = $state<StructureEntry[]>([])
   const entries = $derived([...to_structure_entries(structures), ...dropped_entries])
-  // Labels of the entries the current id_results were computed from; empty when the
-  // results came in through the prop instead
-  let computed_labels = $state<string[]>([])
+  // Labels of the entries id_results are computed from (use_async_result drops results that
+  // outlive their entries); empty when the results came in through the prop instead
+  const computed_labels = $derived(entries.map(({ label }) => label))
 
   use_async_result({
     input: () => (entries.length > 0 ? entries : undefined),
     options: () => id_options,
-    compute: async (inputs, options, signal) => ({
-      results: await Promise.all(
+    compute: (inputs, options, signal) =>
+      Promise.all(
         inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
       ),
-      labels: inputs.map(({ label }) => label),
-    }),
-    set_result: (value) => {
-      id_results = value?.results ?? []
-      computed_labels = value?.labels ?? []
-    },
+    set_result: (value) => (id_results = value ?? []),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
     clear_error_on_withdraw: true,

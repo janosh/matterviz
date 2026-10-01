@@ -94,6 +94,7 @@ describe(`collect_vacf_input`, () => {
   it.each([
     [`stored`, { box_length: 5, velocities: [[1, 0, 0]] }, [1, 1, 2], [1, 1, 1]],
     [`molecule-derived`, {}, [1, 1, 2], [1, 1, 1]],
+    [`unwrapped-derived`, { box_length: 5, coords_unwrapped: true }, [1, 1, 2], [1, 1, 1]],
     [`cell-derived`, { box_length: 5 }, [1, 2, 4], [1, 1, 2]],
   ])(
     `budgets every buffer calc_vacf holds for %s velocities`,
