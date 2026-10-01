@@ -799,9 +799,9 @@ export class StructureSession {
     )
   }
 
-  // Drag moves from TransformControls: apply the Cartesian delta and wrap only the moved sites'
-  // fractional coordinates, inline so normalize_fractional_coords hits its fast path; explicit
-  // bonds follow a site wrapped across a face with a cell_shift
+  // Drag moves from TransformControls: apply the Cartesian delta and wrap fractional
+  // coordinates inline so normalize_fractional_coords hits its fast path; explicit bonds of a
+  // site wrapped across a face gain a cell_shift
   move_sites = (scene_indices: number[], delta: Vec3): void => {
     const structure = this.inputs.structure()
     const normalized_sites = this.normalized_structure?.sites

@@ -2342,9 +2342,8 @@
       <!-- Invisible plane for click-to-place atom in add-atom mode -->
       <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
       {#if interactive && measure_mode === `edit-atoms` && add_atom_mode}
-        {@const center = rotation_target ?? [0, 0, 0]}
         <T.Mesh
-          position={center}
+          position={rotation_target}
           onBeforeRender={(mesh: Mesh) => {
             if (camera) {
               mesh.lookAt(camera.position)

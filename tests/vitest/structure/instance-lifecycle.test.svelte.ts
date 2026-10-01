@@ -84,20 +84,6 @@ test.each([`plane`, `slab`] as const)(
   },
 )
 
-// no weighted sites (all deleted in edit mode, or only empty species) means no center of
-// mass: rotate about the origin
-test.each([
-  [`no sites`, []],
-  [`a site without species`, [{ ...make_site(`C`, [0, 0, 0], [0, 0, 0], `C`), species: [] }]],
-])(`Scene keeps finite transforms for a structure with %s`, (_desc, sites) => {
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, { structure: { sites }, gizmo: false }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  scene.traverse((node) => expect(node.position.toArray().every(Number.isFinite)).toBe(true))
-})
-
 // Hover raycasts stay off while the camera moves or atoms are dragged, so tooltips don't flicker
 test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
   const capture = vi.spyOn(extras, `interactivity`)

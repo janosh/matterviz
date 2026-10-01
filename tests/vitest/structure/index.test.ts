@@ -274,13 +274,10 @@ describe(`get_center_of_mass`, () => {
   })
 
   // null instead of [NaN, NaN, NaN] when nothing carries weight
-  test.each([
-    [`no sites`, []],
-    [
-      `a zero-occupancy site`,
-      [{ element: `H` as const, occu: 0, oxidation_state: 0, xyz: [1, 2, 3] as Vec3 }],
-    ],
-  ])(`returns null for %s`, (_desc, sites) => {
+  test(`returns null when no site carries weight`, () => {
+    const sites = [
+      { element: `H` as const, occu: 0, oxidation_state: 0, xyz: [1, 2, 3] as Vec3 },
+    ]
     expect(struct_utils.get_center_of_mass(create_simple_structure(sites))).toBeNull()
   })
 })

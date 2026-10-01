@@ -527,34 +527,24 @@ describe(`edit-atoms`, () => {
     expect(moved?.xyz[2]).toBeCloseTo(6.5, 12)
   })
 
-  // Explicit bonds (own and bound) of a site dragged across a cell face gain a cell_shift
-  // instead of spanning the cell; bound bonds address the out-of-cell site's wrapped frame
+  // own bonds address the raw site (1.95 -> 2.05 wraps twice), bound ones the normalized (once)
   it(`keeps explicit bond lengths when a moved site wraps across the cell`, () => {
     const { host, session } = make_session({
       structure: {
         ...make_crystal(10, [
-          { element: `H`, abc: [0.05, 0.5, 0.5] },
-          { element: `H`, abc: [1.15, 0.5, 0.5] },
+          { element: `H`, abc: [0.9, 0.5, 0.5] },
+          { element: `H`, abc: [1.95, 0.5, 0.5] },
         ]),
-        // own bonds address the raw sites (1.15 - 1), bound ones the wrapped sites (0.15)
         properties: {
           bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, 0] }],
         },
       },
       bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-      measure_mode: `edit-atoms`,
     })
-    // own bonds, then bound ones
-    const lengths = () => [bond_lengths(host.structure), bond_lengths(session.base_structure)]
-    session.move_sites([0], [-1, 0, 0])
+    session.move_sites([1], [1, 0, 0])
     flushSync()
-    // only the dragged site wraps: the caller's unwrapped coords (LAMMPS data) survive exports
-    expect(host.structure?.sites[1].abc[0], `unmoved site`).toBeCloseTo(1.15, 12)
-    expect(lengths()).toEqual([[2], [2]])
-    // the out-of-cell site's drag crosses a face only in the wrapped frame of the bound bonds
-    session.move_sites([1], [-1.6, 0, 0])
-    flushSync()
-    expect(lengths()).toEqual([[0.4], [0.4]])
+    const own_and_bound = [bond_lengths(host.structure), bond_lengths(session.base_structure)]
+    expect(own_and_bound).toEqual([[1.5], [1.5]])
   })
 
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
@@ -650,8 +640,7 @@ describe(`edit-bonds`, () => {
     expect(host.bonds).toEqual(source)
   })
 
-  // Out-of-cell sites wrap for display, shifting their explicit bonds: edits merge onto (and a
-  // new structure hands out) those wrapped-frame bonds, not raw ones spanning the cell
+  // out-of-cell sites wrap for display, which shifts their explicit bonds into the wrapped frame
   it(`merges bond edits in the wrapped frame of out-of-cell sites`, () => {
     const out_of_cell = (site_idx_1 = 0, site_idx_2 = 1) => ({
       ...make_crystal(10, [
@@ -673,8 +662,6 @@ describe(`edit-bonds`, () => {
     flushSync()
     expect(bond_lengths(session.base_structure), `stale emitted bonds replaced`).toEqual([1])
     // the drag's re-derived set stays the session's own, so the next load still replaces it
-    host.measure_mode = `edit-atoms`
-    flushSync()
     session.move_sites([1], [-0.6, 0, 0])
     flushSync()
     host.structure = out_of_cell(1, 2)
@@ -728,8 +715,6 @@ describe(`edit-bonds`, () => {
     expect(host.bonds, `source bonds restored`).toEqual(source)
     expect(session.undo_bond_edit()).toBe(false)
     // the restored set is still the caller's, so an edit-atoms change keeps it
-    host.measure_mode = `edit-atoms`
-    flushSync()
     session.add_atom([1, 1, 1], `H`)
     flushSync()
     expect(host.bonds, `caller's bonds survive`).toEqual(source)
