@@ -117,6 +117,13 @@ describe(`loading policy`, () => {
     },
   )
 
+  // a 64 KiB sniff head cut inside frame 1's last atom line must not pass for one frame
+  it(`opens both XYZ frames when the first sniff head ends inside frame 1`, async () => {
+    const body = Array(2000).fill(`H 10.123456 1.000000 2.000000`).join(`\n`)
+    const frame = `2000\n${`c`.repeat(2 ** 16 - 5 - body.length)}\n${body}` // 1 char past
+    expect((await open(`${frame}\n${frame}\n`, `md.xyz`)).frame_count).toBe(2)
+  })
+
   it.each([`info`, `calculator.`])(
     `indexes ASE energy fields stored in %s`,
     async (section) => {

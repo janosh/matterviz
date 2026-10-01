@@ -142,18 +142,22 @@ export function create_camera_flight_sampler(
   }
 }
 
+// Level turntable about world up, as OrbitControls orbits (a rolled start view is leveled)
 export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlight {
   const target = new Vector3(...pose.target)
   const offset = new Vector3(...pose.position).sub(target)
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
-  const up = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(...pose.quaternion))
+  const up = new Vector3(0, 1, 0)
+  const elevation_deg = (Math.asin(offset.dot(up) / offset.length()) * 180) / Math.PI
+  if (Math.abs(elevation_deg) >= 89)
+    throw new RangeError(`Orbit needs |elevation| < 89°, got ${elevation_deg}°`)
   // 45° steps suffice: smooth flights orbit exactly (see create_camera_flight_sampler)
   const keyframes = Array.from({ length: 9 }, (_unused, idx): CameraKeyframe => {
-    const position = offset
-      .clone()
-      .applyAxisAngle(up, (idx * Math.PI) / 4)
-      .add(target)
+    const position = new Vector3(...pose.position)
+    const angle = (idx * Math.PI) / 4
+    // The closing position stays exact, avoiding a visible seam when the video loops.
+    if (idx % 8) position.sub(target).applyAxisAngle(up, angle).add(target)
     return {
       ...copy_pose(pose),
       time: (duration * idx) / 8,
@@ -163,9 +167,6 @@ export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlig
         .toArray(),
     }
   })
-  // The closing pose is exact, avoiding a visible seam when the video loops.
-  keyframes[0] = { ...copy_pose(pose), time: 0 }
-  keyframes[8] = { ...copy_pose(pose), time: duration }
   const flight: CameraFlight = { keyframes, interpolation: `smooth` }
   validate_camera_flight(flight)
   return flight
@@ -217,6 +218,23 @@ export function create_camera_flight_controller(
     camera.updateMatrixWorld()
     invalidate()
   }
+  // OrbitControls re-aims at its target with a level `camera.up` on every update, so a view it
+  // can't hold (target off the view axis, rolled) would snap: move the pivot onto the view axis
+  // and level the roll. Held poses (off by ~1e-15 round-off) stay bit-identical.
+  const HELD_POSE_TOL = 1e-9
+  const hand_over = (): void => {
+    const to_target = controls.target.clone().sub(camera.position)
+    const distance = to_target.length()
+    const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+    // unit direction, not a cross product: that is 0 for a target behind the camera too
+    const on_axis = to_target.divideScalar(distance).distanceTo(forward) <= HELD_POSE_TOL
+    if (on_axis && Math.abs(right.dot(camera.up)) <= HELD_POSE_TOL) return
+    controls.target.copy(camera.position).addScaledVector(forward, distance)
+    camera.lookAt(controls.target)
+    camera.updateMatrixWorld()
+    invalidate()
+  }
   return {
     capture,
     begin() {
@@ -229,7 +247,9 @@ export function create_camera_flight_controller(
         if (released) return
         released = true
         try {
-          if (restore && !disposed) apply(original)
+          if (disposed) return
+          if (restore) apply(original)
+          else hand_over()
         } finally {
           active = false
           set_active(false)

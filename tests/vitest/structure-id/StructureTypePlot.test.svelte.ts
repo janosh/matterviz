@@ -178,9 +178,9 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     },
   )
 
-  // A failed compute used to leave its message behind once `structures` was emptied, because
-  // the reset sat after the early return for empty input
-  test(`clears the error once the failing structures are replaced or removed`, async () => {
+  // A failed compute's message, and a successful one's results, must not outlive their inputs:
+  // once replaced (while the replacement computes) or removed
+  test(`clears the error and results once their structures are replaced or removed`, async () => {
     const compute_spy = vi
       .spyOn(async_compute, `calc_structure_id_async`)
       .mockRejectedValueOnce(new Error(`synthetic failure`))
@@ -202,6 +202,16 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     expect(compute_spy).toHaveBeenCalledTimes(2)
     expect(state.error_msg).toBeUndefined()
     expect(document.body.textContent).not.toContain(`synthetic failure`)
+
+    state.structures = undefined
+    flushSync()
+    expect(state.id_results).toEqual([])
+    state.structures = make_fcc([2, 2, 2])
+    await vi.waitFor(() => expect(state.id_results).toHaveLength(1))
+    compute_spy.mockReturnValueOnce(new Promise(() => {}))
+    state.structures = make_bcc([1, 1, 1])
+    flushSync()
+    expect(state.id_results).toEqual([])
   })
 
   test(`equivalent recreated ID options do not recompute`, async () => {

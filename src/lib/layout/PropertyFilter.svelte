@@ -2,7 +2,7 @@
   import { Icon } from 'svelte-widgets'
   import { Close } from 'svelte-widgets/icons'
   import { sanitize_html } from '$lib/sanitize'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import type { AxisConfig, HistogramSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -44,7 +44,7 @@
   // null, so the input bindings below map it back to undefined: consumers test
   // `bound === undefined`, and a leaked null compares as 0 (`val <= null` is `val <= 0`).
   const active = $derived(min_value !== undefined || max_value !== undefined)
-  const plain_label = $derived(strip_html(label))
+  const plain_label = $derived(html_to_text(label))
 
   function onkeydown(event: KeyboardEvent & { currentTarget: HTMLInputElement }): void {
     if (event.key === `Enter`) {

@@ -4,7 +4,7 @@
   import { portal, float, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '$lib/sanitize'
   import type { Column } from '$lib/table'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { slide } from 'svelte/transition'
@@ -46,7 +46,7 @@
   )
   const column_matches_filter = (col: MenuColumn): boolean =>
     !normalized_column_filter ||
-    [col.id, col.key, strip_html(col.label), col.description, col.group]
+    [col.id, col.key, html_to_text(col.label), col.description, col.group]
       .filter(Boolean)
       .join(` `)
       .toLowerCase()

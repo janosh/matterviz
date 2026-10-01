@@ -145,19 +145,19 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`.structure-suggestions button`).first()).toBeVisible()
     await page.evaluate(() => {
       const original_fetch = globalThis.fetch
+      // One shared rejection: the suggestions fetch starts only after resolve_provider_url's own
+      // network round trip, so it may be issued before or after the event fires
+      const failed = new Promise<Response>((_resolve, reject) => {
+        const fail = () => reject(new TypeError(`Provider unavailable`))
+        window.addEventListener(`fail-suggestions`, fail, { once: true })
+      })
+      failed.catch(() => {})
       globalThis.fetch = (input, init) => {
         const url =
           typeof input === `string` ? input : input instanceof URL ? input.href : input.url
-        if (url.includes(`oqmd.org`) && url.includes(`page_limit`)) {
-          return new Promise<Response>((_resolve, reject) => {
-            window.addEventListener(
-              `fail-suggestions`,
-              () => reject(new TypeError(`Provider unavailable`)),
-              { once: true },
-            )
-          })
-        }
-        return original_fetch(input, init)
+        return url.includes(`oqmd.org`) && url.includes(`page_limit`)
+          ? failed
+          : original_fetch(input, init)
       }
     })
     await page.locator(`button.db-select`, { hasText: `oqmd` }).click()

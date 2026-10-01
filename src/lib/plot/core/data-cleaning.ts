@@ -3,7 +3,7 @@
 // detection, plus the multi-series, xyz and trajectory-property orchestrators built on them.
 
 import { median, type Vec2 } from '$lib/math'
-import { assert_series_lengths, type DataSeries } from '$lib/plot/core/types'
+import { assert_series_lengths, type DataSeries, PER_POINT_KEYS } from '$lib/plot/core/types'
 import { gaussian_kernel_smooth } from '$lib/spectral/helpers'
 
 // === Types ===
@@ -661,16 +661,7 @@ export function clean_series<T extends DataSeries>(
   result_series.x = x_arr
   result_series.y = y_arr
   // Filter every per-point field once; scalar styles and metadata stay untouched.
-  for (const key of [
-    `raw_y`,
-    `metadata`,
-    `color_values`,
-    `size_values`,
-    `point_style`,
-    `point_hover`,
-    `point_label`,
-    `point_offset`,
-  ] as const) {
+  for (const key of [`raw_y`, ...PER_POINT_KEYS] as const) {
     const value = series[key]
     if (Array.isArray(value))
       Object.assign(result_series, { [key]: pick<unknown>(value, kept) })

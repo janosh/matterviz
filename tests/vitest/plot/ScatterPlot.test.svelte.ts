@@ -22,6 +22,7 @@ import {
   clip_rect,
   doc_query,
   keydown,
+  marker_fill,
   marker_position,
   mock_canvas_context,
   mount_sized,
@@ -938,6 +939,7 @@ describe(`ScatterPlot`, () => {
         ],
         x2_axis: { range: [30.2, 40.8] },
         line_tween: { duration },
+        fill_regions: [{ upper: 0.5, lower: 0 }], // fills rebuild on pan, legend rows mustn't
       })
       const paths = [...plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)]
       expect(paths).toHaveLength(2)
@@ -1073,13 +1075,8 @@ describe(`ScatterPlot`, () => {
           const marks = plot.querySelectorAll(`[data-series-id="${series_idx}"] ${selector}`)
           expect(marks.length).toBeGreaterThan(0)
           for (const mark of marks) {
-            if (kind === `point`) {
-              const wrapper = mark.closest(`[style*="--point-fill-color"]`)
-              if (!wrapper) throw new Error(`Missing marker color wrapper`)
-              expect(getComputedStyle(wrapper).getPropertyValue(`--point-fill-color`)).toBe(
-                color,
-              )
-            } else expect(mark.getAttribute(attribute)).toBe(color)
+            if (kind === `point`) expect(marker_fill(mark)).toBe(color)
+            else expect(mark.getAttribute(attribute)).toBe(color)
           }
         }
         const numeric_edits =
@@ -1442,6 +1439,35 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // x2 data (e.g. photon energy over wavelength) must not stretch the primary x axis
+  test(`x axis spans only its own series`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [400, 800], y: [400, 800] },
+        { x: [1, 3], y: [1, 3], x_axis: `x2` },
+      ],
+    })
+    expect(Number(axis_tick_labels(plot, `x`)[0])).toBeGreaterThanOrEqual(300)
+  })
+
+  test(`input warnings fire once, not on every data update that keeps them`, async () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const line_style = { stroke: `red` }
+    const bands = (): DataSeries[] =>
+      [0, 1].map(() => ({ x: [0, 1], y: [0, 1], label: `Band`, markers: `line`, line_style }))
+    const state = $state({ series: bands() })
+    const typo_ref = { type: `series`, series_id: `typo` } as const
+    await mount_sized_scatter_plot(
+      bind_props({ fill_regions: [{ upper: typo_ref, lower: 0 }] }, state),
+    )
+    state.series = bands()
+    flushSync()
+    expect(warn.mock.calls).toEqual([
+      [`ScatterPlot: fill references no series: ${JSON.stringify(typo_ref)}`],
+      [`ScatterPlot: identical legend rows "Band", give them a shared legend_id`],
+    ])
+  })
+
   test(`reassigns visible unit groups and inferred axes after visibility changes`, async () => {
     const state = $state({
       series: [
@@ -1683,6 +1709,7 @@ describe(`ScatterPlot`, () => {
   })
 
   test(`invalid data`, async () => {
+    // null entries hold their index, draw nothing and don't break the underlay lookup
     const invalid = [
       {
         x: [1, 2, null, 4, 5] as (number | null)[],
@@ -1690,8 +1717,13 @@ describe(`ScatterPlot`, () => {
       },
       null,
       undefined,
-      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN] },
-      { x: [100, 200, 300], y: [10, 20, 30] },
+      // a JSON null x_axis (e.g. Python None) means the primary one
+      { x: [10, 20, 30, 40, 50], y: [10, 20, 30, NaN, NaN], x_axis: null },
+      {
+        x: [100, 200, 300],
+        y: [10, 20, 30],
+        line_underlays: [{ x: [100, 300], y: [10, 30] }],
+      },
     ] as DataSeries[]
     const invalid_plot = await mount_sized_scatter_plot({ series: invalid })
     expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
@@ -2024,10 +2056,14 @@ describe(`ScatterPlot`, () => {
     expect(fills[1].classList.contains(`hovered`)).toBe(true)
   })
 
-  test(`keeps duplicate fill IDs keyed and hovered independently`, async () => {
+  // ids 1 and `1` would both key as `1`
+  test.each([
+    [`duplicate`, `duplicate`],
+    [1, `1`],
+  ])(`keeps fill IDs %j and %j keyed and hovered apart`, async (first_id, second_id) => {
     const fill_regions: FillRegion[] = [
-      { id: `duplicate`, lower: 0, upper: 0.2, fill: `steelblue` },
-      { id: `duplicate`, lower: 0.4, upper: 0.6, fill: `slategray` },
+      { id: first_id, lower: 0, upper: 0.2, fill: `steelblue` },
+      { id: second_id, lower: 0.4, upper: 0.6, fill: `slategray` },
     ]
     await mount_sized_scatter_plot({ ...fill_plot_props(), fill_regions })
 
@@ -2282,14 +2318,73 @@ describe(`ScatterPlot`, () => {
     expect(tick_labels.at(-1)).toBe(`100`)
     const markers = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
     expect(markers.map(marker_radius)).toEqual([2, 2.5, 10, 2.5])
-    // --point-fill-color is set on the wrapper Svelte adds for component CSS custom props
-    const fills = markers.map((marker) =>
-      marker.parentElement?.parentElement?.style.getPropertyValue(`--point-fill-color`),
-    )
+    const fills = markers.map(marker_fill)
     expect(fills[0]).toBe(`#440154`) // viridis(0)
     expect(fills[2]).toBe(`#fde725`) // viridis(1)
     expect(fills[1]).toBe(fills[3])
     expect(fills[1]).not.toMatch(/NaN/)
+  })
+
+  // Re-encoding colour or size (e.g. picking another column) glides markers like a data move.
+  // Colours d3 can't parse (CSS variables) can't blend, so they switch at the start.
+  test(`markers tween colour and size with the position`, async () => {
+    // Svelte's frame loop keeps the real requestAnimationFrame, but reads this faked clock
+    vi.useFakeTimers({ toFake: [`performance`] })
+    try {
+      const series = $state<DataSeries[]>([
+        {
+          x: [1, 2, 3],
+          y: [1, 2, 3],
+          color_values: [0, 100, null] as number[],
+          size_values: [1, 9, 1],
+          point_style: [{}, {}, { fill: `var(--accent)` }],
+        },
+      ])
+      const plot = await mount_sized_scatter_plot({
+        series,
+        size_scale: { radius_range: [2, 10] },
+        color_scale: `interpolateViridis`,
+        color_bar: null,
+        legend: null,
+        show_controls: false,
+      })
+      const [first, , authored] = plot.querySelectorAll(`path.marker`)
+      const start_position = marker_position(plot, 0)
+      expect([marker_fill(first), marker_radius(first)]).toEqual([`#440154`, 2])
+      vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps
+
+      series[0] = {
+        ...series[0],
+        color_values: [100, 0, null] as number[],
+        size_values: [9, 1, 1],
+        point_style: [{}, {}, { fill: `red` }],
+      }
+      flushSync()
+      vi.advanceTimersByTime(150)
+      await vi.waitFor(() => expect(marker_fill(first)).toMatch(/^rgb\(/))
+      const mid_fill = marker_fill(first) ?? ``
+      const [red, green, blue] = mid_fill.match(/\d+/g)?.map(Number) ?? []
+      // one eased frame: each channel from viridis(0) = rgb(68, 1, 84) to viridis(1) =
+      // rgb(253, 231, 37) and the radius from 2 to 10 sit at the same fraction of the way
+      const [frac, ...fracs] = [
+        (red - 68) / 185,
+        (green - 1) / 230,
+        (blue - 84) / -47,
+        (marker_radius(first) - 2) / 8,
+      ]
+      expect(frac).toBeGreaterThan(0)
+      expect(frac).toBeLessThan(1)
+      for (const other of fracs) expect(other).toBeCloseTo(frac, 1)
+      expect(marker_fill(authored)).toBe(`red`)
+      expect(marker_position(plot, 0)).toEqual(start_position)
+
+      vi.advanceTimersByTime(1000)
+      await vi.waitFor(() =>
+        expect([marker_fill(first), marker_radius(first)]).toEqual([`#fde725`, 10]),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test.each([1, 1e-30])(

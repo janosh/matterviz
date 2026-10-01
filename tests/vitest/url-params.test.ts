@@ -40,12 +40,24 @@ const make_reversed_weights = (weights: number[]): WeightsConfig =>
 const default_weights = make_weights([0.5, 0.4, 0.1])
 
 test.each([
-  [`default weights`, make_weights([0.5, 0.4, 0.1]), ``],
-  [`non-default weights`, make_weights([0.7, 0.2, 0.1]), `0.7,0.2,0.1`],
-  [`rounded weights`, make_weights([1 / 3, 1 / 3, 1 / 3]), `0.333,0.333,0.333`],
-  [`reversed config keys`, make_reversed_weights([0.7, 0.2, 0.1]), `0.7,0.2,0.1`],
-] as const)(`weights_to_param serializes %s`, (_case_name, config, expected) => {
-  expect(weights_to_param(config, default_weights)).toBe(expected)
+  [`default weights`, make_weights([0.5, 0.4, 0.1]), undefined, ``],
+  [`non-default weights`, make_weights([0.7, 0.2, 0.1]), undefined, `0.7,0.2,0.1`],
+  [`rounded weights`, make_weights([1 / 3, 1 / 3, 1 / 3]), undefined, `0.333,0.333,0.333`],
+  [`1 decimal`, make_weights([1 / 3, 1 / 3, 1 / 3]), 1, `0.3,0.3,0.3`],
+  [`full precision`, make_weights([1 / 3, 0.5, 1 / 6]), Infinity, `${1 / 3},0.5,${1 / 6}`],
+  [`reversed config keys`, make_reversed_weights([0.7, 0.2, 0.1]), undefined, `0.7,0.2,0.1`],
+] as const)(`weights_to_param serializes %s`, (_case_name, config, decimals, expected) => {
+  expect(weights_to_param(config, default_weights, { decimals })).toBe(expected)
+})
+
+test(`full-precision weights round-trip exactly`, () => {
+  const weights = [1 / 6, 2 / 3, 1 / 6] // sums to 1 - 1.1e-16; dividing would shift each by an ulp
+  const param = weights_to_param(make_weights(weights), default_weights, {
+    decimals: Infinity,
+  })
+  const config = make_weights([0.2, 0.3, 0.5])
+  apply_weights_param(param, config, default_weights)
+  expect(Object.values(config).map(({ weight }) => weight)).toStrictEqual(weights)
 })
 
 test.each([

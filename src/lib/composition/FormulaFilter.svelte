@@ -447,26 +447,28 @@
   }
 
   // Distinct valid elements of any input format (formula, comma- or dash-separated list),
-  // alphabetical, with one trailing `*` per wildcard. Invalid formulas yield nothing: an
-  // invalid exact formula is committed verbatim and this runs on it from a $derived.
+  // alphabetical, with one trailing `*` per wildcard. Lists count only included tokens (an
+  // exclusion would flip into an inclusion); an invalid formula, committed verbatim, yields [].
   function extract_elements(input: string): string[] {
     const trimmed = input.trim()
-    if (!trimmed) return []
-    if (infer_mode(trimmed) !== `exact`) {
-      const parts = trimmed.split(/[-,]/).map((part) => part.trim())
-      const elements = [...new Set(parts.filter(is_elem_symbol))].toSorted()
-      return [...elements, ...parts.filter((part) => part === `*`)]
-    }
+    const mode = infer_mode(trimmed)
+    let symbols: (string | null)[] // null marks a wildcard
     try {
-      const tokens = parse_formula_with_wildcards(trimmed).filter((token) => token.amount > 0)
-      const elements = [...new Set(tokens.flatMap((token) => token.element ?? []))]
-      return [
-        ...elements.toSorted(),
-        ...tokens.filter((tok) => tok.element === null).map(() => `*`),
-      ]
+      symbols =
+        mode === `exact`
+          ? parse_formula_with_wildcards(trimmed).flatMap((token) =>
+              token.amount > 0 ? [token.element] : [],
+            )
+          : tokenize_query(trimmed, mode).flatMap((token) =>
+              token.is_valid && token.operator === `include`
+                ? [token.is_wildcard ? null : token.element]
+                : [],
+            )
     } catch {
       return []
     }
+    const elements = [...new Set(symbols.filter((symbol) => symbol !== null))].toSorted()
+    return [...elements, ...symbols.filter((symbol) => symbol === null).map(() => `*`)]
   }
 
   // Re-express the elements of `value` in another mode (exact mode drops the amounts)

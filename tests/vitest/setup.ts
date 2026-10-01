@@ -192,6 +192,11 @@ export const marker_position = (
 ): { x: number; y: number } =>
   translate_of(root.querySelectorAll(`.marker`).item(marker_idx)?.parentElement)
 
+// Colour a ScatterPoint marker paints, the fallback in its var(--point-fill-color, ...) fill
+export const marker_fill = (marker: Element | undefined): string | undefined =>
+  /^var\(--point-fill-color, (?<color>.+)\)$/.exec(marker?.getAttribute(`fill`) ?? ``)?.groups
+    ?.color
+
 export const hdf5_group_option = (
   target: ParentNode,
   group_path: string,

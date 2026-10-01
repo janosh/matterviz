@@ -246,20 +246,28 @@ describe(`PlotLegend`, () => {
     )
   })
 
+  // filtering and aria labels go by the text readers see: tags dropped, entities decoded
   test(`filters large legends`, async () => {
+    const group = { legend_group: `Fe &amp; O` }
     const series_data = Array.from({ length: 13 }, (_, idx): LegendItem =>
-      legend_item(idx === 10 ? `Target series` : `Series ${idx}`, idx),
+      idx === 10
+        ? legend_item(`&alpha;-Fe<sub>2</sub>O<sub>3</sub>`, idx, {}, group)
+        : legend_item(`Series ${idx}`, idx),
     )
     mount_legend({ series_data })
 
     const filter = doc_query(`.legend-filter`, HTMLInputElement)
-    filter.value = `target`
+    filter.value = `α-fe2`
     filter.dispatchEvent(new Event(`input`, { bubbles: true }))
     await tick()
 
     const items = document.querySelectorAll(`.legend-item`)
     expect(items).toHaveLength(1)
-    expect(items[0].textContent).toContain(`Target series`)
+    expect(items[0].getAttribute(`aria-label`)).toBe(`Toggle visibility for α-Fe2O3`)
+    expect(doc_query(`.group-label`).getAttribute(`aria-label`)).toBe(`Toggle group Fe & O`)
+    expect(doc_query(`.group-chevron`).getAttribute(`aria-label`)).toBe(
+      `Collapse group Fe & O`,
+    )
   })
 
   // The legend glyph is the plot's own d3 outline: filled symbols carry the color as

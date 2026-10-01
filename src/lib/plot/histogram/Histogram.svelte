@@ -31,11 +31,11 @@
     legend_mode_to_prop,
     resolve_legend_visibility,
   } from '$lib/plot/core/utils/series-visibility'
-  import type { ObstacleSeries } from '$lib/plot/core/decorations'
-  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
+  import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { index_ref_lines } from '$lib/plot/core/reference-line'
   import {
     accumulate_extent,
+    create_axis_scales,
     empty_extent,
     nice_range_from_extent,
   } from '$lib/plot/core/scales'
@@ -53,6 +53,7 @@
     HistogramSeries,
   } from '$lib/plot/histogram/histogram'
   import {
+    bin_transform,
     compute_count_range,
     compute_histogram_bins,
     compute_histogram_counts,
@@ -183,10 +184,14 @@
     label: `Value`,
     ...x2_axis,
   })
+  // Weighted counts can be fractional ($derived.by: the entries are declared further down)
+  const count_format = $derived.by(() =>
+    selected_series_entries.some(({ series_data }) => series_data.weights) ? undefined : `d`,
+  )
   // Normalized bars are fractions, so only raw counts default to integer tick labels
   const value_axis_defaults = $derived(
     normalize === `count`
-      ? { label: `Count`, format: `d` }
+      ? { label: `Count`, format: count_format }
       : { label: normalize === `density` ? `Density` : `Probability` },
   )
   const value_axis = (axis: AxisConfig): AxisConfig => ({
@@ -333,32 +338,26 @@
     clip_id_prefix: `histogram-clip`,
   })
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
-  // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
-  // histogram_bins (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  // Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range)
+  const bar_foot = ([lower, upper]: Vec2): number =>
+    clamp(0, Math.min(lower, upper), Math.max(lower, upper))
+
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top) spanning each filled bar, so the
+  // legend can't hide inside one. Built from histogram_bins (pad-independent) + ranges so the
+  // crowding decision can't see its own reservation.
   const obstacles_norm = $derived.by(() =>
-    with_obstacle_frame(frame, histogram_bins.length > 0, ({ base_w, base_h }) => {
-      const { ranges } = frame
-      const bars: ObstacleSeries[] = []
-      for (const hist of histogram_bins) {
-        const [rx0, rx1] = hist.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
-        const [ry0, ry1] = hist.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
-        const x_span = rx1 - rx0
-        const y_span = ry1 - ry0
-        // signed spans: the x_norm/top/baseline math below is direction-correct, and rejecting a
-        // reversed range as degenerate emptied the obstacle field, so auto-placed decorations
-        // landed on the bars. Matches BoxPlot.svelte's guard.
-        if (x_span === 0 || y_span === 0) continue
-        for (const { x0: coord_x_0, x1: coord_x_1, value } of hist.bins) {
-          if (value <= 0) continue
-          const x_norm = ((coord_x_0 + coord_x_1) / 2 - rx0) / x_span
-          const top = 1 - (value - ry0) / y_span
-          const baseline = 1 + ry0 / y_span // normalized y of value=0 (bar foot)
-          const seg = clip_bar(true, x_norm, top, baseline)
-          if (seg) bars.push(seg)
-        }
-      }
-      return bars
+    with_obstacle_frame(frame, histogram_bins.length > 0, () => {
+      const { current } = frame.ranges
+      const norm = create_axis_scales(frame.axes, current, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
+      return histogram_bins.flatMap((hist) => {
+        const x_scale = norm[hist.x_axis ?? `x`]
+        const y_scale = norm[hist.y_axis ?? `y`]
+        const baseline = y_scale(bar_foot(current[hist.y_axis ?? `y`]))
+        return hist.bins.flatMap(({ x0: coord_x_0, x1: coord_x_1, value }) => {
+          const cross: Vec2 = [x_scale(coord_x_0), x_scale(coord_x_1)]
+          return value <= 0 ? [] : bar_obstacles(true, cross, [y_scale(value), baseline])
+        })
+      })
     }),
   )
 
@@ -415,14 +414,17 @@
     ),
   )
 
-  // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height
+  // Handler payload for a bar: `value`/`x` are the bin center, `y` the normalized bar height.
+  // The center is the edges' scale-space midpoint, where the bar is drawn (log [10, 100]: 31.6)
   const bar_data = (
     hist: BinnedSeries,
     { x0: coord_x_0, x1: coord_x_1, count, value }: HistogramBin,
   ) => {
     const active_x_axis = hist.x_axis ?? `x`
     const active_y_axis = hist.y_axis ?? `y`
-    const center = (coord_x_0 + coord_x_1) / 2
+    const bin_x_axis = active_x_axis === `x2` ? final_x2_axis : final_x_axis
+    const { fwd, inv } = bin_transform(bin_x_axis.scale_type ?? `linear`)
+    const center = inv((fwd(coord_x_0) + fwd(coord_x_1)) / 2)
     return {
       value: center,
       count,
@@ -434,7 +436,7 @@
       series_idx: hist.series_idx,
       metadata: null,
       label: hist.label,
-      x_axis: active_x_axis === `x2` ? final_x2_axis : final_x_axis,
+      x_axis: bin_x_axis,
       x2_axis: final_x2_axis,
       y_axis: active_y_axis === `y2` ? final_y2_axis : final_y_axis,
       y2_axis: final_y2_axis,
@@ -522,12 +524,9 @@
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
     <defs><PatternDefs patterns={hist_patterns} /></defs>
     {#each histogram_bins as hist (hist.id)}
-      {@const x_scale = hist.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
-      {@const y_scale = hist.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
-      <!-- Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range) -->
-      {@const y_range =
-        hist.y_axis === `y2` ? frame.ranges.current.y2 : frame.ranges.current.y}
-      {@const baseline = y_scale(clamp(0, Math.min(...y_range), Math.max(...y_range)))}
+      {@const x_scale = frame.scales[hist.x_axis ?? `x`]}
+      {@const y_scale = frame.scales[hist.y_axis ?? `y`]}
+      {@const baseline = y_scale(bar_foot(frame.ranges.current[hist.y_axis ?? `y`]))}
       <g
         class="histogram-series"
         data-series-idx={hist.series_idx}
@@ -656,7 +655,7 @@
               value={format_value_or_num(value, hover_info.x_axis.format)}
             />
           </div>
-          <div>Count: {format_value_or_num(count, `d`)}</div>
+          <div>Count: {format_value_or_num(count, count_format)}</div>
           {#if normalize !== `count`}
             <div>
               <TooltipValue

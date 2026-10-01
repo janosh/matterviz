@@ -216,35 +216,27 @@ export function remove_drag_listeners(
   document.body.style.cursor = ``
 }
 
-// Sorted [min, max] from two scalar bounds (rect-zoom inverts drag start/end,
-// which arrive in either order depending on drag direction)
-export const sorted_range = (value_a: number, value_b: number): Vec2 => [
-  Math.min(value_a, value_b),
-  Math.max(value_a, value_b),
-]
-
-// Same for an axis range, which an inverted axis (e.g. [1, 0]) stores high-to-low.
-// Returns the input itself when already sorted so callers can keep identity.
+// [min, max] of a pair in either order (an inverted axis stores its range high-to-low, a drag
+// rect its edges in drag order). Returns the input itself when sorted to keep identity.
 export const range_bounds = (range: Vec2): Vec2 =>
   range[0] <= range[1] ? range : [range[1], range[0]]
 
-// Invert a drag-rect edge pair through a scale to a sorted finite data range
-// (time scales invert to Dates, coerced to epoch numbers). Returns null when
-// either bound is non-finite or the range is degenerate (zero span).
-// `current` is the range being replaced: the drag arrives in either order, but the result has
-// to keep the axis pointing the way the user configured it. Sorting unconditionally wrote an
-// ascending range onto a descending axis, silently mirroring the whole plot until reset.
+// Point a range the way `current` runs, so a zoom keeps a descending axis descending
+export const orient_range = (range: Vec2, current?: Vec2): Vec2 => {
+  const [lower, upper] = range_bounds(range)
+  return current && current[0] > current[1] ? [upper, lower] : [lower, upper]
+}
+
+// Invert a drag-rect edge pair through a scale (Dates from time scales become epoch numbers)
+// to a range oriented like `current`, which it replaces. Null if non-finite or zero-span.
 export function invert_rect_range(
   scale: { invert: (pixel_x: number) => number | Date },
   a_px: number,
   b_px: number,
   current?: Vec2,
 ): Vec2 | null {
-  const [lower, upper] = sorted_range(
-    to_epoch_num(scale.invert(a_px)),
-    to_epoch_num(scale.invert(b_px)),
-  )
-  const range: Vec2 = current && current[0] > current[1] ? [upper, lower] : [lower, upper]
+  const inverted: Vec2 = [to_epoch_num(scale.invert(a_px)), to_epoch_num(scale.invert(b_px))]
+  const range = orient_range(inverted, current)
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }
 

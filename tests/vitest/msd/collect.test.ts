@@ -143,7 +143,7 @@ describe(`MSD components`, () => {
     expect(document.body.textContent).toContain(expected)
   })
 
-  it(`collects through TrajectoryMsdPane and carries the run timestep into units`, async () => {
+  it(`collects through TrajectoryMsdPane with the run timestep and reports a failed recollect`, async () => {
     const run = make_run(20)
     mounted.push(
       mount(TrajectoryMsdPane, {
@@ -162,5 +162,24 @@ describe(`MSD components`, () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Å²/fs`))
     expect(button.disabled).toBe(false)
     expect(document.body.textContent).toContain(`2 fs per collected frame`)
+    // the plot's reset on withdrawn positions must not wipe the pane's error in their shared slot
+    vi.spyOn(run, `collect_positions`).mockRejectedValueOnce(new Error(`recollect failed`))
+    button.click()
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`recollect failed`))
+  })
+
+  // 20 frames x 1M atoms = 480 MB: fits 512 MB, but not with calc_msd's unwrapped copy
+  it(`budgets calc_msd's unwrapped copy of wrapped cell positions`, async () => {
+    const run = trajectory_from_frames(
+      Array.from({ length: 20 }, (_, idx) => make_frame(idx, [[0, 0, 0]], { box_length: 5 })),
+    )
+    mounted.push(
+      mount(TrajectoryMsdPane, {
+        target: document.body,
+        props: { run: { ...run, atom_count: 1_000_000 }, pane_open: true },
+      }),
+    )
+    await tick()
+    expect(document.body.textContent).toContain(`needs ≥ 2`)
   })
 })

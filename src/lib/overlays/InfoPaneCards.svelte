@@ -5,7 +5,7 @@
   import type { InfoPaneCard, InfoPaneRow } from '$lib/overlays'
   import { sanitize_html } from '$lib/sanitize'
   import { hover_tooltip } from '$lib/tooltip/hover.svelte'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -20,7 +20,6 @@
     heading_level = 4,
     variant = `cards`,
     page_size = Infinity,
-    reveal_key = null,
     card_attrs,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -33,14 +32,11 @@
     heading_level?: 4 | 5
     variant?: `cards` | `flat`
     page_size?: number // cards per page; pager controls appear once the filtered list exceeds it
-    // key (or title) of a card to page to and scroll into view, e.g. a site selected elsewhere
-    reveal_key?: string | null
     card_attrs?: (card: Card) => HTMLAttributes<HTMLElement>
   } = $props()
 
   let filter = $state(``)
   let filter_open = $state(false)
-  let cards_el = $state<HTMLDivElement>()
   const row_key = (card: Card, row: InfoPaneRow, row_idx: number): string =>
     row.key ?? `${card.title}:${row.label}:${row.value}:${row_idx}`
 
@@ -66,17 +62,6 @@
   const turn_page = (direction: -1 | 1): void => {
     page_start = Math.min(last_page_start, Math.max(0, first_idx + direction * page_size))
   }
-  // Jump to the page holding `reveal_key`, then scroll its card into view once rendered
-  $effect(() => {
-    if (reveal_key == null) return
-    const idx = filtered_cards.findIndex((card) => (card.key ?? card.title) === reveal_key)
-    if (idx === -1) return
-    if (idx < first_idx || idx >= page_end) {
-      page_start = Math.floor(idx / page_size) * page_size
-      return // re-runs with the new page rendered
-    }
-    cards_el?.children[idx - first_idx]?.scrollIntoView({ block: `nearest` })
-  })
 </script>
 
 {#if title || show_filter_ui}
@@ -123,7 +108,7 @@
       {@render page_button(`Next`, 1, page_end >= filtered_cards.length)}
     </nav>
   {/if}
-  <div {...rest} bind:this={cards_el} class={[`info-cards`, variant, rest.class]}>
+  <div {...rest} class={[`info-cards`, variant, rest.class]}>
     {#each paged_cards as card (card.key ?? card.title)}
       {@const attrs = card_attrs?.(card) ?? {}}
       <section {...attrs} class={[`info-card`, attrs.class]}>
@@ -138,7 +123,9 @@
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
             <span
-              aria-label={row.tooltip ? strip_html(`${row.value}: ${row.tooltip}`) : undefined}
+              aria-label={row.tooltip
+                ? html_to_text(`${row.value}: ${row.tooltip}`)
+                : undefined}
               {@attach row.tooltip ? hover_tooltip(row_tooltip) : undefined}
               >{@html sanitize_html(row.value)}</span
             >

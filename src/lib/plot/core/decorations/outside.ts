@@ -2,7 +2,8 @@
 // fixed base padding and the normalized obstacle field, so the reservations made here cannot
 // feed back into the decision that produced them.
 
-import { compute_element_placement, type Sides } from '$lib/plot/core/layout'
+import { compute_element_placement, point_in_rect, type Sides } from '$lib/plot/core/layout'
+import { project_obstacles } from './obstacles'
 import type {
   ColorbarDecorationItem,
   DecorationItem,
@@ -14,8 +15,6 @@ import type {
 } from './types'
 
 const DEFAULT_DECORATION_GAP = 8
-// Keep a decoration inside if its emptiest placement is sparse relative to the plot-wide average.
-const CROWDING_RATIO = 0.5
 
 type OutsideLayout = {
   pad: Required<Sides> // base_pad plus reservations for whatever moved outside
@@ -25,7 +24,8 @@ type OutsideLayout = {
   colorbar_outside: boolean
 }
 
-// True when even the best interior spot for `footprint` (px) is too dense to host the decoration
+// True when the interior spot the solver would pick for `footprint` (px), searched in the base
+// plot box's pixels like the interior placement, covers any obstacle sample
 function is_crowded(
   obstacles: readonly DecorationPoint[],
   footprint: DecorationSize,
@@ -34,32 +34,16 @@ function is_crowded(
   clearance: number,
 ): boolean {
   if (obstacles.length === 0 || base_w <= 0 || base_h <= 0) return false
-  const footprint_width = footprint.width / base_w
-  const footprint_height = footprint.height / base_h
-  if (footprint_width >= 1 || footprint_height >= 1) return true
-  const placement = compute_element_placement({
-    plot_bounds: { x: 0, y: 0, width: 1, height: 1 },
-    element_size: { width: footprint_width, height: footprint_height },
-    axis_clearance: clearance / Math.min(base_w, base_h),
-    points: [...obstacles],
+  if (footprint.width >= base_w || footprint.height >= base_h) return true
+  const plot_bounds = { x: 0, y: 0, width: base_w, height: base_h }
+  const points = project_obstacles(obstacles, plot_bounds)
+  const { x, y } = compute_element_placement({
+    plot_bounds,
+    element_size: footprint,
+    axis_clearance: clearance,
+    points,
   })
-  const right = placement.x + footprint_width
-  const bottom = placement.y + footprint_height
-  let obstacle_count = 0
-  for (const point of obstacles) {
-    if (
-      point.x >= placement.x &&
-      point.x <= right &&
-      point.y >= placement.y &&
-      point.y <= bottom
-    ) {
-      obstacle_count++
-    }
-  }
-  // expected count if obstacles were spread uniformly = total * box-area fraction
-  return (
-    obstacle_count > CROWDING_RATIO * obstacles.length * footprint_width * footprint_height
-  )
+  return points.some((point) => point_in_rect(point, { x, y, ...footprint }))
 }
 
 const standard_items = (

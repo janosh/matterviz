@@ -9,10 +9,41 @@ export const is_plain_object = (value: unknown): value is Record<string, unknown
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 
 // A tag opens with a letter, `/` or `!`: a bare `<[^>]*>` ate the prose between a comparison
-// pair, so `T < 300 K and P > 1 bar` read back as `T  1 bar`.
-export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)[^>]*>`
+// pair, so `T < 300 K and P > 1 bar` read back as `T  1 bar`. Quoted attribute values may
+// hold `>` (`title="x>0"`), so they are skipped whole.
+export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)(?:[^>"']|"[^"]*"|'[^']*')*>`
 const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
+// Tags only, entities kept: still HTML, fit for {@html}. Plain-text sinks want html_to_text.
 export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
+
+export const HTML_ENTITY_SRC = String.raw`&(?:#(?<dec>\d+)|#x(?<hex>[\da-f]+)|(?<name>[a-z][\da-z]+));`
+// Named entities common in science; a Map, so `&constructor;` can't hit Object.prototype
+// oxfmt-ignore
+const NAMED_ENTITIES = new Map(Object.entries({
+  amp: `&`, lt: `<`, gt: `>`, quot: `"`, apos: `'`, nbsp: `\u00A0`, thinsp: `\u2009`,
+  ndash: `–`, mdash: `—`, hellip: `…`, minus: `−`, plusmn: `±`, times: `×`, middot: `·`,
+  sdot: `⋅`, deg: `°`, prime: `′`, le: `≤`, ge: `≥`, ne: `≠`, asymp: `≈`, infin: `∞`,
+  sup2: `²`, sup3: `³`, rarr: `→`, larr: `←`, micro: `µ`, angst: `Å`, Aring: `Å`, aring: `å`,
+  Auml: `Ä`, auml: `ä`, Ouml: `Ö`, ouml: `ö`, Uuml: `Ü`, uuml: `ü`, eacute: `é`, egrave: `è`,
+  ccedil: `ç`, ntilde: `ñ`, szlig: `ß`, sigmaf: `ς`,
+}))
+const GREEK_NAMES = `alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega`
+for (const [idx, name] of GREEK_NAMES.split(` `).entries()) {
+  const letter = `αβγδεζηθικλμνξοπρστυφχψω`[idx]
+  NAMED_ENTITIES.set(name, letter)
+  NAMED_ENTITIES.set(name[0].toUpperCase() + name.slice(1), letter.toUpperCase())
+}
+// Visible text of an HTML string without a DOM (SSR-safe). One pass drops tags and decodes
+// entities, so `&amp;lt;` reads `&lt;` and `&l<i></i>t;` stays `&lt;` as in a browser. Unknown
+// entities stay as written.
+const HTML_TEXT_RE = new RegExp(`${HTML_TAG_SRC}|${HTML_ENTITY_SRC}`, `gi`)
+export const html_to_text = (str: string): string =>
+  str.replaceAll(HTML_TEXT_RE, (match, dec?: string, hex?: string, name?: string) => {
+    if (match.startsWith(`<`)) return ``
+    if (name) return NAMED_ENTITIES.get(name) ?? match
+    const code = hex ? Number.parseInt(hex, 16) : Number(dec)
+    return code <= 0x10ffff ? String.fromCodePoint(code) : match
+  })
 
 // Escape HTML special characters to prevent XSS attacks
 export const escape_html = (unsafe_string: string): string =>
@@ -73,6 +104,15 @@ export function make_change_detector(): (value: unknown) => boolean {
     prev = value
     return changed
   }
+}
+
+// First item whose key repeats an earlier one's (adding it leaves the Set's size unchanged)
+export const first_duplicate = <Item>(
+  items: readonly Item[],
+  key_of: (item: Item) => unknown = (item) => item,
+): Item | undefined => {
+  const seen = new Set()
+  return items.find((item) => seen.size === seen.add(key_of(item)).size)
 }
 
 // Decode a URL-safe base64 string (RFC 4648 §5) to its original text.

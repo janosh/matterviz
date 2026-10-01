@@ -26,7 +26,7 @@ import {
 } from '$lib/structure/site'
 import { generate_lattice_points } from '$lib/structure/supercell'
 import { structures } from '$site/structures'
-import { describe, expect, test, vi } from 'vitest'
+import { assert, describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 import {
   create_numeric_md_frame,
@@ -115,7 +115,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
 
     const com = struct_utils.get_center_of_mass(structure)
     expect(
-      com.map((val) => Math.round(val * 1e3) / 1e3),
+      com?.map((val) => Math.round(val * 1e3) / 1e3),
       `${identifier} center_of_mass`,
     ).toEqual(expected.center_of_mass)
   })
@@ -198,7 +198,7 @@ describe(`numeric composition`, () => {
 })
 
 describe(`get_center_of_mass`, () => {
-  test.each([0, 1, 128])(`reads %i numeric sites without materializing records`, (count) => {
+  test.each([1, 128])(`reads %i numeric sites without materializing records`, (count) => {
     const positions = Float64Array.from(
       { length: count * 3 },
       (_unused, idx) => Math.sin(idx) * (idx % 2 ? 1e8 : 1e-8),
@@ -220,11 +220,10 @@ describe(`get_center_of_mass`, () => {
       },
     })
     const actual = struct_utils.get_center_of_mass(structure)
+    assert(actual && expected)
     expect(actual).toEqual(expected)
-    if (count) {
-      expect(max_abs_error(actual, expected)).toBe(0)
-      expect(max_rel_error(actual, expected)).toBe(0)
-    }
+    expect(max_abs_error(actual, expected)).toBe(0)
+    expect(max_rel_error(actual, expected)).toBe(0)
   })
 
   const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
@@ -271,7 +270,15 @@ describe(`get_center_of_mass`, () => {
   ])(`should calculate center of mass for $desc`, ({ sites, expected }) => {
     const structure = create_simple_structure(sites)
     const result = struct_utils.get_center_of_mass(structure)
-    expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
+    expected.forEach((val, idx) => expect(result?.[idx]).toBeCloseTo(val, 3))
+  })
+
+  // null instead of [NaN, NaN, NaN] when nothing carries weight
+  test(`returns null when no site carries weight`, () => {
+    const sites = [
+      { element: `H` as const, occu: 0, oxidation_state: 0, xyz: [1, 2, 3] as Vec3 },
+    ]
+    expect(struct_utils.get_center_of_mass(create_simple_structure(sites))).toBeNull()
   })
 })
 

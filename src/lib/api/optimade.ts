@@ -10,7 +10,7 @@ export interface OptimadeStructure {
     chemical_formula_anonymous?: string
     dimension_types?: number[]
     nperiodic_dimensions?: number
-    lattice_vectors?: number[][]
+    lattice_vectors?: (number | null)[][] // a non-periodic direction may be all null
     cartesian_site_positions?: number[][]
     species_at_sites?: string[]
     species?: {

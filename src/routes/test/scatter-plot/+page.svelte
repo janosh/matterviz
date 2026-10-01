@@ -125,21 +125,13 @@
       y: [...dense_cluster.y, ...sparse_points.y, ...single_point.y],
       point_style: [
         ...dense_cluster.point_style,
-        ...(Array.isArray(sparse_points.point_style)
-          ? sparse_points.point_style
-          : [sparse_points.point_style]),
-        ...(Array.isArray(single_point.point_style)
-          ? single_point.point_style
-          : [single_point.point_style]),
+        ...sparse_points.x.map(() => sparse_points.point_style),
+        ...single_point.x.map(() => single_point.point_style),
       ],
       point_label: [
         ...dense_cluster.point_label,
-        ...(Array.isArray(sparse_points.point_label)
-          ? sparse_points.point_label
-          : [sparse_points.point_label]),
-        ...(Array.isArray(single_point.point_label)
-          ? single_point.point_label
-          : [single_point.point_label]),
+        ...sparse_points.point_label,
+        ...single_point.point_label,
       ],
     },
   ]

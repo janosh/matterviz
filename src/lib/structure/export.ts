@@ -257,6 +257,10 @@ function get_cif_block_name(structure: AnyStructure): string {
     : `structure`
 }
 
+// Quote a CIF value that whitespace would split or whose first char reads as syntax
+const cif_token = (value: string): string =>
+  !/\s|^[_#$'";[\]]/.test(value) ? value : value.includes(`'`) ? `"${value}"` : `'${value}'`
+
 export function structure_to_cif_str(structure?: AnyStructure): string {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   if (!has_lattice_matrix(structure)) {
@@ -321,7 +325,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
       const label =
         species_list.length > 1
           ? `${elem}${idx + 1}_${spec_idx}`
-          : site.label || `${elem}${idx + 1}`
+          : cif_token(site.label || `${elem}${idx + 1}`)
       lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
     }
   }

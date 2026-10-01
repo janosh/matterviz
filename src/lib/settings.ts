@@ -20,16 +20,15 @@ import { is_plain_object } from '$lib/utils'
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
 // whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
 // names its value type (string unless set).
-export interface SettingType<T = unknown> {
+// Constraints on a number setting, or on each item of an array setting (`items`)
+type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
+export interface SettingType<T = unknown> extends NumberBounds {
   value: T
   description: string
   enum?: Readonly<Record<Extract<T, string>, string>>
-  minimum?: number
-  maximum?: number
-  multipleOf?: number
   minItems?: number
   maxItems?: number
-  items?: { minimum?: number; maximum?: number; multipleOf?: number }
+  items?: NumberBounds
   additionalProperties?: { type: `string` | `number` | `boolean` | `object` }
   web_only?: true
 }
@@ -1266,12 +1265,12 @@ export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 // One admissibility rule for every place a setting value arrives from outside the program:
 // localStorage view state (settings/viewer-state.ts) and VS Code settings.json (the extension).
 
-const valid_number = (value: unknown, setting: SettingType): value is number => {
+const valid_number = (value: unknown, bounds: NumberBounds): value is number => {
   if (typeof value !== `number` || !Number.isFinite(value)) return false
-  if (setting.minimum !== undefined && value < setting.minimum) return false
-  if (setting.maximum !== undefined && value > setting.maximum) return false
-  if (setting.multipleOf !== undefined) {
-    const quotient = value / setting.multipleOf
+  if (bounds.minimum !== undefined && value < bounds.minimum) return false
+  if (bounds.maximum !== undefined && value > bounds.maximum) return false
+  if (bounds.multipleOf !== undefined) {
+    const quotient = value / bounds.multipleOf
     const tolerance = Number.EPSILON * Math.max(1, Math.abs(quotient)) * 4
     if (Math.abs(quotient - Math.round(quotient)) > tolerance) return false
   }
@@ -1287,14 +1286,16 @@ const valid_array = (value: unknown, setting: SettingType, reference: readonly u
   if (setting.maxItems !== undefined && value.length > setting.maxItems) return false
   // The only empty-array settings in the schema are element-symbol lists.
   if (reference.length === 0) return value.every((item) => typeof item === `string`)
-  return value.every((item, item_idx) =>
-    same_primitive_type(item, reference[item_idx] ?? reference[0]),
+  return value.every(
+    (item, item_idx) =>
+      same_primitive_type(item, reference[item_idx] ?? reference[0]) &&
+      (!setting.items || valid_number(item, setting.items)),
   )
 }
 
 // Whether `value` may stand in for the schema default: enum membership, a finite number inside
-// minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems, a
-// plain object for free-form maps, else the default's primitive type.
+// minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems
+// (items inside `items`), a plain object for free-form maps, else the default's primitive type.
 export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)

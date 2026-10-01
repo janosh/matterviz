@@ -49,7 +49,8 @@
   const table_height = `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
 
   const phase_stats = $derived(model.phase_stats)
-  const all_entries = $derived(model.entries)
+  // synthetic corners only close the hull (no data entries), so leave them out like phase_stats
+  const all_entries = $derived(model.entries.filter((entry) => !entry.is_synthetic))
   const shown_entries = $derived(
     filter_visible(all_entries, show_stable, show_unstable, entry_category, hidden_categories),
   )

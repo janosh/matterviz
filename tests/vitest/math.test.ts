@@ -1561,6 +1561,18 @@ describe(`gcd and Miller index reduction`, () => {
     expect(() => math.validate_miller_indices(hkl)).toThrow(message)
   })
 
+  it(`unimodular_completion frames a primitive vector and rejects others`, () => {
+    // U · vec = e₁ and det U = ±1, so rows 1 and 2 generate the whole annihilator, Gauss-reduced
+    const vec: Vec3 = [5, -1, 0] // cubic [110] in a sheared cell
+    const unimodular = math.unimodular_completion(vec)
+    expect(math.mat3x3_vec3_multiply(unimodular, vec)).toEqual([1, 0, 0])
+    expect(Math.abs(math.det_3x3(unimodular))).toBe(1)
+    const [, first, second] = unimodular
+    expect(2 * Math.abs(math.dot(first, second))).toBeLessThanOrEqual(math.dot(first, first))
+    expect(math.dot(first, first)).toBeLessThanOrEqual(math.dot(second, second))
+    expect(() => math.unimodular_completion([2, 4, 0])).toThrow(`primitive integer vector`)
+  })
+
   it(`validate_miller_indices accepts unreduced indices`, () => {
     expect(() => math.validate_miller_indices([2, 2, 0])).not.toThrow()
   })

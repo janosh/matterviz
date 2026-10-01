@@ -134,7 +134,13 @@ describe(`HeatmapTable`, () => {
     `renders table structure, hidden columns and row numbers=%s`,
     (show_row_numbers) => {
       const columns = [...sample_columns, { id: `Hidden`, label: `Hidden`, visible: false }]
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      onTestFinished(() => warn.mockRestore())
       mount_sample({ columns, show_row_numbers })
+      flushSync() // only the column whose key is in no row warns (it would render all n/a)
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `HeatmapTable column Hidden: key Hidden is in no row`,
+      )
 
       const headers = document.querySelectorAll(`th`)
       expect(headers).toHaveLength(show_row_numbers ? 4 : 3)
@@ -212,6 +218,9 @@ describe(`HeatmapTable`, () => {
     }
     const prefix_link = clipped.firstElementChild?.querySelector(`a`)
     expect(prefix_link?.getAttribute(`aria-label`)).toBe(`prefix & ${unicode_id}`)
+    // that aria-label only names the split link: its tooltip is the cell's own title
+    prefix_link?.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    expect(doc_query(`.custom-tooltip .tooltip-content`).textContent).toBe(`Full details`)
     const tail_link = clipped.lastElementChild?.querySelector(`a`)
     expect(tail_link?.getAttribute(`aria-hidden`)).toBe(`true`)
     expect(tail_link?.getAttribute(`tabindex`)).toBe(`-1`)
@@ -357,7 +366,7 @@ describe(`HeatmapTable`, () => {
       ]
       const columns: Column[] = [
         { id: `Observed`, label: `Observed` },
-        { id: `Start Time`, label: `Start Time`, datetime_format: `time` },
+        { id: `Start Time`, label: `Start &amp; <i>Time</i>`, datetime_format: `time` },
         { id: `Created`, label: `Created`, datetime_format: `datetime` },
         { id: `Ancient`, label: `Ancient`, datetime_format: `datetime` },
         { id: `Unix`, label: `Unix`, datetime_format: `datetime` },
@@ -368,6 +377,7 @@ describe(`HeatmapTable`, () => {
       const cells = () =>
         [...document.querySelectorAll(`tbody td`)].map((cell) => cell.textContent?.trim())
       const triggers = document.querySelectorAll<HTMLButtonElement>(`.datetime-format-trigger`)
+      expect(triggers[1].textContent?.trim()).toBe(`Date/time format for Start & Time`)
       const options = (select: HTMLSelectElement) =>
         [...select.options].map((option) => option.value)
       const open_select = async (idx: number): Promise<HTMLSelectElement> => {
@@ -785,7 +795,7 @@ describe(`HeatmapTable`, () => {
       const grouped_columns: Column[] = [
         { id: `Name`, label: `Name`, sticky: true },
         { id: `Regular`, label: `Regular` },
-        { id: `Value 1 (Values)`, label: `Value 1`, group: `Values` },
+        { id: `Value 1 (Values)`, label: `Value 1`, group: `Values`, description: `V1 only` },
         { id: `Value 2 (Values)`, label: `Value 2`, group: `Values` },
         { id: `Metric 1 (Metrics)`, key: `Metric 1`, label: `Metric 1`, group: `Metrics` },
         { id: `Metric 2 (Metrics)`, key: `Metric 2`, label: `Metric 2`, group: `Metrics` },
@@ -827,6 +837,8 @@ describe(`HeatmapTable`, () => {
         [``, null],
         [`Second Values`, `2`],
       ])
+      // a member column's description belongs to that column, not its group header
+      expect(header_rows[0].querySelector(`button`)).toBeNull()
 
       expect(
         [...header_rows[1].querySelectorAll(`th`)].map((header) =>
@@ -946,13 +958,15 @@ describe(`HeatmapTable`, () => {
       [`html is stripped before matching`, `bold`, [`Model C`]],
       [`no match`, `no-such-model`, []],
       [`empty query returns all rows`, `  `, [`Model A`, `Model B`, `Model C`]],
+      [`non-column keys like row style are not searched`, `gold`, []],
+      [`entities decode before matching`, `c & co`, [`Model C`]],
     ])(`filters rows by search_query: %s`, async (_desc, query, expected) => {
       fake_search_timers()
       const state = $state({ search_query: `` })
       const data = [
-        { Model: `Model A`, Score: 0.95 },
+        { Model: `Model A`, Score: 0.95, style: `background: gold` },
         { Model: `Model B`, Score: 0.85 },
-        { Model: `<b>bold</b> Model C`, Score: 0.75 },
+        { Model: `<b>bold</b> Model C &amp; co`, Score: 0.75 },
       ]
       mount_table(bind_props({ data, columns: sample_columns, search: true }, state))
 
@@ -1369,9 +1383,10 @@ describe(`HeatmapTable`, () => {
     it.each([`parent`, `select`])(`applies page-size changes from %s`, async (origin) => {
       const on_page_size_change = vi.fn()
       const state = $state({
+        data: large_data,
         pagination: { page_size: 10, page_sizes: [10, 25, 50], on_page_size_change },
       })
-      mount_sample(bind_props({ data: large_data }, state))
+      mount_sample(state)
       const select = doc_query<HTMLSelectElement>(`.page-size-select`)
       expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
         `10 / page`,
@@ -1389,6 +1404,18 @@ describe(`HeatmapTable`, () => {
       }
       expect(select.value).toBe(`25`)
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(25)
+      // a page size that fits all rows hides the page buttons but keeps the picker
+      select.value = `50`
+      await fire(select, new Event(`change`, { bubbles: true }))
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(50)
+      expect(document.querySelector(`.page-btn`)).toBeNull()
+      select.value = `10`
+      await fire(select, new Event(`change`, { bubbles: true }))
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(10)
+      // fewer rows than the smallest size: no pick would change paging, so no picker or bar
+      state.data = large_data.slice(0, 5)
+      await tick()
+      expect(document.querySelector(`.pagination`)).toBeNull()
     })
   })
 
@@ -2064,13 +2091,15 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data: many,
         columns: [
-          { id: `Tag`, label: `Tag`, filter: `category` },
+          { id: `Tag`, label: `<i>Tag</i> &amp; ID`, filter: `category` },
           { id: `Score`, label: `Score` },
         ],
         show_filters: true,
       })
       await tick()
-      await click(doc_query<HTMLButtonElement>(`.column-filter-trigger`))
+      const trigger = doc_query<HTMLButtonElement>(`.column-filter-trigger`)
+      expect(trigger.getAttribute(`aria-label`)).toBe(`Filter Tag & ID`) // as rendered
+      await click(trigger)
       const options = document.querySelectorAll(`.column-filter-options label`)
       expect(options).toHaveLength(60)
       const event = keydown(`Escape`)
@@ -2250,8 +2279,8 @@ describe(`HeatmapTable`, () => {
     it.each<[string, RowData, string[]]>([
       [
         `CSV`,
-        { Model: `say "hi", ok`, 'E<sub>f</sub>': 1 },
-        [`Model,Ef`, `"say ""hi"", ok",1`],
+        { Model: `say "hi", ok`, 'E<sub>f</sub> &amp; &Delta;H': 1 },
+        [`Model,Ef & ΔH`, `"say ""hi"", ok",1`],
       ],
       [
         `MD`,

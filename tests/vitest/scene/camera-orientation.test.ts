@@ -399,16 +399,27 @@ describe(`camera fly-to`, () => {
     expect(offset().z).toBeLessThan(0.05)
   })
 
-  test(`restores orbit controls when released mid-flight`, () => {
-    const { controls, fly, hook_calls } = make_rig()
+  // Gizmo and scene fly-tos share the controls: a takeover ends the first, `enabled` comes back
+  test.each([true, false])(`hands back enabled: %s on release and takeover`, (enabled) => {
+    const { camera, controls, fly, hook_calls } = make_rig()
+    const other = create_fly_to({
+      camera: () => camera,
+      controls: () => controls,
+      duration_ms: () => 400,
+      invalidate: () => {},
+    })
+    controls.enabled = enabled
     fly.start([1, 0, 0])
-    fly.step(0.1)
-    expect(controls.enabled).toBe(false)
     fly.release()
-    expect([controls.enabled, fly.active]).toEqual([true, false])
-    expect(hook_calls).toEqual([`start`, `change`, `end`])
-    fly.release()
-    expect(hook_calls).toEqual([`start`, `change`, `end`]) // no duplicate end
+    fly.release() // no duplicate end
+    expect([controls.enabled, fly.active]).toEqual([enabled, false])
+    controls.enabled = !enabled
+    fly.start([1, 0, 0])
+    other.start([0, 0, -1])
+    expect([fly.active, controls.enabled]).toEqual([false, false])
+    other.step(10)
+    expect(controls.enabled).toBe(!enabled)
+    expect(hook_calls).toEqual([`start`, `end`, `start`, `end`])
   })
 
   test.each([

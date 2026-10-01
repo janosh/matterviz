@@ -93,9 +93,8 @@ export function frame_atom_batch(
   }
   const channels = [velocity_key, energy_key, selection_key].map((key) => {
     const channel = key ? signals?.[key] : undefined
-    if (!channel) return undefined
-    if (!(`values` in channel))
-      throw new Error(`Signal ${key} requires a numeric source reader`)
+    // A streamed signal descriptor has no samples to index; its channel comes off the frame
+    if (!channel || !(`values` in channel)) return undefined
     const sample_idx = partition_point(channel.steps, (sample_step) => sample_step < step)
     if (channel.steps[sample_idx] !== step)
       throw new Error(`Signal ${key} has no sample at step ${step}`)

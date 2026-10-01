@@ -16,7 +16,7 @@
   import { format_num } from '$lib/labels'
   import { array_max, clamp } from '$lib/math'
   import { is_activation_key } from '$lib/plot/core/interactions'
-  import { clamp01, strip_html } from '$lib/utils'
+  import { clamp01, html_to_text } from '$lib/utils'
   import { ControlPane } from '$lib/overlays'
   import { sanitize_html, sanitize_html_ssr } from '$lib/sanitize'
   import type {
@@ -237,6 +237,7 @@
     if (split_link && link_label) {
       if (split_link.textContent) {
         split_link.setAttribute(`aria-label`, link_label)
+        split_link.dataset.ellipsisSplit = ``
         const tail_link = end.querySelector(`a`)
         tail_link?.setAttribute(`aria-hidden`, `true`)
         tail_link?.setAttribute(`tabindex`, `-1`)
@@ -261,6 +262,14 @@
       ids.add(col.id)
     }
     return resolved
+  })
+  // A column keyed to no row field (id `Energy` for rows with `energy`) renders all n/a
+  $effect(() => {
+    if (cell || !data.length) return
+    for (const col of given_columns) {
+      if (!col.cell && !data.some((row) => cell_key(col) in row))
+        console.warn(`HeatmapTable column ${col.id}: key ${cell_key(col)} is in no row`)
+    }
   })
 
   let container_el = $state<HTMLDivElement>()
@@ -500,14 +509,14 @@
 
   // Retain the values read to discard empty rows; normalize text only when a query reaches it.
   // Objects/Dates stay live, and row values and search keys directly invalidate this index.
+  // Without search.keys only column data is searched, not row style/class or other fields.
   let search_index = $derived.by(() => {
-    const keys = search_config?.keys
-    return data.flatMap((row) => {
-      const values = Object.values(row)
-      return values.some((val) => val !== undefined)
-        ? [{ row, values: keys ? keys.map((key) => row[key]) : values, text: [] as string[] }]
-        : []
-    })
+    const keys = search_config?.keys ?? columns.map(cell_key)
+    return data.flatMap((row) =>
+      Object.values(row).some((val) => val !== undefined)
+        ? [{ row, values: keys.map((key) => row[key]), text: [] as string[] }]
+        : [],
+    )
   })
 
   // Rows surviving the global query and every per-column filter
@@ -614,6 +623,12 @@
   })
   let total_pages = $derived(Math.max(1, Math.ceil(sorted_data.length / page_size)))
   let page = $derived(Math.min(current_page, total_pages))
+  // The size picker stays while some size (or the current one) splits the rows, so picking a
+  // size that fits them all can be undone; once every size fits, no pick would change anything
+  let page_sizes = $derived.by(() => {
+    const sizes = pagination_config?.page_sizes
+    return sizes && sorted_data.length > Math.min(page_size, ...sizes) ? sizes : null
+  })
 
   let scroll_el = $state<HTMLDivElement>()
   let scroll_top = $state(0)
@@ -1257,7 +1272,7 @@
   })
   // Visible cells as plain text: the single extraction every exporter builds on
   const table_matrix = (): TableMatrix => ({
-    headers: cols.map((view) => strip_html(view.col.label)),
+    headers: cols.map((view) => html_to_text(view.col.label)),
     rows: export_rows.map((row) => cols.map((view) => cell_text(row[view.key]))),
     numeric: cols.map((view) => view.numeric),
   })
@@ -1351,8 +1366,9 @@
   }
 
   // Delegation keeps tooltips working as sorting, filtering and pagination replace cells
+  // an ellipsis-split link's aria-label is for screen readers; its tooltip is the cell's own
   const table_tooltips = tooltip({
-    delegate: `[title], [aria-label], [data-title]`,
+    delegate: `[title], [aria-label]:not([data-ellipsis-split]), [data-title]`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
@@ -1655,7 +1671,7 @@
                 <!-- the group header renders once per group, on the group's first column -->
               {:else if visible_columns.find((one) => one.group === col.group) === col}
                 <th colspan={visible_columns.filter((one) => one.group === col.group).length}>
-                  {@render column_label(col.group, col.description)}
+                  {@render column_label(col.group)}
                 </th>
               {/if}
             {/each}
@@ -1933,30 +1949,32 @@
     </button>
   {/snippet}
 
-  {#if pagination_config && total_pages > 1}
+  {#if pagination_config && (total_pages > 1 || page_sizes)}
     <div class="pagination">
-      {@render page_btn(`«`, `First page`, 1, page === 1)}
-      {@render page_btn(`‹`, `Previous page`, page - 1, page === 1)}
-      <span class="page-info">
-        Page
-        <input
-          type="number"
-          class="page-input"
-          min="1"
-          max={total_pages}
-          value={page}
-          onchange={(event) => {
-            const val = parseInt(event.currentTarget.value, 10)
-            current_page = clamp(Number.isNaN(val) ? 1 : val, 1, total_pages)
-            event.currentTarget.value = String(current_page)
-          }}
-        />
-        of {total_pages}
-        <span class="row-count">({sorted_data.length} rows)</span>
-      </span>
-      {@render page_btn(`›`, `Next page`, page + 1, page === total_pages)}
-      {@render page_btn(`»`, `Last page`, total_pages, page === total_pages)}
-      {#if pagination_config.page_sizes}
+      {#if total_pages > 1}
+        {@render page_btn(`«`, `First page`, 1, page === 1)}
+        {@render page_btn(`‹`, `Previous page`, page - 1, page === 1)}
+        <span class="page-info">
+          Page
+          <input
+            type="number"
+            class="page-input"
+            min="1"
+            max={total_pages}
+            value={page}
+            onchange={(event) => {
+              const val = parseInt(event.currentTarget.value, 10)
+              current_page = clamp(Number.isNaN(val) ? 1 : val, 1, total_pages)
+              event.currentTarget.value = String(current_page)
+            }}
+          />
+          of {total_pages}
+          <span class="row-count">({sorted_data.length} rows)</span>
+        </span>
+        {@render page_btn(`›`, `Next page`, page + 1, page === total_pages)}
+        {@render page_btn(`»`, `Last page`, total_pages, page === total_pages)}
+      {/if}
+      {#if page_sizes}
         <select
           class="page-size-select"
           onchange={(event) => {
@@ -1965,7 +1983,7 @@
             pagination_config.on_page_size_change?.(page_size)
           }}
         >
-          {#each pagination_config.page_sizes as size (size)}
+          {#each page_sizes as size (size)}
             <option value={size} selected={size === page_size}>{size} / page</option>
           {/each}
         </select>

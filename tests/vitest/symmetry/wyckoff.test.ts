@@ -1,5 +1,5 @@
 import type { ElementSymbol } from '$lib'
-import type { Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
 import {
@@ -13,7 +13,7 @@ import {
 } from '$lib/symmetry'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_wyckoff_dataset } from '../test-fixtures'
+import { cubic_matrix, make_crystal, make_wyckoff_dataset } from '../test-fixtures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has
@@ -451,6 +451,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       orbits: [],
       site_symmetry_symbols: [],
       std_origin_shift: [0, 0, 0],
+      symprec: 1e-6,
     }) as unknown as MoyoDataset
 
   test.each([
@@ -582,6 +583,22 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       ).toEqual(expected)
     },
   )
+
+  // symprec 0.1 Å joins a site 0.15 Å off N to its row, not the N2 partner 1.1 Å up c = 30 Å
+  test(`scales the symprec tolerance per axis`, () => {
+    const lattice = cubic_matrix(3).with(2, [0, 0, 30]) as Matrix3x3
+    const dimer: [ElementSymbol, Vec3][] = [
+      [`N`, [0.5, 0.5, 0.5]],
+      [`N`, [0.5, 0.5, 0.5 + 1.1 / 30]],
+    ]
+    const rows = map_wyckoff_to_all_atoms(
+      dimer.map(([elem, abc], idx) => ({ wyckoff: `1a`, elem, abc, site_indices: [idx] })),
+      make_crystal(lattice, [...dimer, [`N`, [0.5, 0.5, 0.5 + 0.15 / 30]]]),
+      make_crystal(lattice, dimer),
+      { ...mock_sym_data(), symprec: 0.1 },
+    )
+    expect(rows.map((row) => row.site_indices)).toEqual([[0, 2], [1]])
+  })
 
   test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
     // displayed site sits 1e-7 below 1.0; the equivalent position wraps to 0.0 —

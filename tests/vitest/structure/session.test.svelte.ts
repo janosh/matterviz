@@ -11,6 +11,7 @@ import type {
 } from '$lib/structure'
 import type { AtomColorConfig } from '$lib/structure/atom-properties'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
+import { explicit_only } from '$lib/structure/bonding'
 import { MAX_HISTORY, StructureSession } from '$lib/structure/session.svelte'
 import { is_image_site, snapshot_topologies } from '$lib/structure/site'
 import { make_supercell } from '$lib/structure/supercell'
@@ -106,6 +107,10 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
   flushSync()
   return { host, session, notices }
 }
+
+// Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
+const bond_lengths = (structure: AnyStructure | undefined): number[] =>
+  explicit_only(structure ?? { sites: [] }).map((bond) => Number(bond.bond_length.toFixed(9)))
 
 // Every site with image atoms: the dummy crystal puts all atoms on cell boundaries
 const pick_all = (host: Host, session: StructureSession): void => {
@@ -286,6 +291,11 @@ describe(`symmetry-aware display`, () => {
     expect(n_displayed).toBeGreaterThan(2)
     expect(session.wyckoff_rows[0].site_indices).toHaveLength(n_displayed)
     expect(session.property_colors?.colors).toHaveLength(n_displayed)
+
+    // an element mapping relabels the displayed atoms; the orbits must still find them
+    session.element_mapping = { Cu: `Au` }
+    flushSync()
+    expect(session.wyckoff_rows[0].site_indices).toHaveLength(n_displayed)
 
     host.atom_color_config = DEFAULT_ATOM_COLOR_CONFIG
     flushSync()
@@ -517,6 +527,26 @@ describe(`edit-atoms`, () => {
     expect(moved?.xyz[2]).toBeCloseTo(6.5, 12)
   })
 
+  // own bonds address the raw site (1.95 -> 2.05 wraps twice), bound ones the normalized (once)
+  it(`keeps explicit bond lengths when a moved site wraps across the cell`, () => {
+    const { host, session } = make_session({
+      structure: {
+        ...make_crystal(10, [
+          { element: `H`, abc: [0.9, 0.5, 0.5] },
+          { element: `H`, abc: [1.95, 0.5, 0.5] },
+        ]),
+        properties: {
+          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, 0] }],
+        },
+      },
+      bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    })
+    session.move_sites([1], [1, 0, 0])
+    flushSync()
+    const own_and_bound = [bond_lengths(host.structure), bond_lengths(session.base_structure)]
+    expect(own_and_bound).toEqual([[1.5], [1.5]])
+  })
+
   // A zero c-vector (extXYZ `Lattice="... 0 0 0"`) parses fine but has no cart->frac inverse;
   // the pointer handlers must surface that as a notice instead of throwing, and keep editing
   // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice
@@ -610,6 +640,35 @@ describe(`edit-bonds`, () => {
     expect(host.bonds).toEqual(source)
   })
 
+  // out-of-cell sites wrap for display, which shifts their explicit bonds into the wrapped frame
+  it(`merges bond edits in the wrapped frame of out-of-cell sites`, () => {
+    const out_of_cell = (site_idx_1 = 0, site_idx_2 = 1) => ({
+      ...make_crystal(10, [
+        { element: `C`, abc: [-0.05, 0.5, 0.5] },
+        { element: `C`, abc: [0.05, 0.5, 0.5] },
+        { element: `C`, abc: [0.5, 0.5, 0.5] },
+      ]),
+      properties: { bonds: [{ site_idx_1, site_idx_2, order: 1 as const }] },
+    })
+    const { host, session } = make_session({
+      measure_mode: `edit-bonds`,
+      structure: out_of_cell(),
+    })
+    session.push_bond_undo()
+    session.added_bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 1 }]
+    flushSync()
+    expect(bond_lengths(session.base_structure)).toEqual([1, 4.5])
+    host.structure = out_of_cell()
+    flushSync()
+    expect(bond_lengths(session.base_structure), `stale emitted bonds replaced`).toEqual([1])
+    // the drag's re-derived set stays the session's own, so the next load still replaces it
+    session.move_sites([1], [-0.6, 0, 0])
+    flushSync()
+    host.structure = out_of_cell(1, 2)
+    flushSync()
+    expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 1 }])
+  })
+
   it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
     // undo leaves has_bond_edits false and the undo stack empty, with the undone edit on the
     // redo stack; redoing it onto a different source set would corrupt the new bonds
@@ -655,6 +714,10 @@ describe(`edit-bonds`, () => {
     expect(session.has_bond_edits).toBe(false)
     expect(host.bonds, `source bonds restored`).toEqual(source)
     expect(session.undo_bond_edit()).toBe(false)
+    // the restored set is still the caller's, so an edit-atoms change keeps it
+    session.add_atom([1, 1, 1], `H`)
+    flushSync()
+    expect(host.bonds, `caller's bonds survive`).toEqual(source)
   })
 
   it(`drops the edit layer when the structure, a transform or the source bonds change`, () => {

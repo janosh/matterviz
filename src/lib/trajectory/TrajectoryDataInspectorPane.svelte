@@ -44,12 +44,11 @@
   const FRAC_AXES = [`a`, `b`, `c`] as const
 
   // Units for per-atom properties the parsers emit. trajectory_property_config covers
-  // per-frame scalars only (force_max, energy, …), never the per-site arrays.
+  // per-frame scalars only (force_max, energy, …), never the per-site arrays. Velocities have
+  // no fixed unit (Å/fs in ASE-derived files, Å/ps in LAMMPS metal dumps), so none is shown.
   const SITE_PROPERTY_UNITS: Record<string, string> = {
     force: `eV/Å`,
     forces: `eV/Å`,
-    velocity: `Å/fs`,
-    velocities: `Å/fs`,
     magmom: `μB`,
     magmoms: `μB`,
     charge: `e`,

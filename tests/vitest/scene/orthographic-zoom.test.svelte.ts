@@ -1,4 +1,6 @@
 import { create_fit_zoom, create_orthographic_zoom, create_scene_camera } from '$lib/scene'
+import { camera_flight_registry } from '$lib/scene/camera-flight'
+import { create_fly_to } from '$lib/scene/fly-to'
 import SceneCamera from '$lib/scene/SceneCamera.svelte'
 import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
 import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '$lib/scene/props.svelte'
@@ -7,25 +9,30 @@ import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu
 import { expect, onTestFinished, test } from 'vitest'
 import { mount_scene } from './mount'
 
+// SceneCamera with no position yet, as while a scene measures its bounds
+const mount_camera = (camera_projection: 'orthographic' | 'perspective') => {
+  const props = $state<ComponentProps<typeof SceneCamera>>({
+    camera_projection,
+    position: undefined,
+    orbit_props: build_orbit_props({
+      ...SCENE_CONTROL_DEFAULTS,
+      camera_projection,
+      target: [0, 0, 0],
+      min_zoom: undefined,
+      max_zoom: undefined,
+    }),
+    orbit_controls: undefined, // bound back by SceneCamera
+  })
+  const scene = mount_scene((anchor) => SceneCamera(anchor, props))
+  onTestFinished(scene.unmount_scene)
+  flushSync()
+  return { props, ...scene }
+}
+
 test.each([`orthographic`, `perspective`] as const)(
   `%s camera retains identity and pan when its position changes`,
   (camera_projection) => {
-    const props = $state<ComponentProps<typeof SceneCamera>>({
-      camera_projection,
-      position: undefined,
-      orbit_props: build_orbit_props({
-        ...SCENE_CONTROL_DEFAULTS,
-        camera_projection,
-        target: [0, 0, 0],
-        min_zoom: undefined,
-        max_zoom: undefined,
-      }),
-    })
-    const { camera: camera_store, unmount_scene } = mount_scene((anchor) =>
-      SceneCamera(anchor, props),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
+    const { props, camera: camera_store } = mount_camera(camera_projection)
     const camera = camera_store.current
     set_pan_offset(camera, [30, 15], 400, 300)
     for (const position of [[3, 4, 5], [0, 0, 0], undefined] as const) {
@@ -36,6 +43,27 @@ test.each([`orthographic`, `perspective`] as const)(
     }
   },
 )
+
+// A zone-axis swing in the air or clicked mid-flight would pull the camera off the movie's poses
+test(`a camera flight ends and blocks fly-tos on its controls until it lets go`, () => {
+  const { props, canvas } = mount_camera(`perspective`)
+  const controls = props.orbit_controls
+  const controller = camera_flight_registry.get(canvas)
+  if (!controls || !controller) throw new Error(`SceneCamera set up no camera flight`)
+  const fly = create_fly_to({
+    camera: () => controls.object,
+    controls: () => controls,
+    duration_ms: () => 400,
+    invalidate: () => {},
+  })
+  fly.start([1, 0, 0])
+  const lease = controller.begin()
+  fly.start([0, 1, 0])
+  expect(fly.active).toBe(false)
+  lease.commit()
+  fly.start([0, 1, 0])
+  expect(fly.active).toBe(true)
+})
 
 // Shared by BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene, so a
 // regression here hits four renderers at once — and both bugs this replaced lived in exactly

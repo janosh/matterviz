@@ -8,7 +8,6 @@ import {
   normalize_y2_sync,
   pan_range_by_pixels,
   resolve_axis_ranges,
-  sorted_range,
   sync_y2_range,
   vec2_equal,
   zoom_range_by_factor,
@@ -406,13 +405,6 @@ describe(`expand_range_if_needed`, () => {
       range: [...expected],
       changed,
     })
-  })
-})
-
-describe(`sorted_range`, () => {
-  it(`sorts bounds ascending regardless of input order`, () => {
-    expect(sorted_range(5, 1)).toEqual([1, 5]) // reversed
-    expect(sorted_range(4, 4)).toEqual([4, 4]) // degenerate
   })
 })
 

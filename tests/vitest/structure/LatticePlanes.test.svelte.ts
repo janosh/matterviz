@@ -126,11 +126,19 @@ test.each([
         return read_point()
       },
       axis: [0, 0, 1],
+      plane_normal: null,
       translation: null,
     }
     const elements: SymmetryElement[] = [
       element,
-      { ...element, kind: `mirror`, point: [0.5, 0, 0], axis: [1, 0, 0], locus: `plane-x` },
+      {
+        ...element,
+        kind: `mirror`,
+        point: [0.5, 0, 0],
+        axis: [1, 0, 0],
+        plane_normal: [1, 0, 0],
+        locus: `plane-x`,
+      },
       { ...element, kind: `inversion`, point: [0.5, 0.5, 0.5], axis: null, locus: `center` },
     ]
     const show_kinds: ShowSymmetryKinds = { rotation: true, mirror: true, inversion: true }
@@ -139,14 +147,13 @@ test.each([
       lattice: structuredClone(cubic),
       tiling,
       show_kinds,
-      tiling_result: shared ? tile_symmetry_elements(elements, tiling, cubic) : undefined,
+      tiling_result: shared ? tile_symmetry_elements(elements, tiling) : undefined,
     })
     const update = () => {
       if (shared)
         props.tiling_result = tile_symmetry_elements(
           props.elements.filter((item) => props.show_kinds[item.kind]),
           props.tiling,
-          props.lattice,
         )
       flushSync()
     }
@@ -263,7 +270,8 @@ test.each([
       }))
       props.show_kinds = { [kind]: true }
       update()
-      expect(geometries()[0].index?.count).toBe((kind === `screw` ? 11 : 1) * 144)
+      // An axis on a cell edge is drawn on all four lattice-equivalent vertical edges
+      expect(geometries()[0].index?.count).toBe(4 * (kind === `screw` ? 11 : 1) * 144)
     }
     props.elements = [{ ...element, kind: `rotoinversion`, order: 4, label: `-4` }]
     props.show_kinds = { rotoinversion: true }
@@ -271,8 +279,8 @@ test.each([
     update()
     expect(recovered_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1, 1, 1])
     expect(geometries()).toHaveLength(1)
-    // One cylinder (48 triangles) and three octahedral centers (8 triangles each).
-    expect(geometries()[0].index?.count).toBe(144 + 3 * 24)
+    // One cylinder (48 triangles) per block edge and three octahedral centers (8 triangles each).
+    expect(geometries()[0].index?.count).toBe(4 * 144 + 3 * 24)
     const positions = geometries()[0].getAttribute(`position`)
     const heights = Array.from({ length: positions.count }, (_unused, idx) =>
       positions.getZ(idx),
@@ -285,20 +293,40 @@ test.each([
     props.show_kinds = { rotoinversion: true, rotation: true, screw: true }
     update()
     // The coincident rotation reuses the solid cylinder; the screw retains its 34 dashes.
-    expect(geometries()[0].index?.count).toBe(35 * 144 + 3 * 24)
+    expect(geometries()[0].index?.count).toBe(4 * 35 * 144 + 3 * 24)
     props.elements = [
       { ...props.elements[0], order: 3, label: `-3` },
       { ...props.elements[1], order: 6, label: `6` },
     ]
     update()
     // A higher-order axis hides sub-axis cylinders, but retains their center markers.
-    expect(geometries().map((item) => item.index?.count)).toEqual([3 * 24, 144])
+    expect(geometries().map((item) => item.index?.count)).toEqual([3 * 24, 4 * 144])
     const final_disposed = geometries().map((item) => vi.spyOn(item, `dispose`))
     await unmount(component)
     teardown = undefined
     expect(final_disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
   },
 )
+
+// Stacked translucent fills would darken: both tiled (1-10) copies clip to the same 2 quads
+test(`draws each tiled plane once`, () => {
+  const plane: SymmetryElement = {
+    kind: `mirror`,
+    order: 2,
+    label: `m`,
+    locus: `plane`,
+    point: [0, 0, 0],
+    axis: [1, -1, 0],
+    plane_normal: [1, -1, 0],
+    translation: null,
+  }
+  const show_kinds = { mirror: true }
+  const props = { elements: [plane], lattice: cubic, tiling: [2, 1, 1] as Vec3, show_kinds }
+  const component = mount(SymmetryElements, { target: document.body, props })
+  teardown = () => void unmount(component)
+  flushSync()
+  expect(vertex_counts(`Mesh`)).toEqual([4 * 3])
+})
 
 test.each([
   [2, 3, 1],

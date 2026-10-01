@@ -142,9 +142,9 @@ export type Pagination =
 export type VirtualScroll = boolean | { overscan?: number; min_window?: number }
 
 // Search configuration (boolean to enable, object for full control).
-// keys: row property names to match against;
-// defaults to all row values. fuzzy: also match query terms as in-order
-// character subsequences (e.g. "mdla" matches "Model A").
+// keys: row property names to match against; defaults to every column's data key (hidden
+// columns included, row style/class and other fields not). fuzzy: also match query terms as
+// in-order character subsequences (e.g. "mdla" matches "Model A").
 export type Search =
   | boolean
   | { placeholder?: string; expanded?: boolean; keys?: string[]; fuzzy?: boolean }

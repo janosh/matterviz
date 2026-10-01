@@ -9,10 +9,6 @@ import { find_lattice_translations, make_site_grid, species_keys_of } from './tr
 import type { OrientedBulk, SlabOptions } from './types'
 import { SLAB_POSITION_TOLERANCE } from './types'
 
-// Lagrange reduction converges in a handful of steps; a cap turns a hypothetical
-// non-terminating case into a loud failure instead of a frozen tab.
-const MAX_REDUCTION_STEPS = 64
-
 // (hkl) reduced by its gcd, after rejecting inputs that pick out no plane. Called once
 // per public entry point; everything below it takes indices that are already reduced.
 function reduced_miller_indices(miller_indices: Vec3): Vec3 {
@@ -26,33 +22,6 @@ export const interplanar_spacing = (lattice_matrix: Matrix3x3, miller_indices: V
   Math.hypot(
     ...math.miller_plane_normal(lattice_matrix, reduced_miller_indices(miller_indices)),
   )
-
-// Shortest basis of the 2D lattice spanned by two integer lattice rows, measured with
-// the Cartesian metric of the parent lattice (Lagrange/Gauss reduction, which is optimal
-// in 2D). The lattice they span is unchanged, so the cell keeps its atom count.
-function gauss_reduce_pair(
-  row_1: Vec3,
-  row_2: Vec3,
-  frac_to_cart: (frac: Vec3) => Vec3,
-): [Vec3, Vec3] {
-  let [short, long] = [row_1, row_2]
-  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
-    const cart_short = frac_to_cart(short)
-    const cart_long = frac_to_cart(long)
-    const norm_short = math.dot(cart_short, cart_short)
-    if (math.dot(cart_long, cart_long) < norm_short) {
-      ;[short, long] = [long, short]
-      continue
-    }
-    const factor = Math.round(math.dot(cart_short, cart_long) / norm_short)
-    if (factor === 0) return [short, long]
-    long = math.subtract(long, math.scale(short, factor))
-  }
-  throw new Error(
-    `In-plane basis reduction did not converge in ${MAX_REDUCTION_STEPS} steps for rows ` +
-      `${JSON.stringify(row_1)} and ${JSON.stringify(row_2)}`,
-  )
-}
 
 // Integer multiples (m_1, m_2) that make cart_out − m_1·cart_1 − m_2·cart_2 as short as
 // possible: the real least-squares solution rounded, plus its immediate neighbours since
@@ -98,54 +67,14 @@ export const shorten_in_plane = (cart_out: Vec3, cart_1: Vec3, cart_2: Vec3): Ve
   return math.subtract(cart_out, shift)
 }
 
-// Unimodular integer matrix U with U · hkl = (1, 0, 0): row 0 crosses a single (hkl)
-// plane and rows 1, 2 lie in the plane. Built by the extended Euclidean algorithm: every
-// integer row operation that shrinks the working copy of hkl is mirrored on U (starting
-// from the identity), so U · hkl tracks the working copy at all times and det U = ±1.
-// `miller` must be reduced, otherwise the pivot ends at gcd(h, k, l) instead of 1.
-function unimodular_completion(miller: Vec3): Matrix3x3 {
-  const working: Vec3 = [...miller]
-  const rows: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-  // Repeatedly reduce every entry modulo the smallest non-zero one until one entry is left
-  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
-    const non_zero = [0, 1, 2].filter((axis) => working[axis] !== 0)
-    if (non_zero.length === 1) break
-    let pivot = non_zero[0]
-    for (const axis of non_zero) {
-      if (Math.abs(working[axis]) < Math.abs(working[pivot])) pivot = axis
-    }
-    for (const axis of non_zero) {
-      if (axis === pivot) continue
-      const quotient = Math.trunc(working[axis] / working[pivot])
-      working[axis] -= quotient * working[pivot]
-      rows[axis] = math.subtract(rows[axis], math.scale(rows[pivot], quotient))
-    }
-  }
-  const pivot = working.findIndex((val) => val !== 0)
-  if (pivot === -1 || Math.abs(working[pivot]) !== 1) {
-    throw new Error(
-      `Expected gcd 1 for reduced Miller indices ${JSON.stringify(miller)}, got ` +
-        `${JSON.stringify(working)} after Euclidean reduction`,
-    )
-  }
-  if (working[pivot] < 0) rows[pivot] = math.scale(rows[pivot], -1)
-  const plane_rows = [0, 1, 2].filter((axis) => axis !== pivot).map((axis) => rows[axis])
-  return [rows[pivot], plane_rows[0], plane_rows[1]]
-}
-
 // Unimodular integer transform P for the (hkl) surface: rows 0 and 1 span the plane
 // (p · hkl = 0) and row 2 crosses exactly one interplanar spacing (p · hkl = 1), so the
 // perpendicular height of the transformed c is d_hkl. |det P| = 1 means the transformed
 // cell holds the same lattice points, hence the same atoms, as the input cell.
 // `miller` must already be reduced by reduced_miller_indices.
 export function slab_basis_transform(lattice_matrix: Matrix3x3, miller: Vec3): Matrix3x3 {
-  const [out_of_plane, plane_row_1, plane_row_2] = unimodular_completion(miller)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
-  const [row_a, row_b] = gauss_reduce_pair(plane_row_1, plane_row_2, frac_to_cart)
+  const [out_of_plane, row_a, row_b] = math.unimodular_completion(miller, frac_to_cart)
   const [mult_a, mult_b] = in_plane_reduction_multiples(
     frac_to_cart(out_of_plane),
     frac_to_cart(row_a),

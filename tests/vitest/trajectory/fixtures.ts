@@ -215,7 +215,7 @@ export const make_torch_sim_signal_buffer = ({
       Array.from({ length: 6 * velocity_steps.length }, (_unused, idx) => idx / 10),
       [velocity_steps.length, 2, 3],
     ).create_attribute(`unit`, `A/fs`)
-    create_dataset(data, `dipole`, [1, 0, 0, 0, 1, 0], [2, 3])
+    create_dataset(data, `dipole`, [1, 0, 0, 0, 1, 0], [2, 1, 3]) // TorchSim's system axis
     create_dataset(
       data,
       `polarizability`,

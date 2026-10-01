@@ -15,7 +15,7 @@
     parse_frequency_unit,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
-  import { NORMALIZATION_MODES, normalize_densities } from './helpers'
+  import { density_divisor, NORMALIZATION_MODES } from './helpers'
   import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
   import type {
     FrequencyUnit,
@@ -99,7 +99,8 @@
   let curve_y = $derived.by(() => {
     if (broadened.y.length === 0) return []
     if (is_transmittance) return to_transmittance(broadened.y)
-    return normalize_densities(broadened.y, broadened.x, normalize)
+    const divisor = density_divisor([broadened.y], broadened.x, normalize)
+    return broadened.y.map((intensity) => intensity / divisor)
   })
 
   // Sticks share the curve's y-scale so both are legible on one axis. In transmittance the

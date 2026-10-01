@@ -61,6 +61,7 @@ describe(`Settings`, () => {
     [`Vec3 of numbers`, SETTINGS_CONFIG.structure.rotation, [0, 1, 2], true],
     [`Vec3 with a string`, SETTINGS_CONFIG.structure.rotation, [0, `bad`, 0], false],
     [`too-short tuple`, SETTINGS_CONFIG.structure.rotation, [0, 1], false],
+    [`items out of bounds`, SETTINGS_CONFIG.trajectory.fps_range, [-5, 1000], false],
     [`element list`, SETTINGS_CONFIG.structure.polyhedra_excluded_elements, [`Li`, `O`], true],
     [
       `element list with a number`,

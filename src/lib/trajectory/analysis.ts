@@ -9,6 +9,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
+import { is_crystal } from '$lib/structure/validation'
 import { csv_line } from 'svelte-widgets/csv'
 import type { TrajectoryRun } from './run'
 import {
@@ -34,6 +35,11 @@ export function suggest_analysis_frame_stride(
   const n_atoms = run.atom_count
   return n_atoms ? suggest_frame_stride(frame_count, n_atoms * buffers, max_bytes) : null
 }
+
+// Position-sized buffers a lag analysis holds for the run's positions: 2 when
+// unwrapped_positions_of will cache an unwrapped copy of wrapped ones in a cell
+export const position_buffers = ({ preview }: TrajectoryRun): 1 | 2 =>
+  is_crystal(preview.structure) && preview.metadata?.coords_unwrapped !== true ? 2 : 1
 
 export type CollectTrajectoryPositionsOptions = CollectPositionsOptions & {
   // Names the analysis in the errors below, e.g. `MSD`

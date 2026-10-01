@@ -39,6 +39,19 @@ const MIN_DIR_LENGTH = 1e-12
 // sin of the angle between start and end direction below which they count as (anti)parallel
 const MIN_SIN_ANGLE = 1e-6
 
+// The one fly-to steering each OrbitControls (gizmo and scene share one) and the host's
+// `enabled` from before any took over, restored when the last lands
+const flights = new WeakMap<FlyToControls, { enabled: boolean; release: () => void }>()
+const locked = new WeakSet<FlyToControls>() // held by a camera flight
+
+// A camera flight ends the fly-to steering `controls` where it is and blocks new ones
+export function lock_fly_to(controls: FlyToControls, lock: boolean): void {
+  if (lock) {
+    locked.add(controls)
+    flights.get(controls)?.release()
+  } else locked.delete(controls)
+}
+
 // `start` takes a direction that need not be normalized; only its direction is used.
 export function create_fly_to(hooks: FlyToHooks) {
   let animation: { angle: number; distance: number; elapsed: number } | null = null
@@ -50,12 +63,12 @@ export function create_fly_to(hooks: FlyToHooks) {
 
   function start(dir: Vec3): void {
     const camera = hooks.camera()
-    if (!camera) return
+    const controls = hooks.controls()
+    if (!camera || (controls && locked.has(controls))) return
     const dir_length = Math.hypot(...dir)
     if (dir_length < MIN_DIR_LENGTH) return
     to_dir.set(...dir).divideScalar(dir_length)
 
-    const controls = hooks.controls()
     const { up: up_vector } = camera
     const target = controls?.target ?? ORIGIN
     const distance = camera.position.distanceTo(target) || 1
@@ -78,7 +91,12 @@ export function create_fly_to(hooks: FlyToHooks) {
     axis.normalize()
 
     animation = { angle: from_dir.angleTo(to_dir), distance, elapsed: 0 }
-    if (controls) controls.enabled = false
+    if (controls) {
+      const flight = flights.get(controls)
+      flights.set(controls, { enabled: flight?.enabled ?? controls.enabled, release })
+      if (flight && flight.release !== release) flight.release() // ends where it is
+      controls.enabled = false
+    }
     hooks.on_start?.()
     hooks.invalidate()
   }
@@ -107,8 +125,13 @@ export function create_fly_to(hooks: FlyToHooks) {
   function release(): void {
     if (!animation) return
     animation = null
+    // Only the flight steering the controls hands them back; one taken over just ends
     const controls = hooks.controls()
-    if (controls) controls.enabled = true
+    const flight = controls && flights.get(controls)
+    if (controls && flight?.release === release) {
+      flights.delete(controls)
+      controls.enabled = flight.enabled
+    }
     hooks.on_end?.()
   }
 

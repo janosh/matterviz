@@ -16,7 +16,6 @@ import {
   parse_datetime_val,
   parse_numeric_val,
   resolve_color_domain,
-  row_matches_query,
   sort_table_rows,
   table_to_delimited,
   table_to_json,
@@ -26,7 +25,7 @@ import {
   with_category_toggled,
   with_numeric_bound,
 } from '$lib/table'
-import { strip_html } from '$lib/utils'
+import { html_to_text, strip_html } from '$lib/utils'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
@@ -285,6 +284,7 @@ describe(`strip_html`, () => {
     [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
     [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
     [`<!-- note -->kept`, `kept`],
+    [`<span title="x>0" data-y='a>b'>Si</span>`, `Si`], // `>` inside quoted attributes
   ])(`strip_html(%j) = %j`, (input, expected) => {
     expect(strip_html(input)).toBe(expected)
   })
@@ -295,9 +295,24 @@ describe(`strip_html`, () => {
   it(`leaves a comparison pair in prose alone, since it is not markup`, () => {
     const prose = `T < 300 K and P > 1 bar`
     expect(cell_text(prose)).toBe(prose)
-    expect(row_matches_query({ val: prose }, `300`)).toBe(true)
     // a real tag in the same cell is still stripped
     expect(cell_text(`<b>T < 300 K</b>`)).toBe(`T < 300 K`)
+  })
+
+  // Entity cells render decoded via {@html}, so search, sort and export must read them decoded
+  // too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`
+  it.each([
+    [`AT&amp;T`, `AT&T`],
+    [`<b>&Delta;H</b> = &minus;5&nbsp;&plusmn;&#160;0.1&#x3bc;m`, `ΔH = −5\u00A0±\u00A00.1μm`],
+    [`&Aring; &angst; &Ouml;l &eacute; &ccedil; &micro; &deg; &times;`, `Å Å Öl é ç µ ° ×`],
+    [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
+    [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
+    [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
+    [`<span title="x>0">Si</span> &amp; Ge`, `Si & Ge`], // `>` inside a quoted attribute
+    [`&bogus; &constructor; &#x110000; a & b`, `&bogus; &constructor; &#x110000; a & b`],
+  ])(`html_to_text and cell_text: %j -> %j`, (input, expected) => {
+    expect(html_to_text(input)).toBe(expected)
+    expect(cell_text(input)).toBe(expected)
   })
 })
 
@@ -311,6 +326,8 @@ describe(`parse_numeric_val`, () => {
     [`2.890(8)`, 2.89],
     [`−3.5`, -3.5], // unicode minus
     [`<b>10</b>`, 10],
+    [`&minus;5`, -5], // entities decode before parsing
+    [`5 &plusmn; 0.1`, 5],
     [`<span data-sort-value="1000">1,000</span>`, 1000],
     [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
     [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
@@ -371,6 +388,7 @@ describe(`compare_rows`, () => {
     // oxfmt-ignore
     expect(order([`<b>Beta</b>`, `Alpha`, `<i>Gamma</i>`, `Delta`]))
       .toEqual([`Alpha`, `<b>Beta</b>`, `Delta`, `<i>Gamma</i>`])
+    expect(order([`Zeta`, `&Ouml;l`, `Beta`])).toEqual([`Beta`, `&Ouml;l`, `Zeta`]) // as Öl
     // a non-numeric data-sort-value still wins over the rendered text: `Zulu` alone would
     // sort last, `aaa` puts it first (a numeric one makes it a number, which sorts earlier still)
     // oxfmt-ignore
@@ -452,17 +470,6 @@ describe(`compare_rows`, () => {
 })
 
 describe(`search and filters`, () => {
-  it(`matches the query against all values or only the given keys, optionally fuzzily`, () => {
-    const row = { Model: `<b>Alpha</b>`, Score: 0.5, Note: null }
-    expect(row_matches_query(row, `alp`)).toBe(true)
-    expect(row_matches_query(row, `0.5`)).toBe(true)
-    expect(row_matches_query(row, `0.5`, { keys: [`Model`] })).toBe(false)
-    expect(row_matches_query(row, `aph`)).toBe(false)
-    // fuzzy = in-order character subsequence, so `apl` matches but reordered `pal` does not
-    expect(row_matches_query(row, `aph`, { fuzzy: true })).toBe(true)
-    expect(row_matches_query(row, `pal`, { fuzzy: true })).toBe(false)
-  })
-
   it.each<[CellVal, ColumnFilter, boolean]>([
     [`1.5 ± 0.1`, { kind: `numeric`, min: 1, max: 2 }, true],
     [3, { kind: `numeric`, min: 1, max: 2 }, false],
@@ -635,14 +642,16 @@ describe(`table exporters`, () => {
 
   it(`exports JSON keyed by stable IDs despite repeated or renamed headers`, () => {
     const when = new Date(Date.UTC(2024, 0, 2))
-    const rows: RowData[] = [{ 'n<sub>val</sub>': 1, Name: `<b>Fe</b>`, When: when, Skip: 5 }]
+    const rows: RowData[] = [
+      { 'n<sub>val</sub>': 1, Name: `<b>Fe</b>&amp;O`, When: when, Skip: 5 },
+    ]
     const columns = [
       { id: `valence`, label: `Value`, key: `n<sub>val</sub>` },
       { id: `Name`, label: `Value`, key: `Name` },
       { id: `When`, label: `Value`, key: `When` },
     ]
     expect(JSON.parse(table_to_json(rows, columns))).toEqual([
-      { valence: 1, Name: `Fe`, When: when.toISOString() },
+      { valence: 1, Name: `Fe&O`, When: when.toISOString() },
     ])
     columns[0].label = `Renamed`
     expect(JSON.parse(table_to_json(rows, columns))[0].valence).toBe(1)
@@ -654,6 +663,9 @@ describe(`table exporters`, () => {
     expect(align).toBe(`| :--- | :--- | ---: |`)
     expect(row_1).toBe(`| x, "q" | multi<br>line | 1 |`)
     expect(row_2).toBe(`| 50% & $3_{} | ^~\\\\ | 2 |`)
+    // decoded escaped markup stays text: `<br>` must not become a live line break
+    const markdown = table_to_markdown({ headers: [`<br> &lt;`], rows: [], numeric: [false] })
+    expect(markdown.split(`\n`)[0]).toBe(`| &lt;br> &amp;lt; |`)
   })
 
   it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {

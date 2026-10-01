@@ -43,10 +43,10 @@ const prim_fcc_cu = () =>
   make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
 
 // primitive diamond Si: 2-atom input expands to an 8-atom conventional cell
-const prim_diamond_si = () =>
+const prim_diamond_si = (coord_x = 0.25) =>
   make_crystal(fcc_primitive_matrix(5.43), [
     { element: `Si`, abc: [0, 0, 0] },
-    { element: `Si`, abc: [0.25, 0.25, 0.25] },
+    { element: `Si`, abc: [coord_x, 0.25, 0.25] },
   ])
 
 const PO_A = 3.35 // 2x1x1 supercell of simple-cubic Po: 2-atom input reduces to a 1-atom std cell
@@ -458,33 +458,29 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
     map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
-  test(`conventional-cell display: all 4 FCC copies map to the 4a row`, async () => {
-    const orig = prim_fcc_cu()
-    const sym_data = await analyze_crystal(orig)
-    const displayed = transform_cell(orig, `conventional`, sym_data)
-    expect(displayed.sites).toHaveLength(4)
-
-    const rows = map_rows(orig, displayed, sym_data)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].site_indices).toEqual([0, 1, 2, 3])
-  })
-
-  test(`primitive-cell display maps correctly`, async () => {
-    const orig = prim_fcc_cu()
-    const sym_data = await analyze_crystal(orig)
-    const displayed = transform_cell(orig, `primitive`, sym_data)
-    expect(displayed.sites).toHaveLength(1)
-
-    expect(map_rows(orig, displayed, sym_data)[0].site_indices).toEqual([0])
-  })
+  test.each([
+    [`conventional`, 4],
+    [`primitive`, 1],
+  ] as const)(
+    `%s display of primitive FCC Cu maps all %i sites to the 4a row`,
+    async (cell_type, n_sites) => {
+      const orig = prim_fcc_cu()
+      const sym_data = await analyze_crystal(orig)
+      const displayed = transform_cell(orig, cell_type, sym_data)
+      expect(displayed.sites).toHaveLength(n_sites)
+      const rows = map_rows(orig, displayed, sym_data)
+      expect(rows.map((row) => row.site_indices)).toEqual([[...Array(n_sites).keys()]])
+    },
+  )
 
   test(`conventional display of primitive diamond: origin shift forces conv-frame matching`, async () => {
     // diamond's std_origin_shift is (1/8,1/8,1/8), so the original-frame lattice match
     // is rejected (positions mismatch) and matching must run in the conventional frame,
     // where the F-centering copies are only reachable via the input-lattice translation
-    // check (P·d ∈ ℤ³) — all 8 conventional-cell atoms must map to the single 8a row
-    const orig = prim_diamond_si()
-    const sym_data = await analyze_crystal(orig)
+    // check (P·d ∈ ℤ³) — all 8 conventional-cell atoms must map to the single 8a row, even with
+    // Si 1e-4 off 1/4: the symmetrized cell is within symprec 1e-3 of the input, not within 1e-5
+    const orig = prim_diamond_si(0.2501)
+    const sym_data = await analyze_crystal(orig, 1e-3)
     const displayed = transform_cell(orig, `conventional`, sym_data)
     expect(displayed.sites).toHaveLength(8)
 

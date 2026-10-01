@@ -1,6 +1,5 @@
 // MDL MOL / SDF (structure-data file) V2000 and V3000 connection tables. Both carry
 // Cartesian coordinates without a unit cell and an authoritative bond block.
-import type { ElementSymbol } from '$lib/element'
 import type { BondOrder, Molecule, Site } from '$lib/structure'
 import { make_site } from '$lib/structure/site'
 import {
@@ -25,12 +24,6 @@ const mol_bond_order = (code: number, context: string): BondOrder => {
   console.warn(`${context}: query bond type ${code} has no definite order, treating as single`)
   return 1
 }
-
-// Isotope pseudo-symbols that MDL files use in the element column
-const ISOTOPE_SYMBOLS: Record<string, ElementSymbol> = { D: `H`, T: `H` }
-
-const mol_element = (raw_symbol: string, atom_idx: number): ElementSymbol =>
-  ISOTOPE_SYMBOLS[raw_symbol] ?? element_from_candidates([raw_symbol], atom_idx)
 
 // Read consecutive fixed-width integer fields, falling back to whitespace splitting for
 // files that don't pad their columns (hand-written fixtures, some converters).
@@ -88,7 +81,7 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
       raw_coords.map(parse_coordinate),
       `MOL atom coordinates on line ${atom_start + atom_idx + 1}`,
     )
-    const element = mol_element(raw_symbol, atom_idx)
+    const element = element_from_candidates([raw_symbol], atom_idx)
     sites.push(make_site(element, [0, 0, 0], xyz, `${element}${atom_idx + 1}`))
   }
 
@@ -140,7 +133,7 @@ const parse_v3000 = (lines: string[]): MolBlock => {
   const site_idx_by_atom_id = new Map<number, number>()
   for (const [atom_idx, row] of atom_rows.entries()) {
     const tokens = row_tokens(row, 5, `MOL V3000 atom row (need 'index symbol x y z')`)
-    const element = mol_element(tokens[1], atom_idx)
+    const element = element_from_candidates([tokens[1]], atom_idx)
     const xyz = vec3_from_values(
       tokens.slice(2, 5).map(parse_coordinate),
       `MOL V3000 atom coordinates on row '${row}'`,

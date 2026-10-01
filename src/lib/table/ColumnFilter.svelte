@@ -6,7 +6,7 @@
   import { format_num } from '$lib/labels'
   import type { ColumnFilter, Column, RowData } from '$lib/table'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { Filter } from 'svelte-widgets/icons'
 
@@ -50,7 +50,7 @@
   <button
     type="button"
     class={['column-filter-trigger', { active: Boolean(filter) }]}
-    aria-label="Filter {strip_html(col.label)}"
+    aria-label="Filter {html_to_text(col.label)}"
     aria-expanded={open}
     onclick={on_toggle}
   >

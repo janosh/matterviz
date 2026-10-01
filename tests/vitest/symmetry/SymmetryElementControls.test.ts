@@ -1,5 +1,5 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Vec3 } from '$lib/math'
 import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
 import {
   count_symmetry_elements,
@@ -21,6 +21,7 @@ const make_elem = (
   order: kind === `inversion` ? 1 : 2,
   label: kind === `inversion` ? `-1` : `2`,
   axis: kind === `inversion` ? null : [0, 0, 1],
+  plane_normal: kind === `mirror` || kind === `glide` ? [0, 0, 1] : null,
   point: [0, 0, 0],
   translation: null,
   locus: `${kind}|${String(overrides.point ?? [0, 0, 0])}`,
@@ -130,18 +131,12 @@ describe(`SymmetryElementControls`, () => {
           return read_point()
         },
       }))
-      const lattice: Matrix3x3 = [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ]
       const tiling: Vec3 = [2, 2, 2]
-      const tiling_result = tile_symmetry_elements(elements, tiling, lattice)
+      const tiling_result = tile_symmetry_elements(elements, tiling)
       const point_reads = read_point.mock.calls.length
       read_point.mockClear()
       mount_controls({
         elements,
-        lattice,
         tiling,
         show_kinds: Object.fromEntries(elements.map(({ kind }) => [kind, true])),
         tiling_result: shared ? tiling_result : undefined,
@@ -195,11 +190,6 @@ describe(`SymmetryElementControls`, () => {
       mount_controls({
         elements: SAMPLE_ELEMENTS,
         in_input_frame,
-        lattice: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
         tiling: [repeats, 1, 1],
       })
       const inputs = [...document.body.querySelectorAll(`input`)]

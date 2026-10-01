@@ -2,10 +2,6 @@ import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Snippet } from 'svelte'
 
-// Key format for color_overrides lookups: `${x_key}\0${y_key}`
-export const make_color_override_key = (x_key: string, y_key: string): string =>
-  `${x_key}\0${y_key}`
-
 // === Types ===
 
 // Generic axis item -- works for elements, compositions, structures, etc.

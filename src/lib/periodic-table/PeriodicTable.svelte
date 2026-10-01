@@ -21,6 +21,7 @@
   import { ColorBar } from '$lib/plot'
   import { resolve_color_ramp, to_color_bar_scale } from '$lib/plot/core/color-ramp'
   import { colors } from '$lib/state.svelte'
+  import { is_plain_object } from '$lib/utils'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '$lib/heatmap-matrix'
@@ -129,19 +130,9 @@
       }
       return heatmap_values
     }
-    if (typeof heatmap_values === `object`) {
-      const bad_keys = Object.keys(heatmap_values).filter((key) => !is_elem_symbol(key))
-      if (bad_keys.length > 0) {
-        console.error(
-          `heatmap_values is an object, keys should be element symbols, got ${bad_keys}`,
-        )
-        return []
-      }
-      // keep absent elements as null (distinct from a real 0 value) so they map to the
-      // missing fallback while explicit 0 maps through the color scale
-      return ELEM_SYMBOLS.map((symbol) => heatmap_values[symbol] ?? null)
-    }
-    return []
+    // keep absent elements as null (distinct from a real 0 value) so they map to the
+    // missing fallback while explicit 0 maps through the color scale
+    return ELEM_SYMBOLS.map((symbol) => heatmap_values[symbol] ?? null)
   })
 
   const set_active_element = (element: ChemicalElement | null): void => {
@@ -166,6 +157,16 @@
         ? active_element.symbol
         : first_interactive_symbol),
   )
+  // Keys that aren't element symbols (`fe`, `FE`, `Xx`) match no tile, so they're ignored
+  $effect(() => {
+    const keyed = { heatmap_values, color_overrides, labels, links }
+    for (const [prop, record] of Object.entries(keyed)) {
+      if (!is_plain_object(record)) continue // arrays, links templates and unset props
+      const bad_keys = Object.keys(record).filter((key) => !is_elem_symbol(key))
+      if (bad_keys.length)
+        console.warn(`PeriodicTable ${prop}: keys must be element symbols, got ${bad_keys}`)
+    }
+  })
   $effect(() => {
     if (links && on_activate) {
       console.warn(
@@ -228,16 +229,11 @@
     event.preventDefault() // prevent scrolling the page
     event.stopPropagation()
 
-    // Arrow key navigation including lanthanides (row 9) and actinides (row 10)
+    // Walk the grid, including lanthanides (row 9) and actinides (row 10) below empty row 8
     const { column: col, row } = current_element
-    const in_f_block = col >= 3 && col <= 17
-    const row_map: Record<string, number> = {
-      ArrowUp: row === 9 ? 6 : row === 10 ? 7 : row - 1,
-      ArrowDown: row === 6 && in_f_block ? 9 : row === 7 && in_f_block ? 10 : row + 1,
-    }
     const row_step = event.key === `ArrowUp` ? -1 : event.key === `ArrowDown` ? 1 : 0
     const col_step = event.key === `ArrowLeft` ? -1 : event.key === `ArrowRight` ? 1 : 0
-    let target_row = row_map[event.key] ?? row
+    let target_row = row + row_step
     let target_col = col + col_step
     // Sparse links and the table's empty grid cells must not strand keyboard focus.
     while (target_row >= 1 && target_row <= 10 && target_col >= 1 && target_col <= 18) {

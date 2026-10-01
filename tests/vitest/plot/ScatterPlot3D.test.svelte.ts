@@ -217,6 +217,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
         return state.series
       },
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      x_axis: { label: `&alpha;<sub>x</sub>` },
       gizmo: false,
       display: { show_bounding_box: true },
       surfaces: [hemisphere],
@@ -244,6 +245,9 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
   const tip_text = () => portal.querySelector(`.tip`)?.textContent
   try {
+    // axis labels are HTML like the 2D axes' (a plain-text span showed the markup verbatim)
+    const labels = [...document.querySelectorAll(`.axis-label`)].map((node) => node.innerHTML)
+    expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
     expect(instances().count).toBe(4)
     expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
     const [group, ...others] = find_objects(scene, ClippingGroup)

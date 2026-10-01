@@ -5,6 +5,7 @@ import {
   extract_pdos,
   extract_spin_channels,
   format_dos_tooltip,
+  normalize_dos,
   validate_sigma_range,
 } from '$lib/spectral/helpers'
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '$lib/spectral/types'
@@ -259,6 +260,27 @@ describe(`Dos component`, () => {
   it(`shows EmptyState for an empty canonical collection`, () => {
     mount(Dos, { target: document.body, props: { doses: {} } })
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
+  })
+
+  // The density axis spans the drawn densities: both spins of a split DOS share one divisor (up
+  // peak 2, down 1 keep 2:1), mirror spin-down stacks too, phonon densities are per shown unit
+  const split: ElectronicDos = {
+    type: `electronic`,
+    energies: [-1, 0, 1],
+    densities: [0, 2, 0],
+    spin_down_densities: [0, 1, 0],
+  }
+  const phonon_in = (frequency_unit: string, frequencies: number[]) =>
+    normalize_dos({ frequencies, densities: [0, 1, 0.5], frequency_unit }) as PhononDos
+  it.each([
+    [`max`, { doses: { '': split }, normalize: `max` }, [-0.5, 1]],
+    [`mirror stack`, { doses: { A: split, B: split }, stack: true }, [-2, 4]],
+    // stored per THz: loaded and shown in cm⁻¹, the peak round-trips to 1
+    [`cm^-1`, { doses: { '': phonon_in(`cm^-1`, [0, 100, 200]) }, units: `cm^-1` }, [0, 1]],
+  ] as const)(`density axis spans the drawn densities: %s`, async (_desc, props, expected) => {
+    const state: { view?: { y?: Vec2 } } = { view: undefined }
+    await mount_sized(Dos, bind_props({ ...props }, state), { selector: `.scatter` })
+    expect(state.view?.y).toEqual(expected.map((val) => expect.closeTo(val, 12)))
   })
 
   it(`stacks spin-up and spin-down independently in overlay mode`, async () => {

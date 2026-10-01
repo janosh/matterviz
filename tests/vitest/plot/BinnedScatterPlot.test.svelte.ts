@@ -20,6 +20,7 @@ import {
   resize_element,
   svg_query,
   svg_rect,
+  translate_of,
   trigger_intersection,
   trigger_resize_observer,
 } from '../setup'
@@ -1089,6 +1090,27 @@ describe(`BinnedScatterPlot`, () => {
       expect(on_density_zoom).toHaveBeenCalledTimes(zoom_clicks)
     },
   )
+
+  test(`bin-click zoom keeps a descending x axis descending`, async () => {
+    const on_density_zoom = vi.fn()
+    mount_plot({
+      series: [{ x: Array(20).fill(0.5), y: Array(20).fill(0.5) }],
+      ...density_mode({ bin_px: 100 }),
+      ...unit_axes,
+      x_axis: { range: [1, 0] as Vec2 },
+      on_density_zoom,
+    })
+    await settle()
+    const center = plot_center()
+    click_plot(center.x - 1, center.y - 1)
+    await tick()
+    expect(on_density_zoom).toHaveBeenCalledOnce()
+    // x tick values still fall from left to right on screen
+    const values = [...document.querySelectorAll(`.binned-scatter .x-axis .tick`)]
+      .toSorted((tick_a, tick_b) => translate_of(tick_a).x - translate_of(tick_b).x)
+      .map((tick_el) => Number(tick_el.textContent))
+    expect(values[0]).toBeGreaterThan(values[values.length - 1])
+  })
 
   test(`can disable automatic point mode switching`, async () => {
     mount_plot({

@@ -36,8 +36,7 @@
   import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
   import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
   import { normalize_marginals } from '$lib/plot/core/marginals'
-  import type { ObstacleSeries } from '$lib/plot/core/decorations'
-  import { clip_bar, with_obstacle_frame } from '$lib/plot/core/decorations'
+  import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
   import { plot_color } from '$lib/colors'
   import { build_legend_items } from '$lib/plot/core/data-transform'
   import { compute_box_whiskers, summarize_box_samples } from '$lib/plot/box/box-plot'
@@ -60,6 +59,7 @@
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
+    create_axis_scales,
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
@@ -293,17 +293,19 @@
   )
 
   // Slots position boxes/violins along the category axis. Series sharing a `category` occupy
-  // one slot (split/grouped violins). Without `category`, each series gets its own slot —
-  // byte-identical to the original one-box-per-series behavior. Override tick labels via
-  // x_axis.ticks (a Record).
-  let use_categories = $derived(series.some((srs) => srs.category != null))
-  const slot_key = (srs: BoxPlotSeries<Metadata>, idx: number): string =>
-    srs.category ?? `${idx}`
-  let slot_list = $derived(
-    use_categories
-      ? [...new Set(series.map(slot_key))]
-      : series.map((srs, idx) => srs.label ?? `${idx}`),
-  )
+  // one slot (split/grouped violins); any other series gets its own slot, labeled by its
+  // `label` or index. Override tick labels via x_axis.ticks (a Record).
+  let { slot_list, slot_of } = $derived.by(() => {
+    const labels: string[] = []
+    const category_slots = new Map<string, number>()
+    const slots = series.map(({ category, label }, idx) => {
+      if (category == null) return labels.push(label ?? `${idx}`) - 1
+      const slot = category_slots.get(category) ?? labels.push(category) - 1
+      category_slots.set(category, slot)
+      return slot
+    })
+    return { slot_list: labels, slot_of: slots }
+  })
   let cat_axis: `x` | `y` = $derived(orientation === `horizontal` ? `y` : `x`)
 
   // Keeps category-axis zeros off (and settings checkboxes in sync) across orientation flips
@@ -312,16 +314,12 @@
     () => (slot_list.length > 0 ? cat_axis : null),
   )
 
-  let slot_lookup = $derived(new Map(slot_list.map((slot, idx) => [slot, idx])))
-  const slot_of = (idx: number): number =>
-    use_categories ? (slot_lookup.get(slot_key(series[idx], idx)) ?? idx) : idx
   let slot_indices = $derived(slot_list.map((_, idx) => idx))
   // A slot's tick label is colored only when a single series occupies it. Precompute
   // slot -> color in one pass so the PlotAxis tick_color callback stays O(1) per tick.
   let slot_colors = $derived.by(() => {
     const colors = new Map<number, string | undefined>()
-    for (const [idx] of series.entries()) {
-      const slot = slot_of(idx)
+    for (const [idx, slot] of slot_of.entries()) {
       colors.set(slot, colors.has(slot) ? undefined : box_color(idx))
     }
     return colors
@@ -341,7 +339,7 @@
 
   let visible_boxes = $derived<Box[]>(
     series
-      .map((srs, idx) => ({ series: srs, idx, slot: slot_of(idx), stats: box_stats[idx] }))
+      .map((srs, idx) => ({ series: srs, idx, slot: slot_of[idx], stats: box_stats[idx] }))
       .filter((box_item) => box_item.series.visible ?? true),
   )
 
@@ -377,6 +375,11 @@
     }
     return map
   })
+
+  // Drawn box width (slot fraction); a box inside a violin defaults narrower
+  const box_width_of = (srs: BoxPlotSeries<Metadata>, idx: number): number =>
+    srs.box_width ??
+    (violin_kdes.has(idx) ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)
 
   // The horizontal category pixel axis is inverted, so flip the half-violin side to keep
   // `positive` meaning "above the center line" (vertical/`both` pass through unchanged)
@@ -466,28 +469,30 @@
       : { x: value_primary, x2: value_secondary, y: cat_range, y2: [0, 1] as Vec2 }
   })
 
-  // Obstacle field in normalized [0,1] coords: each box modeled as a whisker-spanning segment
+  // Obstacle field in normalized [0,1] coords (y=0 at top): each drawn body (IQR box or whole
+  // violin) plus its whiskers as a cap-wide bar
   const obstacles_norm = $derived.by(() =>
-    with_obstacle_frame(frame, visible_boxes.length > 0, ({ base_w, base_h }) => {
-      const { ranges } = frame
-      const segs: ObstacleSeries[] = []
-      for (const box_item of visible_boxes) {
-        const { whisker_low, whisker_high, median } = box_item.stats
-        if (!Number.isFinite(median)) continue
-        const cat_rng = vertical ? ranges.current.x : ranges.current.y
-        const val_rng = ranges.current[val_axis_key(box_item.series)]
-        const cat_span = cat_rng[1] - cat_rng[0]
-        const val_span = val_rng[1] - val_rng[0]
-        if (cat_span === 0 || val_span === 0) continue
-        const cross = (box_item.slot - cat_rng[0]) / cat_span
-        const lower = (whisker_low - val_rng[0]) / val_span
-        const upper = (whisker_high - val_rng[0]) / val_span
-        const seg = vertical
-          ? clip_bar(true, cross, 1 - upper, 1 - lower)
-          : clip_bar(false, 1 - cross, lower, upper)
-        if (seg) segs.push(seg)
-      }
-      return segs
+    with_obstacle_frame(frame, visible_boxes.length > 0, () => {
+      const { current } = frame.ranges
+      const norm = create_axis_scales(plot_axes, current, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
+      const cat_scale = vertical ? norm.x : norm.y
+      return visible_boxes.flatMap(({ series: srs, idx, slot, stats }) => {
+        if (!Number.isFinite(stats.median)) return []
+        const val_scale = box_val_scale(srs, norm)
+        const bar = (width: number, low: number, high: number) =>
+          bar_obstacles(
+            vertical,
+            [cat_scale(slot - width / 2), cat_scale(slot + width / 2)],
+            [val_scale(low), val_scale(high)],
+          )
+        const kde = violin_kdes.get(idx)
+        const box_width = box_width_of(srs, idx)
+        const body = kde
+          ? bar(srs.violin_width ?? violin_width, kde.grid[0], kde.grid[kde.grid.length - 1])
+          : bar(box_width, stats.q1, stats.q3)
+        const cap_width = box_width * (whisker_state.cap_fraction ?? 0.5)
+        return [...body, ...bar(cap_width, stats.whisker_low, stats.whisker_high)]
+      })
     }),
   )
 
@@ -517,10 +522,10 @@
   // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
   // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
   // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
-  const box_val_scale = (srs: BoxPlotSeries<Metadata>): ((val: number) => number) => {
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) => {
     const axis_key = val_axis_key(srs)
     return log_floor_scale(
-      frame.scales[axis_key],
+      scales[axis_key],
       plot_axes[axis_key].scale_type,
       frame.ranges.current[axis_key],
     )
@@ -727,9 +732,7 @@
           {@const draw_box = draws_box(box_item.series)}
           {@const kde = violin_kdes.get(box_item.idx)}
           {@const eff_side = box_item.series.side ?? side}
-          {@const box_width_value =
-            box_item.series.box_width ??
-            (kde ? DEFAULTS.box.violin_box_width : DEFAULTS.box.box_width)}
+          {@const box_width_value = box_width_of(box_item.series, box_item.idx)}
           {@const c_lo = cat_scale(box_item.slot - box_width_value / 2)}
           {@const c_hi = cat_scale(box_item.slot + box_width_value / 2)}
           {@const c_center = cat_scale(box_item.slot)}

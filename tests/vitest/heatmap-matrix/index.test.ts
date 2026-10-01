@@ -4,7 +4,6 @@ import type { ChemicalElement } from '$lib/element'
 import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
-  make_color_override_key,
   matrix_to_rows,
   ORDERING_LABELS,
 } from '$lib/heatmap-matrix'
@@ -114,10 +113,6 @@ describe(`ORDERING_LABELS`, () => {
     expect(new Set(labels).size).toBe(labels.length)
     expect(new Set(ELEMENT_ORDERINGS)).toEqual(new Set(Object.keys(ORDERING_LABELS)))
   })
-})
-
-test(`color override keys retain their persisted NUL-separated format`, () => {
-  expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe\0O`)
 })
 
 test(`matrix_to_rows keys rows by y label and x labels`, () => {

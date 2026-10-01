@@ -3,6 +3,7 @@ import { is_finite_vec3_like } from '$lib/math'
 import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
 import {
   collect_trajectory_positions,
+  position_buffers,
   suggest_analysis_frame_stride,
 } from '$lib/trajectory/analysis'
 import type { TrajectoryFrame, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
@@ -15,10 +16,10 @@ import type { VacfInput } from './index'
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 // Frame stride that keeps every trajectory-sized buffer calc_vacf holds inside `max_bytes`:
-// positions + stored velocities = 2, but WITHOUT stored velocities it is 3, since
-// unwrapped_positions_of caches an unwrapped copy and central_difference_velocities builds the
-// series from it. Budgeting that path at 1 held ~1.4 GB against a 512 MB budget on a 20k-frame
-// x 1k-atom run. Striding lowers the VDOS Nyquist frequency by the same factor.
+// positions + stored velocities = 2. WITHOUT stored velocities, central_difference_velocities
+// builds the series from the unwrapped positions, so wrapped ones in a cell add the unwrapped
+// copy: 3. Budgeting that path at 1 held ~1.4 GB against a 512 MB budget on a 20k-frame x
+// 1k-atom run. Striding lowers the VDOS Nyquist frequency by the same factor.
 export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
   max_bytes?: number,
@@ -27,7 +28,7 @@ export const suggest_vacf_frame_stride = (
   suggest_analysis_frame_stride(
     run,
     max_bytes,
-    has_velocities(run.preview) ? 2 : 3,
+    has_velocities(run.preview) ? 2 : 1 + position_buffers(run),
     frame_count,
   )
 

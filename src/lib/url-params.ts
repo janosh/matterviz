@@ -9,7 +9,8 @@ import {
 export type WeightsConfig = Record<string, { weight: number }>
 
 const sort_dirs = new Set<SortDir>([`asc`, `desc`])
-const round_weight = (weight: number): number => Math.round(weight * 1000) / 1000
+const round_weight = (weight: number, decimals: number): number =>
+  Number.isFinite(decimals) ? Math.round(weight * 10 ** decimals) / 10 ** decimals : weight
 const canonical_weight_keys = (
   config: WeightsConfig,
   default_config: WeightsConfig,
@@ -44,16 +45,17 @@ export const sort_url_entries = (
 
 // Empty string denotes the default configuration so URL sync omits the parameter.
 // Keys define the serialized value order and must match between both configurations.
+// `decimals` shortens URLs; Infinity keeps full precision so shared links reproduce exactly.
 export function weights_to_param(
   config: WeightsConfig,
   default_config: WeightsConfig,
+  { decimals = 3 }: { decimals?: number } = {},
 ): string {
   const keys = canonical_weight_keys(config, default_config)
-  return keys.every(
-    (key) => round_weight(config[key].weight) === round_weight(default_config[key].weight),
-  )
+  const round = (cfg: WeightsConfig, key: string) => round_weight(cfg[key].weight, decimals)
+  return keys.every((key) => round(config, key) === round(default_config, key))
     ? ``
-    : keys.map((key) => round_weight(config[key].weight)).join(`,`)
+    : keys.map((key) => round(config, key)).join(`,`)
 }
 
 // Mutate config with normalized weights. Missing or malformed input resets shared
@@ -72,7 +74,9 @@ export function apply_weights_param(
     Number.isFinite(total) &&
     total > 0
   ) {
-    for (const [idx, key] of keys.entries()) config[key].weight = values[idx] / total
+    // weights already summing to 1 up to round-off stay exact instead of shifting an ulp
+    const divisor = Math.abs(total - 1) <= values.length * Number.EPSILON ? 1 : total
+    for (const [idx, key] of keys.entries()) config[key].weight = values[idx] / divisor
     return
   }
   for (const key of keys) config[key].weight = default_config[key].weight

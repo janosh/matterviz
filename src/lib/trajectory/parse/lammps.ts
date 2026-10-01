@@ -369,7 +369,6 @@ function create_lammps_reader(
     }
     identity_uses_ids ??= frame_uses_ids
     const metadata = {
-      timestep,
       coords_unwrapped: pos_variant.unwrapped,
       box_origin,
       ...(time === null ? {} : { time }),

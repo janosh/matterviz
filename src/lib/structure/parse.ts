@@ -381,6 +381,8 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
     // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`,
     // which used to miss the x/y/z lookup and resolve to the all-zero map onto the origin.
     const parts = operation.toLowerCase().split(`,`)
+    // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that leaves positions alone
+    if (parts.length === 4 && /^[+-]?1$/.test(parts[3])) parts.pop()
     if (parts.length !== 3) return []
     const [x_expr, y_expr, z_expr] = parts.map(parse_symmetry_expression)
     if (!x_expr || !y_expr || !z_expr) return []
@@ -431,6 +433,7 @@ const CIF_ATOM_SITE_FIELDS = [
   [`_atom_site_fract_x`, `x`], [`_atom_site_fract_y`, `y`], [`_atom_site_fract_z`, `z`],
   [`_atom_site_cartn_x`, `cart_x`], [`_atom_site_cartn_y`, `cart_y`], [`_atom_site_cartn_z`, `cart_z`],
   [`_atom_site_occupancy`, `occupancy`], [`_atom_site_disorder_group`, `disorder`],
+  [`_atom_site_disorder_assembly`, `assembly`],
   [`_atom_site_label_comp_id`, `residue`], [`_atom_site_auth_comp_id`, `residue`],
   [`_atom_site_group_pdb`, `residue`],
 ]
@@ -598,8 +601,10 @@ const parse_cif_atom_data = (
   }
 }
 
-// The two spellings of the symop column tag (old `_symmetry_` and current `_space_group_`)
-const CIF_SYMOP_TAG_RE = /_symmetry_equiv_pos_as_xyz|_space_group_symop_operation_xyz/i
+// The symop column tag (old `_symmetry_` and current `_space_group_` spellings, dotted CIF2
+// forms) plus the magnetic-CIF op and (anti-)translation centering loops
+const CIF_SYMOP_TAG_RE =
+  /_symmetry_equiv[._]pos_as_xyz|_space_group_symop[._](?:(?:magn_)?operation|magn_centering)[._]xyz/i
 
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
 // which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
@@ -660,21 +665,28 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
   return rows
 }
 
-// Keep one disorder group (the lowest-numbered, by absolute value since a minus prefix
-// marks a site disordered about a special position) and drop the mutually exclusive
-// others; rows without a group (`.`, `?`, blank) are always kept
-const keep_one_disorder_group = (rows: string[][], disorder_col: number): string[][] => {
-  const group_of = (row: string[]): number => parse_float_token(row[disorder_col])
-  // Looped rather than Math.min(...groups): one spread argument per disordered row
-  let kept = Infinity
-  for (const row of rows) {
-    const group = Math.abs(group_of(row))
-    if (Number.isFinite(group) && group < kept) kept = group
+// Keep one disorder group per assembly (the lowest-numbered, by absolute value since a minus
+// prefix marks a site disordered about a special position) and drop the mutually exclusive
+// others; rows without a group (`.`, `?`, blank) are always kept, rows without an assembly
+// (no column, `.` or `?`) share one
+const keep_one_disorder_group = (
+  rows: string[][],
+  { disorder, assembly }: Record<string, number>,
+): string[][] => {
+  if (disorder === undefined) return rows
+  const group_of = (row: string[]): number => Math.abs(parse_float_token(row[disorder]))
+  const assembly_of = (row: string[]): string | undefined => {
+    const value = assembly === undefined ? undefined : row[assembly]
+    return value === `.` || value === `?` ? undefined : value
   }
-  if (!Number.isFinite(kept)) return rows
+  const kept = new Map<string | undefined, number>()
+  for (const row of rows) {
+    const [group, key] = [group_of(row), assembly_of(row)]
+    if (group < (kept.get(key) ?? Infinity)) kept.set(key, group)
+  }
   return rows.filter((row) => {
     const group = group_of(row)
-    return !Number.isFinite(group) || Math.abs(group) === kept
+    return !Number.isFinite(group) || group === kept.get(assembly_of(row))
   })
 }
 
@@ -711,25 +723,24 @@ export const parse_cif = (content: string): Crystal => {
   // Full pass over the block's loops: CIF imposes no ordering on data items, so a symop
   // loop is as likely to follow the atom-site loop as to precede it
   const symmetry_ops: string[] = []
+  const centering_ops: string[] = []
   for (const { headers, data_start } of iter_cif_loops(block_lines)) {
     const symop_col = headers.findIndex((header) => CIF_SYMOP_TAG_RE.test(header))
     if (symop_col === -1) continue
+    const ops = /centering/i.test(headers[symop_col]) ? centering_ops : symmetry_ops
     for (const line of cif_loop_lines(block_lines, data_start)) {
-      symmetry_ops.push(cif_symop_of(line, headers.length, symop_col))
+      ops.push(cif_symop_of(line, headers.length, symop_col))
     }
   }
 
   const max_required_idx = Math.max(...coord_cols.columns)
-  const { disorder } = header_indices
 
   // Rows too short to reach their coordinate columns wrapped a value onto a continuation
   // line (multi-line records are not supported) and are dropped
   const complete_rows = atom_data_lines
     .map(split_cif_tokens)
     .filter((tokens) => tokens.length > max_required_idx)
-  const rows =
-    disorder === undefined ? complete_rows : keep_one_disorder_group(complete_rows, disorder)
-  const atoms = rows
+  const atoms = keep_one_disorder_group(complete_rows, header_indices)
     .map((tokens, atom_idx) => {
       try {
         return parse_cif_atom_data(
@@ -809,6 +820,10 @@ export const parse_cif = (content: string): Crystal => {
     centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
       ? CENTERING_VECTORS[centering_letter]
       : []
+  // mcif centering ops are pure translations applied on top of every op, like centering vectors
+  const magn_centering = parse_symmetry_ops(already_enumerated ? [] : centering_ops)
+    .map(({ translations }) => translations)
+    .filter((shift) => shift.some((coord) => coord !== 0))
 
   // Build all sites by expanding each atom row via the symmetry ops (+ optional
   // centering). Positions within CIF_SITE_TOLERANCE of each other (minimum image) are
@@ -867,10 +882,15 @@ export const parse_cif = (content: string): Crystal => {
   // CIFs listing point-only ops for the asymmetric unit while avoiding
   // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
   // COD 7008984, where listed ops + atoms already total the cell contents).
-  let sites = build_sites([])
+  let sites = build_sites(magn_centering)
   const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
   if (centering.length > 0 && expected_total > sites.length) {
-    const centered_sites = build_sites(centering)
+    // The letter's translations add to explicit mcif centerings (with all their sums)
+    const centered_sites = build_sites([
+      ...magn_centering,
+      ...centering,
+      ...magn_centering.flatMap((shift) => centering.map((vec) => math.add(shift, vec))),
+    ])
     // Adopt centering only when per-element counts reconcile exactly. Checking
     // the total alone is insufficient: it can coincide while individual element
     // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
@@ -1212,14 +1232,34 @@ function optimade_with_sites(raw: unknown, allow_empty = false): OptimadeStructu
     : null
 }
 
-// Convert an OPTIMADE structure entry to a Crystal (lattice_vectors present) or Molecule.
+// Lattice of an OPTIMADE entry with pbc from dimension_types (1 = periodic), or null without a
+// cell. An all-null row along a non-periodic direction becomes a zero vector that make_lattice
+// completes to a unit normal; all-null rows mean no cell (a molecule).
+const optimade_lattice = ({
+  lattice_vectors,
+  dimension_types,
+}: OptimadeStructure[`attributes`]): Crystal[`lattice`] | null => {
+  if (!lattice_vectors) return null
+  const pbc = dimension_types?.map((dim) => dim === 1) ?? [true, true, true]
+  if (!is_pbc(pbc))
+    throw new Error(
+      `OPTIMADE dimension_types must list 3 directions, got ${JSON.stringify(dimension_types)}`,
+    )
+  const is_null_row = (row: unknown, idx: number): boolean =>
+    !pbc[idx] && Array.isArray(row) && row.every((val) => val === null)
+  const rows = lattice_vectors.map((row, idx) => (is_null_row(row, idx) ? [0, 0, 0] : row))
+  const matrix = matrix3x3_from_rows(rows, `OPTIMADE lattice_vectors`) // checks for 3 rows
+  return lattice_vectors.every(is_null_row) ? null : make_lattice(matrix, pbc)
+}
+
+// Convert an OPTIMADE structure entry to a Crystal (see optimade_lattice) or Molecule.
 // Every site must be valid: a missing species or an unreadable position throws rather than
 // being dropped, since a structure rendered with silently missing atoms is worse than an
 // error. The remaining attributes (formula, provider fields, ...) become `properties`; per
 // site, the mass and a non-trivial concentration of the chosen element are kept.
 export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure {
   const {
-    lattice_vectors,
+    lattice_vectors: _lattice_vectors, // read by optimade_lattice, excluded from properties
     cartesian_site_positions: positions,
     species_at_sites,
     species, // excluded from the properties rest
@@ -1235,12 +1275,9 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
     )
   const species_list = Array.isArray(species) ? species : undefined
 
-  // OPTIMADE stores lattice vectors as rows, so use as-is
-  const lattice_matrix = lattice_vectors
-    ? matrix3x3_from_rows(lattice_vectors, `OPTIMADE lattice_vectors`)
-    : undefined
-  const cart_to_frac = lattice_matrix
-    ? cart_to_frac_with_fallback(lattice_matrix, { context: `OPTIMADE lattice` }).convert
+  const lattice = optimade_lattice(optimade.attributes)
+  const cart_to_frac = lattice
+    ? cart_to_frac_with_fallback(lattice.matrix, { context: `OPTIMADE lattice` }).convert
     : null
 
   const sites = positions.map((position, idx) => {
@@ -1272,7 +1309,7 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
     sites,
     id: optimade.id,
     properties,
-    ...(lattice_matrix && { lattice: make_lattice(lattice_matrix) }),
+    ...(lattice && { lattice }),
   }
 }
 
@@ -1317,12 +1354,12 @@ export const detect_structure_type = (filename: string, content: string): Struct
       if (!parsed || typeof parsed !== `object`) return `unknown`
       const root_optimade = optimade_with_sites(optimade_structure_from_raw(parsed), true)
       if (root_optimade)
-        return root_optimade.attributes.lattice_vectors ? `crystal` : `molecule`
+        return optimade_lattice(root_optimade.attributes) ? `crystal` : `molecule`
       let periodic_hint = false
       for (const record of json_structure_records(parsed)) {
         // Match the parser's first canonical structure before consulting metadata hints.
         const optimade = optimade_with_sites(record)
-        if (optimade) return optimade.attributes.lattice_vectors ? `crystal` : `molecule`
+        if (optimade) return optimade_lattice(optimade.attributes) ? `crystal` : `molecule`
         if (is_structure_like(record)) return record.lattice ? `crystal` : `molecule`
         const { lattice, lattice_vectors, dimension_types, nperiodic_dimensions } = record
         periodic_hint ||=

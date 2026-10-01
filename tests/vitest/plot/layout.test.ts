@@ -1128,21 +1128,26 @@ describe(`layout utility functions`, () => {
       expect(layout.width).toBeGreaterThan(plain_width)
     })
 
-    it(`decodes escaped axis-title entities exactly once`, () => {
-      const { label } = resolve_axis_title_layout({ label: `A &amp;lt; B &lt; C` })
-      expect(label).toBe(`A &lt; B < C`)
+    it.each([
+      [`A &amp;lt; B &lt; C`, `A &lt; B < C`],
+      [`&alpha; F<sub>max</sub> (eV/&Aring;)`, `α Fmax (eV/Å)`],
+    ])(`decodes axis title %s exactly once`, (raw, text) => {
+      expect(resolve_axis_title_layout({ label: raw }).label).toBe(text)
     })
 
-    it(`retains subscript and superscript segments when axis titles wrap`, () => {
+    // a no-break space beside a normal one must not shift later lines' characters by one
+    it(`keeps sub/superscript segments aligned with their lines when axis titles wrap`, () => {
       mock_text_measurement(7)
       const layout = resolve_axis_title_layout(
-        { label: `Formation E<sub>hull</sub> relative to x<sup>2</sup>` },
+        { label: `Formation E<sub>hull</sub> at 10\u00A0 K relative to x<sup>2</sup>` },
         80,
       )
       const segments = layout.lines.flatMap((line) => line.segments)
 
       expect(layout.lines.length).toBeGreaterThan(1)
-      expect(layout.label).toBe(`Formation Ehull relative to x2`)
+      for (const { text, segments: line_segments } of layout.lines)
+        expect(line_segments.map((seg) => seg.text).join(``)).toBe(text)
+      expect(layout.label).toBe(`Formation Ehull at 10\u00A0 K relative to x2`)
       expect(segments).toContainEqual({ text: `hull`, shift: `sub` })
       expect(segments).toContainEqual({ text: `2`, shift: `super` })
     })

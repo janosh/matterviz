@@ -161,9 +161,13 @@ describe(`ToggleMenu`, () => {
 
     it(`filters large menus without changing which column a toggle controls`, async () => {
       const columns = make_many_columns(21)
+      columns[0].label = `&Delta;H<sub>f</sub>`
       mount_menu(columns)
 
       const filter = doc_query<HTMLInputElement>(`input[aria-label="Filter columns"]`)
+      filter.value = `δhf` // matches the label as rendered, not its entity source
+      await fire(filter, new Event(`input`, { bubbles: true }))
+      expect(document.querySelectorAll(`.toggle-label`)).toHaveLength(1)
       filter.value = `column 21`
       await fire(filter, new Event(`input`, { bubbles: true }))
 

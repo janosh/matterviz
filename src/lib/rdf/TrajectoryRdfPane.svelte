@@ -3,6 +3,7 @@
   // Frames are analysed one at a time (see calc-trajectory-rdf.ts), so the shared pane's
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
   import { format_num } from '$lib/labels'
+  import { cell_heights } from '$lib/math'
   import type { ViewerPaneOptions } from '$lib/overlays'
   import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
   import type { TrajectoryRun } from '$lib/trajectory'
@@ -42,12 +43,12 @@
   let safe_cutoff = $derived(
     cutoff !== null && Number.isFinite(cutoff) && cutoff > 0 ? cutoff : DEFAULT_RDF_CUTOFF,
   )
-  // A cutoff past half the cell is legal (the neighbour search images as far as needed) but
-  // g(r) there averages over periodic replicas, so say so rather than refuse
+  // A cutoff past half the smallest face-to-face height is legal (the neighbour search images
+  // as far as needed) but g(r) there averages over periodic replicas: warn, don't refuse
   let half_cell = $derived.by(() => {
     const structure = run?.preview.structure
     if (!has_usable_lattice(structure)) return null
-    return Math.min(structure.lattice.a, structure.lattice.b, structure.lattice.c) / 2
+    return Math.min(...cell_heights(structure.lattice.matrix)) / 2
   })
 
   const collect = (

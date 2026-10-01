@@ -1,6 +1,6 @@
 // Serializers for HeatmapTable's export menu and clipboard copy. All work from one plain-text
 // matrix (`TableMatrix`), so CSV, TSV, markdown and LaTeX can't drift apart.
-import { strip_html } from '$lib/utils'
+import { html_to_text } from '$lib/utils'
 import { csv_line } from 'svelte-widgets/csv'
 import type { RowData } from './index'
 
@@ -42,7 +42,7 @@ export const table_to_json = (
       Object.fromEntries(
         columns.map(({ id: identifier, key }) => {
           const val = row[key]
-          return [identifier, typeof val === `string` ? strip_html(val) : val]
+          return [identifier, typeof val === `string` ? html_to_text(val) : val]
         }),
       ),
     ),
@@ -55,8 +55,14 @@ export const table_to_json = (
 // line break would end the table row mid-cell.
 export function table_to_markdown({ headers, rows, numeric }: TableMatrix): string {
   const align = numeric.map((is_numeric) => (is_numeric ? `---:` : `:---`))
+  // escape `<` and entity-like `&` (before adding <br>) so decoded `<b>` or `&lt;` stays text
   const escape_md = (text: string) =>
-    text.replaceAll(`\\`, `\\\\`).replaceAll(`|`, `\\|`).replaceAll(/\r?\n/g, `<br>`)
+    text
+      .replaceAll(/&(?=#?[\da-z]+;)/gi, `&amp;`)
+      .replaceAll(`<`, `&lt;`)
+      .replaceAll(`\\`, `\\\\`)
+      .replaceAll(`|`, `\\|`)
+      .replaceAll(/\r?\n/g, `<br>`)
   const line = (cells: string[]) => `| ${cells.map(escape_md).join(` | `)} |`
   return [line(headers), line(align), ...rows.map(line)].join(`\n`)
 }

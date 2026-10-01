@@ -1,6 +1,6 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
-import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
+import { HeatmapMatrix } from '$lib/heatmap-matrix'
 import heatmap_source from '$lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
 import type { AxisItem, ColorBarPosition, HeatmapDomainMode } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
@@ -8,7 +8,14 @@ import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse, trigger_resize_observer } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  form_controls,
+  keydown,
+  mouse,
+  trigger_resize_observer,
+} from '../setup'
 import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: readonly string[]): AxisItem[] =>
@@ -120,22 +127,20 @@ describe(`axis replacement`, () => {
 })
 
 describe(`symmetric mode`, () => {
-  test.each([
-    { mode: `lower` as const, label: `lower`, check: `toBeLessThanOrEqual` as const },
-    { mode: `upper` as const, label: `upper`, check: `toBeGreaterThanOrEqual` as const },
-  ])(`$label renders triangle + diagonal`, ({ mode, check }) => {
-    mount_matrix({ symmetric: mode })
+  // label order renders C A B as A B C, so the triangle must follow rendered positions
+  test.each([`lower`, `upper`] as const)(`%s renders triangle + diagonal`, (mode) => {
+    const labels = [`C`, `A`, `B`]
+    mount_matrix({ x: labels, y: labels, symmetric: mode, x_order: `label`, y_order: `label` })
     const data_cells = get_data_cells()
     const empty_cells = get_empty_cells()
     // 3x3 symmetric: diagonal(3) + triangle(3) = 6 data, 3 empty
     expect(data_cells).toHaveLength(6)
     expect(empty_cells).toHaveLength(3)
     for (const cell of data_cells) {
-      const x_idx = Number(cell.dataset.x)
-      const y_idx = Number(cell.dataset.y)
+      const [col, row] = [Number(cell.style.gridColumn), Number(cell.style.gridRow)]
       const message = `(${cell.dataset.x},${cell.dataset.y})`
-      if (check === `toBeLessThanOrEqual`) expect(x_idx, message).toBeLessThanOrEqual(y_idx)
-      else expect(x_idx, message).toBeGreaterThanOrEqual(y_idx)
+      if (mode === `lower`) expect(col, message).toBeLessThanOrEqual(row)
+      else expect(col, message).toBeGreaterThanOrEqual(row)
     }
     for (const cell of empty_cells) {
       expect(cell.dataset.x).toBeUndefined()
@@ -209,7 +214,7 @@ describe(`values and colors`, () => {
       x: [`A`, `B`],
       y: [`X`],
       values: [[0.2, 0.8]],
-      color_overrides: { [make_color_override_key(`B`, `X`)]: `rgb(1, 2, 3)` },
+      color_overrides: { X: { B: `rgb(1, 2, 3)` } },
     })
     const cells = get_data_cells()
     expect(cells[1].style.backgroundColor).toBe(`rgb(1, 2, 3)`)
@@ -485,14 +490,15 @@ describe(`edge cases`, () => {
 })
 
 describe(`hide_empty`, () => {
-  // 3x3 grid where column B and row Y are entirely null
+  // 3x3 grid where column B and row Y are entirely null; x_order renders C B A as A B C
   const sparse = {
-    x: [`A`, `B`, `C`],
+    x: [`C`, `B`, `A`],
+    x_order: `label` as const,
     y: [`X`, `Y`, `Z`],
     values: [
-      [1, null, 2],
+      [2, null, 1],
       [null, null, null],
-      [3, null, 4],
+      [4, null, 3],
     ],
   }
 
@@ -501,7 +507,7 @@ describe(`hide_empty`, () => {
     (hide_empty) => {
       mount_matrix({ ...sparse, hide_empty })
       expect(get_x_labels().map((label) => label.textContent?.trim())).toEqual(
-        hide_empty ? [`A`, `C`] : sparse.x,
+        hide_empty ? [`A`, `C`] : [`A`, `B`, `C`],
       )
       expect(get_y_labels().map((label) => label.textContent?.trim())).toEqual(
         hide_empty ? [`X`, `Z`] : sparse.y,
@@ -512,7 +518,7 @@ describe(`hide_empty`, () => {
         const grid = doc_query(`.grid`)
         expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
         expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
-        // Gaps retain the original A/X and C/Z tracks despite missing B/Y.
+        // Gaps retain the ordered A/X and C/Z tracks despite missing B/Y.
         expect([cells[0].style.gridColumn, cells[0].style.gridRow]).toEqual([`2`, `2`])
         expect([cells[3].style.gridColumn, cells[3].style.gridRow]).toEqual([`4`, `4`])
       }
@@ -524,9 +530,12 @@ describe(`axis label placement`, () => {
   test.each([false, true])(
     `staggered labels avoid summary tracks: summaries=%s`,
     (summaries) => {
+      // shuffled items sorted by label: edges alternate by rendered position, not item index
       mount_matrix({
-        x: [`A`, `B`, `C`, `D`],
-        y: [`W`, `X`, `Y`, `Z`],
+        x: [`C`, `A`, `D`, `B`],
+        y: [`Y`, `W`, `Z`, `X`],
+        x_order: `label`,
+        y_order: `label`,
         ...(summaries && {
           values: [
             [1, 2, 3, 4],
@@ -625,26 +634,38 @@ describe(`milestone feature props`, () => {
 
   // HeatmapMatrix binds show_color_bar/color_bar_position into its controls pane, so both must
   // be $bindable - a plain prop drops the checkbox/select writes (and fails to compile).
-  test(`controls pane writes show_color_bar and color_bar_position back to the parent`, async () => {
+  // The `log` shorthand only sets normalize when it changes, so the select can still undo it.
+  test(`controls pane writes color bar props back and can undo the log shorthand`, async () => {
     const state: { show_color_bar: boolean; color_bar_position: ColorBarPosition } = {
       show_color_bar: true,
       color_bar_position: `bottom`,
     }
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: bind_props({ x_items, y_items, show_controls: true, controls_open: true }, state),
-    })
+    const log = fromStore(writable(true))
+    const props = {
+      x_items,
+      y_items: make_items([`X`]),
+      values: [[1, 10, 100]],
+      color_scale: red_scale,
+      show_controls: true,
+      controls_open: true,
+      get log() {
+        return log.current
+      },
+    }
+    mount(HeatmapMatrix, { target: document.body, props: bind_props(props, state) })
     await tick()
-    const position_select = Array.from(
-      document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
-    ).find((sel) => sel.querySelector(`option[value="right"]`))
-    if (!position_select) throw new Error(`color bar position select not rendered`)
-    position_select.value = `right`
-    position_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    flushSync()
-    expect(state.color_bar_position).toBe(`right`)
+    const { control, set_value } = form_controls()
+    const reds = () => get_data_cells().map(red_of)
+    expect(reds()).toEqual([0, 128, 255])
+    await set_value(`Normalize`, `linear`)
+    expect(reds()).toEqual([0, 23, 255])
+    flushSync(() => (log.current = false))
+    flushSync(() => (log.current = true)) // a later change (e.g. widget trait) applies again
+    expect([control(`Normalize`).value, ...reds()]).toEqual([`log`, 0, 128, 255])
 
-    doc_query<HTMLInputElement>(`.heatmap-controls input[type="checkbox"]`).click()
+    await set_value(`Color bar side`, `right`)
+    expect(state.color_bar_position).toBe(`right`)
+    control(`Color bar`).click()
     flushSync()
     expect(state.show_color_bar).toBe(false)
   })
@@ -689,50 +710,70 @@ describe(`milestone feature props`, () => {
     ])
   })
 
-  // Shift+click spans the rectangle from the last selected cell; the hidden triangle of a
-  // symmetric matrix is left out of it
-  test(`selection_mode range spans a rectangle minus the hidden triangle`, () => {
-    const select_handler = vi.fn()
-    mount_matrix({
-      selection_mode: `range`,
-      symmetric: `lower`,
-      values: numbered_values,
-      on_select: select_handler,
-    })
-    const cell_at = (x_idx: number, y_idx: number) =>
-      doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    cell_at(0, 0).dispatchEvent(mouse(`click`))
-    cell_at(1, 2).dispatchEvent(mouse(`click`, { shiftKey: true }))
-    expect(select_handler.mock.calls.at(-1)?.[0]).toEqual([
-      { x_idx: 0, y_idx: 0 },
-      { x_idx: 0, y_idx: 1 },
-      { x_idx: 1, y_idx: 1 },
-      { x_idx: 0, y_idx: 2 },
-      { x_idx: 1, y_idx: 2 },
-    ])
-  })
+  const cell_at = (x_idx: number, y_idx: number) =>
+    doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 
-  test(`brush drag reports the spanned ranges and cells`, () => {
+  // Shift+click spans the rectangle from the last selected cell (cells listed as x:y); the
+  // hidden triangle of a symmetric matrix and columns filtered out by the search are left out
+  test.each([
+    [`symmetric lower`, { symmetric: `lower` }, [1, 2], `0:0 0:1 1:1 0:2 1:2`],
+    [`search hides a column`, { x: [`Ax`, `B`, `Cx`], search_query: `x` }, [2, 0], `0:0 2:0`],
+  ] as const)(
+    `selection_mode range spans a rectangle: %s`,
+    (_desc, props, [end_x, end_y], expected) => {
+      const select_handler = vi.fn<(cells: { x_idx: number; y_idx: number }[]) => void>()
+      mount_matrix({
+        selection_mode: `range`,
+        values: numbered_values,
+        on_select: select_handler,
+        ...props,
+      })
+      cell_at(0, 0).dispatchEvent(mouse(`click`))
+      cell_at(end_x, end_y).dispatchEvent(mouse(`click`, { shiftKey: true }))
+      const cells = select_handler.mock.calls.at(-1)?.[0] ?? []
+      expect(cells.map(({ x_idx, y_idx }) => `${x_idx}:${y_idx}`).join(` `)).toBe(expected)
+    },
+  )
+
+  // C A B renders as A B C: a drag from C back to B spans rendered B..C (item indices 2, 0)
+  // and must not pick up A from between their indices
+  test(`brush drag reports the spanned ranges and cells in rendered order`, () => {
     const brush_handler = vi.fn()
     mount_matrix({
+      x: [`C`, `A`, `B`],
+      x_order: `label`,
       enable_brush: true,
       on_brush: brush_handler,
       values: numbered_values,
     })
-    const cell_at = (x_idx: number, y_idx: number) =>
-      doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
     // drag from bottom-right to top-left so the ranges have to be sorted
-    cell_at(2, 1).dispatchEvent(mouse(`mousedown`))
-    cell_at(1, 0).dispatchEvent(mouse(`mouseover`))
+    cell_at(0, 1).dispatchEvent(mouse(`mousedown`))
+    cell_at(2, 0).dispatchEvent(mouse(`mouseover`))
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).toHaveBeenCalledOnce()
     const payload = brush_handler.mock.calls[0][0]
-    expect(payload.x_range).toEqual([1, 2])
+    expect(payload.x_range).toEqual([2, 0])
     expect(payload.y_range).toEqual([0, 1])
-    expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual([2, 3, 5, 6])
+    expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual([3, 1, 6, 4])
     // a second mouseup without a new drag reports nothing
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).toHaveBeenCalledOnce()
+  })
+
+  // a search hiding the brushed cells before mouseup leaves no rectangle (not undefined ranges)
+  test(`a brush whose corners a search hid reports nothing`, async () => {
+    const brush_handler = vi.fn()
+    mount_matrix({
+      values: numbered_values,
+      enable_brush: true,
+      on_brush: brush_handler,
+      show_controls: true,
+      controls_open: true,
+    })
+    cell_at(1, 0).dispatchEvent(mouse(`mousedown`))
+    await form_controls().set_value(`Search`, `Z`) // hides every column and the brushed row
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).not.toHaveBeenCalled()
   })
 
   test(`selected outline color token contrasts with dark cell backgrounds`, () => {
@@ -824,9 +865,7 @@ describe(`show_values`, () => {
   test(`contrasts translucent cell colors against the matrix background`, async () => {
     mount_single_value(1, {
       show_values: true,
-      color_overrides: {
-        [make_color_override_key(`A`, `X`)]: `rgba(255, 255, 255, 0.1)`,
-      },
+      color_overrides: { X: { A: `rgba(255, 255, 255, 0.1)` } },
       backdrop: `black`,
       style: `background: black`,
     })

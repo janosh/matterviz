@@ -65,15 +65,11 @@
   )
 
   const sym_tiling = $derived(parse_supercell_scaling(top_ex_tiling))
-  const sym_lattice = $derived(
-    is_crystal(top_ex_structure) ? top_ex_structure.lattice.matrix : undefined,
-  )
   const sym_tiling_result = $derived(
-    sym_lattice && top_ex_cell_type === `original`
+    is_crystal(top_ex_structure) && top_ex_cell_type === `original`
       ? tile_symmetry_elements(
           sym_elements.filter((element) => show_sym_kinds[element.kind]),
           sym_tiling,
-          sym_lattice,
         )
       : undefined,
   )
@@ -152,7 +148,6 @@
           bind:show_kinds={show_sym_kinds}
           in_input_frame={top_ex_cell_type === `original`}
           tiling={sym_tiling}
-          lattice={sym_lattice}
           tiling_result={sym_tiling_result}
           style="margin: 0.5em 0 0 1.5em"
         />

@@ -4,7 +4,7 @@
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '$lib/table'
   import { DATETIME_MODE_LABELS } from './data'
-  import { strip_html } from '$lib/utils'
+  import { html_to_text } from '$lib/utils'
   import { Icon } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
   import { Calendar } from 'svelte-widgets/icons'
@@ -53,7 +53,7 @@
     })}
   >
     <Icon icon={Calendar} />
-    <span id={label_id} class="sr-only">Date/time format for {strip_html(col_label)}</span>
+    <span id={label_id} class="sr-only">Date/time format for {html_to_text(col_label)}</span>
   </button>
   {#if open}
     <select

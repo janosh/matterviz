@@ -92,11 +92,12 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
     resolve_fill_binding,
+    resolve_series_ref,
   } from '$lib/plot/core/fill-utils'
   import {
     get_relative_coords,
     is_activation_key,
-    sorted_range,
+    range_bounds,
     vec2_equal,
   } from '$lib/plot/core/interactions'
   import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
@@ -110,7 +111,9 @@
   import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { color as d3_color } from 'd3-color'
   import {
-    build_legend_data,
+    build_fill_legend_items,
+    build_series_legend_items,
+    lookalike_legend_label,
     filter_series_to_ranges,
     legend_row_dedupe,
     materialize_series_points,
@@ -364,29 +367,31 @@
   // Finite extents of the visible series per axis, without materializing point objects.
   // Hidden series widen no axis, so toggling one off lets the view tighten on every axis.
   let extents_by_axis = $derived.by(() => {
-    const all_x = empty_extent()
-    const coord_y = empty_extent()
-    const coord_y_2 = empty_extent()
-    const coord_x = empty_extent()
+    const extents = {
+      x: empty_extent(),
+      x2: empty_extent(),
+      y: empty_extent(),
+      y2: empty_extent(),
+    }
     let has_x2_points = false
     let has_y2_points = false
 
     for (const srs of assigned_series) {
       if (!srs || srs.visible === false) continue
-      const { line_underlays = [], y_axis: series_y_axis = `y`, x_axis: x_ax = `x` } = srs
-      for (const { x: layer_x, y: layer_y } of [srs, ...line_underlays]) {
+      // anything but x2/y2 (incl. a null from JSON) is the primary axis
+      const x_ax = srs.x_axis === `x2` ? `x2` : `x`
+      const series_y_axis = srs.y_axis === `y2` ? `y2` : `y`
+      const [x_extent, y_extent] = [extents[x_ax], extents[series_y_axis]]
+      for (const { x: layer_x, y: layer_y } of [srs, ...(srs.line_underlays ?? [])]) {
         // x drives the point count: a y array of a different length is read through x.length
         const n_points = layer_x.length
-        accumulate_extent(all_x, layer_x, n_points)
-        const y_extent = series_y_axis === `y2` ? coord_y_2 : coord_y
+        accumulate_extent(x_extent, layer_x, n_points)
         accumulate_extent(y_extent, layer_y, n_points)
-        if (x_ax === `x2`) accumulate_extent(coord_x, layer_x, n_points)
         // Error bars reach past their point, so the axis has to reach with them or the
         // caps get clipped. Underlays carry no error of their own, hence the identity
         // check: only the series itself contributes.
         if (layer_x === srs.x) {
-          accumulate_error_extent(all_x, srs.x, srs.x_error, n_points)
-          if (x_ax === `x2`) accumulate_error_extent(coord_x, srs.x, srs.x_error, n_points)
+          accumulate_error_extent(x_extent, srs.x, srs.x_error, n_points)
           accumulate_error_extent(y_extent, srs.y, srs.y_error, n_points)
         }
         const needs_axis_probe: boolean =
@@ -401,7 +406,7 @@
         has_y2_points ||= series_y_axis === `y2` && has_drawable_point
       }
     }
-    return { all_x, y: coord_y, y2: coord_y_2, x2: coord_x, has_x2_points, has_y2_points }
+    return { ...extents, has_x2_points, has_y2_points }
   })
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
@@ -420,7 +425,7 @@
     )
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
   const intrinsic_ranges = $derived({
-    x: auto_range(extents_by_axis.all_x, final_x_axis, is_time_x),
+    x: auto_range(extents_by_axis.x, final_x_axis, is_time_x),
     x2: auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2),
     y: auto_range(extents_by_axis.y, final_y_axis),
     y2: auto_range(extents_by_axis.y2, final_y2_axis),
@@ -432,7 +437,7 @@
     // the default range, so toggling series off doesn't jump the plot
     range_sync: `expand`,
     has_data: () => ({
-      x: extents_by_axis.all_x.n_finite > 0,
+      x: extents_by_axis.x.n_finite > 0,
       x2: extents_by_axis.x2.n_finite > 0,
       y: extents_by_axis.y.n_finite > 0,
       y2: extents_by_axis.y2.n_finite > 0,
@@ -456,8 +461,8 @@
     // the rect into data space) so the same test works on both axes whatever their scale
     // types, and so a point's own offset counts - the user selects what they see.
     on_rect_select: (start, current) => {
-      const [x_lo, x_hi] = sorted_range(start.x, current.x)
-      const [y_lo, y_hi] = sorted_range(start.y, current.y)
+      const [x_lo, x_hi] = range_bounds([start.x, current.x])
+      const [y_lo, y_hi] = range_bounds([start.y, current.y])
       const picked: InternalPoint<Metadata>[] = []
       for (const series_data of filtered_series) {
         if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
@@ -573,7 +578,7 @@
     ]
   })
 
-  // Same rows, dedupe and series numbering as build_legend_data below, so the solver reserves
+  // Same rows, dedupe and series numbering as legend_data below, so the solver reserves
   // room for exactly the rows PlotLegend draws, without depending on frame geometry.
   const legend_track_items = $derived.by(() => {
     const first_seen = legend_row_dedupe()
@@ -644,7 +649,7 @@
   const underlay_directions = $derived(
     new Map(
       assigned_series.flatMap((srs) =>
-        (srs.line_underlays ?? []).map(
+        (srs?.line_underlays ?? []).map(
           (layer) => [layer.x, strict_x_direction(layer.x)] as const,
         ),
       ),
@@ -913,23 +918,6 @@
     if (surface) draw_markers(surface.ctx, canvas_markers ?? [], surface)
   })
 
-  const fill_hover_key = (
-    source_type: FillSource,
-    source_idx: number,
-    id?: string | number,
-    is_duplicate_id = false,
-  ): string => {
-    if (id == null) return `${source_type}:idx:${source_idx}`
-    if (is_duplicate_id) return `${source_type}:id:${id}:idx:${source_idx}`
-    return `${source_type}:id:${id}`
-  }
-  const has_duplicate_id = <T extends { id?: string | number }>(
-    items: readonly T[] | undefined,
-    source_idx: number,
-    id?: string | number,
-  ): boolean =>
-    id != null && (items?.some((item, idx) => idx !== source_idx && item.id === id) ?? false)
-
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type FillSource = `fill_region` | `error_band`
   type ComputedFill = FillRegion & {
@@ -942,6 +930,8 @@
   type TaggedRegion = Pick<ComputedFill, `source_type` | `source_idx` | `hover_key`> & {
     region: FillRegion | null
   }
+  // Hover and {#each} key: a fill's id while no other fill of its source shares it, compared
+  // as the text the key holds (ids 1 and `1` clash), else its index
   const tag_regions = <Item extends { id?: string | number }>(
     items: readonly Item[],
     source_type: FillSource,
@@ -951,13 +941,33 @@
       region: to_region(item),
       source_type,
       source_idx,
-      hover_key: fill_hover_key(
-        source_type,
-        source_idx,
-        item.id,
-        has_duplicate_id(items, source_idx, item.id),
-      ),
+      hover_key:
+        item.id != null && items.filter(({ id }) => `${id}` === `${item.id}`).length === 1
+          ? `${source_type}:id:${item.id}`
+          : `${source_type}:idx:${source_idx}`,
     }))
+  // Series refs matching no series, whose fills would vanish silently. A string, so data
+  // updates that keep the same broken refs don't warn again.
+  const missing_fill_refs = $derived(
+    assigned_series.length === 0
+      ? ``
+      : [
+          ...fill_regions.flatMap(({ upper, lower }) => [upper, lower]),
+          ...error_bands.map(({ series: ref }) => ref),
+        ]
+          .filter(
+            (ref) =>
+              typeof ref === `object` &&
+              ref.type === `series` &&
+              !resolve_series_ref(ref, assigned_series),
+          )
+          .map((ref) => JSON.stringify(ref))
+          .join(`, `),
+  )
+  $effect(() => {
+    if (missing_fill_refs)
+      console.warn(`ScatterPlot: fill references no series: ${missing_fill_refs}`)
+  })
   let computed_fills = $derived.by((): ComputedFill[] => {
     if (fill_regions.length === 0 && error_bands.length === 0) return []
     const all_regions = [
@@ -1023,15 +1033,22 @@
       .filter((fill) => fill !== null)
   })
 
-  let legend_data = $derived(
-    build_legend_data(
-      assigned_series,
-      computed_fills,
-      color_scale_fn,
-      styles,
-      active_series_idx,
-    ),
+  // Series rows don't depend on the fills, which every pan rebuilds
+  const series_legend_items = $derived(
+    build_series_legend_items(assigned_series, color_scale_fn, styles, active_series_idx),
   )
+  let legend_data = $derived([
+    ...series_legend_items,
+    ...build_fill_legend_items(computed_fills),
+  ])
+  // A string, so data updates that keep the lookalike rows don't warn again
+  const lookalike_label = $derived(lookalike_legend_label(series_legend_items))
+  $effect(() => {
+    if (lookalike_label)
+      console.warn(
+        `ScatterPlot: identical legend rows "${lookalike_label}", give them a shared legend_id`,
+      )
+  })
   const active_legend_idx = $derived.by(() => {
     const idx = tooltip_point?.series_idx ?? frame.hovered_series_idx
     if (idx == null || !series[idx]) return null
@@ -1770,6 +1787,7 @@
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,
                   radius: appearance.radius,
+                  fill: appearance.fill,
                   stroke_width: appearance.stroke_width,
                   stroke: appearance.stroke,
                   stroke_opacity: appearance.stroke_opacity,
@@ -1789,7 +1807,6 @@
                   ? { [ROVING_ATTR]: roving_key(point.series_idx, point.point_idx) }
                   : {}}
                 aria-label={points_interactive ? point_accessible_label(point) : undefined}
-                --point-fill-color={appearance.fill}
                 {...point_events &&
                   Object.fromEntries(
                     point_event_names.map((name) => [

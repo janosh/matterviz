@@ -10,6 +10,7 @@ import {
   bind_props,
   create_drop_event,
   doc_query,
+  marker_fill,
   mock_parse_worker,
   mount_sized,
 } from '../setup'
@@ -215,6 +216,31 @@ describe(`convex hull replacement state`, () => {
       expect(console_error).not.toHaveBeenCalled()
     },
   )
+
+  test(`warns when entries share an entry_id`, async () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const entries = [
+      make_phase({ Li: 1 }, 0, { entry_id: `dup` }),
+      make_phase({ O: 1 }, 0, { entry_id: `dup` }),
+    ]
+    await mount_hull({ entries })
+    expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
+  })
+
+  // synthetic corners close the hull but are no data entries, so the pane counts skip them
+  test(`pane counts leave out synthetic corners`, async () => {
+    const entries = [
+      make_phase({ Li: 1 }, 0),
+      // drawn (above the hull), but the hull needs a synthetic O corner in its place
+      make_phase({ O: 1 }, 0, { exclude_from_hull: true }),
+      make_phase({ Li: 2, O: 1 }, -6),
+    ]
+    await mount_hull({ entries, info_pane_open: true })
+    expect([`hull-visible-stable`, `hull-visible-unstable`].map(test_text)).toEqual([
+      `Visible stable 2 / 2`,
+      `Visible unstable 1 / 1`,
+    ])
+  })
 
   // The arity check runs on the entries prop, not on what survives the temperature filter:
   // at 600 K the only O entry (tabulated at 300 K alone, no interpolation) is dropped, which
@@ -640,12 +666,9 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
         const distinct_shapes = new Set(marker_paths.map((path) => path.getAttribute(`d`)))
         expect(distinct_shapes.size).toBeGreaterThanOrEqual(3)
       }
-      // ScatterPoint paints var(--point-fill-color) set on its wrapper; the uncategorized
-      // furthest entry (0.1 eV/atom) tops the [0, 0.1] hull-distance domain: darkest red
-      const fills = [...plot.querySelectorAll<HTMLElement>(`[style*="--point-fill-color"]`)]
-      const colors = fills.map((fill) =>
-        fill.style.getPropertyValue(`--point-fill-color`).trim(),
-      )
+      // the uncategorized furthest entry (0.1 eV/atom) tops the [0, 0.1] hull-distance
+      // domain: darkest red
+      const colors = marker_paths.map(marker_fill)
       expect(colors).toEqual(expect.arrayContaining([interpolateReds(0), interpolateReds(1)]))
     },
   )

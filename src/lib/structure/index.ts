@@ -164,7 +164,7 @@ const atomic_masses = new Map(
   element_data.map(({ number, atomic_mass }) => [number, atomic_mass]),
 )
 
-export function get_center_of_mass(structure: AnyStructure): Vec3 {
+export function get_center_of_mass(structure: AnyStructure): Vec3 | null {
   let [sum_x, sum_y, sum_z, total_weight] = [0, 0, 0, 0]
   const columns = numeric_sites.get(structure)
   if (columns) {
@@ -190,6 +190,8 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
         total_weight += weight
       }
     }
+  // no sites, or only empty / zero-occupancy species: there is no center of mass
+  if (!(total_weight > 0)) return null
   return [sum_x / total_weight, sum_y / total_weight, sum_z / total_weight]
 }
 

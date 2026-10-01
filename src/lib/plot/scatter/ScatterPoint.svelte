@@ -8,6 +8,7 @@
     label_leader_segment,
   } from '$lib/plot/core/utils/label-placement'
   import { DEFAULTS } from '$lib/settings'
+  import { rgb } from 'd3-color'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
@@ -43,33 +44,69 @@
     hit_padding?: number
   } = $props()
 
+  type Marker = Point2D & Pick<PointStyle, `radius` | `fill`>
+  const lerp = (from: number, to: number, frac: number): number => from + (to - from) * frac
+  // Size and colour glide with the position, so re-encoding a marker (new size or colour
+  // column, colour scale, log toggle) animates like a data change. Colour blends in RGB; an
+  // unset radius or a colour d3 can't parse (e.g. a CSS variable) switches at the start.
+  const interpolate_marker = (from: Marker, to: Marker) => {
+    const position = point_tween.interpolate?.(from, to)
+    const [from_fill, to_fill] = [rgb(from.fill ?? ``), rgb(to.fill ?? ``)]
+    const blend_fill =
+      from.fill !== to.fill && from_fill.displayable() && to_fill.displayable()
+    return (frac: number): Marker => ({
+      ...(position?.(frac) ?? { x: lerp(from.x, to.x, frac), y: lerp(from.y, to.y, frac) }),
+      radius:
+        from.radius === undefined || to.radius === undefined
+          ? to.radius
+          : lerp(from.radius, to.radius, frac),
+      fill: blend_fill
+        ? rgb(
+            lerp(from_fill.r, to_fill.r, frac),
+            lerp(from_fill.g, to_fill.g, frac),
+            lerp(from_fill.b, to_fill.b, frac),
+            lerp(from_fill.opacity, to_fill.opacity, frac),
+          ).formatRgb()
+        : to.fill,
+    })
+  }
+  const target = $derived({
+    x: coord_x + offset.x,
+    y: coord_y + offset.y,
+    radius: style.radius,
+    fill: style.fill,
+  })
+  // Seeded at the marker's own state so a plot appearing on screen draws it where the data
+  // is instead of animating every point in from elsewhere.
+  // Object.is, not ===, so a NaN coordinate compares equal to itself instead of retargeting
+  // every render (BarPlot passes coordinates through unclamped).
+  const tweened = create_settling_tween(
+    () => target,
+    { duration: 600, easing: cubicOut, interpolate: interpolate_marker },
+    {
+      live: () => ({ ...point_tween, interpolate: interpolate_marker }),
+      is_same: (left, right) =>
+        Object.is(left.x, right.x) &&
+        Object.is(left.y, right.y) &&
+        Object.is(left.radius, right.radius) &&
+        left.fill === right.fill,
+    },
+  )
+  const { radius, fill } = $derived(tweened.current)
+
   // get the SVG path data as 'd' attribute
   function get_symbol_path(): string {
     const symbol_key: D3SymbolName = style.symbol_type ?? DEFAULTS.scatter.symbol_type
     const symbol_type = symbol_map[symbol_key] ?? d3_symbols.symbolCircle
-    const size = style.symbol_size ?? Math.PI * (style.radius ?? 2) ** 2
+    const size = style.symbol_size ?? Math.PI * (radius ?? 2) ** 2
     return symbol().type(symbol_type).size(size)() || ``
   }
 
   let marker_path = $derived.by(get_symbol_path)
-
-  const default_tween_props: TweenOptions<Point2D> = {
-    duration: 600,
-    easing: cubicOut,
-  }
-  const coords = $derived({ x: coord_x + offset.x, y: coord_y + offset.y })
-  // Seeded at the marker's own position so a plot appearing on screen draws it where the
-  // data is instead of animating every point in from elsewhere.
-  // Object.is, not ===, so a NaN coordinate compares equal to itself instead of retargeting
-  // every render (BarPlot passes coordinates through unclamped).
-  const tweened_coords = create_settling_tween(() => coords, default_tween_props, {
-    live: () => point_tween,
-    is_same: (left, right) => Object.is(left.x, right.x) && Object.is(left.y, right.y),
-  })
 </script>
 
 <g
-  transform="translate({tweened_coords.current.x} {tweened_coords.current.y})"
+  transform="translate({tweened.current.x} {tweened.current.y})"
   style="--hover-scale: {hover.scale ?? 1.5}; {hover.stroke === ``
     ? ``
     : `--hover-stroke: ${hover.stroke ?? `white`}; `}--hover-stroke-width: {hover.stroke_width ??
@@ -78,7 +115,7 @@
 >
   {#if hit_padding > 0}
     <circle
-      r={(style.radius ?? 2) + hit_padding}
+      r={(radius ?? 2) + hit_padding}
       class="marker-hit-target"
       fill="transparent"
       stroke="none"
@@ -87,15 +124,15 @@
   {/if}
   {#if is_selected}
     <circle
-      r={(style.radius ?? 4) * 2.5}
+      r={(radius ?? 4) * 2.5}
       class="effect-ring selected"
-      fill="var(--point-fill-color, {style.fill ?? `cornflowerblue`})"
+      fill="var(--point-fill-color, {fill ?? `cornflowerblue`})"
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
     />
   {:else if style.is_highlighted && style.highlight_effect}
     <circle
-      r={(style.radius ?? 4) * 2}
+      r={(radius ?? 4) * 2}
       class={[`effect-ring`, style.highlight_effect]}
       fill={style.highlight_color ?? `#ff4444`}
       stroke="var(--effect-ring-stroke, white)"
@@ -108,7 +145,7 @@
     stroke-width={style.stroke_width ?? 1}
     fill-opacity={style.fill_opacity ?? 1}
     stroke-opacity={style.stroke_opacity ?? 1}
-    fill="var(--point-fill-color, {style.fill ?? `black`})"
+    fill="var(--point-fill-color, {fill ?? `black`})"
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
     class:is-dimmed={is_dimmed}
@@ -122,7 +159,7 @@
       displacement > leader_line_threshold
         ? label_leader_segment({
             point: { x: 0, y: 0 },
-            point_radius: style.radius ?? 3,
+            point_radius: radius ?? 3,
             label_center: { x: offset_x, y: offset_y },
             label_size: label.size ?? estimate_label_size(label.text, label.font_size),
             min_length: 6,

@@ -8,6 +8,7 @@ import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
+import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 
 vi.mock(`$lib/io/fetch`, async (import_original) => ({
@@ -174,6 +175,18 @@ test.each([
     })
   },
 )
+
+// Half the cell is half its smallest face-to-face height (2 Å here), not edge (~10 Å)
+test(`measures half a sheared cell by its face-to-face height`, async () => {
+  // oxfmt-ignore
+  const structure = make_crystal([[10, 0, 0], [9.8, 2, 0], [0, 0, 10]], [[`Cu`, [0, 0, 0]]])
+  mounted_component = mount(TrajectoryRdfPane, {
+    target: document.body,
+    props: { run: { ...make_run(1), preview: { step: 0, structure } }, pane_open: true },
+  })
+  await settle()
+  expect(document.body.textContent).toContain(`beyond half the cell (1 Å)`)
+})
 
 // Refused up front, not on click: g(r) has nothing to normalise against without a cell, and a
 // button that takes the click and then throws reads as a broken feature rather than a

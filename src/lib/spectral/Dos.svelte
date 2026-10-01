@@ -16,13 +16,13 @@
     apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
+    density_divisor,
     extract_efermi,
     spectral_type,
     format_dos_tooltip,
     IMAGINARY_MODE_NOISE_THRESHOLD,
     negative_fraction,
     NORMALIZATION_MODES,
-    normalize_densities,
     SPIN_MODES,
     validate_sigma_range,
   } from './helpers'
@@ -96,7 +96,7 @@
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
   const is_phonon = $derived(spectral_type(doses) === `phonon`)
-  // Displayed per data unit; electronic energies are never converted
+  // Display units per data unit; electronic energies are never converted
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
@@ -117,94 +117,71 @@
       const all_series: DataSeries[] = []
       const areas: StackedAreaData[] = []
       // Separate cumulative trackers so spin-down never stacks on top of spin-up
-      let cumulative_spin_up: number[] | null = null
-      let cumulative_spin_down: number[] | null = null
+      const cumulative: Record<`up` | `down`, number[] | null> = { up: null, down: null }
 
       for (const [dos_idx, [label, dos]] of Object.entries(doses).entries()) {
         const color = plot_color(dos_idx)
         const x_values =
-          dos.type === `phonon` && unit !== `THz`
-            ? convert_frequencies(dos.frequencies, unit)
-            : dos.type === `phonon`
-              ? dos.frequencies
-              : dos.energies
-        const has_spin_down =
-          dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
+          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies
         const series_label = label || `DOS ${dos_idx + 1}`
+        const raw_down =
+          dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
+            ? dos.spin_down_densities
+            : null
 
-        // Smear and normalize one spin channel, then (when `cumulative` is given) stack it on
-        // the previous DOS and record the area fill between the two
-        const channel = (
-          raw: number[],
-          cumulative: number[] | null | false,
-          fill_color: string,
-          warn_label: string,
-        ): number[] => {
-          let densities =
-            display_sigma > 0
-              ? apply_gaussian_smearing(x_values, raw, display_sigma)
-              : [...raw]
-          densities = normalize_densities(densities, x_values, normalize)
-          if (cumulative === false) return densities
-          if (cumulative?.length === densities.length) {
-            densities = densities.map((density, idx) => density + (cumulative[idx] ?? 0))
-          } else if (cumulative) {
-            console.warn(`DOS stacking${warn_label}: length mismatch for "${label}"`)
-          }
-          areas.push({
-            x_values: [...x_values],
-            upper_densities: [...densities],
-            lower_densities: cumulative ? [...cumulative] : x_values.map(() => 0),
-            color: fill_color,
-          })
-          return densities
+        // per display unit (a phonon DOS is stored per THz), then smeared
+        const smear = (raw: number[]): number[] => {
+          const densities = raw.map((density) => density / display_factor)
+          return display_sigma > 0
+            ? apply_gaussian_smearing(x_values, densities, display_sigma)
+            : densities
         }
-        const push_series = (
-          densities: number[],
-          spin: `up` | `down`,
-          stroke: string,
-          dash?: string,
-        ) =>
+        const up = effective_spin_mode === `down_only` ? null : smear(dos.densities)
+        const down =
+          raw_down && effective_spin_mode && effective_spin_mode !== `up_only`
+            ? smear(raw_down)
+            : null
+        // one divisor over only the drawn spins keeps their relative scale
+        const drawn = [up, down].filter((curve) => curve !== null)
+        const divisor = density_divisor(drawn, x_values, normalize)
+
+        // mirror negates spin-down before stacking, so it also stacks and fills downward
+        const draw = (curve: number[], spin: `up` | `down`, stroke: string, dash?: string) => {
+          const sign = spin === `down` && effective_spin_mode === `mirror` ? -1 : 1
+          let densities = curve.map((density) => (sign * density) / divisor)
+          if (stack) {
+            const below = cumulative[spin]
+            if (below?.length === densities.length) {
+              densities = densities.map((density, idx) => density + below[idx])
+            } else if (below) {
+              const warn_label = spin === `down` ? ` (spin-down)` : ``
+              console.warn(`DOS stacking${warn_label}: length mismatch for "${label}"`)
+            }
+            areas.push({
+              x_values: [...x_values],
+              upper_densities: [...densities],
+              lower_densities: below ? [...below] : x_values.map(() => 0),
+              color: stroke,
+            })
+            cumulative[spin] = densities
+          }
           all_series.push({
             id: JSON.stringify([label, spin]),
             x: is_horizontal ? densities : x_values,
             y: is_horizontal ? x_values : densities,
             markers: `line`,
-            label: `${series_label}${spin === `down` ? ` (↓)` : has_spin_down && effective_spin_mode ? ` (↑)` : ``}`,
+            label: `${series_label}${spin === `down` ? ` (↓)` : raw_down && effective_spin_mode ? ` (↑)` : ``}`,
             line_style: { stroke, stroke_width: 1.5, line_dash: dash },
             point_style: { fill: stack ? stroke : undefined },
           })
-
-        if (effective_spin_mode !== `down_only`) {
-          const densities = channel(
-            dos.densities,
-            stack ? cumulative_spin_up : false,
-            color,
-            ``,
-          )
-          if (stack) cumulative_spin_up = densities
-          push_series(densities, `up`, color)
         }
-        if (
-          has_spin_down &&
-          effective_spin_mode !== `up_only` &&
-          effective_spin_mode !== null &&
-          dos.type === `electronic` &&
-          dos.spin_down_densities
-        ) {
-          const overlay = effective_spin_mode === `overlay`
+
+        if (up) draw(up, `up`, color)
+        if (down) {
           // Overlay gets its own shade and dash; mirror negates the densities instead
+          const overlay = effective_spin_mode === `overlay`
           const down_color = overlay ? plot_color(dos_idx * 2 + 1) : color
-          let densities = channel(
-            dos.spin_down_densities,
-            stack && overlay ? cumulative_spin_down : false,
-            down_color,
-            ` (spin-down)`,
-          )
-          if (stack && overlay) cumulative_spin_down = densities
-          if (effective_spin_mode === `mirror`)
-            densities = densities.map((density) => -density)
-          push_series(densities, `down`, down_color, overlay ? `4,2` : undefined)
+          draw(down, `down`, down_color, overlay ? `4,2` : undefined)
         }
       }
       return { series_data: all_series, stacked_areas: areas }

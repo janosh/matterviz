@@ -643,6 +643,65 @@ export function reduce_miller_indices(hkl: Vec3): Vec3 {
   return [hkl[0] / divisor, hkl[1] / divisor, hkl[2] / divisor]
 }
 
+// Euclid and Lagrange reduction converge in a handful of steps; a cap turns a hypothetical
+// non-terminating case into a loud failure instead of a frozen tab.
+const MAX_REDUCTION_STEPS = 64
+
+// Unimodular integer U with U · vec = (1, 0, 0) for a primitive integer `vec`: row 0 is a dual
+// d · vec = 1, rows 1, 2 the Lagrange-Gauss-reduced basis of {n ∈ ℤ³ : n · vec = 0} with lengths
+// measured through `embed` (e.g. frac → Cartesian). Extended Euclid: every row operation that
+// shrinks the working copy of vec is mirrored on U, so det U = ±1 throughout.
+export function unimodular_completion(
+  vec: Vec3,
+  embed: (int_vec: Vec3) => Vec3 = (int_vec) => int_vec,
+): Matrix3x3 {
+  const working: Vec3 = [...vec]
+  const rows: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  // Repeatedly reduce every entry modulo the smallest non-zero one until one entry is left.
+  // Scalar loops: symmetry classification runs this for every distinct rotation matrix.
+  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
+    let [pivot, n_non_zero] = [-1, 0]
+    for (let axis = 0; axis < 3; axis++) {
+      if (working[axis] === 0) continue
+      n_non_zero++
+      if (pivot === -1 || Math.abs(working[axis]) < Math.abs(working[pivot])) pivot = axis
+    }
+    if (n_non_zero <= 1) break
+    for (let axis = 0; axis < 3; axis++) {
+      if (axis === pivot || working[axis] === 0) continue
+      const quotient = Math.trunc(working[axis] / working[pivot])
+      working[axis] -= quotient * working[pivot]
+      for (let col = 0; col < 3; col++) rows[axis][col] -= quotient * rows[pivot][col]
+    }
+  }
+  const pivot = working.findIndex((val) => val !== 0)
+  if (pivot === -1 || Math.abs(working[pivot]) !== 1) {
+    throw new Error(
+      `Expected a primitive integer vector, got ${JSON.stringify(vec)} (Euclid ended at ${JSON.stringify(working)})`,
+    )
+  }
+  if (working[pivot] < 0) rows[pivot] = scale(rows[pivot], -1)
+  let [short, long] = rows.filter((_, axis) => axis !== pivot)
+  for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
+    const [cart_short, cart_long] = [embed(short), embed(long)]
+    const norm_short = dot(cart_short, cart_short)
+    if (dot(cart_long, cart_long) < norm_short) {
+      ;[short, long] = [long, short]
+      continue
+    }
+    const factor = Math.round(dot(cart_short, cart_long) / norm_short)
+    if (factor === 0) return [rows[pivot], short, long]
+    long = subtract(long, scale(short, factor))
+  }
+  throw new Error(
+    `Basis reduction did not converge in ${MAX_REDUCTION_STEPS} steps for ${vec}`,
+  )
+}
+
 // Miller indices that pick out a plane: three safe integers, not all zero. Not gcd-reduced
 // here: (222) is a valid half-spacing stack for lattice planes.
 export function validate_miller_indices(hkl: Vec3): void {

@@ -5,6 +5,7 @@ import { error_getter } from '$lib/plot/core/error-bars'
 import { plot_color } from '$lib/colors'
 import { symbol_names } from '$lib/labels'
 import { DEFAULTS } from '$lib/settings'
+import { first_duplicate } from '$lib/utils'
 import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
 import { is_fill_gradient } from '$lib/plot/core/fill-utils'
 import { range_bounds } from '$lib/plot/core/interactions'
@@ -272,10 +273,10 @@ export function scatter_line_style<Metadata>(
   }
 }
 
-// Prepare legend items from series + computed fill regions; first matching identity wins.
-export function build_legend_data<Metadata = Record<string, unknown>>(
+// Legend rows of the series, first matching identity wins. Their legend_key never collides
+// with a fill row's key, so they dedupe apart from the fills.
+export function build_series_legend_items<Metadata = Record<string, unknown>>(
   series: readonly DataSeries<Metadata>[],
-  computed_fills: readonly LegendFill[],
   color_scale_fn: (value: number) => string,
   styles: StyleOverrides = {},
   selected_series_idx = 0,
@@ -333,18 +334,20 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
     return display_style
   }
 
-  const first_seen = legend_row_dedupe()
-  const series_items = scatter_legend_rows(series)
-    .filter(first_seen)
+  return scatter_legend_rows(series)
+    .filter(legend_row_dedupe())
     .map((row) => ({
       ...row,
       visible: series[row.series_idx]?.visible ?? true,
       display_style: display_style_for(series[row.series_idx], row.series_idx),
     }))
+}
 
-  const fill_items = computed_fills
+// Legend rows of the labeled computed fills, first matching label and group wins
+export const build_fill_legend_items = (computed_fills: readonly LegendFill[]): LegendItem[] =>
+  computed_fills
     .filter((fill) => fill.show_in_legend !== false && fill.label)
-    .filter(first_seen)
+    .filter(legend_row_dedupe())
     .map((fill) => {
       // Pass gradient for swatch rendering, or solid color as fallback
       const fill_gradient = is_fill_gradient(fill.fill) ? fill.fill : undefined
@@ -369,8 +372,14 @@ export function build_legend_data<Metadata = Record<string, unknown>>(
       }
     })
 
-  return [...series_items, ...fill_items]
-}
+// Label of the first series row matching an earlier one in group, label and swatch, so readers
+// can't tell them apart: usually one entry drawn as several series lacking a shared legend_id
+export const lookalike_legend_label = (
+  series_items: readonly LegendItem[],
+): string | undefined =>
+  first_duplicate(series_items, ({ label, legend_group, display_style }) =>
+    JSON.stringify([legend_group, label, display_style]),
+  )?.label
 
 // Resolve tooltip background color: point color-scale value, then point fill, then point
 // stroke (points marker), then line color cascade (line marker), then dark fallback

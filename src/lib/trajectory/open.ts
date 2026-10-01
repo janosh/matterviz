@@ -91,19 +91,19 @@ const frame_structure = (structure: unknown, label: string | number): AnyStructu
   return structure_from_json(structure, { wrap: false })
 }
 
+// Frame objects or bare structures from a JSON array or `{ frames }`; step defaults to index
+const json_frames = (entries: unknown[]): TrajectoryFrame[] =>
+  entries.map((entry, idx) => {
+    const frame = entry as Record<string, unknown> | null
+    return {
+      structure: frame_structure(frame?.structure ?? frame, idx),
+      step: typeof frame?.step === `number` ? frame.step : idx,
+      metadata: (frame?.metadata as Record<string, unknown>) || {},
+    }
+  })
+
 const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTrajectory => {
-  if (Array.isArray(value)) {
-    const frames = value.map((frame_data, idx) => {
-      const frame_obj = frame_data as Record<string, unknown>
-      const frame_step = frame_obj.step
-      return {
-        structure: frame_structure(frame_obj.structure ?? frame_obj, idx),
-        step: typeof frame_step === `number` ? frame_step : idx,
-        metadata: (frame_obj.metadata as Record<string, unknown>) || {},
-      }
-    })
-    return { format: `json`, frames, metadata: {} }
-  }
+  if (Array.isArray(value)) return { format: `json`, frames: json_frames(value), metadata: {} }
   if (!is_plain_object(value)) throw new Error(`Invalid data format`)
   // `lattice` is null (not absent) for a pymatgen molecule trajectory
   if (
@@ -116,11 +116,7 @@ const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTr
   }
   if (Array.isArray(value.frames)) {
     const metadata = (value.metadata ?? {}) as Record<string, unknown>
-    const frames = (value.frames as TrajectoryFrame[]).map((frame, idx) => ({
-      ...frame,
-      structure: frame_structure(frame?.structure, idx),
-    }))
-    return { format: `json`, frames, metadata }
+    return { format: `json`, frames: json_frames(value.frames), metadata }
   }
   if (value.sites) {
     const frames = [

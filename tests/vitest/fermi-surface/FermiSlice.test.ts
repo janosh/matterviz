@@ -23,8 +23,9 @@ const create_mock_fermi_data = (band_indices: number[] = [0, 1]): FermiSurfaceDa
 
 describe(`FermiSlice`, () => {
   test.each([
-    [`omitted defaults to visible for one band`, [0], undefined, true],
-    [`false hides three bands`, [0, 1, 2], false, false],
+    // one band sliced into two isolines: their shared legend_id folds them into one row
+    [`omitted defaults to visible for one band`, [0, 0], undefined, [`Band 1`]],
+    [`false hides three bands`, [0, 1, 2], false, []],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
     const plot = await mount_sized(
       FermiSlice,
@@ -32,7 +33,10 @@ describe(`FermiSlice`, () => {
       { selector: `.fermi-slice` },
     )
     await tick()
-    expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
+    // each box slices into one drawn isoline, so [0, 0] really draws band 1 twice
+    expect(plot.querySelectorAll(`g[data-series-id^="iso-"]`)).toHaveLength(bands.length)
+    const items = [...plot.querySelectorAll(`.legend-item`)]
+    expect(items.map((item) => item.textContent?.trim())).toEqual(expected)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

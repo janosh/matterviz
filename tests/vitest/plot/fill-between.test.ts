@@ -112,6 +112,7 @@ describe(`resolve_series_ref`, () => {
     { x: [1, 2, 3], y: [10, 20, 30], id: `series-a` },
     { x: [1, 2, 3], y: [5, 15, 25], id: `series-b` },
     { x: [1, 2, 3], y: [100, 200, 300] },
+    null as unknown as DataSeries, // null entries hold their index and match no id
   ]
 
   it.each([
@@ -202,6 +203,10 @@ describe(`resolve_boundary_points`, () => {
     )
     expect(result?.curve).toBe(`linear`)
     expect(result?.points).toEqual([make_point(0, coord_y), make_point(20, coord_y)])
+    // without one it spans the x domain in ascending order, even a reversed one (XPS, NMR)
+    const reversed = { ...domains, x_domain: [20, 0] as Vec2 }
+    const unpaired = resolve_boundary_points(boundary as FillBoundary, series, reversed)
+    expect(unpaired?.points).toEqual(result?.points)
   })
 
   it(`samples a function boundary across the span`, () => {
@@ -451,13 +456,17 @@ describe(`resolve_fill_binding`, () => {
 })
 
 describe(`convert_error_band_to_fill_region`, () => {
-  const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test-series` }]
+  const mock_series: DataSeries[] = [
+    { x: [1, 2, 3], y: [10, 20, 30], id: `test-series` },
+    { x: [1, 2, 3], y: [10, null, 30] as number[] }, // a null y gap stays a gap in both edges
+  ]
   const base_ref = series_ref(0)
 
   it.each([
     [`symmetric constant`, { error: 5 }, [15, 25, 35], [5, 15, 25]],
     [`symmetric per-point`, { error: [1, 2, 3] }, [11, 22, 33], [9, 18, 27]],
     [`asymmetric`, { error: { upper: 10, lower: 5 } }, [20, 30, 40], [5, 15, 25]],
+    [`gapped`, { series: series_ref(1), error: 1 }, [11, NaN, 31], [9, NaN, 29]],
   ])(`converts %s error carrying the series x`, (_, extra, upper, lower) => {
     const result = convert_error_band_to_fill_region(
       { series: base_ref, ...extra },

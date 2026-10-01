@@ -29,6 +29,7 @@ import type {
   FillRegion,
   LineCurve,
 } from '$lib/plot/core/types'
+import { range_bounds } from '$lib/plot/core/interactions'
 import { assert_aligned_lengths, assert_series_lengths } from '$lib/plot/core/types'
 
 // A 2D point in data (or pixel) coordinates
@@ -61,7 +62,7 @@ export function resolve_series_ref(
     return idx >= 0 && idx < series.length ? series[idx] : null
   }
   if (`series_id` in ref && ref.series_id !== undefined) {
-    return series.find((data_series) => data_series.id === ref.series_id) ?? null
+    return series.find((data_series) => data_series?.id === ref.series_id) ?? null
   }
   return null
 }
@@ -296,11 +297,11 @@ export function resolve_boundary_points(
   domains: DomainContext,
   companion?: Pt[] | null,
 ): ResolvedBoundary | null {
-  // x positions used for companion-relative boundaries
+  // x positions used for companion-relative boundaries, ascending even on a reversed x axis
   const span_xs =
     companion && companion.length > 0
       ? companion.map((point) => point.x)
-      : [domains.x_domain[0], domains.x_domain[1]]
+      : range_bounds(domains.x_domain)
 
   // flat horizontal edge at constant y (number / constant / axis boundaries)
   const flat_edge = (coord_y: number): ResolvedBoundary => ({
@@ -600,12 +601,12 @@ export function convert_error_band_to_fill_region(
     upper: {
       type: `data`,
       x: coord_x,
-      values: coord_y.map((val, idx) => val + upper_err[idx]),
+      values: coord_y.map((val, idx) => (Number.isFinite(val) ? val + upper_err[idx] : NaN)),
     },
     lower: {
       type: `data`,
       x: coord_x,
-      values: coord_y.map((val, idx) => val - lower_err[idx]),
+      values: coord_y.map((val, idx) => (Number.isFinite(val) ? val - lower_err[idx] : NaN)),
     },
     fill: error_band.fill ?? default_color ?? `#4e79a7`,
     pattern: error_band.pattern,

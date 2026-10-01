@@ -590,6 +590,13 @@ describe(`Export functionality`, () => {
       expect(lines[ops_idx + 1]).toBe(`'x, y, z'`)
     })
 
+    // unquoted, whitespace split the row and a leading `#` commented it out; `'` needs `"`
+    it.each([`#1`, `C1' A`])(`quotes CIF label %j`, (label) => {
+      const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5], label)]
+      const [site] = parse_cif(structure_to_cif_str({ sites, lattice: diag_lattice(5) })).sites
+      expect([site.label, site.species[0].element]).toEqual([label, `Fe`])
+    })
+
     it(`exports one CIF row per species on disordered sites and round-trips`, () => {
       const disordered: AnyStructure = {
         ...simple_structure,

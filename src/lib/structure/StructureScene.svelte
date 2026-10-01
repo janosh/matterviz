@@ -1097,9 +1097,7 @@
   let rotation_target = $derived(
     lattice
       ? math.scale(math.add(...lattice.matrix), 0.5)
-      : structure
-        ? get_center_of_mass(structure)
-        : ([0, 0, 0] as Vec3),
+      : ((structure && get_center_of_mass(structure)) ?? ([0, 0, 0] as Vec3)),
   )
   // Negated target for the inner un-translate group (recomputed only on target change)
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
@@ -2344,9 +2342,8 @@
       <!-- Invisible plane for click-to-place atom in add-atom mode -->
       <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
       {#if interactive && measure_mode === `edit-atoms` && add_atom_mode}
-        {@const center = rotation_target ?? [0, 0, 0]}
         <T.Mesh
-          position={center}
+          position={rotation_target}
           onBeforeRender={(mesh: Mesh) => {
             if (camera) {
               mesh.lookAt(camera.position)

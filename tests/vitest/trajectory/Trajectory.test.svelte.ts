@@ -792,6 +792,10 @@ describe(`plot`, () => {
     expect(target.querySelector(`.histogram .axis-label`)?.textContent).toBe(`Temperature (K)`)
     // Flat distributions remain useful; only the automatic time plot should be hidden.
     expect(target.querySelector(`.histogram`)).not.toBeNull()
+    // Options are plain text: a custom HTML label must read as rendered, entities decoded
+    props.property_labels = { temperature: `&alpha; T<sub>ion</sub>` }
+    await tick()
+    expect(target.querySelector(`option[value="temperature"]`)?.textContent).toBe(`α Tion (K)`)
     props.plot_type = `time-series`
     await tick()
     expect(target.querySelector(`.content-area > .plot-frame`)).toBeNull()

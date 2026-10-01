@@ -3,6 +3,7 @@ import { is_elem_symbol } from '$lib/element/helpers'
 import { count_atoms_in_composition } from '$lib/composition/reduce'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
+import { first_duplicate } from '$lib/utils'
 import { composition_to_barycentric_nd } from './barycentric-coords'
 import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './entry-stability'
 import type { ConvexHullEntry, PhaseData, PhaseStats, ProcessedPhaseData } from './types'
@@ -36,7 +37,10 @@ export function normalize_hull_composition_keys(
       normalized[key as ElementSymbol] = (normalized[key as ElementSymbol] ?? 0) + amount
       continue
     }
-    const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``
+    // Plain element keys (the common case) skip the regex
+    const raw_symbol = is_elem_symbol(key)
+      ? key
+      : (SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``)
     const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
     if (is_elem_symbol(symbol)) normalized[symbol] = (normalized[symbol] ?? 0) + amount
     // DummySpecies symbols start with X and are not real elements (Xe is)
@@ -173,7 +177,9 @@ function e_above_hull_distances(
     composition: normalize_hull_composition_keys(entry.composition),
   })
   const entries_of_interest = entries.map(normalize)
-  reference_entries = reference_entries.map(normalize)
+  // Hull distances of a set against itself are the common call: normalize and place once
+  const same_entries = entries === reference_entries
+  reference_entries = same_entries ? entries_of_interest : reference_entries.map(normalize)
 
   const elements = collect_hull_elements(reference_entries)
   const element_set = new Set<string>(elements)
@@ -213,10 +219,11 @@ function e_above_hull_distances(
     return [...composition_to_barycentric_nd(entry.composition, elements).slice(1), e_form]
   }
 
-  const ref_points = reference_entries
-    .filter((ref) => !ref.exclude_from_hull) // shown but not part of the hull
-    .map(to_point)
-    .filter((point) => point.every(Number.isFinite))
+  const query_points = entries_of_interest.map(to_point)
+  const ref_points = (same_entries ? query_points : reference_entries.map(to_point)).filter(
+    // exclude_from_hull entries are shown but not part of the hull
+    (point, idx) => !reference_entries[idx].exclude_from_hull && point.every(Number.isFinite),
+  )
   // Missing pure-element corners default to E_form = 0. In reduced coordinates element 0 is
   // the origin and element k > 0 has (k-1)th coordinate 1.
   for (let el_idx = 0; el_idx < arity; el_idx++) {
@@ -229,7 +236,6 @@ function e_above_hull_distances(
   }
 
   const facets = compute_lower_hull_nd(ref_points)
-  const query_points = entries_of_interest.map(to_point)
   // With every corner present, the points are co-hyperplanar only when all E_form are 0,
   // so the hull is the plane E = 0 and the distance is E_form itself.
   return clamp_dists(
@@ -255,6 +261,8 @@ export function calculate_e_above_hull(
   if (!Array.isArray(input)) return e_above_hull_distances([input], reference_entries)[0]
   if (input.length === 0) return {} // Empty input → empty result (not an error)
   const distances = e_above_hull_distances(input, reference_entries)
+  const repeat = first_duplicate(input.map(({ entry_id }) => entry_id).filter(Boolean))
+  if (repeat) console.warn(`calculate_e_above_hull: duplicate entry_id "${repeat}", last wins`)
   return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
 }
 
@@ -272,7 +280,7 @@ export function get_convex_hull_stats(
   const [, unary, binary, ternary, quaternary, quinary_plus] = arity_counts
   const stable = processed_entries.filter((entry) => is_on_hull(entry)).length
 
-  // E_form only: falling back to absolute DFT energies puts ~-8 and ~-1 eV/atom in one stat
+  // E_form only: absolute computed energies would put ~-8 and ~-1 eV/atom in one stat
   const e_forms = processed_entries
     .map((entry) => entry.e_form_per_atom)
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))

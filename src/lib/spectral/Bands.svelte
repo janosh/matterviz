@@ -10,7 +10,7 @@
   import { SettingsSection } from '$lib/layout'
   import { to_error } from '$lib/utils'
   import { StatusMessage } from 'svelte-widgets'
-  import { clamp, in_range, reciprocal_lattice } from '$lib/math'
+  import { array_max, clamp, in_range, reciprocal_lattice } from '$lib/math'
   import type { Vec2, Vec3 } from '$lib/math'
   import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
   import type {
@@ -138,11 +138,9 @@
   interface RibbonData {
     x_values: number[]
     y_values: number[]
-    width_values: number[]
+    half_widths: number[] // pixels
     color: string
     opacity: number
-    max_width: number
-    scale: number
     key: string
   }
 
@@ -228,15 +226,18 @@
     const all_ribbons: RibbonData[] = []
     let max_slope = 0
     const markers = rest.on_point_click ? `line+points` : `line`
+    const { opacity = 0.3, max_width = 6, scale = 1, color: ribbon_color } = ribbon_config
 
     for (const [bs_idx, { label, bs: band_structure, keys }] of structures.entries()) {
       const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
         band_type === `phonon` ? helpers.find_gamma_indices(band_structure) : []
-      const ribbon = band_structure.band_widths?.length
-        ? { opacity: 0.3, max_width: 6, scale: 1, ...ribbon_config }
-        : null
+      // one px-per-width scale per structure so ribbons compare across bands and segments
+      const width_max = array_max(
+        (band_structure.band_widths ?? []).flat().filter(Number.isFinite),
+      )
+      const px_per_width = width_max > 0 ? (max_width * scale) / width_max : 0
 
       for (const [branch_idx, branch] of band_structure.branches.entries()) {
         const segment_key = keys[branch_idx]
@@ -309,17 +310,16 @@
             })
           }
 
-          const width_values = band_structure.band_widths?.[band_idx]?.slice(
-            start_idx,
-            end_idx,
-          )
-          if (ribbon && width_values?.some((width) => width > 0)) {
+          const half_widths = (band_structure.band_widths?.[band_idx] ?? [])
+            .slice(start_idx, end_idx)
+            .map((width) => (Number.isFinite(width) && width > 0 ? width * px_per_width : 0))
+          if (half_widths.some((half_width) => half_width > 0)) {
             all_ribbons.push({
               x_values: x_vals,
               y_values: y_up,
-              width_values,
-              ...ribbon,
-              color: ribbon.color ?? color,
+              half_widths,
+              color: ribbon_color ?? color,
+              opacity,
               key: `${structure_label}-${segment_key}-${band_idx}`,
             })
           }
@@ -665,11 +665,9 @@
         {@const path_d = helpers.generate_ribbon_path(
           ribbon.x_values,
           ribbon.y_values,
-          ribbon.width_values,
+          ribbon.half_widths,
           x_scale_fn,
           y_scale_fn,
-          ribbon.max_width,
-          ribbon.scale,
         )}
         {#if path_d}
           <path
