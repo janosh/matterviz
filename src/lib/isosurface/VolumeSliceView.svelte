@@ -167,6 +167,5 @@
   .slice-position-control input {
     flex: 1;
     min-width: 0;
-    outline: none;
   }
 </style>

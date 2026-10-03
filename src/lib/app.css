@@ -674,6 +674,7 @@ body.fullscreen .draggable-pane {
     background: transparent;
     accent-color: var(--range-thumb-bg);
     cursor: pointer;
+    outline: none; /* the focus ring wraps the overflowing thumb in a blob */
   }
   input[type='range']::-webkit-slider-runnable-track {
     height: var(--range-track-height, 0.45rem);
