@@ -107,7 +107,7 @@ test.describe(`Isosurface page`, () => {
       expect(colorbar_box.height).toBeGreaterThan(colorbar_box.width)
       expect(colorbar_box.x - canvas_box.x).toBeLessThanOrEqual(16)
       await expect(colorbar.locator(`.tick-label.vertical`).first()).toBeVisible()
-      await expect(colorbar.locator(`.title-row.vertical.right`)).toBeVisible()
+      await expect(colorbar.locator(`.title-row.vertical.left`)).toBeVisible()
 
       const position_control = slice.locator(`.slice-position-control`)
       const position_slider = position_control.getByRole(`slider`)
