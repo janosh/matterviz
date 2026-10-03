@@ -8,13 +8,15 @@ import { create_highlighter } from 'svelte-widgets/highlight'
 import { create_markdown } from 'svelte-widgets/markdown'
 import { markdown_vite } from 'svelte-widgets/markdown/vite'
 import { make_config } from 'svelte-widgets/vite-config'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import source_links from 'svelte-widgets/source-links/vite-plugin'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
+import { BaseSequencer, type TestSpecification } from 'vitest/node'
 import * as shared from './src/vite-plugins.ts'
 
 // svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
@@ -98,6 +100,24 @@ const raw_text_plugin: Plugin = {
   },
 }
 
+// Vite's rolldown dep scanner reads each .svelte <script> as `virtual-module:<file>?id=N` and
+// hands imports of .svelte files inside node_modules (deep `svelte-widgets/X.svelte` imports)
+// to rolldown, which cannot resolve their `./Sibling.svelte` imports against that virtual id:
+// the scan fails and dev skips dependency pre-bundling. Resolve them against the real file.
+const scan_virtual_relative_imports = {
+  name: `scan-virtual-relative-imports`,
+  resolveId(source: string, importer?: string) {
+    const file = importer?.match(/^virtual-module:(?<file>.*\/node_modules\/[^?]*)/)?.groups
+      ?.file
+    if (!file || !source.startsWith(`.`)) return null
+    const base = resolve(dirname(file), source)
+    // extensionless specifiers like `./fullscreen.svelte` name a compiled `.svelte.js` module
+    return [base, `${base}.js`].find((path) =>
+      statSync(path, { throwIfNoEntry: false })?.isFile(),
+    )
+  },
+}
+
 // vite-plugin-svelte makes Vitest inline all of node_modules/svelte so tests get its browser
 // runtime. The compiler is ~230 stateless ES modules without browser-specific imports, so
 // loading it natively gives identical output while sparing every test file that imports
@@ -113,6 +133,22 @@ const native_svelte_compiler: Plugin = {
       inline[inline.indexOf(`svelte`)] = /\/node_modules\/svelte(?!\/src\/compiler\/)/u
     },
   },
+}
+
+// Vitest shards by path hash, which can put several of the slowest component suites in one
+// shard. Deal files largest-first in snake order (shards 1 2 3 4 4 3 2 1 ...) instead: every
+// shard keeps an equal file count, and file size is a cheap, deterministic proxy for test time.
+class SizeShardSequencer extends BaseSequencer {
+  override async shard(files: TestSpecification[]): Promise<TestSpecification[]> {
+    const { index, count } = this.ctx.config.shard ?? { index: 1, count: 1 }
+    const keyed = files.map((spec) => ({ spec, size: statSync(spec.moduleId).size }))
+    keyed.sort((a, b) => b.size - a.size || (a.spec.moduleId < b.spec.moduleId ? -1 : 1))
+    const snake_shard = (idx: number) => {
+      const lap_pos = idx % (2 * count)
+      return lap_pos < count ? lap_pos : 2 * count - 1 - lap_pos
+    }
+    return keyed.filter((_, idx) => snake_shard(idx) === index - 1).map(({ spec }) => spec)
+  }
 }
 
 const plugins = [
@@ -143,6 +179,7 @@ export default defineConfig({
   // just to print a table. Deployment and package-size validation don't use that table.
   build: { ...config.build, reportCompressedSize: false },
   plugins,
+  optimizeDeps: { rolldownOptions: { plugins: [scan_virtual_relative_imports] } },
   worker: {
     plugins: shared.json_gz_worker_plugins(json_gz_options),
   },
@@ -187,6 +224,7 @@ export default defineConfig({
       reporter: [`text`, `json-summary`],
     },
     setupFiles: `tests/vitest/environment.ts`,
+    sequence: { sequencer: SizeShardSequencer },
     // The VS Code extension's tests run under its own vitest (pnpm -C extensions/vscode test):
     // they need the `vscode` module mocked and the extension's own dependency tree
     include: [`tests/vitest/**/*.test.ts`, `tests/vitest/**/*.test.svelte.ts`],
