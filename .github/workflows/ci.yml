@@ -154,7 +154,7 @@ jobs:
           if kill -0 $! 2>/dev/null; then
             for pid in $(pgrep -f 'vite-plus-core|vp build'); do kill -USR2 $pid; done; sleep 5
             grep -av '^\s*\.svelte-kit/output' build.log | tail -120 | cut -c1-300
-            for report in /tmp/reports/*.json; do echo "== $report"; jq -c '{js: .javascriptStack, native: [.nativeStack[]?.symbol][:25], handles: [.libuv[] | select(.is_active) | {type, details: (.details // null)}], workers: (.workers | length)}' "$report" | cut -c1-4000; done
+            for report in /tmp/reports/*.json; do echo "== $report"; jq -r '.header.commandLine | join(" ")' "$report" | cut -c1-300; jq -c '.libuv[] | select(.is_active) | del(.address)' "$report" | cut -c1-300; jq -r '.javascriptStack.stack[]?' "$report" | head -20; jq '.workers | length' "$report"; done
             exit 1
           fi
           wait $!
