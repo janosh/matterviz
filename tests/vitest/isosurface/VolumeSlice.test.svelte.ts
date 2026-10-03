@@ -314,10 +314,10 @@ test(`VolumeSliceView keeps full resolution during rapid plane changes`, async (
   const props = $state({ volume, settings: { resolution: 1024, position: 0.2 } })
   mount(VolumeSliceView, { target: document.body, props })
   await tick()
-  // other tests' still-mounted views (6³ grids) may resample; this view gets a proxy of
-  // `volume`, so pick its calls by grid size
+  // other tests' still-mounted views (6³ grids, refined to 66³) may resample; this view's 4³
+  // grid is refined to 64³ before sampling, so pick its calls by grid size
   const resolutions = () =>
-    sample.mock.calls.filter(([sampled]) => sampled.dims[0] === 4).map((args) => args[3])
+    sample.mock.calls.filter(([sampled]) => sampled.dims[0] === 64).map((args) => args[3])
   expect(resolutions()).toEqual([1024])
   for (const position of [0.25, 0.3, 0.35]) {
     props.settings = { ...props.settings, position }

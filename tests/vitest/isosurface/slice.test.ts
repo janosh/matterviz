@@ -4,6 +4,7 @@ import {
   resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
+  upsample_volume,
   volume_center,
 } from '#lib/isosurface/slice.js'
 import type { CartesianPlane, PlaneSliceOptions } from '#lib/isosurface/slice.js'
@@ -158,6 +159,59 @@ describe(`sample_hkl_slice`, () => {
     const { data } = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     expect(new Set(data)).toEqual(new Set([5]))
   })
+})
+
+// B-spline refinement must keep every grid sample, track a smooth field far better than
+// trilinear interpolation between samples, and never leave the data range
+test.each([true, false])(`upsample_volume refines smoothly (periodic=%s)`, (periodic) => {
+  const dims: Vec3 = [12, 10, 16]
+  const divisors = dims.map((size) => (periodic ? size : size - 1))
+  const field = (frac_x: number, frac_y: number, frac_z: number) =>
+    Math.exp(Math.cos(2 * Math.PI * frac_x) + Math.sin(2 * Math.PI * (frac_y + frac_z)))
+  const volume = make_volume(
+    make_grid(...dims, (idx_x, idx_y, idx_z) =>
+      field(idx_x / divisors[0], idx_y / divisors[1], idx_z / divisors[2]),
+    ),
+    { lattice: cubic_matrix(1), periodic },
+  )
+  const fine = upsample_volume(volume, { min_axis_points: 48 })
+  const fine_divisors = fine.dims.map((size) => (periodic ? size : size - 1))
+  const factors = fine_divisors.map((divisor, axis) => divisor / divisors[axis])
+  expect(factors.every((factor) => Number.isInteger(factor) && factor > 1)).toBe(true)
+  let [spline_err, trilinear_err] = [0, 0]
+  for (const [flat_idx, value] of fine.values.entries()) {
+    const fine_idx = [
+      Math.floor(flat_idx / (fine.dims[1] * fine.dims[2])),
+      Math.floor(flat_idx / fine.dims[2]) % fine.dims[1],
+      flat_idx % fine.dims[2],
+    ]
+    expect(value).toBeGreaterThanOrEqual(volume.data_range.min)
+    expect(value).toBeLessThanOrEqual(volume.data_range.max)
+    if (fine_idx.every((idx, axis) => idx % factors[axis] === 0)) {
+      const [idx_x, idx_y, idx_z] = fine_idx.map((idx, axis) => idx / factors[axis])
+      // the prefilter's recursion and exponential tail round to ~1e-15 of values up to e^2
+      expect(
+        Math.abs(value - volume.values[(idx_x * dims[1] + idx_y) * dims[2] + idx_z]),
+      ).toBeLessThan(1e-12)
+    }
+    const [frac_x, frac_y, frac_z] = fine_idx.map((idx, axis) => idx / fine_divisors[axis])
+    // finite grids mirror at their faces, which only fits this field away from them
+    if (
+      !periodic &&
+      [frac_x, frac_y, frac_z].some(
+        (frac, axis) => frac < 1 / divisors[axis] || frac > 1 - 1 / divisors[axis],
+      )
+    )
+      continue
+    const exact = field(frac_x, frac_y, frac_z)
+    spline_err = Math.max(spline_err, Math.abs(value - exact))
+    trilinear_err = Math.max(
+      trilinear_err,
+      Math.abs(trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic) - exact),
+    )
+  }
+  // measured 3.0e-2 vs 6.3e-1 (periodic) and 1.4e-1 vs 4.5e-1 (finite interior)
+  expect(spline_err).toBeLessThan(trilinear_err / (periodic ? 10 : 2.5))
 })
 
 describe(`Cartesian slice point helpers`, () => {

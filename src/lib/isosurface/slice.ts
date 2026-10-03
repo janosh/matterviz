@@ -32,6 +32,86 @@ export const resolve_slice_cartesian_point = (
   volume?: VolumetricData,
 ): Vec3 => point ?? (volume ? volume_center(volume) : [0, 0, 0])
 
+const POLE = Math.sqrt(3) - 2 // pole of the cubic B-spline interpolation prefilter
+const HORIZON = 30 // POLE ** 30 ≈ 1e-17: the prefilter's exponential tail
+
+// Upsample one axis of an [outer, size, inner] row-major array by an integer factor with an
+// interpolating cubic B-spline (Unser's recursive prefilter, then the spline's 4 taps): it
+// passes through every sample and is C2, so isolines bend smoothly instead of kinking at
+// grid lines. Periodic axes wrap, finite ones mirror. Values are clamped to `[lower, upper]`.
+const upsample_axis = (
+  values: Float64Array,
+  [outer, size, inner]: Vec3,
+  factor: number,
+  periodic: boolean,
+  [lower, upper]: Vec2,
+): Float64Array => {
+  const period = periodic ? size : 2 * size - 2
+  const index = (idx: number): number => {
+    const wrapped = ((idx % period) + period) % period
+    return wrapped < size ? wrapped : period - wrapped
+  }
+  const out_size = periodic ? size * factor : (size - 1) * factor + 1
+  const out = new Float64Array(outer * out_size * inner)
+  const coefs = new Float64Array(size)
+  for (let line = 0; line < outer * inner; line++) {
+    const [outer_idx, inner_idx] = [Math.floor(line / inner), line % inner]
+    const src = outer_idx * size * inner + inner_idx
+    for (let idx = 0; idx < size; idx++) coefs[idx] = 6 * values[src + idx * inner]
+    // causal pass y[k] = x[k] + POLE * y[k - 1], seeded with the extended signal's tail
+    let seed = 0
+    for (let lag = HORIZON; lag >= 0; lag--) seed = seed * POLE + coefs[index(-lag)]
+    coefs[0] = seed
+    for (let idx = 1; idx < size; idx++) coefs[idx] += POLE * coefs[idx - 1]
+    // anti-causal pass d[k] = POLE * (d[k + 1] - y[k])
+    if (periodic) {
+      seed = 0
+      for (let lag = HORIZON; lag >= 0; lag--)
+        seed = seed * POLE - POLE * coefs[index(size - 1 + lag)]
+    } else seed = (POLE / (POLE * POLE - 1)) * (POLE * coefs[size - 2] + coefs[size - 1])
+    coefs[size - 1] = seed
+    for (let idx = size - 2; idx >= 0; idx--) coefs[idx] = POLE * (coefs[idx + 1] - coefs[idx])
+    const dst = outer_idx * out_size * inner + inner_idx
+    for (let out_idx = 0; out_idx < out_size; out_idx++) {
+      const base = Math.floor(out_idx / factor)
+      const frac = out_idx / factor - base
+      const spline =
+        ((1 - frac) ** 3 * coefs[index(base - 1)] +
+          (3 * frac ** 3 - 6 * frac ** 2 + 4) * coefs[index(base)] +
+          (-3 * frac ** 3 + 3 * frac ** 2 + 3 * frac + 1) * coefs[index(base + 1)] +
+          frac ** 3 * coefs[index(base + 2)]) /
+        6
+      out[dst + out_idx * inner] = Math.max(lower, Math.min(upper, spline))
+    }
+  }
+  return out
+}
+
+// Trilinear interpolation kinks wherever a slice crosses a grid plane, so coarse grids draw
+// visibly polygonal isolines. Refine each axis with interpolating cubic B-splines until it has
+// about `min_axis_points` samples (within `max_points` total), so a slice crosses many small
+// cells of a smooth field instead. Grid samples and the data range are preserved.
+export function upsample_volume(
+  volume: VolumetricData,
+  { min_axis_points = 64, max_points = 4_000_000 } = {},
+): VolumetricData {
+  const { periodic, data_range } = volume
+  let values = volume.values
+  const dims: Vec3 = [...volume.dims]
+  for (const axis of [2, 1, 0] as const) {
+    const size = dims[axis]
+    const room = max_points / (dims[0] * dims[1] * dims[2])
+    const factor = Math.max(1, Math.min(Math.ceil(min_axis_points / size), Math.floor(room)))
+    if (factor === 1 || size < 2) continue
+    const outer = axis === 0 ? 1 : axis === 1 ? dims[0] : dims[0] * dims[1]
+    const inner = axis === 0 ? dims[1] * dims[2] : axis === 1 ? dims[2] : 1
+    const range: Vec2 = [data_range.min, data_range.max]
+    values = upsample_axis(values, [outer, size, inner], factor, periodic, range)
+    dims[axis] = periodic ? size * factor : (size - 1) * factor + 1
+  }
+  return values === volume.values ? volume : { ...volume, values, dims }
+}
+
 export interface CartesianPlane {
   point: Vec3 // absolute Cartesian point on the plane
   normal: Vec3 // Cartesian plane normal (normalization is handled internally)
