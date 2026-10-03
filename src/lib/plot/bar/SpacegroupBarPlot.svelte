@@ -1,13 +1,18 @@
 <script lang="ts">
-  import type { BarPlotOptions, BarHandlerProps, BarSeries, TickLabelConfig } from '$lib/plot'
-  import { format_num, format_value } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
-  import { BarPlot } from '$lib/plot'
-  import { DEFAULT_PLOT_PADDING } from '$lib/plot/core/layout'
-  import { observe_size } from '$lib/plot/core/utils'
-  import type { CrystalSystem } from '$lib/symmetry'
-  import * as symmetry from '$lib/symmetry'
-  import * as spg from '$lib/symmetry/spacegroups'
+  import type {
+    BarPlotOptions,
+    BarHandlerProps,
+    BarSeries,
+    TickLabelConfig,
+  } from '#lib/plot/index.js'
+  import { format_num, format_value } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
+  import { BarPlot } from '#lib/plot/index.js'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
+  import type { CrystalSystem } from '#lib/symmetry/index.js'
+  import * as symmetry from '#lib/symmetry/index.js'
+  import * as spg from '#lib/symmetry/spacegroups.js'
 
   // Merge tick label config with default rotation, preserving user overrides
   const with_rotation = (

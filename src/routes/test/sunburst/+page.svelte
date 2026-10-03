@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PositionedArc, SunburstNode } from '$lib/plot'
-  import { Sunburst, sunburst_from_labels_parents } from '$lib/plot'
-  import { spacegroup_sunburst_data } from '$lib/symmetry'
+  import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
+  import { Sunburst, sunburst_from_labels_parents } from '#lib/plot/index.js'
+  import { spacegroup_sunburst_data } from '#lib/symmetry/index.js'
 
   // Three-level energy tree: sector -> source -> technology
   const energy: SunburstNode[] = [

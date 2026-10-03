@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { StructurePopup } from '$lib/convex-hull'
-  import type { ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
-  import type { Point2D, Vec3 } from '$lib/math'
-  import { BinnedScatterPlot } from '$lib/plot'
-  import type { BinnedPointPayload, DensePointSeries } from '$lib/plot'
-  import type { Crystal } from '$lib/structure'
+  import { StructurePopup } from '#lib/convex-hull/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import { format_num } from '#lib/labels.js'
+  import type { Point2D, Vec3 } from '#lib/math.js'
+  import { BinnedScatterPlot } from '#lib/plot/index.js'
+  import type { BinnedPointPayload, DensePointSeries } from '#lib/plot/index.js'
+  import type { Crystal } from '#lib/structure/index.js'
 
   type MaterialPoint = Record<string, unknown> & {
     material_id: string

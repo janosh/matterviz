@@ -3,17 +3,17 @@
 // calc_auto_padding (to reserve the label band) and PlotAxis (to render the winning layout).
 // Pure geometry lives at the top; text measurement goes through the text-metrics cache.
 
-import { format_tick_values } from '$lib/labels'
-import { array_max, array_min, clamp } from '$lib/math'
-import { get_tick_label } from '$lib/plot/core/scales'
+import { format_tick_values } from '#lib/labels.js'
+import { array_max, array_min, clamp } from '#lib/math.js'
+import { get_tick_label } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,
   get_text_metrics_revision,
   measure_text_line,
   graphemes,
-} from '$lib/plot/core/text-metrics'
-import type { FontSpec } from '$lib/plot/core/text-metrics'
-import type { AxisConfig, TickAutoLayoutConfig } from '$lib/plot/core/types'
+} from '#lib/plot/core/text-metrics.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types.js'
 
 // Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
 export const TICK_LABEL_HEIGHT = 16

@@ -3,7 +3,7 @@ import {
   is_valid_range,
   max_side_padding,
   union_ranges,
-} from '$lib/plot/core/shared-axes'
+} from '#lib/plot/core/shared-axes.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`shared range helpers`, () => {

@@ -1,29 +1,30 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from 'svelte-widgets'
-  import { open_material } from '$lib/file-viewer/open'
-  import { apply_structure_material } from '$lib/structure/material'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { auto_color_config } from '$lib/isosurface/coloring'
+  import { open_material } from '#lib/file-viewer/open.js'
+  import { apply_structure_material } from '#lib/structure/material.js'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { auto_color_config } from '#lib/isosurface/coloring.js'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
     VolumetricData,
     VolumetricFileData,
-  } from '$lib/isosurface/types'
+  } from '#lib/isosurface/types.js'
   import {
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
+    format_data_value,
     label_file_volumes,
-  } from '$lib/isosurface/types'
-  import { format_num } from '$lib/labels'
-  import { volumetric_files } from '$site/isosurfaces'
-  import { replace_url } from '$site/state.svelte'
+  } from '#lib/isosurface/types.js'
+  import { format_num } from '#lib/labels.js'
+  import { volumetric_files } from '#site/isosurfaces.js'
+  import { replace_url } from '#site/state.svelte.js'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()
@@ -289,7 +290,7 @@
   )
 
   // Load the scenario from the URL param (reacts to client-side navigation too;
-  // load_scenario's replaceState goto writes the same param so no loop occurs).
+  // load_scenario's replacing goto writes the same param so no loop occurs).
   // Only the URL is tracked: card clicks set active_scenario before goto runs,
   // and tracking it would rerun this effect against the stale URL, reloading
   // the previous scenario and discarding the click as a stale load.
@@ -386,7 +387,10 @@
     {#each volumetric_data as vol, idx (idx)}
       <span title="Grid dimensions and value range">
         {vol.label ?? `Volume ${idx + 1}`}: {vol.dims.join(`×`)}
-        [{format_num(vol.data_range.min, `.3~g`)}, {format_num(vol.data_range.max, `.3~g`)}]
+        [{format_data_value(vol.data_range.min, vol.data_range)}, {format_data_value(
+          vol.data_range.max,
+          vol.data_range,
+        )}]
       </span>
     {/each}
     <span title="Total grid points across all volumes">

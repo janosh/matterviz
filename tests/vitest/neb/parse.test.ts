@@ -3,9 +3,9 @@ import {
   parse_reaction_path_json,
   parse_xyz_reaction_path,
   REACTION_PATH_FORMAT,
-} from '$lib/neb/parse'
-import { analyze_barrier, path_spline, reaction_coordinate } from '$lib/neb/reaction-path'
-import { reaction_paths } from '$site/neb'
+} from '#lib/neb/parse.js'
+import { analyze_barrier, path_spline, reaction_coordinate } from '#lib/neb/reaction-path.js'
+import { reaction_paths } from '#site/neb/index.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 

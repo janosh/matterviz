@@ -3,11 +3,11 @@
 // is installed before the module is imported so the real postMessage plumbing runs.
 // The generic client (request ids, dedupe, abort, error replies) is covered by
 // worker-client.test.ts; only the MSD-specific contract is asserted here.
-import type { compute_msd_async as ComputeMsdAsync } from '$lib/msd/async-compute.svelte'
-import { calc_msd } from '$lib/msd/calc-msd'
-import type { MsdOptions, MsdResult } from '$lib/msd/index'
-import MsdPlot from '$lib/msd/MsdPlot.svelte'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
+import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-compute.svelte.js'
+import { calc_msd } from '#lib/msd/calc-msd.js'
+import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
+import MsdPlot from '#lib/msd/MsdPlot.svelte'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
@@ -22,7 +22,7 @@ let compute_msd_async: typeof ComputeMsdAsync
 
 beforeAll(async () => {
   // Imported after the stub so the module-level singleton picks it up
-  ;({ compute_msd_async } = await import(`$lib/msd/async-compute.svelte`))
+  ;({ compute_msd_async } = await import(`#lib/msd/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 

@@ -1,14 +1,6 @@
-import type { Vec3 } from '$lib/math'
-import {
-  ClippingGroup,
-  type Intersection,
-  type Matrix4,
-  type Mesh,
-  type Object3D,
-  Plane,
-  type Raycaster,
-  Vector3,
-} from 'three/webgpu'
+import type { Vec3 } from '#lib/math.js'
+import type { Intersection, Matrix4, Mesh, Object3D, Raycaster } from 'three/webgpu'
+import { ClippingGroup, Plane, Vector3 } from 'three/webgpu'
 
 export interface CutawaySettings {
   mode: 'off' | 'plane' | 'slab'

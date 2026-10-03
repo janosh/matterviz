@@ -1,12 +1,12 @@
 <script lang="ts">
-  import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
     AxisRanges,
     ColorScaleConfig,
     DataSeries,
     SizeScaleConfig,
     StyleOverrides,
-  } from '$lib/plot/core/types'
+  } from '#lib/plot/core/types.js'
   import { onMount } from 'svelte'
 
   // Keep the full [0, 1] dataset visible throughout the alternating pan/zoom gestures.

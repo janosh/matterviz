@@ -2,8 +2,8 @@ import { expect, type Page } from '@playwright/test'
 import { decode_canvas_png, IS_CI, require_bbox, test_without_errors as test } from './helpers'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import type * as IoExport from '$lib/io/export'
-import type * as AtomModule from '$lib/structure/atom-instances'
+import type * as IoExport from '#lib/io/export.js'
+import type * as AtomModule from '#lib/structure/atom-instances.js'
 
 // The page builds a seeded synthetic run from ?frames=&atoms= (see
 // src/routes/test/trajectory-performance), so there is no fixture to host. Thresholds are
@@ -108,6 +108,10 @@ test.describe(`Trajectory performance`, () => {
       const viewer = page.locator(`#loaded-trajectory`)
       const atom_canvas = viewer.locator(`.structure canvas`)
       const pane = viewer.locator(`.hotspots-pane`)
+      // CI's software renderer emits no frame for ~55 s after each heatmap or cloud change
+      // (measured from trace screencast gaps), so anything waiting on a rendering step (a
+      // screenshot, a ResizeObserver-driven layout class) needs that long; DOM reads don't.
+      const frame_timeout = IS_CI ? 300_000 : 30_000
       const open_hotspots = async () => {
         await viewer.getByRole(`button`, { name: `Analysis`, exact: true }).click()
         await viewer.getByRole(`button`, { name: `Thermal hotspots`, exact: true }).click()
@@ -151,7 +155,7 @@ test.describe(`Trajectory performance`, () => {
                 await pixels.dispose()
               }
             },
-            { timeout: IS_CI ? 300_000 : 30_000 },
+            { timeout: frame_timeout },
           )
           // Only the exposed hot face contributes warm pixels; the rest stays cooler.
           .toBeGreaterThan(heat ? 100 : 1000)
@@ -241,7 +245,8 @@ test.describe(`Trajectory performance`, () => {
       await pane.getByLabel(`Hotspot threshold`).fill(`2`)
       await expect(pane).not.toContainText(`Settings changed`)
       await page.setViewportSize({ width: 390, height: 900 })
-      await expect(viewer).toHaveClass(/vertical/)
+      // the threshold change above starts one of those frameless stretches
+      await expect(viewer).toHaveClass(/vertical/, { timeout: frame_timeout })
       await expect(viewer).toHaveCSS(`height`, `500px`)
       const [structure, plot] = await Promise.all(
         [`.structure`, `.scatter`].map((selector) => require_bbox(viewer.locator(selector))),

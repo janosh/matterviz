@@ -160,7 +160,10 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await page.mouse.up()
 
     // Verify subsequent click works (drag state reset)
-    await open_pane(diagram, `info`)
+    const info = await open_pane(diagram, `info`)
+    // the pane covers the canvas center the drag below starts from
+    await diagram.locator(`.info-btn`).click()
+    await expect(info).toBeHidden()
 
     // Drag then immediately click should be suppressed
     await page.mouse.move(center_x, center_y)

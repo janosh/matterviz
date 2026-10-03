@@ -1,12 +1,11 @@
 // Parsers for Fermi surface file formats (BXSF, FRMSF, JSON)
-import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '$lib/constants'
-import { checked_grid_points, parse_float_block } from '$lib/isosurface/parse'
-import { flatten_grid } from '$lib/isosurface/grid'
-import { compute_vertex_normals } from '$lib/marching-cubes'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import { read_text_line } from '$lib/structure/parsers/vasp-header'
-import { is_plain_object, normalize_scientific_notation, to_error } from '$lib/utils'
+import { checked_grid_points, parse_float_block } from '#lib/isosurface/parse.js'
+import { flatten_grid } from '#lib/isosurface/grid.js'
+import { compute_vertex_normals } from '#lib/marching-cubes.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { read_text_line } from '#lib/structure/parsers/vasp-header.js'
+import { is_plain_object, normalize_scientific_notation, to_error } from '#lib/utils.js'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -177,20 +176,17 @@ function parse_frmsf(content: string): BandGridData {
     throw new Error(`FRMSF: Invalid number of bands`)
   }
 
-  // Lines 4-6: reciprocal lattice vectors (in Bohr^-1, convert to Å^-1)
-  const inv_bohr = 1 / BOHR_TO_ANGSTROM
-  const k_lattice = [0, 1, 2].map(() =>
-    parse_floats(reader.next())
-      .slice(0, 3)
-      .map((val) => val * inv_bohr),
-  ) as Matrix3x3
+  // Lines 4-6: reciprocal lattice vectors. The format leaves their unit arbitrary (FermiSurfer's
+  // own MgB2 sample is in 2π/a), so they are kept as written rather than assumed to be Bohr⁻¹
+  const k_lattice = [0, 1, 2].map(() => parse_floats(reader.next()).slice(0, 3)) as Matrix3x3
   if (k_lattice.some((row) => row.length !== 3 || row.some(Number.isNaN))) {
     throw new Error(`FRMSF: Invalid reciprocal lattice vector`)
   }
 
   // Band energies, one per line in z-fastest order (trailing columns such as FermiSurfer's
-  // auxiliary colour data are dropped), converted from Hartree to eV. FRMSF has a single spin
-  // channel (no spin-polarized support in the standard format).
+  // auxiliary colour data are dropped), kept as written: the format's energy unit is arbitrary
+  // with the Fermi level at 0 (producers write Ry, Ha or eV), so any fixed factor would rescale
+  // most files wrongly. FRMSF has a single spin channel.
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),
@@ -212,7 +208,6 @@ function parse_frmsf(content: string): BandGridData {
     if (count < total_points) {
       throw new Error(`FRMSF band ${band_idx}: expected ${total_points} values, got ${count}`)
     }
-    for (let idx = 0; idx < total_points; idx++) energy_values[idx] *= HARTREE_TO_EV
     energies[0].push(make_band_grid(energy_values, k_grid))
   }
 

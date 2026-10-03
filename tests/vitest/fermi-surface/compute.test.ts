@@ -1,21 +1,21 @@
 // Tests for Fermi surface computation, analysis and symmetry-tiling functions
-import { compute_brillouin_zone } from '$lib/brillouin/compute'
+import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
   upsample_grid,
-} from '$lib/fermi-surface/compute'
-import { IDENTITY_4x4, lattice_point_group_matrices } from '$lib/fermi-surface/symmetry'
+} from '#lib/fermi-surface/compute.js'
+import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
 import type {
   BandEnergyGrid,
   BandGridData,
   FermiIsosurface,
   FermiSurfaceData,
-} from '$lib/fermi-surface/types'
-import { vertex_count } from '$lib/fermi-surface/types'
-import * as math from '$lib/math'
-import type { Matrix3x3, Matrix4Tuple, Vec3 } from '$lib/math'
+} from '#lib/fermi-surface/types.js'
+import { vertex_count } from '#lib/fermi-surface/types.js'
+import * as math from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple, Vec3 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 import {
   BOX_TRI_FACES,

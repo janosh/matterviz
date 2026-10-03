@@ -5,7 +5,7 @@ import {
   parse_leading_num,
   parse_num_token,
   to_error,
-} from '$lib/utils'
+} from '#lib/utils.js'
 import { describe, expect, test } from 'vitest'
 
 test.each([

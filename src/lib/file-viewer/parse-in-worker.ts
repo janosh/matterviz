@@ -2,17 +2,13 @@
 // main thread receives a TrajectoryRun backed by its MessagePort.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
-import type { ParseProgress, TrajectoryRun, TrajectorySource } from '$lib/trajectory'
-import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
-import { dispose_run_port, worker_run } from '$lib/trajectory/runs/worker'
-import { summarize_run } from '$lib/trajectory/run'
-import { to_error } from '$lib/utils'
-import {
-  display_frame_bytes,
-  display_cache_budget,
-  type DisplayFrame,
-  type FramePreparation,
-} from '$lib/trajectory/prepare'
+import type { ParseProgress, TrajectoryRun, TrajectorySource } from '#lib/trajectory/index.js'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
+import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
+import { summarize_run } from '#lib/trajectory/run.js'
+import { to_error } from '#lib/utils.js'
+import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
+import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'

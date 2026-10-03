@@ -1,5 +1,11 @@
-import type { D3InterpolateName } from '$lib/colors'
-import type { CellVal, ColumnFilter, Column, RowData, SortCriterion } from '$lib/table'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type {
+  CellVal,
+  ColumnFilter,
+  Column,
+  RowData,
+  SortCriterion,
+} from '#lib/table/index.js'
 import {
   CATEGORY_LIMIT,
   cell_matches_filter,
@@ -24,8 +30,8 @@ import {
   virtual_window,
   with_category_toggled,
   with_numeric_bound,
-} from '$lib/table'
-import { html_to_text, strip_html } from '$lib/utils'
+} from '#lib/table/index.js'
+import { html_to_text, strip_html } from '#lib/utils.js'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below

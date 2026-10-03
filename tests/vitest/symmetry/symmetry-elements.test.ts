@@ -1,10 +1,10 @@
 // Tests for symmetry-element classification: analytic single-operation cases plus
 // whole-group inventories generated from moyo's operations_from_number (real WASM).
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
 import {
-  analyze_structure_symmetry,
   classify_symmetry_op,
   clip_axis_family,
   clip_line_to_cell,
@@ -17,8 +17,8 @@ import {
   symmetry_elements_from_ops,
   symmetry_tiling_reason,
   tile_symmetry_elements,
-} from '$lib/symmetry'
-import type { SymmetryElement } from '$lib/symmetry'
+} from '#lib/symmetry/symmetry-elements.js'
+import type { SymmetryElement } from '#lib/symmetry/index.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'

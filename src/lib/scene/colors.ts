@@ -2,8 +2,8 @@
 // colours into instanced or vertex attributes, which the renderer reads as Linear-sRGB.
 import { rgb as parse_rgb } from 'd3-color'
 import { Color, SRGBColorSpace } from 'three/webgpu'
-import { clamp } from '$lib/math'
-import { clamp01 } from '$lib/utils'
+import { clamp } from '#lib/math.js'
+import { clamp01 } from '#lib/utils.js'
 
 type LinearRgb = readonly [number, number, number]
 

@@ -10,9 +10,9 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
-import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import { host_run } from '$lib/trajectory/runs/host'
-import { to_error } from '$lib/utils'
+import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
+import { to_error } from '#lib/utils.js'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {

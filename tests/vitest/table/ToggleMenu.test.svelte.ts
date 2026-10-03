@@ -1,5 +1,5 @@
-import type { Column } from '$lib/table'
-import ToggleMenu from '$lib/table/ToggleMenu.svelte'
+import type { Column } from '#lib/table/index.js'
+import ToggleMenu from '#lib/table/ToggleMenu.svelte'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bind_props, fire, doc_query } from '../setup'

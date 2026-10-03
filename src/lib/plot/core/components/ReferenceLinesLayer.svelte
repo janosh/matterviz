@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import {
     get_reference_annotation_placement,
     resolve_ref_line_axes,
-  } from '$lib/plot/core/reference-line'
-  import type { LayerZIndex, RefLineEvent } from '$lib/plot/core/types'
+  } from '#lib/plot/core/reference-line.js'
+  import type { LayerZIndex, RefLineEvent } from '#lib/plot/core/types.js'
   import ReferenceLine from './ReferenceLine.svelte'
 
   // The frame's reference lines at one z level. Charts render one instance per level

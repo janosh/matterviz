@@ -1,5 +1,5 @@
-import type { Vec2, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, it, test } from 'vitest'
 

@@ -2,13 +2,13 @@
 // chempot and ternary phase-diagram demos. Loaded lazily: vite-plugin-json-gz decompresses
 // at build time and each glob entry becomes its own chunk. Do NOT use query:'?url' here:
 // Rolldown doesn't emit .json.gz as assets for globs.
-import type { PhaseData } from '$lib/convex-hull/types'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 
 export const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
-  `$site/convex-hull/quaternaries/*.json.gz`,
+  `#site/convex-hull/quaternaries/*.json.gz`,
 )
 export const quinary_files = import.meta.glob<{ default: PhaseData[] }>(
-  `$site/convex-hull/quinaries/*.json.gz`,
+  `#site/convex-hull/quinaries/*.json.gz`,
 )
 
 // Lazy loader for one quaternary by system name (`Li-Co-Ni-O`); the glob's path prefix

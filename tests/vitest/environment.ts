@@ -1,6 +1,6 @@
 // Automatic browser-environment setup. Domain fixtures belong in test-fixtures.ts and are only
 // loaded by tests that explicitly import them.
-import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import { beforeEach, vi } from 'vitest'
 
 // happy-dom implements `nodeName` per subclass and its base Node.prototype getter returns ''.

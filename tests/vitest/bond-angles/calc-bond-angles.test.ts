@@ -1,18 +1,18 @@
 import {
   angle_bin_centers,
   angle_bin_index,
-  BondAnglePlot,
   calc_bond_angle_distribution,
   calc_bond_angles,
   resolve_angle_bins,
-  to_angle_bar_series,
-} from '$lib/bond-angles'
-import type { BondAngleOptions, BondAngleSplitMode } from '$lib/bond-angles'
-import { element_by_symbol } from '$lib/element/data'
-import type { Vec3 } from '$lib/math'
-import type { Molecule } from '$lib/structure'
-import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
-import { structure_map } from '$site/structures'
+} from '#lib/bond-angles/calc-bond-angles.js'
+import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
+import { to_angle_bar_series } from '#lib/bond-angles/series.js'
+import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import type { Vec3 } from '#lib/math.js'
+import type { Molecule } from '#lib/structure/index.js'
+import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
@@ -35,7 +35,7 @@ const ligand_shell = (center: string, ligand: string, dirs: Vec3[], bond: number
 
 const fixture = (identifier: string) => {
   const struct = structure_map.get(identifier)
-  if (!struct) throw new Error(`fixture ${identifier} not found in $site/structures`)
+  if (!struct) throw new Error(`fixture ${identifier} not found in #site/structures`)
   return struct
 }
 

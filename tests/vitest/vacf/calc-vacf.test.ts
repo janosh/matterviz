@@ -1,6 +1,6 @@
-import type { ElementSymbol } from '$lib/element'
-import { autocorrelation_sums, group_atoms_by_element } from '$lib/trajectory/positions'
-import { calc_vacf, central_difference_velocities } from '$lib/vacf'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { autocorrelation_sums, group_atoms_by_element } from '#lib/trajectory/positions.js'
+import { calc_vacf, central_difference_velocities } from '#lib/vacf/calc-vacf.js'
 import { describe, expect, it } from 'vitest'
 import { cubic_matrix } from '../test-fixtures'
 import {

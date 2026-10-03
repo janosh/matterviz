@@ -1,5 +1,5 @@
-import type { CrystalSystem } from '$lib/symmetry/spacegroups'
-import * as spg from '$lib/symmetry/spacegroups'
+import type { CrystalSystem } from '#lib/symmetry/spacegroups.js'
+import * as spg from '#lib/symmetry/spacegroups.js'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`CRYSTAL_SYSTEM_RANGES`, () => {

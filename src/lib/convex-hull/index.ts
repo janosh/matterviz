@@ -1,6 +1,6 @@
-import type { D3InterpolateName } from '$lib/colors'
-import type { ShowControlsProp } from '$lib/controls'
-import type { TooltipConfig } from '$lib/tooltip'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ShowControlsProp } from '#lib/controls.js'
+import type { TooltipConfig } from '#lib/tooltip/index.js'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { EnergySourceMode, HullModel } from './model'
@@ -182,7 +182,7 @@ export interface Hull3DProps {
   hull_face_opacity?: number
   hull_face_color_mode?: HullFaceColorMode
   // Orientation gizmo: false to disable, true for defaults, object to customize
-  // Supports placement plus the appearance options in GizmoOptions ($lib/scene)
+  // Supports placement plus the appearance options in GizmoOptions (#lib/scene)
   gizmo?: boolean | ConvexHullGizmoOptions
 }
 

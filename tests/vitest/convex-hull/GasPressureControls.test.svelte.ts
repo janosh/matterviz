@@ -1,6 +1,6 @@
-import GasPressureControls from '$lib/convex-hull/GasPressureControls.svelte'
-import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
-import type { GasSpecies, GasThermodynamicsConfig } from '$lib/convex-hull/types'
+import GasPressureControls from '#lib/convex-hull/GasPressureControls.svelte'
+import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
+import type { GasSpecies, GasThermodynamicsConfig } from '#lib/convex-hull/types.js'
 import { flushSync, mount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

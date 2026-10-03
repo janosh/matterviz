@@ -1,7 +1,7 @@
-import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
-import { extract_formula_elements } from '$lib/composition/parse'
-import type { PhaseData } from '$lib/convex-hull/types'
-import { array_extent } from '$lib/math'
+import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
+import { extract_formula_elements } from '#lib/composition/parse.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import { array_extent } from '#lib/math.js'
 import { group } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import {

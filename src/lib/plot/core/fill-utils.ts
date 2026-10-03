@@ -5,7 +5,7 @@
 // overlap), inserted endpoints are evaluated on a monotone-cubic approximation: sub-pixel for
 // monotoneX/linear/step, but natural/basis/catmullRom edges can deviate more at the clip points.
 
-import { partition_point, type Vec2 } from '$lib/math'
+import { partition_point, type Vec2 } from '#lib/math.js'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -28,9 +28,9 @@ import type {
   FillGradient,
   FillRegion,
   LineCurve,
-} from '$lib/plot/core/types'
-import { range_bounds } from '$lib/plot/core/interactions'
-import { assert_aligned_lengths, assert_series_lengths } from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
+import { range_bounds } from '#lib/plot/core/interactions.js'
+import { assert_aligned_lengths, assert_series_lengths } from '#lib/plot/core/types.js'
 
 // A 2D point in data (or pixel) coordinates
 export interface Pt {

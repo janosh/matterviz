@@ -1,9 +1,13 @@
 <script lang="ts">
-  import type { FileInfo } from '$lib'
-  import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHull } from '$lib/convex-hull'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { filter_by_elements, hull_system_name, quaternary_files } from '$site/convex-hull'
+  import type { FileInfo } from '#lib'
+  import type { PhaseData } from '#lib/convex-hull/index.js'
+  import { ConvexHull } from '#lib/convex-hull/index.js'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import {
+    filter_by_elements,
+    hull_system_name,
+    quaternary_files,
+  } from '#site/convex-hull/index.js'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'

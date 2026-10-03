@@ -3,16 +3,16 @@
 // of Isosurface's error path: Structure registers a handler in context, Isosurface (a few
 // layers down) picks it up without pass-through props, and the message lands in a
 // dismissible warning notice.
-import { get_isosurface_error_handler } from '$lib/isosurface/context'
-import Structure from '$lib/structure/Structure.svelte'
-import { structures } from '$site/structures'
+import { get_isosurface_error_handler } from '#lib/isosurface/context.js'
+import Structure from '#lib/structure/Structure.svelte'
+import { structures } from '#site/structures.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 
 const worker_message = `Isosurface geometry failed: Failed to fetch dynamically imported module`
-vi.mock(`$lib/structure/StructureViewport.svelte`, () => ({
+vi.mock(`#lib/structure/StructureViewport.svelte`, () => ({
   // Plain Svelte 5 component function: reads the context handler the way Isosurface does and
   // fires it as Isosurface would after its geometry worker rejects
   default: () => {

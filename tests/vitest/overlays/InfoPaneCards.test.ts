@@ -1,5 +1,5 @@
-import type { InfoPaneCard } from '$lib/overlays'
-import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
+import type { InfoPaneCard } from '#lib/overlays/index.js'
+import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

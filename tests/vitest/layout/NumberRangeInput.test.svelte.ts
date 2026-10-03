@@ -1,4 +1,4 @@
-import { NumberRangeInput } from '$lib/layout'
+import { NumberRangeInput } from '#lib/layout/index.js'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props } from '../setup'

@@ -125,9 +125,7 @@ test.each([
     expect(config.grepInvert?.test(`tests/playwright/plot/bar-plot.test.ts`) ?? false).toBe(
       false,
     )
-    expect(config.webServer.command).toContain(
-      mode === `preview` ? `vite preview` : `vite dev`,
-    )
+    expect(config.webServer.command).toContain(mode === `preview` ? `vp preview` : `vp dev`)
   },
 )
 

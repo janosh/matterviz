@@ -1,7 +1,7 @@
-import { THZ_TO_INVERSE_CM } from '$lib/constants'
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { convert_frequencies } from '$lib/spectral/frequency-units'
-import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
+import { THZ_TO_INVERSE_CM } from '#lib/constants.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import { convert_frequencies } from '#lib/spectral/frequency-units.js'
+import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   are_qpoints_equivalent,
@@ -28,8 +28,8 @@ import {
   qpoint_x_position,
   scale_segment_distances,
   shift_to_fermi,
-} from '$lib/spectral/helpers'
-import type { BaseBandStructure, QPoint } from '$lib/spectral/types'
+} from '#lib/spectral/helpers.js'
+import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
 import { describe, expect, it, vi } from 'vitest'
 
 // pymatgen input needs a reciprocal lattice to measure its k-path; the identity keeps the
@@ -93,6 +93,10 @@ it.each([
   [`K12`, `K₁₂`],
   [`S_0`, `S₀`],
   [`GAMMA_1`, `Γ₁`],
+  // phonopy BAND_LABELS are LaTeX math; the `$` used to reach the tick labels
+  [`$\\Gamma$`, `Γ`],
+  [`$\\mathrm{X}$`, `X`],
+  [`$S_{0}$`, `S₀`],
   [``, ``],
 ])(`pretty_sym_point(%s) → %s`, (input, expected) => {
   expect(pretty_sym_point(input)).toBe(expected)
@@ -515,6 +519,8 @@ describe(`normalize_band_structure`, () => {
           [1, 1, 1],
         ],
         bands: [[0, 1, 2, 3, 4, 5]],
+        // the jump is X|L: a step between two labelled points, as in pymatgen paths
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.1, 0, 0], L: [0.9, 0.9, 0.9], W: [1, 1, 1] },
       }),
     )
     const expected = [
@@ -528,6 +534,31 @@ describe(`normalize_band_structure`, () => {
     result?.distance.forEach((val, idx) => expect(val).toBeCloseTo(expected[idx], 12))
   })
 
+  // pymatgen and phonopy put a fixed point count in each segment, so in an anisotropic cell
+  // every step of a long segment is many times the median. A 5x-median jump heuristic used to
+  // flag all of them, giving Γ-Z zero width (audit repro: total path 1.07 vs pymatgen's 4.84).
+  it(`keeps long segments of an anisotropic cell (only labelled-to-labelled steps jump)`, () => {
+    const gamma_x = Array.from({ length: 6 }, (_, idx) => [idx / 10, 0, 0])
+    const x_r = Array.from({ length: 6 }, (_, idx) => [0.5, 0, idx / 10])
+    const result = normalize_band_structure(
+      pmg({
+        qpoints: [...gamma_x, ...x_r], // X duplicated at the junction, as pymatgen writes it
+        bands: [Array.from({ length: 12 }, (_, idx) => idx)],
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], R: [0.5, 0, 0.5] },
+        lattice_rec: {
+          matrix: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 10],
+          ],
+        },
+      }),
+    )
+    // Γ-X spans 0.5, X-R spans 10 * 0.5 = 5
+    expect(result?.distance.at(-1)).toBeCloseTo(5.5, 12)
+    expect(result?.branches.map(({ name }) => name)).toEqual([`GAMMA-X`, `X-R`])
+  })
+
   // Reciprocal lattice of a hexagonal cell: a* = b* = 1 at 60°, c* = 0.4. The fractional
   // metric would give |M-K| = sqrt(1/36 + 1/9) and |K-GAMMA| = sqrt(2/9); the Cartesian one
   // gives sqrt(3)/6 and 1/sqrt(3).
@@ -536,15 +567,21 @@ describe(`normalize_band_structure`, () => {
     [0.5, Math.sqrt(3) / 2, 0],
     [0, 0, 0.4],
   ]
+  // Midpoints between the high-symmetry points make each leg a segment: a step from one
+  // labelled point straight to another is a path jump (pymatgen's rule)
+  const hex_corners = [
+    [0, 0, 0],
+    [0.5, 0, 0],
+    [1 / 3, 1 / 3, 0],
+    [0, 0, 0],
+    [0, 0, 0.5],
+  ]
   const hex_path = {
-    qpoints: [
-      [0, 0, 0],
-      [0.5, 0, 0],
-      [1 / 3, 1 / 3, 0],
-      [0, 0, 0],
-      [0, 0, 0.5],
-    ],
-    bands: [[0, 1, 2, 3, 4]],
+    qpoints: hex_corners.flatMap((corner, idx) => {
+      const next = hex_corners[idx + 1]
+      return next ? [corner, corner.map((val, dim) => (val + next[dim]) / 2)] : [corner]
+    }),
+    bands: [Array.from({ length: 9 }, (_, idx) => idx)],
     labels_dict: { GAMMA: [0, 0, 0], M: [0.5, 0, 0], K: [1 / 3, 1 / 3, 0], A: [0, 0, 0.5] },
   }
   const hex_distance = [
@@ -568,9 +605,10 @@ describe(`normalize_band_structure`, () => {
       [key]: { matrix: hex_matrix },
     })
     spy.mockRestore()
-    expect(result?.distance).toHaveLength(5)
-    result?.distance.forEach((val, idx) =>
-      expect(val).toBeCloseTo(hex_distance[idx] * scale, 12),
+    expect(result?.distance).toHaveLength(9)
+    // corners sit at even indices
+    hex_distance.forEach((val, idx) =>
+      expect(result?.distance[2 * idx]).toBeCloseTo(val * scale, 12),
     )
     result?.recip_lattice?.forEach((row, row_idx) =>
       row.forEach((val, col_idx) =>
@@ -665,31 +703,43 @@ describe(`normalize_band_structure`, () => {
         `one discontinuity`,
         [
           [0, 0, 0],
+          [0.05, 0, 0],
           [0.1, 0, 0],
           [0.9, 0.9, 0.9],
+          [0.95, 0.95, 0.95],
           [1, 1, 1],
         ],
-        { GAMMA: [0, 0, 0], L: [1, 1, 1] },
+        { GAMMA: [0, 0, 0], X: [0.1, 0, 0], W: [0.9, 0.9, 0.9], L: [1, 1, 1] },
         [
-          { start_index: 0, end_index: 1, name: `GAMMA-?` },
-          { start_index: 2, end_index: 3, name: `?-L` },
+          { start_index: 0, end_index: 2, name: `GAMMA-X` },
+          { start_index: 3, end_index: 5, name: `W-L` },
         ],
       ],
       [
         `two discontinuities`,
         [
           [0, 0, 0],
+          [0.05, 0, 0],
           [0.1, 0, 0],
           [0.5, 0.5, 0],
+          [0.55, 0.5, 0],
           [0.6, 0.5, 0],
           [1, 1, 1],
+          [1.05, 1, 1],
           [1.1, 1, 1],
         ],
-        { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0], L: [1, 1, 1] },
+        {
+          GAMMA: [0, 0, 0],
+          X: [0.1, 0, 0],
+          K: [0.5, 0.5, 0],
+          U: [0.6, 0.5, 0],
+          L: [1, 1, 1],
+          W: [1.1, 1, 1],
+        },
         [
-          { start_index: 0, end_index: 1, name: `GAMMA-?` },
-          { start_index: 2, end_index: 3, name: `K-?` },
-          { start_index: 4, end_index: 5, name: `L-?` },
+          { start_index: 0, end_index: 2, name: `GAMMA-X` },
+          { start_index: 3, end_index: 5, name: `K-U` },
+          { start_index: 6, end_index: 8, name: `L-W` },
         ],
       ],
     ])(
@@ -1049,6 +1099,30 @@ describe(`compute_frequency_range`, () => {
       [0, 15.3],
     ],
     [`real imaginary modes`, bands_of([[-2, -1, 0, 5, 10]]), {}, [-2.24, 10.24]],
+    // A soft branch in a large cell is well under 0.5% of all |values| but still a genuine
+    // instability (< -0.5 THz); the noise clamp used to cut it off at [0, 8.14]
+    [
+      `a soft branch in a large cell`,
+      bands_of([
+        ...Array.from({ length: 24 }, (_band, band_idx) =>
+          Array.from(
+            { length: 300 },
+            (_qpt, q_idx) => 1 + (7 * ((band_idx + q_idx) % 24)) / 23,
+          ),
+        ),
+        Array.from({ length: 300 }, (_, q_idx) => (q_idx < 15 ? -1.5 : 0)),
+      ]),
+      {},
+      [-1.5 - 9.5 * 0.02, 8 + 9.5 * 0.02],
+    ],
+    // DOS grids run below 0 at zero density (-0.59 THz in mp-2691 PBE); only band
+    // frequencies can signal an imaginary mode
+    [
+      `a DOS grid reaching below the imaginary cutoff`,
+      bands_of([[0, 5, 10]]),
+      dos_of(Array.from({ length: 157 }, (_, idx) => -0.6 + idx / 10)),
+      [0, 15 + 15 * 0.02],
+    ],
     [
       `electronic bands retain small negative values`,
       bands_of([[-0.01, 5, 10]], `electronic`),

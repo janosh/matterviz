@@ -6,37 +6,40 @@
   // canvas markers once the visible count is small enough, with spatial-index picking,
   // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
   // pan/zoom, marginals and the title come from the shared Cartesian frame.
-  import { TooltipValue } from '$lib/tooltip'
-  import { format_value } from '$lib/labels'
-  import type { Point2D, Vec2 } from '$lib/math'
-  import { create_pulse_animation } from '$lib/effects.svelte'
-  import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import ColorBarDecoration from '$lib/plot/core/components/ColorBarDecoration.svelte'
-  import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
-  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
-  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import { create_colorbar_decoration } from '$lib/plot/core/colorbar-decoration.svelte'
-  import type { DecorationItem } from '$lib/plot/core/decorations'
-  import { decoration_data_attrs, get_decoration_placement } from '$lib/plot/core/decorations'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { format_value } from '#lib/labels.js'
+  import type { Point2D, Vec2 } from '#lib/math.js'
+  import { create_pulse_animation } from '#lib/effects.svelte.js'
+  import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+  import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
+  import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
+  import {
+    decoration_data_attrs,
+    get_decoration_placement,
+  } from '#lib/plot/core/decorations/index.js'
+  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     axis_transform,
     get_relative_coords,
     orient_range,
     range_bounds,
-  } from '$lib/plot/core/interactions'
-  import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
-  import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
-  import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
-  import { plot_color } from '$lib/colors'
-  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
+  } from '#lib/plot/core/interactions.js'
+  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
+  import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
+  import { element_position_for_footprint, full_footprint_or } from '#lib/plot/core/layout.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import {
     add_sides,
     normalize_marginals,
     reserve_marginal_pad,
-  } from '$lib/plot/core/marginals'
+  } from '#lib/plot/core/marginals.js'
   import {
     bin_points,
     density_bin_at_point,
@@ -46,17 +49,17 @@
     series_x_order,
     should_render_points,
     visible_points,
-  } from '$lib/plot/scatter/adaptive-density'
+  } from '#lib/plot/scatter/adaptive-density.js'
   import type {
     DensityBin,
     DenseInternalPoint,
     DensePointSeries,
-  } from '$lib/plot/scatter/adaptive-density'
+  } from '#lib/plot/scatter/adaptive-density.js'
   import {
     collect_size_range,
     create_color_scale,
     create_size_scale,
-  } from '$lib/plot/core/scales'
+  } from '#lib/plot/core/scales.js'
   import type {
     AxisConfig,
     BasePlotProps,
@@ -64,16 +67,16 @@
     InternalPoint,
     PanConfig,
     ScatterHandlerProps,
-  } from '$lib/plot/core/types'
-  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { attach_canvas, prepare_canvas } from '$lib/plot/core/utils'
+  } from '#lib/plot/core/types.js'
+  import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
+  import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils.js'
   import {
     compute_label_positions,
     estimate_label_size,
     label_leader_segment,
-  } from '$lib/plot/core/utils/label-placement'
-  import type { LabelSize } from '$lib/plot/core/utils/label-placement'
+  } from '#lib/plot/core/utils/label-placement.js'
+  import type { LabelSize } from '#lib/plot/core/utils/label-placement.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -85,8 +88,8 @@
     BinnedPointLabelsConfig,
     BinnedPointPayload,
     BinnedSizeScaleConfig,
-  } from '$lib/plot/scatter/binned-scatter-types'
-  import { DEFAULT_BINNED_SIZE_SCALE } from '$lib/plot/scatter/binned-scatter-types'
+  } from '#lib/plot/scatter/binned-scatter-types.js'
+  import { DEFAULT_BINNED_SIZE_SCALE } from '#lib/plot/scatter/binned-scatter-types.js'
 
   type RenderMode = `density` | `points`
   type DensePointEvent = {

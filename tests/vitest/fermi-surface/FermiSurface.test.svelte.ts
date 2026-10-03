@@ -1,8 +1,8 @@
-import { extract_fermi_surface } from '$lib/fermi-surface/compute'
-import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
-import { type BandGridJson, normalize_fermi_surface } from '$lib/fermi-surface/parse'
-import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
-import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
+import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
+import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
+import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
+import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
@@ -102,7 +102,7 @@ test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
     })
     mounted.push(mount(FermiSurface, { target: document.body, props }))
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-    await vi.advanceTimersByTimeAsync(300) // extraction debounce + paint ticks
+    await vi.advanceTimersByTimeAsync(300) // spinner frame + extraction frame
     expect(props.fermi_data?.isosurfaces.length).toBeGreaterThan(0)
 
     props.source = `http://x/b.bxsf`
@@ -112,8 +112,8 @@ test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
 )
 
 test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`, async () => {
-  // Faking rAF too keeps the extraction's yield-to-paint tick on the fake clock, so the test
-  // can observe the viewer mid-extraction (150 ms debounce, then two ~16 ms frames)
+  // Faking rAF keeps the extraction frames on the fake clock (~16 ms each), so the test can
+  // observe the viewer between them
   vi.useFakeTimers({
     toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
   })
@@ -147,10 +147,12 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
     band_data?: BandGridData
     fermi_data?: FermiSurfaceData
     mu: number
+    interpolation_factor: number
   }>({
     band_data,
     fermi_data: undefined,
     mu: 0,
+    interpolation_factor: 1,
   })
   mounted.push(mount(FermiSurface, { target: document.body, props }))
   await vi.advanceTimersByTimeAsync(200)
@@ -161,27 +163,39 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   const chrome = document.querySelector(`.fermi-surface .control-buttons`)
   expect(chrome).not.toBeNull()
 
+  const spinner_shown = () =>
+    document.body.textContent?.includes(`Extracting Fermi surface...`)
+  const n_vertices = () => props.fermi_data?.isosurfaces[0].positions.length ?? 0
+
+  // A mu change only reruns marching cubes on the cached grid: it lands next frame with no
+  // spinner, so a slider drag tracks the pointer (a 150 ms debounce froze it until rest)
   props.mu = 0.1 // bigger sphere → more vertices
-  await vi.advanceTimersByTimeAsync(160) // past the debounce, inside the extraction tick
+  await vi.advanceTimersByTimeAsync(20)
+  expect(spinner_shown()).toBe(false)
+  const n_vertices_at_01 = n_vertices()
+  expect(n_vertices_at_01).toBeGreaterThan(n_vertices_at_0 ?? 0)
+  expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
+
+  // A new interpolation factor upsamples every band first: the spinner overlays the Canvas
+  // for one painted frame before that blocks
+  props.interpolation_factor = 2
+  flushSync()
   expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
     `Extracting Fermi surface...`,
   )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
-  await vi.advanceTimersByTimeAsync(100)
-  expect(document.body.textContent).not.toContain(`Extracting Fermi surface...`)
-  expect(props.fermi_data?.isosurfaces[0].positions.length).toBeGreaterThan(
-    n_vertices_at_0 ?? 0,
-  )
-  expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
+  await vi.advanceTimersByTimeAsync(40)
+  expect(spinner_shown()).toBe(false)
+  expect(n_vertices()).toBeGreaterThan(n_vertices_at_01)
 
-  // Clearing band_data mid-extraction must not commit a surface for the vanished grid
+  // Clearing band_data while an extraction is pending must not commit a surface for it
   const committed = props.fermi_data
-  props.mu = 0.2
-  await vi.advanceTimersByTimeAsync(160)
+  props.interpolation_factor = 3
+  flushSync()
   props.band_data = undefined
-  await vi.advanceTimersByTimeAsync(200)
+  await vi.advanceTimersByTimeAsync(100)
   expect(props.fermi_data).toBe(committed)
-  expect(document.body.textContent).not.toContain(`Extracting Fermi surface...`)
+  expect(spinner_shown()).toBe(false)
   vi.useRealTimers()
 })
 

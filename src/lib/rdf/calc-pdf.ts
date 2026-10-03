@@ -1,8 +1,8 @@
-import { calc_lattice_params } from '$lib/math'
-import type { PdfWeighting } from '$lib/scattering'
-import { pdf_scattering_weights } from '$lib/scattering'
-import type { Crystal } from '$lib/structure'
-import { to_error } from '$lib/utils'
+import { calc_lattice_params } from '#lib/math.js'
+import type { PdfWeighting } from '#lib/scattering/index.js'
+import { pdf_scattering_weights } from '#lib/scattering/index.js'
+import type { Crystal } from '#lib/structure/index.js'
+import { to_error } from '#lib/utils.js'
 import { calculate_all_pair_rdfs, calculate_rdf } from './calc-rdf'
 import type {
   PdfPattern,
@@ -107,7 +107,7 @@ export function calculate_pdf(structure: Crystal, options: RdfOptions = {}): Pdf
 }
 
 // Total scattering-weighted PDF: g(r) = Σ_ab w_ab·g_ab(r) and G(r) = 4π·r·ρ0·(g(r) − 1), with
-// Faber-Ziman weights w_ab = c_a·c_b·b_a·b_b/<b>² supplied by $lib/scattering.
+// Faber-Ziman weights w_ab = c_a·c_b·b_a·b_b/<b>² supplied by #lib/scattering.
 export function calculate_total_pdf(
   structure: Crystal,
   { radiation, s_val, ...rdf_options }: TotalPdfOptions = {},
@@ -138,7 +138,7 @@ export function weight_pdf_partials(
   try {
     weighting = pdf_scattering_weights(composition, radiation, s_val)
   } catch (exc) {
-    // Re-throw with the structure's composition attached. $lib/scattering deliberately throws
+    // Re-throw with the structure's composition attached. #lib/scattering deliberately throws
     // on a missing nucleus or a null-matrix <b> = 0; swallowing that would hand back a
     // plausible-looking but physically wrong pattern.
     const formula = Object.entries(composition)

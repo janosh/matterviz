@@ -1,6 +1,10 @@
-import TrajectoryInfoPane from '$lib/trajectory/TrajectoryInfoPane.svelte'
-import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from '$lib/trajectory'
-import { trajectory_from_frames } from '$lib/trajectory'
+import TrajectoryInfoPane from '#lib/trajectory/TrajectoryInfoPane.svelte'
+import type {
+  TrajectoryFrame,
+  TrajectoryMetadata,
+  TrajectoryRun,
+} from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -86,6 +90,18 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
   await tick()
   expect(document.querySelector<HTMLInputElement>(`.info-filter`)?.value).toBe(`energy`)
   expect(document.querySelectorAll(`.info-card`)).toHaveLength(0)
+})
+
+// A fixed atom's force or a vacuum density is ~1e-17 rather than 0; an SI-prefixed range end
+// read "10a" (atto) instead of 0
+test(`range ends at floating noise read 0`, async () => {
+  const rows: TrajectoryMetadata[] = [0, 1].map((frame_number) => ({
+    frame_number,
+    step: frame_number,
+    properties: { force_max: frame_number ? 0.5 : 1e-17 },
+  }))
+  await mount_pane(sampled_run(2, rows), 0)
+  expect(pane_text()).toContain(`Fmax Range 0 - 500m eV/Å`)
 })
 
 test(`labels ranges from sampled property rows honestly`, async () => {

@@ -1,7 +1,7 @@
 // Input types for compact phase diagram definitions
 // These are transformed by build-diagram.ts into full PhaseDiagramData
 
-import type { Vec2 } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
 import type { CompUnit, PseudoBinaryMetadata, SpecialPoint, TempUnit } from './types'
 
 // A point is [composition, temperature] for phase diagram curves

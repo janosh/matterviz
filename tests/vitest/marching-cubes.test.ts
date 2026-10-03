@@ -2,11 +2,11 @@
 import {
   compute_vertex_normals,
   marching_cubes as marching_cubes_buffers,
-} from '$lib/marching-cubes'
-import type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '$lib/marching-cubes'
-import { flatten_grid } from '$lib/isosurface/grid'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { add, cross_3d, dot, subtract } from '$lib/math'
+} from '#lib/marching-cubes.js'
+import type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/marching-cubes.js'
+import { flatten_grid } from '#lib/isosurface/grid.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { add, cross_3d, dot, subtract } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_grid } from './test-fixtures'
 

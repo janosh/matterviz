@@ -7,14 +7,14 @@
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
   // callbacks so it drives Structure's external camera API. Camera state stays local to each
   // pane; scene_props supplies caller-controlled pose overrides.
-  import type { ElementSymbol } from '$lib/element'
+  import type { ElementSymbol } from '#lib/element/index.js'
   import { StatusMessage } from 'svelte-widgets'
-  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import type { CameraProjection } from '$lib/settings'
-  import type { AnyStructure, StructureHandlerData } from '$lib/structure'
-  import type { DisplacementSummary } from '$lib/structure/measure'
-  import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { CameraProjection } from '#lib/settings.js'
+  import type { AnyStructure, StructureHandlerData } from '#lib/structure/index.js'
+  import type { DisplacementSummary } from '#lib/structure/measure.js'
+  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, tick, untrack } from 'svelte'
@@ -25,7 +25,7 @@
     read_pan_offset,
     restore_camera_view,
     responsive_gizmo_size,
-  } from '$lib/scene'
+  } from '#lib/scene/index.js'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'

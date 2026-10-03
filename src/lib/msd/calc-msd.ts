@@ -10,8 +10,8 @@
 // autocorrelation taken with the same Wiener–Khinchin kernel as the VACF. Each coordinate is
 // centred on its time average first, so the difference cancels on the scale of the motion
 // rather than of the absolute position.
-import { mean as mean_of } from '$lib/math'
-import { thz_per_inverse_time } from '$lib/spectral/frequency-units'
+import { mean as mean_of } from '#lib/math.js'
+import { thz_per_inverse_time } from '#lib/spectral/frequency-units.js'
 import {
   analysis_fail,
   autocorrelation_sums,
@@ -22,8 +22,8 @@ import {
   resolve_lag_time_unit,
   unwrapped_positions_of,
   validate_position_stream_layout,
-} from '$lib/trajectory/positions'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
+} from '#lib/trajectory/positions.js'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import type { EinsteinFit, EinsteinFitOptions, MsdCurve, MsdOptions, MsdResult } from './index'
 
 const fail = analysis_fail(`fit_einstein_diffusion`)

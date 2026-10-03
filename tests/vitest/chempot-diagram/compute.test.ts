@@ -6,7 +6,7 @@
 // - Formula keys: pymatgen uses Hill notation (Li2FeO3), we sort alphabetically (FeLi2O3)
 // - O2 reduced formula: pymatgen keeps "O2", our get_reduced_formula reduces {O:6} to {O:1} → "O"
 
-import type { VisibleDomainLabel } from '$lib/chempot-diagram/compute'
+import type { VisibleDomainLabel } from '#lib/chempot-diagram/compute.js'
 import {
   apply_element_padding,
   assign_faces_to_domains,
@@ -34,11 +34,11 @@ import {
   scale_to_font_range,
   simple_pca,
   strip_closing_faces,
-} from '$lib/chempot-diagram/compute'
-import { get_domain_color_data } from '$lib/chempot-diagram/color'
-import { filter_entries_at_temperature, slim_phase_entry } from '$lib/convex-hull/helpers'
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { Vec2 } from '$lib/math'
+} from '#lib/chempot-diagram/compute.js'
+import { get_domain_color_data } from '#lib/chempot-diagram/color.js'
+import { filter_entries_at_temperature, slim_phase_entry } from '#lib/convex-hull/helpers.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { Vec2 } from '#lib/math.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { load_json, make_phase } from '../test-fixtures'
 
@@ -2117,7 +2117,7 @@ describe(`compute_chempot_async`, () => {
   async function load_async(worker: unknown) {
     vi.stubGlobal(`Worker`, worker)
     vi.resetModules()
-    return import(`$lib/chempot-diagram/async-compute.svelte`)
+    return import(`#lib/chempot-diagram/async-compute.svelte.js`)
   }
 
   test(`rejects Worker construction failures`, async () => {

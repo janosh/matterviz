@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
+  import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'
   import SegmentLabel from './SegmentLabel.svelte'

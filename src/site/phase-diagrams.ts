@@ -1,9 +1,9 @@
-import type { FileInfo } from '$lib'
-import type { PhaseDiagramData } from '$lib/phase-diagram'
-import { build_diagram } from '$lib/phase-diagram/build-diagram'
-import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
-import { normalize_system_name } from '$site/phase-diagrams/tdb-parse'
-import { glob_basename, site_file_info } from '$site/imports'
+import type { FileInfo } from '#lib'
+import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
+import { build_diagram } from '#lib/phase-diagram/build-diagram.js'
+import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
+import { normalize_system_name } from '#site/phase-diagrams/tdb-parse.js'
+import { glob_basename, site_file_info } from '#site/imports.js'
 import { SvelteMap } from 'svelte/reactivity'
 
 const diagram_modules = import.meta.glob<DiagramInput>(`./phase-diagrams/binary/data/*.json`, {
@@ -12,7 +12,7 @@ const diagram_modules = import.meta.glob<DiagramInput>(`./phase-diagrams/binary/
 })
 
 // The static symlink serves these fixtures at /phase-diagrams/tdb/<name>.
-const tdb_modules = import.meta.glob(`$site/phase-diagrams/tdb/*.tdb`, {
+const tdb_modules = import.meta.glob(`#site/phase-diagrams/tdb/*.tdb`, {
   query: `?url`,
 })
 

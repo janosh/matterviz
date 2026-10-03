@@ -2,9 +2,10 @@
 // removal, smoothing (moving average / Savitzky-Golay / Gaussian) and oscillation/instability
 // detection, plus the multi-series, xyz and trajectory-property orchestrators built on them.
 
-import { median, type Vec2 } from '$lib/math'
-import { assert_series_lengths, type DataSeries, PER_POINT_KEYS } from '$lib/plot/core/types'
-import { gaussian_kernel_smooth } from '$lib/spectral/helpers'
+import { median, type Vec2 } from '#lib/math.js'
+import type { DataSeries } from '#lib/plot/core/types.js'
+import { assert_series_lengths, PER_POINT_KEYS } from '#lib/plot/core/types.js'
+import { gaussian_kernel_smooth } from '#lib/spectral/helpers.js'
 
 // === Types ===
 

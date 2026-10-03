@@ -1,5 +1,5 @@
-import { PhononThermalPlot } from '$lib/spectral'
-import type { PhononDos } from '$lib/spectral'
+import PhononThermalPlot from '#lib/spectral/PhononThermalPlot.svelte'
+import type { PhononDos } from '#lib/spectral/index.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 

@@ -1,4 +1,4 @@
-import { serve_worker } from '$lib/worker-serve'
+import { serve_worker } from '#lib/worker-serve.js'
 import { compute_opportunity_map } from './opportunity-map'
 import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
 

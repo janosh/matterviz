@@ -1,18 +1,16 @@
-import { format_num } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import { format_num } from '#lib/labels.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { enumerate_terminations, detect_layers } from '#lib/slab/terminations.js'
 import {
-  enumerate_terminations,
   interplanar_spacing,
   make_oriented_bulk,
-  make_slab,
-} from '$lib/slab'
-import type { Slab } from '$lib/slab'
-// internals are deliberately not re-exported from $lib/slab, so reach for them directly
-import { slab_basis_transform } from '$lib/slab/lattice-basis'
-import { detect_layers } from '$lib/slab/terminations'
-import type { Crystal, Pbc, Site } from '$lib/structure'
-import { structure_map } from '$site/structures'
+  slab_basis_transform,
+} from '#lib/slab/lattice-basis.js'
+import { make_slab } from '#lib/slab/make-slab.js'
+import type { Slab } from '#lib/slab/index.js'
+import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
+import { structure_map } from '#site/structures.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
 
@@ -668,7 +666,7 @@ const measured_layer_heights = (heights: number[]): number[] => {
 describe.each(FIXTURES)(`%s (%s)`, (identifier, _why) => {
   test.each(MILLER_SET)(`(%s) slab and terminations hold up`, (miller) => {
     const crystal = structure_map.get(identifier)
-    if (!crystal) throw new Error(`fixture ${identifier} not found in $site/structures`)
+    if (!crystal) throw new Error(`fixture ${identifier} not found in #site/structures`)
     const min_vacuum_thickness = 11
     // at least two repeats, so the reported one-repeat spacings can be compared against
     // real gaps that include the wrap from the top of one repeat to the bottom of the next

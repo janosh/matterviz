@@ -1,8 +1,8 @@
 // 1-D Gaussian kernel density estimation for violin plots.
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
-import type { Vec2 } from '$lib/math'
-import { clamp, quantile_unordered, sample_std } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
+import { clamp, quantile_unordered, sample_std } from '#lib/math.js'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis

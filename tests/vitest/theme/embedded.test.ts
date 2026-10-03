@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
-import { detect_parent_theme, watch_theme } from '$lib/theme/embedded'
+import { detect_parent_theme, watch_theme } from '#lib/theme/embedded.js'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Isolate watcher behavior from palette data and theme registration side effects.
 // Black (and transparent black, which is_dark_color must filter out first) read as dark.
-vi.mock(`$lib/colors`, () => ({
+vi.mock(`#lib/colors/index.js`, () => ({
   perceived_brightness: (color: string) =>
     [`rgba(0,0,0,0)`, `rgb(0,0,0)`, `#000`].includes(color.replaceAll(` `, ``)) ? 0 : 1,
 }))

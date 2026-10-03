@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
-  import { get_d3_interpolator, resolve_computed_color } from '$lib/colors'
-  import type { Vec2 } from '$lib/math'
-  import { clamp01 } from '$lib/utils'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import type { Orientation } from '$lib/plot/core/types'
-  import { contours as create_contours } from 'd3-contour'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { get_d3_interpolator, resolve_computed_color } from '#lib/colors/index.js'
+  import type { Vec2 } from '#lib/math.js'
+  import { clamp01 } from '#lib/utils.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import type { Orientation } from '#lib/plot/core/types.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { SliceResult } from './slice'
   import {
+    contour_segments,
     resolve_contour_thresholds,
     resolve_slice_color_range,
     slice_to_rgba,
@@ -121,22 +121,20 @@
       contour_values[data_idx] =
         current_slice.mask[data_idx] && Number.isFinite(value) ? value : outside_value
     }
-    const shapes = create_contours()
-      .size([current_slice.width, current_slice.height])
-      .thresholds(contour_thresholds)(contour_values as unknown as number[])
-
+    const { width, height } = current_slice
     context.save()
     clip_to_slice_polygon(context, current_slice)
     context.strokeStyle = contour_color.current
     context.lineWidth = 1
-    context.lineJoin = `round`
-    for (const shape of shapes) {
-      context.beginPath()
-      for (const ring of shape.coordinates.flat()) {
-        trace_ring(context, ring, current_slice.height)
-      }
-      context.stroke()
-    }
+    // separate segments, so round caps stand in for the joins of a stroked ring
+    context.lineCap = `round`
+    context.beginPath()
+    // y mirrored like the flipped pixel rows
+    contour_segments(contour_values, width, height, contour_thresholds, (x0, y0, x1, y1) => {
+      context.moveTo(x0, height - y0)
+      context.lineTo(x1, height - y1)
+    })
+    context.stroke()
     context.restore()
   }
 

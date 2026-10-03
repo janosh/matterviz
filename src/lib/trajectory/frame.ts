@@ -1,18 +1,18 @@
-import { wrap_frac_coord } from '$lib/structure/pbc'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { same_values } from '$lib/math'
-import { cart_to_frac_with_fallback, make_lattice } from '$lib/structure/parsers/shared'
-import type { Pbc } from '$lib/structure/pbc'
-import type { AnyStructure, LatticeType, Site } from '$lib/structure'
-import { register_structure_vectors } from '$lib/structure/vectors'
-import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
+import { wrap_frac_coord } from '#lib/structure/pbc.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { same_values } from '#lib/math.js'
+import { cart_to_frac_with_fallback, make_lattice } from '#lib/structure/parsers/shared.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
+import { register_structure_vectors } from '#lib/structure/vectors.js'
+import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
 import {
   make_site,
   snapshot_topologies,
   NumericSites,
   numeric_sites,
   write_site_properties,
-} from '$lib/structure/site'
+} from '#lib/structure/site.js'
 import type { TrajectoryFrame } from './index'
 
 const SITE_FIELDS = new Set([`xyz`, `abc`, `species`, `label`, `properties`])

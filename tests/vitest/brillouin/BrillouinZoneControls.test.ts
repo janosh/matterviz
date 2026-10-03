@@ -1,6 +1,6 @@
-import { BrillouinZoneControls } from '$lib/brillouin'
+import BrillouinZoneControls from '#lib/brillouin/BrillouinZoneControls.svelte'
 import { mount, tick } from 'svelte'
-import { DEFAULTS } from '$lib/settings'
+import { DEFAULTS } from '#lib/settings.js'
 import { doc_query } from '../setup'
 import { expect, test } from 'vitest'
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { BoxPlotSeries } from '$lib/plot'
-  import { BoxPlot } from '$lib/plot'
+  import type { BoxPlotSeries } from '#lib/plot/index.js'
+  import { BoxPlot } from '#lib/plot/index.js'
 
   // Deterministic pseudo-random distribution generator (seeded) for stable test renders
   const make_dist = (seed: number, count = 200, center = 0, spread = 1): number[] => {

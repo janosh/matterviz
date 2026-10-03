@@ -20,7 +20,7 @@ export * from './treemap'
 // core/ is deliberately NOT re-exported in bulk. It holds tick math, layout solvers,
 // pan/zoom internals and decoration plumbing that must stay free to change, so only the
 // prop-facing types and standalone components below are published. In-repo code that needs
-// an internal symbol imports its `$lib/plot/core/...` module path directly.
+// an internal symbol imports its `#lib/plot/core/...` module path directly.
 export {
   ColorBar,
   ColorScaleSelect,

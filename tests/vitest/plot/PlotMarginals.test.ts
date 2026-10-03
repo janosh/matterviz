@@ -1,6 +1,9 @@
-import * as marginal_utils from '$lib/plot/core/marginals'
-import type { DataSeries, MarginalSideInput } from '$lib/plot'
-import { BarPlot, BoxPlot, Histogram, ScatterPlot } from '$lib/plot'
+import * as marginal_utils from '#lib/plot/core/marginals.js'
+import type { DataSeries, MarginalSideInput } from '#lib/plot/index.js'
+import BarPlot from '#lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
+import Histogram from '#lib/plot/histogram/Histogram.svelte'
+import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {

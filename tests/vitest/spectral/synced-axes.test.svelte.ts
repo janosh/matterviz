@@ -1,8 +1,8 @@
 import {
   create_bands_dos_sync,
   shared_resolved_padding_floor,
-} from '$lib/spectral/synced-axes.svelte'
-import type { BaseBandStructure, FrequencyUnit, PhononDos } from '$lib/spectral/types'
+} from '#lib/spectral/synced-axes.svelte.js'
+import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
 

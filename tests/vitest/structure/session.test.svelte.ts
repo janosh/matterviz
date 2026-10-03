@@ -1,22 +1,22 @@
 // Headless StructureSession: the display pipeline (supercell, image atoms, element map),
 // selection validated against what is displayed, invalidation on topology/transform/mode
 // changes, edit-atoms operations with undo/redo, the edit-bonds layer and pane bookkeeping.
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import type {
   AnyStructure,
   BondEditMode,
   BondOrder,
   MeasureMode,
   StructureBond,
-} from '$lib/structure'
-import type { AtomColorConfig } from '$lib/structure/atom-properties'
-import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
-import { explicit_only } from '$lib/structure/bonding'
-import { MAX_HISTORY, StructureSession } from '$lib/structure/session.svelte'
-import { is_image_site, snapshot_topologies } from '$lib/structure/site'
-import { make_supercell } from '$lib/structure/supercell'
-import type { CellType, SymmetryDataset } from '$lib/symmetry'
-import { analyze_structure_symmetry } from '$lib/symmetry'
+} from '#lib/structure/index.js'
+import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import { explicit_only } from '#lib/structure/bonding.js'
+import { MAX_HISTORY, StructureSession } from '#lib/structure/session.svelte.js'
+import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
+import { make_supercell } from '#lib/structure/supercell.js'
+import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import { sanitize_html } from '$lib/sanitize'
-  import type { ElementSymbol } from '$lib'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import type { ElementSymbol } from '#lib'
   import type {
     ConvexHullEntry,
     EntryCategoryConfig,
@@ -9,25 +9,25 @@
     GasThermodynamicsConfig,
     MagneticOrdering,
     PhaseData,
-  } from '$lib/convex-hull'
+  } from '#lib/convex-hull/index.js'
   import {
     ConvexHull,
     ConvexHullStats,
     GAS_SPECIES,
     process_hull_for_stats,
-  } from '$lib/convex-hull'
+  } from '#lib/convex-hull/index.js'
   import {
     create_temp_ternary_entries_li_fe_o,
     demo_temperatures,
     make_demo_phase,
-  } from '$site/convex-hull/demo-temperature'
+  } from '#site/convex-hull/demo-temperature.js'
   import {
     filter_by_elements,
     hull_system_name,
     quaternary_files,
     quaternary_loader,
     quinary_files,
-  } from '$site/convex-hull'
+  } from '#site/convex-hull/index.js'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type * as CameraFlightModule from '$lib/scene/camera-flight'
-import type { TrajectoryViewerController } from '$lib/trajectory'
+import type * as CameraFlightModule from '#lib/scene/camera-flight.js'
+import type { TrajectoryViewerController } from '#lib/trajectory/index.js'
 import { execFile } from 'node:child_process'
 import { readdir, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'

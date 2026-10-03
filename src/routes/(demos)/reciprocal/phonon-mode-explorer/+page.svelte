@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { afterNavigate, replaceState } from '$app/navigation'
+  import { afterNavigate, goto } from '$app/navigation'
   import { page } from '$app/state'
-  import FilePicker from '$lib/FilePicker.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
   import { Spinner, StatusMessage } from 'svelte-widgets'
-  import * as file_io from '$lib/io'
-  import type { Vec3 } from '$lib/math'
+  import * as file_io from '#lib/io/index.js'
+  import type { Vec3 } from '#lib/math.js'
   import type {
     IrRamanOptions,
     PhononExplorerView,
     PhononModeDataset,
     PhononModeSelection,
-  } from '$lib/spectral'
+  } from '#lib/spectral/index.js'
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
@@ -23,12 +23,12 @@
     PhononModeExplorer,
     qpoint_has_eigenvectors,
     spectrum_from_phonon_data,
-  } from '$lib/spectral'
-  import { parse_supercell_scaling } from '$lib/structure'
-  import type { UrlParamEntry } from 'svelte-widgets/url-params'
+  } from '#lib/spectral/index.js'
+  import { parse_supercell_scaling } from '#lib/structure/index.js'
+  import type { QueryParams, UrlParamEntry } from 'svelte-widgets/url-params'
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
-  import { to_error } from '$lib/utils'
-  import { glob_basename, glob_default } from '$site/imports'
+  import { to_error } from '#lib/utils.js'
+  import { glob_basename, glob_default } from '#site/imports.js'
   import { untrack } from 'svelte'
 
   type FixtureSource = { name: string; href: string }
@@ -129,12 +129,12 @@
     )
   const mode_loaders = by_basename(
     import.meta.glob<string>(
-      [`$site/phonons/ir-raman/*.yaml`, `$site/phonons/ir-raman/*.yaml.gz`],
+      [`#site/phonons/ir-raman/*.yaml`, `#site/phonons/ir-raman/*.yaml.gz`],
       { query: `?raw`, import: `default` },
     ),
   )
   const born_loaders = by_basename(
-    import.meta.glob<string>(`$site/phonons/ir-raman/*.BORN`, {
+    import.meta.glob<string>(`#site/phonons/ir-raman/*.BORN`, {
       query: `?raw`,
       import: `default`,
     }),
@@ -142,8 +142,8 @@
   const raman_loaders = by_basename(
     import.meta.glob<IrRamanOptions>(
       [
-        `$site/phonons/ir-raman/*-raman-tensors.json`,
-        `$site/phonons/ir-raman/*-raman-tensors.json.gz`,
+        `#site/phonons/ir-raman/*-raman-tensors.json`,
+        `#site/phonons/ir-raman/*-raman-tensors.json.gz`,
       ],
       { import: `default` },
     ),
@@ -275,7 +275,7 @@
   }
 
   const number_param = (
-    params: URLSearchParams,
+    params: QueryParams,
     key: string,
     fallback: number,
     min: number,
@@ -288,7 +288,7 @@
     const in_range = Number.isFinite(value) && value >= min && value <= max
     return in_range && (!integer || Number.isSafeInteger(value)) ? value : fallback
   }
-  const index_param = (params: URLSearchParams, key: string, fallback: number): number =>
+  const index_param = (params: QueryParams, key: string, fallback: number): number =>
     number_param(params, key, fallback + 1, 1, Infinity, true) - 1
   const index_value = (index?: number): string =>
     index === undefined ? `` : String(index + 1)
@@ -296,7 +296,7 @@
     ;({ selection, view, amplitude, supercell, fps, show_vectors } = next_state)
   }
 
-  const apply_url_state = async (params: URLSearchParams): Promise<void> => {
+  const apply_url_state = async (params: QueryParams): Promise<void> => {
     const file_param = params.get(`file`)
     const filename = file_param && file_param in FIXTURE_META ? file_param : DEFAULT_FILENAME
     const fixture = await activate_fixture(filename)
@@ -384,16 +384,13 @@
     sync_url_params(
       [[`file`, uploaded_dataset ? `` : selected_fixture.filename], ...explorer_entries],
       globalThis.location,
-      (url) =>
-        replaceState(
-          url,
-          untrack(() => page.state),
-        ),
+      (url) => goto(url, { shallow: true, replace: true, state: untrack(() => page.state) }),
     )
   })
 
-  afterNavigate(({ to }) => {
-    void apply_url_state(to?.url.searchParams ?? page.url.searchParams)
+  afterNavigate(({ to, shallow }) => {
+    if (shallow) return // the URL sync above, not a navigation to new state
+    void apply_url_state((to?.url ?? page.url).searchParams)
   })
 </script>
 

@@ -1,7 +1,7 @@
-import element_data from '$lib/element/data'
-import ElementTile from '$lib/element/ElementTile.svelte'
-import type { SplitLayout, TileSegment } from '$lib/element'
-import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
+import element_data from '#lib/element/data.js'
+import ElementTile from '#lib/element/ElementTile.svelte'
+import type { SplitLayout, TileSegment } from '#lib/element/index.js'
+import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -231,7 +231,7 @@ describe(`ElementTile`, () => {
     })
 
     test(`reacts to colors.category changes`, async () => {
-      const { colors } = await import(`$lib/state.svelte`)
+      const { colors } = await import(`#lib/state.svelte.js`)
       const original_color = colors.category[rand_element.category]
 
       mount_tile()

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BrillouinZoneData } from '$lib/brillouin'
+  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
@@ -11,8 +11,8 @@
     polyhedron_centroid,
     PolyhedronMesh,
     ReciprocalVectors,
-  } from '$lib/brillouin'
-  import type { Vec2, Vec3 } from '$lib/math'
+  } from '#lib/brillouin/index.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -20,10 +20,10 @@
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
-  } from '$lib/scene'
-  import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
-  import { DEFAULTS } from '$lib/settings'
-  import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
+  } from '#lib/scene/index.js'
+  import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {

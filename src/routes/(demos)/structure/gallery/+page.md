@@ -15,7 +15,7 @@ Give the host a definite height. Without one the track falls back to a two-row f
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 
   const make_item = (idx: number): StructureGalleryItem => {
     const structure = structures[idx % structures.length]
@@ -72,7 +72,7 @@ Give an item `properties` and the gallery captions its viewer with them: a strip
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 
   // stand-ins for whatever your pipeline computed per structure
   const items: StructureGalleryItem[] = structures.slice(0, 12).map((structure, idx) => ({
@@ -116,7 +116,7 @@ A `header` snippet makes the gallery a panel: one border around the title bar an
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 
   const items: StructureGalleryItem[] = structures.slice(0, 12).map((structure, idx) => ({
     id: structure.id ?? `structure-${idx}`,
@@ -140,7 +140,7 @@ A `header` snippet makes the gallery a panel: one border around the title bar an
 ```svelte example
 <script lang="ts">
   import { StructureGallery, type StructureGalleryItem } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 
   const items: StructureGalleryItem[] = structures.slice(0, 6).map((structure, idx) => ({
     id: structure.id ?? `structure-${idx}`,

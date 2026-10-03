@@ -1,7 +1,7 @@
-import type { InternalPoint } from '$lib/plot'
-import type { PlotScaleFn } from '$lib/plot/core/scales'
-import type { LabelPlacementConfig } from '$lib/plot/core/types'
-import type { AnchorInfo, LabelState } from '$lib/plot/core/utils/label-placement'
+import type { InternalPoint } from '#lib/plot/index.js'
+import type { PlotScaleFn } from '#lib/plot/core/scales.js'
+import type { LabelPlacementConfig } from '#lib/plot/core/types.js'
+import type { AnchorInfo, LabelState } from '#lib/plot/core/utils/label-placement.js'
 import {
   compute_delta_energy,
   compute_label_positions,
@@ -14,7 +14,7 @@ import {
   rect_overlap_area,
   segment_rect_intersects,
   segments_intersect,
-} from '$lib/plot/core/utils/label-placement'
+} from '#lib/plot/core/utils/label-placement.js'
 import { describe, expect, test } from 'vitest'
 import { mock_text_measurement } from '../setup'
 

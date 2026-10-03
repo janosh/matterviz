@@ -1,5 +1,5 @@
-import { create_camera_flight_editor } from '$lib/scene/camera-flight-editor.svelte'
-import { orbit_camera_flight, type CameraPose } from '$lib/scene/camera-flight'
+import { create_camera_flight_editor } from '#lib/scene/camera-flight-editor.svelte.js'
+import { orbit_camera_flight, type CameraPose } from '#lib/scene/camera-flight.js'
 import { describe, expect, it } from 'vitest'
 
 const pose: CameraPose = {

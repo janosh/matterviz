@@ -1,6 +1,6 @@
-import type { Vec3 } from '$lib/math'
-import type { Site } from '$lib/structure'
-import { is_image_site } from '$lib/structure/site'
+import type { Vec3 } from '#lib/math.js'
+import type { Site } from '#lib/structure/index.js'
+import { is_image_site } from '#lib/structure/site.js'
 
 const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
 const OCCUPANCY_EPS = 1e-6

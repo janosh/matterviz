@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { SlabBuilder } from '$lib/slab'
-  import type { Slab } from '$lib/slab'
-  import type { Crystal } from '$lib/structure'
-  import { Structure } from '$lib/structure'
-  import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
-  import cs_bcc from '$site/structures/mp-1.json'
-  import ac_tetragonal from '$site/structures/mp-1207297-Ac2Br2O1-tetragonal.json'
-  import al_lu from '$site/structures/mp-1234.json'
-  import pd_fcc from '$site/structures/mp-2.json'
-  import ac_hexagonal from '$site/structures/mp-862690-Ac4-hexagonal.json'
-  import po_cubic from '$site/structures/Po-simple-cubic.json'
+  import { SlabBuilder } from '#lib/slab/index.js'
+  import type { Slab } from '#lib/slab/index.js'
+  import type { Crystal } from '#lib/structure/index.js'
+  import { Structure } from '#lib/structure/index.js'
+  import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
+  import cs_bcc from '#site/structures/mp-1.json'
+  import ac_tetragonal from '#site/structures/mp-1207297-Ac2Br2O1-tetragonal.json'
+  import al_lu from '#site/structures/mp-1234.json'
+  import pd_fcc from '#site/structures/mp-2.json'
+  import ac_hexagonal from '#site/structures/mp-862690-Ac4-hexagonal.json'
+  import po_cubic from '#site/structures/Po-simple-cubic.json'
 
   const bulk_structures = {
     'Pd (fcc)': pd_fcc,

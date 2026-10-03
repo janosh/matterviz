@@ -55,6 +55,17 @@ const set_viewer_size = async (
     { width, height },
   )
 }
+// three reports uncaptured WebGPU errors through console.error. An out-of-bounds scissor
+// drops the whole frame and nothing else on the page shows it.
+const collect_webgpu_errors = (page: Page): string[] => {
+  const errors: string[] = []
+  page.on(`console`, (message) => {
+    if (message.type() === `error` && message.text().includes(`WebGPU`)) {
+      errors.push(message.text())
+    }
+  })
+  return errors
+}
 const wait_for_event = async (
   page: Page,
   event_name: string,
@@ -217,6 +228,29 @@ test.describe(`Structure Component Tests`, () => {
 
     await goto_structure_test(page, `/test/structure?enable_measure_mode=false`)
     await expect(measure_dropdown).toHaveCount(0)
+  })
+
+  // A resting toolbar menu sat at z-index 20 beside panes at 10 in the toolbar's stacking
+  // context, so a controls pane dragged over the toolbar had those toggles painted on top;
+  // and a viewer at its resting tier let later neighbours paint over its dragged-out panes.
+  // The pane's border and shadow sat inside light-dark(), which takes colors only, so the
+  // declarations were invalid and the pane had no edge against the page.
+  test(`toolbar menus stay under a dragged pane, which shows its edges`, async ({ page }) => {
+    const structure = page.locator(`#test-structure`)
+    const measure = structure.locator(`.measure-mode-dropdown`)
+    await expect(measure).toHaveCSS(`z-index`, `auto`)
+    await structure.hover() // toolbar chrome only takes pointer events while hovered
+    await measure.locator(`> button`).click()
+    await expect(measure).toHaveCSS(`z-index`, `20`) // its open menu still floats above
+    await page.keyboard.press(`Escape`)
+    await page.mouse.click(1, 1)
+    await expect(measure).toHaveCSS(`z-index`, `auto`)
+
+    const { pane_div: pane } = await open_structure_control_pane(page)
+    await expect(pane).toHaveCSS(`border-top-width`, `1px`)
+    await expect(pane).not.toHaveCSS(`box-shadow`, `none`)
+    // a pane dragged out of its viewer must not sink under the next viewer's chrome
+    await expect(structure).toHaveCSS(`z-index`, `12`)
   })
 
   test(`CellSelect appears on hover and hides on mouse leave`, async ({ page }) => {
@@ -443,6 +477,25 @@ test.describe(`Structure Component Tests`, () => {
       expect.any(Number),
       expect.any(Number),
     ])
+  })
+
+  // A second layout change inside Threlte's 250 ms resize window is applied by setSize()
+  // mid-frame, before its `size` store updates. The gizmo laid out from that stale store
+  // and scissored past the shrunken canvas, so WebGPU rejected every frame of the resize.
+  test(`gizmo stays inside a canvas that shrinks mid-resize`, async ({ page }) => {
+    const webgpu_errors = collect_webgpu_errors(page)
+    await page.setViewportSize({ width: 1400, height: 1200 })
+    const structure_div = page.locator(`#test-structure`)
+    await activate_viewer(page, structure_canvas(page))
+    await structure_div.evaluate(async (element) => {
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+      element.style.setProperty(`--struct-height`, `700px`)
+      await wait(80) // let the ResizeObserver open the resize window
+      element.style.setProperty(`--struct-height`, `300px`)
+      await wait(300)
+    })
+    await expect(structure_canvas(page)).toHaveAttribute(`height`, `300`)
+    expect(webgpu_errors).toEqual([])
   })
 
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
@@ -1107,9 +1160,10 @@ test.describe(`Edit Atoms Mode`, () => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })
 
+  // class-scoped: the camera-flight pane has its own "Undo flight edit" button
   const undo_redo_btns = (structure_div: Locator) => ({
-    undo: structure_div.locator(`button[aria-label*="Undo"]`),
-    redo: structure_div.locator(`button[aria-label*="Redo"]`),
+    undo: structure_div.locator(`button.undo-redo-btn[aria-label^="Undo"]`),
+    redo: structure_div.locator(`button.undo-redo-btn[aria-label^="Redo"]`),
   })
 
   test(`empty edit-atoms undo redo shortcuts are not canceled`, async ({ page }) => {
@@ -1304,8 +1358,11 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
 
   test(`legend controls stay interactive above active grid panes`, async ({ page }) => {
     test.skip(IS_CI, GRID_NEEDS_PIXELS)
+    const webgpu_errors = collect_webgpu_errors(page)
     const structure_div = page.locator(`#test-structure`)
     await select_structure_layout(structure_div, `3D 2×2 grid`)
+    // elementFromPoint only sees the viewport, and the legend row sits below the fold
+    await structure_div.evaluate((element) => element.scrollIntoView({ block: `center` }))
     const cells = structure_div.locator(`.viewport-cell`)
     await cells.nth(3).hover({ position: { x: 20, y: 20 } })
     await expect(cells.nth(3)).toHaveClass(/active/)
@@ -1328,6 +1385,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     expect(await receives_pointer_at_center(element_badge)).toBe(true)
     await cell_toggle.click()
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
+    expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })
 
   // A real click leaves the viewer focused *and* hovered, so the root handler and the

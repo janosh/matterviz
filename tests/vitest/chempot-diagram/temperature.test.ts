@@ -1,9 +1,9 @@
-import { formula_key_from_composition } from '$lib/chempot-diagram/compute'
+import { formula_key_from_composition } from '#lib/chempot-diagram/compute.js'
 import {
   get_temp_filter_payload,
   get_valid_temperature,
-} from '$lib/chempot-diagram/temperature'
-import type { PhaseData } from '$lib/convex-hull/types'
+} from '#lib/chempot-diagram/temperature.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { describe, expect, test } from 'vitest'
 
 const temp_entries_fixture: PhaseData[] = [

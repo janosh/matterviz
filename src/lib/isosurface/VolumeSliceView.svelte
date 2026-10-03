@@ -1,6 +1,6 @@
 <script lang="ts">
   import { StatusMessage } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
+  import { format_num } from '#lib/labels.js'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { resolve_slice_cartesian_point, sample_hkl_slice, sample_plane_slice } from './slice'
@@ -33,15 +33,16 @@
   // which costs milliseconds proportional to resolution.
   let render_settings = $derived(sampling_settings ?? resolved_settings)
 
-  // Coalesce settings-pane edits; the canvas position slider samples directly while dragging.
+  // Coalesce settings-pane edits to one resample per frame, so a pane slider drag tracks the
+  // pointer; the canvas position slider samples directly.
   $effect.pre(() => {
     const next_settings = resolved_settings
     if (!untrack(() => sampling_settings)) {
       sampling_settings = next_settings
       return
     }
-    const timer = setTimeout(() => (sampling_settings = next_settings), 150)
-    return () => clearTimeout(timer)
+    const frame = requestAnimationFrame(() => (sampling_settings = next_settings))
+    return () => cancelAnimationFrame(frame)
   })
 
   // Only the plane and resolution decide the sampled values: a string key compares by value,
@@ -53,11 +54,33 @@
     return JSON.stringify(plane)
   })
 
+  // A drag resamples every frame, and the full 1024² default costs ~40 ms per frame
+  // (sampling, contours, pixels): a plane change following another within PREVIEW_WINDOW_MS
+  // samples at most PREVIEW_RESOLUTION, and full resolution lands once changes rest
+  const PREVIEW_RESOLUTION = 512
+  const PREVIEW_WINDOW_MS = 150
+  let previewing = $state(false)
+  let last_plane_change = -Infinity
+  $effect.pre(() => {
+    if (!sampling_key) return
+    const now = performance.now()
+    // a local, so this effect never subscribes to the flag it sets
+    const in_burst = now - last_plane_change < PREVIEW_WINDOW_MS
+    previewing = in_burst
+    last_plane_change = now
+    if (!in_burst) return
+    const rest_timer = setTimeout(() => (previewing = false), PREVIEW_WINDOW_MS)
+    return () => clearTimeout(rest_timer)
+  })
+
   let computed_slice = $derived.by(() => {
     if (!volume || !sampling_key) return null
     const plane = untrack(() => sampling_settings)
     if (!plane) return null
-    const resolution = plane.resolution > 0 ? plane.resolution : undefined
+    const full_resolution = plane.resolution > 0 ? plane.resolution : Math.max(...volume.dims)
+    const resolution = previewing
+      ? Math.min(full_resolution, PREVIEW_RESOLUTION)
+      : full_resolution
     if (plane.plane_mode === `hkl`) {
       return sample_hkl_slice(volume, plane.miller_indices, plane.position, resolution)
     }

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { PLOT_COLORS } from '$lib/colors'
-  import type { RdfEntry } from '$lib/rdf'
-  import { RdfPlot } from '$lib/rdf'
-  import type { Crystal } from '$lib/structure'
-  import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
-  import al2lu from '$site/structures/mp-1234.json'
-  import palladium from '$site/structures/mp-2.json'
+  import { PLOT_COLORS } from '#lib/colors/index.js'
+  import type { RdfEntry } from '#lib/rdf/index.js'
+  import { RdfPlot } from '#lib/rdf/index.js'
+  import type { Crystal } from '#lib/structure/index.js'
+  import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
+  import al2lu from '#site/structures/mp-1234.json'
+  import palladium from '#site/structures/mp-2.json'
 
   // Synthetic RDF patterns for testing
   const synthetic_pattern: RdfEntry = {

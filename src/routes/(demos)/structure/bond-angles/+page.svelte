@@ -1,18 +1,18 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import type { Crystal } from '$lib'
-  import { SETTINGS_CONFIG } from '$lib'
-  import type { BondAngleNormalizeMode, BondAngleSplitMode } from '$lib/bond-angles'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import type { Crystal } from '#lib'
+  import { SETTINGS_CONFIG } from '#lib'
+  import type { BondAngleNormalizeMode, BondAngleSplitMode } from '#lib/bond-angles/index.js'
   import {
     BondAnglePlot,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
     BOND_ANGLE_NORMALIZE_MODES,
     BOND_ANGLE_SPLIT_MODES,
-  } from '$lib/bond-angles'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { Structure } from '$lib/structure'
-  import type { BondingStrategy } from '$lib/structure/bonding'
-  import { structure_files, structure_map } from '$site/structures'
+  } from '#lib/bond-angles/index.js'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { Structure } from '#lib/structure/index.js'
+  import type { BondingStrategy } from '#lib/structure/bonding.js'
+  import { structure_files, structure_map } from '#site/structures.js'
   import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
 

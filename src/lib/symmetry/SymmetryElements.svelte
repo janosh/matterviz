@@ -21,11 +21,14 @@ swatches of SymmetryElementControls); the only runtime knob is which kinds to sh
 For performance, geometries are merged per material group (one draw call per distinct
 color/opacity instead of one mesh per element) and disposed on change/unmount. -->
 <script lang="ts">
-  import type { Matrix3x3, Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
-  import { dispose_on_change, positions_geometry } from '$lib/scene/geometry.svelte'
-  import { quaternion_from_direction } from '$lib/structure/geometry'
-  import { polygon_edge_vertices, polygon_fan_vertices } from '$lib/structure/lattice-planes'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte.js'
+  import { quaternion_from_direction } from '#lib/structure/geometry.js'
+  import {
+    polygon_edge_vertices,
+    polygon_fan_vertices,
+  } from '#lib/structure/lattice-planes.js'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     clip_axis_family,

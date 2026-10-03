@@ -1,20 +1,14 @@
-import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '$lib/constants'
-import { download } from '$lib/io/fetch'
+import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
+import { download } from '#lib/io/fetch.js'
 import type { FileSaver } from './file-export.svelte'
-import { clamp } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import { create_structure_filename } from '$lib/structure/export'
-import { abortable, to_error } from '$lib/utils'
-import {
-  type Camera,
-  type Scene,
-  Vector2,
-  type WebGPURenderer,
-  PerspectiveCamera,
-  OrthographicCamera,
-} from 'three/webgpu'
-import { create_camera_flight_sampler, type CameraFlight } from '$lib/scene/camera-flight'
-import { set_pan_offset } from '$lib/scene/pan'
+import { clamp } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { create_structure_filename } from '#lib/structure/export.js'
+import { abortable, to_error } from '#lib/utils.js'
+import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
+import { Vector2, PerspectiveCamera, OrthographicCamera } from 'three/webgpu'
+import { create_camera_flight_sampler, type CameraFlight } from '#lib/scene/camera-flight.js'
+import { set_pan_offset } from '#lib/scene/pan.js'
 
 // Maps a Threlte canvas to its renderer so PNG export can look up the renderer for a
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).

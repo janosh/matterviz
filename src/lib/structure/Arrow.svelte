@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib/math'
-  import { DEFAULTS } from '$lib/settings'
+  import type { Vec3 } from '#lib/math.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { arrow_axis_geometry } from './geometry'

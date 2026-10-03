@@ -1,4 +1,4 @@
-import { download } from '$lib/io/fetch'
+import { download } from '#lib/io/fetch.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 afterEach(() => vi.restoreAllMocks())

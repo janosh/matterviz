@@ -1,4 +1,4 @@
-import type { FontSpec } from '$lib/plot/core/text-metrics'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   clear_text_metrics_cache,
   DEFAULT_FONT_SPEC,
@@ -9,7 +9,7 @@ import {
   resolve_font_size_css,
   resolve_font_spec,
   wrap_text_paragraph,
-} from '$lib/plot/core/text-metrics'
+} from '#lib/plot/core/text-metrics.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const TEST_FONT: FontSpec = {

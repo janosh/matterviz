@@ -1,5 +1,5 @@
-import { BOLTZMANN_EV_PER_K } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import {
   build_free_energy_model,
   default_t_range,
@@ -7,8 +7,8 @@ import {
   get_volume_per_atom,
   sisso_g_delta,
   sisso_reduced_mass,
-} from '$lib/phase-diagram/ternary/free-energy'
-import { G_ELEMENTS } from '$lib/phase-diagram/ternary/g-els-data'
+} from '#lib/phase-diagram/ternary/free-energy.js'
+import { G_ELEMENTS } from '#lib/phase-diagram/ternary/g-els-data.js'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../../test-fixtures'
 

@@ -1,38 +1,42 @@
 <script lang="ts">
   import { numeric_sites, snapshot_topologies } from './site'
-  import { element_from_atomic_number } from '$lib/element/helpers'
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
+  import { element_from_atomic_number } from '#lib/element/helpers.js'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   import { resolve_cell_vectors, type StructureSettings } from './settings'
-  import type { TrajectoryPositionStream } from '$lib/trajectory'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import { ControlPane, create_clipboard_feedback } from '$lib/overlays'
-  import type { ColorSchemeName } from '$lib/colors'
-  import { AXIS_COLORS } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
+  import { ControlPane, create_clipboard_feedback } from '#lib/overlays/index.js'
+  import type { ColorSchemeName } from '#lib/colors/index.js'
+  import { AXIS_COLORS } from '#lib/colors/index.js'
+  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
   import { scheme_colors } from './element-palette.svelte'
   import { ColorInput, Icon, MultiSelect as Select, Spinner } from 'svelte-widgets'
-  import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
-  import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
-  import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
-  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import { capitalize, format_num } from '$lib/labels'
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import { FileExportState } from '$lib/io/file-export.svelte'
+  import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
+  import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
+  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
+  import { capitalize, format_num } from '#lib/labels.js'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
   import {
     NumberRangeInput,
     SettingsGroup,
     SettingsSearch,
     SettingsSection,
-  } from '$lib/layout'
-  import type { Vec3 } from '$lib/math'
-  import { clamp, to_degrees, to_radians } from '$lib/math'
-  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import type { ZoneAxisMode } from '$lib/scene'
-  import { is_valid_zone_axis, ZONE_AXIS_MODE_LABELS, zone_axis_direction } from '$lib/scene'
-  import { ColorScaleSelect } from '$lib/plot'
-  import type { AtomColorMode, SettingType, VectorLayerConfig } from '$lib/settings'
-  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
-  import type { StructurePaneSize, StructureViewState } from '$lib/settings/viewer-state'
+  } from '#lib/layout/index.js'
+  import type { Vec3 } from '#lib/math.js'
+  import { clamp, to_degrees, to_radians } from '#lib/math.js'
+  import MillerIndexInput from '#lib/MillerIndexInput.svelte'
+  import type { ZoneAxisMode } from '#lib/scene/index.js'
+  import {
+    is_valid_zone_axis,
+    ZONE_AXIS_MODE_LABELS,
+    zone_axis_direction,
+  } from '#lib/scene/index.js'
+  import { ColorScaleSelect } from '#lib/plot/index.js'
+  import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  import type { StructurePaneSize, StructureViewState } from '#lib/settings/viewer-state.js'
   import {
     clear_structure_view_state,
     create_structure_view_state,
@@ -41,29 +45,33 @@
     load_structure_view_state,
     save_structure_view_state,
     serialize_structure_view_state,
-  } from '$lib/settings/viewer-state'
-  import type { AnyStructure, StructureDisplayMode } from '$lib/structure'
-  import { get_structure_vector_keys, RESET_VIEW_TITLE, VECTOR_PALETTE } from '$lib/structure'
-  import type { ElementSymbol } from '$lib/element'
-  import type { AtomColorConfig } from '$lib/structure/atom-properties'
+  } from '#lib/settings/viewer-state.js'
+  import type { AnyStructure, StructureDisplayMode } from '#lib/structure/index.js'
+  import {
+    get_structure_vector_keys,
+    RESET_VIEW_TITLE,
+    VECTOR_PALETTE,
+  } from '#lib/structure/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
-  } from '$lib/structure/atom-properties'
-  import type { DisplacementSummary } from '$lib/structure/measure'
-  import type { TrajectoryLinesStats } from '$lib/structure/trajectory-lines'
-  import { get_majority_element } from '$lib/structure/bonding'
-  import { is_valid_supercell_input } from '$lib/structure/supercell'
+  } from '#lib/structure/atom-properties.js'
+  import type { DisplacementSummary } from '#lib/structure/measure.js'
+  import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
+  import { get_majority_element } from '#lib/structure/bonding.js'
+  import { is_valid_supercell_input } from '#lib/structure/supercell.js'
   import {
     has_lattice_matrix,
     has_usable_lattice,
     is_periodic,
-  } from '$lib/structure/validation'
-  import type { CellType, SymmetryDataset } from '$lib/symmetry'
-  import { to_error } from '$lib/utils'
+  } from '#lib/structure/validation.js'
+  import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
+  import { to_error } from '#lib/utils.js'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { Reset } from 'svelte-widgets/icons'
@@ -961,21 +969,23 @@
   {pane_props}
   {...rest}
 >
-  {#if on_reset_camera}
-    <!-- Hoisted out of the Camera group: the one action people reach for repeatedly should
-      not sit behind a disclosure triangle -->
-    <button
-      type="button"
-      class="reset-camera"
-      title={RESET_VIEW_TITLE}
-      onclick={on_reset_camera}
-    >
-      <Icon icon={Reset} />
-      <span>Reset view</span>
-    </button>
-  {/if}
-
   <SettingsSearch trigger="icon">
+    <!-- Toolbar row the collapsed search magnifier pins to the right end of, so it never sits
+      on top of the first group's header. Reset view is hoisted out of the Camera group: the
+      one action people reach for repeatedly should not sit behind a disclosure triangle -->
+    <div class="pane-toolbar">
+      {#if on_reset_camera}
+        <button
+          type="button"
+          class="reset-camera"
+          title={RESET_VIEW_TITLE}
+          onclick={on_reset_camera}
+        >
+          <Icon icon={Reset} />
+          <span>Reset view</span>
+        </button>
+      {/if}
+    </div>
     {#if volumetric_data?.length}
       <SettingsGroup
         title="Volumetric data"
@@ -1672,13 +1682,21 @@
   :global(.controls-pane h4:first-of-type) {
     margin-top: 0 !important;
   }
-  .reset-camera {
-    width: fit-content;
+  /* as tall as the 1.8em search trigger, which it leaves room for on the right */
+  .pane-toolbar {
     display: flex;
     align-items: center;
-    justify-content: center;
+    min-height: 1.8em;
+    padding-right: 2em;
+  }
+  /* an open search field takes the top line itself, so an empty toolbar has nothing to hold */
+  :global(.settings-search:has(> .search-field.open)) .pane-toolbar:empty {
+    display: none;
+  }
+  .reset-camera {
+    display: flex;
+    align-items: center;
     gap: 5pt;
-    margin-bottom: 4pt;
     padding: 1pt 6pt;
     cursor: pointer;
     border: 1px solid color-mix(in srgb, currentColor 20%, transparent);

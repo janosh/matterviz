@@ -1,9 +1,9 @@
 // HKL plane slicing for volumetric data: samples a 3D grid along an arbitrary
 // crystallographic plane defined by Miller indices, using trilinear interpolation.
-import type { Vec2, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import type { DisplayRange } from './sampling'
-import { create_volume_sampler, sanitize_display_range, UNIT_CELL_RANGE } from './sampling'
+import { sanitize_display_range, UNIT_CELL_RANGE, volume_sampler_xyz } from './sampling'
 import type { VolumetricData } from './types'
 
 const CELL_EDGES = [
@@ -128,20 +128,27 @@ const intersect_plane_cell = (
   )
 }
 
-// Scalar (u, v) rather than a Vec2: this runs once per slice pixel
-const point_in_convex_polygon = (
-  u_coord: number,
-  v_coord: number,
-  polygon: Vec2[],
-): boolean => {
-  let orientation = 0
-  for (let point_idx = 0; point_idx < polygon.length; point_idx++) {
-    const start = polygon[point_idx]
+// Edges as flat [start_u, start_v, delta_u, delta_v] quadruples, so the per-pixel test below
+// reads typed scalars (the same doubles the polygon's Vec2 arithmetic would produce)
+const polygon_edges = (polygon: Vec2[]): Float64Array => {
+  const edges = new Float64Array(polygon.length * 4)
+  for (const [point_idx, start] of polygon.entries()) {
     const end = polygon[(point_idx + 1) % polygon.length]
+    edges.set([start[0], start[1], end[0] - start[0], end[1] - start[1]], point_idx * 4)
+  }
+  return edges
+}
+
+// Inside (or within PLANE_TOLERANCE of) a convex polygon: no edge may see the point on the
+// opposite side from another
+const point_in_convex_polygon = (u_coord: number, v_coord: number, edges: Float64Array) => {
+  let orientation = 0
+  for (let edge_idx = 0; edge_idx < edges.length; edge_idx += 4) {
     const cross =
-      (end[0] - start[0]) * (v_coord - start[1]) - (end[1] - start[1]) * (u_coord - start[0])
-    if (Math.abs(cross) <= PLANE_TOLERANCE) continue
-    const current_orientation = Math.sign(cross)
+      edges[edge_idx + 2] * (v_coord - edges[edge_idx + 1]) -
+      edges[edge_idx + 3] * (u_coord - edges[edge_idx])
+    if (cross <= PLANE_TOLERANCE && cross >= -PLANE_TOLERANCE) continue
+    const current_orientation = cross > 0 ? 1 : -1
     if (orientation && current_orientation !== orientation) return false
     orientation = current_orientation
   }
@@ -219,26 +226,33 @@ export function sample_plane_slice(
   const mask = new Uint8Array(width * height)
   let data_min = Infinity
   let data_max = -Infinity
-  const sample = create_volume_sampler(volume, {
-    out_of_bounds: volume.periodic ? `clamp` : `fallback`,
-  })
+  const sample = volume_sampler_xyz(volume, volume.periodic ? `clamp` : `fallback`)
   const u_step = u_span / (width - 1)
   const v_step = v_span / (height - 1)
-  const cartesian: Vec3 = [0, 0, 0]
+  const edges = polygon_edges(polygon)
+  const [point_x, point_y, point_z] = plane.point
+  const u_at = (col: number): number => u_range[0] + col * u_step
 
   for (let row = 0; row < height; row++) {
     const v_value = v_range[0] + row * v_step
-    for (let col = 0; col < width; col++) {
-      const u_value = u_range[0] + col * u_step
-      if (!point_in_convex_polygon(u_value, v_value, polygon)) continue
+    // A convex polygon covers one run of each row: find its ends with the exact test and
+    // fill between them, rather than testing every pixel
+    let first_col = 0
+    while (first_col < width && !point_in_convex_polygon(u_at(first_col), v_value, edges))
+      first_col++
+    let last_col = width - 1
+    while (last_col > first_col && !point_in_convex_polygon(u_at(last_col), v_value, edges))
+      last_col--
+    for (let col = first_col; col <= last_col; col++) {
+      const u_value = u_at(col)
       const data_idx = row * width + col
       mask[data_idx] = 1
-
       // Cartesian position on the plane
-      cartesian[0] = plane.point[0] + u_value * u_axis[0] + v_value * v_axis[0]
-      cartesian[1] = plane.point[1] + u_value * u_axis[1] + v_value * v_axis[1]
-      cartesian[2] = plane.point[2] + u_value * u_axis[2] + v_value * v_axis[2]
-      const value = sample(cartesian)
+      const value = sample(
+        point_x + u_value * u_axis[0] + v_value * v_axis[0],
+        point_y + u_value * u_axis[1] + v_value * v_axis[1],
+        point_z + u_value * u_axis[2] + v_value * v_axis[2],
+      )
       if (!Number.isFinite(value)) continue
       data[data_idx] = value
       if (value < data_min) data_min = value

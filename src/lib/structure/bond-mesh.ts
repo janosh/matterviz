@@ -6,27 +6,24 @@ import {
   transformNormalToView,
   vec3,
 } from 'three/tsl'
+import type {
+  Intersection,
+  Material,
+  Matrix4,
+  MeshBasicNodeMaterial,
+  Node,
+  Raycaster,
+} from 'three/webgpu'
 import {
   BufferGeometry,
   CylinderGeometry,
-  type Intersection,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   Mesh,
-  type Material,
-  type Matrix4,
-  type MeshBasicNodeMaterial,
-  type Node,
-  type Raycaster,
 } from 'three/webgpu'
-import {
-  BondFrame,
-  instance_count_for_order,
-  prepare_bond_placements,
-  type BondData,
-  type BondPlacements,
-} from './bond-rendering'
-import { same_values } from '$lib/math'
+import type { BondData, BondPlacements } from './bond-rendering'
+import { BondFrame, instance_count_for_order, prepare_bond_placements } from './bond-rendering'
+import { same_values } from '#lib/math.js'
 import { InstanceColors } from './instance-colors'
 import type { BondPair } from './index'
 

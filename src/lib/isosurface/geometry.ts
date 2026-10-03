@@ -1,8 +1,8 @@
 // Isosurface geometry extraction shared by the main-thread fallback and geometry-worker.ts:
 // prepares each volume's finite marching-cubes grid (display-range extraction or budget
 // downsampling) and extracts every requested isovalue on it.
-import { marching_cubes } from '$lib/marching-cubes'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import { marching_cubes } from '#lib/marching-cubes.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { ScalarGrid3D } from './grid'
 import { type DisplayRange, prepare_geometry_grid } from './sampling'
 import type { VolumeGrid } from './types'

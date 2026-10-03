@@ -6,7 +6,7 @@
 // it sits on screen. Raycasts and <HTML> labels read the camera's projection matrix, so picking and
 // label placement follow the shift for free. The offset lives on the camera (`camera.view`) as its
 // only source of truth; hosts read it with `read_pan_offset` and drop it with `clearViewOffset()`.
-import type { Vec2 } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
 type PannableCamera = PerspectiveCamera | OrthographicCamera

@@ -1,6 +1,6 @@
-import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '$lib/math'
-import { compute_frequency_range } from '$lib/spectral'
-import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
+import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '#lib/math.js'
+import { compute_frequency_range } from '#lib/spectral/helpers.js'
+import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`Phonon Module Tests`, () => {
@@ -177,7 +177,13 @@ describe(`Phonon Module Tests`, () => {
         const prev_end = sorted_branches[idx - 1]?.end_index
         if (prev_end === undefined) return false
         expect([prev_end, prev_end + 1], identifier).toContain(branch.start_index)
-        return branch.start_index === prev_end + 1
+        // the zero-length duplicate at a junction (X, X) also starts the next branch one
+        // q-point later, but under the same label; a jump (X|R) changes it
+        const { qpoints } = band_struct
+        return (
+          branch.start_index === prev_end + 1 &&
+          qpoints[prev_end].label !== qpoints[branch.start_index].label
+        )
       }).length
       // every fixture path has exactly one jump (e.g. X|R, U|K), the hexagonal H2 path two
       expect(n_jumps, identifier).toBe(identifier.startsWith(`mp-23907`) ? 2 : 1)

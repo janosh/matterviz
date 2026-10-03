@@ -1,6 +1,6 @@
 // Numerical hull snapshots are independent of rendering, category styling, and visibility.
-import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
+import type { CompositionType } from '#lib/composition/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { composition_to_simplex_coords } from './barycentric-coords'
 import { compute_hull_stability, is_unary_entry } from './entry-stability'
 import * as thermo from './thermodynamics'

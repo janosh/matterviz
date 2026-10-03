@@ -1,10 +1,10 @@
 // Side-effect import: main.ts installs window.initializeMatterViz / cleanupMatterViz
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
-import '$lib/file-viewer/main'
-import type * as ParseModule from '$lib/file-viewer/parse'
-import type { ParseResult } from '$lib/file-viewer/parse'
-import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
-import type { TrajectoryRun } from '$lib/trajectory'
+import '#lib/file-viewer/main.js'
+import type * as ParseModule from '#lib/file-viewer/parse.js'
+import type { ParseResult } from '#lib/file-viewer/parse.js'
+import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -43,11 +43,11 @@ const test_mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock(`$lib/file-viewer/parse`, async (import_original) => ({
+vi.mock(`#lib/file-viewer/parse.js`, async (import_original) => ({
   ...(await import_original<typeof ParseModule>()),
   parse_file_content: test_mocks.parse_file_content,
 }))
-vi.mock(`$lib/file-viewer/parse-in-worker`, async (import_original) => ({
+vi.mock(`#lib/file-viewer/parse-in-worker.js`, async (import_original) => ({
   ...(await import_original<typeof ParseWorkerModule>()),
   parse_in_worker: test_mocks.parse_in_worker,
 }))
@@ -181,8 +181,9 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
 
   // A parse failure is reported to the host (marker handling itself is covered in
   // file-viewer/main.test.ts; delegate to the real parser for this one case)
-  const { parse_file_content: real_parse_file_content } =
-    await vi.importActual<typeof ParseModule>(`$lib/file-viewer/parse`)
+  const { parse_file_content: real_parse_file_content } = await vi.importActual<
+    typeof ParseModule
+  >(`#lib/file-viewer/parse.js`)
   parse_file_content.mockImplementationOnce(real_parse_file_content)
   set_file_data(`LARGE_FILE:/tmp/structure.cif:536870912`, `structure.cif`)
   expect(await initialize_matterviz?.()).toBeNull()

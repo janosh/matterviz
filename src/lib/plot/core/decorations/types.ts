@@ -1,4 +1,4 @@
-import type { Rect, Sides } from '$lib/plot/core/layout'
+import type { Rect, Sides } from '#lib/plot/core/layout.js'
 import type { LegendTrackSuggestionConfig } from './tracks'
 
 export type DecorationKind = `legend` | `colorbar` | `free-annotation` | `reference-annotation`

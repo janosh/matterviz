@@ -2,23 +2,27 @@
 // Uses real WASM binary to verify symmetry detection behavior
 // Note: Most symmetry tests use mocks (see index.test.ts)
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Crystal } from '$lib'
-import type { SymmetryDataset } from '$lib/symmetry'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib'
+import type { SymmetryDataset } from '#lib/symmetry/index.js'
 import {
   analyze_structure_symmetry,
+  spacegroup_settings,
+  spacegroup_wyckoff_positions,
+  transform_cell,
+} from '#lib/symmetry/analyze.js'
+import {
   apply_symmetry_operations,
   enrich_wyckoff_rows,
   map_wyckoff_to_all_atoms,
+  wyckoff_positions_from_moyo,
+} from '#lib/symmetry/wyckoff.js'
+import {
   SPACEGROUP_SYMBOL_TO_NUM,
   spacegroup_to_crystal_sys,
-  spacegroup_settings,
   spacegroup_to_lattice_system,
-  spacegroup_wyckoff_positions,
-  transform_cell,
-  wyckoff_positions_from_moyo,
-} from '$lib/symmetry'
-import { structure_map } from '$site/structures'
+} from '#lib/symmetry/spacegroups.js'
+import { structure_map } from '#site/structures.js'
 import { space_group_type } from '@spglib/moyo-wasm'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'

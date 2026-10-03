@@ -1,7 +1,7 @@
-import type { RefLine } from '$lib/plot/core/types/reference-lines'
-import type { RadiationType } from '$lib/scattering'
-import type { Crystal, Pbc } from '$lib/structure'
-import { is_crystal } from '$lib/structure/validation'
+import type { RefLine } from '#lib/plot/core/types/reference-lines.js'
+import type { RadiationType } from '#lib/scattering/index.js'
+import type { Crystal, Pbc } from '#lib/structure/index.js'
+import { is_crystal } from '#lib/structure/validation.js'
 
 export * from './calc-pdf'
 export * from './calc-rdf'

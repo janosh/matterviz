@@ -1,5 +1,5 @@
-import type { AxisConfig } from '$lib/plot'
-import { category_tick_labels, create_axis_loader } from '$lib/plot/core/axis-utils'
+import type { AxisConfig } from '#lib/plot/index.js'
+import { category_tick_labels, create_axis_loader } from '#lib/plot/core/axis-utils.js'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`create_axis_loader`, () => {

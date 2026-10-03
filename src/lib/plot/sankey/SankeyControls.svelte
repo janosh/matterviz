@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
-  import type { ShowControlsProp } from '$lib/controls'
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { SankeyNodeAlign, Orientation } from '$lib/plot'
-  import { ControlPane } from '$lib/overlays'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
+  import { track_settings } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import type { SankeyNodeAlign, Orientation } from '#lib/plot/index.js'
+  import { ControlPane } from '#lib/overlays/index.js'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

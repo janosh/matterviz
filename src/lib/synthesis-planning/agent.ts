@@ -3,8 +3,8 @@ import { format_recipe_text } from './recipe'
 // text rendering of a plan for the model channel, and a ready-made tool definition. The full
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
 // what a model needs to reason and reply.
-import { GAS_SPECIES } from '$lib/convex-hull/types'
-import { format_num, plural } from '$lib/labels'
+import { GAS_SPECIES } from '#lib/convex-hull/types.js'
+import { format_num, plural } from '#lib/labels.js'
 import { format_mev } from './format-mev'
 import { DEFAULT_SCORE_WEIGHTS } from './scoring'
 import type { SynthesisPlan, SynthesisRoute } from './types'

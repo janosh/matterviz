@@ -1,15 +1,15 @@
 <script lang="ts">
   import { ColorInput } from 'svelte-widgets'
-  import { css_color_to_hex } from '$lib/colors'
-  import { track_settings } from '$lib/controls'
+  import { css_color_to_hex } from '#lib/colors/index.js'
+  import { track_settings } from '#lib/controls.js'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { BarStyle, HistogramSeries, PlotConfig } from '$lib/plot'
-  import { PlotControls } from '$lib/plot'
-  import type { PlotControlsProps } from '$lib/plot/core/types'
-  import { type HistogramNormalize, uses_bar_color } from '$lib/plot/histogram/histogram'
-  import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import type { BarStyle, HistogramSeries, PlotConfig } from '#lib/plot/index.js'
+  import { PlotControls } from '#lib/plot/index.js'
+  import type { PlotControlsProps } from '#lib/plot/core/types.js'
+  import { type HistogramNormalize, uses_bar_color } from '#lib/plot/histogram/histogram.js'
+  import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
 
   let {

@@ -8,7 +8,7 @@ import {
   is_binary_payload,
   is_known_text_file,
   magic_head,
-} from '$lib/io/is-binary'
+} from '#lib/io/is-binary.js'
 import { describe, expect, test } from 'vitest'
 
 const bytes = (...nums: number[]): Uint8Array => new Uint8Array(nums)

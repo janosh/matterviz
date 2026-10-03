@@ -1,5 +1,5 @@
 <script module lang="ts">
-  import type { DisplayConfig3D } from '$lib/plot/core/types'
+  import type { DisplayConfig3D } from '#lib/plot/core/types.js'
 
   // Shared with ScatterPlot3D, which fills these in before handing `display` to the scene
   export const DISPLAY_DEFAULTS_3D = {
@@ -14,15 +14,15 @@
 </script>
 
 <script lang="ts">
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
-  import { format_num } from '$lib/labels'
-  import type { ShowControlsProp } from '$lib/controls'
-  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
+  import { format_num } from '#lib/labels.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
-  import type { AxisConfig3D, CameraProjection3D } from '$lib/plot/core/types'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import type { Vec2 } from '#lib/math.js'
+  import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types.js'
   import type { Snippet } from 'svelte'
 
   const defaults = {

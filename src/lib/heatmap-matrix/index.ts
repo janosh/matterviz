@@ -1,5 +1,5 @@
-import type { ChemicalElement, ElementSymbol } from '$lib/element'
-import { element_data } from '$lib/element'
+import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
+import { element_data } from '#lib/element/index.js'
 import type { Snippet } from 'svelte'
 
 // === Types ===
@@ -76,7 +76,7 @@ type ElementAxisOrdering =
   | ((value_a: ChemicalElement, value_b: ChemicalElement) => number)
 
 // Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Prefixed because
-// bond-angles has its own NormalizeMode and both modules are star-exported from $lib.
+// bond-angles has its own NormalizeMode and both modules are star-exported from #lib.
 export type HeatmapNormalizeMode = `linear` | `log`
 // auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
 export type HeatmapDomainMode = `auto` | `robust` | `fixed`

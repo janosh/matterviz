@@ -1,4 +1,4 @@
-import { BOLTZMANN_EV_PER_K } from '$lib/constants'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import {
   analyze_gas_data,
   apply_gas_corrections,
@@ -12,10 +12,10 @@ import {
   get_default_gas_provider,
   get_effective_pressures,
   P_REF,
-} from '$lib/convex-hull/gas-thermodynamics'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
+} from '#lib/convex-hull/gas-thermodynamics.js'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
+import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 

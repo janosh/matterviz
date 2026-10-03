@@ -1,14 +1,14 @@
 // Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
 // stateless: component $state/$derived values are passed in as parameters.
-import { partition_point, type Vec2 } from '$lib/math'
-import { error_getter } from '$lib/plot/core/error-bars'
-import { plot_color } from '$lib/colors'
-import { symbol_names } from '$lib/labels'
-import { DEFAULTS } from '$lib/settings'
-import { first_duplicate } from '$lib/utils'
-import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
-import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-import { range_bounds } from '$lib/plot/core/interactions'
+import { partition_point, type Vec2 } from '#lib/math.js'
+import { error_getter } from '#lib/plot/core/error-bars.js'
+import { plot_color } from '#lib/colors/index.js'
+import { symbol_names } from '#lib/labels.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { first_duplicate } from '#lib/utils.js'
+import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
+import { range_bounds } from '#lib/plot/core/interactions.js'
 import type {
   AxisRanges,
   DataSeries,
@@ -18,8 +18,8 @@ import type {
   LineCurve,
   PointStyle,
   StyleOverrides,
-} from '$lib/plot/core/types'
-import { assert_series_lengths, DEFAULT_MARKERS } from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
+import { assert_series_lengths, DEFAULT_MARKERS } from '#lib/plot/core/types.js'
 
 // Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
 // null/Array.isArray branch out of the point loop matters at 100k points, where these

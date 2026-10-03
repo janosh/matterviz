@@ -2,9 +2,11 @@
 // Physicality tests validate that physical properties follow expected periodic trends.
 // Would have caught the bug where H had larger atomic_radius than O.
 
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol, element_data, element_groups } from '$lib/element'
-import { element_from_lammps_type } from '$lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_data } from '#lib/element/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { element_groups } from '#lib/element/groups.js'
+import { element_from_lammps_type } from '#lib/element/helpers.js'
 import { describe, expect, test } from 'vitest'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
 

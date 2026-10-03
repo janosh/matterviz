@@ -1,7 +1,7 @@
 // Worker postMessage has no Window targetOrigin.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { predict_demo } from './demo'
-import type { AnyStructure } from '$lib/structure'
+import type { AnyStructure } from '#lib/structure/index.js'
 
 self.addEventListener(
   `message`,

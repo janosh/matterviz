@@ -1,9 +1,9 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import { analyze_barrier, NebPlot, NebViewer, path_spline } from '$lib/neb'
-  import { download } from '$lib/io'
-  import { format_num } from '$lib/labels'
-  import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '$site/neb'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import { analyze_barrier, NebPlot, NebViewer, path_spline } from '#lib/neb/index.js'
+  import { download } from '#lib/io/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index.js'
   import InputFormat from './input-format.md'
 
   let coord_mode = $state<`arc_length` | `image_index`>(`arc_length`)
@@ -16,7 +16,7 @@
   const analysis = analyze_barrier(direct)
   const spline = path_spline(direct)
 
-  // $lib/io's download attaches the anchor before clicking it, which the hand-rolled
+  // #lib/io's download attaches the anchor before clicking it, which the hand-rolled
   // detached-anchor version here did not; Firefox ignores a click on a detached <a>
   const download_fixture = () =>
     download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)

@@ -13,20 +13,20 @@ WebGPU rasterizes lines at 1 device pixel. The fat-line alternative expands ever
 into an instanced quad and costs three times the attributes, so this layer keeps a fixed
 subtle opacity instead of exposing width and opacity controls. -->
 <script lang="ts">
-  import type { ElementSymbol } from '$lib/element'
-  import { DEFAULTS } from '$lib/settings'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type {
     TrajectoryLineColorMode,
     TrajectoryLinesStats,
     TrajectoryLineWrapMode,
-  } from '$lib/structure/trajectory-lines'
+  } from '#lib/structure/trajectory-lines.js'
   import {
     TIME_RAMP_SIZE,
     TRAIL_TEXEL_ROW,
     TrajectoryTrail,
     trail_color_texels,
-  } from '$lib/structure/trajectory-lines'
-  import type { TrajectoryPositionStream } from '$lib/trajectory'
+  } from '#lib/structure/trajectory-lines.js'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import { T, useThrelte } from '@threlte/core'
   import {
     positionGeometry,

@@ -1,26 +1,24 @@
-import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
 import {
   create_structure_view_state,
   load_structure_view_state,
   save_structure_view_state,
   serialize_structure_view_state,
   STRUCTURE_VIEW_STATE_STORAGE_KEY,
-} from '$lib/settings/viewer-state'
-import type { AnyStructure } from '$lib'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+} from '#lib/settings/viewer-state.js'
+import type { AnyStructure } from '#lib'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { StructureSettings } from '#lib/structure/index.js'
+import { default_vector_configs } from '#lib/structure/vectors.js'
+import StructureControls from '#lib/structure/StructureControls.svelte'
+import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import {
-  default_vector_configs,
-  StructureControls,
-  type StructureSettings,
-} from '$lib/structure'
-import {
-  type AtomColorConfig,
   DEFAULT_ATOM_COLOR_CONFIG,
   next_atom_color_config,
-} from '$lib/structure/atom-properties'
-import { CNA_TYPE_PROPERTY } from '$lib/structure-id'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
+} from '#lib/structure/atom-properties.js'
+import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {

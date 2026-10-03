@@ -1,6 +1,6 @@
-import type { Vec2 } from '$lib/math'
-import type { Rect, Sides } from '$lib/plot/core/layout'
-import { is_valid_range, max_side_padding, union_ranges } from '$lib/plot/core/shared-axes'
+import type { Vec2 } from '#lib/math.js'
+import type { Rect, Sides } from '#lib/plot/core/layout.js'
+import { is_valid_range, max_side_padding, union_ranges } from '#lib/plot/core/shared-axes.js'
 
 export const FACET_AXES = [`x`, `x2`, `y`, `y2`] as const
 const FACET_AXIS_MODES = [`shared`, `free`, `row`, `col`] as const

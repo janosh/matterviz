@@ -1,11 +1,11 @@
-import * as density_utils from '$lib/plot/scatter/adaptive-density'
-import type { Vec2 } from '$lib/math'
-import type { FacetLayoutContext } from '$lib/plot/core/facets'
-import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
-import type { BinnedDensityConfig } from '$lib/plot/scatter/binned-scatter-types'
-import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
-import { svg_to_svg_string } from '$lib/io/export'
-import { plot_color } from '$lib/colors'
+import * as density_utils from '#lib/plot/scatter/adaptive-density.js'
+import type { Vec2 } from '#lib/math.js'
+import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
+import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types.js'
+import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
+import { svg_to_svg_string } from '#lib/io/export.js'
+import { plot_color } from '#lib/colors/index.js'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -155,18 +155,18 @@ const uniform_density_series = (columns = 32, rows = 24) => [
   },
 ]
 function mock_label_measurement(width: number, height: number) {
-  const original_get_bounding_client_rect = Object.getOwnPropertyDescriptor(
+  const orig_get_bounding_client_rect = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
     `getBoundingClientRect`,
   )?.value as (this: HTMLElement) => DOMRect
-  return vi
-    .spyOn(HTMLElement.prototype, `getBoundingClientRect`)
-    .mockImplementation(function (this: HTMLElement) {
-      if (this instanceof HTMLElement && this.classList.contains(`point-label-measure`)) {
-        return DOMRect.fromRect({ width, height })
-      }
-      return original_get_bounding_client_rect.call(this)
-    })
+  return vi.spyOn(HTMLElement.prototype, `getBoundingClientRect`).mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    if (this instanceof HTMLElement && this.classList.contains(`point-label-measure`)) {
+      return DOMRect.fromRect({ width, height })
+    }
+    return orig_get_bounding_client_rect.call(this)
+  })
 }
 
 describe(`BinnedScatterPlot`, () => {
@@ -801,17 +801,17 @@ describe(`BinnedScatterPlot`, () => {
     const resize_count = () =>
       width_setter.mock.calls.length +
       set_property.mock.calls.filter(([prop]) => prop === `width`).length
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
-      function (this: HTMLCanvasElement) {
-        const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`
-        return {
-          font: ``,
-          measureText: () => ({ width: 0 }),
-          ...Object.fromEntries(CANVAS_NOOP_METHODS.map((name) => [name, vi.fn()])),
-          clearRect: () => clears[layer]++,
-        } as unknown as CanvasRenderingContext2D
-      },
-    )
+    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      const layer = this.classList.contains(`marked-points`) ? `overlay` : `base`
+      return {
+        font: ``,
+        measureText: () => ({ width: 0 }),
+        ...Object.fromEntries(CANVAS_NOOP_METHODS.map((name) => [name, vi.fn()])),
+        clearRect: () => clears[layer]++,
+      } as unknown as CanvasRenderingContext2D
+    })
 
     const component = mount_plot({
       series: [{ x: [0.4, 0.6], y: [0.5, 0.5], point_ids: [`selected`, `other`] }],

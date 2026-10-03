@@ -1,10 +1,10 @@
 // extXYZ files whose `Properties=` layout does not start with the species column: the frame
 // indexer must read the declared column layout rather than assume `symbol x y z`, and the
 // indexed (large-file) run must report the same per-frame scalars as the materialized one.
-import { count_xyz_frames, TextLines } from '$lib/trajectory/helpers'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { index_xyz_frames, parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
-import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
+import { count_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { index_xyz_frames, parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { expect, test } from 'vitest'
 
 // Two frames of Si2, written with `columns` prefixed to each atom line

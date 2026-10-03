@@ -3,18 +3,18 @@
 // what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
-import type { ElementSymbol } from '$lib/element'
-import { coerce_elem_symbol } from '$lib/element'
-import { format_num, plural } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
-import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
-import type { CellType, SymmetryDataset, WyckoffPos } from '$lib/symmetry'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { coerce_elem_symbol } from '#lib/element/helpers.js'
+import { format_num, plural } from '#lib/labels.js'
+import type { Vec3 } from '#lib/math.js'
+import { create_cart_to_frac, create_frac_to_cart } from '#lib/math.js'
+import type { CellType, SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import {
   map_wyckoff_to_all_atoms,
-  transform_cell,
   wyckoff_positions_from_moyo,
-} from '$lib/symmetry'
-import { to_error } from '$lib/utils'
+} from '#lib/symmetry/wyckoff.js'
+import { transform_cell } from '#lib/symmetry/analyze.js'
+import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'

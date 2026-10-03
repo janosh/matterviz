@@ -3,8 +3,8 @@
   // params (?top=12&mid=12&leaf=10 gives 12*12*10 leaves + branches), so the spec needs no
   // fixture. Mount time is published in the DOM; hover/zoom frame timings are measured by
   // the spec itself via requestAnimationFrame.
-  import { Sunburst, type SunburstNode } from '$lib'
-  import { browser } from '$app/environment'
+  import { Sunburst, type SunburstNode } from '#lib'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
 

@@ -1,18 +1,17 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { PdfPattern, RdfPattern, TotalPdfPattern } from '$lib/rdf'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
+import { calculate_all_pair_rdfs, calculate_rdf } from '#lib/rdf/calc-rdf.js'
 import {
-  calculate_all_pair_rdfs,
   calculate_pdf,
-  calculate_rdf,
   calculate_total_pdf,
   coordination_number,
   number_density,
   PDF_DEFAULT_N_BINS,
   site_composition,
   weight_pdf_partials,
-} from '$lib/rdf'
-import { neutron_scattering_length } from '$lib/scattering'
-import type { Crystal } from '$lib/structure'
+} from '#lib/rdf/calc-pdf.js'
+import { neutron_scattering_length } from '#lib/scattering/index.js'
+import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../test-fixtures'
 

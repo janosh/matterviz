@@ -1,11 +1,11 @@
 // Planes inside the unit cell: (hkl) lattice planes drawn e.g. to show where a surface slab is
 // cut, plus the generic clipper that turns `coeffs · frac = level` into a Cartesian polygon
-// (also used for mirror and glide planes by $lib/symmetry). Miller indices refer to the basis
+// (also used for mirror and glide planes by #lib/symmetry). Miller indices refer to the basis
 // of the drawn cell; in fractional coordinates the plane at `offset` is h·x + k·y + l·z =
 // offset, so integer offsets are the lattice planes of the family and neighbouring integers
 // sit one interplanar spacing d_hkl apart.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 
 // Cell-aligned overlays cannot follow standardized cells without a coordinate transformation.
 export const OVERLAYS_INPUT_FRAME_NOTE = `Cell-aligned overlays and cutaways are shown only in the original (input) cell`

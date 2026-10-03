@@ -1,9 +1,9 @@
-import type { PhaseDiagramData } from '$lib/phase-diagram'
-import { PhaseDiagramControls } from '$lib/phase-diagram'
+import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
+import PhaseDiagramControls from '#lib/phase-diagram/PhaseDiagramControls.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, query } from '../setup'
-import { PHASE_DIAGRAM_DEFAULTS } from '$lib/phase-diagram/utils'
+import { PHASE_DIAGRAM_DEFAULTS } from '#lib/phase-diagram/utils.js'
 
 const sample_data: PhaseDiagramData = {
   components: [`Cu`, `Ni`],

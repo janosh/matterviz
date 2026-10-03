@@ -1,10 +1,10 @@
-import type { Vec3 } from '$lib/math'
-import type { CellType } from '$lib/symmetry'
+import type { Vec3 } from '#lib/math.js'
+import type { CellType } from '#lib/symmetry/index.js'
 import {
   spacegroup_settings,
   spacegroup_wyckoff_positions,
   transform_cell,
-} from '$lib/symmetry'
+} from '#lib/symmetry/analyze.js'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../test-fixtures'

@@ -3,8 +3,8 @@ import {
   composition_to_simplex_coords,
   TETRAHEDRON_VERTICES,
   TRIANGLE_VERTICES,
-} from '$lib/convex-hull/barycentric-coords'
-import type { ElementSymbol } from '$lib/element'
+} from '#lib/convex-hull/barycentric-coords.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { describe, expect, test } from 'vitest'
 
 // Rounded copies so toEqual compares tuples of nearby floats exactly

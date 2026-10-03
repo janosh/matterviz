@@ -1,4 +1,4 @@
-import * as constants from '$lib/constants'
+import * as constants from '#lib/constants.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`derived physical constants`, () => {

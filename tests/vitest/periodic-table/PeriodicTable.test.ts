@@ -1,13 +1,13 @@
-import type { ChemicalElement, ElementCategory } from '$lib'
-import element_data from '$lib/element/data'
-import PeriodicTable from '$lib/periodic-table/PeriodicTable.svelte'
-import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
-import { ELEM_HEATMAP_LABELS } from '$lib/labels'
-import type { Vec2 } from '$lib/math'
-import * as math from '$lib/math'
-import { colors, selected } from '$lib/state.svelte'
-import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
-import PeriodicTableDemo from '$site/PeriodicTableDemo.svelte'
+import type { ChemicalElement, ElementCategory } from '#lib'
+import element_data from '#lib/element/data.js'
+import PeriodicTable from '#lib/periodic-table/PeriodicTable.svelte'
+import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
+import { ELEM_HEATMAP_LABELS } from '#lib/labels.js'
+import type { Vec2 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { colors, selected } from '#lib/state.svelte.js'
+import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
+import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, keydown, mouse } from '../setup'
@@ -18,7 +18,7 @@ const { page, replace_url } = vi.hoisted(() => ({
   replace_url: vi.fn(async () => {}),
 }))
 vi.mock(`$app/state`, () => ({ page }))
-vi.mock(`$site/state.svelte`, () => ({ replace_url }))
+vi.mock(`#site/state.svelte.js`, () => ({ replace_url }))
 
 const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)

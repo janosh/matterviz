@@ -2,22 +2,22 @@ import { available_site_vector_keys, numeric_sites } from './site'
 import { try_parse_vec3, vector_reader } from './vectors'
 // Utility functions for computing atom properties and applying color scales
 
-import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
-import { COLOR_SCALE_TYPES, get_d3_interpolator, is_d3_interpolate_name } from '$lib/colors'
-import { calc_coordination_nums } from '$lib/coordination/calc-coordination'
-import { array_extent } from '$lib/math'
+import type { ColorScaleType, D3InterpolateName } from '#lib/colors/index.js'
 import {
-  ATOM_COLOR_MODE_OPTIONS,
-  DEFAULTS,
-  SETTINGS_CONFIG,
-  type AtomColorMode,
-} from '$lib/settings'
-import type { AnyStructure, Site } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
-import { get_orig_site_idx } from '$lib/structure/site'
-import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '$lib/structure-id/calc-cna'
-import { CNA_TYPE_PROPERTY } from '$lib/structure-id/calc-structure-id'
-import type { WyckoffPos } from '$lib/symmetry/wyckoff'
+  COLOR_SCALE_TYPES,
+  get_d3_interpolator,
+  is_d3_interpolate_name,
+} from '#lib/colors/index.js'
+import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import { array_extent } from '#lib/math.js'
+import type { AtomColorMode } from '#lib/settings.js'
+import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
+import type { BondingStrategy } from '#lib/structure/bonding.js'
+import { get_orig_site_idx } from '#lib/structure/site.js'
+import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/calc-cna.js'
+import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
+import type { WyckoffPos } from '#lib/symmetry/wyckoff.js'
 import { rgb } from 'd3-color'
 
 type SimpleAtomColorMode = Exclude<AtomColorMode, `property` | `custom`>

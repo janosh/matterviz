@@ -1,7 +1,7 @@
-import { make_volume } from '$lib/isosurface/types'
-import { trajectory_from_frames } from '$lib/trajectory/runs/memory'
-import type { AnyStructure } from '$lib/structure'
-import { create_frac_to_cart, type Vec3 } from '$lib/math'
+import { make_volume } from '#lib/isosurface/types.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { create_frac_to_cart, type Vec3 } from '#lib/math.js'
 
 export function make_demo_trajectory(structure: AnyStructure) {
   if (!(`lattice` in structure)) throw new Error(`The demo requires a crystal`)

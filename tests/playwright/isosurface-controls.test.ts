@@ -61,6 +61,20 @@ test.describe(`Isosurface page`, () => {
       await expect(neg_cb).not.toBeChecked()
     })
 
+    // The collapsed search magnifier is pinned to the pane's top-right corner and used to
+    // cover the Volumetric data header's `isosurface` subtitle
+    test(`settings search trigger sits above the first group header`, async ({ page }) => {
+      const pane = await open_settings_pane(page)
+      const trigger = await pane.getByRole(`button`, { name: `Search settings` }).boundingBox()
+      const header = await pane
+        .locator(`details.settings-group > summary`)
+        .first()
+        .boundingBox()
+      expect(trigger && header && trigger.y + trigger.height).toBeLessThanOrEqual(
+        header?.y ?? -Infinity,
+      )
+    })
+
     test(`halo slider is present for periodic volumes`, async ({ page }) => {
       const pane = await open_settings_pane(page)
       const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
@@ -258,4 +272,27 @@ test.describe(`Isosurface page`, () => {
       await expect(pane).toBeVisible()
     })
   })
+})
+
+// Issues #477/#478: ELF values are shown as stored and one select flips spin channels
+test(`spin-polarized ELFCAR shows ELF ranges and switches a surface between spins`, async ({
+  page,
+}) => {
+  await wait_for_isosurface(page, `/structure/isosurface?file=pymatgen-ELFCAR.gz`)
+  const pane = await open_settings_pane(page)
+  const groups = pane.locator(`.volume-group`)
+  await expect(groups.locator(`.volume-label`)).toHaveText([
+    /ELF \(spin up\)$/,
+    /ELF \(spin down\)$/,
+  ])
+  // file maxima are 8.6848E-01 in both blocks
+  await expect(groups.locator(`.volume-range`)).toHaveText([/–0\.868$/, /–0\.868$/])
+  const surface_of = pane.getByRole(`combobox`, { name: `Surface of` })
+  const isovalue = await groups.first().locator(`.layer-value`).first().textContent()
+  await surface_of.selectOption({
+    label: (await groups.nth(1).locator(`.volume-label`).textContent()) ?? ``,
+  })
+  await expect(groups.nth(0).locator(`.layer-row`)).toHaveCount(0)
+  // both channels span the same range, so the surface keeps its isovalue
+  await expect(groups.nth(1).locator(`.layer-value`).first()).toHaveText(isovalue ?? ``)
 })

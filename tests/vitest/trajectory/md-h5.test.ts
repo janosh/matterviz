@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict'
-import { FS_IN_ASE_TIME } from '$lib/constants'
-import { FrameView, materialize_frame, materialize_frame_result } from '$lib/trajectory/frame'
-import { get_structure_vector_keys } from '$lib/structure/vectors'
+import { FS_IN_ASE_TIME } from '#lib/constants.js'
+import {
+  FrameView,
+  materialize_frame,
+  materialize_frame_result,
+} from '#lib/trajectory/frame.js'
+import { get_structure_vector_keys } from '#lib/structure/vectors.js'
 // Committed-prefix MD trajectories retain explicit units and static topology.
-import { open_trajectory } from '$lib/trajectory/open'
-import { open_h5_source } from '$lib/trajectory/parse/h5-utils'
-import { open_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { hdf5_run } from '$lib/trajectory/runs/hdf5'
-import { summarize_run } from '$lib/trajectory/run'
+import { open_trajectory } from '#lib/trajectory/open.js'
+import { open_h5_source } from '#lib/trajectory/parse/h5-utils.js'
+import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
+import { summarize_run } from '#lib/trajectory/run.js'
 import { Dataset, type File as H5File, type Group } from 'h5wasm'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'

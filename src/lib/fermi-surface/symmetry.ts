@@ -1,9 +1,9 @@
 // Point group symmetry operations for Fermi surface tiling
-import { reduce_basis } from '$lib/brillouin/compute'
-import * as math from '$lib/math'
-import type { Matrix3x3, Matrix4Tuple } from '$lib/math'
-import { DEFAULTS } from '$lib/settings'
-import { is_identity } from '$lib/symmetry/symmetry-elements'
+import { reduce_basis } from '#lib/brillouin/compute.js'
+import * as math from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple } from '#lib/math.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { is_identity } from '#lib/symmetry/symmetry-elements.js'
 
 // Identity 4x4 matrix (column-major for Three.js)
 // oxfmt-ignore

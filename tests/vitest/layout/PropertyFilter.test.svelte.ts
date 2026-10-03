@@ -1,4 +1,4 @@
-import { PropertyFilter } from '$lib/layout'
+import PropertyFilter from '#lib/layout/PropertyFilter.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'

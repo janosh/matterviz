@@ -1,11 +1,11 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import {
   energy_data_extractor,
   force_stress_data_extractor,
   full_data_extractor,
   structural_data_extractor,
-} from '$lib/trajectory/extract'
-import { open_trajectory } from '$lib/trajectory/open'
+} from '#lib/trajectory/extract.js'
+import { open_trajectory } from '#lib/trajectory/open.js'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 

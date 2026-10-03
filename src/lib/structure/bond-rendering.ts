@@ -1,6 +1,6 @@
 import { numeric_sites } from './site'
-import type { Vec3 } from '$lib/math'
-import type { AnyStructure, BondOrder, BondPair } from '$lib/structure'
+import type { Vec3 } from '#lib/math.js'
+import type { AnyStructure, BondOrder, BondPair } from '#lib/structure/index.js'
 import type { TypedArray } from 'three/webgpu'
 
 export type BondColumns = {

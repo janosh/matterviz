@@ -1,26 +1,26 @@
 <script lang="ts">
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import ExportButtons from '$lib/io/ExportButtons.svelte'
-  import { FileExportState } from '$lib/io/file-export.svelte'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import ExportButtons from '#lib/io/ExportButtons.svelte'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
 
-  import { INITIAL_SETTINGS_LABELS, track_settings } from '$lib/controls'
+  import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
-  import { SettingsSection } from '$lib/layout'
-  import { ControlPane } from '$lib/overlays'
-  import { DEFAULTS } from '$lib/settings'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { ControlPane } from '#lib/overlays/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import { tooltip } from 'svelte-widgets/attachments'
-  import type { Vec2 } from '$lib/math'
-  import type { AxisConfig, AxisKey, PlotControlsProps } from '$lib/plot/core/types'
-  import { normalize_y2_sync } from '$lib/plot/core/interactions'
+  import type { Vec2 } from '#lib/math.js'
+  import type { AxisConfig, AxisKey, PlotControlsProps } from '#lib/plot/core/types.js'
+  import { normalize_y2_sync } from '#lib/plot/core/interactions.js'
   import {
     get_scale_type_name,
     is_scale_type_name,
     is_y2_sync_mode,
-  } from '$lib/plot/core/types'
+  } from '#lib/plot/core/types.js'
 
   let {
     show_controls = $bindable(true),

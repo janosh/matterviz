@@ -1,4 +1,9 @@
-import { gaussian_kde, scott_bandwidth, silverman_bandwidth, VIOLIN_KDE_OPTS } from '$lib/plot'
+import {
+  gaussian_kde,
+  scott_bandwidth,
+  silverman_bandwidth,
+  VIOLIN_KDE_OPTS,
+} from '#lib/plot/box/kde.js'
 import { describe, expect, test } from 'vitest'
 
 // Independent O(n*m) Gaussian-sum reference (no subsampling), used to verify gaussian_kde

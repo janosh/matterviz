@@ -18,14 +18,14 @@
 // curve maximum, i.e. a few tens of f64 eps), in 14 ms against 315 ms. The cost scales as
 // n log n instead of n^2 in the frame count, and no longer needs an origin-thinning budget:
 // 2000 atoms x 2000 frames run in 0.27 s.
-import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '$lib/fft'
+import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '#lib/fft.js'
 import {
   frequency_unit_label,
   md_frequency_factor,
   MD_FREQUENCY_UNITS,
   thz_per_inverse_time,
   TIME_UNIT_TO_THZ,
-} from '$lib/spectral/frequency-units'
+} from '#lib/spectral/frequency-units.js'
 import {
   analysis_fail,
   autocorrelation_sums,
@@ -36,7 +36,7 @@ import {
   resolve_lag_time_unit,
   unwrapped_positions_of,
   validate_position_stream_layout,
-} from '$lib/trajectory/positions'
+} from '#lib/trajectory/positions.js'
 import type {
   VacfCurve,
   VacfFrequencyUnit,

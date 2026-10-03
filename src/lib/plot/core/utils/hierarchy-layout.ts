@@ -9,9 +9,9 @@
 import { hsl } from 'd3-color'
 import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
 import { hierarchy, partition } from 'd3-hierarchy'
-import { PLOT_COLORS } from '$lib/colors'
-import type { FillPattern } from '$lib/plot/core/patterns'
-import { DEFAULTS } from '$lib/settings'
+import { PLOT_COLORS } from '#lib/colors/index.js'
+import type { FillPattern } from '#lib/plot/core/patterns.js'
+import { DEFAULTS } from '#lib/settings.js'
 
 // === Sunburst chart types ===
 // How node values are interpreted (plotly `branchvalues` semantics):

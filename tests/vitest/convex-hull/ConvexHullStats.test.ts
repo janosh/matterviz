@@ -1,5 +1,6 @@
-import { ConvexHullStats } from '$lib/convex-hull'
-import type { ConvexHullEntry, PhaseStats } from '$lib/convex-hull/types'
+import ConvexHullStats from '#lib/convex-hull/ConvexHullStats.svelte'
+import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
+import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query, mock_object_url } from '../setup'
@@ -253,6 +254,28 @@ describe(`ConvexHullStats`, () => {
     const text = document.body.textContent ?? ``
     expect(text).not.toContain(`NaN`)
   })
+
+  // A closed pane stays mounted but hidden; its stats rebuilt the entry table on every
+  // points-threshold step of a slider drag nobody could see
+  test.each([false, true])(
+    `the hull info pane mounts its stats only while open=%s`,
+    (open) => {
+      mount(ConvexHullInfoPane, {
+        target: document.body,
+        props: {
+          phase_stats: mock_stats(),
+          stable_entries: [mock_entry({ is_stable: true, e_above_hull: 0 })],
+          unstable_entries: [mock_entry()],
+          max_hull_dist_show_phases: 0.1,
+          max_hull_dist_show_labels: 0.1,
+          label_threshold: 50,
+          pane_open: open,
+        },
+      })
+      flushSync()
+      expect(document.querySelectorAll(`.convex-hull-stats`)).toHaveLength(open ? 1 : 0)
+    },
+  )
 
   test(`passes through HTML attributes`, () => {
     mount_stats({

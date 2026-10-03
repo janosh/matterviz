@@ -5,13 +5,13 @@ import {
   fetch_optimade_providers,
   fetch_optimade_structure,
   fetch_suggested_structures,
-} from '$lib/api/optimade'
+} from '#lib/api/optimade.js'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mount, tick, unmount } from 'svelte'
 import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
 
-vi.mock(`$lib/structure/Structure.svelte`, async () => ({
-  default: (await import(`$lib/EmptyState.svelte`)).default,
+vi.mock(`#lib/structure/Structure.svelte`, async () => ({
+  default: (await import(`#lib/EmptyState.svelte`)).default,
 }))
 
 describe(`OPTIMADE API utilities`, () => {
@@ -68,7 +68,7 @@ describe(`OPTIMADE API utilities`, () => {
 test.each([true, false])(
   `clearing the input discards a structure (settled=%s)`,
   async (settled) => {
-    const api = await import(`$lib/api/optimade`)
+    const api = await import(`#lib/api/optimade.js`)
     const pending = Promise.withResolvers<(typeof MOCK_STRUCTURES)[string]>()
     vi.spyOn(api, `fetch_optimade_providers`).mockResolvedValue(MOCK_PROVIDERS)
     vi.spyOn(api, `fetch_suggested_structures`).mockResolvedValue([])
@@ -205,7 +205,7 @@ describe(`OPTIMADE requests`, () => {
     async (kind) => {
       // Isolate the cache so this test exercises both misses and expiry explicitly.
       vi.resetModules()
-      const api = await import(`$lib/api/optimade`)
+      const api = await import(`#lib/api/optimade.js`)
       let now = 0
       vi.spyOn(Date, `now`).mockImplementation(() => now)
       const pending = Promise.withResolvers<Response>()

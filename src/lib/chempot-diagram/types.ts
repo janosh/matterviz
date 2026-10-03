@@ -1,5 +1,5 @@
-import type { D3InterpolateName } from '$lib/colors'
-import type { Point2D, Vec2 } from '$lib/math'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { Point2D, Vec2 } from '#lib/math.js'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen

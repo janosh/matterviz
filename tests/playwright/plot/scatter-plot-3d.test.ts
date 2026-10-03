@@ -1,4 +1,4 @@
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
@@ -106,31 +106,27 @@ test(`sized points and projections share meshes and resize their instance buffer
     await expect
       .poll(async () => (await read()).map((mesh) => mesh.count))
       .toEqual([count, count, count, count])
-    await expect
-      .poll(async () => {
-        const meshes = await read()
-        // Matrices/colors are uploaded on the next render task, after count changes.
-        return meshes.every(
-          (mesh) => mesh.matrices.length === count * 16 && mesh.matrices.at(-16) !== 1,
-        )
-      })
-      .toBe(true)
-    const meshes = await read()
-    expect(meshes.map((mesh) => mesh.projection)).toEqual([false, true, true, true])
-    for (const mesh of meshes) {
-      expect(mesh.colors).toHaveLength(count * 3)
-      for (let idx = 0; idx < count; idx++) {
-        const expected_radius =
-          (0.05 + (0.15 * idx) / (count - 1)) * (mesh.projection ? 0.5 : 1)
-        // Instance matrices are f32: allow one f32 epsilon relative to radius.
-        for (const diagonal of [0, 5, 10])
-          expect(
-            Math.abs(mesh.matrices[idx * 16 + diagonal] - expected_radius),
-          ).toBeLessThanOrEqual(expected_radius * 2 ** -23)
-        expect(mesh.matrices[idx * 16 + 15]).toBe(1)
+    // Matrices/colors are uploaded on the next render task after count changes, and markers
+    // then glide to their new sizes, so retry until the buffers land on the final radii.
+    await expect(async () => {
+      const meshes = await read()
+      expect(meshes.map((mesh) => mesh.projection)).toEqual([false, true, true, true])
+      for (const mesh of meshes) {
+        expect(mesh.matrices).toHaveLength(count * 16)
+        expect(mesh.colors).toHaveLength(count * 3)
+        for (let idx = 0; idx < count; idx++) {
+          const expected_radius =
+            (0.05 + (0.15 * idx) / (count - 1)) * (mesh.projection ? 0.5 : 1)
+          // Instance matrices are f32: allow one f32 epsilon relative to radius.
+          for (const diagonal of [0, 5, 10])
+            expect(
+              Math.abs(mesh.matrices[idx * 16 + diagonal] - expected_radius),
+            ).toBeLessThanOrEqual(expected_radius * 2 ** -23)
+          expect(mesh.matrices[idx * 16 + 15]).toBe(1)
+        }
+        if (mesh.projection) expect(mesh.colors).toEqual(meshes[0].colors)
       }
-      if (mesh.projection) expect(mesh.colors).toEqual(meshes[0].colors)
-    }
+    }).toPass()
   }
 })
 
@@ -238,10 +234,12 @@ test.describe(`ScatterPlot3D`, () => {
 
     // No CSS can lift an in-canvas gizmo above the ColorBar/Legend, so only its bottom offset
     // keeps it clear. The sweep's synthetic moves ignore overlays; the real click below is what
-    // fails if one covers the gizmo.
+    // fails if one covers the gizmo. Grid pitch must stay under radius * sqrt(2) (~8.5 px for
+    // the 6 px handles): an axis-aligned fly-to parks handles 30 px apart, exactly between the
+    // points of a 10 px grid.
     await expect_gizmo_click_flies_camera(canvas, {
       probe: 110,
-      steps: 11,
+      steps: 14,
       bottom_offset: 65,
     })
   })
@@ -539,7 +537,9 @@ test.describe(`ScatterPlot3D Projections`, () => {
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       await get_projection_checkbox(pane, plane).click()
     }
-    // Close the pane before the baseline so only scene changes count as rotation.
+    // Close the pane before the baseline so only scene changes count as rotation. The toggle's
+    // hover tooltip lingers after the pointer leaves and would take the first Escape.
+    await expect(page.locator(`.custom-tooltip:visible`)).toHaveCount(0)
     await page.keyboard.press(`Escape`)
     await expect(pane).toBeHidden()
 

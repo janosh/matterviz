@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import type { ShowControlsState } from '$lib/controls'
-  import { format_num } from '$lib/labels'
+  import type { ShowControlsState } from '#lib/controls.js'
+  import { format_num } from '#lib/labels.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { create_sequence_player } from './sequence-player.svelte'
 

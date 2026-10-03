@@ -1,10 +1,10 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import { BrillouinZone } from '$lib'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import type { FileInfo } from '$lib/io/types'
-  import type { Crystal } from '$lib/structure'
-  import { structure_files, structure_map } from '$site/structures'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import { BrillouinZone } from '#lib'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import type { FileInfo } from '#lib/io/types.js'
+  import type { Crystal } from '#lib/structure/index.js'
+  import { structure_files, structure_map } from '#site/structures.js'
 
   let dropped_structure = $state<Crystal | undefined>()
 

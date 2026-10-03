@@ -1,5 +1,10 @@
-import type { Vec2 } from '$lib/math'
-import type { CompUnit, PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
+import type { Vec2 } from '#lib/math.js'
+import type {
+  CompUnit,
+  PhaseDiagramData,
+  PhaseRegion,
+  TempUnit,
+} from '#lib/phase-diagram/index.js'
 import {
   calculate_lever_rule,
   compute_label_properties,
@@ -16,7 +21,7 @@ import {
   merge_phase_diagram_config,
   PHASE_DIAGRAM_DEFAULTS,
   transform_vertices,
-} from '$lib/phase-diagram/utils'
+} from '#lib/phase-diagram/utils.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`find_phase_at_point`, () => {

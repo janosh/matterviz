@@ -1,5 +1,5 @@
-import type { Rect } from '$lib/plot/core/layout'
-import { to_error } from '$lib/utils'
+import type { Rect } from '#lib/plot/core/layout.js'
+import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
@@ -14,8 +14,8 @@ export {
 // Exercise real parsers in happy-dom; worker transport has its own tests.
 export async function mock_parse_worker(): Promise<void> {
   const [worker, { parse_file_content }] = await Promise.all([
-    import(`$lib/file-viewer/parse-in-worker`),
-    import(`$lib/file-viewer/parse`),
+    import(`#lib/file-viewer/parse-in-worker.js`),
+    import(`#lib/file-viewer/parse.js`),
   ])
   vi.spyOn(worker, `parse_in_worker`).mockImplementation(
     // Node cannot mount Blobs through h5wasm's worker-only WORKERFS.
@@ -569,12 +569,13 @@ export function expect_worker_safe_import_graph(
   const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
   const resolve_specifier = (specifier: string, from_file: string): string | null => {
     let base: string
-    if (specifier.startsWith(`$lib`)) {
-      base = resolve(repo_root, `src/lib`, specifier.slice(`$lib`.length).replace(/^\//, ``))
+    if (specifier.startsWith(`#lib`)) {
+      base = resolve(repo_root, `src/lib`, specifier.slice(`#lib`.length).replace(/^\//, ``))
     } else if (specifier.startsWith(`.`)) base = resolve(dirname(from_file), specifier)
     else return null
+    // #lib specifiers name the emitted .js file of a .ts source
     const candidates = source_extensions.some((extension) => base.endsWith(extension))
-      ? [base]
+      ? [base, base.replace(/\.js$/, `.ts`)]
       : source_extensions.flatMap((extension) => [
           `${base}${extension}`,
           resolve(base, `index${extension}`),

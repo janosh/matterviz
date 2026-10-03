@@ -1,15 +1,15 @@
-import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3 } from '$lib/math'
-import { columns_to_csv } from '$lib/trajectory/analysis'
-import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Matrix3x3 } from '#lib/math.js'
+import { columns_to_csv } from '#lib/trajectory/analysis.js'
+import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
   create_structure,
   split_lines,
   TextLines,
-} from '$lib/trajectory/helpers'
-import { read_ndarray_from_view } from '$lib/trajectory/parse/ase'
+} from '#lib/trajectory/helpers.js'
+import { read_ndarray_from_view } from '#lib/trajectory/parse/ase.js'
 import { describe, expect, it } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 

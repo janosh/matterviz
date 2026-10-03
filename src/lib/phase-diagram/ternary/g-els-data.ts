@@ -3,7 +3,7 @@
 // Bartel et al. 2018 SISSO descriptor for the Gibbs energy of formation
 // (https://doi.org/10.1038/s41467-018-06682-4). Values are pymatgen's g_els.json (MIT), compiled
 // from NIST-JANAF / Barin tables; gases (O, N, H, F, Cl) are per atom of the 1 bar diatomic gas.
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '#lib/element/index.js'
 
 // oxfmt-ignore
 export const G_ELEMENT_TEMPERATURES = [300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000] as const

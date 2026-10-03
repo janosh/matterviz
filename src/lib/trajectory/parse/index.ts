@@ -1,5 +1,5 @@
 // `matterviz/trajectory/parse`: the format parsers plus the opener that dispatches to them.
-import { is_binary } from '$lib/io/is-binary'
+import { is_binary } from '#lib/io/is-binary.js'
 
 export {
   Hdf5GroupSelectionRequiredError,
@@ -9,14 +9,14 @@ export {
   trajectory_from_frames,
   trajectory_from_json,
   VaspoutElectronicOnlyError,
-} from '$lib/trajectory/open'
-export type { AtomTypeMapping } from '$lib/trajectory/index'
+} from '#lib/trajectory/open.js'
+export type { AtomTypeMapping } from '#lib/trajectory/index.js'
 export {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
   is_trajectory_file,
   is_trajectory_filename,
-} from '$lib/trajectory/format-detect'
+} from '#lib/trajectory/format-detect.js'
 export { parse_ase_trajectory } from './ase'
 export { open_hdf5_trajectory } from './hdf5'
 export { parse_lammps_trajectory } from './lammps'

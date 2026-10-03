@@ -2,7 +2,7 @@
 // fixed base padding and the normalized obstacle field, so the reservations made here cannot
 // feed back into the decision that produced them.
 
-import { compute_element_placement, point_in_rect, type Sides } from '$lib/plot/core/layout'
+import { compute_element_placement, point_in_rect, type Sides } from '#lib/plot/core/layout.js'
 import { project_obstacles } from './obstacles'
 import type {
   ColorbarDecorationItem,

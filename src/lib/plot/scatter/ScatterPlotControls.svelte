@@ -1,17 +1,17 @@
 <script lang="ts">
   import { ColorInput } from 'svelte-widgets'
-  import { css_color_to_hex } from '$lib/colors'
-  import { first_point_style } from '$lib/plot/core/data-transform'
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import PlotControls from '$lib/plot/core/components/PlotControls.svelte'
+  import { css_color_to_hex } from '#lib/colors/index.js'
+  import { first_point_style } from '#lib/plot/core/data-transform.js'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import PlotControls from '#lib/plot/core/components/PlotControls.svelte'
   import type {
     DataSeries,
     PlotConfig,
     PlotControlsProps,
     StyleOverrides,
-  } from '$lib/plot/core/types'
-  import { DEFAULT_MARKERS } from '$lib/plot/core/types'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/core/types.js'
+  import { DEFAULT_MARKERS } from '#lib/plot/core/types.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
 

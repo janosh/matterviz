@@ -1,5 +1,5 @@
 // Shared file-viewer types and filename patterns.
-import { ext_regex, FERMI_FILE_EXTENSIONS } from '$lib/constants'
+import { ext_regex, FERMI_FILE_EXTENSIONS } from '#lib/constants.js'
 
 export type ViewType =
   | `trajectory`

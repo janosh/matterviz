@@ -1,20 +1,20 @@
 <script lang="ts">
-  import type { MaterialSource } from '$lib/file-viewer/open'
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import EmptyState from '$lib/EmptyState.svelte'
+  import type { MaterialSource } from '#lib/file-viewer/open.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import { type Spinner, StatusMessage } from 'svelte-widgets'
-  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
-  import ViewerError from '$lib/layout/ViewerError.svelte'
-  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
-  import type { FileLoadCallback, FileLoadData } from '$lib/io'
-  import { ViewerChrome } from '$lib/layout'
-  import type { Vec3 } from '$lib/math'
-  import { PlotTooltip } from '$lib/plot'
-  import { create_renderer, webgpu_available } from '$lib/scene'
-  import { DEFAULTS } from '$lib/settings'
-  import type { Crystal } from '$lib/structure'
-  import { analyze_structure_symmetry } from '$lib/symmetry'
+  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
+  import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import type { Vec3 } from '#lib/math.js'
+  import { PlotTooltip } from '#lib/plot/index.js'
+  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import type { Crystal } from '#lib/structure/index.js'
+  import { analyze_structure_symmetry } from '#lib/symmetry/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -31,8 +31,8 @@
     compute_irreducible_bz,
     extract_point_group_from_operations,
   } from './compute'
-  import { clamp, reciprocal_lattice } from '$lib/math'
-  import { to_error } from '$lib/utils'
+  import { clamp, reciprocal_lattice } from '#lib/math.js'
+  import { to_error } from '#lib/utils.js'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import type {
     BrillouinZoneData,
@@ -403,6 +403,9 @@
   }
   .brillouin-zone.active {
     z-index: var(--bz-active-z-index, 2);
+  }
+  .brillouin-zone:has(:global(.draggable-pane.pane-open)) {
+    z-index: var(--z-index-viewer-pane-open, 12);
   }
   .brillouin-zone:fullscreen {
     background: var(--bz-bg-fullscreen, var(--surface-bg));

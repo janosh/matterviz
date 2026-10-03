@@ -1,9 +1,9 @@
 // Exercises the synthesis planner's Web Worker boundary. Numerical correctness and progress are
 // covered by synthesis-planning.test.ts; this verifies the cloneable contract and module path.
-import type { PhaseData } from '$lib/convex-hull'
-import { get_default_gas_provider } from '$lib/convex-hull/gas-thermodynamics'
-import { plan_synthesis } from '$lib/synthesis-planning/plan'
-import type { SynthesisPlanRequest } from '$lib/synthesis-planning/types'
+import type { PhaseData } from '#lib/convex-hull/index.js'
+import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
+import type { SynthesisPlanRequest } from '#lib/synthesis-planning/types.js'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
   expect_module_worker,
@@ -19,7 +19,7 @@ const stub = install_stub_worker<{
   options: undefined
 }>(({ input }) => plan_synthesis(input))
 const { plan_synthesis_async } = await import(
-  `$lib/synthesis-planning/plan-synthesis-async.svelte`
+  `#lib/synthesis-planning/plan-synthesis-async.svelte.js`
 )
 afterEach(stub.reset)
 
@@ -63,7 +63,7 @@ test.each([false, true])(
           listeners.set(type, handler),
         postMessage: post_message,
       })
-      await import(`$lib/synthesis-planning/plan-synthesis-worker`)
+      await import(`#lib/synthesis-planning/plan-synthesis-worker.js`)
       listeners.get(`message`)?.({ data: { id: 7, input: request } })
       expect(post_message.mock.calls.at(-2)?.[0]).toEqual({
         id: 7,

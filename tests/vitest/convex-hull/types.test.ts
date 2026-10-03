@@ -1,12 +1,12 @@
-import type { PhaseData } from '$lib/convex-hull/types'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import {
   compute_hull_stability,
   get_arity,
   HULL_STABILITY_TOL,
   is_on_hull,
   is_unary_entry,
-} from '$lib/convex-hull/helpers'
-import { default_hull_config, merge_hull_config } from '$lib/convex-hull/index'
+} from '#lib/convex-hull/entry-stability.js'
+import { default_hull_config, merge_hull_config } from '#lib/convex-hull/index.js'
 import { describe, expect, test } from 'vitest'
 
 test(`merge_hull_config overrides defaults and merges colors one level deep`, () => {

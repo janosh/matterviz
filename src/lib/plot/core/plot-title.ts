@@ -2,8 +2,8 @@ import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
-} from '$lib/plot/core/text-metrics'
-import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
+} from '#lib/plot/core/text-metrics.js'
+import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
 import type { Sides } from './layout'
 
 type PlotTitleAlign = `start` | `middle` | `end`

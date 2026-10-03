@@ -1,29 +1,25 @@
 <script lang="ts">
-  import { wait_for_renderer, renderer_registry, scene_registry } from '$lib/io/export'
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import { FileExportState } from '$lib/io/file-export.svelte'
-  import { format_num } from '$lib/labels'
-  import { clamp } from '$lib/math'
-  import { ViewerPane, type PaneProps } from '$lib/overlays'
-  import { to_error } from '$lib/utils'
+  import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export.js'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import { format_num } from '#lib/labels.js'
+  import { clamp } from '#lib/math.js'
+  import { ViewerPane, type PaneProps } from '#lib/overlays/index.js'
+  import { to_error } from '#lib/utils.js'
   import { tick, type Snippet } from 'svelte'
   import { NumberRangeInput } from 'svelte-widgets'
   import { Camera } from 'svelte-widgets/icons'
+  import type { CameraFlight, CameraPose } from './camera-flight'
   import {
     camera_flight_frame,
     camera_flight_registry,
     create_camera_flight_sampler,
     orbit_camera_flight,
     validate_camera_flight,
-    type CameraFlight,
-    type CameraPose,
   } from './camera-flight'
   import { create_camera_flight_editor } from './camera-flight-editor.svelte'
-  import {
-    create_camera_flight_session,
-    type FlightActivity,
-    type FlightTimeline,
-  } from './camera-flight-session'
+  import type { FlightActivity, FlightTimeline } from './camera-flight-session'
+  import { create_camera_flight_session } from './camera-flight-session'
 
   let {
     open = $bindable(false),

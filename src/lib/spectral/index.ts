@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'svelte'
-import type { ScatterPlotOptions } from '$lib/plot'
+import type { ScatterPlotOptions } from '#lib/plot/index.js'
 import type Bands from './Bands.svelte'
 import type Dos from './Dos.svelte'
 

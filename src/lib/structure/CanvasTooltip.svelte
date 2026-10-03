@@ -3,7 +3,7 @@
   import { useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
 
   let {
     position,

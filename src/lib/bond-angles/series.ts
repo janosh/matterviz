@@ -1,5 +1,5 @@
-import { plot_color } from '$lib/colors'
-import type { BarSeries } from '$lib/plot/core/types'
+import { plot_color } from '#lib/colors/index.js'
+import type { BarSeries } from '#lib/plot/core/types.js'
 import type { BondAngleData } from './calc-bond-angles'
 import type { BondAngleNormalizeMode, BondAngleSplitMode } from './index'
 

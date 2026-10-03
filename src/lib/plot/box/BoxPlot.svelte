@@ -2,13 +2,13 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '$lib/tooltip'
+  import { TooltipValue } from '#lib/tooltip/index.js'
   import {
     chart_export_filename,
     create_chart_exporter,
-  } from '$lib/plot/core/utils/chart-export'
-  import { parse_axis_label, format_value_or_num } from '$lib/labels'
-  import { array_max, type Vec2 } from '$lib/math'
+  } from '#lib/plot/core/utils/chart-export.js'
+  import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
+  import { array_max, type Vec2 } from '#lib/math.js'
   import type {
     AxisConfig,
     BandwidthOption,
@@ -27,35 +27,35 @@
     ViolinKind,
     ViolinSide,
     WhiskerMode,
-  } from '$lib/plot'
-  import { BoxPlotControls } from '$lib/plot'
-  import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
-  import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
-  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
-  import { plot_color } from '$lib/colors'
-  import { build_legend_items } from '$lib/plot/core/data-transform'
-  import { compute_box_whiskers, summarize_box_samples } from '$lib/plot/box/box-plot'
-  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '$lib/plot/box/kde'
-  import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  } from '#lib/plot/index.js'
+  import { BoxPlotControls } from '#lib/plot/index.js'
+  import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
+  import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
+  import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import { normalize_marginals } from '#lib/plot/core/marginals.js'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import { compute_box_whiskers, summarize_box_samples } from '#lib/plot/box/box-plot.js'
+  import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde.js'
+  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '$lib/plot/core/utils/series-visibility'
-  import { DEFAULT_PLOT_PADDING, filter_padding } from '$lib/plot/core/layout'
-  import { category_tick_labels, merge_secondary_axes } from '$lib/plot/core/axis-utils'
-  import { index_ref_lines } from '$lib/plot/core/reference-line'
+  } from '#lib/plot/core/utils/series-visibility.js'
+  import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout.js'
+  import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
+  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     create_focus_exit,
     is_activation_key,
     pointer_pos,
-  } from '$lib/plot/core/interactions'
-  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  } from '#lib/plot/core/interactions.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
@@ -63,17 +63,17 @@
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
-  } from '$lib/plot/core/scales'
-  import { get_scale_type_name } from '$lib/plot/core/types'
-  import { create_category_display } from '$lib/plot/core/display.svelte'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/core/scales.js'
+  import { get_scale_type_name } from '#lib/plot/core/types.js'
+  import { create_category_display } from '#lib/plot/core/display.svelte.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import { violin_path } from '$lib/plot/core/svg'
-  import { resolve_pattern } from '$lib/plot/core/patterns'
-  import { unique_id } from '$lib/plot/core/utils'
-  import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { violin_path } from '#lib/plot/core/svg.js'
+  import { resolve_pattern } from '#lib/plot/core/patterns.js'
+  import { unique_id } from '#lib/plot/core/utils.js'
+  import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
 
   // Box style props
   interface BoxStyle {

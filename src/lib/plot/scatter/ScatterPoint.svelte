@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { type D3SymbolName, symbol_map } from '$lib/labels'
-  import type { Point2D } from '$lib/math'
-  import type { HoverStyle, LabelStyle, PointStyle } from '$lib/plot/core/types'
-  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
+  import { type D3SymbolName, symbol_map } from '#lib/labels.js'
+  import { lerp, type Point2D } from '#lib/math.js'
+  import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
   import {
     estimate_label_size,
     label_leader_segment,
-  } from '$lib/plot/core/utils/label-placement'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/core/utils/label-placement.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
@@ -44,11 +44,11 @@
     hit_padding?: number
   } = $props()
 
-  type Marker = Point2D & Pick<PointStyle, `radius` | `fill`>
-  const lerp = (from: number, to: number, frac: number): number => from + (to - from) * frac
-  // Size and colour glide with the position, so re-encoding a marker (new size or colour
-  // column, colour scale, log toggle) animates like a data change. Colour blends in RGB; an
-  // unset radius or a colour d3 can't parse (e.g. a CSS variable) switches at the start.
+  type Marker = Point2D & Pick<PointStyle, `radius` | `fill`> & { label: Point2D | null }
+  // Size, colour and the label's offset glide with the position, so re-encoding a marker (new
+  // size or colour column, colour scale, log toggle) or re-placing its label animates like a
+  // data change. Colour blends in RGB; an unset radius or a colour d3 can't parse (e.g. a CSS
+  // variable) switches at the start.
   const interpolate_marker = (from: Marker, to: Marker) => {
     const position = point_tween.interpolate?.(from, to)
     const [from_fill, to_fill] = [rgb(from.fill ?? ``), rgb(to.fill ?? ``)]
@@ -56,6 +56,13 @@
       from.fill !== to.fill && from_fill.displayable() && to_fill.displayable()
     return (frac: number): Marker => ({
       ...(position?.(frac) ?? { x: lerp(from.x, to.x, frac), y: lerp(from.y, to.y, frac) }),
+      label:
+        from.label && to.label
+          ? {
+              x: lerp(from.label.x, to.label.x, frac),
+              y: lerp(from.label.y, to.label.y, frac),
+            }
+          : to.label,
       radius:
         from.radius === undefined || to.radius === undefined
           ? to.radius
@@ -70,11 +77,15 @@
         : to.fill,
     })
   }
+  const label_offset = $derived({ x: label.offset?.x ?? 10, y: label.offset?.y ?? 0 })
   const target = $derived({
     x: coord_x + offset.x,
     y: coord_y + offset.y,
     radius: style.radius,
     fill: style.fill,
+    // null while hidden or awaiting auto-placement, so a label appearing after the plot
+    // settled lands on its placed spot instead of sliding in from the default offset
+    label: label.text && (label.offset || !label.auto_placement) ? label_offset : null,
   })
   // Seeded at the marker's own state so a plot appearing on screen draws it where the data
   // is instead of animating every point in from elsewhere.
@@ -89,7 +100,9 @@
         Object.is(left.x, right.x) &&
         Object.is(left.y, right.y) &&
         Object.is(left.radius, right.radius) &&
-        left.fill === right.fill,
+        left.fill === right.fill &&
+        Object.is(left.label?.x, right.label?.x) &&
+        Object.is(left.label?.y, right.label?.y),
     },
   )
   const { radius, fill } = $derived(tweened.current)
@@ -152,8 +165,7 @@
     style:cursor={style.cursor}
   />
   {#if label.text}
-    {@const offset_x = label.offset?.x ?? 10}
-    {@const offset_y = label.offset?.y ?? 0}
+    {@const { x: offset_x, y: offset_y } = tweened.current.label ?? label_offset}
     {@const displacement = Math.hypot(offset_x, offset_y)}
     {@const leader_line =
       displacement > leader_line_threshold

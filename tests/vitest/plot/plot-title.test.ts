@@ -1,5 +1,5 @@
-import { resolve_plot_title, type PlotTitleMeasure } from '$lib/plot/core/plot-title'
-import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
+import { resolve_plot_title, type PlotTitleMeasure } from '#lib/plot/core/plot-title.js'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mock_canvas_context } from '../setup'
 

@@ -1,4 +1,4 @@
-import { THEME_OPTIONS, type ThemeMode } from '$lib/theme'
+import { THEME_OPTIONS, type ThemeMode } from '#lib/theme/index.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 test.describe(`ThemeControl`, () => {

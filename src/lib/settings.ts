@@ -1,20 +1,16 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import type { D3InterpolateName } from '$lib/colors'
-import {
-  type ColorSchemeName,
-  DEFAULT_FPS_RANGE,
-  ELEMENT_COLOR_SCHEME_NAMES,
-  FPS_STEP,
-} from '$lib/constants'
-import type { HullFaceColorMode } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element/types'
-import { capitalize, symbol_names } from '$lib/labels'
-import type { Vec2, Vec3 } from '$lib/math'
-import type { GizmoOptions } from '$lib/scene/gizmo'
-import type { LegendVisibilityMode } from '$lib/plot/core/utils/series-visibility'
-import { is_plain_object } from '$lib/utils'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ColorSchemeName } from '#lib/constants.js'
+import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '#lib/constants.js'
+import type { HullFaceColorMode } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/types.js'
+import { capitalize, symbol_names } from '#lib/labels.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import type { GizmoOptions } from '#lib/scene/gizmo.js'
+import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
+import { is_plain_object } from '#lib/utils.js'
 
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf

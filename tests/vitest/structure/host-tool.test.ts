@@ -1,20 +1,19 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
-import { parse_file_content } from '$lib/file-viewer/parse'
-import {
-  create_structure_tool_controller,
-  prediction_to_json,
-  prediction_from_json,
-  type StructureToolPrediction,
-  type StructureToolOverlay,
-  type StructureToolProvenance,
-  type StructureToolRun,
-  type StructureToolVolume,
-} from '$lib/structure/host-tool.svelte'
-import { replace_tool_volumes } from '$lib/structure/host-tool-volumes'
-import { auto_volume_layer } from '$lib/isosurface'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { parse_file_content } from '#lib/file-viewer/parse.js'
+import type {
+  StructureToolPrediction,
+  StructureToolOverlay,
+  StructureToolProvenance,
+  StructureToolRun,
+  StructureToolVolume,
+} from '#lib/structure/host-tool.svelte.js'
+import { create_structure_tool_controller } from '#lib/structure/host-tool.svelte.js'
+import { prediction_to_json, prediction_from_json } from '#lib/structure/prediction.js'
+import { replace_tool_volumes } from '#lib/structure/host-tool-volumes.js'
+import { auto_volume_layer } from '#lib/isosurface/types.js'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import type { AnyStructure } from '$lib/structure'
+import type { AnyStructure } from '#lib/structure/index.js'
 import { fcc_primitive_matrix, make_crystal, make_grid, make_volume } from '../test-fixtures'
 
 const provenance: StructureToolProvenance = {

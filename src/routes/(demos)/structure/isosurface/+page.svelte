@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from 'svelte-widgets'
-  import { open_material, type OpenedMaterial } from '$lib/file-viewer/open'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { format_num } from '$lib/labels'
-  import { volumetric_files } from '$site/isosurfaces'
-  import { file_param, replace_url } from '$site/state.svelte'
+  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { format_num } from '#lib/labels.js'
+  import { volumetric_files } from '#site/isosurfaces.js'
+  import { file_param, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
@@ -18,10 +18,11 @@
     auto_isosurface_settings,
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
+    format_data_value,
     Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()
@@ -149,10 +150,11 @@
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP
   <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>/
   <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your own
-  files onto the viewer. Spin-polarized VASP files load as charge and magnetization volumes;
-  the cross-section view slices along HKL or arbitrary Cartesian planes. To render several
-  volumes at once and color one surface by another volume's values (e.g. density by ESP), see
-  the
+  files onto the viewer. Spin-polarized VASP files load one volume per block (charge and
+  magnetization, or ELF and local potential spin up and down) and a surface's
+  <em>Surface of</em> menu switches it between them; the cross-section view slices along HKL or
+  arbitrary Cartesian planes. To render several volumes at once and color one surface by
+  another volume's values (e.g. density by ESP), see the
   <a href="/structure/multi-volume">multi-volume demo</a>.
 </p>
 
@@ -200,9 +202,9 @@
   <div class="demo-stats-bar">
     {#if vol}
       <span title="Grid dimensions">Grid: {vol.dims.join(` × `)}</span>
-      <span title="Data minimum">Min: {format_num(data_range.min, `.3~g`)}</span>
-      <span title="Data maximum">Max: {format_num(data_range.max, `.3~g`)}</span>
-      <span title="Data mean">Mean: {format_num(data_range.mean, `.3~g`)}</span>
+      <span title="Data minimum">Min: {format_data_value(data_range.min, data_range)}</span>
+      <span title="Data maximum">Max: {format_data_value(data_range.max, data_range)}</span>
+      <span title="Data mean">Mean: {format_data_value(data_range.mean, data_range)}</span>
       <span title="Total grid points">
         Points: {format_num(vol.values.length)}
       </span>

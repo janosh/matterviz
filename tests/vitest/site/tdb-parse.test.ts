@@ -5,7 +5,7 @@ import {
   normalize_system_name,
   parse_tdb,
   summarize_models,
-} from '$site/phase-diagrams/tdb-parse'
+} from '#site/phase-diagrams/tdb-parse.js'
 import { describe, expect, test } from 'vitest'
 
 export const SAMPLE_TDB_CONTENT = `

@@ -1,10 +1,14 @@
-import type { ShowControlsProp } from '$lib/controls'
-import Sankey from '$lib/plot/sankey/Sankey.svelte'
-import { plot_color } from '$lib/colors'
-import type { SankeyData, SankeyLinkHandlerProps, SankeyNodeHandlerProps } from '$lib/plot'
+import type { ShowControlsProp } from '#lib/controls.js'
+import Sankey from '#lib/plot/sankey/Sankey.svelte'
+import { plot_color } from '#lib/colors/index.js'
+import type {
+  SankeyData,
+  SankeyLinkHandlerProps,
+  SankeyNodeHandlerProps,
+} from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bucket_sankey_data } from '$lib/plot/sankey/sankey'
+import { bucket_sankey_data } from '#lib/plot/sankey/sankey.js'
 import { mount_sized } from '../setup'
 
 const data: SankeyData = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { JsonTree } from '$lib'
+  import { JsonTree } from '#lib'
 
   // API response with nested data
   const api_response = {
@@ -163,7 +163,7 @@
 
 ```svelte
 <script lang="ts">
-  import { JsonTree } from '$lib'
+  import { JsonTree } from '#lib'
   const data = { name: 'Example', values: [1, 2, 3] }
 </script>
 

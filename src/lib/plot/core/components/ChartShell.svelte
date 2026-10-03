@@ -15,14 +15,14 @@
 </script>
 
 <script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
   // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
   // …) so every chart is themed the same way.
-  import { FullscreenButton } from '$lib/layout'
-  import type { PaneToggleProps } from '$lib/overlays'
+  import { FullscreenButton } from '#lib/layout/index.js'
+  import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -174,6 +174,11 @@
      this row and would otherwise render its whole contents in the contrast color. */
   .header-controls > :global(button) {
     color: var(--chart-chrome-color, inherit);
+  }
+  /* lifted while its pane is open: every chart's row shares one z-index, so a chart further
+     down the page painted its chrome over a pane dragged onto it */
+  .header-controls:has(:global(.draggable-pane.pane-open)) {
+    z-index: var(--z-index-viewer-pane-open, 12);
   }
   /* revealed on hover, while focused, and while the controls pane is open */
   .header-controls.always-visible,

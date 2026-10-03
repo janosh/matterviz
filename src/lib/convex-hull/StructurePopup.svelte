@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { AnyStructure } from '$lib/structure'
-  import { get_electro_neg_formula } from '$lib/composition'
-  import { format_num } from '$lib/labels'
-  import { FloatingPopup, GlassChip } from '$lib/overlays'
-  import { sanitize_formula } from '$lib/sanitize'
-  import { Structure } from '$lib/structure'
+  import type { AnyStructure } from '#lib/structure/index.js'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { FloatingPopup, GlassChip } from '#lib/overlays/index.js'
+  import { sanitize_formula } from '#lib/sanitize.js'
+  import { Structure } from '#lib/structure/index.js'
   import type { StructurePopupContext, StructurePopupStats } from './types'
   import type { ComponentProps, Snippet } from 'svelte'
 

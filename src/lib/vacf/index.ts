@@ -1,5 +1,5 @@
-import type { WindowType } from '$lib/fft'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
+import type { WindowType } from '#lib/fft.js'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import type { VACF_FREQUENCY_UNITS } from './calc-vacf'
 
 export { compute_vacf_async } from './async-compute.svelte'

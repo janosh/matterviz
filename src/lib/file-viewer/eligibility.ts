@@ -13,15 +13,15 @@ import {
   VASP_VOLUMETRIC_REGEX,
   VASPRUN_REGEX,
   XYZ_EXTENSIONS,
-} from '$lib/constants'
-import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '$lib/file-viewer/types'
+} from '#lib/constants.js'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from '#lib/file-viewer/types.js'
 import {
   detect_compression_format,
   is_browser_decompressible_format,
   is_stream_compression_format,
-} from '$lib/io/decompress'
-import { is_structure_file } from '$lib/structure/format-detect'
-import { is_trajectory_filename } from '$lib/trajectory/format-detect'
+} from '#lib/io/decompress.js'
+import { is_structure_file } from '#lib/structure/format-detect.js'
+import { is_trajectory_filename } from '#lib/trajectory/format-detect.js'
 
 // Remove every supported wrapper. Indexed host loading accepts stream formats; the
 // browser additionally accepts ZIP, whose entry name is resolved during decompression.
@@ -58,7 +58,7 @@ const is_fermi_or_volumetric = (normalized: string): boolean =>
   VASP_VOLUMETRIC_REGEX.test(normalized)
 
 // Broad: MatterViz can open/view this file (JSON/YAML structures, keyword trajs, …). Hosts
-// that need a literal extension list use the viewer vocabularies in $lib/constants.
+// that need a literal extension list use the viewer vocabularies in #lib/constants.
 export const is_matterviz_filename = (filename: unknown): boolean => {
   const normalized = normalize_eligible_filename(filename)
   if (normalized === null) return false

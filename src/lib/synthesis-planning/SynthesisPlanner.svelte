@@ -2,12 +2,12 @@
   // Interactive synthesis planner: pick a target and firing conditions, browse ranked precursor
   // routes, inspect each route's competing phases, reaction slice and bench recipe. The plan
   // itself comes from `plan_synthesis`, the same pure function agents call.
-  import { create_flash } from '$lib/effects.svelte'
-  import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '$lib/convex-hull'
-  import type { GasSpecies, PhaseData } from '$lib/convex-hull'
-  import { format_num, plural } from '$lib/labels'
-  import { ToolbarMenu } from '$lib/overlays'
-  import { sanitize_formula } from '$lib/sanitize'
+  import { create_flash } from '#lib/effects.svelte.js'
+  import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/index.js'
+  import type { GasSpecies, PhaseData } from '#lib/convex-hull/index.js'
+  import { format_num, plural } from '#lib/labels.js'
+  import { ToolbarMenu } from '#lib/overlays/index.js'
+  import { sanitize_formula } from '#lib/sanitize.js'
   import { format_plan_text } from './agent'
   import { format_equation_html, format_mev } from './format'
   import { prepare_phase_set, resolve_phase } from './phases'
@@ -28,6 +28,7 @@
     SynthesisConditions,
     SynthesisPlan,
     SynthesisPlanProgress,
+    SynthesisPlanRequest,
     SynthesisRoute,
   } from './types'
   import { onDestroy, untrack } from 'svelte'
@@ -150,6 +151,47 @@
   $effect(() => {
     plan = computed_plan
   })
+  // One plan in flight. A request arriving meanwhile (every step of a temperature drag)
+  // waits, replacing any earlier waiting one, so the worker finishes plans instead of being
+  // torn down and rebuilt per step; a new system or target aborts the stale plan outright.
+  let queued_request: SynthesisPlanRequest | null = null
+  const abort_plans = (): void => {
+    active_controller?.abort()
+    active_controller = undefined
+    queued_request = null
+  }
+  const start_plan = (request: SynthesisPlanRequest): void => {
+    const controller = new AbortController()
+    active_controller = controller
+    planning = true
+    progress = { stage: `preparing`, current: 0, total: 1 }
+    planning_error = null
+    void plan_synthesis_async(request, {
+      signal: controller.signal,
+      on_progress: (update) => {
+        if (!controller.signal.aborted) progress = update
+      },
+    })
+      .then((result) => {
+        if (!controller.signal.aborted) worker_plan = result
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          planning_error = err instanceof Error ? err.message : String(err)
+        }
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        active_controller = undefined
+        const next_request = queued_request
+        queued_request = null
+        if (next_request) start_plan(next_request)
+        else {
+          planning = false
+          progress = null
+        }
+      })
+  }
   $effect(() => {
     const request = {
       entries,
@@ -163,42 +205,21 @@
       keep_route_ids: untrack(() => shortlist_ids),
     }
     if (!entries.length || !target) {
+      abort_plans()
       worker_plan = null
       planning = false
       progress = null
       planning_error = null
       return
     }
-    const controller = new AbortController()
-    active_controller = controller
-    if (planned_entries !== entries || planned_target !== target) worker_plan = null
+    if (planned_entries !== entries || planned_target !== target) {
+      abort_plans()
+      worker_plan = null
+    }
     planned_entries = entries
     planned_target = target
-    planning = true
-    progress = { stage: `preparing`, current: 0, total: 1 }
-    planning_error = null
-    void plan_synthesis_async(request, {
-      signal: controller.signal,
-      on_progress: (update) => {
-        if (!controller.signal.aborted) progress = update
-      },
-    })
-      .then((result) => {
-        if (controller.signal.aborted) return
-        worker_plan = result
-      })
-      .catch((err: unknown) => {
-        if (!controller.signal.aborted) {
-          planning_error = err instanceof Error ? err.message : String(err)
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          planning = false
-          progress = null
-        }
-      })
-    return () => controller.abort()
+    if (active_controller) queued_request = request
+    else start_plan(request)
   })
   onDestroy(() => {
     active_controller?.abort()
@@ -254,11 +275,6 @@
       selected_route_id = selected_route.id
   })
 
-  // Temperature slider commits on release so the plan isn't recomputed on every pixel
-  let temperature_draft = $state(0)
-  $effect(() => {
-    temperature_draft = conditions.temperature ?? 0
-  })
   const toggle_gas = (gas: GasSpecies): void => {
     const current = conditions.open_species ?? []
     conditions = {
@@ -356,14 +372,16 @@
         </select>
       </label>
       <label title="Firing temperature; only gas chemical potentials change with T">
-        T = {temperature_draft} K
+        T = {conditions.temperature ?? 0} K
         <input
           type="range"
           min="0"
           max="2000"
           step="25"
-          bind:value={temperature_draft}
-          onchange={() => (conditions = { ...conditions, temperature: temperature_draft })}
+          bind:value={
+            () => conditions.temperature ?? 0,
+            (temperature) => (conditions = { ...conditions, temperature })
+          }
         />
       </label>
       <ToolbarMenu
@@ -462,7 +480,9 @@
   {#if error}
     <p class="error">{error}</p>
   {/if}
-  {#if planning}
+  <!-- A replan of a shown plan (e.g. per temperature-drag step) keeps the results in place
+    instead of inserting this line above them every step; .main fades only if it runs long -->
+  {#if planning && !computed_plan}
     <p class="progress" role="status">{progress_text}</p>
   {/if}
   {#if computed_plan && !error}
@@ -484,7 +504,7 @@
       <p class="warn">{warning}</p>
     {/each}
 
-    <div class="main">
+    <div class="main" class:replanning={planning} aria-busy={planning}>
       <RouteComparison
         {routes}
         {comparison_options}
@@ -673,6 +693,11 @@
   .main {
     display: grid;
     gap: 1em;
+    transition: opacity 0.2s;
+    &.replanning {
+      opacity: 0.6;
+      transition-delay: 0.15s;
+    }
   }
   summary {
     cursor: pointer;

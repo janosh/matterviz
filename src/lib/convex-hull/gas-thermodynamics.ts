@@ -1,12 +1,12 @@
 // Gas phase thermodynamics for convex hull calculations
 // Enables atmosphere-controlled phase diagram analysis
 
-import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import { drop_cached_hull_data } from './thermodynamics'
-import { BOLTZMANN_EV_PER_K } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { format_num } from '$lib/labels'
-import type { Vec2 } from '$lib/math'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { format_num } from '#lib/labels.js'
+import type { Vec2 } from '#lib/math.js'
 import type {
   GasAnalysis,
   GasSpecies,

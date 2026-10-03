@@ -1,13 +1,13 @@
-import type { PhaseData } from '$lib/convex-hull'
-import RecipeCard from '$lib/synthesis-planning/RecipeCard.svelte'
-import * as hull_thermo from '$lib/convex-hull/thermodynamics'
-import SynthesisPlanner from '$lib/synthesis-planning/SynthesisPlanner.svelte'
-import { plan_synthesis } from '$lib/synthesis-planning/plan'
+import type { PhaseData } from '#lib/convex-hull/index.js'
+import RecipeCard from '#lib/synthesis-planning/RecipeCard.svelte'
+import * as hull_thermo from '#lib/convex-hull/thermodynamics.js'
+import SynthesisPlanner from '#lib/synthesis-planning/SynthesisPlanner.svelte'
+import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type {
   SynthesisConditions,
   SynthesisPlan,
   SynthesisPlanRequest,
-} from '$lib/synthesis-planning/types'
+} from '#lib/synthesis-planning/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query, install_stub_worker } from '../setup'
@@ -119,10 +119,8 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   slider.value = `1000`
   slider.dispatchEvent(new Event(`input`, { bubbles: true }))
   await tick()
-  expect(state.conditions.temperature).toBe(0)
-  expect(slider.value).toBe(`1000`)
-  expect(stub.posted).toHaveLength(1)
-  slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+  // the plan follows the slider while it moves, not once it is released
+  expect(state.conditions.temperature).toBe(1000)
   state.selected_route_id = alternative.id
   await vi.waitFor(() => expect(state.plan?.conditions.temperature).toBe(1000))
   expect(stub.posted).toHaveLength(2)
@@ -151,7 +149,10 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   ).toBe(`1100`)
 })
 
-test(`target changes ignore stale responses and unmount aborts pending work before release`, async () => {
+// A temperature drag replans every step: aborting the pending plan each time tore the worker
+// down and rebuilt it per step, so plans waiting behind one now replace each other and only the
+// latest runs once it lands. A new target still aborts outright.
+test(`condition changes queue behind one plan; target changes abort stale work`, async () => {
   const stub = install_stub_worker<{
     id: number
     input: SynthesisPlanRequest
@@ -161,16 +162,43 @@ test(`target changes ignore stale responses and unmount aborts pending work befo
     target: `BaTiO3`,
     plan: null as SynthesisPlan | null,
     planning: false,
+    conditions: {
+      temperature: 1000,
+      open_species: [`CO2`, `O2`],
+    } satisfies SynthesisConditions,
   })
   const component = mount(SynthesisPlanner, {
     target: document.body,
-    props: bind_props({ entries, show_hull: false }, state),
+    // the map's own worker would share the stub's message log
+    props: bind_props({ entries, show_hull: false, show_opportunity_map: false }, state),
   })
   await vi.waitFor(() => expect(stub.posted).toHaveLength(1))
-  const stale_worker = stub.instances[0]
-  const stale_request = stub.posted[0].message
-  state.target = `BaCO3`
+  const reply = (idx: number) => {
+    const { message } = stub.posted[idx]
+    stub.instances[0].emit(`message`, {
+      data: { id: message.id, result: plan_synthesis(message.input) },
+    })
+  }
+  for (const temperature of [1025, 1050, 1075]) {
+    state.conditions = { ...state.conditions, temperature }
+    await tick()
+  }
+  expect(stub.posted).toHaveLength(1)
+  expect(stub.instances.map((worker) => worker.terminated)).toEqual([0])
+  reply(0)
   await vi.waitFor(() => expect(stub.posted).toHaveLength(2))
+  expect(stub.posted[1].message.input.conditions?.temperature).toBe(1075)
+  expect(state.planning).toBe(true)
+  reply(1)
+  await vi.waitFor(() => expect(state.plan?.conditions.temperature).toBe(1075))
+  expect(state.planning).toBe(false)
+
+  state.conditions = { ...state.conditions, temperature: 1100 }
+  await vi.waitFor(() => expect(stub.posted).toHaveLength(3))
+  const stale_worker = stub.instances[0]
+  const stale_request = stub.posted[2].message
+  state.target = `BaCO3`
+  await vi.waitFor(() => expect(stub.posted).toHaveLength(4))
   expect(stub.instances.map((worker) => worker.terminated)).toEqual([1, 0])
   stale_worker.emit(`message`, {
     data: { id: stale_request.id, result: plan_synthesis(stale_request.input) },

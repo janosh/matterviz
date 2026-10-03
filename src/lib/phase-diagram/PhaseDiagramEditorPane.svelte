@@ -1,13 +1,13 @@
 <script lang="ts">
   import { Edit } from 'svelte-widgets/icons'
-  import { ViewerPane, type PaneToggleProps } from '$lib/overlays'
+  import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
-  import { create_flash } from '$lib/effects.svelte'
-  import { to_error } from '$lib/utils'
+  import { create_flash } from '#lib/effects.svelte.js'
+  import { to_error } from '#lib/utils.js'
 
   let {
     editor_open = $bindable(false),

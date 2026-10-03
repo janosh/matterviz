@@ -1,17 +1,17 @@
 // Bond-angle distribution function (ADF): for every atom, take each pair of its bonded
 // neighbours and record the angle subtended at that atom, then bin over 0-180 degrees.
-// Third member of the local-structure family alongside $lib/rdf and $lib/coordination.
+// Third member of the local-structure family alongside #lib/rdf and #lib/coordination.
 
-import type { Vec3 } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
+import type { Vec3 } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
   compute_bonds,
   intern_site_elements,
   lattice_pbc_or_throw,
-} from '$lib/structure/bonding'
-import { angle_between_vectors } from '$lib/structure/measure'
-import type { Pbc } from '$lib/structure/pbc'
+} from '#lib/structure/bonding.js'
+import { angle_between_vectors } from '#lib/structure/measure.js'
+import type { Pbc } from '#lib/structure/pbc.js'
 
 // Angles are undirected, so the whole distribution lives in [0, 180]
 export const MAX_BOND_ANGLE = 180

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull'
-  import type { ConvexHullEntry, HullModel, PhaseData } from '$lib/convex-hull'
+  import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/index.js'
+  import type { ConvexHullEntry, HullModel, PhaseData } from '#lib/convex-hull/index.js'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],

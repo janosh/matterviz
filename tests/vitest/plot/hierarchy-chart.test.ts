@@ -1,4 +1,4 @@
-import { DEFAULT_FONT_SPEC, measure_text_line } from '$lib/plot/core/text-metrics'
+import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -13,9 +13,9 @@ import {
   node_label_str,
   node_label_variants,
   toggle_muted,
-} from '$lib/plot/core/utils/hierarchy-chart'
-import type { PositionedArc, SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
-import { compute_sunburst_layout } from '$lib/plot/core/utils/hierarchy-layout'
+} from '#lib/plot/core/utils/hierarchy-chart.js'
+import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
 import { describe, expect, test } from 'vitest'
 
 // oxfmt-ignore

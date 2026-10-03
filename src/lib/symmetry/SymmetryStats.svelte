@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SETTINGS_CONFIG } from '$lib/settings'
+  import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { SymmetryDataset, SymmetrySettings } from './analyze'
   import {
     count_symmetry_op_kinds,

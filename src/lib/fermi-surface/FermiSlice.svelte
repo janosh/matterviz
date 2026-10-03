@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib/math'
-  import type { DataSeries } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  import type { Vec3 } from '#lib/math.js'
+  import type { DataSeries } from '#lib/plot/index.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { compute_fermi_slice, slice_axis_label } from './compute'
   import { BAND_COLORS } from './constants'
   import type { FermiSliceData, FermiSurfaceData } from './types'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
 
   let {
     fermi_data,

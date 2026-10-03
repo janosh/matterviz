@@ -2,9 +2,9 @@
   // Isothermal section: the Gibbs triangle tiled by tie-triangles at one temperature, stable
   // phases as vertices, unstable phases faded by hull distance. Hovering a composition shows
   // its tie-triangle (lever rule); drawing reuses the convex-hull canvas helpers.
-  import { add_alpha, default_element_colors } from '$lib/colors'
-  import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-  import type { LabelOpts, Projected } from '$lib/convex-hull/canvas-draw'
+  import { add_alpha, default_element_colors } from '#lib/colors/index.js'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
+  import type { LabelOpts, Projected } from '#lib/convex-hull/canvas-draw.js'
   import {
     build_hull_faces,
     build_hull_pick_index,
@@ -14,13 +14,17 @@
     draw_hull_points,
     face_color_resolver,
     find_hull_entry_at_mouse,
-  } from '$lib/convex-hull/canvas-draw'
-  import { get_energy_color_scale, merge_highlight_style } from '$lib/convex-hull/helpers'
-  import type { ConvexHullEntry } from '$lib/convex-hull/types'
-  import { lerp, type Vec2 } from '$lib/math'
-  import { inside_triangle, TRIANGLE_HEIGHT, xy_to_ternary } from '$lib/plot/ternary/ternary'
+  } from '#lib/convex-hull/canvas-draw.js'
+  import { get_energy_color_scale, merge_highlight_style } from '#lib/convex-hull/helpers.js'
+  import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
+  import { lerp, type Vec2 } from '#lib/math.js'
+  import {
+    inside_triangle,
+    TRIANGLE_HEIGHT,
+    xy_to_ternary,
+  } from '#lib/plot/ternary/ternary.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
+  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
   import { decompose_composition, type DiagramModel } from './compute'
   import type { Decomposition, IsothermalSection, SectionHover, TernaryDisplay } from './types'
   import { TERNARY_COLORS } from './types'

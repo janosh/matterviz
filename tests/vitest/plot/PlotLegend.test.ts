@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { interpolateBlues, interpolateReds } from 'd3-scale-chromatic'
-import { type FillGradient, type LegendItem, PlotLegend } from '$lib/plot'
+import type { FillGradient, LegendItem } from '#lib/plot/index.js'
+import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
 import {
   symbol as d3_symbol,
   symbolAsterisk,

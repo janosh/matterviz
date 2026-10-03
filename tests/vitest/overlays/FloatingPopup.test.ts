@@ -1,4 +1,4 @@
-import FloatingPopup from '$lib/overlays/FloatingPopup.svelte'
+import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, svg_query } from '../setup'

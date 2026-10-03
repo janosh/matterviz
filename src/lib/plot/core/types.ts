@@ -1,21 +1,21 @@
-import type { FileExportContext } from '$lib/io/file-export.svelte'
-import type { ShowControlsProp } from '$lib/controls'
-import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-import type { D3InterpolateName } from '$lib/colors'
-import type { D3SymbolName } from '$lib/labels'
-import type { Point2D, Vec2 } from '$lib/math'
+import type { FileExportContext } from '#lib/io/file-export.svelte.js'
+import type { ShowControlsProp } from '#lib/controls.js'
+import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { D3SymbolName } from '#lib/labels.js'
+import type { Point2D, Vec2 } from '#lib/math.js'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
-import type { Sides } from '$lib/plot/core/layout'
-import type PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-import type { PlotTitleConfig } from '$lib/plot/core/plot-title'
-import type { TicksOption } from '$lib/plot/core/scales'
-import type { TickStrategy } from '$lib/plot/core/tick-layout'
-import type { FillPattern } from '$lib/plot/core/patterns'
-import type { FillGradient } from '$lib/plot/core/types/fills'
-import { type ErrorValues, error_lengths, type PointError } from '$lib/plot/core/error-bars'
-import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
+import type { Sides } from '#lib/plot/core/layout.js'
+import type PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
+import type { PlotTitleConfig } from '#lib/plot/core/plot-title.js'
+import type { TicksOption } from '#lib/plot/core/scales.js'
+import type { TickStrategy } from '#lib/plot/core/tick-layout.js'
+import type { FillPattern } from '#lib/plot/core/patterns.js'
+import type { FillGradient } from '#lib/plot/core/types/fills.js'
+import { type ErrorValues, error_lengths, type PointError } from '#lib/plot/core/error-bars.js'
+import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
 
 export type { TweenOptions } from 'svelte/motion'
 
@@ -727,7 +727,7 @@ export const DEFAULT_SERIES_SYMBOLS = [
 ] as const satisfies readonly D3SymbolName[]
 
 // Sub-domain types live in ./types/* and are re-exported so existing
-// `$lib/plot/core/types` import paths keep working.
-export type * from '$lib/plot/core/types/plot-3d'
-export type * from '$lib/plot/core/types/fills'
-export * from '$lib/plot/core/types/reference-lines'
+// `#lib/plot/core/types.js` import paths keep working.
+export type * from '#lib/plot/core/types/plot-3d.js'
+export type * from '#lib/plot/core/types/fills.js'
+export * from '#lib/plot/core/types/reference-lines.js'

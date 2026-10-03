@@ -1,10 +1,10 @@
 // Re-express a bulk cell so that its c vector crosses the (hkl) lattice planes exactly
 // once. Everything here is exact integer arithmetic on the lattice: no atom is created,
 // destroyed or moved, only the choice of unit cell changes.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { Crystal, Pbc, Site } from '$lib/structure'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { find_lattice_translations, make_site_grid, species_keys_of } from './translations'
 import type { OrientedBulk, SlabOptions } from './types'
 import { SLAB_POSITION_TOLERANCE } from './types'

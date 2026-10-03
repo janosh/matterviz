@@ -1,7 +1,7 @@
 // Pure element-symbol helpers, kept free of Svelte imports so parser modules
 // (which may run inside Web Workers) can import them without pulling the
 // component re-exports in ./index.ts into the worker graph.
-import { ELEM_SYMBOLS, type ElementSymbol } from '$lib/element/types'
+import { ELEM_SYMBOLS, type ElementSymbol } from '#lib/element/types.js'
 
 // Set-backed O(1) element-symbol guard shared by all parsers
 const ELEM_SYMBOL_SET: ReadonlySet<string> = new Set(ELEM_SYMBOLS)

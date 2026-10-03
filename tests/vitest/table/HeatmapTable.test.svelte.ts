@@ -1,4 +1,4 @@
-import type { ShowControlsProp } from '$lib/controls'
+import type { ShowControlsProp } from '#lib/controls.js'
 import type {
   CellSnippetArgs,
   ColumnFilter,
@@ -7,17 +7,10 @@ import type {
   RowData,
   RowId,
   SummaryStat,
-} from '$lib/table'
-import { HeatmapTable } from '$lib/table'
-import {
-  type Component,
-  type ComponentProps,
-  createRawSnippet,
-  flushSync,
-  mount,
-  tick,
-  unmount,
-} from 'svelte'
+} from '#lib/table/index.js'
+import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+import type { Component, ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import * as animations from 'svelte/animate'
 import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'

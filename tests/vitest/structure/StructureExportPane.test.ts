@@ -1,25 +1,20 @@
-import type { AnyStructure } from '$lib'
-import { download } from '$lib/io/fetch'
-import app_css from '$lib/app.css?inline'
-import { export_canvas_as_png, renderer_registry, scene_registry } from '$lib/io/export'
+import type { AnyStructure } from '#lib'
+import { download } from '#lib/io/fetch.js'
+import app_css from '#lib/app.css?inline'
+import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export.js'
+import type { CameraFlight } from '#lib/scene/camera-flight.js'
 import {
   camera_flight_registry,
   create_camera_flight_controller,
-  type CameraFlight,
-} from '$lib/scene/camera-flight'
-import { export_scene_as } from '$lib/scene'
-import { StructureExportPane } from '$lib/structure'
-import * as export_funcs from '$lib/structure/export'
+} from '#lib/scene/camera-flight.js'
+import { export_scene_as } from '#lib/scene/export.js'
+import StructureExportPane from '#lib/structure/StructureExportPane.svelte'
+import * as export_funcs from '#lib/structure/export.js'
 import { mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
-import {
-  PerspectiveCamera,
-  Vector3,
-  type Camera,
-  type Scene,
-  type WebGPURenderer,
-} from 'three/webgpu'
+import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
+import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mock_canvas_context } from '../setup'
 import { simple_structure } from '../test-fixtures'
@@ -30,10 +25,10 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
     props: { export_pane_open: true, ...props },
   })
 
-vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
 // Mock the export functions
-vi.mock(`$lib/structure/export`, async (import_original) => {
+vi.mock(`#lib/structure/export.js`, async (import_original) => {
   const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
   const structure_to_xyz_str = vi.fn(() => `3\ntest\nH 0 0 0`)
   const structure_to_cif_str = vi.fn(() => `data_test\n_cell_length_a 1.0`)
@@ -54,11 +49,11 @@ vi.mock(`$lib/structure/export`, async (import_original) => {
   }
 })
 
-vi.mock(`$lib/io/export`, async (importOriginal) => ({
+vi.mock(`#lib/io/export.js`, async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   export_canvas_as_png: vi.fn(),
 }))
-vi.mock(`$lib/scene/export`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
+vi.mock(`#lib/scene/export.js`, () => ({ export_scene_as: vi.fn(() => Promise.resolve()) }))
 
 describe(`StructureExportPane`, () => {
   let wrapper_div: HTMLDivElement

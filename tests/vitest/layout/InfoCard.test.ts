@@ -1,4 +1,4 @@
-import { InfoCard } from '$lib/layout'
+import InfoCard from '#lib/layout/InfoCard.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

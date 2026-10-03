@@ -1,8 +1,8 @@
 import FlashHarness from './fixtures/FlashHarness.svelte'
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
 import { trigger_intersection } from './setup'
-import { type create_flash, pulsing_highlight_opacity } from '$lib/effects.svelte'
-import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
+import { type create_flash, pulsing_highlight_opacity } from '#lib/effects.svelte.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

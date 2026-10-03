@@ -1,11 +1,11 @@
 <script lang="ts">
   import { ColorInput } from 'svelte-widgets'
-  import { css_color_to_hex } from '$lib/colors'
-  import { track_settings } from '$lib/controls'
-  import { SettingsGroup, SettingsSection } from '$lib/layout'
-  import { format_num } from '$lib/labels'
-  import { ControlPane } from '$lib/overlays'
-  import { DEFAULTS } from '$lib/settings'
+  import { css_color_to_hex } from '#lib/colors/index.js'
+  import { track_settings } from '#lib/controls.js'
+  import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { ControlPane } from '#lib/overlays/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { BrillouinZoneSettings } from './types'
 
   const defaults = DEFAULTS.brillouin

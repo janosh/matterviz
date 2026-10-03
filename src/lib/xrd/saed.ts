@@ -9,9 +9,9 @@
 // and so are all spot positions, |F|² and intensities — only the hkl label printed on a
 // higher-order-zone spot flips sign. Flip zone_hat here (and only here) to adopt the
 // textbook convention; laue_zone is |n| and is invariant either way.
-import * as math from '$lib/math'
-import type { Vec2, Vec3 } from '$lib/math'
-import type { Crystal } from '$lib/structure/index'
+import * as math from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
 import {
   electron_wavelength,
   enumerate_reciprocal_points,

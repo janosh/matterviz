@@ -8,7 +8,7 @@ import {
   BINARY_VIEWER_EXTENSIONS,
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
-} from '$lib/constants'
+} from '#lib/constants.js'
 
 // Everything the browser can decode from a UTF-8 string. `.data` is dropped from the shared
 // list: these types are `defaultFor`, and an extension that generic would make MatterViz the
@@ -72,3 +72,9 @@ export const BASE64_FILE_TYPES: FileTypeSpec[] = [
   ...by_extension([...BINARY_VIEWER_EXTENSIONS, ...GZIP_EXTENSIONS], `base64`),
   by_vasp_name(`\\.gz`, `base64`),
 ]
+
+// Generic HDF5 (Keras weights, NetCDF4, PyTables, …) far outnumbers vaspout.h5 and H5MD
+// trajectories, so MatterViz is only an "Open With" entry for it, never the default opener
+const OPT_IN_EXTENSIONS = new Set([`.h5`, `.hdf5`, `.h5.gz`, `.hdf5.gz`])
+export const is_default_file_type = (spec: FileTypeSpec): boolean =>
+  !(spec.extensions ?? []).some((ext) => OPT_IN_EXTENSIONS.has(ext))

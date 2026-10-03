@@ -1,15 +1,14 @@
-import type { CompositionType } from '$lib'
+import type { CompositionType } from '#lib'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import {
-  count_atoms_in_composition,
   extract_formula_elements,
   fractional_composition,
-  get_reduced_formula,
   normalize_formula_unicode,
   parse_composition,
   parse_formula,
   parse_formula_with_oxidation,
   parse_formula_with_wildcards,
-} from '$lib/composition'
+} from '#lib/composition/parse.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`parse_formula`, () => {

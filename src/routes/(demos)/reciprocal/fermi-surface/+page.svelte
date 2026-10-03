@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FermiSurfaceDemo } from '$site'
+  import { FermiSurfaceDemo } from '#site'
 </script>
 
 <svelte:head>

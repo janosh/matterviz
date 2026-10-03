@@ -1,14 +1,14 @@
-import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
-import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
+import type { MeasuredAxis } from '#lib/plot/core/tick-layout.js'
 import {
   BREAKABLE_SPACE_RE,
   DEFAULT_FONT_SPEC,
   measure_text_line,
   wrap_text_paragraph,
-} from '$lib/plot/core/text-metrics'
-import type { FontSpec, TextLineMetrics } from '$lib/plot/core/text-metrics'
-import type { AxisConfig } from '$lib/plot/core/types'
-import { html_to_text } from '$lib/utils'
+} from '#lib/plot/core/text-metrics.js'
+import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
+import type { AxisConfig } from '#lib/plot/core/types.js'
+import { html_to_text } from '#lib/utils.js'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 

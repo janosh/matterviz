@@ -1,4 +1,4 @@
-import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
+import type { OptimadeProvider, OptimadeStructure } from '#lib/api/optimade.js'
 
 // Complete mock structures for testing with full lattice, species, and positions
 export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {

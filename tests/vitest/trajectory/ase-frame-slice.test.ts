@@ -3,12 +3,12 @@
 // tests pin the two things that makes possible — that a frame's byte span is
 // self-contained, and that decoding the span yields exactly the frame the
 // whole-file parser produces.
-import type { AseFrameOptions } from '$lib/trajectory/parse/ase'
+import type { AseFrameOptions } from '#lib/trajectory/parse/ase.js'
 import {
   decode_ase_frame,
   parse_ase_trajectory,
   read_ase_header,
-} from '$lib/trajectory/parse/ase'
+} from '#lib/trajectory/parse/ase.js'
 import { describe, expect, test } from 'vitest'
 import { read_binary_test_file } from '../test-fixtures'
 

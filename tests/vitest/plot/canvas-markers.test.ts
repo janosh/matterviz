@@ -1,5 +1,5 @@
-import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
-import { prepare_canvas } from '$lib/plot/core/utils'
+import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
+import { prepare_canvas } from '#lib/plot/core/utils.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 afterEach(() => {

@@ -1,5 +1,5 @@
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { make_phase } from '../../test-fixtures'
 
 // Li-Na-K toy system with one T-dependent phase. Elements are synthetic (dG_f = 0), so AB's

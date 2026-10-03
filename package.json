@@ -24,6 +24,13 @@
     "**/file-viewer/main.*",
     "**/theme/embedded.*"
   ],
+  "imports": {
+    "#lib": "./src/lib/index.ts",
+    "#lib/*": "./src/lib/*",
+    "#site": "./src/site/index.ts",
+    "#site/*": "./src/site/*",
+    "#root/*": "./*"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -284,7 +291,7 @@
     "test": "vitest run && playwright test",
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
-    "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs",
+    "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && node src/scripts/check-dist-imports.mjs",
     "build:anywidget": "pnpm package:dist && printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > extensions/anywidget/pnpm-workspace.yaml && pnpm -C extensions/anywidget install --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
     "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
@@ -313,10 +320,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@sveltejs/adapter-static": "3.0.10",
-    "@sveltejs/kit": "2.70.3",
-    "@sveltejs/package": "^2.5.8",
-    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@sveltejs/adapter-static": "^4.0.0",
+    "@sveltejs/kit": "^3.0.0",
+    "@sveltejs/package": "^3.0.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@types/d3-array": "^3.2.2",
     "@types/d3-color": "^3.1.3",
     "@types/d3-contour": "^3.0.6",
@@ -330,18 +337,18 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.4.1",
     "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "5.0.0",
+    "@vitest/coverage-v8": "5.0.1",
     "@wooorm/starry-night": "^3.11.0",
     "happy-dom": "^20.14.0",
     "knip": "^6.34.0",
     "pagefind": "^1.5.2",
     "publint": "^0.3.24",
-    "svelte": "^5.57.0",
+    "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
-    "vite-plus": "0.3.0",
-    "vitest": "5.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
+    "vite-plus": "1.0.0",
+    "vitest": "5.0.1"
   },
   "peerDependencies": {
     "svelte": "^5.48.0"
@@ -354,27 +361,12 @@
     "workspaces": {
       ".": {
         "entry": [
-          "svelte.config.ts",
           "src/site/**/*.{js,ts,svelte}",
           "src/scripts/capture-screenshots.mjs",
           "src/scripts/fetch-elem-images.mjs",
           "src/lib/scene/three-compat.ts",
           "src/routes/(demos)/structure/host-tool/prediction-worker.ts"
         ],
-        "paths": {
-          "$lib": [
-            "./src/lib"
-          ],
-          "$lib/*": [
-            "./src/lib/*"
-          ],
-          "$site": [
-            "./src/site"
-          ],
-          "$site/*": [
-            "./src/site/*"
-          ]
-        },
         "ignore": [
           ".venv/**",
           "extensions/anywidget/**"
@@ -383,15 +375,7 @@
       "extensions/vscode": {
         "entry": [
           "src/extension.ts"
-        ],
-        "paths": {
-          "$lib": [
-            "../../src/lib"
-          ],
-          "$lib/*": [
-            "../../src/lib/*"
-          ]
-        }
+        ]
       },
       "extensions/jupyterlab": {
         "entry": [
@@ -401,15 +385,7 @@
           "@jupyterlab/builder",
           "@spglib/moyo-wasm",
           "process"
-        ],
-        "paths": {
-          "$lib": [
-            "../../src/lib"
-          ],
-          "$lib/*": [
-            "../../src/lib/*"
-          ]
-        }
+        ]
       }
     }
   }

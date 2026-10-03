@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { create_flash } from '$lib/effects.svelte'
-  import { format_num } from '$lib/labels'
-  import { sanitize_formula } from '$lib/sanitize'
+  import { create_flash } from '#lib/effects.svelte.js'
+  import { format_num } from '#lib/labels.js'
+  import { sanitize_formula } from '#lib/sanitize.js'
   import { format_equation_html } from './format'
   import {
     build_route_recipe,

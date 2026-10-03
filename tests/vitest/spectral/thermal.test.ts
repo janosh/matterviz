@@ -1,6 +1,7 @@
-import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '$lib/constants'
-import { frequency_unit_per_thz, thermal_properties } from '$lib/spectral'
-import type { PhononDos } from '$lib/spectral'
+import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '#lib/constants.js'
+import { frequency_unit_per_thz } from '#lib/spectral/frequency-units.js'
+import { thermal_properties } from '#lib/spectral/thermal.js'
+import type { PhononDos } from '#lib/spectral/index.js'
 import { describe, expect, test } from 'vitest'
 import { load_json } from '../test-fixtures'
 

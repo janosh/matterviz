@@ -1,4 +1,4 @@
-import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
+import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
 import { mount, unmount, type Snippet } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
 import { on } from 'svelte/events'

@@ -1,10 +1,10 @@
 import { line } from 'd3-shape'
-import { line_curve_factory } from '$lib/plot/core/fill-utils'
-import type { Vec2 } from '$lib/math'
-import type { AxisRanges, DataSeries } from '$lib/plot'
-import { plot_color } from '$lib/colors'
-import { get_series_symbol } from '$lib/plot/core/data-transform'
-import type { LegendFill } from '$lib/plot/scatter/scatter-data'
+import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
+import type { Vec2 } from '#lib/math.js'
+import type { AxisRanges, DataSeries } from '#lib/plot/index.js'
+import { plot_color } from '#lib/colors/index.js'
+import { get_series_symbol } from '#lib/plot/core/data-transform.js'
+import type { LegendFill } from '#lib/plot/scatter/scatter-data.js'
 import {
   build_fill_legend_items,
   build_series_legend_items,
@@ -14,7 +14,7 @@ import {
   pick_tooltip_bg,
   project_line_points,
   strict_x_direction,
-} from '$lib/plot/scatter/scatter-data'
+} from '#lib/plot/scatter/scatter-data.js'
 import { describe, expect, test } from 'vitest'
 
 const color_scale = (val: number) => `scale(${val})`

@@ -5,10 +5,10 @@
 // Frames are analysed one at a time in the RDF worker and only the n_pairs x n_bins
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
-import { calc_lattice_params } from '$lib/math'
-import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
-import type { FrameRange, TrajectoryRun } from '$lib/trajectory'
-import { sweep_frames } from '$lib/trajectory/analysis'
+import { calc_lattice_params } from '#lib/math.js'
+import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
+import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
+import { sweep_frames } from '#lib/trajectory/analysis.js'
 import { calc_frame_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
 import { coordination_number } from './calc-pdf'
 import type { FrameRdfOptions } from './calc-rdf'

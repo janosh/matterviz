@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import type { StructurePlotProps } from '$lib/plot/bar'
-  import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
+  import { format_num } from '#lib/labels.js'
+  import type { StructurePlotProps } from '#lib/plot/bar/index.js'
+  import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
     compute_structure_entries,
     to_structure_entries,
-  } from '$lib/plot/core/structure-input'
-  import type { StructureEntry } from '$lib/plot/core/structure-input'
-  import type { BarHandlerProps } from '$lib/plot/core/types'
-  import { to_error } from '$lib/utils'
+  } from '#lib/plot/core/structure-input.js'
+  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
+  import type { BarHandlerProps } from '#lib/plot/core/types.js'
+  import { to_error } from '#lib/utils.js'
   import {
     bin_bond_angles,
     calc_bond_angles,

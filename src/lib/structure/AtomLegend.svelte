@@ -1,24 +1,28 @@
 <script lang="ts">
-  import { contrast_text_color, perceived_brightness, resolve_backdrop } from '$lib/colors'
-  import type { CompositionType } from '$lib/composition'
-  import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '$lib/element'
+  import {
+    contrast_text_color,
+    perceived_brightness,
+    resolve_backdrop,
+  } from '#lib/colors/index.js'
+  import type { CompositionType } from '#lib/composition/index.js'
+  import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { Icon } from 'svelte-widgets'
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
-  import { ELEM_SYMBOLS, format_num } from '$lib/labels'
-  import { ColorBar } from '$lib/plot'
-  import type { AnyStructure } from '$lib/structure'
-  import { get_element_palette } from '$lib/structure/element-palette.svelte'
-  import { atomic_radii, site_base_radius } from '$lib/structure'
-  import type { AtomColorMode } from '$lib/settings'
-  import type { AtomColorConfig, AtomPropertyColors } from '$lib/structure/atom-properties'
+  import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { ColorBar } from '#lib/plot/index.js'
+  import type { AnyStructure } from '#lib/structure/index.js'
+  import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
+  import { atomic_radii, site_base_radius } from '#lib/structure/index.js'
+  import type { AtomColorMode } from '#lib/settings.js'
+  import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties.js'
   import {
     DEFAULT_ATOM_COLOR_CONFIG,
     get_colorable_property_keys,
     get_atom_color_mode_options,
     next_atom_color_config,
     structure_has_selective_dynamics,
-  } from '$lib/structure/atom-properties'
-  import type { SymmetryDataset } from '$lib/symmetry'
+  } from '#lib/structure/atom-properties.js'
+  import type { SymmetryDataset } from '#lib/symmetry/index.js'
   import { type Snippet, untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'

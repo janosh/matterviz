@@ -1,8 +1,8 @@
 import {
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
-} from '$lib/file-viewer/eligibility'
-import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
+} from '#lib/file-viewer/eligibility.js'
+import { is_indexable_trajectory_filename } from '#lib/trajectory/format-detect.js'
 
 export interface LargeFileMarker {
   file_path: string

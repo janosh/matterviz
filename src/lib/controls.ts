@@ -1,5 +1,5 @@
 import { untrack } from 'svelte'
-import { is_plain_object } from '$lib/utils'
+import { is_plain_object } from '#lib/utils.js'
 
 // Shared visibility contract for viewer and plot controls.
 

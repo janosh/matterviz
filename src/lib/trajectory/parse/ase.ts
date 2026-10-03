@@ -1,9 +1,9 @@
-import { element_by_symbol } from '$lib/element/data'
-import { element_from_atomic_number } from '$lib/element/helpers'
-import { EV_PER_A3_TO_GPA, FS_IN_ASE_TIME } from '$lib/constants'
-import * as math from '$lib/math'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
-import type { Pbc } from '$lib/structure'
+import { element_by_symbol } from '#lib/element/data.js'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { FS_IN_ASE_TIME } from '#lib/constants.js'
+import * as math from '#lib/math.js'
+import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
+import type { Pbc } from '#lib/structure/index.js'
 import {
   calc_force_stats,
   checked_site_forces,
@@ -11,9 +11,10 @@ import {
   create_plot_row_frame,
   create_trajectory_frame,
   values_per_sample,
-} from '$lib/trajectory/helpers'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
-import { to_error } from '$lib/utils'
+} from '#lib/trajectory/helpers.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { to_error } from '#lib/utils.js'
+import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
 
@@ -113,19 +114,6 @@ const CALCULATOR_BOOKKEEPING_KEYS = new Set([`name`, `parameters`])
 type NdarrayReader = (ref: { ndarray: unknown[] }) => number[][]
 const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
   Boolean(value && typeof value === `object` && `ndarray` in value)
-// Pressure (GPa, compression positive) from an ASE stress: a 6-component Voigt vector
-// [xx, yy, zz, yz, xz, xy] or a 3x3 tensor, both in eV/Å³ with tension positive
-const ase_pressure = (stress: unknown): number | undefined => {
-  const values = Array.isArray(stress) ? stress.flat() : []
-  const diagonal = values.length === 6 ? [0, 1, 2] : values.length === 9 ? [0, 4, 8] : null
-  if (
-    !diagonal ||
-    !values.every((value) => typeof value === `number` && Number.isFinite(value))
-  )
-    return undefined
-  const [xx, yy, zz] = diagonal.map((idx) => values[idx])
-  return (-(xx + yy + zz) / 3) * EV_PER_A3_TO_GPA
-}
 
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
@@ -161,8 +149,11 @@ export const ase_calculator_data = (
     const array = read_ndarray(value)
     results[result_key] = shape.length === 1 ? array[0] : array
   }
-  const pressure = ase_pressure(results.stress)
-  if (pressure !== undefined && !(`pressure` in results)) results.pressure = pressure
+  // stress in the readers' shared convention (GPa, compression positive); an explicit
+  // pressure result wins over the one derived from it
+  const stress = ase_stress_metadata(results.stress)
+  if (stress)
+    Object.assign(results, { ...stress, pressure: results.pressure ?? stress.pressure })
   return results
 }
 

@@ -1,4 +1,4 @@
-import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
+import { is_vaspwave_filename, parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
 import { describe, expect, it } from 'vitest'
 import { grid_value, read_binary_test_file } from '../test-fixtures'
 
@@ -82,6 +82,9 @@ describe(`vaspwave filename routing`, () => {
     [`random.h5`, false],
     [`vaspwave.h5.gz`, false],
     [`vaspwave.json`, false],
+    // only the file's own name counts, on either path separator
+    [`vaspwave_runs/vaspout.h5`, false],
+    [`C:\\runs\\vaspwave_test\\vaspout.h5`, false],
   ])(`is_vaspwave_filename(%s) -> %s`, (filename, expected) => {
     expect(is_vaspwave_filename(filename)).toBe(expected)
   })

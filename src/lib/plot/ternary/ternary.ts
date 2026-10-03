@@ -5,9 +5,9 @@
 // Corner convention matches the convex hull and the isothermal ternary sections
 // (TRIANGLE_VERTICES): the first component sits at the right corner, the second at the
 // top, the third at the left.
-import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-import type { Vec2, Vec3 } from '$lib/math'
-import type { LineStyle, Markers, PointStyle } from '$lib/plot/core/types'
+import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import type { LineStyle, Markers, PointStyle } from '#lib/plot/core/types.js'
 
 export const TRIANGLE_HEIGHT = TRIANGLE_VERTICES[1][1]
 

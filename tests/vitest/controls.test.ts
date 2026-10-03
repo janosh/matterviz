@@ -1,6 +1,6 @@
 // Unit tests for controls visibility configuration
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { normalize_show_controls, track_settings } from '$lib/controls'
+import { normalize_show_controls, track_settings } from '#lib/controls.js'
 
 describe(`normalize_show_controls`, () => {
   it(`returns hover mode with every control visible when undefined`, () => {

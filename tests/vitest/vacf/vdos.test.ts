@@ -1,4 +1,5 @@
-import { calc_vacf, type VacfResult } from '$lib/vacf'
+import type { VacfResult } from '#lib/vacf/index.js'
+import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import { describe, expect, it } from 'vitest'
 import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 

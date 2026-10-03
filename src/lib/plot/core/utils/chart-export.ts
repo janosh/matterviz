@@ -2,11 +2,11 @@
 // hierarchy charts had this wired up privately; the Cartesian ones had no way to get
 // a figure out at all, which for a scientific viewer is a routine ask.
 
-import { DEFAULT_PNG_DPI } from '$lib/constants'
-import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-import { download } from '$lib/io/fetch'
+import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+import { download } from '#lib/io/fetch.js'
 import { unique_id } from '../utils'
-import type { FileExportContext, FileSaver } from '$lib/io/file-export.svelte'
+import type { FileExportContext, FileSaver } from '#lib/io/file-export.svelte.js'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type ChartExportFormat = `png` | `svg` | `csv`

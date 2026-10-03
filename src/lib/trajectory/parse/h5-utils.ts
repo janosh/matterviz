@@ -1,11 +1,11 @@
-import { transpose_3x3_matrix, type Matrix3x3 } from '$lib/math'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { transpose_3x3_matrix, type Matrix3x3 } from '#lib/math.js'
+import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import type {
   PositionStreamOptions,
   TrajectoryMetadata,
   TrajectorySignal,
   TrajectorySignalDescriptor,
-} from '$lib/trajectory/index'
+} from '#lib/trajectory/index.js'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import { DEFAULT_POSITION_STREAM_MAX_BYTES, resolve_frame_range } from '../runs/accumulate'

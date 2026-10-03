@@ -1,18 +1,12 @@
 // Shared Svelte wiring for viewer convenience inputs. Acquisition and parsing stay in
 // open_material; viewers only validate and commit the typed result they understand.
-import type { FileLoadCallback } from '$lib/io'
-import { raw_file_drop_zone } from '$lib/io'
-import { to_error } from '$lib/utils'
+import type { FileLoadCallback } from '#lib/io/index.js'
+import { raw_file_drop_zone } from '#lib/io/file-drop.js'
+import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
-import {
-  acquire_material,
-  MaterialOpenError,
-  open_material,
-  source_provenance,
-  type MaterialSource,
-  type OpenedMaterial,
-} from './open'
+import type { MaterialSource, OpenedMaterial } from './open'
+import { acquire_material, MaterialOpenError, open_material, source_provenance } from './open'
 
 export interface MaterialLoaderInputs<Value> {
   source: () => MaterialSource | undefined

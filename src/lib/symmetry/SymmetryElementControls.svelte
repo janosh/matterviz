@@ -6,7 +6,7 @@ only drawn while the viewer renders the analyzed (input) cell; pass `in_input_fr
 while a conventional/primitive cell is shown to disable the toggles and say why. -->
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import type { ShowSymmetryKinds, SymmetryElement } from './symmetry-elements'
   import {
     count_symmetry_elements,

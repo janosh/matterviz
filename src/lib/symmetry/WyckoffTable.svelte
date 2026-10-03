@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop } from '$lib/colors'
-  import { format_fractional } from '$lib/labels'
-  import { get_element_palette } from '$lib/structure/element-palette.svelte'
+  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { format_fractional } from '#lib/labels.js'
+  import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { WyckoffPos } from './wyckoff'

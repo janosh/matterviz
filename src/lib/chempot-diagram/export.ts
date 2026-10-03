@@ -1,9 +1,9 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
-import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '$lib/io/export'
-import { download } from '$lib/io/fetch'
-import type { FileSaver } from '$lib/io/file-export.svelte'
-import { export_scene_as } from '$lib/scene'
-import { escape_html as xml_escape } from '$lib/utils'
+import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '#lib/io/export.js'
+import { download } from '#lib/io/fetch.js'
+import type { FileSaver } from '#lib/io/file-export.svelte.js'
+import { export_scene_as } from '#lib/scene/index.js'
+import { escape_html as xml_escape } from '#lib/utils.js'
 import * as THREE from 'three/webgpu'
 
 export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)

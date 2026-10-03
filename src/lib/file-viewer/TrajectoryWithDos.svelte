@@ -2,9 +2,9 @@
   // Trajectory viewer with an electronic DOS panel below it, for vaspout.h5
   // files that carry results/electron_dos alongside the ionic trajectory.
   // Single component so create_display keeps returning one mountable app.
-  import type { DosData } from '$lib/spectral'
-  import Dos from '$lib/spectral/Dos.svelte'
-  import Trajectory from '$lib/trajectory/Trajectory.svelte'
+  import type { DosData } from '#lib/spectral/index.js'
+  import Dos from '#lib/spectral/Dos.svelte'
+  import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import type { ComponentProps } from 'svelte'
 
   let {

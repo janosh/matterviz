@@ -1,10 +1,10 @@
-import { PLOT_COLORS } from '$lib/colors'
-import type { OtherBucketInfo, SunburstLayoutOptions, SunburstNode } from '$lib/plot'
+import { PLOT_COLORS } from '#lib/colors/index.js'
+import type { OtherBucketInfo, SunburstLayoutOptions, SunburstNode } from '#lib/plot/index.js'
 import {
   compute_sunburst_layout,
   sunburst_from_labels_parents,
   sunburst_from_paths,
-} from '$lib/plot'
+} from '#lib/plot/core/utils/hierarchy-layout.js'
 import { hsl } from 'd3-color'
 import { describe, expect, test, vi } from 'vitest'
 

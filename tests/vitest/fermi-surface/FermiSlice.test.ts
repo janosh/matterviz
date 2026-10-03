@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 // Tests for FermiSlice.svelte component (ScatterPlot-based implementation)
-import FermiSlice from '$lib/fermi-surface/FermiSlice.svelte'
-import type { FermiSliceData, FermiSurfaceData } from '$lib/fermi-surface/types'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import FermiSlice from '#lib/fermi-surface/FermiSlice.svelte'
+import type { FermiSliceData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, mount_sized } from '../setup'

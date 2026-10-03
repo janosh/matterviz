@@ -1,13 +1,14 @@
-import { make_site } from '$lib/structure/site'
+import { make_site } from '#lib/structure/site.js'
+import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
 import {
-  calc_trajectory_spectroscopy,
   collect_trajectory_spectroscopy_input,
   spectroscopy_stream_channels,
   trajectory_signal_keys,
-} from '$lib/spectral'
-import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import { is_signal_descriptor } from '$lib/trajectory'
-import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
+} from '#lib/spectral/spectroscopy-collect.js'
+import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+import { is_signal_descriptor } from '#lib/trajectory/run.js'
+import { open_trajectory } from '#lib/trajectory/open.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { describe, expect, it, vi } from 'vitest'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'
 

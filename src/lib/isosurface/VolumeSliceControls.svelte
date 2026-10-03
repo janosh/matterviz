@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
-  import { ISO_COLORMAPS } from '$lib/isosurface/coloring'
+  import { track_settings } from '#lib/controls.js'
+  import { ISO_COLORMAPS } from '#lib/isosurface/coloring.js'
+  import type { VolumetricData } from '#lib/isosurface/types.js'
   import {
-    normalize_active_volume_id,
+    format_data_value,
     index_volumes,
-    type VolumetricData,
-  } from '$lib/isosurface/types'
-  import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
-  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import type { Vec3 } from '$lib/math'
+    normalize_active_volume_id,
+  } from '#lib/isosurface/types.js'
+  import { format_num } from '#lib/labels.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import MillerIndexInput from '#lib/MillerIndexInput.svelte'
+  import type { Vec3 } from '#lib/math.js'
   import { resolve_slice_cartesian_point } from './slice'
   import { create_volume_slice_settings } from './slice-settings'
   import type { VolumeSlicePlaneMode, VolumeSliceSettings } from './slice-settings'
@@ -263,10 +264,10 @@
 
   {#if active_volume}
     <div class="grid-info">
-      {active_volume.dims.join(` × `)} grid &nbsp;|&nbsp; [{format_num(
+      {active_volume.dims.join(` × `)} grid &nbsp;|&nbsp; [{format_data_value(
         active_volume.data_range.min,
-        `.3~g`,
-      )}, {format_num(active_volume.data_range.max, `.3~g`)}]
+        active_volume.data_range,
+      )}, {format_data_value(active_volume.data_range.max, active_volume.data_range)}]
     </div>
   {/if}
 </SettingsSection>

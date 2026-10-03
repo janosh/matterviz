@@ -1,11 +1,11 @@
-import type { CollectPositionsOptions, TrajectoryRun } from '$lib/trajectory'
-import { trajectory_from_frames } from '$lib/trajectory'
+import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import {
-  calc_vacf,
   collect_vacf_input,
   suggest_vacf_frame_stride,
   VELOCITY_SITE_PROPERTY,
-} from '$lib/vacf'
+} from '#lib/vacf/collect.js'
 import { describe, expect, it, vi } from 'vitest'
 import { make_frame } from '../test-fixtures'
 import { max_abs_error, orbit_run } from './helpers'

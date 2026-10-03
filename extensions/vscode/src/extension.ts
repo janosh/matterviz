@@ -1,34 +1,29 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // VS Code's webview postMessage API takes a single argument (no targetOrigin),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
-} from '$lib/file-viewer/eligibility'
-import { plan_host_file_transfer } from '$lib/file-viewer/host-transfer'
-import type { HostTransferRejectReason } from '$lib/file-viewer/host-transfer'
+} from '#lib/file-viewer/eligibility.js'
+import { plan_host_file_transfer } from '#lib/file-viewer/host-transfer.js'
+import type { HostTransferRejectReason } from '#lib/file-viewer/host-transfer.js'
 import type {
   FileData,
   HostToWebviewMessage,
   WebviewBootstrapData,
   WebviewToHostMessage,
-} from '$lib/file-viewer/host-protocol'
-import { is_plain_object, to_error } from '$lib/utils'
+} from '#lib/file-viewer/host-protocol.js'
+import { is_plain_object, to_error } from '#lib/utils.js'
 import { format_bytes } from 'svelte-widgets/format'
-import type { DefaultSettings, SettingType } from '$lib/settings'
-import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '$lib/settings'
-import {
-  AUTO_THEME,
-  COLOR_THEMES,
-  is_valid_theme_mode,
-  THEME_TYPE,
-  type ThemeName,
-} from '$lib/theme'
-// Deep imports: the $lib/trajectory barrel re-exports Svelte components and worker-backed
+import type { DefaultSettings, SettingType } from '#lib/settings.js'
+import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '#lib/settings.js'
+import type { ThemeName } from '#lib/theme/index.js'
+import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, THEME_TYPE } from '#lib/theme/index.js'
+// Deep imports: the #lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
-import { open_trajectory } from '$lib/trajectory/open'
-import { summarize_run, type TrajectoryRun } from '$lib/trajectory/run'
+import { open_trajectory } from '#lib/trajectory/open.js'
+import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run.js'
 import { Buffer } from 'node:buffer'
 import * as file_system from 'node:fs'
 import * as operating_system from 'node:os'

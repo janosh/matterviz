@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { PatternEntry, XrdPattern } from '$lib/xrd'
-  import { XrdPlot } from '$lib/xrd'
+  import type { PatternEntry, XrdPattern } from '#lib/xrd/index.js'
+  import { XrdPlot } from '#lib/xrd/index.js'
 
   // Deterministic synthetic XRD-like patterns (angles in degrees, intensities arbitrary)
   const pattern_a: XrdPattern = {

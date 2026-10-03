@@ -1,12 +1,12 @@
 // Three.js scene → STL / OBJ+MTL / GLB download, shared by the Fermi surface, structure and
 // chemical potential exporters. The exporters are lazy-imported so viewers that never export
 // don't ship them.
-import { AtomInstances } from '$lib/structure/atom-instances'
-import { ArrowMesh } from '$lib/structure/arrow-mesh'
-import { BondMesh } from '$lib/structure/bond-mesh'
-import { download } from '$lib/io/fetch'
-import type { FileSaver } from '$lib/io/file-export.svelte'
-import { clamp01, to_error } from '$lib/utils'
+import { AtomInstances } from '#lib/structure/atom-instances.js'
+import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
+import { BondMesh } from '#lib/structure/bond-mesh.js'
+import { download } from '#lib/io/fetch.js'
+import type { FileSaver } from '#lib/io/file-export.svelte.js'
+import { clamp01, to_error } from '#lib/utils.js'
 import type { InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {
   BufferGeometry,

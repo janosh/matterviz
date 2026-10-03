@@ -1,12 +1,12 @@
-import { rescale_zoom_to_fit } from '$lib/chempot-diagram/camera'
-import ChemPotControls from '$lib/chempot-diagram/ChemPotControls.svelte'
+import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
+import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
 import {
   CHEMPOT_COLOR_MODE_OPTIONS,
   CHEMPOT_COLOR_SCALE_OPTIONS,
   create_chempot_overrides,
-} from '$lib/chempot-diagram/controls-state.svelte'
-import type { ChemPotDiagramConfig } from '$lib/chempot-diagram/types'
-import { CHEMPOT_DEFAULTS } from '$lib/chempot-diagram/types'
+} from '#lib/chempot-diagram/controls-state.svelte.js'
+import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
+import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import { readFileSync } from 'node:fs'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'

@@ -1,9 +1,10 @@
-import { build_diagram, find_phase_at_point } from '$lib/phase-diagram'
-import type { DiagramPoint } from '$lib/phase-diagram/diagram-input'
+import { build_diagram } from '#lib/phase-diagram/build-diagram.js'
+import { find_phase_at_point } from '#lib/phase-diagram/utils.js'
+import type { DiagramPoint } from '#lib/phase-diagram/diagram-input.js'
 import {
   parse_phase_diagram_svg,
   trace_region_outline,
-} from '$lib/phase-diagram/svg-to-diagram'
+} from '#lib/phase-diagram/svg-to-diagram.js'
 import { describe, expect, it, vi } from 'vitest'
 
 // Both fixtures draw the same diagram: plot area px x 100..500 ↔ composition 0..1,

@@ -1,9 +1,9 @@
 <script lang="ts">
   // Translucent (hkl) lattice planes clipped to the displayed block, with opaque outlines so
   // overlapping planes stay legible (same treatment as the mirror planes in SymmetryElements).
-  import type { Matrix3x3, Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
-  import { dispose_on_change, positions_geometry } from '$lib/scene/geometry.svelte'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte.js'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
   import { untrack } from 'svelte'

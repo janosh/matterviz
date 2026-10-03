@@ -2,10 +2,11 @@
 // tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts; this pins what structure-id
 // layers on top: the max-frames cap and CSP skip it hands the sweep, its progress relay, and
 // the sweep landing in the bound `result`.
-import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
-import * as collect from '$lib/structure-id/collect'
-import type { StructureIdSweep } from '$lib/structure-id/collect'
-import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
+import * as collect from '#lib/structure-id/collect.js'
+import type { StructureIdSweep } from '#lib/structure-id/collect.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'

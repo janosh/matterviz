@@ -1,6 +1,6 @@
-import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
-import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/core/types'
+import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math.js'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
+import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
 
 // Get coordinates of a mouse event relative to an element (the event's
 // currentTarget by default; pass `element` when the handler is delegated and the

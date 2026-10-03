@@ -1,8 +1,8 @@
-import type { CompositionType } from '$lib/composition'
-import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '$lib/constants'
-import * as math from '$lib/math'
-import type { Vec2 } from '$lib/math'
-import type { RadiationType } from '$lib/scattering'
+import type { CompositionType } from '#lib/composition/index.js'
+import { ELEMENTARY_CHARGE_C, PLANCK_J_S, SPEED_OF_LIGHT_M_S } from '#lib/constants.js'
+import * as math from '#lib/math.js'
+import type { Vec2 } from '#lib/math.js'
+import type { RadiationType } from '#lib/scattering/index.js'
 import {
   ELECTRON_FORM_FACTOR_CONST,
   form_factor_z,
@@ -11,11 +11,11 @@ import {
   neutron_scattering_length,
   scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
-} from '$lib/scattering'
-import type { Crystal } from '$lib/structure/index'
-import { parse_structure_file } from '$lib/structure/parse'
-import { is_crystal } from '$lib/structure/validation'
-import { to_error } from '$lib/utils'
+} from '#lib/scattering/index.js'
+import type { Crystal } from '#lib/structure/index.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
+import { is_crystal } from '#lib/structure/validation.js'
+import { to_error } from '#lib/utils.js'
 import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
 
@@ -53,7 +53,7 @@ export type RadiationKey = keyof typeof WAVELENGTHS
 const is_radiation_key = (key: string): key is RadiationKey => key in WAVELENGTHS
 
 // Only consumer is electron_wavelength below, so it stays local. CODATA 2018, matching the
-// vintage the frozen Mott-Bethe prefactor in $lib/scattering was evaluated at.
+// vintage the frozen Mott-Bethe prefactor in #lib/scattering was evaluated at.
 const ELECTRON_REST_MASS_KG = 9.1093837015e-31 // kg
 
 // Shared guard for the numeric options of every entry point here. Names the option and echoes
@@ -290,7 +290,7 @@ export function structure_factors_squared(
     z: number
     dw: number
     // s² past which the X-ray Gaussian fit turns back up toward Z instead of decaying
-    // (see gaussian_turning_point in $lib/scattering)
+    // (see gaussian_turning_point in #lib/scattering)
     s_sq_max: number
     // Bound coherent neutron scattering length in fm (s-independent)
     b_coh: number
@@ -423,11 +423,11 @@ export function structure_factors_squared(
       } = elements[elem]
       // Atomic scattering factor. X-rays see f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²)
       // (pymatgen fitted params); the Mott–Bethe electron form cancels that s² analytically
-      // (see $lib/scattering), so both share one sum_terms. Neutrons see the constant b_coh.
+      // (see #lib/scattering), so both share one sum_terms. Neutrons see the constant b_coh.
       let factor = b_coh
       if (!is_neutron) {
         // The X-ray fit is only valid below its turning point; past it the expression climbs
-        // back to +Z instead of decaying to 0 (see xray_form_factor in $lib/scattering). Hold it
+        // back to +Z instead of decaying to 0 (see xray_form_factor in #lib/scattering). Hold it
         // flat there and floor at 0. The Mott-Bethe electron form has no such issue - the s²
         // cancels, leaving a monotone Gaussian sum.
         const s_sq = is_electron ? s_sq_point : Math.min(s_sq_point, s_sq_max)

@@ -1,6 +1,8 @@
-import XrdPlot from '$lib/xrd/XrdPlot.svelte'
-import type { XrdPattern } from '$lib/xrd'
-import * as xrd from '$lib/xrd'
+import XrdPlot from '#lib/xrd/XrdPlot.svelte'
+// static so loading the demo page (and the structures it ships) is not billed to the test timeout
+import Page from '#root/src/routes/(demos)/structure/xrd/+page.svelte'
+import type { XrdPattern } from '#lib/xrd/index.js'
+import * as xrd from '#lib/xrd/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -69,7 +71,6 @@ const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
 const all_hkl_labels = [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`]
 
 test(`XRD demos defer calculation, reuse cached patterns and display calculation errors`, async () => {
-  const { default: Page } = await import('$root/src/routes/(demos)/structure/xrd/+page.svelte')
   const compute = vi.spyOn(xrd, `compute_xrd_pattern`).mockReturnValue(pattern)
   const saed = vi.spyOn(xrd, `compute_saed_pattern`).mockImplementation(() => {
     throw new Error(`SAED unavailable`)

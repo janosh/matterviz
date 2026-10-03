@@ -1,17 +1,18 @@
 // The shared chrome every whole-trajectory analysis pane (MSD, VACF, ...) is built on: the
 // timestep seeding, stride normalisation, indexed-trajectory warnings and stale-state rules
 // are tested once here against a stub collector rather than once per analysis.
-import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
-import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
-import { collect_msd_positions } from '$lib/msd/collect'
-import { TrajectoryProperties, trajectory_from_frames } from '$lib/trajectory'
+import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+import type { AnalysisCollectOptions, AnalysisPaneContext } from '#lib/trajectory/analysis.js'
+import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
+import { collect_msd_positions } from '#lib/msd/collect.js'
+import { TrajectoryProperties } from '#lib/trajectory/run.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import {
   analysis_frame_times,
   analysis_step_interval,
   suggest_analysis_frame_stride,
-} from '$lib/trajectory/analysis'
-import { to_error } from '$lib/utils'
+} from '#lib/trajectory/analysis.js'
+import { to_error } from '#lib/utils.js'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, settle } from '../setup'

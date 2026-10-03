@@ -1,10 +1,10 @@
-import { download } from '$lib/io/fetch'
-import ExportDestination from '$lib/io/ExportDestination.svelte'
-import { FileExportState } from '$lib/io/file-export.svelte'
+import { download } from '#lib/io/fetch.js'
+import ExportDestination from '#lib/io/ExportDestination.svelte'
+import { FileExportState } from '#lib/io/file-export.svelte.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 
-vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
 afterEach(() => {
   vi.clearAllMocks()

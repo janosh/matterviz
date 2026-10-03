@@ -1,4 +1,4 @@
-import type { AutoPaddingConfig, Sides } from '$lib/plot/core/layout'
+import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout.js'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
@@ -17,10 +17,10 @@ import {
   stride_sample,
   y_axis_label_x,
   y2_axis_label_x,
-} from '$lib/plot/core/layout'
-import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
-import type { MeasuredAxis } from '$lib/plot/core/tick-layout'
-import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
+} from '#lib/plot/core/layout.js'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
+import type { MeasuredAxis } from '#lib/plot/core/tick-layout.js'
+import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 

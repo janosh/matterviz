@@ -1,5 +1,5 @@
-import { get_d3_interpolator } from '$lib/colors'
-import StructureGallery from '$lib/structure/StructureGallery.svelte'
+import { get_d3_interpolator } from '#lib/colors/index.js'
+import StructureGallery from '#lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, keydown, mouse } from '../setup'

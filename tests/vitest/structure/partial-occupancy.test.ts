@@ -1,14 +1,14 @@
-import type { ElementSymbol } from '$lib/element'
-import type { Site } from '$lib/structure'
-import type { Vec3 } from '$lib/math'
-import { css_to_linear_rgb } from '$lib/scene/colors'
-import type { AtomColorField } from '$lib/structure/atom-color-field'
-import { StructureCutawayGroup } from '$lib/structure/cutaway'
-import { PartialAtoms, type PartialAtom } from '$lib/structure/partial-atoms'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Site } from '#lib/structure/index.js'
+import type { Vec3 } from '#lib/math.js'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import type { AtomColorField } from '#lib/structure/atom-color-field.js'
+import { StructureCutawayGroup } from '#lib/structure/cutaway.js'
+import { PartialAtoms, type PartialAtom } from '#lib/structure/partial-atoms.js'
 import {
   compute_slice_geometry,
   merge_split_partial_sites,
-} from '$lib/structure/partial-occupancy'
+} from '#lib/structure/partial-occupancy.js'
 import type { BufferGeometry, Material } from 'three/webgpu'
 import {
   CircleGeometry,
@@ -124,8 +124,10 @@ describe(`partial occupancy render-site logic`, () => {
       })
       return Math.min(...samples)
     }
-    min_ms(500) // JIT warm-up
-    expect(min_ms(8000) / min_ms(500)).toBeLessThan(64)
+    min_ms(2000) // JIT warm-up
+    // 8x the sites: linear scaling gives a ratio near 8, quadratic near 64. Sizes stay large
+    // enough that timer noise under CI load doesn't dominate the smaller run.
+    expect(min_ms(16000) / min_ms(2000)).toBeLessThan(24)
   })
 })
 

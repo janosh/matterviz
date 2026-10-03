@@ -6,8 +6,8 @@
 //   - a zone axis [uvw] is a DIRECT-lattice direction, u*a + v*b + w*c
 //   - a plane normal (hkl) needs the RECIPROCAL lattice, h*b1 + k*b2 + l*b3
 // They only coincide for cubic cells, which is exactly why cubic-only testing hides bugs here.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { reciprocal_lattice } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { reciprocal_lattice } from '#lib/math.js'
 
 export const ZONE_AXIS_MODE_LABELS = {
   uvw: `Zone axis [uvw]`,

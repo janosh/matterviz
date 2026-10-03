@@ -2,8 +2,8 @@
   import { Icon } from 'svelte-widgets'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
-  import { is_elem_symbol, type ElementSymbol } from '$lib/element'
-  import { make_change_detector } from '$lib/utils'
+  import { is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
+  import { make_change_detector } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
     create_recent_list,

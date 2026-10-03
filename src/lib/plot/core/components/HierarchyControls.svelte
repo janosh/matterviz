@@ -1,24 +1,24 @@
 <script lang="ts">
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import ExportButtons from '$lib/io/ExportButtons.svelte'
-  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import ExportButtons from '#lib/io/ExportButtons.svelte'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
 
-  import { track_settings } from '$lib/controls'
-  import type { ShowControlsProp } from '$lib/controls'
+  import { track_settings } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   // Shared controls pane for the hierarchical part-of-whole charts. Exported as
   // SunburstControls/TreemapControls from the chart barrels; `chart` picks the
   // chart-specific controls (shape/rotation/radius vs cell paddings) and labels.
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type {
     SunburstLabelRotation,
     SunburstLabelText,
     SunburstShape,
     SunburstValueMode,
-  } from '$lib/plot/core/utils/hierarchy-layout'
-  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  } from '#lib/plot/core/utils/hierarchy-layout.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { ControlPane } from '$lib/overlays'
+  import { ControlPane } from '#lib/overlays/index.js'
 
   let {
     chart,

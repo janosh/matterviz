@@ -1,16 +1,16 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
-import { create_display } from '$lib/file-viewer/main'
-import { base64_to_array_buffer, parse_file_content } from '$lib/file-viewer/parse'
-import type { ParseResult } from '$lib/file-viewer/parse'
-import { is_fermi_surface_data } from '$lib/fermi-surface/types'
-import type { DownloadData } from '$lib/io/fetch'
-import { MAX_STRING_CHARS } from '$lib/io/decompress'
-import * as trajectory_parse from '$lib/trajectory/parse'
-import { parse_structure_file } from '$lib/structure/parse'
-import type * as structure_parse_module from '$lib/structure/parse'
-import type { TrajectoryRun } from '$lib/trajectory'
-import { trajectory_from_frames } from '$lib/trajectory/open'
-import { summarize_run } from '$lib/trajectory/run'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import { create_display } from '#lib/file-viewer/main.js'
+import { base64_to_array_buffer, parse_file_content } from '#lib/file-viewer/parse.js'
+import type { ParseResult } from '#lib/file-viewer/parse.js'
+import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+import type { DownloadData } from '#lib/io/fetch.js'
+import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
+import * as trajectory_parse from '#lib/trajectory/parse/index.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
+import type * as structure_parse_module from '#lib/structure/parse.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { summarize_run } from '#lib/trajectory/run.js'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
@@ -22,13 +22,18 @@ import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { IDENTITY_MATRIX3, make_crystal, read_binary_test_file } from '../test-fixtures'
+import {
+  IDENTITY_MATRIX3,
+  make_crystal,
+  read_binary_test_file,
+  read_maybe_gz,
+} from '../test-fixtures'
 
 // parse_structure_file throws on parse failure but can still return a structure with
 // zero atoms (e.g. a CIF with cell params but no _atom_site records). Wrap it in a spy that
 // defaults to the real parser so single tests can return that shape and exercise
 // parse_file_content's no-atoms guard.
-vi.mock('$lib/structure/parse', async (import_original) => {
+vi.mock('#lib/structure/parse.js', async (import_original) => {
   const original = await import_original<typeof structure_parse_module>()
   return { ...original, parse_structure_file: vi.fn(original.parse_structure_file) }
 })
@@ -104,12 +109,38 @@ describe(`parse_file_content structure guard`, () => {
   })
 })
 
-test(`parses a POSCAR structure through the worker-safe entry`, async () => {
-  const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
-  const result = await parse_file_content(poscar, `POSCAR`)
+// A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
+test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(
+  `parses POSCAR content named %s as a structure through the worker-safe entry`,
+  async (filename) => {
+    const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
+    const result = await parse_file_content(poscar, filename)
+    expect(result.type).toBe(`structure`)
+    expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
+  },
+)
 
-  expect(result.type).toBe(`structure`)
-  expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
+// Files used to open as the wrong kind, or with data dropped, depending only on their name:
+// multi-frame dumps/XDATCARs as one structure, CHG and renamed CHGCARs without their grid, a
+// VASP token overriding a .cif, directory names steering the route, and a pymatgen
+// trajectory JSON needing a keyword in its name
+test.each([
+  [`mdanalysis-chain-dump.lammpstrj`, `md.dump`, `trajectory`],
+  [`vasp-XDATCAR-traj.gz`, `Si_run`, `trajectory`],
+  [`vasp-XDATCAR-traj.gz`, `runs/build/XDATCAR`, `trajectory`],
+  [`pymatgen-LiMnO2-chgnet-relax.json.gz`, `run1.json`, `trajectory`],
+  [`Si-CHGCAR.gz`, `CHG`, `isosurface`],
+  [`Si-CHGCAR.gz`, `Si.vasp`, `isosurface`],
+  [`TiO2.cif`, `chgcar_structure.cif`, `structure`],
+  [`TiO2.cif`, `outcar/Si.cif`, `structure`],
+])(`%s named %s opens as %s`, async (fixture, filename, expected) => {
+  const folder = fixture.includes(`CHGCAR`)
+    ? `isosurfaces`
+    : fixture.endsWith(`.cif`)
+      ? `structures`
+      : `trajectories`
+  const content = read_maybe_gz(`src/site/${folder}/${fixture}`)
+  expect((await parse_file_content(content, filename)).type).toBe(expected)
 })
 
 test(`multi-frame XYZ text opens as a trajectory run`, async () => {
@@ -331,7 +362,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     run.dispose()
   })
 
-  // Ferrox archives VASP HDF5 outputs gzipped on S3; the inner filename must
+  // VASP HDF5 outputs are often archived gzipped; the inner filename must
   // drive routing after binary decompression.
   test.each([
     [`vaspout-tinisn-bands-only.h5`, `vaspout.h5.gz`, `vaspout_electronic`],
@@ -547,7 +578,7 @@ describe(`LARGE_FILE markers`, () => {
   // one), so take a fresh copy of the module graph after acquireVsCodeApi is in place.
   const fresh_parse = async () => {
     vi.resetModules()
-    return (await import(`$lib/file-viewer/parse`)).parse_file_content
+    return (await import(`#lib/file-viewer/parse.js`)).parse_file_content
   }
 
   afterEach(() => {
@@ -746,7 +777,7 @@ describe(`VSCode Download Integration`, () => {
       setState: vi.fn(),
       getState: vi.fn(),
     }))
-    const { setup_vscode_download } = await import(`$lib/file-viewer/main`)
+    const { setup_vscode_download } = await import(`#lib/file-viewer/main.js`)
     setup_vscode_download()
     return mock_post_message
   }

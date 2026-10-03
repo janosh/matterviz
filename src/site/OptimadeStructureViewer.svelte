@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
-  import { sanitize_html } from '$lib/sanitize'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { Icon } from 'svelte-widgets'
   import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
@@ -10,12 +10,12 @@
     fetch_optimade_providers,
     fetch_optimade_structure,
     fetch_suggested_structures,
-  } from '$lib/api/optimade'
-  import type { OptimadeProvider, OptimadeStructure } from '$lib/api/optimade'
-  import { Composition, get_electro_neg_formula } from '$lib/composition'
-  import { Structure } from '$lib/structure'
-  import type { AnyStructure } from '$lib/structure'
-  import { optimade_to_structure } from '$lib/structure/parse'
+  } from '#lib/api/optimade.js'
+  import type { OptimadeProvider, OptimadeStructure } from '#lib/api/optimade.js'
+  import { Composition, get_electro_neg_formula } from '#lib/composition/index.js'
+  import { Structure } from '#lib/structure/index.js'
+  import type { AnyStructure } from '#lib/structure/index.js'
+  import { optimade_to_structure } from '#lib/structure/parse.js'
   import { onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -128,11 +128,7 @@
 
   function navigate_to_structure(identifier: string) {
     input_value = identifier
-    if (routed)
-      void goto(`/optimade-${encode_structure_id(identifier)}`, {
-        keepFocus: true,
-        noScroll: true,
-      })
+    if (routed) void goto(`/optimade-${encode_structure_id(identifier)}`, { reset: false })
   }
 </script>
 

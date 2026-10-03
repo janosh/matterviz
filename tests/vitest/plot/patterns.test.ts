@@ -1,10 +1,10 @@
-import type { PatternDash, PatternShape, PatternShorthand } from '$lib/plot/core/patterns'
+import type { PatternDash, PatternShape, PatternShorthand } from '#lib/plot/core/patterns.js'
 import {
   PATTERN_SHAPES,
   PATTERN_SHORTHANDS,
   resolve_pattern,
   unique_patterns,
-} from '$lib/plot/core/patterns'
+} from '#lib/plot/core/patterns.js'
 import { describe, expect, test } from 'vitest'
 
 const BLUE = `#336699` // dark -> auto fg is white

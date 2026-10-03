@@ -1,6 +1,6 @@
 // Serializers for HeatmapTable's export menu and clipboard copy. All work from one plain-text
 // matrix (`TableMatrix`), so CSV, TSV, markdown and LaTeX can't drift apart.
-import { html_to_text } from '$lib/utils'
+import { html_to_text } from '#lib/utils.js'
 import { csv_line } from 'svelte-widgets/csv'
 import type { RowData } from './index'
 

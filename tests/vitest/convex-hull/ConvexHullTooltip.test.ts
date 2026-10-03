@@ -1,8 +1,8 @@
 // Tests for ConvexHullTooltip component
-import ConvexHullTooltip from '$lib/convex-hull/ConvexHullTooltip.svelte'
-import type { PolymorphStats } from '$lib/convex-hull/helpers'
-import type { ConvexHullTooltipProp } from '$lib/convex-hull/index'
-import type { PhaseData } from '$lib/convex-hull/types'
+import ConvexHullTooltip from '#lib/convex-hull/ConvexHullTooltip.svelte'
+import type { PolymorphStats } from '#lib/convex-hull/helpers.js'
+import type { ConvexHullTooltipProp } from '#lib/convex-hull/index.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

@@ -1,12 +1,12 @@
 // Data type detection for JSON values -- determines which visualization component to use.
 // Used by JsonBrowser and the file renderer to select visualization components.
 
-import { type VolumetricFileData, volume_from_json } from '$lib/isosurface/types'
-import { build_path } from '$lib/json-path'
-import { is_structure_like, optimade_structure_from_raw } from '$lib/structure/parse'
-import { make_lattice } from '$lib/structure/parsers/shared'
-import type { Pbc } from '$lib/structure/pbc'
-import { is_plain_object } from '$lib/utils'
+import { type VolumetricFileData, volume_from_json } from '#lib/isosurface/types.js'
+import { build_path } from '#lib/json-path.js'
+import { is_structure_like, optimade_structure_from_raw } from '#lib/structure/parse.js'
+import { make_lattice } from '#lib/structure/parsers/shared.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import { is_plain_object } from '#lib/utils.js'
 
 // Visualization types supported by the file viewer and their badge labels.
 export const TYPE_LABELS = {
@@ -135,15 +135,22 @@ function is_phase_diagram(obj: unknown): boolean {
   )
 }
 
-// BandStructure: normalized format (qpoints, branches, bands, nb_bands)
-// or pymatgen format (kpoints, branches, bands with spin keys, labels_dict)
+// BandStructure: normalized format (qpoints, branches, bands, nb_bands), pymatgen electronic
+// format (kpoints, branches, bands with spin keys, labels_dict) or pymatgen phonon format
+// (qpoints, bands array, labels_dict, reciprocal lattice), which never serialises branches
 function is_band_structure(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
+  if (!as_record(data.labels_dict)) return false
+  if (
+    has_array(data, `qpoints`) &&
+    has_array(data, `bands`) &&
+    (as_record(data.lattice_rec) || as_record(data.recip_lattice))
+  )
+    return true
   if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) {
     return false
   }
-  if (!as_record(data.labels_dict)) return false
   // Normalized format
   if (
     has_array(data, `qpoints`) &&
@@ -366,7 +373,9 @@ export function scan_renderable_paths(
         const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
         results.set(plot_path, `plot`)
       }
-      return
+      // A column table is often a document whose other keys hold renderables of their own
+      // (pymatgen's phonon doc: thermal columns beside phonon_bandstructure and phonon_dos)
+      if (detected_type !== `table` || Array.isArray(value)) return
     }
     // Only the first few elements of an array: renderable items repeat their shape
     if (Array.isArray(value)) {

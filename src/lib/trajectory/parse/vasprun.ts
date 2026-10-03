@@ -3,13 +3,13 @@
 // The file is scanned as text rather than parsed as XML: parsing runs in a worker without
 // DOMParser, and a DOM of a multi-hundred-MB vasprun (projected DOS, eigenvalues per
 // k-point) would dwarf the few tags a trajectory needs.
-import type { ElementSymbol } from '$lib/element'
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import { parse_float_token } from '$lib/structure/parsers/shared'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
-import { calc_force_stats, create_trajectory_frame } from '$lib/trajectory/helpers'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { parse_float_token } from '#lib/structure/parsers/shared.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { calc_force_stats, create_trajectory_frame } from '#lib/trajectory/helpers.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { vasp_run, vasp_stress_metadata } from './shared'
 
@@ -100,13 +100,18 @@ const parse_atominfo = (
   return { elements, atom_masses: masses_ok ? atom_masses : undefined }
 }
 
-// Energies of an ionic step's final <energy> block, keyed by the metadata field they fill
-const ENERGY_KEYS: [string, string][] = [
+// Electronic energies of an ionic step, keyed by the metadata field they fill. They come from
+// the last <scstep>: the step's closing <energy> block adds PV once PSTRESS is set, so
+// reading it there reported the enthalpy as `energy` (as ASE and the OUTCAR reader do not).
+const SCF_ENERGY_KEYS: [string, string][] = [
   [`e_fr_energy`, `energy`], // free energy TOTEN, VASP's headline energy
   [`e_wo_entrp`, `energy_wo_entropy`],
   [`e_0_energy`, `energy_sigma_0`],
-  [`kinetic`, `kinetic_energy`], // MD only
-  [`total`, `total_energy`], // MD only: free energy plus kinetic and thermostat terms
+]
+// MD terms only the closing <energy> block carries
+const MD_ENERGY_KEYS: [string, string][] = [
+  [`kinetic`, `kinetic_energy`],
+  [`total`, `total_energy`], // free energy plus kinetic and thermostat terms
 ]
 
 export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajectory {
@@ -167,11 +172,26 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
     const stress = parse_varray(after_structure, `stress`)
     if (stress?.length === 3)
       Object.assign(metadata, vasp_stress_metadata(stress as Matrix3x3))
-    const energy_block = last_tag_body(block, `energy`)?.body ?? ``
-    for (const [xml_key, key] of ENERGY_KEYS) {
-      const value = scalar_of(energy_block, xml_key)
-      if (value !== null) metadata[key] = value
+    const final_energies = last_tag_body(block, `energy`)?.body ?? ``
+    const last_scstep = last_tag_body(block, `scstep`)?.body ?? ``
+    const scf_energies = last_tag_body(last_scstep, `energy`)?.body ?? final_energies
+    for (const [energy_block, keys] of [
+      [scf_energies, SCF_ENERGY_KEYS],
+      [final_energies, MD_ENERGY_KEYS],
+    ] as const) {
+      for (const [xml_key, key] of keys) {
+        const value = scalar_of(energy_block, xml_key)
+        if (value !== null) metadata[key] = value
+      }
     }
+    // the closing block's TOTEN differs from the SCF one by PV when PSTRESS is set
+    const closing_toten = scalar_of(final_energies, `e_fr_energy`)
+    if (
+      closing_toten !== null &&
+      typeof metadata.energy === `number` &&
+      Math.abs(closing_toten - metadata.energy) > 1e-6
+    )
+      metadata.enthalpy = closing_toten
     const n_scf_steps = block.split(`<scstep>`).length - 1
     if (n_scf_steps > 0) metadata.n_scf_steps = n_scf_steps
 

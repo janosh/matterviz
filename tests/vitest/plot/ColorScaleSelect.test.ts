@@ -1,5 +1,5 @@
-import ColorScaleSelect from '$lib/plot/core/components/ColorScaleSelect.svelte'
-import type { D3InterpolateName } from '$lib/colors'
+import ColorScaleSelect from '#lib/plot/core/components/ColorScaleSelect.svelte'
+import type { D3InterpolateName } from '#lib/colors/index.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, fire } from '../setup'

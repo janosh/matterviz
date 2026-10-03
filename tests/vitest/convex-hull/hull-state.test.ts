@@ -1,8 +1,5 @@
-import {
-  compute_energy_mode_info,
-  compute_hull_model,
-  type HullModel,
-} from '$lib/convex-hull/model'
+import type { HullModel } from '#lib/convex-hull/model.js'
+import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model.js'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 

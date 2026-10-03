@@ -1,5 +1,5 @@
-import { EosPlot } from '$lib/eos'
-import type { EosFit, EosKind } from '$lib/eos'
+import EosPlot from '#lib/eos/EosPlot.svelte'
+import type { EosFit, EosKind } from '#lib/eos/index.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { bind_props } from '../setup'

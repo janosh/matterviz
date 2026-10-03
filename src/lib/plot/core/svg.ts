@@ -1,6 +1,6 @@
 // SVG path and rendering utilities for plot components.
 
-import type { Vec2 } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
 
 // Build a closed SVG path for a violin (KDE density) shape.
 // `grid_px` are value-axis pixel positions, `half_offsets_px` the category-axis half-widths

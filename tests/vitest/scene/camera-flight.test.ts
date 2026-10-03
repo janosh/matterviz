@@ -1,14 +1,13 @@
+import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight.js'
 import {
   camera_flight_frame,
   create_camera_flight_controller,
   create_camera_flight_sampler,
   orbit_camera_flight,
   validate_camera_flight,
-  type CameraFlight,
-  type CameraPose,
-} from '$lib/scene/camera-flight'
-import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
-import { plan_movie, movie_frame, type MovieRequest } from '$lib/trajectory/movie'
+} from '#lib/scene/camera-flight.js'
+import { read_pan_offset, set_pan_offset } from '#lib/scene/pan.js'
+import { plan_movie, movie_frame, type MovieRequest } from '#lib/trajectory/movie.js'
 import {
   Matrix4,
   OrthographicCamera,

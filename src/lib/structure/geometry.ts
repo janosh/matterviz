@@ -1,6 +1,6 @@
 // Three.js orientation helpers shared by 3D components (Arrow, Cylinder, Lattice,
-// SymmetryElements). Kept out of $lib/math, which is pure TS with no three.js dependency.
-import { add, EPS, scale, subtract, type Vec3 } from '$lib/math'
+// SymmetryElements). Kept out of #lib/math, which is pure TS with no three.js dependency.
+import { add, EPS, scale, subtract, type Vec3 } from '#lib/math.js'
 import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 
 const UP_VECTOR = new Vector3(0, 1, 0)

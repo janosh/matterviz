@@ -1,10 +1,7 @@
 <script lang="ts">
-  import { grow_capacity } from '$lib/math'
-  import {
-    prepare_bond_placements,
-    BondFrame,
-    type BondData,
-  } from '$lib/structure/bond-rendering'
+  import { grow_capacity } from '#lib/math.js'
+  import type { BondData } from '#lib/structure/bond-rendering.js'
+  import { prepare_bond_placements, BondFrame } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
   import { attribute, dot, mix, normalView, positionGeometry, uniform, vec3 } from 'three/tsl'
   import { BondMesh, set_bond_placement } from './bond-mesh'

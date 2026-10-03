@@ -6,8 +6,8 @@ import {
   detect_view_type,
   is_plottable_data,
   scan_renderable_paths,
-} from '$lib/file-viewer/detect'
-import { resolve_path } from '$lib/json-path'
+} from '#lib/file-viewer/detect.js'
+import { resolve_path } from '#lib/json-path.js'
 
 const fixture = JSON.parse(
   gunzipSync(
@@ -385,6 +385,26 @@ describe(`scan_renderable_paths`, () => {
       [`convex_hull_Li_Fe_O`, `convex_hull`],
       [`convex_hull_Li_Fe_P_O`, `convex_hull`],
     ])
+  })
+
+  // pymatgen phonon band structures never serialise `branches`, which detection used to
+  // require, so a PhononBSDOSDoc's bands got no badge (only its DOS did)
+  test(`finds the phonon band structure and DOS inside a pymatgen phonon document`, () => {
+    const doc = JSON.parse(
+      gunzipSync(
+        readFileSync(
+          `${import.meta.dirname}/../../../src/site/phonons/mp-2667-Cs1Au1-pbe.json.gz`,
+        ),
+      ).toString(),
+    )
+    const paths = scan_renderable_paths(doc)
+    expect(paths.get(`phonon_bandstructure`)).toBe(`band_structure`)
+    expect(paths.get(`phonon_dos`)).toBe(`dos`)
+    // as_dict() spells the reciprocal lattice lattice_rec
+    const { recip_lattice, ...rest } = doc.phonon_bandstructure
+    expect(detect_view_type({ ...rest, lattice_rec: recip_lattice })).toBe(`band_structure`)
+    // without any reciprocal lattice it is not a recognisable band structure
+    expect(detect_view_type(rest)).not.toBe(`band_structure`)
   })
 
   test.each([

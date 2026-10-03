@@ -1,4 +1,4 @@
-import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
+import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
 import { flushSync } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 

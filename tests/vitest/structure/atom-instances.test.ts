@@ -4,18 +4,19 @@ import {
   enable_atom_sphere_picking,
   update_atom_coordinates,
   update_ordered_atom_positions,
-} from '$lib/structure/atom-instances'
-import { make_site } from '$lib/structure/site'
-import { raycast_bond } from '$lib/structure/bond-mesh'
-import { write_bond_transform } from '$lib/structure/bond-rendering'
-import type { BondPair } from '$lib/structure'
+} from '#lib/structure/atom-instances.js'
+import { make_site } from '#lib/structure/site.js'
+import { raycast_bond } from '#lib/structure/bond-mesh.js'
+import { write_bond_transform } from '#lib/structure/bond-rendering.js'
+import type { BondPair } from '#lib/structure/index.js'
+import type { StructureCutaway } from '#lib/structure/cutaway.js'
 import {
   cutaway_bounds,
   cutaway_contains,
   enable_cutaway_picking,
   StructureCutawayGroup,
-  type StructureCutaway,
-} from '$lib/structure/cutaway'
+} from '#lib/structure/cutaway.js'
+import type { Intersection } from 'three/webgpu'
 import {
   DoubleSide,
   CylinderGeometry,
@@ -23,7 +24,6 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
   InstancedMesh,
-  type Intersection,
   Matrix4,
   MeshBasicMaterial,
   Mesh,

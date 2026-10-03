@@ -1,30 +1,25 @@
 <script lang="ts">
-  import type { AxisConfig } from '$lib/plot'
-  import { get_convex_hull_defaults } from '$lib/settings'
+  import type { AxisConfig } from '#lib/plot/index.js'
+  import { get_convex_hull_defaults } from '#lib/settings.js'
   import { untrack } from 'svelte'
-  import { normalize_show_controls } from '$lib/controls'
-  import {
-    create_hull_selection,
-    type create_canvas_interactions,
-  } from './canvas-interactions.svelte'
-  import type { D3InterpolateName } from '$lib/colors'
+  import { normalize_show_controls } from '#lib/controls.js'
+  import type { create_canvas_interactions } from './canvas-interactions.svelte'
+  import { create_hull_selection } from './canvas-interactions.svelte'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { ClickFeedback, DragOverlay, Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import { ViewerChrome } from '$lib/layout'
-  import { PlotTooltip } from '$lib/plot'
-  import { sanitize_html } from '$lib/sanitize'
-  import { first_duplicate } from '$lib/utils'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import { PlotTooltip } from '#lib/plot/index.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { first_duplicate } from '#lib/utils.js'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import GasPressureControls from './GasPressureControls.svelte'
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
-  import {
-    DEFAULT_GAS_TEMP,
-    MAGNETIC_ORDERING_CATEGORY,
-    type HullFaceColorMode,
-  } from './types'
+  import type { HullFaceColorMode } from './types'
+  import { DEFAULT_GAS_TEMP, MAGNETIC_ORDERING_CATEGORY } from './types'
   import { default_controls } from './index'
   import type { HullModel } from './model'
   import ConvexHull2D from './ConvexHull2D.svelte'

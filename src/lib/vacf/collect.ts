@@ -1,12 +1,16 @@
 // Gather whole-trajectory velocities (or the positions to differentiate) for VACF/VDOS.
-import { is_finite_vec3_like } from '$lib/math'
-import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
+import { is_finite_vec3_like } from '#lib/math.js'
+import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
 import {
   collect_trajectory_positions,
   position_buffers,
   suggest_analysis_frame_stride,
-} from '$lib/trajectory/analysis'
-import type { TrajectoryFrame, TrajectoryPositionStream, TrajectoryRun } from '$lib/trajectory'
+} from '#lib/trajectory/analysis.js'
+import type {
+  TrajectoryFrame,
+  TrajectoryPositionStream,
+  TrajectoryRun,
+} from '#lib/trajectory/index.js'
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump

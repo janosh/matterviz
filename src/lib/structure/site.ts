@@ -1,9 +1,9 @@
 // Shared single-species Site construction used by all structure/trajectory/volumetric parsers,
 // plus the site-provenance reads every consumer of supercell/image-atom copies shares
-import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
-import type { AnyStructure, Site } from '$lib/structure'
-import { element_from_atomic_number } from '$lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Vec3 } from '#lib/math.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { PreparedVectorGeometry } from './vectors'
 
 // Only immutable viewer snapshots register a topology identity. Editable structures use

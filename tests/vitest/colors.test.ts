@@ -1,4 +1,4 @@
-import type { Paint } from '$lib/colors'
+import type { Paint } from '#lib/colors/index.js'
 import {
   add_alpha,
   composite_colors,
@@ -18,8 +18,8 @@ import {
   pick_contrast_color,
   PLOT_COLORS,
   watch_dark_mode,
-} from '$lib/colors'
-import { ELEM_SYMBOLS } from '$lib/labels'
+} from '#lib/colors/index.js'
+import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 

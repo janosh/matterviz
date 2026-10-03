@@ -1,23 +1,20 @@
-import { atom_field_color, density_color_field } from '$lib/structure/atom-color-field'
+import { atom_field_color, density_color_field } from '#lib/structure/atom-color-field.js'
 import {
   hotspot_field_geometry,
   hotspot_colors,
   hotspot_cloud_colors,
   hotspot_scale,
   hotspot_probe,
-} from '$lib/trajectory/hotspot-colors'
-import {
-  hotspot_bin,
-  hotspot_display_values,
-  type HotspotResult,
-} from '$lib/trajectory/hotspots'
-import { encode_frame } from '$lib/trajectory/frame'
+} from '#lib/trajectory/hotspot-colors.js'
+import type { HotspotResult } from '#lib/trajectory/hotspots.js'
+import { hotspot_bin, hotspot_display_values } from '#lib/trajectory/hotspots.js'
+import { encode_frame } from '#lib/trajectory/frame.js'
 import { make_trajectory_frame } from '../test-fixtures'
 import { Color, Vector3 } from 'three/webgpu'
 import { expect, it } from 'vitest'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { make_lattice } from '$lib/structure/parsers/shared'
-import { parse_linear_rgb } from '$lib/scene/colors'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { make_lattice } from '#lib/structure/parsers/shared.js'
+import { parse_linear_rgb } from '#lib/scene/colors.js'
 import { interpolateInferno } from 'd3-scale-chromatic'
 
 const blue = () => new Color(`blue`) // fresh: atom_field_color tints its base in place

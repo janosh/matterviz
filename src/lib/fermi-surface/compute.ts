@@ -1,9 +1,9 @@
 // Fermi surface computation and analysis functions
-import * as math from '$lib/math'
-import { EPS } from '$lib/math'
-import type { Vec2, Vec3 } from '$lib/math'
-import { grid_dimensions, scalar_grid_strides } from '$lib/isosurface/grid'
-import { marching_cubes } from '$lib/marching-cubes'
+import * as math from '#lib/math.js'
+import { EPS } from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
+import { marching_cubes } from '#lib/marching-cubes.js'
 import type {
   BandEnergyGrid,
   BandGridData,

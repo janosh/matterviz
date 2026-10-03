@@ -1,7 +1,7 @@
-import type { DataSeries } from '$lib/plot'
-import { trajectory_property_config } from '$lib/labels'
-import { smooth_moving_average } from '$lib/plot/core/data-cleaning'
-import type { TrajectoryMetadata } from '$lib/trajectory'
+import type { DataSeries } from '#lib/plot/index.js'
+import { trajectory_property_config } from '#lib/labels.js'
+import { smooth_moving_average } from '#lib/plot/core/data-cleaning.js'
+import type { TrajectoryMetadata } from '#lib/trajectory/index.js'
 import {
   available_x_quantities,
   build_x_map,
@@ -14,8 +14,8 @@ import {
   prepare_trajectory_scatter_series,
   should_hide_plot,
   summarize_properties,
-} from '$lib/trajectory/plotting'
-import type { PlotSeriesOptions } from '$lib/trajectory/plotting'
+} from '#lib/trajectory/plotting.js'
+import type { PlotSeriesOptions } from '#lib/trajectory/plotting.js'
 import { describe, expect, it } from 'vitest'
 
 const DEFAULT_PROPERTY_CONFIG = {

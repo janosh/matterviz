@@ -1,7 +1,7 @@
 // SceneLights replaced per-scene light rigs; each scene passes the positions it used to
 // render with, so the props must reach the Threlte nodes unchanged.
-import SceneLights from '$lib/scene/SceneLights.svelte'
-import { DEFAULTS } from '$lib/settings'
+import SceneLights from '#lib/scene/SceneLights.svelte'
+import { DEFAULTS } from '#lib/settings.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'

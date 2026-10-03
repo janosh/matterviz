@@ -1,19 +1,9 @@
-import {
-  available_site_vector_keys,
-  get_site,
-  numeric_sites,
-  site_count,
-  type DisplayMetrics,
-} from './site'
+import type { DisplayMetrics } from './site'
+import { available_site_vector_keys, get_site, numeric_sites, site_count } from './site'
 import { characteristic_atom_spacing } from './density'
-import {
-  EPS,
-  is_finite_vec3,
-  normalize_vec,
-  compute_in_plane_basis,
-  type Vec3,
-} from '$lib/math'
-import type { VectorLayerConfig } from '$lib/settings'
+import type { Vec3 } from '#lib/math.js'
+import { EPS, is_finite_vec3, normalize_vec, compute_in_plane_basis } from '#lib/math.js'
+import type { VectorLayerConfig } from '#lib/settings.js'
 import type { AnyStructure, Site } from './index'
 
 // Recognized prefixes for per-site vector data (force, magnetic moment, spin, velocity).

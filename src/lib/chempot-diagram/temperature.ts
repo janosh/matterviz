@@ -1,8 +1,8 @@
 import {
   analyze_temperature_data,
   filter_entries_at_temperature,
-} from '$lib/convex-hull/helpers'
-import type { PhaseData } from '$lib/convex-hull/types'
+} from '#lib/convex-hull/helpers.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig } from './types'
 
 interface TempFilterPayload {

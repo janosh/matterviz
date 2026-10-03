@@ -16,4 +16,15 @@ export const element_by_symbol: ReadonlyMap<ElementSymbol, ChemicalElement> = ne
   element_data.map((element) => [element.symbol, element]),
 )
 
+// Element whose standard atomic weight lies within 0.5 u of `mass` (LAMMPS Masses sections and
+// per-atom mass dump columns); null for coarse-grained beads and other non-element masses
+export const element_for_mass = (mass: number): ElementSymbol | null => {
+  let best: { symbol: ElementSymbol; diff: number } | null = null
+  for (const { symbol, atomic_mass } of element_data) {
+    const diff = Math.abs(atomic_mass - mass)
+    if (!best || diff < best.diff) best = { symbol, diff }
+  }
+  return best && best.diff <= 0.5 ? best.symbol : null
+}
+
 export { default } from './data.json.gz'

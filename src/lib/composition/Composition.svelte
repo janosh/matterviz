@@ -1,8 +1,8 @@
 <script lang="ts">
-  import ExportPane from '$lib/io/ExportPane.svelte'
+  import ExportPane from '#lib/io/ExportPane.svelte'
 
-  import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
-  import type { CompositionType } from '$lib/composition'
+  import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
+  import type { CompositionType } from '#lib/composition/index.js'
   import { ActionMenu, Icon } from 'svelte-widgets'
   import type { CmdAction, CmdSection, IconData } from 'svelte-widgets'
   import {
@@ -13,7 +13,7 @@
     Graph,
     ScatterPlot,
   } from 'svelte-widgets/icons'
-  import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
   import type { CompositionChartProps } from './chart'
   import BarChart from './BarChart.svelte'
   import BubbleChart from './BubbleChart.svelte'

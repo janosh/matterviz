@@ -1,18 +1,18 @@
 // Shared VASP POSCAR-family header parser: comment / scale / 3 lattice rows /
 // [element symbols] / atom counts / [Selective dynamics] / coordinate mode.
 // Callers supply either an array or text cursor and adapt the result to their error contract.
-import type { ElementSymbol } from '$lib/element'
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import {
   FALLBACK_ELEMENTS,
   parse_coordinate,
   parse_float_token,
   validate_element_symbol,
   vec3_from_values,
-} from '$lib/structure/parsers/shared'
-import { parse_leading_num, to_error } from '$lib/utils'
+} from '#lib/structure/parsers/shared.js'
+import { parse_leading_num, to_error } from '#lib/utils.js'
 
 // === Line cursors ===
 
@@ -76,7 +76,8 @@ export const text_cursor = (text: string, start = 0): VaspLineCursor => {
 
 interface VaspHeaderOptions {
   format: string
-  // lenient treats every non-Direct mode as Cartesian; skip leaves the mode line unconsumed.
+  // lenient reads an unknown mode as Direct, as VASP does (only C/K mean Cartesian); skip
+  // leaves the mode line unconsumed.
   coord_mode?: `strict` | `lenient` | `skip`
   // XDATCAR needs real species metadata instead of VASP 4 fallbacks.
   strict_species?: boolean
@@ -251,8 +252,8 @@ export function parse_vasp_header(
         )
       }
       const mode = mode_line.trim().toUpperCase()
-      is_direct = mode === `` || mode.startsWith(`D`)
-      if (coord_mode === `strict` && !is_direct && !/^[CK]/.test(mode)) {
+      is_direct = !/^[CK]/.test(mode)
+      if (coord_mode === `strict` && mode !== `` && !/^[CDK]/.test(mode)) {
         return fail(`Unknown coordinate mode in ${format}: ${mode}`)
       }
       cursor.advance()

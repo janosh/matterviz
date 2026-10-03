@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { track_settings } from '#lib/controls.js'
   // Docs playground for the periodic table's CSS custom properties: every control writes one
   // variable onto the document root, so all tables on the page follow it. Only the tile font
   // color is bindable: it maps to ElementTile's text_color prop, which the demo passes through.
-  import { DEFAULT_CATEGORY_COLORS } from '$lib/colors'
-  import type { ElementCategory } from '$lib/element'
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import { colors, selected } from '$lib/state.svelte'
+  import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
+  import type { ElementCategory } from '#lib/element/index.js'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import { colors, selected } from '#lib/state.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   const defaults = {

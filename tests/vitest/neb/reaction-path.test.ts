@@ -1,5 +1,5 @@
-import type { Vec3 } from '$lib/math'
-import type { NebImage, PathMetricOptions } from '$lib/neb'
+import type { Vec3 } from '#lib/math.js'
+import type { NebImage, PathMetricOptions } from '#lib/neb/index.js'
 import {
   analyze_barrier,
   assert_path,
@@ -11,8 +11,8 @@ import {
   path_spline,
   projected_force_slopes,
   reaction_coordinate,
-} from '$lib/neb/reaction-path'
-import type { AnyStructure, Crystal } from '$lib/structure'
+} from '#lib/neb/reaction-path.js'
+import type { AnyStructure, Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal as build_crystal } from '../test-fixtures'
 

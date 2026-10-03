@@ -2,9 +2,9 @@
   // One <pattern> per distinct hatch/texture fill among a chart's marks, for its <defs>.
   // Takes the raw per-mark list (holes allowed) and dedupes by id, so marks sharing a
   // pattern+color share one tile. Marks reference tiles via ResolvedPattern.url; see
-  // $lib/plot/core/patterns for how tiles are derived.
-  import type { ResolvedPattern } from '$lib/plot/core/patterns'
-  import { unique_patterns } from '$lib/plot/core/patterns'
+  // #lib/plot/core/patterns for how tiles are derived.
+  import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
+  import { unique_patterns } from '#lib/plot/core/patterns.js'
 
   let { patterns }: { patterns: Iterable<ResolvedPattern | null | undefined> } = $props()
 

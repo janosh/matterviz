@@ -1,4 +1,4 @@
-import type { PhaseHoverInfo, PhaseRegion } from '$lib/phase-diagram'
+import type { PhaseHoverInfo, PhaseRegion } from '#lib/phase-diagram/index.js'
 
 // Helper to create hover info for testing
 export function create_hover_info(overrides: Partial<PhaseHoverInfo> = {}): PhaseHoverInfo {

@@ -4,7 +4,7 @@
 // PatternDefs.svelte) and the `url(#id)` paint the mark fills with. Tiles live in user space
 // so adjacent marks share one continuous texture, like plotly's pattern fills.
 
-import { opaque_contrast_color } from '$lib/colors'
+import { opaque_contrast_color } from '#lib/colors/index.js'
 
 // Stroked line families (`diagonal` … `hexagons`) and filled marker families
 // (`dots` … `checkerboard`)

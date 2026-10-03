@@ -1,24 +1,24 @@
-import { default_element_colors, get_d3_interpolator } from '$lib/colors'
-import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { create_cart_to_frac } from '$lib/math'
-import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
-import { get_pbc_image_sites } from '$lib/structure/pbc'
-import { make_supercell } from '$lib/structure/supercell'
+import { default_element_colors, get_d3_interpolator } from '#lib/colors/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_cart_to_frac } from '#lib/math.js'
+import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
+import { get_pbc_image_sites } from '#lib/structure/pbc.js'
+import { make_supercell } from '#lib/structure/supercell.js'
 import type {
   TrajectoryLineColorMode,
   TrajectoryLinesStats,
   TrajectoryTrailFrame,
-} from '$lib/structure/trajectory-lines'
+} from '#lib/structure/trajectory-lines.js'
 import {
   TIME_RAMP_SIZE,
   TrajectoryTrail,
   collected_frame_idx,
   trail_color_texels,
   trajectory_trail_anchors,
-} from '$lib/structure/trajectory-lines'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { unwrapped_positions_of } from '$lib/trajectory/positions'
+} from '#lib/structure/trajectory-lines.js'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, make_position_stream } from '../test-fixtures'
 

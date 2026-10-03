@@ -1,17 +1,17 @@
-import { array_extent, array_max, type Point2D } from '$lib/math'
-import type { FacetAxis } from '$lib/plot/core/facets'
-import type { PlotScaleFn } from '$lib/plot/core/scales'
-import type { FontSpec } from '$lib/plot/core/text-metrics'
+import { array_extent, array_max, type Point2D } from '#lib/math.js'
+import type { FacetAxis } from '#lib/plot/core/facets.js'
+import type { PlotScaleFn } from '#lib/plot/core/scales.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   DEFAULT_FONT_SPEC,
   measure_text_line,
   resolve_font_size_css,
-} from '$lib/plot/core/text-metrics'
+} from '#lib/plot/core/text-metrics.js'
 import type {
   InternalPoint,
   LabelPlacementConfig,
   LabelPlacementWeights,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
 // below the cold defaults (2000, 1): the layout is good, so the pass only nudges what moved.

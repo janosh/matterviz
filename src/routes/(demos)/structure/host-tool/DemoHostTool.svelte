@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Trajectory } from '$lib/trajectory'
+  import { Trajectory } from '#lib/trajectory/index.js'
   import type {
     StructureToolOverlay,
     StructureToolProps,
     StructureToolRun,
     StructureToolViewProps,
-  } from '$lib/structure'
+  } from '#lib/structure/index.js'
   import { onDestroy } from 'svelte'
   import { make_demo_trajectory } from './demo'
 

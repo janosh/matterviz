@@ -20,14 +20,22 @@ function make_plugin(command: `build` | `serve` = `serve`) {
 }
 
 describe(`vite_plugin_json_gz`, () => {
-  test(`query-aware mode resolves relative imports and delegates Vite URLs`, () => {
+  test(`query-aware mode resolves relative and subpath imports and delegates Vite URLs`, () => {
     const plugin = vite_plugin_json_gz({ resolve_queries: true })
-    const resolve_id = plugin.resolveId as (source: string, importer?: string) => string | null
+    const resolve_id = plugin.resolveId as unknown as (
+      source: string,
+      importer?: string,
+    ) => string | null
     const importer = join(tmpdir(), `vite.config.ts`)
     expect(resolve_id(`./data.json.gz`, importer)).toBe(join(tmpdir(), `data.json.gz`))
     expect(resolve_id(`./data.json.gz?raw`, importer)).toBeNull()
     expect(resolve_id(`./data.json.gz?url`, importer)).toBeNull()
-    for (const source of [`/src/data.json.gz`, `/@fs/tmp/data.json.gz`, `pkg/data.json.gz`]) {
+    for (const source of [
+      `/src/data.json.gz`,
+      `/@fs/tmp/data.json.gz`,
+      `pkg/data.json.gz`,
+      `#site/data.json.gz`,
+    ]) {
       expect(resolve_id(source, importer)).toBeNull()
     }
     expect(resolve_id(`./data.json.gz`)).toBeNull()
@@ -35,6 +43,13 @@ describe(`vite_plugin_json_gz`, () => {
     const configure = plugin.configResolved as (cfg: { command: string }) => void
     configure({ command: `build` })
     expect(resolve_id(`${fixture_path}?import`)).toBe(fixture_path)
+    // subpath imports map through package.json `imports`, not onto the importer's directory
+    const repo_root = join(import.meta.dirname, `../..`)
+    expect(resolve_id(`#site/data.json.gz`, importer)).toBe(
+      join(repo_root, `src/site/data.json.gz`),
+    )
+    expect(resolve_id(`#root/data.json.gz`, importer)).toBe(join(repo_root, `data.json.gz`))
+    expect(resolve_id(`#unknown/data.json.gz`, importer)).toBeNull()
   })
 
   test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(

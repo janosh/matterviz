@@ -7,19 +7,20 @@ import type {
   TrajectoryXQuantity,
   TrajHandlerData,
   HotspotRequest,
-} from '$lib/trajectory'
-import { Trajectory, trajectory_from_frames } from '$lib/trajectory'
-import * as plotting from '$lib/trajectory/plotting'
-import type { Site } from '$lib/structure'
-import * as structure_component from '$lib/structure/Structure.svelte'
-import { summarize_run, TrajectoryProperties } from '$lib/trajectory/run'
-import { host_run } from '$lib/trajectory/runs/host'
-import { FrameView } from '$lib/trajectory/frame'
-import { FramePreparer, type DisplayFrame } from '$lib/trajectory/prepare'
+} from '#lib/trajectory/index.js'
+import Trajectory from '#lib/trajectory/Trajectory.svelte'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import * as plotting from '#lib/trajectory/plotting.js'
+import type { Site } from '#lib/structure/index.js'
+import * as structure_component from '#lib/structure/Structure.svelte'
+import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
+import { FrameView } from '#lib/trajectory/frame.js'
+import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare.js'
 import {
   get_colorable_property_keys,
   get_property_colors,
-} from '$lib/structure/atom-properties'
+} from '#lib/structure/atom-properties.js'
 import {
   resize_element,
   trigger_resize_observer,
@@ -32,18 +33,11 @@ import {
   keydown,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
-import {
-  type Component,
-  type ComponentProps,
-  createRawSnippet,
-  flushSync,
-  mount,
-  tick,
-  unmount,
-} from 'svelte'
+import type { Component, ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
   page: {
     url: {
@@ -110,7 +104,7 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
   // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
   const viewer = vi.fn()
-  vi.doMock(`$lib/trajectory`, () => ({
+  vi.doMock(`#lib/trajectory/index.js`, () => ({
     trajectory_from_frames,
     Trajectory: viewer,
   }))
@@ -124,7 +118,7 @@ test(`trajectory page initializes without reading query parameters during preren
       expect.objectContaining({ id: `loaded-trajectory` }),
     )
   } finally {
-    vi.doUnmock(`$lib/trajectory`)
+    vi.doUnmock(`#lib/trajectory/index.js`)
   }
 })
 

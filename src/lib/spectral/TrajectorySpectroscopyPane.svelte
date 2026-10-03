@@ -1,14 +1,14 @@
 <script lang="ts">
   import { Spinner, StatusMessage } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
-  import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import type { ParseProgress, TrajectoryRun } from '$lib/trajectory'
-  import { create_request_owner } from '$lib/trajectory/async-result.svelte'
+  import { format_num } from '#lib/labels.js'
+  import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import type { ParseProgress, TrajectoryRun } from '#lib/trajectory/index.js'
+  import { create_request_owner } from '#lib/trajectory/async-result.svelte.js'
   import {
     DEFAULT_POSITION_STREAM_MAX_BYTES,
     suggest_frame_stride,
-  } from '$lib/trajectory/runs/accumulate'
-  import { to_error } from '$lib/utils'
+  } from '#lib/trajectory/runs/accumulate.js'
+  import { to_error } from '#lib/utils.js'
   import { Graph } from 'svelte-widgets/icons'
   import {
     collect_trajectory_spectroscopy_input,

@@ -1,12 +1,12 @@
 // moyo-wasm bridge: the one place the WASM module is initialized and a structure is handed
 // to moyo's analyze_cell, plus thin wrappers over its space-group database lookups.
-import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
-import * as math from '$lib/math'
-import { DEFAULTS } from '$lib/settings'
-import type { AnyStructure, Crystal, Site } from '$lib/structure'
-import { merge_split_partial_sites } from '$lib/structure/partial-occupancy'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
+import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
+import * as math from '#lib/math.js'
+import { DEFAULTS } from '#lib/settings.js'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_site } from '#lib/structure/site.js'
 import { is_identity, mat3_from_flat_col_major } from './symmetry-elements'
 import type {
   InitInput,
@@ -180,7 +180,7 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
 export type CellType = `original` | `conventional` | `primitive`
 
 // The structure in the requested cell. Unchanged for `original` and while no symmetry data is
-// available yet. Persisted settings are validated in $lib/settings/viewer-state, so any other
+// available yet. Persisted settings are validated in #lib/settings/viewer-state, so any other
 // cell_type reaching here is a caller bug.
 export const transform_cell = (
   structure: Crystal,

@@ -3,8 +3,8 @@
   // - If tooltip is a snippet function, render it exclusively (replaces default content)
   // - If tooltip is a config object, render prefix/suffix around the default content
   // - Otherwise, render just the default content
-  import { sanitize_html } from '$lib/sanitize'
-  import type { TooltipConfig } from '$lib/tooltip'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import type { TooltipConfig } from '#lib/tooltip/index.js'
   import type { Snippet } from 'svelte'
 
   let {

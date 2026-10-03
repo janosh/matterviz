@@ -9,15 +9,10 @@ import {
   normalize_hull_composition_keys,
   process_hull_entries,
   process_hull_for_stats,
-} from '$lib/convex-hull/thermodynamics'
-import type { PhaseData } from '$lib/convex-hull/types'
-import {
-  type Matrix3x3,
-  matrix_inverse_3x3,
-  mat3x3_vec3_multiply,
-  solve_linear_system,
-  type Vec3,
-} from '$lib/math'
+} from '#lib/convex-hull/thermodynamics.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { matrix_inverse_3x3, mat3x3_vec3_multiply, solve_linear_system } from '#lib/math.js'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'

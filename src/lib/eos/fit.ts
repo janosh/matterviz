@@ -2,7 +2,7 @@
 // Birch–Murnaghan (3rd order), Murnaghan and Vinet forms, and a least-squares fit of their four
 // parameters (E0, V0, B0, B0') by Levenberg–Marquardt seeded from a parabola through the data.
 // Energies in eV, volumes in A^3, so B0 comes out in eV/A^3 (× EV_PER_A3_TO_GPA for GPa).
-import { array_max, array_min, dot, solve_linear_system } from '$lib/math'
+import { array_max, array_min, dot, solve_linear_system } from '#lib/math.js'
 
 export const EOS_KINDS = [`birch_murnaghan`, `murnaghan`, `vinet`] as const
 export type EosKind = (typeof EOS_KINDS)[number]

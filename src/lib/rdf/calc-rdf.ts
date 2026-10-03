@@ -1,10 +1,10 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · 4π r² Δr / V, so g(r) → 1 for an uncorrelated system.
-import { calc_lattice_params } from '$lib/math'
-import type { AnyStructure, Crystal, Site } from '$lib/structure'
-import { visit_neighbor_distances } from '$lib/structure/bonding'
-import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
+import { calc_lattice_params } from '#lib/math.js'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import { visit_neighbor_distances } from '#lib/structure/bonding.js'
+import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { RdfOptions, RdfPattern } from './index'
 
 // Occupancy of `element` on every site (all species when unnamed). RDFs weight each pair

@@ -1,8 +1,6 @@
-import { type CameraPose, create_camera_flight_controller } from '$lib/scene/camera-flight'
-import {
-  create_camera_flight_session,
-  type FlightTimeline,
-} from '$lib/scene/camera-flight-session'
+import { type CameraPose, create_camera_flight_controller } from '#lib/scene/camera-flight.js'
+import type { FlightTimeline } from '#lib/scene/camera-flight-session.js'
+import { create_camera_flight_session } from '#lib/scene/camera-flight-session.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { expect, it, vi } from 'vitest'
 

@@ -1,13 +1,16 @@
 // Tests for IsosurfaceControls component rendering and interactions
-import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
-import VolumeSliceControls from '$lib/isosurface/VolumeSliceControls.svelte'
-import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
-import { auto_isosurface_settings, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
+import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
+import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
+import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
+import {
+  auto_isosurface_settings,
+  DEFAULT_ISOSURFACE_SETTINGS,
+} from '#lib/isosurface/types.js'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
-} from '$lib/isosurface/types'
+} from '#lib/isosurface/types.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query, bind_props, expect_labelled_settings_grid } from '../setup'
@@ -101,7 +104,7 @@ describe(`IsosurfaceControls`, () => {
       color_by_options: [`None (solid)`, `charge density`, `magnetization`],
     },
   ])(
-    `$desc chrome: one layer row per layer, Color by lists every volume`,
+    `$desc chrome: one layer row per layer, Color by and Surface of list every volume`,
     ({ volumes, color_by_options }) => {
       mount_controls({
         ...(volumes && { volumes }),
@@ -116,6 +119,9 @@ describe(`IsosurfaceControls`, () => {
       }
       const color_by = find_label(`Color by`)?.querySelector<HTMLSelectElement>(`select`)
       expect(option_texts(color_by)).toEqual(color_by_options)
+      // a lone volume has nothing to move its surface to
+      const surface_of = find_label(`Surface of`)?.querySelector<HTMLSelectElement>(`select`)
+      expect(option_texts(surface_of)).toEqual(volumes ? color_by_options.slice(1) : [])
     },
   )
 
@@ -254,7 +260,9 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   test.each([
     { min: 1, max: 8, text: `1–8` },
-    { min: -0.012345, max: 1234.5, text: `−0.0123–1.23e+3` },
+    // a density's vacuum sits at ~1e-125: zero at this volume's scale
+    { min: 9.43e-125, max: 13.4, text: `0–13.4` },
+    { min: -0.012345, max: 1234.5, text: `−0.0123–1.23e3` },
   ])(`volume header shows the [$min, $max] data range as $text`, ({ min, max, text }) => {
     const abs_max = Math.max(Math.abs(min), Math.abs(max))
     mount_controls({
@@ -264,16 +272,24 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(doc_query(`.volume-group .volume-range`).textContent).toBe(text)
   })
 
-  test(`add-surface appends a layer; empty volume shows color-source-only note`, () => {
+  // A volume without surfaces offers a labelled add button in its body (the header's bare
+  // "+" was easy to miss once the last surface was removed); with surfaces, the header "+"
+  // adds another shell
+  test(`an empty volume offers Add surface in its body, a filled one in its header`, () => {
     mount_layers([make_layer(`0`)])
-    const groups = document.querySelectorAll(`.volume-group`)
-    expect(groups[0].querySelector(`.volume-note`)).toBeNull()
-    expect(groups[1].querySelector(`.volume-note`)?.textContent).toBe(`color source only`)
+    const group = (idx: number) => document.querySelectorAll(`.volume-group`)[idx]
+    expect(group(0).querySelector(`.empty-volume`)).toBeNull()
+    expect(group(0).querySelector(`.volume-header .icon-btn`)?.textContent).toBe(`+`)
+    expect(group(1).querySelector(`.empty-volume .add-surface`)?.textContent).toBe(
+      `+ Add surface`,
+    )
+    expect(group(1).querySelector(`.volume-note`)?.textContent).toBe(
+      `still usable as a color source`,
+    )
 
     click_button(`Add surface for esp.cube`)
-    expect(
-      document.querySelectorAll(`.volume-group`)[1].querySelectorAll(`.layer-row`),
-    ).toHaveLength(1)
+    expect(group(1).querySelectorAll(`.layer-row`)).toHaveLength(1)
+    expect(group(1).querySelector(`.empty-volume`)).toBeNull()
   })
 
   // Each "+" on the same volume used to add an identical 20%/0.6 surface on top of the last
@@ -282,11 +298,8 @@ describe(`IsosurfaceControls multi-volume`, () => {
       volumes: two_volumes(),
       settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
     })
-    const add = doc_query<HTMLButtonElement>(`button[aria-label="Add surface for esp.cube"]`)
-    for (let click = 0; click < 3; click++) {
-      add.click()
-      flushSync()
-    }
+    // the first click swaps the empty volume's body button for the header "+"
+    for (let click = 0; click < 3; click++) click_button(`Add surface for esp.cube`)
     const esp_layers = props.settings.layers.filter((layer) => layer.volume_id === `1`)
     expect(esp_layers).toHaveLength(3)
     // abs_max = 8: shells at 20%, 80%, 50%
@@ -300,13 +313,82 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(props.active_volume_id).toBe(`0`)
   })
 
-  test(`removing the last layer leaves zero surfaces (no implicit resurrection)`, () => {
-    const props = mount_layers([make_layer(`0`)])
+  // Issue #478: one select moves a surface between e.g. ELF spin up and spin down
+  test.each([
+    { desc: `keeps an isovalue the new volume reaches`, max: 8, isovalue: 2 },
+    { desc: `re-fits an isovalue beyond the new volume`, max: 1, isovalue: 0.2 },
+  ])(`Surface of select $desc`, ({ max, isovalue }) => {
+    const volumes = [
+      make_volume({ label: `ELF (spin up)` }),
+      make_volume({
+        id: `1`,
+        label: `ELF (spin down)`,
+        data_range: { min: 0, max, abs_max: max, mean: max / 2 },
+      }),
+    ]
+    const props = mount_layers([make_layer(`0`, { opacity: 0.4 })], { volumes })
+    change_value(find_label(`Surface of`)?.querySelector(`select`), `1`)
+    expect(props.settings.layers).toEqual([
+      make_layer(`1`, { opacity: 0.4, isovalue, show_negative: false }),
+    ])
+    expect(props.active_volume_id).toBe(`1`)
+    expect(find_label(`Surface of`)?.querySelector(`select`)?.value).toBe(`1`)
+  })
+
+  // The fixture's values span [1, 8] while the slider starts at 8 / 200: below 1 nothing draws.
+  // The track labels where surfaces exist and an input just short of it snaps to the first
+  // step that still draws one
+  test(`isovalue slider marks and snaps to the isovalues that draw a surface`, () => {
+    const props = mount_layers([make_layer(`0`, { isovalue: 2 })])
+    const track = doc_query(`.volume-group .isovalue-track`)
+    expect([...track.querySelectorAll(`.band-tick`)].map((tick) => tick.textContent)).toEqual([
+      `1`,
+      `8`,
+    ])
+    expect(track.querySelectorAll(`.isovalue-histogram path.bars`)).toHaveLength(2)
+    const slider = track.querySelector<HTMLInputElement>(`input[aria-label="Isovalue"]`)
+    if (!slider) throw new Error(`isovalue slider not found`)
+    slider.value = `0.92`
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    // steps sit at 0.04 k: 1.04 is the first above the minimum
+    expect(props.settings.layers[0].isovalue).toBeCloseTo(1.04, 12)
+    expect(Number(slider.value)).toBeCloseTo(1.04, 12)
+  })
+
+  // A removed volume could only come back by reloading its file
+  test(`a removed volume restores in place with its surfaces until volumes change`, () => {
+    const props = mount_layers([make_layer(`0`), make_layer(`1`, { isovalue: 3 })])
+    click_button(`Remove volume density.cube`)
+    expect(props.volumes.map(({ id }) => id)).toEqual([`1`])
+    expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 })])
+    click_button(`Restore volume density.cube`)
+    expect(props.volumes.map(({ id }) => id)).toEqual([`0`, `1`])
+    expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 }), make_layer(`0`)])
+    expect(document.querySelector(`.removed-volumes`)).toBeNull()
+
+    // a volume set changed from outside (a new file) drops what could be restored
+    click_button(`Remove volume esp.cube`)
+    expect(
+      document.querySelector(`button[aria-label="Restore volume esp.cube"]`),
+    ).not.toBeNull()
+    props.volumes = [make_volume({ id: `fresh`, label: `fresh.cube` })]
+    flushSync()
+    expect(document.querySelector(`.removed-volumes`)).toBeNull()
+  })
+
+  test(`removing the last surface leaves none, and Add surface brings one back`, () => {
+    const props = mount_controls({
+      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(`0`)] },
+    })
     click_button(`Remove surface`)
     expect(document.querySelectorAll(`.layer-row`)).toHaveLength(0)
-    expect(props.settings.layers).toEqual([])
-    // Volume groups remain with their add-surface buttons
-    expect(document.querySelectorAll(`.volume-group`)).toHaveLength(2)
+    expect(props.settings.layers).toEqual([]) // no implicit resurrection
+    // a lone volume is nobody's color source, so no note
+    expect(document.querySelector(`.volume-note`)).toBeNull()
+    click_button(`Add surface for Volume 1`)
+    expect(props.settings.layers).toHaveLength(1)
+    expect(document.querySelectorAll(`.layer-row`)).toHaveLength(1)
   })
 
   test(`color-source UI shows colormap + range; clearing a bound resets to auto`, () => {

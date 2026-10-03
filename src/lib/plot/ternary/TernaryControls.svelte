@@ -1,13 +1,13 @@
 <script lang="ts">
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import ExportButtons from '$lib/io/ExportButtons.svelte'
-  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import ExportButtons from '#lib/io/ExportButtons.svelte'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
 
-  import { track_settings } from '$lib/controls'
-  import type { ShowControlsProp } from '$lib/controls'
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import { ControlPane } from '$lib/overlays'
-  import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
+  import { track_settings } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import { ControlPane } from '#lib/overlays/index.js'
+  import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

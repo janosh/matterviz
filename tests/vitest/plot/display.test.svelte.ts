@@ -2,9 +2,9 @@ import {
   create_category_display,
   resolve_plot_display,
   sync_category_zero_display,
-} from '$lib/plot/core/display.svelte'
-import type { DisplayConfig } from '$lib/plot/core/types'
-import { DEFAULTS } from '$lib/settings'
+} from '#lib/plot/core/display.svelte.js'
+import type { DisplayConfig } from '#lib/plot/core/types.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { flushSync } from 'svelte'
 import { describe, expect, test } from 'vitest'
 

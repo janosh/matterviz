@@ -3,9 +3,9 @@
   // precursors are the corners at 0, every reachable phase sits at its mixing fractions with its
   // driving force per atom of mixture as "formation energy" (pymatgen InterfacialReactivity view).
   // 2 precursors give a pseudo-binary, 3 a pseudo-ternary, 4 a pseudo-quaternary hull.
-  import { format_formula_html } from '$lib/composition'
-  import { ConvexHull } from '$lib/convex-hull'
-  import type { PhaseData } from '$lib/convex-hull'
+  import { format_formula_html } from '#lib/composition/index.js'
+  import { ConvexHull } from '#lib/convex-hull/index.js'
+  import type { PhaseData } from '#lib/convex-hull/index.js'
   import type { SynthesisRoute } from './types'
 
   let { route, ...rest }: { route: SynthesisRoute; [key: string]: unknown } = $props()

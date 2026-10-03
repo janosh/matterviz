@@ -1,15 +1,12 @@
 <script lang="ts">
-  import {
-    ChemPotDiagram,
-    ChemPotDiagram3D,
-    type ChemPotDiagramConfig,
-  } from '$lib/chempot-diagram'
-  import type { ElementSymbol } from '$lib/element'
-  import type { PhaseData } from '$lib/convex-hull'
-  import { filter_by_elements, quaternary_loader } from '$site/convex-hull'
-  import { create_temp_ternary_entries_li_fe_o } from '$site/convex-hull/demo-temperature'
+  import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/index.js'
+  import { ChemPotDiagram, ChemPotDiagram3D } from '#lib/chempot-diagram/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import type { PhaseData } from '#lib/convex-hull/index.js'
+  import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index.js'
+  import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature.js'
   import { Spinner } from 'svelte-widgets'
-  import LazyDemo from '$site/LazyDemo.svelte'
+  import LazyDemo from '#site/LazyDemo.svelte'
 
   // Each compressed fixture remains a separate lazy chunk.
   const chempot_files = import.meta.glob<{ default: PhaseData[] }>(

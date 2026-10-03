@@ -1,15 +1,16 @@
-import type { ElementSymbol } from '$lib/element/types'
-import * as math from '$lib/math'
-import { LineScanner } from '$lib/structure/parsers/shared'
-import type { Pbc } from '$lib/structure/pbc'
-import type { AtomTypeMapping, TrajectoryFrame } from '$lib/trajectory/index'
-import { element_from_lammps_type, symbol_to_atomic_number } from '$lib/element/helpers'
+import type { ElementSymbol } from '#lib/element/types.js'
+import * as math from '#lib/math.js'
+import { LineScanner } from '#lib/structure/parsers/shared.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import type { AtomTypeMapping, TrajectoryFrame } from '#lib/trajectory/index.js'
+import { element_from_lammps_type, symbol_to_atomic_number } from '#lib/element/helpers.js'
+import { element_for_mass } from '#lib/element/data.js'
 import {
   create_plot_row_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
   TextLines,
-} from '$lib/trajectory/helpers'
+} from '#lib/trajectory/helpers.js'
 import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
@@ -253,10 +254,11 @@ function create_lammps_reader(
     const [x_col, y_col, z_col] = pos_variant.keys.map((key) => col[key])
     const type_col = col.type
     const element_col = col.element
+    const mass_col = col.mass
     const id_col = col.id
-    if (type_col === undefined && element_col === undefined) {
+    if (type_col === undefined && element_col === undefined && mass_col === undefined) {
       throw new Error(
-        `LAMMPS frame at timestep ${timestep} has neither a type nor an element column in "ITEM: ATOMS ${cols.join(` `)}"`,
+        `LAMMPS frame at timestep ${timestep} has no type, element or mass column in "ITEM: ATOMS ${cols.join(` `)}"`,
       )
     }
 
@@ -310,21 +312,26 @@ function create_lammps_reader(
         }
         atom_types_found.add(atom_type)
       }
+      // Some tools fill `element` with type labels (`Type1`, `2`), and coarse-grained or
+      // isotope masses miss every standard atomic weight, so each source may come up empty
       let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
-      if (!element_symbol && element_col !== undefined) {
+      if (!element_symbol && element_col !== undefined)
         element_symbol = elem_symbol_from_token(scanner.str(element_col))
-        // Some tools fill `element` with type labels (`Type1`, `2`); with a type column to
-        // fall back on that is a guess, not a corrupt file
-        if (!element_symbol && atom_type === undefined) {
+      // a per-atom mass (`dump custom ... mass`) names elements as a data file's Masses do
+      if (!element_symbol && mass_col !== undefined)
+        element_symbol = element_for_mass(scanner.num(mass_col)) ?? undefined
+      if (!element_symbol) {
+        if (atom_type === undefined) {
+          const tried = [
+            element_col === undefined ? `` : `element "${scanner.str(element_col)}"`,
+            mass_col === undefined ? `` : `mass "${scanner.str(mass_col)}"`,
+          ].filter(Boolean)
           throw new Error(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${scanner.str(element_col)}"`,
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) names no element (${tried.join(`, `)}) and has no type column to fall back on`,
           )
         }
-      }
-      if (!element_symbol) {
-        // atom_type is set: a frame with neither column was rejected at the header
-        guessed_types.add(atom_type as number)
-        element_symbol = element_from_lammps_type(atom_type as number)
+        guessed_types.add(atom_type)
+        element_symbol = element_from_lammps_type(atom_type)
       }
       elements.push(element_symbol)
       // the only property column that can fail a frame

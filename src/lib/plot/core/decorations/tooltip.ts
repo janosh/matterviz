@@ -1,5 +1,5 @@
-import { clamp } from '$lib/math'
-import type { Rect } from '$lib/plot/core/layout'
+import { clamp } from '#lib/math.js'
+import type { Rect } from '#lib/plot/core/layout.js'
 
 const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const
 type TooltipPlacementDirection = (typeof DIRECTIONS)[number]

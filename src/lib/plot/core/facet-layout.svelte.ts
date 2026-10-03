@@ -1,6 +1,6 @@
-import type { Vec2 } from '$lib/math'
-import type { FacetAxis, FacetAxisRanges, FacetLayoutContext } from '$lib/plot/core/facets'
-import type { Sides } from '$lib/plot/core/layout'
+import type { Vec2 } from '#lib/math.js'
+import type { FacetAxis, FacetAxisRanges, FacetLayoutContext } from '#lib/plot/core/facets.js'
+import type { Sides } from '#lib/plot/core/layout.js'
 import { untrack } from 'svelte'
 
 interface FacetPlotAdapterOptions<Axis extends FacetAxis> {

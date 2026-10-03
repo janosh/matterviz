@@ -1,12 +1,12 @@
 // Message shapes exchanged between the webview (main.ts / host-bridge.ts) and whatever
 // host embeds it (the VS Code extension, or Hive's Tauri backend impersonating it).
-import type { PartialSettings } from '$lib/settings'
-import type { ThemeName } from '$lib/theme'
+import type { PartialSettings } from '#lib/settings.js'
+import type { ThemeName } from '#lib/theme/index.js'
 import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryRunSummary,
-} from '$lib/trajectory'
+} from '#lib/trajectory/index.js'
 
 export interface FileData {
   filename: string

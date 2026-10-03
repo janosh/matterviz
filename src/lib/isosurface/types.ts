@@ -1,18 +1,21 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
-import type { D3InterpolateName } from '$lib/colors'
-import { strip_compression_extensions } from '$lib/io/decompress'
-import {
-  is_finite_matrix3x3,
-  is_finite_vec3,
-  type Matrix3x3,
-  type Vec2,
-  type Vec3,
-} from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import { format_num, zero_if_negligible } from '#lib/labels.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import { is_finite_matrix3x3, is_finite_vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
 import { flatten_grid, type ScalarGrid3D } from './grid'
 
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
 export type DataRange = { min: number; max: number; abs_max: number; mean: number }
+
+// A grid value for display at 3 significant digits, negligible ones (a density's vacuum at
+// ~1e-125) as 0
+export const format_data_value = (
+  value: number,
+  { abs_max }: Pick<DataRange, `abs_max`>,
+): string => format_num(zero_if_negligible(value, abs_max), `.3~g`)
 
 // Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential).
 // Values are stored flat in C order (z fastest: index = (ix * ny + iy) * nz + iz) so the
@@ -246,6 +249,91 @@ export const auto_volume_layer = (
     negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
     volume_id: volume.id,
   }
+}
+
+// === Isovalue slider aids ===
+
+// Slider isovalues (> 0, the slider's domain) that draw any surface, as (low, high]. Marching
+// cubes counts a corner as below when value < isovalue, so the surface needs
+// min < isovalue <= max and a mirrored negative lobe at -isovalue needs
+// -max <= isovalue < -min. On the positive axis the two always meet in one interval; null
+// when neither lobe can appear there.
+export function surface_isovalue_band(
+  { min, max }: Pick<DataRange, `min` | `max`>,
+  show_negative: boolean,
+): Vec2 | null {
+  const intervals: Vec2[] = []
+  if (max > 0) intervals.push([Math.max(min, 0), max])
+  if (show_negative && min < 0) intervals.push([Math.max(-max, 0), -min])
+  if (intervals.length === 0) return null
+  return [
+    Math.min(...intervals.map(([low]) => low)),
+    Math.max(...intervals.map(([, high]) => high)),
+  ]
+}
+
+// Weak snap for an isovalue slider: a value just past an end of `band` (within `reach` of it)
+// moves to the nearest slider step that still draws a surface. With `sticky` (a pointer drag)
+// it holds there until the pointer leaves the reach; without it (keyboard steps) it holds once,
+// so the next step from the edge passes through.
+export function snap_isovalue(
+  value: number,
+  band: Vec2 | null,
+  { min, step, reach, previous, sticky }: SnapIsovalueOptions,
+): number {
+  if (!band || !(step > 0)) return value
+  const [low, high] = band
+  const at_step = (count: number) => min + count * step
+  let target: number
+  if (value <= low && low - value <= reach) {
+    let count = Math.floor((low - min) / step)
+    while (at_step(count) <= low) count++
+    target = at_step(count)
+  } else if (value > high && value - high <= reach) {
+    let count = Math.ceil((high - min) / step)
+    while (at_step(count) > high) count--
+    target = at_step(count)
+  } else return value
+  if (target <= low || target > high) return value // the band is narrower than one step
+  // steps are min + k·step in floating point, so "already at the edge" allows rounding noise
+  const at_edge = Math.abs(previous - target) <= step * 1e-9
+  return sticky || !at_edge ? target : value
+}
+export interface SnapIsovalueOptions {
+  min: number // slider minimum: steps sit at min + k * step
+  step: number
+  reach: number // how far past a band end the snap catches
+  previous: number // isovalue before this input
+  sticky: boolean
+}
+
+// Bin counts of a volume's grid values over the isovalue slider's [low, high], cached per
+// volume. With `mirror` (negative lobe shown) bins count |value|, since one slider value
+// draws both signs.
+const histogram_cache = new WeakMap<VolumetricData, Map<string, Uint32Array>>()
+export function isovalue_histogram(
+  volume: VolumetricData,
+  [low, high]: Vec2,
+  mirror: boolean,
+  n_bins = 64,
+): Uint32Array {
+  const key = `${low}|${high}|${mirror}|${n_bins}`
+  let by_key = histogram_cache.get(volume)
+  const cached = by_key?.get(key)
+  if (cached) return cached
+  const counts = new Uint32Array(n_bins)
+  const span = high - low
+  if (span > 0) {
+    const scale = n_bins / span
+    for (const raw of volume.values) {
+      const value = mirror ? Math.abs(raw) : raw
+      if (!(value >= low && value <= high)) continue // also drops NaN
+      counts[Math.min(n_bins - 1, Math.floor((value - low) * scale))]++
+    }
+  }
+  if (!by_key) histogram_cache.set(volume, (by_key = new Map()))
+  by_key.set(key, counts)
+  return counts
 }
 
 // Settings for a freshly loaded file: one auto layer on its first volume (further volumes of

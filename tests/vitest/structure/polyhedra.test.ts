@@ -1,12 +1,12 @@
-import type { AnyStructure, Vec3 } from '$lib'
-import type { BondPair } from '$lib/structure'
+import type { AnyStructure, Vec3 } from '#lib'
+import type { BondPair } from '#lib/structure/index.js'
 import {
   electroneg_ratio,
   is_spectator_center,
   structure_bond_to_bond_pair,
-} from '$lib/structure/bonding'
-import { get_pbc_image_sites } from '$lib/structure/pbc'
-import { DEFAULTS } from '$lib/settings'
+} from '#lib/structure/bonding.js'
+import { get_pbc_image_sites } from '#lib/structure/pbc.js'
+import { DEFAULTS } from '#lib/settings.js'
 import {
   build_adjacency,
   compute_polyhedra,
@@ -16,12 +16,12 @@ import {
   update_polyhedra_faces,
   convex_hull_3d,
   merge_polyhedra_buffers,
-} from '$lib/structure/polyhedra'
-import type { Polyhedron } from '$lib/structure/polyhedra'
-import { make_supercell } from '$lib/structure/supercell'
-import { BondFrame, pack_bonds } from '$lib/structure/bond-rendering'
-import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
-import { numeric_sites } from '$lib/structure/site'
+} from '#lib/structure/polyhedra.js'
+import type { Polyhedron } from '#lib/structure/polyhedra.js'
+import { make_supercell } from '#lib/structure/supercell.js'
+import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
+import { numeric_sites } from '#lib/structure/site.js'
 import {
   BufferAttribute,
   BufferGeometry,

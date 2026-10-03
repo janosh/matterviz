@@ -1,4 +1,4 @@
-import type { AnyStructure, FileInfo } from '$lib'
+import type { AnyStructure, FileInfo } from '#lib'
 import {
   detect_structure_type,
   is_structure_like,
@@ -6,9 +6,9 @@ import {
   optimade_to_structure,
   parse_structure_file,
   structure_from_json,
-} from '$lib/structure/parse'
-import { is_crystal } from '$lib/structure/validation'
-import { fixture_ext, glob_basename, glob_text, site_file_info } from '$site/imports'
+} from '#lib/structure/parse.js'
+import { is_crystal } from '#lib/structure/validation.js'
+import { fixture_ext, glob_basename, glob_text, site_file_info } from '#site/imports.js'
 import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
@@ -35,7 +35,7 @@ export const structures = Object.entries(
 
 export const structure_map = new SvelteMap(structures.map((struct) => [struct.id, struct]))
 
-const raw_structure_modules = import.meta.glob(`$site/structures/*`, {
+const raw_structure_modules = import.meta.glob(`#site/structures/*`, {
   eager: true,
   query: `?raw`,
   import: `default`,

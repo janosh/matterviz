@@ -1,8 +1,8 @@
 // Peak-shape convolution: turning a stick spectrum into a sampled continuum. Domain-neutral
 // on purpose — XRD drives it with Caglioti Bragg-angle widths in degrees 2θ (see
-// $lib/xrd/broadening) and IR/Raman with constant or frequency-dependent widths in cm^-1
-// (see $lib/spectral/ir-raman), so nothing here may assume either scale.
-import type { Vec2 } from '$lib/math'
+// #lib/xrd/broadening) and IR/Raman with constant or frequency-dependent widths in cm^-1
+// (see #lib/spectral/ir-raman), so nothing here may assume either scale.
+import type { Vec2 } from '#lib/math.js'
 
 // Gaussian sigma per unit FWHM: fwhm = 2 sqrt(2 ln 2) sigma
 const SIGMA_PER_FWHM = 1 / (2 * Math.sqrt(2 * Math.log(2)))

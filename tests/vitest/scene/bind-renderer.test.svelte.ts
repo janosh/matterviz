@@ -1,5 +1,5 @@
-import { renderer_registry, scene_registry } from '$lib/io/export'
-import { bind_renderer, create_renderer } from '$lib/scene/bind-renderer.svelte'
+import { renderer_registry, scene_registry } from '#lib/io/export.js'
+import { bind_renderer, create_renderer } from '#lib/scene/bind-renderer.svelte.js'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'

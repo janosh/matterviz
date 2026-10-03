@@ -1,15 +1,10 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import EmptyState from '$lib/EmptyState.svelte'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import {
-    is_crystal,
-    parse_supercell_scaling,
-    Structure,
-    type AnyStructure,
-    type StructureSettings,
-  } from '$lib/structure'
-  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '$lib/symmetry'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import EmptyState from '#lib/EmptyState.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import type { AnyStructure, StructureSettings } from '#lib/structure/index.js'
+  import { is_crystal, parse_supercell_scaling, Structure } from '#lib/structure/index.js'
+  import type { CellType, ShowSymmetryKinds, SymmetrySettings } from '#lib/symmetry/index.js'
   import {
     DEFAULT_SHOW_SYM_KINDS,
     default_sym_settings,
@@ -20,9 +15,9 @@
     SymmetryElementControls,
     SymmetryStats,
     WyckoffTable,
-  } from '$lib/symmetry'
-  import { structure_files } from '$site/structures'
-  import { file_param, set_file_param } from '$site/state.svelte'
+  } from '#lib/symmetry/index.js'
+  import { structure_files } from '#site/structures.js'
+  import { file_param, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import { Spinner } from 'svelte-widgets'
 

@@ -1,6 +1,6 @@
 // Data extraction functions for trajectory analysis and plotting
-import { TRAJECTORY_ENERGY_KEYS } from '$lib/constants'
-import { get_density } from '$lib/structure/density'
+import { TRAJECTORY_ENERGY_KEYS } from '#lib/constants.js'
+import { get_density } from '#lib/structure/density.js'
 import { copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
 

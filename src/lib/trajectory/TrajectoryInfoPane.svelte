@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { InfoPaneCard, InfoPaneRow, ViewerPaneOptions } from '$lib/overlays'
-  import { info_pane_icon, ViewerPane } from '$lib/overlays'
-  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { format_num, trajectory_property_config } from '$lib/labels'
-  import { strip_html } from '$lib/utils'
+  import type { InfoPaneCard, InfoPaneRow, ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import { format_num, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
+  import { strip_html } from '#lib/utils.js'
   import { format_bytes } from 'svelte-widgets/format'
-  import { array_extent } from '$lib/math'
+  import { array_extent } from '#lib/math.js'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {
     extract_label_and_unit,
@@ -43,7 +43,9 @@
     if (values.length === 0) return null
     if (values.length === 1) return `${format_num(values[0], `.3~s`)} ${unit}`.trim()
     const [min, max] = array_extent(values)
-    return `${format_num(min, `.3~s`)} - ${format_num(max, `.3~s`)} ${unit}`.trim()
+    const magnitude = Math.max(Math.abs(min), Math.abs(max))
+    const [low, high] = [min, max].map((value) => zero_if_negligible(value, magnitude))
+    return `${format_num(low, `.3~s`)} - ${format_num(high, `.3~s`)} ${unit}`.trim()
   }
 
   const safe_item = (

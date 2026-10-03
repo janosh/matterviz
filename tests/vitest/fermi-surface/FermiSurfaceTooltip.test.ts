@@ -1,8 +1,8 @@
 // Tests for FermiSurfaceTooltip component
-import { SPIN_COLORS } from '$lib/fermi-surface/constants'
-import FermiSurfaceTooltip from '$lib/fermi-surface/FermiSurfaceTooltip.svelte'
-import type { FermiHoverData, FermiTooltipConfig } from '$lib/fermi-surface/types'
-import type { Vec3 } from '$lib/math'
+import { SPIN_COLORS } from '#lib/fermi-surface/constants.js'
+import FermiSurfaceTooltip from '#lib/fermi-surface/FermiSurfaceTooltip.svelte'
+import type { FermiHoverData, FermiTooltipConfig } from '#lib/fermi-surface/types.js'
+import type { Vec3 } from '#lib/math.js'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

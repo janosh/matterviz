@@ -1,9 +1,9 @@
-import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol, element_data } from '$lib/element'
-import type { FileLoadData } from '$lib/io/types'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { CameraProjection } from '$lib/settings'
+import type { CompositionType } from '#lib/composition/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_by_symbol, element_data } from '#lib/element/index.js'
+import type { FileLoadData } from '#lib/io/types.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { CameraProjection } from '#lib/settings.js'
 import type { Pbc } from './pbc'
 import { numeric_sites } from './site'
 
@@ -45,7 +45,7 @@ export type { StructureSettings, StructureOptions } from './settings'
 export { default as StructureGallery } from './StructureGallery.svelte'
 
 // defined here (not in StructureGallery.svelte's module script) so plain-TS
-// consumers can import it from '$lib/structure' without a .svelte module
+// consumers can import it from '#lib/structure/index.js' without a .svelte module
 // resolution, which type-aware lint can't see named exports of
 export type StructureGalleryItem = {
   id: string
@@ -149,11 +149,11 @@ export type BondPair = {
   cell_shift?: Vec3
 }
 
-export type { PerceivedBond, PerceptionOptions } from '$lib/structure/bond-order-perception'
+export type { PerceivedBond, PerceptionOptions } from '#lib/structure/bond-order-perception.js'
 export {
   compose_perceived_bonds,
   perceive_bond_orders,
-} from '$lib/structure/bond-order-perception'
+} from '#lib/structure/bond-order-perception.js'
 
 // Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
 export const atomic_radii: CompositionType = Object.fromEntries(

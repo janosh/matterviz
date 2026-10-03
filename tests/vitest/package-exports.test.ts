@@ -1,17 +1,17 @@
-import * as lib from '$lib'
+import * as lib from '#lib'
 import type {
   VacfInput,
   VacfOptions,
   VacfResult,
   WorkerClient,
   WorkerRequestOptions,
-} from '$lib'
+} from '#lib'
 import type {
   DecorationSide,
   FreeAnnotationDecorationItem,
   PlotTitleLineKind,
-} from '$lib/plot'
-import { resolve_plot_title } from '$lib/plot'
+} from '#lib/plot/index.js'
+import { resolve_plot_title } from '#lib/plot/index.js'
 import { execFileSync } from 'node:child_process'
 import {
   cpSync,
@@ -30,7 +30,7 @@ import type { StructureToolRun } from 'matterviz'
 import type { StructureSettings, StructureToolProps } from 'matterviz/structure'
 import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
 import { preprocess } from 'svelte/compiler'
-import svelte_config from '../../svelte.config'
+import { docs } from '../../vite.config'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
@@ -219,6 +219,21 @@ describe(`package.json exports`, () => {
     expect(existsSync(join(dist_dir, `file-viewer/parse-worker.js`))).toBe(true)
   })
 
+  test.skipIf(!has_dist)(
+    `dist/element/data.js inlines its JSON and keeps every data.ts export`,
+    async () => {
+      const src = readFileSync(join(repo_root, `src/lib/element/data.ts`), `utf8`)
+      const src_exports = [...src.matchAll(/^export const (?<name>\w+)/gmu)].map(
+        (match) => match.groups?.name,
+      )
+      expect(readFileSync(join(dist_dir, `element/data.js`), `utf8`)).not.toMatch(
+        /from\s+['"][^'"]*\.json\.gz['"]/u,
+      )
+      const dist_module = await import(join(dist_dir, `element/data.js`))
+      expect(new Set(Object.keys(dist_module))).toEqual(new Set([...src_exports, `default`]))
+    },
+  )
+
   test.skipIf(!has_dist)(`every packaged component ships its type declaration`, () => {
     const missing = readdirSync(dist_dir, { recursive: true, encoding: `utf8` })
       .filter((entry) => entry.endsWith(`.svelte`))
@@ -343,7 +358,7 @@ describe(`package.json exports`, () => {
 
 // Headings receive ids at runtime. Injecting them at build time would repeat one id per
 // iteration for headings inside an {#each}, including in published components.
-describe(`svelte.config preprocessors`, () => {
+describe(`markdown preprocessor`, () => {
   const content = `<h3>Drop Structure File</h3>`
 
   test.each([
@@ -352,7 +367,7 @@ describe(`svelte.config preprocessors`, () => {
     String.raw`C:\repo\src\lib\brillouin\BrillouinZone.svelte`,
   ])(`%s retains unmodified headings`, async (path) => {
     const filename = path.startsWith(`src/`) ? join(repo_root, path) : path
-    const result = await preprocess(content, svelte_config.preprocess, { filename })
+    const result = await preprocess(content, docs.preprocess, { filename })
     expect(result.code).toBe(content)
   })
 
@@ -385,7 +400,11 @@ describe(`prepare hook`, () => {
       .trim()
       .split(`\n`)
   }
-  const build_cmds = [`svelte-package`, `node src/scripts/package-dist-assets.mjs`]
+  const build_cmds = [
+    `svelte-package`,
+    `node src/scripts/package-dist-assets.mjs`,
+    `node src/scripts/check-dist-imports.mjs`,
+  ]
 
   test(`package.json and CI configure dependency preparation`, () => {
     expect(pkg.scripts.prepare).toBe(`node src/scripts/prepare.mjs`)
@@ -416,44 +435,5 @@ describe(`prepare hook`, () => {
     } finally {
       rmSync(dist_entry, { force: true })
     }
-  })
-})
-
-// A directory sharing its name with a sibling `.ts` file is a trap for the packaged types:
-// svelte-package rewrites a `$lib/...` alias to a relative specifier, and from inside that
-// directory the specifier becomes `./` - the directory itself, which has no index - so the
-// import does not resolve. `plot/core/types/plot-3d.ts` did exactly this, and it broke
-// `import type` from the root entry and most subpaths with TS2307 for every consumer of the
-// published package. Two such pairs remain (`settings`, `plot/core/utils`), so keep the rule.
-describe(`packaged type declarations resolve`, () => {
-  // every directory under src/lib that has a sibling file of the same name
-  const shadowed_dirs = (dir: string, out: string[] = []): string[] => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const full = join(dir, entry.name)
-      if (existsSync(`${full}.ts`)) out.push(full)
-      shadowed_dirs(full, out)
-    }
-    return out
-  }
-
-  test(`no file imports the $lib alias of the directory it lives in`, () => {
-    const dirs = shadowed_dirs(lib_dir)
-    expect(dirs.length).toBeGreaterThan(0) // the rule is worth nothing if it scans nothing
-    const offenders: string[] = []
-    for (const dir of dirs) {
-      const alias = `$lib/${dir.slice(lib_dir.length + 1).replaceAll(`\\`, `/`)}`
-      for (const file of readdirSync(dir)) {
-        if (!file.endsWith(`.ts`) && !file.endsWith(`.svelte`)) continue
-        const source = readFileSync(join(dir, file), `utf8`)
-        // the alias as a whole specifier, in either quote style, not as a prefix of a deeper path
-        for (const quote of [`'`, `\``]) {
-          if (source.includes(`from ${quote}${alias}${quote}`))
-            offenders.push(`${file} -> ${alias}`)
-        }
-      }
-    }
-    // import the sibling file relatively instead, e.g. `../types` rather than the alias
-    expect(offenders).toEqual([])
   })
 })

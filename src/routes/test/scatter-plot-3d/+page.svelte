@@ -1,19 +1,13 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import type { ScatterProbe } from '../../../../tests/playwright/plot/scatter-plot-3d.test'
-  import { ScatterPlot3D } from '$lib'
+  import { ScatterPlot3D } from '#lib'
   import { tick } from 'svelte'
   import { page } from '$app/state'
-  import { browser } from '$app/environment'
-  import type { DataSeries3D, InternalPoint3D } from '$lib/plot/core/types'
-  import {
-    type Camera,
-    InstancedMesh,
-    OrthographicCamera,
-    type Scene,
-    Matrix4,
-    Vector3,
-  } from 'three/webgpu'
+  import { browser } from '$app/env'
+  import type { DataSeries3D, InternalPoint3D } from '#lib/plot/core/types.js'
+  import type { Camera, Scene } from 'three/webgpu'
+  import { InstancedMesh, OrthographicCamera, Matrix4, Vector3 } from 'three/webgpu'
 
   // Generate test data with color values to trigger ColorBar rendering
   // This replicates the original issue where ColorBar could block gizmo clicks

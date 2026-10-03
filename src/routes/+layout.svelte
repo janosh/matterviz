@@ -1,27 +1,28 @@
 <script lang="ts">
+  import { dev } from '$app/env'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   // oxlint-disable-next-line import/no-unassigned-import -- global app styles
-  import '$lib/app.css'
+  import '#lib/app.css'
   // Starry-night syntax highlighting. Imported here (not via app.css @import) so
   // starry_night_theme_plugin in vite.config.ts can re-target its dark palette
   // from OS preference to the app's data-theme. See that plugin for details.
   // oxlint-disable-next-line import/no-unassigned-import -- global syntax-highlight styles
   import '@wooorm/starry-night/style/both'
-  import element_data from '$lib/element/data'
-  import { theme_state } from '$lib/state.svelte'
+  import element_data from '#lib/element/data.js'
+  import { theme_state } from '#lib/state.svelte.js'
   import {
     apply_theme_to_dom,
     AUTO_THEME,
     get_theme_preference,
     THEME_OPTIONS,
     THEME_STORAGE_KEY,
-  } from '$lib/theme'
-  import ThemeControl from '$lib/theme/ThemeControl.svelte'
-  import pkg from '$root/package.json'
-  import Footer from '$site/Footer.svelte'
-  import { link_source_mentions } from '$site/source-links'
-  import { nav_routes, routes } from '$site/state.svelte'
+  } from '#lib/theme/index.js'
+  import ThemeControl from '#lib/theme/ThemeControl.svelte'
+  import pkg from '#root/package.json'
+  import Footer from '#site/Footer.svelte'
+  import { link_source_mentions } from '#site/source-links.js'
+  import { nav_routes, routes } from '#site/state.svelte.js'
   import type { Snippet } from 'svelte'
   import type { CmdAction } from 'svelte-widgets'
   import { CopyButton, GitHubCorner, Icon, Nav, PageSearch } from 'svelte-widgets'
@@ -74,6 +75,11 @@
     action: () => (theme_mode = value),
   }))
 
+  // `pnpm build:site` writes the Pagefind index next to the static build, so the dev server
+  // has none to import: report no index hits there instead of requesting a 404 per search
+  // (routes and commands in fallback_actions still match locally)
+  const load_pagefind = dev ? async () => ({ search: async () => null }) : undefined
+
   const pagefind_enabled = $derived(
     !page.url.pathname.startsWith(`/test`) && page.url.pathname !== `/404`,
   )
@@ -85,6 +91,7 @@
 <PageSearch
   bind:open={cmd_palette_open}
   fallback_actions={[...route_actions, ...theme_actions]}
+  {load_pagefind}
   navigate={(url) => goto(url)}
   strip_html_suffix
   aria_label="Search the MatterViz site"

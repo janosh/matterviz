@@ -1,12 +1,12 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import { type Crystal, SETTINGS_CONFIG } from '$lib'
-  import { plot_color } from '$lib/colors'
-  import type { CoordinationSplitMode } from '$lib/coordination'
-  import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '$lib/coordination'
-  import { type AtomColorConfig, Structure } from '$lib/structure'
-  import type { BondingStrategy } from '$lib/structure/bonding'
-  import { structure_map } from '$site/structures'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import { type Crystal, SETTINGS_CONFIG } from '#lib'
+  import { plot_color } from '#lib/colors/index.js'
+  import type { CoordinationSplitMode } from '#lib/coordination/index.js'
+  import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
+  import { type AtomColorConfig, Structure } from '#lib/structure/index.js'
+  import type { BondingStrategy } from '#lib/structure/bonding.js'
+  import { structure_map } from '#site/structures.js'
   import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, {
     hex_with_alpha,

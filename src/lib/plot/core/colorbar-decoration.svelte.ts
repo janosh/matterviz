@@ -4,16 +4,16 @@
 // create_placed_tween, so it must be called during component init. Render it with
 // ColorBarDecoration.svelte.
 
-import type { Point2D } from '$lib/math'
-import type { DecorationItem, DecorationSolution } from '$lib/plot/core/decorations'
+import type { Point2D } from '#lib/math.js'
+import type { DecorationItem, DecorationSolution } from '#lib/plot/core/decorations/index.js'
 import {
   decoration_data_attrs,
   decoration_placement_revision,
   get_decoration_placement,
-} from '$lib/plot/core/decorations'
-import { element_position_for_footprint, full_footprint_or } from '$lib/plot/core/layout'
-import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
-import { COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
+} from '#lib/plot/core/decorations/index.js'
+import { element_position_for_footprint, full_footprint_or } from '#lib/plot/core/layout.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
+import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import type { TweenOptions } from 'svelte/motion'
 
 export type ColorbarDecoration = ReturnType<typeof create_colorbar_decoration>

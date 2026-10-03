@@ -1,22 +1,22 @@
-import type { FileDropOptions } from '$lib/io/file-drop'
+import type { FileDropOptions } from '#lib/io/file-drop.js'
 import {
   create_file_drop_handler,
   drag_over_handlers,
   file_drop_zone,
   raw_file_drop_zone,
-} from '$lib/io/file-drop'
-import type * as DecompressModule from '$lib/io/decompress'
-import { decompress_file } from '$lib/io/decompress'
-import type { FileLoadCallback, TrajectoryFileLoadCallback } from '$lib/io/types'
-import { dropped_file_url, load_from_url, load_trajectory_from_url } from '$lib/io/url-drop'
+} from '#lib/io/file-drop.js'
+import type * as DecompressModule from '#lib/io/decompress.js'
+import { decompress_file } from '#lib/io/decompress.js'
+import type { FileLoadCallback, TrajectoryFileLoadCallback } from '#lib/io/types.js'
+import { dropped_file_url, load_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 // decompress_trajectory_file stays real so the hdf5_as_blob mode is exercised end to end
-vi.mock(`$lib/io/decompress`, async (import_original) => ({
+vi.mock(`#lib/io/decompress.js`, async (import_original) => ({
   ...(await import_original<typeof DecompressModule>()),
   decompress_file: vi.fn(),
 }))
-vi.mock(`$lib/io/url-drop`, () => ({
+vi.mock(`#lib/io/url-drop.js`, () => ({
   dropped_file_url: vi.fn(),
   load_from_url: vi.fn(),
   load_trajectory_from_url: vi.fn(),
@@ -455,6 +455,16 @@ describe(`file_drop_zone attachment`, () => {
       expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`)),
     )
     expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
+
+    // an inner drop target that stops propagation (a pane reordering its own items) still
+    // clears the class, which would otherwise stick and keep its border shifting the layout
+    const inner = document.createElement(`span`)
+    node.append(inner)
+    inner.addEventListener(`drop`, (event) => event.stopPropagation())
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    inner.dispatchEvent(new Event(`drop`, { bubbles: true, cancelable: true }))
+    expect(node.classList.contains(`dragover`)).toBe(false)
+    expect(on_drop).toHaveBeenCalledOnce()
 
     detach?.()
     node.dispatchEvent(new Event(`dragover`, { cancelable: true }))

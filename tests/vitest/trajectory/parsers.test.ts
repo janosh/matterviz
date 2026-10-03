@@ -1,41 +1,20 @@
 import assert from 'node:assert/strict'
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // Format parser behaviour through the public entry point: content sniffing, XDATCAR, LAMMPS,
 // XYZ/EXTXYZ, ASE, JSON, unsupported-format messages and HDF5 (TorchSim + Reference MD).
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
 // open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
-import type { ElementSymbol } from '$lib'
-import { structure_to_xyz_str } from '$lib/structure/export'
-import { get_element_counts } from '$lib/structure/density'
-import type { Pbc } from '$lib/structure/pbc'
-import { parse_xyz } from '$lib/structure/parse'
-import type { TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-import {
-  is_loaded_signal,
-  is_signal_descriptor,
-  trajectory_from_frames,
-} from '$lib/trajectory'
+import type { ElementSymbol } from '#lib'
+import { structure_to_xyz_str } from '#lib/structure/export.js'
+import { get_element_counts } from '#lib/structure/density.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import { parse_xyz } from '#lib/structure/parse.js'
+import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { open_trajectory, trajectory_from_json } from '#lib/trajectory/open.js'
 import {
   Hdf5GroupSelectionRequiredError,
-  open_trajectory,
-  trajectory_from_json,
-} from '$lib/trajectory/open'
-import {
-  FORMAT_PATTERNS,
-  is_indexable_trajectory_filename,
-  is_trajectory_file,
-} from '$lib/trajectory/format-detect'
-import { get_unsupported_format_message } from '$lib/trajectory/parse'
-import {
-  ase_calculator_data,
-  parse_ase_trajectory,
-  open_ase_frames,
-  read_ase_header,
-} from '$lib/trajectory/parse/ase'
-import { AMU_KG, ELEMENTARY_CHARGE_C, FS_IN_ASE_TIME } from '$lib/constants'
-import { ATOM_BATCH_SIZE } from '$lib/trajectory/atom-batches'
-import { hotspot_mean } from '$lib/trajectory/hotspots'
-import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   HDF5_MAX_WHOLE_DATASET_BYTES,
   hdf5_frames_per_slice,
@@ -46,12 +25,32 @@ import {
   read_numeric_samples,
   to_number_array,
   to_scalar_number,
-} from '$lib/trajectory/parse/h5-utils'
-import { reference_checkpoint_interval } from '$lib/trajectory/parse/reference-md-h5'
-import { decode_text_chunks } from '$lib/io/decompress'
-import { has_multiple_xyz_frames, TextLines } from '$lib/trajectory/helpers'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
+} from '#lib/trajectory/parse/h5-utils.js'
+import {
+  FORMAT_PATTERNS,
+  is_indexable_trajectory_filename,
+  is_trajectory_file,
+} from '#lib/trajectory/format-detect.js'
+import { get_unsupported_format_message } from '#lib/trajectory/parse/index.js'
+import {
+  ase_calculator_data,
+  parse_ase_trajectory,
+  open_ase_frames,
+  read_ase_header,
+} from '#lib/trajectory/parse/ase.js'
+import {
+  AMU_KG,
+  ELEMENTARY_CHARGE_C,
+  EV_PER_A3_TO_GPA,
+  FS_IN_ASE_TIME,
+} from '#lib/constants.js'
+import { ATOM_BATCH_SIZE } from '#lib/trajectory/atom-batches.js'
+import { hotspot_mean } from '#lib/trajectory/hotspots.js'
+import { reference_checkpoint_interval } from '#lib/trajectory/parse/reference-md-h5.js'
+import { decode_text_chunks } from '#lib/io/decompress.js'
+import { has_multiple_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { join } from 'node:path'
 import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
@@ -374,19 +373,24 @@ describe(`vasprun.xml`, () => {
       ...rows.map((row) => `<v> ${row.join(`  `)} </v>`),
       `</varray>`,
     ].join(`\n`)
-  // One <calculation> ionic step: `n_scf` SCF steps, then the step's structure, forces,
-  // stress and summary energies in VASP's order
+  const energies = (energy: number) =>
+    `<i name="e_fr_energy"> ${energy} </i>\n<i name="e_wo_entrp"> ${energy + 0.001} </i>\n<i name="e_0_energy"> ${energy + 0.002} </i>`
+  // One <calculation> ionic step: `n_scf` SCF steps (the last at the converged energies),
+  // then the step's structure, forces, stress and summary energies in VASP's order. With
+  // PSTRESS set VASP adds `pv` to the summary energies, as in a real NPT vasprun.xml.
   const calculation = (
     lat_a: number,
     frac: number[][],
     forces: number[][],
     energy: number,
-    { n_scf = 2, md: molecular_dynamics = false, close = true } = {},
+    { n_scf = 2, md: molecular_dynamics = false, close = true, pv = 0 } = {},
   ): string =>
     [
       `<calculation>`,
-      ...Array<string>(n_scf).fill(
-        `<scstep>\n<energy>\n<i name="e_fr_energy"> ${energy - 1} </i>\n</energy>\n</scstep>`,
+      ...Array.from(
+        { length: n_scf },
+        (_, scf_idx) =>
+          `<scstep>\n<energy>\n${energies(scf_idx === n_scf - 1 ? energy : energy - 1)}\n</energy>\n</scstep>`,
       ),
       `<structure>\n<crystal>\n${varray(`basis`, [
         [lat_a, 0, 0],
@@ -399,7 +403,7 @@ describe(`vasprun.xml`, () => {
         [0, -6, 0],
         [0, 0, -9],
       ]),
-      `<energy>\n<i name="e_fr_energy"> ${energy} </i>\n<i name="e_wo_entrp"> ${energy + 0.001} </i>\n<i name="e_0_energy"> ${energy + 0.002} </i>${molecular_dynamics ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
+      `<energy>\n${energies(energy + pv)}${molecular_dynamics ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
       ...(close ? [`</calculation>`] : []),
     ].join(`\n`)
   const atominfo = (rows: [string, number][], types: [number, string, number][]) =>
@@ -439,6 +443,23 @@ describe(`vasprun.xml`, () => {
     calculation(5, frac_si_o, [[0.1, 0, 0], [-0.1, 0, 0]], -10),
     calculation(5.2, [[0, 0, 0], [0.5, 0.5, 0.52]], [[0.01, 0, 0], [-0.01, 0, 0]], -10.5, { n_scf: 3 }),
   ]
+
+  // With PSTRESS set, the closing <energy> block holds the enthalpy F + PV (-7.924 vs -8.174
+  // eV in a real NPT run); reading it there reported the enthalpy as the energy
+  it(`reports the SCF free energy, not the PSTRESS enthalpy, as energy`, async () => {
+    const run = await open(
+      vasprun([calculation(5, frac_si_o, zero_forces, -8.174, { pv: 0.25 })]),
+      `vasprun.xml`,
+    )
+    const [frame] = await frames_of(run)
+    // the fixture's own sums (-8.174 + 0.25) carry float noise, hence closeTo
+    expect(frame.metadata).toMatchObject({
+      energy: -8.174,
+      energy_wo_entropy: expect.closeTo(-8.173, 12),
+      energy_sigma_0: expect.closeTo(-8.172, 12),
+      enthalpy: expect.closeTo(-7.924, 12),
+    })
+  })
 
   it(`reads one frame per <calculation> with structure, forces, stress and energies`, async () => {
     const run = await open(vasprun(two_steps), `vasprun.xml`)
@@ -872,8 +893,10 @@ describe(`LAMMPS`, () => {
   // atom or frame silently and surface only as "No valid frames found"
   // oxfmt-ignore
   it.each([
-    [`neither type nor element column`, lammps_frame(`id x y z`, [`1 0 0 0`]),
-      `LAMMPS frame at timestep 0 has neither a type nor an element column in "ITEM: ATOMS id x y z"`],
+    [`no type, element or mass column`, lammps_frame(`id x y z`, [`1 0 0 0`]),
+      `LAMMPS frame at timestep 0 has no type, element or mass column in "ITEM: ATOMS id x y z"`],
+    [`untyped coarse-grained mass`, lammps_frame(`id mass x y z`, [`1 72.0 0 0 0`]),
+      `LAMMPS atom line 10 (timestep 0) names no element (mass "72.0") and has no type column to fall back on`],
     [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
     // a repeat used to make the last index win, reading [9, 2, 3] here instead of [1, 2, 3]
@@ -884,7 +907,7 @@ describe(`LAMMPS`, () => {
     [`atom type -1`, lammps_frame(`id type x y z`, [`1 -1 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "-1"`],
     [`atom type bad`, lammps_frame(`id type x y z`, [`1 bad 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "bad"`],
     [`unknown element symbol`, lammps_frame(`id element x y z`, [`1 Xx 0 0 0`]),
-      `LAMMPS atom line 10 (timestep 0) has unknown element symbol "Xx"`],
+      `LAMMPS atom line 10 (timestep 0) names no element (element "Xx") and has no type column to fall back on`],
     [`short atom line`, lammps_frame(`id type x y z`, [`1 1 0 0`]), `LAMMPS atom line 10 (timestep 0) has 4 columns, expected 5`],
     [`non-numeric coordinate`, lammps_frame(`id type x y z`, [`1 1 0 xx 0`]),
       `LAMMPS atom line 10 (timestep 0) has non-numeric coordinates: "1 1 0 xx 0"`],
@@ -1018,6 +1041,20 @@ describe(`LAMMPS`, () => {
     const content = lammps_frame(`id type x y z ${extra_cols}`, [`1 1 0.0 0.0 0.0 ${extra_values}`])
     const run = await open(content, `test.lammpstrj`)
     expect(run.preview.structure.sites[0].properties).toEqual({ ...expected, id: 1, type: 1 })
+  })
+
+  // `dump custom ... mass` names elements like a data file's Masses section; it used to be
+  // ignored, so a SiO2 dump read types 1/2 as H/He
+  // oxfmt-ignore
+  it.each([
+    [`type + mass`, `id type mass x y z`, [`1 1 28.0855 0 0 0`, `2 2 15.999 1 1 1`], [`Si`, `O`], 0],
+    [`mass only`, `id mass x y z`, [`1 28.0855 0 0 0`, `2 15.999 1 1 1`], [`Si`, `O`], 0],
+    [`element column over mass`, `id element mass x y z`, [`1 Ge 28.0855 0 0 0`, `2 O 15.999 1 1 1`], [`Ge`, `O`], 0],
+    [`coarse-grained mass falls back to type`, `id type mass x y z`, [`1 1 72.0 0 0 0`, `2 2 15.999 1 1 1`], [`H`, `O`], 1],
+  ] as const)(`resolves elements from a mass column: %s`, async (_name, cols, atom_lines, expected, n_warnings) => {
+    const run = await open(lammps_frame(cols, [...atom_lines]), `m.lammpstrj`, { atom_type_mapping: undefined })
+    expect(elements_of(run.preview)).toEqual(expected)
+    expect(run.warnings).toHaveLength(n_warnings)
   })
 
   it(`reads a case-mangled element column`, async () => {
@@ -1230,6 +1267,38 @@ describe(`XYZ`, () => {
     const lattice = lattice_of(frame)
     expect([lattice.a, lattice.b, lattice.c]).toEqual([4, 4, 4])
     expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
+  })
+
+  // `total_energy` (an MD total) was folded into `energy`, so an exported OUTCAR frame lost it
+  // on re-import, and a bare `t` (often a time) was read as a temperature
+  it(`keeps total_energy apart from energy and reads no temperature from t`, async () => {
+    const content = [
+      xyz_frame([`H 0 0 0`], `energy=-8.17 total_energy=-7.82 temp=300`),
+      xyz_frame([`H 0 0 0`], `etot=-7.82 t=0.5`),
+    ].join(`\n`)
+    const [explicit, aliased] = await frames_of(await open(content, `md.xyz`))
+    expect(explicit.metadata).toEqual({ energy: -8.17, total_energy: -7.82, temperature: 300 })
+    expect(aliased.metadata).toEqual({ total_energy: -7.82, t: 0.5 })
+  })
+
+  // An extXYZ stress follows ASE (eV/A^3, tensile positive): it was stored raw, in a different
+  // unit and sign from every other reader, and gave no pressure (a .traj of it did)
+  it(`converts an extXYZ stress like ASE .traj and derives the pressure`, async () => {
+    const cell = `Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3`
+    const content = [
+      xyz_frame([`H 0 0 0`], `${cell} stress="0.01 0 0 0 0.02 0 0 0 -0.03"`),
+      xyz_frame([`H 0 0 0`], `${cell} stress="0.01 0 0 0 0.02 0 0 0 0.03" pressure=7`),
+    ].join(`\n`)
+    const [derived, stated] = await frames_of(await open(content, `stress.xyz`))
+    const gpa = EV_PER_A3_TO_GPA
+    expect(derived.metadata?.stress).toEqual([
+      [-0.01 * gpa, -0, -0],
+      [-0, -0.02 * gpa, -0],
+      [-0, -0, 0.03 * gpa],
+    ])
+    expect(derived.metadata?.pressure).toBeCloseTo(0, 12) // trace is zero
+    expect(derived.metadata?.stress_max).toBeCloseTo(0.03 * gpa, 12)
+    expect(stated.metadata?.pressure).toBe(7) // a stated pressure wins
   })
 
   // Issue #449: generated structures of different sizes dumped into one XYZ must browse

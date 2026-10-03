@@ -1,9 +1,9 @@
 // Prediction interchange and publication validation. No Svelte/DOM imports: file workers use
 // the same contract as live tools. Undefined object fields are omitted; array holes are errors.
-import { grid_data_range, type VolumetricData } from '$lib/isosurface/types'
-import { grid_dimensions } from '$lib/isosurface/grid'
-import { det_3x3, is_finite_matrix3x3, is_finite_vec3, is_pbc } from '$lib/math'
-import { is_elem_symbol } from '$lib/element/helpers'
+import { grid_data_range, type VolumetricData } from '#lib/isosurface/types.js'
+import { grid_dimensions } from '#lib/isosurface/grid.js'
+import { det_3x3, is_finite_matrix3x3, is_finite_vec3, is_pbc } from '#lib/math.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { AnyStructure } from './index'
 
 // Reuse IDs only for the same physical quantity, units and normalization.

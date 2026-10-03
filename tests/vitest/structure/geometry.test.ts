@@ -1,5 +1,5 @@
-import type { Vec3 } from '$lib/math'
-import type { BondOrder, BondPair } from '$lib/structure'
+import type { Vec3 } from '#lib/math.js'
+import type { BondOrder, BondPair } from '#lib/structure/index.js'
 import {
   count_bond_instances,
   bond_neighbors,
@@ -8,18 +8,18 @@ import {
   pack_bonds,
   prepare_bond_placements,
   write_bond_transform,
-} from '$lib/structure/bond-rendering'
+} from '#lib/structure/bond-rendering.js'
 import {
   arrow_axis_geometry,
   cylinder_between,
   quaternion_from_direction,
   rotation_from_direction,
-} from '$lib/structure/geometry'
+} from '#lib/structure/geometry.js'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import { create_numeric_md_frame, FrameView } from '$lib/trajectory/frame'
-import { BondMesh } from '$lib/structure/bond-mesh'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
+import { BondMesh } from '#lib/structure/bond-mesh.js'
 
 const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
 

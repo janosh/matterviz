@@ -1,10 +1,10 @@
-import type { ElementSymbol } from '$lib/element'
-import type { CompositionType } from '$lib/composition'
-import { element_by_symbol } from '$lib/element/data'
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { AnyStructure } from '$lib/structure'
-import { get_element_counts } from '$lib/structure/density'
-import { format_num } from '$lib/labels'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { CompositionType } from '#lib/composition/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { get_element_counts } from '#lib/structure/density.js'
+import { format_num } from '#lib/labels.js'
 import { parse_composition } from './parse'
 
 // Default d3 format for stoichiometric amounts: fixed notation with trailing zeros trimmed.

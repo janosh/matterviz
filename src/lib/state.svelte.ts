@@ -1,4 +1,4 @@
-import type { ChemicalElement, ElementCategory } from '$lib/element/types'
+import type { ChemicalElement, ElementCategory } from '#lib/element/types.js'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
 import { get_theme_preference, type ThemeMode } from './theme'
 

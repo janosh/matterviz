@@ -1,9 +1,9 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // One frame's partial RDFs via a small pool of persistent Web Workers (main-thread fallback
 // without Worker); the trajectory sweep in calc-trajectory-rdf.ts keeps one frame per worker.
-import type { AnyStructure } from '$lib/structure'
-import { to_structure_id_payload } from '$lib/structure-id/worker-payload'
-import { create_worker_client, type WorkerClient } from '$lib/worker-client.svelte'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { to_structure_id_payload } from '#lib/structure-id/worker-payload.js'
+import { create_worker_client, type WorkerClient } from '#lib/worker-client.svelte.js'
 import { calc_frame_rdfs, type FrameRdfOptions } from './calc-rdf'
 import type { RdfPattern } from './index'
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { grow_capacity } from '$lib/math'
+  import { grow_capacity } from '#lib/math.js'
   // Instanced arrows (shaft cylinders + head cones) for per-site vector layers
   // (forces, magnetic moments, ...). Replaces one <Arrow> component per site
   // (2 meshes + 2 geometries + 2 materials each) with 2 draw calls per layer.

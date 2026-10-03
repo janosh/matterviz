@@ -1,5 +1,5 @@
-import type { StructureInput } from '$lib/plot/core/structure-input'
-import type { BondingStrategy } from '$lib/structure/bonding'
+import type { StructureInput } from '#lib/plot/core/structure-input.js'
+import type { BondingStrategy } from '#lib/structure/bonding.js'
 import type { ComponentProps } from 'svelte'
 import type StructureBarPlot from './StructureBarPlot.svelte'
 

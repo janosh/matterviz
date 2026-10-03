@@ -4,19 +4,22 @@
 
 // Import MatterViz parsing functions and components
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
-import '$lib/app.css'
-import { legend_mode_to_prop } from '$lib/plot/core/utils/series-visibility'
-import { merge, build_structure_props_from_settings as structure_props } from '$lib/settings'
-import type { DefaultSettings } from '$lib/settings'
-import type { DownloadData } from '$lib/io/fetch'
-import Bands from '$lib/spectral/Bands.svelte'
-import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
-import Dos from '$lib/spectral/Dos.svelte'
-import { ensure_moyo_wasm_ready } from '$lib/symmetry'
-import { apply_theme_to_dom, is_valid_theme_name } from '$lib/theme/index'
-import type { TrajectoryController, TrajHandlerData } from '$lib/trajectory'
-import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
-import Trajectory from '$lib/trajectory/Trajectory.svelte'
+import '#lib/app.css'
+import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
+import {
+  merge,
+  build_structure_props_from_settings as structure_props,
+} from '#lib/settings.js'
+import type { DefaultSettings } from '#lib/settings.js'
+import type { DownloadData } from '#lib/io/fetch.js'
+import Bands from '#lib/spectral/Bands.svelte'
+import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
+import Dos from '#lib/spectral/Dos.svelte'
+import { ensure_moyo_wasm_ready } from '#lib/symmetry/index.js'
+import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
+import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
+import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import type { VSCodeAPI } from './host-bridge'
@@ -32,7 +35,7 @@ import { TYPE_LABELS } from './detect'
 import { mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { open_material, type OpenedMaterial } from './open'
-import { escape_html, is_plain_object, to_error } from '$lib/utils'
+import { escape_html, is_plain_object, to_error } from '#lib/utils.js'
 
 export type MatterVizApp = ReturnType<typeof mount>
 
@@ -121,7 +124,7 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
   vscode_api?.postMessage({ command, text })
 }
 
-// Route `download` ($lib/io/fetch checks for this global override) through the host's save dialog
+// Route `download` (#lib/io/fetch checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
   const download = (data: DownloadData, filename: string, type: string): void => {

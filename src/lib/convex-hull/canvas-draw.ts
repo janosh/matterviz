@@ -1,26 +1,23 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
-import { add_alpha, plot_color } from '$lib/colors'
-import type { D3InterpolateName } from '$lib/colors'
-import { get_formula_label_segments } from '$lib/composition/format'
-import type { FormulaLabelSegment } from '$lib/composition/format'
-import type { ElementSymbol } from '$lib/element'
-import { capitalize, type D3SymbolName, format_num, symbol_map } from '$lib/labels'
-import { array_min, clamp, mean, to_radians, type Vec3 } from '$lib/math'
+import { add_alpha, plot_color } from '#lib/colors/index.js'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import { get_formula_label_segments } from '#lib/composition/format.js'
+import type { FormulaLabelSegment } from '#lib/composition/format.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
+import { array_min, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
 import {
   centered_rect,
   pad_rect,
   rect_within_rect,
   rects_overlap,
-} from '$lib/plot/core/layout'
-import type { Rect } from '$lib/plot/core/layout'
-import {
-  build_spatial_index,
-  query_topmost,
-  type SpatialIndex,
-} from '$lib/plot/core/spatial-index'
-import { DEFAULTS } from '$lib/settings'
-import { clamp01 } from '$lib/utils'
+} from '#lib/plot/core/layout.js'
+import type { Rect } from '#lib/plot/core/layout.js'
+import type { SpatialIndex } from '#lib/plot/core/spatial-index.js'
+import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { clamp01 } from '#lib/utils.js'
 import { ticks } from 'd3-array'
 import { symbol } from 'd3-shape'
 import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'
@@ -876,7 +873,10 @@ const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
     rotation_y: quaternary_defaults.camera_rotation_y,
     zoom: quaternary_defaults.camera_zoom,
     center_x: 0,
-    center_y: 20, // Slight offset to avoid legend overlap
+    // At the default rotation the projected tetrahedron's bbox center sits ~0.06 data units
+    // below its centroid (~25 px at the 500 px demo height): shift up to center it, which also
+    // keeps the bottom corner and its label clear of the colorbar and the canvas edge
+    center_y: -25,
   },
   wheel_clamp: [1.0, 15],
   shadow_factor: 2,

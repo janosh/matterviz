@@ -1,16 +1,12 @@
 // Mounts LatticePlanes against the recording Threlte stub: one fill mesh and one outline per
 // family, disposed when the families change
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import LatticePlanes from '$lib/structure/LatticePlanes.svelte'
-import Lattice from '$lib/structure/Lattice.svelte'
-import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
-import {
-  type ShowSymmetryKinds,
-  type SymmetryElement,
-  SYM_ELEM_COLORS,
-  tile_symmetry_elements,
-} from '$lib/symmetry'
-import type { LatticePlane } from '$lib/structure/lattice-planes'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import LatticePlanes from '#lib/structure/LatticePlanes.svelte'
+import Lattice from '#lib/structure/Lattice.svelte'
+import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
+import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
+import { SYM_ELEM_COLORS, tile_symmetry_elements } from '#lib/symmetry/symmetry-elements.js'
+import type { LatticePlane } from '#lib/structure/lattice-planes.js'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'

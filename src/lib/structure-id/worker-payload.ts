@@ -3,8 +3,8 @@
 // element pairs) the species on each site, so that is all that crosses the thread boundary:
 // one flat Float64Array instead of a snapshot of every site (species, abc, label,
 // properties), which was 3.85x the bytes for the same answer.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { AnyStructure, LatticeType, Pbc, Site } from '$lib/structure'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { AnyStructure, LatticeType, Pbc, Site } from '#lib/structure/index.js'
 
 export interface StructureIdPayload {
   // x, y, z of site 0, then site 1, ... in A

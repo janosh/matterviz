@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Vec2 } from '$lib/math'
-  import { normalize_to_scene, surface_vertices } from '$lib/plot/scatter-3d/scene-coords'
-  import type { Surface3DConfig } from '$lib/plot/core/types'
-  import { dispose_on_change } from '$lib/scene'
+  import type { Vec2 } from '#lib/math.js'
+  import { normalize_to_scene, surface_vertices } from '#lib/plot/scatter-3d/scene-coords.js'
+  import type { Surface3DConfig } from '#lib/plot/core/types.js'
+  import { dispose_on_change } from '#lib/scene/index.js'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
 

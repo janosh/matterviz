@@ -1,17 +1,17 @@
 // VASP OUTCAR trajectory parsing: one frame per `POSITION / TOTAL-FORCE` table (ionic step)
 // with the cell printed just before it and the energies, stress and MD thermostat lines
 // printed around it.
-import type { ElementSymbol } from '$lib/element'
-import { is_elem_symbol } from '$lib/element/helpers'
-import { is_finite_vec3_like, type Matrix3x3, type Vec3 } from '$lib/math'
-import { parse_float_token } from '$lib/structure/parsers/shared'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import { is_finite_vec3_like, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { parse_float_token } from '#lib/structure/parsers/shared.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import {
   calc_force_stats,
   create_trajectory_frame,
   expand_ion_types,
   split_lines,
-} from '$lib/trajectory/helpers'
+} from '#lib/trajectory/helpers.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { vasp_run, vasp_stress_metadata } from './shared'
 

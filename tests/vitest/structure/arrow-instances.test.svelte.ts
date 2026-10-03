@@ -1,28 +1,31 @@
-import type { Vec3 } from '$lib/math'
-import type { VectorColorMode } from '$lib/settings'
-import type { AnyStructure } from '$lib/structure'
-import ArrowInstances from '$lib/structure/ArrowInstances.svelte'
-import { ArrowMesh } from '$lib/structure/arrow-mesh'
-import {
-  build_vector_layers,
-  pack_arrows,
-  type ArrowColumns,
-  type VectorLayer,
-  type VectorLayerOptions,
-} from '$lib/structure/arrow-instances'
-import { make_site, numeric_sites } from '$lib/structure/site'
-import { characteristic_atom_spacing } from '$lib/structure/density'
+import type { Vec3 } from '#lib/math.js'
+import type { VectorColorMode } from '#lib/settings.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
+import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
+import type {
+  ArrowColumns,
+  VectorLayer,
+  VectorLayerOptions,
+} from '#lib/structure/arrow-instances.js'
+import { build_vector_layers, pack_arrows } from '#lib/structure/arrow-instances.js'
+import { make_site, numeric_sites } from '#lib/structure/site.js'
+import { characteristic_atom_spacing } from '#lib/structure/density.js'
 import {
   compute_display_metrics,
   prepare_vector_geometry,
   register_structure_vectors,
-} from '$lib/structure/vectors'
-import { create_numeric_md_frame, FrameView, materialize_frame } from '$lib/trajectory/frame'
+} from '#lib/structure/vectors.js'
+import {
+  create_numeric_md_frame,
+  FrameView,
+  materialize_frame,
+} from '#lib/trajectory/frame.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { EPS } from '$lib/math'
+import { EPS } from '#lib/math.js'
 
 vi.mock(`@threlte/core`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),

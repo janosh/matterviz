@@ -1,5 +1,5 @@
-import { axis_transform } from '$lib/plot/core/interactions'
-import { LOG_EPS, type Point2D, type Vec2 } from '$lib/math'
+import { axis_transform } from '#lib/plot/core/interactions.js'
+import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math.js'
 import {
   bin_points,
   density_bin_at_point,
@@ -9,9 +9,9 @@ import {
   series_x_order,
   visible_points,
   should_render_points,
-} from '$lib/plot/scatter/adaptive-density'
-import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
-import type { DensePointSeries } from '$lib/plot/scatter/adaptive-density'
+} from '#lib/plot/scatter/adaptive-density.js'
+import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
+import type { DensePointSeries } from '#lib/plot/scatter/adaptive-density.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`adaptive density utilities`, () => {

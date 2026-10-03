@@ -3,7 +3,7 @@
 // about a fixed axis at constant radius, so the structure neither zooms nor drifts during the
 // flight and the swing covers its angle at the eased rate. A lerp of the endpoints would cut
 // the corner (dolly in and back out) and, between opposite handles, pass through the target.
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import * as THREE from 'three/webgpu'
 
 // Structural rather than the concrete OrbitControls class: Threlte's <OrbitControls> `ref` and

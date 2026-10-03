@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { parse_axis_label } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
+  import { parse_axis_label } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
 
   let {
     label = ``,

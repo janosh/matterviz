@@ -1,8 +1,8 @@
 <script lang="ts">
   // Tooltip component for Fermi surface hover information
   // Displays band index, spin, k-coordinates, and optional property values
-  import { format_num } from '$lib/labels'
-  import { KCoords, TooltipContent, TooltipValue } from '$lib/tooltip'
+  import { format_num } from '#lib/labels.js'
+  import { KCoords, TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
   import { SPIN_COLORS } from './constants'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 

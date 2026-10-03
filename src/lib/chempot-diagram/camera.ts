@@ -3,7 +3,7 @@
 
 // Hold a pinned zoom at a constant ratio to the auto-fit, which folds in both of its inputs:
 // a change in data extent and a viewport resize. Unclamped on purpose — the diagram sets no
-// min/max zoom, and $lib/scene's get_orthographic_zoom_bounds would turn the fit into a
+// min/max zoom, and #lib/scene's get_orthographic_zoom_bounds would turn the fit into a
 // zoom-out floor. A non-positive fit (mid-layout, zero-width container) leaves zoom untouched.
 export const rescale_zoom_to_fit = (
   zoom: number | null,

@@ -1,18 +1,18 @@
 <script lang="ts">
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { as_text, dropped_file_url, file_drop_zone, load_from_url } from '$lib/io'
-  import type { DiagramInput, PhaseDiagramData } from '$lib/phase-diagram'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { as_text, dropped_file_url, file_drop_zone, load_from_url } from '#lib/io/index.js'
+  import type { DiagramInput, PhaseDiagramData } from '#lib/phase-diagram/index.js'
   import {
     build_diagram,
     IsobaricBinaryPhaseDiagram,
     parse_phase_diagram_svg,
-  } from '$lib/phase-diagram'
-  import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
-  import { get_system_name, parse_tdb } from '$site/phase-diagrams/tdb-parse'
-  import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
-  import { to_error } from '$lib/utils'
-  import { all_phase_diagram_files, find_precomputed_diagram } from '$site/phase-diagrams'
-  import { file_param, set_file_param } from '$site/state.svelte'
+  } from '#lib/phase-diagram/index.js'
+  import type { TdbParseResult } from '#site/phase-diagrams/tdb-parse.js'
+  import { get_system_name, parse_tdb } from '#site/phase-diagrams/tdb-parse.js'
+  import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
+  import { to_error } from '#lib/utils.js'
+  import { all_phase_diagram_files, find_precomputed_diagram } from '#site/phase-diagrams.js'
+  import { file_param, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
 
   // Track currently loaded diagram
@@ -60,8 +60,8 @@
     if (sync_url) set_file_param(filename)
   }
 
-  // Load a picker entry: built-in diagrams come precomputed from $site/phase-diagrams, the
-  // rest (TDB, SVG, JSON, gzipped or not) are fetched and decompressed by $lib/io
+  // Load a picker entry: built-in diagrams come precomputed from #site/phase-diagrams, the
+  // rest (TDB, SVG, JSON, gzipped or not) are fetched and decompressed by #lib/io
   async function load_file(url: string, filename: string, sync_url = true): Promise<void> {
     const token = Symbol(filename)
     active_load = token

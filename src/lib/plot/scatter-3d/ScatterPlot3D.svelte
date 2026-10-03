@@ -2,13 +2,13 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { type D3InterpolateName, plot_color } from '$lib/colors'
-  import type { Vec2 } from '$lib/math'
-  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-  import { build_legend_items, first_point_style } from '$lib/plot/core/data-transform'
-  import { resolve_axis_range } from '$lib/plot/core/interactions'
+  import { type D3InterpolateName, plot_color } from '#lib/colors/index.js'
+  import type { Vec2 } from '#lib/math.js'
+  import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
+  import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
+  import { resolve_axis_range } from '#lib/plot/core/interactions.js'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -18,22 +18,22 @@
     InternalPoint3D,
     LegendConfig,
     Scatter3DHandlerEvent,
-  } from '$lib/plot/core/types'
-  import { assert_series_lengths, SCALE_DEFAULTS } from '$lib/plot/core/types'
+  } from '#lib/plot/core/types.js'
+  import { assert_series_lengths, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { Canvas } from '@threlte/core'
   import { onMount } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { collect_series_extent, create_color_scale } from '$lib/plot/core/scales'
+  import { collect_series_extent, create_color_scale } from '#lib/plot/core/scales.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '$lib/plot/core/utils/series-visibility'
-  import { create_renderer, webgpu_available } from '$lib/scene'
+  } from '#lib/plot/core/utils/series-visibility.js'
+  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import ScatterPlot3DControls, {
     DISPLAY_DEFAULTS_3D,
-  } from '$lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
-  import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+  } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
+  import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
   type SceneProps = ComponentProps<typeof ScatterPlot3DScene<Metadata>>
@@ -73,6 +73,7 @@
     directional_light = 0.8,
     // Rendering quality
     sphere_segments = 16,
+    point_tween,
     // Gizmo
     gizmo = true,
     // Controls
@@ -277,6 +278,7 @@
           {ambient_light}
           {directional_light}
           {sphere_segments}
+          {point_tween}
           {fullscreen}
           gizmo={computed_gizmo}
           bind:hovered_point={tooltip_point}

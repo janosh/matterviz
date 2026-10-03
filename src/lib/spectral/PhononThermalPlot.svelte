@@ -2,12 +2,12 @@
   // Free energy, internal energy, entropy and heat capacity vs temperature from a phonon DOS.
   // Energies (F, U) on the left axis, S and C_v on the right one since they differ by a factor
   // of ~T. Defaults to phonopy's kJ/mol and J/(K·mol) so plots compare directly.
-  import { plot_color } from '$lib/colors'
-  import { EV_TO_KJ_PER_MOL } from '$lib/constants'
+  import { plot_color } from '#lib/colors/index.js'
+  import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
   import { StatusMessage } from 'svelte-widgets'
-  import type { DataSeries, ScatterPlotOptions } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
-  import { to_error } from '$lib/utils'
+  import type { DataSeries, ScatterPlotOptions } from '#lib/plot/index.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
+  import { to_error } from '#lib/utils.js'
   import type { FrequencyUnit } from './frequency-units'
   import { thermal_properties } from './thermal'
   import type { PhononDos } from './types'

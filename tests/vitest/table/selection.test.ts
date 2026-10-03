@@ -1,4 +1,4 @@
-import { CellSelection } from '$lib/table'
+import { CellSelection } from '#lib/table/selection.svelte.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`CellSelection`, () => {

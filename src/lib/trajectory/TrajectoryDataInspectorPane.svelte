@@ -1,8 +1,8 @@
 <script lang="ts">
   import { StatusMessage, Tabs } from 'svelte-widgets'
-  import { format_num, trajectory_property_config } from '$lib/labels'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import { type CellVal, HeatmapTable, type Column, type RowData } from '$lib/table'
+  import { format_num, trajectory_property_config } from '#lib/labels.js'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
 

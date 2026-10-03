@@ -6,9 +6,9 @@ import {
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
   VASP_VOLUMETRIC_FILES,
-} from '$lib/constants'
-import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
-import { is_plain_object } from '$lib/utils'
+} from '#lib/constants.js'
+import { SETTINGS_CONFIG, type SettingType } from '#lib/settings.js'
+import { is_plain_object } from '#lib/utils.js'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]
@@ -18,7 +18,7 @@ const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `mattervi
 const HINT_ONLY_EXTENSIONS = [`dcd`, `xtc`, `trr`]
 
 // Heuristic selectors stay literal. They are narrower than the keyword lists in
-// $lib/constants on purpose: generating from all of STRUCT_KEYWORDS would put a MatterViz
+// #lib/constants on purpose: generating from all of STRUCT_KEYWORDS would put a MatterViz
 // entry on every *data*.json in the workspace.
 // oxfmt-ignore
 const KEYWORD_SELECTORS = [
@@ -148,7 +148,7 @@ function sync_package_config(): void {
       console.error(`❌ package.json is stale — run \`pnpm -C extensions/vscode sync-config\``)
       process.exit(1)
     }
-    console.info(`✅ package.json is in sync with SETTINGS_CONFIG and $lib file types`)
+    console.info(`✅ package.json is in sync with SETTINGS_CONFIG and #lib file types`)
     return
   }
 

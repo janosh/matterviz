@@ -1,7 +1,7 @@
-import Histogram from '$lib/plot/histogram/Histogram.svelte'
-import type { Vec2 } from '$lib'
-import { plot_color } from '$lib/colors'
-import type { HistogramSeries } from '$lib/plot/histogram/histogram'
+import Histogram from '#lib/plot/histogram/Histogram.svelte'
+import type { Vec2 } from '#lib'
+import { plot_color } from '#lib/colors/index.js'
+import type { HistogramSeries } from '#lib/plot/histogram/histogram.js'
 import {
   bin_values,
   compute_count_range,
@@ -9,7 +9,7 @@ import {
   compute_histogram_counts,
   log_safe_range,
   normalize_counts,
-} from '$lib/plot/histogram/histogram'
+} from '#lib/plot/histogram/histogram.js'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {

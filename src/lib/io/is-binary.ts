@@ -6,7 +6,7 @@ import {
   BINARY_VIEWER_EXTENSIONS,
   VASP_STRUCTURE_FILES,
   VASP_TRAJECTORY_FILES,
-} from '$lib/constants'
+} from '#lib/constants.js'
 
 // === (1) string-content heuristic ===
 // Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars. Only

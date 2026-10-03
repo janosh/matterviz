@@ -2,12 +2,12 @@
 // Single source of truth for the quantile math used by BoxPlot.svelte.
 
 import { ascending } from 'd3-array'
-import type { Vec2 } from '$lib/math'
-import { array_extent, mean as mean_of, quantile_unordered, sample_std } from '$lib/math'
-import type { FillPattern } from '$lib/plot/core/patterns'
-import type { HandlerProps } from '$lib/plot/core/types'
-import { DEFAULTS } from '$lib/settings'
-import { clamp01 } from '$lib/utils'
+import type { Vec2 } from '#lib/math.js'
+import { array_extent, mean as mean_of, quantile_unordered, sample_std } from '#lib/math.js'
+import type { FillPattern } from '#lib/plot/core/patterns.js'
+import type { HandlerProps } from '#lib/plot/core/types.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { clamp01 } from '#lib/utils.js'
 
 // === Box plot types ===
 // How box plot whiskers are computed from a raw distribution

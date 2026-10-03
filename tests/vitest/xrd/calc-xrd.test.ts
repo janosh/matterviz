@@ -1,10 +1,10 @@
-import type { ElementSymbol } from '$lib/element'
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { RadiationType } from '$lib/scattering'
-import { electron_form_factor, xray_form_factor } from '$lib/scattering'
-import type { Crystal } from '$lib/structure'
-import { parse_structure_file } from '$lib/structure/parse'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { RadiationType } from '#lib/scattering/index.js'
+import { electron_form_factor, xray_form_factor } from '#lib/scattering/index.js'
+import type { Crystal } from '#lib/structure/index.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
 import {
   add_xrd_pattern,
   compute_xrd_pattern,
@@ -12,8 +12,8 @@ import {
   enumerate_reciprocal_points,
   structure_factors_squared,
   WAVELENGTHS,
-} from '$lib/xrd'
-import type { RecipPoint, XrdPattern } from '$lib/xrd'
+} from '#lib/xrd/calc-xrd.js'
+import type { RecipPoint, XrdPattern } from '#lib/xrd/index.js'
 import file_system from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -541,7 +541,7 @@ describe(`radiation types`, () => {
   })
 
   // Mott–Bethe divides (Z − f_x) by s², which naively diverges at forward scattering. The
-  // s² cancels analytically in $lib/scattering, and this asserts it survives our call path.
+  // s² cancels analytically in #lib/scattering, and this asserts it survives our call path.
   test(`electron structure factor is finite at s = 0`, () => {
     const forward = structure_factors_squared(tic, `electron`, {}, [
       { hkl: [0, 0, 0], g_norm: 0 },

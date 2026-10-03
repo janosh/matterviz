@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { BondFrame, prepare_bond_placements } from '$lib/structure/bond-rendering'
+import { BondFrame, prepare_bond_placements } from '#lib/structure/bond-rendering.js'
 import {
   create_numeric_md_frame,
   encode_frame,
@@ -8,40 +8,42 @@ import {
   materialize_frame_result,
   select_frame_channels,
   wrap_frame_coordinates,
-} from '$lib/trajectory/frame'
-import { normalize_fractional_coords } from '$lib/structure/parse'
-import { snapshot_topologies, numeric_sites, site_count, get_site } from '$lib/structure/site'
-import { characteristic_atom_spacing, get_element_counts } from '$lib/structure/density'
-import { has_usable_lattice, is_crystal } from '$lib/structure/validation'
+} from '#lib/trajectory/frame.js'
+import { normalize_fractional_coords } from '#lib/structure/parse.js'
+import {
+  snapshot_topologies,
+  numeric_sites,
+  site_count,
+  get_site,
+} from '#lib/structure/site.js'
+import { characteristic_atom_spacing, get_element_counts } from '#lib/structure/density.js'
+import { has_usable_lattice, is_crystal } from '#lib/structure/validation.js'
 import {
   get_colorable_property_keys,
   structure_has_selective_dynamics,
-} from '$lib/structure/atom-properties'
-import { get_structure_vector_keys, prepare_vector_geometry } from '$lib/structure/vectors'
-import { compute_bonds } from '$lib/structure/bonding'
+} from '#lib/structure/atom-properties.js'
+import { get_structure_vector_keys, prepare_vector_geometry } from '#lib/structure/vectors.js'
+import { compute_bonds } from '#lib/structure/bonding.js'
 import {
   display_frame_bytes,
   display_frame_transfers,
   FramePreparer,
-} from '$lib/trajectory/prepare'
-import { DEFAULTS } from '$lib/settings'
-import { frame_atom_batch } from '$lib/trajectory/atom-batches'
+} from '#lib/trajectory/prepare.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { frame_atom_batch } from '#lib/trajectory/atom-batches.js'
 // Every TrajectoryRun implementation against one contract table: frame_count, preview,
 // read_frame (sync vs async, range, abort), collect_positions parity with the memory run on
 // identical data, progressive properties and dispose semantics.
-import type { ParseProgress, TrajectoryFrame } from '$lib/trajectory'
-import { open_trajectory, trajectory_from_frames } from '$lib/trajectory/open'
-import {
-  summarize_run,
-  sync_run,
-  TrajectoryProperties,
-  type TrajectoryRun,
-} from '$lib/trajectory/run'
-import { parse_xyz_trajectory } from '$lib/trajectory/parse/xyz'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { host_run } from '$lib/trajectory/runs/host'
-import { indexed_text_run } from '$lib/trajectory/runs/indexed-text'
-import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
+import type { ParseProgress, TrajectoryFrame } from '#lib/trajectory/index.js'
+import { open_trajectory } from '#lib/trajectory/open.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryRun } from '#lib/trajectory/run.js'
+import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
+import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
+import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'

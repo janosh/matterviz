@@ -4,7 +4,7 @@
 // normalization is taken as given (a DOS integrating to 3N gives per-cell quantities).
 // Energies come out in eV, entropy and heat capacity in eV/K, per whatever the DOS is
 // normalized to. EV_TO_KJ_PER_MOL converts to phonopy's kJ/mol and J/(K·mol).
-import { BOLTZMANN_EV_PER_K } from '$lib/constants'
+import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { FrequencyUnit } from './frequency-units'
 import { convert_frequencies } from './frequency-units'
 import type { PhononDos } from './types'

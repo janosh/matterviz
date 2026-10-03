@@ -15,7 +15,11 @@ const skip_build =
   Boolean(process.env.MATTERVIZ_SKIP_PREPARE) || existsSync(resolve(root, `dist/index.js`))
 
 // Mirrors the `package:dist` script, which stays the explicit rebuild entry point
-const package_dist = [`svelte-package`, `node src/scripts/package-dist-assets.mjs`]
+const package_dist = [
+  `svelte-package`,
+  `node src/scripts/package-dist-assets.mjs`,
+  `node src/scripts/check-dist-imports.mjs`,
+]
 const commands = [`svelte-kit sync`, ...(skip_build ? [] : package_dist)]
 
 for (const cmd of commands) {

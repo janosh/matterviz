@@ -6,7 +6,7 @@
   // equal-axis-scaling option (AxisConfig exposes range but nothing that couples the two
   // axes). Rather than ship a pattern that shears with the container, the geometry is laid out
   // here from one shared px-per-(1/Å) factor.
-  import { format_num } from '$lib/labels'
+  import { format_num } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { format_hkl, type HklFormat, type SaedPatternData } from './index'
   import { laue_zone_label, saed_pattern_radius } from './saed'

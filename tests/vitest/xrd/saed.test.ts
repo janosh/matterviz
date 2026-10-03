@@ -1,13 +1,9 @@
-import type { Vec2, Vec3 } from '$lib/math'
-import { electron_form_factor } from '$lib/scattering'
-import type { Crystal } from '$lib/structure'
-import type { SaedOptions, SaedPatternData, SaedSpot } from '$lib/xrd'
-import {
-  compute_saed_pattern,
-  electron_wavelength,
-  laue_zone_label,
-  saed_pattern_radius,
-} from '$lib/xrd'
+import type { Vec2, Vec3 } from '#lib/math.js'
+import { electron_form_factor } from '#lib/scattering/index.js'
+import type { Crystal } from '#lib/structure/index.js'
+import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
+import { compute_saed_pattern, laue_zone_label, saed_pattern_radius } from '#lib/xrd/saed.js'
+import { electron_wavelength } from '#lib/xrd/calc-xrd.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 

@@ -1,6 +1,6 @@
-import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-import type { PhaseDiagramData } from '$lib/phase-diagram'
-import { PhaseDiagramExportPane } from '$lib/phase-diagram'
+import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
+import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mock_object_url } from '../setup'
@@ -8,7 +8,7 @@ import { doc_query, mock_object_url } from '../setup'
 import al_cu_data from './fixtures/al-cu-sample.json' with { type: 'json' }
 
 // Mock the export functions
-vi.mock(`$lib/io/export`, () => ({
+vi.mock(`#lib/io/export.js`, () => ({
   export_svg_as_png: vi.fn(),
   export_svg_as_svg: vi.fn(),
 }))

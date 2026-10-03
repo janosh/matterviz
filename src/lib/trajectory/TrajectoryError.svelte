@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { sanitize_html } from '$lib/sanitize'
+  import { sanitize_html } from '#lib/sanitize.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

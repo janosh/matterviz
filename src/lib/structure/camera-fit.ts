@@ -1,11 +1,11 @@
 // Content-AABB camera framing: look-at center + padded bounding-sphere extent for the
 // shorter viewport edge. Lattice midpoint alone mis-frames asymmetric image atoms.
 
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { AnyStructure, Site } from '$lib/structure'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
 
 // Occupy at most 92% of the shorter viewport edge.
 export const DEFAULT_FIT_PADDING = 1 / 0.92

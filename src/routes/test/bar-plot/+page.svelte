@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { BarSeries } from '$lib/plot'
-  import { BarPlot } from '$lib/plot'
+  import type { BarSeries } from '#lib/plot/index.js'
+  import { BarPlot } from '#lib/plot/index.js'
 
   const basic_series: BarSeries[] = [
     {

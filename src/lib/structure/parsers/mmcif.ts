@@ -1,11 +1,11 @@
 // mmCIF (PDBx/mmCIF): a CIF dialect whose data names use dot notation
 // (`_atom_site.Cartn_x`) rather than the underscore tags (`_atom_site_fract_x`) that
 // parse_cif understands, which is why it needs its own atom-site loop reader.
-import type { ElementSymbol } from '$lib/element'
-import * as math from '$lib/math'
-import type { AnyStructure, Site } from '$lib/structure'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
+import type { ElementSymbol } from '#lib/element/index.js'
+import * as math from '#lib/math.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_site } from '#lib/structure/site.js'
 import {
   cell_frame,
   cif_block_ids,

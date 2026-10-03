@@ -1,30 +1,28 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import { ColorInput, StatusMessage } from 'svelte-widgets'
-  import {
-    DEFAULT_HOTSPOT_CLOUD,
-    hotspot_scale,
-    type HotspotCloudSettings,
-    type HotspotScale,
-  } from './hotspot-colors'
+  import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
+  import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import HotspotLegend from './HotspotLegend.svelte'
   import { Graph } from 'svelte-widgets/icons'
-  import { format_num } from '$lib/labels'
-  import { clamp01 } from '$lib/utils'
-  import { DEFAULT_CUTAWAY, type CutawaySettings } from '$lib/structure/cutaway'
+  import { format_num } from '#lib/labels.js'
+  import { clamp01 } from '#lib/utils.js'
+  import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'
   import type { TrajectoryRun } from './run'
   import { create_request_owner } from './async-result.svelte'
+  import type {
+    HotspotMetric,
+    HotspotOptions,
+    HotspotResult,
+    HotspotCoverage,
+  } from './hotspots'
   import {
     ENERGY_UNITS,
     VELOCITY_UNITS,
     infer_mass_unit,
     hotspot_requirements,
     hotspot_mean,
-    type HotspotMetric,
-    type HotspotOptions,
-    type HotspotResult,
-    type HotspotCoverage,
   } from './hotspots'
 
   let {

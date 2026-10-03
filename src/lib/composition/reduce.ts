@@ -1,7 +1,7 @@
 // Formula reduction with no element-data dependency, so the chempot worker bundle can share
 // it with the composition module.
-import type { CompositionType } from '$lib/composition'
-import { gcd_all } from '$lib/math'
+import type { CompositionType } from '#lib/composition/index.js'
+import { gcd_all } from '#lib/math.js'
 
 // Largest denominator resolved when rationalising fractional amounts (pymatgen's
 // get_integer_formula_and_factor default): ratios finer than 1/10000 are left fractional

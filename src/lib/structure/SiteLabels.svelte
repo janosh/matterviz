@@ -3,7 +3,7 @@
   // per-frame position pass. Replaces per-label threlte <HTML> components (each
   // of which carries its own portal, per-frame task and matrix updates), which
   // made labels on large structures/supercells unusable.
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import { T, useTask, useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import { Group } from 'three/webgpu'

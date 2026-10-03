@@ -3,13 +3,13 @@
 // Pure functions (no component state) so the trickiest geometry stays unit-testable;
 // Sunburst.svelte wires them to reactive state and the DOM.
 
-import { clamp, to_degrees } from '$lib/math'
-import { clamp01 } from '$lib/utils'
+import { clamp, to_degrees } from '#lib/math.js'
+import { clamp01 } from '#lib/utils.js'
 import type {
   PositionedArc,
   SunburstLabelRotation,
   SunburstShape,
-} from '$lib/plot/core/utils/hierarchy-layout'
+} from '#lib/plot/core/utils/hierarchy-layout.js'
 
 const TWO_PI = 2 * Math.PI
 // Fallback line height: 1.1x the 11px --sunburst-font-size default

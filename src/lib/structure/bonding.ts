@@ -2,9 +2,9 @@
 
 import { element_by_symbol } from '../element/data'
 import { element_from_atomic_number } from '../element/helpers'
-import type { ChemicalElement, ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import type {
   AnyStructure,
   BondOrder,
@@ -13,7 +13,7 @@ import type {
   Pbc,
   Site,
   StructureBond,
-} from '$lib/structure'
+} from '#lib/structure/index.js'
 import {
   get_image_source_idx,
   get_orig_site_idx,
@@ -21,7 +21,7 @@ import {
   numeric_sites,
   NumericSites,
   site_count,
-} from '$lib/structure/site'
+} from '#lib/structure/site.js'
 import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-rendering'
 
 // Expected bond length of an element pair in Angstrom, or null when a radius is unknown.

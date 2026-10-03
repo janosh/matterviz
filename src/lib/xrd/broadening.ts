@@ -1,8 +1,8 @@
 // Bragg-angle instrumental broadening. The convolution itself is domain-neutral and lives in
-// $lib/lineshape; only the Caglioti width model below is specific to degrees of 2θ.
-import { broaden_peaks } from '$lib/lineshape'
-import type { Vec2 } from '$lib/math'
-import { to_radians } from '$lib/math'
+// #lib/lineshape; only the Caglioti width model below is specific to degrees of 2θ.
+import { broaden_peaks } from '#lib/lineshape.js'
+import type { Vec2 } from '#lib/math.js'
+import { to_radians } from '#lib/math.js'
 import type { XrdPattern } from './index'
 
 // Broadening parameters for simulated XRD pattern.

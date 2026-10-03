@@ -1,6 +1,6 @@
-import ChemPotDiagram2D from '$lib/chempot-diagram/ChemPotDiagram2D.svelte'
-import ChemPotDiagram3D from '$lib/chempot-diagram/ChemPotDiagram3D.svelte'
-import type { PhaseData } from '$lib/convex-hull/types'
+import ChemPotDiagram2D from '#lib/chempot-diagram/ChemPotDiagram2D.svelte'
+import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

@@ -3,8 +3,8 @@
   // each passes its resolved `marginals`, a generic `series` adapter, the shared positional
   // scales/ranges, and the inflated `pad`. This must be a direct child of the host <svg>
   // (outside the plot clip group); each strip self-clips. See core/marginals.ts for the math.
-  import type { Vec2 } from '$lib/math'
-  import type { Rect, Sides } from '$lib/plot/core/layout'
+  import type { Vec2 } from '#lib/math.js'
+  import type { Rect, Sides } from '#lib/plot/core/layout.js'
   import type {
     MarginalAxes,
     MarginalAxisBinding,
@@ -17,7 +17,7 @@
     ResolvedMarginalConfig,
     ResolvedMarginals,
     ScaleFn,
-  } from '$lib/plot/core/marginals'
+  } from '#lib/plot/core/marginals.js'
   import {
     MARGINAL_SIDES,
     compute_marginal_curve,
@@ -28,12 +28,12 @@
     marginal_strip_rect,
     marginal_value_format,
     marginal_value_scale,
-  } from '$lib/plot/core/marginals'
-  import { create_scale } from '$lib/plot/core/scales'
-  import { line_curve_factory } from '$lib/plot/core/fill-utils'
-  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import { TooltipValue } from '$lib/tooltip'
-  import { format_value } from '$lib/labels'
+  } from '#lib/plot/core/marginals.js'
+  import { create_scale } from '#lib/plot/core/scales.js'
+  import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { format_value } from '#lib/labels.js'
   import { ticks as d3_ticks } from 'd3-array'
   import { curveMonotoneX, curveMonotoneY, line } from 'd3-shape'
   import { portal } from 'svelte-widgets/attachments'

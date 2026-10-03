@@ -1,4 +1,4 @@
-import type { FileInfo } from '$lib/io/types'
+import type { FileInfo } from '#lib/io/types.js'
 
 // Vite dev yields requested default exports directly, while the Rolldown production
 // build can retain the module namespace around eager import.meta.glob values.
@@ -20,7 +20,7 @@ export const glob_basename = (path: string): string => path.split(`/`).pop() ?? 
 export const fixture_ext = (path: string): string =>
   glob_basename(path).replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() ?? ``
 
-// FileInfo for an import.meta.glob key under $site: static/<dir> symlinks src/site/<dir>, so
+// FileInfo for an import.meta.glob key under #site: static/<dir> symlinks src/site/<dir>, so
 // the fixture is served at the path with the /src/site prefix dropped
 export const site_file_info = (path: string, extra: Partial<FileInfo> = {}): FileInfo => ({
   name: glob_basename(path),

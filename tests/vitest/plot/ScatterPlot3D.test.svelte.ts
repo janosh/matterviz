@@ -1,7 +1,7 @@
-import { ScatterPlot3D, ScatterPlot3DControls } from '$lib/plot'
-import ScatterPlot3DScene from '$lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
-import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
+import { ScatterPlot3D, ScatterPlot3DControls } from '#lib/plot/index.js'
+import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
+import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -9,35 +9,41 @@ import type {
   DisplayConfig3D,
   Scatter3DHandlerEvent,
   Surface3DConfig,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import {
   hover_marker_geometry,
   normalize_to_scene,
   sample_surface,
   get_3d_auto_ranges,
   span_or,
-} from '$lib/plot/scatter-3d/scene-coords'
-import { resolve_axis_range } from '$lib/plot/core/interactions'
+} from '#lib/plot/scatter-3d/scene-coords.js'
+import { resolve_axis_range } from '#lib/plot/core/interactions.js'
 import { mount_scene } from '../scene/mount'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
+import type { BufferGeometry } from 'three/webgpu'
 import {
-  type BufferGeometry,
   ClippingGroup,
   EdgesGeometry,
   InstancedMesh,
+  Color,
   Line,
   LineSegments,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  SRGBColorSpace,
   Vector3,
 } from 'three/webgpu'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
 
-vi.mock(`$app/environment`, () => ({ browser: false }))
+vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
   page: {
     url: {
@@ -218,6 +224,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
       },
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
       x_axis: { label: `&alpha;<sub>x</sub>` },
+      point_tween: { duration: 0 }, // data swaps below land at once, however slow the run
       gizmo: false,
       display: { show_bounding_box: true },
       surfaces: [hemisphere],
@@ -301,6 +308,173 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   } finally {
     await unmount_scene()
   }
+})
+
+test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
+  // Svelte and Threlte read the faked clock; frames only run via render_frame
+  vi.useFakeTimers({ toFake: [`performance`] })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const linear = (frac: number) => frac
+  const state = $state<{
+    series: DataSeries3D[]
+    point_tween: InstanceTween
+    display: DisplayConfig3D
+    hovered_point: unknown
+  }>({
+    series: [{ x: [1, 2], y: [1, 1], z: [1, 1], point_style: { fill: `#000000`, radius: 2 } }],
+    point_tween: { duration: 600, easing: linear },
+    display: { show_axes: false },
+    hovered_point: null,
+  })
+  const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      get series() {
+        return state.series
+      },
+      get point_tween() {
+        return state.point_tween
+      },
+      get display() {
+        return state.display
+      },
+      get hovered_point() {
+        return state.hovered_point as never
+      },
+      set hovered_point(value) {
+        state.hovered_point = value
+      },
+      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      gizmo: false,
+    }),
+  )
+  flushSync()
+  const set_xs = (xs: number[], grey: number, radius: number) => {
+    const ones = xs.map(() => 1)
+    const fill = grey ? `#ffffff` : `#000000`
+    state.series = [{ x: xs, y: ones, z: ones, point_style: { fill, radius } }]
+    flushSync()
+  }
+  const advance = (ms: number) => {
+    vi.advanceTimersByTime(ms)
+    render_frame()
+    flushSync() // instance buffers redraw reactively off the clock's frame counter
+  }
+  const instanced = (shadow: boolean) =>
+    find_objects(scene, InstancedMesh).filter(
+      (mesh) => mesh.material instanceof MeshBasicMaterial === shadow,
+    )
+  // [scene x, y, z, radius, linear r, g, b] of one drawn instance
+  const marker = (idx: number, shadow = false) => {
+    const [mesh, ...stale] = instanced(shadow)
+    expect(stale).toHaveLength(0)
+    expect(idx).toBeLessThan(mesh.count)
+    const matrix = new Matrix4()
+    mesh.getMatrixAt(idx, matrix)
+    const color = new Color()
+    mesh.getColorAt(idx, color)
+    const [scale, , , , , , , , , , , , pos_x, pos_y, pos_z] = matrix.elements
+    // linear colour as stored: three's linear-to-sRGB readback is approximate (1e-5 at grey)
+    return [pos_x, pos_y, pos_z, scale, ...color.toArray()]
+  }
+  // A tween state as the clock holds it in f32: scene x, y, z, radius, sRGB grey level
+  const packed = (data_x: number, size: number, grey: number) =>
+    [normalize_to_scene(data_x, [0, 4], 10), -1.25, -2.5, size * 0.05, grey].map(Math.fround)
+  const lerp = (from: number[], to: number[], frac: number) =>
+    from.map((value, idx) => Math.fround(value + (to[idx] - value) * frac))
+  // What the instance buffers hold for a tween state: geometry as is, colour in linear f32
+  const drawn = ([pos_x, pos_y, pos_z, radius, grey]: number[]) => {
+    const level = Math.fround(new Color().setRGB(grey, grey, grey, SRGBColorSpace).r)
+    return [pos_x, pos_y, pos_z, radius, level, level, level]
+  }
+  const shadow_of = ([pos_x, , pos_z, radius, grey]: number[]) =>
+    drawn([pos_x, -2.5, pos_z, radius * 0.5, grey])
+  const halo = () =>
+    find_objects(scene, Mesh).findLast(
+      (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
+    )
+  try {
+    // inside the settle window a change snaps, as the plot is still appearing
+    set_xs([1, 3], 0, 2)
+    expect(marker(1)).toEqual(drawn(packed(3, 2, 0)))
+    expect([render_frame(), render_frame()]).toEqual([true, false])
+    vi.advanceTimersByTime(SETTLE_MS)
+    state.hovered_point = { x: 3, y: 1, z: 1, series_idx: 0, point_idx: 1 }
+    // x=9 leaves the range, so instance 0 is now the old point 1 and instance 1 is new: the
+    // survivor starts where it was drawn, the newcomer appears at its target
+    set_xs([9, 4, 1], 1, 6)
+    const [start, end, newcomer] = [packed(3, 2, 0), packed(4, 6, 1), packed(1, 6, 1)]
+    expect([marker(0), marker(1)]).toEqual([drawn(start), drawn(newcomer)])
+    advance(300)
+    // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
+    const half = lerp(start, end, 0.5)
+    expect(marker(0)).toEqual(drawn(half))
+    // the hover halo rides on the moving marker the raycast hits, not on its target
+    expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
+    expect(halo()?.scale.x).toBe(hover_marker_geometry(half[3]).radius)
+    // shadows switched on mid-flight join the same clock, flattened onto the floor
+    state.display = { show_axes: false, projections: { xy: true } }
+    flushSync()
+    expect(marker(0, true)).toEqual(shadow_of(half))
+    // reassigning equal data keeps the running tween going instead of restarting it
+    set_xs([9, 4, 1], 1, 6)
+    advance(150)
+    const three_quarters = lerp(start, end, 0.75)
+    expect(marker(0)).toEqual(drawn(three_quarters))
+    expect(marker(0, true)).toEqual(shadow_of(three_quarters))
+    // retargeting mid-flight starts from the drawn state; growing adds a snapped instance
+    set_xs([9, 0, 1, 2], 0, 2)
+    const [back, recolored] = [packed(0, 2, 0), packed(1, 2, 0)]
+    expect([0, 1, 2].map((idx) => marker(idx))).toEqual(
+      [three_quarters, newcomer, packed(2, 2, 0)].map(drawn),
+    )
+    advance(300)
+    const retargeted = lerp(three_quarters, back, 0.5)
+    expect([marker(0), marker(1)]).toEqual(
+      [retargeted, lerp(newcomer, recolored, 0.5)].map(drawn),
+    )
+    // shrinking mid-flight keeps the survivor where it is drawn
+    set_xs([9, 0], 0, 2)
+    expect(instanced(false)[0].count).toBe(1)
+    expect(marker(0)).toEqual(drawn(retargeted))
+    advance(600)
+    expect(marker(0)).toEqual(drawn(back))
+    expect(halo()?.position.toArray()).toEqual(back.slice(0, 3))
+    expect(Array.from({ length: 3 }, render_frame)).toEqual([true, false, false])
+    // `delay` holds the start state before the tween runs
+    state.point_tween = { duration: 600, delay: 100, easing: linear }
+    set_xs([9, 2], 0, 2)
+    advance(100)
+    expect(marker(0)).toEqual(drawn(back))
+    advance(300)
+    const delayed_half = lerp(back, packed(2, 2, 0), 0.5)
+    expect(marker(0)).toEqual(drawn(delayed_half))
+    // `{ duration: 0 }` opts out
+    state.point_tween = { duration: 0 }
+    set_xs([9, 3], 0, 2)
+    expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
+    expect([render_frame(), render_frame()]).toEqual([true, false])
+    // so do plots past 20k markers, too many to rewrite every frame
+    state.point_tween = { duration: 600 }
+    set_xs([9, 0, ...Array(20_000).fill(1)], 0, 2)
+    expect(marker(0)).toEqual(drawn(packed(0, 2, 0)))
+  } finally {
+    await unmount_scene()
+  }
+})
+
+test(`pack_instances draws an unparsable colour white instead of the previous one`, () => {
+  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  onTestFinished(() => {
+    warn.mockRestore()
+  })
+  const item = (color: string) => ({ position: [1, 2, 3], radius: 0.5, color })
+  const colors = [`#ff0000`, `var(--accent)`, `#ff0000`, `var(--accent)`]
+  const packed = pack_instances(colors.map(item))
+  expect([...packed.subarray(0, 14)]).toEqual([1, 2, 3, 0.5, 1, 0, 0, 1, 2, 3, 0.5, 1, 1, 1])
+  expect([...packed.subarray(14)]).toEqual([...packed.subarray(0, 14)])
+  expect(warn).toHaveBeenCalledOnce() // each distinct colour is parsed once
 })
 
 describe(`ScatterPlot3D smoke tests`, () => {
@@ -528,7 +702,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(state.fullscreen).toBe(false)
   })
 
-  // The standalone controls component is exported from $lib/plot, so its prop names are
+  // The standalone controls component is exported from #lib/plot, so its prop names are
   // public API: it must speak controls_open/show_controls like every other *Controls
   // component rather than the generic DraggablePane `open`.
   // Each surface extends beyond the scatter samples, so controls must include its bounds.

@@ -1,4 +1,4 @@
-import { sanitize_formula } from '$lib/sanitize'
+import { sanitize_formula } from '#lib/sanitize.js'
 
 export { format_mev } from './format-mev'
 

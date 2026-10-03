@@ -1,9 +1,9 @@
-import { element_from_atomic_number } from '$lib/element/helpers'
-import type { ElementSymbol } from '$lib/element/types'
-import type { Matrix3x3 } from '$lib/math'
-import { LineScanner, parse_float_token } from '$lib/structure/parsers/shared'
-import type { Pbc } from '$lib/structure/pbc'
-import type { ExtxyzColumn, XyzFrameSpec } from '$lib/trajectory/helpers'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
+import type { ElementSymbol } from '#lib/element/types.js'
+import type { Matrix3x3 } from '#lib/math.js'
+import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
 import {
   calc_force_stats,
   create_trajectory_frame,
@@ -11,8 +11,9 @@ import {
   iter_xyz_frames,
   parse_extxyz_columns,
   TextLines,
-} from '$lib/trajectory/helpers'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
+} from '#lib/trajectory/helpers.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
 function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
@@ -135,13 +136,15 @@ const EXTXYZ_PAIR_RE =
 const RESERVED_COMMENT_KEY_RE = /^(?:lattice|properties|pbc|step|frame|ionic_step)$/
 
 // Spelling aliases only, so every other scalar round-trips under its own name — including
-// `coords_unwrapped`, which decides whether MSD/VACF may re-apply the minimum image.
+// `coords_unwrapped`, which decides whether MSD/VACF may re-apply the minimum image, and
+// `total_energy`, an MD total (potential + kinetic) that folding into `energy` mislabeled and
+// dropped on re-import. No bare `t`: as often a time as a temperature.
 // oxfmt-ignore
 const METADATA_KEY_ALIASES: Record<string, string> = {
-  e: `energy`, etot: `energy`, total_energy: `energy`,
+  e: `energy`, etot: `total_energy`,
   vol: `volume`, v: `volume`,
   press: `pressure`, p: `pressure`,
-  temp: `temperature`, t: `temperature`,
+  temp: `temperature`,
   max_force: `force_max`, fmax: `force_max`,
   e_gap: `bandgap`, gap: `bandgap`,
 }
@@ -335,6 +338,11 @@ export function build_xyz_frame(
     collector.warn,
   )
   const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
+  // an extXYZ `stress=` follows ASE (eV/Å³, tensile positive); store it like every other
+  // reader, with its pressure, unless the comment states a pressure itself
+  const stress = ase_stress_metadata(signals.stress)
+  if (stress)
+    Object.assign(metadata, { ...stress, pressure: properties.pressure ?? stress.pressure })
   // The vectors themselves live on the sites (`force`); only their statistics go here
   Object.assign(metadata, calc_force_stats(forces))
   return create_trajectory_frame(

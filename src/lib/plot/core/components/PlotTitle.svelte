@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PlotTitleBlockLayout, PlotTitleConfig } from '$lib/plot/core/plot-title'
-  import { resolve_plot_title } from '$lib/plot/core/plot-title'
-  import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
+  import type { PlotTitleBlockLayout, PlotTitleConfig } from '#lib/plot/core/plot-title.js'
+  import { resolve_plot_title } from '#lib/plot/core/plot-title.js'
+  import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
   import { onMount } from 'svelte'
 
   let {

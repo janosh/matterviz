@@ -1,4 +1,4 @@
-import { pad_rect, point_in_rect, rects_overlap, type Rect } from '$lib/plot/core/layout'
+import { pad_rect, point_in_rect, rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import type {
   DecorationPoint,
   ReferenceAnnotationCandidate,

@@ -1,5 +1,5 @@
-import { grow_capacity } from '$lib/math'
-import { css_to_linear_rgb } from '$lib/scene/colors'
+import { grow_capacity } from '#lib/math.js'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import type { InstancedAtom } from './atom-instances'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import { cutaway_excludes, cutaway_planes } from './cutaway'

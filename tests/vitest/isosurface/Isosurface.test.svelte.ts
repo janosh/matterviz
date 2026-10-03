@@ -1,13 +1,13 @@
 // Mounts Isosurface.svelte against a recording Threlte stub: layer resolution, geometry
 // rebuild/reuse, lobe signs, render ordering and cross-volume vertex coloring.
-import { ISOSURFACE_ERROR_CONTEXT } from '$lib/isosurface/context'
-import Isosurface from '$lib/isosurface/Isosurface.svelte'
+import { ISOSURFACE_ERROR_CONTEXT } from '#lib/isosurface/context.js'
+import Isosurface from '#lib/isosurface/Isosurface.svelte'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
-} from '$lib/isosurface/types'
-import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
+} from '#lib/isosurface/types.js'
+import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -23,7 +23,7 @@ vi.mock(`@threlte/core`, async () => ({
 }))
 // Large volumes go through the geometry worker; tests swap it for a controllable stub
 const compute_geometries_async = vi.hoisted(() => vi.fn())
-vi.mock(`$lib/isosurface/async-geometry.svelte`, () => ({ compute_geometries_async }))
+vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_async }))
 
 const SIZE = 10
 // Gaussian blob centred in the cell (positive field) and a signed variant with a negative
@@ -92,7 +92,7 @@ const mount_isosurface = (overrides: Partial<Props> = {}, context?: Map<unknown,
   teardown = () => void unmount(component)
   return props
 }
-// Geometry rebuilds are debounced 50 ms then scheduled on the next animation frame
+// Geometry rebuilds run on the next animation frame (fake rAF ticks every 16 ms)
 const settle = async () => {
   await vi.advanceTimersByTimeAsync(100)
   flushSync()
@@ -117,7 +117,7 @@ afterEach(() => {
 describe(`Isosurface`, () => {
   test(`a single layer renders a two-pass transparent surface`, async () => {
     mount_isosurface()
-    expect(meshes()).toHaveLength(0) // nothing before the debounce elapses
+    expect(meshes()).toHaveLength(0) // nothing before the next frame
     await settle()
 
     const mesh_nodes = meshes()
@@ -247,6 +247,61 @@ describe(`Isosurface`, () => {
     await settle()
     expect(geometry_of(meshes()[0])).not.toBe(geometry)
     expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
+  // A slider drag changes the isovalue every frame; a trailing debounce never fired until the
+  // pointer rested, so the surface froze for the whole drag
+  test(`an isovalue changed every frame rebuilds the surface every frame`, async () => {
+    const props = mount_isosurface({ settings: with_layers([layer(0.3, { opacity: 1 })]) })
+    await settle()
+    for (const isovalue of [0.32, 0.34, 0.36, 0.38]) {
+      const previous = geometry_of(meshes()[0])
+      props.settings.layers[0].isovalue = isovalue
+      flushSync()
+      await vi.advanceTimersByTimeAsync(16)
+      flushSync()
+      expect(geometry_of(meshes()[0])).not.toBe(previous)
+    }
+  })
+
+  // Aborting a superseded worker job on every drag frame meant a large grid never finished
+  // preparing; now one job runs at a time, the latest request reruns once it lands, and only a
+  // job for a volume that left the scene is aborted
+  test(`worker rebuilds run one at a time and rerun with the latest isovalue`, async () => {
+    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
+    const pending: { resolve: (value: unknown) => void; signal: AbortSignal }[] = []
+    compute_geometries_async
+      .mockReset()
+      .mockImplementation(
+        (_input: unknown, { signal }: { signal: AbortSignal }) =>
+          new Promise((resolve) => pending.push({ resolve, signal })),
+      )
+    const big_n = 59 // ≥ 200k grid points routes geometry through the worker
+    const big_volume = (): VolumetricData => ({
+      ...positive_volume(),
+      values: new Float64Array(big_n ** 3).fill(0.1),
+      dims: [big_n, big_n, big_n],
+    })
+    const props = mount_isosurface({ volumes: [big_volume()] })
+    await settle()
+    for (const isovalue of [0.4, 0.5]) {
+      props.settings.layers[0].isovalue = isovalue
+      await settle()
+    }
+    expect(pending).toHaveLength(1)
+    expect(pending[0].signal.aborted).toBe(false)
+    pending[0].resolve({ volumes: [] })
+    await settle()
+    const isovalues = compute_geometries_async.mock.calls.map(
+      ([input]) => input.volumes[0].surfaces[0].isovalue,
+    )
+    expect(isovalues).toEqual([0.3, 0.5])
+
+    props.volumes = [big_volume()]
+    flushSync()
+    expect(pending[1].signal.aborted).toBe(true)
+    compute_geometries_async.mockReset()
+    vi.unstubAllGlobals()
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {

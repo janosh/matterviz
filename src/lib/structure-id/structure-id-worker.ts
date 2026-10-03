@@ -1,4 +1,4 @@
-import { serve_worker } from '$lib/worker-serve'
+import { serve_worker } from '#lib/worker-serve.js'
 import type { StructureIdOptions } from './calc-structure-id'
 import { calc_structure_id } from './calc-structure-id'
 import type { StructureIdPayload } from './worker-payload'

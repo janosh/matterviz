@@ -1,14 +1,18 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // Trajectory acquisition: `source` as URL / File / bytes, drag-and-drop (OS drags
 // carry a File plus a text/plain path to ignore, FilePicker drags a URL), worker parsing with
 // progress, superseded loads, run ownership, the HDF5 group picker, errors and the empty state.
-import * as parse_worker from '$lib/file-viewer/parse-in-worker'
-import type { TrajectoryController, TrajectoryRun, TrajHandlerData } from '$lib/trajectory'
-import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory'
-import Trajectory from '$lib/trajectory/Trajectory.svelte'
-import { summarize_run } from '$lib/trajectory/run'
-import { host_run } from '$lib/trajectory/runs/host'
-import { serve_run_over_port, worker_run } from '$lib/trajectory/runs/worker'
+import * as parse_worker from '#lib/file-viewer/parse-in-worker.js'
+import type {
+  TrajectoryController,
+  TrajectoryRun,
+  TrajHandlerData,
+} from '#lib/trajectory/index.js'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
+import Trajectory from '#lib/trajectory/Trajectory.svelte'
+import { summarize_run } from '#lib/trajectory/run.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
+import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {

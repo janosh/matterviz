@@ -1,8 +1,8 @@
-import type { ElementSymbol } from '$lib'
-import { download } from '$lib/io/fetch'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { AnyStructure, LatticeType, Site } from '$lib/structure'
+import type { ElementSymbol } from '#lib'
+import { download } from '#lib/io/fetch.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
 import {
   create_structure_filename,
   export_structure_as,
@@ -12,15 +12,20 @@ import {
   structure_to_json_str,
   structure_to_poscar_str,
   structure_to_xyz_str,
-} from '$lib/structure/export'
-import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/structure/parse'
-import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
-import tio2_cif from '$site/structures/TiO2.cif?raw'
+} from '#lib/structure/export.js'
+import {
+  parse_cif,
+  parse_poscar,
+  parse_structure_file,
+  parse_xyz,
+} from '#lib/structure/parse.js'
+import ba_ti_o3_tetragonal from '#site/structures/BaTiO3-tetragonal.poscar?raw'
+import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
+import tio2_cif from '#site/structures/TiO2.cif?raw'
 import { assert, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../test-fixtures'
 
-vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 const mock_download = vi.mocked(download)
 
 // Local factories to cut fixture boilerplate: single-species site + diagonal lattice

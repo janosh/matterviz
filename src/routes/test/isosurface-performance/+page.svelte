@@ -1,20 +1,24 @@
 <script lang="ts">
-  import Isosurface from '$lib/isosurface/Isosurface.svelte'
-  import type { IsosurfaceProfileMeta } from '$lib/isosurface/profile'
-  import { ISOSURFACE_MEASURE_PREFIX, set_isosurface_profiling } from '$lib/isosurface/profile'
+  import Isosurface from '#lib/isosurface/Isosurface.svelte'
+  import type { IsosurfaceProfileMeta } from '#lib/isosurface/profile.js'
+  import {
+    ISOSURFACE_MEASURE_PREFIX,
+    set_isosurface_profiling,
+  } from '#lib/isosurface/profile.js'
   import type {
     IsosurfaceLayer,
     IsosurfaceSettings,
     VolumetricData,
-  } from '$lib/isosurface/types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, make_volume } from '$lib/isosurface/types'
-  import type { Matrix3x3, Vec3 } from '$lib/math'
-  import { create_renderer } from '$lib/scene'
+  } from '#lib/isosurface/types.js'
+  import { DEFAULT_ISOSURFACE_SETTINGS, make_volume } from '#lib/isosurface/types.js'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import { create_renderer } from '#lib/scene/index.js'
   import { Canvas, T } from '@threlte/core'
   import { onMount } from 'svelte'
-  import { make_site } from '$lib/structure/site'
-  import { create_structure_tool_controller } from '$lib/structure/host-tool.svelte'
-  import { prediction_to_json, type StructureToolPrediction } from '$lib/structure/prediction'
+  import { make_site } from '#lib/structure/site.js'
+  import { create_structure_tool_controller } from '#lib/structure/host-tool.svelte.js'
+  import type { StructureToolPrediction } from '#lib/structure/prediction.js'
+  import { prediction_to_json } from '#lib/structure/prediction.js'
 
   const lattice: Matrix3x3 = [
     [4, 0, 0],

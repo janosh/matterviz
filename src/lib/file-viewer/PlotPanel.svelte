@@ -1,11 +1,11 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
   import { Reset } from 'svelte-widgets/icons'
-  import { clamp } from '$lib/math'
-  import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
-  import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
-  import type { Column, RowData } from '$lib/table'
-  import HeatmapTable from '$lib/table/HeatmapTable.svelte'
+  import { clamp } from '#lib/math.js'
+  import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index.js'
+  import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
+  import type { Column, RowData } from '#lib/table/index.js'
+  import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import {
     build_bar_series,
     build_histogram_series,

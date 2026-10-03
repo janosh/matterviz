@@ -1,6 +1,6 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import {
     BackSide,
     BoxGeometry,

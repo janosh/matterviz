@@ -1,4 +1,4 @@
-import { bar_path, violin_path } from '$lib/plot/core/svg'
+import { bar_path, violin_path } from '#lib/plot/core/svg.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`bar_path`, () => {

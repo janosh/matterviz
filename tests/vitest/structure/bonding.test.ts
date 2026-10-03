@@ -1,21 +1,21 @@
-import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '$lib'
-import type { Crystal, StructureBond } from '$lib/structure'
-import type { BondEditState } from '$lib/structure/bonding'
-import { element_by_symbol } from '$lib/element/data'
-import * as bonding from '$lib/structure/bonding'
-import { BondFrame, pack_bonds } from '$lib/structure/bond-rendering'
-import { numeric_sites } from '$lib/structure/site'
+import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '#lib'
+import type { Crystal, StructureBond } from '#lib/structure/index.js'
+import type { BondEditState } from '#lib/structure/bonding.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import * as bonding from '#lib/structure/bonding.js'
+import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
+import { numeric_sites } from '#lib/structure/site.js'
 import {
   create_numeric_md_frame,
   FrameView,
   materialize_frame,
   wrap_frame_coordinates,
-} from '$lib/trajectory/frame'
-import { calc_coordination_nums } from '$lib/coordination'
-import * as math from '$lib/math'
-import { get_pbc_image_sites } from '$lib/structure/pbc'
-import { make_supercell } from '$lib/structure/supercell'
-import { test_molecules } from '$site/molecules'
+} from '#lib/trajectory/frame.js'
+import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import * as math from '#lib/math.js'
+import { get_pbc_image_sites } from '#lib/structure/pbc.js'
+import { make_supercell } from '#lib/structure/supercell.js'
+import { test_molecules } from '#site/molecules.js'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
@@ -2267,7 +2267,10 @@ describe(`neighbor_query`, () => {
     expect(hydrogen_bonds.length).toBeGreaterThan(4600 * 2)
     expect(bonds.slice(0, -1)).toEqual(hydrogen_bonds)
     expect(bonds.at(-1)).toMatchObject({ site_idx_1: 4600, site_idx_2: 4601, bond_length: 5 })
-  })
+    // Inherently heavy: the refusals must actually cross the fixed 10M-pair limit (~160 MB of
+    // pair buffers) and the streaming check visits 21M pairs. ~0.6 s alone but 5-7 s under a
+    // loaded full-suite run.
+  }, 20_000)
 
   // The refusal estimate counts the images that will actually be built (only those within
   // `cutoff` of the cell), not 27x the site count: here 27 * 150k = 4.05M exceeds the limit,

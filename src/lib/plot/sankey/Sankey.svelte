@@ -2,23 +2,23 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '$lib/tooltip'
-  import ViewerError from '$lib/layout/ViewerError.svelte'
-  import { format_value } from '$lib/labels'
-  import type { BasePlotProps, LegendConfig, Orientation } from '$lib/plot'
-  import { plot_color } from '$lib/colors'
-  import { PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
-  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import { format_value } from '#lib/labels.js'
+  import type { BasePlotProps, LegendConfig, Orientation } from '#lib/plot/index.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import { PlotLegend, PlotTooltip, SankeyControls } from '#lib/plot/index.js'
+  import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import {
     closest_data_idx,
     is_activation_key,
     pointer_pos,
-  } from '$lib/plot/core/interactions'
-  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
-  import type { Sides } from '$lib/plot/core/layout'
-  import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
-  import { bucket_sankey_data, compute_sankey_layout } from '$lib/plot/sankey/sankey'
-  import type { PositionedLink, PositionedNode } from '$lib/plot/sankey/sankey'
+  } from '#lib/plot/core/interactions.js'
+  import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
+  import type { Sides } from '#lib/plot/core/layout.js'
+  import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
+  import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
+  import type { PositionedLink, PositionedNode } from '#lib/plot/sankey/sankey.js'
   import type {
     SankeyData,
     SankeyHandlerProps,
@@ -26,9 +26,9 @@
     SankeyLinkHandlerProps,
     SankeyNodeAlign,
     SankeyNodeHandlerProps,
-  } from '$lib/plot/sankey/sankey-types'
-  import { DEFAULTS } from '$lib/settings'
-  import { to_error } from '$lib/utils'
+  } from '#lib/plot/sankey/sankey-types.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import { to_error } from '#lib/utils.js'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'

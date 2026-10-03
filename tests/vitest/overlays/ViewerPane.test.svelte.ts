@@ -1,4 +1,4 @@
-import ViewerPane from '$lib/overlays/ViewerPane.svelte'
+import ViewerPane from '#lib/overlays/ViewerPane.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { Expand } from 'svelte-widgets/icons'
 import { expect, onTestFinished, test, vi } from 'vitest'

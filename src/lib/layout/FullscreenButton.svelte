@@ -7,7 +7,7 @@
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
-  import { create_shortcut_flash } from '$lib/effects.svelte'
+  import { create_shortcut_flash } from '#lib/effects.svelte.js'
 
   // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
   // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import StructureGallery from '$lib/structure/StructureGallery.svelte'
+  import StructureGallery from '#lib/structure/StructureGallery.svelte'
   import { type ComponentProps, untrack } from 'svelte'
 
   // Lets a test change props on a mounted gallery. Mounting twice and comparing

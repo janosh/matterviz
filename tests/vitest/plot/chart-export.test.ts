@@ -1,16 +1,16 @@
-import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-import { download } from '$lib/io/fetch'
+import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+import { download } from '#lib/io/fetch.js'
 import {
   create_chart_exporter,
   export_filename,
   parse_linear_gradient,
   series_to_csv_rows,
   to_csv,
-} from '$lib/plot/core/utils/chart-export'
+} from '#lib/plot/core/utils/chart-export.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-vi.mock('$lib/io/fetch', () => ({ download: vi.fn() }))
-vi.mock('$lib/io/export', () => ({
+vi.mock('#lib/io/fetch.js', () => ({ download: vi.fn() }))
+vi.mock('#lib/io/export.js', () => ({
   export_svg_as_png: vi.fn(),
   export_svg_as_svg: vi.fn(),
 }))

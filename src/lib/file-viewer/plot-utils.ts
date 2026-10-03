@@ -1,6 +1,6 @@
 // Utilities for extracting plottable columns from JSON data and building plot series.
 
-import type { BarSeries, DataSeries, DataSeries3D, HistogramSeries } from '$lib/plot'
+import type { BarSeries, DataSeries, DataSeries3D, HistogramSeries } from '#lib/plot/index.js'
 
 export type PlotType = `scatter` | `scatter3d` | `bar` | `histogram` | `table`
 

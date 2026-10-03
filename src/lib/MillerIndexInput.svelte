@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import type { HTMLInputAttributes } from 'svelte/elements'
 
   // `label` also names the indices in the tooltip, so callers reading direct-lattice

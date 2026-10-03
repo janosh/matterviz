@@ -1,8 +1,12 @@
-import { make_site } from '$lib/structure/site'
-import type { TrajectorySpectroscopyInput, TrajectorySpectroscopyResult } from '$lib/spectral'
-import type * as spectroscopy_collect from '$lib/spectral/spectroscopy-collect'
-import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
-import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import { make_site } from '#lib/structure/site.js'
+import type {
+  TrajectorySpectroscopyInput,
+  TrajectorySpectroscopyResult,
+} from '#lib/spectral/index.js'
+import type * as spectroscopy_collect from '#lib/spectral/spectroscopy-collect.js'
+import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, query, set_select } from '../setup'
@@ -19,11 +23,11 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock(`$lib/spectral/spectroscopy-collect`, async (import_original) => ({
+vi.mock(`#lib/spectral/spectroscopy-collect.js`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   collect_trajectory_spectroscopy_input: mocks.collect,
 }))
-vi.mock(`$lib/spectral/trajectory-spectroscopy-async.svelte`, () => ({
+vi.mock(`#lib/spectral/trajectory-spectroscopy-async.svelte.js`, () => ({
   compute_trajectory_spectroscopy_async: mocks.compute,
 }))
 
@@ -122,7 +126,7 @@ test.each([
   async (label, value, timing) => {
     const { collect_trajectory_spectroscopy_input } = await vi.importActual<
       typeof spectroscopy_collect
-    >(`$lib/spectral/spectroscopy-collect`)
+    >(`#lib/spectral/spectroscopy-collect.js`)
     mocks.collect.mockImplementation(collect_trajectory_spectroscopy_input)
     const recomputation = Promise.withResolvers<TrajectorySpectroscopyResult>()
     mocks.compute

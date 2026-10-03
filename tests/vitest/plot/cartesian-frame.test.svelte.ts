@@ -2,20 +2,20 @@
 // feeds (PlotAxes, PlotLegendLayer, ReferenceLinesLayer), exercised through the charts that
 // mount it rather than in isolation (it creates $effects). Anything asserted here holds for
 // every chart, so the per-chart test files only keep behaviour specific to their own marks.
-import BarPlot from '$lib/plot/bar/BarPlot.svelte'
-import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
-import Histogram from '$lib/plot/histogram/Histogram.svelte'
-import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-import type { ShowControlsProp } from '$lib/controls'
-import type { Vec2 } from '$lib/math'
-import { type AxisConfig, COLOR_BAR_DEFAULTS } from '$lib/plot/core/types'
+import BarPlot from '#lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
+import Histogram from '#lib/plot/histogram/Histogram.svelte'
+import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+import type { ShowControlsProp } from '#lib/controls.js'
+import type { Vec2 } from '#lib/math.js'
+import { type AxisConfig, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import {
   AXIS_LABEL_HEIGHT,
   DEFAULT_PLOT_PADDING,
   rect_within_rect,
   rects_overlap,
-} from '$lib/plot/core/layout'
-import BinnedScatterPlot from '$lib/plot/scatter/BinnedScatterPlot.svelte'
+} from '#lib/plot/core/layout.js'
+import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -899,14 +899,14 @@ describe(`cartesian frame`, () => {
     async (chart) => {
       vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
       vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
-      vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(
-        function (this: Element): DOMRect {
-          if (this.classList.contains(`tick-label`)) {
-            return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
-          }
-          return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
-        },
-      )
+      vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
+        this: Element,
+      ): DOMRect {
+        if (this.classList.contains(`tick-label`)) {
+          return DOMRect.fromRect({ x: 90, y: 128, width: 240, height: 18 })
+        }
+        return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
+      })
       const plot = await mount_chart(chart, chart.props(), { width: 800, height: 600 })
       const clearance = COLOR_BAR_DEFAULTS.axis_clearance
       await vi.waitFor(() => {

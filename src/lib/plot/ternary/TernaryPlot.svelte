@@ -2,44 +2,49 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '$lib/tooltip'
-  import type { FileExportContext } from '$lib/io/file-export.svelte'
-  import { plot_color } from '$lib/colors'
-  import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-  import ViewerError from '$lib/layout/ViewerError.svelte'
-  import { format_value } from '$lib/labels'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import type { BasePlotProps, ColorBarScale, LegendConfig, PointStyle } from '$lib/plot'
-  import { ColorBar, PlotLegend, PlotTooltip } from '$lib/plot'
-  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
-  import { resolve_color_ramp } from '$lib/plot/core/color-ramp'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import type { FileExportContext } from '#lib/io/file-export.svelte.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import { format_value } from '#lib/labels.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type {
+    BasePlotProps,
+    ColorBarScale,
+    LegendConfig,
+    PointStyle,
+  } from '#lib/plot/index.js'
+  import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
+  import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
   import {
     closest_data_idx,
     focus_left,
     is_activation_key,
     pointer_pos,
-  } from '$lib/plot/core/interactions'
-  import { compute_element_placement, filter_padding } from '$lib/plot/core/layout'
-  import type { Sides } from '$lib/plot/core/layout'
-  import { observe_size } from '$lib/plot/core/utils'
-  import { create_chart_exporter } from '$lib/plot/core/utils/chart-export'
-  import type { ChartExportFormat } from '$lib/plot/core/utils/chart-export'
-  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  } from '#lib/plot/core/interactions.js'
+  import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
+  import type { Sides } from '#lib/plot/core/layout.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
+  import { create_chart_exporter } from '#lib/plot/core/utils/chart-export.js'
+  import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
-  } from '$lib/plot/core/utils/series-visibility'
-  import ScatterPoint from '$lib/plot/scatter/ScatterPoint.svelte'
-  import type { TernaryPointProps, TernarySeries } from '$lib/plot/ternary/ternary'
+  } from '#lib/plot/core/utils/series-visibility.js'
+  import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
+  import type { TernaryPointProps, TernarySeries } from '#lib/plot/ternary/ternary.js'
   import {
     ternary_fractions,
     ternary_grid_lines,
     ternary_layout,
     ternary_to_xy,
-  } from '$lib/plot/ternary/ternary'
-  import TernaryControls from '$lib/plot/ternary/TernaryControls.svelte'
-  import { to_error } from '$lib/utils'
+  } from '#lib/plot/ternary/ternary.js'
+  import TernaryControls from '#lib/plot/ternary/TernaryControls.svelte'
+  import { to_error } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

@@ -1,21 +1,25 @@
 <script lang="ts">
-  import { contrast_text_color, pick_contrast_color, resolve_backdrop } from '$lib/colors'
-  import { format_path, resolve_path } from '$lib/json-path'
-  import { plural } from '$lib/labels'
+  import {
+    contrast_text_color,
+    pick_contrast_color,
+    resolve_backdrop,
+  } from '#lib/colors/index.js'
+  import { format_path, resolve_path } from '#lib/json-path.js'
+  import { plural } from '#lib/labels.js'
   import JsonTree from 'svelte-widgets/JsonTree.svelte'
   import { relative_path_segments } from 'svelte-widgets/json-tree/utils'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { clamp } from '$lib/math'
-  import { merge } from '$lib/settings'
-  import type { DefaultSettings } from '$lib/settings'
-  import type { AnyStructure } from '$lib/structure'
+  import { clamp } from '#lib/math.js'
+  import { merge } from '#lib/settings.js'
+  import type { DefaultSettings } from '#lib/settings.js'
+  import type { AnyStructure } from '#lib/structure/index.js'
   import {
     is_structure_like,
     optimade_structure_from_raw,
     optimade_to_structure,
     structure_from_json,
-  } from '$lib/structure/parse'
-  import { to_error } from '$lib/utils'
+  } from '#lib/structure/parse.js'
+  import { to_error } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
@@ -585,7 +589,7 @@
             to an edge to create a split view.
           </p>
           <div
-            style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;"
+            style="margin-top: 12px; display: flex; flex-wrap: balance; gap: 6px; justify-content: center;"
           >
             {#each [...renderable_paths] as [data_path, type] (data_path)}
               <button

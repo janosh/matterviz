@@ -1,7 +1,11 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop, resolve_computed_color } from '$lib/colors'
-  import { DEFAULT_CURSOR_SIZE, place_tooltip } from '$lib/plot/core/decorations/tooltip'
-  import type { Rect } from '$lib/plot/core/layout'
+  import {
+    contrast_text_color,
+    resolve_backdrop,
+    resolve_computed_color,
+  } from '#lib/colors/index.js'
+  import { DEFAULT_CURSOR_SIZE, place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

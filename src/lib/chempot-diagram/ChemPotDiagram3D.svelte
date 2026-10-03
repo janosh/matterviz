@@ -1,30 +1,37 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { Filter } from 'svelte-widgets/icons'
-  import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
-  import type { FormulaLabelSegment } from '$lib/composition/format'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
-  import type { PhaseData } from '$lib/convex-hull/types'
+  import {
+    get_electro_neg_formula,
+    get_formula_label_segments,
+  } from '#lib/composition/format.js'
+  import type { FormulaLabelSegment } from '#lib/composition/format.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
+  import type { PhaseData } from '#lib/convex-hull/types.js'
   import { Spinner } from 'svelte-widgets'
-  import type { ExportSection } from '$lib/io'
-  import ExportPane from '$lib/io/ExportPane.svelte'
-  import { SettingsSection, ViewerChrome } from '$lib/layout'
-  import { ViewerPane } from '$lib/overlays'
-  import type { Vec3 } from '$lib/math'
-  import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '$lib/math'
-  import { ScatterPlot3DControls } from '$lib/plot'
-  import type { ThreltePointerEvent } from '$lib/scene'
+  import type { ExportSection } from '#lib/io/index.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
+  import type { Vec3 } from '#lib/math.js'
+  import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '#lib/math.js'
+  import { ScatterPlot3DControls } from '#lib/plot/index.js'
+  import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
     clear_pan_offset,
     create_renderer,
     dispose_on_change,
     webgpu_available,
-  } from '$lib/scene'
-  import { pad_rect, rects_overlap } from '$lib/plot/core/layout'
-  import type { AxisConfig3D, CameraProjection3D, DisplayConfig3D } from '$lib/plot/core/types'
-  import { get_3d_auto_ranges } from '$lib/plot/scatter-3d/scene-coords'
+  } from '#lib/scene/index.js'
+  import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
+  import type {
+    AxisConfig3D,
+    CameraProjection3D,
+    DisplayConfig3D,
+  } from '#lib/plot/core/types.js'
+  import { get_3d_auto_ranges } from '#lib/plot/scatter-3d/scene-coords.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { onDestroy, onMount, untrack } from 'svelte'

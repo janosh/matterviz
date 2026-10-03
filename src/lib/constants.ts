@@ -112,8 +112,22 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 export const ext_regex = (exts: readonly string[]): RegExp =>
   new RegExp(`\\.(${exts.map((ext) => ext.replace(/^\./, ``)).join(`|`)})$`, `i`)
 
+// Extensions of source, notebook, document, image and archive files: a VASP name in one of
+// these (write_poscar.py, plot_locpot.ipynb, CHGCAR.png, POSCAR.tar) names its subject, not
+// its format
+// oxfmt-ignore
+const NON_DATA_EXTENSIONS = [
+  `py`, `ipynb`, `rs`, `js`, `ts`, `jl`, `r`, `sh`, `c`, `h`, `cpp`, `f`, `f90`, `md`, `rst`,
+  `tex`, `pdf`, `html`, `css`, `png`, `jpe?g`, `gif`, `svg`, `webp`, `tiff?`, `tar`,
+]
+// A whole token of a file's own name (`CHGCAR`, `Si_CHGCAR`, `nvt.XDATCAR`, `XDATCAR.1`), never
+// a substring (`notposcar`) or a name ending in a non-data extension. Takes the file name
+// only; strip_compression_extensions drops any directories first.
 export const filename_token_regex = (filenames: readonly string[]): RegExp =>
-  new RegExp(`(?:^|[\\\\/_.-])(?:${filenames.join(`|`)})(?:[\\\\/_.-]|$)`, `i`)
+  new RegExp(
+    `^(?!.*\\.(?:${NON_DATA_EXTENSIONS.join(`|`)})$).*?(?:^|[_.-])(?:${filenames.join(`|`)})(?:[_.-]|$)`,
+    `i`,
+  )
 
 // File extensions for different file types
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
@@ -140,7 +154,7 @@ export const VASP_STRUCTURE_FILES = Object.freeze([`poscar`, `contcar`])
 export const VASP_FILES_REGEX = filename_token_regex(VASP_STRUCTURE_FILES)
 // oxfmt-ignore
 export const VASP_VOLUMETRIC_FILES = Object.freeze([
-  `chgcar`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
+  `chgcar`, `chg`, `aeccar`, `aeccar0`, `aeccar1`, `aeccar2`, `elfcar`, `locpot`, `parchg`,
 ])
 export const VASP_VOLUMETRIC_REGEX = filename_token_regex(VASP_VOLUMETRIC_FILES)
 // Bare VASP run outputs the trajectory parsers read
@@ -160,7 +174,7 @@ export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
 // === host opener vocabularies ===
 // VS Code matches globs declared in its package.json and JupyterLab registers file types up
 // front, so both need literal extension lists rather than the predicates in
-// file-viewer/eligibility. Deriving them from here keeps the two extensions in step with $lib
+// file-viewer/eligibility. Deriving them from here keeps the two extensions in step with #lib
 // and with each other. Listed without a leading dot, the form hosts want.
 
 // Formats a UTF-8 decode can hand straight to a parser.

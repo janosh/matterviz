@@ -1,4 +1,4 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
@@ -9,7 +9,7 @@ import type {
   TrajectoryFrame,
   TrajectoryPositionStream,
 } from './index'
-import { is_crystal } from '$lib/structure/validation'
+import { is_crystal } from '#lib/structure/validation.js'
 import { csv_line } from 'svelte-widgets/csv'
 import type { TrajectoryRun } from './run'
 import {

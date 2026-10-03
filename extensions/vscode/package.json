@@ -89,22 +89,22 @@
             "filenamePattern": "{vasprun,*[._-]vasprun}*.xml.gz"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chg,chgcar,elfcar,locpot,parchg}"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}.gz"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chg,chgcar,elfcar,locpot,parchg}.gz"
           },
           {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}"
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chg,chgcar,elfcar,locpot,parchg}"
           },
           {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chgcar,elfcar,locpot,parchg}.gz"
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG,aeccar,aeccar0,aeccar1,aeccar2,chg,chgcar,elfcar,locpot,parchg}.gz"
           },
           {
-            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
           },
           {
-            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHG,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
           }
         ],
         "priority": "option"

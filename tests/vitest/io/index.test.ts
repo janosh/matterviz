@@ -1,10 +1,10 @@
-import type { FileLoadCallback } from '$lib/io'
+import type { FileLoadCallback } from '#lib/io/index.js'
 import {
   basename_from_url,
   dropped_file_url,
   load_from_url,
   load_trajectory_from_url,
-} from '$lib/io'
+} from '#lib/io/index.js'
 import { gzipSync, zipSync, zlibSync } from 'fflate'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 

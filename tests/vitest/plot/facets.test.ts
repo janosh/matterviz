@@ -1,4 +1,4 @@
-import type { FacetAxisMode, FacetPanel } from '$lib/plot/core/facets'
+import type { FacetAxisMode, FacetPanel } from '#lib/plot/core/facets.js'
 import {
   assign_facet_panels,
   compute_facet_geometry,
@@ -6,7 +6,7 @@ import {
   reconcile_facet_padding,
   reconcile_facet_ranges,
   resolve_facet_axis_visibility,
-} from '$lib/plot/core/facets'
+} from '#lib/plot/core/facets.js'
 import { describe, expect, it } from 'vitest'
 
 const panels = (count: number): FacetPanel<string>[] =>

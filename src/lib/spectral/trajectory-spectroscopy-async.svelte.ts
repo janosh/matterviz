@@ -2,9 +2,9 @@
 // calc_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
 // `.cancel` / `.release` semantics. The client is shared by every mounted pane, so a pane's
 // unmount path is `.release()` (terminates only when nothing is in flight), never `.cancel()`.
-import type { TrajectorySignal } from '$lib/trajectory'
-import { plain_position_stream } from '$lib/trajectory/async-result.svelte'
-import { create_worker_client } from '$lib/worker-client.svelte'
+import type { TrajectorySignal } from '#lib/trajectory/index.js'
+import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,

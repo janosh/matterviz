@@ -1,10 +1,10 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
-  import { get_electro_neg_formula } from '$lib/composition'
-  import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { TooltipContent } from '$lib/tooltip'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { TooltipContent } from '#lib/tooltip/index.js'
   import type { PolymorphStats } from './helpers'
   import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
   import type { EntryCategoryConfig, HighlightStyle, PhaseData } from './types'

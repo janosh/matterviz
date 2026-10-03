@@ -1,11 +1,11 @@
-import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-import type { Vec2 } from '$lib'
+import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+import type { Vec2 } from '#lib'
 import type {
   AxisOption,
   ColorBarScale,
   ColorScaleOption,
   ScaleType,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
@@ -268,6 +268,8 @@ describe(`ColorBar tick labels`, () => {
       { range: [0, 1], tick_format: `.0%`, tick_labels: 5 },
       [`0%`, `25%`, `50%`, `75%`, `100%`],
     ],
+    // explicit scientific formats share format_num's compact exponents with the axes
+    [{ range: [1e5, 1e6], tick_format: `.0e`, tick_labels: [1e5, 1e6] }, [`1e5`, `1e6`]],
     [{ range: [0.1234, 5.6789], tick_labels: 3 }, [`0.123`, `2.9`, `5.68`]],
     [{ range: [1000, 5000], tick_labels: 2 }, [`1k`, `5k`]],
     // Adaptive precision distinguishes values that would otherwise all display as 1k.

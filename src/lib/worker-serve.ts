@@ -7,7 +7,7 @@
 // Dedicated workers' postMessage takes no targetOrigin (that is Window.postMessage), so
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 
 type WorkerRequest<Input, Options> = { id: number; input: Input; options: Options }
 

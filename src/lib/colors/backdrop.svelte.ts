@@ -1,5 +1,5 @@
-import { is_concrete_color, is_opaque_color } from '$lib/colors'
-import { observe_theme_attributes } from '$lib/theme'
+import { is_concrete_color, is_opaque_color } from '#lib/colors/index.js'
+import { observe_theme_attributes } from '#lib/theme/index.js'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`
 

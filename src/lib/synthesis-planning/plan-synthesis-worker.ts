@@ -1,4 +1,4 @@
-import { serve_worker } from '$lib/worker-serve'
+import { serve_worker } from '#lib/worker-serve.js'
 import { plan_synthesis } from './plan'
 import type { SynthesisPlan, SynthesisPlanRequest } from './types'
 

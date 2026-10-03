@@ -1,5 +1,5 @@
-import type { Vec3 } from '$lib/math'
-import MillerIndexInput from '$lib/MillerIndexInput.svelte'
+import type { Vec3 } from '#lib/math.js'
+import MillerIndexInput from '#lib/MillerIndexInput.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'

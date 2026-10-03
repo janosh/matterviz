@@ -1,4 +1,4 @@
-import { rects_overlap } from '$lib/plot/core/layout'
+import { rects_overlap } from '#lib/plot/core/layout.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   collect_console_errors,
@@ -685,6 +685,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await fullscreen_button.click()
     }
     const { toggle, pane } = await open_plot_controls(scatter_plot)
+    // every chart's header row shares a z-index; the one holding an open pane rises so a chart
+    // further down cannot paint its chrome over the pane dragged onto it
+    await expect(scatter_plot.locator(`.header-controls`)).toHaveCSS(`z-index`, `12`)
 
     const show_points_checkbox = pane.getByLabel(`Show points`)
     await expect(show_points_checkbox).toBeChecked()
@@ -811,10 +814,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect
       .poll(async () => (await crimson_marker.boundingBox())?.width ?? 0)
       .toBeGreaterThan(initial_width * 1.3)
-    expect(await crimson_marker.getAttribute(`fill`)).toContain(`crimson`)
+    await expect(crimson_marker).toHaveAttribute(`fill`, /crimson/)
     await expect(crimson_marker).toHaveAttribute(`stroke`, `darkred`)
     await expect(crimson_marker).toHaveAttribute(`stroke-width`, `3`)
-    expect(await green_marker.getAttribute(`fill`)).toContain(`forestgreen`)
+    await expect(green_marker).toHaveAttribute(`fill`, /forestgreen/)
     await expect(green_marker).toHaveAttribute(`stroke-width`, `2`)
 
     // section reset removes its overrides, so the authored radius shows again
@@ -834,11 +837,12 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await pane.getByRole(`button`, { name: `Clear point style overrides` }).click()
     await pane.getByLabel(`Show lines`, { exact: true }).check()
 
-    // line width on series 1: width changes, line color and points stay
+    // line width on series 1: width changes, line color and points stay (the marker fill
+    // glides back from blue for 600 ms, so its check must retry)
     await pane.locator(`[data-key="line.width"] input[type="range"]`).fill(`8`)
     await expect(green_line).toHaveAttribute(`stroke-width`, `8`)
     await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
-    expect(await green_marker.getAttribute(`fill`)).toContain(`forestgreen`)
+    await expect(green_marker).toHaveAttribute(`fill`, /forestgreen/)
   })
 
   test(`auto label placement keeps sparse and dense labels from overlapping`, async ({

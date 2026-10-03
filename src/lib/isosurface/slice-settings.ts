@@ -1,5 +1,5 @@
-import type { D3InterpolateName } from '$lib/colors'
-import type { Vec2, Vec3 } from '$lib/math'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import type { VolumeSliceMode } from './slice-rendering'
 
 export type VolumeSlicePlaneMode = `hkl` | `cartesian`

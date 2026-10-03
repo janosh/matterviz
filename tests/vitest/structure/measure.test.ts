@@ -1,6 +1,6 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { MeasureMode, Site } from '$lib/structure'
-import type { Pbc } from '$lib/structure/pbc'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { MeasureMode, Site } from '#lib/structure/index.js'
+import type { Pbc } from '#lib/structure/pbc.js'
 import {
   angle_between_vectors,
   compute_displacements,
@@ -10,7 +10,7 @@ import {
   max_measured_sites,
   pbc_chain_positions,
   rolls_measured_sites,
-} from '$lib/structure/measure'
+} from '#lib/structure/measure.js'
 import { describe, expect, test } from 'vitest'
 import { make_molecule } from '../test-fixtures'
 

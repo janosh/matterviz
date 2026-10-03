@@ -1,26 +1,27 @@
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 // Everything is imported through the module barrel, exactly as the demo route does, so a
 // missing or name-clashing export fails these tests rather than the site build.
 import {
   acoustic_mode_indices,
-  apply_born_sum_rule,
-  born_charge_sum,
   broaden_spectrum,
   compute_ir_raman_spectrum,
-  convert_frequencies,
-  eigenvector_norm_sq,
   ir_intensity,
-  IrRamanSpectrum,
-  is_gamma_point,
-  parse_born,
-  parse_frequency_unit,
-  parse_phonon_modes,
   raman_invariants,
   scale_to_max,
   spectrum_from_phonon_data,
   spectrum_sticks,
   to_transmittance,
-} from '$lib/spectral'
+} from '#lib/spectral/ir-raman.js'
+import {
+  apply_born_sum_rule,
+  born_charge_sum,
+  eigenvector_norm_sq,
+  parse_born,
+  parse_phonon_modes,
+} from '#lib/spectral/parse-phonon-modes.js'
+import { convert_frequencies, parse_frequency_unit } from '#lib/spectral/frequency-units.js'
+import IrRamanSpectrum from '#lib/spectral/IrRamanSpectrum.svelte'
+import { is_gamma_point } from '#lib/spectral/helpers.js'
 import type {
   BroadenOptions,
   Complex,
@@ -28,17 +29,17 @@ import type {
   PhononModeData,
   SpectrumCurve,
   VibrationalMode,
-} from '$lib/spectral'
+} from '#lib/spectral/index.js'
 // broaden_spectrum delegates to it, and that delegation is under test
-import { broaden_peaks } from '$lib/lineshape'
-import co2_born from '$site/phonons/ir-raman/CO2.BORN?raw'
-import co2_yaml from '$site/phonons/ir-raman/CO2-gamma.yaml.gz?raw'
-import co2_raman_json from '$site/phonons/ir-raman/CO2-raman-tensors.json.gz'
-import nacl_born from '$site/phonons/ir-raman/NaCl.BORN?raw'
-import nacl_yaml from '$site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
-import sio2_born from '$site/phonons/ir-raman/SiO2.BORN?raw'
-import sio2_raman_json from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
-import sio2_yaml from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
+import { broaden_peaks } from '#lib/lineshape.js'
+import co2_born from '#site/phonons/ir-raman/CO2.BORN?raw'
+import co2_yaml from '#site/phonons/ir-raman/CO2-gamma.yaml.gz?raw'
+import co2_raman_json from '#site/phonons/ir-raman/CO2-raman-tensors.json.gz'
+import nacl_born from '#site/phonons/ir-raman/NaCl.BORN?raw'
+import nacl_yaml from '#site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
+import sio2_born from '#site/phonons/ir-raman/SiO2.BORN?raw'
+import sio2_raman_json from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+import sio2_yaml from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import { bind_props, doc_query, expect_plot_controls } from '../setup'

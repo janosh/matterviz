@@ -1,6 +1,6 @@
-import type { AnyStructure, Crystal, ElementSymbol, Site, Species, Vec3 } from '$lib'
-import * as struct_utils from '$lib/structure'
-import type { StructureFitOpts } from '$lib/structure'
+import type { AnyStructure, Crystal, ElementSymbol, Site, Species, Vec3 } from '#lib'
+import * as struct_utils from '#lib/structure/index.js'
+import type { StructureFitOpts } from '#lib/structure/index.js'
 import {
   camera_needs_fit,
   camera_position_for_target,
@@ -16,16 +16,16 @@ import {
   structure_fit_frame,
   vector_display_defaults,
   VECTOR_PALETTE,
-} from '$lib/structure'
-import { neighbor_query } from '$lib/structure/bonding'
-import { applies_to_structure } from '$lib/structure/settings'
+} from '#lib/structure/index.js'
+import { neighbor_query } from '#lib/structure/bonding.js'
+import { applies_to_structure } from '#lib/structure/settings.js'
 import {
   make_site as create_site,
   numeric_sites,
   snapshot_topologies,
-} from '$lib/structure/site'
-import { generate_lattice_points } from '$lib/structure/supercell'
-import { structures } from '$site/structures'
+} from '#lib/structure/site.js'
+import { generate_lattice_points } from '#lib/structure/supercell.js'
+import { structures } from '#site/structures.js'
 import { assert, describe, expect, test, vi } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 import {
@@ -33,7 +33,7 @@ import {
   encode_frame,
   FrameView,
   materialize_frame,
-} from '$lib/trajectory/frame'
+} from '#lib/trajectory/frame.js'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 
 const ref_data: Record<

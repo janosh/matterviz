@@ -2,7 +2,7 @@
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
 // for immediate rendering by IsobaricBinaryPhaseDiagram
 
-import { array_extent, point_in_polygon, type Vec2, type Vec4 } from '$lib/math'
+import { array_extent, point_in_polygon, type Vec2, type Vec4 } from '#lib/math.js'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
 // Round to 6 decimal places for clean floating-point output

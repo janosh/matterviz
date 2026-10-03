@@ -3,9 +3,9 @@
 import {
   compute_gas_chemical_potential,
   get_default_gas_provider,
-} from '$lib/convex-hull/gas-thermodynamics'
-import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
-import type { GasSpecies, PhaseData } from '$lib/convex-hull/types'
+} from '#lib/convex-hull/gas-thermodynamics.js'
+import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
+import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
 import { COMPETITOR_E_ABOVE_HULL } from './plan'
 import {
   assign_e_above_hull,

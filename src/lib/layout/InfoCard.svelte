@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
+  import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {

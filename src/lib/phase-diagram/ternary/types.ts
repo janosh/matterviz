@@ -3,11 +3,11 @@
 // at each T tiles the Gibbs triangle into tie-triangles and only changes at discrete transition
 // temperatures, so a diagram is sampled isothermal sections plus the exact (bisected) list of
 // those transitions.
-import type { D3InterpolateName } from '$lib/colors'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
-import { DEFAULT_HULL_COLORS } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
-import type { Vec2, Vec3 } from '$lib/math'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
+import { DEFAULT_HULL_COLORS } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 
 // === Free energy models ===
 

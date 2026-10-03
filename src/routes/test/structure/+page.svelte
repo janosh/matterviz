@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
-  import type { Crystal } from '$lib'
-  import { DEFAULTS } from '$lib/settings'
+  import type { Crystal } from '#lib'
+  import { DEFAULTS } from '#lib/settings.js'
   import type {
     BondEditMode,
     BondOrder,
     MeasureMode,
     StructureBond,
     StructurePane,
-  } from '$lib/structure'
-  import { Structure } from '$lib/structure'
-  import StructureScene from '$lib/structure/StructureScene.svelte'
-  import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
+  } from '#lib/structure/index.js'
+  import { Structure } from '#lib/structure/index.js'
+  import StructureScene from '#lib/structure/StructureScene.svelte'
+  import mp1_struct from '#site/structures/mp-1.json' with { type: 'json' }
   import { type ComponentProps, untrack } from 'svelte'
 
   let active_pane = $state<StructurePane | null>(null)
