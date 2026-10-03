@@ -607,7 +607,6 @@
     min-height: 480px;
     container-type: inline-size;
     background: var(--pd-bg, transparent);
-    outline: none;
     &.fullscreen {
       background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
     }
