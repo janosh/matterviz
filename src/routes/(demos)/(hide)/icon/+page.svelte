@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { fuzzy_match } from 'svelte-widgets/utils'
   import { highlight_matches } from 'svelte-widgets/attachments'
   // Namespace import is gallery-only: computed access pins every glyph into the bundle.
@@ -16,7 +16,10 @@
     setTimeout(() => (copied_text = null), 1500)
   }
 
-  const icon_entries = Object.entries(icons)
+  // dev SSR keeps export order but browsers sort namespace keys: sort so both render alike
+  const icon_entries = Object.entries(icons).toSorted(([name_a], [name_b]) =>
+    name_a < name_b ? -1 : 1,
+  )
   const icon_svg = (entry: IconData): string => entry.d ?? entry.markup
 
   let filtered_icons = $derived(
