@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PhaseData } from '#lib/convex-hull/index.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
   import type { SynthesisConditions, SynthesisPlan } from '#lib/synthesis-planning/index.js'
   import { to_error } from '#lib/utils.js'

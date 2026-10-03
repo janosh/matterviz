@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Database, Globe, Link } from 'svelte-widgets/icons'
   import {
     detect_provider_from_id,

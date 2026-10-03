@@ -72,7 +72,11 @@
   import { type CellPos, CellSelection } from './selection.svelte'
   import ToggleMenu from './ToggleMenu.svelte'
   import { virtual_window } from 'svelte-widgets/virtual'
-  import { ActionMenu, Icon, type IconData, Popover, SettingsSection } from 'svelte-widgets'
+  import type { IconData } from 'svelte-widgets'
+  import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import Popover from 'svelte-widgets/Popover.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
     Columns,

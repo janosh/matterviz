@@ -3,7 +3,8 @@
 
   import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
   import type { CompositionType } from '#lib/composition/index.js'
-  import { ActionMenu, Icon } from 'svelte-widgets'
+  import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import type { CmdAction, CmdSection, IconData } from 'svelte-widgets'
   import {
     Circle,

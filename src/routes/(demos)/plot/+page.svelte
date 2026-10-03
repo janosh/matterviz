@@ -20,7 +20,7 @@
     Treemap,
     ViolinPlot,
   } from 'svelte-widgets/icons'
-  import { SubpageGrid } from 'svelte-widgets'
+  import SubpageGrid from 'svelte-widgets/SubpageGrid.svelte'
 
   const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
     {

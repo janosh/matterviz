@@ -19,7 +19,7 @@
   import { structure_files } from '#site/structures.js'
   import { file_param, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
 
   let wasm_ready = $state(false)
   let error = $state<string | null>(null)

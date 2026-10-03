@@ -7,7 +7,7 @@
   import { ViewerPane, type PaneProps } from '#lib/overlays/index.js'
   import { to_error } from '#lib/utils.js'
   import { tick, type Snippet } from 'svelte'
-  import { NumberRangeInput } from 'svelte-widgets'
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import { Camera } from 'svelte-widgets/icons'
   import type { CameraFlight, CameraPose } from './camera-flight'
   import {

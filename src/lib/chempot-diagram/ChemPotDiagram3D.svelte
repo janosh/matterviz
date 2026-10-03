@@ -10,7 +10,7 @@
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, Popover } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import Popover from 'svelte-widgets/Popover.svelte'
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { portal, float, click_outside, tooltip } from 'svelte-widgets/attachments'
   import { sanitize_html } from '#lib/sanitize.js'

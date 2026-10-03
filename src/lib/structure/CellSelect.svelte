@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, Spinner } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { Check } from 'svelte-widgets/icons'
   import { is_valid_supercell_input } from '#lib/structure/supercell.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'

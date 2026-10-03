@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'

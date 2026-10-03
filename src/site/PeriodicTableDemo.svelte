@@ -12,7 +12,7 @@
   import { selected } from '#lib/state.svelte.js'
   import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
   import { replace_url } from '#site/state.svelte.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronDown, ChevronRight } from 'svelte-widgets/icons'
   import { onMount } from 'svelte'
   import { slide } from 'svelte/transition'

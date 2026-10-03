@@ -3,7 +3,7 @@
   // Aliased: this component has the same name, and svelte2tsx emits both the import and a
   // `declare const` of it into the packaged declaration, which is a TS2440 conflict and also
   // collapses the props type below to `any`.
-  import { FullscreenButton as WidgetFullscreenButton } from 'svelte-widgets'
+  import WidgetFullscreenButton from 'svelte-widgets/FullscreenButton.svelte'
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'

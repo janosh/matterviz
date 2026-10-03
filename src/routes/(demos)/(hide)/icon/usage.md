@@ -1,6 +1,6 @@
 ```svelte
 <script>
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { GitHub, Settings } from 'svelte-widgets/icons'
 </script>
 

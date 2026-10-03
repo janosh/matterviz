@@ -2,7 +2,7 @@
   // Draggable floating dialog shell shared by StructurePopup (convex hull) and
   // BrillouinZonePopup (band structure): Escape/click-outside dismissal, a drag tab and a close
   // button the caller places wherever its viewer keeps controls
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Cross } from 'svelte-widgets/icons'
   import { click_outside, draggable } from 'svelte-widgets/attachments'
   import type { Snippet } from 'svelte'

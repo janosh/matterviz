@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorInput } from 'svelte-widgets'
+  import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { track_settings } from '#lib/controls.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { css_color_to_hex } from '#lib/colors/index.js'

@@ -2,7 +2,8 @@
   import { afterNavigate, goto } from '$app/navigation'
   import { page } from '$app/state'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { Spinner, StatusMessage } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import * as file_io from '#lib/io/index.js'
   import type { Vec3 } from '#lib/math.js'
   import type {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte'
-  import { Progress, Spinner } from 'svelte-widgets'
+  import Progress from 'svelte-widgets/Progress.svelte'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
 
   let {
     label,

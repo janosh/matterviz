@@ -2,7 +2,7 @@
   import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
   import { plural } from '#lib/labels.js'

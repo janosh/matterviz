@@ -1,6 +1,6 @@
 <script lang="ts">
   import pkg from '#root/package.json'
-  import { Footer } from 'svelte-widgets'
+  import Footer from 'svelte-widgets/Footer.svelte'
   import { HandsClapping, License, RepoFork } from 'svelte-widgets/icons'
 </script>
 

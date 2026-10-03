@@ -12,7 +12,7 @@
   import * as exports from '#lib/structure/export.js'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import type { ComponentProps } from 'svelte'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera as CameraIcon } from 'svelte-widgets/icons'
   import type { Camera, Scene } from 'three/webgpu'
 

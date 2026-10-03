@@ -4,7 +4,7 @@
 <script lang="ts">
   import { browser } from '$app/env'
   import { Structure, type StructureHandlerData } from 'matterviz'
-  import { MultiSelect as Select } from 'svelte-widgets'
+  import Select from 'svelte-widgets/MultiSelect.svelte'
   import { structure_files } from '#site/structures.js'
   import { molecule_files } from '#site/molecules.js'
   import FilePicker from '#lib/FilePicker.svelte'

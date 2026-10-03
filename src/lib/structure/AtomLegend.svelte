@@ -6,7 +6,7 @@
   } from '#lib/colors/index.js'
   import type { CompositionType } from '#lib/composition/index.js'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
   import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'

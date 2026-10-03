@@ -5,7 +5,7 @@
   import type { DateTimeFormatMode } from '#lib/table/index.js'
   import { DATETIME_MODE_LABELS } from './data'
   import { html_to_text } from '#lib/utils.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import { Calendar } from 'svelte-widgets/icons'
 

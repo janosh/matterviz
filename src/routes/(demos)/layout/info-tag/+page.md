@@ -7,7 +7,7 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
 ```svelte example
 <script lang="ts">
   import { InfoTag } from 'matterviz'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { CheckCircle, XCircle } from 'svelte-widgets/icons'
 
   const sizes = [`sm`, `md`, `lg`] as const
@@ -148,7 +148,7 @@ Combine tags with icons to display material properties with dynamic styling:
 ```svelte example
 <script lang="ts">
   import { InfoTag } from 'matterviz'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Alert, CheckCircle, XCircle } from 'svelte-widgets/icons'
 
   const materials = [

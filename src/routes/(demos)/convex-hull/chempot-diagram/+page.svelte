@@ -5,7 +5,7 @@
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { filter_by_elements, quaternary_loader } from '#site/convex-hull/index.js'
   import { create_temp_ternary_entries_li_fe_o } from '#site/convex-hull/demo-temperature.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import LazyDemo from '#site/LazyDemo.svelte'
 
   // Each compressed fixture remains a separate lazy chunk.

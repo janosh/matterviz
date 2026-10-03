@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import type { ElementSymbol, Vec3, Crystal } from '#lib'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import Structure from '#lib/structure/Structure.svelte'
   import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '#lib/settings.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'

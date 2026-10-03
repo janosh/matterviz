@@ -1,7 +1,7 @@
 <script>
   import { page } from '$app/state'
   import { routes as all_routes } from '#site/state.svelte.js'
-  import { Nav } from 'svelte-widgets'
+  import Nav from 'svelte-widgets/Nav.svelte'
 
   const routes = all_routes
     .filter(({ filename }) => /\/test\/.+\/.+/.test(filename))
