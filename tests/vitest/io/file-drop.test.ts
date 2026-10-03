@@ -456,6 +456,16 @@ describe(`file_drop_zone attachment`, () => {
     )
     expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
 
+    // an inner drop target that stops propagation (a pane reordering its own items) still
+    // clears the class, which would otherwise stick and keep its border shifting the layout
+    const inner = document.createElement(`span`)
+    node.append(inner)
+    inner.addEventListener(`drop`, (event) => event.stopPropagation())
+    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+    inner.dispatchEvent(new Event(`drop`, { bubbles: true, cancelable: true }))
+    expect(node.classList.contains(`dragover`)).toBe(false)
+    expect(on_drop).toHaveBeenCalledOnce()
+
     detach?.()
     node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
     expect(node.classList.contains(`dragover`)).toBe(false)

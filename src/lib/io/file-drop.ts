@@ -161,7 +161,9 @@ type DragoverOption = { on_dragover?: (over: boolean) => void }
 
 // Wires `node` as a drop zone: it toggles the node's `dragover` class while an allowed drag
 // hovers it (so the viewer's `.dragover` rule lights up), clears it on drop (browsers fire no
-// dragleave then), and routes the drop through `handler`.
+// dragleave then), and routes the drop through `handler`. The clear runs in the capture phase:
+// an inner drop target that stops propagation (the camera flight pane reordering its
+// thumbnails) would otherwise leave the class, and its layout-shifting border, stuck.
 const drop_zone =
   (
     opts: { allow: () => boolean } & DragoverOption,
@@ -173,18 +175,18 @@ const drop_zone =
       opts.on_dragover?.(over)
     }
     const { ondragover, ondragleave } = drag_over_handlers({ allow: opts.allow, set_dragover })
-    const ondrop = (event: DragEvent) => {
-      set_dragover(false)
-      void handler(event)
-    }
+    const clear_dragover = () => set_dragover(false)
+    const ondrop = (event: DragEvent) => void handler(event)
     node.addEventListener(`dragover`, ondragover)
     node.addEventListener(`dragleave`, ondragleave)
+    node.addEventListener(`drop`, clear_dragover, { capture: true })
     node.addEventListener(`drop`, ondrop)
     return () => {
       node.removeEventListener(`dragover`, ondragover)
       node.removeEventListener(`dragleave`, ondragleave)
+      node.removeEventListener(`drop`, clear_dragover, { capture: true })
       node.removeEventListener(`drop`, ondrop)
-      set_dragover(false)
+      clear_dragover()
     }
   }
 
