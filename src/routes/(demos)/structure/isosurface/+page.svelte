@@ -1,7 +1,8 @@
 <script lang="ts">
   import { browser } from '$app/env'
   import { page } from '$app/state'
-  import { DragOverlay, StatusMessage } from 'svelte-widgets'
+  import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { format_num } from '#lib/labels.js'

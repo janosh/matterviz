@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChemicalElement } from '#lib/element/index.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { NoImage } from 'svelte-widgets/icons'
   import type { HTMLAttributes, HTMLImgAttributes } from 'svelte/elements'
 

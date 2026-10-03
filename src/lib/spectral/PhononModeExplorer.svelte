@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { ColorInput, Icon, StatusMessage } from 'svelte-widgets'
+  import ColorInput from 'svelte-widgets/ColorInput.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'

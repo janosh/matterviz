@@ -6,7 +6,7 @@
   import { sanitize_html } from '#lib/sanitize.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
   import { html_to_text } from '#lib/utils.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'
 

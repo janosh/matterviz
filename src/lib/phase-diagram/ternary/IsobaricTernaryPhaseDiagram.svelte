@@ -12,7 +12,7 @@
     GAS_STOICHIOMETRY,
   } from '#lib/convex-hull/gas-thermodynamics.js'
   import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -607,7 +607,6 @@
     min-height: 480px;
     container-type: inline-size;
     background: var(--pd-bg, transparent);
-    outline: none;
     &.fullscreen {
       background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
     }

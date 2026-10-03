@@ -8,7 +8,7 @@
   // callbacks so it drives Structure's external camera API. Camera state stays local to each
   // pane; scene_props supplies caller-controlled pose overrides.
   import type { ElementSymbol } from '#lib/element/index.js'
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { CameraProjection } from '#lib/settings.js'

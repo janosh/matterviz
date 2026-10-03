@@ -674,6 +674,7 @@ body.fullscreen .draggable-pane {
     background: transparent;
     accent-color: var(--range-thumb-bg);
     cursor: pointer;
+    outline: none; /* wraps the overflowing thumb in a blob; the thumb ring below replaces it */
   }
   input[type='range']::-webkit-slider-runnable-track {
     height: var(--range-track-height, 0.45rem);
@@ -710,6 +711,17 @@ body.fullscreen .draggable-pane {
     border-radius: 50%;
     background: var(--range-thumb-bg);
     box-shadow: 0 0 0 1px var(--surface-bg, #1f242d);
+  }
+  /* keyboard focus rings the thumb (separate rules: one unknown pseudo-element drops a list) */
+  input[type='range']:focus-visible::-webkit-slider-thumb {
+    box-shadow:
+      0 0 0 1px var(--surface-bg, #1f242d),
+      0 0 0 3px var(--range-thumb-bg);
+  }
+  input[type='range']:focus-visible::-moz-range-thumb {
+    box-shadow:
+      0 0 0 1px var(--surface-bg, #1f242d),
+      0 0 0 3px var(--range-thumb-bg);
   }
   input[type='number'] {
     min-width: 40px;

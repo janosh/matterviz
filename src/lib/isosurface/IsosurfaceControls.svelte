@@ -3,7 +3,7 @@
   // Controls panel for isosurface visualization settings. Surfaces are grouped under their
   // geometry-source volume; each exposes isovalue, opacity, colour and optional cross-volume
   // scalar colouring (color source, colormap, value range).
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'

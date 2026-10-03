@@ -18,7 +18,8 @@
   import { normalize_static_url } from '#site/state.svelte.js'
   import LazyDemo from '#site/LazyDemo.svelte'
   import { error } from '@sveltejs/kit'
-  import { Icon, PrevNext } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import PrevNext from 'svelte-widgets/PrevNext.svelte'
   import {
     ArrowUp,
     Atom,

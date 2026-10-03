@@ -3,7 +3,8 @@
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
   import type { TrajHandlerData } from '#lib/trajectory/index.js'
   import { trajectory_files } from '#site/trajectories.js'
-  import { CopyButton, Icon } from 'svelte-widgets'
+  import CopyButton from 'svelte-widgets/CopyButton.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
 

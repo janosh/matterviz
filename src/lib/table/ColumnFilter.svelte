@@ -7,7 +7,7 @@
   import type { ColumnFilter, Column, RowData } from '#lib/table/index.js'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
   import { html_to_text } from '#lib/utils.js'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Filter } from 'svelte-widgets/icons'
 
   let {

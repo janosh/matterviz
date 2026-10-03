@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ComponentProps, Snippet } from 'svelte'
-  import { DraggablePane } from 'svelte-widgets'
+  import DraggablePane from 'svelte-widgets/DraggablePane.svelte'
   import { Cross, type IconData } from 'svelte-widgets/icons'
 
   let {

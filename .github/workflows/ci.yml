@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       # install extension deps too: vscode is type-aware linted by root oxlint
       # (needs e.g. @types/vscode), anywidget is checked by root svelte-check
       # (needs its matterviz/* subpath imports to resolve, else TS2882)
@@ -42,7 +42,7 @@ jobs:
           pnpm exec vp check
           npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning
       - name: Run prek checks
-        uses: j178/prek-action@v2
+        uses: j178/prek-action@main
 
       # The root tsconfig excludes extensions/, and `vp build` strips types without
       # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install dependencies
         uses: ./.github/actions/setup
@@ -101,7 +101,7 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           test-cache: performance
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Build production site
         run: pnpm exec vp build
@@ -158,7 +158,7 @@ jobs:
     name: E2E source inspection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: pnpm exec playwright install chromium --no-shell
       # Linux headless WebGPU presents transparent canvases, including drawImage captures.
@@ -183,7 +183,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
       - name: Install Chromium

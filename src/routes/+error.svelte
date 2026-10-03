@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { GitHub } from 'svelte-widgets/icons'
   import pkg from '#root/package.json'
 

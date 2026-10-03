@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
-  import { ColorInput, StatusMessage } from 'svelte-widgets'
+  import ColorInput from 'svelte-widgets/ColorInput.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import HotspotLegend from './HotspotLegend.svelte'

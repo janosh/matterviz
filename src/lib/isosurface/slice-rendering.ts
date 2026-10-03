@@ -139,13 +139,30 @@ export function contour_segments(
   thresholds: readonly number[],
   emit: (x0: number, y0: number, x1: number, y1: number) => void,
 ): void {
-  if (thresholds.length === 0) return
-  // One-cell border of -Infinity (below every threshold) so corner reads need no bounds checks
+  const n_levels = thresholds.length
+  if (n_levels === 0) return
+  // Band of each grid point = how many thresholds it reaches (value >= threshold), so a level
+  // crosses a cell exactly when its corners' bands straddle it: most cells are skipped with
+  // integer compares, and corner states come from the bands instead of re-comparing values.
+  // A one-cell border of band 0 (below every threshold, like d3's out-of-grid cells) spares
+  // the corner reads any bounds checks.
   const padded_width = width + 2
-  const padded = new Float64Array(padded_width * (height + 2)).fill(Number.NEGATIVE_INFINITY)
+  const bands = new Uint16Array(padded_width * (height + 2))
+  const [lowest, highest] = [thresholds[0], thresholds[n_levels - 1]]
+  // evenly spaced levels (the usual case) make a linear guess exact up to rounding; the
+  // walks below correct it, so uneven levels stay exact too
+  const inv_spacing =
+    n_levels > 1 && highest > lowest ? (n_levels - 1) / (highest - lowest) : 0
   for (let row = 0; row < height; row++) {
+    const padded_row = (row + 1) * padded_width + 1
     for (let col = 0; col < width; col++) {
-      padded[(row + 1) * padded_width + col + 1] = values[row * width + col]
+      const value = values[row * width + col]
+      // NaN reaches no threshold, like the old `value >= threshold` corner test
+      if (!(value >= lowest)) continue
+      let band = value >= highest ? n_levels : Math.floor((value - lowest) * inv_spacing) + 1
+      while (band < n_levels && value >= thresholds[band]) band++
+      while (band > 0 && value < thresholds[band - 1]) band--
+      bands[padded_row + col] = band
     }
   }
   // A crossing on a cell edge moves from the edge midpoint to where the field equals the
@@ -171,30 +188,32 @@ export function contour_segments(
     [0, 0],
     [0, 0],
   ]
-  const lowest = thresholds[0]
-  const highest = thresholds[thresholds.length - 1]
   for (let cell_y = -1; cell_y < height; cell_y++) {
     // padded index of grid point (cell_x, cell_y) for cell_x = -1
     const bottom_row = (cell_y + 1) * padded_width
     for (let cell_x = -1; cell_x < width; cell_x++) {
       const bottom_idx = bottom_row + cell_x + 1
-      const bottom_left = padded[bottom_idx]
-      const bottom_right = padded[bottom_idx + 1]
-      const top_left = padded[bottom_idx + padded_width]
-      const top_right = padded[bottom_idx + padded_width + 1]
-      const cell_min = Math.min(top_left, top_right, bottom_right, bottom_left)
-      const cell_max = Math.max(top_left, top_right, bottom_right, bottom_left)
-      // a level crosses this cell only when some corner reaches it and another does not
-      if (cell_max < lowest || cell_min >= highest) continue
-      for (const threshold of thresholds) {
-        if (threshold <= cell_min) continue
-        if (threshold > cell_max) break
+      const bottom_left = bands[bottom_idx]
+      const bottom_right = bands[bottom_idx + 1]
+      const top_left = bands[bottom_idx + padded_width]
+      const top_right = bands[bottom_idx + padded_width + 1]
+      if (
+        bottom_left === bottom_right &&
+        bottom_left === top_left &&
+        bottom_left === top_right
+      )
+        continue
+      // levels k with min band <= k < max band have corners on both sides
+      const band_min = Math.min(top_left, top_right, bottom_right, bottom_left)
+      const band_max = Math.max(top_left, top_right, bottom_right, bottom_left)
+      for (let level = band_min; level < band_max; level++) {
+        const threshold = thresholds[level]
         const segments =
           CONTOUR_CASES[
-            Number(top_left >= threshold) |
-              (Number(top_right >= threshold) << 1) |
-              (Number(bottom_right >= threshold) << 2) |
-              (Number(bottom_left >= threshold) << 3)
+            Number(top_left > level) |
+              (Number(top_right > level) << 1) |
+              (Number(bottom_right > level) << 2) |
+              (Number(bottom_left > level) << 3)
           ]
         for (let seg_idx = 0; seg_idx < segments.length; seg_idx += 4) {
           place(cell_x + segments[seg_idx], cell_y + segments[seg_idx + 1], threshold, start)

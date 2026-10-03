@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { format_num, format_tick_values } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import {

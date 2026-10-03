@@ -34,7 +34,7 @@
   import { abortable, to_error } from '#lib/utils.js'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera } from 'svelte-widgets/icons'
   import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight.js'
 

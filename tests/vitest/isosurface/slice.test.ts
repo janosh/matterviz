@@ -1,9 +1,10 @@
 // Tests for HKL plane slicing and trilinear interpolation
-import { trilinear_interpolate } from '#lib/isosurface/sampling.js'
+import { create_volume_sampler, trilinear_interpolate } from '#lib/isosurface/sampling.js'
 import {
   resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
+  upsample_volume,
   volume_center,
 } from '#lib/isosurface/slice.js'
 import type { CartesianPlane, PlaneSliceOptions } from '#lib/isosurface/slice.js'
@@ -11,6 +12,7 @@ import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 import { flatten_grid } from '#lib/isosurface/grid.js'
+import * as math from '#lib/math.js'
 import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../test-fixtures'
 
 // Nested test grids flattened to the z-fastest storage the sampler reads
@@ -159,6 +161,59 @@ describe(`sample_hkl_slice`, () => {
   })
 })
 
+// B-spline refinement must keep every grid sample, track a smooth field far better than
+// trilinear interpolation between samples, and never leave the data range
+test.each([true, false])(`upsample_volume refines smoothly (periodic=%s)`, (periodic) => {
+  const dims: Vec3 = [12, 10, 16]
+  const divisors = dims.map((size) => (periodic ? size : size - 1))
+  const field = (frac_x: number, frac_y: number, frac_z: number) =>
+    Math.exp(Math.cos(2 * Math.PI * frac_x) + Math.sin(2 * Math.PI * (frac_y + frac_z)))
+  const volume = make_volume(
+    make_grid(...dims, (idx_x, idx_y, idx_z) =>
+      field(idx_x / divisors[0], idx_y / divisors[1], idx_z / divisors[2]),
+    ),
+    { lattice: cubic_matrix(1), periodic },
+  )
+  const fine = upsample_volume(volume, { min_axis_points: 48 })
+  const fine_divisors = fine.dims.map((size) => (periodic ? size : size - 1))
+  const factors = fine_divisors.map((divisor, axis) => divisor / divisors[axis])
+  expect(factors.every((factor) => Number.isInteger(factor) && factor > 1)).toBe(true)
+  let [spline_err, trilinear_err] = [0, 0]
+  for (const [flat_idx, value] of fine.values.entries()) {
+    const fine_idx = [
+      Math.floor(flat_idx / (fine.dims[1] * fine.dims[2])),
+      Math.floor(flat_idx / fine.dims[2]) % fine.dims[1],
+      flat_idx % fine.dims[2],
+    ]
+    expect(value).toBeGreaterThanOrEqual(volume.data_range.min)
+    expect(value).toBeLessThanOrEqual(volume.data_range.max)
+    if (fine_idx.every((idx, axis) => idx % factors[axis] === 0)) {
+      const [idx_x, idx_y, idx_z] = fine_idx.map((idx, axis) => idx / factors[axis])
+      // the prefilter's recursion and exponential tail round to ~1e-15 of values up to e^2
+      expect(
+        Math.abs(value - volume.values[(idx_x * dims[1] + idx_y) * dims[2] + idx_z]),
+      ).toBeLessThan(1e-12)
+    }
+    const [frac_x, frac_y, frac_z] = fine_idx.map((idx, axis) => idx / fine_divisors[axis])
+    // finite grids mirror at their faces, which only fits this field away from them
+    if (
+      !periodic &&
+      [frac_x, frac_y, frac_z].some(
+        (frac, axis) => frac < 1 / divisors[axis] || frac > 1 - 1 / divisors[axis],
+      )
+    )
+      continue
+    const exact = field(frac_x, frac_y, frac_z)
+    spline_err = Math.max(spline_err, Math.abs(value - exact))
+    trilinear_err = Math.max(
+      trilinear_err,
+      Math.abs(trilinear_interpolate(volume, frac_x, frac_y, frac_z, periodic) - exact),
+    )
+  }
+  // measured 3.0e-2 vs 6.3e-1 (periodic) and 1.4e-1 vs 4.5e-1 (finite interior)
+  expect(spline_err).toBeLessThan(trilinear_err / (periodic ? 10 : 2.5))
+})
+
 describe(`Cartesian slice point helpers`, () => {
   const volume = make_volume([[[0]]], {
     lattice: [
@@ -285,6 +340,56 @@ describe(`sample_plane_slice`, () => {
     expect(result.mask.every((value) => value === 1)).toBe(true)
     expect(result.data[Math.floor(result.data.length / 2)]).toBeCloseTo(3.5, 8)
   })
+
+  // Rows are sampled as per-cell cubics: they must match point-wise trilinear sampling on rough
+  // data and a skewed lattice, for wrapped, finite and singleton-axis grids
+  test.each([
+    [true, [7, 6, 11]],
+    [false, [7, 6, 11]],
+    [true, [1, 5, 4]],
+  ] as [boolean, Vec3][])(
+    `matches point-wise sampling (periodic=%s, dims=%j)`,
+    (periodic, dims) => {
+      const volume = make_volume(
+        make_grid(...dims, (idx_x, idx_y, idx_z) =>
+          Math.sin(idx_x * 12.9 + idx_y * 78.2 + idx_z * 37.7),
+        ),
+        {
+          lattice: [
+            [4, 0, 0],
+            [-1.5, 3.5, 0],
+            [0.4, 0.3, 6],
+          ],
+          origin: [0.2, -0.3, 0.5],
+          periodic,
+        },
+      )
+      const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
+      const plane = { point: [1, 1.5, 3] as Vec3, normal: [0.3, 0.5, 1] as Vec3 }
+      const { data, mask, width, height, u_range, v_range, u_axis, v_axis } = plane_slice(
+        plane,
+        { resolution: 97 },
+        volume,
+      )
+      expect(mask.filter(Boolean).length).toBeGreaterThan(1000)
+      for (const [data_idx, inside] of mask.entries()) {
+        if (!inside) continue
+        const u_coord =
+          u_range[0] + ((data_idx % width) * (u_range[1] - u_range[0])) / (width - 1)
+        const v_coord =
+          v_range[0] +
+          (Math.floor(data_idx / width) * (v_range[1] - v_range[0])) / (height - 1)
+        const position = math.add(
+          plane.point,
+          math.scale(u_axis, u_coord),
+          math.scale(v_axis, v_coord),
+        )
+        // values span [-1, 1]; the cubic form and nested lerps differ by ~1e-15 in rounding, so
+        // 1e-12 leaves headroom without hiding a wrong cell or fraction
+        expect(Math.abs(data[data_idx] - sample(position))).toBeLessThan(1e-12)
+      }
+    },
+  )
 
   test(`HKL adapter matches the corresponding Cartesian plane for shifted volumes`, () => {
     const volume = linear_volume(cubic, [3, -2, 5])

@@ -9,7 +9,7 @@
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { to_error } from '#lib/utils.js'
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'

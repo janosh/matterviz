@@ -1,6 +1,7 @@
 // Tests for Fermi surface computation, analysis and symmetry-tiling functions
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
+  auto_interpolation_factor,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
@@ -379,6 +380,8 @@ describe(`grid/lattice conventions`, () => {
     [`periodic (FRMSF lshift=1)`, 20, true, 1],
     [`periodic (FRMSF lshift=1), odd n`, 21, true, 1],
     [`periodic (FRMSF), 2x upsampled`, 20, true, 2],
+    [`endpoint-inclusive (BXSF), auto (2.4x)`, 20, false, 0],
+    [`periodic (FRMSF), auto (2.4x)`, 20, true, 0],
     [`periodic (FRMSF lshift=0)`, 20, true, 1, [lshift_0, lshift_0, lshift_0]],
   ])(
     `Γ-centred sphere keeps its radius: %s`,
@@ -393,6 +396,28 @@ describe(`grid/lattice conventions`, () => {
       expect(radii.reduce((sum, radius) => sum + radius, 0) / radii.length).toBeCloseTo(0.3, 2)
     },
   )
+
+  // longest axis drives auto: slabs and anisotropic meshes must not be over-refined
+  test.each<[Vec3, number]>([
+    [[17, 17, 17], 48 / 17],
+    [[31, 31, 31], 48 / 31],
+    [[16, 16, 12], 3],
+    [[48, 48, 2], 1],
+    [[64, 64, 64], 1],
+    [[8, 8, 8], 4],
+  ])(`auto_interpolation_factor(%j) = %f`, (k_grid, expected) => {
+    expect(auto_interpolation_factor(k_grid)).toBe(expected)
+  })
+
+  test(`interpolation_factor 0 extracts exactly what the explicit auto factor does`, () => {
+    const band_data = make_band_data(20, sphere, { periodic: true })
+    const auto = extract_fermi_surface(band_data, { mu: 0.3, interpolation_factor: 0 })
+    const explicit = extract_fermi_surface(band_data, { mu: 0.3, interpolation_factor: 2.4 })
+    expect(auto.isosurfaces).toEqual(explicit.isosurfaces)
+    expect(auto.isosurfaces[0].positions.length).toBeGreaterThan(
+      extract_fermi_surface(band_data, { mu: 0.3 }).isosurfaces[0].positions.length,
+    )
+  })
 
   test.each([
     { periodic: false, dims: [10, 4, 6] as Vec3, factor: 2, expected: [19, 7, 11] as Vec3 },

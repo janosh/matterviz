@@ -95,7 +95,7 @@ export interface Isoline {
 // Options for Fermi surface extraction
 export interface FermiSurfaceOptions {
   mu?: number // chemical potential offset from fermi_energy (default 0)
-  interpolation_factor?: number // tricubic upsampling factor (default 1, no interpolation)
+  interpolation_factor?: number // tricubic upsampling factor (default 1 = none; 0 = auto)
 }
 
 // Options for Fermi slice computation

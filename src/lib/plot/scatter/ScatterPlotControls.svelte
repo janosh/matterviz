@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorInput } from 'svelte-widgets'
+  import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { first_point_style } from '#lib/plot/core/data-transform.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'

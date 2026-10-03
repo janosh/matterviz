@@ -17,7 +17,10 @@
   import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
-  import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
+  import FileInput from 'svelte-widgets/FileInput.svelte'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import {
     Atom,

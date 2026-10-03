@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 
   let {
     message = $bindable(),

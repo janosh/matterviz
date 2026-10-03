@@ -3,7 +3,7 @@
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'
 
   type Dimension = `2d` | `3d` | `4d`

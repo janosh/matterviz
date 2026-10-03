@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { StatusMessage, Tabs } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import Tabs from 'svelte-widgets/Tabs.svelte'
   import { format_num, trajectory_property_config } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'

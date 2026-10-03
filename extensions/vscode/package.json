@@ -828,9 +828,9 @@
         },
         "matterviz.fermi.interpolation_factor": {
           "type": "number",
-          "default": 1,
-          "description": "Band-grid upsampling factor (higher = smoother surface, slower)",
-          "minimum": 1,
+          "default": 0,
+          "description": "Band-grid upsampling factor (higher = smoother surface, slower; 0 = auto: refine coarse k-meshes to ~48 points per axis)",
+          "minimum": 0,
           "maximum": 5
         },
         "matterviz.fermi.camera_projection": {

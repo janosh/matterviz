@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { resolve_slice_cartesian_point, sample_hkl_slice, sample_plane_slice } from './slice'
+  import {
+    resolve_slice_cartesian_point,
+    sample_hkl_slice,
+    sample_plane_slice,
+    upsample_volume,
+  } from './slice'
   import { create_volume_slice_settings, type VolumeSliceSettings } from './slice-settings'
   import type { VolumetricData } from './types'
   import VolumeSlice from './VolumeSlice.svelte'
@@ -54,40 +59,21 @@
     return JSON.stringify(plane)
   })
 
-  // A drag resamples every frame, and the full 1024² default costs ~40 ms per frame
-  // (sampling, contours, pixels): a plane change following another within PREVIEW_WINDOW_MS
-  // samples at most PREVIEW_RESOLUTION, and full resolution lands once changes rest
-  const PREVIEW_RESOLUTION = 512
-  const PREVIEW_WINDOW_MS = 150
-  let previewing = $state(false)
-  let last_plane_change = -Infinity
-  $effect.pre(() => {
-    if (!sampling_key) return
-    const now = performance.now()
-    // a local, so this effect never subscribes to the flag it sets
-    const in_burst = now - last_plane_change < PREVIEW_WINDOW_MS
-    previewing = in_burst
-    last_plane_change = now
-    if (!in_burst) return
-    const rest_timer = setTimeout(() => (previewing = false), PREVIEW_WINDOW_MS)
-    return () => clearTimeout(rest_timer)
-  })
+  // smooth isolines on coarse grids; refined once per volume, not per slider frame
+  let fine_volume = $derived(volume && upsample_volume(volume))
 
   let computed_slice = $derived.by(() => {
-    if (!volume || !sampling_key) return null
+    if (!fine_volume || !sampling_key) return null
     const plane = untrack(() => sampling_settings)
     if (!plane) return null
-    const full_resolution = plane.resolution > 0 ? plane.resolution : Math.max(...volume.dims)
-    const resolution = previewing
-      ? Math.min(full_resolution, PREVIEW_RESOLUTION)
-      : full_resolution
+    const resolution = plane.resolution > 0 ? plane.resolution : Math.max(...fine_volume.dims)
     if (plane.plane_mode === `hkl`) {
-      return sample_hkl_slice(volume, plane.miller_indices, plane.position, resolution)
+      return sample_hkl_slice(fine_volume, plane.miller_indices, plane.position, resolution)
     }
     return sample_plane_slice(
-      volume,
+      fine_volume,
       {
-        point: resolve_slice_cartesian_point(plane.cartesian_point, volume),
+        point: resolve_slice_cartesian_point(plane.cartesian_point, fine_volume),
         normal: plane.cartesian_normal,
         up: plane.cartesian_up,
       },

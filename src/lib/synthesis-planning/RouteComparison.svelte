@@ -1,6 +1,6 @@
 <script lang="ts">
   import { format_num } from '#lib/labels.js'
-  import { Popover } from 'svelte-widgets'
+  import Popover from 'svelte-widgets/Popover.svelte'
   import { format_equation_html } from './format'
   import { assess_practicality } from './scoring'
   import { describe_downhill_windows } from './thermo'

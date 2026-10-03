@@ -10,7 +10,7 @@
   // pane stores it in the bindable `input` and the module's `children` snippet turns it into a
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'

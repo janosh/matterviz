@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
   import { clamp } from '#lib/math.js'
   import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index.js'

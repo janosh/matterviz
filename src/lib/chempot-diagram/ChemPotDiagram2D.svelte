@@ -5,7 +5,7 @@
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
-  import { Spinner } from 'svelte-widgets'
+  import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'

@@ -4,7 +4,7 @@
   // of ~T. Defaults to phonopy's kJ/mol and J/(K·mol) so plots compare directly.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
-  import { StatusMessage } from 'svelte-widgets'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { DataSeries, ScatterPlotOptions } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { to_error } from '#lib/utils.js'

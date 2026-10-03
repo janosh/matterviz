@@ -1,6 +1,6 @@
 <script lang="ts">
   import { OptimadeStructureViewer } from '#site'
-  import { FileDetails } from 'svelte-widgets'
+  import FileDetails from 'svelte-widgets/FileDetails.svelte'
   import { default_highlighter } from 'svelte-widgets/highlight'
   import optimade_viewer_src from '#site/OptimadeStructureViewer.svelte?raw'
 

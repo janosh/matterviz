@@ -1,6 +1,6 @@
 <script lang="ts">
   // Protruding grab handle for panes that are dragged via a `.drag-handle` selector.
-  import { Icon } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
   import { DragIndicator } from 'svelte-widgets/icons'
 </script>
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte'
-  import { SubpageGrid } from 'svelte-widgets'
+  import SubpageGrid from 'svelte-widgets/SubpageGrid.svelte'
   import { Code, Globe, Heart } from 'svelte-widgets/icons'
 
   const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [

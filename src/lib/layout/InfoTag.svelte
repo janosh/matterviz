@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Icon, Popover } from 'svelte-widgets'
+  import Icon from 'svelte-widgets/Icon.svelte'
+  import Popover from 'svelte-widgets/Popover.svelte'
   import { Check, Close } from 'svelte-widgets/icons'
   import { create_clipboard_feedback } from '#lib/overlays/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
