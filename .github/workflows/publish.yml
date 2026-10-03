@@ -45,7 +45,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
       - name: Build and package component library
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
@@ -198,13 +198,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
           extensions: jupyterlab
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           cache-dependency-glob: extensions/jupyterlab/pyproject.toml
       - name: Build prebuilt labextension and wheel
@@ -257,7 +257,7 @@ jobs:
           name: ${{ matrix.package_name }}-npm-${{ needs.prepare.outputs.version }}
           path: release
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Publish or verify npm package
@@ -300,7 +300,7 @@ jobs:
           name: matterviz-jupyterlab-wheel-${{ needs.prepare.outputs.version }}
           path: release
       - name: Set up uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.2.0
       - name: Publish or verify PyPI wheel
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -335,7 +335,7 @@ jobs:
           name: matterviz-vsix-${{ needs.prepare.outputs.version }}
           path: release
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Publish or verify Open VSX extension
