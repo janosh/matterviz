@@ -27,6 +27,14 @@ const IRREDUCIBLE_BZ_MIN_VERTICES = 10
 // Ceiling on one upsampled band grid: 2e7 points is 160 MB as Float64 and ~1 s of marching
 // cubes, above every k-mesh the UI can reach (64³ at 4x is 1.6e7, 48³ at 5x is 1.3e7)
 const MAX_UPSAMPLED_POINTS = 20_000_000
+// Auto grid density (interpolation_factor 0) refines a k-mesh until its longest axis has this
+// many points, at most 4x: smooth Fermi surfaces and slices on coarse meshes while demo meshes
+// stay under the scene's 50k-triangle tiling cap (64 pushes a 17³ mesh past it). The longest
+// axis drives it so slabs (n×n×1) and anisotropic meshes are not over-refined.
+const AUTO_GRID_POINTS = 48
+
+export const auto_interpolation_factor = (k_grid: Vec3): number =>
+  Math.min(4, Math.max(1, AUTO_GRID_POINTS / Math.max(...k_grid)))
 
 // Catmull-Rom weights for the 4-point stencil at fractional offset t, written into `out`
 // (result = out[0]*p0 + out[1]*p1 + out[2]*p2 + out[3]*p3)
@@ -207,7 +215,11 @@ export function extract_fermi_surface(
   const index0_frac = band_data.k_grid.map(
     (count, axis) => (band_data.grid_shift?.[axis] ?? 0) / (periodic ? count : count - 1),
   ) as Vec3
-  const key = `${interpolation_factor}|${periodic}|${index0_frac}`
+  const factor =
+    interpolation_factor > 0
+      ? interpolation_factor
+      : auto_interpolation_factor(band_data.k_grid)
+  const key = `${factor}|${periodic}|${index0_frac}`
   const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
 
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
@@ -221,7 +233,7 @@ export function extract_fermi_surface(
       // symmetry tiling covers the full Wigner-Seitz zone.
       let centered = prepared_grids.get(raw_energies)
       if (centered?.key !== key) {
-        const upsampled = upsample_grid(raw_energies, interpolation_factor, periodic)
+        const upsampled = upsample_grid(raw_energies, factor, periodic)
         centered = { key, ...center_grid_on_gamma(upsampled, periodic, index0_frac) }
         prepared_grids.set(raw_energies, centered)
       }

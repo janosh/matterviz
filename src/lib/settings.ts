@@ -754,9 +754,9 @@ export const SETTINGS_CONFIG = define_settings({
     },
     clip_flip: { value: false, description: `Keep the other side of the clipping plane` },
     interpolation_factor: {
-      value: 1,
-      description: `Band-grid upsampling factor (higher = smoother surface, slower)`,
-      minimum: 1,
+      value: 0,
+      description: `Band-grid upsampling factor (higher = smoother surface, slower; 0 = auto: refine coarse k-meshes to ~48 points per axis)`,
+      minimum: 0,
       maximum: 5,
     },
     camera_projection: camera_projection_setting(

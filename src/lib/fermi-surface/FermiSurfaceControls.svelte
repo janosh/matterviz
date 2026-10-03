@@ -324,6 +324,7 @@
         <label>
           <span>Grid density</span>
           <select bind:value={interpolation_factor}>
+            <option value={0}>Auto</option>
             <option value={1}>1× (original)</option>
             <option value={1.5}>1.5×</option>
             <option value={2}>2×</option>
@@ -331,7 +332,9 @@
             <option value={4}>4×</option>
           </select>
         </label>
-        <small>Higher = smoother surface, slower</small>
+        <small
+          >Auto refines coarse k-meshes to ~48 points per axis. Higher = smoother, slower</small
+        >
       </SettingsSection>
     {/if}
   </SettingsGroup>
