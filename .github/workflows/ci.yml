@@ -146,18 +146,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - name: Build production site
-        run: |
-          mkdir -p /tmp/reports
-          export NODE_OPTIONS='--report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/reports'
-          DEBUG='vite:*' pnpm exec vp build > build.log 2>&1 &
-          for _ in $(seq 1 20); do sleep 10; kill -0 $! 2>/dev/null || break; done
-          if kill -0 $! 2>/dev/null; then
-            for pid in $(pgrep -f 'vite-plus-core|vp build'); do kill -USR2 $pid; done; sleep 5
-            grep -av '^\s*\.svelte-kit/output' build.log | tail -120 | cut -c1-300
-            for report in /tmp/reports/*.json; do echo "== $report"; jq -r '.header.commandLine | join(" ")' "$report" | cut -c1-300; jq -c '.libuv[] | select(.is_active) | del(.address)' "$report" | cut -c1-300; jq -r '.javascriptStack.stack[]?' "$report" | head -20; jq '.workers | length' "$report"; done
-            exit 1
-          fi
-          wait $!
+        run: pnpm exec vp build
       - uses: actions/upload-artifact@v7
         with:
           name: browser-test-site
