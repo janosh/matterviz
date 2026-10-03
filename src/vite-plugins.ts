@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import type { Plugin, Rollup } from 'vite'
+import type { Plugin } from 'vite'
 
 export const split_query = (path: string): [clean: string, query: string] => {
   const clean = path.replace(/\?.*$/, ``)
@@ -13,16 +13,33 @@ export const split_query = (path: string): [clean: string, query: string] => {
 const resolve_from_importer = (clean: string, importer?: string): string =>
   importer ? resolve(dirname(split_query(importer)[0]), clean) : clean
 
+// package.json `imports` (`#lib/*` -> `./src/lib/*`), mapped here synchronously rather than
+// through this.resolve(): awaiting a nested resolve inside resolveId hung the client build
+// on CI runners with no error and no CPU use.
+const repo_root = resolve(import.meta.dirname, `..`)
+const subpath_imports: Record<string, string> = JSON.parse(
+  readFileSync(`${repo_root}/package.json`, `utf8`),
+).imports
+
+const resolve_subpath_import = (specifier: string): string | null => {
+  for (const [pattern, target] of Object.entries(subpath_imports)) {
+    const prefix = pattern.endsWith(`/*`) ? pattern.slice(0, -1) : undefined
+    if (prefix ? specifier.startsWith(prefix) : specifier === pattern) {
+      return resolve(
+        repo_root,
+        prefix ? target.replace(`*`, specifier.slice(prefix.length)) : target,
+      )
+    }
+  }
+  return null
+}
+
 // Absolute path of a relative, absolute or `#` subpath-import specifier. `pre` plugins see
 // subpath imports (#site/..., #lib/...) before Vite's resolver maps them via package.json
-// `imports`, so delegate those to it instead of joining them onto the importer's directory.
-export const resolve_specifier = async (
-  ctx: Rollup.PluginContext,
-  clean: string,
-  importer?: string,
-): Promise<string | null> =>
+// `imports`, so they are mapped here instead of being joined onto the importer's directory.
+export const resolve_specifier = (clean: string, importer?: string): string | null =>
   clean.startsWith(`#`)
-    ? ((await ctx.resolve(clean, importer, { skipSelf: true }))?.id ?? null)
+    ? resolve_subpath_import(clean)
     : resolve_from_importer(clean, importer)
 
 // Transparently import .json.gz files as ES modules.
@@ -44,12 +61,12 @@ export function vite_plugin_json_gz({
       is_build = config.command === `build`
     },
     resolveId: resolve_queries
-      ? async function (source, importer) {
+      ? (source, importer) => {
           // Vite URLs (/src/..., /@fs/...) must go through Vite's resolver, including when
           // Vitest restores an importing module from its filesystem cache.
           if (!is_build && (!source.startsWith(`.`) || !importer)) return null
           const clean = claim(source)
-          return clean ? resolve_specifier(this, clean, importer) : null
+          return clean ? resolve_specifier(clean, importer) : null
         }
       : undefined,
     load(identifier) {

@@ -66,7 +66,7 @@ const json_gz_options = { resolve_queries: true }
 const raw_text_plugin: Plugin = {
   name: `vite-plugin-raw-text`,
   enforce: `pre`,
-  async resolveId(source, importer) {
+  resolveId(source, importer) {
     // Rolldown needs the explicit file resolution during builds. Dev/test URLs from
     // restored Vitest modules go through Vite's URL resolver instead.
     if (!/^[./#]/.test(source)) return null
@@ -76,7 +76,7 @@ const raw_text_plugin: Plugin = {
     if (query.includes(`url`)) return null
     const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
-    const abs = await shared.resolve_specifier(this, clean, importer)
+    const abs = shared.resolve_specifier(clean, importer)
     return abs && abs + query
   },
   load(identifier) {

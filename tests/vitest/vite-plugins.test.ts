@@ -20,36 +20,36 @@ function make_plugin(command: `build` | `serve` = `serve`) {
 }
 
 describe(`vite_plugin_json_gz`, () => {
-  test(`query-aware mode resolves relative imports and delegates Vite URLs`, async () => {
+  test(`query-aware mode resolves relative and subpath imports and delegates Vite URLs`, () => {
     const plugin = vite_plugin_json_gz({ resolve_queries: true })
-    // stands in for Vite's resolver, which maps package.json `imports` (#site/...)
-    const ctx = { resolve: async (source: string) => ({ id: `/abs/${source.slice(1)}` }) }
-    const resolve_hook = plugin.resolveId as unknown as (
-      this: typeof ctx,
+    const resolve_id = plugin.resolveId as unknown as (
       source: string,
       importer?: string,
-    ) => Promise<string | null>
-    const resolve_id = (source: string, importer?: string) =>
-      resolve_hook.call(ctx, source, importer)
+    ) => string | null
     const importer = join(tmpdir(), `vite.config.ts`)
-    expect(await resolve_id(`./data.json.gz`, importer)).toBe(join(tmpdir(), `data.json.gz`))
-    expect(await resolve_id(`./data.json.gz?raw`, importer)).toBeNull()
-    expect(await resolve_id(`./data.json.gz?url`, importer)).toBeNull()
+    expect(resolve_id(`./data.json.gz`, importer)).toBe(join(tmpdir(), `data.json.gz`))
+    expect(resolve_id(`./data.json.gz?raw`, importer)).toBeNull()
+    expect(resolve_id(`./data.json.gz?url`, importer)).toBeNull()
     for (const source of [
       `/src/data.json.gz`,
       `/@fs/tmp/data.json.gz`,
       `pkg/data.json.gz`,
       `#site/data.json.gz`,
     ]) {
-      expect(await resolve_id(source, importer)).toBeNull()
+      expect(resolve_id(source, importer)).toBeNull()
     }
-    expect(await resolve_id(`./data.json.gz`)).toBeNull()
+    expect(resolve_id(`./data.json.gz`)).toBeNull()
     // Build imports are filesystem paths, not dev-server URLs; retain explicit resolution.
     const configure = plugin.configResolved as (cfg: { command: string }) => void
     configure({ command: `build` })
-    expect(await resolve_id(`${fixture_path}?import`)).toBe(fixture_path)
-    // subpath imports go through Vite's resolver instead of being joined onto the importer dir
-    expect(await resolve_id(`#site/data.json.gz`, importer)).toBe(`/abs/site/data.json.gz`)
+    expect(resolve_id(`${fixture_path}?import`)).toBe(fixture_path)
+    // subpath imports map through package.json `imports`, not onto the importer's directory
+    const repo_root = join(import.meta.dirname, `../..`)
+    expect(resolve_id(`#site/data.json.gz`, importer)).toBe(
+      join(repo_root, `src/site/data.json.gz`),
+    )
+    expect(resolve_id(`#root/data.json.gz`, importer)).toBe(join(repo_root, `data.json.gz`))
+    expect(resolve_id(`#unknown/data.json.gz`, importer)).toBeNull()
   })
 
   test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(
