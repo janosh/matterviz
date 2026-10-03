@@ -363,45 +363,35 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     [`input/kpoints_opt/number_kpoints`]: null,
   }
 
+  const tinisn_path = {
+    n_kpoints: 306,
+    branch_names: [`Γ-X`, `X-U`, `K-Γ`, `Γ-L`, `L-W`, `W-X`],
+  }
   // VASP 6.3+ writes the SCF eigenvalues on every run; they used to win over the band path,
-  // drawing an unlabelled 8-point mesh as a one-branch "path"
-  it(`prefers the KPOINTS_OPT band path over the SCF mesh`, async () => {
-    const bands = await read_remapped(scf_mesh(`Gamma`))
-    expect(bands?.qpoints).toHaveLength(306)
-    expect(bands?.branches).toHaveLength(6)
-    expect(bands?.qpoints[0].label).toBe(`Γ`)
-  })
-
-  it.each([`Gamma`, `Monkhorst-Pack`, `Automatic`])(
-    `does not present an SCF mesh in %s mode as a band path`,
-    async (mode) => {
-      expect(await read_remapped({ ...scf_mesh(mode), ...hide_opt })).toBeNull()
-    },
-  )
-
-  it(`reads an SCF line-mode path with its own input/kpoints labels`, async () => {
-    const bands = await read_remapped({
+  // drawing an unlabelled 8-point mesh as a one-branch "path". An SCF group is a band path
+  // only in line mode, labelled from its own input/kpoints group.
+  // oxfmt-ignore
+  it.each<[string, Remap, { n_kpoints: number; branch_names: string[] } | null]>([
+    [`KPOINTS_OPT path beside an SCF mesh`, scf_mesh(`Gamma`), tinisn_path],
+    [`SCF mesh in Gamma mode`, { ...scf_mesh(`Gamma`), ...hide_opt }, null],
+    [`SCF mesh in Monkhorst-Pack mode`, { ...scf_mesh(`Monkhorst-Pack`), ...hide_opt }, null],
+    [`SCF mesh in Automatic mode`, { ...scf_mesh(`Automatic`), ...hide_opt }, null],
+    [`unlabelled SCF path in line mode`, { ...scf_mesh(`Line-mode`), ...hide_opt }, { n_kpoints: 8, branch_names: [`path`] }],
+    [`labelled SCF line-mode path`, {
       ...hide_opt,
       [`${scf}/eigenvalues`]: { from: `${opt}/eigenvalues` },
       [`${scf}/kpoint_coords`]: { from: `${opt}/kpoint_coords` },
       [`input/kpoints/labels_kpoints`]: { from: `input/kpoints_opt/labels_kpoints` },
       [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints` },
-    })
-    expect(bands?.qpoints).toHaveLength(306)
-    expect(bands?.branches.map(({ name }) => name)).toEqual([
-      `Γ-X`,
-      `X-U`,
-      `K-Γ`,
-      `Γ-L`,
-      `L-W`,
-      `W-X`,
-    ])
-  })
-
-  it(`reads an unlabelled SCF path declared as line mode as one branch`, async () => {
-    const bands = await read_remapped({ ...scf_mesh(`Line-mode`), ...hide_opt })
-    expect(bands?.qpoints).toHaveLength(8)
-    expect(bands?.branches).toEqual([{ start_index: 0, end_index: 7, name: `path` }])
+    }, tinisn_path],
+  ])(`band source for %s`, async (_label, remap, expected) => {
+    const bands = await read_remapped(remap)
+    expect(
+      bands && {
+        n_kpoints: bands.qpoints.length,
+        branch_names: bands.branches.map(({ name }) => name),
+      },
+    ).toEqual(expected)
   })
 
   // A malformed dataset still loads the bands; the gap check reports it (Bands shows a notice).

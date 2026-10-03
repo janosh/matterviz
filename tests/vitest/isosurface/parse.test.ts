@@ -978,20 +978,19 @@ describe(`parse_volumetric_file`, () => {
     expect(grid_at(result)(1, 1, 1)).toBe(Number(data.split(/\s+/).at(-1)) / divisor)
   })
 
-  test.each([
-    [`random text`, `random.txt`],
-    [`a\nb\nc`, `unknown`],
-  ])(`returns null for unrecognized content`, (content, filename) => {
-    expect(parse_volumetric_file(content, filename)).toBeNull()
-  })
-
   // A VASP name needs a VASP grid in the content: POSCAR_from_CHGCAR is a structure, and
   // callers fall back to structure parsing on null. A real but broken CHGCAR still throws.
   test.each([
-    [`CHGCAR`, minimal_cube],
-    [`POSCAR_from_CHGCAR`, `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`],
-  ])(`a VASP name over non-volumetric content (%s) is not volumetric`, (name, content) => {
-    expect(parse_volumetric_file(content, name)).toBeNull()
+    [`random text`, `random.txt`, `random text`],
+    [`unknown`, `unknown`, `a\nb\nc`],
+    [`a VASP name over a cube`, `CHGCAR`, minimal_cube],
+    [
+      `a VASP name over a POSCAR`,
+      `POSCAR_from_CHGCAR`,
+      `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`,
+    ],
+  ])(`returns null for %s (%s)`, (_label, filename, content) => {
+    expect(parse_volumetric_file(content, filename)).toBeNull()
   })
 
   test(`a VASP-named file with a grid but truncated data still throws`, () => {

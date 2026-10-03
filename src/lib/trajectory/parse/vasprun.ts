@@ -173,10 +173,8 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
     if (stress?.length === 3)
       Object.assign(metadata, vasp_stress_metadata(stress as Matrix3x3))
     const final_energies = last_tag_body(block, `energy`)?.body ?? ``
-    const last_scstep = last_tag_body(block, `scstep`)?.body
-    const scf_energies =
-      (last_scstep === undefined ? undefined : last_tag_body(last_scstep, `energy`)?.body) ??
-      final_energies
+    const last_scstep = last_tag_body(block, `scstep`)?.body ?? ``
+    const scf_energies = last_tag_body(last_scstep, `energy`)?.body ?? final_energies
     for (const [energy_block, keys] of [
       [scf_energies, SCF_ENERGY_KEYS],
       [final_energies, MD_ENERGY_KEYS],

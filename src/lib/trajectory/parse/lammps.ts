@@ -312,31 +312,26 @@ function create_lammps_reader(
         }
         atom_types_found.add(atom_type)
       }
+      // Some tools fill `element` with type labels (`Type1`, `2`), and coarse-grained or
+      // isotope masses miss every standard atomic weight, so each source may come up empty
       let element_symbol = atom_type === undefined ? undefined : atom_type_mapping?.[atom_type]
-      if (!element_symbol && element_col !== undefined) {
+      if (!element_symbol && element_col !== undefined)
         element_symbol = elem_symbol_from_token(scanner.str(element_col))
-        // Some tools fill `element` with type labels (`Type1`, `2`); with a type column to
-        // fall back on that is a guess, not a corrupt file
-        if (!element_symbol && atom_type === undefined && mass_col === undefined) {
-          throw new Error(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has unknown element symbol "${scanner.str(element_col)}"`,
-          )
-        }
-      }
-      // A per-atom mass (`dump custom ... mass`) names real elements; only coarse-grained
-      // or isotope masses miss every standard atomic weight
-      if (!element_symbol && mass_col !== undefined) {
+      // a per-atom mass (`dump custom ... mass`) names elements as a data file's Masses do
+      if (!element_symbol && mass_col !== undefined)
         element_symbol = element_for_mass(scanner.num(mass_col)) ?? undefined
-        if (!element_symbol && atom_type === undefined) {
+      if (!element_symbol) {
+        if (atom_type === undefined) {
+          const tried = [
+            element_col === undefined ? `` : `element "${scanner.str(element_col)}"`,
+            mass_col === undefined ? `` : `mass "${scanner.str(mass_col)}"`,
+          ].filter(Boolean)
           throw new Error(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has mass "${scanner.str(mass_col)}" matching no element and no type column to fall back on`,
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) names no element (${tried.join(`, `)}) and has no type column to fall back on`,
           )
         }
-      }
-      if (!element_symbol) {
-        // atom_type is set: a frame without it threw above
-        guessed_types.add(atom_type as number)
-        element_symbol = element_from_lammps_type(atom_type as number)
+        guessed_types.add(atom_type)
+        element_symbol = element_from_lammps_type(atom_type)
       }
       elements.push(element_symbol)
       // the only property column that can fail a frame

@@ -109,13 +109,16 @@ describe(`parse_file_content structure guard`, () => {
   })
 })
 
-test(`parses a POSCAR structure through the worker-safe entry`, async () => {
-  const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
-  const result = await parse_file_content(poscar, `POSCAR`)
-
-  expect(result.type).toBe(`structure`)
-  expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
-})
+// A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
+test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(
+  `parses POSCAR content named %s as a structure through the worker-safe entry`,
+  async (filename) => {
+    const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\ndirect\n0 0 0 Si\n0.25 0.25 0.25 Si\n`
+    const result = await parse_file_content(poscar, filename)
+    expect(result.type).toBe(`structure`)
+    expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
+  },
+)
 
 // Files used to open as the wrong kind, or with data dropped, depending only on their name:
 // multi-frame dumps/XDATCARs as one structure, CHG and renamed CHGCARs without their grid, a
@@ -138,13 +141,6 @@ test.each([
       : `trajectories`
   const content = read_maybe_gz(`src/site/${folder}/${fixture}`)
   expect((await parse_file_content(content, filename)).type).toBe(expected)
-})
-
-test(`a VASP volumetric name over POSCAR content opens the structure`, async () => {
-  const poscar = `Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\nDirect\n0 0 0\n0.25 0.25 0.25\n`
-  const result = await parse_file_content(poscar, `POSCAR_from_CHGCAR`)
-  expect(result.type).toBe(`structure`)
-  expect((result.data as { sites: unknown[] }).sites).toHaveLength(2)
 })
 
 test(`multi-frame XYZ text opens as a trajectory run`, async () => {

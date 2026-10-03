@@ -189,16 +189,12 @@ export const parse_file_content = async (
   const own_name = strip_compression_extensions(basename)
   const names_other_format =
     KNOWN_FORMAT_EXT_REGEX.test(own_name) || STRUCTURE_EXTENSIONS_REGEX.test(own_name)
-  if (
-    VOLUMETRIC_EXT_RE.test(basename) ||
-    (VASP_VOLUMETRIC_REGEX.test(basename) && !names_other_format)
-  ) {
+  const is_cube = VOLUMETRIC_EXT_RE.test(basename)
+  if (is_cube || (VASP_VOLUMETRIC_REGEX.test(basename) && !names_other_format)) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
     // a VASP name over structure content (POSCAR_from_CHGCAR) falls through to the parsers
-    if (VOLUMETRIC_EXT_RE.test(basename)) {
-      throw new Error(`Failed to parse volumetric file: ${filename}`)
-    }
+    if (is_cube) throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
 
   const structure_id = filename.replace(/\.[^/.]+$/, ``)

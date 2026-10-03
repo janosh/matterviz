@@ -896,7 +896,7 @@ describe(`LAMMPS`, () => {
     [`no type, element or mass column`, lammps_frame(`id x y z`, [`1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no type, element or mass column in "ITEM: ATOMS id x y z"`],
     [`untyped coarse-grained mass`, lammps_frame(`id mass x y z`, [`1 72.0 0 0 0`]),
-      `LAMMPS atom line 10 (timestep 0) has mass "72.0" matching no element and no type column to fall back on`],
+      `LAMMPS atom line 10 (timestep 0) names no element (mass "72.0") and has no type column to fall back on`],
     [`no position columns`, lammps_frame(`id type vx vy vz`, [`1 1 0 0 0`]),
       `LAMMPS frame at timestep 0 has no position columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu) in "ITEM: ATOMS id type vx vy vz"`],
     // a repeat used to make the last index win, reading [9, 2, 3] here instead of [1, 2, 3]
@@ -907,7 +907,7 @@ describe(`LAMMPS`, () => {
     [`atom type -1`, lammps_frame(`id type x y z`, [`1 -1 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "-1"`],
     [`atom type bad`, lammps_frame(`id type x y z`, [`1 bad 0 0 0`]), `LAMMPS atom line 10 (timestep 0) has invalid type "bad"`],
     [`unknown element symbol`, lammps_frame(`id element x y z`, [`1 Xx 0 0 0`]),
-      `LAMMPS atom line 10 (timestep 0) has unknown element symbol "Xx"`],
+      `LAMMPS atom line 10 (timestep 0) names no element (element "Xx") and has no type column to fall back on`],
     [`short atom line`, lammps_frame(`id type x y z`, [`1 1 0 0`]), `LAMMPS atom line 10 (timestep 0) has 4 columns, expected 5`],
     [`non-numeric coordinate`, lammps_frame(`id type x y z`, [`1 1 0 xx 0`]),
       `LAMMPS atom line 10 (timestep 0) has non-numeric coordinates: "1 1 0 xx 0"`],
