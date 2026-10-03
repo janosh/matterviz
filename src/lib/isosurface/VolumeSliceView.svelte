@@ -54,33 +54,11 @@
     return JSON.stringify(plane)
   })
 
-  // A drag resamples every frame, and the full 1024² default costs ~40 ms per frame
-  // (sampling, contours, pixels): a plane change following another within PREVIEW_WINDOW_MS
-  // samples at most PREVIEW_RESOLUTION, and full resolution lands once changes rest
-  const PREVIEW_RESOLUTION = 512
-  const PREVIEW_WINDOW_MS = 150
-  let previewing = $state(false)
-  let last_plane_change = -Infinity
-  $effect.pre(() => {
-    if (!sampling_key) return
-    const now = performance.now()
-    // a local, so this effect never subscribes to the flag it sets
-    const in_burst = now - last_plane_change < PREVIEW_WINDOW_MS
-    previewing = in_burst
-    last_plane_change = now
-    if (!in_burst) return
-    const rest_timer = setTimeout(() => (previewing = false), PREVIEW_WINDOW_MS)
-    return () => clearTimeout(rest_timer)
-  })
-
   let computed_slice = $derived.by(() => {
     if (!volume || !sampling_key) return null
     const plane = untrack(() => sampling_settings)
     if (!plane) return null
-    const full_resolution = plane.resolution > 0 ? plane.resolution : Math.max(...volume.dims)
-    const resolution = previewing
-      ? Math.min(full_resolution, PREVIEW_RESOLUTION)
-      : full_resolution
+    const resolution = plane.resolution > 0 ? plane.resolution : Math.max(...volume.dims)
     if (plane.plane_mode === `hkl`) {
       return sample_hkl_slice(volume, plane.miller_indices, plane.position, resolution)
     }
@@ -181,5 +159,6 @@
   .slice-position-control input {
     flex: 1;
     min-width: 0;
+    outline: none;
   }
 </style>

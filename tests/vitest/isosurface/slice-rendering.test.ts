@@ -121,7 +121,7 @@ describe(`contour_segments`, () => {
       // masked pixels carry a below-every-level stand-in, as VolumeSlice fills them
       return field === `masked` && (col - 32) ** 2 + (row - 32) ** 2 > 28 ** 2 ? -9 : wave
     })
-    const levels = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]
+    const levels = [-0.75, -0.5, -0.1, 0, 0.05, 0.5, 0.75] // uneven: band guesses walk
     const expected = d3_segments(values, width, height, levels)
     expect(expected.length).toBeGreaterThan(0)
     expect(own_segments(values, width, height, levels)).toEqual(expected)

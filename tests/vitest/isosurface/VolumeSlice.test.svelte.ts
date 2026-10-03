@@ -122,6 +122,13 @@ describe(`VolumeSlice`, () => {
     expect(colorbar_style.transform).toBe(`translateX(-50%)`)
   })
 
+  // a vertical title beside the tick labels overlapped long labels and stood off short ones
+  test(`puts a vertical colorbar title opposite its tick labels`, async () => {
+    await mount_volume_slice({ show_colorbar: true })
+    const title_row = doc_query(`.slice-colorbar.vertical .title-row`, HTMLElement)
+    expect(title_row.classList.contains(`left`)).toBe(true)
+  })
+
   test(`co-registers flipped contours with filled pixel rows`, async () => {
     const slice = make_slice()
     Object.assign(slice, {
@@ -291,10 +298,8 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
   }
 })
 
-// A drag at the 1024² default resampled ~1M pixels per frame (~40 ms): changes in quick
-// succession preview at 512 and full resolution lands once they rest
-test(`VolumeSliceView previews rapid plane changes at reduced resolution`, async () => {
-  // fake clocks: the burst window is wall-clock time, which a loaded machine stretches
+// A drag must not drop to a lower preview resolution and then jump back once it rests
+test(`VolumeSliceView keeps full resolution during rapid plane changes`, async () => {
   vi.useFakeTimers({
     toFake: [`performance`, `setTimeout`, `clearTimeout`, `requestAnimationFrame`],
   })
@@ -309,20 +314,20 @@ test(`VolumeSliceView previews rapid plane changes at reduced resolution`, async
   const props = $state({ volume, settings: { resolution: 1024, position: 0.2 } })
   mount(VolumeSliceView, { target: document.body, props })
   await tick()
-  // other tests' still-mounted views (6³ grids) may resample as their own previews rest;
-  // this view gets a proxy of `volume`, so pick its calls by grid size
+  // other tests' still-mounted views (6³ grids) may resample; this view gets a proxy of
+  // `volume`, so pick its calls by grid size
   const resolutions = () =>
     sample.mock.calls.filter(([sampled]) => sampled.dims[0] === 4).map((args) => args[3])
-  expect(resolutions()).toEqual([1024]) // a lone change renders at full resolution
-  // mounting was a plane change too, so each edit below lands inside the burst window
+  expect(resolutions()).toEqual([1024])
   for (const position of [0.25, 0.3, 0.35]) {
     props.settings = { ...props.settings, position }
     await tick()
     await vi.advanceTimersByTimeAsync(16)
     await tick()
   }
-  expect(resolutions()).toEqual([1024, 512, 512, 512])
+  expect(resolutions()).toEqual([1024, 1024, 1024, 1024])
+  // no extra full-resolution resample once the drag rests
   await vi.advanceTimersByTimeAsync(200)
   await tick()
-  expect(resolutions()).toEqual([1024, 512, 512, 512, 1024])
+  expect(resolutions()).toEqual([1024, 1024, 1024, 1024])
 })
