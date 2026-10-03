@@ -1,27 +1,27 @@
 <script lang="ts">
-  import { materialize_frame_result } from '$lib/trajectory/frame'
+  import { materialize_frame_result } from '#lib/trajectory/frame.js'
 
-  import { track_settings } from '$lib/controls'
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
+  import { track_settings } from '#lib/controls.js'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
+  import type { VideoFormat } from '#lib/io/export.js'
   import {
     export_trajectory_video,
     is_video_export_supported,
     observe_canvas_presence,
-    type VideoFormat,
-  } from '$lib/io/export'
-  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
-  import ExportPane from '$lib/io/ExportPane.svelte'
-  import type { ExportItem, ExportSection } from '$lib/io/types'
-  import { format_num } from '$lib/labels'
-  import { NumberRangeInput, SettingsSection } from '$lib/layout'
-  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
-  import { clamp } from '$lib/math'
+  } from '#lib/io/export.js'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import type { ExportItem, ExportSection } from '#lib/io/types.js'
+  import { format_num } from '#lib/labels.js'
+  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import { clamp } from '#lib/math.js'
   import {
     fractional_export_unavailable_reason,
     xyz_export_unavailable_reason,
-  } from '$lib/structure/export'
-  import type { TrajectoryRun } from '$lib/trajectory'
-  import type { TrajectoryFrameResolver } from '$lib/trajectory/file-export'
+  } from '#lib/structure/export.js'
+  import type { TrajectoryRun } from '#lib/trajectory/index.js'
+  import type { TrajectoryFrameResolver } from '#lib/trajectory/file-export.js'
   import {
     collect_frame_property_rows,
     create_poscar_frame_range_zip,
@@ -29,14 +29,14 @@
     frame_rows_to_json,
     serialize_extxyz_frame_range,
     trajectory_export_basename,
-  } from '$lib/trajectory/file-export'
+  } from '#lib/trajectory/file-export.js'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { abortable, to_error } from '$lib/utils'
+  import { abortable, to_error } from '#lib/utils.js'
   import { getAbortSignal } from 'svelte'
-  import CameraFlightPane from '$lib/scene/CameraFlightPane.svelte'
+  import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import { Icon } from 'svelte-widgets'
   import { Camera } from 'svelte-widgets/icons'
-  import { camera_flight_frame, type CameraFlight } from '$lib/scene/camera-flight'
+  import { camera_flight_frame, type CameraFlight } from '#lib/scene/camera-flight.js'
 
   let {
     export_pane_open = $bindable(false),

@@ -1,7 +1,7 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { create_cart_to_frac, create_frac_to_cart, dot } from '$lib/math'
-import type { Complex, PhononModeData } from '$lib/spectral'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
+import type { Complex, PhononModeData } from '#lib/spectral/index.js'
 import {
   is_commensurate_phonon_supercell,
   is_imaginary_frequency,
@@ -14,14 +14,14 @@ import {
   phonon_mode_trajectory as create_phonon_mode_run,
   phonon_qpoint_labels,
   phonon_supercell,
-  parse_phonon_modes,
   qpoint_has_eigenvectors,
-} from '$lib/spectral'
-import { get_structure_vector_keys } from '$lib/structure'
-import { compute_bonds, get_bond_key } from '$lib/structure/bonding'
+} from '#lib/spectral/phonon-modes.js'
+import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
+import { get_structure_vector_keys } from '#lib/structure/vectors.js'
+import { compute_bonds, get_bond_key } from '#lib/structure/bonding.js'
 import { describe, expect, it } from 'vitest'
-import cspbi3_band_yaml from '$site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
-import nacl_band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
+import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
+import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {

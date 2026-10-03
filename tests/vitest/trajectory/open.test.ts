@@ -1,11 +1,11 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // open_trajectory: one entry point, one loading policy. The indexing threshold, progressive
 // plot rows, progress/abort, JSON run metadata and HDF5 handle lifetime. The per-format
 // parser behaviour (and the fixture table over every sample file) lives in parsers.test.ts.
-import type { TrajectoryRun } from '$lib/trajectory'
-import { open_trajectory, trajectory_from_json } from '$lib/trajectory/open'
-import { read_ase_header } from '$lib/trajectory/parse/ase'
-import { DEFAULTS } from '$lib/settings'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { open_trajectory, trajectory_from_json } from '#lib/trajectory/open.js'
+import { read_ase_header } from '#lib/trajectory/parse/ase.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { describe, expect, it, onTestFinished, test } from 'vitest'
 import { read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'

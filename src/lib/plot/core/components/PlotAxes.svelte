@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
-  import type { FacetAxis } from '$lib/plot/core/facets'
-  import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
-  import { AXIS_TITLE_OFFSET, y_axis_label_x, y2_axis_label_x } from '$lib/plot/core/layout'
-  import type { TicksOption } from '$lib/plot/core/scales'
-  import type { DisplayConfig } from '$lib/plot/core/types'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import type { FacetAxis } from '#lib/plot/core/facets.js'
+  import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
+  import { AXIS_TITLE_OFFSET, y_axis_label_x, y2_axis_label_x } from '#lib/plot/core/layout.js'
+  import type { TicksOption } from '#lib/plot/core/scales.js'
+  import type { DisplayConfig } from '#lib/plot/core/types.js'
 
   // The four Cartesian axes of a CartesianFrame, each gated on its data and on the
   // enclosing FacetGrid's visibility rules.

@@ -6,9 +6,9 @@
 // and value semantics (plotly branchvalues) by construction.
 
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
-import { clamp } from '$lib/math'
-import type { Rect } from '$lib/plot/core/layout'
-import type { PositionedArc, SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
+import { clamp } from '#lib/math.js'
+import type { Rect } from '#lib/plot/core/layout.js'
+import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
 
 // Treemaps consume the same node trees as Sunburst (shared data builders)
 export type TreemapNode<Metadata = Record<string, unknown>> = SunburstNode<Metadata>

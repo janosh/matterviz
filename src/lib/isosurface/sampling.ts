@@ -1,9 +1,9 @@
 // Volume sampling utilities: trilinear interpolation, world-coordinate volume
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import { clamp, reciprocal_lattice, scale_lattice_matrix } from '$lib/math'
-import { clamp01 } from '$lib/utils'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import { clamp, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import { clamp01 } from '#lib/utils.js'
 import type { ScalarGrid3D } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
 import { grid_data_range, MAX_GRID_POINTS } from './types'
@@ -43,7 +43,11 @@ export function trilinear_interpolate(
   frac_z: number,
   periodic: boolean,
 ): number {
-  const [size_x, size_y, size_z] = grid.dims
+  // indexed, not destructured: array destructuring runs the iterator protocol per sample
+  const { dims } = grid
+  const size_x = dims[0]
+  const size_y = dims[1]
+  const size_z = dims[2]
   if (size_x === 0 || size_y === 0 || size_z === 0) return 0
   if (
     !periodic &&
@@ -138,7 +142,7 @@ const OOB_TOL = 1e-6
 // Absolute Cartesian (x, y, z) in the volume's frame → trilinearly interpolated value.
 // Handles non-orthogonal lattices, origin offsets and periodic wrapping; scalar arithmetic
 // only since it runs once per isosurface vertex / slice pixel.
-function volume_sampler_xyz(
+export function volume_sampler_xyz(
   volume: VolumeGrid,
   out_of_bounds: OutOfBoundsPolicy,
 ): (coord_x: number, coord_y: number, coord_z: number) => number {

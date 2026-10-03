@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Spinner } from 'svelte-widgets'
-  import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
-  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
-  import type { AxisOption } from '$lib/plot/core/types'
+  import PortalSelect from '#lib/plot/core/components/PortalSelect.svelte'
+  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
+  import type { AxisOption } from '#lib/plot/core/types.js'
 
   // Axis title centered on (x, y). Static titles are SVG text wrapped by the same
   // measured layout auto-padding reserves for them; titles with selectable `options`

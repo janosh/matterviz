@@ -1,8 +1,10 @@
 import {
+  contour_segments,
   resolve_contour_thresholds,
   resolve_slice_color_range,
   slice_to_rgba,
-} from '$lib/isosurface/slice-rendering'
+} from '#lib/isosurface/slice-rendering.js'
+import { contours } from 'd3-contour'
 import { describe, expect, test } from 'vitest'
 
 const make_slice = () => ({
@@ -60,5 +62,97 @@ describe(`slice rendering helpers`, () => {
     const thresholds = resolve_contour_thresholds([...range], levels)
     expect(thresholds).toHaveLength(256)
     expect(thresholds).toEqual([...thresholds].toSorted((left, right) => left - right))
+  })
+})
+
+// The slice view strokes contour_segments instead of d3-contour's stitched rings; both must
+// draw the same lines. Segments are compared as exact, direction-free coordinate quadruples.
+describe(`contour_segments`, () => {
+  const canonical = (x0: number, y0: number, x1: number, y1: number): string =>
+    x0 < x1 || (x0 === x1 && y0 <= y1) ? `${x0},${y0},${x1},${y1}` : `${x1},${y1},${x0},${y0}`
+  const d3_segments = (
+    values: Float64Array,
+    width: number,
+    height: number,
+    levels: number[],
+  ) =>
+    contours()
+      .size([width, height])
+      .thresholds(levels)(values as unknown as number[])
+      .flatMap((shape) =>
+        shape.coordinates.flat().flatMap((ring) =>
+          ring
+            .slice(1)
+            .map(([x1, y1], idx) => [ring[idx][0], ring[idx][1], x1, y1])
+            // a ring passing through a corner on the threshold repeats that point
+            .filter(([x0, y0, x1, y1]) => x0 !== x1 || y0 !== y1)
+            .map(([x0, y0, x1, y1]) => canonical(x0, y0, x1, y1)),
+        ),
+      )
+      .toSorted()
+  const own_segments = (
+    values: Float64Array,
+    width: number,
+    height: number,
+    levels: number[],
+  ) => {
+    const out: string[] = []
+    contour_segments(values, width, height, levels, (x0, y0, x1, y1) =>
+      out.push(canonical(x0, y0, x1, y1)),
+    )
+    return out.toSorted()
+  }
+  // seeded LCG so failures reproduce
+  const make_rng = (seed: number) => () =>
+    (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
+
+  test.each([
+    { width: 1, height: 1, field: `random` },
+    { width: 7, height: 5, field: `random` },
+    { width: 40, height: 31, field: `smooth` },
+    { width: 64, height: 64, field: `masked` },
+  ])(`matches d3-contour on a $width x $height $field field`, ({ width, height, field }) => {
+    const rng = make_rng(width * 31 + height)
+    const values = Float64Array.from({ length: width * height }, (_, idx) => {
+      const [col, row] = [idx % width, Math.floor(idx / width)]
+      if (field === `random`) return rng() * 2 - 1
+      if (field === `steps`) return Math.round(rng() * 4) / 4 - 0.5
+      const wave = Math.sin(col / 4) * Math.cos(row / 5) + 0.3 * Math.sin((col + row) / 3)
+      // masked pixels carry a below-every-level stand-in, as VolumeSlice fills them
+      return field === `masked` && (col - 32) ** 2 + (row - 32) ** 2 > 28 ** 2 ? -9 : wave
+    })
+    const levels = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]
+    const expected = d3_segments(values, width, height, levels)
+    expect(expected.length).toBeGreaterThan(0)
+    expect(own_segments(values, width, height, levels)).toEqual(expected)
+  })
+
+  // Values exactly on a threshold: d3 drops zero-area rings outside any polygon. Every line d3
+  // draws is still drawn, and the only extras are such out-and-back traces (each segment twice).
+  test(`values on a threshold draw every d3 line plus only zero-area traces`, () => {
+    const [width, height] = [23, 17]
+    const rng = make_rng(7)
+    const values = Float64Array.from(
+      { length: width * height },
+      () => Math.round(rng() * 4) / 4,
+    )
+    const levels = [0.25, 0.5, 0.75]
+    const extras = new Map<string, number>()
+    for (const segment of own_segments(values, width, height, levels))
+      extras.set(segment, (extras.get(segment) ?? 0) + 1)
+    for (const segment of d3_segments(values, width, height, levels)) {
+      const count = extras.get(segment) ?? 0
+      expect(count, segment).toBeGreaterThan(0)
+      if (count === 1) extras.delete(segment)
+      else extras.set(segment, count - 1)
+    }
+    expect(extras.size).toBeGreaterThan(0) // the field does produce ties
+    for (const [segment, count] of extras) expect(count % 2, segment).toBe(0)
+  })
+
+  test(`no thresholds or no crossings emit nothing`, () => {
+    const values = new Float64Array([1, 2, 3, 4])
+    expect(own_segments(values, 2, 2, [])).toEqual([])
+    expect(own_segments(values, 2, 2, [10])).toEqual([])
   })
 })

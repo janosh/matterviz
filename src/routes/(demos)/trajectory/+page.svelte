@@ -1,7 +1,7 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { trajectory_files } from '$site/trajectories'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { trajectory_files } from '#site/trajectories.js'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
   let active_file = $state(``) // last drag-and-dropped trajectory file

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { PhaseData } from '$lib/convex-hull/types'
-  import { plural } from '$lib/labels'
+  import type { PhaseData } from '#lib/convex-hull/types.js'
+  import { plural } from '#lib/labels.js'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import { entry_elements, get_ternary_combinations } from './compute'

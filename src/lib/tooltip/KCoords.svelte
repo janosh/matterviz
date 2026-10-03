@@ -1,7 +1,7 @@
 <script lang="ts">
   // Shared k-point coordinate rows for hover tooltips (Brillouin zone + Fermi surface)
-  import { format_vec3 } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
+  import { format_vec3 } from '#lib/labels.js'
+  import type { Vec3 } from '#lib/math.js'
 
   let {
     cartesian,

@@ -1,13 +1,13 @@
 <script lang="ts">
   // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
-  import { get_electro_neg_formula, get_reduced_formula } from '$lib/composition'
-  import { format_num } from '$lib/labels'
-  import type { InfoPaneCard } from '$lib/overlays'
-  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import Histogram from '$lib/plot/histogram/Histogram.svelte'
-  import type { Column, RowData } from '$lib/table'
-  import HeatmapTable from '$lib/table/HeatmapTable.svelte'
-  import { escape_html } from '$lib/utils'
+  import { get_electro_neg_formula, get_reduced_formula } from '#lib/composition/index.js'
+  import { format_num } from '#lib/labels.js'
+  import type { InfoPaneCard } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import Histogram from '#lib/plot/histogram/Histogram.svelte'
+  import type { Column, RowData } from '#lib/table/index.js'
+  import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+  import { escape_html } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
@@ -160,8 +160,22 @@
     )
   })
   // === Table ===
-  const composition_key = (comp: Record<string, number>): string =>
-    get_electro_neg_formula(get_reduced_formula(comp), { plain_text: true, delim: `` })
+  // Formulas per composition object: threshold and visibility changes rebuild the table from
+  // the same entries, so each composition is reduced and formatted once, not on every update
+  const formula_cache = new WeakMap<Record<string, number>, { key: string; html: string }>()
+  const formulas_of = (comp: Record<string, number>): { key: string; html: string } => {
+    let formulas = formula_cache.get(comp)
+    if (!formulas) {
+      const reduced = get_reduced_formula(comp)
+      formulas = {
+        key: get_electro_neg_formula(reduced, { plain_text: true, delim: `` }),
+        html: get_electro_neg_formula(reduced),
+      }
+      formula_cache.set(comp, formulas)
+    }
+    return formulas
+  }
+  const composition_key = (comp: Record<string, number>): string => formulas_of(comp).key
   const polymorph_counts = $derived.by(() => {
     const counts = new Map<string, number>()
     for (const entry of all_entries) {
@@ -206,7 +220,7 @@
   // hrefs are dropped there).
   const table_data = $derived(
     table_entries.map((entry, idx): RowData => {
-      const formula = get_electro_neg_formula(get_reduced_formula(entry.composition))
+      const formula = formulas_of(entry.composition).html
       const row: RowData = {
         '#': idx + 1,
         Formula: is_on_hull(entry) ? `<strong>${formula}</strong>` : formula,

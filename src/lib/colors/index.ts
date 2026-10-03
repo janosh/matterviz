@@ -1,10 +1,14 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import type { ColorSchemeName } from '$lib/constants'
-import { evict_oldest } from '$lib/labels'
-import { clamp } from '$lib/math'
-import { get_system_mode, nearest_declared, observe_theme_attributes } from '$lib/theme'
-import { clamp01 } from '$lib/utils'
+import type { ColorSchemeName } from '#lib/constants.js'
+import { evict_oldest } from '#lib/labels.js'
+import { clamp } from '#lib/math.js'
+import {
+  get_system_mode,
+  nearest_declared,
+  observe_theme_attributes,
+} from '#lib/theme/index.js'
+import { clamp01 } from '#lib/utils.js'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
 import jmol_colors from './jmol-colors.json' with { type: 'json' }
@@ -13,7 +17,7 @@ import pastel_colors from './pastel-colors.json' with { type: 'json' }
 import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
 export * from './backdrop.svelte'
-export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '$lib/constants'
+export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants.js'
 
 // Extract color scheme interpolate function names from d3-scale-chromatic
 // Color scale names are always the prefixed d3 export name (`interpolateViridis`), which

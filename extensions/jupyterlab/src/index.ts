@@ -16,7 +16,12 @@ import type { DocumentRegistry } from '@jupyterlab/docregistry'
 import { LabIcon } from '@jupyterlab/ui-components'
 import { Widget } from '@lumino/widgets'
 import { format_bytes } from 'svelte-widgets/format'
-import { BASE64_FILE_TYPES, type FileTypeSpec, TEXT_FILE_TYPES } from './file-types'
+import {
+  BASE64_FILE_TYPES,
+  type FileTypeSpec,
+  is_default_file_type,
+  TEXT_FILE_TYPES,
+} from './file-types'
 // Type-only, so it is erased at build time and pulls nothing into the entry chunk.
 import type * as viewer_module from './viewer'
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
@@ -245,7 +250,10 @@ const plugin: JupyterFrontEndPlugin<void> = {
     register_factory(app, restorer, {
       name: `MatterViz (binary)`,
       model_name: `base64`,
-      default_names: type_names(BASE64_FILE_TYPES),
+      default_names: type_names(BASE64_FILE_TYPES.filter(is_default_file_type)),
+      additional_file_types: type_names(
+        BASE64_FILE_TYPES.filter((spec) => !is_default_file_type(spec)),
+      ),
     })
   },
 }

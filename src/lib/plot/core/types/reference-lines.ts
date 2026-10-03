@@ -1,8 +1,8 @@
 // Reference-line and reference-plane types for 2D and 3D plots.
-// Depends only on LayerZIndex (from ./fills) and math vectors; re-exported via $lib/plot/core/types.
+// Depends only on LayerZIndex (from ./fills) and math vectors; re-exported via #lib/plot/core/types.
 
-import type { Vec3 } from '$lib/math'
-import type { LayerZIndex } from '$lib/plot/core/types/fills'
+import type { Vec3 } from '#lib/math.js'
+import type { LayerZIndex } from '#lib/plot/core/types/fills.js'
 
 // Reference line styling
 export interface RefLineStyle {

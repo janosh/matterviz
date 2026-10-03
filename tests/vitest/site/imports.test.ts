@@ -1,6 +1,6 @@
-// $site/imports glob helpers and the structure demo picker built from them
-import { fixture_ext, glob_default, glob_text, site_file_info } from '$site/imports'
-import { parse_structure_fixture, structure_files } from '$site/structures'
+// #site/imports glob helpers and the structure demo picker built from them
+import { fixture_ext, glob_default, glob_text, site_file_info } from '#site/imports.js'
+import { parse_structure_fixture, structure_files } from '#site/structures.js'
 import { expect, test } from 'vitest'
 
 // glob_text unwraps the module-namespace shape the Rolldown prod build returns
@@ -23,7 +23,7 @@ test.each([
 })
 
 // fixture_ext drops a trailing .gz then takes the last dot-segment; site_file_info serves
-// $site fixtures from the static symlink (the /src/site prefix is dropped from the URL)
+// #site fixtures from the static symlink (the /src/site prefix is dropped from the URL)
 test.each([
   [`/src/site/fermi-surfaces/pb_vf3D.frmsf.gz`, `frmsf`, `/fermi-surfaces/pb_vf3D.frmsf.gz`],
   [`/src/site/isosurfaces/Si-CHGCAR.gz`, `si-chgcar`, `/isosurfaces/Si-CHGCAR.gz`],

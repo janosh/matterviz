@@ -3,7 +3,7 @@ import {
   get_legend_grid_cells,
   resolve_legend_layout_tracks,
   suggest_legend_tracks,
-} from '$lib/plot/core/decorations'
+} from '#lib/plot/core/decorations/tracks.js'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
 

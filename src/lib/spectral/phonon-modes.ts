@@ -1,17 +1,13 @@
-import { is_elem_symbol } from '$lib/element/helpers'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { Crystal } from '$lib/structure'
-import {
-  get_orig_site_idx,
-  get_pbc_image_sites,
-  make_site,
-  make_supercell,
-  parse_supercell_scaling,
-  wrap_to_unit_cell,
-} from '$lib/structure'
-import { compute_bonds, normalize_structure_bond } from '$lib/structure/bonding'
-import { trajectory_from_frame_source, type TrajectoryRun } from '$lib/trajectory'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
+import { get_orig_site_idx, make_site } from '#lib/structure/site.js'
+import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell.js'
+import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frame_source } from '#lib/trajectory/runs/memory.js'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {

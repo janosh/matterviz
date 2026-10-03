@@ -5,12 +5,12 @@ import {
   axis_labels,
   axis_scale_types,
   group_axis_series,
-} from '$lib/plot/core/axis-assignment'
+} from '#lib/plot/core/axis-assignment.js'
 import type {
   AxisAssignmentOptions,
   AxisValueSeries,
   OverflowAxisAssignment,
-} from '$lib/plot/core/axis-assignment'
+} from '#lib/plot/core/axis-assignment.js'
 import { describe, expect, test } from 'vitest'
 
 const create_series = (

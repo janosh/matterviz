@@ -1,6 +1,6 @@
 // Supercell generation utilities for Crystal
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
 import { normalize_structure_bond, shift_bonds_for_moved_sites } from './bonding'

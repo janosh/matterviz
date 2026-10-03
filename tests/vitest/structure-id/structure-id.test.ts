@@ -1,16 +1,15 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { Crystal, Pbc } from '$lib/structure'
-import { neighbor_query } from '$lib/structure/bonding'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_lattice_converters, min_image_displacement } from '#lib/math.js'
+import type { Crystal, Pbc } from '#lib/structure/index.js'
+import { neighbor_query } from '#lib/structure/bonding.js'
 import {
   apply_structure_id,
-  calc_cna,
   calc_structure_id,
   CENTROSYMMETRY_PROPERTY,
   cna_type_name,
   CNA_TYPE_PROPERTY,
-  CNA_TYPES,
-} from '$lib/structure-id'
+} from '#lib/structure-id/calc-structure-id.js'
+import { calc_cna, CNA_TYPES } from '#lib/structure-id/calc-cna.js'
 import { describe, expect, test } from 'vitest'
 import {
   BCC_LATTICE_CONST,

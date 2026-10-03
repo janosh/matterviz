@@ -1,11 +1,11 @@
-import type { FileInfo, FileTypePaint } from '$lib'
-import { file_type_paint } from '$lib'
-import { fixture_ext, site_file_info } from '$site/imports'
+import type { FileInfo, FileTypePaint } from '#lib'
+import { file_type_paint } from '#lib/io/file-type-paint.js'
+import { fixture_ext, site_file_info } from '#site/imports.js'
 import { SvelteSet } from 'svelte/reactivity'
 
 // The static symlink serves these fixtures at /fermi-surfaces/<name>.
 const fermi_file_modules = import.meta.glob(
-  `$site/fermi-surfaces/*.{bxsf,bxsf.gz,frmsf,frmsf.gz,json.gz}`,
+  `#site/fermi-surfaces/*.{bxsf,bxsf.gz,frmsf,frmsf.gz,json.gz}`,
   { query: `?url` },
 )
 

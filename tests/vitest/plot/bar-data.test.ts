@@ -1,19 +1,19 @@
-import type { BarAutoRangeOpts, NumericBarSeries } from '$lib/plot/bar/data'
+import type { BarAutoRangeOpts, NumericBarSeries } from '#lib/plot/bar/data.js'
 import {
   compute_bar_auto_ranges,
   compute_group_info,
   compute_stacked_offsets,
   normalize_categorical,
   on_secondary_value_axis,
-} from '$lib/plot/bar/data'
-import type { AxisConfig } from '$lib/plot/core/types'
+} from '#lib/plot/bar/data.js'
+import type { AxisConfig } from '#lib/plot/core/types.js'
 import {
   compute_bar_rect,
   compute_line_points,
   nearest_line_point,
   visible_bar_indices,
-} from '$lib/plot/bar/geometry'
-import type { BarSeries } from '$lib/plot'
+} from '#lib/plot/bar/geometry.js'
+import type { BarSeries } from '#lib/plot/index.js'
 import { describe, expect, test, vi } from 'vitest'
 
 const bar = (overrides: Partial<NumericBarSeries> = {}): NumericBarSeries => ({

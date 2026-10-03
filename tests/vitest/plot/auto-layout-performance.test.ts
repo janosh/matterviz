@@ -1,5 +1,5 @@
-import { clear_text_metrics_cache } from '$lib/plot/core/text-metrics'
-import { type MeasuredAxis, resolve_tick_layout } from '$lib/plot/core/tick-layout'
+import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
+import { type MeasuredAxis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 import { mock_canvas_context } from '../setup'
 

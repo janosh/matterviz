@@ -2,7 +2,7 @@
   // The control rows ChemPotDiagram2D and ChemPotDiagram3D both offer: formal/absolute
   // potentials, labels, axis padding and floor, region colouring. `children` renders extra
   // checkboxes next to the built-in ones (the 3D overlay toggles).
-  import type { D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
   import type { Snippet } from 'svelte'
   import type { ChemPotControlKey, ChemPotControlValues } from './controls-state.svelte'
   import {

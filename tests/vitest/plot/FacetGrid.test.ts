@@ -1,10 +1,10 @@
-import FacetGrid from '$lib/plot/core/components/FacetGrid.svelte'
+import FacetGrid from '#lib/plot/core/components/FacetGrid.svelte'
 import type {
   FacetPanel,
   FacetPanelContext,
   FacetSharedBandContext,
   FacetSharedBandSizes,
-} from '$lib/plot/core/facets'
+} from '#lib/plot/core/facets.js'
 import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, test } from 'vitest'

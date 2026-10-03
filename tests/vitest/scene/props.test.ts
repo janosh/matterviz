@@ -4,8 +4,8 @@ import {
   page_visibility,
   resolve_scene_controls,
   SCENE_CONTROL_DEFAULTS,
-} from '$lib/scene'
-import { DEFAULTS } from '$lib/settings'
+} from '#lib/scene/props.svelte.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

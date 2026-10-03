@@ -1,17 +1,18 @@
 // The shared chrome is covered in tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts;
 // this pins what the RDF pane layers on top: its controls reach the sweep, the shell table and
 // CSV download appear once it lands, and a lattice-less run is refused with a reason.
-import { download } from '$lib/io/fetch'
-import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
-import type { TrajectoryRdf } from '$lib/rdf'
-import { trajectory_from_frames, type TrajectoryRun } from '$lib/trajectory'
+import { download } from '#lib/io/fetch.js'
+import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
+import type { TrajectoryRdf } from '#lib/rdf/index.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 
-vi.mock(`$lib/io/fetch`, async (import_original) => ({
+vi.mock(`#lib/io/fetch.js`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
 }))

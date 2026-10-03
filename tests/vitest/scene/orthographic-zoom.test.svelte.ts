@@ -1,9 +1,14 @@
-import { create_fit_zoom, create_orthographic_zoom, create_scene_camera } from '$lib/scene'
-import { camera_flight_registry } from '$lib/scene/camera-flight'
-import { create_fly_to } from '$lib/scene/fly-to'
-import SceneCamera from '$lib/scene/SceneCamera.svelte'
-import { read_pan_offset, set_pan_offset } from '$lib/scene/pan'
-import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '$lib/scene/props.svelte'
+import {
+  create_fit_zoom,
+  create_orthographic_zoom,
+  create_scene_camera,
+  build_orbit_props,
+  SCENE_CONTROL_DEFAULTS,
+} from '#lib/scene/props.svelte.js'
+import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { create_fly_to } from '#lib/scene/fly-to.js'
+import SceneCamera from '#lib/scene/SceneCamera.svelte'
+import { read_pan_offset, set_pan_offset } from '#lib/scene/pan.js'
 import { type ComponentProps, flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 import { expect, onTestFinished, test } from 'vitest'

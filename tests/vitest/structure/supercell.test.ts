@@ -1,13 +1,13 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
 import {
   generate_lattice_points,
   is_valid_supercell_input,
   make_supercell,
   parse_supercell_scaling,
   supercell_grid_edges,
-} from '$lib/structure/supercell'
+} from '#lib/structure/supercell.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../test-fixtures'
 

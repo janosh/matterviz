@@ -1,6 +1,6 @@
-import type { StructureIdPayload } from '$lib/structure-id/worker-payload'
-import { structure_from_payload } from '$lib/structure-id/worker-payload'
-import { serve_worker } from '$lib/worker-serve'
+import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
+import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
+import { serve_worker } from '#lib/worker-serve.js'
 import { calc_frame_rdfs, type FrameRdfOptions } from './calc-rdf'
 
 serve_worker((payload: StructureIdPayload, options?: FrameRdfOptions) =>

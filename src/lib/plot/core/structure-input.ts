@@ -1,12 +1,13 @@
-// Input plumbing shared by the bar plots built from one-or-many structures ($lib/bond-angles,
-// $lib/coordination): normalising the three accepted `structures` prop shapes and turning a
+// Input plumbing shared by the bar plots built from one-or-many structures (#lib/bond-angles,
+// #lib/coordination): normalising the three accepted `structures` prop shapes and turning a
 // dropped file into a new entry.
 
-import { as_text, create_file_drop_handler } from '$lib/io'
-import type { FileLoadCallback } from '$lib/io'
-import type { AnyStructure } from '$lib/structure'
-import { parse_structure_file } from '$lib/structure/parse'
-import { to_error } from '$lib/utils'
+import { as_text } from '#lib/io/decompress.js'
+import { create_file_drop_handler } from '#lib/io/file-drop.js'
+import type { FileLoadCallback } from '#lib/io/index.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
+import { to_error } from '#lib/utils.js'
 
 export interface StructureEntry {
   label: string

@@ -2,11 +2,11 @@
   // Ternary (dim 3, triangle prism with an energy axis and orientation gizmo) and quaternary
   // (dim 4, tetrahedron) convex hulls on a 2D canvas. Everything dimension-specific comes
   // from the HullCanvasStrategy picked by `dim`; the component never reads camera angles.
-  import { add_alpha, default_element_colors } from '$lib/colors'
-  import type { Vec2 } from '$lib/math'
-  import { ColorBar } from '$lib/plot'
-  import { create_renderer, Gizmo, webgpu_available } from '$lib/scene'
-  import { clamp01 } from '$lib/utils'
+  import { add_alpha, default_element_colors } from '#lib/colors/index.js'
+  import type { Vec2 } from '#lib/math.js'
+  import { ColorBar } from '#lib/plot/index.js'
+  import { create_renderer, Gizmo, webgpu_available } from '#lib/scene/index.js'
+  import { clamp01 } from '#lib/utils.js'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -27,7 +27,7 @@
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { merge_hull_config } from './index'
   import type { Snippet } from 'svelte'
-  import type { ShowControlsState } from '$lib/controls'
+  import type { ShowControlsState } from '#lib/controls.js'
   import type { HullSelection } from './canvas-interactions.svelte'
   import type { ConvexHullEntry, ConvexHullControlsType } from './types'
 

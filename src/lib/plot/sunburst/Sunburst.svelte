@@ -2,36 +2,39 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { format_value } from '$lib/labels'
-  import { DEG_TO_RAD } from '$lib/math'
+  import { format_value } from '#lib/labels.js'
+  import { DEG_TO_RAD } from '#lib/math.js'
   import type {
     BasePlotProps,
     SunburstGroupGap,
     SunburstLabelRotation,
     SunburstShape,
-  } from '$lib/plot'
-  import { SunburstControls } from '$lib/plot'
-  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
-  import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
-  import { is_activation_key } from '$lib/plot/core/interactions'
-  import type { Sides } from '$lib/plot/core/layout'
-  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
-  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import { ellipsize_to_width, node_display_name } from '$lib/plot/core/utils/hierarchy-chart'
-  import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  } from '#lib/plot/index.js'
+  import { SunburstControls } from '#lib/plot/index.js'
+  import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import HierarchyShell from '#lib/plot/core/components/HierarchyShell.svelte'
+  import { is_activation_key } from '#lib/plot/core/interactions.js'
+  import type { Sides } from '#lib/plot/core/layout.js'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
+  import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import {
+    ellipsize_to_width,
+    node_display_name,
+  } from '#lib/plot/core/utils/hierarchy-chart.js'
+  import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
   import {
     HierarchyChartState,
     hierarchy_layout_options,
-  } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import type { ScreenArc as ScreenArcOf, ViewWindow } from '$lib/plot/sunburst/render'
+  } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
+  import type { ScreenArc as ScreenArcOf, ViewWindow } from '#lib/plot/sunburst/render.js'
   import {
     arc_label_slots,
     hover_veil_path,
     project_arcs,
     rect_path,
-  } from '$lib/plot/sunburst/render'
-  import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/sunburst/render.js'
+  import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { arc as d3_arc } from 'd3-shape'
   import { type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'

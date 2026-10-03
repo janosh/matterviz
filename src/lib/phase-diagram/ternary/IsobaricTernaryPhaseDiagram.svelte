@@ -3,24 +3,24 @@
   // over temperature. Linked views: the isothermal section (2D Gibbs triangle or 3D prism with a
   // draggable cutting plane), a phase × T stability map and the list of transitions with
   // balanced reactions.
-  import { is_dark_mode, watch_dark_mode } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import { canvas_text_color } from '$lib/canvas-surface.svelte'
+  import { is_dark_mode, watch_dark_mode } from '#lib/colors/index.js'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
   import {
     DEFAULT_ELEMENT_TO_GAS,
     GAS_STOICHIOMETRY,
-  } from '$lib/convex-hull/gas-thermodynamics'
-  import type { GasSpecies, PhaseData } from '$lib/convex-hull/types'
+  } from '#lib/convex-hull/gas-thermodynamics.js'
+  import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
   import { Spinner } from 'svelte-widgets'
-  import { create_file_drop_handler, drag_over_handlers } from '$lib/io/file-drop'
-  import { format_num } from '$lib/labels'
-  import { ViewerChrome } from '$lib/layout'
-  import { clamp, type Vec2 } from '$lib/math'
-  import { PlotTooltip } from '$lib/plot'
-  import { sanitize_html } from '$lib/sanitize'
-  import { create_renderer, webgpu_available } from '$lib/scene'
-  import { to_error } from '$lib/utils'
+  import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
+  import { format_num } from '#lib/labels.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import { clamp, type Vec2 } from '#lib/math.js'
+  import { PlotTooltip } from '#lib/plot/index.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'

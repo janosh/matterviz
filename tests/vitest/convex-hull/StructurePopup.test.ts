@@ -1,5 +1,5 @@
-import type { StructurePopupContext } from '$lib/convex-hull'
-import StructurePopup from '$lib/convex-hull/StructurePopup.svelte'
+import type { StructurePopupContext } from '#lib/convex-hull/index.js'
+import StructurePopup from '#lib/convex-hull/StructurePopup.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'

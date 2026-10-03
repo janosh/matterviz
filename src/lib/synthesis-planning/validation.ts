@@ -1,8 +1,8 @@
 // Runtime validation for the public synthesis-planning request. Keep this aligned with
 // SYNTHESIS_PLAN_REQUEST_SCHEMA so TypeScript, agent tools and direct JavaScript callers fail on
 // the same bad inputs before the planner enters the numerical code.
-import { GAS_SPECIES } from '$lib/convex-hull/types'
-import type { GasThermodynamicsProvider } from '$lib/convex-hull/types'
+import { GAS_SPECIES } from '#lib/convex-hull/types.js'
+import type { GasThermodynamicsProvider } from '#lib/convex-hull/types.js'
 import { DEFAULT_SCORE_WEIGHTS } from './scoring'
 import type { SynthesisPlanRequest } from './types'
 

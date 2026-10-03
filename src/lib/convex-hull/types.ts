@@ -1,7 +1,7 @@
-import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
-import type { Point2D, Point3D, Vec2 } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import type { CompositionType } from '#lib/composition/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { Point2D, Point3D, Vec2 } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
 
 export interface StructurePopupStats {
   id?: string

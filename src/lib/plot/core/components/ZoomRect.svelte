@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Point2D } from '$lib/math'
+  import type { Point2D } from '#lib/math.js'
 
   let {
     start,

@@ -1,4 +1,4 @@
-import type { EosKind, EosParams } from '$lib/eos'
+import type { EosKind, EosParams } from '#lib/eos/index.js'
 import {
   EOS_KINDS,
   eos_energy,
@@ -6,7 +6,7 @@ import {
   eos_pressure,
   fit_eos,
   PARAM_KEYS,
-} from '$lib/eos'
+} from '#lib/eos/fit.js'
 import { describe, expect, test } from 'vitest'
 
 // Reference fits [E0, V0, B0, B0'] from pymatgen.analysis.eos.EOS(eos_name).fit(volumes,

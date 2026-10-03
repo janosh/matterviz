@@ -1,18 +1,37 @@
-import { make_config } from 'svelte-widgets/vite-config'
+import adapter from '@sveltejs/adapter-static'
 import { sveltekit } from '@sveltejs/kit/vite'
+import { common } from '@wooorm/starry-night'
+import svelte_grammar from '@wooorm/starry-night/source.svelte'
+import tsx_grammar from '@wooorm/starry-night/source.tsx'
+import vue_grammar from '@wooorm/starry-night/text.html.vue'
+import { create_highlighter } from 'svelte-widgets/highlight'
+import { create_markdown } from 'svelte-widgets/markdown'
+import { markdown_vite } from 'svelte-widgets/markdown/vite'
+import { make_config } from 'svelte-widgets/vite-config'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
-// @ts-expect-error Node ESM config load needs the .ts extension here
-import svelte_config, { docs } from './svelte.config.ts'
 import source_links from 'svelte-widgets/source-links/vite-plugin'
 import type { Plugin } from 'vite'
-import { defineConfig, type PluginOption } from 'vite-plus'
+import { defineConfig } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
-// @ts-expect-error Node ESM config load needs the .ts extension here
 import * as shared from './src/vite-plugins.ts'
 
-const { kit, ...compiler_config } = svelte_config
+// svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
+// Svelte, which would leave the tsx/vue fences in the framework-interop docs unstyled
+const highlighter = create_highlighter([...common, svelte_grammar, tsx_grammar, vue_grammar])
+export const docs = markdown_vite(
+  create_markdown({
+    examples: {
+      hide_style: true,
+      collapsible: true,
+      csr: true,
+      wrapper: `#site/CodeExample.svelte`,
+    },
+    highlight: highlighter.highlight,
+    typography: true,
+  }),
+)
 
 // Extensions raw_text_plugin below claims and hands back as a plain string. Covers exactly
 // the structure/trajectory/phonon fixtures this repo imports (from src/site and tests), not
@@ -41,25 +60,24 @@ const starry_night_theme_plugin: Plugin = {
 }
 
 const json_gz_options = { resolve_queries: true }
-const json_gz_plugin = () => shared.vite_plugin_json_gz(json_gz_options)
 
 // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
 // Claims the file before rolldown's parser sees it, returns raw text as a string export.
 const raw_text_plugin: Plugin = {
   name: `vite-plugin-raw-text`,
   enforce: `pre`,
-  resolveId(source, importer) {
+  async resolveId(source, importer) {
     // Rolldown needs the explicit file resolution during builds. Dev/test URLs from
     // restored Vitest modules go through Vite's URL resolver instead.
-    if (!/^[./$]/.test(source)) return null
+    if (!/^[./#]/.test(source)) return null
     if (this.environment.mode !== `build` && (!source.startsWith(`.`) || !importer))
       return null
     const [clean, query] = shared.split_query(source)
     if (query.includes(`url`)) return null
     const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
-    const abs = shared.resolve_from_importer(clean, importer)
-    return abs + query
+    const abs = await shared.resolve_specifier(this, clean, importer)
+    return abs && abs + query
   },
   load(identifier) {
     const [clean_id, query] = shared.split_query(identifier)
@@ -74,23 +92,48 @@ const raw_text_plugin: Plugin = {
       return { code: `export default ${JSON.stringify(text)}`, map: null }
     } catch (error) {
       // resolveId already claimed this file, so surface a clear error (like
-      // json_gz_plugin) instead of returning null and falling back to default loading
+      // vite_plugin_json_gz) instead of returning null and falling back to default loading
       return this.error(`Failed to read ${clean_id}: ${error}`)
     }
   },
 }
 
-// sveltekit()/markdown ship their own copy of vite's Plugin type; inferring this
-// array's element type deep-compares them and exceeds TS's instantiation depth (TS2321).
-// Typing as `unknown[]` skips that comparison; vite ignores the falsy (null) entry.
+// vite-plugin-svelte makes Vitest inline all of node_modules/svelte so tests get its browser
+// runtime. The compiler is ~230 stateless ES modules without browser-specific imports, so
+// loading it natively gives identical output while sparing every test file that imports
+// `svelte/compiler` a module-runner transform and evaluation of the whole compiler.
+const native_svelte_compiler: Plugin = {
+  name: `test:native-svelte-compiler`,
+  configResolved: {
+    order: `post`,
+    handler({ test }: { test?: { server?: { deps?: { inline?: unknown } } } }) {
+      const inline = test?.server?.deps?.inline
+      if (!Array.isArray(inline) || !inline.includes(`svelte`))
+        throw new Error(`Expected Vitest to inline svelte, got ${String(inline)}`)
+      inline[inline.indexOf(`svelte`)] = /\/node_modules\/svelte(?!\/src\/compiler\/)/u
+    },
+  },
+}
+
 const plugins = [
-  json_gz_plugin() as unknown,
-  raw_text_plugin as unknown,
-  starry_night_theme_plugin as unknown,
-  source_links() as unknown,
-  sveltekit({ ...compiler_config, ...kit }) as unknown,
-  docs.plugin as unknown,
-] as PluginOption[]
+  ...(process.env.VITEST ? [native_svelte_compiler] : []),
+  shared.vite_plugin_json_gz(json_gz_options),
+  raw_text_plugin,
+  starry_night_theme_plugin,
+  source_links(),
+  sveltekit({
+    extensions: [`.svelte`, `.svx`, `.md`],
+    preprocess: [docs.preprocess],
+    adapter: adapter({ strict: false }), // don't fail on symlinks
+    prerender: {
+      handleHttpError: ({ path, message }) => {
+        if (path.startsWith(`/elements/`)) return // ignore missing element photos
+        throw new Error(message) // fail the build for other errors
+      },
+    },
+  }),
+  docs.plugin,
+]
 
 const config = make_config()
 
@@ -101,7 +144,7 @@ export default defineConfig({
   build: { ...config.build, reportCompressedSize: false },
   plugins,
   worker: {
-    plugins: shared.json_gz_worker_plugins(json_gz_options) as unknown as () => PluginOption[],
+    plugins: shared.json_gz_worker_plugins(json_gz_options),
   },
   fmt: {
     ...config.fmt,
@@ -120,12 +163,12 @@ export default defineConfig({
     ...config.lint,
     rules: {
       ...config.lint.rules,
-      // Timer/animation callbacks return opaque handles that Promise ignores. The rule added in
-      // vite-plus (still in 0.3.0) mistakes those conventional executors for meaningful Promise returns.
+      // Timer/animation callbacks return opaque handles that Promise ignores. The rule (still on
+      // in vite-plus 1.0) mistakes those conventional executors for meaningful Promise returns.
       'no-promise-executor-return': `off`,
     },
     // src/scripts/** are standalone utility scripts excluded from tsconfig (so
-    // type-aware rules can't resolve $lib/Deno-style imports there) — keep them unlinted.
+    // type-aware rules can't resolve #lib/Deno-style imports there) — keep them unlinted.
     // extensions/** are separate packages with dependencies and test mocks that
     // are not type-compatible with the root project, so lint them in their own packages.
     ignorePatterns: [
@@ -159,17 +202,18 @@ export default defineConfig({
   // the staged files, and run the (whole-project) Svelte type check only when a TS/Svelte
   // file is staged. Commands get the staged paths appended; svelte-check takes no file list,
   // so those two run as thunks that ignore the names. No shell: one command per entry.
+  // --config stops svelte-check loading every nested vite.config (e.g. scratch checkouts in tmp/).
   staged: {
     '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
     '*.{ts,js,mjs,svelte}': [
       `vp lint`,
       () => `npx svelte-kit sync`,
-      () => `npx svelte-check --tsconfig ./tsconfig.json --threshold warning`,
+      () =>
+        `npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning`,
     ],
   },
 
   server: {
-    fs: { allow: [`..`] }, // needed to import from $root
     port: 3000,
   },
 
@@ -180,7 +224,10 @@ export default defineConfig({
   resolve: {
     dedupe: [`svelte`],
     conditions: process.env.VITEST ? [`browser`] : undefined,
-    alias: [shared.three_compat_alias],
+    // Tests and docs examples import the package by name; serve that from source, not dist/.
+    // A package-name self-reference can't be a #subpath import, so it stays a Vite alias
+    // (tsconfig.json mirrors it in `paths`).
+    alias: [shared.three_compat_alias, shared.matterviz_alias],
   },
 
   // Binary/compressed files imported via ?url that rolldown would otherwise

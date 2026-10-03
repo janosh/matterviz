@@ -1,7 +1,7 @@
 <script lang="ts">
   // Ranked routes as a sortable heatmap table; clicking a row selects the route
-  import { HeatmapTable } from '$lib/table'
-  import type { Column, RowData } from '$lib/table'
+  import { HeatmapTable } from '#lib/table/index.js'
+  import type { Column, RowData } from '#lib/table/index.js'
   import { format_equation_html } from './format'
   import { describe_downhill_windows } from './thermo'
   import type { SynthesisRoute } from './types'

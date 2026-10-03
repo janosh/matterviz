@@ -14,8 +14,8 @@
 // energy of +0.18 eV — but differ in barrier: the direct hop carries force data
 // (force-projected spline), the curved hop does not (natural cubic).
 
-import type { ReactionPath } from '$lib/neb'
-import { parse_reaction_path_json } from '$lib/neb/parse'
+import type { ReactionPath } from '#lib/neb/index.js'
+import { parse_reaction_path_json } from '#lib/neb/parse.js'
 import raw_doc from './li-mgo-interstitial-hop.json.gz'
 
 export const LI_MGO_HOP_FILENAME = `li-mgo-interstitial-hop.json`

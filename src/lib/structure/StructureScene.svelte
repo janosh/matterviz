@@ -1,28 +1,24 @@
 <script lang="ts">
   import { numeric_sites, get_site, site_count, snapshot_topologies } from './site'
-  import { element_from_atomic_number } from '$lib/element/helpers'
+  import { element_from_atomic_number } from '#lib/element/helpers.js'
   import {
     enable_atom_sphere_picking,
     update_atom_coordinates,
     update_ordered_atom_positions,
   } from './atom-instances'
-  import type { D3InterpolateName } from '$lib/colors'
-  import type { ElementSymbol } from '$lib/element'
-  import { element_by_symbol } from '$lib/element'
-  import Isosurface from '$lib/isosurface/Isosurface.svelte'
-  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
-  import { format_num } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import { element_by_symbol } from '#lib/element/index.js'
+  import Isosurface from '#lib/isosurface/Isosurface.svelte'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
+  import { format_num } from '#lib/labels.js'
+  import type { Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
   import type { AtomColorField } from './atom-color-field'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
-  import {
-    cutaway_contains,
-    enable_cutaway_picking,
-    StructureCutawayGroup,
-    type StructureCutaway,
-  } from './cutaway'
+  import type { StructureCutaway } from './cutaway'
+  import { cutaway_contains, enable_cutaway_picking, StructureCutawayGroup } from './cutaway'
   import {
     bind_renderer,
     brighten_hex,
@@ -33,13 +29,13 @@
     DEFAULT_FLY_TO_DURATION_MS,
     SceneCamera,
     SceneLights,
-  } from '$lib/scene'
-  import type { SceneControlProps } from '$lib/scene'
-  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '$lib/settings'
-  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  } from '#lib/scene/index.js'
+  import type { SceneControlProps } from '#lib/scene/index.js'
+  import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
-  import { create_pulse_animation, pulsing_highlight_opacity } from '$lib/effects.svelte'
-  import { theme_state } from '$lib/state.svelte'
+  import { create_pulse_animation, pulsing_highlight_opacity } from '#lib/effects.svelte.js'
+  import { theme_state } from '#lib/state.svelte.js'
   import { get_element_palette } from './element-palette.svelte'
   import type {
     AnyStructure,
@@ -49,7 +45,7 @@
     MeasureMode,
     Site,
     StructureBond,
-  } from '$lib/structure'
+  } from '#lib/structure/index.js'
   import {
     camera_needs_fit,
     camera_position_for_target,
@@ -63,20 +59,20 @@
     perspective_distance_for_extent,
     site_base_radius,
     structure_fit_frame,
-  } from '$lib/structure'
+  } from '#lib/structure/index.js'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import type { LatticePlane } from './lattice-planes'
   import LatticePlanes from './LatticePlanes.svelte'
   import SiteLabels from './SiteLabels.svelte'
-  import type { AtomPropertyColors } from '$lib/structure/atom-properties'
-  import type { SymmetryElement } from '$lib/symmetry'
-  import { has_visible_symmetry_overlay } from '$lib/symmetry/symmetry-elements'
-  import SymmetryElements from '$lib/symmetry/SymmetryElements.svelte'
-  import * as measure from '$lib/structure/measure'
-  import { is_crystal } from '$lib/structure/validation'
-  import { to_error } from '$lib/utils'
+  import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
+  import type { SymmetryElement } from '#lib/symmetry/index.js'
+  import { has_visible_symmetry_overlay } from '#lib/symmetry/symmetry-elements.js'
+  import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
+  import * as measure from '#lib/structure/measure.js'
+  import { is_crystal } from '#lib/structure/validation.js'
+  import { to_error } from '#lib/utils.js'
   import { compute_slice_geometry, merge_split_partial_sites } from './partial-occupancy'
   import { PartialAtoms, type PartialAtom } from './partial-atoms'
   import { T, useTask, useThrelte } from '@threlte/core'
@@ -95,12 +91,8 @@
   import type { Mesh, Object3D, WebGPURenderer } from 'three/webgpu'
   import Bond from './Bond.svelte'
   import { raycast_bond } from './bond-mesh'
-  import {
-    write_bond_transform,
-    bond_neighbors,
-    bond_records,
-    type BondData,
-  } from './bond-rendering'
+  import type { BondData } from './bond-rendering'
+  import { write_bond_transform, bond_neighbors, bond_records } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
@@ -132,7 +124,7 @@
     TrajectoryLineWrapMode,
   } from './trajectory-lines'
   import { trajectory_trail_anchors } from './trajectory-lines'
-  import type { TrajectoryPositionStream } from '$lib/trajectory'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 
   type EditableAtomHitTarget = {
     site_idx: number

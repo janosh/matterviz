@@ -10,9 +10,9 @@ import {
   parse_xrd_file,
   parse_xrdml_file,
   parse_xy_file,
-} from '$lib/xrd/parse'
-import { array_max } from '$lib/math'
-import { decimate_pattern } from '$lib/xrd'
+} from '#lib/xrd/parse.js'
+import { array_max } from '#lib/math.js'
+import { decimate_pattern } from '#lib/xrd/index.js'
 import { zipSync } from 'fflate'
 import file_system from 'node:fs'
 import path from 'node:path'

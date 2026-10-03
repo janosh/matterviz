@@ -3,10 +3,10 @@
 import {
   compute_gas_chemical_potential,
   get_default_gas_provider,
-} from '$lib/convex-hull/gas-thermodynamics'
-import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
-import type { GasSpecies } from '$lib/convex-hull/types'
-import { solve_linear_program } from '$lib/math'
+} from '#lib/convex-hull/gas-thermodynamics.js'
+import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
+import type { GasSpecies } from '#lib/convex-hull/types.js'
+import { solve_linear_program } from '#lib/math.js'
 import type { PlannerPhase } from './phases'
 import { ENERGY_TOL, to_phase_ref } from './phases'
 import type {

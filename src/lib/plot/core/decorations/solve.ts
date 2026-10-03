@@ -1,5 +1,5 @@
-import { compute_element_placement, type Rect } from '$lib/plot/core/layout'
-import { first_duplicate } from '$lib/utils'
+import { compute_element_placement, type Rect } from '#lib/plot/core/layout.js'
+import { first_duplicate } from '#lib/utils.js'
 import { project_obstacles } from './obstacles'
 import { get_outside_placement, place_outside_decorations } from './outside'
 import { place_reference_annotation } from './reference-annotations'

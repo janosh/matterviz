@@ -1,15 +1,15 @@
 // Pymatgen Trajectory JSON parsing
-import type { ElementSymbol } from '$lib/element/types'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import type { ElementSymbol } from '#lib/element/types.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
   calc_force_stats,
   checked_site_forces,
   create_trajectory_frame,
-} from '$lib/trajectory/helpers'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
-import { is_plain_object } from '$lib/utils'
+} from '#lib/trajectory/helpers.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { is_plain_object } from '#lib/utils.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 // Element symbol of one pymatgen species entry: an Element/Species dict, or the plain string

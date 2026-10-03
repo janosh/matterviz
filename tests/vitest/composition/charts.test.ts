@@ -1,14 +1,14 @@
-import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-import type { CompositionType } from '$lib/composition'
+import { ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.js'
+import type { CompositionType } from '#lib/composition/index.js'
+import BarChart from '#lib/composition/BarChart.svelte'
+import BubbleChart from '#lib/composition/BubbleChart.svelte'
 import {
-  BarChart,
-  BubbleChart,
   composition_segments,
   fit_font_scale,
-  PieChart,
   segment_suffix,
   segment_title,
-} from '$lib/composition'
+} from '#lib/composition/chart.js'
+import PieChart from '#lib/composition/PieChart.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

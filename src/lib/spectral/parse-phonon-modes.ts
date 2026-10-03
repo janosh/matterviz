@@ -1,6 +1,6 @@
 // Parsers for phonopy mode data (frequencies + eigenvectors) and Born effective charges.
 //
-// These are deliberately separate from `$lib/structure/parse.ts`, which only extracts cells
+// These are deliberately separate from `#lib/structure/parse.ts`, which only extracts cells
 // from phonopy YAML and explicitly discards the per-mode blocks we need here.
 //
 // Eigenvector convention (phonopy): the `eigenvector` blocks in band.yaml / qpoints.yaml /
@@ -10,8 +10,8 @@
 // that need displacements must divide by sqrt(mass) themselves.
 
 import { load as yaml_load } from 'js-yaml'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { is_plain_object } from '$lib/utils'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { is_plain_object } from '#lib/utils.js'
 import type {
   BornChargeData,
   PhononMode,

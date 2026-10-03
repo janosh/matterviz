@@ -1,8 +1,8 @@
 // TDB (Thermodynamic Database) file parser
 // Parses CALPHAD TDB files to extract metadata about elements, phases, and parameters
 
-import { ELEM_SYMBOLS } from '$lib/labels'
-import type { Vec2 } from '$lib/math'
+import { ELEM_SYMBOLS } from '#lib/labels.js'
+import type { Vec2 } from '#lib/math.js'
 
 // Default temperature bounds for TDB parsing (in Kelvin)
 const TDB_TEMP_DEFAULTS = {

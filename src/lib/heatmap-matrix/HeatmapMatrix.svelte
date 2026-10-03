@@ -1,23 +1,20 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
 
-  import type { D3InterpolateName } from '$lib/colors'
-  import { contrast_color_memo, is_color, resolve_backdrop } from '$lib/colors'
-  import { format_num } from '$lib/labels'
-  import { quantile_unordered, type Vec2 } from '$lib/math'
-  import type { AxisConfig } from '$lib/plot/core/types'
-  import {
-    type ColorRamp,
-    resolve_color_ramp,
-    to_color_bar_scale,
-  } from '$lib/plot/core/color-ramp'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { quantile_unordered, type Vec2 } from '#lib/math.js'
+  import type { AxisConfig } from '#lib/plot/core/types.js'
+  import type { ColorRamp } from '#lib/plot/core/color-ramp.js'
+  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from 'svelte-widgets/virtual'
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ShowControlsProp } from '$lib/controls'
+  import type { ShowControlsProp } from '#lib/controls.js'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
   import type {
     AxisItem,
@@ -1140,7 +1137,7 @@
     pointer-events: none;
     box-shadow: var(
       --tooltip-shadow,
-      light-dark(0 2px 8px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4))
+      0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
     );
     white-space: nowrap;
     &.visible {

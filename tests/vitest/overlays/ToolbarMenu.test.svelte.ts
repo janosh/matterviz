@@ -1,4 +1,4 @@
-import ToolbarMenu from '$lib/overlays/ToolbarMenu.svelte'
+import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
 import { createRawSnippet, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'

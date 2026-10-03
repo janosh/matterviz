@@ -3,10 +3,10 @@
   // controls depend on the column's data — a range for numbers, a checklist for few distinct
   // values, a substring box otherwise. The host owns `open` (only one header popover may be
   // open at a time) and persists the filter itself through `on_change`.
-  import { format_num } from '$lib/labels'
-  import type { ColumnFilter, Column, RowData } from '$lib/table'
+  import { format_num } from '#lib/labels.js'
+  import type { ColumnFilter, Column, RowData } from '#lib/table/index.js'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
-  import { html_to_text } from '$lib/utils'
+  import { html_to_text } from '#lib/utils.js'
   import { Icon } from 'svelte-widgets'
   import { Filter } from 'svelte-widgets/icons'
 

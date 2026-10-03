@@ -21,7 +21,7 @@
   --error-color: #ef4444;
   --error-btn-bg: light-dark(#dc2626, #7f1d1d);
   --error-btn-bg-hover: light-dark(#b91c1c, #991b1b);
-  --error-border: light-dark(1px solid #fca5a5, 1px solid #dc2626);
+  --error-border: 1px solid light-dark(#fca5a5, #dc2626);
   --text-color-muted: light-dark(#6b7280, #9ca3af);
   /* svelte-widgets names (SubpageGrid reads both) */
   --text-muted: var(--text-color-muted);
@@ -37,23 +37,19 @@
   --struct-bg: light-dark(rgba(0, 0, 0, 0.03), rgba(255, 255, 255, 0.07));
   --struct-bg-fullscreen: var(--page-bg);
   --pane-bg: light-dark(rgb(229, 231, 235), rgb(28 29 33));
-  --pane-border: light-dark(
-    1px solid rgba(0, 0, 0, 0.15),
-    1px solid rgba(255, 255, 255, 0.15)
-  );
+  /* light-dark() takes colors only: a whole `1px solid …` inside it invalidates the property */
+  --pane-border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
+  --pane-box-shadow: 0 4px 20px -4px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.5));
   --pane-bg-hover: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  --dropzone-border: light-dark(1px solid #9ca3af, 1px solid #4a5568);
+  --dropzone-border: 1px solid light-dark(#9ca3af, #4a5568);
   --dropzone-bg: light-dark(rgba(0, 0, 0, 0.02), rgba(45, 55, 72, 0.5));
-  --dragover-border: light-dark(1px solid #4f46e5, 1px solid #007acc);
+  --dragover-border: 1px solid light-dark(#4f46e5, #007acc);
   --dragover-bg: light-dark(rgba(79, 70, 229, 0.1), rgba(0, 122, 204, 0.1));
   --nav-link-bg: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15));
   --nav-link-bg-hover: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
   --nav-link-active-color: light-dark(darkseagreen, mediumseagreen);
   --plot-legend-bg-color: light-dark(rgba(255, 255, 255, 0.6), rgba(0, 0, 0, 0.2));
-  --plot-legend-border: light-dark(
-    1px solid rgba(0, 0, 0, 0.2),
-    1px solid rgba(255, 255, 255, 0.2)
-  );
+  --plot-legend-border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
   --plot-legend-item-color: var(--text-color);
   --plot-legend-item-hover-bg-color: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
   --github-corner-color: var(--page-bg);
@@ -174,6 +170,9 @@
   --z-index-viewer-chip: 2;
   --z-index-viewer-pane: 10;
   --pane-z-index: var(--z-index-viewer-pane);
+  /* a viewer or chart header holding an open pane: panes can be dragged past their viewer,
+     and an equal-tier neighbour later in the page (legend, header row) painted over them */
+  --z-index-viewer-pane-open: 12;
   --z-index-viewer-dropdown: 100;
   --z-index-viewer-tooltip: 1000;
 
@@ -551,6 +550,10 @@ body.fullscreen .draggable-pane {
   }
   :where(h1, h2, h3, h4, h5, h6) {
     scroll-margin-top: 100px;
+    text-wrap-style: balance; /* longhand keeps an inherited white-space: nowrap */
+  }
+  :where(p, li, figcaption) {
+    text-wrap-style: pretty;
   }
   :where(h1, h2, h3, h4, h5, h6):target {
     color: var(--accent-color, cornflowerblue);

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { HistogramSeries, ScaleType } from '$lib/plot'
-  import { Histogram } from '$lib/plot'
+  import type { HistogramSeries, ScaleType } from '#lib/plot/index.js'
+  import { Histogram } from '#lib/plot/index.js'
   import {
     generate_exponential,
     generate_log_normal,
     generate_normal,
     generate_power_law,
     generate_uniform,
-  } from '$site/histogram-data'
+  } from '#site/histogram-data.js'
 
   let bin_count = $state(20)
   let sample_size = $state(1000)

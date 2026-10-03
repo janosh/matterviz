@@ -1,5 +1,5 @@
 import type { CameraFlightController, CameraPose } from './camera-flight'
-import { abortable } from '$lib/utils'
+import { abortable } from '#lib/utils.js'
 
 export type FlightTimeline = {
   start: number

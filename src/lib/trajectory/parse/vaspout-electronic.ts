@@ -5,12 +5,16 @@
 // band paths from KPOINTS_OPT, e.g. by phelel) into the matterviz
 // ElectronicBandStructure shape consumed by the spectral components.
 //
-// Schema reference: ferrox src/io/vasp/hdf5/mod.rs path constants (which follow
-// py4vasp's VASP 6.x schema definitions).
-import { create_frac_to_cart, euclidean_dist, reciprocal_lattice } from '$lib/math'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { pretty_sym_point } from '$lib/spectral/helpers'
-import type { Branch, ElectronicBandStructure, ElectronicDos, QPoint } from '$lib/spectral'
+// Schema reference: py4vasp's VASP 6.x schema definitions.
+import { create_frac_to_cart, euclidean_dist, reciprocal_lattice } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { pretty_sym_point } from '#lib/spectral/helpers.js'
+import type {
+  Branch,
+  ElectronicBandStructure,
+  ElectronicDos,
+  QPoint,
+} from '#lib/spectral/index.js'
 import type * as h5wasm from 'h5wasm'
 import {
   read_dataset,
@@ -23,22 +27,26 @@ import {
 const DOS_GROUPS = [`results/electron_dos`, `results/electron_dos_kpoints_opt`]
 const DOS_ENERGY_NAMES = [`energies`, `energy`]
 const DOS_TOTAL_NAMES = [`dos`, `total`]
-const BANDS_GROUPS = [
-  `results/electron_eigenvalues`,
-  `results/electron_eigenvalues_kpoints_opt`,
+// The KPOINTS_OPT band path wins over the SCF k-points, which VASP 6.3+ writes on every run
+// and are usually a uniform mesh. Each group reads labels and segment lengths from its own
+// input/kpoints* group: mixing them misplaces labels or rejects a valid path.
+const BANDS_SOURCES = [
+  {
+    group: `results/electron_eigenvalues_kpoints_opt`,
+    input: `input/kpoints_opt`,
+    coord_fallbacks: [],
+    // KPOINTS_OPT exists to sample a path, labelled or as an explicit k-point list
+    needs_line_mode: false,
+  },
+  {
+    group: `results/electron_eigenvalues`,
+    input: `input/kpoints`,
+    coord_fallbacks: [`results/kpoints/coordinates`],
+    needs_line_mode: true,
+  },
 ]
 const EIGENVALUE_NAMES = [`eigenvalues`, `eigenvalue`]
 const KPOINT_COORD_NAMES = [`kpoints`, `kpoint_coords`]
-const KPOINT_COORD_FALLBACKS = [`results/kpoints/coordinates`]
-const KPOINT_LABEL_PATHS = [
-  `results/kpoints/labels`,
-  `input/kpoints_opt/labels_kpoints`,
-  `input/kpoints/labels_kpoints`,
-]
-const KPOINTS_PER_SEGMENT_PATHS = [
-  `input/kpoints_opt/number_kpoints`,
-  `input/kpoints/number_kpoints`,
-]
 
 export interface VaspoutElectronicData {
   dos: ElectronicDos | null
@@ -135,18 +143,22 @@ export const line_mode_labels = (
   return { labels: per_kpoint, per_segment }
 }
 
+// KPOINTS mode as py4vasp reads it: the first character of input/kpoints*/mode, `l` for line
+const is_line_mode = (mode: unknown): boolean =>
+  /^l/i.test(to_string_array(Array.isArray(mode) ? mode : [mode])?.[0] ?? ``)
+
 export const read_vaspout_bands = (
   h5_file: h5wasm.File,
   dos: ElectronicDos | null = read_vaspout_dos(h5_file),
 ): ElectronicBandStructure | null => {
-  for (const group of BANDS_GROUPS) {
+  for (const { group, input, coord_fallbacks, needs_line_mode } of BANDS_SOURCES) {
     const eigenvalues = read_first_dataset(
       h5_file,
       EIGENVALUE_NAMES.map((name) => `${group}/${name}`),
     ) as number[][][] | null
     const kpoint_data = read_first_dataset(h5_file, [
       ...KPOINT_COORD_NAMES.map((name) => `${group}/${name}`),
-      ...KPOINT_COORD_FALLBACKS,
+      ...coord_fallbacks,
     ]) as number[][] | null
     if (!Array.isArray(eigenvalues) || !Array.isArray(kpoint_data)) continue
 
@@ -181,11 +193,15 @@ export const read_vaspout_bands = (
     const recip_lattice = band_recip_lattice(read_lattice(h5_file))
     const line_mode = line_mode_labels(
       to_string_array(
-        read_first_dataset(h5_file, [`${group}/kpoints_labels`, ...KPOINT_LABEL_PATHS]),
+        read_first_dataset(h5_file, [`${group}/kpoints_labels`, `${input}/labels_kpoints`]),
       ),
-      to_scalar_number(read_first_dataset(h5_file, KPOINTS_PER_SEGMENT_PATHS)),
+      to_scalar_number(read_dataset(h5_file, `${input}/number_kpoints`)),
       n_kpoints,
     )
+    // An SCF mesh (Gamma/Monkhorst/automatic mode) is no band path: drawing its eigenvalues
+    // along a fake "path" branch looks like a band structure but is not one
+    if (needs_line_mode && !line_mode && !is_line_mode(read_dataset(h5_file, `${input}/mode`)))
+      continue
     const labels = line_mode?.labels ?? null
 
     const distance: number[] = []

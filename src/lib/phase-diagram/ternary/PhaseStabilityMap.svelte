@@ -3,14 +3,14 @@
   // the exact stability windows as solid bars and transition temperatures as dashed lines.
   // Click/drag sets the temperature; clicking a formula selects the phase. Everything but the
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
-  import { add_alpha, get_d3_interpolator } from '$lib/colors'
-  import { get_formula_label_segments } from '$lib/composition/format'
-  import { clamp } from '$lib/math'
+  import { add_alpha, get_d3_interpolator } from '#lib/colors/index.js'
+  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import { clamp01 } from '$lib/utils'
+  import { clamp01 } from '#lib/utils.js'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { type CanvasFrame, create_canvas_surface } from '$lib/canvas-surface.svelte'
+  import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
   import type { PhaseTemperatureHover, TernaryDisplay, TernaryPhaseDiagram } from './types'
   import { TERNARY_COLORS } from './types'
 

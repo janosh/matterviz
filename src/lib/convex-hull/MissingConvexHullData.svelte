@@ -1,5 +1,5 @@
 <script lang="ts">
-  import EmptyState from '$lib/EmptyState.svelte'
+  import EmptyState from '#lib/EmptyState.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // `error` switches from the missing-entries hint to the message of an invalid entries prop

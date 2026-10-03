@@ -1,7 +1,7 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Async synthesis planning through a persistent worker. Requests with a custom gas provider stay
 // on the main thread because provider methods are not structured-cloneable.
-import { create_worker_client, type WorkerRequestOptions } from '$lib/worker-client.svelte'
+import { create_worker_client, type WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { plan_synthesis } from './plan'
 import type { SynthesisPlan, SynthesisPlanProgress, SynthesisPlanRequest } from './types'
 

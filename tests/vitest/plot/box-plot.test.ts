@@ -3,7 +3,7 @@ import {
   compute_box_whiskers,
   summarize_box_samples,
   WHISKER_MODES,
-} from '$lib/plot'
+} from '#lib/plot/box/box-plot.js'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 

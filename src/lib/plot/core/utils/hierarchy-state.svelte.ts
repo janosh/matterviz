@@ -1,4 +1,4 @@
-import type { FileExportContext } from '$lib/io/file-export.svelte'
+import type { FileExportContext } from '#lib/io/file-export.svelte.js'
 // Reactive shell state shared by the hierarchical part-of-whole charts
 // (Sunburst, Treemap): hierarchy ingestion, zoom/breadcrumb navigation, hover +
 // tooltip state, legend muting, metric coloring, color-bar layout and keyboard
@@ -6,16 +6,20 @@ import type { FileExportContext } from '$lib/io/file-export.svelte'
 // projection/tiling and hands it back through the `visible`, `node_center` and
 // `legend_points` hooks. HierarchyShell.svelte renders the markup around it.
 
-import type { D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { Vec2 } from '#lib/math.js'
 import { is_modifier_chord } from 'svelte-widgets/utils'
-import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-import { closest_data_idx, is_activation_key, pointer_pos } from '$lib/plot/core/interactions'
-import type { Sides } from '$lib/plot/core/layout'
-import { filter_padding } from '$lib/plot/core/layout'
-import { invalidate_text_metrics_after_fonts_ready } from '$lib/plot/core/text-metrics'
-import type { LegendConfig, LegendItem } from '$lib/plot/core/types'
-import type { ColorBarSide } from '$lib/plot/core/utils/hierarchy-chart'
+import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+import {
+  closest_data_idx,
+  is_activation_key,
+  pointer_pos,
+} from '#lib/plot/core/interactions.js'
+import type { Sides } from '#lib/plot/core/layout.js'
+import { filter_padding } from '#lib/plot/core/layout.js'
+import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
+import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
+import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart.js'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -28,9 +32,9 @@ import {
   resolve_label_font,
   selection_within,
   toggle_muted,
-} from '$lib/plot/core/utils/hierarchy-chart'
-import { export_chart_image } from '$lib/plot/core/utils/chart-export'
-import { resolve_legend_visibility } from '$lib/plot/core/utils/series-visibility'
+} from '#lib/plot/core/utils/hierarchy-chart.js'
+import { export_chart_image } from '#lib/plot/core/utils/chart-export.js'
+import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
 import type {
   OtherBucketInfo,
   PositionedArc,
@@ -40,8 +44,8 @@ import type {
   SunburstNodeHandlerProps,
   SunburstSort,
   SunburstValueMode,
-} from '$lib/plot/core/utils/hierarchy-layout'
-import { compute_sunburst_layout } from '$lib/plot/core/utils/hierarchy-layout'
+} from '#lib/plot/core/utils/hierarchy-layout.js'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
 import type { ComponentProps, Snippet } from 'svelte'
 import { tick, untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'

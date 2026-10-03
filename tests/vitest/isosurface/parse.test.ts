@@ -1,18 +1,18 @@
 // Tests for isosurface volumetric file parsers (CHGCAR, .cube)
-import { BOHR_TO_ANGSTROM } from '$lib/constants'
+import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import {
   parse_chgcar,
   parse_cube,
   parse_decimal_token,
   parse_float_block,
   parse_volumetric_file,
-} from '$lib/isosurface/parse'
-import type { VolumetricFileData } from '$lib/isosurface/types'
-import type { Vec3 } from '$lib/math'
+} from '#lib/isosurface/parse.js'
+import type { VolumetricFileData } from '#lib/isosurface/types.js'
+import type { Vec3 } from '#lib/math.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { normalize_scientific_notation } from '$lib/utils'
+import { normalize_scientific_notation } from '#lib/utils.js'
 import { grid_value, read_maybe_gz } from '../test-fixtures'
-import { create_volume_sampler } from '$lib/isosurface/sampling'
+import { create_volume_sampler } from '#lib/isosurface/sampling.js'
 // spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
 // failing assertion above it, silencing console.warn for the rest of the file
 beforeEach(() => vi.restoreAllMocks())
@@ -268,20 +268,22 @@ describe(`parse_chgcar`, () => {
 
   // `S...` lines are Selective dynamics by VASP's first-letter rule, so the bogus modes here
   // start with other letters
-  test.each([`Foo`, `Bogus`])(
-    `treats unrecognized coordinate mode %s as Cartesian without consuming it as selective dynamics`,
+  // parse_poscar rejects these; CHGCAR reads them the way VASP does, where only a line
+  // starting with C or K means Cartesian (an inverted rule placed this site at 0.1, 0.1, 0.1)
+  test.each([`Foo`, `Bogus`, `Fractional`])(
+    `reads unrecognized coordinate mode %s as Direct without consuming it as selective dynamics`,
     (coord_mode) => {
-      // parse_poscar rejects this; CHGCAR stays lenient because only `D...` means Direct
       const result = parse_chgcar(
         make_chgcar({
           coord_mode,
           lattice: [`5 0 0`, `0 5 0`, `0 0 5`],
           elements: `Si`,
           counts: `1`,
-          positions: [`2.5 2.5 2.5`],
+          positions: [`0.5 0.5 0.5`],
         }),
       )
       expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
+      expect(result?.structure.sites[0].xyz).toEqual([2.5, 2.5, 2.5])
     },
   )
 
@@ -324,14 +326,27 @@ describe(`parse_chgcar`, () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
   })
 
-  test(`skips augmentation occupancies section`, () => {
+  // Real VASP CHGCARs follow each block with augmentation occupancies (and a spin-polarized
+  // one may carry a per-atom moment line); the parser used to stop there and silently drop
+  // the magnetization block
+  const aug = `augmentation occupancies   1   8\n  0.1234E+00  0.2345E+00 -0.3456E-01`
+  test.each([
+    [`augmentation only`, aug],
+    [`augmentation and a moment line`, `${aug}\n 2.0 2.0`],
+  ])(`keeps every block across %s`, (_desc, augmentation) => {
     const result = parse_chgcar(
       make_chgcar({
-        augmentation: `augmentation occupancies   1   8\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8`,
+        augmentation,
+        second_volume: `   2   2   2\n-1 -2 -3 -4 -5 -6 -7 -8\n${aug}`,
       }),
     )
-    expect(result).not.toBeNull()
-    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
+    expect(result.volumes.map((vol) => vol.label)).toEqual([
+      `charge density`,
+      `magnetization density`,
+    ])
+    const volume = result.structure.lattice.volume
+    expect(grid_at(result, 1)(1, 1, 1)).toBeCloseTo(-8 / volume, 12)
+    expect(grid_at(result, 1)(0, 0, 0)).toBeCloseTo(-1 / volume, 12)
   })
 
   test(`wraps fractional coords to [0, 1)`, () => {
@@ -852,15 +867,17 @@ describe(`site fixtures`, () => {
     expect(charge.data_range.min).toBeGreaterThan(0)
   })
 
-  test(`real spin-polarized ELFCAR stays within the ELF range [0, 1]`, () => {
-    const { volumes } = load(`pymatgen-ELFCAR`)
-    expect(volumes.map((vol) => vol.label)).toEqual([`ELF (spin up)`, `ELF (spin down)`])
-    expect(volumes[0].data_range.max).toBeCloseTo(0.8685, 3)
-    for (const { data_range } of volumes) {
-      expect(data_range.min).toBeGreaterThanOrEqual(0)
-      expect(data_range.max).toBeLessThanOrEqual(1)
-    }
-  })
+  // A renamed ELFCAR (issue #477) is recognised by its [0, 1] values, not divided by V_cell
+  test.each([`pymatgen-ELFCAR`, `C_spin.vasp`, `runs/graphite/elf_up_down`])(
+    `real spin-polarized ELFCAR read as %s keeps its stored ELF values`,
+    (filename) => {
+      const content = read_maybe_gz(`src/site/isosurfaces/pymatgen-ELFCAR.gz`)
+      const volumes = parse_volumetric_file(content, filename)?.volumes ?? []
+      expect(volumes.map((vol) => vol.label)).toEqual([`ELF (spin up)`, `ELF (spin down)`])
+      // largest value of each block as written in the file (8.6848E-01)
+      expect(volumes.map(({ data_range }) => data_range.max)).toEqual([0.86848, 0.86848])
+    },
+  )
 
   test(`molecular .cube keeps the (N-1)*voxel box and atoms inside it`, () => {
     const parsed = load(`glycine-density.cube`)
@@ -917,6 +934,11 @@ describe(`parse_volumetric_file`, () => {
     [`PARCHG.BAND_1`, `charge density`, true],
     [`path/to/CHGCAR`, `charge density`, true],
     [`run_PARCHG_001`, `charge density`, true],
+    // only the basename names the kind, never a directory
+    [`CHG`, `charge density`, true],
+    [`elfcar_runs/CHGCAR`, `charge density`, true],
+    [`locpot-study/PARCHG`, `charge density`, true],
+    [`chgcar_runs/ELFCAR`, `ELF`, false],
     // `data.dat` says nothing: content sniffing on the POSCAR-like header with scale factor
     [`data.dat`, `charge density`, true],
   ])(`detects VASP volumetric from %s as %s`, (filename, label, divided_by_volume) => {
@@ -926,6 +948,36 @@ describe(`parse_volumetric_file`, () => {
     expect(grid_at(result)(1, 1, 1)).toBeCloseTo(divided_by_volume ? 8 / cell_volume : 8, 10)
   })
 
+  // Read without a LOCPOT name, a potential used to count as a density and shrink by V_cell
+  // (-15 eV read as -0.085)
+  test(`an unnamed LOCPOT is a local potential, not a density`, () => {
+    const content = read_maybe_gz(`src/site/isosurfaces/Al-slab-LOCPOT.gz`)
+    const named = parse_volumetric_file(content, `LOCPOT`)?.volumes[0]
+    const unnamed = parse_volumetric_file(content, `Al_pot.vasp`)?.volumes[0]
+    expect(unnamed?.label).toBe(`local potential`)
+    expect(unnamed?.data_range).toEqual(named?.data_range)
+  })
+
+  // A name that says nothing makes it an ELF only when every value of every block is in [0, 1]
+  const elf_values = `0.0  0.1  0.2  0.3  0.4  0.5  0.6  1.0`
+  test.each([
+    [elf_values, ``, [`ELF`]],
+    [elf_values, `   2   2   2\n${elf_values}`, [`ELF (spin up)`, `ELF (spin down)`]],
+    [elf_values.replace(`1.0`, `1.01`), ``, [`charge density`]],
+    [elf_values.replace(`0.0`, `-0.01`), ``, [`charge density`]],
+    [
+      elf_values,
+      `   2   2   2\n${elf_values.replace(`0.5`, `-0.5`)}`,
+      [`charge density`, `magnetization density`],
+    ],
+  ])(`unnamed grid %s / %s reads as %s`, (data, second_volume, labels) => {
+    const result = parse_volumetric_file(make_chgcar({ data, second_volume }), `grid.dat`)
+    expect(result?.volumes.map((volume) => volume.label)).toEqual(labels)
+    const divisor =
+      labels[0] === `charge density` ? (result?.structure.lattice.volume ?? NaN) : 1
+    expect(grid_at(result)(1, 1, 1)).toBe(Number(data.split(/\s+/).at(-1)) / divisor)
+  })
+
   test.each([
     [`random text`, `random.txt`],
     [`a\nb\nc`, `unknown`],
@@ -933,11 +985,19 @@ describe(`parse_volumetric_file`, () => {
     expect(parse_volumetric_file(content, filename)).toBeNull()
   })
 
-  test(`VASP filename takes priority over content-based detection`, () => {
-    // .cube content with CHGCAR filename: parse_chgcar is called (throws on .cube content)
-    // rather than falling through to content-based .cube detection
-    expect(() => parse_volumetric_file(minimal_cube, `CHGCAR`)).toThrow(
-      /Failed to parse VASP volumetric \(CHGCAR-like\) file 'CHGCAR'/,
+  // A VASP name needs a VASP grid in the content: POSCAR_from_CHGCAR is a structure, and
+  // callers fall back to structure parsing on null. A real but broken CHGCAR still throws.
+  test.each([
+    [`CHGCAR`, minimal_cube],
+    [`POSCAR_from_CHGCAR`, `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`],
+  ])(`a VASP name over non-volumetric content (%s) is not volumetric`, (name, content) => {
+    expect(parse_volumetric_file(content, name)).toBeNull()
+  })
+
+  test(`a VASP-named file with a grid but truncated data still throws`, () => {
+    const truncated = make_chgcar({ data: `1.0 2.0 3.0` })
+    expect(() => parse_volumetric_file(truncated, `CHGCAR`)).toThrow(
+      /Failed to parse VASP volumetric \(CHGCAR-like\) file 'CHGCAR'.*truncated/,
     )
   })
 

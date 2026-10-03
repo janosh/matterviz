@@ -2,15 +2,15 @@
   // Time-averaged partial g(r) of an MD run with the coordination shells read off each curve.
   // Frames are analysed one at a time (see calc-trajectory-rdf.ts), so the shared pane's
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
-  import { format_num } from '$lib/labels'
-  import { cell_heights } from '$lib/math'
-  import type { ViewerPaneOptions } from '$lib/overlays'
-  import { has_usable_lattice, lattice_unavailable_reason } from '$lib/structure/validation'
-  import type { TrajectoryRun } from '$lib/trajectory'
-  import type { AnalysisCollectOptions } from '$lib/trajectory/analysis'
-  import { positive_int, sweep_frame_plan, sweep_progress } from '$lib/trajectory/analysis'
-  import AnalysisSummary from '$lib/trajectory/AnalysisSummary.svelte'
-  import TrajectoryAnalysisPane from '$lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import { format_num } from '#lib/labels.js'
+  import { cell_heights } from '#lib/math.js'
+  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
+  import type { TrajectoryRun } from '#lib/trajectory/index.js'
+  import type { AnalysisCollectOptions } from '#lib/trajectory/analysis.js'
+  import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
+  import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
+  import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import type { TrajectoryRdf } from './calc-trajectory-rdf'
   import {
     collect_trajectory_rdf,

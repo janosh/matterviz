@@ -1,25 +1,25 @@
 <script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import { FullscreenButton } from '$lib/layout'
-  import type { PaneToggleProps } from '$lib/overlays'
-  import type { CartesianFrame } from '$lib/plot/core/cartesian-frame.svelte'
-  import type { FacetAxis } from '$lib/plot/core/facets'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { FullscreenButton } from '#lib/layout/index.js'
+  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import type { FacetAxis } from '#lib/plot/core/facets.js'
   import type {
     MarginalAxis,
     MarginalAxisBinding,
     MarginalSeriesInput,
     ResolvedMarginals,
-  } from '$lib/plot/core/marginals'
+  } from '#lib/plot/core/marginals.js'
   import {
     marginal_axis,
     marginal_axis_presence,
     outer_strip_reservation,
-  } from '$lib/plot/core/marginals'
-  import PlotMarginals from '$lib/plot/core/components/PlotMarginals.svelte'
-  import { chart_css_defaults } from '$lib/plot/core/components/ChartShell.svelte'
-  import PlotTitle from '$lib/plot/core/components/PlotTitle.svelte'
-  import ZoomRect from '$lib/plot/core/components/ZoomRect.svelte'
-  import type { UserContentProps } from '$lib/plot/core/types'
+  } from '#lib/plot/core/marginals.js'
+  import PlotMarginals from '#lib/plot/core/components/PlotMarginals.svelte'
+  import { chart_css_defaults } from '#lib/plot/core/components/ChartShell.svelte'
+  import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
+  import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
+  import type { UserContentProps } from '#lib/plot/core/types.js'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
@@ -351,6 +351,11 @@
     transition:
       opacity 0.2s,
       background-color 0.2s;
+  }
+  /* lifted while its pane is open: every chart's row shares one z-index, so a chart further
+     down the page painted its chrome over a pane dragged onto it */
+  .header-controls:has(:global(.draggable-pane.pane-open)) {
+    z-index: var(--z-index-viewer-pane-open, 12);
   }
   .header-controls.always-visible,
   .plot-frame:hover .header-controls,

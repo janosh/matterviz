@@ -1,32 +1,19 @@
+import type { BondColumns, BondPlacements } from '#lib/structure/bond-rendering.js'
 import {
   BondFrame,
   pack_bonds,
   prepare_bond_placements,
-  type BondColumns,
-  type BondPlacements,
-} from '$lib/structure/bond-rendering'
-import {
-  compute_display_metrics,
-  prepare_vector_geometry,
-  type PreparedVectorGeometry,
-  type VectorGeometrySettings,
-} from '$lib/structure/vectors'
-import { numeric_sites, type DisplayMetrics } from '$lib/structure/site'
-import {
-  compute_polyhedra,
-  type PolyhedraOptions,
-  type Polyhedron,
-} from '$lib/structure/polyhedra'
+} from '#lib/structure/bond-rendering.js'
+import type { PreparedVectorGeometry, VectorGeometrySettings } from '#lib/structure/vectors.js'
+import { compute_display_metrics, prepare_vector_geometry } from '#lib/structure/vectors.js'
+import { numeric_sites, type DisplayMetrics } from '#lib/structure/site.js'
+import type { PolyhedraOptions, Polyhedron } from '#lib/structure/polyhedra.js'
+import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 // Display preparation travels with a frame through the existing source worker and prefetch.
 // Source arrays remain independently owned; only this worker's scratch projection is mutable.
-import { BondSearch, compute_bonds, type BondingStrategy } from '$lib/structure/bonding'
-import {
-  FrameView,
-  frame_transfers,
-  wrap_frame_coordinates,
-  type NumericFrame,
-  type FrameChannels,
-} from './frame'
+import { BondSearch, compute_bonds, type BondingStrategy } from '#lib/structure/bonding.js'
+import type { NumericFrame, FrameChannels } from './frame'
+import { FrameView, frame_transfers, wrap_frame_coordinates } from './frame'
 
 export type FramePreparation = {
   bonding_strategy: BondingStrategy

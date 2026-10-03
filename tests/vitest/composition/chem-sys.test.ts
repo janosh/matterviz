@@ -1,4 +1,4 @@
-import { arity_name, chem_sys_sunburst_data } from '$lib/composition'
+import { arity_name, chem_sys_sunburst_data } from '#lib/composition/chem-sys.js'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`chem_sys_sunburst_data`, () => {

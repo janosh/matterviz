@@ -2,14 +2,14 @@
 // the parsing, this reads (and decompresses) the bytes through the vscode.workspace.fs API so
 // remote (SSH) workspaces work too.
 
-import { normalize_browser_supported_filename } from '$lib/file-viewer/eligibility'
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
-import { detect_compression_format, is_stream_compression_format } from '$lib/io/decompress'
-import type { StreamCompressionFormat } from '$lib/io/decompress'
+import { normalize_browser_supported_filename } from '#lib/file-viewer/eligibility.js'
+import { COMPRESSION_EXTENSIONS_REGEX } from '#lib/constants.js'
+import { detect_compression_format, is_stream_compression_format } from '#lib/io/decompress.js'
+import type { StreamCompressionFormat } from '#lib/io/decompress.js'
 import {
   indexed_trajectory_format,
   is_indexable_trajectory_filename,
-} from '$lib/trajectory/format-detect'
+} from '#lib/trajectory/format-detect.js'
 import { format_bytes } from 'svelte-widgets/format'
 import { Readable } from 'node:stream'
 import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'

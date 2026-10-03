@@ -1,8 +1,8 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Async wrapper for calc_structure_id via a persistent Web Worker.
 // Falls back to synchronous main-thread computation during SSR / where Worker is missing.
-import type { AnyStructure } from '$lib/structure'
-import { create_worker_client } from '$lib/worker-client.svelte'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { calc_structure_id } from './calc-structure-id'
 import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
 import { to_structure_id_payload } from './worker-payload'

@@ -1,12 +1,12 @@
 <script lang="ts">
   // ReferencePlane: 3D reference planes (axis-aligned, normal-defined, or point-defined)
-  import type { Vec2, Vec3 } from '$lib/math'
-  import { cross_3d, normalize_vec, subtract } from '$lib/math'
-  import { dispose_on_change, positions_geometry } from '$lib/scene'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import { cross_3d, normalize_vec, subtract } from '#lib/math.js'
+  import { dispose_on_change, positions_geometry } from '#lib/scene/index.js'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
-  import { create_to_threejs, span_or } from '$lib/plot/scatter-3d/scene-coords'
-  import type { RefPlane } from '$lib/plot/core/types'
+  import { create_to_threejs, span_or } from '#lib/plot/scatter-3d/scene-coords.js'
+  import type { RefPlane } from '#lib/plot/core/types.js'
 
   let {
     ref_plane,

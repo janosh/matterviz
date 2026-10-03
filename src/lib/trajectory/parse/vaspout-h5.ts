@@ -13,18 +13,18 @@
 // are read by ./vaspout-electronic.ts and attached as metadata.electronic;
 // vaspwave.h5 charge density is handled by isosurface/parse-vaspwave.ts.
 //
-// Schema reference: ferrox src/io/vasp/hdf5/mod.rs (which follows py4vasp's
-// VASP 6.x schema definitions).
-import { create_frac_to_cart, type Vec3 } from '$lib/math'
+// Schema reference: py4vasp's VASP 6.x schema definitions.
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
+import { create_frac_to_cart, det_3x3, type Vec3 } from '#lib/math.js'
 import type * as h5wasm from 'h5wasm'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
   calc_force_stats,
   checked_site_forces,
   create_trajectory_frame,
   expand_ion_types,
-} from '$lib/trajectory/helpers'
-import type { TrajectoryFrame } from '$lib/trajectory/index'
+} from '#lib/trajectory/helpers.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import {
   is_hdf5_group,
   read_dataset,
@@ -69,6 +69,7 @@ const OSZICAR_LABELS = `intermediate/ion_dynamics/oszicar_label`
 const ELECTRONIC_STEP_ENERGIES = `intermediate/electronic_steps/energies`
 const INCAR_POTIM = `input/incar/POTIM`
 const INCAR_IBRION = `input/incar/IBRION`
+const INCAR_PSTRESS = `input/incar/PSTRESS`
 
 // vaspout.h5 root groups per the VASP 6.x schema. torch-sim files use flat
 // dataset names (positions/atomic_numbers/...) and never these groups.
@@ -102,7 +103,7 @@ interface ScfIonicStep {
 
 // OSZICAR rows are [total_scf_rows, n_cols] with oszicar_label naming columns
 // (N, E, dE, d eps, ncg, rms, rms(c)). The N counter resets to 1 at each new
-// ionic step, which is how rows group into ionic steps (same as ferrox).
+// ionic step, which is how rows group into ionic steps.
 const read_oszicar_history = (h5_file: h5wasm.File): ScfIonicStep[] | null => {
   const rows = read_dataset(h5_file, OSZICAR_ROWS) as number[][] | null
   const labels = to_string_array(read_dataset(h5_file, OSZICAR_LABELS))
@@ -219,6 +220,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
   // intermediate/ion_dynamics/scale), distinct from the final-structure scale.
   const scale = to_scalar_number(read_dataset(h5_file, FINAL_SCALE)) ?? 1
   const traj_scale = to_scalar_number(read_dataset(h5_file, TRAJ_SCALE)) ?? scale
+  const pstress_kbar = to_scalar_number(read_dataset(h5_file, INCAR_PSTRESS)) ?? 0
 
   // Checked against the whole-dataset budget: the only reads here big enough to hang the tab
   const read_bounded = (path: string) => read_dataset(h5_file, path, FORMAT)
@@ -253,7 +255,13 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
     const positions = frac_positions.map((frac) => frac_to_cart(frac as Vec3))
     const metadata: Record<string, unknown> = { ...scf_frame_metadata(scf) }
     const energy = to_finite_number(raw_energy)
-    if (energy !== null) metadata.energy = energy
+    if (energy !== null) {
+      // With PSTRESS set, the TOTEN column holds the enthalpy F + PV; `energy` is F, as
+      // the OUTCAR and vasprun readers report it (PSTRESS in kB, 10 kB = 1 GPa)
+      const pv = ((pstress_kbar / 10) * Math.abs(det_3x3(lattice))) / EV_PER_A3_TO_GPA
+      metadata.energy = energy - pv
+      if (pv !== 0) metadata.enthalpy = energy
+    }
     // Per-atom vectors on the sites, like every other parser; only the statistics are metadata
     const site_forces = checked_site_forces(
       forces,
@@ -284,7 +292,9 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
           build_frame(
             traj_lattices[step],
             traj_positions[step],
-            step,
+            // ionic steps count from 1, as VASP and the OUTCAR/vasprun/XDATCAR readers number
+            // them; from 0 the same run's time axis (step × POTIM) sat one step earlier
+            step + 1,
             scf_history?.[step],
             energies?.[step]?.[energy_col],
             traj_forces?.[step],
@@ -295,7 +305,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
         // Torn final step: keep the frames parsed so far and say what was lost.
         dropped_steps = n_steps - step
         warn(
-          `Dropping ${dropped_steps} torn vaspout.h5 ionic step(s) from ${TRAJ_POSITIONS} starting at step ${step}`,
+          `Dropping ${dropped_steps} torn vaspout.h5 ionic step(s) from ${TRAJ_POSITIONS} starting at step ${step + 1}`,
           error,
         )
         break
@@ -320,7 +330,7 @@ export function parse_vaspout_h5_file(h5_file: h5wasm.File, warn: WarnFn): Parse
         build_frame(
           final_lattice_data,
           final_positions_data,
-          0,
+          1,
           scf_history?.at(-1),
           energies?.at(-1)?.[energy_col],
           undefined,

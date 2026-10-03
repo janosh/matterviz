@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { BandsOptions, DosOptions } from './index'
-  import { axis_with_range } from '$lib/plot/core/shared-axes'
+  import { axis_with_range } from '#lib/plot/core/shared-axes.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'

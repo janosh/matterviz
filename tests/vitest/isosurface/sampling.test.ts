@@ -8,12 +8,12 @@ import {
   sample_volume_at_positions,
   sanitize_display_range,
   trilinear_interpolate,
-} from '$lib/isosurface/sampling'
-import type { DisplayRange } from '$lib/isosurface/sampling'
-import type { VolumetricData } from '$lib/isosurface/types'
-import { marching_cubes } from '$lib/marching-cubes'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { create_frac_to_cart } from '$lib/math'
+} from '#lib/isosurface/sampling.js'
+import type { DisplayRange } from '#lib/isosurface/sampling.js'
+import type { VolumetricData } from '#lib/isosurface/types.js'
+import { marching_cubes } from '#lib/marching-cubes.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_frac_to_cart } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 import {
   cubic_matrix,

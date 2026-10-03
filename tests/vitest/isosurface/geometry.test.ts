@@ -1,15 +1,15 @@
 // Isosurface geometry extraction shared by the worker and the main-thread fallback, plus
 // the create_worker_client wiring (happy-dom has no Worker, so a stub is installed before
 // the client module is imported to exercise the real postMessage plumbing)
-import type { compute_geometries_async as ComputeGeometriesAsync } from '$lib/isosurface/async-geometry.svelte'
-import type { GeometryInput } from '$lib/isosurface/geometry'
+import type { compute_geometries_async as ComputeGeometriesAsync } from '#lib/isosurface/async-geometry.svelte.js'
+import type { GeometryInput } from '#lib/isosurface/geometry.js'
 import {
   compute_isosurface_geometries,
   geometry_result_transferables,
-} from '$lib/isosurface/geometry'
-import { create_volume_sampler, prepare_geometry_grid } from '$lib/isosurface/sampling'
-import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '$lib/isosurface/types'
-import { cross_3d, dot, subtract, type Vec3 } from '$lib/math'
+} from '#lib/isosurface/geometry.js'
+import { create_volume_sampler, prepare_geometry_grid } from '#lib/isosurface/sampling.js'
+import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
+import { cross_3d, dot, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
 import { install_stub_worker } from '../setup'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
@@ -153,7 +153,7 @@ const stub = install_stub_worker<{ id: number; input: GeometryInput }>(({ input 
 let compute_geometries_async: typeof ComputeGeometriesAsync
 
 beforeAll(async () => {
-  ;({ compute_geometries_async } = await import(`$lib/isosurface/async-geometry.svelte`))
+  ;({ compute_geometries_async } = await import(`#lib/isosurface/async-geometry.svelte.js`))
 })
 afterEach(stub.reset)
 

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { TooltipValue } from '$lib/tooltip'
+  import { TooltipValue } from '#lib/tooltip/index.js'
   import {
     chart_export_filename,
     create_chart_exporter,
-  } from '$lib/plot/core/utils/chart-export'
-  import { format_value_or_num } from '$lib/labels'
+  } from '#lib/plot/core/utils/chart-export.js'
+  import { format_value_or_num } from '#lib/labels.js'
   import type {
     BarStyle,
     HistogramHandlerProps,
@@ -12,46 +12,46 @@
     PanConfig,
     RefLine,
     RefLineEvent,
-  } from '$lib/plot'
-  import { HistogramControls } from '$lib/plot'
-  import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
-  import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
-  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
-  import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import { resolve_plot_display } from '$lib/plot/core/display.svelte'
-  import { build_legend_items } from '$lib/plot/core/data-transform'
-  import type { FacetLayoutContext } from '$lib/plot/core/facets'
+  } from '#lib/plot/index.js'
+  import { HistogramControls } from '#lib/plot/index.js'
+  import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
+  import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
+  import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import { normalize_marginals } from '#lib/plot/core/marginals.js'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
+  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
+  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
-  } from '$lib/plot/core/utils/series-visibility'
-  import { bar_obstacles, with_obstacle_frame } from '$lib/plot/core/decorations'
-  import { index_ref_lines } from '$lib/plot/core/reference-line'
+  } from '#lib/plot/core/utils/series-visibility.js'
+  import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     accumulate_extent,
     create_axis_scales,
     empty_extent,
     nice_range_from_extent,
-  } from '$lib/plot/core/scales'
+  } from '#lib/plot/core/scales.js'
   import type {
     AxisConfig,
     BasePlotProps,
     LegendConfig,
     PlotConfig,
     UserContentProps,
-  } from '$lib/plot/core/types'
+  } from '#lib/plot/core/types.js'
   import type {
     BinnedSeries,
     HistogramBin,
     HistogramNormalize,
     HistogramSeries,
-  } from '$lib/plot/histogram/histogram'
+  } from '#lib/plot/histogram/histogram.js'
   import {
     bin_transform,
     compute_count_range,
@@ -59,23 +59,23 @@
     compute_histogram_counts,
     histogram_series_color,
     log_safe_range,
-  } from '$lib/plot/histogram/histogram'
-  import ZeroLines from '$lib/plot/core/components/ZeroLines.svelte'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/histogram/histogram.js'
+  import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { clamp, type Vec2 } from '$lib/math'
+  import { clamp, type Vec2 } from '#lib/math.js'
   import {
     create_focus_exit,
     is_activation_key,
     vec2_equal,
-  } from '$lib/plot/core/interactions'
-  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  } from '#lib/plot/core/interactions.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
-  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import { bar_path } from '$lib/plot/core/svg'
-  import { resolve_pattern } from '$lib/plot/core/patterns'
-  import { unique_id } from '$lib/plot/core/utils'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { bar_path } from '#lib/plot/core/svg.js'
+  import { resolve_pattern } from '#lib/plot/core/patterns.js'
+  import { unique_id } from '#lib/plot/core/utils.js'
 
   let {
     series: series_in = [],

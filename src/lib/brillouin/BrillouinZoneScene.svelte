@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -8,11 +8,11 @@
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
-  } from '$lib/scene'
-  import type { SceneControlProps, ThreltePointerEvent } from '$lib/scene'
-  import { DEFAULTS } from '$lib/settings'
-  import { ortho_zoom_for_extent } from '$lib/structure/camera-fit'
-  import Cylinder from '$lib/structure/Cylinder.svelte'
+  } from '#lib/scene/index.js'
+  import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
+  import Cylinder from '#lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {

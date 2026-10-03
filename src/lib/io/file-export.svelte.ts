@@ -1,5 +1,5 @@
 import { download, type DownloadData } from './fetch'
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 
 export type FileSaver = (
   data: DownloadData,

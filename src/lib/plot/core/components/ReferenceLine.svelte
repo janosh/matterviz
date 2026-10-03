@@ -1,15 +1,15 @@
 <script lang="ts">
   // 2D reference line (horizontal, vertical, diagonal, segment, line) with an optional
   // annotation whose placement the host plot solves together with its other decorations.
-  import type { ReferenceAnnotationCandidate } from '$lib/plot/core/decorations'
-  import type { RefLineAxes } from '$lib/plot/core/reference-line'
+  import type { ReferenceAnnotationCandidate } from '#lib/plot/core/decorations/index.js'
+  import type { RefLineAxes } from '#lib/plot/core/reference-line.js'
   import {
     estimate_reference_annotation_metrics,
     reference_annotation_text_rect,
     resolve_line_endpoints,
-  } from '$lib/plot/core/reference-line'
-  import type { RefLine, RefLineEvent, RefLineStyle } from '$lib/plot/core/types'
-  import { REF_LINE_STYLE_DEFAULTS } from '$lib/plot/core/types'
+  } from '#lib/plot/core/reference-line.js'
+  import type { RefLine, RefLineEvent, RefLineStyle } from '#lib/plot/core/types.js'
+  import { REF_LINE_STYLE_DEFAULTS } from '#lib/plot/core/types.js'
 
   let {
     ref_line,

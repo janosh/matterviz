@@ -8,7 +8,7 @@
   // colormap LUT.
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
-  import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
+  import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -154,31 +154,30 @@
   // vertexColors on materials reactively without proxying entries)
   const colored_keys = new SvelteSet<string>()
   let raf_id = 0
-  let debounce_id = 0
+  // Bumped only when every in-flight result must be dropped (unmount, all volumes removed)
   let rebuild_generation = 0
+  let rebuild_in_flight: Promise<void> | null = null
   // Aborting rejects this component's pending worker request; the shared client tears the
-  // worker down once no caller awaits it, so a superseded extraction stops burning CPU
-  let geometry_abort: AbortController | undefined
+  // worker down once no caller awaits it, so an extraction nobody needs stops burning CPU
+  let geometry_job: { abort: AbortController; volumes: Set<VolumetricData> } | undefined
 
   function cancel_geometry_worker(): void {
-    geometry_abort?.abort(new Error(`Isosurface geometry job superseded`))
-    geometry_abort = undefined
+    geometry_job?.abort.abort(new Error(`Isosurface geometry job superseded`))
+    geometry_job = undefined
   }
 
-  function dispose_all() {
+  // Drop pending and in-flight rebuilds and dispose every geometry
+  function reset_surfaces() {
+    rebuild_generation++
+    cancelAnimationFrame(raf_id)
+    raf_id = 0
+    cancel_geometry_worker()
     for (const entry of active_entries) entry.geometry.dispose()
     active_entries = []
     colored_keys.clear()
   }
 
-  // Dispose geometries and cancel pending rebuilds on unmount
-  $effect(() => () => {
-    rebuild_generation++
-    clearTimeout(debounce_id)
-    cancelAnimationFrame(raf_id)
-    cancel_geometry_worker()
-    dispose_all()
-  })
+  $effect(() => reset_surfaces) // on unmount
 
   // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
   // negative lobe. show_negative mirrors the surface at -isovalue, which at 0 is the same one.
@@ -327,9 +326,8 @@
     let geometries = new Map<string, BufferGeometry>()
     const jobs = geometry_jobs(pending)
     if (use_geometry_worker(pending)) {
-      cancel_geometry_worker()
       const abort = new AbortController()
-      geometry_abort = abort
+      geometry_job = { abort, volumes: new Set(pending.map(({ volume }) => volume)) }
       try {
         const response = await compute_geometries_async(
           { volumes: jobs },
@@ -343,7 +341,7 @@
         report_error(`Isosurface geometry failed: ${to_error(error).message}`)
         return
       } finally {
-        if (geometry_abort === abort) geometry_abort = undefined
+        if (geometry_job?.abort === abort) geometry_job = undefined
       }
     } else if (jobs.length > 0) {
       geometries = ingest_geometry_result(
@@ -428,25 +426,36 @@
       .join(`|`),
   )
 
-  // Rebuild layer geometries when the geometry signature changes (debounced for
-  // slider drags). The rAF callback reads resolved_layers fresh, so a rebuild
-  // scheduled by an earlier signature still sees the latest layer props.
+  // At most one rebuild per frame and one in flight. A slider drag retargets the geometry
+  // on every input event; the frame callback reads the freshest layers, so each painted
+  // frame shows the latest isovalue. A request landing while a (worker) rebuild runs queues
+  // one rerun for when it lands, instead of aborting work that also prepares the grid.
+  function request_rebuild(): void {
+    if (raf_id) return
+    raf_id = requestAnimationFrame(() => {
+      raf_id = 0
+      if (rebuild_in_flight) {
+        void rebuild_in_flight.finally(request_rebuild)
+        return
+      }
+      rebuild_in_flight = rebuild_geometries(resolved_layers, rebuild_generation).finally(
+        () => (rebuild_in_flight = null),
+      )
+    })
+  }
+
   $effect(() => {
     void geo_sig
-    const generation = ++rebuild_generation
-    clearTimeout(debounce_id)
-    cancelAnimationFrame(raf_id)
-    cancel_geometry_worker()
     if (untrack(() => volumes.length) === 0) {
-      untrack(() => dispose_all())
+      untrack(reset_surfaces)
       return
     }
-    debounce_id = window.setTimeout(() => {
-      // No reactive context inside rAF: reads the freshest layers untracked
-      raf_id = requestAnimationFrame(() => {
-        void rebuild_geometries(resolved_layers, generation)
-      })
-    }, 50)
+    // A worker job for a volume that left the scene would only hold up the new surfaces
+    const live_volumes = new Set(untrack(() => resolved_layers.map(({ volume }) => volume)))
+    if (geometry_job && ![...geometry_job.volumes].every((vol) => live_volumes.has(vol))) {
+      cancel_geometry_worker()
+    }
+    request_rebuild()
   })
 
   // === Cross-volume vertex coloring ===

@@ -1,8 +1,8 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { Point2D } from '$lib/math'
-import { to_error } from '$lib/utils'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { Point2D } from '#lib/math.js'
+import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'

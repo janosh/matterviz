@@ -1,4 +1,4 @@
-import { browser } from '$app/environment'
+import { browser } from '$app/env'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
 import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
@@ -9,11 +9,7 @@ export const normalize_static_url = (url: string): string =>
 
 // Replace URL state without moving focus or scrolling.
 export const replace_url = (url: string | URL): Promise<void> =>
-  goto(normalize_static_url(String(url)), {
-    replaceState: true,
-    keepFocus: true,
-    noScroll: true,
-  })
+  goto(normalize_static_url(String(url)), { replace: true, reset: false })
 
 // `?file=<fixture name>` deep-links the demo pages. Read client-side only: url.searchParams
 // is off-limits during prerender (it would 500 the static build).
@@ -24,7 +20,7 @@ export const file_param = (): string | null =>
 // of page.url, which is read-only reactive state from $app/state
 export const set_file_param = (filename: string | null): void => {
   if (!browser) return
-  const url = new URL(page.url)
+  const url = new URL(page.url.href)
   if (filename) url.searchParams.set(`file`, filename)
   else url.searchParams.delete(`file`)
   void replace_url(url)

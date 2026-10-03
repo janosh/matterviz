@@ -1,4 +1,4 @@
-import type { TrajectorySource } from '$lib/trajectory/index'
+import type { TrajectorySource } from '#lib/trajectory/index.js'
 import type { FileExportContext } from './file-export.svelte'
 
 export interface FileInfo {

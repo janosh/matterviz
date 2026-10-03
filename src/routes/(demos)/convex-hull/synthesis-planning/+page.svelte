@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { PhaseData } from '$lib/convex-hull'
+  import type { PhaseData } from '#lib/convex-hull/index.js'
   import { Spinner } from 'svelte-widgets'
-  import { SynthesisPlanner } from '$lib/synthesis-planning'
-  import type { SynthesisConditions, SynthesisPlan } from '$lib/synthesis-planning'
-  import { to_error } from '$lib/utils'
-  import { synthesis_demo_systems } from '$site/synthesis-planning'
+  import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
+  import type { SynthesisConditions, SynthesisPlan } from '#lib/synthesis-planning/index.js'
+  import { to_error } from '#lib/utils.js'
+  import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
 
   let selected_id = $state(synthesis_demo_systems[0]?.id ?? ``)
   const selected = $derived(

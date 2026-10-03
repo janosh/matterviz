@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { HeatmapTable, ToggleMenu } from '$lib/table'
-  import type { Column } from '$lib/table'
+  import { HeatmapTable, ToggleMenu } from '#lib/table/index.js'
+  import type { Column } from '#lib/table/index.js'
 
   // === Example 1: Basic flat list (no groups) ===
   let basic_columns: Column[] = $state([

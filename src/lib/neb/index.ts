@@ -5,9 +5,9 @@
 // reaction coordinate — by default the cumulative arc length through configuration
 // space — not a time step, so this module is deliberately standalone.
 
-import type { Vec3 } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import type { Pbc } from '$lib/structure/pbc'
+import type { Vec3 } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import type { Pbc } from '#lib/structure/pbc.js'
 
 // All of parse.ts is user-facing file reading, but reaction-path.ts is mostly internals:
 // spline primitives, geometry helpers and validators have no consumer outside this

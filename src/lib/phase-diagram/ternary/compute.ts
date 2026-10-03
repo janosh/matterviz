@@ -1,21 +1,24 @@
 // Ternary T-x phase diagram from convex-hull entries: lower hulls of dG_f(T) over the Gibbs
 // triangle at sampled temperatures, exact transition temperatures by bisection of hull topology
 // changes, the balanced reactions behind each transition, and O(n) sections at any T in between.
-import { format_composition_formula, sort_by_electronegativity } from '$lib/composition/format'
-import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
-import { composition_to_barycentric_nd } from '$lib/convex-hull/barycentric-coords'
-import { is_unary_entry } from '$lib/convex-hull/helpers'
+import {
+  format_composition_formula,
+  sort_by_electronegativity,
+} from '#lib/composition/format.js'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
+import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
+import { is_unary_entry } from '#lib/convex-hull/helpers.js'
 import {
   compute_lower_hull_nd,
   find_lowest_energy_unary_refs,
   get_energy_per_atom,
   normalize_hull_composition_keys,
-} from '$lib/convex-hull/thermodynamics'
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
-import { format_num } from '$lib/labels'
-import { array_min, partition_point, type Vec2, type Vec3 } from '$lib/math'
-import { ternary_to_xy } from '$lib/plot/ternary/ternary'
+} from '#lib/convex-hull/thermodynamics.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { format_num } from '#lib/labels.js'
+import { array_min, partition_point, type Vec2, type Vec3 } from '#lib/math.js'
+import { ternary_to_xy } from '#lib/plot/ternary/ternary.js'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,

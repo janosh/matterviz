@@ -1,6 +1,6 @@
 <script>
   import { page } from '$app/state'
-  import { routes as all_routes } from '$site/state.svelte'
+  import { routes as all_routes } from '#site/state.svelte.js'
   import { Nav } from 'svelte-widgets'
 
   const routes = all_routes

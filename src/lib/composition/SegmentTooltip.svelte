@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { format_num } from '$lib/labels'
-  import { TooltipValue } from '$lib/tooltip'
+  import { format_num } from '#lib/labels.js'
+  import { TooltipValue } from '#lib/tooltip/index.js'
   import type { ChartSegment } from './chart'
 
   let { segment }: { segment: ChartSegment } = $props()

@@ -2,13 +2,13 @@ import {
   BINARY_VIEWER_EXTENSIONS,
   TEXT_VIEWER_EXTENSIONS,
   VASP_VIEWER_STEMS,
-} from '$lib/constants'
+} from '#lib/constants.js'
 import {
   is_auto_renderable_filename,
   is_matterviz_filename,
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
-} from '$lib/file-viewer/eligibility'
+} from '#lib/file-viewer/eligibility.js'
 import { expect, test } from 'vitest'
 
 test.each([
@@ -28,6 +28,16 @@ test.each([
   [`simulation/params.out`, false],
   [`relax/data.json`, false],
   [`notes.txt`, false],
+  // a VASP name in a source, notebook, image or archive file names its subject, not its
+  // format; VS Code auto-render used to pop a failing viewer for these
+  [`write_poscar.py`, false],
+  [`test_xdatcar.ipynb`, false],
+  [`contcar_reader.rs`, false],
+  [`CHGCAR.png`, false],
+  [`POSCAR.tar.gz`, false],
+  [`CHG`, true],
+  [`nvt.XDATCAR`, true],
+  [`XDATCAR.1`, true],
   [``, false],
   [null, false],
   [undefined, false],

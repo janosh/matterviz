@@ -1,5 +1,5 @@
-import BrillouinZonePopup from '$lib/brillouin/BrillouinZonePopup.svelte'
-import type { Matrix3x3 } from '$lib/math'
+import BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
+import type { Matrix3x3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'

@@ -1,29 +1,29 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import type { Crystal, FileInfo } from '$lib'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import { plot_color, PLOT_COLORS } from '$lib/colors'
-  import { file_type_paint } from '$lib/io'
-  import { format_num } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
-  import { Structure } from '$lib/structure'
-  import type { SaedOptions, SaedPatternData, XrdPattern } from '$lib/xrd'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import type { Crystal, FileInfo } from '#lib'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import MillerIndexInput from '#lib/MillerIndexInput.svelte'
+  import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
+  import { file_type_paint } from '#lib/io/index.js'
+  import { format_num } from '#lib/labels.js'
+  import type { Vec3 } from '#lib/math.js'
+  import { Structure } from '#lib/structure/index.js'
+  import type { SaedOptions, SaedPatternData, XrdPattern } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern,
     compute_xrd_pattern,
     electron_wavelength,
     SaedPattern,
     XrdPlot,
-  } from '$lib/xrd'
-  import { structure_map, structures } from '$site/structures'
-  import { to_error } from '$lib/utils'
-  import { fixture_ext, site_file_info } from '$site/imports'
+  } from '#lib/xrd/index.js'
+  import { structure_map, structures } from '#site/structures.js'
+  import { to_error } from '#lib/utils.js'
+  import { fixture_ext, site_file_info } from '#site/imports.js'
   import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
 
   // static/xrd symlinks these fixtures so the globbed files remain available at /xrd/<name>.
   const xrd_file_modules = import.meta.glob(
-    `$site/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
+    `#site/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
     { query: `?url` },
   )
 

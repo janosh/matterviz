@@ -2,7 +2,7 @@
 // Imports the 2D core types from the barrel and is re-exported by it; nothing in core depends on
 // these, so that re-export cycle is type-only (erased at build, hence harmless).
 
-import type { Point3D, Vec2, Vec3 } from '$lib/math'
+import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
 import type {
   AxisConfig,
   DataSeries,
@@ -11,11 +11,6 @@ import type {
   Point,
   PointStyle,
   StyleOverrides,
-  // Relative, not the `$lib/plot/core/types` alias: this file lives in `types/`, a directory
-  // that shares its name with the `types.ts` beside it, and svelte-package rewrites the alias
-  // to `./` — the directory, which has no index. Every packaged declaration that reaches this
-  // file then failed to resolve, so a consumer importing types from the root entry or from
-  // most subpaths got TS2307 out of the published package.
 } from '../types'
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
@@ -120,7 +115,7 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
   }
 
 // Camera projection types for 3D
-export type { CameraProjection as CameraProjection3D } from '$lib/settings'
+export type { CameraProjection as CameraProjection3D } from '#lib/settings.js'
 
 // 3D style overrides (sphere detail is the component's `sphere_segments` prop)
 export type StyleOverrides3D = StyleOverrides

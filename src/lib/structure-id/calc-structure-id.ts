@@ -1,7 +1,7 @@
 // Top-level structure identification: a k-nearest neighbor query feeds adaptive CNA and CSP;
 // fixed-cutoff CNA runs on the cutoff query that defines it.
-import type { AnyStructure, Pbc } from '$lib/structure'
-import { neighbor_query } from '$lib/structure/bonding'
+import type { AnyStructure, Pbc } from '#lib/structure/index.js'
+import { neighbor_query } from '#lib/structure/bonding.js'
 import type { CnaMode, CnaTypeName } from './calc-cna'
 import { calc_cna, CNA_TYPE_NAMES, CNA_TYPES } from './calc-cna'
 import { calc_centrosymmetry, validate_csp_neighbors } from './calc-csp'

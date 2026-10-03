@@ -10,10 +10,10 @@
 // images; it is reported separately from the highest computed image, since quoting the
 // interpolated value as if it were a computed image is a common reporting error.
 
-import type { LatticeConverters, Vec3 } from '$lib/math'
-import { clamp, create_lattice_converters, min_image_displacement } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import type { Pbc } from '$lib/structure/pbc'
+import type { LatticeConverters, Vec3 } from '#lib/math.js'
+import { clamp, create_lattice_converters, min_image_displacement } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import type { Pbc } from '#lib/structure/pbc.js'
 import type {
   NamedReactionPath,
   NebImage,

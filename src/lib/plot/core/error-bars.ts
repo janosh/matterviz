@@ -6,7 +6,7 @@
 // Bars state the uncertainty pointwise instead, and unlike the band they also work in
 // x - measurement error is rarely confined to one axis.
 
-import type { Vec2 } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
 import type { RunningExtent } from './scales'
 
 // Scalar (same for every point), per-point array, or asymmetric. Deliberately the same

@@ -1,19 +1,23 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
-import { BOHR_TO_ANGSTROM, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
-import { element_from_atomic_number } from '$lib/element/helpers'
-import { strip_compression_extensions } from '$lib/io/decompress'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { Crystal, Site } from '$lib/structure'
+import {
+  BOHR_TO_ANGSTROM,
+  filename_token_regex,
+  VASP_VOLUMETRIC_REGEX,
+} from '#lib/constants.js'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { Crystal, Site } from '#lib/structure/index.js'
 import {
   apply_axis_scale,
   parse_vasp_header,
   read_text_line,
   text_cursor,
-} from '$lib/structure/parsers/vasp-header'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
-import { normalize_scientific_notation, parse_leading_num, to_error } from '$lib/utils'
+} from '#lib/structure/parsers/vasp-header.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_site } from '#lib/structure/site.js'
+import { normalize_scientific_notation, parse_leading_num, to_error } from '#lib/utils.js'
 import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
@@ -189,7 +193,8 @@ const parse_vasp_vec3 = (line: string): Vec3 =>
 // (CHGCAR, CHG, AECCAR*, PARCHG) hold the total density, then one magnetization block
 // (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC). Spin-polarized ELFCARs and
 // LOCPOTs list spin up then spin down.
-const VASP_BLOCK_LABELS: Record<string, Record<number, string[]>> = {
+type VaspVolumetricKind = `density` | `elfcar` | `locpot`
+const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = {
   density: {
     1: [`charge density`],
     2: [`charge density`, `magnetization density`],
@@ -202,17 +207,48 @@ const VASP_BLOCK_LABELS: Record<string, Record<number, string[]>> = {
   },
 }
 
+const ELFCAR_NAME_REGEX = filename_token_regex([`elfcar`])
+const LOCPOT_NAME_REGEX = filename_token_regex([`locpot`])
+
+// What a VASP volumetric file stores, from its basename alone (a directory such as
+// `elfcar_runs/CHGCAR` says nothing about the file). Undefined when the name is not a VASP one.
+const vasp_kind_from_name = (filename: string): VaspVolumetricKind | undefined => {
+  const basename = filename.split(/[\\/]/).pop() ?? ``
+  if (ELFCAR_NAME_REGEX.test(basename)) return `elfcar`
+  if (LOCPOT_NAME_REGEX.test(basename)) return `locpot`
+  return VASP_VOLUMETRIC_REGEX.test(basename) ? `density` : undefined
+}
+
+// A renamed file (`Si_elf.vasp`) says nothing, so read it off the content:
+// - ELF is bounded to [0, 1], while density values (rho·V_cell) average to the electron
+//   count, so a file whose every value lies in [0, 1] would hold under one electron
+// - a density's first block (the total) is non-negative up to pseudo-density noise, while a
+//   local potential is mostly negative, so a substantially negative first block is a LOCPOT
+//   (dividing it by V_cell as a density shrank -15 eV to -0.085)
+const infer_vasp_kind = (blocks: readonly { values: Float64Array }[]): VaspVolumetricKind => {
+  const in_unit_interval = blocks.every(({ values }) =>
+    values.every((value) => value >= 0 && value <= 1),
+  )
+  if (in_unit_interval) return `elfcar`
+  let [first_min, first_max] = [Infinity, -Infinity]
+  for (const value of blocks[0].values) {
+    first_min = Math.min(first_min, value)
+    first_max = Math.max(first_max, value)
+  }
+  return first_min < -0.01 * Math.abs(first_max) ? `locpot` : `density`
+}
+
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG: a POSCAR header followed by one or more
-// volumetric blocks on a 3D grid. A `filename` containing ELFCAR or LOCPOT keeps values as is;
-// any other is a density file storing rho·V_cell.
+// volumetric blocks on a 3D grid. ELFCAR and LOCPOT values are kept as is; density files
+// (CHGCAR, AECCAR*, PARCHG) store rho·V_cell and are divided by the cell volume. The kind
+// comes from the `filename` (see vasp_kind_from_name), else from the content (infer_vasp_kind).
 export function parse_chgcar(content: string, filename = ``): VolumetricFileData {
-  const kind = /elfcar|locpot/i.exec(filename)?.[0].toLowerCase() ?? `density`
   // Strip leading whitespace
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
 
-  // Shared POSCAR-family header. `lenient` keeps CHGCAR's habit of treating any mode line
-  // that isn't `D...` as Cartesian, and the result object keeps this parser non-throwing.
+  // Shared POSCAR-family header. `lenient` reads any mode line but C/K... as Direct, as VASP
+  // does, and the result object keeps this parser non-throwing.
   const cursor = text_cursor(content, pos)
   const parsed = parse_vasp_header(cursor, { format: `CHGCAR`, coord_mode: `lenient` })
   if (!parsed.ok) throw new Error(parsed.error)
@@ -264,32 +300,40 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
     lattice: { matrix: lattice, pbc: [true, true, true], ...lattice_params },
   }
 
-  // Parse volumetric data blocks until the file runs out of grid-dimension lines
+  // Parse volumetric data blocks. The first grid line (NGX NGY NGZ) follows the header; every
+  // later block restates that same line, and whatever sits between blocks (augmentation
+  // occupancies, a per-atom magnetic-moment line, blank lines) is skipped, as pymatgen does.
+  // Stopping at the first line that was not a grid line dropped every magnetization block of
+  // a real VASP CHGCAR, whose augmentation section follows each block.
   const blocks: { values: Float64Array; dims: Vec3 }[] = []
-  // Only density files are divided by the cell volume (|det| for a left-handed lattice)
-  const cell_volume = Math.abs(lattice_params.volume)
-  const divisor = kind === `density` && cell_volume > 1e-30 ? cell_volume : 1
+  let grid_line: string | undefined
 
   for (let vol_idx = 0; ; vol_idx++) {
-    // Skip blank lines
+    let dims: Vec3 | undefined
     while (pos < content.length) {
       cur = read_text_line(content, pos)
-      if (cur.line.trim() !== ``) break
       pos = cur.next
+      const tokens = cur.line.trim().split(/\s+/)
+      if (tokens[0] === ``) continue
+      if (grid_line === undefined) {
+        // the first non-blank line after the header has to be the grid line
+        const grid_tokens = tokens.map(Number)
+        if (grid_tokens.length >= 3 && !grid_tokens.some(isNaN)) {
+          dims = grid_tokens.slice(0, 3) as Vec3
+          grid_line = tokens.join(` `)
+        }
+        break
+      }
+      if (tokens.join(` `) === grid_line) {
+        dims = grid_line.split(` `).slice(0, 3).map(Number) as Vec3
+        break
+      }
     }
-
-    if (pos >= content.length) break
-
-    // Parse grid dimensions: NGX NGY NGZ
-    cur = read_text_line(content, pos)
-    const grid_tokens = cur.line.trim().split(/\s+/).map(Number)
-    if (grid_tokens.length < 3 || grid_tokens.some(isNaN)) break
-
-    const [ngx, ngy, ngz] = grid_tokens
-    pos = cur.next
+    if (!dims) break
+    const [ngx, ngy, ngz] = dims
 
     // Fast-parse volumetric data directly from the string
-    const total_points = checked_grid_points([ngx, ngy, ngz], content.length - pos, `CHGCAR`)
+    const total_points = checked_grid_points(dims, content.length - pos, `CHGCAR`)
     const data = new Float64Array(total_points)
     const { count: parsed_count, end_pos } = parse_float_block(
       content,
@@ -309,19 +353,18 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
       break
     }
 
-    const dims: Vec3 = [ngx, ngy, ngz]
-    blocks.push({ values: transpose_x_fastest(data, dims, divisor), dims })
-
-    // Skip augmentation occupancies and any remaining non-numeric lines
-    while (pos < content.length) {
-      cur = read_text_line(content, pos)
-      const trimmed = cur.line.trim()
-      if (trimmed === `` || /^\d+\s+\d+\s+\d+$/.test(trimmed)) break
-      pos = cur.next
-    }
+    blocks.push({ values: transpose_x_fastest(data, dims, 1), dims })
   }
 
   if (blocks.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
+  const kind = vasp_kind_from_name(filename) ?? infer_vasp_kind(blocks)
+  // Only density files are divided by the cell volume (|det| for a left-handed lattice)
+  const cell_volume = Math.abs(lattice_params.volume)
+  if (kind === `density` && cell_volume > 1e-30) {
+    for (const { values } of blocks) {
+      for (let idx = 0; idx < values.length; idx++) values[idx] /= cell_volume
+    }
+  }
   const labels = VASP_BLOCK_LABELS[kind][blocks.length]
   if (!labels) {
     throw new Error(
@@ -574,16 +617,19 @@ export function looks_like_volumetric(
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
   const lower_name = strip_compression_extensions(filename ?? ``)
   if (lower_name.endsWith(`.cube`)) return `cube`
-  if (VASP_VOLUMETRIC_REGEX.test(lower_name)) return `chgcar`
+  // A VASP name still needs volumetric content (POSCAR_from_CHGCAR is a structure), but lifts
+  // the scan limit below, since a named CHGCAR may carry a long atom block
+  const vasp_named = VASP_VOLUMETRIC_REGEX.test(lower_name)
 
   const lines = content.slice(0, find_line_offset(content, 10)).split(/\r?\n/)
 
-  // .cube: line 3 has 4 numbers (n_atoms + origin), line 4 has 4 numbers (grid dim + voxel)
-  if (lines.length > 4) {
+  // .cube: line 3 has 4 numbers (n_atoms + origin, plus an optional NVal), line 4 has 4
+  // numbers (grid dim + voxel)
+  if (!vasp_named && lines.length > 4) {
     const line2_tokens = lines[2].trim().split(/\s+/)
     const line3_tokens = lines[3].trim().split(/\s+/)
     if (
-      line2_tokens.length === 4 &&
+      (line2_tokens.length === 4 || line2_tokens.length === 5) &&
       line3_tokens.length === 4 &&
       line2_tokens.every((tok) => !isNaN(Number(tok))) &&
       line3_tokens.every((tok) => !isNaN(Number(tok)))
@@ -597,8 +643,8 @@ export function looks_like_volumetric(
   // from a POSCAR/CONTCAR whose coordinate line happens to be integers (`0 0 0`)
   if (lines.length > 2 && !isNaN(parse_leading_num(normalize_scientific_notation(lines[1])))) {
     let scan_pos = find_line_offset(content, 7)
-    // Scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms max)
-    const scan_end = Math.min(content.length, scan_pos + 25000)
+    // Unnamed files scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms)
+    const scan_end = vasp_named ? content.length : Math.min(content.length, scan_pos + 25000)
     let prev_blank = false
     while (scan_pos < scan_end) {
       const { line, next } = read_text_line(content, scan_pos)

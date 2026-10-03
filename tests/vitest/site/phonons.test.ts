@@ -1,6 +1,6 @@
-import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '$lib/math'
-import { compute_frequency_range } from '$lib/spectral'
-import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
+import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '#lib/math.js'
+import { compute_frequency_range } from '#lib/spectral/helpers.js'
+import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`Phonon Module Tests`, () => {

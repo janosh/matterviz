@@ -1,13 +1,13 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { FlyToControls } from '$lib/scene/fly-to'
-import { create_fly_to, ease_in_out } from '$lib/scene/fly-to'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { FlyToControls } from '#lib/scene/fly-to.js'
+import { create_fly_to, ease_in_out } from '#lib/scene/fly-to.js'
 import {
   get_orthographic_zoom_bounds,
   resize_orthographic_zoom,
-} from '$lib/scene/props.svelte'
-import type { ZoneAxisMode } from '$lib/scene/zone-axis'
-import { DEFAULTS } from '$lib/settings'
-import { is_valid_zone_axis, zone_axis_direction } from '$lib/scene/zone-axis'
+} from '#lib/scene/props.svelte.js'
+import type { ZoneAxisMode } from '#lib/scene/zone-axis.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { is_valid_zone_axis, zone_axis_direction } from '#lib/scene/zone-axis.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 

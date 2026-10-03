@@ -1,9 +1,9 @@
 // Extract phonon band structures and DOS from full phonon objects
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { PhononBandStructure, PhononDos } from '$lib/spectral'
-import { normalize_band_structure, normalize_dos } from '$lib/spectral'
-import type { Crystal } from '$lib/structure'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
+import { normalize_band_structure, normalize_dos } from '#lib/spectral/index.js'
+import type { Crystal } from '#lib/structure/index.js'
 import { SvelteMap } from 'svelte/reactivity'
 
 // pymatgen `PhononBandStructureSymmLine.as_dict()` as dumped by the fixture workflow (the

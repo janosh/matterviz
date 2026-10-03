@@ -1,8 +1,8 @@
 // The shared worker client's teardown rules were each learned from a bug, so they need
 // tests that fail when the rule is removed - deleting `messageerror` or `terminate()` used
 // to leave every module's suite green.
-import { create_worker_client } from '$lib/worker-client.svelte'
-import { serve_worker } from '$lib/worker-serve'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { serve_worker } from '#lib/worker-serve.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { install_stub_worker, type StubWorkerInstance, type StubWorkerMessage } from './setup'
 

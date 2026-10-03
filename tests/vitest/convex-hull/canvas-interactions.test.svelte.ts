@@ -1,5 +1,5 @@
-import { create_hull_selection } from '$lib/convex-hull/canvas-interactions.svelte'
-import type { ConvexHullEntry } from '$lib/convex-hull/types'
+import { create_hull_selection } from '#lib/convex-hull/canvas-interactions.svelte.js'
+import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

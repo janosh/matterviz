@@ -1,6 +1,6 @@
 // functions for measuring distances and angles between structure sites
 
-import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
+import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math.js'
 import {
   clamp,
   add,
@@ -12,8 +12,8 @@ import {
   scale,
   subtract,
   to_degrees,
-} from '$lib/math'
-import type { MeasureMode, Site } from '$lib/structure'
+} from '#lib/math.js'
+import type { MeasureMode, Site } from '#lib/structure/index.js'
 import type { Pbc } from './pbc'
 
 type AngleMode = `degrees` | `radians`

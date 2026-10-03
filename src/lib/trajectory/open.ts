@@ -4,13 +4,13 @@
 // chunks (TextLines), so such a file still opens as XYZ, LAMMPS or XDATCAR.
 // Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
-import { HDF5_EXT_REGEX } from '$lib/constants'
-import { decode_text_chunks, MAX_STRING_CHARS } from '$lib/io/decompress'
-import { is_binary } from '$lib/io/is-binary'
-import { DEFAULTS } from '$lib/settings'
-import { is_plain_object, to_error } from '$lib/utils'
-import type { AnyStructure } from '$lib/structure/index'
-import { is_structure_like, parse_xyz, structure_from_json } from '$lib/structure/parse'
+import { HDF5_EXT_REGEX } from '#lib/constants.js'
+import { decode_text_chunks, MAX_STRING_CHARS } from '#lib/io/decompress.js'
+import { is_binary } from '#lib/io/is-binary.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { is_plain_object, to_error } from '#lib/utils.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { is_structure_like, parse_xyz, structure_from_json } from '#lib/structure/parse.js'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames, has_multiple_xyz_frames, TextLines } from './helpers'
 import type {

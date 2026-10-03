@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { theme_state } from '$lib/state.svelte'
+  import { theme_state } from '#lib/state.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ThemeMode } from './index'
   import { apply_theme_to_dom, save_theme_preference, THEME_OPTIONS } from './index'

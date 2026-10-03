@@ -1,6 +1,6 @@
 // Unit tests for plot interaction utilities
-import type { Vec2 } from '$lib/math'
-import { LOG_EPS } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
+import { LOG_EPS } from '#lib/math.js'
 import {
   axis_ranges_equal,
   expand_range_if_needed,
@@ -11,10 +11,10 @@ import {
   sync_y2_range,
   vec2_equal,
   zoom_range_by_factor,
-} from '$lib/plot/core/interactions'
-import { create_scale } from '$lib/plot/core/scales'
-import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
+} from '#lib/plot/core/interactions.js'
+import { create_scale } from '#lib/plot/core/scales.js'
+import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 it.each([`wheel_x`, `wheel_y`, `drag`, `touch_pan`, `pinch`] as const)(

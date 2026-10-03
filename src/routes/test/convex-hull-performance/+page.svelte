@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { replaceState } from '$app/navigation'
-  import type { Crystal, ElementSymbol } from '$lib'
-  import type { PhaseData } from '$lib/convex-hull'
-  import { ConvexHull } from '$lib/convex-hull'
+  import { goto } from '$app/navigation'
+  import type { Crystal, ElementSymbol } from '#lib'
+  import type { PhaseData } from '#lib/convex-hull/index.js'
+  import { ConvexHull } from '#lib/convex-hull/index.js'
   import { Spinner } from 'svelte-widgets'
   import { tick } from 'svelte'
 
@@ -152,7 +152,7 @@
     if (!enable_click_selection) params.set(`click_selection`, `false`)
     if (magnetic_orderings) params.set(`magnetic`, `true`)
     if (custom_title) params.set(`title`, custom_title)
-    replaceState(`?${params.toString()}`, {})
+    void goto(`?${params}`, { shallow: true, replace: true })
   }
 
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]

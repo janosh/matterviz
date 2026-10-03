@@ -1,30 +1,22 @@
+import type { FrameChannels } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
   encode_frame,
   materialize_frame_result,
-  type FrameChannels,
-} from '$lib/trajectory/frame'
-import {
-  FramePreparer,
-  display_frame_bytes,
-  type DisplayFrame,
-  type FramePreparation,
-} from '$lib/trajectory/prepare'
+} from '#lib/trajectory/frame.js'
+import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
+import { FramePreparer, display_frame_bytes } from '#lib/trajectory/prepare.js'
 // Headless session: cache LRU + reset on run swap, latest-request-wins with aborted stale
 // reads, scrub vs commit, prefetch, controller, property mirroring and playback wrap through
 // the shared sequence player (whose own behaviour is covered by sequence-player.test).
-import { trajectory_from_frames } from '$lib/trajectory/open'
-import {
-  summarize_run,
-  sync_run,
-  TrajectoryProperties,
-  type TrajectoryRun,
-} from '$lib/trajectory/run'
-import { host_run } from '$lib/trajectory/runs/host'
-import { create_trajectory_session } from '$lib/trajectory/session.svelte'
-import { get_bond_data } from '$lib/structure/bonding'
-import { compute_polyhedra } from '$lib/structure/polyhedra'
-import type { TrajectoryFrame } from '$lib/trajectory'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import type { TrajectoryRun } from '#lib/trajectory/run.js'
+import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
+import { create_trajectory_session } from '#lib/trajectory/session.svelte.js'
+import { get_bond_data } from '#lib/structure/bonding.js'
+import { compute_polyhedra } from '#lib/structure/polyhedra.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { make_trajectory_frame } from '../test-fixtures'

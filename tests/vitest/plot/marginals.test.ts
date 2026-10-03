@@ -1,5 +1,5 @@
-import { create_scale } from '$lib/plot/core/scales'
-import type { Vec2 } from '$lib/math'
+import { create_scale } from '#lib/plot/core/scales.js'
+import type { Vec2 } from '#lib/math.js'
 import {
   add_sides,
   compute_marginal_curve,
@@ -12,14 +12,14 @@ import {
   marginal_value_scale,
   normalize_marginals,
   reserve_marginal_pad,
-} from '$lib/plot/core/marginals'
+} from '#lib/plot/core/marginals.js'
 import type {
   MarginalSide,
   MarginalCurve,
   MarginalRenderContext,
   MarginalSeriesCurve,
   ResolvedMarginalConfig,
-} from '$lib/plot/core/marginals'
+} from '#lib/plot/core/marginals.js'
 import { describe, expect, test, vi } from 'vitest'
 
 const resolved = (over: Partial<ResolvedMarginalConfig> = {}): ResolvedMarginalConfig => ({

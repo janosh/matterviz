@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { add_alpha } from '$lib/colors'
-  import { color_interpolator } from '$lib/plot/core/scales'
-  import { symbol_map } from '$lib/labels'
-  import type { LegendItem, Orientation } from '$lib/plot'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import type { LegendItemExtent } from '$lib/plot/core/decorations/tracks'
+  import { add_alpha } from '#lib/colors/index.js'
+  import { color_interpolator } from '#lib/plot/core/scales.js'
+  import { symbol_map } from '#lib/labels.js'
+  import type { LegendItem, Orientation } from '#lib/plot/index.js'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks.js'
   import {
     get_legend_grid_cells,
     suggest_legend_tracks,
-  } from '$lib/plot/core/decorations/tracks'
-  import type { FillPattern } from '$lib/plot/core/patterns'
-  import { resolve_pattern } from '$lib/plot/core/patterns'
-  import { unique_id } from '$lib/plot/core/utils'
-  import { sanitize_html } from '$lib/sanitize'
-  import { html_to_text } from '$lib/utils'
+  } from '#lib/plot/core/decorations/tracks.js'
+  import type { FillPattern } from '#lib/plot/core/patterns.js'
+  import { resolve_pattern } from '#lib/plot/core/patterns.js'
+  import { unique_id } from '#lib/plot/core/utils.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
   import {
     symbol as d3_symbol,
     symbolAsterisk,

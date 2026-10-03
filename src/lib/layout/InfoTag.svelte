@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Icon, Popover } from 'svelte-widgets'
   import { Check, Close } from 'svelte-widgets/icons'
-  import { create_clipboard_feedback } from '$lib/overlays'
-  import { sanitize_html } from '$lib/sanitize'
+  import { create_clipboard_feedback } from '#lib/overlays/index.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { InfoTagSize, InfoTagVariant } from './index'

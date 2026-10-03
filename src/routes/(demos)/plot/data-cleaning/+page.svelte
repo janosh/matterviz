@@ -1,20 +1,20 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import { sanitize_html } from '$lib/sanitize'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import { sanitize_html } from '#lib/sanitize.js'
   import CodeBlock from 'svelte-widgets/CodeBlock.svelte'
-  import { ScatterPlot } from '$lib'
+  import { ScatterPlot } from '#lib'
   import type {
     CleaningConfig,
     InvalidValueMode,
     TruncationMode,
-  } from '$lib/plot/core/data-cleaning'
+  } from '#lib/plot/core/data-cleaning.js'
   import {
     clean_multi_series,
     clean_series,
     clean_xyz,
     detect_instability,
-  } from '$lib/plot/core/data-cleaning'
-  import type { DataSeries } from '$lib/plot/core/types'
+  } from '#lib/plot/core/data-cleaning.js'
+  import type { DataSeries } from '#lib/plot/core/types.js'
 
   // --- Synthetic Data Generators ---
 
@@ -417,8 +417,8 @@
       .join(`, `)
     const { series, quality } = cleaned_result
 
-    return `import { clean_series } from '$lib/plot'
-import type { DataSeries, CleaningConfig } from '$lib/plot'
+    return `import { clean_series } from '#lib/plot/index.js'
+import type { DataSeries, CleaningConfig } from '#lib/plot/index.js'
 
 const series: DataSeries = {
   x: [${x_preview}, ...],

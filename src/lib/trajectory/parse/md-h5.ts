@@ -1,10 +1,10 @@
 import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
-import { FS_IN_ASE_TIME } from '$lib/constants'
-import { element_by_symbol } from '$lib/element/data'
-import { calc_lattice_params, det_3x3, is_pbc } from '$lib/math'
-import { matrix3x3_from_rows } from '$lib/structure/parsers/shared'
+import { FS_IN_ASE_TIME } from '#lib/constants.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { calc_lattice_params, det_3x3, is_pbc } from '#lib/math.js'
+import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
 import { convert_atomic_numbers, create_sampled_frame } from '../helpers'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '../index'

@@ -1,12 +1,12 @@
-import type { Vec2 } from '$lib/math'
+import type { Vec2 } from '#lib/math.js'
 import type {
   CompUnit,
   LeverRuleResult,
   PhaseBoundary,
   PhaseHoverInfo,
   TempUnit,
-} from '$lib/phase-diagram'
-import { PhaseDiagramTooltip } from '$lib/phase-diagram'
+} from '#lib/phase-diagram/index.js'
+import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'

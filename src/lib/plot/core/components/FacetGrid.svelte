@@ -10,7 +10,7 @@
     FacetSharedBandContext,
     FacetSharedBandSizes,
     ResolvedFacetGridGeometry,
-  } from '$lib/plot/core/facets'
+  } from '#lib/plot/core/facets.js'
   import {
     FACET_AXES,
     assign_facet_panels,
@@ -19,9 +19,9 @@
     reconcile_facet_padding,
     reconcile_facet_ranges,
     resolve_facet_axis_visibility,
-  } from '$lib/plot/core/facets'
-  import { is_valid_range } from '$lib/plot/core/shared-axes'
-  import { observe_size } from '$lib/plot/core/utils'
+  } from '#lib/plot/core/facets.js'
+  import { is_valid_range } from '#lib/plot/core/shared-axes.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'

@@ -1,6 +1,6 @@
-import { FPS_STEP } from '$lib/constants'
-import { clamp } from '$lib/math'
-import { create_shortcut_flash } from '$lib/effects.svelte'
+import { FPS_STEP } from '#lib/constants.js'
+import { clamp } from '#lib/math.js'
+import { create_shortcut_flash } from '#lib/effects.svelte.js'
 import { untrack } from 'svelte'
 
 // Shared playback/navigation for ordered collections. Getter inputs preserve reactivity

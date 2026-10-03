@@ -9,12 +9,15 @@ import {
   merge_imported_volumes,
   normalize_active_volume_id,
   index_volumes,
+  isovalue_histogram,
   remove_volume,
   SHELL_STEPS,
+  snap_isovalue,
+  surface_isovalue_band,
   volume_from_json,
-} from '$lib/isosurface/types'
-import type { VolumetricData } from '$lib/isosurface/types'
-import { flatten_grid } from '$lib/isosurface/grid'
+} from '#lib/isosurface/types.js'
+import type { VolumetricData } from '#lib/isosurface/types.js'
+import { flatten_grid } from '#lib/isosurface/grid.js'
 import { describe, expect, test } from 'vitest'
 import { grid_value, make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
@@ -355,5 +358,82 @@ describe(`volume_from_json`, () => {
     [42, /must be an object/],
   ])(`rejects malformed payload %#`, (payload, expected) => {
     expect(() => volume_from_json(payload)).toThrow(expected)
+  })
+})
+
+// The isovalue slider spans (0, abs_max], but surfaces only exist for part of it: below a
+// density's minimum every corner is inside, above its maximum none is
+describe(`isovalue slider aids`, () => {
+  test.each([
+    { min: 0.05, max: 0.91, show_negative: false, band: [0.05, 0.91] },
+    { min: 0.05, max: 0.91, show_negative: true, band: [0.05, 0.91] }, // no negative values
+    { min: -0.5, max: 0.2, show_negative: false, band: [0, 0.2] },
+    { min: -0.5, max: 0.2, show_negative: true, band: [0, 0.5] }, // mirror lobe to |min|
+    { min: -3, max: -1, show_negative: true, band: [1, 3] }, // only the mirror draws
+    { min: -3, max: -1, show_negative: false, band: null },
+  ])(`surface band of [$min, $max] (neg. lobe $show_negative)`, ({ band, ...rest }) => {
+    expect(surface_isovalue_band(rest, rest.show_negative)).toEqual(band)
+  })
+
+  // slider: min = step = 0.01 (steps at 0.01 k), band (0.0501, 0.913], reach 0.03
+  const slider = { min: 0.01, step: 0.01, reach: 0.03 }
+  const band: [number, number] = [0.0501, 0.913]
+  test.each([
+    {
+      value: 0.04,
+      sticky: true,
+      previous: 0.2,
+      expected: 0.06,
+      why: `just below: up to the first step drawing a surface`,
+    },
+    {
+      value: 0.04,
+      sticky: false,
+      previous: 0.06,
+      expected: 0.04,
+      why: `a keyboard step from the edge passes through`,
+    },
+    {
+      value: 0.04,
+      sticky: true,
+      previous: 0.06,
+      expected: 0.06,
+      why: `a drag stays at the edge`,
+    },
+    { value: 0.01, sticky: true, previous: 0.06, expected: 0.01, why: `beyond reach: free` },
+    {
+      value: 0.92,
+      sticky: true,
+      previous: 0.5,
+      expected: 0.91,
+      why: `just above: down to the last step`,
+    },
+    { value: 0.5, sticky: true, previous: 0.4, expected: 0.5, why: `inside: untouched` },
+    {
+      value: 0.913,
+      sticky: true,
+      previous: 0.5,
+      expected: 0.913,
+      why: `the band's top still draws`,
+    },
+  ])(`snap $value → $expected: $why`, ({ value, sticky, previous, expected }) => {
+    const snapped = snap_isovalue(value, band, { ...slider, sticky, previous })
+    expect(snapped).toBeCloseTo(expected, 12)
+  })
+
+  test(`snap leaves values alone without a band or when it is narrower than a step`, () => {
+    const options = { ...slider, sticky: true, previous: 0 }
+    expect(snap_isovalue(0.04, null, options)).toBe(0.04)
+    expect(snap_isovalue(0.04, [0.0501, 0.0502], options)).toBe(0.04)
+  })
+
+  test(`histogram counts values (or |values| when mirrored) over the slider span`, () => {
+    const vol = make_volume_fixture([[[-0.9, -0.1, 0.1, 0.35, 0.6, 0.95, 1, Number.NaN]]])
+    expect([...isovalue_histogram(vol, [0, 1], false, 4)]).toEqual([1, 1, 1, 2])
+    expect([...isovalue_histogram(vol, [0, 1], true, 4)]).toEqual([2, 1, 1, 3])
+    // cached per volume and arguments
+    expect(isovalue_histogram(vol, [0, 1], true, 4)).toBe(
+      isovalue_histogram(vol, [0, 1], true, 4),
+    )
   })
 })

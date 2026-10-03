@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
-import { parse_axis_label, SUBSCRIPT_MAP } from '$lib/labels'
-import { is_plain_object } from '$lib/utils'
+import { parse_axis_label, SUBSCRIPT_MAP } from '#lib/labels.js'
+import { is_plain_object } from '#lib/utils.js'
 import {
   array_extent,
   array_max,
@@ -9,8 +9,8 @@ import {
   mat3x3_vec3_multiply,
   subtract,
   transpose_3x3_matrix,
-} from '$lib/math'
-import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+} from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type * as types from './types'
@@ -38,11 +38,13 @@ export const phonon_explorer_views = (
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
 // Pretty-print a symmetry point symbol: Greek names (plain GAMMA or LaTeX \Gamma) become
-// Greek letters and trailing digits become subscripts (S_0 and S0 both give S₀)
+// Greek letters and trailing digits become subscripts (S_0 and S0 both give S₀). LaTeX math
+// wrapping as in phonopy's BAND_LABELS (`$\Gamma$`, `$\mathrm{X}$`, `S_{0}`) is stripped.
 export function pretty_sym_point(symbol: string): string {
   if (!symbol) return ``
   return symbol
-    .replaceAll('_', ``)
+    .replaceAll(/\\mathrm\{(?<text>[^}]*)\}/g, `$<text>`)
+    .replaceAll(/[${}_]/g, ``)
     .replaceAll(/\\?GAMMA/gi, `Γ`)
     .replaceAll(/\\?DELTA/gi, `Δ`)
     .replaceAll(/\\?SIGMA/gi, `Σ`)
@@ -343,11 +345,14 @@ function convert_pymatgen_band_structure(
         ),
       ),
     )
-  // Discontinuity detection (5x median step)
-  const sorted = steps.toSorted((left_value, right_value) => left_value - right_value)
-  const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
-  // Ascending indices of the q-points that start a new segment after a path jump
-  const disc_indices = steps.flatMap((step, idx) => (step > threshold ? [idx + 1] : []))
+  // Like pymatgen, any step between two labelled q-points is a segment boundary, not path: a
+  // jump (`Z|X`) or the zero-length duplicate at a junction (`X, X`). Step size is no signal:
+  // paths put a fixed point count per segment, so in anisotropic cells every step of a long
+  // segment can exceed any multiple of the median and used to collapse it.
+  // Ascending indices of the q-points that start a new segment after a boundary
+  const disc_indices = steps.flatMap((_step, idx) =>
+    qpoints[idx].label && qpoints[idx + 1].label ? [idx + 1] : [],
+  )
   const disc_set = new Set(disc_indices)
 
   // Cumulative distance, not advanced across discontinuities
@@ -924,16 +929,26 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
 }
 
 // Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
-// negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0
+// negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0.
+// A genuine imaginary mode (any of `mode_values`, the band frequencies in THz, below
+// -ACOUSTIC_FREQ_THRESHOLD) is never noise: one soft branch in a large cell is a tiny
+// fraction of all values and used to be clipped off the plot. DOS grids are no such signal
+// (they extend below 0 with zero density), so callers mixing them in pass the bands alone.
 export function padded_frequency_range(
   values: readonly number[],
   is_phonon: boolean,
   padding_factor = 0.02,
+  mode_values: readonly number[] = values,
 ): Vec2 | undefined {
   const finite = values.filter(Number.isFinite)
   if (finite.length === 0) return undefined
   let [min_val, max_val] = array_extent(finite)
-  if (is_phonon && min_val < 0 && negative_fraction(finite) < IMAGINARY_MODE_NOISE_THRESHOLD) {
+  if (
+    is_phonon &&
+    min_val < 0 &&
+    negative_fraction(finite) < IMAGINARY_MODE_NOISE_THRESHOLD &&
+    !mode_values.some((val) => val < -ACOUSTIC_FREQ_THRESHOLD)
+  ) {
     min_val = 0
   }
   const padding = (max_val - min_val) * padding_factor
@@ -947,19 +962,17 @@ export function compute_frequency_range(
   padding_factor = 0.02,
 ): Vec2 | undefined {
   const type = spectral_type(band_structs, doses)
-  const bands = Object.values(band_structs)
-  const dos = Object.values(doses)
+  const band_values = Object.values(band_structs).flatMap((band_structure) =>
+    [...band_structure.bands, ...(band_structure.spin_down_bands ?? [])].flat(),
+  )
+  const dos_values = Object.values(doses).flatMap((entry) =>
+    entry.type === `phonon` ? entry.frequencies : entry.energies,
+  )
   return padded_frequency_range(
-    [
-      ...bands.flatMap((band_structure) =>
-        [...band_structure.bands, ...(band_structure.spin_down_bands ?? [])].flat(),
-      ),
-      ...dos.flatMap((entry) =>
-        entry.type === `phonon` ? entry.frequencies : entry.energies,
-      ),
-    ],
+    [...band_values, ...dos_values],
     type === `phonon`,
     padding_factor,
+    band_values,
   )
 }
 

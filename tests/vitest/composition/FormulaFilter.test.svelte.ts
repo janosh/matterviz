@@ -1,4 +1,5 @@
-import { FormulaFilter, type FormulaSearchMode } from '$lib/composition'
+import type { FormulaSearchMode } from '#lib/composition/index.js'
+import FormulaFilter from '#lib/composition/FormulaFilter.svelte'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import type { Mock } from 'vitest'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'

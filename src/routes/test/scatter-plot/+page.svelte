@@ -1,9 +1,15 @@
 <script lang="ts">
-  import { format_num, symbol_names } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
-  import * as math from '$lib/math'
-  import type { DataSeries, InternalPoint, LabelStyle, PointStyle, ScaleType } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  import { format_num, symbol_names } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import type {
+    DataSeries,
+    InternalPoint,
+    LabelStyle,
+    PointStyle,
+    ScaleType,
+  } from '#lib/plot/index.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
 
   // === Basic Example Data ===
   const basic_data = {

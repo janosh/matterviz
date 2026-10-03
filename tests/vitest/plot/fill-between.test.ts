@@ -1,6 +1,6 @@
 // Tests for fill-between: utility functions and type structures
-import type { Vec2 } from '$lib/math'
-import type { Pt } from '$lib/plot/core/fill-utils'
+import type { Vec2 } from '#lib/math.js'
+import type { Pt } from '#lib/plot/core/fill-utils.js'
 import {
   compute_fill_segments,
   convert_error_band_to_fill_region,
@@ -10,14 +10,14 @@ import {
   resolve_boundary_points,
   resolve_fill_binding,
   resolve_series_ref,
-} from '$lib/plot/core/fill-utils'
+} from '#lib/plot/core/fill-utils.js'
 import type {
   DataSeries,
   FillBoundary,
   FillCurveType,
   FillGradient,
   FillRegion,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 

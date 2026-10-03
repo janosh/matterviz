@@ -1,20 +1,29 @@
 <script lang="ts">
-  import type { InfoPaneCard, InfoPaneRow, PaneProps, PaneToggleProps } from '$lib/overlays'
-  import { ViewerPane, create_clipboard_feedback, info_pane_icon } from '$lib/overlays'
-  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { get_electro_neg_formula } from '$lib/composition'
-  import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { format_num } from '$lib/labels'
-  import { get_element_palette } from '$lib/structure/element-palette.svelte'
-  import { get_density, type AnyStructure } from '$lib/structure'
-  import type { BondingStrategy } from '$lib/structure/bonding'
-  import { has_usable_lattice } from '$lib/structure/validation'
-  import { DEFAULTS } from '$lib/settings'
-  import RdfPlot from '$lib/rdf/RdfPlot.svelte'
-  import CoordinationBarPlot from '$lib/coordination/CoordinationBarPlot.svelte'
-  import BondAnglePlot from '$lib/bond-angles/BondAnglePlot.svelte'
-  import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
-  import { count_symmetry_op_kinds, WyckoffTable } from '$lib/symmetry'
+  import type {
+    InfoPaneCard,
+    InfoPaneRow,
+    PaneProps,
+    PaneToggleProps,
+  } from '#lib/overlays/index.js'
+  import {
+    ViewerPane,
+    create_clipboard_feedback,
+    info_pane_icon,
+  } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
+  import { get_density, type AnyStructure } from '#lib/structure/index.js'
+  import type { BondingStrategy } from '#lib/structure/bonding.js'
+  import { has_usable_lattice } from '#lib/structure/validation.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import RdfPlot from '#lib/rdf/RdfPlot.svelte'
+  import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
+  import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
+  import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
+  import { count_symmetry_op_kinds, WyckoffTable } from '#lib/symmetry/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   type SiteCard = InfoPaneCard & { idx: number; element: string }

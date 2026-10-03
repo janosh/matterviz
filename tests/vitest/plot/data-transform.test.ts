@@ -2,8 +2,8 @@ import {
   build_legend_items,
   extract_series_color,
   series_symbol_swatch,
-} from '$lib/plot/core/data-transform'
-import { DEFAULTS } from '$lib/settings'
+} from '#lib/plot/core/data-transform.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`data-transform utility functions`, () => {

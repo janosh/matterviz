@@ -1,10 +1,10 @@
 // Serialize trajectory frames back to files. Frames are pulled one at a time through a
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
-import { strip_compression_extensions } from '$lib/io/decompress'
-import { trajectory_property_config } from '$lib/labels'
-import { structure_to_poscar_str, structure_to_xyz_str } from '$lib/structure/export'
-import { to_error } from '$lib/utils'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import { trajectory_property_config } from '#lib/labels.js'
+import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
+import { to_error } from '#lib/utils.js'
 import { rows_to_csv } from 'svelte-widgets/csv'
 import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'

@@ -1,8 +1,8 @@
-import type { PhaseData } from '$lib/convex-hull/types'
-import { compute_opportunity_map } from '$lib/synthesis-planning/opportunity-map'
-import type { OpportunityRequest } from '$lib/synthesis-planning/opportunity-map'
-import { plan_synthesis } from '$lib/synthesis-planning/plan'
-import * as thermo from '$lib/synthesis-planning/thermo'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import { compute_opportunity_map } from '#lib/synthesis-planning/opportunity-map.js'
+import type { OpportunityRequest } from '#lib/synthesis-planning/opportunity-map.js'
+import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
+import * as thermo from '#lib/synthesis-planning/thermo.js'
 import { expect, test, vi } from 'vitest'
 import { load_json } from '../test-fixtures'
 

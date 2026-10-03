@@ -9,13 +9,13 @@
 // is already covered by OSZICAR's rms(c) column in the vaspout.h5 parser
 // (scf_charge_rms frame metadata); diffing charge grids between live reloads
 // is explicitly out of scope here.
-import { HDF5_EXT_REGEX } from '$lib/constants'
-import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '$lib/math'
-import type { Crystal, Site } from '$lib/structure'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
+import { HDF5_EXT_REGEX } from '#lib/constants.js'
+import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
+import type { Crystal, Site } from '#lib/structure/index.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_site } from '#lib/structure/site.js'
 import type * as h5wasm from 'h5wasm'
-import { expand_ion_types } from '$lib/trajectory/helpers'
+import { expand_ion_types } from '#lib/trajectory/helpers.js'
 import {
   is_hdf5_dataset,
   read_dataset,
@@ -23,7 +23,7 @@ import {
   to_number_array,
   to_string_array,
   with_h5_file,
-} from '$lib/trajectory/parse/h5-utils'
+} from '#lib/trajectory/parse/h5-utils.js'
 import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
@@ -34,7 +34,7 @@ const STRUCTURE_PREFIX = `structure/positions`
 // vaspwave carries charge density/wavefunctions, never a trajectory — used by
 // file-open routing to divert from the HDF5 trajectory dispatcher.
 export const is_vaspwave_filename = (filename: string): boolean => {
-  const basename = filename.split(`/`).pop() ?? filename
+  const basename = filename.split(/[\\/]/).pop() ?? filename
   return /vaspwave/i.test(basename) && HDF5_EXT_REGEX.test(basename)
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Sunburst } from '$lib/plot'
-  import type { PositionedArc, SunburstNode } from '$lib/plot'
+  import { Sunburst } from '#lib/plot/index.js'
+  import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
 
   const data: SunburstNode[] = [
     { label: `A`, value: 10 },

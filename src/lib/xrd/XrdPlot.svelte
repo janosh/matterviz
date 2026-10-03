@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
+  import { track_settings } from '#lib/controls.js'
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
@@ -8,18 +8,18 @@
     BarSeries,
     DataSeries,
     ScatterHandlerProps,
-  } from '$lib/plot'
-  import { add_alpha, plot_color } from '$lib/colors'
-  import EmptyState from '$lib/EmptyState.svelte'
+  } from '#lib/plot/index.js'
+  import { add_alpha, plot_color } from '#lib/colors/index.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import * as file_io from '../io'
-  import { format_value } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { SettingsSection } from '$lib/layout'
-  import { array_extent, array_max, type Vec2 } from '$lib/math'
-  import { BarPlot, ScatterPlot } from '$lib/plot'
-  import { add_xrd_pattern } from '$lib/xrd/calc-xrd'
-  import type { RadiationType } from '$lib/scattering'
+  import { format_value } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { array_extent, array_max, type Vec2 } from '#lib/math.js'
+  import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
+  import { add_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+  import type { RadiationType } from '#lib/scattering/index.js'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import { decimate_pattern, format_hkl } from './index'

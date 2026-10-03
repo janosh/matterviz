@@ -1,5 +1,4 @@
 import {
-  CONFIG_DIRS_REGEX,
   HDF5_EXT_REGEX,
   STRUCT_KEYWORDS_REGEX,
   STRUCT_KEYWORDS_STRICT_REGEX,
@@ -10,8 +9,8 @@ import {
   VASP_TRAJECTORY_REGEX,
   VASPRUN_REGEX,
   XYZ_EXTXYZ_REGEX,
-} from '$lib/constants'
-import { strip_compression_extensions } from '$lib/io/decompress'
+} from '#lib/constants.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
 
 // A LAMMPS data file always declares its atom count in the header and holds an `Atoms`
 // section; used to tell a real .data file from the many other things called `*.data`
@@ -47,7 +46,6 @@ export function is_structure_file(filename: string): boolean {
   return (
     /\.json$/i.test(name) &&
     STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
-    !TRAJ_KEYWORDS_REGEX.test(name) &&
-    !CONFIG_DIRS_REGEX.test(name)
+    !TRAJ_KEYWORDS_REGEX.test(name)
   )
 }

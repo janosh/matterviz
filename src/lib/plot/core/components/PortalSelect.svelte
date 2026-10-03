@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { sanitize_html } from '$lib/sanitize'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { click_outside, float, portal } from 'svelte-widgets/attachments'
   import type { HTMLButtonAttributes } from 'svelte/elements'

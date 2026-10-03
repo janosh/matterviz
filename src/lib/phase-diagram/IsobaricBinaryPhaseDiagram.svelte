@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { create_flash } from '$lib/effects.svelte'
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import EmptyState from '$lib/EmptyState.svelte'
+  import { create_flash } from '#lib/effects.svelte.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import { ClickFeedback } from 'svelte-widgets'
-  import { create_file_drop_handler } from '$lib/io/file-drop'
-  import { format_num } from '$lib/labels'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import { ViewerChrome } from '$lib/layout'
-  import { sanitize_svg } from '$lib/sanitize'
-  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '$lib/math'
-  import { type AxisConfig, PlotTooltip } from '$lib/plot'
-  import { unique_id } from '$lib/plot/core/utils'
-  import { handle_and_prevent, to_error } from '$lib/utils'
+  import { create_file_drop_handler } from '#lib/io/file-drop.js'
+  import { format_num } from '#lib/labels.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import { sanitize_svg } from '#lib/sanitize.js'
+  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '#lib/math.js'
+  import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
+  import { unique_id } from '#lib/plot/core/utils.js'
+  import { handle_and_prevent, to_error } from '#lib/utils.js'
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { scaleLinear } from 'd3-scale'
@@ -32,7 +32,7 @@
     PhaseRegion,
     TempUnit,
   } from './types'
-  import { format_formula_svg, format_label_svg } from '$lib/composition/format'
+  import { format_formula_svg, format_label_svg } from '#lib/composition/format.js'
   import {
     calculate_lever_rule,
     compute_label_properties,

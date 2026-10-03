@@ -43,9 +43,10 @@ test.describe(`StructureExportPane Tests`, () => {
       const { pane_div } = await open_structure_export_pane(page)
       await pane_div.getByText(label, { exact: true }).hover()
 
-      // svelte-widgets tooltips mount on document.body, where the docs header has its own:
-      // match on text, or a second tooltip makes every assertion below a strict-mode violation
-      const tooltip_elem = page.locator(`.custom-tooltip`, { hasText: expected_text })
+      // format hints open as hover popovers named by ExportPane's export_label snippet
+      const tooltip_elem = page
+        .getByRole(`dialog`, { name: `Export format details` })
+        .filter({ hasText: expected_text })
       await expect(tooltip_elem).toBeVisible()
       const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
       await expect(tooltip_link).toBeVisible()

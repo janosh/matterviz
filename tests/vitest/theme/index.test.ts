@@ -1,5 +1,5 @@
-import app_css from '$lib/app.css?raw'
-import type { ThemeMode, ThemeName } from '$lib/theme'
+import app_css from '#lib/app.css?raw'
+import type { ThemeMode, ThemeName } from '#lib/theme/index.js'
 import {
   apply_theme_to_dom,
   COLOR_THEMES,
@@ -8,7 +8,7 @@ import {
   is_valid_theme_name,
   save_theme_preference,
   THEME_TYPE,
-} from '$lib/theme'
+} from '#lib/theme/index.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mock_match_media = (matches: boolean) => {

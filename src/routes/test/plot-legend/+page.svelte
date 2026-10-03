@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { LegendItem, Orientation } from '$lib/plot'
-  import { PlotLegend } from '$lib/plot'
+  import type { LegendItem, Orientation } from '#lib/plot/index.js'
+  import { PlotLegend } from '#lib/plot/index.js'
 
   let series_data: LegendItem[] = $state([
     {

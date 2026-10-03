@@ -1,5 +1,9 @@
-import { auto_volume_layer, index_volumes, retain_volume_layers } from '$lib/isosurface/types'
-import type { IsosurfaceLayer, VolumetricData } from '$lib/isosurface/types'
+import {
+  auto_volume_layer,
+  index_volumes,
+  retain_volume_layers,
+} from '#lib/isosurface/types.js'
+import type { IsosurfaceLayer, VolumetricData } from '#lib/isosurface/types.js'
 
 // A publication replaces owned fields; surviving IDs retain all user layers.
 export function replace_tool_volumes(

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
-  import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '$lib/plot'
+  import { track_settings } from '#lib/controls.js'
+  import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '#lib/plot/index.js'
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
-  import { plot_color } from '$lib/colors'
-  import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
-  import { clamp } from '$lib/math'
+  import { plot_color } from '#lib/colors/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { clamp } from '#lib/math.js'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import type { PathProfile, PathSplineOptions } from './reaction-path'
   import {

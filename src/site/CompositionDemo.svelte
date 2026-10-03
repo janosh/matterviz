@@ -1,6 +1,6 @@
 <script lang="ts">
   import LazyDemo from './LazyDemo.svelte'
-  import { sanitize_html } from '$lib/sanitize'
+  import { sanitize_html } from '#lib/sanitize.js'
   import type { CompositionType } from 'matterviz'
   import {
     Composition,

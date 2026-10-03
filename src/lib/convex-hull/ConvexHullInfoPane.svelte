@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { PaneProps, PaneToggleProps } from '$lib/overlays'
-  import { ViewerPane, info_pane_icon } from '$lib/overlays'
-  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
-  import { format_num } from '$lib/labels'
+  import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
+  import { ViewerPane, info_pane_icon } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import { format_num } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import { visible_entries as filter_visible } from './helpers'
@@ -108,14 +108,18 @@
   closed_icon={info_pane_icon}
   {...rest}
 >
-  <ConvexHullStats
-    model={{ entries: [...stable_entries, ...unstable_entries], phase_stats }}
-    {show_stable}
-    {show_unstable}
-    {entry_category}
-    {hidden_categories}
-    style="padding: 3pt; background: var(--pane-bg); --hull-stats-table-height: 30rem"
-  />
+  <!-- A closed pane stays mounted (hidden), and these stats rebuild their entry table on every
+    threshold step, so they only exist while someone can see them -->
+  {#if pane_open}
+    <ConvexHullStats
+      model={{ entries: [...stable_entries, ...unstable_entries], phase_stats }}
+      {show_stable}
+      {show_unstable}
+      {entry_category}
+      {hidden_categories}
+      style="padding: 3pt; background: var(--pane-bg); --hull-stats-table-height: 30rem"
+    />
+  {/if}
 
   <InfoPaneCards
     cards={info_cards}

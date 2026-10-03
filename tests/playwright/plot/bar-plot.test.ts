@@ -1,4 +1,4 @@
-import { rects_overlap } from '$lib/plot/core/layout'
+import { rects_overlap } from '#lib/plot/core/layout.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   bounding_boxes,

@@ -3,7 +3,7 @@
 // superseded job is aborted so the worker client stops tracking it (and terminates the busy
 // worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 import type { TrajectoryPositionStream } from './index'
 
 // One pane owns one request across collection and computation. Aborting a settled request

@@ -1,14 +1,11 @@
 // Segment data and label helpers shared by PieChart, BubbleChart and BarChart
-import {
-  type ColorSchemeName,
-  ELEMENT_COLOR_SCHEMES,
-  opaque_contrast_color,
-} from '$lib/colors'
-import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
-import { format_num } from '$lib/labels'
-import type { FillPattern, ResolvedPattern } from '$lib/plot/core/patterns'
-import { resolve_pattern } from '$lib/plot/core/patterns'
+import type { ColorSchemeName } from '#lib/colors/index.js'
+import { ELEMENT_COLOR_SCHEMES, opaque_contrast_color } from '#lib/colors/index.js'
+import type { CompositionType } from '#lib/composition/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { format_num } from '#lib/labels.js'
+import type { FillPattern, ResolvedPattern } from '#lib/plot/core/patterns.js'
+import { resolve_pattern } from '#lib/plot/core/patterns.js'
 import type { SVGAttributes } from 'svelte/elements'
 import { format_amount } from './format'
 import { fractional_composition } from './parse'

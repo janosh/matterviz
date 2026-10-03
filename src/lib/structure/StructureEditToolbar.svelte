@@ -2,7 +2,7 @@
   // Measure/edit mode picker plus the edit-atoms and edit-bonds toolbars (undo/redo, element
   // inputs, bond order and add/delete toggle). Every action goes through the session;
   // Structure.svelte keeps the keyboard shortcuts that drive the same operations.
-  import { ToolbarMenu } from '$lib/overlays'
+  import { ToolbarMenu } from '#lib/overlays/index.js'
   import { Icon } from 'svelte-widgets'
   import { Angle, Edit, Link, Orbit, Redo, Reset, Ruler, Undo } from 'svelte-widgets/icons'
   import { BOND_ORDER_OPTIONS } from './bonding'

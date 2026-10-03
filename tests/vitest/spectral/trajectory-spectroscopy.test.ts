@@ -1,16 +1,16 @@
 import type {
   TrajectorySpectroscopyInput,
   TrajectorySpectroscopyOptions,
-} from '$lib/spectral/trajectory-spectroscopy'
+} from '#lib/spectral/trajectory-spectroscopy.js'
 import {
   calc_trajectory_spectroscopy,
   validate_trajectory_signal,
-} from '$lib/spectral/trajectory-spectroscopy'
-import { THZ_TO_INVERSE_CM } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { one_sided_periodogram } from '$lib/fft'
-import type { Pbc } from '$lib/structure/pbc'
-import type { TrajectoryPositionStream, TrajectorySignal } from '$lib/trajectory'
+} from '#lib/spectral/trajectory-spectroscopy.js'
+import { THZ_TO_INVERSE_CM } from '#lib/constants.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { one_sided_periodogram } from '#lib/fft.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
 import { describe, expect, it } from 'vitest'
 
 const signal = (

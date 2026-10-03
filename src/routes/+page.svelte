@@ -1,8 +1,8 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import MultiValueHeatmapDemo from '$site/MultiValueHeatmapDemo.svelte'
-  import type { TrajHandlerData } from '$lib/trajectory'
-  import { trajectory_files } from '$site/trajectories'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
+  import type { TrajHandlerData } from '#lib/trajectory/index.js'
+  import { trajectory_files } from '#site/trajectories.js'
   import { CopyButton, Icon } from 'svelte-widgets'
   import { Cursor, NPM, VSCode } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -17,9 +17,9 @@
   const load_structure_picker = async () => {
     const [{ default: FilePicker }, { structure_files }, { molecule_files }] =
       await Promise.all([
-        import('$lib/FilePicker.svelte'),
-        import('$site/structures'),
-        import('$site/molecules'),
+        import('#lib/FilePicker.svelte'),
+        import('#site/structures.js'),
+        import('#site/molecules.js'),
       ])
     return {
       default: FilePicker,
@@ -86,7 +86,7 @@
       </h3>
       <LazyDemo
         label="Structure viewer: {structure_filenames[idx]}"
-        load={() => import('$lib/structure/Structure.svelte')}
+        load={() => import('#lib/structure/Structure.svelte')}
         props={{
           source: `/structures/${file_name}`,
           on_file_load: (data) => {
@@ -133,7 +133,7 @@
 
 <LazyDemo
   label="Trajectory viewer"
-  load={() => import('$lib/trajectory/Trajectory.svelte')}
+  load={() => import('#lib/trajectory/Trajectory.svelte')}
   class="full-bleed"
   props={{
     source: `/trajectories/${default_trajectory_file}`,
@@ -151,7 +151,7 @@
 <LazyDemo
   label="Trajectory example files"
   height="120px"
-  load={() => import('$lib/FilePicker.svelte')}
+  load={() => import('#lib/FilePicker.svelte')}
   props={{ files: trajectory_files, active_files: [active_trajectory_file] }}
 />
 
@@ -159,7 +159,7 @@
 
 <LazyDemo
   label="Periodic table"
-  load={() => import('$site/PeriodicTableDemo.svelte')}
+  load={() => import('#site/PeriodicTableDemo.svelte')}
   props={{}}
 />
 
@@ -176,7 +176,7 @@
 <LazyDemo
   label="Phonon spectra"
   height="560px"
-  load={() => import('$site/PhononSpectraDemo.svelte')}
+  load={() => import('#site/PhononSpectraDemo.svelte')}
   props={{ class: `full-bleed`, style: `min-height: 480px; margin-block: 1em` }}
 />
 
@@ -191,7 +191,7 @@
 <LazyDemo
   label="Fermi surface"
   height="600px"
-  load={() => import('$site/FermiSurfaceDemo.svelte')}
+  load={() => import('#site/FermiSurfaceDemo.svelte')}
   props={{ class: `bleed-1400` }}
 />
 
@@ -207,7 +207,7 @@
 <LazyDemo
   label="Convex hull"
   height="600px"
-  load={() => import('$site/ConvexHullDemo.svelte')}
+  load={() => import('#site/ConvexHullDemo.svelte')}
   props={{ class: `full-bleed` }}
 />
 

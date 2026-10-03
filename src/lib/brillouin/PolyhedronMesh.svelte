@@ -2,8 +2,8 @@
   // Translucent faces plus cylinder edges of a convex polyhedron: the BZ and IBZ in
   // BrillouinZoneScene and the BZ overlay in FermiSurfaceScene. Owns the face geometry and
   // disposes it when the polyhedron changes or the mesh unmounts.
-  import { dispose_on_change, type ThreltePointerEvent } from '$lib/scene'
-  import Cylinder from '$lib/structure/Cylinder.svelte'
+  import { dispose_on_change, type ThreltePointerEvent } from '#lib/scene/index.js'
+  import Cylinder from '#lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
   import { polyhedron_geometry } from './geometry'

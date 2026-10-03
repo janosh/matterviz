@@ -2,15 +2,17 @@ import type {
   DecorationItem,
   DecorationScene,
   DecorationSize,
-} from '$lib/plot/core/decorations'
+} from '#lib/plot/core/decorations/index.js'
 import {
   build_obstacles_norm,
   bar_obstacles,
   clip_segment_to_unit_square,
+} from '#lib/plot/core/decorations/obstacles.js'
+import {
   get_outside_placement,
   place_outside_decorations,
-} from '$lib/plot/core/decorations'
-import type { Vec2 } from '$lib/math'
+} from '#lib/plot/core/decorations/outside.js'
+import type { Vec2 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }

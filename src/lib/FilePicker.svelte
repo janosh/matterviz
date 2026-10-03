@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop, watch_css_color } from '$lib/colors'
-  import type { FileInfo, FileTypePaint } from '$lib/io'
+  import { contrast_text_color, resolve_backdrop, watch_css_color } from '#lib/colors/index.js'
+  import type { FileInfo, FileTypePaint } from '#lib/io/index.js'
   import {
     DEFAULT_FILE_TYPE_PAINTS,
     ext_of,
     FALLBACK_FILE_TYPE_PAINT,
     strip_compression_extensions,
-  } from '$lib/io'
+  } from '#lib/io/index.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 

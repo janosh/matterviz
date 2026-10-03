@@ -1,4 +1,4 @@
-import { InfoTag } from '$lib/layout'
+import InfoTag from '#lib/layout/InfoTag.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, mock_clipboard_write } from '../setup'

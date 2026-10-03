@@ -1,12 +1,12 @@
 // Tests for HeatmapMatrix types, helpers, and element axis orderings.
 
-import type { ChemicalElement } from '$lib/element'
+import type { ChemicalElement } from '#lib/element/index.js'
 import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
   matrix_to_rows,
   ORDERING_LABELS,
-} from '$lib/heatmap-matrix'
+} from '#lib/heatmap-matrix/index.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`elements_to_axis`, () => {

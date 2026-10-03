@@ -1,4 +1,4 @@
-import { JsonTree } from '$lib/layout'
+import { JsonTree } from '#lib/layout/index.js'
 import { JsonTree as SharedJsonTree } from 'svelte-widgets'
 import { mount, flushSync, unmount } from 'svelte'
 import { expect, test, onTestFinished } from 'vitest'

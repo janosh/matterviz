@@ -17,7 +17,7 @@ pnpm install
 Start the dev server:
 
 ```sh
-npx vite dev
+pnpm exec vp dev
 ```
 
 ## Testing

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import HeatmapMatrix from '$lib/heatmap-matrix/HeatmapMatrix.svelte'
-  import type { AxisItem } from '$lib/heatmap-matrix'
+  import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
+  import type { AxisItem } from '#lib/heatmap-matrix/index.js'
 
   const items = (keys: string[]): AxisItem[] =>
     keys.map((key) => ({ key, label: key.toUpperCase() }))

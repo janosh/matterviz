@@ -1,17 +1,13 @@
 // Reactive data pipeline for ConvexHull:
 // temperature → gas corrections → formation energies → plot coordinates → lower hull →
 // energy above hull → thresholds/visibility. Components only render.
-import { get_convex_hull_defaults } from '$lib/settings'
-import { to_error } from '$lib/utils'
+import { get_convex_hull_defaults } from '#lib/settings.js'
+import { to_error } from '#lib/utils.js'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import * as helpers from './helpers'
 import * as thermo from './thermodynamics'
-import {
-  apply_formation_energies,
-  build_hull_model,
-  compute_energy_mode_info,
-  type EnergySourceMode,
-} from './model'
+import type { EnergySourceMode } from './model'
+import { apply_formation_energies, build_hull_model, compute_energy_mode_info } from './model'
 import type {
   EntryCategoryConfig,
   GasAnalysis,

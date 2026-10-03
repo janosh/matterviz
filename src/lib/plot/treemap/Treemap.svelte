@@ -2,40 +2,40 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import type { BasePlotProps } from '$lib/plot'
-  import { TreemapControls } from '$lib/plot'
-  import ChartShell from '$lib/plot/core/components/ChartShell.svelte'
-  import HierarchyShell from '$lib/plot/core/components/HierarchyShell.svelte'
-  import type { Rect, Sides } from '$lib/plot/core/layout'
-  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
-  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import type { HierarchyChartProps } from '$lib/plot/core/utils/hierarchy-state.svelte'
+  import type { BasePlotProps } from '#lib/plot/index.js'
+  import { TreemapControls } from '#lib/plot/index.js'
+  import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import HierarchyShell from '#lib/plot/core/components/HierarchyShell.svelte'
+  import type { Rect, Sides } from '#lib/plot/core/layout.js'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
+  import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
   import {
     HierarchyChartState,
     hierarchy_layout_options,
-  } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import type { PositionedArc } from '$lib/plot/core/utils/hierarchy-layout'
+  } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
+  import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout.js'
   import {
     measure_treemap_label_block,
     normalize_treemap_label_lines,
     place_treemap_label,
     safe_font_size,
-  } from '$lib/plot/treemap/labels'
+  } from '#lib/plot/treemap/labels.js'
   import type {
     TreemapLabelBlock,
     TreemapLabelFit,
     TreemapLabelFormatter,
     TreemapLabelPlacement,
-  } from '$lib/plot/treemap/labels'
-  import type { Tiling } from '$lib/plot/treemap/treemap'
+  } from '#lib/plot/treemap/labels.js'
+  import type { Tiling } from '#lib/plot/treemap/treemap.js'
   import {
     align_tiling,
     header_strip,
     lerp_rects,
     tile_rects,
     treemap_hover_veil,
-  } from '$lib/plot/treemap/treemap'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/treemap/treemap.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'

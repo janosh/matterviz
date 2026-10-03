@@ -1,4 +1,4 @@
-import { brighten_hex, css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
+import { brighten_hex, css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import { Color } from 'three/webgpu'
 import { expect, test } from 'vitest'
 

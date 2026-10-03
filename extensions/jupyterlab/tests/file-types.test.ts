@@ -3,7 +3,7 @@
 // silently makes MatterViz the default opener for unrelated files rather than an
 // extra "Open With" entry.
 import { describe, expect, test } from 'vitest'
-import { BASE64_FILE_TYPES, TEXT_FILE_TYPES } from '../src/file-types'
+import { BASE64_FILE_TYPES, is_default_file_type, TEXT_FILE_TYPES } from '../src/file-types'
 
 // Registration order in `index.ts`: text types first, then base64.
 const REGISTERED = [
@@ -75,4 +75,24 @@ describe(`file type patterns`, () => {
   ])(`%s -> %s`, (filename, expected) => {
     expect(match_kind(filename)).toBe(expected)
   })
+})
+
+// Claiming a type in `defaultFor` makes MatterViz open it on double-click. Every .h5 used to
+// be ours, including Keras weights and NetCDF4; HDF5 is now an "Open With" entry only.
+test.each([
+  [`vaspout.h5`, false],
+  [`model.weights.h5`, false],
+  [`data.hdf5`, false],
+  [`traj.h5.gz`, false],
+  [`run.traj`, true],
+  [`POSCAR.gz`, true],
+  [`structure.cif.gz`, true],
+])(`%s is a default MatterViz type: %s`, (filename, expected) => {
+  const spec = BASE64_FILE_TYPES.find((file_type) =>
+    file_type.pattern
+      ? new RegExp(file_type.pattern).test(filename)
+      : file_type.extensions.some((ext) => filename.toLowerCase().endsWith(ext)),
+  )
+  if (!spec) throw new Error(`no base64 file type for ${filename}`)
+  expect(is_default_file_type(spec)).toBe(expected)
 })

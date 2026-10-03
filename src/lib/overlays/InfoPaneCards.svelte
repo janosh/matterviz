@@ -2,10 +2,10 @@
   // Filterable label/value cards for info panes (trajectory, convex hull, Brillouin zone,
   // structure sites). Long lists page through `page_size` cards at a time; hosts can decorate
   // cards via `card_attrs`.
-  import type { InfoPaneCard, InfoPaneRow } from '$lib/overlays'
-  import { sanitize_html } from '$lib/sanitize'
-  import { hover_tooltip } from '$lib/tooltip/hover.svelte'
-  import { html_to_text } from '$lib/utils'
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+  import { html_to_text } from '#lib/utils.js'
   import { Icon } from 'svelte-widgets'
   import { Search } from 'svelte-widgets/icons'
   import type { HTMLAttributes } from 'svelte/elements'

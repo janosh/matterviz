@@ -1,13 +1,13 @@
 // Headless color-ramp helpers shared by ColorBar, HeatmapMatrix and PeriodicTable: turn a
 // ColorBarScale into a data→color function and sample it evenly in scale space (linear,
 // log or arcsinh spacing) for a CSS gradient.
-import { get_d3_interpolator } from '$lib/colors'
-import type { D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
-import { create_scale, log_color_domain } from '$lib/plot/core/scales'
-import type { ColorBarScale, ScaleType } from '$lib/plot/core/types'
-import { get_scale_type_name } from '$lib/plot/core/types'
-import { clamp01 } from '$lib/utils'
+import { get_d3_interpolator } from '#lib/colors/index.js'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { Vec2 } from '#lib/math.js'
+import { create_scale, log_color_domain } from '#lib/plot/core/scales.js'
+import type { ColorBarScale, ScaleType } from '#lib/plot/core/types.js'
+import { get_scale_type_name } from '#lib/plot/core/types.js'
+import { clamp01 } from '#lib/utils.js'
 import { scaleLog } from 'd3-scale'
 
 export interface ColorRamp {

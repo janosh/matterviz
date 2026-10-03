@@ -1,12 +1,12 @@
-import ChemPotDiagram3D from '$lib/chempot-diagram/ChemPotDiagram3D.svelte'
-import { export_png_file } from '$lib/chempot-diagram/export'
-import type { ChemPotHoverInfo } from '$lib/chempot-diagram/types'
-import type { PhaseData } from '$lib/convex-hull/types'
-import type * as scene_module from '$lib/scene'
+import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import { export_png_file } from '#lib/chempot-diagram/export.js'
+import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type * as scene_module from '#lib/scene/index.js'
 import type * as threlte_core from '@threlte/core'
 import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometry.js'
-import { swizzle_to_render } from '$lib/chempot-diagram/compute'
-import type { Vec3 } from '$lib/math'
+import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
+import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
@@ -26,7 +26,7 @@ vi.mock(`three/examples/jsm/geometries/ConvexGeometry.js`, async (original) => {
   }
   return { ...mod, ConvexGeometry: CountingConvexGeometry }
 })
-vi.mock(`$lib/scene`, async (original) => ({
+vi.mock(`#lib/scene/index.js`, async (original) => ({
   ...(await original<typeof scene_module>()),
   webgpu_available: () => true,
 }))
@@ -34,7 +34,7 @@ vi.mock(`@threlte/core`, async (original) => ({
   ...(await original<typeof threlte_core>()),
   Canvas: Reflect.get((await import(`../isosurface/threlte-stub`)).threlte_stub.T, `Canvas`),
 }))
-vi.mock(`$lib/chempot-diagram/ChemPotScene3D.svelte`, async () => ({
+vi.mock(`#lib/chempot-diagram/ChemPotScene3D.svelte`, async () => ({
   default: Reflect.get((await import(`../isosurface/threlte-stub`)).threlte_stub.T, `Scene`),
 }))
 

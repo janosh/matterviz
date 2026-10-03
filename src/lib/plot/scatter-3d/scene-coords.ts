@@ -1,15 +1,15 @@
-import type { DataSeries3D, Surface3DConfig } from '$lib/plot/core/types'
+import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
+import type { RunningExtent } from '#lib/plot/core/scales.js'
 import {
   accumulate_extent,
   empty_extent,
   nice_range_from_extent,
-  type RunningExtent,
-} from '$lib/plot/core/scales'
+} from '#lib/plot/core/scales.js'
 import { type Camera, type Object3D, Plane, Vector3 } from 'three/webgpu'
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
-import type { Point3D, Vec2, Vec3 } from '$lib/math'
+import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
 
 interface Scene3DParams {
   scene_x: number

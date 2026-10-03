@@ -1,7 +1,7 @@
 // Shared types and tolerances for the Miller-index surface/slab builder.
 // Everything here reaches the package root through `export *`, hence the SLAB_ prefixes.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
 
 // Cartesian tolerance (Å) for deciding two atomic positions coincide. Loose enough to
 // absorb file round-off, tight enough to keep a real displacement (e.g. the ~0.1 Å

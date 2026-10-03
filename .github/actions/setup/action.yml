@@ -84,8 +84,8 @@ runs:
           .cache/vitest
         # The installed graph includes resolved Git SHAs. Include custom compiler plugins;
         # Vitest hashes each source file and excludes import.meta.glob from its cache.
-        key: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'svelte.config.ts', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-${{ github.sha }}
-        restore-keys: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'svelte.config.ts', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-
+        key: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'package.json', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-${{ github.sha }}
+        restore-keys: vitest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/lock.yaml', 'vite.config.ts', 'package.json', 'src/vite-plugins.ts', 'src/scripts/**') }}-${{ inputs.test-cache }}-
     - name: Enable cached test compilation
       if: inputs.test-cache != ''
       shell: bash

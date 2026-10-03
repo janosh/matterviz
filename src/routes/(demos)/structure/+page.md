@@ -2,19 +2,19 @@
 
 ```svelte example
 <script lang="ts">
-  import { browser } from '$app/environment'
+  import { browser } from '$app/env'
   import { Structure, type StructureHandlerData } from 'matterviz'
   import { MultiSelect as Select } from 'svelte-widgets'
-  import { structure_files } from '$site/structures'
-  import { molecule_files } from '$site/molecules'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { decode_url_safe_base64 } from '$lib'
-  import { file_param, set_file_param } from '$site/state.svelte'
+  import { structure_files } from '#site/structures.js'
+  import { molecule_files } from '#site/molecules.js'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { decode_url_safe_base64 } from '#lib'
+  import { file_param, set_file_param } from '#site/state.svelte.js'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
   let display_filename = $state(default_filename)
-  // Inline structure data from URL hash (used by ferrox render CLI)
+  // Inline structure data from URL hash (used by CLI-generated links)
   let hash_structure_string = $state<string>()
 
   const all_files = [...structure_files, ...molecule_files]
@@ -25,7 +25,7 @@
 
   $effect(() => {
     if (!browser) return
-    // Support #structure=BASE64 for CLI-generated links (ferrox render).
+    // Support #structure=BASE64 for CLI-generated links.
     // Must use window.location.hash since SvelteKit's page.url.hash is always empty.
     const hash = window.location.hash
     if (hash.startsWith(`#structure=`)) {
@@ -216,7 +216,7 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 <script lang="ts">
   import type { AnyStructure, Vec3 } from 'matterviz'
   import { format_num, Structure } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 
   const relaxed = structures.find(
     (struct) => `lattice` in struct && struct.sites.length > 3 && struct.sites.length < 30,
@@ -260,7 +260,7 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 ```svelte example
 <script lang="ts">
   import { CRYSTAL_SYSTEMS, Structure } from 'matterviz'
-  import { structures } from '$site/structures'
+  import { structures } from '#site/structures.js'
 </script>
 
 <ul class="crystal-systems">
@@ -308,21 +308,21 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'
-  import { format_num } from '$lib'
-  import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
-  import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
-  import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
-  import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
-  import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-  import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
-  import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
-  import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
-  import pf_sd_1601634_cif from '$site/structures/PF-sd-1601634.cif?raw'
-  import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
-  import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
-  import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
-  import tio2_cif from '$site/structures/TiO2.cif?raw'
-  import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
+  import { format_num } from '#lib'
+  import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'
+  import c5_extra_data_xyz from '#site/molecules/C5-extra-data.xyz?raw'
+  import cyclohexane from '#site/molecules/cyclohexane.xyz?raw'
+  import aviary_CuF3K_triolith from '#site/structures/aviary-CuF3K-triolith.poscar?raw'
+  import ba_ti_o3_tetragonal from '#site/structures/BaTiO3-tetragonal.poscar?raw'
+  import mof_issue_127 from '#site/structures/mof-issue-127.cif?raw'
+  import na_cl_cubic from '#site/structures/NaCl-cubic.poscar?raw'
+  import ru_p_complex_cif from '#site/structures/P24Ru4H252C296S24N16.cif?raw'
+  import pf_sd_1601634_cif from '#site/structures/PF-sd-1601634.cif?raw'
+  import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
+  import scientific_notation_poscar from '#site/structures/scientific-notation.poscar?raw'
+  import selective_dynamics from '#site/structures/selective-dynamics.poscar?raw'
+  import tio2_cif from '#site/structures/TiO2.cif?raw'
+  import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
 
   const structure_files = [
     { name: `MOF (CIF)`, content: mof_issue_127 },

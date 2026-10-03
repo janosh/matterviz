@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     is_color,
@@ -7,24 +7,29 @@
     pick_contrast_color,
     resolve_backdrop,
     resolve_css_color,
-  } from '$lib/colors'
+  } from '#lib/colors/index.js'
   import type {
     ChemicalElement,
     ElementCategory,
     ElementSymbol,
     SplitLayout,
     TileSegment,
-  } from '$lib/element'
-  import { element_data, ElementPhoto, ElementTile, is_elem_symbol } from '$lib/element'
-  import { ELEM_SYMBOLS } from '$lib/labels'
-  import { array_extent, type Point2D, type Vec2 } from '$lib/math'
-  import { ColorBar } from '$lib/plot'
-  import { resolve_color_ramp, to_color_bar_scale } from '$lib/plot/core/color-ramp'
-  import { colors } from '$lib/state.svelte'
-  import { is_plain_object } from '$lib/utils'
+  } from '#lib/element/index.js'
+  import {
+    element_data,
+    ElementPhoto,
+    ElementTile,
+    is_elem_symbol,
+  } from '#lib/element/index.js'
+  import { ELEM_SYMBOLS } from '#lib/labels.js'
+  import { array_extent, type Point2D, type Vec2 } from '#lib/math.js'
+  import { ColorBar } from '#lib/plot/index.js'
+  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import { colors } from '#lib/state.svelte.js'
+  import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { MissingCellStyle } from '$lib/heatmap-matrix'
+  import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
 
@@ -202,8 +207,7 @@
   ): void => {
     const preview = tap_is_preview
     tap_is_preview = false
-    if (preview)
-      data.event.preventDefault() // keep the link from navigating on the first tap
+    if (preview) data.event.preventDefault() // keep the link from navigating on the first tap
     else if (activation) activation(data.element)
     else tile_props?.onclick?.(data)
   }
@@ -571,7 +575,7 @@
     pointer-events: none;
     box-shadow: var(
       --tooltip-shadow,
-      light-dark(0 2px 8px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.4))
+      0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
     );
   }
   .tooltip::before {

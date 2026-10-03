@@ -3,12 +3,12 @@ import {
   apply_vertex_colors,
   build_isosurface_geometry,
   nearest_face_vertex,
-} from '$lib/fermi-surface/geometry'
-import type { FermiIsosurface } from '$lib/fermi-surface/types'
-import type { VertexColorOptions } from '$lib/isosurface/coloring'
-import { css_to_linear_rgb } from '$lib/scene/colors'
-import { get_d3_interpolator } from '$lib/colors'
-import type { Vec3 } from '$lib/math'
+} from '#lib/fermi-surface/geometry.js'
+import type { FermiIsosurface } from '#lib/fermi-surface/types.js'
+import type { VertexColorOptions } from '#lib/isosurface/coloring.js'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import { get_d3_interpolator } from '#lib/colors/index.js'
+import type { Vec3 } from '#lib/math.js'
 import type { BufferAttribute } from 'three/webgpu'
 import { describe, expect, onTestFinished, test } from 'vitest'
 import { make_fermi_isosurface } from '../test-fixtures'

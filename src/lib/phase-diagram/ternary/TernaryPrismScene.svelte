@@ -4,13 +4,18 @@
   // transition outlines and a draggable isothermal cutting plane carrying the current section.
   // Nothing is rebuilt while dragging: rods/sheets are static and split at the plane by GPU
   // clipping planes; the section geometry is memoized on the (interval-constant) topology.
-  import { add_alpha } from '$lib/colors'
-  import { get_formula_label_segments } from '$lib/composition/format'
-  import { TRIANGLE_VERTICES } from '$lib/convex-hull/barycentric-coords'
-  import { format_num } from '$lib/labels'
-  import { clamp, type Vec2, type Vec3 } from '$lib/math'
-  import type { ThreltePointerEvent } from '$lib/scene'
-  import { build_orbit_props, dispose_on_change, SceneCamera, SceneLights } from '$lib/scene'
+  import { add_alpha } from '#lib/colors/index.js'
+  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
+  import { format_num } from '#lib/labels.js'
+  import { clamp, type Vec2, type Vec3 } from '#lib/math.js'
+  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import {
+    build_orbit_props,
+    dispose_on_change,
+    SceneCamera,
+    SceneLights,
+  } from '#lib/scene/index.js'
   import { T, useThrelte } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'

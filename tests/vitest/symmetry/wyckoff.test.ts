@@ -1,7 +1,7 @@
-import type { ElementSymbol } from '$lib'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Crystal } from '$lib/structure'
-import type { SymmetryDataset, WyckoffPos } from '$lib/symmetry'
+import type { ElementSymbol } from '#lib'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Crystal } from '#lib/structure/index.js'
+import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import {
   apply_symmetry_operations,
   count_structure_free_params,
@@ -10,7 +10,7 @@ import {
   wyckoff_letter,
   wyckoff_positions_from_moyo,
   wyckoff_sequence,
-} from '$lib/symmetry'
+} from '#lib/symmetry/wyckoff.js'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { cubic_matrix, make_crystal, make_wyckoff_dataset } from '../test-fixtures'

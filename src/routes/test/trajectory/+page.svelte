@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
-  import { Trajectory, trajectory_from_frames, type TrajectoryFrame } from '$lib/trajectory'
+  import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
   import { onMount } from 'svelte'
 
   const lattice_params = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }

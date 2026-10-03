@@ -5,8 +5,8 @@
     is_opaque_color,
     pick_contrast_color,
     resolve_backdrop,
-  } from '$lib/colors'
-  import type { NucleonPaint, SymbolPaint } from '$lib/element'
+  } from '#lib/colors/index.js'
+  import type { NucleonPaint, SymbolPaint } from '#lib/element/index.js'
   import type { SVGAttributes } from 'svelte/elements'
 
   const DEFAULT_PROTON_PAINT = { fill: `cornflowerblue`, label: ` P` }

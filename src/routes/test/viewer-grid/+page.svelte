@@ -3,11 +3,11 @@
   // contexts (~16) and silently evict the oldest, which used to blank out earlier canvases and
   // forced StructureViewport to carry context-loss recovery. WebGPU has no equivalent cap, so
   // this route exists to keep that regression visible: every canvas should stay drawn.
-  import type { Crystal, ElementSymbol } from '$lib'
-  import { renderer_registry } from '$lib/io/export'
-  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '$lib/math'
-  import type { Pbc } from '$lib/structure'
-  import Structure from '$lib/structure/Structure.svelte'
+  import type { Crystal, ElementSymbol } from '#lib'
+  import { renderer_registry } from '#lib/io/export.js'
+  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
+  import type { Pbc } from '#lib/structure/index.js'
+  import Structure from '#lib/structure/Structure.svelte'
 
   let viewer_count = $state(24)
   let grid: HTMLDivElement | undefined = $state()

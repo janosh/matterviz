@@ -1,5 +1,5 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite detects worker URLs syntactically
-import { create_worker_client } from '$lib/worker-client.svelte'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { compute_opportunity_map } from './opportunity-map'
 import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
 

@@ -1,5 +1,5 @@
-import TdbInfoPanel from '$site/phase-diagrams/TdbInfoPanel.svelte'
-import type { TdbParseResult } from '$site/phase-diagrams/tdb-parse'
+import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
+import type { TdbParseResult } from '#site/phase-diagrams/tdb-parse.js'
 import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'

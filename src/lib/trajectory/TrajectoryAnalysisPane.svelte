@@ -1,5 +1,5 @@
 <script lang="ts" generics="Input">
-  import { materialize_frame_result } from '$lib/trajectory/frame'
+  import { materialize_frame_result } from '#lib/trajectory/frame.js'
 
   // Chrome shared by every whole-trajectory analysis pane (MSD, VACF, structure-id, ...):
   // the ViewerPane shell, indexed-trajectory warnings, frame-stride and timestep controls, the
@@ -11,19 +11,22 @@
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import { StatusMessage } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
-  import { ViewerPane, type ViewerPaneOptions } from '$lib/overlays'
-  import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '$lib/trajectory'
-  import type { AnalysisCollectOptions, AnalysisPaneContext } from '$lib/trajectory/analysis'
+  import { format_num } from '#lib/labels.js'
+  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+  import type {
+    AnalysisCollectOptions,
+    AnalysisPaneContext,
+  } from '#lib/trajectory/analysis.js'
   import {
     analysis_frame_times,
     analysis_pane_setup,
     analysis_step_interval,
     no_full_pass_message,
-  } from '$lib/trajectory/analysis'
+  } from '#lib/trajectory/analysis.js'
   import { resolve_frame_range } from './runs/accumulate'
   import { create_request_owner } from './async-result.svelte'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
   import { format_bytes } from 'svelte-widgets/format'
   import { type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'

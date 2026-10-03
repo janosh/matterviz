@@ -2,11 +2,11 @@
 // numeric/element coercion, recoverable warnings, and CIF tokenization.
 // Lives here (not in parse.ts) so format parsers can use it without importing
 // their own dispatcher.
-import type { ElementSymbol } from '$lib/element'
-import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
-import { capitalize } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
+import { capitalize } from '#lib/labels.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import type {
   AnyStructure,
   BondOrder,
@@ -14,9 +14,9 @@ import type {
   Pbc,
   Site,
   StructureBond,
-} from '$lib/structure'
-import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
-import { normalize_scientific_notation } from '$lib/utils'
+} from '#lib/structure/index.js'
+import { get_bond_key, normalize_structure_bond } from '#lib/structure/bonding.js'
+import { normalize_scientific_notation } from '#lib/utils.js'
 
 // === Numeric coercion ===
 

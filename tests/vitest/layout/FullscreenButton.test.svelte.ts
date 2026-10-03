@@ -1,7 +1,7 @@
 import { fire, bind_props, mock_fullscreen, mount_sized } from '../setup'
-import FullscreenButton from '$lib/layout/FullscreenButton.svelte'
-import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-import Sankey from '$lib/plot/sankey/Sankey.svelte'
+import FullscreenButton from '#lib/layout/FullscreenButton.svelte'
+import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+import Sankey from '#lib/plot/sankey/Sankey.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 

@@ -10,10 +10,10 @@ import {
   sankeyRight,
 } from 'd3-sankey'
 import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
-import type { Vec2 } from '$lib/math'
-import type { Orientation } from '$lib/plot/core/types'
+import type { Vec2 } from '#lib/math.js'
+import type { Orientation } from '#lib/plot/core/types.js'
 import type { SankeyData, SankeyLink, SankeyNode, SankeyNodeAlign } from './sankey-types'
-import { DEFAULTS } from '$lib/settings'
+import { DEFAULTS } from '#lib/settings.js'
 
 // User-carried node props that survive the d3-sankey layout pass
 interface NodeExtra {

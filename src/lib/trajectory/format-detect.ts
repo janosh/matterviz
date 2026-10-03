@@ -1,7 +1,7 @@
 // Format detection for trajectory files
 import {
-  CONFIG_DIRS_REGEX,
   ext_regex,
+  filename_token_regex,
   HDF5_EXT_REGEX,
   MD_SIM_EXCLUDE_REGEX,
   TRAJ_EXTENSIONS_REGEX,
@@ -11,15 +11,14 @@ import {
   VASPRUN_REGEX,
   XYZ_EXTENSIONS,
   XYZ_EXTXYZ_REGEX,
-} from '$lib/constants'
-import { strip_compression_extensions } from '$lib/io/decompress'
-import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '$lib/io/is-binary'
-import { is_lammps_data_content } from '$lib/structure/format-detect'
-import { parse_leading_num } from '$lib/utils'
+} from '#lib/constants.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import { has_ase_traj_magic, has_hdf5_magic, magic_head } from '#lib/io/is-binary.js'
+import { is_lammps_data_content } from '#lib/structure/format-detect.js'
+import { parse_leading_num } from '#lib/utils.js'
 import { has_multiple_xyz_frames } from './helpers'
 
 export const is_trajectory_filename = (filename: string): boolean => {
-  if (CONFIG_DIRS_REGEX.test(filename)) return false
   const base_name = strip_compression_extensions(filename)
 
   if (XYZ_EXTXYZ_REGEX.test(base_name)) return TRAJ_KEYWORDS_REGEX.test(base_name)
@@ -40,16 +39,15 @@ export const is_trajectory_filename = (filename: string): boolean => {
 // Extensions that explicitly identify a format — when present, format detection trusts
 // the extension instead of sniffing content
 // oxfmt-ignore
-const KNOWN_FORMAT_EXT_REGEX = ext_regex([
+export const KNOWN_FORMAT_EXT_REGEX = ext_regex([
   ...XYZ_EXTENSIONS, `traj`, `h5`, `hdf5`, `lammpstrj`, `json`, `cif`, `poscar`, `vasp`, `yaml`,
   `yml`, `xml`, `csv`,
 ])
 const INDEXABLE_EXT_REGEX = ext_regex([...XYZ_EXTENSIONS, `traj`, `lammpstrj`])
-// basename starting with `xdatcar` (XDATCAR, XDATCAR_nvt), as FORMAT_PATTERNS.vasp reads it
-const XDATCAR_NAME_REGEX = /(?:^|[/\\])xdatcar[^/\\]*$/i
-// `outcar` anywhere in the basename (OUTCAR, OUTCAR_step2, relax.outcar), never in a
-// directory name — an `outcar/` folder must not claim the files inside it
-const OUTCAR_NAME_REGEX = /outcar[^/\\]*$/i
+// XDATCAR / OUTCAR as a token of the file's own name (XDATCAR_nvt, nvt.XDATCAR, XDATCAR.1,
+// relax.outcar): the same names is_trajectory_filename accepts
+const XDATCAR_NAME_REGEX = filename_token_regex([`xdatcar`])
+const OUTCAR_NAME_REGEX = filename_token_regex([`outcar`])
 
 // Classify the filename hint for a format whose extensions match ext_regex:
 // true = filename matches, false = filename names a different known format,
@@ -132,11 +130,24 @@ export const FORMAT_PATTERNS = {
   },
 } as const
 
+// Whether `marker` occurs at least twice, without counting every frame of a long run
+const occurs_twice = (content: string, marker: string): boolean => {
+  const first = content.indexOf(marker)
+  return first !== -1 && content.includes(marker, first + marker.length)
+}
+
 // Check if file is a trajectory (supports both filename-only and content-based detection)
 export function is_trajectory_file(filename: string, content?: string): boolean {
   if (content === undefined) return is_trajectory_filename(filename)
-  if (CONFIG_DIRS_REGEX.test(filename)) return false
   const base_name = strip_compression_extensions(filename)
+
+  // Several LAMMPS dump or XDATCAR frames make a trajectory whatever the file is called
+  // (md.dump, Si_run): the structure parsers would keep the first frame and drop the rest
+  if (
+    occurs_twice(content, `ITEM: TIMESTEP`) ||
+    occurs_twice(content, `Direct configuration=`)
+  )
+    return true
 
   // An XYZ-named file is a trajectory iff it holds several frames; a name that gives no hint
   // (blob: URLs, extensionless endpoints) may still be recognized by its frames

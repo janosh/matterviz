@@ -5,7 +5,7 @@
   // compile on WebGPU, while the materials below map to node materials automatically.
   // Like upstream it draws into a corner viewport of the *existing* canvas after the main
   // render, so it costs no extra canvas and stays out of PNG exports (scene+camera only).
-  import type { Vec3 } from '$lib/math'
+  import type { Vec3 } from '#lib/math.js'
   import { useParent, useTask, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
@@ -31,14 +31,8 @@
     on_end?: () => void
   } = $props()
 
-  const {
-    autoRenderTask,
-    camera,
-    dom,
-    invalidate,
-    renderer,
-    size: canvas_size,
-  } = useThrelte<THREE.WebGPURenderer>()
+  const { autoRenderTask, camera, dom, invalidate, renderer } =
+    useThrelte<THREE.WebGPURenderer>()
   // The orbit controls are the parent object, matching upstream's <OrbitControls><Gizmo /> nesting
   const parent = useParent()
   const active_controls = $derived($parent as OrbitControls | undefined)
@@ -167,9 +161,17 @@
     invalidate()
   })
 
-  const rect = $derived(
-    gizmo_rect({ placement, size, offset }, $canvas_size.width, $canvas_size.height),
-  )
+  // Lay out against the size the renderer last committed, never Threlte's `size` store: when
+  // a layout change lands mid-resize-phase, Threlte's resize task calls setSize() with the new
+  // size inside the frame, but the store only reaches subscribers in the effect flush after
+  // it. A rect from the stale store then sits past the shrunken attachment, WebGPU rejects
+  // the scissor (seen as SetScissorRect(5, 423, 72, 0) on a 397x247 grid pane) and the whole
+  // frame is dropped. Pointer hits use the same size, matching what is on screen.
+  const committed_size = new THREE.Vector2()
+  const current_rect = () => {
+    const { x: width, y: height } = renderer.getSize(committed_size)
+    return gizmo_rect({ placement, size, offset }, width, height)
+  }
 
   // Point the gizmo camera like the scene camera so handles read as the scene's world axes.
   // Distance is fixed; the ortho frustum sets the on-screen size.
@@ -194,7 +196,7 @@
     }
   }
 
-  // Camera fly-to, shared with the zone-axis control (see $lib/scene/fly-to)
+  // Camera fly-to, shared with the zone-axis control (see #lib/scene/fly-to)
   const fly_to = create_fly_to({
     camera: () => $camera,
     controls: () => active_controls,
@@ -215,7 +217,7 @@
     const bounds = canvas.getBoundingClientRect()
     const pixel_x = event.clientX - bounds.left
     const pixel_y = event.clientY - bounds.top
-    const { x: coord_x, y: coord_y, width, height } = rect
+    const { x: coord_x, y: coord_y, width, height } = current_rect()
     if (
       pixel_x < coord_x ||
       pixel_x > coord_x + width ||
@@ -322,9 +324,10 @@
     Symbol(`matterviz-gizmo-render`),
     () => {
       // `initialized` guards the frames before the GPU device resolves; render() throws then.
+      if (fade <= 0 || !renderer?.initialized) return
       // A pre-layout 0x0 canvas has nowhere to draw, and WebGPU rejects an empty viewport.
-      if (fade <= 0 || rect.width <= 0 || rect.height <= 0) return
-      if (!renderer?.initialized) return
+      const rect = current_rect()
+      if (rect.width <= 0 || rect.height <= 0) return
 
       for (const handle of handles) {
         handle.mesh.material.opacity = handle.base_opacity * fade

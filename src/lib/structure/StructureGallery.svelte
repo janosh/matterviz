@@ -1,15 +1,12 @@
 <script lang="ts">
-  import {
-    type D3InterpolateName,
-    get_d3_interpolator,
-    pick_contrast_color,
-  } from '$lib/colors'
-  import { create_flash } from '$lib/effects.svelte'
-  import { format_num } from '$lib/labels'
-  import { clamp } from '$lib/math'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { get_d3_interpolator, pick_contrast_color } from '#lib/colors/index.js'
+  import { create_flash } from '#lib/effects.svelte.js'
+  import { format_num } from '#lib/labels.js'
+  import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import type { StructureGalleryItem } from '$lib/structure'
-  import GlassChip from '$lib/overlays/GlassChip.svelte'
+  import type { StructureGalleryItem } from '#lib/structure/index.js'
+  import GlassChip from '#lib/overlays/GlassChip.svelte'
   import { portal } from 'svelte-widgets/attachments'
   import { untrack, type ComponentProps, type Snippet } from 'svelte'
   import Structure from './Structure.svelte'

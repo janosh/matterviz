@@ -2,8 +2,8 @@
   // Colour legend shared by ChemPotDiagram2D and ChemPotDiagram3D: a colour bar for the
   // continuous modes, one swatch per element count for arity mode, nothing for `none`.
   // The caller positions it (absolute) through `style`.
-  import type { D3InterpolateName } from '$lib/colors'
-  import { ColorBar } from '$lib/plot'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { ColorBar } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ChemPotColorRange } from './color'
   import { ARITY_COLORS, arity_legend_labels, get_chempot_interpolator } from './color'
@@ -52,7 +52,7 @@
   }
   .arity-legend {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: balance;
     gap: 2px 10px;
     max-width: calc(100% - 2em);
     font-size: 12px;

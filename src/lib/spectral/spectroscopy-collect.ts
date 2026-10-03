@@ -1,10 +1,10 @@
-import { is_finite_vec3_like } from '$lib/math'
-import type { AnalysisStreamOptions } from '$lib/trajectory/analysis'
-import { collect_trajectory_positions } from '$lib/trajectory/analysis'
-import { values_per_sample } from '$lib/trajectory/helpers'
-import type { TrajectoryRun, TrajectorySignal } from '$lib/trajectory'
-import { is_loaded_signal, is_signal_descriptor } from '$lib/trajectory/run'
-import { parse_frame_signal } from '$lib/trajectory/runs/accumulate'
+import { is_finite_vec3_like } from '#lib/math.js'
+import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
+import { collect_trajectory_positions } from '#lib/trajectory/analysis.js'
+import { values_per_sample } from '#lib/trajectory/helpers.js'
+import type { TrajectoryRun, TrajectorySignal } from '#lib/trajectory/index.js'
+import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run.js'
+import { parse_frame_signal } from '#lib/trajectory/runs/accumulate.js'
 import type {
   InfraredSignal,
   SpectroscopyPreprocessing,

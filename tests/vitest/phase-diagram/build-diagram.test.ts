@@ -1,6 +1,10 @@
-import { apply_slice, build_diagram, parse_curve_ref } from '$lib/phase-diagram/build-diagram'
-import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
-import type { SpecialPoint } from '$lib/phase-diagram/types'
+import {
+  apply_slice,
+  build_diagram,
+  parse_curve_ref,
+} from '#lib/phase-diagram/build-diagram.js'
+import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
+import type { SpecialPoint } from '#lib/phase-diagram/types.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`parse_curve_ref`, () => {

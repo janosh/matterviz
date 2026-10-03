@@ -1,19 +1,19 @@
-import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_svg_string } from '$lib/io/export'
-import type { Vec2 } from '$lib/math'
+import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+import { svg_to_svg_string } from '#lib/io/export.js'
+import type { Vec2 } from '#lib/math.js'
 import type {
   AxisConfig,
   AxisRanges,
   DataSeries,
   FillRegion,
   StyleOverrides,
-} from '$lib/plot/core/types'
-import type { FacetLayoutContext } from '$lib/plot/core/facets'
-import { place_tooltip } from '$lib/plot/core/decorations/tooltip'
-import { export_chart_image } from '$lib/plot/core/utils/chart-export'
-import { rects_overlap, type Rect } from '$lib/plot/core/layout'
-import { SETTLE_MS } from '$lib/plot/core/settling-tween.svelte'
-import { materialize_series_points } from '$lib/plot/scatter/scatter-data'
+} from '#lib/plot/core/types.js'
+import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
+import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
+import { export_chart_image } from '#lib/plot/core/utils/chart-export.js'
+import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
+import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+import { materialize_series_points } from '#lib/plot/scatter/scatter-data.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -36,7 +36,7 @@ import {
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
-vi.mock(`$lib/plot/core/decorations/tooltip`, async (import_original) => {
+vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
   const original = await import_original<{ place_tooltip: typeof place_tooltip }>()
   return { ...original, place_tooltip: vi.fn(original.place_tooltip) }
 })
@@ -2338,6 +2338,7 @@ describe(`ScatterPlot`, () => {
           color_values: [0, 100, null] as number[],
           size_values: [1, 9, 1],
           point_style: [{}, {}, { fill: `var(--accent)` }],
+          point_label: [{ text: `A`, offset: { x: 10, y: 0 } }, {}, {}],
         },
       ])
       const plot = await mount_sized_scatter_plot({
@@ -2358,6 +2359,7 @@ describe(`ScatterPlot`, () => {
         color_values: [100, 0, null] as number[],
         size_values: [9, 1, 1],
         point_style: [{}, {}, { fill: `red` }],
+        point_label: [{ text: `A`, offset: { x: -30, y: 20 } }, {}, {}],
       }
       flushSync()
       vi.advanceTimersByTime(150)
@@ -2376,12 +2378,31 @@ describe(`ScatterPlot`, () => {
       expect(frac).toBeLessThan(1)
       for (const other of fracs) expect(other).toBeCloseTo(frac, 1)
       expect(marker_fill(authored)).toBe(`red`)
+      // the label's offset (re-placed with the marker) glides on the same eased frame
+      const label = query(plot, `text.label-text`)
+      expect((Number(label.getAttribute(`x`)) - 10) / -40).toBeCloseTo(frac, 1)
+      expect(Number(label.getAttribute(`y`)) / 20).toBeCloseTo(frac, 1)
       expect(marker_position(plot, 0)).toEqual(start_position)
 
       vi.advanceTimersByTime(1000)
       await vi.waitFor(() =>
         expect([marker_fill(first), marker_radius(first)]).toEqual([`#fde725`, 10]),
       )
+      expect(
+        [`x`, `y`].map((attr) => query(plot, `text.label-text`).getAttribute(attr)),
+      ).toEqual([`-30`, `20`])
+
+      // a label switched on after settling lands on its auto-placed spot, no slide from {10, 0}
+      series[0] = { ...series[0], point_label: [{}, { text: `B`, auto_placement: true }, {}] }
+      flushSync()
+      await tick()
+      const placed_label = () =>
+        [`x`, `y`].map((attr) => query(plot, `text.label-text`).getAttribute(attr))
+      const first_frame = placed_label()
+      expect(first_frame).not.toEqual([`10`, `0`])
+      vi.advanceTimersByTime(1000)
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(placed_label()).toEqual(first_frame)
     } finally {
       vi.useRealTimers()
     }

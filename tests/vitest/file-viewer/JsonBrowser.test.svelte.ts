@@ -1,5 +1,5 @@
-import JsonBrowser from '$lib/file-viewer/JsonBrowser.svelte'
-import { mount_viewer } from '$lib/file-viewer/mount-viewer'
+import JsonBrowser from '#lib/file-viewer/JsonBrowser.svelte'
+import { mount_viewer } from '#lib/file-viewer/mount-viewer.js'
 import { flushSync, mount, unmount } from 'svelte'
 import type * as SvelteModule from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { doc_query, keydown } from '../setup'
 
 // Pass-through spy: a panel render is one mount_viewer call, so the count tells how many
 // viewers a burst of tree selections really built
-vi.mock(`$lib/file-viewer/mount-viewer`, { spy: true })
+vi.mock(`#lib/file-viewer/mount-viewer.js`, { spy: true })
 // Pass-through spy on unmount: panel viewers are mounted imperatively, so only an unmount
 // call proves a closed or replaced panel released its viewer
 // Avoid await in hoisted factories: Svelte's injected tracking needs initialized imports.

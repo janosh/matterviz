@@ -1,10 +1,10 @@
 <script lang="ts">
   import LazyDemo from './LazyDemo.svelte'
   import { goto } from '$app/navigation'
-  import type { ChemicalElement } from '$lib'
-  import element_data from '$lib/element/data'
-  import { array_extent, array_max, array_min, type Vec2 } from '$lib/math'
-  import TableInset from '$lib/periodic-table/TableInset.svelte'
+  import type { ChemicalElement } from '#lib'
+  import element_data from '#lib/element/data.js'
+  import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
+  import TableInset from '#lib/periodic-table/TableInset.svelte'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
   const two_fold_data = element_data.map((element) => [
@@ -36,7 +36,7 @@ The periodic table supports multiple values per element with different visual la
   <strong>bottom-right = density</strong>.
 </p>
 <LazyDemo label="Multi-value heatmap" height="400px">
-  {#await Promise.all( [import('$lib/periodic-table/PeriodicTable.svelte'), import('$lib/plot/core/components/ColorBar.svelte')] )}
+  {#await Promise.all( [import('#lib/periodic-table/PeriodicTable.svelte'), import('#lib/plot/core/components/ColorBar.svelte')] )}
     <p role="status">Loading multi-value heatmap…</p>
   {:then [{ default: PeriodicTable }, { default: ColorBar }]}
     <PeriodicTable

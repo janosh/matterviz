@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { SankeyData } from '$lib/plot'
-  import { Sankey, sankey_from_links } from '$lib/plot'
+  import type { SankeyData } from '#lib/plot/index.js'
+  import { Sankey, sankey_from_links } from '#lib/plot/index.js'
 
   // Three-layer flow: sources -> hubs -> sinks
   const flow: SankeyData = {

@@ -2,10 +2,10 @@
 // construction and per-bar rect computation. Extracted from BarPlot.svelte's
 // template so the coordinate math is unit-testable.
 
-import type { Point2D } from '$lib/math'
-import type { Rect } from '$lib/plot/core/layout'
-import { process_prop } from '$lib/plot/core/data-transform'
-import type { BarMode, InternalPoint, Orientation } from '$lib/plot/core/types'
+import type { Point2D } from '#lib/math.js'
+import type { Rect } from '#lib/plot/core/layout.js'
+import { process_prop } from '#lib/plot/core/data-transform.js'
+import type { BarMode, InternalPoint, Orientation } from '#lib/plot/core/types.js'
 import type { GroupInfo, NumericBarSeries } from './data'
 
 // Point with computed screen coordinates plus original data values

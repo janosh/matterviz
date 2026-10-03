@@ -1,8 +1,8 @@
 // Entry point: enumerate precursor sets, balance and evaluate every candidate reaction, rank them
 // and attach recipes. Pure function of its JSON-serializable request, so agents and UIs share it.
-import { DEFAULT_GAS_PRESSURES } from '$lib/convex-hull/types'
-import type { GasSpecies } from '$lib/convex-hull/types'
-import { combinations } from '$lib/math'
+import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
+import type { GasSpecies } from '#lib/convex-hull/types.js'
+import { combinations } from '#lib/math.js'
 import type { PhaseSet, PlannerPhase } from './phases'
 import {
   assign_e_above_hull,

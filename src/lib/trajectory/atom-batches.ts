@@ -1,10 +1,11 @@
 // Bounded numeric atom reads for spatial analysis.
-import { element_by_symbol } from '$lib/element/data'
-import { finite_vec3_from_values, partition_point, type Matrix3x3, type Vec3 } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+import { element_by_symbol } from '#lib/element/data.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { finite_vec3_from_values, partition_point } from '#lib/math.js'
+import type { Pbc } from '#lib/structure/index.js'
 import type { TrajectoryRunSignal } from './index'
 import type { NumericFrame } from './frame'
-import { element_from_atomic_number, symbol_to_atomic_number } from '$lib/element/helpers'
+import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
 
 export const ATOM_BATCH_SIZE = 65_536
 // Indexed by atomic number (packed sites' bytes): typed tables, since reading the element

@@ -4,11 +4,11 @@
 // structured clone, which is where a Svelte $state proxy or a non-cloneable site property would
 // blow up in a browser. The generic client (request ids, dedupe, abort, error replies) is
 // covered by worker-client.test.ts; only the payload contract is asserted here.
-import type { calc_structure_id_async as CalcStructureIdAsync } from '$lib/structure-id/async-compute.svelte'
-import { calc_structure_id } from '$lib/structure-id/calc-structure-id'
-import type { StructureIdOptions } from '$lib/structure-id/index'
-import type { StructureIdPayload } from '$lib/structure-id/worker-payload'
-import { structure_from_payload } from '$lib/structure-id/worker-payload'
+import type { calc_structure_id_async as CalcStructureIdAsync } from '#lib/structure-id/async-compute.svelte.js'
+import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
+import type { StructureIdOptions } from '#lib/structure-id/index.js'
+import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
+import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_fcc } from './lattices'
@@ -22,7 +22,7 @@ let calc_structure_id_async: typeof CalcStructureIdAsync
 
 beforeAll(async () => {
   // Imported after the stub so the module-level singleton picks it up
-  ;({ calc_structure_id_async } = await import(`$lib/structure-id/async-compute.svelte`))
+  ;({ calc_structure_id_async } = await import(`#lib/structure-id/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 

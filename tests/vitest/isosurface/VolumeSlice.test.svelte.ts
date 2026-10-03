@@ -1,12 +1,12 @@
-import { get_d3_interpolator } from '$lib/colors'
-import VolumeSlice from '$lib/isosurface/VolumeSlice.svelte'
-import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
-import * as slice_module from '$lib/isosurface/slice'
-import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
-import type { SliceResult } from '$lib/isosurface/slice'
-import type { VolumeSliceMode } from '$lib/isosurface/slice-rendering'
+import { get_d3_interpolator } from '#lib/colors/index.js'
+import VolumeSlice from '#lib/isosurface/VolumeSlice.svelte'
+import VolumeSliceView from '#lib/isosurface/VolumeSliceView.svelte'
+import * as slice_module from '#lib/isosurface/slice.js'
+import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
+import type { SliceResult } from '#lib/isosurface/slice.js'
+import type { VolumeSliceMode } from '#lib/isosurface/slice-rendering.js'
 import { mount, tick, type ComponentProps } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { doc_query } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 
@@ -92,8 +92,11 @@ describe(`VolumeSlice`, () => {
     expect(canvas?.width).toBe(4)
     expect(canvas?.height).toBe(4)
     expect(context.putImageData).toHaveBeenCalledTimes(fills ? 1 : 0)
-    // one stroke per threshold level
-    expect(context.stroke).toHaveBeenCalledTimes(contours ? 3 : 0)
+    // every threshold level shares one stroked path
+    expect(context.stroke).toHaveBeenCalledTimes(contours ? 1 : 0)
+    // beyond the 4-corner clip polygon, contours add segments
+    if (contours) expect(context.moveTo.mock.calls.length).toBeGreaterThan(4)
+    else expect(context.moveTo).not.toHaveBeenCalled()
   })
 
   test(`renders an accessible canvas with physical aspect ratio`, async () => {
@@ -271,14 +274,55 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
   const props = $state({ volume, settings: { resolution: 16 } })
   mount(VolumeSliceView, { target: document.body, props })
   await tick()
+  // edits coalesce to one resample per animation frame
   const settle = async (settings: Partial<VolumeSliceSettings>) => {
     props.settings = { ...props.settings, ...settings }
-    await new Promise((resolve) => setTimeout(resolve, 200)) // 150 ms edit coalescing
+    await tick()
+    await new Promise(requestAnimationFrame)
     await tick()
   }
   await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
   await settle({ render_mode: `contours`, symmetric: true })
   expect(sample).toHaveBeenCalledTimes(1)
-  await settle({ position: 0.25 })
-  expect(sample).toHaveBeenCalledTimes(2)
+  // a pane slider drag (one edit per frame) resamples every frame, not once it rests
+  for (const [idx, position] of [0.25, 0.3, 0.35].entries()) {
+    await settle({ position })
+    expect(sample).toHaveBeenCalledTimes(2 + idx)
+  }
+})
+
+// A drag at the 1024² default resampled ~1M pixels per frame (~40 ms): changes in quick
+// succession preview at 512 and full resolution lands once they rest
+test(`VolumeSliceView previews rapid plane changes at reduced resolution`, async () => {
+  // fake clocks: the burst window is wall-clock time, which a loaded machine stretches
+  vi.useFakeTimers({
+    toFake: [`performance`, `setTimeout`, `clearTimeout`, `requestAnimationFrame`],
+  })
+  onTestFinished(() => void vi.useRealTimers())
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
+    mock_context() as unknown as CanvasRenderingContext2D,
+  )
+  const sample = vi.spyOn(slice_module, `sample_hkl_slice`)
+  const volume = make_volume(
+    make_grid(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
+  )
+  const props = $state({ volume, settings: { resolution: 1024, position: 0.2 } })
+  mount(VolumeSliceView, { target: document.body, props })
+  await tick()
+  // other tests' still-mounted views (6³ grids) may resample as their own previews rest;
+  // this view gets a proxy of `volume`, so pick its calls by grid size
+  const resolutions = () =>
+    sample.mock.calls.filter(([sampled]) => sampled.dims[0] === 4).map((args) => args[3])
+  expect(resolutions()).toEqual([1024]) // a lone change renders at full resolution
+  // mounting was a plane change too, so each edit below lands inside the burst window
+  for (const position of [0.25, 0.3, 0.35]) {
+    props.settings = { ...props.settings, position }
+    await tick()
+    await vi.advanceTimersByTimeAsync(16)
+    await tick()
+  }
+  expect(resolutions()).toEqual([1024, 512, 512, 512])
+  await vi.advanceTimersByTimeAsync(200)
+  await tick()
+  expect(resolutions()).toEqual([1024, 512, 512, 512, 1024])
 })

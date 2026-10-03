@@ -1,5 +1,5 @@
 import { Color, InstancedBufferAttribute } from 'three/webgpu'
-import { css_to_linear_rgb } from '$lib/scene/colors'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
 
 const scratch = new Color()
 const gray = new Color(0x999999)

@@ -40,13 +40,13 @@ jobs:
       - name: Format, lint and type-check the whole repo
         run: |
           pnpm exec vp check
-          npx svelte-check --tsconfig ./tsconfig.json --threshold warning
+          npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning
       - name: Run prek checks
         uses: j178/prek-action@v2
 
-      # The root tsconfig excludes extensions/, and `vite build` strips types without
+      # The root tsconfig excludes extensions/, and `vp build` strips types without
       # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
-      # extension imports $lib types directly (file-viewer/eligibility, io/decompress,
+      # extension imports #lib types directly (file-viewer/eligibility, io/decompress,
       # trajectory/format-detect), so a change to a shared type broke it silently -
       # e.g. making HostFileRequest.filename required produced four errors nothing caught.
       - name: Type-check and test VS Code extension
@@ -54,9 +54,9 @@ jobs:
           pnpm -C extensions/vscode run typecheck
           pnpm -C extensions/vscode test
 
-      # Its settings and custom-editor selectors are generated from $lib, but only by a local
+      # Its settings and custom-editor selectors are generated from #lib, but only by a local
       # prebuild, so a change to the shared lists could land with package.json left behind.
-      - name: Check VS Code package.json is in sync with $lib
+      - name: Check VS Code package.json is in sync with #lib
         run: pnpm -C extensions/vscode run sync-config -- --check
 
       # Same blind spot as vscode: this tsconfig ran nowhere.
@@ -146,7 +146,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - name: Build production site
-        run: pnpm exec vite build
+        run: pnpm exec vp build
       - uses: actions/upload-artifact@v7
         with:
           name: browser-test-site

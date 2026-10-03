@@ -1,22 +1,23 @@
-import { materialize_frame_result } from '$lib/trajectory/frame'
-import * as preparation_module from '$lib/trajectory/prepare'
-import type { ParseResult } from '$lib/file-viewer/parse'
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import * as preparation_module from '#lib/trajectory/prepare.js'
+import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type {
   ParseWorkerRequest,
   ParseWorkerResponse,
   WorkerLike,
-} from '$lib/file-viewer/parse-in-worker'
-import { parse_in_worker } from '$lib/file-viewer/parse-in-worker'
-import { handle_parse_worker_request } from '$lib/file-viewer/parse-worker'
-import { prediction_to_json } from '$lib/structure/prediction'
+} from '#lib/file-viewer/parse-in-worker.js'
+import { parse_in_worker } from '#lib/file-viewer/parse-in-worker.js'
+import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker.js'
+import { prediction_to_json } from '#lib/structure/prediction.js'
 import { make_grid, make_volume } from '../test-fixtures'
 import type {
   Hdf5GroupSelectionRequiredError,
   TrajectoryFrame,
   TrajectoryRun,
-} from '$lib/trajectory'
-import { summarize_run, trajectory_from_frames } from '$lib/trajectory'
-import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
+} from '#lib/trajectory/index.js'
+import { summarize_run } from '#lib/trajectory/run.js'
+import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
 
 // MessagePort/Worker postMessage take no targetOrigin (that's window.postMessage)

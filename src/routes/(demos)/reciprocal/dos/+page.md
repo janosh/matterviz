@@ -9,7 +9,7 @@ Pass a record to `doses`. Each entry declares `type: "phonon"` with `frequencies
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { phonon_dos } from '$site/phonons'
+  import { phonon_dos } from '#site/phonons/index.js'
 </script>
 
 <Dos doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }} />
@@ -22,8 +22,8 @@ Convert pymatgen `CompleteDos` and `LobsterCompleteDos` objects with `normalize_
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
-  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
+  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
 
   const total_dos = normalize_dos(shift_to_fermi(dos_spin_polarization))
   if (!total_dos) throw new Error('Invalid DOS fixture')
@@ -39,8 +39,8 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
-  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
+  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
 
   let pdos_type = $state<'atom' | 'orbital'>('atom')
   const projected = $derived(extract_pdos(shift_to_fermi(dos_spin_polarization), pdos_type))
@@ -64,7 +64,7 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { phonon_dos } from '$site/phonons'
+  import { phonon_dos } from '#site/phonons/index.js'
 
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
   const doses = {
@@ -84,7 +84,7 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 ```svelte example
 <script lang="ts">
   import { PhononThermalPlot, format_num, thermal_properties } from 'matterviz'
-  import { phonon_dos } from '$site/phonons'
+  import { phonon_dos } from '#site/phonons/index.js'
 
   let energy_unit = $state<'kJ/mol' | 'eV'>(`kJ/mol`)
   const dos = phonon_dos['mp-2758-Sr4Se4-pbe']
@@ -111,9 +111,9 @@ Browse all available DOS files. Click to load, use controls to adjust visualizat
 ```svelte example
 <script lang="ts">
   import { Dos, FilePicker } from 'matterviz'
-  import { shift_to_fermi, normalize_dos, extract_pdos } from '$lib/spectral/helpers'
-  import { dos_spin_polarization, get_dos } from '$site/electronic/dos'
-  import { phonon_dos } from '$site/phonons'
+  import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
+  import { dos_spin_polarization, get_dos } from '#site/electronic/dos/index.js'
+  import { phonon_dos } from '#site/phonons/index.js'
 
   const files = [
     {

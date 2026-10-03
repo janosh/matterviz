@@ -1,10 +1,10 @@
 // Web Worker branch of calc_frame_rdfs_async (see structure-id/worker-path.test.ts for why a
 // stub Worker is installed before the import): the payload must carry one element per site,
 // which the structure-id payload omits, or every pair would histogram as X-X.
-import type { calc_frame_rdfs_async as CalcFrameRdfsAsync } from '$lib/rdf/async-compute.svelte'
-import { calc_frame_rdfs, type FrameRdfOptions } from '$lib/rdf/calc-rdf'
-import type { StructureIdPayload } from '$lib/structure-id/worker-payload'
-import { structure_from_payload } from '$lib/structure-id/worker-payload'
+import type { calc_frame_rdfs_async as CalcFrameRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
+import { calc_frame_rdfs, type FrameRdfOptions } from '#lib/rdf/calc-rdf.js'
+import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
+import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
 import { afterEach, beforeAll, expect, test } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -17,7 +17,7 @@ const stub = install_stub_worker<{
 let calc_frame_rdfs_async: typeof CalcFrameRdfsAsync
 
 beforeAll(async () => {
-  ;({ calc_frame_rdfs_async } = await import(`$lib/rdf/async-compute.svelte`))
+  ;({ calc_frame_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 

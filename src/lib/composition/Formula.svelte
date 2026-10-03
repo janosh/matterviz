@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '$lib/colors'
-  import type { ElementSymbol } from '$lib/element'
-  import { element_by_symbol } from '$lib/element'
-  import ElementTile from '$lib/element/ElementTile.svelte'
+  import type { ColorSchemeName } from '#lib/colors/index.js'
+  import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '#lib/colors/index.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
+  import { element_by_symbol } from '#lib/element/index.js'
+  import ElementTile from '#lib/element/ElementTile.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     AMOUNT_FORMAT,

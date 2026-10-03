@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { FileInfo } from '$lib'
-  import BrillouinBandsDos from '$lib/spectral/BrillouinBandsDos.svelte'
-  import FilePicker from '$lib/FilePicker.svelte'
+  import type { FileInfo } from '#lib'
+  import BrillouinBandsDos from '#lib/spectral/BrillouinBandsDos.svelte'
+  import FilePicker from '#lib/FilePicker.svelte'
   import {
     phonon_bands,
     phonon_data,
     phonon_dos,
     phonon_fixture_groups,
     phonon_method_label,
-  } from '$site/phonons'
+  } from '#site/phonons/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()

@@ -1,5 +1,5 @@
 import { goto } from '$app/navigation'
-import type { NavGroup } from '$site/state.svelte'
+import type { NavGroup } from '#site/state.svelte.js'
 import {
   file_param,
   group_nav_routes,
@@ -7,11 +7,11 @@ import {
   nav_routes,
   normalize_static_url,
   set_file_param,
-} from '$site/state.svelte'
+} from '#site/state.svelte.js'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
-vi.mock(`$app/environment`, () => ({ browser: true }))
+vi.mock(`$app/env`, () => ({ browser: true }))
 vi.mock(`$app/state`, () => ({
   page: { url: new URL(`https://example.test/structure/index.html?file=old.cif&view=slice`) },
 }))
@@ -32,7 +32,7 @@ describe(`?file= helpers`, () => {
     set_file_param(`new.cif`)
     expect(goto).toHaveBeenLastCalledWith(
       `https://example.test/structure/?file=new.cif&view=slice`,
-      { replaceState: true, keepFocus: true, noScroll: true },
+      { replace: true, reset: false },
     )
     // page.url is read-only reactive state and must not have been mutated in place
     expect(file_param()).toBe(`old.cif`)

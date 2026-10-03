@@ -1,8 +1,8 @@
-import { add_alpha } from '$lib/colors'
-import { DEFAULT_PNG_DPI } from '$lib/constants'
-import { format_num } from '$lib/labels'
-import { array_extent, point_in_polygon, type Vec2 } from '$lib/math'
-import type { Sides } from '$lib/plot/core/layout'
+import { add_alpha } from '#lib/colors/index.js'
+import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+import { format_num } from '#lib/labels.js'
+import { array_extent, point_in_polygon, type Vec2 } from '#lib/math.js'
+import type { Sides } from '#lib/plot/core/layout.js'
 import { line } from 'd3-shape'
 import type {
   CompUnit,

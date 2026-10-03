@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { PdfPlot, RdfPlot } from '$lib'
-  import type { RdfPattern } from '$lib/rdf'
-  import type { Crystal } from '$lib/structure'
+  import { PdfPlot, RdfPlot } from '#lib'
+  import type { RdfPattern } from '#lib/rdf/index.js'
+  import type { Crystal } from '#lib/structure/index.js'
 
   let { pattern, pdf_structure }: { pattern: RdfPattern; pdf_structure?: Crystal } = $props()
   let x_label = $state(`Initial r`)

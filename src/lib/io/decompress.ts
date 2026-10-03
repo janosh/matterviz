@@ -2,16 +2,19 @@ import {
   COMPRESSION_EXTENSIONS_REGEX,
   COMPRESSION_FORMATS,
   HDF5_EXT_REGEX,
-} from '$lib/constants'
+} from '#lib/constants.js'
 import { has_gzip_magic, has_hdf5_magic, is_binary_payload } from './is-binary'
 
-// Strip every trailing compression extension, repeatedly so `.chgcar.gz.zip` fully unwraps.
-// Lowercases by default; pass `lowercase: false` when the result names a file a user sees.
+// A file's own name (directories dropped: an `elfcar_runs/` or `build/` folder says nothing
+// about the files in it) without its trailing compression extensions, stripped repeatedly so
+// `.chgcar.gz.zip` fully unwraps. Lowercases by default; pass `lowercase: false` when the
+// result names a file a user sees.
 export function strip_compression_extensions(
   filename: string,
   { lowercase = true }: { lowercase?: boolean } = {},
 ): string {
-  let base_name = lowercase ? filename.toLowerCase() : filename
+  const own_name = filename.split(/[\\/]/).pop() ?? ``
+  let base_name = lowercase ? own_name.toLowerCase() : own_name
   while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
     base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   }

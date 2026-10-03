@@ -1,9 +1,9 @@
 // Public surface of the trajectory subsystem: the run contract, the two components, the
 // analysis panes and the shared types every consumer needs.
-import type { ElementSymbol } from '$lib/element'
-import type { FileLoadData } from '$lib/io'
-import type { Matrix3x3 } from '$lib/math'
-import type { AnyStructure, Pbc } from '$lib/structure/index'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { FileLoadData } from '#lib/io/index.js'
+import type { Matrix3x3 } from '#lib/math.js'
+import type { AnyStructure, Pbc } from '#lib/structure/index.js'
 import type { TrajectoryRun } from './run'
 import type { NumericFrame } from './frame'
 

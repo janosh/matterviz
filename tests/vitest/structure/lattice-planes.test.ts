@@ -1,5 +1,5 @@
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import {
   clip_frac_plane_to_cell,
   lattice_plane_polygons,
@@ -7,7 +7,7 @@ import {
   polygon_edge_vertices,
   polygon_fan_vertices,
   tile_lattice_planes,
-} from '$lib/structure/lattice-planes'
+} from '#lib/structure/lattice-planes.js'
 import { describe, expect, test } from 'vitest'
 
 const cubic: Matrix3x3 = [

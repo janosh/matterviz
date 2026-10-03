@@ -1,17 +1,13 @@
 import { frame_transfers, type NumericFrame, type FrameChannels } from '../frame'
-import {
-  FramePreparer,
-  display_frame_transfers,
-  type DisplayFrame,
-  type FramePreparation,
-} from '../prepare'
+import type { DisplayFrame, FramePreparation } from '../prepare'
+import { FramePreparer, display_frame_transfers } from '../prepare'
 // A run served over a MessagePort: the worker keeps the real run (and with it the source
 // bytes or HDF5 handle) and answers read_frame / collect_positions requests; the client side
 // is itself a TrajectoryRun whose dispose() releases the port and terminates the worker.
 //
 // MessagePort.postMessage takes no targetOrigin (that's window.postMessage).
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 import { position_stream_transferables } from '../helpers'
 import type {
   ParseProgress,

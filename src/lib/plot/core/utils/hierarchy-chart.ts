@@ -4,26 +4,26 @@
 // Everything operates on the flat pre-order arc arrays compute_sunburst_layout
 // produces, so each chart keeps only its geometry (polar projection vs tiling).
 
-import type { D3InterpolateName } from '$lib/colors'
-import { is_opaque_color, opaque_contrast_color } from '$lib/colors'
-import { format_value } from '$lib/labels'
-import type { Vec2 } from '$lib/math'
-import type { ResolvedPattern } from '$lib/plot/core/patterns'
-import { resolve_pattern } from '$lib/plot/core/patterns'
-import { create_color_scale } from '$lib/plot/core/scales'
-import type { FontSpec } from '$lib/plot/core/text-metrics'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import { is_opaque_color, opaque_contrast_color } from '#lib/colors/index.js'
+import { format_value } from '#lib/labels.js'
+import type { Vec2 } from '#lib/math.js'
+import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
+import { resolve_pattern } from '#lib/plot/core/patterns.js'
+import { create_color_scale } from '#lib/plot/core/scales.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   DEFAULT_FONT_SPEC,
   graphemes,
   measure_text_line,
   resolve_font_spec,
-} from '$lib/plot/core/text-metrics'
-import type { LegendItem } from '$lib/plot/core/types'
+} from '#lib/plot/core/text-metrics.js'
+import type { LegendItem } from '#lib/plot/core/types.js'
 import type {
   PositionedArc,
   SunburstLabelText,
   SunburstNodeHandlerProps,
-} from '$lib/plot/core/utils/hierarchy-layout'
+} from '#lib/plot/core/utils/hierarchy-layout.js'
 
 // === Labels ===
 

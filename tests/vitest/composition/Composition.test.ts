@@ -1,4 +1,5 @@
-import { Composition, parse_composition } from '$lib/composition'
+import Composition from '#lib/composition/Composition.svelte'
+import { parse_composition } from '#lib/composition/parse.js'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'

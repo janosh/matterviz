@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import type { PaneToggleProps } from '$lib/overlays'
-  import type { ExportSection } from '$lib/io'
-  import ExportPane from '$lib/io/ExportPane.svelte'
-  import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import type { ExportSection } from '#lib/io/index.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 

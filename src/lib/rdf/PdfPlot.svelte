@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { normalize_show_controls } from '$lib/controls'
-  import type { ScatterPlotOptions, DataSeries, RefLine } from '$lib/plot'
-  import { plot_color } from '$lib/colors'
-  import { get_electro_neg_formula } from '$lib/composition'
+  import { normalize_show_controls } from '#lib/controls.js'
+  import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { StatusMessage } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
-  import { ScatterPlot } from '$lib/plot'
-  import type { RadiationType } from '$lib/scattering'
-  import type { Crystal, Pbc } from '$lib/structure'
-  import { html_to_text, to_error } from '$lib/utils'
+  import { format_num } from '#lib/labels.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
+  import type { RadiationType } from '#lib/scattering/index.js'
+  import type { Crystal, Pbc } from '#lib/structure/index.js'
+  import { html_to_text, to_error } from '#lib/utils.js'
   import {
     calculate_all_pair_rdfs,
     label_structures,

@@ -26,16 +26,16 @@
 // `{ "format": ..., "paths": { "vacancy": { "images": [...] }, "interstitial": [...] } }`.
 // A `paths` entry is either a full path object or a bare image array.
 
-import type { Vec3 } from '$lib/math'
-import { finite_vec3_from_values, is_finite_vec3_like } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import { parse_structure_file } from '$lib/structure/parse'
-import { count_xyz_frames, iter_xyz_frames, TextLines } from '$lib/trajectory/helpers'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { build_xyz_frame, parse_xyz_comment_metadata } from '$lib/trajectory/parse/xyz'
+import type { Vec3 } from '#lib/math.js'
+import { finite_vec3_from_values, is_finite_vec3_like } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
+import { count_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
-import { is_plain_object, to_error } from '$lib/utils'
+import { is_plain_object, to_error } from '#lib/utils.js'
 
 export const REACTION_PATH_FORMAT = `matterviz-reaction-path`
 
@@ -142,14 +142,17 @@ export function parse_reaction_path_json(
   return { [path.label ?? filename]: path }
 }
 
-// Energy from an (ext)XYZ comment line. The trajectory parser's metadata reader also
-// accepts `E=`, `etot=` and `total_energy=`, not just `energy=`.
-const xyz_comment_energy = (comment: string, context: string): number =>
-  require_finite(
-    parse_xyz_comment_metadata(comment).properties.energy,
+// Energy from an (ext)XYZ comment line: `energy=` or `E=`, else `total_energy=`/`etot=`. The
+// trajectory reader keeps the latter apart (an MD total includes kinetic energy), but an NEB
+// image is a static calculation, where the total energy is the potential energy.
+const xyz_comment_energy = (comment: string, context: string): number => {
+  const { energy, total_energy } = parse_xyz_comment_metadata(comment).properties
+  return require_finite(
+    energy ?? total_energy,
     () =>
       `${context} has no parsable energy in its comment line; expected e.g. \`energy=-1234.5\`, got "${comment.trim()}"`,
   )
+}
 
 // Read a multi-frame extended-XYZ file as one reaction path, one image per frame. Frame
 // walking, `Properties=` column layout, lattice, pbc and comment metadata all come from

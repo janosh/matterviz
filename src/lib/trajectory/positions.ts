@@ -1,10 +1,10 @@
 // Kernels shared by every consumer of a flat frame-major position stream: MSD, VACF/VDOS,
 // trajectory spectroscopy and the trajectory trails. Pure functions over Float64Array so Web
 // Worker bundles can import them without dragging a component in.
-import { fft_in_place, next_power_of_two } from '$lib/fft'
-import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
-import { create_lattice_converters, min_image_displacement_into } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+import { fft_in_place, next_power_of_two } from '#lib/fft.js'
+import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math.js'
+import { create_lattice_converters, min_image_displacement_into } from '#lib/math.js'
+import type { Pbc } from '#lib/structure/index.js'
 import type { TrajectoryPositionStream } from './index'
 
 // Map each atom onto a dense element-group slot so a single pass over atoms feeds every

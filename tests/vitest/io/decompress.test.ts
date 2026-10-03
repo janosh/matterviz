@@ -8,7 +8,7 @@ import {
   inflation_limiter,
   MAX_INFLATED_BYTES,
   MAX_STRING_CHARS,
-} from '$lib/io/decompress'
+} from '#lib/io/decompress.js'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
 

@@ -1,4 +1,4 @@
-import type { Point2D } from '$lib/math'
+import type { Point2D } from '#lib/math.js'
 
 // Uniform-grid spatial hash for nearest-point picking in screen pixels.
 // Integer keys avoid allocating strings; coordinates outside the exact packing range are

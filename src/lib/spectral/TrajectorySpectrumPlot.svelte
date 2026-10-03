@@ -5,10 +5,10 @@
     FacetPanel,
     FacetPanelContext,
     ScatterHandlerEvent,
-  } from '$lib/plot'
-  import { PLOT_COLORS } from '$lib/colors'
-  import { clamp } from '$lib/math'
-  import { FacetGrid, ScatterPlot } from '$lib/plot'
+  } from '#lib/plot/index.js'
+  import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { clamp } from '#lib/math.js'
+  import { FacetGrid, ScatterPlot } from '#lib/plot/index.js'
   import { frequency_unit_label } from './frequency-units'
   import type {
     RamanChannel,

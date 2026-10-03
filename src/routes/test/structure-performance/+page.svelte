@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { replaceState } from '$app/navigation'
-  import type { ElementSymbol, Vec3, Crystal } from '$lib'
+  import { goto } from '$app/navigation'
+  import type { ElementSymbol, Vec3, Crystal } from '#lib'
   import { Spinner } from 'svelte-widgets'
-  import Structure from '$lib/structure/Structure.svelte'
-  import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '$lib/settings'
-  import type { BondingStrategy } from '$lib/structure/bonding'
+  import Structure from '#lib/structure/Structure.svelte'
+  import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '#lib/settings.js'
+  import type { BondingStrategy } from '#lib/structure/bonding.js'
   import type { ComponentProps } from 'svelte'
 
   let atom_count = $state(100)
@@ -159,7 +159,7 @@
     params.set(`performance_mode`, performance_mode)
     params.set(`bonding_strategy`, bonding_strategy)
     params.set(`force_large_structure`, force_large_structure.toString())
-    replaceState(`?${params}`, {})
+    void goto(`?${params}`, { shallow: true, replace: true })
   }
 </script>
 

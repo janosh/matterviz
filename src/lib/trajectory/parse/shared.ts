@@ -1,9 +1,10 @@
 import type { NumericFrame, FrameChannels } from '../frame'
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
-import type { Matrix3x3 } from '$lib/math'
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
+import type { Matrix3x3 } from '#lib/math.js'
 import type { ReadAtoms } from '../atom-batches'
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 import type {
   PositionStreamOptions,
   TrajectoryFrame,
@@ -11,7 +12,7 @@ import type {
   TrajectoryPositionStream,
   TrajectoryRunSignal,
   TrajectorySignal,
-} from '$lib/trajectory/index'
+} from '#lib/trajectory/index.js'
 
 export type WarnFn = (message: string, error?: unknown) => void
 
@@ -83,20 +84,47 @@ export interface LazyTrajectorySource extends ParsedRunFacts {
 // VASP prints stress in kB; the trajectory labels declare pressure and stress in GPa
 const KBAR_TO_GPA = 0.1
 
-// Frame metadata for a stress tensor as VASP prints it: kB, positive = compressive. The
-// pressure is the trace mean, which is what OUTCAR's `external pressure` line reports.
-// The 3x3 matrix is not plottable, so the two magnitudes come along (stress_frobenius, a
-// default-visible series, otherwise had no producer).
-export const vasp_stress_metadata = (
-  stress_kbar: Matrix3x3,
-): { stress: Matrix3x3; pressure: number; stress_max: number; stress_frobenius: number } => {
-  const stress = stress_kbar.map((row) => row.map((val) => val * KBAR_TO_GPA)) as Matrix3x3
-  return {
-    stress,
-    pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3,
-    stress_max: Math.max(...stress.map((row, idx) => Math.abs(row[idx]))),
-    stress_frobenius: Math.hypot(...stress.flat()),
+type StressMetadata = {
+  stress: Matrix3x3
+  pressure: number
+  stress_max: number
+  stress_frobenius: number
+}
+// Frame metadata for a stress tensor in the one convention every reader stores: GPa,
+// positive = compressive (VASP's sign). The pressure is the trace mean. The 3x3 matrix is not
+// plottable, so the two magnitudes come along (stress_frobenius, a default-visible series,
+// otherwise had no producer).
+const stress_metadata = (stress: Matrix3x3): StressMetadata => ({
+  stress,
+  pressure: (stress[0][0] + stress[1][1] + stress[2][2]) / 3,
+  stress_max: Math.max(...stress.map((row, idx) => Math.abs(row[idx]))),
+  stress_frobenius: Math.hypot(...stress.flat()),
+})
+
+// Stress as VASP prints it: kB, positive = compressive
+export const vasp_stress_metadata = (stress_kbar: Matrix3x3): StressMetadata =>
+  stress_metadata(stress_kbar.map((row) => row.map((val) => val * KBAR_TO_GPA)) as Matrix3x3)
+
+// Stress as ASE stores it (.traj results, extXYZ `stress=`): eV/Å³, positive = tensile, as a
+// 6-component Voigt vector [xx, yy, zz, yz, xz, xy] or a 3x3 tensor. Undefined if malformed.
+export const ase_stress_metadata = (stress: unknown): StressMetadata | undefined => {
+  const values = Array.isArray(stress) ? stress.flat() : []
+  if (!values.every((value) => typeof value === `number` && Number.isFinite(value))) {
+    return undefined
   }
+  const to_gpa = (value: number) => -value * EV_PER_A3_TO_GPA
+  if (values.length === 9) {
+    return stress_metadata(
+      [0, 3, 6].map((row) => values.slice(row, row + 3).map(to_gpa)) as Matrix3x3,
+    )
+  }
+  if (values.length !== 6) return undefined
+  const [xx, yy, zz, yz, xz, xy] = values.map(to_gpa)
+  return stress_metadata([
+    [xx, xy, xz],
+    [xy, yy, yz],
+    [xz, yz, zz],
+  ])
 }
 
 // POTIM is the time step (fs) only when IBRION = 0; relaxations reuse the tag as a step scale

@@ -1,6 +1,6 @@
-import type { Matrix3x3, Point2D, Vec2, Vec3 } from '$lib/math'
-import type { DefaultSettings } from '$lib/settings'
-import type { TooltipProp } from '$lib/tooltip'
+import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
+import type { DefaultSettings } from '#lib/settings.js'
+import type { TooltipProp } from '#lib/tooltip/index.js'
 
 // Viewer settings BrillouinZone forwards to BrillouinZoneControls (bound) and
 // BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin

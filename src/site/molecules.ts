@@ -1,5 +1,5 @@
-import type { FileInfo, Molecule } from '$lib'
-import { fixture_ext, glob_basename, site_file_info } from '$site/imports'
+import type { FileInfo, Molecule } from '#lib'
+import { fixture_ext, glob_basename, site_file_info } from '#site/imports.js'
 
 const molecules = Object.entries(
   import.meta.glob<Molecule>(`./molecules/*.json`, {
@@ -17,7 +17,7 @@ export const test_molecules = Object.fromEntries(molecules.map((mol) => [mol.id,
 // puts every non-JS fixture (.mol2, .pdb, .sdf, .xyz) through the module transform pipeline
 // instead of emitting it as an asset. The static symlink serves them at /molecules/<name>.
 export const molecule_files: FileInfo[] = Object.keys(
-  import.meta.glob(`$site/molecules/*`, { query: `?url` }),
+  import.meta.glob(`#site/molecules/*`, { query: `?url` }),
 ).map((path) =>
   site_file_info(path, {
     type: fixture_ext(path).toUpperCase(),

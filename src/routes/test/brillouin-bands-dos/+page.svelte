@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { BrillouinBandsDos, normalize_dos } from '$lib/spectral'
-  import type { BaseBandStructure, PhononDos } from '$lib/spectral/types'
-  import type { Crystal } from '$lib/structure'
-  import { electronic_bands } from '$site/electronic/bands'
-  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { BrillouinBandsDos, normalize_dos } from '#lib/spectral/index.js'
+  import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
+  import type { Crystal } from '#lib/structure/index.js'
+  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
   const electronic_dos = normalize_dos(dos_spin_polarization)

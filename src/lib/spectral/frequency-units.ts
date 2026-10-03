@@ -5,7 +5,7 @@ import {
   HARTREE_TO_EV,
   PLANCK_J_S,
   THZ_TO_INVERSE_CM,
-} from '$lib/constants'
+} from '#lib/constants.js'
 
 // Units a phonon DOS / band structure can be displayed in. `cm^-1` is the only spelling;
 // the plots render it as cm⁻¹ (see `frequency_unit_label`).

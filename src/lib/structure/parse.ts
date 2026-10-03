@@ -1,19 +1,22 @@
 import { numeric_sites } from './site'
-import type { OptimadeStructure } from '$lib/api/optimade'
-import { XYZ_EXTXYZ_REGEX } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { coerce_elem_symbol, is_elem_symbol } from '$lib/element/helpers'
-import { strip_compression_extensions } from '$lib/io/decompress'
-import { is_pbc, type Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { AnyStructure, Crystal, Pbc, Site } from '$lib/structure'
-import { shift_bonds_for_moved_sites } from '$lib/structure/bonding'
-import { is_lammps_data_content, is_lammps_dump_content } from '$lib/structure/format-detect'
-import { parse_lammps_data, parse_lammps_dump } from '$lib/structure/parsers/lammps'
-import { is_mmcif_content, parse_mmcif } from '$lib/structure/parsers/mmcif'
-import { parse_mol } from '$lib/structure/parsers/mol'
-import { mol2_has_lattice, parse_mol2 } from '$lib/structure/parsers/mol2'
-import { parse_pdb, pdb_has_lattice } from '$lib/structure/parsers/pdb'
+import type { OptimadeStructure } from '#lib/api/optimade.js'
+import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
+import { strip_compression_extensions } from '#lib/io/decompress.js'
+import { is_pbc, type Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { AnyStructure, Crystal, Pbc, Site } from '#lib/structure/index.js'
+import { shift_bonds_for_moved_sites } from '#lib/structure/bonding.js'
+import {
+  is_lammps_data_content,
+  is_lammps_dump_content,
+} from '#lib/structure/format-detect.js'
+import { parse_lammps_data, parse_lammps_dump } from '#lib/structure/parsers/lammps.js'
+import { is_mmcif_content, parse_mmcif } from '#lib/structure/parsers/mmcif.js'
+import { parse_mol } from '#lib/structure/parsers/mol.js'
+import { mol2_has_lattice, parse_mol2 } from '#lib/structure/parsers/mol2.js'
+import { parse_pdb, pdb_has_lattice } from '#lib/structure/parsers/pdb.js'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -34,22 +37,22 @@ import {
   split_cif_tokens,
   validate_element_symbol,
   vec3_from_values,
-} from '$lib/structure/parsers/shared'
+} from '#lib/structure/parsers/shared.js'
 import {
   apply_axis_scale,
   lines_cursor,
   parse_vasp_header,
-} from '$lib/structure/parsers/vasp-header'
-import { wrap_frac_coord, wrap_to_unit_cell } from '$lib/structure/pbc'
-import { make_site } from '$lib/structure/site'
-import { is_xyz_atom_line, TextLines } from '$lib/trajectory/helpers'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
+} from '#lib/structure/parsers/vasp-header.js'
+import { wrap_frac_coord, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { make_site } from '#lib/structure/site.js'
+import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
-import { build_xyz_frame, index_xyz_frames } from '$lib/trajectory/parse/xyz'
-import { parse_leading_num, to_error } from '$lib/utils'
+import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
+import { parse_leading_num, to_error } from '#lib/utils.js'
 import { load as yaml_load } from 'js-yaml'
 
-export { is_structure_file } from '$lib/structure/format-detect'
+export { is_structure_file } from '#lib/structure/format-detect.js'
 
 // Format parsers throw local errors describing the invalid input. The dispatcher adds
 // filename context; recoverable issues such as skipped atoms remain warnings.
@@ -1124,8 +1127,8 @@ function parser_for_filename(filename: string, content: string): FormatParser | 
   // `.data` is claimed by LAMMPS but also used by unrelated formats, so it only takes the
   // LAMMPS path when the content agrees; otherwise it falls through to sniffing
   if (ext === `data` && is_lammps_data_content(content)) return parse_lammps_data
-  // POSCAR files may not have extensions or have various names
-  if (base_filename.includes(`poscar`)) return parse_poscar
+  // POSCAR/CONTCAR files may not have extensions or have various names (Si_POSCAR, CONTCAR.1)
+  if (VASP_FILES_REGEX.test(base_filename)) return parse_poscar
   return null
 }
 
@@ -1319,7 +1322,6 @@ type StructureKind = `crystal` | `molecule` | `unknown`
 // wins. Content is only consulted where the extension alone leaves periodicity open.
 const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
   [/\.(?:cif|mmcif|mcif)$/i, () => `crystal`],
-  [/poscar/i, () => `crystal`],
   // A PDB is only periodic if it declares a real (non-placeholder) CRYST1 cell
   [/\.pdb$/i, (content) => (pdb_has_lattice(content) ? `crystal` : `molecule`)],
   // MOL/SDF have no cell at all; MOL2 only when it carries a CRYSIN section
@@ -1342,6 +1344,8 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
         ? `crystal`
         : `molecule`,
   ],
+  // last, so an explicit extension (POSCAR_to_water.xyz) decides first
+  [VASP_FILES_REGEX, () => `crystal`],
 ]
 
 export const detect_structure_type = (filename: string, content: string): StructureKind => {

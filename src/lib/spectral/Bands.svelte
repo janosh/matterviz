@@ -1,30 +1,30 @@
 <script lang="ts">
-  import { TooltipValue } from '$lib/tooltip'
-  import { track_settings } from '$lib/controls'
-  import type { ScatterPlotOptions } from '$lib/plot'
-  import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '$lib/brillouin'
-  import type { BZPopupPoint } from '$lib/brillouin'
-  import { plot_color } from '$lib/colors'
-  import EmptyState from '$lib/EmptyState.svelte'
-  import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
-  import { to_error } from '$lib/utils'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { track_settings } from '#lib/controls.js'
+  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
+  import type { BZPopupPoint } from '#lib/brillouin/index.js'
+  import { plot_color } from '#lib/colors/index.js'
+  import EmptyState from '#lib/EmptyState.svelte'
+  import { format_num } from '#lib/labels.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { to_error } from '#lib/utils.js'
   import { StatusMessage } from 'svelte-widgets'
-  import { array_max, clamp, in_range, reciprocal_lattice } from '$lib/math'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
     AxisConfig,
     DataSeries,
     FillRegion,
     UserContentProps,
-  } from '$lib/plot/core/types'
-  import * as helpers from '$lib/spectral/helpers'
+  } from '#lib/plot/core/types.js'
+  import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
     frequency_unit_label,
     parse_frequency_unit,
-  } from '$lib/spectral/frequency-units'
+  } from '#lib/spectral/frequency-units.js'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
     BandLineStyle,
@@ -36,8 +36,8 @@
     PathMode,
     QPoint,
     RibbonConfig,
-  } from '$lib/spectral/types'
-  import type { Crystal } from '$lib/structure'
+  } from '#lib/spectral/types.js'
+  import type { Crystal } from '#lib/structure/index.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

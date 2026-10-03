@@ -1,14 +1,15 @@
-import { classify_payload, content_byte_size, decompress_trajectory_file } from '$lib/io'
-import type { FileLoadMeta } from '$lib/io'
 import {
-  Hdf5GroupSelectionRequiredError,
-  type ParseProgress,
-  type TrajectorySource,
-} from '$lib/trajectory'
-import { basename_from_url, load_trajectory_from_url } from '$lib/io/url-drop'
+  classify_payload,
+  content_byte_size,
+  decompress_trajectory_file,
+} from '#lib/io/decompress.js'
+import type { FileLoadMeta } from '#lib/io/index.js'
+import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
+import { basename_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
 import { parse_in_worker } from './parse-in-worker'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 
 export interface MaterialPayload extends Partial<FileLoadMeta> {
   data: TrajectorySource

@@ -1,10 +1,10 @@
-import type { GizmoOptions } from '$lib/scene'
-import { gizmo_rect, responsive_gizmo_size } from '$lib/scene'
-import Gizmo from '$lib/scene/Gizmo.svelte'
+import type { GizmoOptions } from '#lib/scene/index.js'
+import { gizmo_rect, responsive_gizmo_size } from '#lib/scene/gizmo.js'
+import Gizmo from '#lib/scene/Gizmo.svelte'
 import { createSchedulerContext, currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
-import { type Camera, Mesh, PerspectiveCamera, Scene } from 'three/webgpu'
+import { type Camera, Mesh, PerspectiveCamera, Scene, type Vector2 } from 'three/webgpu'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props } from '../setup'
 
@@ -22,8 +22,11 @@ test.each([0, 200])(
     const camera = new PerspectiveCamera()
     camera.position.set(3, 3, 3)
     const passes: { scene: Scene; camera: Camera; opacity?: number }[] = []
+    // What renderer.setSize() last committed; the `size` store below deliberately lags it
+    const committed = { width: 400, height: 300 }
     const renderer = {
       initialized: true,
+      getSize: (target: Vector2) => target.set(committed.width, committed.height),
       domElement: document.createElement(`canvas`),
       autoClear: true,
       getViewport: vi.fn(),
@@ -130,6 +133,20 @@ test.each([0, 200])(
       expect(camera.position.distanceTo(target_position)).toBeLessThan(1e-12)
       expect(frame()).toEqual([])
       expect(renderer.autoClear).toBe(true)
+
+      // Threlte's resize task can setSize() mid-frame while its `size` store still holds
+      // the old canvas until the next effect flush. Laying out from the stale 400x300 put
+      // the scissor at y=225 on a 150 px tall attachment, which WebGPU rejects.
+      committed.height = 150
+      renderer.setScissor.mockClear()
+      renderer.setViewport.mockClear()
+      props.visible = true
+      flushSync()
+      for (let idx = 0; idx < fade_frames; idx++) frame()
+      const { x, y, width, height } = gizmo_rect({}, 400, 150)
+      expect([x, y, width, height]).toEqual([5, 75, 70, 70])
+      expect(renderer.setScissor.mock.calls[0]).toEqual([x, y, width, height])
+      expect(renderer.setViewport.mock.calls[0]).toEqual([x, y, width, height])
     } finally {
       await unmount(component)
     }

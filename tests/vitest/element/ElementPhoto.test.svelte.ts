@@ -1,5 +1,5 @@
-import ElementPhoto from '$lib/element/ElementPhoto.svelte'
-import element_data from '$lib/element/data'
+import ElementPhoto from '#lib/element/ElementPhoto.svelte'
+import element_data from '#lib/element/data.js'
 import { mount, tick, unmount } from 'svelte'
 import { expect, test } from 'vitest'
 import { doc_query } from '../setup'

@@ -2,9 +2,9 @@
   // Date/time display-mode picker for a HeatmapTable header: a calendar button opening a
   // listbox of the modes the column's kind supports. The host owns `open` (only one header
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
-  import type { DateTimeFormatMode } from '$lib/table'
+  import type { DateTimeFormatMode } from '#lib/table/index.js'
   import { DATETIME_MODE_LABELS } from './data'
-  import { html_to_text } from '$lib/utils'
+  import { html_to_text } from '#lib/utils.js'
   import { Icon } from 'svelte-widgets'
   import { tooltip } from 'svelte-widgets/attachments'
   import { Calendar } from 'svelte-widgets/icons'

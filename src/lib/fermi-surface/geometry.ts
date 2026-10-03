@@ -1,7 +1,7 @@
 // Three.js geometry construction for Fermi isosurfaces
-import { set_vertex_colors, type VertexColorOptions } from '$lib/isosurface/coloring'
-import { indexed_mesh_geometry } from '$lib/scene/geometry.svelte'
-import type { HitFace } from '$lib/scene/props.svelte'
+import { set_vertex_colors, type VertexColorOptions } from '#lib/isosurface/coloring.js'
+import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
+import type { HitFace } from '#lib/scene/props.svelte.js'
 import type { BufferGeometry } from 'three/webgpu'
 import type { FermiIsosurface } from './types'
 

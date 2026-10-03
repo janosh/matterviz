@@ -1,5 +1,8 @@
-import { is_lammps_data_content, is_lammps_dump_content } from '$lib/structure/format-detect'
-import { is_mmcif_content } from '$lib/structure/parsers/mmcif'
+import {
+  is_lammps_data_content,
+  is_lammps_dump_content,
+} from '#lib/structure/format-detect.js'
+import { is_mmcif_content } from '#lib/structure/parsers/mmcif.js'
 import { describe, expect, test } from 'vitest'
 
 const lammps_data = `LAMMPS data file

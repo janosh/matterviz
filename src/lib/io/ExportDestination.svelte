@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FileExportState } from './file-export.svelte'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
 
   let {
     state: export_state,

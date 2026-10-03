@@ -1,5 +1,5 @@
 <script lang="ts">
-  import pkg from '$root/package.json'
+  import pkg from '#root/package.json'
 </script>
 
 # Element Color Schemes

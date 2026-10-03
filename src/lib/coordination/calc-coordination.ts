@@ -1,11 +1,11 @@
-import type { AnyStructure } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
+import type { AnyStructure } from '#lib/structure/index.js'
+import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
   compute_bonds,
   lattice_pbc_or_throw,
   get_majority_element,
-} from '$lib/structure/bonding'
-import type { Pbc } from '$lib/structure/pbc'
+} from '#lib/structure/bonding.js'
+import type { Pbc } from '#lib/structure/pbc.js'
 
 export interface CoordinationOptions {
   strategy?: BondingStrategy

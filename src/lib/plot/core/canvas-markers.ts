@@ -1,8 +1,8 @@
 // Canvas markers avoid one SVG node per point and batch adjacent shared styles into one
 // path, keeping dense scatter plots efficient.
 
-import { type D3SymbolName, symbol_map } from '$lib/labels'
-import { clamp01 } from '$lib/utils'
+import { type D3SymbolName, symbol_map } from '#lib/labels.js'
+import { clamp01 } from '#lib/utils.js'
 import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 

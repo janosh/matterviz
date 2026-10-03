@@ -1,11 +1,11 @@
-import type { FontSpec } from '$lib/plot/core/text-metrics'
-import { clear_text_metrics_cache, DEFAULT_FONT_SPEC } from '$lib/plot/core/text-metrics'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import { clear_text_metrics_cache, DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
 import type {
   MeasuredAxis,
   TickLabelDimensions,
   TickLabelItem,
   TickLayoutSide,
-} from '$lib/plot/core/tick-layout'
+} from '#lib/plot/core/tick-layout.js'
 import {
   analyze_tick_label_geometry,
   axis_edge_overflow,
@@ -17,7 +17,7 @@ import {
   TICK_LABEL_GAP,
   TICK_STRATEGIES,
   tick_label_aabb,
-} from '$lib/plot/core/tick-layout'
+} from '#lib/plot/core/tick-layout.js'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 
 const dimensions = (width: number, line_height = 10, line_count = 1): TickLabelDimensions => ({

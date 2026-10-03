@@ -3,7 +3,7 @@ import type { ComponentProps } from 'svelte'
 import type StructureScene from './StructureScene.svelte'
 import type Structure from './Structure.svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import type { DefaultSettings, ShowBonds } from '$lib/settings'
+import type { DefaultSettings, ShowBonds } from '#lib/settings.js'
 import type { AnyStructure } from './index'
 
 type SceneProps = ComponentProps<typeof StructureScene>

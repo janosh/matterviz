@@ -1,4 +1,4 @@
-import PlotPanel from '$lib/file-viewer/PlotPanel.svelte'
+import PlotPanel from '#lib/file-viewer/PlotPanel.svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { expect, test } from 'vitest'
 import { doc_query } from '../setup'

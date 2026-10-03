@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { ChemicalElement } from '$lib/element'
+  import type { ChemicalElement } from '#lib/element/index.js'
   import { Icon } from 'svelte-widgets'
   import { CalendarBlank, Gas, Liquid, Scale, Solid, Weight } from 'svelte-widgets/icons'
-  import { format_num } from '$lib/labels'
+  import { format_num } from '#lib/labels.js'
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

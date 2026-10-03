@@ -17,7 +17,7 @@
 // The `n_longest_chain` index is the number of bonds in the LARGEST CONNECTED COMPONENT of the
 // common-neighbor bond graph, not the longest simple path. That is what makes a 6-bond ring
 // score 6 and two disjoint bonds score 1, and it matches OVITO's calcMaxChainLength().
-import type { NeighborList } from '$lib/structure/bonding'
+import type { NeighborList } from '#lib/structure/bonding.js'
 
 // `adaptive` derives a per-atom cutoff from that atom's own neighbor distances (Stukowski 2012)
 // and needs no lattice constant. `fixed` uses one global cutoff for the whole structure and

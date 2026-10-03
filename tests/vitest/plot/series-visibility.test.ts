@@ -1,10 +1,10 @@
-import type { DataSeries } from '$lib/plot'
+import type { DataSeries } from '#lib/plot/index.js'
 import {
   create_legend_visibility,
   LEGEND_VISIBILITY_MODES,
   legend_mode_to_prop,
   resolve_legend_visibility,
-} from '$lib/plot/core/utils/series-visibility'
+} from '#lib/plot/core/utils/series-visibility.js'
 import { describe, expect, test } from 'vitest'
 
 const make_store = (initial: DataSeries[]) => {

@@ -1,5 +1,5 @@
-import type { SankeyData } from '$lib/plot'
-import { compute_sankey_layout, sankey_from_links } from '$lib/plot'
+import type { SankeyData } from '#lib/plot/index.js'
+import { compute_sankey_layout, sankey_from_links } from '#lib/plot/sankey/sankey.js'
 import { sankey as d3_sankey, sankeyJustify } from 'd3-sankey'
 import { describe, expect, test, vi } from 'vitest'
 

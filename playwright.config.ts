@@ -10,7 +10,7 @@ const source_tests = /structure\/host-tool\.test\.ts|@source\b/
 
 export default {
   webServer: {
-    command: `pnpm exec vite ${e2e_mode === `preview` ? `preview` : `dev`} --port 3005`,
+    command: `pnpm exec vp ${e2e_mode === `preview` ? `preview` : `dev`} --port 3005`,
     port: 3005,
     reuseExistingServer: true,
     timeout: 60_000,

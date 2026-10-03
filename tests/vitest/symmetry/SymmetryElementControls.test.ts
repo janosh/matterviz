@@ -1,15 +1,15 @@
 // Tests for the per-kind symmetry-element visibility toggles (legend + checkboxes)
-import type { Vec3 } from '$lib/math'
-import type { ShowSymmetryKinds, SymmetryElement } from '$lib/symmetry'
+import type { Vec3 } from '#lib/math.js'
+import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
 import {
   count_symmetry_elements,
   has_visible_symmetry_overlay,
   SYM_ELEM_COLORS,
   SYM_ELEM_KIND_INFO,
   SYM_ELEMENTS_INPUT_FRAME_NOTE,
-  SymmetryElementControls,
   tile_symmetry_elements,
-} from '$lib/symmetry'
+} from '#lib/symmetry/symmetry-elements.js'
+import SymmetryElementControls from '#lib/symmetry/SymmetryElementControls.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 

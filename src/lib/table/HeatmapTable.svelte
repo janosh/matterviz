@@ -1,24 +1,21 @@
 <script lang="ts" generics="Row extends object">
-  import type { D3InterpolateName } from '$lib/colors'
-  import {
-    track_settings,
-    normalize_show_controls,
-    type ShowControlsProp,
-  } from '$lib/controls'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
+  import { track_settings, normalize_show_controls } from '#lib/controls.js'
   import {
     contrast_color_memo,
     contrast_text_color,
     resolve_backdrop,
     resolve_css_color,
-  } from '$lib/colors'
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import { FileExportState } from '$lib/io/file-export.svelte'
-  import { format_num } from '$lib/labels'
-  import { array_max, clamp } from '$lib/math'
-  import { is_activation_key } from '$lib/plot/core/interactions'
-  import { clamp01, html_to_text } from '$lib/utils'
-  import { ControlPane } from '$lib/overlays'
-  import { sanitize_html, sanitize_html_ssr } from '$lib/sanitize'
+  } from '#lib/colors/index.js'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import { format_num } from '#lib/labels.js'
+  import { array_max, clamp } from '#lib/math.js'
+  import { is_activation_key } from '#lib/plot/core/interactions.js'
+  import { clamp01, html_to_text } from '#lib/utils.js'
+  import { ControlPane } from '#lib/overlays/index.js'
+  import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type {
     CellColor,
     CellSnippet,
@@ -38,13 +35,13 @@
     SummaryStat,
     TableSort,
     VirtualScroll,
-  } from '$lib/table'
+  } from '#lib/table/index.js'
   import {
     compute_column_stats,
     make_cell_color_scale,
     NULL_CELL_COLOR,
     resolve_color_domain,
-  } from '$lib/table'
+  } from '#lib/table/index.js'
   import ColumnFilterMenu from './ColumnFilter.svelte'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'

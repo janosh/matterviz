@@ -3,20 +3,24 @@
 // offsets and grouped-bar layout info. Extracted from BarPlot.svelte so the
 // math is unit-testable without mounting the component.
 
-import type { Vec2 } from '$lib/math'
-import { accumulate_extent, empty_extent, nice_range_from_extent } from '$lib/plot/core/scales'
+import type { Vec2 } from '#lib/math.js'
+import {
+  accumulate_extent,
+  empty_extent,
+  nice_range_from_extent,
+} from '#lib/plot/core/scales.js'
 import type {
   AxisConfig,
   BarMode,
   BarSeries,
   Orientation,
   ScaleType,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import {
   assert_series_lengths,
   get_scale_type_name,
   is_time_scale,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 
 // Internal series shape with guaranteed numeric x (string categories mapped to integer indices)
 export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<

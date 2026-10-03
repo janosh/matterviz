@@ -1,16 +1,16 @@
 // Tests for HKL plane slicing and trilinear interpolation
-import { trilinear_interpolate } from '$lib/isosurface/sampling'
+import { trilinear_interpolate } from '#lib/isosurface/sampling.js'
 import {
   resolve_slice_cartesian_point,
   sample_hkl_slice,
   sample_plane_slice,
   volume_center,
-} from '$lib/isosurface/slice'
-import type { CartesianPlane, PlaneSliceOptions } from '$lib/isosurface/slice'
-import { create_volume_slice_settings } from '$lib/isosurface/slice-settings'
-import type { Matrix3x3, Vec3 } from '$lib/math'
+} from '#lib/isosurface/slice.js'
+import type { CartesianPlane, PlaneSliceOptions } from '#lib/isosurface/slice.js'
+import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
-import { flatten_grid } from '$lib/isosurface/grid'
+import { flatten_grid } from '#lib/isosurface/grid.js'
 import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../test-fixtures'
 
 // Nested test grids flattened to the z-fastest storage the sampler reads

@@ -1,10 +1,10 @@
 // Search a periodic site set for the fractional translations that map it onto itself.
 // Used to shrink a surface cell to its primitive in-plane form and to spot terminations
 // that are related by a lattice translation and therefore not distinct surfaces.
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { Site } from '$lib/structure'
-import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { Site } from '#lib/structure/index.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { MAX_TRANSLATION_PROBES, SLAB_POSITION_TOLERANCE } from './types'
 
 // Two sites are interchangeable when they carry the same species at the same

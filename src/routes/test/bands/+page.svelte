@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Bands from '$lib/spectral/Bands.svelte'
-  import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
+  import Bands from '#lib/spectral/Bands.svelte'
+  import type { BaseBandStructure, RibbonConfig } from '#lib/spectral/types.js'
 
   const mock_band_structure: BaseBandStructure = {
     type: `phonon`,

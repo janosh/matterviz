@@ -1,9 +1,9 @@
 import { interpolateInferno } from 'd3-scale-chromatic'
-import { finite_vec3_from_values, type Vec3 } from '$lib/math'
-import { css_to_linear_rgb, parse_linear_rgb } from '$lib/scene/colors'
-import { atom_field_bin, type AtomColorField } from '$lib/structure/atom-color-field'
+import { finite_vec3_from_values, type Vec3 } from '#lib/math.js'
+import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
+import { atom_field_bin, type AtomColorField } from '#lib/structure/atom-color-field.js'
 import { Matrix4 } from 'three/webgpu'
-import { clamp01 } from '$lib/utils'
+import { clamp01 } from '#lib/utils.js'
 import type { NumericFrame } from './frame'
 import type { HotspotDisplayValues, HotspotMetric, HotspotResult } from './hotspots'
 

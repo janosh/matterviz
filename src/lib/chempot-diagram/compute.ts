@@ -2,13 +2,13 @@
 // Ports pymatgen's ChemicalPotentialDiagram algorithm to TypeScript.
 // Reference: pymatgen/analysis/chempot_diagram.py
 
-import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition/reduce'
+import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import {
   compute_e_form_per_atom,
   compute_quickhull_nd,
   get_energy_per_atom,
-} from '$lib/convex-hull/thermodynamics'
-import type { PhaseData } from '$lib/convex-hull/types'
+} from '#lib/convex-hull/thermodynamics.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import {
   array_extent,
   array_max,
@@ -25,8 +25,8 @@ import {
   point_in_polygon,
   polygon_centroid,
   subtract,
-} from '$lib/math'
-import type { Vec2, Vec3 } from '$lib/math'
+} from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
 // === Entry Helpers ===

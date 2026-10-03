@@ -1,25 +1,25 @@
-import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
-import * as math from '$lib/math'
+import { get_d3_interpolator, type D3InterpolateName } from '#lib/colors/index.js'
+import type { Vec2 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import {
   axis_transform,
   range_bounds,
   resolve_axis_range,
   validate_log_range,
-} from '$lib/plot/core/interactions'
+} from '#lib/plot/core/interactions.js'
 import type {
   ColorScaleConfig,
   ScaleType,
   SizeScaleConfig,
   TimeInterval,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_time_scale,
   SCALE_DEFAULTS,
-} from '$lib/plot/core/types'
-import { clamp01 } from '$lib/utils'
+} from '#lib/plot/core/types.js'
+import { clamp01 } from '#lib/utils.js'
 import { range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {

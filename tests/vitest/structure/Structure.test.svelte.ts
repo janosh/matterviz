@@ -1,38 +1,45 @@
-import Structure from '$lib/structure/Structure.svelte'
-import type { AnyStructure, MeasureMode } from '$lib'
-import { create_frac_to_cart, type Vec3 } from '$lib/math'
-import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from '$lib/isosurface'
-import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface'
-import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-import { DEFAULTS } from '$lib/settings'
-import { colors } from '$lib/state.svelte'
+import Structure from '#lib/structure/Structure.svelte'
+import type { AnyStructure, MeasureMode } from '#lib'
+import { create_frac_to_cart, type Vec3 } from '#lib/math.js'
+import type {
+  IsosurfaceLayer,
+  IsosurfaceSettings,
+  VolumetricData,
+} from '#lib/isosurface/index.js'
+import { auto_volume_layer, DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
+import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.js'
+import { DEFAULTS } from '#lib/settings.js'
+import { colors } from '#lib/state.svelte.js'
 import {
   create_structure_view_state,
   save_structure_view_state,
-} from '$lib/settings/viewer-state'
-import * as symmetry from '$lib/symmetry'
-import type { StructureBond, StructureHandlerData, StructurePane } from '$lib/structure'
-import { get_element_counts, OVERLAYS_INPUT_FRAME_NOTE } from '$lib/structure'
-import type { Pbc } from '$lib/structure/pbc'
-import {
-  DEFAULT_ATOM_COLOR_CONFIG,
-  type AtomColorConfig,
-} from '$lib/structure/atom-properties'
-import {
-  structure_host_tool,
-  prediction_from_json,
-  type StructureToolProps,
-  type StructureToolRun,
-  type StructureToolViewProps,
-} from '$lib/structure/host-tool.svelte'
-import { make_supercell } from '$lib/structure/supercell'
-import type StructureScene from '$lib/structure/StructureScene.svelte'
-import { structures } from '$site/structures'
+} from '#lib/settings/viewer-state.js'
+import * as symmetry from '#lib/symmetry/index.js'
+import type {
+  StructureBond,
+  StructureHandlerData,
+  StructurePane,
+} from '#lib/structure/index.js'
+import { get_element_counts } from '#lib/structure/density.js'
+import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
+import type { Pbc } from '#lib/structure/pbc.js'
+import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
+import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import type {
+  StructureToolProps,
+  StructureToolRun,
+  StructureToolViewProps,
+} from '#lib/structure/host-tool.svelte.js'
+import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
+import { prediction_from_json } from '#lib/structure/prediction.js'
+import { make_supercell } from '#lib/structure/supercell.js'
+import type StructureScene from '#lib/structure/StructureScene.svelte'
+import { structures } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Matrix4, OrthographicCamera } from 'three/webgpu'
-import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
-import type { AtomColorField } from '$lib/structure/atom-color-field'
+import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
+import type { AtomColorField } from '#lib/structure/atom-color-field.js'
 import {
   fire,
   assertHoverScopedShortcut,
@@ -67,7 +74,7 @@ vi.mock(`@threlte/core`, async (import_original) => ({
 const scene_stub = vi.hoisted(() => ({
   props: undefined as ComponentProps<typeof StructureScene> | undefined,
 }))
-vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
+vi.mock(`#lib/structure/StructureScene.svelte`, () => ({
   default: (_anchor: Node, props: NonNullable<typeof scene_stub.props>) => {
     scene_stub.props = props
     props.camera = new OrthographicCamera()
@@ -78,7 +85,7 @@ vi.mock(`$lib/structure/StructureScene.svelte`, () => ({
 beforeEach(mock_parse_worker)
 
 // Passthrough spy so individual tests can make make_supercell throw
-vi.mock(`$lib/structure/supercell`, async (import_original) => {
+vi.mock(`#lib/structure/supercell.js`, async (import_original) => {
   const original = await import_original<Record<string, unknown>>()
   return {
     ...original,

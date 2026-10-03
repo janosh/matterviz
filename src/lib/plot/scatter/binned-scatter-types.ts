@@ -1,13 +1,13 @@
-import type { D3InterpolateName } from '$lib/colors'
-import type { DenseInternalPoint } from '$lib/plot/scatter/adaptive-density'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { DenseInternalPoint } from '#lib/plot/scatter/adaptive-density.js'
 import type {
   ColorScaleConfig,
   LabelPlacementConfig,
   RefLine,
   ScatterHandlerProps,
   SizeScaleConfig,
-} from '$lib/plot/core/types'
-import { SCALE_DEFAULTS } from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
+import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
 import type { Snippet } from 'svelte'
 
 export type BinnedColorScaleConfig = ColorScaleConfig | D3InterpolateName

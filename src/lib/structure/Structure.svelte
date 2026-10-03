@@ -2,31 +2,31 @@
   import { site_count } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
-  import type { ColorSchemeName } from '$lib/colors'
-  import { DEFAULT_PNG_DPI } from '$lib/constants'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import type { ElementSymbol } from '$lib/element'
+  import type { ColorSchemeName } from '#lib/colors/index.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
   import { Icon, StatusMessage, Toast } from 'svelte-widgets'
-  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
-  import ViewerError from '$lib/layout/ViewerError.svelte'
+  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
-  import { handle_and_prevent } from '$lib/utils'
+  import { handle_and_prevent } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { webgpu_available } from '$lib/scene'
-  import { set_isosurface_error_handler } from '$lib/isosurface/context'
-  import type { VolumeSliceSettings } from '$lib/isosurface/slice-settings'
-  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
-  import VolumeSliceView from '$lib/isosurface/VolumeSliceView.svelte'
+  import { webgpu_available } from '#lib/scene/index.js'
+  import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
+  import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
+  import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
+  import VolumeSliceView from '#lib/isosurface/VolumeSliceView.svelte'
   import {
     auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
     normalize_active_volume_id,
     index_volumes,
-  } from '$lib/isosurface/types'
-  import { ViewerChrome } from '$lib/layout'
-  import { ToolbarMenu } from '$lib/overlays'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/isosurface/types.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import { ToolbarMenu } from '#lib/overlays/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type {
     AnyStructure,
     BondEditMode,
@@ -38,7 +38,7 @@
     StructurePane,
     StructureView,
     Site,
-  } from '$lib/structure'
+  } from '#lib/structure/index.js'
   import {
     DEFAULT_STRUCTURE_VIEWS,
     default_vector_configs,
@@ -46,14 +46,14 @@
     get_structure_vector_keys,
     is_crystal,
     RESET_VIEW_TITLE,
-  } from '$lib/structure'
-  import type { CellType, SymmetryDataset, SymmetrySettings } from '$lib/symmetry'
-  import * as symmetry from '$lib/symmetry'
+  } from '#lib/structure/index.js'
+  import type { CellType, SymmetryDataset, SymmetrySettings } from '#lib/symmetry/index.js'
+  import * as symmetry from '#lib/symmetry/index.js'
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
-  import { create_shortcut_flash } from '$lib/effects.svelte'
+  import { create_shortcut_flash } from '#lib/effects.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three/webgpu'
@@ -71,21 +71,20 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import { resolve_cell_vectors, type StructureSettings } from './settings'
-  import type { TrajectoryPositionStream } from '$lib/trajectory'
+  import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import StructureViewport from './StructureViewport.svelte'
   import type { TrajectoryLinesStats } from './trajectory-lines'
-  import {
-    structure_host_tool,
-    create_structure_tool_controller,
-    type StructureToolPrediction,
-    type StructureToolProvenance,
-    type StructureToolView,
+  import type {
+    StructureToolPrediction,
+    StructureToolProvenance,
+    StructureToolView,
   } from './host-tool.svelte'
+  import { structure_host_tool, create_structure_tool_controller } from './host-tool.svelte'
   import { copy_prediction } from './prediction'
   import { replace_tool_volumes } from './host-tool-volumes'
-  import type { FileLoadCallback } from '$lib/io'
-  import type { MaterialSource } from '$lib/file-viewer/open'
-  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
+  import type { FileLoadCallback } from '#lib/io/index.js'
+  import type { MaterialSource } from '#lib/file-viewer/open.js'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import { apply_structure_material } from './material'
 
   export type StructureControlName =
@@ -1340,6 +1339,9 @@
   }
   .structure.active {
     z-index: var(--struct-active-z-index, 2);
+  }
+  .structure:has(:global(.draggable-pane.pane-open)) {
+    z-index: var(--z-index-viewer-pane-open, 12);
   }
   .structure > :global(.viewer-error) {
     z-index: var(--z-index-overlay-controls, 100000000);

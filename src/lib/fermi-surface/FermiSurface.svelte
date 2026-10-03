@@ -1,22 +1,22 @@
 <script lang="ts">
-  import type { FileExportContext } from '$lib/io/file-export.svelte'
-  import type { MaterialSource } from '$lib/file-viewer/open'
-  import type { BrillouinZoneData } from '$lib/brillouin'
-  import { compute_brillouin_zone } from '$lib/brillouin'
-  import { reciprocal_lattice } from '$lib/math'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import EmptyState from '$lib/EmptyState.svelte'
+  import type { FileExportContext } from '#lib/io/file-export.svelte.js'
+  import type { MaterialSource } from '#lib/file-viewer/open.js'
+  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
+  import { compute_brillouin_zone } from '#lib/brillouin/index.js'
+  import { reciprocal_lattice } from '#lib/math.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
-  import ViewerError from '$lib/layout/ViewerError.svelte'
-  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
-  import { create_material_loader } from '$lib/file-viewer/material-loader.svelte'
-  import type { FileLoadCallback } from '$lib/io'
-  import { ViewerChrome } from '$lib/layout'
-  import { PlotTooltip } from '$lib/plot'
-  import { create_renderer, export_scene_as, webgpu_available } from '$lib/scene'
-  import type { SceneExportFormat } from '$lib/scene'
-  import { DEFAULTS } from '$lib/settings'
-  import type { Crystal } from '$lib/structure'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
+  import type { FileLoadCallback } from '#lib/io/index.js'
+  import { ViewerChrome } from '#lib/layout/index.js'
+  import { PlotTooltip } from '#lib/plot/index.js'
+  import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
+  import type { SceneExportFormat } from '#lib/scene/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -29,7 +29,7 @@
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
-  import { to_error } from '$lib/utils'
+  import { to_error } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import type {
     BandGridData,
@@ -170,12 +170,6 @@
     }
   })
 
-  // Yield to browser so spinner can render before heavy computation
-  const tick = () =>
-    new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    )
-
   const drop_zone = create_material_loader<FermiSurfaceData | BandGridData>({
     source: () => source,
     current_value: () => surface_data ?? grid_data,
@@ -205,13 +199,14 @@
   })
 
   // Re-extract whenever the band grid or an extraction parameter changes — also on first
-  // mount with only `band_data` supplied, which previously rendered nothing. Debounced so a
-  // mu-slider drag does not run marching cubes on every tick; a monotonic job id drops
-  // results of superseded runs (bumped on every rerun, including one that clears band_data,
-  // so an in-flight job cannot commit a surface for a grid that is gone). `extracting` is
-  // tracked separately so the spinner overlays the Canvas instead of unmounting it.
+  // mount with only `band_data` supplied. A monotonic job id drops superseded runs (bumped on
+  // every rerun, including one that clears band_data, so a pending job cannot commit a
+  // surface for a grid that is gone). `extracting` overlays a spinner on the Canvas instead
+  // of unmounting it.
   let extraction_job_id = 0
   let extracting = $state(false)
+  // grid + factor of the last extraction: their upsampled band grids are cached
+  let extracted: { grid: BandGridData; interpolation_factor: number } | undefined
   $effect(() => {
     const job_id = ++extraction_job_id
     if (!grid_data) {
@@ -220,14 +215,11 @@
     }
     const grid = grid_data
     const options = { mu: mean, interpolation_factor }
-    const timeout = setTimeout(async () => {
-      extracting = true
-      await tick()
-      // Superseded while yielding; the job is synchronous from here on, so this is the only
-      // point a newer run can slip in
+    const extract = () => {
       if (job_id !== extraction_job_id) return
       try {
         fermi_data = extract_fermi_surface(grid, options)
+        extracted = { grid, interpolation_factor }
         error_msg = undefined
       } catch (err) {
         const message = `Fermi surface extraction failed: ${to_error(err).message}`
@@ -236,8 +228,19 @@
       } finally {
         extracting = false
       }
-    }, 150)
-    return () => clearTimeout(timeout)
+    }
+    // A mu change only reruns marching cubes on the cached grids (~1-12 ms on the demo files),
+    // so it extracts next frame and a mu drag tracks the pointer. A new grid or factor first
+    // upsamples every band, which takes a while at high factors: the spinner gets one painted
+    // frame before that blocks.
+    const upsamples =
+      extracted?.grid !== grid || extracted.interpolation_factor !== interpolation_factor
+    if (upsamples) extracting = true
+    let frame = requestAnimationFrame(() => {
+      if (upsamples) frame = requestAnimationFrame(extract)
+      else extract()
+    })
+    return () => cancelAnimationFrame(frame)
   })
 
   async function handle_export(
@@ -437,6 +440,9 @@
   }
   .fermi-surface.active {
     z-index: var(--fermi-active-z-index, 2);
+  }
+  .fermi-surface:has(:global(.draggable-pane.pane-open)) {
+    z-index: var(--z-index-viewer-pane-open, 12);
   }
   .fermi-surface:fullscreen {
     background: var(--fermi-bg-fullscreen, var(--surface-bg));

@@ -1,8 +1,8 @@
 // Mounts FermiSurfaceScene against the recording Threlte stub: the materials handed to the
 // meshes must survive an opacity-slider tick (they are shared per surface and recompiled on
 // rebuild) and a surface whose geometry cannot be built must not get a mesh.
-import FermiSurfaceScene from '$lib/fermi-surface/FermiSurfaceScene.svelte'
-import type { FermiHoverData, FermiIsosurface } from '$lib/fermi-surface/types'
+import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
+import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { DoubleSide, type MeshStandardMaterial, Vector3 } from 'three/webgpu'

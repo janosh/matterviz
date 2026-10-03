@@ -1,7 +1,13 @@
-import type { SunburstNode } from '$lib/plot'
-import { arc_label_slots, compute_sunburst_layout, project_arcs } from '$lib/plot'
-import type { ScreenArc, ScreenGeometry, ViewWindow } from '$lib/plot/sunburst/render'
-import { annular_sector_path, hover_veil_path, rect_path } from '$lib/plot/sunburst/render'
+import type { SunburstNode } from '#lib/plot/index.js'
+import {
+  arc_label_slots,
+  project_arcs,
+  annular_sector_path,
+  hover_veil_path,
+  rect_path,
+} from '#lib/plot/sunburst/render.js'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
+import type { ScreenArc, ScreenGeometry, ViewWindow } from '#lib/plot/sunburst/render.js'
 import { describe, expect, test, vi } from 'vitest'
 
 const TWO_PI = 2 * Math.PI

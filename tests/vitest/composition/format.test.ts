@@ -1,4 +1,4 @@
-import type { AnyStructure } from '$lib'
+import type { AnyStructure } from '#lib'
 import {
   format_formula_html,
   format_formula_svg,
@@ -7,11 +7,11 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
-  parse_formula,
   get_formula_label_segments,
   is_compound,
   tokenize_formula_markup,
-} from '$lib/composition'
+} from '#lib/composition/format.js'
+import { parse_formula } from '#lib/composition/parse.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`get_alphabetical_formula`, () => {

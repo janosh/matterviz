@@ -1,5 +1,5 @@
-import { element_data } from '$lib/element'
-import type { Vec3 } from '$lib/math'
+import { element_data } from '#lib/element/index.js'
+import type { Vec3 } from '#lib/math.js'
 import {
   DEFAULT_FMT,
   ELEM_HEATMAP_KEYS,
@@ -11,11 +11,12 @@ import {
   format_value,
   format_vec3,
   parse_axis_label,
+  zero_if_negligible,
   superscript_digits,
   symbol_map,
   symbol_names,
   trajectory_property_config,
-} from '$lib/labels'
+} from '#lib/labels.js'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
 
@@ -219,10 +220,11 @@ describe(`format_value`, () => {
     { value: 123.4, formatter: `.4f`, expected: `123.4` },
     { value: 0.1, formatter: `.4f`, expected: `0.1` },
 
-    // Scientific notation
-    { value: 1000000, formatter: `.2e`, expected: `1.00e+6` },
+    // Scientific notation, positive exponents without d3's redundant + sign
+    { value: 1000000, formatter: `.2e`, expected: `1.00e6` },
     { value: 0.000001, formatter: `.2e`, expected: `1.00e-6` },
-    { value: 123000, formatter: `.2e`, expected: `1.23e+5` },
+    { value: 123000, formatter: `.2e`, expected: `1.23e5` },
+    { value: 1.06e29, formatter: `.3~g`, expected: `1.06e29` },
     { value: 0.00123, formatter: `.2e`, expected: `1.23e-3` },
 
     // Integer formatting
@@ -334,4 +336,16 @@ describe(`format_value`, () => {
       expect(format_value(value, formatter)).toBe(expected)
     },
   )
+})
+
+test.each([
+  [9.43e-125, 13.4, 0], // a density's vacuum
+  [-1e-17, 0.5, 0], // noise on either side of zero
+  [4.55e-4, 0.868, 4.55e-4], // a real small minimum stays
+  [1e-7, 0.1, 0], // the cutoff (1e-6 of the magnitude) is inclusive
+  [2e-7, 0.1, 2e-7],
+  [5, 0, 5], // no magnitude: nothing to compare against
+  [0, 0, 0],
+])(`zero_if_negligible(%s, %s) → %s`, (value, magnitude, expected) => {
+  expect(zero_if_negligible(value, magnitude)).toBe(expected)
 })

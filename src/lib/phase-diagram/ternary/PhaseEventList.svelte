@@ -2,8 +2,8 @@
   // Chronological list of hull-topology transitions with their balanced reactions. Clicking
   // an event moves the temperature just above it so the section shows the products; clicking
   // a formula selects that phase.
-  import { get_formula_label_segments } from '$lib/composition/format'
-  import { format_num } from '$lib/labels'
+  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { format_num } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
   import { format_reaction_coeff, reaction_phase_label } from './compute'

@@ -2,7 +2,7 @@ import {
   format_large_file_marker,
   parse_large_file_marker,
   plan_host_file_transfer,
-} from '$lib/file-viewer/host-transfer'
+} from '#lib/file-viewer/host-transfer.js'
 import { expect, test } from 'vitest'
 
 const plan = (filename: string, file_size: number) =>

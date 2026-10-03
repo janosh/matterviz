@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ColorbarDecoration } from '$lib/plot/core/colorbar-decoration.svelte'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  import type { ColorbarDecoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 

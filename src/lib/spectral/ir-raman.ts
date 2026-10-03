@@ -6,8 +6,8 @@
 // LEPSILON finite-difference workflow, vasp_raman.py, phonopy-spectroscopy, ...) or
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
-import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
-import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '$lib/lineshape'
+import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
+import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '#lib/lineshape.js'
 import { SvelteSet } from 'svelte/reactivity'
 import { convert_frequencies } from './frequency-units'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'

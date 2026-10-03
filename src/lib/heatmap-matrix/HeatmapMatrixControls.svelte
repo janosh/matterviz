@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '$lib/io/file-export.svelte'
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import ExportButtons from '$lib/io/ExportButtons.svelte'
+  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import ExportButtons from '#lib/io/ExportButtons.svelte'
 
-  import type { ShowControlsProp } from '$lib/controls'
-  import { SettingsSection } from '$lib/layout'
-  import { ControlPane, type PaneProps, type PaneToggleProps } from '$lib/overlays'
+  import type { ShowControlsProp } from '#lib/controls.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
   import type {

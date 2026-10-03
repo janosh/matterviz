@@ -1,7 +1,7 @@
-import ChemPotDiagram from '$lib/chempot-diagram/ChemPotDiagram.svelte'
-import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '$lib/chempot-diagram/types'
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { WorkerRequestOptions } from '$lib/worker-client.svelte'
+import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
+import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { mouse, resize_element } from '../setup'
@@ -10,8 +10,8 @@ import { mouse, resize_element } from '../setup'
 // observable; requests record their config and abort signal
 type Call = { config: ChemPotDiagramConfig; signal?: AbortSignal; resolve: () => void }
 const calls = vi.hoisted(() => ({ list: [] as Call[] }))
-vi.mock(`$lib/chempot-diagram/async-compute.svelte`, async () => {
-  const { compute_chempot_diagram } = await import(`$lib/chempot-diagram/compute`)
+vi.mock(`#lib/chempot-diagram/async-compute.svelte.js`, async () => {
+  const { compute_chempot_diagram } = await import(`#lib/chempot-diagram/compute.js`)
   const compute = (
     entries: PhaseData[],
     config: ChemPotDiagramConfig,

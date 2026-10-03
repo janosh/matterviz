@@ -3,7 +3,7 @@ import {
   record_stage,
   set_isosurface_profiling,
   time_stage,
-} from '$lib/isosurface/profile'
+} from '#lib/isosurface/profile.js'
 import { afterEach, expect, test, vi } from 'vitest'
 
 afterEach(() => {

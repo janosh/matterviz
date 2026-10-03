@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { TooltipValue } from '$lib/tooltip'
-  import { track_settings } from '$lib/controls'
-  import type { ScatterPlotOptions } from '$lib/plot'
-  import EmptyState from '$lib/EmptyState.svelte'
-  import { format_num } from '$lib/labels'
-  import { SettingsSection } from '$lib/layout'
-  import { array_max, type Vec2 } from '$lib/math'
-  import type { AxisConfig, DataSeries } from '$lib/plot/core/types'
-  import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { track_settings } from '#lib/controls.js'
+  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import EmptyState from '#lib/EmptyState.svelte'
+  import { format_num } from '#lib/labels.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import { array_max, type Vec2 } from '#lib/math.js'
+  import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
+  import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { extent } from 'd3-array'
   import {
     convert_frequencies,

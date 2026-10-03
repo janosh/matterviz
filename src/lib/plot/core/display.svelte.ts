@@ -1,4 +1,4 @@
-import { DEFAULTS } from '$lib/settings'
+import { DEFAULTS } from '#lib/settings.js'
 import type { DisplayConfig } from './types'
 
 const category_zero_keys = {

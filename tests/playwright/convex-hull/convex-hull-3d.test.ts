@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test'
-import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
+import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import { opacity_of, require_bbox, test_without_errors as test } from '../helpers'
 import {
   dom_click,

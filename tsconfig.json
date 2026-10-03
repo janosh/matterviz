@@ -1,12 +1,20 @@
 {
-  "extends": "./.svelte-kit/tsconfig.json",
+  "extends": "$app/tsconfig",
   "compilerOptions": {
     "strict": true,
-    "resolveJsonModule": true,
     // allow importing @wooorm/starry-night/style/both.css (types via its .d.css.ts) from +layout.svelte
     "allowArbitraryExtensions": true,
-    "skipLibCheck": true
+    "paths": {
+      // Playwright's TS loader resolves bare specifiers only through `paths`, not package.json
+      // `imports`, so #lib is repeated here for the e2e tests and the src/lib files they load
+      "#lib": ["./src/lib"],
+      "#lib/*": ["./src/lib/*"],
+      // tests and docs examples import the package by name (vite.config.ts aliases it to source)
+      "matterviz": ["./src/lib"],
+      "matterviz/*": ["./src/lib/*"]
+    }
   },
+  "include": ["src", "tests", "*"],
   // anywidget-renderers.test.ts excluded: it imports extensions/anywidget/anywidget.ts, whose
   // `svelte` import resolves to extensions/anywidget/node_modules/svelte — a second copy whose
   // Snippet type is unrelated to the root one, producing ~20 false "two different types with

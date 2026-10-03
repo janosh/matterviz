@@ -1,17 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import type { ChemicalElement } from '$lib'
-  import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
-  import type { D3InterpolateName } from '$lib/colors'
-  import { is_d3_interpolate_name } from '$lib/colors'
-  import { TooltipValue } from '$lib/tooltip'
-  import { ELEM_HEATMAP_KEYS, ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
-  import type { ScaleContext } from '$lib/periodic-table'
-  import { TableInset } from '$lib/periodic-table'
-  import { ColorScaleSelect, ElementScatter } from '$lib/plot'
-  import { selected } from '$lib/state.svelte'
-  import PeriodicTableControls from '$site/PeriodicTableControls.svelte'
-  import { replace_url } from '$site/state.svelte'
+  import type { ChemicalElement } from '#lib'
+  import { element_data, ElementStats, PeriodicTable, PropertySelect } from '#lib'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { is_d3_interpolate_name } from '#lib/colors/index.js'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { ELEM_HEATMAP_KEYS, ELEM_PROPERTY_LABELS, format_num } from '#lib/labels.js'
+  import type { ScaleContext } from '#lib/periodic-table/index.js'
+  import { TableInset } from '#lib/periodic-table/index.js'
+  import { ColorScaleSelect, ElementScatter } from '#lib/plot/index.js'
+  import { selected } from '#lib/state.svelte.js'
+  import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
+  import { replace_url } from '#site/state.svelte.js'
   import { Icon } from 'svelte-widgets'
   import { ChevronDown, ChevronRight } from 'svelte-widgets/icons'
   import { onMount } from 'svelte'
@@ -37,7 +37,7 @@
 
   $effect(() => {
     if (!url_synced) return // don't clobber the incoming URL before it has been read
-    const params = new URLSearchParams(page.url.searchParams)
+    const params = new URLSearchParams(page.url.search)
     // Only the non-default halves are written, so an untouched page keeps a clean URL
     if (heatmap_key) params.set(`heatmap`, heatmap_key)
     else params.delete(`heatmap`)

@@ -6,17 +6,17 @@
     ElementHeading,
     ElementPhoto,
     ElementTile,
-  } from '$lib/element'
-  import type { ChemicalElement } from '$lib/element'
-  import { ColorScaleSelect, ElementScatter } from '$lib/plot'
-  import { PeriodicTable, PropertySelect } from '$lib/periodic-table'
-  import type { D3InterpolateName } from '$lib/colors'
-  import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { selected } from '$lib/state.svelte'
-  import pkg from '$root/package.json'
-  import { normalize_static_url } from '$site/state.svelte'
-  import LazyDemo from '$site/LazyDemo.svelte'
+  } from '#lib/element/index.js'
+  import type { ChemicalElement } from '#lib/element/index.js'
+  import { ColorScaleSelect, ElementScatter } from '#lib/plot/index.js'
+  import { PeriodicTable, PropertySelect } from '#lib/periodic-table/index.js'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { ELEM_PROPERTY_LABELS, format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { selected } from '#lib/state.svelte.js'
+  import pkg from '#root/package.json'
+  import { normalize_static_url } from '#site/state.svelte.js'
+  import LazyDemo from '#site/LazyDemo.svelte'
   import { error } from '@sveltejs/kit'
   import { Icon, PrevNext } from 'svelte-widgets'
   import {

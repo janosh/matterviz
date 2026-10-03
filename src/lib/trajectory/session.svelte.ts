@@ -1,27 +1,18 @@
-import { cache_prepared_bonds } from '$lib/structure/bonding'
-import { cache_prepared_polyhedra } from '$lib/structure/polyhedra'
-import { BondFrame } from '$lib/structure/bond-rendering'
-import { numeric_sites } from '$lib/structure/site'
-import {
-  display_cache_budget,
-  display_frame_bytes,
-  type DisplayFrame,
-  type FramePreparation,
-} from './prepare'
-import {
-  encode_frame,
-  FrameView,
-  materialize_frame,
-  type NumericFrame,
-  type FrameChannels,
-} from './frame'
+import { cache_prepared_bonds } from '#lib/structure/bonding.js'
+import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
+import { BondFrame } from '#lib/structure/bond-rendering.js'
+import { numeric_sites } from '#lib/structure/site.js'
+import type { DisplayFrame, FramePreparation } from './prepare'
+import { display_cache_budget, display_frame_bytes } from './prepare'
+import type { NumericFrame, FrameChannels } from './frame'
+import { encode_frame, FrameView, materialize_frame } from './frame'
 // Headless viewer state over a TrajectoryRun: the frame cache, latest-request-wins frame
 // loading, scrub (rAF-coalesced) vs commit (settled) stepping, prefetch, playback (through
 // the shared sequence player) and the imperative controller hosts use. No DOM, so it is
 // unit-testable on its own; Trajectory.svelte only renders what it exposes.
-import { create_sequence_player } from '$lib/layout/sequence-player.svelte'
-import { clamp } from '$lib/math'
-import { to_error } from '$lib/utils'
+import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
+import { clamp } from '#lib/math.js'
+import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
 import type { TrajectoryController, TrajectoryFrame, TrajectoryMetadata } from './index'
 import type { TrajectoryRun } from './run'

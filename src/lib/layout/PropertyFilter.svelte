@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Icon } from 'svelte-widgets'
   import { Close } from 'svelte-widgets/icons'
-  import { sanitize_html } from '$lib/sanitize'
-  import { html_to_text } from '$lib/utils'
-  import type { AxisConfig, HistogramSeries } from '$lib/plot'
-  import { Histogram } from '$lib/plot'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
+  import type { AxisConfig, HistogramSeries } from '#lib/plot/index.js'
+  import { Histogram } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {

@@ -1,18 +1,18 @@
-import PdfPlot from '$lib/rdf/PdfPlot.svelte'
-import RdfPlot from '$lib/rdf/RdfPlot.svelte'
-import type { RdfPattern } from '$lib/rdf'
-import type { RadiationType } from '$lib/scattering'
-import { structure_map } from '$site/structures'
+import PdfPlot from '#lib/rdf/PdfPlot.svelte'
+import RdfPlot from '#lib/rdf/RdfPlot.svelte'
+import type { RdfPattern } from '#lib/rdf/index.js'
+import type { RadiationType } from '#lib/scattering/index.js'
+import { structure_map } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, resize_element } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
-import type * as calc_rdf from '$lib/rdf/calc-rdf'
-import { calculate_all_pair_rdfs } from '$lib/rdf/calc-rdf'
+import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
+import { calculate_all_pair_rdfs } from '#lib/rdf/calc-rdf.js'
 
 // Spy on the neighbour search so the radiation buttons can be shown not to re-run it
-vi.mock(`$lib/rdf/calc-rdf`, async (import_original) => {
+vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
   const actual = await import_original<typeof calc_rdf>()
   return { ...actual, calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs) }
 })

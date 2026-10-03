@@ -35,9 +35,9 @@ This compact NaCl Γ→X path was generated from the same published PhononDB for
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '$lib/spectral'
-  import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
-  import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
+  } from '#lib/spectral/index.js'
+  import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
+  import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 
   const modes = parse_phonon_modes(band_yaml)
   const dataset = { modes, spectrum: spectrum_from_phonon_data(modes, parse_born(born_file)) }
@@ -54,10 +54,14 @@ Rocksalt NaCl has one triply degenerate T₁u optical mode. Its IR intensity is 
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '$lib/spectral'
-  import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
-  import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
+  import { IrRamanSpectrum } from '#lib/spectral/index.js'
+  import {
+    parse_born,
+    parse_phonon_modes,
+    spectrum_from_phonon_data,
+  } from '#lib/spectral/index.js'
+  import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
+  import yaml_file from '#site/phonons/ir-raman/NaCl-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -76,12 +80,16 @@ The three acoustic modes are identified at Γ and excluded from the stick spectr
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '$lib/spectral'
-  import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
-  import type { SpectrumKind } from '$lib/spectral'
-  import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
-  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
+  import { IrRamanSpectrum } from '#lib/spectral/index.js'
+  import {
+    parse_born,
+    parse_phonon_modes,
+    spectrum_from_phonon_data,
+  } from '#lib/spectral/index.js'
+  import type { SpectrumKind } from '#lib/spectral/index.js'
+  import raman_data from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+  import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -109,10 +117,14 @@ Set `presentation="transmittance"` to flip IR bands downwards. `fwhm` sets the p
 
 ```svelte example
 <script lang="ts">
-  import { IrRamanSpectrum } from '$lib/spectral'
-  import { parse_born, parse_phonon_modes, spectrum_from_phonon_data } from '$lib/spectral'
-  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
+  import { IrRamanSpectrum } from '#lib/spectral/index.js'
+  import {
+    parse_born,
+    parse_phonon_modes,
+    spectrum_from_phonon_data,
+  } from '#lib/spectral/index.js'
+  import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -140,11 +152,11 @@ Selected computed quantities are available per mode, so the raw numbers can be t
     parse_born,
     parse_phonon_modes,
     spectrum_from_phonon_data,
-  } from '$lib/spectral'
-  import { HeatmapTable, type Column } from '$lib/table'
-  import raman_data from '$site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
-  import born_file from '$site/phonons/ir-raman/SiO2.BORN?raw'
-  import yaml_file from '$site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
+  } from '#lib/spectral/index.js'
+  import { HeatmapTable, type Column } from '#lib/table/index.js'
+  import raman_data from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
+  import born_file from '#site/phonons/ir-raman/SiO2.BORN?raw'
+  import yaml_file from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 
   const spectrum = spectrum_from_phonon_data(
     parse_phonon_modes(yaml_file),
@@ -197,4 +209,4 @@ Selected computed quantities are available per mode, so the raw numbers can be t
 ## Traps this component deliberately avoids
 
 - IR/Raman data uses `VibrationalSpectrum` to represent discrete modes and intensities. DOS adapters represent sampled density curves and normalize explicitly declared frequency units to THz.
-- **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from `$lib/lineshape` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
+- **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from `#lib/lineshape.js` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.

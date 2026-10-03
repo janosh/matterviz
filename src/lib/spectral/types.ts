@@ -1,7 +1,7 @@
 // TypeScript type definitions for band structures and density of states
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { InternalPoint } from '$lib/plot'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { InternalPoint } from '#lib/plot/index.js'
 
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`

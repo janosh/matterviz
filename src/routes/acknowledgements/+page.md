@@ -1,7 +1,7 @@
 <script>
-  import img_sources from '$lib/element-image-urls.json'
-  import { dev } from '$app/environment'
-  import pkg from '$root/package.json'
+  import img_sources from '#lib/element-image-urls.json'
+  import { dev } from '$app/env'
+  import pkg from '#root/package.json'
 </script>
 
 # 🙏 &thinsp; Acknowledgements

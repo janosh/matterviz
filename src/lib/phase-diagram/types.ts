@@ -1,7 +1,7 @@
-import type { Point2D, Vec2 } from '$lib/math'
-import type { LineStyle } from '$lib/plot'
-import type { Sides } from '$lib/plot/core/layout'
-import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
+import type { Point2D, Vec2 } from '#lib/math.js'
+import type { LineStyle } from '#lib/plot/index.js'
+import type { Sides } from '#lib/plot/core/layout.js'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 export type TempUnit = `K` | `°C` | `°F`
 export type CompUnit = `at%` | `wt%` | `mol%` | `fraction`

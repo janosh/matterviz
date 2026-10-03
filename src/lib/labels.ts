@@ -1,19 +1,22 @@
-import type { ChemicalElement } from '$lib/element/types'
-import type { Vec3 } from '$lib/math'
-import { normalize_unicode_minus } from '$lib/utils'
+import type { ChemicalElement } from '#lib/element/types.js'
+import type { Vec3 } from '#lib/math.js'
+import { normalize_unicode_minus } from '#lib/utils.js'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
 import { timeFormat } from 'd3-time-format'
 
-export { ELEM_SYMBOLS } from '$lib/element/types'
+export { ELEM_SYMBOLS } from '#lib/element/types.js'
 
 // Mutable so callers can change the adaptive defaults globally.
 export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 
-// d3 scientific formats render 0 as "0e+0" / "0.00e+0"; collapse to a plain 0.
-const strip_scientific_zero = (formatted: string, fmt: string, num: number): string =>
-  num === 0 && fmt.endsWith(`e`) ? formatted.replace(/(?:\.0+)?e\+0$/, ``) : formatted
+// d3 writes positive exponents as e+6; the sign only widens table cells and ticks, so drop it
+// (1.06e+29 -> 1.06e29). Scientific zero ("0e+0" / "0.00e+0") collapses to a plain 0.
+const compact_scientific = (formatted: string, fmt: string, num: number): string => {
+  const compact = formatted.replace(/e\+(?=\d)/, `e`)
+  return num === 0 && fmt.endsWith(`e`) ? compact.replace(/(?:\.0+)?e0$/, ``) : compact
+}
 
 // Cap for the string-keyed caches here, in sanitize.ts and colors/index.ts (keys come from
 // data, so they must be bounded). Evicting the oldest — Map iterates insertion order — beats a
@@ -45,8 +48,14 @@ export const format_num = (num: number, fmt?: string | number): string => {
     const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
     fmt = Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt
   }
-  return strip_scientific_zero(formatter_for(fmt)(num), fmt, num)
+  return compact_scientific(formatter_for(fmt)(num), fmt, num)
 }
+
+// A value within a millionth of `magnitude` (the data's largest |value|) as exactly 0, so
+// floating noise (a density's 1e-125 vacuum, a fixed atom's 1e-17 force) reads 0 rather than
+// 9.43e-125 or 10a once formatted to a few significant digits
+export const zero_if_negligible = (value: number, magnitude: number): number =>
+  Math.abs(value) <= Math.abs(magnitude) * 1e-6 ? 0 : value
 
 // Uppercase the first character, leaving the rest alone (`bcc` -> `Bcc`, `pV` -> `PV`).
 export const capitalize = (text: string): string =>
@@ -107,7 +116,7 @@ export function format_value(value: number, formatter?: string): string {
       ? [formatted.slice(0, -1), `%`]
       : [formatted, ``]
   const stripped = body.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``) + suffix
-  return strip_scientific_zero(stripped === `-0` ? `0` : stripped, formatter, value)
+  return compact_scientific(stripped === `-0` ? `0` : stripped, formatter, value)
 }
 
 // Human-readable label + unit (null when dimensionless) for displayable element

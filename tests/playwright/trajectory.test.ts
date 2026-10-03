@@ -1,11 +1,11 @@
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import type * as ElementModule from '$lib/element/types'
-import type * as H5UtilsModule from '$lib/trajectory/parse/h5-utils'
-import type * as OpenTrajectoryModule from '$lib/trajectory/open'
-import type * as FrameModule from '$lib/trajectory/frame'
-import type { TrajectoryFrame } from '$lib/trajectory'
-import type * as ParseWorkerModule from '$lib/file-viewer/parse-in-worker'
+import type * as ElementModule from '#lib/element/types.js'
+import type * as H5UtilsModule from '#lib/trajectory/parse/h5-utils.js'
+import type * as OpenTrajectoryModule from '#lib/trajectory/open.js'
+import type * as FrameModule from '#lib/trajectory/frame.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { readFile } from 'node:fs/promises'
 import {
   drop_file,
@@ -120,8 +120,10 @@ test.describe(`Trajectory Component`, () => {
       await expect(controls.locator(`.analysis-button > svg`)).toHaveCount(1)
       await expect(controls.locator(`.view-mode-button > svg`)).toHaveCount(1)
       const check_icon_sizes = async () => {
+        // the invisible analysis anchors (checked above) stretch over the Analysis button and
+        // squeeze their icons, so only visible toggles count
         const icons = trajectory_viewer.locator(
-          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button) > svg`,
+          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor) > svg`,
         )
         // Resizing can unmount panes: read the current icons and sizes in one DOM snapshot.
         await expect(async () => {

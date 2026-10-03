@@ -1,4 +1,4 @@
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '#lib/element/index.js'
 
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'

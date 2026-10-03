@@ -1,37 +1,36 @@
 <script lang="ts">
-  import { pick_contrast_color, resolve_backdrop } from '$lib/colors'
+  import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
   import { Spinner } from 'svelte-widgets'
-  import { format_tick_values } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
+  import { format_num, format_tick_values } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
   import {
     color_ramp_scale,
     resolve_color_ramp,
     sample_color_ramp,
-  } from '$lib/plot/core/color-ramp'
-  import PortalSelect from '$lib/plot/core/components/PortalSelect.svelte'
-  import { validate_log_range } from '$lib/plot/core/interactions'
-  import { generate_arcsinh_ticks, generate_log_ticks } from '$lib/plot/core/scales'
-  import { observe_size } from '$lib/plot/core/utils'
+  } from '#lib/plot/core/color-ramp.js'
+  import PortalSelect from '#lib/plot/core/components/PortalSelect.svelte'
+  import { validate_log_range } from '#lib/plot/core/interactions.js'
+  import { generate_arcsinh_ticks, generate_log_ticks } from '#lib/plot/core/scales.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
   import {
     DEFAULT_FONT_SPEC,
     measure_text_line,
     resolve_font_spec,
-  } from '$lib/plot/core/text-metrics'
+  } from '#lib/plot/core/text-metrics.js'
   import type {
     AxisOption,
     ColorBarScale,
     ColorScaleOption,
     Orientation,
     ScaleType,
-  } from '$lib/plot/core/types'
+  } from '#lib/plot/core/types.js'
   import {
     get_arcsinh_threshold,
     get_scale_type_name,
     SCALE_DEFAULTS,
-  } from '$lib/plot/core/types'
-  import { sanitize_html } from '$lib/sanitize'
+  } from '#lib/plot/core/types.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { range as d3_range } from 'd3-array'
-  import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -187,13 +186,12 @@
       const format_date = timeFormat(tick_format)
       labels = values.map((value) => format_date(new Date(value)))
     } else {
-      const format_number = format(tick_format)
       // Integer formats need integer positions; explicit tick arrays keep their values.
       if (!Array.isArray(tick_labels) && tick_format.endsWith(`d`)) {
         const [lower, upper] = tick_domain.toSorted((left, right) => left - right)
         values = ticks.map(Math.round).filter((value) => value >= lower && value <= upper)
       }
-      labels = values.map(format_number)
+      labels = values.map((value) => format_num(value, tick_format))
     }
     const seen = new Set<string>()
     return values.flatMap((value, idx) => {

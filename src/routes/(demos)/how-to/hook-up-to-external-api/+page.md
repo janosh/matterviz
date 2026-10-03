@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { OptimadeStructureViewer } from '$site'
+  import { OptimadeStructureViewer } from '#site'
   import { FileDetails } from 'svelte-widgets'
   import { default_highlighter } from 'svelte-widgets/highlight'
-  import optimade_viewer_src from '$site/OptimadeStructureViewer.svelte?raw'
+  import optimade_viewer_src from '#site/OptimadeStructureViewer.svelte?raw'
 
   let structure_id = $state(`mp-756175`)
   let selected_provider = $state(`mp`)

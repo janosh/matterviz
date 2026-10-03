@@ -1,4 +1,4 @@
-import { resolve_backdrop, resolve_css_color } from '$lib/colors'
+import { resolve_backdrop, resolve_css_color } from '#lib/colors/backdrop.svelte.js'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
 

@@ -1,15 +1,13 @@
 // Trajectories reuse instance slots; a slot must repaint when its element changes.
-import type { AtomInstances, InstancedAtom } from '$lib/structure/atom-instances'
-import InstancedAtoms from '$lib/structure/InstancedAtoms.svelte'
-import ColorFieldVolume from '$lib/structure/ColorFieldVolume.svelte'
-import {
-  AtomFieldMaterial,
-  ColorFieldTexture,
-  type AtomColorField,
-} from '$lib/structure/atom-color-field'
+import type { AtomInstances, InstancedAtom } from '#lib/structure/atom-instances.js'
+import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
+import ColorFieldVolume from '#lib/structure/ColorFieldVolume.svelte'
+import type { AtomColorField } from '#lib/structure/atom-color-field.js'
+import { AtomFieldMaterial, ColorFieldTexture } from '#lib/structure/atom-color-field.js'
 import { flushSync, mount, unmount } from 'svelte'
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import { useThrelte } from '@threlte/core'
+import type { InstancedBufferGeometry } from 'three/webgpu'
 import {
   Color,
   ClampToEdgeWrapping,
@@ -21,7 +19,6 @@ import {
   Matrix4,
   Mesh,
   MeshStandardNodeMaterial,
-  type InstancedBufferGeometry,
   PerspectiveCamera,
   RepeatWrapping,
   SphereGeometry,

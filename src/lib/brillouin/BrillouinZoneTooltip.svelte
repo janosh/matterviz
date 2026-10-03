@@ -1,8 +1,8 @@
 <script lang="ts">
   // Tooltip component for Brillouin zone hover information
   // Displays k-coordinates, BZ order, volume, and IBZ-specific info
-  import { format_num } from '$lib/labels'
-  import { KCoords, TooltipContent } from '$lib/tooltip'
+  import { format_num } from '#lib/labels.js'
+  import { KCoords, TooltipContent } from '#lib/tooltip/index.js'
   import type { BZHoverData, BZTooltipProp } from './types'
   import { ordinal_label } from './types'
 

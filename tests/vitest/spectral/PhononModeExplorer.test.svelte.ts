@@ -1,12 +1,9 @@
-import type { PhononModeDataset } from '$lib/spectral'
-import {
-  parse_born,
-  PhononModeExplorer,
-  parse_phonon_modes,
-  spectrum_from_phonon_data,
-} from '$lib/spectral'
-import born_file from '$site/phonons/ir-raman/NaCl.BORN?raw'
-import band_yaml from '$site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
+import type { PhononModeDataset } from '#lib/spectral/index.js'
+import { parse_born, parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
+import PhononModeExplorer from '#lib/spectral/PhononModeExplorer.svelte'
+import { spectrum_from_phonon_data } from '#lib/spectral/ir-raman.js'
+import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
+import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { mount, tick, type ComponentProps, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { query } from '../setup'

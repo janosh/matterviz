@@ -1,12 +1,11 @@
-import type { OptimadeStructure } from '$lib/api/optimade'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
-import { explicit_only } from '$lib/structure/bonding'
+import type { OptimadeStructure } from '#lib/api/optimade.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '#lib/math.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { explicit_only } from '#lib/structure/bonding.js'
 import {
   detect_structure_type,
-  is_structure_file,
   normalize_fractional_coords,
   optimade_structure_from_raw,
   optimade_to_structure,
@@ -15,8 +14,9 @@ import {
   parse_poscar,
   parse_structure_file,
   parse_xyz,
-} from '$lib/structure/parse'
-import { structure_to_cif_str } from '$lib/structure/export'
+} from '#lib/structure/parse.js'
+import { is_structure_file } from '#lib/structure/format-detect.js'
+import { structure_to_cif_str } from '#lib/structure/export.js'
 import {
   complete_lattice_matrix,
   element_from_candidates,
@@ -24,31 +24,31 @@ import {
   parse_coordinate,
   parse_float_token,
   split_cif_tokens,
-} from '$lib/structure/parsers/shared'
-import benzene_mol2 from '$site/molecules/benzene.mol2?raw'
-import benzene_sdf from '$site/molecules/benzene.sdf?raw'
-import c2ho_scientific_notation_xyz from '$site/molecules/C2HO-scientific-notation.xyz?raw'
-import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
-import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
-import ethanol_mol from '$site/molecules/ethanol.mol?raw'
-import glycine_pdb from '$site/molecules/glycine.pdb?raw'
-import al_fcc_dump from '$site/structures/Al-fcc.dump?raw'
-import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
-import cu_fcc_lmp from '$site/structures/Cu-fcc.lmp?raw'
-import nacl_rocksalt_pdb from '$site/structures/NaCl-rocksalt.pdb?raw'
-import si_diamond_mmcif from '$site/structures/Si-diamond.mmcif?raw'
-import water_dimer_data from '$site/structures/water-dimer.data?raw'
-import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
-import li10gep2s12_cif from '$site/structures/Li10GeP2S12.cif?raw'
-import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
-import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
-import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
-import pf_sd_1601634_cif from '$site/structures/PF-sd-1601634.cif?raw'
-import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
-import scientific_notation_poscar from '$site/structures/scientific-notation.poscar?raw'
-import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
-import tio2_cif from '$site/structures/TiO2.cif?raw'
-import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
+} from '#lib/structure/parsers/shared.js'
+import benzene_mol2 from '#site/molecules/benzene.mol2?raw'
+import benzene_sdf from '#site/molecules/benzene.sdf?raw'
+import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'
+import c5_extra_data_xyz from '#site/molecules/C5-extra-data.xyz?raw'
+import cyclohexane from '#site/molecules/cyclohexane.xyz?raw'
+import ethanol_mol from '#site/molecules/ethanol.mol?raw'
+import glycine_pdb from '#site/molecules/glycine.pdb?raw'
+import al_fcc_dump from '#site/structures/Al-fcc.dump?raw'
+import aviary_CuF3K_triolith from '#site/structures/aviary-CuF3K-triolith.poscar?raw'
+import cu_fcc_lmp from '#site/structures/Cu-fcc.lmp?raw'
+import nacl_rocksalt_pdb from '#site/structures/NaCl-rocksalt.pdb?raw'
+import si_diamond_mmcif from '#site/structures/Si-diamond.mmcif?raw'
+import water_dimer_data from '#site/structures/water-dimer.data?raw'
+import ba_ti_o3_tetragonal from '#site/structures/BaTiO3-tetragonal.poscar?raw'
+import li10gep2s12_cif from '#site/structures/Li10GeP2S12.cif?raw'
+import mof_issue_127 from '#site/structures/mof-issue-127.cif?raw'
+import na_cl_cubic from '#site/structures/NaCl-cubic.poscar?raw'
+import ru_p_complex_cif from '#site/structures/P24Ru4H252C296S24N16.cif?raw'
+import pf_sd_1601634_cif from '#site/structures/PF-sd-1601634.cif?raw'
+import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
+import scientific_notation_poscar from '#site/structures/scientific-notation.poscar?raw'
+import selective_dynamics from '#site/structures/selective-dynamics.poscar?raw'
+import tio2_cif from '#site/structures/TiO2.cif?raw'
+import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
 import process from 'node:process'
 import { join } from 'node:path'
 import { assert, describe, expect, it, test, vi } from 'vitest'

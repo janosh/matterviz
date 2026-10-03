@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { in_range, type Vec2 } from '$lib/math'
-  import AxisLabel from '$lib/plot/core/components/AxisLabel.svelte'
-  import type { Sides } from '$lib/plot/core/layout'
-  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '$lib/plot/core/layout'
-  import type { FontSpec } from '$lib/plot/core/text-metrics'
+  import { in_range, type Vec2 } from '#lib/math.js'
+  import AxisLabel from '#lib/plot/core/components/AxisLabel.svelte'
+  import type { Sides } from '#lib/plot/core/layout.js'
+  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
+  import type { FontSpec } from '#lib/plot/core/text-metrics.js'
   import {
     DEFAULT_FONT_SPEC,
     invalidate_text_metrics_after_fonts_ready,
     resolve_font_spec,
-  } from '$lib/plot/core/text-metrics'
-  import type { TicksOption } from '$lib/plot/core/scales'
-  import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '$lib/plot/core/tick-layout'
-  import type { AxisConfig } from '$lib/plot/core/types'
-  import { DEFAULT_GRID_STYLE } from '$lib/plot/core/types'
+  } from '#lib/plot/core/text-metrics.js'
+  import type { TicksOption } from '#lib/plot/core/scales.js'
+  import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
+  import type { AxisConfig } from '#lib/plot/core/types.js'
+  import { DEFAULT_GRID_STYLE } from '#lib/plot/core/types.js'
   import { onMount, tick as svelte_tick } from 'svelte'
 
   type Side = `x` | `x2` | `y` | `y2`

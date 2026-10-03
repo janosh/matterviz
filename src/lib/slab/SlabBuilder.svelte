@@ -2,11 +2,11 @@
   // Controls for cutting a surface slab out of a bulk crystal: Miller indices, thickness,
   // vacuum, termination and cell options. The built slab is exposed through `bind:slab`
   // so the caller decides how to render it (typically a second <Structure>).
-  import { format_num } from '$lib/labels'
-  import type { Vec3 } from '$lib/math'
-  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
-  import type { Crystal } from '$lib/structure'
-  import { to_error } from '$lib/utils'
+  import { format_num } from '#lib/labels.js'
+  import type { Vec3 } from '#lib/math.js'
+  import MillerIndexInput from '#lib/MillerIndexInput.svelte'
+  import type { Crystal } from '#lib/structure/index.js'
+  import { to_error } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { make_slab } from './make-slab'

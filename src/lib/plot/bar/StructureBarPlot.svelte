@@ -1,19 +1,19 @@
 <script lang="ts">
-  import type { BarPlotOptions } from '$lib/plot'
-  // Shell shared by the bar plots that histogram one-or-many structures ($lib/bond-angles,
-  // $lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
+  import type { BarPlotOptions } from '#lib/plot/index.js'
+  // Shell shared by the bar plots that histogram one-or-many structures (#lib/bond-angles,
+  // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
   import { StatusMessage } from 'svelte-widgets'
-  import { drag_over_handlers } from '$lib/io'
-  import type { FileLoadCallback } from '$lib/io'
+  import { drag_over_handlers } from '#lib/io/index.js'
+  import type { FileLoadCallback } from '#lib/io/index.js'
   import type {
     AxisConfig,
     BarHandlerProps,
     BarSeries,
     Orientation,
-  } from '$lib/plot/core/types'
-  import { create_structure_drop_handler } from '$lib/plot/core/structure-input'
-  import type { StructureEntry } from '$lib/plot/core/structure-input'
+  } from '#lib/plot/core/types.js'
+  import { create_structure_drop_handler } from '#lib/plot/core/structure-input.js'
+  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { Snippet } from 'svelte'
   import BarPlot from './BarPlot.svelte'
 

@@ -1,7 +1,7 @@
 import { encode_frame, type NumericFrame } from '../frame'
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
-import { first_non_increasing_index, is_finite_vec3_like } from '$lib/math'
+import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
 import { frame_property_row, full_data_extractor } from '../extract'
 import { is_supported_trajectory_signal_shape } from '../helpers'
 import type {

@@ -3,13 +3,13 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
-  import { add_alpha } from '$lib/colors'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import { is_fill_gradient } from '$lib/plot/core/fill-utils'
-  import { resolve_pattern } from '$lib/plot/core/patterns'
-  import type { FillHandlerEvent, FillRegion } from '$lib/plot/core/types'
-  import { create_settling_tween } from '$lib/plot/core/settling-tween.svelte'
-  import { unique_id } from '$lib/plot/core/utils'
+  import { add_alpha } from '#lib/colors/index.js'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
+  import { resolve_pattern } from '#lib/plot/core/patterns.js'
+  import type { FillHandlerEvent, FillRegion } from '#lib/plot/core/types.js'
+  import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
+  import { unique_id } from '#lib/plot/core/utils.js'
 
   let {
     region,

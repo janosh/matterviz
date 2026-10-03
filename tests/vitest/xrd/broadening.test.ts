@@ -1,10 +1,10 @@
-import { broaden_peaks, MAX_BROADENING_FILL_STEPS } from '$lib/lineshape'
-import type { Vec2 } from '$lib/math'
+import { broaden_peaks, MAX_BROADENING_FILL_STEPS } from '#lib/lineshape.js'
+import type { Vec2 } from '#lib/math.js'
 import {
   caglioti_fwhm,
   compute_broadened_pattern,
   DEFAULT_BROADENING,
-} from '$lib/xrd/broadening'
+} from '#lib/xrd/broadening.js'
 import { describe, expect, test } from 'vitest'
 
 // Linearly interpolated crossings of half the peak maximum, i.e. the observed FWHM of the

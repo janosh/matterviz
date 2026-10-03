@@ -3,7 +3,7 @@ import { encode_frame, select_frame_channels } from '../frame'
 // indexed the file, sent a summary, and answers one frame per request. Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import type { TrajectoryFrame } from '../index'
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 

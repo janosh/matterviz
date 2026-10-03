@@ -1,8 +1,8 @@
 // Types, layout math and constants for Gizmo.svelte, kept out of the component so callers
 // (SceneControlProps, StructureViewport) can type and size a gizmo without importing a .svelte
 // module, and so the layout is unit-testable without a Threlte context.
-import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
-import { clamp, type Vec3 } from '$lib/math'
+import { AXIS_COLORS, NEG_AXIS_COLORS } from '#lib/colors/index.js'
+import { clamp, type Vec3 } from '#lib/math.js'
 
 export type GizmoAxisKey = `x` | `y` | `z` | `nx` | `ny` | `nz`
 
@@ -18,7 +18,7 @@ export type GizmoAxisStyle = {
 
 // Where the gizmo sits inside its canvas. `fill` uses the whole canvas, for callers that give
 // the gizmo its own <Canvas> and place that element with CSS (ConvexHullCanvas). Not named
-// GizmoPlacement because $lib/convex-hull exports that already (its CSS-level corner).
+// GizmoPlacement because #lib/convex-hull exports that already (its CSS-level corner).
 type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
 export type GizmoOptions = {

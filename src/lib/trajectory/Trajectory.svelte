@@ -1,32 +1,24 @@
 <script lang="ts">
-  import { TooltipValue } from '$lib/tooltip'
-  import { webgpu_available } from '$lib/scene'
-  import { camera_flight_registry } from '$lib/scene/camera-flight'
-  import {
-    export_trajectory_video,
-    render_video_frames,
-    type VideoFrameOptions,
-  } from '$lib/io/export'
-  import {
-    plan_movie,
-    movie_frame,
-    type MoviePlan,
-    type MovieRenderOptions,
-    type TrajectoryViewerController,
-  } from './movie'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { webgpu_available } from '#lib/scene/index.js'
+  import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+  import type { VideoFrameOptions } from '#lib/io/export.js'
+  import { export_trajectory_video, render_video_frames } from '#lib/io/export.js'
+  import type { MoviePlan, MovieRenderOptions, TrajectoryViewerController } from './movie'
+  import { plan_movie, movie_frame } from './movie'
   import type {
     ScatterPlotOptions,
     HistogramOptions,
     DataSeries,
     HistogramSeries,
     Orientation,
-  } from '$lib/plot'
+  } from '#lib/plot/index.js'
   // Playback and acquisition share one viewer; only runs opened here are disposed here.
-  import { create_flash, create_shortcut_flash } from '$lib/effects.svelte'
-  import { normalize_show_controls, type ShowControlsProp } from '$lib/controls'
-  import type { ElementSymbol } from '$lib/element'
+  import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import type { ElementSymbol } from '#lib/element/index.js'
   import { FileInput, Icon, Spinner, StatusMessage } from 'svelte-widgets'
-  import LoadingStatus from '$lib/layout/LoadingStatus.svelte'
+  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import {
     Atom,
     Check,
@@ -35,53 +27,49 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, html_to_text, to_error } from '$lib/utils'
+  import { handle_and_prevent, html_to_text, to_error } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
     parse_axis_label,
     format_num,
     plural,
     trajectory_property_config,
-  } from '$lib/labels'
-  import type { TrajPropertyConfig } from '$lib/labels'
-  import { clamp } from '$lib/math'
-  import type { Vec2, Vec3 } from '$lib/math'
-  import TrajectoryMsdPane from '$lib/msd/TrajectoryMsdPane.svelte'
-  import TrajectoryRdfPane from '$lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton, SettingsSection } from '$lib/layout'
-  import { ToolbarMenu } from '$lib/overlays'
+  } from '#lib/labels.js'
+  import type { TrajPropertyConfig } from '#lib/labels.js'
+  import { clamp } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
+  import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
+  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import SequenceControlBar from '$lib/layout/SequenceControlBar.svelte'
-  import SequenceControls from '$lib/layout/SequenceControls.svelte'
-  import type { ScatterHandlerProps } from '$lib/plot/core/types'
-  import { Histogram, ScatterPlot } from '$lib/plot'
-  import { DEFAULTS } from '$lib/settings'
-  import type { StructurePane, StructureOptions } from '$lib/structure'
-  import { applies_to_structure } from '$lib/structure/settings'
-  import { DEFAULT_ATOM_COLOR_CONFIG } from '$lib/structure/atom-properties'
-  import { DEFAULT_CUTAWAY } from '$lib/structure/cutaway'
-  import { is_vector_key } from '$lib/structure/vectors'
+  import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
+  import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
+  import { Histogram, ScatterPlot } from '#lib/plot/index.js'
+  import { DEFAULTS } from '#lib/settings.js'
+  import type { StructurePane, StructureOptions } from '#lib/structure/index.js'
+  import { applies_to_structure } from '#lib/structure/settings.js'
+  import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+  import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
+  import { is_vector_key } from '#lib/structure/vectors.js'
   import type { FrameChannels } from './frame'
-  import Structure from '$lib/structure/Structure.svelte'
-  import TrajectoryStructureIdPane from '$lib/structure-id/TrajectoryStructureIdPane.svelte'
-  import TrajectorySpectroscopyPane from '$lib/spectral/TrajectorySpectroscopyPane.svelte'
+  import Structure from '#lib/structure/Structure.svelte'
+  import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
+  import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
   import TrajectoryHotspotPane from './TrajectoryHotspotPane.svelte'
-  import {
-    hotspot_display_values,
-    type HotspotResult,
-    type HotspotMetric,
-    type HotspotCoverage,
-  } from './hotspots'
+  import type { HotspotResult, HotspotMetric, HotspotCoverage } from './hotspots'
+  import { hotspot_display_values } from './hotspots'
+  import type { HotspotScale } from './hotspot-colors'
   import {
     hotspot_colors,
     hotspot_field_geometry,
     hotspot_cloud_colors,
     hotspot_probe,
-    type HotspotScale,
     DEFAULT_HOTSPOT_CLOUD,
   } from './hotspot-colors'
-  import { collected_frame_idx } from '$lib/structure/trajectory-lines'
-  import TrajectoryVacfPane from '$lib/vacf/TrajectoryVacfPane.svelte'
+  import { collected_frame_idx } from '#lib/structure/trajectory-lines.js'
+  import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tick as flush_updates, untrack } from 'svelte'
@@ -118,14 +106,13 @@
   } from './plotting'
   import type { TrajectoryRun } from './run'
   import { create_trajectory_session } from './session.svelte'
-  import EmptyState from '$lib/EmptyState.svelte'
-  import {
-    open_material,
-    MaterialOpenError,
-    type MaterialPayload,
-    type MaterialSource,
-    type OpenedMaterial,
-  } from '$lib/file-viewer/open'
+  import EmptyState from '#lib/EmptyState.svelte'
+  import type {
+    MaterialPayload,
+    MaterialSource,
+    OpenedMaterial,
+  } from '#lib/file-viewer/open.js'
+  import { open_material, MaterialOpenError } from '#lib/file-viewer/open.js'
   import * as file_io from '../io'
   import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
   import { get_unsupported_format_message } from './parse'
@@ -2028,6 +2015,9 @@
     }
     &.active {
       z-index: 2; /* info/control panes of an active viewer overlay those of the next one */
+    }
+    &:has(:global(.draggable-pane.pane-open)) {
+      z-index: var(--z-index-viewer-pane-open, 12);
     }
     &:fullscreen {
       height: 100vh !important;

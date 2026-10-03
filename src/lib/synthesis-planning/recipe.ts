@@ -1,4 +1,4 @@
-import { format_num } from '$lib/labels'
+import { format_num } from '#lib/labels.js'
 import { lookup_precursor_info } from './precursor-library'
 import { describe_downhill_windows } from './thermo'
 import type {

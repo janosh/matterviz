@@ -1,6 +1,6 @@
-import type { Vec2 } from '$lib/math'
-import type { Sides } from '$lib/plot/core/layout'
-import type { AxisConfig } from '$lib/plot/core/types'
+import type { Vec2 } from '#lib/math.js'
+import type { Sides } from '#lib/plot/core/layout.js'
+import type { AxisConfig } from '#lib/plot/core/types.js'
 
 type PaddingSide = keyof Required<Sides>
 

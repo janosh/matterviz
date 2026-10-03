@@ -1,12 +1,12 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
+  import LazyDemo from '#site/LazyDemo.svelte'
   import { goto } from '$app/navigation'
-  import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib'
-  import { element_data, PeriodicTable } from '$lib'
-  import { array_max, array_min, type Vec2 } from '$lib/math'
-  import { TableInset } from '$lib/periodic-table'
-  import { ColorBar } from '$lib/plot'
-  import MultiValueHeatmapDemo from '$site/MultiValueHeatmapDemo.svelte'
+  import type { ChemicalElement, ElementCategory, ElementSymbol } from '#lib'
+  import { element_data, PeriodicTable } from '#lib'
+  import { array_max, array_min, type Vec2 } from '#lib/math.js'
+  import { TableInset } from '#lib/periodic-table/index.js'
+  import { ColorBar } from '#lib/plot/index.js'
+  import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
   const four_fold_quadrants = [
@@ -78,7 +78,7 @@
 
 <LazyDemo
   label="Periodic table"
-  load={() => import('$site/PeriodicTableDemo.svelte')}
+  load={() => import('#site/PeriodicTableDemo.svelte')}
   props={{}}
 />
 

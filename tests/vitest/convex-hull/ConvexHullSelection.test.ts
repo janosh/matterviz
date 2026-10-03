@@ -1,7 +1,8 @@
-import { ConvexHull, type HullModel } from '$lib/convex-hull'
-import * as thermo from '$lib/convex-hull/thermodynamics'
-import * as canvas_draw from '$lib/convex-hull/canvas-draw'
-import type { PhaseData } from '$lib/convex-hull/types'
+import type { HullModel } from '#lib/convex-hull/index.js'
+import ConvexHull from '#lib/convex-hull/ConvexHull.svelte'
+import * as thermo from '#lib/convex-hull/thermodynamics.js'
+import * as canvas_draw from '#lib/convex-hull/canvas-draw.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
@@ -21,7 +22,7 @@ beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
 // exercised deterministically in jsdom (synthetic events can't land on points).
-vi.mock(`$lib/convex-hull/canvas-draw`, async (import_actual) => {
+vi.mock(`#lib/convex-hull/canvas-draw.js`, async (import_actual) => {
   const actual = await import_actual()
   return {
     ...(actual as Record<string, unknown>),
@@ -58,13 +59,13 @@ const canvas_context = make_canvas_context(document.createElement(`canvas`))
 // clearRect opens every repaint, so counting it per layer says which canvas actually redrew.
 const count_canvas_clears = (): { base: number; overlay: number } => {
   const clears = { base: 0, overlay: 0 }
-  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(
-    function (this: HTMLCanvasElement) {
-      // function body, so `this` stays the canvas getContext was called on
-      const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
-      return make_canvas_context(this, () => clears[layer]++)
-    },
-  )
+  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockImplementation(function (
+    this: HTMLCanvasElement,
+  ) {
+    // function body, so `this` stays the canvas getContext was called on
+    const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
+    return make_canvas_context(this, () => clears[layer]++)
+  })
   return clears
 }
 const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))

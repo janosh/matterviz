@@ -4,7 +4,7 @@
 // ASE); frames are decoded on read and cached by the session, never all at once. Per-frame
 // scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
 // responsive.
-import { to_error } from '$lib/utils'
+import { to_error } from '#lib/utils.js'
 import { encode_frame } from '../frame'
 import { TextLines } from '../helpers'
 import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'

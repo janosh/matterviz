@@ -1,14 +1,14 @@
 // Module worker for file parsing. TrajectoryRun instances stay in this worker and cross the
 // boundary as a summary plus a MessagePort implementing read_frame/collect_positions.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import type { ParseProgress } from '$lib/trajectory'
-import { Hdf5GroupSelectionRequiredError } from '$lib/trajectory/parse'
-import { summarize_run } from '$lib/trajectory/run'
-import { open_hdf5_trajectory } from '$lib/trajectory/parse/hdf5'
-import { create_warning_collector } from '$lib/trajectory/parse/shared'
-import { hdf5_run } from '$lib/trajectory/runs/hdf5'
-import { dispose_run_port, serve_run_over_port } from '$lib/trajectory/runs/worker'
-import { to_error } from '$lib/utils'
+import type { ParseProgress } from '#lib/trajectory/index.js'
+import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/index.js'
+import { summarize_run } from '#lib/trajectory/run.js'
+import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
+import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
+import { to_error } from '#lib/utils.js'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 import { parse_file_content, type ParseResult } from './parse'
 

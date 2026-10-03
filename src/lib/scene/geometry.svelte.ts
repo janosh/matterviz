@@ -1,5 +1,5 @@
 // Shared geometry construction and derived-geometry disposal for Threlte scenes.
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 // Indexed triangle mesh from flat xyz positions and index triples (marching-cubes output,

@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { plot_color } from '$lib/colors'
-  import { format_value } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
-  import type { StructurePlotProps } from '$lib/plot/bar'
-  import StructureBarPlot from '$lib/plot/bar/StructureBarPlot.svelte'
+  import { plot_color } from '#lib/colors/index.js'
+  import { format_value } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
+  import type { StructurePlotProps } from '#lib/plot/bar/index.js'
+  import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
     compute_structure_entries,
     to_structure_entries,
-  } from '$lib/plot/core/structure-input'
-  import type { StructureEntry } from '$lib/plot/core/structure-input'
-  import type { BarHandlerProps, BarSeries } from '$lib/plot/core/types'
+  } from '#lib/plot/core/structure-input.js'
+  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
+  import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
   import { calc_coordination_nums } from './calc-coordination'
   import type { CoordinationSplitMode } from './index'
 

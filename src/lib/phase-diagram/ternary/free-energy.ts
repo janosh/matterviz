@@ -5,24 +5,24 @@
 //   with experimental elemental Gibbs energies (g-els-data.ts)
 // - static: E_i - sum_e x_e G_e(T)
 // Gas-phase elements (O from O2, ...) shift the references by mu_e(T, p) - mu_e(ref).
-import { count_atoms_in_composition } from '$lib/composition/reduce'
+import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
   GAS_STOICHIOMETRY,
   gas_pressure_term,
   get_effective_pressures,
-} from '$lib/convex-hull/gas-thermodynamics'
-import { interpolate_energy_at_temperature } from '$lib/convex-hull/helpers'
+} from '#lib/convex-hull/gas-thermodynamics.js'
+import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers.js'
 import {
   compute_e_form_per_atom,
   find_lowest_energy_unary_refs,
   get_energy_per_atom as energy_per_atom,
-} from '$lib/convex-hull/thermodynamics'
-import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element/data'
-import { array_extent, array_max, array_min, type Vec2 } from '$lib/math'
+} from '#lib/convex-hull/thermodynamics.js'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
 import { G_ELEMENT_TEMPERATURES, G_ELEMENTS } from './g-els-data'
 import type { FreeEnergyOptions, FreeEnergySource, PhaseFreeEnergy } from './types'
 

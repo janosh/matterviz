@@ -1,18 +1,16 @@
-import type { Vec3 } from '$lib/math'
+import type { Vec3 } from '#lib/math.js'
 import type { Site } from './index'
 import { is_image_site } from './site'
 import { InstanceColors } from './instance-colors'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
+import type { Material, Intersection, Raycaster } from 'three/webgpu'
 import {
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
-  type Material,
-  type Intersection,
   Matrix4,
   Mesh,
   Ray,
-  type Raycaster,
   Sphere,
   SphereGeometry,
   Vector3,

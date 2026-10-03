@@ -1,12 +1,13 @@
-import { get_d3_interpolator, type D3InterpolateName } from '$lib/colors'
-import type { ElementSymbol } from '$lib/element'
-import * as math from '$lib/math'
-import type { Vec3 } from '$lib/math'
-import type { VectorColorMode, VectorLayerConfig } from '$lib/settings'
+import { get_d3_interpolator, type D3InterpolateName } from '#lib/colors/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import * as math from '#lib/math.js'
+import type { Vec3 } from '#lib/math.js'
+import type { VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
 import { rgb } from 'd3-color'
 import { get_majority_element } from './bonding'
 import { numeric_sites } from './site'
-import { element_from_atomic_number } from '$lib/element/helpers'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
+import type { VectorGeometryFilter, VectorGeometrySettings, ArrowPlacements } from './vectors'
 import {
   vector_reader,
   VECTOR_PALETTE,
@@ -14,9 +15,6 @@ import {
   write_arrow_placement,
   prepare_vector_geometry,
   same_vector_geometry,
-  type VectorGeometryFilter,
-  type VectorGeometrySettings,
-  type ArrowPlacements,
 } from './vectors'
 import type { AnyStructure } from './index'
 

@@ -1,8 +1,8 @@
 // Space group to crystal system mappings and utilities
 
-import type { Vec2 } from '$lib/math'
-// type-only import (erased at runtime, so no import cycle with $lib/plot)
-import type { SunburstNode } from '$lib/plot/core/utils/hierarchy-layout'
+import type { Vec2 } from '#lib/math.js'
+// type-only import (erased at runtime, so no import cycle with #lib/plot)
+import type { SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
 
 // Crystal system ranges: [min, max] space group numbers (inclusive)
 export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, Vec2> = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
+  import LazyDemo from '#site/LazyDemo.svelte'
   import { BohrAtom, element_data } from 'matterviz/element'
 
   let orbital_period = $state(2)

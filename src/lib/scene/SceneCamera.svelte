@@ -1,7 +1,7 @@
 <script lang="ts">
   // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by BrillouinZoneScene, FermiSurfaceScene, ChemPotScene3D and StructureScene
-  import type { Vec3 } from '$lib/math'
-  import { type CameraProjection, DEFAULTS } from '$lib/settings'
+  import type { Vec3 } from '#lib/math.js'
+  import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, untrack } from 'svelte'

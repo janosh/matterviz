@@ -1,13 +1,21 @@
-import type { TrajectoryFrame } from '$lib/trajectory'
-import { full_data_extractor } from '$lib/trajectory/extract'
-import { open_trajectory, VaspoutElectronicOnlyError } from '$lib/trajectory/open'
-import { expand_ion_types } from '$lib/trajectory/helpers'
-import { with_h5_file } from '$lib/trajectory/parse/h5-utils'
-import { electronic_band_gap } from '$lib/spectral/helpers'
-import { line_mode_labels, read_vaspout_bands } from '$lib/trajectory/parse/vaspout-electronic'
-import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
-import { parse_vaspout_h5_file } from '$lib/trajectory/parse/vaspout-h5'
-import { is_trajectory_file } from '$lib/trajectory/format-detect'
+import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
+import * as math from '#lib/math.js'
+import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { full_data_extractor } from '#lib/trajectory/extract.js'
+import { open_trajectory } from '#lib/trajectory/open.js'
+import {
+  VaspoutElectronicOnlyError,
+  parse_vaspout_h5_file,
+} from '#lib/trajectory/parse/vaspout-h5.js'
+import { expand_ion_types } from '#lib/trajectory/helpers.js'
+import { with_h5_file } from '#lib/trajectory/parse/h5-utils.js'
+import { electronic_band_gap } from '#lib/spectral/helpers.js'
+import {
+  line_mode_labels,
+  read_vaspout_bands,
+} from '#lib/trajectory/parse/vaspout-electronic.js'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
+import { is_trajectory_file } from '#lib/trajectory/format-detect.js'
 import type * as h5wasm from 'h5wasm'
 import { describe, expect, it, vi } from 'vitest'
 import { rejection_of } from '../setup'
@@ -18,22 +26,43 @@ const read_vaspout = (filename: string): ArrayBuffer =>
   read_binary_test_file(filename, VASPOUT_FIXTURE_DIR)
 const elements_of = (frame: TrajectoryFrame) =>
   frame.structure.sites.map((site) => site.species[0].element)
-const parse_fixture = (fixture: string, potim_override?: number) =>
+// `incar` overrides input/incar/<TAG> datasets (POTIM, PSTRESS) the fixture was written with
+const parse_fixture = (fixture: string, incar: Record<string, number | undefined> = {}) =>
   with_h5_file(read_vaspout(fixture), `vaspout.h5`, (h5_file) => {
-    if (potim_override === undefined) return parse_vaspout_h5_file(h5_file, () => {})
-    const file_with_potim = {
-      get: (path: string) =>
-        path === `input/incar/POTIM` ? { to_array: () => potim_override } : h5_file.get(path),
+    const file_with_incar = {
+      get: (path: string) => {
+        const value = incar[path.replace(/^input\/incar\//, ``)]
+        return value === undefined ? h5_file.get(path) : { to_array: () => value }
+      },
     } as unknown as h5wasm.File
-    return parse_vaspout_h5_file(file_with_potim, () => {})
+    return parse_vaspout_h5_file(file_with_incar, () => {})
   })
 
 describe(`vaspout.h5 parsing`, () => {
+  // With PSTRESS set, VASP's TOTEN column holds the enthalpy F + PV; it was reported as the
+  // energy, 0.25 eV off the OUTCAR reader's free energy on a real NPT run
+  it(`reports the free energy and keeps the PSTRESS enthalpy apart`, async () => {
+    const plain = await parse_fixture(`vaspout-si-relax.h5`)
+    const pressed = await parse_fixture(`vaspout-si-relax.h5`, { PSTRESS: 10 })
+    for (const [idx, frame] of pressed.frames.entries()) {
+      const raw = Number(plain.frames[idx].metadata?.energy)
+      if (!(`lattice` in frame.structure)) throw new Error(`frame ${idx} has no lattice`)
+      const volume = Math.abs(math.det_3x3(frame.structure.lattice.matrix))
+      // 10 kB = 1 GPa; 1 eV/A^3 = 160.2177 GPa
+      expect(frame.metadata?.energy).toBeCloseTo(raw - volume / EV_PER_A3_TO_GPA, 12)
+      expect(frame.metadata?.enthalpy).toBe(raw)
+    }
+    expect(plain.frames[0].metadata?.enthalpy).toBeUndefined()
+  })
+
   it(`parses a relaxation trajectory with energy, forces, and SCF summaries`, async () => {
     const trajectory = await parse_fixture(`vaspout-si-relax.h5`)
 
     expect(trajectory.format).toBe(`vaspout-h5`)
     expect(trajectory.frames).toHaveLength(5)
+    // ionic steps count from 1 like the OUTCAR/vasprun/XDATCAR readers (the time axis is
+    // step × POTIM, so 0-based steps shifted a vaspout run one step earlier)
+    expect(trajectory.frames.map(({ step }) => step)).toEqual([1, 2, 3, 4, 5])
     expect(elements_of(trajectory.frames[0])).toEqual([`Si`, `Si`])
     expect(trajectory.metadata?.energy_tag).toBe(`free energy    TOTEN`)
     expect(trajectory.metadata?.electronic).toBeUndefined()
@@ -103,7 +132,7 @@ describe(`vaspout.h5 parsing`, () => {
     const trajectory = await parse_fixture(`vaspout-si-static.h5`)
 
     expect(trajectory.frames).toHaveLength(1)
-    expect(trajectory.frames[0].step).toBe(0)
+    expect(trajectory.frames[0].step).toBe(1) // the single ionic step, numbered like OUTCAR
     expect(elements_of(trajectory.frames[0])).toEqual([`Si`, `Si`])
     expect(trajectory.metadata?.frames_are_scf_steps).toBeUndefined()
     expect(trajectory.frames[0].metadata?.n_scf_steps).toBeUndefined()
@@ -157,7 +186,7 @@ describe(`vaspout.h5 parsing`, () => {
   ])(
     `%s with POTIM override %s -> time_step %j`,
     async (fixture, potim_override, time_step) => {
-      const trajectory = await parse_fixture(fixture, potim_override)
+      const trajectory = await parse_fixture(fixture, { POTIM: potim_override })
       expect(trajectory.time_step).toEqual(time_step)
     },
   )
@@ -297,6 +326,82 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     const vbm = Math.max(...bands.bands[n_filled - 1])
     const cbm = Math.min(...bands.bands[n_filled])
     expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
+  })
+
+  // The TiNiSn fixture only has the KPOINTS_OPT path. Remap datasets to stage other layouts:
+  // a path maps to another dataset (null hides it), optionally with replaced contents
+  type Remap = Record<string, null | { from: string; value?: unknown }>
+  const read_remapped = (remap: Remap) =>
+    with_h5_file(read_vaspout(`vaspout-tinisn-bands-only.h5`), `vaspout.h5`, (h5_file) => {
+      const get_dataset = h5_file.get.bind(h5_file)
+      vi.spyOn(h5_file, `get`).mockImplementation((path) => {
+        if (!(path in remap)) return get_dataset(path)
+        const target = remap[path]
+        if (!target) return null
+        const entity = get_dataset(target.from)
+        if (target.value !== undefined && entity && `to_array` in entity)
+          vi.spyOn(entity, `to_array`).mockReturnValue(target.value as never)
+        return entity
+      })
+      return read_vaspout_bands(h5_file)
+    })
+  const opt = `results/electron_eigenvalues_kpoints_opt`
+  const scf = `results/electron_eigenvalues`
+  const mesh = Array.from({ length: 8 }, (_, idx) => [idx / 8, 0, 0])
+  const scf_mesh = (mode: string): Remap => ({
+    [`${scf}/eigenvalues`]: {
+      from: `${opt}/eigenvalues`,
+      value: [mesh.map(() => Array.from({ length: 24 }, () => 0))],
+    },
+    [`${scf}/kpoint_coords`]: { from: `${opt}/kpoint_coords`, value: mesh },
+    [`input/kpoints/mode`]: { from: `input/kpoints_opt/number_kpoints`, value: mode },
+  })
+  const hide_opt: Remap = {
+    [`${opt}/eigenvalues`]: null,
+    [`${opt}/kpoint_coords`]: null,
+    [`input/kpoints_opt/labels_kpoints`]: null,
+    [`input/kpoints_opt/number_kpoints`]: null,
+  }
+
+  // VASP 6.3+ writes the SCF eigenvalues on every run; they used to win over the band path,
+  // drawing an unlabelled 8-point mesh as a one-branch "path"
+  it(`prefers the KPOINTS_OPT band path over the SCF mesh`, async () => {
+    const bands = await read_remapped(scf_mesh(`Gamma`))
+    expect(bands?.qpoints).toHaveLength(306)
+    expect(bands?.branches).toHaveLength(6)
+    expect(bands?.qpoints[0].label).toBe(`Γ`)
+  })
+
+  it.each([`Gamma`, `Monkhorst-Pack`, `Automatic`])(
+    `does not present an SCF mesh in %s mode as a band path`,
+    async (mode) => {
+      expect(await read_remapped({ ...scf_mesh(mode), ...hide_opt })).toBeNull()
+    },
+  )
+
+  it(`reads an SCF line-mode path with its own input/kpoints labels`, async () => {
+    const bands = await read_remapped({
+      ...hide_opt,
+      [`${scf}/eigenvalues`]: { from: `${opt}/eigenvalues` },
+      [`${scf}/kpoint_coords`]: { from: `${opt}/kpoint_coords` },
+      [`input/kpoints/labels_kpoints`]: { from: `input/kpoints_opt/labels_kpoints` },
+      [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints` },
+    })
+    expect(bands?.qpoints).toHaveLength(306)
+    expect(bands?.branches.map(({ name }) => name)).toEqual([
+      `Γ-X`,
+      `X-U`,
+      `K-Γ`,
+      `Γ-L`,
+      `L-W`,
+      `W-X`,
+    ])
+  })
+
+  it(`reads an unlabelled SCF path declared as line mode as one branch`, async () => {
+    const bands = await read_remapped({ ...scf_mesh(`Line-mode`), ...hide_opt })
+    expect(bands?.qpoints).toHaveLength(8)
+    expect(bands?.branches).toEqual([{ start_index: 0, end_index: 7, name: `path` }])
   })
 
   // A malformed dataset still loads the bands; the gap check reports it (Bands shows a notice).

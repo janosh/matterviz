@@ -1,4 +1,4 @@
-import { ELEM_HEATMAP_KEYS, format_num } from '$lib/labels'
+import { ELEM_HEATMAP_KEYS, format_num } from '#lib/labels.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import element_data from './element-data'
 

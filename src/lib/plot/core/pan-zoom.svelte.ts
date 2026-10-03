@@ -3,7 +3,7 @@
 // per-component policy (which axis props to write on rect-zoom, reset semantics)
 // stays in the component via the on_rect_zoom/on_reset/set_range callbacks.
 
-import type { Point2D, Vec2 } from '$lib/math'
+import type { Point2D, Vec2 } from '#lib/math.js'
 import {
   MIN_TOUCH_DISTANCE_PIXELS,
   pan_range_by_pixels,
@@ -11,9 +11,9 @@ import {
   remove_drag_listeners,
   snapshot_ranges,
   zoom_range_by_factor,
-} from '$lib/plot/core/interactions'
-import { point_in_rect, type Rect } from '$lib/plot/core/layout'
-import type { AxisRanges, PanConfig, ScaleType } from '$lib/plot/core/types'
+} from '#lib/plot/core/interactions.js'
+import { point_in_rect, type Rect } from '#lib/plot/core/layout.js'
+import type { AxisRanges, PanConfig, ScaleType } from '#lib/plot/core/types.js'
 
 type Axis = `x` | `x2` | `y` | `y2`
 // `select` marks the rect out for the caller's selection handler instead of a zoom; the

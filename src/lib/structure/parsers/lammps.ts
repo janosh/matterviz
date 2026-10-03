@@ -1,16 +1,16 @@
 // LAMMPS data files (.lmp/.data) and single-frame text dumps (.dump).
-// Text dumps reuse the trajectory reader in $lib/trajectory/parse/lammps rather than
+// Text dumps reuse the trajectory reader in #lib/trajectory/parse/lammps rather than
 // duplicating its ITEM: section, triclinic-box and column-preference handling.
-import type { ElementSymbol } from '$lib/element'
-// `$lib/element/data`, not the index: the index re-exports Svelte components, which the
+import type { ElementSymbol } from '#lib/element/index.js'
+// `#lib/element/data.js`, not the index: the index re-exports Svelte components, which the
 // parse worker bundle (no svelte plugin) cannot compile
-import { default as element_data } from '$lib/element/data'
-import { coerce_elem_symbol, element_from_lammps_type } from '$lib/element/helpers'
-import type { Vec3 } from '$lib/math'
-import * as math from '$lib/math'
-import type { AnyStructure, Crystal, Site } from '$lib/structure'
-import { make_site } from '$lib/structure/site'
-import { parse_lammps_trajectory } from '$lib/trajectory/parse/lammps'
+import { element_for_mass } from '#lib/element/data.js'
+import { coerce_elem_symbol, element_from_lammps_type } from '#lib/element/helpers.js'
+import type { Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import { make_site } from '#lib/structure/site.js'
+import { parse_lammps_trajectory } from '#lib/trajectory/parse/lammps.js'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -87,18 +87,6 @@ const infer_atom_style = (rows: string[][], num_atom_types: number): string => {
         : `none of [${candidates.join(`, `)}] puts an integer atom type in 1..${num_atom_types} in every row`
     }. Declare it with an 'Atoms # <style>' comment.`,
   )
-}
-
-// Element per atom type, preferring an explicit trailing comment in the Masses section
-// (`1 12.011 # C`, written by most conversion tools) over matching the mass to the
-// closest standard atomic weight
-const element_for_mass = (mass: number): ElementSymbol | null => {
-  let best: { symbol: ElementSymbol; diff: number } | null = null
-  for (const { symbol, atomic_mass } of element_data) {
-    const diff = Math.abs(atomic_mass - mass)
-    if (!best || diff < best.diff) best = { symbol, diff }
-  }
-  return best && best.diff <= 0.5 ? best.symbol : null
 }
 
 export const parse_lammps_data = (content: string): Crystal => {

@@ -1,1 +1,1 @@
-declare module '$lib/app.css' {}
+declare module '#lib/app.css' {}

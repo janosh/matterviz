@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { array_extent, type Vec2 } from '$lib/math'
+  import { array_extent, type Vec2 } from '#lib/math.js'
   import type {
     AxisConfig,
     PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     UserContentProps,
-  } from '$lib/plot'
-  import { ScatterPlot } from '$lib/plot'
+  } from '#lib/plot/index.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
   import { marker_d3_name, point_radius } from './canvas-draw'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import {

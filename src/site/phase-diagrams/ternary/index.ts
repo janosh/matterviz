@@ -2,9 +2,13 @@
 // (src/scripts/fetch_alexandria_ternaries.py) plus ternary subsets of the Materials Project quaternaries
 // used by the convex-hull demo. Loaded lazily: vite-plugin-json-gz decompresses at build time
 // and each glob entry becomes its own chunk.
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { FileInfo } from '$lib/io'
-import { filter_by_elements, hull_system_name, quaternary_loader } from '$site/convex-hull'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { FileInfo } from '#lib/io/index.js'
+import {
+  filter_by_elements,
+  hull_system_name,
+  quaternary_loader,
+} from '#site/convex-hull/index.js'
 
 const alexandria_files = import.meta.glob<{ default: PhaseData[] }>(`./*.json.gz`, {
   eager: false,

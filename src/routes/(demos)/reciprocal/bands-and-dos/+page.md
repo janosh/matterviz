@@ -7,8 +7,8 @@ This example uses bands and DOS from different materials.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { electronic_bands } from '$site/electronic/bands'
-  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
   import { normalize_dos } from 'matterviz'
 
   const total_dos = normalize_dos(dos_spin_polarization)
@@ -31,7 +31,7 @@ This example uses bands and DOS from different materials.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
+  import { phonon_bands, phonon_dos } from '#site/phonons/index.js'
 </script>
 
 <BandsAndDos
@@ -55,7 +55,7 @@ This example uses bands and DOS from different materials.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { phonon_bands, phonon_dos } from '$site/phonons'
+  import { phonon_bands, phonon_dos } from '#site/phonons/index.js'
 </script>
 
 <BandsAndDos
@@ -83,8 +83,8 @@ This example uses bands and DOS from different materials.
 ```svelte example
 <script lang="ts">
   import { BandsAndDos } from 'matterviz'
-  import { electronic_bands } from '$site/electronic/bands'
-  import { dos_spin_polarization } from '$site/electronic/dos'
+  import { electronic_bands } from '#site/electronic/bands/index.js'
+  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
   import { normalize_dos } from 'matterviz'
 
   const total_dos = normalize_dos(dos_spin_polarization)

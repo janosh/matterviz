@@ -2,18 +2,19 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '$lib/tooltip'
-  import { normalize_show_controls } from '$lib/controls'
-  import { accumulate_error_extent } from '$lib/plot/core/error-bars'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { normalize_show_controls } from '#lib/controls.js'
+  import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import {
     chart_export_filename,
     create_chart_exporter,
     series_to_csv_rows,
-  } from '$lib/plot/core/utils/chart-export'
-  import { type D3InterpolateName, plot_color, resolve_computed_color } from '$lib/colors'
-  import { format_value, format_value_or_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { partition_point, type Point2D, type Vec2 } from '$lib/math'
+  } from '#lib/plot/core/utils/chart-export.js'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
+  import { format_value, format_value_or_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { partition_point, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
     AxisRanges,
     BasePlotProps,
@@ -38,11 +39,11 @@
     SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
-  } from '$lib/plot/core/types'
-  import { FillArea, Line, PlotTooltip, ZeroLines } from '$lib/plot/core/components'
+  } from '#lib/plot/core/types.js'
+  import { FillArea, Line, PlotTooltip, ZeroLines } from '#lib/plot/core/components/index.js'
   import ScatterPlotControls from './ScatterPlotControls.svelte'
   import ScatterPoint from './ScatterPoint.svelte'
-  import type { RunningExtent } from '$lib/plot/core/scales'
+  import type { RunningExtent } from '#lib/plot/core/scales.js'
   import {
     accumulate_extent,
     collect_scale_ranges,
@@ -52,63 +53,68 @@
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
-  } from '$lib/plot/core/scales'
-  import ReferenceLinesLayer from '$lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import CartesianFrame from '$lib/plot/core/components/CartesianFrame.svelte'
-  import ColorBarDecoration from '$lib/plot/core/components/ColorBarDecoration.svelte'
-  import PlotAxes from '$lib/plot/core/components/PlotAxes.svelte'
-  import PlotLegendLayer from '$lib/plot/core/components/PlotLegendLayer.svelte'
-  import { create_colorbar_decoration } from '$lib/plot/core/colorbar-decoration.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '$lib/plot/core/marginals'
-  import { normalize_marginals } from '$lib/plot/core/marginals'
-  import { assign_axes, axis_labels, axis_scale_types } from '$lib/plot/core/axis-assignment'
-  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '$lib/plot/core/axis-utils'
-  import { first_point_style, get_series_symbol } from '$lib/plot/core/data-transform'
-  import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
-  import { with_obstacle_frame } from '$lib/plot/core/decorations'
+  } from '#lib/plot/core/scales.js'
+  import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
+  import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
+  import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+  import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
+  import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
+  import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import { normalize_marginals } from '#lib/plot/core/marginals.js'
+  import {
+    assign_axes,
+    axis_labels,
+    axis_scale_types,
+  } from '#lib/plot/core/axis-assignment.js'
+  import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
+  import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+  import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
+  import { FACET_AXES } from '#lib/plot/core/facets.js'
+  import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import {
     COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
     is_time_scale,
     SCALE_DEFAULTS,
-  } from '$lib/plot/core/types'
-  import { compute_label_positions } from '$lib/plot/core/utils/label-placement'
-  import { roving_key } from '$lib/plot/core/utils/roving-focus.svelte'
+  } from '#lib/plot/core/types.js'
+  import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
     same_legend_item,
-  } from '$lib/plot/core/utils/series-visibility'
-  import { DEFAULTS } from '$lib/settings'
+  } from '#lib/plot/core/utils/series-visibility.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
-  import type { Pt } from '$lib/plot/core/fill-utils'
+  import type { Pt } from '#lib/plot/core/fill-utils.js'
   import {
     compute_fill_segments,
     convert_error_band_to_fill_region,
     generate_fill_path,
     resolve_fill_binding,
     resolve_series_ref,
-  } from '$lib/plot/core/fill-utils'
+  } from '#lib/plot/core/fill-utils.js'
   import {
     get_relative_coords,
     is_activation_key,
     range_bounds,
     vec2_equal,
-  } from '$lib/plot/core/interactions'
-  import { create_cartesian_frame } from '$lib/plot/core/cartesian-frame.svelte'
-  import { resolve_plot_display } from '$lib/plot/core/display.svelte'
-  import type { Rect, Sides } from '$lib/plot/core/layout'
-  import { stride_sample } from '$lib/plot/core/layout'
-  import { index_ref_lines } from '$lib/plot/core/reference-line'
-  import { type CanvasMarker, draw_markers } from '$lib/plot/core/canvas-markers'
-  import { build_spatial_index, query_nearest } from '$lib/plot/core/spatial-index'
-  import { attach_canvas, prepare_canvas, resolve_line_tween } from '$lib/plot/core/utils'
-  import type ColorBar from '$lib/plot/core/components/ColorBar.svelte'
+  } from '#lib/plot/core/interactions.js'
+  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
+  import type { Rect, Sides } from '#lib/plot/core/layout.js'
+  import { stride_sample } from '#lib/plot/core/layout.js'
+  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
+  import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
+  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
+  import { attach_canvas, prepare_canvas, resolve_line_tween } from '#lib/plot/core/utils.js'
+  import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { color as d3_color } from 'd3-color'
   import {
     build_fill_legend_items,

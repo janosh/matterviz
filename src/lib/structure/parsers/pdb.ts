@@ -1,8 +1,8 @@
 // PDB (Protein Data Bank) format: fixed-column ATOM/HETATM records, an optional CRYST1
 // unit cell and CONECT connectivity records.
-import type { ElementSymbol } from '$lib/element'
-import type { AnyStructure, Site } from '$lib/structure'
-import { make_site } from '$lib/structure/site'
+import type { ElementSymbol } from '#lib/element/index.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
+import { make_site } from '#lib/structure/site.js'
 import {
   cell_frame,
   drop_placeholder_cell,

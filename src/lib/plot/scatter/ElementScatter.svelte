@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { TooltipValue } from '$lib/tooltip'
-  import type { ScatterPlotOptions } from '$lib/plot'
-  import { element_data } from '$lib/element'
-  import { format_num } from '$lib/labels'
-  import type { AxisConfig, InternalPoint } from '$lib/plot/core/types'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import { element_data } from '#lib/element/index.js'
+  import { format_num } from '#lib/labels.js'
+  import type { AxisConfig, InternalPoint } from '#lib/plot/core/types.js'
   import ScatterPlot from './ScatterPlot.svelte'
-  import { selected } from '$lib/state.svelte'
+  import { selected } from '#lib/state.svelte.js'
 
   let {
     y: coord_y,

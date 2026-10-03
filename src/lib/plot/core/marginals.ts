@@ -3,14 +3,14 @@
 // kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
 // its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
 
-import { in_range, partition_point, type Vec2 } from '$lib/math'
-import { range_bounds } from '$lib/plot/core/interactions'
-import type { PlotScaleFn } from '$lib/plot/core/scales'
-import type { Rect, Sides } from '$lib/plot/core/layout'
-import type { LineCurve, ScaleType } from '$lib/plot/core/types'
-import { get_scale_type_name } from '$lib/plot/core/types'
-import { gaussian_kde } from '$lib/plot/box/kde'
-import { bin_transform, bin_values, normalize_counts } from '$lib/plot/histogram/histogram'
+import { in_range, partition_point, type Vec2 } from '#lib/math.js'
+import { range_bounds } from '#lib/plot/core/interactions.js'
+import type { PlotScaleFn } from '#lib/plot/core/scales.js'
+import type { Rect, Sides } from '#lib/plot/core/layout.js'
+import type { LineCurve, ScaleType } from '#lib/plot/core/types.js'
+import { get_scale_type_name } from '#lib/plot/core/types.js'
+import { gaussian_kde } from '#lib/plot/box/kde.js'
+import { bin_transform, bin_values, normalize_counts } from '#lib/plot/histogram/histogram.js'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
 

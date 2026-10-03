@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { format_num } from '$lib/labels'
+  import { format_num } from '#lib/labels.js'
   import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
 
   let {

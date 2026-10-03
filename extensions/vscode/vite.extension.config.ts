@@ -20,7 +20,7 @@ export default defineConfig({
     emptyOutDir: false,
   },
   resolve: { alias: lib_aliases },
-  // No svelte(): the host deep-imports $lib modules (never the component barrels), so a
+  // No svelte(): the host deep-imports #lib modules (never the component barrels), so a
   // .svelte file reaching this bundle is a dependency-graph regression and should fail loudly
   plugins: [vite_plugin_json_gz()],
 })

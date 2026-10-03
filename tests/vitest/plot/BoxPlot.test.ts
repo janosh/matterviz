@@ -1,10 +1,10 @@
-import BoxPlot from '$lib/plot/box/BoxPlot.svelte'
-import * as kde_math from '$lib/plot/box/kde'
-import * as box_math from '$lib/plot/box/box-plot'
-import type { Vec2 } from '$lib'
-import type { BoxPlotSeries, Orientation, WhiskerMode } from '$lib/plot'
+import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
+import * as kde_math from '#lib/plot/box/kde.js'
+import * as box_math from '#lib/plot/box/box-plot.js'
+import type { Vec2 } from '#lib'
+import type { BoxPlotSeries, Orientation, WhiskerMode } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
-import { type Rect, rects_overlap } from '$lib/plot/core/layout'
+import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,

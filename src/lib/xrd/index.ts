@@ -1,6 +1,6 @@
-import type { CompositionType } from '$lib/composition'
-import { array_max, type Vec2, type Vec3 } from '$lib/math'
-import type { RadiationType } from '$lib/scattering'
+import type { CompositionType } from '#lib/composition/index.js'
+import { array_max, type Vec2, type Vec3 } from '#lib/math.js'
+import type { RadiationType } from '#lib/scattering/index.js'
 import type { RadiationKey } from './calc-xrd'
 
 export * from './broadening'

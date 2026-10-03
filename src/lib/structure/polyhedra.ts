@@ -1,6 +1,6 @@
 import { BondFrame, type BondData } from './bond-rendering'
 import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'
-import { element_from_atomic_number } from '$lib/element/helpers'
+import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { get_element_counts } from './density'
 // Coordination polyhedra detection and mesh generation.
 // Self-contained: vertices come from the rendered bond graph, hulls from a custom
@@ -8,20 +8,19 @@ import { get_element_counts } from './density'
 // so the whole scene renders in 1-2 draw calls regardless of supercell size.
 // Hot paths use scalar math and per-element caches to scale to large structures.
 
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element/data'
-import type { Vec3 } from '$lib/math'
-import { array_extent, array_max, grow_capacity } from '$lib/math'
-import { DEFAULTS } from '$lib/settings'
-import type { AnyStructure } from '$lib/structure'
-import { css_to_linear_rgb } from '$lib/scene/colors'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import type { Vec3 } from '#lib/math.js'
+import { array_extent, array_max, grow_capacity } from '#lib/math.js'
+import { DEFAULTS } from '#lib/settings.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import type { InterleavedBuffer, InterleavedBufferAttribute } from 'three/webgpu'
 import {
   Box3,
   BufferAttribute,
   BufferGeometry,
   DynamicDrawUsage,
-  type InterleavedBuffer,
-  type InterleavedBufferAttribute,
   Line2NodeMaterial,
   Sphere,
 } from 'three/webgpu'
@@ -393,8 +392,7 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
         [face.vert_c, face.vert_a],
       ]) {
         const reverse_key = target * 65536 + from
-        if (edge_set.has(reverse_key))
-          edge_set.delete(reverse_key) // internal edge
+        if (edge_set.has(reverse_key)) edge_set.delete(reverse_key) // internal edge
         else edge_set.add(from * 65536 + target)
       }
     }

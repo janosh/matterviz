@@ -5,8 +5,8 @@
 // and reads back scales/pad/ticks. Creates $effects, so it must be called during
 // component init. Render the returned state with CartesianFrame.svelte.
 
-import { clamp, type Vec2 } from '$lib/math'
-import type { DecorationItem } from '$lib/plot/core/decorations'
+import { clamp, type Vec2 } from '#lib/math.js'
+import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
@@ -15,9 +15,9 @@ import {
   has_explicit_position,
   measured_footprint,
   solve_decorations,
-} from '$lib/plot/core/decorations'
-import { create_facet_plot_adapter } from '$lib/plot/core/facet-layout.svelte'
-import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '$lib/plot/core/facets'
+} from '#lib/plot/core/decorations/index.js'
+import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js'
+import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
 import {
   axis_ranges_equal,
   expand_range_if_needed,
@@ -26,27 +26,27 @@ import {
   resolve_axis_ranges,
   sync_y2_range,
   vec2_equal,
-} from '$lib/plot/core/interactions'
-import type { Rect, Sides } from '$lib/plot/core/layout'
+} from '#lib/plot/core/interactions.js'
+import type { Rect, Sides } from '#lib/plot/core/layout.js'
 import {
   calc_auto_padding,
   DEFAULT_PLOT_PADDING,
   filter_padding,
   sides_equal,
-} from '$lib/plot/core/layout'
-import type { ResolvedMarginals } from '$lib/plot/core/marginals'
-import { reserve_marginal_pad } from '$lib/plot/core/marginals'
-import { create_pan_zoom } from '$lib/plot/core/pan-zoom.svelte'
-import { create_placed_tween } from '$lib/plot/core/placed-tween.svelte'
-import type { PlotTitleProp } from '$lib/plot/core/plot-title'
-import { normalize_plot_title, pad_for_plot_title } from '$lib/plot/core/plot-title'
-import type { IndexedRefLine } from '$lib/plot/core/reference-line'
-import { solve_reference_annotations } from '$lib/plot/core/reference-line'
-import { create_axis_scales, generate_ticks } from '$lib/plot/core/scales'
-import type { FontSpec } from '$lib/plot/core/text-metrics'
-import { measured_axis, resolve_tick_layout } from '$lib/plot/core/tick-layout'
-import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '$lib/plot/core/types'
-import { unique_id } from '$lib/plot/core/utils'
+} from '#lib/plot/core/layout.js'
+import type { ResolvedMarginals } from '#lib/plot/core/marginals.js'
+import { reserve_marginal_pad } from '#lib/plot/core/marginals.js'
+import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
+import type { PlotTitleProp } from '#lib/plot/core/plot-title.js'
+import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-title.js'
+import type { IndexedRefLine } from '#lib/plot/core/reference-line.js'
+import { solve_reference_annotations } from '#lib/plot/core/reference-line.js'
+import { create_axis_scales, generate_ticks } from '#lib/plot/core/scales.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
+import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '#lib/plot/core/types.js'
+import { unique_id } from '#lib/plot/core/utils.js'
 import { untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 

@@ -4,10 +4,10 @@ import {
   normalize_band_grid,
   normalize_fermi_surface,
   parse_fermi_file,
-} from '$lib/fermi-surface/parse'
-import { is_band_grid_data, is_fermi_surface_data } from '$lib/fermi-surface/types'
-import type { BandGridData } from '$lib/fermi-surface/types'
-import { fermi_surface_files } from '$site/fermi-surfaces'
+} from '#lib/fermi-surface/parse.js'
+import { is_band_grid_data, is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+import type { BandGridData } from '#lib/fermi-surface/types.js'
+import { fermi_surface_files } from '#site/fermi-surfaces.js'
 import { describe, expect, test } from 'vitest'
 import {
   IDENTITY_MATRIX3,
@@ -181,7 +181,7 @@ END_BLOCK_BANDGRID_3D
     ].join(`\n`)}\n`
 
     test.each([`test.frmsf`, `TEST.FRMSF.GZ`, `unknown.txt`, undefined])(
-      `parses FRMSF metadata and converts Hartree to eV with filename %s`,
+      `parses FRMSF metadata and keeps file units with filename %s`,
       (filename) => {
         const band_data = parse_grid(sample_frmsf, filename)
         expect(band_data.k_grid).toEqual([3, 3, 3])
@@ -190,14 +190,16 @@ END_BLOCK_BANDGRID_3D
         expect(band_data.periodic).toBe(true) // FRMSF stores k=i/n with no duplicated endpoint
         expect(band_data.grid_shift).toEqual([0, 0, 0]) // lshift=1: Γ-centred
         expect(band_data.energies[0][0].dims).toEqual([3, 3, 3])
-        // 0.1 Hartree in eV, pinned as a literal rather than via HARTREE_TO_EV so that
-        // reverting to the old hardcoded 27.2114 (1.4e-6 off) fails here. The tolerance
-        // used to be 5e-4, loose enough to accept either constant.
-        expect(energy_at(band_data, 0, 0, 0)).toBeCloseTo(2.7211386245981, 9)
-        // 14th value (0.4 Ha) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
-        expect(energy_at(band_data, 1, 1, 1)).toBeCloseTo(4 * 2.7211386245981, 9)
-        // Reciprocal vectors are converted from Bohr⁻¹ to Å⁻¹
-        expect(band_data.k_lattice[0][0]).toBeCloseTo(1 / 0.529177210544, 12)
+        // FRMSF energies and reciprocal vectors are in arbitrary units, so values pass through
+        // unscaled; they used to be multiplied by HARTREE_TO_EV and 1/BOHR_TO_ANGSTROM
+        expect(energy_at(band_data, 0, 0, 0)).toBe(0.1)
+        // 14th value (0.4) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
+        expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
+        expect(band_data.k_lattice).toEqual([
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ])
       },
     )
 
@@ -230,10 +232,7 @@ END_BLOCK_BANDGRID_3D
 
     test(`ignores auxiliary columns after the energy`, () => {
       const with_colors = sample_frmsf.replace(/^0\.2$/m, `0.2 0.77 -0.1`)
-      expect(energy_at(parse_grid(with_colors, `test.frmsf`), 0, 0, 1)).toBeCloseTo(
-        2 * 2.7211386245981,
-        9,
-      )
+      expect(energy_at(parse_grid(with_colors, `test.frmsf`), 0, 0, 1)).toBe(0.2)
     })
 
     test.each([
@@ -242,10 +241,7 @@ END_BLOCK_BANDGRID_3D
     ])(`parses %s energies (%s)`, (_label, token) => {
       const sign = token.startsWith(`−`) ? -1 : 1
       const altered = sample_frmsf.replace(/^0\.1$/m, token)
-      expect(energy_at(parse_grid(altered, `test.frmsf`), 0, 0, 0)).toBeCloseTo(
-        sign * 2.7211386245981,
-        9,
-      )
+      expect(energy_at(parse_grid(altered, `test.frmsf`), 0, 0, 0)).toBe(sign * 0.1)
     })
   })
 

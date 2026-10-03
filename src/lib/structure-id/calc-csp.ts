@@ -13,7 +13,7 @@
 // the N/2 smallest. It does NOT force each neighbor into exactly one pair, so a strongly
 // non-centrosymmetric site can reuse one neighbor in several of the summed terms. That is a
 // known quirk of the reference implementations, reproduced here so the numbers are comparable.
-import type { NeighborList } from '$lib/structure/bonding'
+import type { NeighborList } from '#lib/structure/bonding.js'
 
 // Reused across atoms; N is capped so the pair buffer can be allocated once
 const MAX_CSP_NEIGHBORS = 32

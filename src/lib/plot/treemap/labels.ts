@@ -1,10 +1,10 @@
 // Treemap label fitting: structured multiline label blocks measured once per node
 // (text metrics are zoom-independent) and placed per frame with pure arithmetic.
 
-import type { Rect } from '$lib/plot/core/layout'
-import type { FontSpec } from '$lib/plot/core/text-metrics'
-import { measure_text_line } from '$lib/plot/core/text-metrics'
-import type { TreemapArc } from '$lib/plot/treemap/treemap'
+import type { Rect } from '#lib/plot/core/layout.js'
+import type { FontSpec } from '#lib/plot/core/text-metrics.js'
+import { measure_text_line } from '#lib/plot/core/text-metrics.js'
+import type { TreemapArc } from '#lib/plot/treemap/treemap.js'
 import type { ClassValue } from 'svelte/elements'
 
 export type TreemapLabelFit = `hide` | `shrink` | `clip`

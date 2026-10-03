@@ -1,7 +1,7 @@
 // Shared utilities for interactive axis functionality
 
-import { AXIS_TITLE_OFFSET } from '$lib/plot/core/layout'
-import type { AxisConfig, AxisKey, AxisLoader } from '$lib/plot/core/types'
+import { AXIS_TITLE_OFFSET } from '#lib/plot/core/layout.js'
+import type { AxisConfig, AxisKey, AxisLoader } from '#lib/plot/core/types.js'
 
 // Shared axis defaults across plot components (single source of truth)
 export const AXIS_DEFAULTS = {

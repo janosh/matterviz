@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { element_by_symbol, type ElementSymbol } from '$lib/element'
-  import { format_num, humanize } from '$lib/labels'
-  import { sanitize_formula, sanitize_html } from '$lib/sanitize'
-  import { TooltipContent, TooltipValue } from '$lib/tooltip'
+  import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
+  import { format_num, humanize } from '#lib/labels.js'
+  import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
+  import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
   import type {
     CompUnit,
     PhaseBoundary,
@@ -10,7 +10,7 @@
     PhaseHoverInfo,
     TempUnit,
   } from './types'
-  import { format_label_html } from '$lib/composition/format'
+  import { format_label_html } from '#lib/composition/format.js'
   import {
     convert_temp,
     format_composition,
@@ -254,8 +254,8 @@
     border-radius: 4px;
     font-size: 12px;
     min-width: 130px;
-    box-shadow: light-dark(0 2px 8px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.3));
-    border: light-dark(1px solid rgba(0, 0, 0, 0.1), none);
+    box-shadow: 0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.3));
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.1), transparent);
     pointer-events: none;
   }
   header {

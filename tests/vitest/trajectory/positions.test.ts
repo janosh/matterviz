@@ -1,19 +1,19 @@
 // Kernels shared by MSD, VACF, spectroscopy and the trajectory trails; each consumer's own
 // suite covers its numerics, this one pins the contracts they all lean on.
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '#lib/element/index.js'
 import {
   curve_slots,
   lag_range,
   resolve_lag_time_unit,
   unwrap_flat_positions,
   validate_position_stream_layout,
-} from '$lib/trajectory/positions'
-import { min_image_displacement_into, scale_lattice_matrix, type Vec3 } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+} from '#lib/trajectory/positions.js'
+import { min_image_displacement_into, scale_lattice_matrix, type Vec3 } from '#lib/math.js'
+import type { Pbc } from '#lib/structure/index.js'
 import { make_rng } from '../numeric-helpers'
-import type { TrajectoryPositionStream } from '$lib/trajectory'
-import { accumulate_positions } from '$lib/trajectory/runs/accumulate'
-import { encode_frame, materialize_frame, type NumericFrame } from '$lib/trajectory/frame'
+import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import { accumulate_positions } from '#lib/trajectory/runs/accumulate.js'
+import { encode_frame, materialize_frame, type NumericFrame } from '#lib/trajectory/frame.js'
 import { describe, expect, it } from 'vitest'
 import { IDENTITY_MATRIX3, make_frame, make_position_stream } from '../test-fixtures'
 

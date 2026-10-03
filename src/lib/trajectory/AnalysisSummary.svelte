@@ -2,9 +2,9 @@
   // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
   // for the column headers, the compact styling, the faint note line each plot used to copy
   // and downloads of the curves and their analysis metadata
-  import ExportDestination from '$lib/io/ExportDestination.svelte'
-  import { FileExportState } from '$lib/io/file-export.svelte'
-  import { columns_to_csv } from '$lib/trajectory/analysis'
+  import ExportDestination from '#lib/io/ExportDestination.svelte'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import { columns_to_csv } from '#lib/trajectory/analysis.js'
   import type { Snippet } from 'svelte'
 
   let {

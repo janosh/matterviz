@@ -1,15 +1,15 @@
 <script lang="ts">
-  import type { ScatterPlotOptions, DataSeries } from '$lib/plot'
+  import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   // Energy–volume scan with one or more fitted equations of state drawn through it and the
   // fitted E0, V0, B0, B0' shown in a corner. Fitting happens here, so callers pass raw
   // (volumes, energies) and read the results back through the bindable `fits`.
-  import { plot_color } from '$lib/colors'
-  import { EV_PER_A3_TO_GPA } from '$lib/constants'
+  import { plot_color } from '#lib/colors/index.js'
+  import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
   import { StatusMessage } from 'svelte-widgets'
-  import { format_num } from '$lib/labels'
-  import { array_extent } from '$lib/math'
-  import { ScatterPlot } from '$lib/plot'
-  import { to_error } from '$lib/utils'
+  import { format_num } from '#lib/labels.js'
+  import { array_extent } from '#lib/math.js'
+  import { ScatterPlot } from '#lib/plot/index.js'
+  import { to_error } from '#lib/utils.js'
   import type { EosFit, EosKind } from './fit'
   import { EOS_KIND_LABELS, eos_energy, fit_eos } from './fit'
 

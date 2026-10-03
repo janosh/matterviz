@@ -1,8 +1,8 @@
-import type { CompositionType } from '$lib/composition'
-import type { ElementSymbol } from '$lib/element'
-import { element_by_symbol } from '$lib/element/data'
-import { is_elem_symbol } from '$lib/element/helpers'
-import { ELEM_SYMBOLS } from '$lib/element/types'
+import type { CompositionType } from '#lib/composition/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { element_by_symbol } from '#lib/element/data.js'
+import { is_elem_symbol } from '#lib/element/helpers.js'
+import { ELEM_SYMBOLS } from '#lib/element/types.js'
 
 // One element (with optional oxidation state) of a formula, in source order. Amounts are
 // already multiplied through enclosing groups and hydrate coefficients.

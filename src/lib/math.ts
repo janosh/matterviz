@@ -1,4 +1,4 @@
-import type { LatticeParams, Pbc } from '$lib/structure/index'
+import type { LatticeParams, Pbc } from '#lib/structure/index.js'
 
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]

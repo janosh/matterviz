@@ -6,17 +6,17 @@
   // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
   // handling, tooltip, legend and color bar. Each chart renders its geometry into the
   // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
-  import { TooltipValue } from '$lib/tooltip'
-  import { format_value } from '$lib/labels'
-  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
-  import PatternDefs from '$lib/plot/core/components/PatternDefs.svelte'
-  import PlotLegend from '$lib/plot/core/components/PlotLegend.svelte'
-  import PlotTooltip from '$lib/plot/core/components/PlotTooltip.svelte'
-  import { compute_element_placement } from '$lib/plot/core/layout'
-  import { observe_size } from '$lib/plot/core/utils'
-  import { COLOR_BAR_GAP } from '$lib/plot/core/utils/hierarchy-chart'
-  import type { HierarchyChartState } from '$lib/plot/core/utils/hierarchy-state.svelte'
-  import type { SunburstNodeHandlerProps } from '$lib/plot/core/utils/hierarchy-layout'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { format_value } from '#lib/labels.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
+  import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { compute_element_placement } from '#lib/plot/core/layout.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
+  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
+  import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
+  import type { SunburstNodeHandlerProps } from '#lib/plot/core/utils/hierarchy-layout.js'
   import type { Snippet } from 'svelte'
 
   let {

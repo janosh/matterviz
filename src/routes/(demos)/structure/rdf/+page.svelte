@@ -1,16 +1,16 @@
 <script lang="ts">
-  import LazyDemo from '$site/LazyDemo.svelte'
-  import type { ElementSymbol, Matrix3x3, Vec3 } from '$lib'
-  import FilePicker from '$lib/FilePicker.svelte'
-  import { PLOT_COLORS } from '$lib/colors'
-  import { PdfPlot, RdfPlot } from '$lib/rdf'
-  import type { RadiationType } from '$lib/scattering'
-  import type { Crystal, Pbc } from '$lib/structure'
-  import { Structure } from '$lib/structure'
-  import { structure_files } from '$site/structures'
-  import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
-  import al2lu from '$site/structures/mp-1234.json'
-  import palladium from '$site/structures/mp-2.json'
+  import LazyDemo from '#site/LazyDemo.svelte'
+  import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
+  import FilePicker from '#lib/FilePicker.svelte'
+  import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { PdfPlot, RdfPlot } from '#lib/rdf/index.js'
+  import type { RadiationType } from '#lib/scattering/index.js'
+  import type { Crystal, Pbc } from '#lib/structure/index.js'
+  import { Structure } from '#lib/structure/index.js'
+  import { structure_files } from '#site/structures.js'
+  import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
+  import al2lu from '#site/structures/mp-1234.json'
+  import palladium from '#site/structures/mp-2.json'
 
   const structures = {
     'Al₂Lu': al2lu,

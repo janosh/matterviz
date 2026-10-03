@@ -5,8 +5,8 @@ import {
   sanitize_html,
   sanitize_html_ssr,
   sanitize_svg,
-} from '$lib/sanitize'
-import type * as Sanitize from '$lib/sanitize'
+} from '#lib/sanitize.js'
+import type * as Sanitize from '#lib/sanitize.js'
 import DOMPurify from 'dompurify'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -169,7 +169,7 @@ describe(`sanitize_html`, () => {
       default: () => ({ sanitize: sanitize_spy, addHook: () => {} }),
     }))
     try {
-      const { sanitize_html: fresh_sanitize } = await import(`$lib/sanitize`)
+      const { sanitize_html: fresh_sanitize } = await import(`#lib/sanitize.js`)
       for (const input of inert_inputs) fresh_sanitize(input)
       expect(sanitize_spy).not.toHaveBeenCalled()
 
@@ -260,7 +260,7 @@ const without_browser_dom = async <T>(
     // @ts-expect-error - SSR simulation
     globalThis.window = undefined
     vi.resetModules()
-    return await run(await import(`$lib/sanitize`))
+    return await run(await import(`#lib/sanitize.js`))
   } finally {
     globalThis.window = win
     vi.resetModules()

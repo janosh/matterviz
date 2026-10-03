@@ -4,8 +4,8 @@
   // structure viewer has always had it; `fill` adds a dimmer light from the opposite side (as a
   // fraction of `directional`) for scenes whose back faces would otherwise go black (Fermi
   // surfaces, scatter cubes, ternary prisms). Positions only set the light direction.
-  import type { Vec3 } from '$lib/math'
-  import { DEFAULTS } from '$lib/settings'
+  import type { Vec3 } from '#lib/math.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { T } from '@threlte/core'
 
   let {

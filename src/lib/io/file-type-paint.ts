@@ -1,4 +1,4 @@
-import { add_alpha, is_concrete_color } from '$lib/colors'
+import { add_alpha, is_concrete_color } from '#lib/colors/index.js'
 
 // Separate fills for the two surfaces a file type colors: the small uppercase badge
 // (saturated) and the file row behind it (a wash). Keeping them apart means neither is

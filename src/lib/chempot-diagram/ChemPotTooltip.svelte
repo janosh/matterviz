@@ -2,9 +2,12 @@
   // Hover tooltip shared by ChemPotDiagram (wrapper), ChemPotDiagram2D and ChemPotDiagram3D.
   // Placed with PlotTooltip inside the diagram container; `hover_info.pointer` is already
   // container-relative (see pointer.ts).
-  import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
-  import { format_num } from '$lib/labels'
-  import { PlotTooltip } from '$lib/plot'
+  import {
+    get_electro_neg_formula,
+    get_formula_label_segments,
+  } from '#lib/composition/format.js'
+  import { format_num } from '#lib/labels.js'
+  import { PlotTooltip } from '#lib/plot/index.js'
   import type { ChemPotHoverInfo } from './types'
 
   let {

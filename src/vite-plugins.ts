@@ -3,15 +3,27 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
-import type { Plugin } from 'vite'
+import type { Plugin, Rollup } from 'vite'
 
 export const split_query = (path: string): [clean: string, query: string] => {
   const clean = path.replace(/\?.*$/, ``)
   return [clean, path.slice(clean.length)]
 }
 
-export const resolve_from_importer = (clean: string, importer?: string): string =>
+const resolve_from_importer = (clean: string, importer?: string): string =>
   importer ? resolve(dirname(split_query(importer)[0]), clean) : clean
+
+// Absolute path of a relative, absolute or `#` subpath-import specifier. `pre` plugins see
+// subpath imports (#site/..., #lib/...) before Vite's resolver maps them via package.json
+// `imports`, so delegate those to it instead of joining them onto the importer's directory.
+export const resolve_specifier = async (
+  ctx: Rollup.PluginContext,
+  clean: string,
+  importer?: string,
+): Promise<string | null> =>
+  clean.startsWith(`#`)
+    ? ((await ctx.resolve(clean, importer, { skipSelf: true }))?.id ?? null)
+    : resolve_from_importer(clean, importer)
 
 // Transparently import .json.gz files as ES modules.
 // Query-aware mode leaves ?raw and ?url to peer plugins and resolves relative importer paths.
@@ -32,12 +44,12 @@ export function vite_plugin_json_gz({
       is_build = config.command === `build`
     },
     resolveId: resolve_queries
-      ? (source, importer) => {
+      ? async function (source, importer) {
           // Vite URLs (/src/..., /@fs/...) must go through Vite's resolver, including when
           // Vitest restores an importing module from its filesystem cache.
           if (!is_build && (!source.startsWith(`.`) || !importer)) return null
           const clean = claim(source)
-          return clean ? resolve_from_importer(clean, importer) : null
+          return clean ? resolve_specifier(this, clean, importer) : null
         }
       : undefined,
     load(identifier) {
@@ -71,11 +83,17 @@ export const three_compat_alias: { find: RegExp; replacement: string } = {
   replacement: resolve(import.meta.dirname, `lib/scene/three-compat.ts`),
 }
 
-// $lib for builds outside SvelteKit (extensions), plus the three shim every bundle needs.
+// `matterviz` and `matterviz/*` (whole segments only) to the library source
+export const matterviz_alias: { find: RegExp; replacement: string } = {
+  find: /^matterviz(?=\/|$)/,
+  replacement: resolve(import.meta.dirname, `lib`),
+}
+
+// #lib for builds outside SvelteKit (extensions), plus the three shim every bundle needs.
 // Array form so `three` matches exactly — a string alias prefix-matches and would rewrite
-// three/webgpu, three/tsl and three/examples/* too; `$lib` is meant to prefix-match.
+// three/webgpu, three/tsl and three/examples/* too; `#lib` is meant to prefix-match.
 export const lib_aliases: { find: string | RegExp; replacement: string }[] = [
-  { find: `$lib`, replacement: resolve(import.meta.dirname, `lib`) },
+  { find: `#lib`, replacement: resolve(import.meta.dirname, `lib`) },
   three_compat_alias,
 ]
 

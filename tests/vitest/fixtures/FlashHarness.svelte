@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { create_flash } from '$lib/effects.svelte'
+  import { create_flash } from '#lib/effects.svelte.js'
   import { untrack } from 'svelte'
 
   let {

@@ -1,13 +1,13 @@
-import type { DataSeries } from '$lib/plot'
-import { assert_series_lengths } from '$lib/plot/core/types'
-import type { InvalidValueMode } from '$lib/plot/core/data-cleaning'
+import type { DataSeries } from '#lib/plot/index.js'
+import { assert_series_lengths } from '#lib/plot/core/types.js'
+import type { InvalidValueMode } from '#lib/plot/core/data-cleaning.js'
 import {
   clean_multi_series,
   clean_series,
   clean_xyz,
   detect_instability,
   smooth_moving_average,
-} from '$lib/plot/core/data-cleaning'
+} from '#lib/plot/core/data-cleaning.js'
 import { mount, unmount } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import DataCleaningDemo from '../../../src/routes/(demos)/plot/data-cleaning/+page.svelte'

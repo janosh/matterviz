@@ -6,7 +6,7 @@ import {
   HTML_TAG_SRC,
   html_to_text,
   normalize_unicode_minus,
-} from '$lib/utils'
+} from '#lib/utils.js'
 import { fuzzy_match } from 'svelte-widgets/utils'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
 

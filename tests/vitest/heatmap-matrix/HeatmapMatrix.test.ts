@@ -1,9 +1,13 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
-import { HeatmapMatrix } from '$lib/heatmap-matrix'
-import heatmap_source from '$lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
-import type { AxisItem, ColorBarPosition, HeatmapDomainMode } from '$lib/heatmap-matrix'
-import { format_num } from '$lib/labels'
+import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
+import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
+import type {
+  AxisItem,
+  ColorBarPosition,
+  HeatmapDomainMode,
+} from '#lib/heatmap-matrix/index.js'
+import { format_num } from '#lib/labels.js'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
@@ -909,11 +913,11 @@ describe(`virtualization`, () => {
       [`offsetLeft`, `x`],
       [`offsetTop`, `y`],
     ] as const) {
-      vi.spyOn(HTMLElement.prototype, prop, `get`).mockImplementation(
-        function (this: HTMLElement) {
-          return this.dataset?.[axis] === undefined ? 0 : Number(this.dataset[axis]) * STRIDE
-        },
-      )
+      vi.spyOn(HTMLElement.prototype, prop, `get`).mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        return this.dataset?.[axis] === undefined ? 0 : Number(this.dataset[axis]) * STRIDE
+      })
     }
   }
 

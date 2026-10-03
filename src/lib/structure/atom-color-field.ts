@@ -1,6 +1,7 @@
-import { det_3x3, type Matrix3x3, type Vec3 } from '$lib/math'
-import { css_to_linear_rgb } from '$lib/scene/colors'
+import { det_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
+import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { attribute, clamp, float, floor, mix, texture3D, uniform, vec4 } from 'three/tsl'
+import type { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
   Color,
   ClampToEdgeWrapping,
@@ -11,7 +12,6 @@ import {
   LinearFilter,
   Matrix4,
   RepeatWrapping,
-  type MeshStandardNodeMaterial,
   Vector3,
 } from 'three/webgpu'
 

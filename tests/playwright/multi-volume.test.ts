@@ -73,11 +73,13 @@ test.describe(`Multi-volume isosurface demo`, () => {
     await expect(groups).toHaveCount(2)
     // Density volume has one surface with a color source; ESP volume has none
     await expect(groups.nth(0).locator(`.layer-row`)).toHaveCount(1)
-    await expect(groups.nth(1).locator(`.volume-note`)).toHaveText(`color source only`)
+    await expect(groups.nth(1).locator(`.volume-note`)).toHaveText(
+      `still usable as a color source`,
+    )
 
     // Color settings switch scales and reset to automatic defaults
     const color_row = groups.nth(0).locator(`.color-row`)
-    await expect(color_row.locator(`select`)).toBeVisible()
+    await expect(color_row.getByRole(`combobox`, { name: /^Color by/ })).toBeVisible()
     const color_scale_select = color_row.locator(`.multiselect`)
     await expect(color_scale_select.locator(`.selected`)).toContainText(`RdBu`)
     const reset_button = color_row.getByRole(`button`, {

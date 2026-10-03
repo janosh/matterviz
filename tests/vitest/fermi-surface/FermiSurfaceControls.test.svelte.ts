@@ -1,5 +1,9 @@
-import FermiSurfaceControls from '$lib/fermi-surface/FermiSurfaceControls.svelte'
-import type { BandGridData, ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
+import FermiSurfaceControls from '#lib/fermi-surface/FermiSurfaceControls.svelte'
+import type {
+  BandGridData,
+  ColorProperty,
+  FermiSurfaceData,
+} from '#lib/fermi-surface/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../setup'

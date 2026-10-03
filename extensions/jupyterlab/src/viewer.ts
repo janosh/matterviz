@@ -1,5 +1,5 @@
 // Lazy-loaded by `index.ts` on first file open so JupyterLab's bootstrap doesn't
 // pull three.js + the Svelte component graph into every session.
-export type { MatterVizApp } from '$lib/file-viewer/main'
-export { create_display, unmount_display as unmount } from '$lib/file-viewer/main'
-export { parse_in_worker } from '$lib/file-viewer/parse-in-worker'
+export type { MatterVizApp } from '#lib/file-viewer/main.js'
+export { create_display, unmount_display as unmount } from '#lib/file-viewer/main.js'
+export { parse_in_worker } from '#lib/file-viewer/parse-in-worker.js'

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { MAGNETIC_ORDERING_CATEGORY } from '$lib/convex-hull/types'
+import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import { IS_CI } from '../helpers'
 import { dom_click, open_info_and_controls } from './utils'
 

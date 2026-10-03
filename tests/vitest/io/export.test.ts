@@ -10,15 +10,15 @@ import {
   scene_registry,
   svg_to_png_blob,
   svg_to_svg_string,
-} from '$lib/io/export'
-import { download } from '$lib/io/fetch'
+} from '#lib/io/export.js'
+import { download } from '#lib/io/fetch.js'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
-import { plan_movie, movie_frame } from '$lib/trajectory/movie'
+import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
 
-vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
 beforeEach(() => vi.clearAllMocks())
 // Restores every vi.spyOn (console, document.createElement, URL) so stubs never leak

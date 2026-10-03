@@ -2,10 +2,10 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '$lib/tooltip'
-  import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
-  import { in_range, type Vec2, type Vec3 } from '$lib/math'
+  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -18,9 +18,9 @@
     SizeScaleConfig,
     StyleOverrides3D,
     Surface3DConfig,
-  } from '$lib/plot/core/types'
-  import { SCALE_DEFAULTS } from '$lib/plot/core/types'
-  import type { SceneControlProps } from '$lib/scene'
+  } from '#lib/plot/core/types.js'
+  import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import type { SceneControlProps } from '#lib/scene/index.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -29,7 +29,7 @@
     line_geometry,
     SceneCamera,
     SceneLights,
-  } from '$lib/scene'
+  } from '#lib/scene/index.js'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -37,21 +37,28 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { plot_color } from '$lib/colors'
-  import { first_point_style } from '$lib/plot/core/data-transform'
-  import ReferenceLine3D from '$lib/plot/scatter-3d/ReferenceLine3D.svelte'
-  import ReferencePlane from '$lib/plot/scatter-3d/ReferencePlane.svelte'
+  import { plot_color } from '#lib/colors/index.js'
+  import { first_point_style } from '#lib/plot/core/data-transform.js'
+  import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
+  import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
     box_clipping_planes,
     hover_marker_geometry,
     normalize_to_scene,
-  } from '$lib/plot/scatter-3d/scene-coords'
+  } from '#lib/plot/scatter-3d/scene-coords.js'
   import PointInstances, {
     type InstanceEvent,
-    type PointInstanceSpec,
-  } from '$lib/plot/scatter-3d/PointInstances.svelte'
-  import { collect_size_range, create_size_scale } from '$lib/plot/core/scales'
-  import Surface3D from '$lib/plot/scatter-3d/Surface3D.svelte'
+    type InstanceProjection,
+  } from '#lib/plot/scatter-3d/PointInstances.svelte'
+  import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+  import {
+    create_instance_tween,
+    INSTANCE_STRIDE,
+    pack_instances,
+  } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+  import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+  import { collect_size_range, create_size_scale } from '#lib/plot/core/scales.js'
+  import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
     series = [],
@@ -79,6 +86,7 @@
     ambient_light = 0.6,
     directional_light = 0.8,
     sphere_segments = 16,
+    point_tween = {},
     gizmo = true,
     hovered_point = $bindable(null),
     on_point_click,
@@ -108,6 +116,8 @@
     size_scale?: SizeScaleConfig
     camera_position?: Vec3
     sphere_segments?: number
+    // Marker position, size and colour glide to new data or encodings; `{ duration: 0 }` snaps
+    point_tween?: InstanceTween
     hovered_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
@@ -211,7 +221,14 @@
   const auto_size_range = $derived(collect_size_range(series))
   let size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
 
-  type PointInstance = PointInstanceSpec & { point: InternalPoint3D<Metadata> }
+  // One marker: `key` identifies the same logical point across data changes
+  type PointInstance = {
+    key: string
+    point: InternalPoint3D<Metadata>
+    position: Vec3
+    radius: number
+    color: string
+  }
 
   const point_key = (point: Pick<InternalPoint3D<Metadata>, `series_idx` | `point_idx`>) =>
     `${point.series_idx}-${point.point_idx}`
@@ -247,6 +264,7 @@
         }
         instances.push({
           point,
+          key: point_key(point),
           position: to_scene(coords),
           color:
             point.color_value != null
@@ -261,19 +279,48 @@
     })
     return instances
   })
-  const instance_by_key = $derived(
-    new Map(point_instances.map((instance) => [point_key(instance.point), instance])),
-  )
+  const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
 
   // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
   // tracking the same logical point's current values and position, or drop it once gone
   $effect.pre(() => {
-    const lookup = instance_by_key
+    const lookup = idx_by_key
     untrack(() => {
       if (!hovered_point) return
-      const next = lookup.get(point_key(hovered_point))?.point ?? null
+      const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
       if (next !== hovered_point) hovered_point = next
     })
+  })
+
+  // One clock glides every marker and its shadows to new data or encodings. Changes within
+  // SETTLE_MS of mount are the plot appearing, not the data moving, so they snap like the 2D
+  // markers' settling tween, as do plots too big to rewrite every instance each frame.
+  const tween = create_instance_tween()
+  const settled_at = performance.now() + SETTLE_MS
+  const max_tweened_instances = 20_000
+  $effect.pre(() => {
+    const instances = point_instances
+    untrack(() => {
+      const now = performance.now()
+      const snap = now < settled_at || instances.length > max_tweened_instances
+      const keys = instances.map(({ key }) => key)
+      tween.retarget(
+        keys,
+        pack_instances(instances),
+        now,
+        snap ? { duration: 0 } : point_tween,
+      )
+    })
+  })
+  // Like the task above, runs every frame without forcing renders: only a moving tween
+  // rewrites the instance buffers, which invalidates
+  useTask(() => tween.step(performance.now()), { autoInvalidate: false })
+  // The hovered marker as drawn, so the halo and tooltip ride along with a moving point
+  const hover_drawn = $derived.by(() => {
+    const idx = hovered_point && idx_by_key.get(point_key(hovered_point))
+    if (idx == null) return null
+    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(idx * INSTANCE_STRIDE)
+    return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
 
   // One sphere mesh for every point: instance transforms carry each radius
@@ -327,17 +374,14 @@
   let projection_layers = $derived(
     ([`xy`, `xz`, `yz`] as const)
       .filter((key) => display.projections?.[key])
-      .map((key) => ({
+      .map((key): { key: string; projection: InstanceProjection } => ({
         key,
-        items: point_instances.map(({ position: [pos_x, pos_y, pos_z], radius, color }) => ({
-          position: (key === `xy`
-            ? [pos_x, pos.y, pos_z]
+        projection:
+          key === `xy`
+            ? { axis: 1, at: pos.y, scale: proj_scale }
             : key === `xz`
-              ? [pos_x, pos_y, pos.z]
-              : [pos.x, pos_y, pos_z]) as Vec3,
-          radius: radius * proj_scale,
-          color,
-        })),
+              ? { axis: 2, at: pos.z, scale: proj_scale }
+              : { axis: 0, at: pos.x, scale: proj_scale },
       })),
   )
 
@@ -713,24 +757,28 @@
 
 <!-- All points in one InstancedMesh, picked by instanceId -->
 <PointInstances
-  items={point_instances}
+  packed={tween.current}
   geometry={point_geometry}
   material={point_material}
   {...point_events}
 />
 
 <!-- Plane Projections - render point shadows on enabled background planes -->
-{#each projection_layers as { key, items } (key)}
-  <PointInstances {items} geometry={projection_geometry} material={projection_material} />
+{#each projection_layers as { key, projection } (key)}
+  <PointInstances
+    packed={tween.current}
+    {projection}
+    geometry={projection_geometry}
+    material={projection_material}
+  />
 {/each}
 
 <!-- Hover highlight -->
 {#if hovered_point}
   {@const hover_point = hovered_point}
-  {@const hover_instance = instance_by_key.get(point_key(hover_point))}
-  {#if hover_instance}
-    {@const hover_geometry = hover_marker_geometry(hover_instance.radius)}
-    <T.Mesh position={hover_instance.position} scale={hover_geometry.radius}>
+  {#if hover_drawn}
+    {@const hover_geometry = hover_marker_geometry(hover_drawn.radius)}
+    <T.Mesh position={hover_drawn.position} scale={hover_geometry.radius}>
       <T.SphereGeometry args={[1, 16, 16]} />
       <T.MeshStandardMaterial
         color="white"
@@ -745,7 +793,7 @@
 
     {@const data = make_event_data(hover_point)}
     <extras.HTML
-      position={hover_instance.position}
+      position={hover_drawn.position}
       calculatePosition={hover_geometry.tooltip_position}
       style="translate: -50% -100%; pointer-events: none"
       portal={tooltip_portal}

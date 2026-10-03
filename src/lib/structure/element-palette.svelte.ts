@@ -1,10 +1,10 @@
 // Element colors scoped to one structure viewer, so two viewers on a page keep their own
 // color_scheme and legend-picked colors instead of overwriting one page-wide map.
-import type { ColorSchemeName } from '$lib/colors'
-import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
-import { ELEMENT_COLOR_SCHEME_NAMES } from '$lib/constants'
-import type { ElementSymbol } from '$lib/element'
-import { colors } from '$lib/state.svelte'
+import type { ColorSchemeName } from '#lib/colors/index.js'
+import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.js'
+import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { colors } from '#lib/state.svelte.js'
 import { getContext, setContext } from 'svelte'
 
 // Keyed by symbol string: sites and legends index it with plain element strings

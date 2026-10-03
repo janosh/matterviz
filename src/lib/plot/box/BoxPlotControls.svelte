@@ -1,10 +1,16 @@
 <script lang="ts">
-  import { track_settings } from '$lib/controls'
-  import { SettingsSection } from '$lib/layout'
-  import type { Orientation, PlotConfig, ViolinKind, ViolinSide, WhiskerMode } from '$lib/plot'
-  import { PlotControls } from '$lib/plot'
-  import type { PlotControlsProps } from '$lib/plot/core/types'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '$lib/settings'
+  import { track_settings } from '#lib/controls.js'
+  import { SettingsSection } from '#lib/layout/index.js'
+  import type {
+    Orientation,
+    PlotConfig,
+    ViolinKind,
+    ViolinSide,
+    WhiskerMode,
+  } from '#lib/plot/index.js'
+  import { PlotControls } from '#lib/plot/index.js'
+  import type { PlotControlsProps } from '#lib/plot/core/types.js'
+  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
 
   let {

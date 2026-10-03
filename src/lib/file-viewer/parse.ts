@@ -1,31 +1,44 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
-import { BINARY_VIEWER_EXT_REGEX, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
-import { parse_fermi_file } from '$lib/fermi-surface/parse'
-import { classify_payload, content_byte_size, MAX_STRING_CHARS } from '$lib/io/decompress'
-import { parse_volumetric_file } from '$lib/isosurface/parse'
-import { is_vaspwave_filename, parse_vaspwave_charge } from '$lib/isosurface/parse-vaspwave'
-import { prediction_from_json, type StructureToolPrediction } from '$lib/structure/prediction'
-import { parse_structure_file } from '$lib/structure/parse'
-import { is_indexable_trajectory_filename } from '$lib/trajectory/format-detect'
-import { to_error } from '$lib/utils'
+import {
+  BINARY_VIEWER_EXT_REGEX,
+  STRUCTURE_EXTENSIONS_REGEX,
+  VASP_VOLUMETRIC_REGEX,
+} from '#lib/constants.js'
+import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
+import {
+  classify_payload,
+  content_byte_size,
+  MAX_STRING_CHARS,
+  strip_compression_extensions,
+} from '#lib/io/decompress.js'
+import { parse_volumetric_file } from '#lib/isosurface/parse.js'
+import { is_vaspwave_filename, parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
+import type { StructureToolPrediction } from '#lib/structure/prediction.js'
+import { prediction_from_json } from '#lib/structure/prediction.js'
+import { parse_structure_file } from '#lib/structure/parse.js'
+import {
+  is_indexable_trajectory_filename,
+  KNOWN_FORMAT_EXT_REGEX,
+} from '#lib/trajectory/format-detect.js'
+import { is_plain_object, to_error } from '#lib/utils.js'
 import type {
   OpenTrajectoryOptions,
   ParseProgress,
   TrajectoryRun,
   TrajectoryRunSummary,
   TrajectorySource,
-} from '$lib/trajectory'
-import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
-import type { VolumetricFileData } from '$lib/isosurface/types'
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { PhaseDiagramData } from '$lib/phase-diagram/types'
-import type { AnyStructure } from '$lib/structure'
-import type { VaspoutElectronicData } from '$lib/trajectory/parse/vaspout-electronic'
+} from '#lib/trajectory/index.js'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
+import type { VolumetricFileData } from '#lib/isosurface/types.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
 import {
   is_trajectory_file,
   open_trajectory,
   VaspoutElectronicOnlyError,
-} from '$lib/trajectory/parse'
+} from '#lib/trajectory/parse/index.js'
 import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'
@@ -171,11 +184,21 @@ export const parse_file_content = async (
   if (FERMI_FILE_RE.test(basename)) {
     return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
   }
-  // .cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG
-  if (VOLUMETRIC_EXT_RE.test(basename) || VASP_VOLUMETRIC_REGEX.test(basename)) {
+  // .cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG. A VASP name only decides when no
+  // extension does: chgcar_structure.cif is a CIF, LOCPOT_slab.json a structure JSON.
+  const own_name = strip_compression_extensions(basename)
+  const names_other_format =
+    KNOWN_FORMAT_EXT_REGEX.test(own_name) || STRUCTURE_EXTENSIONS_REGEX.test(own_name)
+  if (
+    VOLUMETRIC_EXT_RE.test(basename) ||
+    (VASP_VOLUMETRIC_REGEX.test(basename) && !names_other_format)
+  ) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
-    throw new Error(`Failed to parse volumetric file: ${filename}`)
+    // a VASP name over structure content (POSCAR_from_CHGCAR) falls through to the parsers
+    if (VOLUMETRIC_EXT_RE.test(basename)) {
+      throw new Error(`Failed to parse volumetric file: ${filename}`)
+    }
   }
 
   const structure_id = filename.replace(/\.[^/.]+$/, ``)
@@ -233,7 +256,12 @@ export const parse_file_content = async (
     }
   }
 
-  if (is_trajectory_file(filename, content)) {
+  // A pymatgen Trajectory or a {frames: [...]} document is a trajectory whatever it is named
+  // (run1.json); a misshapen one still falls back to the JSON browser below
+  const trajectory_json =
+    is_plain_object(parsed_json) &&
+    (parsed_json[`@class`] === `Trajectory` || Array.isArray(parsed_json.frames))
+  if (trajectory_json || is_trajectory_file(filename, content)) {
     try {
       return await trajectory_result(content, filename, load_options, on_progress)
     } catch (error) {
@@ -243,6 +271,19 @@ export const parse_file_content = async (
     }
   }
   if (is_json) return { type: `json_browser`, data: parsed_json, filename }
+
+  // Volumetric data under a structure-like name (Si.vasp, vaspkit's SPIN_UP.vasp) is still
+  // volumetric; the structure parser would read its header and drop the grid. Only a sniff:
+  // content that merely resembles a grid header and fails to parse is left to the parsers
+  // below, while VASP-named and .cube files surface their parse errors above.
+  const volumetric = (() => {
+    try {
+      return parse_volumetric_file(content, filename)
+    } catch {
+      return null
+    }
+  })()
+  if (volumetric) return { type: `isosurface`, data: volumetric, filename }
 
   // CIF, POSCAR, XYZ, ...: parse_structure_file throws descriptive reasons on failure but can
   // still return zero atoms (a CIF with cell params but no _atom_site records)

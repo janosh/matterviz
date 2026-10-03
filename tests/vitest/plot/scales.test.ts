@@ -1,7 +1,7 @@
-import type { Vec2 } from '$lib/math'
-import * as math from '$lib/math'
-import { accumulate_error_extent } from '$lib/plot/core/error-bars'
-import type { ErrorValues } from '$lib/plot/core/error-bars'
+import type { Vec2 } from '#lib/math.js'
+import * as math from '#lib/math.js'
+import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
+import type { ErrorValues } from '#lib/plot/core/error-bars.js'
 import {
   accumulate_extent,
   collect_scale_ranges,
@@ -18,15 +18,15 @@ import {
   log_floor_scale,
   nice_range_from_extent,
   scale_arcsinh,
-} from '$lib/plot/core/scales'
-import type { TicksOption } from '$lib/plot/core/scales'
-import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/core/types'
+} from '#lib/plot/core/scales.js'
+import type { TicksOption } from '#lib/plot/core/scales.js'
+import type { ArcsinhScaleConfig, ScaleType } from '#lib/plot/core/types.js'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
   is_scale_type_name,
   is_time_scale,
-} from '$lib/plot/core/types'
+} from '#lib/plot/core/types.js'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test, vi } from 'vitest'
 

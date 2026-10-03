@@ -6,7 +6,7 @@ import {
   next_power_of_two,
   one_sided_periodogram,
   time_series_window,
-} from '$lib/fft'
+} from '#lib/fft.js'
 import { describe, expect, it } from 'vitest'
 import { make_rng, max_abs_error } from './helpers'
 

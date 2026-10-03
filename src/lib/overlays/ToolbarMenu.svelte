@@ -76,7 +76,11 @@
     align-items: center;
     height: fit-content;
     place-self: center;
-    z-index: var(--view-mode-z-index, 20);
+    /* lifted only while its menu or an anchored pane is open: a resting toggle painted over
+       panes dragged across the toolbar (which share its stacking context) */
+    &:has(> .view-mode-dropdown, :global(.draggable-pane.pane-open)) {
+      z-index: var(--view-mode-z-index, 20);
+    }
     > :global(button) {
       display: flex;
       align-items: center;

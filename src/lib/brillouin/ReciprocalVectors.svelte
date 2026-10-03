@@ -1,7 +1,7 @@
 <script lang="ts">
   // Reciprocal lattice vector arrows (b₁, b₂, b₃) with HTML labels beyond the tips, shared by BrillouinZoneScene and FermiSurfaceScene
-  import type { Matrix3x3, Vec3 } from '$lib/math'
-  import Arrow from '$lib/structure/Arrow.svelte'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import Arrow from '#lib/structure/Arrow.svelte'
   import * as extras from '@threlte/extras'
 
   let {

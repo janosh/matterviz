@@ -2,10 +2,10 @@
 // needs: decomposition and melting temperatures, volatiles released on heating, hygroscopicity
 // and hazards. Temperatures are approximate literature values (±50 K) at ambient pressure and
 // serve as heating-schedule guidance, not as thermodynamic input.
-import { get_alphabetical_formula } from '$lib/composition/format'
-import { parse_composition } from '$lib/composition/parse'
-import { get_reduced_formula } from '$lib/composition/reduce'
-import type { GasSpecies } from '$lib/convex-hull/types'
+import { get_alphabetical_formula } from '#lib/composition/format.js'
+import { parse_composition } from '#lib/composition/parse.js'
+import { get_reduced_formula } from '#lib/composition/reduce.js'
+import type { GasSpecies } from '#lib/convex-hull/types.js'
 
 export interface PrecursorInfo {
   formula: string

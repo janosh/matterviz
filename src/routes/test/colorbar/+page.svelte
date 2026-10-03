@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ColorBar } from '$lib'
-  import type { Vec2 } from '$lib/math'
+  import { ColorBar } from '#lib'
+  import type { Vec2 } from '#lib/math.js'
   import { scaleSequentialLog } from 'd3-scale'
   import { interpolateCool } from 'd3-scale-chromatic'
 

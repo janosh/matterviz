@@ -2,11 +2,12 @@
   // Playwright perf harness: a seeded synthetic MD run built in-page from URL params
   // (?frames=300&atoms=64), so the spec needs no fixture file. Mount and per-frame timings
   // are published in the DOM for the test to read.
-  import type { Vec3 } from '$lib/math'
-  import * as math from '$lib/math'
-  import type { Pbc } from '$lib/structure/pbc'
-  import { Trajectory, type TrajectoryFrame, trajectory_from_frames } from '$lib/trajectory'
-  import { browser } from '$app/environment'
+  import type { Vec3 } from '#lib/math.js'
+  import * as math from '#lib/math.js'
+  import type { Pbc } from '#lib/structure/pbc.js'
+  import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+  import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
+  import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
 

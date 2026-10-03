@@ -1,18 +1,22 @@
-import type { PhaseData } from '$lib/convex-hull/types'
-import type { Vec2 } from '$lib/math'
-import type { SectionHover, TernaryDisplay, TernaryPhaseDiagram } from '$lib/phase-diagram'
+import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { Vec2 } from '#lib/math.js'
+import type {
+  SectionHover,
+  TernaryDisplay,
+  TernaryPhaseDiagram,
+} from '#lib/phase-diagram/index.js'
 import {
   compute_section,
   compute_ternary_phase_diagram,
-  IsobaricTernaryPhaseDiagram,
-  PhaseEventList,
-  PhaseStabilityMap,
   prepare_diagram,
-  TERNARY_DISPLAY_DEFAULTS,
-  TernaryPhaseDiagramControls,
-} from '$lib/phase-diagram'
-import { compute_ternary_phase_diagram_async } from '$lib/phase-diagram/ternary/async-compute.svelte'
-import TernarySectionCanvas from '$lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
+} from '#lib/phase-diagram/ternary/compute.js'
+import IsobaricTernaryPhaseDiagram from '#lib/phase-diagram/ternary/IsobaricTernaryPhaseDiagram.svelte'
+import PhaseEventList from '#lib/phase-diagram/ternary/PhaseEventList.svelte'
+import PhaseStabilityMap from '#lib/phase-diagram/ternary/PhaseStabilityMap.svelte'
+import { TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
+import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
+import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
+import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query } from '../../setup'

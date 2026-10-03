@@ -1,7 +1,7 @@
-import type { D3SymbolName } from '$lib/labels'
-import type { DataSeries, LegendItem, PointStyle } from '$lib/plot/core/types'
-import { DEFAULT_SERIES_SYMBOLS } from '$lib/plot/core/types'
-import { DEFAULTS } from '$lib/settings'
+import type { D3SymbolName } from '#lib/labels.js'
+import type { DataSeries, LegendItem, PointStyle } from '#lib/plot/core/types.js'
+import { DEFAULT_SERIES_SYMBOLS } from '#lib/plot/core/types.js'
+import { DEFAULTS } from '#lib/settings.js'
 
 // Get auto-cycling symbol for series at given index (wraps every 7)
 export const get_series_symbol = (series_idx: number): D3SymbolName =>

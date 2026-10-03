@@ -4,14 +4,9 @@ import {
   AVOGADRO_PER_MOL,
   BOLTZMANN_EV_PER_K,
   ELEMENTARY_CHARGE_C,
-} from '$lib/constants'
-import {
-  is_finite_vec3_like,
-  is_pbc,
-  matrix_inverse_3x3,
-  type Matrix3x3,
-  type Vec3,
-} from '$lib/math'
+} from '#lib/constants.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { is_finite_vec3_like, is_pbc, matrix_inverse_3x3 } from '#lib/math.js'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
