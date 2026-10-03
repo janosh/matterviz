@@ -147,8 +147,17 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Build production site
         run: |
-          (while sleep 15; do echo "[mem] $(free -m | sed -n 2p) | $(uptime)"; ps -eo pid,rss,pcpu,etime,args --sort=-rss | head -4 | cut -c1-200; done) &
-          DEBUG='vite:*' timeout 200 pnpm exec vp build > build.log 2>&1 || { code=$?; echo "exit $code"; grep -v '^\s*\.svelte-kit/output' build.log | tail -150; exit 1; }
+          mkdir -p /tmp/reports
+          export NODE_OPTIONS='--report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/reports'
+          DEBUG='vite:*' pnpm exec vp build > build.log 2>&1 &
+          for _ in $(seq 1 20); do sleep 10; kill -0 $! 2>/dev/null || break; done
+          if kill -0 $! 2>/dev/null; then
+            for pid in $(pgrep -f 'vite-plus-core|vp build'); do kill -USR2 $pid; done; sleep 5
+            grep -av '^\s*\.svelte-kit/output' build.log | tail -120 | cut -c1-300
+            for report in /tmp/reports/*.json; do echo "== $report"; jq -c '{js: .javascriptStack, native: [.nativeStack[]?.symbol][:25], handles: [.libuv[] | select(.is_active) | {type, details: (.details // null)}], workers: (.workers | length)}' "$report" | cut -c1-4000; done
+            exit 1
+          fi
+          wait $!
       - uses: actions/upload-artifact@v7
         with:
           name: browser-test-site
