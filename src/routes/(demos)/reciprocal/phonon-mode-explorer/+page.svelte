@@ -25,7 +25,7 @@
     spectrum_from_phonon_data,
   } from '#lib/spectral/index.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
-  import type { UrlParamEntry } from 'svelte-widgets/url-params'
+  import type { QueryParams, UrlParamEntry } from 'svelte-widgets/url-params'
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
   import { to_error } from '#lib/utils.js'
   import { glob_basename, glob_default } from '#site/imports.js'
@@ -275,7 +275,7 @@
   }
 
   const number_param = (
-    params: URLSearchParams,
+    params: QueryParams,
     key: string,
     fallback: number,
     min: number,
@@ -288,7 +288,7 @@
     const in_range = Number.isFinite(value) && value >= min && value <= max
     return in_range && (!integer || Number.isSafeInteger(value)) ? value : fallback
   }
-  const index_param = (params: URLSearchParams, key: string, fallback: number): number =>
+  const index_param = (params: QueryParams, key: string, fallback: number): number =>
     number_param(params, key, fallback + 1, 1, Infinity, true) - 1
   const index_value = (index?: number): string =>
     index === undefined ? `` : String(index + 1)
@@ -296,7 +296,7 @@
     ;({ selection, view, amplitude, supercell, fps, show_vectors } = next_state)
   }
 
-  const apply_url_state = async (params: URLSearchParams): Promise<void> => {
+  const apply_url_state = async (params: QueryParams): Promise<void> => {
     const file_param = params.get(`file`)
     const filename = file_param && file_param in FIXTURE_META ? file_param : DEFAULT_FILENAME
     const fixture = await activate_fixture(filename)
@@ -390,7 +390,7 @@
 
   afterNavigate(({ to, shallow }) => {
     if (shallow) return // the URL sync above, not a navigation to new state
-    void apply_url_state(new URLSearchParams((to?.url ?? page.url).search)) // mutable copy
+    void apply_url_state((to?.url ?? page.url).searchParams)
   })
 </script>
 

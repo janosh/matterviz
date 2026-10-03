@@ -1,6 +1,6 @@
 import type { SortDir, TableSort } from '#lib/table/index.js'
 import { parse_num_token } from '#lib/utils.js'
-import type { UrlParamEntry, ValidQueryValues } from 'svelte-widgets/url-params'
+import type { QueryParams, UrlParamEntry, ValidQueryValues } from 'svelte-widgets/url-params'
 import { valid_query_param } from 'svelte-widgets/url-params'
 
 export type WeightsConfig = Record<string, { weight: number }>
@@ -22,7 +22,7 @@ const canonical_weight_keys = (
 }
 
 export const sort_from_query = (
-  params: URLSearchParams,
+  params: QueryParams,
   default_sort: TableSort,
   valid_columns?: ValidQueryValues<string>,
 ): TableSort => ({
