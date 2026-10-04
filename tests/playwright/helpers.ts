@@ -15,8 +15,7 @@ const is_mac = process.platform === `darwin`
 export const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
 export const primary_modifier_key = is_mac ? `Meta` : `Control`
 
-export const is_present = <Value>(value: Value | null | undefined): value is Value =>
-  value != null
+const is_present = <Value>(value: Value | null | undefined): value is Value => value != null
 
 type Box = { x: number; y: number; width: number; height: number }
 

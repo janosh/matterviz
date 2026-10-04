@@ -233,6 +233,7 @@ test.describe(`Structure Component Tests`, () => {
   // A resting toolbar menu sat at z-index 20 beside panes at 10 in the toolbar's stacking
   // context, so a controls pane dragged over the toolbar had those toggles painted on top;
   // and a viewer at its resting tier let later neighbours paint over its dragged-out panes.
+  // An open menu needs no lift: it renders in the top layer.
   // The pane's border and shadow sat inside light-dark(), which takes colors only, so the
   // declarations were invalid and the pane had no edge against the page.
   test(`toolbar menus stay under a dragged pane, which shows its edges`, async ({ page }) => {
@@ -241,10 +242,12 @@ test.describe(`Structure Component Tests`, () => {
     await expect(measure).toHaveCSS(`z-index`, `auto`)
     await structure.hover() // toolbar chrome only takes pointer events while hovered
     await measure.locator(`> button`).click()
-    await expect(measure).toHaveCSS(`z-index`, `20`) // its open menu still floats above
-    await page.keyboard.press(`Escape`)
-    await page.mouse.click(1, 1)
+    const menu = measure.locator(`.view-mode-dropdown`)
+    await expect(menu).toHaveJSProperty(`popover`, `auto`)
+    expect(await menu.evaluate((node) => node.matches(`:popover-open`))).toBe(true)
     await expect(measure).toHaveCSS(`z-index`, `auto`)
+    await page.keyboard.press(`Escape`)
+    await expect(menu).toHaveCount(0)
 
     const { pane_div: pane } = await open_structure_control_pane(page)
     await expect(pane).toHaveCSS(`border-top-width`, `1px`)

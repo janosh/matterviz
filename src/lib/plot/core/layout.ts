@@ -191,7 +191,7 @@ export function resolve_axis_title_layout(
     const label_metrics = measure_text_line(label, font)
     const arrow_font = { ...font, font_size: font.font_size * 1.4 }
     const arrow_width = measure_text_line(`▾`, arrow_font).width
-    // PortalSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
+    // PopoverSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
     const width = label_metrics.width + arrow_width + 8 + 0.3 * font.font_size
     return {
       ...shared,

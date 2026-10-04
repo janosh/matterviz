@@ -75,7 +75,7 @@
       rest.onkeydown?.(evt)
       if (dropdown_open && !evt.defaultPrevented) handle_keydown(evt)
     }}
-    class={[`portal-select-trigger`, rest.class]}
+    class={[`popover-select-trigger`, rest.class]}
   >
     {@html sanitize_html(selected_option ? format_option(selected_option) : placeholder)}
     <span class="arrow">▾</span>
@@ -85,7 +85,7 @@
 {#if dropdown_open}
   <div
     bind:this={dropdown_el}
-    class="portal-select-dropdown"
+    class="popover-select-dropdown"
     role="listbox"
     tabindex="-1"
     onkeydown={handle_keydown}
@@ -118,7 +118,7 @@
 {/if}
 
 <style>
-  .portal-select-trigger {
+  .popover-select-trigger {
     display: inline-flex;
     align-items: baseline;
     gap: 0.3em;
@@ -132,10 +132,10 @@
     color: inherit;
     cursor: pointer;
   }
-  .portal-select-trigger:hover {
-    background-color: var(--portal-select-hover-bg, rgba(128, 128, 128, 0.15));
+  .popover-select-trigger:hover {
+    background-color: var(--popover-select-hover-bg, rgba(128, 128, 128, 0.15));
   }
-  .portal-select-trigger:disabled {
+  .popover-select-trigger:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
@@ -145,10 +145,8 @@
     line-height: 0;
     opacity: 0.8;
   }
-  .portal-select-dropdown {
-    /* reset the UA [popover] box: the list carries the chrome */
-    inset: auto;
-    margin: 0;
+  .popover-select-dropdown {
+    /* the list carries the chrome */
     padding: 0;
     border: 0;
     background: none;
@@ -189,17 +187,17 @@
       background: rgba(0, 100, 200, 0.15);
     }
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(:is(sub, sup)) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(:is(sub, sup)) {
     font-size: 0.75em;
     line-height: 0;
     margin: 0 0 0 -0.25em;
     padding: 0;
     position: relative;
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(sub) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(sub) {
     top: 0.25em;
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(sup) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(sup) {
     top: -0.4em;
   }
 </style>

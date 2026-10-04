@@ -84,7 +84,7 @@ test(`interactive axis labels hide export text and switch properties`, async ({ 
     await expect(label).toHaveCSS(`display`, `flex`)
     const trigger = label.getByRole(`button`)
     await trigger.click()
-    const option = page.locator(`.portal-select-dropdown [aria-selected="false"]`).first()
+    const option = page.locator(`.popover-select-dropdown [aria-selected="false"]`).first()
     const selected_text = (await option.textContent())?.trim()
     if (!selected_text) throw new Error(`Missing axis property label`)
     await option.click()

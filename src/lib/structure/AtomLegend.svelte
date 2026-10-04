@@ -25,6 +25,7 @@
   import type { SymmetryDataset } from '#lib/symmetry/index.js'
   import { type Snippet, untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
+  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
@@ -97,6 +98,7 @@
 
   // Dropdown state
   let mode_menu_open = $state(false)
+  let mode_toggle_el = $state<HTMLButtonElement>()
   let mode_toggle_visible = $derived(show_mode_toggle || mode_menu_open)
 
   // Clear hidden property values when switching modes (since they may not be valid).
@@ -248,11 +250,9 @@
 </script>
 
 {#snippet mode_selector_snippet()}
-  <div
-    class="mode-selector"
-    {@attach click_outside({ callback: () => (mode_menu_open = false) })}
-  >
+  <div class="mode-selector">
     <button
+      bind:this={mode_toggle_el}
       class={['mode-toggle', { visible: mode_toggle_visible }]}
       onclick={() => (mode_menu_open = !mode_menu_open)}
       title="Change atom coloring mode"
@@ -264,7 +264,14 @@
       <Icon icon={mode_menu_open ? ChevronCollapse : ChevronExpand} />
     </button>
     {#if mode_menu_open}
-      <div class="mode-dropdown">
+      <div
+        class="mode-dropdown"
+        {@attach anchored_popover({
+          anchor: mode_toggle_el,
+          placement: `top`,
+          on_close: () => (mode_menu_open = false),
+        })}
+      >
         {#each color_mode_options as [value, label, unavailable] (value)}
           {@const disabled = Boolean(unavailable)}
           {@const hint_id = unavailable ? `${legend_id}-${value}-hint` : undefined}
@@ -758,7 +765,6 @@
   }
 
   .mode-selector {
-    position: relative;
     display: flex;
     align-items: center;
     /* extra gap toward the color labels so the chevron groups with the cell-select control */
@@ -785,10 +791,7 @@
     pointer-events: auto;
   }
   .mode-dropdown {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
-    margin-bottom: 0.25rem;
+    padding: 0;
     background: var(--legend-menu-bg, var(--menu-bg));
     color: var(--legend-menu-color, var(--menu-color));
     border: 1px solid var(--legend-menu-border, var(--menu-border));
@@ -798,7 +801,6 @@
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
-    z-index: 10;
     min-width: 150px;
   }
   .mode-option {

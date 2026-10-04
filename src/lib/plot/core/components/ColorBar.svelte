@@ -8,7 +8,7 @@
     resolve_color_ramp,
     sample_color_ramp,
   } from '#lib/plot/core/color-ramp.js'
-  import PortalSelect from '#lib/plot/core/components/PortalSelect.svelte'
+  import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'
   import { generate_arcsinh_ticks, generate_log_ticks } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
@@ -288,7 +288,7 @@
   {#if title || property_options?.length || color_scale_options?.length}
     <div class={[`title-row`, actual_title_side, orientation]} style={actual_title_style}>
       {#if property_options?.length}
-        <PortalSelect
+        <PopoverSelect
           options={property_options}
           selected_key={selected_property_key}
           on_select={on_property_change}
@@ -306,7 +306,7 @@
         <span class="label">{@html sanitize_html(title)}</span>
       {/if}
       {#if color_scale_options?.length}
-        <PortalSelect
+        <PopoverSelect
           options={color_scale_options}
           selected_key={selected_color_scale_key}
           on_select={on_color_scale_change}
@@ -481,7 +481,7 @@
     &.vertical.left .label {
       transform: rotate(180deg);
     }
-    /* Style PortalSelect triggers in colorbar context */
+    /* Style PopoverSelect triggers in colorbar context */
     :global(:is(.property-select, .color-scale-select)) {
       padding: 0 4px;
     }

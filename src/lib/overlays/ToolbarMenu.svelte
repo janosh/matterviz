@@ -97,8 +97,6 @@
     }
   }
   .view-mode-dropdown {
-    inset: auto;
-    margin: 0;
     padding: 0;
     min-width: max-content;
     display: flex;
@@ -110,7 +108,6 @@
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    pointer-events: auto;
     > :global(.view-mode-option) {
       display: flex;
       align-items: center;

@@ -2050,8 +2050,6 @@
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }
   :global(.header-popover > :is(div, select)) {
-    inset: auto; /* reset the UA [popover] box; anchored_popover floats it */
-    margin: 0;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));

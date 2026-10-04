@@ -1,4 +1,4 @@
-import PortalSelect from '#lib/plot/core/components/PortalSelect.svelte'
+import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, dismiss_popover, doc_query } from '../setup'
@@ -9,16 +9,16 @@ const options: Option[] = [
   { key: `volume`, label: `Volume`, unit: `Å³` },
   { key: `pressure`, label: `Pressure` },
 ]
-const get_trigger = () => doc_query<HTMLButtonElement>(`.portal-select-trigger`)
+const get_trigger = () => doc_query<HTMLButtonElement>(`.popover-select-trigger`)
 const mount_select = (
-  props: Partial<ComponentProps<typeof PortalSelect>> = {},
+  props: Partial<ComponentProps<typeof PopoverSelect>> = {},
   target: HTMLElement = document.body,
 ) => {
-  const component = mount(PortalSelect, { target, props: bind_props({ options }, props) })
+  const component = mount(PopoverSelect, { target, props: bind_props({ options }, props) })
   onTestFinished(() => unmount(component))
 }
 
-describe(`PortalSelect`, () => {
+describe(`PopoverSelect`, () => {
   test.each([false, true])(
     `renders trigger with ARIA attributes (disabled=%s)`,
     (disabled) => {
@@ -51,7 +51,7 @@ describe(`PortalSelect`, () => {
 
   test(`does not render when options is empty`, () => {
     mount_select({ options: [] })
-    expect(document.querySelector(`.portal-select-trigger`)).toBeNull()
+    expect(document.querySelector(`.popover-select-trigger`)).toBeNull()
   })
 
   test.each([false, true])(
@@ -95,9 +95,17 @@ describe(`PortalSelect`, () => {
     await tick()
 
     // a native auto popover: the top layer escapes the plot's overflow clipping
-    const dropdown = document.body.querySelector(`.portal-select-dropdown`)
+    const dropdown = document.body.querySelector(`.popover-select-dropdown`)
     expect(dropdown?.getAttribute(`popover`)).toBe(`auto`)
     expect(dropdown?.getAttribute(`role`)).toBe(`listbox`)
+    // still a DOM child of its host: click-through axis-label hosts must not pass on
+    // `pointer-events: none`, and the UA [popover] box must not center it over float's top/left
+    const { pointerEvents, inset, margin } = (dropdown as HTMLElement).style
+    expect({ pointerEvents, inset, margin }).toEqual({
+      pointerEvents: `auto`,
+      inset: `auto`,
+      margin: `0px`,
+    })
     const items = [...(dropdown?.querySelectorAll(`button`) ?? [])]
     expect(items.map((btn) => btn.textContent?.trim())).toEqual([
       `Energy (eV)`,
@@ -108,7 +116,7 @@ describe(`PortalSelect`, () => {
 
     items[1].click()
     await tick()
-    expect(document.body.querySelector(`.portal-select-dropdown`)).toBeNull()
+    expect(document.body.querySelector(`.popover-select-dropdown`)).toBeNull()
     expect(on_select).toHaveBeenCalledWith(`volume`)
     expect(get_trigger().textContent).toContain(`Energy`)
     state.selected_key = `pressure`
@@ -123,9 +131,9 @@ describe(`PortalSelect`, () => {
     await tick() // let bind:this land before the handler reads the trigger
     get_trigger().click()
     await tick()
-    dismiss_popover(doc_query(`.portal-select-dropdown`))
+    dismiss_popover(doc_query(`.popover-select-dropdown`))
     await tick()
-    expect(document.querySelector(`.portal-select-dropdown`)).toBeNull()
+    expect(document.querySelector(`.popover-select-dropdown`)).toBeNull()
     expect(get_trigger().getAttribute(`aria-expanded`)).toBe(`false`)
   })
 })

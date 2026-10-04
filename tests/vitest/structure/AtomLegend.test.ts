@@ -7,7 +7,7 @@ import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
-import { doc_query, set_input } from '../setup'
+import { dismiss_popover, doc_query, set_input } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
@@ -222,6 +222,14 @@ describe(`AtomLegend Component`, () => {
         expect(option_for(text)?.title ?? ``, text).toBe(``)
       }
 
+      // a native auto popover: the browser's light dismiss and Escape close it
+      const dropdown = doc_query(`.mode-dropdown`)
+      expect(dropdown.getAttribute(`popover`)).toBe(`auto`)
+      dismiss_popover(dropdown)
+      await tick()
+      expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+
+      await open_mode_menu()
       mode_toggle.click()
       await tick()
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
