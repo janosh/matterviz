@@ -195,25 +195,30 @@ export const count_elements = (elements: readonly string[]): Record<string, numb
 
 // === Lattice construction ===
 
-// Key-value cell parameters as CIF (`_cell_length_a 5.43(2)`) and mmCIF (`_cell.length_a 5.43`)
-// write them; neither dialect puts them in a loop. Tags are matched exactly on a line's
-// first token (case-insensitively), so `_cell_length_a_su` / `_cell.length_a_esd` (the
-// uncertainty, which some writers emit first) cannot shadow the value and the order of the
-// lines in the file does not matter. Returns [a, b, c, alpha, beta, gamma], or null when
-// any tag is absent or unset (`.` / `?`). A tag whose value does not parse, or a
-// non-positive edge length, is corruption and throws.
+// CIF2 and mmCIF spell data names with a dot after the category (`_atom_site.fract_x`,
+// `_cell.length_a`): the same names as the CIF1 underscore spelling every reader matches,
+// so both parsers rewrite a line-leading name to it first
+export const normalize_cif_names = (lines: readonly string[]): string[] =>
+  lines.map((line) => line.replace(/^(?<name>[ \t]*_[^\s.]+)\./, `$<name>_`))
+
+// Key-value cell parameters (`_cell_length_a 5.43(2)`, from normalize_cif_names lines); no
+// dialect puts them in a loop. Tags are matched exactly on a line's first token
+// (case-insensitively), so `_cell_length_a_su` / `_cell_length_a_esd` (the uncertainty,
+// which some writers emit first) cannot shadow the value and the order of the lines in the
+// file does not matter. Returns [a, b, c, alpha, beta, gamma], or null when any tag is
+// absent or unset (`.` / `?`). A tag whose value does not parse, or a non-positive edge
+// length, is corruption and throws.
 export const read_cell_params = (
   lines: readonly string[],
-  dialect: `CIF` | `mmCIF`,
+  format: `CIF` | `mmCIF`,
 ): number[] | null => {
-  const separator = dialect === `CIF` ? `_` : `.`
   const tags = [`length_a`, `length_b`, `length_c`, `angle_alpha`, `angle_beta`, `angle_gamma`]
-  const tag_for = (name: string) => `_cell${separator}${name}`
+  const tag_for = (name: string) => `_cell_${name}`
   const wanted = new Set(tags.map(tag_for))
   const token_by_tag = new Map<string, { token: string | undefined; line: string }>()
   for (const line of lines) {
     const trimmed = line.trim()
-    if (!/^_cell[_.]/i.test(trimmed)) continue
+    if (!/^_cell_/i.test(trimmed)) continue
     const [tag, token] = trimmed.split(/\s+/)
     const key = tag.toLowerCase()
     if (wanted.has(key) && !token_by_tag.has(key))
@@ -224,13 +229,13 @@ export const read_cell_params = (
     if (!found?.token || [`.`, `?`].includes(found.token)) return null
     const value = parse_cif_uncertain_number(found.token)
     if (value === null)
-      throw new Error(`Invalid ${dialect} cell parameter in line: ${found.line}`)
+      throw new Error(`Invalid ${format} cell parameter in line: ${found.line}`)
     return value
   })
   const params = values.filter((value): value is number => value !== null)
   if (params.length < tags.length) return null
   if (params.slice(0, 3).some((length) => length <= 0))
-    throw new Error(`${dialect} cell has non-positive edge lengths: [${params.join(`, `)}]`)
+    throw new Error(`${format} cell has non-positive edge lengths: [${params.join(`, `)}]`)
   return params
 }
 
@@ -330,37 +335,21 @@ export const parsed_result = (
 // Normalize a raw symbol to element casing (`FE` -> `Fe`), as written by PDB/MOL2 files
 export const capitalize_symbol = (raw: string): string => capitalize(raw.toLowerCase())
 
-// Default element symbols used when a file omits or mangles element info
-export const FALLBACK_ELEMENTS = [
-  `H`,
-  `He`,
-  `Li`,
-  `Be`,
-  `B`,
-  `C`,
-  `N`,
-  `O`,
-  `F`,
-  `Ne`,
-] as const
+// The element part of a species name: POTCAR suffixes (`Si_GW`, `Fe/abc123`, `O_pv`) dropped
+export const strip_potcar_suffix = (symbol: string): string => symbol.split(/[_/]/)[0]
 
-// Validate element symbol and provide fallback
-export function validate_element_symbol(symbol: string, index: number): ElementSymbol {
-  // Clean symbol (remove suffixes like _pv, /hash)
-  const clean_symbol = symbol.split(/[_/]/)[0]
-
-  if (is_elem_symbol(clean_symbol)) return clean_symbol
-
-  // Fallback to default elements by atomic number
-  const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length]
-  console.warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
-  return fallback
+// The element a file names. A symbol naming no element throws: substituting H, He, … drew a
+// wrong but plausible structure, which is worse than refusing the file.
+export function parse_element_symbol(symbol: string, context: string): ElementSymbol {
+  const element = strip_potcar_suffix(symbol)
+  if (is_elem_symbol(element)) return element
+  throw new Error(`${context}: '${symbol}' is not an element symbol`)
 }
 
 // First candidate that coerces to a real element wins, so callers list their columns
 // most-authoritative first (PDB's element field before its atom name, mmCIF's type_symbol
 // before its label). Candidates are case-normalized (`FE` -> `Fe`, isotopes D/T -> H); when
-// none is an element, validate_element_symbol warns and substitutes a default.
+// none is an element, it throws (see parse_element_symbol).
 export const element_from_candidates = (
   candidates: readonly (string | undefined)[],
   atom_idx: number,
@@ -370,7 +359,7 @@ export const element_from_candidates = (
     const symbol = coerce_elem_symbol(capitalize_symbol(candidate).replace(/^[DT]$/, `H`))
     if (symbol) return symbol
   }
-  return validate_element_symbol(candidates.find(Boolean) ?? `?`, atom_idx)
+  return parse_element_symbol(candidates.find(Boolean) ?? ``, `Atom ${atom_idx + 1}`)
 }
 
 // === Lattice conversion ===

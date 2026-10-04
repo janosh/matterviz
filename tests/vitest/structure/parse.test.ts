@@ -51,7 +51,7 @@ import tio2_cif from '#site/structures/TiO2.cif?raw'
 import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
 import process from 'node:process'
 import { join } from 'node:path'
-import { assert, describe, expect, it, test, vi } from 'vitest'
+import { assert, describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { get_dummy_structure, read_maybe_gz } from '../test-fixtures'
 
 // Helpers to reduce duplication and strengthen invariants
@@ -160,8 +160,8 @@ describe(`POSCAR Parser`, () => {
     // Fortran exponent on the SCALE line: parseFloat used to stop at the `D` and read 5.0,
     // inflating a 3 Å cube to 30 Å. 0.5 * 6 = 3 per axis, so volume 27.
     { name: `Fortran exponent scale factor`, content: `Test\n5.0D-01\n6.0 0.0 0.0\n0.0 6.0 0.0\n0.0 0.0 6.0\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
-    // VASP 4 has no symbol line, so groups fall back by index. Two groups, because
-    // FALLBACK_ELEMENTS[0] is H and an index-0-only check can't tell the indexed fallback
+    // VASP 4 has no symbol line, so groups get placeholders by index. Two groups, because
+    // the first placeholder is H and an index-0-only check can't tell the indexed placeholders
     // apart from a blanket "unknown element becomes hydrogen".
     { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
   ])(`should handle $name`, ({ content, expected }) => {
@@ -532,9 +532,20 @@ describe(`Auto-detection & Error Handling`, () => {
   })
 
   it(`should not misread a blank POSCAR element line as VASP 4 zero counts`, () => {
-    // A blank line 6 must not become atom_counts=[0] via Number(``) === 0
+    // A blank line 6 must not become atom_counts=[0] via Number(``) === 0; it names no
+    // species, so they are VASP 4 placeholders rather than one invalid empty symbol
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn.mockRestore())
     const result = parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\n\n1\nDirect\n0 0 0`)
     expect(result.sites).toHaveLength(1)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`no element symbols`))
+  })
+
+  // An unknown symbol used to be drawn as H, He, … by position: a wrong but plausible cell
+  it(`rejects a POSCAR element symbol that names no element`, () => {
+    expect(() =>
+      parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\nFe Xx\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`),
+    ).toThrow(`Invalid element symbol in POSCAR: Xx`)
   })
 
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {
@@ -1270,8 +1281,8 @@ O3 O2- 0.75 0.25 0.75`
     // oxfmt-ignore
     test.each([
       [`complex labels`, [`site1_Fe_center 0.0 0.0 0.0 1.0`, `site2_Cu_surface 0.5 0.5 0.5 1.0`], [`Fe`, `Cu`], [`site1_Fe_center`, `site2_Cu_surface`]],
-      // both atoms parsed, Xx1 falls back to He via validate_element_symbol
-      [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`, `He`], [`Fe1`, `Xx1`]],
+      // Xx1 names no element: skipped with a warning rather than drawn as He
+      [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`], [`Fe1`]],
     ])(`should infer elements from labels with %s`, (_name, rows, elements, labels) => {
       const result = parse_cif(label_cif(...rows))
 

@@ -138,14 +138,13 @@ describe(`parse_float_block`, () => {
 // === CHGCAR Tests ===
 
 describe(`parse_chgcar`, () => {
-  test(`strips potential suffixes and warns before indexed fallback`, () => {
-    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const result = parse_chgcar(make_chgcar({ elements: `Fe_pv Xx`, counts: `1 1` }))
-    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
-      `Fe`,
-      `He`,
-    ])
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Xx`))
+  // An unknown symbol used to be drawn as He (the index-1 fallback): a wrong, plausible cell
+  test(`strips potential suffixes and rejects a symbol naming no element`, () => {
+    const result = parse_chgcar(make_chgcar({ elements: `Fe_pv O/abc123`, counts: `1 1` }))
+    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`Fe`, `O`])
+    expect(() => parse_chgcar(make_chgcar({ elements: `Fe_pv Xx`, counts: `1 1` }))).toThrow(
+      `Invalid element symbol in CHGCAR: Xx`,
+    )
   })
 
   test(`parses valid CHGCAR with Fortran exponents, grid, and volume normalization`, () => {

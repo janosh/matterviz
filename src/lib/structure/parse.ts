@@ -30,12 +30,13 @@ import {
   iter_cif_loops,
   make_lattice,
   matrix3x3_from_rows,
+  normalize_cif_names,
   parse_cif_uncertain_number,
   parse_coordinate,
+  parse_element_symbol,
   parse_float_token,
   read_cell_params,
   split_cif_tokens,
-  validate_element_symbol,
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
 import {
@@ -219,7 +220,11 @@ function resolve_optimade_element(
   // element symbols never contain digits, so stripping them is safe
   const stripped = species_name.replace(/\d+$/, ``)
   if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1, spec }
-  return { symbol: validate_element_symbol(species_name, index), sym_idx: -1, spec }
+  return {
+    symbol: parse_element_symbol(species_name, `OPTIMADE site ${index + 1}`),
+    sym_idx: -1,
+    spec,
+  }
 }
 
 export const parse_poscar = (content: string): Crystal => {
@@ -713,11 +718,7 @@ export const parse_cif = (content: string): Crystal => {
   const text = content.trim()
   if (!text) throw new Error(`CIF file is empty`)
 
-  // CIF2 spells data names with a dot after the category (`_atom_site.fract_x`), the same
-  // names as the underscore spelling (`_atom_site_fract_x`) that every reader below matches
-  const lines = text
-    .split(`\n`)
-    .map((line) => line.replace(/^(?<name>[ \t]*_[^\s.]+)\./, `$<name>_`))
+  const lines = normalize_cif_names(text.split(`\n`))
   const block_ids = cif_block_ids(lines)
 
   // The first atom-site loop that has coordinates (fract or Cartn) and data rows

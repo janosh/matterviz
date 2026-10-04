@@ -301,7 +301,7 @@ describe(`XDATCAR`, () => {
     // XDATCAR refuses to invent element symbols: they go into the trajectory metadata,
     // where an indexed fallback would be a silent lie
     [`VASP 4 header with no symbol line`, xdatcar(`2 1`, two_frames), `element symbols are missing`],
-    [`blank symbol line`, xdatcar(`\n1`, two_frames), `Invalid element symbol in XDATCAR`],
+    [`blank symbol line`, xdatcar(`\n1`, two_frames), `element symbols are missing`],
     [`non-element symbol`, xdatcar(`Xx\n1`, two_frames), `Invalid element symbol in XDATCAR: Xx`],
     [`fewer counts than symbols`, xdatcar(`H O Na\n1 1`, two_frames), `3 element symbol(s) but 2 atom count(s)`],
     [`zero count`, xdatcar(`H\n0`, two_frames), `invalid atom counts`],

@@ -12,6 +12,7 @@ import {
   is_cif_data_header,
   is_cif_loop_header,
   iter_cif_loops,
+  normalize_cif_names,
   parsed_result,
   parse_cif_uncertain_number,
   read_cell_params,
@@ -33,8 +34,8 @@ export const is_mmcif_content = (content: string): boolean =>
 const is_missing = (token: string | undefined): boolean =>
   token === undefined || token === `.` || token === `?`
 
-// Map the part after `_atom_site.` to the field we need, lowercased for case-insensitive
-// matching (mmCIF mixes cases, e.g. `Cartn_x` and `B_iso_or_equiv`)
+// Map the part after `_atom_site_` (names normalized from `_atom_site.`) to the field we need,
+// lowercased for case-insensitive matching (mmCIF mixes cases, e.g. `Cartn_x`)
 const ATOM_SITE_FIELDS: Record<string, string> = {
   type_symbol: `symbol`,
   label_atom_id: `label`,
@@ -53,8 +54,10 @@ const ATOM_SITE_FIELDS: Record<string, string> = {
 const build_atom_site_indices = (headers: string[]): Record<string, number> => {
   const indices: Record<string, number> = {}
   headers.forEach((header, col_idx) => {
-    const suffix = header.trim().toLowerCase().split(`.`)[1]
-    const field = suffix ? ATOM_SITE_FIELDS[suffix] : undefined
+    const name = header.trim().toLowerCase()
+    const field = name.startsWith(`_atom_site_`)
+      ? ATOM_SITE_FIELDS[name.slice(`_atom_site_`.length)]
+      : undefined
     if (field && indices[field] === undefined) indices[field] = col_idx
   })
   return indices
@@ -87,7 +90,7 @@ const mmcif_element = (
 }
 
 export const parse_mmcif = (content: string): AnyStructure => {
-  const lines = content.split(/\r?\n/)
+  const lines = normalize_cif_names(content.split(/\r?\n/))
 
   const block_ids = cif_block_ids(lines)
   let headers: string[] = []
@@ -95,7 +98,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   let atom_block_id = 0
   for (const loop of iter_cif_loops(lines)) {
     const is_atom_site = (header: string) =>
-      header.trim().toLowerCase().startsWith(`_atom_site.`)
+      header.trim().toLowerCase().startsWith(`_atom_site_`)
     if (!loop.headers.some(is_atom_site)) continue
     headers = loop.headers
     atom_block_id = block_ids[loop.data_start]
