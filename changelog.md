@@ -2,25 +2,138 @@
 
 ## [v0.8.0](https://github.com/janosh/matterviz/compare/v0.7.0...v0.8.0)
 
+> 4 October 2026
+
 ### Migration to 0.8
 
-- Removed exports: `TrajectoryFileViewer`, `to_histogram_series`/`LegacyHistogramSeries`/`HistogramSeriesInput`, `band_struct_entries`, `dos_entries`, `format_sigma`, `DosInput`, `get_column_id`, `SpecialCells` and `HeatmapTable.special_cells` (use `Column.cell`), `RepresentationMode` and `R_EV_PER_K` (use `BOLTZMANN_EV_PER_K` from `matterviz/constants`); moved: `autocorrelation_sums` → `matterviz/trajectory`, `parse_axis_label` → `matterviz/labels`, `strip_html` → `matterviz/utils`; renamed: `Label` → `Column<Row>` (with a required `id`), `nearest_vertex_index` → `nearest_face_vertex(geometry, face, point)`
-- `element_groups`, `element_group_keys` and `ElementGroup` are exported again (removed in 0.7), with a new `ElementGroupKey` type
-- `PlotLegend.collapsed_groups` is a non-bindable `SvelteSet` you mutate (e.g. from `create_collapsible_legend()`); with the default `group_click='visibility'` the header toggle is `.group-label`
-- `compute_histogram_bins(counted, normalize, series_color, full_counted)` takes `compute_histogram_counts()` output plus the full-domain counts instead of `(entries, config)`; `ScatterPoint.overlay_only` is gone; 3D axes accept only `scale_type: 'linear'`; `AxisConfig3D.show_plane`/`plane_opacity`, `DisplayConfig3D.z_grid`/`z_zero_line` and `StyleOverrides3D.point.sphere_segments` are gone (pass `sphere_segments` as a prop)
-- BoxPlot on a log value axis estimates violins in log10 space, so a numeric `bandwidth` is in decades; duplicate phase-diagram region, boundary and special-point ids throw
-- `Structure`/`StructureControls` type `color_scheme` as `ColorSchemeName` (was `string`); `Structure` throws on unknown names and no longer writes the global element colors
-- `parse_ase_trajectory(buffer, warn)` requires a `warn` callback; `TrajHandlerData.frame` is a `NumericFrame` (was `TrajectoryFrame`); frame `metadata.forces` → per-site `properties.force`; `full_data_extractor` emits every finite numeric metadata key, not a fixed list; `NebViewer`'s `metric` → `coord_options.metric`
-- `MsdCurve.std_error`/`fit`, `MsdOptions.fit` and `MsdResult.origin_stride` are gone (MSD averages all origins; fit with `fit_msd_curves(result, options)`); MSD and VACF throw on a `time_unit` other than `'frame'` without `dt`
-- Phonon `hovered_frequency`, `reference_frequency`, `sigma` and `Dos.sigma_range` are in THz; `IrRamanSpectrum.fwhm` is in cm⁻¹; `two_theta_range` must lie within [0, 180]; `PhononExplorerView` drops `'modes'`; `compute_irreducible_bz`'s third argument is `{ time_reversal = true, edge_sharp_angle_deg }` (was a positional `edge_sharp_angle_deg`), so the irreducible zone applies time reversal by default
-- `RouteThermodynamics.onset_temperature` and `onset_temperature()` → `downhill_windows` (the old onset is `downhill_windows[0]?.[0]`)
-- `merge_polyhedra_buffers(polyhedra, coloring)` takes a `PolyhedraColoring` (`{ mode: 'uniform', color }` or `{ mode: 'vertex' | 'center', site_color(site_idx) }`) instead of a per-vertex color callback, and also returns flat face `normals`
-- `build_trajectory_lines` and `trajectory_lines_stats` → `new TrajectoryTrail(stream, options)`, laid out once per stream and options: `trail.update({ end_frame, trail_frames, ... }).stats` replaces per-frame rebuilds and `trail_color_texels(trail, color_mode, element_colors)` the `color_mode`/`element_colors` options (`TrajectoryLines` props are unchanged)
-- Text trajectories past V8's string limit (`MAX_STRING_CHARS` = 536,870,888 chars) open from their bytes, decoded in line-aligned chunks (`decode_text_chunks`) as XYZ/EXTXYZ, LAMMPS dump or XDATCAR: `open_trajectory` reads any `ArrayBuffer`/`Blob` that is neither ASE nor HDF5 as text instead of throwing, the trajectory loaders (`decompress_trajectory_file`, `load_trajectory_from_url`, `classify_payload` with `hdf5_as_blob`) return such text as a `Blob` while `decompress_file` throws, and `plan_host_file_transfer` drops `max_text_file_size` (text trajectories share `max_file_size`)
-- Plot series throw when a per-point array (`color_values`, `size_values`, `metadata`, `point_style`, `point_hover`, `point_label`, `point_offset`) differs in length from `x`/`y` (empty arrays still mean none); `generate_ribbon_path(x, y, half_widths_px, x_scale_fn, y_scale_fn)` takes pixel half-widths; `normalize_densities(densities, x, mode)` → divide by `density_divisor([densities], x, mode)`
-- HeatmapMatrix `color_overrides` nests like `values` (`{ [y_key]: { [x_key]: color } }`, `make_color_override_key` removed), `on_brush` ranges are the first/last spanned item indices in rendered order and `log` only sets `normalize`; `row_matches_query` is removed and HeatmapTable search without `search.keys` matches column data only; PeriodicTable `heatmap_values` keys that aren't element symbols warn and are skipped instead of dropping the heatmap
-- DOS `normalize` uses one divisor for the drawn spins and phonon densities follow the displayed unit; `symmetry_elements_from_ops` labels screw axes by rotation sense and lists each glide plane once; CIF disorder keeps one group per `_atom_site_disorder_assembly`; PDB/mmCIF `D`/`T` parse as H; OPTIMADE `dimension_types` sets `lattice.pbc` and `lattice_vectors` rows may be `null`; LAMMPS frames drop the duplicate `metadata.timestep` (use `frame.step`); `get_center_of_mass` returns `null` when no site carries weight
-- Symmetry overlays clip exactly in sheared cells: `clip_plane_to_cell` → `clip_plane_family`/`clip_axis_family`, `SymmetryElement.plane_normal` is the integer plane covector, and `tile_symmetry_elements`, `symmetry_tiling_reason` and `SymmetryElementControls` drop `lattice`
+- Removed: `TrajectoryFileViewer`, `to_histogram_series`, `band_struct_entries`, `dos_entries`, `format_sigma`, `DosInput`, `get_column_id`, `SpecialCells` (use `Column.cell`), `RepresentationMode`, `R_EV_PER_K` (use `BOLTZMANN_EV_PER_K`). Moved: `autocorrelation_sums` → `matterviz/trajectory`, `parse_axis_label` → `matterviz/labels`, `strip_html` → `matterviz/utils`. Renamed: `Label` → `Column<Row>` (required `id`), `nearest_vertex_index` → `nearest_face_vertex`
+- `element_groups`, `element_group_keys` and `ElementGroup` are exported again, plus `ElementGroupKey`
+- `PlotLegend.collapsed_groups` is a `SvelteSet` you mutate (e.g. from `create_collapsible_legend()`)
+- `compute_histogram_bins` takes `compute_histogram_counts()` output; removed `ScatterPoint.overlay_only`, 3D log axes, `show_plane`/`plane_opacity`, `z_grid`/`z_zero_line` and `StyleOverrides3D.point.sphere_segments`
+- BoxPlot violins on log axes use a `bandwidth` in decades; duplicate phase-diagram ids throw
+- `color_scheme` is a `ColorSchemeName`; `Structure` throws on unknown names and no longer writes global element colors
+- `parse_ase_trajectory` requires a `warn` callback; `TrajHandlerData.frame` is a `NumericFrame`; `metadata.forces` → per-site `properties.force`; `NebViewer` `metric` → `coord_options.metric`
+- MSD drops `std_error`/`fit`/`origin_stride` (use `fit_msd_curves`); MSD and VACF need `dt` for time units other than `'frame'`
+- Phonon frequencies are in THz, `IrRamanSpectrum.fwhm` in cm⁻¹; `two_theta_range` must lie in [0, 180]; `compute_irreducible_bz` takes `{ time_reversal, edge_sharp_angle_deg }`
+- `onset_temperature` → `downhill_windows`
+- `merge_polyhedra_buffers` takes a `PolyhedraColoring` and also returns face `normals`
+- `build_trajectory_lines`/`trajectory_lines_stats` → `new TrajectoryTrail(stream, options)`
+- Text trajectories past V8's string limit open from their bytes; trajectory loaders return such text as a `Blob`; `plan_host_file_transfer` drops `max_text_file_size`
+- Per-point plot arrays must match the length of `x`/`y`; `generate_ribbon_path` takes pixel half-widths; `normalize_densities` → `density_divisor`
+- HeatmapMatrix `color_overrides` nest like `values`; `row_matches_query` is removed; non-element PeriodicTable `heatmap_values` keys are skipped with a warning
+- DOS normalization, screw-axis labels, CIF disorder groups, PDB/mmCIF `D`/`T` as H, OPTIMADE `pbc`, LAMMPS `frame.step` and `get_center_of_mass` returning `null` all change behavior
+- `clip_plane_to_cell` → `clip_plane_family`/`clip_axis_family`; `SymmetryElement.plane_normal` is an integer covector
+- `PortalSelect` → `PopoverSelect` (exported, `.popover-select-*` class hooks); its `selected_key` and ColorBar's selection props are inputs, not bindings
+- `ToggleMenu`'s trigger is a `<button>` in `.column-toggles`; `--tgl-dropdown-z-index` and `--view-mode-dropdown-z-index` are removed
+- Parsers throw instead of guessing: unknown element symbols, ragged CIF loops, CIF blocks without a cell, malformed extXYZ `Properties=`, BXSF files with a non-zero origin, and structure parsers that used to return `null`
+- `exclude_from_hull` unaries are never formation-energy references; `energy_range` → `e_form_range`; the vertical lever rule is removed
+- `StructureControls`' `scene_props` is required and reactive, not bindable; an omitted camera position means auto-fit; `ColorBarDecoration` reads `wrapper_style` from `color_bar`
+- Generated-site metadata moves to `Site.provenance`; `volume_scaling` → `supercell_tiling`
+- Volumes are keyed by `volume_id`/`color_volume_id`/`active_volume_id`; host tools use `start_run(provenance)`
+- Plot series are immutable (use `hidden_series`; shared legends need a `legend_id`); `auto_ranges`; `selected_series_idx`; tables use `row_key` + `selected_ids`; categorical bars default to width 0.75
+- Settings trackers use `changed_keys`/`snapshot()`; `PropertySelect` binds `key`; `PropertyFilter` clears to `undefined`
+- `compute_hull_model` returns a readonly `HullModel`; `CONVEX_HULL_STYLE.z_index` is removed; `pad_domain_points` drops `padding`
+- `ClickFeedback`, `DragOverlay`, `Spinner`, `StatusMessage`, and the CSV, `format_bytes` and URL helpers come from svelte-widgets; `matterviz/feedback` is removed
+- Export callbacks receive a `FileExportContext`; trajectory video is AV1 only, at 3× the viewer resolution by default
+- `TrajectoryRun` requires `atom_count`; `BOLTZMANN_EV` is removed; vaspout.h5 numbers ionic steps from 1; with `PSTRESS` set, `energy` is the free energy
+- Sunburst/treemap `hatch` → `pattern`; `--structure-popup-*` → `--popup-*`; `/copernicum` → `/copernicium`
+- Contributors: `svelte.config.ts` merges into `vite.config.ts`, `$lib` → `#lib/...js`, and the dev server is `pnpm exec vp dev`
+
+### ⚠️ Breaking Changes
+
+- File loading is separate from rendering; data, view state and computed results get explicit APIs (id-keyed volumes, immutable series, `compute_hull_model`, one `show_controls`) [#465](https://github.com/janosh/matterviz/pull/465)
+- Plot controls edit caller state: `auto_ranges`, index-based series selection, controlled `PopoverSelect`/`ColorBar` keys [#467](https://github.com/janosh/matterviz/pull/467)
+- Native popovers replace body portals: `PopoverSelect`, button-based `ToggleMenu`, no `z-index: 10000` [#481](https://github.com/janosh/matterviz/pull/481)
+- Unknown element symbols and ragged CIF atom-site loops throw instead of being guessed [#481](https://github.com/janosh/matterviz/pull/481)
+- `exclude_from_hull` unaries are never formation-energy references [#481](https://github.com/janosh/matterviz/pull/481)
+- Generated-site ancestry moves to `Site.provenance`, so imported `orig_site_idx` columns are plain data [#472](https://github.com/janosh/matterviz/pull/472)
+- Structure parsers throw contextual errors instead of returning `null`; `TrajectoryRun` requires `atom_count` [#471](https://github.com/janosh/matterviz/pull/471)
+- Host tools publish through scoped `start_run(provenance)` runs, so stale results can't overwrite newer ones [#464](https://github.com/janosh/matterviz/pull/464)
+- Feedback components and CSV, byte-format and URL helpers move to svelte-widgets [#463](https://github.com/janosh/matterviz/pull/463)
+- Export callbacks take a `FileExportContext`; trajectory video is AV1 only [#470](https://github.com/janosh/matterviz/pull/470)
+- Lever rule removed, `e_form_range`, HDF5 helpers throw, BXSF origins checked [#461](https://github.com/janosh/matterviz/pull/461)
+- CIF blocks without a cell and malformed extXYZ throw; weighted KDE marginals are rejected [#460](https://github.com/janosh/matterviz/pull/460)
+- `hatch` → `pattern` [#457](https://github.com/janosh/matterviz/pull/457), `--popup-*` [#458](https://github.com/janosh/matterviz/pull/458), `supercell_tiling` [#462](https://github.com/janosh/matterviz/pull/462), `PropertySelect bind:key` [#473](https://github.com/janosh/matterviz/pull/473)
+- Audit-driven contract changes to legends, histograms, color schemes, ASE readers, MSD and phonon units [#474](https://github.com/janosh/matterviz/pull/474)
+- Per-point array length checks, HeatmapMatrix overrides, symmetry clipping [#476](https://github.com/janosh/matterviz/pull/476)
+- `PolyhedraColoring` and `TrajectoryTrail` [#475](https://github.com/janosh/matterviz/pull/475)
+- vaspout.h5 ionic steps start at 1; `PSTRESS` energies are split [#479](https://github.com/janosh/matterviz/pull/479)
+
+### 🚀 New Features
+
+- Thermal hotspot analysis: kinetic-energy and temperature maps for MD trajectories [#471](https://github.com/janosh/matterviz/pull/471)
+- Thermal cutaways (plane and slab) with numeric heatmap legends [#472](https://github.com/janosh/matterviz/pull/472)
+- Camera-flight planner for `Structure` and `Trajectory` [#470](https://github.com/janosh/matterviz/pull/470)
+- Filename and folder controls for every export; AV1 video in WebM or MP4 [#470](https://github.com/janosh/matterviz/pull/470)
+- SVG pattern fills for treemap, sunburst, composition, bar, box, histogram and fill areas [#457](https://github.com/janosh/matterviz/pull/457)
+- `matterviz/eos`: Birch–Murnaghan, Murnaghan and Vinet fits matching pymatgen [#457](https://github.com/janosh/matterviz/pull/457)
+- Phonon thermal properties (F, U, S, C_v) and `LatticePlanes` [#457](https://github.com/janosh/matterviz/pull/457)
+- Brillouin-zone popup from clicked band-structure tick labels [#458](https://github.com/janosh/matterviz/pull/458)
+- Host prediction workflows with exportable results [#464](https://github.com/janosh/matterviz/pull/464)
+- Isosurface volume switcher with a log-scaled value histogram [#479](https://github.com/janosh/matterviz/pull/479)
+- Animated 3D scatter markers [#479](https://github.com/janosh/matterviz/pull/479)
+- `create_collapsible_legend()` [#474](https://github.com/janosh/matterviz/pull/474)
+- Movie export: explicit `source_frames` schedules, cutaways, a CLI that runs from any directory [#481](https://github.com/janosh/matterviz/pull/481)
+- MD HDF5 trajectories with units, recovery after interrupted writes, relative-energy views [#471](https://github.com/janosh/matterviz/pull/471)
+- Per-series density strips; bindable HeatmapTable sort state [#470](https://github.com/janosh/matterviz/pull/470)
+- Categorical `ColorBar` swatches, table row reorder animation, accessible legends [#468](https://github.com/janosh/matterviz/pull/468)
+
+### 🐛 Bug Fixes
+
+- CIF reads are scoped to their data block, with case-insensitive keywords and symops, primed labels and trailing symop loops [#460](https://github.com/janosh/matterviz/pull/460)
+- PDB multi-entry files, extXYZ atomic numbers and quoting, LAMMPS columns and triclinic tokens [#460](https://github.com/janosh/matterviz/pull/460)
+- An XSS in the SSR sanitizer used for HeatmapTable cells [#460](https://github.com/janosh/matterviz/pull/460)
+- Oversized file headers no longer trigger multi-GB allocations or minutes-long work [#460](https://github.com/janosh/matterviz/pull/460) [#461](https://github.com/janosh/matterviz/pull/461)
+- Hull distances move with temperature; the MP correction is applied once [#461](https://github.com/janosh/matterviz/pull/461)
+- Exact chemical-potential domain assignment (92 of 92 faces, was 27) [#461](https://github.com/janosh/matterviz/pull/461)
+- EOS fits, Gaussian smearing, the XRD reflection cap and VDOS noise [#461](https://github.com/janosh/matterviz/pull/461)
+- Unwrapped coordinates round-trip; atom drags respect slab vacuum; CRLF XYZ files open [#461](https://github.com/janosh/matterviz/pull/461)
+- Stale camera fits, unwrapped trails, stale atom colors and Fermi slices through Gamma [#460](https://github.com/janosh/matterviz/pull/460)
+- Reversed and descending-log plot ranges [#460](https://github.com/janosh/matterviz/pull/460)
+- Formula element order, `strip_html`, hydrate subscripts and the LP solver's tolerances [#460](https://github.com/janosh/matterviz/pull/460)
+- Published types (TS2307), the `FullscreenButton` props type, VS Code file watchers and exports [#460](https://github.com/janosh/matterviz/pull/460)
+- 3D hover reports the front-most hit [#475](https://github.com/janosh/matterviz/pull/475)
+- ELFCAR scaling, CHGCAR magnetization blocks, `.cube` NVal detection [#479](https://github.com/janosh/matterviz/pull/479)
+- Invisible `light-dark()` borders, gizmo scissor errors after resizes, stuck dropzone classes [#479](https://github.com/janosh/matterviz/pull/479)
+- Fermi slice legends, x2 axes, descending fills, error-bar gaps, weighted histograms [#476](https://github.com/janosh/matterviz/pull/476)
+- Screw-axis labels and exact glide/screw reduction in sheared cells [#476](https://github.com/janosh/matterviz/pull/476)
+- Multi-frame XYZ sniffing, HDF5 edge cases, stale MSD/VACF, fat bands, DOS mirror mode [#476](https://github.com/janosh/matterviz/pull/476)
+- Box-plot whiskers, legends in exports, symmetry-image merging, band gaps and occupations [#474](https://github.com/janosh/matterviz/pull/474)
+- Clicks and drags keep working in 3D scenes with `@threlte/extras` 9.22 [#474](https://github.com/janosh/matterviz/pull/474)
+- Plot cleaning keeps per-point data aligned; fractional formulas; Copernicium [#473](https://github.com/janosh/matterviz/pull/473)
+- Minimum-image search on strongly sheared cells [#481](https://github.com/janosh/matterviz/pull/481)
+- y2 labels under the settings gear, squashed short plots, edge labels, UTF-8 base64, POTCAR suffixes [#481](https://github.com/janosh/matterviz/pull/481)
+- ASE frames inherit numbers and pbc from the nearest earlier frame [#475](https://github.com/janosh/matterviz/pull/475)
+- Supercell overlays tile with the displayed block [#462](https://github.com/janosh/matterviz/pull/462)
+- 3D scatter tooltips, front-hit selection, smaller hover halo [#466](https://github.com/janosh/matterviz/pull/466)
+- Video export restores playback state; atomic pan/zoom updates [#468](https://github.com/janosh/matterviz/pull/468)
+
+### 🛠 Enhancements
+
+- Viewport culling: panning a 100k-point line 145 → 3.5 ms, heatmap palette change 697 → 136 ms [#466](https://github.com/janosh/matterviz/pull/466)
+- Faster viewers at scale: 1M-atom CIF in 3.1 s (was 25.3 s), 74 MB XDATCAR in ~0.1 s [#475](https://github.com/janosh/matterviz/pull/475)
+- Reused render state and streamed RDF distances: table sort 176 → 10 ms at 20k rows [#469](https://github.com/janosh/matterviz/pull/469)
+- GPU buffers survive zoom; bounded frame caches [#468](https://github.com/janosh/matterviz/pull/468)
+- Every dropdown is a native popover [#481](https://github.com/janosh/matterviz/pull/481)
+- Full-resolution volume slicing during drags [#480](https://github.com/janosh/matterviz/pull/480)
+- FFT MSD (1.5 s → 13 ms) and one shared plot-row builder for every trajectory reader [#474](https://github.com/janosh/matterviz/pull/474)
+- Speedups from the correctness passes (split partial sites 218 → 3 ms, base64 30×) [#460](https://github.com/janosh/matterviz/pull/460) [#461](https://github.com/janosh/matterviz/pull/461)
+- Pans keep the orbit pivot; sunburst hover dimming is O(depth) [#458](https://github.com/janosh/matterviz/pull/458)
+- Demo pages mount examples near the viewport and load lazily [#471](https://github.com/janosh/matterviz/pull/471)
+- Structure controls refuse unsupported actions with hints; cancellable trajectory loading [#462](https://github.com/janosh/matterviz/pull/462)
+- MSD/VACF timing follows the selected frame window [#463](https://github.com/janosh/matterviz/pull/463)
+- Unified progress, error and pane layout in viewer chrome [#470](https://github.com/janosh/matterviz/pull/470) [#472](https://github.com/janosh/matterviz/pull/472)
+- Worker progress isolation and serialized synthesis planning [#467](https://github.com/janosh/matterviz/pull/467) [#479](https://github.com/janosh/matterviz/pull/479)
+- Deduplicated OPTIMADE discovery with no third-party CORS proxies [#465](https://github.com/janosh/matterviz/pull/465)
+- Dependencies: three 0.186, moyo-wasm 0.21, threlte 9.22, DOMPurify 3.4.16, JupyterLab 4.6
+
+### 💡 Refactoring
+
+- SvelteKit 3, vite-plus 1.0 and `#lib` subpath imports [#479](https://github.com/janosh/matterviz/pull/479)
+- Per-component svelte-widgets imports; size-balanced CI shards [#480](https://github.com/janosh/matterviz/pull/480)
+- svelte-widgets replaces duplicated widgets and helpers [#462](https://github.com/janosh/matterviz/pull/462) [#463](https://github.com/janosh/matterviz/pull/463) [#464](https://github.com/janosh/matterviz/pull/464)
+- Net −7,308 lines, mostly from folded tests; shared `yield_turn`, `normalize_cif_names` and colorbar pinning [#481](https://github.com/janosh/matterviz/pull/481)
+- Descriptive variable names; exact chempot faces remove a 100-line workaround [#466](https://github.com/janosh/matterviz/pull/466) [#461](https://github.com/janosh/matterviz/pull/461)
 
 ## [v0.7.0](https://github.com/janosh/matterviz/compare/v0.6.0...v0.7.0)
 
