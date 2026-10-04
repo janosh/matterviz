@@ -56,7 +56,6 @@
   const color_start = attribute(`instanceColorStart`, `vec3`).toVarying(`vBondColorStart`)
   const color_end = attribute(`instanceColorEnd`, `vec3`).toVarying(`vBondColorEnd`)
   const cylinder_t = positionGeometry.y.add(0.5).toVarying(`vBondCylinderT`)
-  // @ts-expect-error — toVarying typed as VaryingNode<string>; runtime keeps float/vec3
   const gradient = mix(color_start, color_end, cylinder_t)
   const luma = dot(gradient, vec3(0.299, 0.587, 0.114))
   const tinted = mix(vec3(luma), gradient, uniform(0.5)).mul(uniform(0.7))
