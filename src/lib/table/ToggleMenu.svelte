@@ -3,7 +3,7 @@
   import Popover from 'svelte-widgets/Popover.svelte'
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Column } from '#lib/table/index.js'
   import { html_to_text } from '#lib/utils.js'
@@ -185,6 +185,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
     <div
       class={has_sections ? `sections-container` : `column-menu`}
       role="group"
+      out:close_before_removal
       {@attach anchored_popover({
         anchor: trigger_el,
         on_close: () => (column_panel_open = false),

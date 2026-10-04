@@ -1254,11 +1254,11 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div).toHaveClass(/multi-view/)
   })
 
-  // Both grid tests below drive interactions that only settle once the panes have painted.
-  // On CI's software WebGPU — an adapter that hands out a device but composites nothing — the
-  // layout never finishes switching back and the cell-select dropdown never opens, while every
-  // structural assertion around them passes. Gated on IS_CI rather than a pixel probe because
-  // the byte-size heuristic tried earlier reported a blank 800x500 canvas as painted.
+  // The grid toggle test below drives interactions that only settle once the panes have
+  // painted. On CI's software WebGPU — an adapter that hands out a device but composites
+  // nothing — the layout never finishes switching back, while every structural assertion
+  // around it passes. Gated on IS_CI rather than a pixel probe because the byte-size heuristic
+  // tried earlier reported a blank 800x500 canvas as painted.
   const GRID_NEEDS_PIXELS = `grid interactions need a composited frame, unavailable in CI`
 
   test(`toggle splits canvas into 4 viewports and back`, async ({ page }) => {
@@ -1328,8 +1328,10 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     })
   })
 
+  // Picking the grid from the layout menu removed the open (top-layer) menu under the pointer,
+  // and Chromium then never re-hovered the viewer, so its hover-only chrome stayed hidden
+  // (close_before_removal hides the menu first). Only DOM hit-testing here, so CI runs it too.
   test(`legend controls stay interactive above active grid panes`, async ({ page }) => {
-    test.skip(IS_CI, GRID_NEEDS_PIXELS)
     const webgpu_errors = collect_webgpu_errors(page)
     const structure_div = page.locator(`#test-structure`)
     await select_structure_layout(structure_div, `3D 2×2 grid`)
@@ -1355,7 +1357,8 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(cell_select).toHaveCSS(`opacity`, `1`)
     expect(await receives_pointer_at_center(cell_toggle)).toBe(true)
     expect(await receives_pointer_at_center(element_badge)).toBe(true)
-    await cell_toggle.click()
+    // hovering opens the menu; a click could race that timer on a loaded runner and toggle it shut
+    await cell_toggle.hover()
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
     expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })

@@ -25,7 +25,7 @@
   import type { SymmetryDataset } from '#lib/symmetry/index.js'
   import { type Snippet, untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
@@ -266,6 +266,7 @@
     {#if mode_menu_open}
       <div
         class="mode-dropdown"
+        out:close_before_removal
         {@attach anchored_popover({
           anchor: mode_toggle_el,
           placement: `top`,

@@ -1,9 +1,9 @@
 import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
-import { createRawSnippet, mount, tick, unmount } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { dismiss_popover, doc_query } from '../setup'
 
-test.each([`light dismiss`, `Escape`, `unmount`] as const)(
+test.each([`light dismiss`, `Escape`, `unmount`, `state`] as const)(
   `opens a native popover menu that %s closes`,
   async (closer) => {
     const state = $state({ open: false })
@@ -43,10 +43,27 @@ test.each([`light dismiss`, `Escape`, `unmount`] as const)(
 
     // happy-dom lacks the popover API: report the menu open and close it as the browser would
     const matches = menu.matches.bind(menu)
-    vi.spyOn(menu, `matches`).mockImplementation(
-      (selector) => selector === `:popover-open` || matches(selector),
+    let shown = true
+    vi.spyOn(menu, `matches`).mockImplementation((selector) =>
+      selector === `:popover-open` ? shown : matches(selector),
     )
-    const hide = vi.spyOn(menu, `hidePopover`).mockImplementation(() => dismiss_popover(menu))
+    const connected_at_hide: boolean[] = []
+    const hide = vi.spyOn(menu, `hidePopover`).mockImplementation(() => {
+      connected_at_hide.push(menu.isConnected)
+      shown = false
+      dismiss_popover(menu)
+    })
+    if (closer === `state`) {
+      // a picked option closes it through `open`: hidden while still in the DOM (Chromium kept
+      // stale :hover on the host when an open top-layer element was removed under the pointer),
+      // and silently, as the caller already knows
+      state.open = false
+      flushSync()
+      expect(connected_at_hide).toEqual([true])
+      expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
+      expect(set_open.mock.calls).toEqual([[true]])
+      return
+    }
     if (closer === `unmount`) {
       // closes silently: an attachment re-run (new anchor or callback) must not report a close
       await unmount(component)

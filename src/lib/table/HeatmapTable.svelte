@@ -43,7 +43,7 @@
     resolve_color_domain,
   } from '#lib/table/index.js'
   import ColumnFilterMenu from './ColumnFilter.svelte'
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'
   import {
@@ -1522,6 +1522,7 @@
         {#if open_dropdown === `export`}
           <div
             class="dropdown-pane"
+            out:close_before_removal
             {@attach anchored_popover({
               anchor: export_btn,
               on_close: () => {

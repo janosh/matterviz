@@ -8,7 +8,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
 
   let {
     open = $bindable(false),
@@ -54,6 +54,7 @@
   {#if open}
     <div
       class={[`view-mode-dropdown`, menu_class]}
+      out:close_before_removal
       {@attach anchored_popover({ anchor: toggle, on_close: () => (open = false) })}
     >
       {@render children()}

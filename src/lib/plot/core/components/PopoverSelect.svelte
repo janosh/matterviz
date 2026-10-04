@@ -3,7 +3,7 @@
   // E<sub>form</sub> allowed, sanitized) that opens a native popover list. Controlled: it
   // reports picks through `on_select` and shows whatever `selected_key` the caller commits.
   // Plots use it for interactive axis labels and colorbar property pickers.
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
@@ -92,6 +92,7 @@
     role="listbox"
     tabindex="-1"
     onkeydown={handle_keydown}
+    out:close_before_removal
     {@attach anchored_popover({
       anchor: trigger_el,
       align: `center`,

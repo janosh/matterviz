@@ -4,7 +4,7 @@
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '#lib/table/index.js'
   import { DATETIME_MODE_LABELS } from './data'
-  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -64,6 +64,7 @@
       aria-labelledby={label_id}
       value={mode}
       size={options.length}
+      out:close_before_removal
       {@attach anchored_popover({ anchor: trigger, on_close: on_toggle })}
       onclick={(event) => {
         if (event.currentTarget.value === mode) on_toggle() // re-picking the current mode closes
