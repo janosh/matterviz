@@ -438,6 +438,43 @@ describe(`PhaseStabilityMap`, () => {
     down(444) // plot_width = 800 - 96 - 8 = 696 px over 1200 K → 900 K
     expect(state.temperature).toBeCloseTo(900, 6)
   })
+
+  // Centred on their ticks, the 300 K label ran into `T (K)` and the 1500 K one off the canvas
+  test(`temperature tick labels stay between the label gutter and the canvas edge`, async () => {
+    const labels: { label: string; x: number }[] = []
+    const get_context = vi
+      .spyOn(HTMLCanvasElement.prototype, `getContext`)
+      .mockImplementation(function (this: HTMLCanvasElement) {
+        return new Proxy({} as CanvasRenderingContext2D, {
+          get: (_target, prop) => {
+            if (prop === `canvas`) return this
+            if (prop === `measureText`) return (label: string) => ({ width: 8 * label.length })
+            if (prop === `fillText`)
+              return (label: string, x: number) => labels.push({ label, x })
+            return vi.fn()
+          },
+        })
+      })
+    try {
+      mount_it(PhaseStabilityMap, {
+        diagram,
+        settings: TERNARY_DISPLAY_DEFAULTS,
+        row_height: 10,
+      })
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      const ticks = labels.filter(({ label }) => Number(label) >= 300) // not formula subscripts
+      expect(ticks.map(({ label }) => label)).toContain(`300`)
+      expect(ticks.map(({ label }) => label)).toContain(`1500`)
+      for (const { label, x } of ticks) {
+        const half = 4 * label.length
+        expect([x - half, x + half], label).toSatisfy(
+          ([left, right]: number[]) => left >= 96 && right <= 800,
+        )
+      }
+    } finally {
+      get_context.mockRestore()
+    }
+  })
 })
 
 test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressure`, () => {

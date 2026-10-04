@@ -667,32 +667,21 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
   return rows
 }
 
-// Loop values are a token stream, not one row per line: a long row may wrap onto the next lines
-// and one line may hold several rows. A line first finishes a pending wrapped row when the
-// rest of it is whole rows; otherwise a line with at least `n_columns` values is
-// self-contained (whole rows, or one over-long row) and flushes the pending short row as is,
-// so an invalid row never shifts the rows after it.
-const cif_loop_rows = (lines: readonly string[], n_columns: number): string[][] => {
-  const rows: string[][] = []
-  let pending: string[] = []
-  for (const line of lines) {
-    const tokens = split_cif_tokens(line)
-    const need = n_columns - pending.length
-    if (pending.length && tokens.length >= need && (tokens.length - need) % n_columns === 0)
-      rows.push([...pending.splice(0), ...tokens.splice(0, need)])
-    if (tokens.length < n_columns) {
-      pending.push(...tokens)
-      if (pending.length >= n_columns) rows.push(pending.splice(0))
-      continue
-    }
-    if (pending.length) rows.push(pending.splice(0))
-    if (tokens.length % n_columns) rows.push(tokens)
-    else
-      for (let start = 0; start < tokens.length; start += n_columns)
-        rows.push(tokens.slice(start, start + n_columns))
+// Loop values are one token stream, not one row per line: a long row may wrap onto the next
+// lines and one line may hold several rows, so the values are dealt out `n_columns` at a time.
+// A count that is not a multiple of n_columns has no unambiguous row split (which row is
+// short?), so it throws rather than guess and silently drop or misplace atoms.
+const cif_loop_rows = (lines: readonly string[], headers: readonly string[]): string[][] => {
+  const n_columns = headers.length
+  const tokens = lines.flatMap((line) => split_cif_tokens(line))
+  if (tokens.length % n_columns !== 0) {
+    throw new Error(
+      `CIF loop (${headers.join(`, `)}) has ${tokens.length} values, not a multiple of its ${n_columns} columns`,
+    )
   }
-  if (pending.length) rows.push(pending)
-  return rows
+  return Array.from({ length: tokens.length / n_columns }, (_, row_idx) =>
+    tokens.slice(row_idx * n_columns, (row_idx + 1) * n_columns),
+  )
 }
 
 // Keep one disorder group per assembly (the lowest-numbered, by absolute value since a minus
@@ -738,7 +727,7 @@ export const parse_cif = (content: string): Crystal => {
       const header_indices = build_cif_atom_site_header_indices(headers)
       const coord_cols = cif_coord_columns(header_indices)
       if (!coord_cols) continue
-      const atom_rows = cif_loop_rows(cif_loop_lines(lines, data_start), headers.length)
+      const atom_rows = cif_loop_rows(cif_loop_lines(lines, data_start), headers)
       if (atom_rows.length === 0) continue
       return { header_indices, coord_cols, atom_rows, block_id: block_ids[data_start] }
     }
@@ -767,11 +756,7 @@ export const parse_cif = (content: string): Crystal => {
     }
   }
 
-  const max_required_idx = Math.max(...coord_cols.columns)
-
-  // Invalid short rows that do not reach their coordinate columns are dropped
-  const complete_rows = atom_rows.filter((tokens) => tokens.length > max_required_idx)
-  const atoms = keep_one_disorder_group(complete_rows, header_indices)
+  const atoms = keep_one_disorder_group(atom_rows, header_indices)
     .map((tokens, atom_idx) => {
       try {
         return parse_cif_atom_data(

@@ -175,6 +175,7 @@
     ctx.strokeStyle = add_alpha(text_color, 0.5)
     ctx.fillStyle = text_color
     ctx.font = FONT
+    ctx.textAlign = `center`
     ctx.textBaseline = dir > 0 ? `top` : `bottom`
     ctx.beginPath()
     ctx.moveTo(label_width, y_pos + 0.5)
@@ -182,10 +183,11 @@
     for (const tick of d3_ticks(t_min, t_max, Math.max(2, Math.floor(plot_width / 70)))) {
       ctx.moveTo(x_of(tick), y_pos)
       ctx.lineTo(x_of(tick), y_pos + 4 * dir)
-      // a centred label on the last tick would run past the canvas's right edge
-      const overflows = x_of(tick) + ctx.measureText(`${tick}`).width / 2 > surface.dims.width
-      ctx.textAlign = overflows ? `right` : `center`
-      ctx.fillText(`${tick}`, x_of(tick), y_pos + 6 * dir)
+      // centred on its tick but kept inside the plot: an edge label would run into `T (K)`
+      // on the left or past the canvas on the right
+      const half = ctx.measureText(`${tick}`).width / 2
+      const label_x = clamp(x_of(tick), label_width + half, surface.dims.width - half)
+      ctx.fillText(`${tick}`, label_x, y_pos + 6 * dir)
     }
     ctx.stroke()
     ctx.textAlign = `right`

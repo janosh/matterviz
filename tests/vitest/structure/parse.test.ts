@@ -1032,36 +1032,37 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(split_cif_tokens(`${line}\r`)).toEqual(expected)
   })
 
-  // Loop values are a token stream: rows may share a line or wrap across lines (both valid
-  // CIF), while an invalid short row must not shift the rows after it
+  // Loop values are a token stream: rows may share a line or wrap across lines anywhere (all
+  // valid CIF). A heuristic row splitter dropped Cl1 from the row-boundary-mid-line cases.
   test.each([
-    [`two rows on one line`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5 0.5`, [`Fe1`, `O1`]],
-    [
-      `row wrapped onto the next line`,
-      `Fe1 Fe 0.1 0.2\n 0.3\nO1 O 0.5 0.5 0.5`,
-      [`Fe1`, `O1`],
-    ],
-    [`short row before a full row`, `Fe1 Fe 0.1\nO1 O 0.5 0.5 0.5`, [`O1`]],
-    [
-      `continuation line carrying the next row`,
-      `Fe1 Fe\n0.1 0.2 0.3 O1 O 0.5 0.5 0.5`,
-      [`Fe1`, `O1`],
-    ],
-    [
-      `over-long row before a full row`,
-      `Fe1 Fe 0.1 0.2 0.3 junk\nO1 O 0.5 0.5 0.5`,
-      [`Fe1`, `O1`],
-    ],
-  ])(`reads atom-site loop rows as a token stream: %s`, (_desc, rows, labels) => {
+    [`two rows on one line`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5 0.5`],
+    [`row wrapped onto the next line`, `Fe1 Fe 0.1 0.2\n 0.3\nO1 O 0.5 0.5 0.5`],
+    [`continuation line carrying the next row`, `Fe1 Fe\n0.1 0.2 0.3 O1 O 0.5 0.5 0.5`],
+    [`row boundary inside a continuation line`, `Fe1 Fe 0.1\n0.2 0.3 O1 O\n0.5 0.5 0.5`],
+    [`over-full line then a short one`, `Fe1 Fe 0.1 0.2 0.3 O1 O\n0.5 0.5 0.5`],
+    [`rows split mid-line twice`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5\n0.5`],
+  ])(`reads atom-site loop rows as a token stream: %s`, (_desc, rows) => {
     const result = parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)
-    expect(result.sites.map((site) => site.label)).toEqual(labels)
-    if (labels.includes(`Fe1`)) expect(result.sites[0].abc).toEqual([0.1, 0.2, 0.3])
+    expect(result.sites.map((site) => [site.label, site.abc])).toEqual([
+      [`Fe1`, [0.1, 0.2, 0.3]],
+      [`O1`, [0.5, 0.5, 0.5]],
+    ])
+  })
+
+  // A value count off a multiple of the columns has no unambiguous row split
+  test.each([
+    [`short row before a full row`, `Fe1 Fe 0.1\nO1 O 0.5 0.5 0.5`, 8],
+    [`over-long row before a full row`, `Fe1 Fe 0.1 0.2 0.3 junk\nO1 O 0.5 0.5 0.5`, 11],
+  ])(`rejects an atom-site loop with a ragged row: %s`, (_desc, rows, n_values) => {
+    expect(() => parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)).toThrow(
+      `has ${n_values} values, not a multiple of its 5 columns`,
+    )
   })
 
   // A quote closes a CIF value only when whitespace or the line end follows it, so an
   // apostrophe inside a label is content (`H2'` and `H2''` are different atoms)
   test(`keeps primed atom labels and the rows that carry them`, () => {
-    const cif = `data_t\n${cell5}\n${site_loop}\nC1' C 0.1 0.2 0.3 1.0\n"O2'" O 0.4 0.5 0.6 1.0\nH3 H 0.7 0.8 0.9 1.0`
+    const cif = `data_t\n${cell5}\n${site_loop}\nC1' C 0.1 0.2 0.3\n"O2'" O 0.4 0.5 0.6\nH3 H 0.7 0.8 0.9`
     const result = parse_cif(cif)
     expect(result.sites.map((site) => site.label)).toEqual([`C1'`, `O2'`, `H3`])
   })
@@ -1271,8 +1272,6 @@ O3 O2- 0.75 0.25 0.75`
       [`complex labels`, [`site1_Fe_center 0.0 0.0 0.0 1.0`, `site2_Cu_surface 0.5 0.5 0.5 1.0`], [`Fe`, `Cu`], [`site1_Fe_center`, `site2_Cu_surface`]],
       // both atoms parsed, Xx1 falls back to He via validate_element_symbol
       [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`, `He`], [`Fe1`, `Xx1`]],
-      // Cu1 is two tokens short of the declared loop headers, so only Fe1 survives
-      [`a row missing coordinates`, [`Fe1 0.0 0.0 1.0`, `Cu1 0.5 0.5`], [`Fe`], [`Fe1`]],
     ])(`should infer elements from labels with %s`, (_name, rows, elements, labels) => {
       const result = parse_cif(label_cif(...rows))
 

@@ -218,6 +218,11 @@
   // mounted range trails the render window mid-scroll (until scrollend): cards entering
   // show as label shells until it settles. It catches up once it covers nothing on screen.
   let scrolling = $state(false)
+  // Safari before 26.2 never fires scrollend, which would leave the shells unmounted for
+  // good: there a 150 ms pause in scroll events ends the scroll instead
+  const lacks_scrollend = !(`onscrollend` in globalThis)
+  let settle_timer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(settle_timer))
   let mount_start = $state(0)
   let mount_end = $state(0)
   $effect(() => {
@@ -351,6 +356,10 @@
   const on_scroll = (): void => {
     if (!track) return
     scrolling = true
+    if (lacks_scrollend) {
+      clearTimeout(settle_timer)
+      settle_timer = setTimeout(() => (scrolling = false), 150)
+    }
     scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
     prefetch() // window_start re-derives from the offset just written
   }

@@ -1,7 +1,7 @@
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import StructureGallery from '#lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query, keydown, mouse } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import StructureGalleryHarness from './StructureGalleryHarness.svelte'
@@ -152,6 +152,26 @@ describe(`StructureGallery`, () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(live_cards()).toBe(7)
     doc_query(`.structure-gallery-track`).dispatchEvent(new Event(`scrollend`))
+    flushSync()
+    expect(live_cards()).toBe(12)
+  })
+
+  // Safari before 26.2 never fires scrollend: there a pause in scroll events ends the scroll,
+  // or the shells entering the window would never mount
+  test(`mounts the shells after a scroll pause where scrollend is unsupported`, async () => {
+    let owner: object | null = window // happy-dom may define it on a prototype
+    while (owner && !Object.hasOwn(owner, `onscrollend`)) owner = Object.getPrototypeOf(owner)
+    if (!owner) throw new Error(`happy-dom no longer defines onscrollend`)
+    const descriptor = Object.getOwnPropertyDescriptor(owner, `onscrollend`)
+    Reflect.deleteProperty(owner, `onscrollend`)
+    onTestFinished(() => {
+      if (owner && descriptor) Object.defineProperty(owner, `onscrollend`, descriptor)
+    })
+    expect(`onscrollend` in window).toBe(false)
+    mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
+    scroll_track(1800, `scrollLeft`, false)
+    expect(live_cards()).toBe(7)
+    await new Promise((resolve) => setTimeout(resolve, 200))
     flushSync()
     expect(live_cards()).toBe(12)
   })

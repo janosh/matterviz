@@ -75,7 +75,7 @@
   import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { tick as flush_updates, untrack } from 'svelte'
+  import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
   import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -874,7 +874,7 @@
     const enabled = show_trajectory_lines && trajectory_lines_available
     trail_stream = null
     if (!enabled || !owner) return
-    const trail_controller = new AbortController()
+    const signal = getAbortSignal()
     // The stride budget throws synchronously (a single frame over budget); the async wrapper
     // turns that into a rejection so one catch covers it and the stream failures alike
     const collect_trails = async () => {
@@ -886,20 +886,19 @@
       return collect_trajectory_positions(owner, {
         frame_stride,
         max_bytes: TRAIL_POSITION_MAX_BYTES,
-        signal: trail_controller.signal,
+        signal,
         analysis_name: `Trajectory trails`,
       })
     }
     collect_trails()
       .then((stream) => {
-        if (!trail_controller.signal.aborted) trail_stream = stream
+        if (!signal.aborted) trail_stream = stream
       })
       .catch((exc: unknown) => {
-        if (trail_controller.signal.aborted) return
+        if (signal.aborted) return
         // Trails are optional, so a failure here hides them rather than breaking the viewer
         console.error(`Trajectory trails: position collection failed`, to_error(exc).message)
       })
-    return () => trail_controller.abort()
   })
   // Source-frame playhead in collected frames; trails follow scrubs (a window move is O(atoms))
   let trajectory_line_end_frame = $derived(

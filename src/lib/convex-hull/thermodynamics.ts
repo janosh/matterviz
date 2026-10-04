@@ -124,18 +124,18 @@ export function compute_e_form_per_atom(
 
 // Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
 // (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
-// without absolute-energy unaries, since their E_form is measured against those. An
-// exclude_from_hull unary is only a fallback for elements without a hull-eligible one: it is
-// still drawn, and letting it set the zero shifted every plotted formation energy.
+// without absolute-energy unaries, since their E_form is measured against those. Within that
+// tier, an exclude_from_hull unary is only a fallback for elements without a hull-eligible
+// one: it is still drawn, and letting it set the zero shifted every plotted formation energy.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
   type Ref = { entry: PhaseData; score: number; absolute: boolean; excluded: boolean }
   const better = (cand: Ref, current: Ref): boolean =>
-    cand.excluded !== current.excluded
-      ? !cand.excluded
-      : cand.absolute !== current.absolute
-        ? cand.absolute
+    cand.absolute !== current.absolute
+      ? cand.absolute
+      : cand.excluded !== current.excluded
+        ? !cand.excluded
         : cand.score < current.score
   const refs: Record<string, Ref> = {}
   for (const entry of entries) {

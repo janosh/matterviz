@@ -4,7 +4,7 @@
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
-import { to_error } from '#lib/utils.js'
+import { to_error, yield_turn } from '#lib/utils.js'
 import { rows_to_csv } from 'svelte-widgets/csv'
 import { zipSync } from 'fflate'
 import { full_data_extractor } from './extract'
@@ -117,7 +117,7 @@ async function* iter_export_frames(
     on_progress?.(completed, total)
     signal?.throwIfAborted()
     if (completed < total && completed % YIELD_EVERY_FRAMES === 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      await yield_turn()
     }
   }
 }

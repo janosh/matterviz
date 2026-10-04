@@ -197,9 +197,12 @@
     const signal = getAbortSignal()
     compute_ternary_phase_diagram_async(current_entries, current_options, {
       signal,
-      on_progress: (update) => (progress = update),
+      on_progress: (update) => {
+        if (!signal.aborted) progress = update
+      },
     })
       .then((result) => {
+        if (signal.aborted) return
         diagram = result
         sweep = { diagram: result, entries: current_entries, options: current_options }
       })
