@@ -10,7 +10,6 @@
   import { format_value } from '#lib/labels.js'
   import type { Point2D, Vec2 } from '#lib/math.js'
   import { create_pulse_animation } from '#lib/effects.svelte.js'
-  import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
@@ -18,6 +17,7 @@
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/colorbar-decoration.svelte.js'
   import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
   import {
     decoration_data_attrs,
@@ -77,7 +77,7 @@
     label_leader_segment,
   } from '#lib/plot/core/utils/label-placement.js'
   import type { LabelSize } from '#lib/plot/core/utils/label-placement.js'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
@@ -144,7 +144,7 @@
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       size_scale?: BinnedSizeScaleConfig
-      color_bar?: ComponentProps<typeof ColorBar> | null
+      color_bar?: ColorBarDecorationProps | null
       density?: BinnedDensityConfig
       overlays?: BinnedOverlaysConfig
       tooltip?: Snippet<[BinnedPointPayload<Metadata, PointData>]>
@@ -255,6 +255,7 @@
     legend_visible: () => false,
     legend_items: () => [],
     decorations: () => decoration_items,
+    exclusion_rects: () => colorbar.pinned_rects,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -360,7 +361,7 @@
     ),
   )
   const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
-  const color_bar_props = $derived.by((): ComponentProps<typeof ColorBar> | null => {
+  const color_bar_props = $derived.by((): ColorBarDecorationProps | null => {
     if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
@@ -402,12 +403,12 @@
       render_mode === `density` &&
       density_result.max_count > 0,
   )
-  // Orientation comes off the prop, not color_bar_props (whose title changes with the
-  // visible count), so data changes don't trigger a layout read.
+  // Config is the raw prop, not color_bar_props (whose title changes with the visible
+  // count), so data changes don't trigger a layout read.
   const colorbar = create_colorbar_decoration({
     id: `density-colorbar`,
     enabled: () => show_colorbar,
-    horizontal: () => color_bar?.orientation !== `vertical`,
+    config: () => color_bar,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
   })

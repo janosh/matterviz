@@ -79,6 +79,7 @@ describe(`RdfPlot`, () => {
     [{}, `Drag and drop structure files here to visualize RDFs`, true],
     [{ allow_file_drop: false }, `No RDF data to display`, false],
     [{ loading: true }, `Reading dropped file…`, true],
+    [{ loading: true, loading_message: `Computing RDFs…` }, `Computing RDFs…`, true],
   ] as const)(`empty state %#`, async (props, message, accepts_drag) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.textContent).toContain(message)

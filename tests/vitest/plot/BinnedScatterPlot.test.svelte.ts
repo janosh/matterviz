@@ -414,27 +414,6 @@ describe(`BinnedScatterPlot`, () => {
     },
   )
 
-  test(`preserves explicit colorbar wrapper and bar styles`, async () => {
-    mount_plot({
-      series: uniform_density_series(),
-      ...density_mode_with_colorbar({ bin_px: 20 }),
-      color_bar: {
-        orientation: `vertical`,
-        wrapper_style: `border: 3px solid rgb(1, 2, 3); padding: 7px;`,
-        bar_style: `width: 14px; height: 160px;`,
-      },
-      ...unit_axes,
-    })
-    await settle()
-
-    const wrapper = doc_query(`.binned-scatter .colorbar`)
-    const bar = doc_query(`.binned-scatter .colorbar .bar`)
-    expect(wrapper.style.border).toBe(`3px solid rgb(1, 2, 3)`)
-    expect(wrapper.style.padding).toBe(`7px`)
-    expect(bar.style.width).toBe(`14px`)
-    expect(bar.style.height).toBe(`160px`)
-  })
-
   test(`auto-places annotation snippet without overlapping the colorbar`, async () => {
     mount_plot({
       series: [{ x: [0, 1], y: [0, 1] }],

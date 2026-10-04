@@ -892,9 +892,13 @@ describe(`cartesian frame`, () => {
   // The solver reserves the colorbar's full footprint (bar plus tick labels overflowing it),
   // keeps that rectangle axis_clearance away from every plot edge and positions the wrapper
   // so the overflowing labels, not the bar, sit at the solved rect
-  test.each(colorbar_charts)(
-    `$name keeps overflowing colorbar ticks clear of the plot axes`,
-    async (chart) => {
+  test.each(
+    colorbar_charts.flatMap((chart) =>
+      [undefined, 20].map((axis_clearance) => ({ ...chart, axis_clearance })),
+    ),
+  )(
+    `$name keeps overflowing colorbar ticks clear of the plot axes (axis_clearance=$axis_clearance)`,
+    async ({ axis_clearance, ...chart }) => {
       vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
       vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
       vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
@@ -905,8 +909,12 @@ describe(`cartesian frame`, () => {
         }
         return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
       })
-      const plot = await mount_chart(chart, chart.props(), { width: 800, height: 600 })
-      const clearance = COLOR_BAR_DEFAULTS.axis_clearance
+      const plot = await mount_chart(
+        chart,
+        { ...chart.props(), color_bar: { axis_clearance } },
+        { width: 800, height: 600 },
+      )
+      const clearance = axis_clearance ?? COLOR_BAR_DEFAULTS.axis_clearance
       await vi.waitFor(() => {
         const colorbar = doc_query(`.colorbar-wrapper`)
         const [coord_x, coord_y, width, height] = [`x`, `y`, `width`, `height`].map((key) =>
@@ -923,6 +931,39 @@ describe(`cartesian frame`, () => {
         )
         expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(coord_x + 10)
       })
+    },
+  )
+
+  // Any user wrapper_style replaces the solver's position: a solver `left` written alongside
+  // a `right` pin stretched the bar across the plot, and BinnedScatterPlot used to forward
+  // the style to the inner ColorBar so the bar could not be pinned at all
+  test.each(colorbar_charts)(
+    `$name pins its colorbar with color_bar.wrapper_style`,
+    async (chart) => {
+      const plot = await mount_chart(chart, {
+        ...chart.props(),
+        color_bar: {
+          wrapper_style: `position: absolute; right: 9px; top: 17px;`,
+          bar_style: `width: 14px; height: 160px;`,
+          axis_clearance: 20,
+          responsive: true,
+        },
+      })
+      const wrapper = query(plot, `.colorbar-wrapper`)
+      expect([wrapper.style.left, wrapper.style.right, wrapper.style.top]).toEqual([
+        ``,
+        `9px`,
+        `17px`,
+      ])
+      expect(wrapper.getAttribute(`data-decoration-x`)).toBeNull()
+      // the pinned bar fills its wrapper; decoration-only keys never reach ColorBar's div
+      const bar_wrapper = query(wrapper, `.colorbar`)
+      expect([bar_wrapper.style.width, bar_wrapper.style.height]).toEqual([`100%`, `100%`])
+      expect(bar_wrapper.style.right).toBe(``)
+      expect(bar_wrapper.getAttributeNames()).not.toContain(`axis_clearance`)
+      expect(bar_wrapper.getAttributeNames()).not.toContain(`responsive`)
+      const bar = query(wrapper, `.colorbar .bar`)
+      expect([bar.style.width, bar.style.height]).toEqual([`14px`, `160px`])
     },
   )
 })

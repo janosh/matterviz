@@ -528,6 +528,7 @@ describe(`XrdPlot`, () => {
     [{}, `Drag and drop structure files`],
     [{ allow_file_drop: false }, `No XRD data to display`],
     [{ loading: true }, `Reading dropped file…`],
+    [{ loading: true, loading_message: `Simulating XRD…` }, `Simulating XRD…`],
   ])(`empty state message %#`, async (props, message) => {
     const target = await mount_xrd({ patterns: [], ...props })
     expect(query(target, `.xrd-empty-state`).textContent).toContain(message)

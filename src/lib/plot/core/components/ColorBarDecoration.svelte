@@ -1,7 +1,9 @@
 <script lang="ts">
-  import type { ColorbarDecoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import type {
+    ColorBarDecorationProps,
+    ColorbarDecoration,
+  } from '#lib/plot/core/colorbar-decoration.svelte.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // Absolutely positioned wrapper around a solver-placed ColorBar (see
@@ -10,14 +12,21 @@
   let {
     decoration,
     color_bar,
-    wrapper_style = ``,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     decoration: ColorbarDecoration
-    color_bar: ComponentProps<typeof ColorBar>
-    // Replaces the solver's placement (users pin the bar with `left`/`right`/...)
-    wrapper_style?: string
+    // `wrapper_style` lands on this wrapper and replaces the solver's placement (users pin the
+    // bar with `left`/`right`/...); the pinned bar then fills the wrapper
+    color_bar: ColorBarDecorationProps
   } = $props()
+  // Decoration-only keys are consumed by create_colorbar_decoration, not forwarded to ColorBar
+  const {
+    tween: _tween,
+    responsive: _responsive,
+    axis_clearance: _axis_clearance,
+    wrapper_style,
+    ...bar_props
+  } = $derived(color_bar)
 </script>
 
 <div
@@ -32,7 +41,7 @@
   style={wrapper_style ||
     `left: ${decoration.tween.coords.current.x}px; top: ${decoration.tween.coords.current.y}px`}
 >
-  <ColorBar {...color_bar} />
+  <ColorBar {...bar_props} wrapper_style={wrapper_style ? `height: 100%; width: 100%;` : ``} />
 </div>
 
 <style>
