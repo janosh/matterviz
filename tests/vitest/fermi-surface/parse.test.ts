@@ -230,12 +230,18 @@ END_BLOCK_BANDGRID_3D
       )
     })
 
-    // FermiSurfer reads FRMSF with fscanf, so energies may share lines
+    // FermiSurfer reads FRMSF with fscanf, so energies may share lines, and the optional
+    // colour block after them is not read as energies
     test(`reads energies as a token stream`, () => {
       const [header, energies] = [sample_frmsf.split(`\n`).slice(0, 6), frmsf_energies]
-      const band_data = parse_grid(`${header.join(`\n`)}\n${energies}\n`, `test.frmsf`)
+      const colours = Array.from({ length: 27 }, () => `9.9`).join(` `)
+      const band_data = parse_grid(
+        `${header.join(`\n`)}\n${energies}\n${colours}\n`,
+        `test.frmsf`,
+      )
       expect(energy_at(band_data, 0, 0, 1)).toBe(0.2)
       expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
+      expect(energy_at(band_data, 2, 2, 2)).toBe(0.1)
     })
 
     test.each([

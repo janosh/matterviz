@@ -548,6 +548,10 @@ describe(`cartesian frame`, () => {
         { width: 800 },
       )
       expect(legend_outside(sparse)).toBe(false)
+      // an interior legend scrolls rather than outgrow the plot
+      expect(query(sparse, `.legend`).getAttribute(`style`)).toMatch(
+        /max-height: min\(var\(--plot-legend-max-height, 80%\), [\d.]+px\)/,
+      )
       const dense = await mount_chart(chart, {
         ...chart.dense_props(),
         show_legend: true,

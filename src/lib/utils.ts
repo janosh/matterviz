@@ -120,9 +120,11 @@ export const first_duplicate = <Item>(
 export const yield_turn = (): Promise<void> =>
   new Promise((resolve) => {
     const { port1, port2 } = new MessageChannel()
-    // closing one end closes the channel; addEventListener needs an explicit start()
-    port1.addEventListener(`message`, () => resolve(port1.close()))
-    port1.start()
+    port1.addEventListener(`message`, () => {
+      port1.close() // closing one end closes the channel
+      resolve()
+    })
+    port1.start() // addEventListener (unlike onmessage) does not start the port
     port2.postMessage(null)
   })
 

@@ -384,9 +384,10 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 // multiple of one vector from another while that shortens it. Every step is unimodular, so
 // the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
 // bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
-// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the radius-bounded
-// G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of memory by s = 30). Also used by
-// lattice_point_group_matrices, whose {-1,0,1} integer-matrix search assumes a reduced basis.
+// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the
+// radius-bounded G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of
+// memory by s = 30). Also used by lattice_point_group_matrices, whose {-1,0,1} integer-matrix
+// search assumes a reduced basis.
 export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
   const reduced = basis.map((row) => [...row]) as Matrix3x3
   for (let iter = 0; iter < 64; iter++) {

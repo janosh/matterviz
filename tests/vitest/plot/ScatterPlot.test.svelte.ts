@@ -351,19 +351,21 @@ describe(`ScatterPlot`, () => {
         .reduce((sum, n_moves) => sum + n_moves, 0) / 3
 
     test.each([
-      [`symmetric scalar`, { y_error: 1 }, 5],
-      [`per-point array`, { y_error: [1, 2, 3, 4, 5] }, 5],
-      [`asymmetric`, { y_error: { lower: 1, upper: 2 } }, 5],
-      [`both axes`, { x_error: 1, y_error: 1 }, 10],
-      [`no error declared`, {}, 0],
+      [`symmetric scalar`, [{ y_error: 1 }], 5, 1],
+      [`per-point array`, [{ y_error: [1, 2, 3, 4, 5] }], 5, 1],
+      [`asymmetric`, [{ y_error: { lower: 1, upper: 2 } }], 5, 1],
+      [`both axes`, [{ x_error: 1, y_error: 1 }], 10, 1],
+      [`two series`, [{ y_error: 1 }, { y_error: 2 }], 10, 2],
+      [`no error declared`, [{}], 0, 0],
       // A zero-width bar is not drawn at all, rather than a degenerate zero-length path
-      [`all-zero error`, { y_error: 0 }, 0],
-    ])(`%s renders %i bars`, async (_name, error_props, expected) => {
-      const plot = await mount_sized_scatter_plot({ series: [{ ...basic, ...error_props }] })
+      [`all-zero error`, [{ y_error: 0 }], 0, 0],
+    ])(`%s renders %i bars in %i path(s)`, async (_name, error_props, expected, n_paths) => {
+      const series = error_props.map((props) => ({ ...basic, ...props }))
+      const plot = await mount_sized_scatter_plot({ series })
       expect(n_bars(plot)).toBe(expected)
       // One path holds all of a series' bars: thousands of points must not remount thousands
       // of nodes and undo the canvas threshold
-      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(expected > 0 ? 1 : 0)
+      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(n_paths)
     })
 
     test(`bar spans the point's value +/- its error and the axis reaches it`, async () => {
@@ -1602,7 +1604,7 @@ describe(`ScatterPlot`, () => {
   // the tooltip shows the plotted point with the hovered key, so each case plots it
   // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof ScatterPlot>>, string[], string[]]>([
-    [`axis labels instead of bare x/y`, { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], x_axis: { label: `Time (s)` }, y_axis: { label: `Speed` }, tooltip_point: mid_point }, [`Time: 2 s`, `Speed`], []],
+    [`axis labels instead of bare x/y`, { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], x_axis: { label: `Time (s)` }, y_axis: { label: `Speed` }, tooltip_point: mid_point }, [`Time: 2 s`, `Speed`, `20`], []],
     [`series label with several series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`Alpha`], []],
     [`no series label for a single series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }], tooltip_point: mid_point }, [], [`Only`]],
     [`color value with color bar title`, { series: color_series, color_bar: { title: `Temperature` }, tooltip_point: { ...mid_point, color_value: 200 } }, [`Temperature`, `200`], []],

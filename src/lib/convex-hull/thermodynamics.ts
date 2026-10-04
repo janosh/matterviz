@@ -590,9 +590,10 @@ export const compute_lower_hull_nd = (points: number[][]): HullFacet[] =>
   compute_quickhull_nd(points).filter((facet) => (facet.normal.at(-1) ?? 0) < -HULL_EPS)
 
 // Energy above the lower hull per query point (last coordinate = energy), unclamped: the
-// highest plane among facets whose projection contains the query (a sliver facet's plane can
-// overshoot the covering one, so the global max may contain nothing). Trying planes from the
-// top usually ends at the first. Queries outside the composition domain get NaN.
+// highest plane among facets whose projection contains the query. Covering facets tie at the
+// max over all planes, so only those are checked first; a sliver facet's plane can overshoot
+// the covering one, and only then are planes tried from the top. Queries outside the
+// composition domain get NaN.
 export function compute_e_above_hull_nd(
   query_points: number[][],
   facets: HullFacet[],
@@ -622,12 +623,19 @@ export function compute_e_above_hull_nd(
   return query_points.map((query) => {
     if (!query.every(Number.isFinite)) return NaN
     const energies = facets.map((facet) => facet_energy(facet, query))
-    const order = energies
-      .map((_, idx) => idx)
-      .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
-    const covering = order.find(
-      (idx) => Number.isFinite(energies[idx]) && contains(facets[idx], query),
+    const covers = (idx: number) =>
+      Number.isFinite(energies[idx]) && contains(facets[idx], query)
+    const e_max = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
+    const near_max = energies.findIndex(
+      (energy, idx) => energy >= e_max - HULL_EPS && covers(idx),
     )
+    const covering =
+      near_max !== -1
+        ? near_max
+        : energies
+            .map((_, idx) => idx)
+            .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
+            .find(covers)
     return covering === undefined ? NaN : query[spatial_dim] - energies[covering]
   })
 }

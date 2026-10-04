@@ -603,13 +603,14 @@ export const k_path_labels = (
 // Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone: its
 // periodic image with the smallest norm. Wrapping by the nearest lattice vector of the reduced
 // basis first leaves that image within the ±1 shell, which a sheared basis does not guarantee.
+// Ties keep the point itself, so a high-symmetry point on a zone face stays on its own face.
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   const basis = reduce_basis(recip)
   const basis_t = transpose_3x3_matrix(basis) // cart = basis_t · frac (rows are lattice vectors)
   const frac = mat3x3_vec3_multiply(matrix_inverse_3x3(basis_t), cart)
-  let best = subtract(cart, mat3x3_vec3_multiply(basis_t, frac.map(Math.round) as Vec3))
-  let best_norm = best[0] ** 2 + best[1] ** 2 + best[2] ** 2
-  const start = best
+  const start = subtract(cart, mat3x3_vec3_multiply(basis_t, frac.map(Math.round) as Vec3))
+  let best = cart
+  let best_norm = cart[0] ** 2 + cart[1] ** 2 + cart[2] ** 2
   for (let count_1 = -1; count_1 <= 1; count_1++) {
     for (let count_2 = -1; count_2 <= 1; count_2++) {
       for (let count_3 = -1; count_3 <= 1; count_3++) {

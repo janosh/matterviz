@@ -17,6 +17,9 @@ test.describe(`RdfPlot Component Tests`, () => {
     await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
     await expect(plot.locator(`.axis-label.x-label`)).toBeVisible()
     await expect(plot.locator(`.axis-label.y-label`)).toBeVisible()
+    for (const axis of [`x`, `y`]) {
+      await expect(plot.locator(`g.${axis}-axis .tick text`).nth(1)).toBeVisible()
+    }
     // x spans 0 to the cutoff of 10
     const x_ticks = (await plot.locator(`g.x-axis .tick text`).allTextContents()).map(Number)
     expect(x_ticks.length).toBeGreaterThan(1)

@@ -603,10 +603,10 @@ const parse_cif_atom_data = (
   }
 }
 
-// The symop column tag (old `_symmetry_` and current `_space_group_` spellings, dotted CIF2
-// forms) plus the magnetic-CIF op and (anti-)translation centering loops
+// The symop column tag (old `_symmetry_` and current `_space_group_` spellings; parse_cif
+// rewrites dotted CIF2 names first) plus the magnetic-CIF op and (anti-)translation centering
 const CIF_SYMOP_TAG_RE =
-  /_symmetry_equiv[._]pos_as_xyz|_space_group_symop[._](?:(?:magn_)?operation|magn_centering)[._]xyz/i
+  /_symmetry_equiv_pos_as_xyz|_space_group_symop_(?:(?:magn_)?operation|magn_centering)_xyz/i
 
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
 // which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
@@ -668,14 +668,18 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
 }
 
 // Loop values are a token stream, not one row per line: a long row may wrap onto the next lines
-// and one line may hold several rows. A line with at least `n_columns` values is self-contained
-// (whole rows, or one over-long row) and flushes a pending short row as is, so an invalid row
-// never shifts the rows after it.
+// and one line may hold several rows. A line first finishes a pending wrapped row when the
+// rest of it is whole rows; otherwise a line with at least `n_columns` values is
+// self-contained (whole rows, or one over-long row) and flushes the pending short row as is,
+// so an invalid row never shifts the rows after it.
 const cif_loop_rows = (lines: readonly string[], n_columns: number): string[][] => {
   const rows: string[][] = []
   let pending: string[] = []
   for (const line of lines) {
     const tokens = split_cif_tokens(line)
+    const need = n_columns - pending.length
+    if (pending.length && tokens.length >= need && (tokens.length - need) % n_columns === 0)
+      rows.push([...pending.splice(0), ...tokens.splice(0, need)])
     if (tokens.length < n_columns) {
       pending.push(...tokens)
       if (pending.length >= n_columns) rows.push(pending.splice(0))

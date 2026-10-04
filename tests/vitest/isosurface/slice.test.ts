@@ -63,6 +63,13 @@ describe(`trilinear_interpolate`, () => {
     [`the non-periodic midpoint between ix=1 and ix=2`, x_ramp, [0.5, 0, 0], false, 1.5],
     // fx=1 must hit the last point (a floor-based fraction read grid[nx-2] = 2 there)
     [`the non-periodic upper x boundary`, x_ramp, [1, 0, 0], false, 3],
+    [
+      `the non-periodic last cell just below the boundary`,
+      x_ramp,
+      [0.875, 0, 0],
+      false,
+      2.625,
+    ],
     [`the non-periodic upper y boundary`, y_ramp, [0, 1, 0], false, 3],
     [`the non-periodic upper z boundary`, z_ramp, [0, 0, 1], false, 3],
     [`a non-periodic point below the grid`, constant, [-0.1, 0.5, 0.5], false, 0],

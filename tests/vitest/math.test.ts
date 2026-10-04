@@ -608,7 +608,10 @@ describe(`3x3 matrix and lattice utilities`, () => {
       const cell = [4.5, 5.2, 6.8, 85, 92, 105] as const
       const params = math.calc_lattice_params(math.cell_to_lattice_matrix(...cell))
       const { a, b, c, alpha, beta, gamma } = params
-      expect([a, b, c, alpha, beta, gamma]).toEqual(cell.map((val) => expect.closeTo(val, 6)))
+      // lengths round-trip to ~1e-15 Å; angles go through acos, which loses digits
+      expect([a, b, c, alpha, beta, gamma]).toEqual(
+        cell.map((val, idx) => expect.closeTo(val, idx < 3 ? 10 : 6)),
+      )
     })
   })
 

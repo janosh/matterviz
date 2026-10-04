@@ -130,6 +130,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(svg_surface).toBeVisible()
     const tooltip = diagram.locator(`.chempot-tooltip`)
     await assert_pin_toggle_and_escape(page, svg_surface, tooltip, diagram)
+    // the unpinned hover tooltip must not linger over the controls below
+    await page.mouse.move(0, 0)
+    await expect(tooltip).toBeHidden()
 
     const controls_toggle = diagram.locator(`button.plot-controls-toggle`).first()
     const icons = diagram.locator(`.header-controls > button > svg`)

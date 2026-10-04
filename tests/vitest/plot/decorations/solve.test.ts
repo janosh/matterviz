@@ -231,6 +231,30 @@ describe(`decoration solver`, () => {
     expect(placement.location).toBe(location)
   })
 
+  // Measured inside, a legend is capped at the plot height; as a bottom strip at half the
+  // frame. Both measurements of the same legend must give the same placement.
+  test.each([480, 300])(
+    `a too-wide legend measured %i px tall goes below a 600 px frame`,
+    (legend_height) => {
+      const legend = {
+        id: `legend`,
+        kind: `legend`,
+        footprint: { width: 300, height: legend_height },
+      } as const
+      const scene = { ...scene_for([legend], dense_obstacles), width: 360, height: 600 }
+      const {
+        placements: [placement],
+        pad,
+      } = solve_decorations(scene)
+      expect(placement).toMatchObject({
+        location: `outside`,
+        side: `bottom`,
+        y: 600 - 300 - 8,
+      })
+      expect(pad.b).toBe(base_pad.b + 300 + 8)
+    },
+  )
+
   test(`returns a stable auto-track suggestion for legends`, () => {
     const auto_tracks: LegendAutoTrackConfig = {
       item_count: 4,

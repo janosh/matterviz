@@ -63,8 +63,8 @@
   // The marginal datum under the pointer (set by the hit-rects, drives the tooltip below)
   let hovered = $state<MarginalHover | null>(null)
 
-  // Map a pointer event on a strip hit-rect to a MarginalHover via create_marginal_hit_test. The svg
-  // has no scaling viewBox, so wrapper px = svg user-space px = the coords PlotTooltip expects.
+  // Map a pointer event on a strip hit-rect to a MarginalHover via create_marginal_hit_test. The
+  // svg has no scaling viewBox, so wrapper px = svg user-space px = the coords PlotTooltip expects.
   const on_marginal_move = (
     event: PointerEvent,
     hit_test: (pixel_x: number, pixel_y: number) => MarginalHover | null,
@@ -204,7 +204,8 @@
             : { x: val_min, y: pos_min, width: val_len, height: pos_len }
         })
         // all four must be finite: a custom reduce/data bin with a non-finite edge/value would
-        // otherwise emit width/height="Infinity" (invalid SVG). mirrors create_marginal_hit_test's bar filter
+        // otherwise emit width/height="Infinity" (invalid SVG). mirrors create_marginal_hit_test's
+        // bar filter
         .filter((bar) => [bar.x, bar.y, bar.width, bar.height].every(isFinite))
       return base
     }

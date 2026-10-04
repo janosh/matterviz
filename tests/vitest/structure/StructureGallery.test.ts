@@ -76,13 +76,14 @@ const style_of = (selector: string): string => doc_query(selector).getAttribute(
 const scroll_track = (
   offset: number,
   axis: `scrollLeft` | `scrollTop` = `scrollTop`,
+  settle = true,
 ): void => {
   const track = doc_query(`.structure-gallery-track`)
   track[axis] = offset
   track.dispatchEvent(new Event(`scroll`))
   flushSync()
   // the browser fires scrollend once the scroll settles; until then cards stay label shells
-  setTimeout(() => track.dispatchEvent(new Event(`scrollend`)), 0)
+  if (settle) setTimeout(() => track.dispatchEvent(new Event(`scrollend`)), 0)
 }
 
 const card_labels = (): (string | null)[] =>
@@ -138,16 +139,21 @@ describe(`StructureGallery`, () => {
 
     // scrolling one card on stays entirely within the overscan: same cards, all
     // still live, so nothing mounts mid-scroll
-    scroll_track(202, `scrollLeft`)
+    scroll_track(202, `scrollLeft`, false)
     expect(card_labels()).toEqual(many_labels(0, 12))
     expect(live_cards()).toBe(12)
 
     // past the overscan the window slides; the card entering it renders as a
     // label shell until the scroll settles, keeping GPU setup out of the fling
-    scroll_track(1800, `scrollLeft`) // first visible card is 8
+    scroll_track(1800, `scrollLeft`, false) // first visible card is 8
     expect(card_labels()).toEqual(many_labels(5, 17))
     expect(live_cards()).toBe(7)
-    await vi.waitFor(() => expect(live_cards()).toBe(12))
+    // a slow scroll outlasts any fixed settle delay: only scrollend mounts the shells
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(live_cards()).toBe(7)
+    doc_query(`.structure-gallery-track`).dispatchEvent(new Event(`scrollend`))
+    flushSync()
+    expect(live_cards()).toBe(12)
   })
 
   test.each([

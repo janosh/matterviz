@@ -184,9 +184,9 @@ function parse_frmsf(content: string): BandGridData {
   }
 
   // Band energies in z-fastest order, read as whitespace-separated tokens like FermiSurfer's
-  // fscanf (any number per line; the optional colour block follows), kept as written: the format's energy unit is arbitrary
-  // with the Fermi level at 0 (producers write Ry, Ha or eV), so any fixed factor would rescale
-  // most files wrongly. FRMSF has a single spin channel.
+  // fscanf (any number per line; the optional colour block follows), kept as written: the
+  // format's energy unit is arbitrary with the Fermi level at 0 (producers write Ry, Ha or
+  // eV), so any fixed factor would rescale most files wrongly. FRMSF has a single spin channel.
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),

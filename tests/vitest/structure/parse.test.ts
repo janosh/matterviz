@@ -1042,6 +1042,16 @@ O2   O   0.410  0.140  0.880  1.000`
       [`Fe1`, `O1`],
     ],
     [`short row before a full row`, `Fe1 Fe 0.1\nO1 O 0.5 0.5 0.5`, [`O1`]],
+    [
+      `continuation line carrying the next row`,
+      `Fe1 Fe\n0.1 0.2 0.3 O1 O 0.5 0.5 0.5`,
+      [`Fe1`, `O1`],
+    ],
+    [
+      `over-long row before a full row`,
+      `Fe1 Fe 0.1 0.2 0.3 junk\nO1 O 0.5 0.5 0.5`,
+      [`Fe1`, `O1`],
+    ],
   ])(`reads atom-site loop rows as a token stream: %s`, (_desc, rows, labels) => {
     const result = parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)
     expect(result.sites.map((site) => site.label)).toEqual(labels)
@@ -1071,7 +1081,7 @@ O2   O   0.410  0.140  0.880  1.000`
   test.each([
     [`CIF`, multi_block_cif(`data`, `loop_`), `multi-block.cif`, [[0.5, 0.5, 0.5]]],
     [`CIF with uppercase reserved words`, multi_block_cif(`DATA`, `LOOP_`), `multi-block-upper.cif`, [[0.5, 0.5, 0.5]]],
-    [`mmCIF`, `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `fract`, [`Si 0.0 0.0 0.0`, `Si 0.5 0.5 0.5`])}`, `multi-block.mmcif`, [[0, 0, 0], [0.5, 0.5, 0.5]]],
+    [`mmCIF`, `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `Cartn`, [`Si 0 0 0`, `Si 2.5 2.5 2.5`])}`, `multi-block.mmcif`, [[0, 0, 0], [0.5, 0.5, 0.5]]],
   ])(
     `%s reads cell and symops from the atom loop's own data_ block`,
     (format, content, filename, expected_abc) => {
@@ -2736,7 +2746,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     ])
   })
 
-  test(`mmCIF fractional coordinates wrap into the unit cell`, () => {
+  // A .mmcif name with fractional-only sites is small-molecule CIF2, wrapped like any CIF
+  test(`dotted fractional sites in an .mmcif file wrap into the unit cell`, () => {
     const content = mmcif_cell(4.0, `fract`, [`Na 1.25 0.0 0.0`, `Cl 0.5 0.5 0.5`])
     const result = parse_structure_file(content, `test.mmcif`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Na`, `Cl`])
@@ -3023,6 +3034,7 @@ describe(`malformed molecular / LAMMPS input records a failure reason`, () => {
     [`MOL whose counts line omits the bond count`, `nobonds.mol`, `x\n\n\n  2\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\nM  END\n`, /Invalid atom\/bond counts in MOL counts line/],
     [`MOL2 without an ATOM section`, `empty.mol2`, `@<TRIPOS>MOLECULE\nx\n 0 0 0 0 0\nSMALL\nNO_CHARGES\n`, /no @<TRIPOS>ATOM section/],
     [`dotted CIF without coordinate columns`, `no-coords.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.label_atom_id\nC C1\n`, /No valid atom site loop/],
+    [`mmCIF with only some Cartesian columns`, `partial.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\nC 1.0\n`, /missing Cartn_x\/y\/z coordinates/],
     [`LAMMPS data without an Atoms section`, `empty.lmp`, `# header only\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n`, /no Atoms section/],
     [`LAMMPS data whose atom count disagrees with its Atoms section`, `count.lmp`, `# mismatch\n\n3 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /declares 3 atoms but its Atoms section has 1 rows/],
     [`LAMMPS data without box bounds`, `nobox.lmp`, `# no box\n\n1 atoms\n1 atom types\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /box bounds/],

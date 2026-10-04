@@ -105,9 +105,9 @@ export const doc_query = <T extends Element = HTMLElement>(
 ): T => query(document, selector, element_constructor)
 
 // Close a native popover as the browser's light dismiss or Escape would: happy-dom has no
-// popover API, so fire the `toggle` event the browser sends
-export const dismiss_popover = (node: Element | null): void => {
-  node?.dispatchEvent(Object.assign(new Event(`toggle`), { newState: `closed` }))
+// popover API, so fire the `beforetoggle` event the browser sends
+export const dismiss_popover = (node: Element): void => {
+  node.dispatchEvent(Object.assign(new Event(`beforetoggle`), { newState: `closed` }))
 }
 
 // Set an input's value and fire the bubbling `input` event bind:value listens to

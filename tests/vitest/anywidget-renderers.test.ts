@@ -87,6 +87,9 @@ const controls_traits = {
   controls_toggle_props: { title: `Plot options` },
   controls_pane_props: { style: `width: 20rem` },
 }
+// The props named in `expected`, for exact (not toMatchObject's partial, nested) comparison
+const pick = (props: Record<string, unknown>, expected: object) =>
+  Object.fromEntries(Object.keys(expected).map((key) => [key, props[key]]))
 
 // Generic engine coverage across every registered widget: uses each spec's own
 // compute as the oracle, so it verifies drive seeding + rename + derived recompute
@@ -342,7 +345,10 @@ describe(`widget config wiring`, () => {
     })
     const props = run_widget(widget_type, model).read()
     expect(props[`${axis}_axis`]).toEqual({ label: `Count`, range: [1, 5] })
-    expect(props).toMatchObject({ ...controls_traits, ...extra })
+    expect(pick(props, { ...controls_traits, ...extra })).toEqual({
+      ...controls_traits,
+      ...extra,
+    })
     expect(`${axis}_range` in props).toBe(false)
     expect(`controls` in props).toBe(false)
   })
@@ -356,7 +362,7 @@ describe(`widget config wiring`, () => {
         widget_type,
         new MockModel({ widget_type, ...controls_traits }),
       ).read()
-      expect(props).toMatchObject(controls_traits)
+      expect(pick(props, controls_traits)).toEqual(controls_traits)
       expect(`controls` in props).toBe(false)
     },
   )

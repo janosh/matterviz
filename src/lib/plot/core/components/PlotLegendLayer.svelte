@@ -4,6 +4,7 @@
   import {
     decoration_data_attrs,
     has_explicit_position,
+    LEGEND_STRIP_MAX_FRACTION,
     resolve_legend_layout_tracks,
   } from '#lib/plot/core/decorations/index.js'
   import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
@@ -54,7 +55,7 @@
   // may not outgrow the plot area either: it scrolls instead of spilling over the axes
   const strip_style = $derived(
     is_strip
-      ? `max-height: min(var(--plot-legend-max-height, 80%), 50%); `
+      ? `max-height: min(var(--plot-legend-max-height, 80%), ${LEGEND_STRIP_MAX_FRACTION * 100}%); `
       : outside_side
         ? ``
         : `max-height: min(var(--plot-legend-max-height, 80%), ${frame.chart_height}px); `,

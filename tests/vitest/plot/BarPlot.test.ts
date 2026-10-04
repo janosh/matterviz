@@ -4,6 +4,8 @@ import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { point_in_rect, rects_overlap } from '#lib/plot/core/layout.js'
+import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
+import { measure_text_width } from '#lib/plot/core/tick-layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   clip_rect,
@@ -205,10 +207,17 @@ describe(`BarPlot`, () => {
       const plot = await mount_sized_bar_plot({
         series: [{ x: [1, 2, 3, 4, 5, 6, 7, 8], y: [9, 1, 1, 1, 1, 1, 1, 1], labels: [text] }],
       })
-      return Number(plot.querySelector(`.bar-label`)?.getAttribute(`x`))
+      const clip_x = Number(plot.querySelector(`clipPath rect`)?.getAttribute(`x`))
+      return [Number(plot.querySelector(`.bar-label`)?.getAttribute(`x`)), clip_x]
     }
+    const long_label = `a long peak label at 20.07°`
+    const [long_x, clip_x] = await label_x(long_label)
+    // the centred label's left edge stays right of the plot's left edge (the y tick labels)
+    const half_width =
+      measure_text_width(long_label, { ...DEFAULT_FONT_SPEC, font_size: 11 }) / 2
+    expect(long_x - half_width).toBeGreaterThanOrEqual(clip_x - 1e-9)
     // a one-character label still sits centred on its bar
-    expect(await label_x(`a long peak label at 20.07°`)).toBeGreaterThan(await label_x(`a`))
+    expect(long_x).toBeGreaterThan((await label_x(`a`))[0])
   })
 
   test(`rotates vertical bar labels outward`, async () => {

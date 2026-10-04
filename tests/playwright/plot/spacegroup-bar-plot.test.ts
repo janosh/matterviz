@@ -3,8 +3,11 @@ import { bounding_boxes, expect_bottom_within, get_chart_svg } from '../helpers'
 
 const bars_of = (plot: Locator) => plot.locator(`svg path[role="button"]`)
 
-// Hover bars in turn until one raises the tooltip; resolves to its text
-const hover_until_tooltip = async (plot: Locator, start_idx = 0): Promise<string> => {
+// Hover bars in turn until one raises the tooltip; resolves to its text and the bar's index
+const hover_until_tooltip = async (
+  plot: Locator,
+  start_idx = 0,
+): Promise<{ text: string; idx: number }> => {
   const bars = bars_of(plot)
   const tooltip = plot.locator(`.plot-tooltip`)
   const bar_count = await bars.count()
@@ -14,7 +17,7 @@ const hover_until_tooltip = async (plot: Locator, start_idx = 0): Promise<string
       .waitFor({ state: `visible`, timeout: 500 })
       .then(() => true)
       .catch(() => false)
-    if (shown) return (await tooltip.textContent()) ?? ``
+    if (shown) return { text: (await tooltip.textContent()) ?? ``, idx }
   }
   throw new Error(`no tooltip after hovering bars ${start_idx}-${start_idx + 9}`)
 }
@@ -88,12 +91,14 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
   }) => {
     const plot = page.locator(`.bar-plot`).first()
     await expect(bars_of(plot).first()).toBeVisible()
-    const first_text = await hover_until_tooltip(plot)
+    const { text: first_text, idx } = await hover_until_tooltip(plot)
     expect(first_text).toMatch(/Space Group:.*\d+/i)
     expect(first_text).toMatch(/Crystal System:/i)
     expect(first_text).toMatch(/Count:/i)
 
-    await bars_of(plot).nth(2).hover({ force: true })
+    await bars_of(plot)
+      .nth(idx + 2)
+      .hover({ force: true })
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).not.toHaveText(first_text)
     await expect(tooltip).toContainText(/Space Group:/i)
@@ -102,7 +107,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     const symbol_plot = page.locator(`.bar-plot`).nth(1)
     await expect(bars_of(symbol_plot).first()).toBeVisible()
     expect(await bars_of(symbol_plot).count()).toBeGreaterThan(5)
-    expect(await hover_until_tooltip(symbol_plot)).toMatch(/Space Group:.*\(/i)
+    expect((await hover_until_tooltip(symbol_plot)).text).toMatch(/Space Group:.*\(/i)
   })
 
   test(`orientation switch flips bar orientation`, async ({ page }) => {

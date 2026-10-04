@@ -9,7 +9,13 @@ import VacfPlot from '#lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
+import {
+  bind_props,
+  expect_module_worker,
+  install_stub_worker,
+  set_input,
+  settle,
+} from '../setup'
 import { build_vacf_input, circular_motion, orbit_run } from './helpers'
 
 // Mirrors vacf-worker.ts: a thrown kernel error becomes an error reply instead of escaping
@@ -231,8 +237,7 @@ describe(`TrajectoryVacfPane`, () => {
       `.trajectory-vacf-controls input[min='1'][step='1']`,
     )
     if (!stride_input) throw new Error(`no frame-stride input in the VACF pane`)
-    stride_input.value = `3`
-    stride_input.dispatchEvent(new Event(`input`))
+    set_input(stride_input, `3`)
     await settle()
     expect(compute).toHaveBeenCalledTimes(1)
   })

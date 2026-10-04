@@ -115,6 +115,7 @@ describe(`ConvexHullStats`, () => {
     for (const snippet of [
       `Total entries in Li-Fe-P-O 150`,
       `Stable phases 25 (16.7%)`,
+      `Binary phases 20 (13.3%)`,
       `Min / avg / max (eV/atom) −2.567 / −1.234 / 0.123`,
       `Max / avg (eV/atom) 0.456 / 0.089`,
     ]) {

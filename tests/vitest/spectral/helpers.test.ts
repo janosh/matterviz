@@ -383,6 +383,21 @@ describe(`extract_k_path_points`, () => {
     }
   })
 
+  // Zone-face points tie with their opposite-face image; folding must not flip them
+  // oxfmt-ignore
+  it.each([
+    [`cubic X`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.5, 0, 0]],
+    [`cubic M`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.5, 0.5, 0]],
+    [`cubic R`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.5, 0.5, 0.5]],
+    [`FCC X`, fcc_recip, [0.5, 0, 0.5]],
+    [`FCC L`, fcc_recip, [0.5, 0.5, 0.5]],
+    [`FCC K`, fcc_recip, [0.375, 0.375, 0.75]],
+    [`FCC W`, fcc_recip, [0.5, 0.25, 0.75]],
+    [`FCC U`, fcc_recip, [0.625, 0.25, 0.625]],
+  ] as [string, Matrix3x3, Vec3][])(`leaves the zone-boundary point %s in place`, (_name, recip, frac) => {
+    expect(frac_k_to_cartesian(frac, recip)).toEqual(frac_k_to_cartesian(frac, recip, false))
+  })
+
   it(`k_path_labels pairs labeled q-points with their Cartesian positions`, () => {
     const band_structure = make_bs([`GAMMA`, null, `X`])
     const points: Vec3[] = [

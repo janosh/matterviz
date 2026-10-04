@@ -149,12 +149,16 @@ describe(`find_lowest_energy_unary_refs`, () => {
 
   // an excluded entry is still drawn, but shifting the formation-energy zero by it moved
   // every plotted E_form (FeO -0.8 instead of -0.9 eV/atom)
-  test(`an exclude_from_hull unary never becomes the reference`, () => {
+  // ...unless it is all an element has: then the lowest excluded one is the fallback
+  test(`an exclude_from_hull unary is the reference only when no other exists`, () => {
     const entries = [
       make_phase({ Fe: 1 }, -8.5, { exclude_from_hull: true }),
       make_phase({ Fe: 1 }, -8.3),
+      make_phase({ O: 1 }, -4.9, { exclude_from_hull: true }),
+      make_phase({ O: 1 }, -5.1, { exclude_from_hull: true }),
     ]
-    expect(find_lowest_energy_unary_refs(entries).Fe.energy_per_atom).toBe(-8.3)
+    const refs = find_lowest_energy_unary_refs(entries)
+    expect([refs.Fe.energy_per_atom, refs.O.energy_per_atom]).toEqual([-8.3, -5.1])
   })
 
   test.each([false, true])(

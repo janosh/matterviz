@@ -122,8 +122,7 @@ describe(`timestep seeding`, () => {
     expect(pane_text()).toContain(`2 fs per collected frame`)
 
     // clearing the number input writes null, which is "no timestep", not 0
-    delta_time.value = ``
-    delta_time.dispatchEvent(new Event(`input`))
+    set_input(delta_time, ``)
     await settle()
     expect(pane_text()).toContain(`no valid timestep is available`)
   })
@@ -409,8 +408,7 @@ test(`selected-frame checks cancel stale reads, explain failures, and stop on un
   const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
   const compute = doc_query(`.stub-controls button`, HTMLButtonElement)
   for (const value of [`1`, `2`]) {
-    start.value = value
-    start.dispatchEvent(new Event(`input`))
+    set_input(start, value)
     await settle()
     expect(compute.disabled).toBe(true)
     expect(compute.title).toContain(`Checking selected frame`)

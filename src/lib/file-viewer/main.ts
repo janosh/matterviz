@@ -337,7 +337,8 @@ const create_error_display = (
   error: Error,
   filename: string,
 ): void => {
-  // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply --page-bg/--text-color and leave --vscode-* unset.
+  // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
+  // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
     <div style="padding: 20px; text-align: center;
                 background: var(--vscode-editor-background, var(--page-bg, Canvas));

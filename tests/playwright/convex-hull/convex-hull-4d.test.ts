@@ -226,6 +226,7 @@ test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
     const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
+    await expect(diagram).toBeVisible({ timeout: 15000 })
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = hull_canvas(diagram)
     await expect(canvas).toBeVisible({ timeout: 10000 })

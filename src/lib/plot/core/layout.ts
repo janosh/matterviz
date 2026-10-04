@@ -458,13 +458,11 @@ export const calc_auto_padding = ({
   // corner controls (gear, fullscreen), so a y2 axis keeps the top band clear of that row
   const y2_outside_ticks = Boolean(y2_axis.tick_values?.length) && !y2_axis.tick_label?.inside
   const controls_floor = y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
-  const top_pad = (available_width: number): number =>
-    Math.max(controls_floor, content_top_pad(available_width))
-  const content_top_pad = (available_width: number): number => {
+  const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
     const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
-    if (ticks.length === 0 && !has_title) return default_padding.t
+    if (ticks.length === 0 && !has_title) return Math.max(controls_floor, default_padding.t)
     const inside = x2_axis.tick_label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick_label?.shift?.y ?? 0
@@ -481,7 +479,7 @@ export const calc_auto_padding = ({
         title_layout.height -
         title_layout.line_height / 2
       : 0
-    return Math.max(default_padding.t, Math.max(tick_reach, title_reach))
+    return Math.max(controls_floor, default_padding.t, tick_reach, title_reach)
   }
 
   // Bottom depends on the angle the x labels will render at, since a rotated label projects

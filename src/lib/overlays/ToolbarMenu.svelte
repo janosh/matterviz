@@ -8,7 +8,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover } from './anchored-popover'
+  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
 
   let {
     open = $bindable(false),
