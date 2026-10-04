@@ -6,6 +6,7 @@
   import { format_num } from '#lib/labels.js'
   import type { ColumnFilter, Column, RowData } from '#lib/table/index.js'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
+  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
   import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Filter } from 'svelte-widgets/icons'
@@ -37,6 +38,7 @@
   let panel = $derived(open ? column_filter_panel(col, rows, row_key, is_numeric) : null)
   // Every event stops here so the sortable, draggable header underneath doesn't react
   const stop_event = (event: Event) => event.stopPropagation()
+  let trigger = $state<HTMLButtonElement>()
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -48,6 +50,7 @@
   onpointerdown={stop_event}
 >
   <button
+    bind:this={trigger}
     type="button"
     class={['column-filter-trigger', { active: Boolean(filter) }]}
     aria-label="Filter {html_to_text(col.label)}"
@@ -57,12 +60,9 @@
     <Icon icon={Filter} />
   </button>
   {#if panel}
-    <!-- svelte-ignore a11y_no_static_element_interactions (Escape closes the panel) -->
     <div
       class="column-filter-panel"
-      onkeydown={(event) => {
-        if (event.key === `Escape`) on_toggle()
-      }}
+      {@attach anchored_popover({ anchor: trigger, on_close: on_toggle })}
     >
       {#if panel.kind === `numeric`}
         {@const range = filter?.kind === `numeric` ? filter : undefined}

@@ -1,53 +1,66 @@
 import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
 import { createRawSnippet, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { dismiss_popover, doc_query } from '../setup'
 
-test(`outside presses close only open menus and leave option actions intact`, async () => {
-  const state = $state({ open: false })
-  const set_open = vi.fn((value: boolean) => (state.open = value))
-  const choose_option = vi.fn()
-  const component = mount(ToolbarMenu, {
-    target: document.body,
-    props: {
-      label: `Display mode`,
-      get open() {
-        return state.open
-      },
-      set open(value: boolean) {
-        set_open(value)
-      },
-      button: createRawSnippet(() => ({ render: () => `<span>Display</span>` })),
-      children: createRawSnippet(() => ({
-        render: () => `<button type="button" class="view-mode-option">Scatter</button>`,
-        setup: (element) => {
-          element.addEventListener(`click`, choose_option)
-          return () => element.removeEventListener(`click`, choose_option)
+test.each([`light dismiss`, `Escape`])(
+  `opens a native popover menu that %s closes`,
+  async (closer) => {
+    const state = $state({ open: false })
+    const set_open = vi.fn((value: boolean) => (state.open = value))
+    const choose_option = vi.fn()
+    const component = mount(ToolbarMenu, {
+      target: document.body,
+      props: {
+        label: `Display mode`,
+        get open() {
+          return state.open
         },
-      })),
-    },
-  })
-  onTestFinished(() => unmount(component))
-  await tick()
-  const press = async (element: Element) => {
-    element.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+        set open(value: boolean) {
+          set_open(value)
+        },
+        button: createRawSnippet(() => ({ render: () => `<span>Display</span>` })),
+        children: createRawSnippet(() => ({
+          render: () => `<button type="button" class="view-mode-option">Scatter</button>`,
+          setup: (element) => {
+            element.addEventListener(`click`, choose_option)
+            return () => element.removeEventListener(`click`, choose_option)
+          },
+        })),
+      },
+    })
+    onTestFinished(() => unmount(component))
     await tick()
-  }
+    doc_query<HTMLButtonElement>(`button[aria-label="Display mode"]`).click()
+    await tick()
+    const menu = doc_query(`.view-mode-dropdown`)
+    expect(menu.getAttribute(`popover`)).toBe(`auto`)
+    doc_query<HTMLButtonElement>(`.view-mode-option`).click()
+    expect(choose_option).toHaveBeenCalledOnce()
+    expect(set_open.mock.calls).toEqual([[true]])
 
-  await press(document.body)
-  expect(set_open).not.toHaveBeenCalled()
-  doc_query<HTMLButtonElement>(`button[aria-label="Display mode"]`).click()
-  await tick()
-  const option = doc_query<HTMLButtonElement>(`.view-mode-option`)
-  await press(option)
-  option.click()
-  expect(choose_option).toHaveBeenCalledOnce()
-  expect(state.open).toBe(true)
-  expect(set_open.mock.calls).toEqual([[true]])
-
-  await press(document.body)
-  expect(state.open).toBe(false)
-  expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
-  await press(document.body)
-  expect(set_open.mock.calls).toEqual([[true], [false]])
-})
+    if (closer === `Escape`) {
+      // happy-dom lacks the popover API: report the menu open and close it as the browser would
+      const matches = menu.matches.bind(menu)
+      vi.spyOn(menu, `matches`).mockImplementation(
+        (selector) => selector === `:popover-open` || matches(selector),
+      )
+      const hide = vi
+        .spyOn(menu, `hidePopover`)
+        .mockImplementation(() => dismiss_popover(menu))
+      // a host viewer's own Escape handling must not see it (or cancel the close)
+      const host_keydown = vi.fn()
+      document.body.addEventListener(`keydown`, host_keydown)
+      onTestFinished(() => document.body.removeEventListener(`keydown`, host_keydown))
+      const option = doc_query<HTMLButtonElement>(`.view-mode-option`)
+      option.focus()
+      option.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+      expect(host_keydown).not.toHaveBeenCalled()
+      expect(hide).toHaveBeenCalled()
+      expect(document.activeElement?.getAttribute(`aria-label`)).toBe(`Display mode`)
+    } else dismiss_popover(menu)
+    await tick()
+    expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
+    expect(set_open.mock.calls).toEqual([[true], [false]])
+  },
+)

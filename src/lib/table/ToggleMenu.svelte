@@ -86,7 +86,6 @@
 
   let has_any_changes = $derived(columns.some(is_changed))
 
-  // Reset columns to default visibility
   function reset_columns(items: MenuColumn[]): void {
     const changed = items.filter(is_changed)
     // Read the baseline once: each write below dirties the derived, and re-reading it

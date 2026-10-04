@@ -1036,8 +1036,6 @@
   }
   function handle_window_pointerdown(event: PointerEvent) {
     const target = event.target instanceof Element ? event.target : null
-    // header popovers close on any pointerdown outside them
-    if (!target?.closest(`.header-popover`)) header_popover = null
     if (
       open_dropdown === `export` &&
       !container_el?.querySelector(`.dropdown-wrapper`)?.contains(target)
@@ -2052,10 +2050,8 @@
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }
   :global(.header-popover > :is(div, select)) {
-    position: absolute;
-    top: calc(100% + 2px);
-    right: 0;
-    z-index: 40;
+    inset: auto; /* reset the UA [popover] box; anchored_popover floats it */
+    margin: 0;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));

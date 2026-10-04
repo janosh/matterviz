@@ -1,12 +1,7 @@
-<script module lang="ts">
-  // Track active dropdown across all instances - only one can be open at a time
-  let active_close_fn: (() => void) | null = null
-</script>
-
 <script lang="ts">
+  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import { click_outside, float, portal } from 'svelte-widgets/attachments'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   type Option = { key: string; label: string; unit?: string }
@@ -35,26 +30,14 @@
 
   const selected_option = $derived(options.find((opt) => opt.key === selected_key))
 
-  function open_dropdown() {
-    if (!trigger_el || !options.length) return
-    if (active_close_fn && active_close_fn !== close_dropdown) active_close_fn()
-    dropdown_open = true
-    active_close_fn = close_dropdown
-  }
-
-  function close_dropdown(return_focus = true) {
-    if (active_close_fn === close_dropdown) active_close_fn = null
-    dropdown_open = false
-    if (return_focus) trigger_el?.focus()
-  }
-
   function select(key: string) {
-    close_dropdown()
+    dropdown_open = false
+    trigger_el?.focus()
     if (key !== selected_key) on_select?.(key)
   }
 
-  // Handle both the trigger and portalled list before a host widget stops key propagation.
-  // Escape is handled by click_outside({ escape: true }) below — not duplicated here.
+  // Handle both the trigger and the list before a host widget stops key propagation. The
+  // popover closes on Escape and outside presses (anchored_popover).
   function handle_keydown(evt: KeyboardEvent) {
     // Cmd/Ctrl+Arrow scrolls the page; the list only answers bare keys
     if (!dropdown_el || is_modifier_chord(evt)) return
@@ -74,10 +57,8 @@
     }
   }
 
-  // Close dropdown when disabled, options empty, or component unmounts
   $effect(() => {
-    if ((disabled || !options.length) && dropdown_open) close_dropdown(false)
-    return () => close_dropdown(false)
+    if (disabled || !options.length) dropdown_open = false
   })
 </script>
 
@@ -85,7 +66,7 @@
   <button
     bind:this={trigger_el}
     type="button"
-    onclick={() => (dropdown_open ? close_dropdown() : open_dropdown())}
+    onclick={() => (dropdown_open = !dropdown_open)}
     {disabled}
     aria-expanded={dropdown_open}
     aria-haspopup="listbox"
@@ -102,29 +83,16 @@
 {/if}
 
 {#if dropdown_open}
-  <!-- portalled out of the plot to escape its overflow clipping, then parked under the
-  trigger by `float`. Scoped CSS survives the move, so no inline styles are needed. Inside
-  an open <dialog> the list stays in the dialog: under showModal() everything outside is
-  inert and painted below the top layer, so a <body> portal would be unclickable. -->
   <div
     bind:this={dropdown_el}
     class="portal-select-dropdown"
     role="listbox"
     tabindex="-1"
     onkeydown={handle_keydown}
-    {@attach portal(trigger_el?.closest(`dialog[open]`) ?? document.body)}
-    {@attach float({
+    {@attach anchored_popover({
       anchor: trigger_el,
-      placement: `bottom`,
       align: `center`,
-      offset: 4,
-      padding: 4,
-      flip: [`bottom`, `top`],
-    })}
-    {@attach click_outside({
-      inside: [trigger_el],
-      escape: true,
-      callback: (_node, _config, { via }) => close_dropdown(via === `escape`),
+      on_close: () => (dropdown_open = false),
     })}
   >
     <ul>
@@ -178,7 +146,12 @@
     opacity: 0.8;
   }
   .portal-select-dropdown {
-    z-index: 10000;
+    /* reset the UA [popover] box: the list carries the chrome */
+    inset: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
     ul {
       margin: 0;
       padding: 0;

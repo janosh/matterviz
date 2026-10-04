@@ -104,6 +104,21 @@ export const doc_query = <T extends Element = HTMLElement>(
   element_constructor?: Element_constructor<T>,
 ): T => query(document, selector, element_constructor)
 
+// Close a native popover as the browser's light dismiss or Escape would: happy-dom has no
+// popover API, so fire the `toggle` event the browser sends
+export const dismiss_popover = (node: Element | null): void => {
+  node?.dispatchEvent(Object.assign(new Event(`toggle`), { newState: `closed` }))
+}
+
+// Set an input's value and fire the bubbling `input` event bind:value listens to
+export const set_input = (
+  input: HTMLInputElement | HTMLTextAreaElement,
+  value: string | number,
+): void => {
+  input.value = String(value)
+  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+}
+
 export const set_select = (select: HTMLSelectElement, value: string): void => {
   // Svelte's select bind reads `option:checked`; happy-dom does not match that selector.
   type QueryableSelect = {
