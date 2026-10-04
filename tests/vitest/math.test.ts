@@ -460,6 +460,41 @@ describe(`pbc_dist`, () => {
     }
   })
 
+  // A strongly sheared cell's own basis needed >100k candidate shifts and threw, breaking
+  // RDF/MSD on such supercells; the search now runs in the reduced basis of the same lattice
+  test(`finds the minimum image of a strongly sheared, fully periodic cell`, () => {
+    // oxfmt-ignore
+    const lattice: math.Matrix3x3 = [[1.26, 0, 0], [-6.56, 0.32, 0], [3.37, 0.07, 0.58]]
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
+    const from: Vec3 = [0, 0, 0]
+    // oxfmt-ignore
+    const targets: Vec3[] = [[-0.41, -3.66, -2.63], [-2.26, -2.66, -4.94], [2.53, -3.82, 1.43]]
+    for (const target of targets) {
+      // each threw on the cell's own basis
+      const wrapped = math
+        .subtract(cart_to_frac(target), cart_to_frac(from))
+        .map((val) => val - Math.round(val)) as Vec3
+      let brute = Infinity
+      for (let shift_a = -30; shift_a <= 30; shift_a++) {
+        for (let shift_b = -30; shift_b <= 30; shift_b++) {
+          for (let shift_c = -30; shift_c <= 30; shift_c++) {
+            const image = frac_to_cart(math.add(wrapped, [shift_a, shift_b, shift_c]))
+            brute = Math.min(brute, Math.hypot(...image))
+          }
+        }
+      }
+      const displacement = math.min_image_displacement(from, target, lattice)
+      expect(Math.hypot(...displacement)).toBeCloseTo(brute, 10)
+      // a lattice image of the plain difference, not just any short vector
+      const shift = math.subtract(
+        cart_to_frac(displacement),
+        cart_to_frac(math.subtract(target, from)),
+      )
+      for (const component of shift) expect(component).toBeCloseTo(Math.round(component), 8)
+    }
+  })
+
   test(`no periodic axis returns the plain difference without touching the lattice`, () => {
     // oxfmt-ignore
     const singular: math.Matrix3x3 = [[1, 0, 0], [1, 0, 0], [0, 0, 1]]

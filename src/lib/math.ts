@@ -186,7 +186,8 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
 // Exact minimum-image displacement `to - from` for row-vector lattices. Rounded
 // fractional wrapping is only approximate for skewed cells, so it is the starting guess
 // and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
-// radius are then searched. Runs per atom pair in RDF/MSD/bonding loops, so it works in
+// radius are then searched (in the reduced basis when fully periodic, which keeps that
+// search a handful of candidates however sheared the cell is). Runs per atom pair in RDF/MSD/bonding loops, so it works in
 // scalars and allocates only the returned Vec3.
 export const min_image_displacement = (
   from: Vec3,
@@ -217,8 +218,10 @@ export function min_image_displacement_into(
     return out
   }
 
+  const all_converters = converters ?? create_lattice_converters(lattice_matrix)
+  // Basis reduction mixes axes, so a partly periodic cell keeps its own basis
   const { lattice, reciprocal, reciprocal_axis_norms } =
-    converters ?? create_lattice_converters(lattice_matrix)
+    pbc[0] && pbc[1] && pbc[2] ? all_converters.reduced : all_converters
   // An exactly diagonal cell has independent axes: rounding each periodic fractional
   // component already minimizes the Cartesian distance, including negative cell vectors.
   // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
@@ -579,21 +582,29 @@ export const create_cart_to_frac = (lattice: Matrix3x3) => {
 // The raw matrices are exposed for allocation-free scalar arithmetic in hot loops
 // (min_image_displacement); reciprocal_axis_norms[i] = |b_i| bounds how far a Cartesian
 // radius can reach along fractional axis i.
-export type LatticeConverters = {
-  lattice: Matrix3x3
-  reciprocal: Matrix3x3
-  reciprocal_axis_norms: Vec3
+// A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
+type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
+
+export type LatticeConverters = LatticeBasis & {
+  // The same lattice in a reduced basis: the minimum-image search of a fully periodic cell
+  // runs there, since a sheared basis's candidate box grows with the shear (and throws)
+  reduced: LatticeBasis
   cart_to_frac: (cart: Vec3) => Vec3
   frac_to_cart: (frac: Vec3) => Vec3
 }
 
-export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
+const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
   const reciprocal = reciprocal_lattice(lattice)
+  const reciprocal_axis_norms = reciprocal.map((row) => Math.hypot(...row)) as Vec3
+  return { lattice, reciprocal, reciprocal_axis_norms }
+}
+
+export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
+  const basis = lattice_basis(lattice)
   return {
-    lattice,
-    reciprocal,
-    reciprocal_axis_norms: reciprocal.map((row) => Math.hypot(row[0], row[1], row[2])) as Vec3,
-    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart),
+    ...basis,
+    reduced: lattice_basis(reduce_basis(lattice)),
+    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(basis.reciprocal, cart),
     frac_to_cart: create_frac_to_cart(lattice),
   }
 }
