@@ -220,6 +220,20 @@ describe(`BarPlot`, () => {
     expect(long_x).toBeGreaterThan((await label_x(`a`))[0])
   })
 
+  // Start-anchored past the bar's end, the longest horizontal bar's label ran off the plot
+  test(`keeps the longest horizontal bar's label inside the plot area`, async () => {
+    const label = `a long label for the longest bar`
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1, 2, 3], y: [1, 2, 9], labels: [``, ``, label] }],
+      orientation: `horizontal`,
+    })
+    const clip = plot.querySelector(`clipPath rect`)
+    const clip_right = Number(clip?.getAttribute(`x`)) + Number(clip?.getAttribute(`width`))
+    const label_x = Number(plot.querySelector(`.bar-label`)?.getAttribute(`x`))
+    const width = measure_text_width(label, { ...DEFAULT_FONT_SPEC, font_size: 11 })
+    expect(label_x + width).toBeLessThanOrEqual(clip_right + 1e-9)
+  })
+
   test(`rotates vertical bar labels outward`, async () => {
     const plot = await mount_sized_bar_plot({
       series: [{ x: [1], y: [5], labels: [`Material 1`] }],

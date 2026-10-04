@@ -930,18 +930,21 @@
                   />
                   {#if srs.labels?.[bar_idx]}
                     {@const label_rotation = bar_state.label_rotation ?? 0}
-                    <!-- a centred label on an edge bar would spill onto the axis tick labels -->
-                    {@const half_width =
-                      vertical && !label_rotation
-                        ? measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT) / 2
-                        : 0}
+                    <!-- labels stay inside the plot: a centred one on an edge bar would spill onto
+                    the axis tick labels, one past the longest horizontal bar off the right edge -->
+                    {@const label_width = label_rotation
+                      ? 0
+                      : measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT)}
                     {@const label_x = vertical
                       ? clamp(
                           (cat_start + cat_end) / 2,
-                          pad.l + half_width,
-                          frame.width - pad.r - half_width,
+                          pad.l + label_width / 2,
+                          frame.width - pad.r - label_width / 2,
                         )
-                      : Math.max(value_base, value_tip) + 4}
+                      : Math.min(
+                          Math.max(value_base, value_tip) + 4,
+                          frame.width - pad.r - label_width,
+                        )}
                     {@const label_y = vertical
                       ? Math.max(0, Math.min(value_base, value_tip) - 6)
                       : (cat_start + cat_end) / 2}
