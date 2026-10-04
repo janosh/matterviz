@@ -70,6 +70,10 @@ const LEGEND_MAX_INTERIOR_FRACTION = 0.45
 // A horizontal colorbar is a short strip that only costs the top margin its height, so it may
 // span more of the width (~80% of a phone-width plot, ~30% of a desktop one) before moving out.
 const COLORBAR_MAX_INTERIOR_FRACTION = 0.7
+// Plot height (px) a bottom legend band must leave. Below it (a short phone-width panel with a
+// long series list) the legend stays inside, where it is capped, scrolls and can be dragged or
+// collapsed, rather than squeezing the data to a sliver.
+const MIN_PLOT_HEIGHT_PAST_LEGEND = 80
 
 export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
   const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
@@ -105,12 +109,14 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     !too_wide &&
     !colorbar_takes_right &&
     legend_height * base_w > legend_width * base_h
-  const legend_bottom = legend_outside && !legend_right
-
   // Top/bottom/colorbar-right reservations sit just past the axis band; a caller's larger
   // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
   const past_axis = (side: keyof Sides, size: number) =>
     Math.max(base_pad[side], axis_pad[side] + size + gap)
+  const legend_bottom =
+    legend_outside &&
+    !legend_right &&
+    base_h - (past_axis(`b`, legend_height) - base_pad.b) >= MIN_PLOT_HEIGHT_PAST_LEGEND
   const pad: Required<Sides> = {
     t: colorbar_outside && colorbar_horizontal ? past_axis(`t`, colorbar_height) : base_pad.t,
     l: base_pad.l,
@@ -132,7 +138,13 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
       }
 
   const legend_side = legend_right ? `right` : `bottom`
-  return { pad, legend_outside, legend_side, legend_pos, colorbar_outside }
+  return {
+    pad,
+    legend_outside: legend_right || legend_bottom,
+    legend_side,
+    legend_pos,
+    colorbar_outside,
+  }
 }
 
 export const get_outside_placement = (

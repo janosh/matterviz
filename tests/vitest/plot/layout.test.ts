@@ -258,26 +258,12 @@ describe(`layout utility functions`, () => {
 
   describe(`stride_sample`, () => {
     it(`preserves short inputs, thins evenly, keeps endpoints`, () => {
+      const range = (length: number) => Array.from({ length }, (_, idx) => idx)
       const short = [0, 1, 2]
       expect(stride_sample(short, 10)).toBe(short)
-      expect(
-        stride_sample(
-          Array.from({ length: 10 }, (_, idx) => idx),
-          10,
-        ),
-      ).toHaveLength(10)
-      expect(
-        stride_sample(
-          Array.from({ length: 1000 }, (_, idx) => idx),
-          10,
-        ),
-      ).toHaveLength(10)
-      expect(
-        stride_sample(
-          Array.from({ length: 100 }, (_, idx) => idx),
-          5,
-        ),
-      ).toEqual([0, 25, 50, 74, 99])
+      expect(stride_sample(range(10), 10)).toHaveLength(10)
+      expect(stride_sample(range(1000), 10)).toHaveLength(10)
+      expect(stride_sample(range(100), 5)).toEqual([0, 25, 50, 74, 99])
     })
   })
 
@@ -383,20 +369,8 @@ describe(`layout utility functions`, () => {
       const measure_text = vi.fn((label: string) => ({ width: label.length * px_per_char }))
       mock_canvas_context({ measureText: measure_text })
       clear_text_metrics_cache()
-      const segments = [
-        `alpha`,
-        `beta`,
-        `gamma`,
-        `delta`,
-        `epsilon`,
-        `zeta`,
-        `eta`,
-        `theta`,
-        `iota`,
-        `kappa`,
-        `lambda`,
-        `mu`,
-      ]
+      const segments =
+        `alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu`.split(` `)
       x_layout([segments.join(` `)], 80, {
         tick_label: {
           max_lines: segments.length,
@@ -568,22 +542,22 @@ describe(`layout utility functions`, () => {
         const tick_values = axis.tick_values ?? crowded
         const {
           b: reserved,
-          l: length_value,
-          r: radius,
+          l: pad_left,
+          r: pad_right,
         } = pad_for({
           x_axis: slot_axis(tick_values, axis, plot_width),
         })
         // same SVG-wide extent the padding pass scored the labels against
+        const inner_width = 400 - pad_left - pad_right
         const { band } = resolve_tick_layout(
           {
-            ...slot_axis(tick_values, axis, 400 - length_value - radius),
-            axis_extent: { start: -length_value, end: 400 - length_value },
+            ...slot_axis(tick_values, axis, inner_width),
+            axis_extent: { start: -pad_left, end: 400 - pad_left },
           },
-          400 - length_value - radius,
+          inner_width,
           `x`,
         )
-        const needed = band + title_room
-        expect(reserved).toBe(needed)
+        expect(reserved).toBe(band + title_room)
         expect(reserved).toBeGreaterThan(DEFAULT_PLOT_PADDING.b)
       },
     )
@@ -596,26 +570,24 @@ describe(`layout utility functions`, () => {
       expect(angle).toBe(-rotation_for(rotate_only, `x`))
       const x2_axis = slot_axis(crowded, {}, plot_width)
       const {
-        t: fraction,
-        l: length_value,
-        r: radius,
+        t: pad_top,
+        l: pad_left,
+        r: pad_right,
       } = pad_for({ x_axis: slot_axis([]), x2_axis })
-      const available_width = 400 - length_value - radius
+      const available_width = 400 - pad_left - pad_right
       const projected_axis = slot_axis(crowded, {}, available_width)
       const band = resolve_tick_layout(
         {
           ...projected_axis,
-          tick_positions: projected_axis.tick_positions.map(
-            (position) => position + length_value,
-          ),
+          tick_positions: projected_axis.tick_positions.map((position) => position + pad_left),
           axis_extent: { start: 0, end: 400 },
         },
         available_width,
         `x2`,
       ).band
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
-      expect(fraction).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
-      expect(fraction).toBeLessThanOrEqual(band + 8)
+      expect(pad_top).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
+      expect(pad_top).toBeLessThanOrEqual(band + 8)
     })
 
     it(`reserves room for wrapped labels above an x2 axis`, () => {
@@ -638,6 +610,25 @@ describe(`layout utility functions`, () => {
       expect(band).toBeGreaterThan(TICK_LABEL_HEIGHT)
       expect(pad_top).toBeGreaterThan(TICK_LABEL_HEIGHT + 8)
       expect(pad_top).toBeLessThanOrEqual(band + 8)
+    })
+
+    // The top y2 tick label sits right under ChartShell's corner controls (gear, fullscreen)
+    it.each([
+      [`outside y2 ticks clear the controls row`, slot_axis([0, 50, 100]), 40],
+      [
+        `inside y2 ticks leave the default`,
+        slot_axis([0, 50, 100], { tick_label: { inside: true } }),
+        DEFAULT_PLOT_PADDING.t,
+      ],
+      [`no y2 axis leaves the default`, undefined, DEFAULT_PLOT_PADDING.t],
+    ])(`top pad: %s`, (_desc, y2_axis, expected) => {
+      const config = {
+        padding: {},
+        default_padding: DEFAULT_PLOT_PADDING,
+        width: 400,
+        height: 300,
+      }
+      expect(calc_auto_padding({ ...config, ...(y2_axis && { y2_axis }) }).t).toBe(expected)
     })
 
     const default_b = DEFAULT_PLOT_PADDING.b
@@ -1015,22 +1006,23 @@ describe(`layout utility functions`, () => {
       ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2, top_padding([1, 2])])
     })
 
-    it(`top padding accounts for an outward x2 tick shift`, () => {
-      const result = calc_auto_padding({
-        ...no_padding,
-        x2_axis: slot_axis([1], { tick_label: { shift: { y: -10 } } }),
-      })
-      expect(result.t).toBe(TICK_LABEL_HEIGHT + 8 + 10)
-    })
-
-    it(`bottom padding accounts for an outward x title shift`, () => {
-      const bottom_with_shift = (title_shift = 0) =>
-        calc_auto_padding({
-          ...no_padding,
-          x_axis: slot_axis([1, 2], { label: `Energy`, label_shift: { y: title_shift } }),
-        }).b
-      expect(bottom_with_shift(14) - bottom_with_shift()).toBe(14)
-    })
+    // an outward tick-label or title shift grows that side's padding by exactly the shift
+    it.each([
+      [`t`, `x2_axis`, {}, { tick_label: { shift: { y: -10 } } }, 10],
+      [`b`, `x_axis`, { label: `Energy` }, { label_shift: { y: 14 } }, 14],
+      [`l`, `y_axis`, { label: `E` }, { label_shift: { x: -14 } }, 14],
+      [`r`, `y2_axis`, { label: `E` }, { tick_label: { shift: { x: 20 } } }, 20],
+    ] as const)(
+      `%s pad grows with an outward %s shift`,
+      (side, axis_key, base, shift, delta) => {
+        const pad = (extra: Partial<MeasuredAxis>) =>
+          calc_auto_padding({
+            ...no_padding,
+            [axis_key]: slot_axis([1, 10], { ...base, ...extra }),
+          })[side]
+        expect(pad(shift) - pad({})).toBeCloseTo(delta, 10)
+      },
+    )
 
     // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
     // label (e.g. "-789.389") pushes the title into the ticks (mirrors the x2 case).
@@ -1046,49 +1038,17 @@ describe(`layout utility functions`, () => {
       expect(with_label[side] - without[side]).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
     })
 
-    it(`left pad grows when y label_shift pushes the title outward`, () => {
-      const base = {
-        ...no_padding,
-        y_axis: slot_axis([1, 10], { label: `E` }),
-      }
-      const unshifted = calc_auto_padding(base)
-      const shifted = calc_auto_padding({
-        ...base,
-        y_axis: { ...base.y_axis, label_shift: { x: -14 } },
-      })
-      expect(shifted.l - unshifted.l).toBeCloseTo(14, 10)
-    })
-
     it(`reserves a title band for interactive options without a literal label`, () => {
       const axis = slot_axis([], { options: [{ key: `energy`, label: `Energy` }] })
-      const result = calc_auto_padding({
-        ...no_padding,
-        y2_axis: axis,
-      })
-      expect(result.r).toBe(resolve_axis_title_layout(axis).height)
-    })
-
-    it(`right pad grows with an outward y2 tick-label shift`, () => {
-      const base = {
-        ...no_padding,
-        y2_axis: slot_axis([1, 10], { label: `E` }),
-      }
-      const unshifted = calc_auto_padding(base)
-      const shifted = calc_auto_padding({
-        ...base,
-        y2_axis: { ...base.y2_axis, tick_label: { shift: { x: 20 } } },
-      })
-      expect(shifted.r - unshifted.r).toBeCloseTo(20, 10)
+      expect(calc_auto_padding({ ...no_padding, y2_axis: axis }).r).toBe(
+        resolve_axis_title_layout(axis).height,
+      )
     })
 
     it(`measures multiline x and y title bands instead of using a fixed estimate`, () => {
       mock_text_measurement(7)
-      const base = {
-        ...no_padding,
-        width: 240,
-      }
       const padding_for = (axis_key: `x_axis` | `y_axis`, label: string) =>
-        calc_auto_padding({ ...base, [axis_key]: slot_axis([], { label }) })
+        calc_auto_padding({ ...no_padding, width: 240, [axis_key]: slot_axis([], { label }) })
       // a wrapped x title keeps its first line in place and stacks the rest below, so each extra
       // line costs a full line of padding (centering the block would lift it into the ticks)
       expect(
@@ -1116,16 +1076,10 @@ describe(`layout utility functions`, () => {
         label,
       }
       const layout = resolve_axis_title_layout(axis)
-      const plain_width = resolve_axis_title_layout({
-        label: expected,
-      }).width
-
-      expect(layout).toMatchObject({
-        label: expected,
-        height: 24,
-        interactive: true,
-      })
-      expect(layout.width).toBeGreaterThan(plain_width)
+      expect(layout).toMatchObject({ label: expected, height: 24, interactive: true })
+      expect(layout.width).toBeGreaterThan(
+        resolve_axis_title_layout({ label: expected }).width,
+      )
     })
 
     it.each([

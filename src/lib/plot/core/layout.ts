@@ -25,6 +25,8 @@ export const AXIS_TITLE_WRAP_WIDTH = 200
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
+// Height of ChartShell's corner controls row (gear, fullscreen) from the plot's top edge
+const CONTROLS_ROW_HEIGHT = 24
 // Per-side floors; measured ticks and titles win when they need more
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 50, l: 50, r: 12 }
 
@@ -452,7 +454,13 @@ export const calc_auto_padding = ({
     )
   }
 
-  const top_pad = (available_width: number): number => {
+  // The top y2 tick label can sit entirely above the plot's top edge, right under the chart's
+  // corner controls (gear, fullscreen), so a y2 axis keeps the top band clear of that row
+  const y2_outside_ticks = Boolean(y2_axis.tick_values?.length) && !y2_axis.tick_label?.inside
+  const controls_floor = y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
+  const top_pad = (available_width: number): number =>
+    Math.max(controls_floor, content_top_pad(available_width))
+  const content_top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
     const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
@@ -589,14 +597,12 @@ const MAX_SAMPLE_POINTS = 500
 // Candidate positions sampled per axis (GRID_RESOLUTION² candidates per placement)
 const GRID_RESOLUTION = 10
 
-// Check if a point is inside a rectangle
 export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
   point.x >= rect.x &&
   point.x <= rect.x + rect.width &&
   point.y >= rect.y &&
   point.y <= rect.y + rect.height
 
-// Check if two rectangles overlap
 export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
   !(
     left_rect.x + left_rect.width <= right_rect.x ||
