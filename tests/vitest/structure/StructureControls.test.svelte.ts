@@ -1,4 +1,5 @@
 import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+import { theme_state } from '#lib/state.svelte.js'
 import {
   create_structure_view_state,
   load_structure_view_state,
@@ -37,24 +38,30 @@ import {
   simple_structure,
 } from '../test-fixtures'
 
-const mount_controls = async (
-  props: ComponentProps<typeof StructureControls>,
-): Promise<HTMLElement> => {
+type ControlsProps = Omit<ComponentProps<typeof StructureControls>, `scene_props`> & {
+  scene_props?: Partial<StructureSettings>
+}
+// scene_props is edited in place, so tests that don't supply one still get a reactive object.
+// Object.assign (not a spread) keeps bind_props getters live.
+const mount_controls = async (props: ControlsProps): Promise<HTMLElement> => {
   const target = document.createElement(`div`)
   document.body.append(target)
-  mount(StructureControls, { target, props })
+  const fallback_scene_props = $state<Partial<StructureSettings>>({})
+  const scene_props = props.scene_props ?? fallback_scene_props
+  mount(StructureControls, { target, props: Object.assign(props, { scene_props }) })
   await tick()
   return target
 }
 const mount_bound_controls = (
   state: Record<string, unknown>,
-  props: ComponentProps<typeof StructureControls> = {},
+  props: ControlsProps = {},
 ): Promise<HTMLElement> =>
   mount_controls(
     bind_props({ structure: simple_structure, controls_open: true, ...props }, state),
   )
-const raw_scene_state = (initial: Partial<StructureSettings>) => {
-  let scene_props = $state.raw(initial)
+// A plain accessor object (not a proxy) so bind_props can add getters beside scene_props
+const scene_state = (initial: Partial<StructureSettings>) => {
+  let scene_props = $state(initial)
   return {
     get scene_props() {
       return scene_props
@@ -212,11 +219,8 @@ describe(`StructureControls inputs`, () => {
   ])(
     `parses and resets site label background from $site_label_bg_color`,
     async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
-      await mount_controls({
-        structure: simple_structure,
-        controls_open: true,
-        scene_props: { show_site_labels: true, site_label_bg_color },
-      })
+      const scene_props = $state({ show_site_labels: true, site_label_bg_color })
+      await mount_controls({ structure: simple_structure, controls_open: true, scene_props })
 
       const bg_color_input = doc_query<HTMLInputElement>(
         `input[aria-label="Site label background color hex"]`,
@@ -369,7 +373,7 @@ describe(`StructureControls schema rows`, () => {
       multi_view: false,
     })
     const state = bind_props(
-      raw_scene_state({
+      scene_state({
         ...DEFAULTS.structure,
         show_bonds: `always` as const,
         show_polyhedra: `always` as const,
@@ -500,7 +504,7 @@ describe(`StructureControls schema rows`, () => {
   })
 
   test(`per-axis inputs replace one component and leave the others`, async () => {
-    const state = raw_scene_state({
+    const state = scene_state({
       ...DEFAULTS.structure,
       show_site_labels: true,
       site_label_offset: [0.1, 0.2, 0.3] as Vec3,
@@ -651,7 +655,7 @@ const mount_persisted_controls = async (
     multi_view: false,
   })
   const initial_scene = { ...DEFAULTS.structure }
-  const state = bind_props(raw_scene_state(initial_scene), toggles)
+  const state = bind_props(scene_state(initial_scene), toggles)
   const target = await mount_bound_controls(state, {
     persist_settings: true,
     structure: property_structure,
@@ -771,12 +775,8 @@ describe(`StructureControls reactive props`, () => {
     const before_reset = state.scene_props
     doc_query<HTMLButtonElement>(`button.reset-all-settings`).click()
     await tick()
-    expect(state.scene_props).not.toBe(before_reset)
-    expect(before_reset).toMatchObject({
-      atom_radius: 1.35,
-      ambient_light: 2.5,
-      vector_configs: { force: { visible: false, color: `#ff0000`, scale: 4 } },
-    })
+    // reset edits the caller's settings object in place rather than swapping in a copy
+    expect(state.scene_props).toBe(before_reset)
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
     expect(state.scene_props.vector_configs).toEqual({})
@@ -811,7 +811,7 @@ describe(`StructureControls reactive props`, () => {
   test(`copies and imports viewer settings through the visible actions`, async () => {
     const initial_scene = { ...DEFAULTS.structure }
     const toggles = $state({ atom_color_config: DEFAULT_ATOM_COLOR_CONFIG })
-    const state = bind_props(raw_scene_state(initial_scene), toggles)
+    const state = bind_props(scene_state(initial_scene), toggles)
     const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
     doc_query<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`).click()
@@ -924,7 +924,7 @@ describe(`StructureControls reactive props`, () => {
   // in that string to live, so that one value is remembered here.
   test(`site label colors round-trip through scene props`, async () => {
     const bg_color = `color-mix(in srgb, #000000 20%, transparent)`
-    const state = raw_scene_state({
+    const state = scene_state({
       show_site_labels: true,
       site_label_color: `#111111`,
       site_label_bg_color: bg_color,
@@ -966,6 +966,30 @@ describe(`StructureControls reactive props`, () => {
     )
   })
 
+  // An empty label color follows the theme's text color, so the swatch shows that (and
+  // re-resolves when the theme flips) without writing it back into the setting.
+  test(`empty site label color shows the theme text color`, async () => {
+    const root_style = document.documentElement.style
+    const initial_mode = theme_state.mode
+    try {
+      root_style.setProperty(`--text-color`, `#13579b`)
+      const state = scene_state({ show_site_labels: true, site_label_color: `` })
+      await mount_bound_controls(state)
+      const label_color_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label color hex"]`,
+      )
+      expect(label_color_input.value).toBe(`#13579b`)
+      root_style.setProperty(`--text-color`, `#eeeeee`)
+      theme_state.mode = initial_mode === `dark` ? `light` : `dark`
+      await tick()
+      expect(label_color_input.value).toBe(`#eeeeee`)
+      expect(state.scene_props.site_label_color).toBe(``)
+    } finally {
+      root_style.removeProperty(`--text-color`)
+      theme_state.mode = initial_mode
+    }
+  })
+
   test(`updates coloring when the selected property changes or disappears`, async () => {
     const state = $state<{ atom_color_config: AtomColorConfig; structure: AnyStructure }>({
       structure: property_structure,
@@ -995,7 +1019,7 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {
-    const state = raw_scene_state({
+    const state = scene_state({
       show_polyhedra: `crystals` as const,
       polyhedra_included_elements: [`O`],
       polyhedra_excluded_elements: [] as string[],
@@ -1094,7 +1118,7 @@ describe(`StructureControls reactive props`, () => {
       trajectory_line_elements: null,
     },
   ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
-    const state = raw_scene_state({
+    const state = scene_state({
       show_polyhedra: `always`,
       trajectory_line_trail_frames: 0,
       ...initial,
@@ -1146,7 +1170,7 @@ describe(`StructureControls reactive props`, () => {
     { vector_configs: { force: { visible: true } } },
     { vector_configs: { force: { visible: true, color: `#2468ac`, scale: 4 } } },
   ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
-    const state = raw_scene_state(initial)
+    const state = scene_state(initial)
     const expected = $state.snapshot(state.scene_props)
     const target = await mount_bound_controls(state, { structure: vector_structure })
     const reset_row = async (key: string) => {

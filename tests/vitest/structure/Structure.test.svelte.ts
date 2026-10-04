@@ -33,6 +33,7 @@ import type {
 import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
 import { prediction_from_json } from '#lib/structure/prediction.js'
 import { make_supercell } from '#lib/structure/supercell.js'
+import StructureOwnerHarness from './StructureOwnerHarness.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
 import { structures } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -2237,6 +2238,37 @@ test(`scene_props owns the trail toggle in both directions`, async () => {
   flushSync()
   expect(toggle.checked).toBe(true)
 })
+
+test.each([`literal`, `bound`] as const)(
+  `control edits reach %s scene_props in place without ownership warnings`,
+  async (mode) => {
+    mock_gpu()
+    const warn_spy = vi.spyOn(console, `warn`)
+    const state = $state({ bound_scene_props: { show_site_labels: false } })
+    const harness = mount(StructureOwnerHarness, {
+      target: document.body,
+      props: mode === `bound` ? bind_props({ structure }, state) : { structure },
+    })
+    mounted.push(harness)
+    await tick()
+    const settings = state.bound_scene_props
+    const toggle = doc_query<HTMLInputElement>(
+      `[data-key="show_site_labels"] input[type="checkbox"]`,
+    )
+    expect(toggle.checked).toBe(false)
+    toggle.click()
+    flushSync()
+    expect(toggle.checked).toBe(true)
+    expect(scene_stub.props?.show_site_labels).toBe(true)
+    // the parent's bound object is edited, not swapped for a copy on every change
+    expect(state.bound_scene_props).toBe(settings)
+    expect(settings.show_site_labels).toBe(mode === `bound`)
+    const ownership_warnings = warn_spy.mock.calls.filter((args) =>
+      args.some((arg) => String(arg).includes(`ownership_invalid`)),
+    )
+    expect(ownership_warnings).toEqual([])
+  },
+)
 
 test(`viewer-local setting changes do not mutate defaults or another viewer`, async () => {
   const auto_rotate_inputs = (): HTMLInputElement[] =>

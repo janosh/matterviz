@@ -7,7 +7,8 @@
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
   import { ControlPane, create_clipboard_feedback } from '#lib/overlays/index.js'
   import type { ColorSchemeName } from '#lib/colors/index.js'
-  import { AXIS_COLORS } from '#lib/colors/index.js'
+  import { AXIS_COLORS, css_color_to_hex } from '#lib/colors/index.js'
+  import { resolve_theme_text_color } from '#lib/state.svelte.js'
   import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
   import { scheme_colors } from './element-palette.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
@@ -82,7 +83,7 @@
 
   let {
     controls_open = $bindable(false),
-    scene_props = $bindable({}),
+    scene_props,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(),
@@ -114,7 +115,9 @@
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
     controls_open?: boolean // Control pane state
-    scene_props?: StructureSettings
+    // A reactive ($state) object: controls edit it in place, so the viewer and any parent
+    // holding it see each change without a binding or a fresh copy per edit
+    scene_props: StructureSettings
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_image_atoms?: boolean
     supercell_scaling?: string
@@ -150,8 +153,8 @@
   let controls_pane = $state<HTMLDivElement | null>(null)
   let controls_pane_size = $state<StructurePaneSize>()
   let settings_import_status = $state<{ message: string; error: boolean }>()
-  const update_scene = (updates: Partial<StructureSettings>) =>
-    (scene_props = { ...scene_props, ...updates })
+  const update_scene = (updates: Partial<StructureSettings>): void =>
+    void Object.assign(scene_props, updates)
 
   // Per-site scalars/vec3s available to color by (charge, velocity, c_pe, ...). Empty for
   // structures whose parser produced no extra columns, in which case the mode is disabled.
@@ -354,17 +357,17 @@
     }
     return snapshot
   }
-  const restore_fields = <T extends object>(
-    record: T,
+  // Restores `keys` on `record` in place: a key the reference omits is deleted, not set
+  // to undefined, so reset leaves no override behind.
+  const restore_fields = (
+    record: object,
     keys: readonly string[],
     reference: Record<string, unknown>,
-  ) => {
-    const restored = { ...record }
+  ): void => {
     for (const key of keys) {
-      if (Object.hasOwn(reference, key)) Reflect.set(restored, key, reference[key])
-      else Reflect.deleteProperty(restored, key)
+      if (Object.hasOwn(reference, key)) Reflect.set(record, key, reference[key])
+      else Reflect.deleteProperty(record, key)
     }
-    return restored
   }
   const scene_value = (key: StructureSettingKey): unknown =>
     (scene_props as Record<string, unknown>)[key] ?? DEFAULTS.structure[key]
@@ -545,7 +548,7 @@
   const scene_pair = (left: StructureSettingKey, right: StructureSettingKey) =>
     local(
       () => own_fields(scene_props, [left, right]),
-      (reference) => (scene_props = restore_fields(scene_props, [left, right], reference)),
+      (reference) => restore_fields(scene_props, [left, right], reference),
     )
   const section_baselines = new Map<
     string,
@@ -592,7 +595,7 @@
         if (accessor) accessor.set(reference[key])
       }
       const scene_keys = requested_keys.filter((key) => !baseline.accessors[key])
-      if (scene_keys.length) scene_props = restore_fields(scene_props, scene_keys, reference)
+      restore_fields(scene_props, scene_keys, reference)
     }
     return {
       changed_keys: tracker.changed_keys,
@@ -740,6 +743,9 @@
 
   const as_hex_color = (color: string | undefined, fallback: string): string =>
     color?.match(hex_color_pattern)?.[0] ?? fallback
+  // An empty color default (site_label_color) follows the theme's text color, so the swatch
+  // shows that instead of a stand-in. Display only: nothing is stored until the user picks.
+  let theme_text_hex = $derived(css_color_to_hex(resolve_theme_text_color(), `#808080`))
 
   // Every unparsable background (`transparent` included) reports zero opacity, so a picked hex
   // would be lost the moment the slider bottoms out. `remembered_hex` carries it across.
@@ -763,8 +769,9 @@
   // Derived from scene_props rather than mirrored into local state: the two label colors are
   // CSS strings the scene owns, and only the hex behind a fully transparent background has
   // nowhere in that string to live.
+  // seeded once from the mount-time color, then owned here
   let site_label_bg_hex = $state(
-    parse_label_bg_color(scene_props.site_label_bg_color, `#000000`).hex_color,
+    untrack(() => parse_label_bg_color(scene_props.site_label_bg_color, `#000000`).hex_color),
   )
   let site_label_bg = $derived(
     parse_label_bg_color(scene_props.site_label_bg_color, site_label_bg_hex),
@@ -823,15 +830,15 @@
             () => own_fields(scene_props.vector_configs?.[key] ?? {}, fields),
             (reference) => {
               const configs = { ...scene_props.vector_configs }
-              const config = restore_fields(configs[key] ?? {}, fields, reference)
+              const config = { ...configs[key] }
+              restore_fields(config, fields, reference)
               if (Object.keys(config).length || initial_config) configs[key] = config
               else if (entry_present) Reflect.set(configs, key, initial_config)
               else Reflect.deleteProperty(configs, key)
-              const updated = { ...scene_props }
-              if (Object.keys(configs).length || initial) updated.vector_configs = configs
-              else if (initial_present) updated.vector_configs = initial
-              else delete updated.vector_configs
-              scene_props = updated
+              if (Object.keys(configs).length || initial)
+                update_scene({ vector_configs: configs })
+              else if (initial_present) update_scene({ vector_configs: initial })
+              else Reflect.deleteProperty(scene_props, `vector_configs`)
             },
           ),
         ]
@@ -926,7 +933,7 @@
           {label}
           value={as_hex_color(
             row_value(current) as string | undefined,
-            as_hex_color(String(schema.value), `#808080`), // theme-following defaults are no hex
+            as_hex_color(String(schema.value), theme_text_hex),
           )}
           labels={{ picker: aria_label ?? label, hex: `${aria_label ?? label} hex` }}
           on_commit={set}

@@ -319,7 +319,9 @@
     },
   })
 
-  // Callers may supply plain settings; controls need reactive nested writes, including after replacement.
+  // Callers may supply plain settings, which become this viewer's own reactive copy (the
+  // caller's object is never written). StructureControls edits that proxy in place, so a parent
+  // that bound or passed $state sees every change without a new object per edit.
   $effect.pre(() => {
     const reactive_settings = $state(scene_props)
     scene_props = reactive_settings
@@ -1161,10 +1163,7 @@
             bind:controls_open={
               () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
             }
-            bind:scene_props={
-              // reassigned, never bound through: a caller may pass a literal it does not own
-              () => scene_props, (next) => (scene_props = next)
-            }
+            {scene_props}
             bind:show_trajectory_lines={
               () =>
                 scene_props.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
