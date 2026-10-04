@@ -28,9 +28,8 @@ interface AtomColorBase {
   scale_type: ColorScaleType
 }
 
-// Keyed on `mode` so the fields a mode depends on cannot go missing. `property_key` and
-// `color_fn` used to be optional on a flat interface, so `{ mode: 'property' }` type-checked
-// and then quietly painted every atom the same color.
+// Keyed on `mode` so the fields a mode depends on cannot go missing (`{ mode: 'property' }`
+// without a `property_key` would paint every atom the same color).
 export type AtomColorConfig =
   | (AtomColorBase & { mode: SimpleAtomColorMode })
   // Site property to color by (OVITO's Color Coding). Vec3 values (force, velocity, ...)

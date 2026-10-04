@@ -61,7 +61,16 @@ describe(`compute_saed_pattern geometry`, () => {
     for (const spot of pattern.spots) {
       expect(spot.position_2d[0]).toBeCloseTo(spot.hkl[0] / a_len, 12)
       expect(spot.position_2d[1]).toBeCloseTo(spot.hkl[1] / a_len, 12)
+      // λ = 0.0251 Å puts the Ewald radius at 39.9 1/Å against a 0.25 1/Å reciprocal
+      // spacing, so the whole zero-order plane is excited and no higher-order zone is in reach
+      expect([spot.laue_zone, spot.hkl[2]]).toEqual([0, 0])
+      // in the ZOLZ g lies entirely in the projection plane, so its 2D length inverts to d
+      expect(spot_radius(spot)).toBeCloseTo(1 / spot.d_spacing, 12)
     }
+    expect(saed_pattern_radius(pattern)).toBeCloseTo(
+      Math.max(...pattern.spots.map(spot_radius)),
+      12,
+    )
 
     const spot_100 = find_spot(pattern.spots, [1, 0, 0])
     const spot_010 = find_spot(pattern.spots, [0, 1, 0])
@@ -98,43 +107,20 @@ describe(`compute_saed_pattern geometry`, () => {
     }
   })
 
-  test.each([
-    [[0, 0, 1] as Vec3, 90],
-    [[1, 1, 0] as Vec3, 90], // rectangular net: ⟨001⟩ perpendicular to ⟨11̄0⟩
-  ])(
-    `cubic %s: the two shortest independent spots are perpendicular`,
-    (zone_axis, expected) => {
-      const pattern = cubic_saed(a_len, { zone_axis })
-      // Shortest spot, then the shortest one not (anti)parallel to it
-      const by_radius = pattern.spots.toSorted(
-        (spot_a, spot_b) => spot_radius(spot_a) - spot_radius(spot_b),
-      )
-      const first = by_radius[0]
-      const second = by_radius.find((spot) => {
-        const angle = saed_spot_angle(first.position_2d, spot.position_2d)
-        return angle > 1 && angle < 179
-      })
-      if (!second) throw new Error(`no spot independent of ${first.hkl.join(``)}`)
-      expect(saed_spot_angle(first.position_2d, second.position_2d)).toBeCloseTo(expected, 8)
-    },
-  )
-
-  test(`every spot's position_2d reproduces |g| = 1/d for a ZOLZ reflection`, () => {
-    const pattern = cubic_saed(4.2)
-    for (const spot of pattern.spots.filter((candidate) => candidate.laue_zone === 0)) {
-      // In the zero-order zone g lies entirely in the projection plane, so the 2D length is
-      // the full |g| and must invert to the d-spacing
-      expect(spot_radius(spot)).toBeCloseTo(1 / spot.d_spacing, 12)
-    }
-  })
-
-  test(`saed_pattern_radius reports the outermost spot`, () => {
-    // Spots carry |g| = sqrt(h² + k²) / a for the [001] zone of a simple cubic cell, so the
-    // outermost one is the largest in-window hkl radius
-    const pattern = cubic_saed(4)
-    const max_hk = Math.max(...pattern.spots.map(({ hkl }) => Math.hypot(hkl[0], hkl[1])))
-    expect(max_hk).toBeGreaterThan(1)
-    expect(saed_pattern_radius(pattern)).toBeCloseTo(max_hk / 4, 10)
+  // rectangular net: ⟨001⟩ perpendicular to ⟨11̄0⟩
+  test(`cubic [110]: the two shortest independent spots are perpendicular`, () => {
+    const pattern = cubic_saed(a_len, { zone_axis: [1, 1, 0] })
+    // Shortest spot, then the shortest one not (anti)parallel to it
+    const by_radius = pattern.spots.toSorted(
+      (spot_a, spot_b) => spot_radius(spot_a) - spot_radius(spot_b),
+    )
+    const first = by_radius[0]
+    const second = by_radius.find((spot) => {
+      const angle = saed_spot_angle(first.position_2d, spot.position_2d)
+      return angle > 1 && angle < 179
+    })
+    if (!second) throw new Error(`no spot independent of ${first.hkl.join(``)}`)
+    expect(saed_spot_angle(first.position_2d, second.position_2d)).toBeCloseTo(90, 8)
   })
 })
 
@@ -184,14 +170,6 @@ describe(`compute_saed_pattern structure factor`, () => {
 })
 
 describe(`compute_saed_pattern Ewald geometry`, () => {
-  test(`the ZOLZ dominates because the Ewald sphere is nearly flat`, () => {
-    const pattern = cubic_saed(4)
-    // λ = 0.0251 Å puts the Ewald radius at 39.9 1/Å against a 0.25 1/Å reciprocal spacing,
-    // so the whole zero-order plane is excited and no higher-order zone is within reach.
-    expect(pattern.spots.every((spot) => spot.laue_zone === 0)).toBe(true)
-    expect(pattern.spots.every((spot) => spot.hkl[2] === 0)).toBe(true)
-  })
-
   test.each([
     [50, 1 / 50],
     [200, 1 / 200],
@@ -205,17 +183,17 @@ describe(`compute_saed_pattern Ewald geometry`, () => {
     }
   })
 
-  test(`a thinner foil excites more spots`, () => {
-    const thin = cubic_saed(4, { crystal_thickness: 20 })
-    const thick = cubic_saed(4, { crystal_thickness: 200 })
-    expect(thin.spots.length).toBeGreaterThan(thick.spots.length)
-  })
-
-  test(`a longer wavelength curves the sphere and excites fewer spots`, () => {
-    const at_300kv = cubic_saed(4, { crystal_thickness: 50, accelerating_voltage: 300 })
-    const at_30kv = cubic_saed(4, { crystal_thickness: 50, accelerating_voltage: 30 })
-    expect(at_300kv.wavelength).toBeLessThan(at_30kv.wavelength)
-    expect(at_300kv.spots.length).toBeGreaterThan(at_30kv.spots.length)
+  // a thinner foil widens the relrods; a longer wavelength curves the sphere away from them
+  test.each<[string, SaedOptions, SaedOptions]>([
+    [`a thinner foil`, { crystal_thickness: 20 }, { crystal_thickness: 200 }],
+    [
+      `a shorter wavelength`,
+      { crystal_thickness: 50, accelerating_voltage: 300 },
+      { crystal_thickness: 50, accelerating_voltage: 30 },
+    ],
+  ])(`%s excites more spots`, (_label, more_opts, fewer_opts) => {
+    const [more, fewer] = [cubic_saed(4, more_opts), cubic_saed(4, fewer_opts)]
+    expect(more.spots.length).toBeGreaterThan(fewer.spots.length)
   })
 
   test(`the default is a 200 kV beam`, () => {

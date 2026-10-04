@@ -42,11 +42,9 @@ function get_purify(): ReturnType<typeof DOMPurify> | null {
 }
 
 // Strip void / raw-text blocks that must not leak content when tags are removed
-// `[^<>]*` for the attribute run, not `[^>]*`: the latter rescans to end of input from every
-// `<` that never gets a `>`, which is quadratic (a 64 kB run of `<script ` blocked the thread
-// for 0.6 s, a 1 MB one for minutes). Stopping at the next `<` fails each start position at
-// once. An attribute value literally containing `<` no longer reads as a tag, which for an
-// allowlist sanitizer is the safe direction: it gets escaped rather than passed through.
+// `[^<>]*` for the attribute run, not `[^>]*`, which rescans to end of input from every
+// unclosed `<` (quadratic). An attribute value containing `<` then reads as text, the safe
+// direction for an allowlist sanitizer: it is escaped, not passed through.
 const DANGEROUS_BLOCK_RE =
   /<(?<block>script|style|iframe|object|embed|textarea|noscript|template)\b[^<>]*>[\s\S]*?<\/\k<block>\s*>/gi
 const ATTR_RE =

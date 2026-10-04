@@ -56,7 +56,7 @@ describe(`SlabBuilder`, () => {
     expect(doc_query(`.slab-builder select`).querySelectorAll(`option`)).toHaveLength(1)
   })
 
-  test(`lists every distinct termination and rebuilds when one is picked`, () => {
+  test(`lists every distinct termination, rebuilds on pick and resets on a new surface`, () => {
     // rocksalt (111) alternates Na and Cl planes, so it has two distinct terminations
     const built = mount_builder(make_rocksalt())
     const options = doc_query(`.slab-builder select`).querySelectorAll(`option`)
@@ -66,25 +66,14 @@ describe(`SlabBuilder`, () => {
     flushSync()
     expect(built.slab?.slab_info.termination).toEqual(built.slab?.slab_info.terminations[1])
     expect(built.slab?.slab_info.termination.formula).not.toBe(first_formula)
-  })
-
-  test(`changing the surface resets the termination to the first one`, () => {
-    const built = mount_builder(make_rocksalt())
-    built.termination_idx = 1
+    // reassigning equal miller indices keeps the pick
+    built.miller_indices = [1, 1, 1]
     flushSync()
     expect(built.termination_idx).toBe(1)
     built.miller_indices = [1, 0, 0]
     flushSync()
     expect(built.termination_idx).toBe(0)
     expect(built.slab?.slab_info.miller_indices).toEqual([1, 0, 0])
-  })
-
-  test(`reassigning equal miller indices keeps the picked termination`, () => {
-    const built = mount_builder(make_rocksalt())
-    built.termination_idx = 1
-    built.miller_indices = [1, 1, 1]
-    flushSync()
-    expect(built.termination_idx).toBe(1)
   })
 
   test(`invalid Miller indices surface as an error instead of throwing`, () => {

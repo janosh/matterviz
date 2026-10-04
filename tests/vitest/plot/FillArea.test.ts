@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// Tests for FillArea.svelte component
 import FillArea from '#lib/plot/core/components/FillArea.svelte'
 import type { FillGradient, FillRegion } from '#lib/plot/core/types.js'
 import { type ComponentProps, mount, tick } from 'svelte'
@@ -41,8 +40,7 @@ const mount_fill = (props: Partial<ComponentProps<typeof FillArea>> = {}) =>
   })
 
 describe(`FillArea`, () => {
-  // A region with only a hover handler was in the DOM but out of the tab order, so a
-  // keyboard user could never reach it - the same shape as BarPlot's line points
+  // a hover handler alone must also put the region in the tab order for keyboard users
   test.each([
     [`click handler`, { on_click: () => {} }, `0`],
     [`hover handler only`, { on_hover: () => {} }, `0`],
@@ -109,11 +107,7 @@ describe(`FillArea`, () => {
 
   test(`pattern bakes the fill opacity into the tile so the texture stays legible`, () => {
     mount_fill({
-      region: {
-        ...base_region,
-        fill: `rgb(70, 130, 180)`,
-        pattern: { shape: `x`, size: 6 },
-      },
+      region: { ...base_region, fill: `rgb(70, 130, 180)`, pattern: { shape: `x`, size: 6 } },
     })
     const group = doc_query(`.fill-region`)
     const def = group.querySelector(`defs pattern`)
@@ -128,13 +122,8 @@ describe(`FillArea`, () => {
     expect(path?.getAttribute(`fill-opacity`)).toBe(`1`)
   })
 
-  const gradient_fill: FillGradient = {
-    type: `linear`,
-    stops: [
-      [0, `red`],
-      [1, `blue`],
-    ],
-  }
+  // oxfmt-ignore
+  const gradient_fill: FillGradient = { type: `linear`, stops: [[0, `red`], [1, `blue`]] }
   test.each([
     // a gradient has no single color to texture
     [gradient_fill, /^url\(#fill-[0-9a-f-]+-gradient\)$/, false],
@@ -150,18 +139,8 @@ describe(`FillArea`, () => {
 
   test.each<[FillGradient, Record<string, string>]>([
     [{ ...gradient_fill, angle: 45 }, { gradientTransform: `rotate(45, 0.5, 0.5)` }],
-    [
-      {
-        type: `radial`,
-        center: { x: 0.3, y: 0.7 },
-        stops: [
-          [0, `white`],
-          [0.5, `gray`],
-          [1, `black`],
-        ],
-      },
-      { cx: `0.3`, cy: `0.7` },
-    ],
+    // oxfmt-ignore
+    [{ type: `radial`, center: { x: 0.3, y: 0.7 }, stops: [[0, `white`], [0.5, `gray`], [1, `black`]] }, { cx: `0.3`, cy: `0.7` }],
   ])(`renders gradient %j with its attributes and stops`, (gradient, attributes) => {
     mount_fill({ region: { ...base_region, fill: gradient } })
     const element = doc_query(`${gradient.type}Gradient`)
@@ -185,11 +164,10 @@ describe(`FillArea`, () => {
       mount_fill({ region, region_idx: 2, [`on_${type}`]: prop_handler })
 
       const group = doc_query(`.fill-region`)
-      const mouse_event =
-        type === `click`
-          ? new MouseEvent(`click`, { bubbles: true, clientX: 50, clientY: 50 })
-          : new MouseEvent(`mouseenter`, { bubbles: true, clientX: 50, clientY: 50 })
-      group.dispatchEvent(mouse_event)
+      const event_type = type === `click` ? `click` : `mouseenter`
+      group.dispatchEvent(
+        new MouseEvent(event_type, { bubbles: true, clientX: 50, clientY: 50 }),
+      )
       await tick()
 
       for (const handler of [region_handler, prop_handler]) {
@@ -206,7 +184,7 @@ describe(`FillArea`, () => {
         )
       }
 
-      // Hover also tests mouseleave → null
+      // hover also clears on mouseleave
       if (type === `hover`) {
         group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
         await tick()
@@ -264,11 +242,9 @@ describe(`FillArea`, () => {
     }
   })
 
-  test.each<[string, FillRegion, number, string]>([
-    [`uses label when provided`, base_region, 0, `Test Fill Region`],
-    [`falls back to index`, { ...base_region, label: undefined }, 5, `Fill region 5`],
-  ])(`aria-label %s`, (_, region, region_idx, expected) => {
-    mount_fill({ region, region_idx })
-    expect(doc_query(`.fill-region`).getAttribute(`aria-label`)).toBe(expected)
+  // a provided label is asserted in the fill-rendering test above
+  test(`aria-label falls back to the region index`, () => {
+    mount_fill({ region: { ...base_region, label: undefined }, region_idx: 5 })
+    expect(doc_query(`.fill-region`).getAttribute(`aria-label`)).toBe(`Fill region 5`)
   })
 })

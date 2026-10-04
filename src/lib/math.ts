@@ -380,6 +380,36 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   return inverse
 }
 
+// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
+// multiple of one vector from another while that shortens it. Every step is unimodular, so
+// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
+// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
+// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the radius-bounded
+// G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of memory by s = 30). Also used by
+// lattice_point_group_matrices, whose {-1,0,1} integer-matrix search assumes a reduced basis.
+export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
+  const reduced = basis.map((row) => [...row]) as Matrix3x3
+  for (let iter = 0; iter < 64; iter++) {
+    let changed = false
+    for (let idx_i = 0; idx_i < 3; idx_i++) {
+      for (let idx_j = 0; idx_j < 3; idx_j++) {
+        if (idx_i === idx_j) continue
+        const len_sq_j = dot(reduced[idx_j], reduced[idx_j])
+        const coeff = Math.round(dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
+        if (coeff === 0) continue
+        const candidate = subtract(reduced[idx_i], scale(reduced[idx_j], coeff))
+        const len_sq_i = dot(reduced[idx_i], reduced[idx_i])
+        if (dot(candidate, candidate) < len_sq_i * (1 - 1e-12)) {
+          reduced[idx_i] = candidate
+          changed = true
+        }
+      }
+    }
+    if (!changed) break
+  }
+  return reduced
+}
+
 // Multiply a 3x3 matrix by a 3D vector
 export function mat3x3_vec3_multiply(
   matrix: Matrix3x3,
@@ -581,12 +611,9 @@ export function cell_to_lattice_matrix(
   const cos_gamma = Math.cos(gamma * DEG_TO_RAD)
   const sin_gamma = Math.sin(gamma * DEG_TO_RAD)
 
-  // Calculate volume factor for triclinic system. The radicand goes negative whenever the
-  // angle triple violates the triclinic inequality, and sin_gamma is zero at gamma 0/180.
-  // Both used to sail through as NaN: (3,3,3,170,170,170) returned a c vector of
-  // [-2.95, -33.77, NaN] - already nonsense at c_y, which should have length 3 - so one
-  // mistyped CIF angle turned every derived Cartesian coordinate into NaN with no
-  // diagnostic anywhere. Fail here instead, naming the offending parameters.
+  // Triclinic volume factor. Fail fast, naming the cell: a negative radicand (angles that
+  // violate the triclinic inequality) or sin_gamma = 0 (gamma 0/180) would silently make
+  // every Cartesian coordinate NaN.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
   const cell_desc = `a=${lattice_a} b=${value_b} c=${value_c} alpha=${alpha} beta=${beta} gamma=${gamma}`

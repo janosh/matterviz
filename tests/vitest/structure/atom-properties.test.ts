@@ -366,10 +366,10 @@ describe(`Custom`, () => {
   // oxfmt-ignore
   const diagonal_c = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, { xyz: [2, 2, 2] }])
 
-  test(`numeric values pass through`, () => {
-    expect(
-      atom_properties.get_custom_colors(diagonal_c, (site) => site.xyz[2]).values,
-    ).toEqual([0, 1, 2])
+  test(`numeric values pass through with distinct colors`, () => {
+    const { values, colors } = atom_properties.get_custom_colors(diagonal_c, (_, idx) => idx)
+    expect(values).toEqual([0, 1, 2])
+    expect(new Set(colors).size).toBe(3)
   })
 
   test(`string values are categorical`, () => {
@@ -385,12 +385,6 @@ describe(`Custom`, () => {
     expect(values).toEqual([`C`, `O`, `C`])
     expect(colors[0]).toBe(colors[2])
     expect(colors[0]).not.toBe(colors[1])
-  })
-
-  test(`site index yields distinct colors`, () => {
-    expect(
-      new Set(atom_properties.get_custom_colors(diagonal_c, (_, idx) => idx).colors).size,
-    ).toBe(3)
   })
 
   // a vals[0]-seeded extent left min = max = NaN, defeating the max === min guard
@@ -565,33 +559,24 @@ describe(`Site property coloring`, () => {
     return structure
   }
 
-  test(`colors by a numeric key and reports its range`, () => {
-    const structure = with_props([{ charge: -0.5 }, { charge: 1.5 }, { charge: 0.5 }])
-    const result = atom_properties.get_site_property_colors(structure, `charge`)
-    expect(result.values).toEqual([-0.5, 1.5, 0.5])
-    expect([result.min_value, result.max_value]).toEqual([-0.5, 1.5])
-    expect(new Set(result.colors).size).toBe(3)
-  })
-
-  // Degenerate range: apply_color_scale maps every value to t=0.5 when min === max
-  test(`constant property keeps a finite mid-scale color`, () => {
-    const structure = with_props([{ charge: 2 }, { charge: 2 }, { charge: 2 }])
-    const result = atom_properties.get_site_property_colors(structure, `charge`)
-    expect(result.values).toEqual([2, 2, 2])
-    expect([result.min_value, result.max_value]).toEqual([2, 2])
-    expect(result.colors.every((color) => color === result.colors[0])).toBe(true)
-    expect(result.colors[0]).toMatch(/^#[0-9a-f]{6}$/i)
-  })
-
-  test(`uses the magnitude of a vec3 property`, () => {
-    const structure = with_props([
-      { velocity: [3, 4, 0] },
-      { velocity: [0, 0, 1] },
-      { velocity: [1, 2, 2] },
-    ])
-    const result = atom_properties.get_site_property_colors(structure, `velocity`)
-    expect(result.values).toEqual([5, 1, 3])
-    expect([result.min_value, result.max_value]).toEqual([1, 5])
+  // Equal values share a color, distinct ones differ; a constant column keeps a finite
+  // mid-scale color, and sites missing the key are gray and stay out of the range
+  // oxfmt-ignore
+  test.each([
+    [`a numeric key`, [{ charge: -0.5 }, { charge: 1.5 }, { charge: 0.5 }], `charge`, [-0.5, 1.5, 0.5], [-0.5, 1.5]],
+    [`a constant key`, [{ charge: 2 }, { charge: 2 }, { charge: 2 }], `charge`, [2, 2, 2], [2, 2]],
+    [`a vec3 key's magnitude`, [{ velocity: [3, 4, 0] }, { velocity: [0, 0, 1] }, { velocity: [1, 2, 2] }], `velocity`, [5, 1, 3], [1, 5]],
+    [`a partially missing key`, [{ charge: 2 }, {}, { charge: 4 }, { charge: `n/a` }], `charge`, [2, `unknown`, 4, `unknown`], [2, 4]],
+  ] as const)(`colors by %s and reports its range`, (_desc, props, key, values, range) => {
+    const result = atom_properties.get_site_property_colors(with_props([...props]), key)
+    expect(result.values).toEqual(values)
+    expect([result.min_value, result.max_value]).toEqual(range)
+    for (const [idx, value] of values.entries()) {
+      expect(result.colors[idx]).toMatch(/^#[0-9a-f]{6}$/i)
+      if (value === `unknown`) expect(result.colors[idx]).toBe(`#808080`)
+      for (const [other_idx, other] of values.entries())
+        expect(result.colors[idx] === result.colors[other_idx]).toBe(value === other)
+    }
   })
 
   test.each(
@@ -647,15 +632,6 @@ describe(`Site property coloring`, () => {
       }
     },
   )
-
-  test(`grays out sites missing the property and keeps them out of the range`, () => {
-    const structure = with_props([{ charge: 2 }, {}, { charge: 4 }, { charge: `n/a` }])
-    const result = atom_properties.get_site_property_colors(structure, `charge`)
-    expect(result.values).toEqual([2, `unknown`, 4, `unknown`])
-    expect([result.min_value, result.max_value]).toEqual([2, 4])
-    expect(result.colors[1]).toBe(`#808080`)
-    expect(result.colors[3]).toBe(`#808080`)
-  })
 
   // A caller-supplied supercell (make_supercell stamps unit_cell_idx) carrying its own
   // per-site data must color by that data, not by the ancestor site's value
@@ -906,16 +882,17 @@ describe(`CNA structure type coloring`, () => {
       type,
     )
 
-  test(`maps codes 0-4 onto the fixed OVITO palette in categorical mode`, () => {
+  test(`maps codes onto the fixed OVITO palette in categorical mode`, () => {
     const { colors, values, unique_values } = cna_colors(all_codes)
     expect(colors).toEqual(palette)
     expect(values).toEqual(all_codes)
     expect(unique_values).toEqual(all_codes)
-  })
-
-  test(`keeps each code on its own color when only some phases are present`, () => {
-    const { colors } = cna_colors([1, 3, 1])
-    expect(colors).toEqual([CNA_TYPE_COLORS.fcc, CNA_TYPE_COLORS.bcc, CNA_TYPE_COLORS.fcc])
+    // each code keeps its own color when only some phases are present
+    expect(cna_colors([1, 3, 1]).colors).toEqual([
+      CNA_TYPE_COLORS.fcc,
+      CNA_TYPE_COLORS.bcc,
+      CNA_TYPE_COLORS.fcc,
+    ])
   })
 
   test(`falls back to the d3 ramp for cna_type in continuous mode`, () => {

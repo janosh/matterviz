@@ -71,15 +71,11 @@ export type LabelPlacement = {
   visible: boolean // false when the label anchor is behind the camera
 }
 
-// Per-frame screen projector for label overlays. `update()` precomputes the
-// combined model-view-projection once per frame; `place()` then resolves each
-// label with a single clip-space transform and zero allocations (labels run
-// per site per frame, so the old 3-projections-per-label path with fresh
-// Vector3s dominated frame time on large supercells).
-//
-// Placement semantics match the previous label_screen_position helper: the
-// label sits `atom_screen_radius + margin` px from the atom center along the
-// screen direction of its offset. The projected radius is measured along the
+// Per-frame screen projector for label overlays. `update()` precomputes the combined
+// model-view-projection once per frame; `place()` then resolves each label with a single
+// clip-space transform and zero allocations, since labels run per site per frame. A label
+// sits `atom_screen_radius + margin` px from the atom center along the screen direction
+// of its offset. The projected radius is measured along the
 // camera's right axis, which for both projections equals
 // visual_radius * projection[5] * (height/2) / clip_w.
 export class LabelProjector {
@@ -140,8 +136,8 @@ export class LabelProjector {
     const delta_y =
       (-end_clip_y / end_clip_w) * this.#half_height + this.#half_height - screen_y
     const dir_len = Math.hypot(delta_x, delta_y)
-    // Offsets along the view axis have no screen direction; nudge upward like
-    // the previous implementation (screen y grows downward)
+    // Offsets along the view axis have no screen direction; nudge upward (screen y grows
+    // downward)
     const dir_x = dir_len > LABEL_OFFSET_EPS ? delta_x / dir_len : 0
     const dir_y = dir_len > LABEL_OFFSET_EPS ? delta_y / dir_len : off_y >= 0 ? -1 : 1
 

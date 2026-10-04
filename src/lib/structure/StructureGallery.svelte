@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '#lib/colors/index.js'
   import { get_d3_interpolator, pick_contrast_color } from '#lib/colors/index.js'
-  import { create_flash } from '#lib/effects.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
@@ -216,17 +215,16 @@
     })),
   )
   // A card's canvas costs ~100ms of WebGPU setup, enough to stall a fling, so the
-  // mounted range trails the render window mid-scroll: cards entering show as
-  // label shells until it settles. It catches up once it covers nothing on screen.
-  const scroll_settle_ms = 150
-  const scrolling = create_flash(false, scroll_settle_ms)
+  // mounted range trails the render window mid-scroll (until scrollend): cards entering
+  // show as label shells until it settles. It catches up once it covers nothing on screen.
+  let scrolling = $state(false)
   let mount_start = $state(0)
   let mount_end = $state(0)
   $effect(() => {
     const [live_start, live_end] = untrack(() => [mount_start, mount_end])
     const shows_a_visible_card =
       live_end > first_visible_idx && live_start < first_visible_idx + page_size
-    if (scrolling.value && shows_a_visible_card) return
+    if (scrolling && shows_a_visible_card) return
     mount_start = window_start
     mount_end = window_end
   })
@@ -352,7 +350,7 @@
 
   const on_scroll = (): void => {
     if (!track) return
-    scrolling.show(true)
+    scrolling = true
     scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
     prefetch() // window_start re-derives from the offset just written
   }
@@ -414,7 +412,7 @@
   }
 
   // Pager and arrow keys land on a definite target with no momentum, so there is
-  // no fling to stay clear of: `scrolling.reset()` mounts the new page at once.
+  // no fling to stay clear of: clearing `scrolling` mounts the new page at once.
   const scroll_page = (direction: -1 | 1): void => {
     const target_step = clamp(
       first_visible_step + direction * steps_per_page,
@@ -422,7 +420,7 @@
       max_page_step,
     )
     scroll_to(target_step * item_stride)
-    scrolling.reset()
+    scrolling = false
   }
 
   // Keyboard scrolling for the focused track: main-axis arrows move one card,
@@ -448,7 +446,7 @@
     if (delta === undefined) return
     if (!scroll_to(clamp(current + delta, 0, limit))) return
     event.preventDefault()
-    scrolling.reset()
+    scrolling = false
   }
 
   const stop_resize = (): void => {
@@ -581,6 +579,7 @@
       aria-label="Structure gallery"
       tabindex="0"
       onscroll={on_scroll}
+      onscrollend={() => (scrolling = false)}
       onkeydown={on_track_keydown}
       style={track_style}
     >

@@ -33,10 +33,7 @@ const doses: PhononDos = { type: `phonon`, frequencies: [0, 2, 4], densities: [0
 test.each([`phonon`, `electronic`] as const)(
   `%s panels mirror y view changes, stacked panels do not`,
   (type) => {
-    const inputs = $state({
-      side_by_side: true,
-      sync_zoom: true,
-    })
+    const inputs = $state({ side_by_side: true, sync_zoom: true })
     let units = $state<FrequencyUnit>(`meV`)
     let sync: ReturnType<typeof create_bands_dos_sync> | undefined
     roots.push(

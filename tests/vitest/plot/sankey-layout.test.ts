@@ -1,3 +1,4 @@
+import type { Vec3 } from '#lib/math.js'
 import type { SankeyData } from '#lib/plot/index.js'
 import { compute_sankey_layout, sankey_from_links } from '#lib/plot/sankey/sankey.js'
 import { sankey as d3_sankey, sankeyJustify } from 'd3-sankey'
@@ -15,19 +16,24 @@ const tri: SankeyData = {
 const dims = { width: 400, height: 300, node_width: 20, node_padding: 10 }
 
 describe(`compute_sankey_layout`, () => {
-  test(`assigns columns/depths and conserves node values`, () => {
+  test(`assigns depths, conserves node values and scales boxes/ribbons by value`, () => {
     const { nodes, links } = compute_sankey_layout(tri, dims)
-    expect(nodes).toHaveLength(3)
-    expect(links).toHaveLength(2)
-
-    const [value_a, value_b, value_c] = nodes
-    expect(value_a.depth).toBe(0)
-    expect(value_b.depth).toBe(0)
-    expect(value_c.depth).toBe(1)
-    // node.value = max(sum incoming, sum outgoing)
-    expect(value_a.value).toBe(1)
-    expect(value_b.value).toBe(2)
-    expect(value_c.value).toBe(3)
+    expect(nodes.map((node) => [node.depth, node.value])).toEqual([
+      [0, 1],
+      [0, 2],
+      [1, 3], // node.value = max(sum incoming, sum outgoing)
+    ])
+    const [a_h, b_h, c_h] = nodes.map((node) => node.y1 - node.y0)
+    // busiest column (A + B + one padding gap) fills the full height; d3 scales all
+    // columns by that limiting factor, so the lone node C does NOT fill the height
+    expect(a_h + b_h + dims.node_padding).toBeCloseTo(dims.height, 6)
+    expect(c_h).toBeCloseTo(a_h + b_h, 6)
+    expect(b_h / a_h).toBeCloseTo(2, 6)
+    // C receives both links: sum of incoming widths == C box height, B link twice A link
+    const [w_a, w_b] = links.map((link) => link.width)
+    expect(w_a).toBeGreaterThan(0)
+    expect(w_a + w_b).toBeCloseTo(c_h, 6)
+    expect(w_b / w_a).toBeCloseTo(2, 6)
   })
 
   test(`node boxes and link ribbons match a raw d3-sankey layout to 1e-9`, () => {
@@ -74,38 +80,6 @@ describe(`compute_sankey_layout`, () => {
     )
   })
 
-  test(`column heights respect d3 value scaling`, () => {
-    const { nodes } = compute_sankey_layout(tri, dims)
-    const [value_a, value_b, value_c] = nodes
-    const [a_h, b_h, c_h] = [
-      value_a.y1 - value_a.y0,
-      value_b.y1 - value_b.y0,
-      value_c.y1 - value_c.y0,
-    ]
-    // busiest column (A + B + one padding gap) fills the full height; d3 scales all
-    // columns by that limiting factor, so the lone node C does NOT fill the height
-    expect(a_h + b_h + dims.node_padding).toBeCloseTo(dims.height, 6)
-    // C.value == A.value + B.value at the same scale -> C height == A + B heights
-    expect(c_h).toBeCloseTo(a_h + b_h, 6)
-    // heights proportional to value (B twice A)
-    expect(b_h / a_h).toBeCloseTo(2, 6)
-  })
-
-  test(`link widths are positive and conserve flow into a node`, () => {
-    const { nodes, links } = compute_sankey_layout(tri, dims)
-    for (const link of links) {
-      expect(link.width).toBeGreaterThan(0)
-      expect(link.path.startsWith(`M`)).toBe(true)
-    }
-    // C receives both links: sum of incoming widths == C box height
-    const c_height = nodes[2].y1 - nodes[2].y0
-    const incoming = links.reduce((sum, link) => sum + link.width, 0)
-    expect(incoming).toBeCloseTo(c_height, 6)
-    // widths proportional to value (B link is twice the A link)
-    const [w_a, w_b] = links.map((link) => link.width)
-    expect(w_b / w_a).toBeCloseTo(2, 6)
-  })
-
   test(`horizontal places source left of target; vertical places it above`, () => {
     const horiz = compute_sankey_layout(tri, { ...dims, orientation: `horizontal` })
     expect(horiz.nodes[0].x0).toBeLessThan(horiz.nodes[2].x0)
@@ -122,42 +96,20 @@ describe(`compute_sankey_layout`, () => {
     }
   })
 
-  test(`resolves links by string node id`, () => {
-    const data: SankeyData = {
-      nodes: [
-        { id: `a`, label: `A` },
-        { id: `b`, label: `B` },
-      ],
-      links: [{ source: `a`, target: `b`, value: 5 }],
-    }
-    const { nodes, links } = compute_sankey_layout(data, dims)
-    expect(links[0].source.id).toBe(`a`)
-    expect(links[0].target.id).toBe(`b`)
-    expect(nodes[1].value).toBe(5)
-  })
-
-  test(`resolves non-index numeric node ids by id before index fallback`, () => {
-    const data: SankeyData = {
-      nodes: [
-        { id: 10, label: `A` },
-        { id: 20, label: `B` },
-      ],
-      links: [{ source: 10, target: 20, value: 5 }],
-    }
-    const { links } = compute_sankey_layout(data, dims)
-    expect(links[0].source.node_idx).toBe(0)
-    expect(links[0].target.node_idx).toBe(1)
-  })
-
-  test(`resolves links by node label when no explicit id is set`, () => {
-    const data: SankeyData = {
-      nodes: [{ label: `Coal` }, { label: `Grid` }],
-      links: [{ source: `Coal`, target: `Grid`, value: 7 }],
-    }
-    const { nodes, links } = compute_sankey_layout(data, dims)
-    expect(links[0].source.label).toBe(`Coal`)
-    expect(links[0].target.label).toBe(`Grid`)
-    expect(nodes[1].value).toBe(7)
+  test.each<[string, SankeyData[`nodes`], string | number, string | number]>([
+    [`string id`, [{ id: `a` }, { id: `b` }], `a`, `b`],
+    // non-index numeric ids resolve by id before the index fallback
+    [`numeric id`, [{ id: 10 }, { id: 20 }], 10, 20],
+    [`label without id`, [{ label: `Coal` }, { label: `Grid` }], `Coal`, `Grid`],
+  ])(`resolves links by %s`, (_desc, nodes, source, target) => {
+    const layout = compute_sankey_layout(
+      { nodes, links: [{ source, target, value: 5 }] },
+      dims,
+    )
+    const [link] = layout.links
+    expect([link.source.node_idx, link.target.node_idx]).toEqual([0, 1])
+    expect([link.source, link.target]).toMatchObject(nodes)
+    expect(layout.nodes[1].value).toBe(5)
   })
 
   test.each([
@@ -178,21 +130,25 @@ describe(`compute_sankey_layout`, () => {
     expect(compute_sankey_layout(data, size).nodes).toEqual([])
   })
 
-  test(`a zero-value link among positive links keeps the layout finite`, () => {
-    const data: SankeyData = {
-      nodes: [{ label: `A` }, { label: `B` }, { label: `C` }],
-      links: [
-        { source: 0, target: 2, value: 1 },
-        { source: 1, target: 2, value: 0 },
-      ],
-    }
-    const { nodes, links } = compute_sankey_layout(data, dims)
-    expect(nodes).toHaveLength(3)
-    expect(nodes.every((node) => Number.isFinite(node.y0) && Number.isFinite(node.y1))).toBe(
-      true,
-    )
-    for (const link of links) expect(link.path).not.toContain(`NaN`)
-  })
+  // zero stays legal: it is the documented all-zero-collapses-to-empty case, not bad input
+  test.each<[string, Vec3, Vec3]>([
+    [`separate source`, [0, 2, 1], [1, 2, 0]],
+    [`shared source`, [0, 1, 10], [0, 2, 0]],
+  ])(
+    `a zero-value link (%s) among positive links keeps the layout finite`,
+    (_desc, ...rows) => {
+      const data: SankeyData = {
+        nodes: [{ label: `A` }, { label: `B` }, { label: `C` }],
+        links: rows.map(([source, target, value]) => ({ source, target, value })),
+      }
+      const { nodes, links } = compute_sankey_layout(data, dims)
+      expect(nodes).toHaveLength(3)
+      expect(nodes.every((node) => Number.isFinite(node.y0) && Number.isFinite(node.y1))).toBe(
+        true,
+      )
+      for (const link of links) expect(link.path).not.toContain(`NaN`)
+    },
+  )
 
   // The all-zero guard above covers the whole graph being empty, but one bad row in an
   // otherwise valid graph reached d3 unchecked: a non-finite value poisoned every coordinate
@@ -212,19 +168,6 @@ describe(`compute_sankey_layout`, () => {
       ],
     } as SankeyData
     expect(() => compute_sankey_layout(data, dims)).toThrow(/non-negative finite value/)
-  })
-
-  // zero stays legal: it is the documented all-zero-collapses-to-empty case, not bad input
-  test(`accepts a zero-valued link alongside a real one`, () => {
-    const data: SankeyData = {
-      nodes: [{ id: `A` }, { id: `B` }, { id: `C` }],
-      links: [
-        { source: `A`, target: `B`, value: 10 },
-        { source: `A`, target: `C`, value: 0 },
-      ],
-    }
-    const { links } = compute_sankey_layout(data, dims)
-    for (const link of links) expect(link.path).not.toContain(`NaN`)
   })
 
   test(`drops link-less nodes so extra labels don't pile up below the plot`, () => {
@@ -324,19 +267,14 @@ describe(`compute_sankey_layout`, () => {
 })
 
 describe(`sankey_from_links`, () => {
-  test(`builds nodes + links from flat arrays`, () => {
+  test(`builds nodes + links from flat arrays, inferring node count without labels`, () => {
     const data = sankey_from_links([0, 1], [2, 2], [10, 20], [`A`, `B`, `C`])
-    expect(data.nodes).toHaveLength(3)
     expect(data.nodes.map((node) => node.label)).toEqual([`A`, `B`, `C`])
     expect(data.links).toEqual([
       { source: 0, target: 2, value: 10 },
       { source: 1, target: 2, value: 20 },
     ])
-  })
-
-  test(`infers node count from indices when labels omitted`, () => {
-    const data = sankey_from_links([0, 1, 2], [3, 3, 3], [1, 1, 1])
-    expect(data.nodes).toHaveLength(4)
+    expect(sankey_from_links([0, 1, 2], [3, 3, 3], [1, 1, 1]).nodes).toHaveLength(4)
   })
 
   test(`covers all indexed nodes when labels are too short`, () => {

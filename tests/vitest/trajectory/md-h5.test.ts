@@ -17,6 +17,7 @@ import { Dataset, type File as H5File, type Group } from 'h5wasm'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { max_abs_error, max_rel_error } from '../numeric-helpers'
 import { h5_bytes } from './fixtures'
 
 // What producers record: their own CODATA edition's factor (2018 is 7e-10 off the reader's
@@ -475,22 +476,13 @@ describe(`MD HDF5`, () => {
     // Replicas reuse validated axes, plot rows and preview without reading frame data.
     expect(slices.every(({ path }) => !path.startsWith(`/frames/`))).toBe(true)
     expect(summarize_run(replica)).toEqual(summary)
-    let max_absolute_error = 0
-    let max_relative_error = 0
     for (const frame_idx of [0, 1, frames - 1]) {
       const expected = await run.read_frame(frame_idx)
       const actual = await replica.read_frame(frame_idx)
       assert.deepStrictEqual(actual, expected)
-      for (const [idx, value] of expected.coordinates.entries()) {
-        const error = Math.abs(actual.coordinates[idx] - value)
-        max_absolute_error = Math.max(max_absolute_error, error)
-        max_relative_error = Math.max(
-          max_relative_error,
-          value === 0 ? error : error / Math.abs(value),
-        )
-      }
+      expect(max_abs_error(actual.coordinates, expected.coordinates)).toBe(0)
+      expect(max_rel_error(actual.coordinates, expected.coordinates)).toBe(0)
     }
-    expect([max_absolute_error, max_relative_error]).toEqual([0, 0])
     await expect(
       open_hdf5_trajectory(buffer, create_warning_collector(), `md.h5`, undefined, {
         ...summary,

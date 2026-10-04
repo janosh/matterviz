@@ -7,7 +7,7 @@
   // render, so it costs no extra canvas and stays out of PNG exports (scene+camera only).
   import type { Vec3 } from '#lib/math.js'
   import { useParent, useTask, useThrelte } from '@threlte/core'
-  import { untrack } from 'svelte'
+  import { getAbortSignal, untrack } from 'svelte'
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { create_fly_to, DEFAULT_FLY_TO_DURATION_MS } from './fly-to'
@@ -284,8 +284,8 @@
   $effect(() => {
     const container = dom
     if (!container) return
-    const controller = new AbortController()
-    const opts = { capture: true, signal: controller.signal } as const
+    const signal = getAbortSignal()
+    const opts = { capture: true, signal } as const
     const listeners = [
       [`pointermove`, handle_pointer_move],
       [`pointerdown`, handle_pointer_down],
@@ -293,7 +293,6 @@
       [`pointerleave`, handle_pointer_leave],
     ] as const
     for (const [type, callback] of listeners) container.addEventListener(type, callback, opts)
-    return () => controller.abort()
   })
 
   const prev_viewport = new THREE.Vector4()

@@ -80,6 +80,14 @@ const seeded_model = (widget_type: string, spec: (typeof WIDGETS)[string]): Mock
 
 const widget_entries = Object.entries(WIDGETS)
 
+// pymatviz's PlotControlsTraits: every plot widget forwards these flat (never as `controls`)
+const controls_traits = {
+  show_controls: false,
+  controls_open: true,
+  controls_toggle_props: { title: `Plot options` },
+  controls_pane_props: { style: `width: 20rem` },
+}
+
 // Generic engine coverage across every registered widget: uses each spec's own
 // compute as the oracle, so it verifies drive seeding + rename + derived recompute
 // flow through mount_spec -> reactive_widget -> the mounted component for all widgets.
@@ -115,73 +123,35 @@ describe(`drive wiring (all widgets)`, () => {
   )
 })
 
-describe(`scatter_plot wiring`, () => {
-  test(`range traits map into axis config while controls stay flat`, () => {
-    const model = new MockModel({
-      widget_type: `scatter_plot`,
-      series: [],
-      x_axis: { label: `Energy` },
-      x_range: [0, 10],
-      show_legend: false,
-      marker_renderer: `canvas`,
-      show_controls: false,
-      controls_open: true,
-      controls_toggle_props: { title: `Plot options` },
-      controls_pane_props: { style: `width: 20rem` },
-    })
-    const stub = run_widget(`scatter_plot`, model)
-    expect(stub.read().x_axis).toEqual({ label: `Energy`, range: [0, 10] })
-    expect(stub.read().show_legend).toBe(false)
-    expect(stub.read().marker_renderer).toBe(`canvas`)
-    expect(stub.read().show_controls).toBe(false)
-    expect(stub.read().controls_open).toBe(true)
-    expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
-    expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
-    expect(`x_range` in stub.read()).toBe(false)
-    expect(`controls` in stub.read()).toBe(false)
-  })
+test(`scatter_plot point callbacks write active_point (monotonic event_id) and hovered_point`, () => {
+  const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
+  const { on_point_click, on_point_hover } = run_widget(
+    `scatter_plot`,
+    model,
+  ).read() as Record<string, (data: unknown) => void>
+  const point = { series_idx: 0, point_idx: 2, x: 1.5, y: 3.5 }
+  on_point_click({ point })
+  expect(model.state.active_point).toEqual({ ...point, event_id: 1 })
+  // re-click the same point -> distinct trait value via incremented event_id
+  on_point_click({ point })
+  expect(model.state.active_point).toEqual({ ...point, event_id: 2 })
 
-  test(`on_point_click writes active_point with a monotonic event_id`, () => {
-    const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
-    const stub = run_widget(`scatter_plot`, model)
-    const on_point_click = stub.read().on_point_click as (data: unknown) => void
+  // hover is leading-edge with no event_id
+  on_point_hover({ point: { series_idx: 1, point_idx: 4, x: 2, y: 6 } })
+  expect(model.state.hovered_point).toEqual({ series_idx: 1, point_idx: 4, x: 2, y: 6 })
+})
 
-    on_point_click({ point: { series_idx: 0, point_idx: 2, x: 1.5, y: 3.5 } })
-    expect(model.state.active_point).toEqual({
-      series_idx: 0,
-      point_idx: 2,
-      x: 1.5,
-      y: 3.5,
-      event_id: 1,
-    })
-
-    // re-click the same point -> distinct trait value via incremented event_id
-    on_point_click({ point: { series_idx: 0, point_idx: 2, x: 1.5, y: 3.5 } })
-    expect((model.state.active_point as { event_id: number }).event_id).toBe(2)
-  })
-
-  test(`on_point_hover writes hovered_point (no event_id, leading-edge)`, () => {
-    const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
-    const stub = run_widget(`scatter_plot`, model)
-    const on_point_hover = stub.read().on_point_hover as (data: unknown) => void
-
-    on_point_hover({ point: { series_idx: 1, point_idx: 4, x: 2, y: 6 } })
-    expect(model.state.hovered_point).toEqual({ series_idx: 1, point_idx: 4, x: 2, y: 6 })
-  })
-
-  test(`selected_point is a drive key (Python -> view)`, () => {
-    const model = new MockModel({
-      widget_type: `scatter_plot`,
-      series: [],
-      selected_point: { series_idx: 0, point_idx: 0 },
-    })
-    const stub = run_widget(`scatter_plot`, model)
-    expect(stub.read().selected_point).toEqual({ series_idx: 0, point_idx: 0 })
-
-    model.push_from_python(`selected_point`, { series_idx: 0, point_idx: 3 })
-    flushSync()
-    expect(stub.read().selected_point).toEqual({ series_idx: 0, point_idx: 3 })
-  })
+// drive-only keys (Python -> view) under their exact prop names
+test.each([
+  [`scatter_plot`, `selected_point`, { series_idx: 0, point_idx: 0 }, { point_idx: 3 }],
+  [`structure`, `highlighted_sites`, [], [1, 4]],
+])(`%s %s is driven from Python`, (widget_type, key, initial, next_value) => {
+  const model = new MockModel({ widget_type, [key]: initial })
+  const stub = run_widget(widget_type, model)
+  expect(stub.read()[key]).toEqual(initial)
+  model.push_from_python(key, next_value)
+  flushSync()
+  expect(stub.read()[key]).toEqual(next_value)
 })
 
 describe(`structure wiring`, () => {
@@ -192,17 +162,6 @@ describe(`structure wiring`, () => {
   ] as const)(`normalizes %s volumetric_data`, (_shape, raw, expected) => {
     const model = new MockModel({ widget_type: `structure`, volumetric_data: raw })
     expect(run_widget(`structure`, model).read().volumetric_data).toEqual(expected)
-  })
-
-  test(`highlighted_sites is drive-only`, () => {
-    const model = new MockModel({
-      widget_type: `structure`,
-      highlighted_sites: [],
-    })
-    const stub = run_widget(`structure`, model)
-    model.push_from_python(`highlighted_sites`, [1, 4])
-    flushSync()
-    expect(stub.read().highlighted_sites).toEqual([1, 4])
   })
 
   test(`scene_props recomputes reactively when a constituent trait changes`, () => {
@@ -222,14 +181,12 @@ describe(`structure wiring`, () => {
   })
 
   test(`unset auto_rotate/gizmo fall back to the settings defaults`, () => {
-    // A notebook structure must not spin when the page embed does not: the widget used to
-    // hardcode auto_rotate ?? 0.2 against a settings default of 0
+    // a notebook structure must not spin when the page embed does not
     const stub = run_widget(`structure`, new MockModel({ widget_type: `structure` }))
     expect(stub.read().scene_props).toMatchObject({
       auto_rotate: DEFAULTS.structure.auto_rotate,
       gizmo: DEFAULTS.structure.gizmo,
     })
-    expect(DEFAULTS.structure.auto_rotate).toBe(0)
   })
 
   test(`show_site_labels rides in scene_props, not a dead top-level prop`, () => {
@@ -281,21 +238,9 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `selected_point`,
         `show_legend`,
         `marker_renderer`,
-        `show_controls`,
-        `controls_open`,
-        `controls_toggle_props`,
-        `controls_pane_props`,
       ]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
-    // pymatviz's PlotControlsTraits documents all four controls traits for every plot widget,
-    // and Bands/Dos/XrdPlot/RdfPlot forward the pane attribute dicts to their PlotControls
-    const control_keys = [
-      `show_controls`,
-      `controls_open`,
-      `controls_toggle_props`,
-      `controls_pane_props`,
-    ]
     for (const widget_type of [
       `scatter_plot`,
       `scatter_plot_3d`,
@@ -309,7 +254,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       `bands_and_dos`,
     ]) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
-        expect.arrayContaining(control_keys),
+        expect.arrayContaining(Object.keys(controls_traits)),
       )
       expect(WIDGET_MODEL_KEYS[widget_type]).not.toContain(`controls`)
     }
@@ -382,48 +327,37 @@ describe(`widget config wiring`, () => {
     expect(stub.read()[prop]).toEqual(value)
   })
 
-  test.each([`bar_plot`, `histogram`] as const)(
-    `%s maps range traits and forwards flat controls`,
-    (widget_type) => {
-      const model = new MockModel({
-        widget_type,
-        series: [],
-        y_axis: { label: `Count` },
-        y_range: [1, 5],
-        show_controls: false,
-        controls_open: true,
-        controls_toggle_props: { title: `Plot options` },
-        controls_pane_props: { style: `width: 20rem` },
-      })
-      const stub = run_widget(widget_type, model)
-      expect(stub.read().y_axis).toEqual({ label: `Count`, range: [1, 5] })
-      expect(stub.read().show_controls).toBe(false)
-      expect(stub.read().controls_open).toBe(true)
-      expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
-      expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
-      expect(`y_range` in stub.read()).toBe(false)
-      expect(`controls` in stub.read()).toBe(false)
-    },
-  )
+  test.each([
+    [`scatter_plot`, `x`, { show_legend: false, marker_renderer: `canvas` }],
+    [`bar_plot`, `y`, {}],
+    [`histogram`, `y`, {}],
+  ] as const)(`%s maps the %s range trait into axis config`, (widget_type, axis, extra) => {
+    const model = new MockModel({
+      widget_type,
+      series: [],
+      [`${axis}_axis`]: { label: `Count` },
+      [`${axis}_range`]: [1, 5],
+      ...controls_traits,
+      ...extra,
+    })
+    const props = run_widget(widget_type, model).read()
+    expect(props[`${axis}_axis`]).toEqual({ label: `Count`, range: [1, 5] })
+    expect(props).toMatchObject({ ...controls_traits, ...extra })
+    expect(`${axis}_range` in props).toBe(false)
+    expect(`controls` in props).toBe(false)
+  })
 
-  // Every plot widget forwards all four controls traits, the wrappers (Bands/Dos/RdfPlot/
-  // XrdPlot) included: they declare the pane attribute props and hand them to PlotControls
+  // the wrappers (Bands/Dos/RdfPlot/XrdPlot) declare the pane attribute props and hand them
+  // to PlotControls
   test.each([`scatter_plot_3d`, `band_structure`, `dos`, `rdf_plot`, `xrd`] as const)(
     `%s forwards flat controls including the pane attribute props`,
     (widget_type) => {
-      const model = new MockModel({
+      const props = run_widget(
         widget_type,
-        show_controls: false,
-        controls_open: true,
-        controls_toggle_props: { title: `Plot options` },
-        controls_pane_props: { style: `width: 20rem` },
-      })
-      const stub = run_widget(widget_type, model)
-      expect(stub.read().show_controls).toBe(false)
-      expect(stub.read().controls_open).toBe(true)
-      expect(stub.read().controls_toggle_props).toEqual({ title: `Plot options` })
-      expect(stub.read().controls_pane_props).toEqual({ style: `width: 20rem` })
-      expect(`controls` in stub.read()).toBe(false)
+        new MockModel({ widget_type, ...controls_traits }),
+      ).read()
+      expect(props).toMatchObject(controls_traits)
+      expect(`controls` in props).toBe(false)
     },
   )
 
@@ -431,24 +365,12 @@ describe(`widget config wiring`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
       show_legend: false,
-      show_controls: false,
-      controls_open: true,
-      controls_toggle_props: { title: `Plot options` },
-      controls_pane_props: { style: `width: 20rem` },
+      ...controls_traits,
     })
-    const stub = run_widget(`bands_and_dos`, model)
-    const controls = {
-      show_controls: false,
-      controls_open: true,
-      controls_toggle_props: { title: `Plot options` },
-      controls_pane_props: { style: `width: 20rem` },
-    }
-    expect(stub.read().bands_props).toEqual({
-      show_legend: false,
-      ...controls,
-    })
-    expect(stub.read().dos_props).toMatchObject(controls)
-    expect(`show_controls` in stub.read()).toBe(false)
+    const props = run_widget(`bands_and_dos`, model).read()
+    expect(props.bands_props).toEqual({ show_legend: false, ...controls_traits })
+    expect(props.dos_props).toMatchObject(controls_traits)
+    expect(`show_controls` in props).toBe(false)
   })
 })
 

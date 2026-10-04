@@ -62,7 +62,6 @@ describe(`Theme System`, () => {
       `save/get_theme_preference round-trips "%s"`,
       (theme) => {
         save_theme_preference(theme as ThemeMode)
-        // Source uses bracket notation: localStorage[key] = mode
         expect(localStorage[`matterviz-theme`]).toBe(theme)
         expect(get_theme_preference()).toBe(theme)
       },

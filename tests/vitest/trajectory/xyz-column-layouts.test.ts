@@ -44,53 +44,32 @@ test(`does not invent frames from numeric lines inside a frame`, () => {
   expect(count_xyz_frames(text)).toBe(1)
 })
 
+const sound = `species:S:1:pos:R:3:forces:R:3`
+const with_forces = two_frames(sound, [[`Si`], [`Si`]])
+  .split(`\n`)
+  .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
+  .join(`\n`)
 // Both open paths must agree on the plot rows (parsers.test compares them for sound files),
-// also when a spec is unusable: each frame carries its own `Properties=`, so a later frame
-// the materialized path refuses to build must not get a plot row in the indexed run either.
-test(`indexed run publishes no force stats for a frame whose spec is unusable`, async () => {
-  const sound = `species:S:1:pos:R:3:forces:R:3`
-  const text = two_frames(sound, [[`Si`], [`Si`]])
-    .split(`\n`)
-    .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
-    .join(`\n`)
-    // only the second frame's spec is broken
-    .replace(new RegExp(`${sound}(?![\\s\\S]*${sound})`), `species:S:1:pos:R:2:forces:R:3`)
-  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
-    /does not declare a 3-column pos field/,
-  )
+// also when a later frame cannot be built: the indexed run must not give it a plot row
+// oxfmt-ignore
+test.each<[string, string, RegExp]>([
+  // each frame carries its own `Properties=`; only the second frame's spec is broken
+  [`an unusable spec`, with_forces.replace(new RegExp(`${sound}(?![\\s\\S]*${sound})`), `species:S:1:pos:R:2:forces:R:3`),
+    /does not declare a 3-column pos field/],
+  // The frame walk's atom-line test rules out a NaN coordinate but not an overflowing one, so
+  // `1e999` reached the force scan. Frame 1's FIRST atom line: frame 0 is decoded eagerly, and
+  // a bad LAST line of the file is caught by the torn-frame guard, which drops the frame
+  ...[0, 1, 2].map((axis) => [`1e999 on axis ${axis}`,
+    with_forces.replace(`Si 0.0 0.0 0.1 `, `Si ${[`0.0`, `0.0`, `0.1`].map((value, idx) => (idx === axis ? `1e999` : value)).join(` `)} `),
+    /non-numeric coordinates/] satisfies [string, string, RegExp]),
+])(`indexed run publishes no force stats for a frame with %s`, async (_label, text, error) => {
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(error)
   const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
   await run.properties.done
   const [first, second] = run.properties.rows.map((row) => row.properties.force_max)
   expect(first).toBeCloseTo(0.3, 12)
-  expect(second).toBeUndefined() // read the tail of the position columns before the fix
+  expect(second).toBeUndefined() // the fix-less run read stats for a frame that cannot be built
 })
-
-// The frame walk's atom-line test rules out a NaN coordinate but not an overflowing one, so
-// `1e999` reaches the force scan while the frame builder still refuses the atom as non-finite.
-test.each([0, 1, 2])(
-  `indexed run publishes no force stats with non-finite coordinate axis %s`,
-  async (axis) => {
-    const sound = `species:S:1:pos:R:3:forces:R:3`
-    const text = two_frames(sound, [[`Si`], [`Si`]])
-      .split(`\n`)
-      .map((line) => (line.startsWith(`Si`) ? `${line} 0.1 0.2 0.2` : line))
-      .join(`\n`)
-      // frame 1's FIRST atom line: frame 0 is decoded eagerly, and a bad LAST line of the file
-      // is already caught by the torn-frame guard, which drops the frame instead
-      .replace(
-        `Si 0.0 0.0 0.1 `,
-        `Si ${[`0.0`, `0.0`, `0.1`].map((value, idx) => (idx === axis ? `1e999` : value)).join(` `)} `,
-      )
-    expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
-      /non-numeric coordinates/,
-    )
-    const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
-    await run.properties.done
-    const [first, second] = run.properties.rows.map((row) => row.properties.force_max)
-    expect(first).toBeCloseTo(0.3, 12)
-    expect(second).toBeUndefined() // 0.3 before the fix, for a frame that cannot be built
-  },
-)
 
 // A malformed `Properties=` must fail loudly. Each of these used to yield a plausible wrong
 // atom: an unusable spec was discarded and read as "no Properties= at all", so the plain

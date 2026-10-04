@@ -21,7 +21,6 @@ describe(`ThemeControl`, () => {
     mount(ThemeControl, { target: document.body, props: {} })
 
     const select = doc_query(`select.theme-control`)
-    expect(select).toBeInstanceOf(HTMLSelectElement)
     expect(select.getAttribute(`aria-label`)).toBe(`Color theme`)
 
     const options = [...select.querySelectorAll(`option`)]

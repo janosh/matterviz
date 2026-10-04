@@ -46,10 +46,8 @@ describe(`PlotTitle`, () => {
 
     const title = svg.querySelector(`text.plot-title-text`)
     const subtitle = svg.querySelector(`text.plot-subtitle-text`)
-    expect(title?.querySelectorAll(`tspan`)).toHaveLength(2)
-    expect(
-      [...(title?.querySelectorAll(`tspan`) ?? [])].map((line) => line.textContent),
-    ).toEqual([`alpha beta`, `gamma`])
+    const title_lines = [...(title?.querySelectorAll(`tspan`) ?? [])]
+    expect(title_lines.map((line) => line.textContent)).toEqual([`alpha beta`, `gamma`])
     expect(subtitle?.querySelectorAll(`tspan`)).toHaveLength(2)
     expect(title?.getAttribute(`font-size`)).toBe(`10`)
     expect(title?.getAttribute(`font-weight`)).toBe(`700`)
@@ -58,7 +56,7 @@ describe(`PlotTitle`, () => {
     expect(subtitle?.getAttribute(`font-style`)).toBe(`italic`)
     expect(svg.querySelector(`foreignObject`)).toBeNull()
     expect(Number(subtitle?.querySelector(`tspan`)?.getAttribute(`y`))).toBeGreaterThan(
-      Number(title?.querySelectorAll(`tspan`)[1]?.getAttribute(`y`)),
+      Number(title_lines[1]?.getAttribute(`y`)),
     )
     await unmount(component)
   })

@@ -22,11 +22,8 @@ vi.mock(`@threlte/extras`, async () => ({
   HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
 }))
 
-const cubic: Matrix3x3 = [
-  [4, 0, 0],
-  [0, 4, 0],
-  [0, 0, 4],
-]
+// oxfmt-ignore
+const cubic: Matrix3x3 = [[4, 0, 0], [0, 4, 0], [0, 0, 4]]
 
 let teardown: (() => void) | undefined
 afterEach(() => {
@@ -83,11 +80,8 @@ test(`cell arrows keep slender proportions as the lattice changes size`, () => {
   const component = mount(Lattice, { target: document.body, props })
   teardown = () => void unmount(component)
   for (const length of [2, 0.5, 20]) {
-    props.matrix = [
-      [length, 0, 0],
-      [0, length, 0],
-      [0, 0, length],
-    ]
+    // oxfmt-ignore
+    props.matrix = [[length, 0, 0], [0, length, 0], [0, 0, length]]
     flushSync()
     const shafts = threlte_stub.nodes.filter((node) => node.tag === `CylinderGeometry`)
     const heads = threlte_stub.nodes.filter((node) => node.tag === `ConeGeometry`)

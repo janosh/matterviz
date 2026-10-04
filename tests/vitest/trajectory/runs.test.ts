@@ -558,7 +558,7 @@ it.each([27, 100_000])(
 describe.each(RUN_CASES)(
   `$name run`,
   ({ make, sync_reads, has_collect, n_frames, n_atoms }) => {
-    it(`exposes frame_count, a frame-0 preview and range-checked frame reads`, async () => {
+    it(`exposes frame_count, preview, range-checked reads and ordered property rows`, async () => {
       const run = await make()
       expect(run.frame_count).toBe(n_frames)
       expect(run.atom_count).toBe(n_atoms)
@@ -574,42 +574,6 @@ describe.each(RUN_CASES)(
         expect(() => materialize_frame_result(run.read_frame(bad_idx))).toThrow(RangeError)
       }
       expect(run.collect_positions !== undefined).toBe(has_collect)
-      run.dispose()
-    })
-
-    it(`read_frame rejects with the abort reason`, async () => {
-      const run = await make()
-      const controller = new AbortController()
-      const reason = new Error(`stale scrub`)
-      const pending = materialize_frame_result(run.read_frame(n_frames - 1, controller.signal))
-      controller.abort(reason)
-      if (pending instanceof Promise) await expect(pending).rejects.toBe(reason)
-      else expect(pending.structure.sites).toHaveLength(n_atoms) // sync reads cannot be aborted
-      for (const frame_idx of [0, n_frames - 1]) {
-        await expect(
-          (async () =>
-            materialize_frame_result(run.read_frame(frame_idx, controller.signal)))(),
-        ).rejects.toBe(reason)
-      }
-      run.dispose()
-    })
-
-    it(`dispose is idempotent and later reads fail`, async () => {
-      const run = await make()
-      run.dispose()
-      run.dispose()
-      for (const frame_idx of [0, n_frames - 1]) {
-        await expect(
-          (async () => materialize_frame_result(run.read_frame(frame_idx)))(),
-        ).rejects.toThrow(/disposed/)
-      }
-      if (run.collect_positions)
-        await expect(run.collect_positions()).rejects.toThrow(/disposed/)
-      expect(run.properties.complete).toBe(true)
-    })
-
-    it(`properties rows cover the run in frame order`, async () => {
-      const run = await make()
       await run.properties.done
       const { rows } = run.properties
       expect(rows.length).toBeGreaterThan(0)
@@ -623,6 +587,33 @@ describe.each(RUN_CASES)(
         (await materialize_frame_result(run.read_frame(last_row?.frame_number ?? 0))).step,
       )
       run.dispose()
+    })
+
+    it(`read_frame rejects with the abort reason; dispose is idempotent and later reads fail`, async () => {
+      const run = await make()
+      const controller = new AbortController()
+      const reason = new Error(`stale scrub`)
+      const pending = materialize_frame_result(run.read_frame(n_frames - 1, controller.signal))
+      controller.abort(reason)
+      if (pending instanceof Promise) await expect(pending).rejects.toBe(reason)
+      else expect(pending.structure.sites).toHaveLength(n_atoms) // sync reads cannot be aborted
+      for (const frame_idx of [0, n_frames - 1]) {
+        await expect(
+          (async () =>
+            materialize_frame_result(run.read_frame(frame_idx, controller.signal)))(),
+        ).rejects.toBe(reason)
+      }
+      // disposed before progressive properties finish, which must still complete them
+      run.dispose()
+      run.dispose()
+      for (const frame_idx of [0, n_frames - 1]) {
+        await expect(
+          (async () => materialize_frame_result(run.read_frame(frame_idx)))(),
+        ).rejects.toThrow(/disposed/)
+      }
+      if (run.collect_positions)
+        await expect(run.collect_positions()).rejects.toThrow(/disposed/)
+      expect(run.properties.complete).toBe(true)
     })
   },
 )

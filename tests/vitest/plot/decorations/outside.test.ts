@@ -20,12 +20,10 @@ const width = 400
 const height = 300
 
 // obstacle field filling the whole [0,1] plot so any interior decoration unavoidably overlaps data
-const dense: { x: number; y: number }[] = []
-for (let x_idx = 0; x_idx <= 20; x_idx++) {
-  for (let y_idx = 0; y_idx <= 20; y_idx++) {
-    dense.push({ x: x_idx / 20, y: y_idx / 20 })
-  }
-}
+const grid_steps = Array.from({ length: 21 }, (_, idx) => idx / 20)
+const dense = grid_steps.flatMap((x_pos) =>
+  grid_steps.map((y_pos) => ({ x: x_pos, y: y_pos })),
+)
 
 // Outside placement over the shared plot box; tests override only what they vary (obstacles
 // default to the fully-dense field that forces every interior decoration to overlap data)
@@ -63,22 +61,17 @@ test(`a legend too wide for its frame always goes below the plot`, () => {
 })
 
 describe(`place_outside_decorations`, () => {
+  // horizontal reserves top padding; vertical reserves right padding
   test.each([
-    { horizontal: true, edge: `top` },
-    { horizontal: false, edge: `right` },
-  ])(
-    `crowded colorbar (horizontal=$horizontal) moves to the $edge margin`,
-    ({ horizontal }) => {
+    [true, `t`, `r`],
+    [false, `r`, `t`],
+  ] as const)(
+    `crowded colorbar (horizontal=%s) grows the %s padding only`,
+    (horizontal, grown, kept) => {
       const layout = place({ colorbar: { footprint: { width: 220, height: 56 }, horizontal } })
       expect(layout.colorbar_outside).toBe(true)
-      // horizontal reserves top padding; vertical reserves right padding
-      if (horizontal) {
-        expect(layout.pad.t).toBeGreaterThan(base_pad.t)
-        expect(layout.pad.r).toBe(base_pad.r)
-      } else {
-        expect(layout.pad.r).toBeGreaterThan(base_pad.r)
-        expect(layout.pad.t).toBe(base_pad.t)
-      }
+      expect(layout.pad[grown]).toBeGreaterThan(base_pad[grown])
+      expect(layout.pad[kept]).toBe(base_pad[kept])
     },
   )
 
@@ -212,35 +205,15 @@ describe(`build_obstacles_norm`, () => {
   })
 
   test(`drops non-finite points`, () => {
-    const pts = build_obstacles_norm(
-      [
-        {
-          points: [
-            { x: NaN, y: 0.5 },
-            { x: 0.5, y: 0.5 },
-          ],
-        },
-      ],
-      300,
-      200,
-    )
-    expect(pts).toEqual([{ x: 0.5, y: 0.5 }])
+    // oxfmt-ignore
+    const points = [{ x: NaN, y: 0.5 }, { x: 0.5, y: 0.5 }]
+    expect(build_obstacles_norm([{ points }], 300, 200)).toEqual([{ x: 0.5, y: 0.5 }])
   })
 
   test(`samples the visible portion of extreme offscreen line segments`, () => {
-    const obstacles = build_obstacles_norm(
-      [
-        {
-          points: [
-            { x: -1000, y: 0.5 },
-            { x: 1000, y: 0.5 },
-          ],
-          draws_line: true,
-        },
-      ],
-      300,
-      200,
-    )
+    // oxfmt-ignore
+    const points = [{ x: -1000, y: 0.5 }, { x: 1000, y: 0.5 }]
+    const obstacles = build_obstacles_norm([{ points, draws_line: true }], 300, 200)
     expect(obstacles.length).toBeGreaterThan(20)
     const all_visible = obstacles.every(
       ({ x: coord_x, y: coord_y }) =>

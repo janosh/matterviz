@@ -178,31 +178,22 @@ describe(`pdf_scattering_weights`, () => {
       radiations.map((radiation) => ({ name, composition, radiation })),
     ),
   )(
-    `$name weights sum to 1 over all ordered pairs ($radiation)`,
+    `$name weights are symmetric and sum to 1 over all ordered pairs ($radiation)`,
     ({ composition, radiation }) => {
       const { pair_weight } = pdf_scattering_weights(composition, radiation)
       const elements = Object.keys(composition)
       let total = 0
       for (const element_a of elements) {
-        for (const element_b of elements) total += pair_weight(element_a, element_b)
-      }
-      // analytically (Σ c_a b_a)² / <b>² = 1, so only FP rounding separates us from exact
-      expect(total).toBeCloseTo(1, 12)
-    },
-  )
-
-  test.each(binaries)(
-    `%s unordered pairs with multiplicity 2 for unlike pairs also sum to 1`,
-    (_name, composition) => {
-      const { pair_weight } = pdf_scattering_weights(composition, `neutron`)
-      const elements = Object.keys(composition)
-      let total = 0
-      for (let idx_a = 0; idx_a < elements.length; idx_a++) {
-        for (let idx_b = idx_a; idx_b < elements.length; idx_b++) {
-          const multiplicity = idx_a === idx_b ? 1 : 2
-          total += multiplicity * pair_weight(elements[idx_a], elements[idx_b])
+        for (const element_b of elements) {
+          total += pair_weight(element_a, element_b)
+          // symmetry is what lets callers sum unordered pairs with multiplicity 2
+          expect(pair_weight(element_a, element_b)).toBeCloseTo(
+            pair_weight(element_b, element_a),
+            15,
+          )
         }
       }
+      // analytically (Σ c_a b_a)² / <b>² = 1, so only FP rounding separates us from exact
       expect(total).toBeCloseTo(1, 12)
     },
   )
@@ -217,7 +208,6 @@ describe(`pdf_scattering_weights`, () => {
       (0.25 * b_na * b_cl) / (mean_b * mean_b),
       12,
     )
-    expect(weights.pair_weight(`Na`, `Cl`)).toBeCloseTo(weights.pair_weight(`Cl`, `Na`), 15)
   })
 
   test(`normalizes raw atom counts to fractions`, () => {

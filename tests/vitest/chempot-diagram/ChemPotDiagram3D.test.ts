@@ -10,7 +10,7 @@ import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props } from '../setup'
+import { bind_props, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -205,8 +205,7 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   if (!min_limit) throw new Error(`no min-limit input`)
   // keystrokes don't commit (typing -10 must not compute at -1 first), and an unparsable
   // committed value is ignored
-  min_limit.value = `-1`
-  min_limit.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(min_limit, `-1`)
   min_limit.value = `-`
   min_limit.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
@@ -263,20 +262,23 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
 
 // Each hull face lies on exactly one entry's hyperplane, so its owner is the domain whose
 // vertex set holds all three corners. Nearest-centroid labelled six domains owning no face.
-test(`hull faces are labelled by the domain that owns their vertices`, async () => {
-  const { render_domains, render_axis_scale, hull_geometry, domain_labels } = (
-    await mount_diagram<{
-      render_domains: { formula: string; points_3d: number[][] }[]
-      render_axis_scale: Vec3
-      hull_geometry: {
-        getAttribute(name: string): { count: number; array: ArrayLike<number> }
-      }
-      domain_labels: { formula: string }[]
-    }>({
-      entries: ytos_entries,
-      config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25 },
-    })
-  )()
+// The "Surface" quick-select used to raycast from each domain's anchor at a FrontSide mesh:
+// rays cast from inside a hull hit only culled back faces, so every domain scored zero hits and
+// the button was a second "select all". It now asks which domains own a face of the envelope.
+test(`hull faces are labelled by their owning domain, which the Surface quick-select picks`, async () => {
+  const scene = await mount_diagram<{
+    render_domains: { formula: string; points_3d: number[][] }[]
+    render_axis_scale: Vec3
+    hull_geometry: {
+      getAttribute(name: string): { count: number; array: ArrayLike<number> }
+    }
+    domain_labels: { formula: string }[]
+    formula_meshes: { geometry: object; color: string }[]
+  }>({
+    entries: ytos_entries,
+    config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25, draw_formula_meshes: true },
+  })
+  const { render_domains, render_axis_scale, hull_geometry, domain_labels } = scene()
   const swiz = swizzle_to_render(render_axis_scale)
   const render_pts = new Map(
     render_domains.map(({ formula, points_3d }) => [
@@ -306,20 +308,8 @@ test(`hull faces are labelled by the domain that owns their vertices`, async () 
   const labelled = new Set(domain_labels.map(({ formula }) => formula))
   expect([...owners].filter((formula) => !labelled.has(formula))).toEqual([]) // all owners labelled
   expect([...labelled].filter((formula) => !possible.has(formula))).toEqual([]) // no others
-})
 
-// The "Surface" quick-select used to raycast from each domain's anchor at a FrontSide mesh:
-// rays cast from inside a hull hit only culled back faces, so every domain scored zero hits and
-// the button was a second "select all". It now asks which domains own a face of the envelope.
-test(`the Surface quick-select picks the domains that own a hull face`, async () => {
-  const scene = await mount_diagram<{
-    formula_meshes: { geometry: object; color: string }[]
-    render_domains: { formula: string }[]
-  }>({
-    entries: ytos_entries,
-    config: { elements: [`Y`, `Ti`, `O`], default_min_limit: -25, draw_formula_meshes: true },
-  })
-  const n_domains = scene().render_domains.length
+  const n_domains = render_domains.length
   expect(n_domains).toBeGreaterThan(10)
   document.querySelector<HTMLButtonElement>(`.chempot-formula-toggle`)?.click()
   flushSync()
@@ -329,7 +319,6 @@ test(`the Surface quick-select picks the domains that own a hull face`, async ()
   if (!surface_button) throw new Error(`Surface button not rendered`)
   surface_button.click()
   flushSync()
-
   const selected = [
     ...document.querySelectorAll<HTMLInputElement>(`.formula-list input`),
   ].filter((box) => box.checked).length

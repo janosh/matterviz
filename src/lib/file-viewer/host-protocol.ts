@@ -1,5 +1,5 @@
 // Message shapes exchanged between the webview (main.ts / host-bridge.ts) and whatever
-// host embeds it (the VS Code extension, or Hive's Tauri backend impersonating it).
+// host embeds it (the VS Code extension, or a desktop host speaking the same protocol).
 import type { PartialSettings } from '#lib/settings.js'
 import type { ThemeName } from '#lib/theme/index.js'
 import type {
@@ -25,7 +25,7 @@ type HostFileRequest = {
   file_path: string
   // The host picks a per-format indexer/decoder from the name. The VS Code
   // extension derives its own from `file_path`, but hosts that index by name
-  // (Hive) reject the request without this, so the webview always sends it.
+  // reject the request without this, so the webview always sends it.
   filename: string
 }
 

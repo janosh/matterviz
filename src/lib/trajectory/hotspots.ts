@@ -6,6 +6,7 @@ import {
   ELEMENTARY_CHARGE_C,
 } from '#lib/constants.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { yield_turn } from '#lib/utils.js'
 import { is_finite_vec3_like, is_pbc, matrix_inverse_3x3 } from '#lib/math.js'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
@@ -221,20 +222,6 @@ export function hotspot_bin(
   }
   return index
 }
-
-// Message tasks yield to cancellation and interactive reads without the browser's nested
-// timer clamp adding 4 ms to every atom batch in a long scan.
-const yield_turn = (): Promise<void> =>
-  new Promise((resolve) => {
-    const { port1, port2 } = new MessageChannel()
-    port1.addEventListener(`message`, () => {
-      port1.close()
-      port2.close()
-      resolve()
-    })
-    port1.start()
-    port2.postMessage(null)
-  })
 
 export async function calculate_hotspots(
   frame_count: number,

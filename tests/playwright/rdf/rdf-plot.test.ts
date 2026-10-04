@@ -10,45 +10,35 @@ test.describe(`RdfPlot Component Tests`, () => {
     await page.waitForSelector(`#single-pattern svg path`, { timeout: 15000 })
   })
 
-  // Test basic rendering with single and multiple patterns
-  test(`renders patterns with axes and legend`, async ({ page }) => {
-    // Single pattern
-    const single = page.locator(`#single-pattern`)
-    await expect(single).toBeVisible()
-    await expect(single.locator(`g.x-axis .tick`).first()).toBeVisible()
-    await expect(single.locator(`g.y-axis .tick`).first()).toBeVisible()
-    await expect(single.locator(`svg path[fill="none"]`).first()).toBeVisible()
-
-    // Multiple patterns with legend
-    const multi = page.locator(`#multi-pattern`)
-    await expect(multi).toBeVisible()
-    await expect(multi.locator(`.legend`)).toBeVisible()
-    await expect(multi.locator(`.legend-item`)).toHaveCount(2)
-    await expect(multi.locator(`svg path[fill="none"]`)).toHaveCount(2)
+  test(`single pattern renders labelled axes over the cutoff with non-negative g(r)`, async ({
+    page,
+  }) => {
+    const plot = page.locator(`#single-pattern`)
+    await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
+    await expect(plot.locator(`.axis-label.x-label`)).toBeVisible()
+    await expect(plot.locator(`.axis-label.y-label`)).toBeVisible()
+    // x spans 0 to the cutoff of 10
+    const x_ticks = (await plot.locator(`g.x-axis .tick text`).allTextContents()).map(Number)
+    expect(x_ticks.length).toBeGreaterThan(1)
+    expect(x_ticks[0]).toBeCloseTo(0, 1)
+    expect(x_ticks.at(-1)).toBeLessThanOrEqual(12)
+    const y_values = (await plot.locator(`g.y-axis .tick text`).allTextContents())
+      .map(parseFloat)
+      .filter((val) => !isNaN(val))
+    expect(y_values.length).toBeGreaterThan(0)
+    for (const val of y_values) expect(val).toBeGreaterThanOrEqual(0)
   })
 
-  // Test legend interactivity
-  test(`legend toggles series visibility`, async ({ page }) => {
+  test(`multiple patterns get a legend that toggles series visibility`, async ({ page }) => {
     const plot = page.locator(`#multi-pattern`)
-    const items = plot.locator(`.legend-item`)
-
-    const initial_lines = await plot.locator(`svg path[fill="none"]:visible`).count()
-    expect(initial_lines).toBe(2)
-
+    const items = plot.locator(`.legend .legend-item`)
+    await expect(items).toHaveCount(2)
+    const visible_lines = plot.locator(`svg path[fill="none"]:visible`)
+    await expect(visible_lines).toHaveCount(2)
     await items.first().click()
-
-    // Wait for line count to decrease (2 → 1)
-    await expect(async () => {
-      const after_toggle = await plot.locator(`svg path[fill="none"]:visible`).count()
-      expect(after_toggle).toBe(1)
-    }).toPass({ timeout: 5000 })
-
+    await expect(visible_lines).toHaveCount(1)
     await items.first().click()
-
-    // Wait for line count to restore (1 → 2)
-    await expect(async () => {
-      expect(await plot.locator(`svg path[fill="none"]:visible`).count()).toBe(initial_lines)
-    }).toPass({ timeout: 5000 })
+    await expect(visible_lines).toHaveCount(2)
   })
 
   // Test tooltip
@@ -94,60 +84,18 @@ test.describe(`RdfPlot Component Tests`, () => {
     expect(no_ref_line_count).toBe(0)
   })
 
-  // Test structure-based RDF calculation in both modes
-  test(`calculates RDF from structures`, async ({ page }) => {
-    // Element pairs mode - multiple series
+  test(`calculates RDFs from structures per element pair, in full and across structures`, async ({
+    page,
+  }) => {
+    // element-pairs mode draws one labelled series per pair, full mode a single average
     const ep_plot = page.locator(`#single-structure-element-pairs-plot`)
-    await expect(ep_plot).toBeVisible()
     await expect(ep_plot.locator(`.legend`)).toBeVisible()
-    const ep_lines_count = await ep_plot.locator(`svg path[fill="none"]`).count()
-    expect(ep_lines_count).toBeGreaterThanOrEqual(1)
+    expect(await ep_plot.locator(`svg path[fill="none"]`).count()).toBeGreaterThan(1)
+    await expect(ep_plot.locator(`.legend-item`).first()).toHaveText(/[A-Z][a-z]?-[A-Z][a-z]?/)
+    await expect(page.locator(`#single-structure-full svg path[fill="none"]`)).toHaveCount(1)
 
-    // Full mode - single averaged series
-    const full_plot = page.locator(`#single-structure-full`)
-    await expect(full_plot.locator(`svg path[fill="none"]`)).toHaveCount(1)
-
-    // Element pairs should have more lines than full mode
-    expect(ep_lines_count).toBeGreaterThan(1)
-
-    // Check legend labels for element pair format
-    const first_label = await ep_plot.locator(`.legend-item`).first().textContent()
-    expect(first_label).toMatch(/[A-Z][a-z]?-[A-Z][a-z]?/)
-  })
-
-  // Test multiple structures comparison
-  test(`compares multiple structures`, async ({ page }) => {
-    const plot = page.locator(`#multi-structure`)
-    await expect(plot).toBeVisible()
-    await expect(plot.locator(`.legend-item`)).toHaveCount(3)
-    await expect(plot.locator(`svg path[fill="none"]`)).toHaveCount(3)
-  })
-
-  // Test axis labels and ranges
-  test(`axes labels and ranges`, async ({ page }) => {
-    const plot = page.locator(`#single-pattern`)
-    await expect(plot).toBeVisible()
-
-    // Axis labels are now div elements inside foreignObject
-    await expect(plot.locator(`.axis-label.x-label`)).toBeVisible()
-    await expect(plot.locator(`.axis-label.y-label`)).toBeVisible()
-
-    // X-axis range (cutoff=10)
-    const x_ticks = plot.locator(`g.x-axis .tick text`)
-    const first_x = await x_ticks.first().textContent()
-    const last_x = await x_ticks.last().textContent()
-
-    if (first_x && last_x) {
-      expect(Number(first_x)).toBeCloseTo(0, 1)
-      expect(Number(last_x)).toBeLessThanOrEqual(12)
-    }
-
-    // Y-axis values are non-negative
-    const y_ticks = await plot.locator(`g.y-axis .tick text`).allTextContents()
-    const y_values = y_ticks.map(parseFloat).filter((val) => !isNaN(val))
-
-    for (const val of y_values) {
-      expect(val).toBeGreaterThanOrEqual(0)
-    }
+    const multi = page.locator(`#multi-structure`)
+    await expect(multi.locator(`.legend-item`)).toHaveCount(3)
+    await expect(multi.locator(`svg path[fill="none"]`)).toHaveCount(3)
   })
 })

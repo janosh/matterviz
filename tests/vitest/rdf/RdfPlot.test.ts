@@ -78,6 +78,7 @@ describe(`RdfPlot`, () => {
   test.each([
     [{}, `Drag and drop structure files here to visualize RDFs`, true],
     [{ allow_file_drop: false }, `No RDF data to display`, false],
+    [{ loading: true }, `Reading dropped file…`, true],
   ] as const)(`empty state %#`, async (props, message, accepts_drag) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.textContent).toContain(message)
@@ -117,14 +118,18 @@ describe(`RdfPlot`, () => {
     expect(plot.textContent?.includes(`g(r) = 1`)).toBe(show_ref)
   })
 
-  test(`custom props`, async () => {
+  test(`custom props and children snippet`, async () => {
     const plot = await mount_sized_rdf_plot({
       patterns: { label: `Test`, pattern: create_synthetic_pattern() },
       x_axis: { label: `Custom X` },
       y_axis: { label: `Custom Y` },
       class: `custom-class`,
       allow_file_drop: true,
+      children: createRawSnippet(() => ({
+        render: () => `<div class="rdf-child">RDF child content</div>`,
+      })),
     })
+    expect(plot.querySelector(`.rdf-child`)?.textContent).toBe(`RDF child content`)
     expect(plot.classList.contains(`custom-class`)).toBe(true)
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Custom X`)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Custom Y`)
@@ -159,19 +164,6 @@ describe(`RdfPlot`, () => {
     if (!plot) throw new Error(`RdfPlot root element not found after axis change`)
     await resize_element(plot, 400, 300)
     expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Updated r`)
-  })
-
-  test(`children snippet`, () => {
-    mount(RdfPlot, {
-      target: document.body,
-      props: {
-        patterns: { label: `Test`, pattern: create_synthetic_pattern() },
-        children: createRawSnippet(() => ({
-          render: () => `<div class="rdf-child">RDF child content</div>`,
-        })),
-      },
-    })
-    expect(document.querySelector(`.rdf-child`)?.textContent).toBe(`RDF child content`)
   })
 
   test(`mixed patterns and structures`, async () => {
@@ -279,7 +271,7 @@ describe(`PdfPlot`, () => {
     },
   )
 
-  test(`surfaces a missing scattering length instead of crashing`, async () => {
+  test(`surfaces a missing scattering length instead of the empty-state message`, async () => {
     // Po has no entry in the NIST b_coh table
     const target = await mount_pdf_plot({
       structures: make_crystal(3.35, [[`Po`, [0, 0, 0]]]),
@@ -291,6 +283,9 @@ describe(`PdfPlot`, () => {
     expect(target.querySelector(`svg[role="application"]`)).toBeNull()
     // a structure WAS supplied, so the empty-state message would contradict the error
     expect(target.textContent).not.toContain(`No structures to compute a PDF for`)
+    expect((await mount_pdf_plot({})).textContent).toContain(
+      `No structures to compute a PDF for`,
+    )
   })
 
   // error_msg is bindable on all nine sibling plot components; PdfPlot has to reach the parent
@@ -303,11 +298,6 @@ describe(`PdfPlot`, () => {
     expect(target.querySelector(`.pdf-error-mirror`)?.textContent).toContain(
       `No neutron scattering length for Po`,
     )
-  })
-
-  test(`renders a message when given no structures`, async () => {
-    const target = await mount_pdf_plot({})
-    expect(target.textContent).toContain(`No structures to compute a PDF for`)
   })
 
   test.each([true, false])(

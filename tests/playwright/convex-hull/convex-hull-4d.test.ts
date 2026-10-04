@@ -47,26 +47,6 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     })
   })
 
-  test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
-    await expect(diagram).toBeVisible({ timeout: 15000 })
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    const canvas = hull_canvas(diagram)
-    await expect(canvas).toBeVisible({ timeout: 10000 })
-    const box = await canvas.boundingBox()
-    if (box) {
-      // Click grid of positions to ensure we hit an entry
-      for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-        for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-          await canvas.click({
-            position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
-          })
-        }
-      }
-      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    }
-  })
-
   test(`renders quaternary diagram, opens panes, initial data attributes, camera inputs`, async ({
     page,
   }) => {
@@ -127,23 +107,6 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
   })
 
-  test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    const diagram = await goto_perf_page(page, `4d`, `count=20`)
-    await expect(diagram).toBeVisible()
-    const info = await open_pane(diagram, `info`)
-
-    // Verify unstable/stable counts are finite numbers
-    const visible_count = async (testid: string) => {
-      const text = await info.getByTestId(testid).textContent()
-      const match = text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
-      expect(match).toBeTruthy()
-      return Number(match?.[1])
-    }
-    expect(Number.isFinite(await visible_count(`hull-visible-unstable`))).toBe(true)
-    // At least elemental refs
-    expect(await visible_count(`hull-visible-stable`)).toBeGreaterThanOrEqual(4)
-  })
-
   test(`drag state resets on mouseup outside and suppresses immediate clicks`, async ({
     page,
   }) => {
@@ -176,26 +139,11 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(diagram.locator(`.structure-popup`)).toBeHidden({ timeout: 5000 })
   })
 
-  test(`hull facets render and are toggleable`, async ({ page }) => {
+  test(`hull renders centered in bounds; opacity slider and face toggle redraw it`, async ({
+    page,
+  }) => {
     const diagram = quaternary_diagram(page)
     const canvas = hull_canvas(diagram)
-    const initial = (await semi_transparent_pixels(canvas)).count
-    expect(initial).toBeGreaterThan(100)
-
-    const controls = await open_pane(diagram, `controls`)
-    await controls
-      .getByText(`Hull Faces`)
-      .locator(`..`)
-      .locator(`input[type="checkbox"]`)
-      .click()
-    // Longer timeout for CI - canvas updates can be slow
-    await expect
-      .poll(async () => (await semi_transparent_pixels(canvas)).count, { timeout: 5000 })
-      .toBeLessThan(initial / 2)
-  })
-
-  test(`hull content is centered and within boundaries`, async ({ page }) => {
-    const canvas = hull_canvas(quaternary_diagram(page))
     const { centered, within_bounds, pixel_count } = await canvas.evaluate((element) => {
       const ctx = (element as HTMLCanvasElement).getContext(`2d`)
       if (!ctx) return { centered: false, within_bounds: false, pixel_count: 0 }
@@ -225,18 +173,24 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     expect(pixel_count).toBeGreaterThan(1000)
     expect(centered).toBe(true)
     expect(within_bounds).toBe(true)
-  })
 
-  test(`hull opacity slider works`, async ({ page }) => {
-    const diagram = quaternary_diagram(page)
-    const canvas = hull_canvas(diagram)
-    const initial = (await semi_transparent_pixels(canvas)).avg_alpha
+    const initial = await semi_transparent_pixels(canvas)
+    expect(initial.count).toBeGreaterThan(100)
     const controls = await open_pane(diagram, `controls`)
     await controls.locator(`input[type="range"][aria-label*="opacity"]`).fill(`0.2`)
-    // Longer timeout for CI - canvas updates can be slow
+    // generous polls: canvas updates can be slow on CI
     await expect
       .poll(async () => (await semi_transparent_pixels(canvas)).avg_alpha, { timeout: 5000 })
-      .toBeGreaterThan(initial)
+      .toBeGreaterThan(initial.avg_alpha)
+
+    await controls
+      .getByText(`Hull Faces`)
+      .locator(`..`)
+      .locator(`input[type="checkbox"]`)
+      .click()
+    await expect
+      .poll(async () => (await semi_transparent_pixels(canvas)).count, { timeout: 5000 })
+      .toBeLessThan(initial.count / 2)
   })
 
   test(`face color mode buttons toggle the color picker and re-render the canvas`, async ({
@@ -268,7 +222,39 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 })
 
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
-test.describe(`ConvexHullCanvas dim=4 drag rotation`, () => {
+test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
+  test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
+    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
+    const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    const canvas = hull_canvas(diagram)
+    await expect(canvas).toBeVisible({ timeout: 10000 })
+    const box = await require_bbox(canvas, `canvas`)
+    // click a grid of positions to be sure one lands on an entry
+    for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+      for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+        await canvas.click({
+          position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
+        })
+      }
+    }
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+  })
+
+  test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
+    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
+    const diagram = await goto_perf_page(page, `4d`, `count=20`)
+    const info = await open_pane(diagram, `info`)
+    const visible_count = async (testid: string) => {
+      const text = await info.getByTestId(testid).textContent()
+      const match = text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
+      if (!match) throw new Error(`unparsable ${testid} text: ${text}`)
+      return Number(match[1])
+    }
+    expect(Number.isFinite(await visible_count(`hull-visible-unstable`))).toBe(true)
+    expect(await visible_count(`hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
+  })
+
   for (const [direction, axis, [delta_x, delta_y], expect_increase] of [
     [`right`, `y`, [80, 0], true],
     [`down`, `x`, [0, 80], false],

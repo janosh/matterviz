@@ -196,7 +196,7 @@ export function enumerate_reciprocal_points(
   const [h_max, k_max, l_max] = direct_rows.map(
     (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
   )
-  // Cap the point count, not max(h,k,l): the old index cap let electron wavelengths through
+  // Cap the point count, not max(h,k,l): an index cap lets electron wavelengths through
   // (rocksalt TiC over [0, 90]° gives h_max 246 but 6.1e7 points, ~8.5 GB)
   const estimated_points =
     (4 / 3) * Math.PI * max_radius ** 3 * Math.abs(math.det_3x3(direct_rows))

@@ -3,8 +3,8 @@
 
   // Chrome shared by every whole-trajectory analysis pane (MSD, VACF, structure-id, ...):
   // the ViewerPane shell, indexed-trajectory warnings, frame-stride and timestep controls, the
-  // size estimate, the collect button with progress, and the stale-state bookkeeping each pane
-  // used to copy. The module supplies the collector, its own option controls and the plot.
+  // size estimate, the collect button with progress, and the stale-state bookkeeping. The
+  // module supplies the collector, its own option controls and the plot.
   //
   // Contract: `collect` gathers `Input` from the run (progress via `on_progress`); the
   // pane stores it in the bindable `input` and the module's `children` snippet turns it into a
@@ -28,7 +28,7 @@
   import { create_request_owner } from './async-result.svelte'
   import { to_error } from '#lib/utils.js'
   import { format_bytes } from 'svelte-widgets/format'
-  import { type Snippet, untrack } from 'svelte'
+  import { getAbortSignal, type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
 
   let {
@@ -147,21 +147,19 @@
     const start = range.start_frame
     const validate = frame_unavailable_reason
     if (!requested || !validate || range_reason) return
-    const controller = new AbortController()
+    const signal = getAbortSignal()
     void (async () => {
       try {
         const frame =
           start === 0
             ? requested.preview
-            : await materialize_frame_result(requested.read_frame(start, controller.signal))
-        if (!controller.signal.aborted)
-          frame_check = { run: requested, start, reason: validate(frame) }
+            : await materialize_frame_result(requested.read_frame(start, signal))
+        if (!signal.aborted) frame_check = { run: requested, start, reason: validate(frame) }
       } catch (error) {
-        if (!controller.signal.aborted)
+        if (!signal.aborted)
           frame_check = { run: requested, start, reason: to_error(error).message }
       }
     })()
-    return () => controller.abort()
   })
   let properties_revision = $state(0)
   $effect(() => run?.properties.subscribe(() => properties_revision++))

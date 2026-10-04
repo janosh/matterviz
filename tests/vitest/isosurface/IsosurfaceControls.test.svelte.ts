@@ -13,7 +13,7 @@ import type {
 } from '#lib/isosurface/types.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, bind_props, expect_labelled_settings_grid } from '../setup'
+import { doc_query, bind_props, expect_labelled_settings_grid, set_input } from '../setup'
 import { make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
@@ -88,6 +88,16 @@ const mount_controls = (
   return state_props
 }
 
+const mount_layers = (
+  layers: IsosurfaceLayer[],
+  options: { volumes?: VolumetricData[]; active_volume_id?: string } = {},
+) =>
+  mount_controls({
+    volumes: two_volumes(),
+    settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
+    ...options,
+  })
+
 describe(`IsosurfaceControls`, () => {
   test.each([
     {
@@ -106,10 +116,7 @@ describe(`IsosurfaceControls`, () => {
   ])(
     `$desc chrome: one layer row per layer, Color by and Surface of list every volume`,
     ({ volumes, color_by_options }) => {
-      mount_controls({
-        ...(volumes && { volumes }),
-        settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(`0`)] },
-      })
+      mount_layers([make_layer(`0`)], { volumes: volumes ?? [make_volume()] })
       const slider = doc_query<HTMLInputElement>(`input[type="range"]`)
       expect(Number(slider.max)).toBeCloseTo(8)
       expect(document.querySelectorAll(`.layer-row input[type="range"]`)).toHaveLength(2)
@@ -132,12 +139,10 @@ describe(`IsosurfaceControls`, () => {
   ])(
     `negative lobe controls render and toggle $n_layers layers from $show_negative`,
     ({ show_negative, n_layers }) => {
-      const props = mount_controls({
-        settings: {
-          ...DEFAULT_ISOSURFACE_SETTINGS,
-          layers: Array.from({ length: n_layers }, () => make_layer(`0`, { show_negative })),
-        },
-      })
+      const props = mount_layers(
+        Array.from({ length: n_layers }, () => make_layer(`0`, { show_negative })),
+        { volumes: [make_volume()] },
+      )
       const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
       if (!checkbox) throw new Error(`Neg. lobe checkbox not found`)
       expect(checkbox.checked).toBe(show_negative)
@@ -165,8 +170,7 @@ describe(`IsosurfaceControls`, () => {
       if (!input) throw new Error(`${label} input not found`)
       if (label === `Wireframe`) input.click()
       else {
-        input.value = `0.25`
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(input, `0.25`)
       }
       flushSync()
       expect(props.settings).not.toBe(initial)
@@ -220,15 +224,6 @@ describe(`IsosurfaceControls multi-volume`, () => {
     Array.from(document.querySelectorAll(`select`)).find((select) =>
       Array.from(select.options).some((opt) => opt.textContent?.includes(text)),
     )
-  const mount_layers = (
-    layers: IsosurfaceLayer[],
-    options: { volumes?: VolumetricData[]; active_volume_id?: string } = {},
-  ) =>
-    mount_controls({
-      volumes: two_volumes(),
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
-      ...options,
-    })
   const mount_colored = (layer: Partial<IsosurfaceLayer> = {}, volumes = two_volumes()) =>
     mount_layers(
       [make_layer(`0`, { color_volume_id: `1`, colormap: `interpolateRdBu`, ...layer })],
@@ -265,9 +260,8 @@ describe(`IsosurfaceControls multi-volume`, () => {
     { min: -0.012345, max: 1234.5, text: `−0.0123–1.23e3` },
   ])(`volume header shows the [$min, $max] data range as $text`, ({ min, max, text }) => {
     const abs_max = Math.max(Math.abs(min), Math.abs(max))
-    mount_controls({
+    mount_layers([make_layer(`0`)], {
       volumes: [make_volume({ data_range: { min, max, abs_max, mean: 0 } })],
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(`0`)] },
     })
     expect(doc_query(`.volume-group .volume-range`).textContent).toBe(text)
   })
@@ -294,10 +288,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   // Each "+" on the same volume used to add an identical 20%/0.6 surface on top of the last
   test(`repeated add-surface clicks on one volume add distinct shells`, () => {
-    const props = mount_controls({
-      volumes: two_volumes(),
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
-    })
+    const props = mount_layers([])
     // the first click swaps the empty volume's body button for the header "+"
     for (let click = 0; click < 3; click++) click_button(`Add surface for esp.cube`)
     const esp_layers = props.settings.layers.filter((layer) => layer.volume_id === `1`)
@@ -348,8 +339,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(track.querySelectorAll(`.isovalue-histogram path.bars`)).toHaveLength(2)
     const slider = track.querySelector<HTMLInputElement>(`input[aria-label="Isovalue"]`)
     if (!slider) throw new Error(`isovalue slider not found`)
-    slider.value = `0.92`
-    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(slider, `0.92`)
     flushSync()
     // steps sit at 0.04 k: 1.04 is the first above the minimum
     expect(props.settings.layers[0].isovalue).toBeCloseTo(1.04, 12)
@@ -362,6 +352,10 @@ describe(`IsosurfaceControls multi-volume`, () => {
     click_button(`Remove volume density.cube`)
     expect(props.volumes.map(({ id }) => id)).toEqual([`1`])
     expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 })])
+    const groups = document.querySelectorAll(`.volume-group`)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].querySelector(`.volume-label`)?.textContent).toBe(`esp.cube`)
+    expect(groups[0].querySelectorAll(`.layer-row`)).toHaveLength(1)
     click_button(`Restore volume density.cube`)
     expect(props.volumes.map(({ id }) => id)).toEqual([`0`, `1`])
     expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 }), make_layer(`0`)])
@@ -378,9 +372,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
   })
 
   test(`removing the last surface leaves none, and Add surface brings one back`, () => {
-    const props = mount_controls({
-      settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [make_layer(`0`)] },
-    })
+    const props = mount_layers([make_layer(`0`)], { volumes: [make_volume()] })
     click_button(`Remove surface`)
     expect(document.querySelectorAll(`.layer-row`)).toHaveLength(0)
     expect(props.settings.layers).toEqual([]) // no implicit resurrection
@@ -464,15 +456,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(Boolean(document.querySelector(`.compat-warning`))).toBe(warning)
   })
 
-  test(`remove-volume drops its layers and preserves the selected field ID`, () => {
-    mount_layers([make_layer(`0`), make_layer(`1`)])
-    click_button(`Remove volume esp.cube`)
-    const groups = document.querySelectorAll(`.volume-group`)
-    expect(groups).toHaveLength(1)
-    expect(groups[0].querySelector(`.volume-label`)?.textContent).toBe(`density.cube`)
-    expect(groups[0].querySelectorAll(`.layer-row`)).toHaveLength(1)
-
-    document.body.innerHTML = ``
+  test(`remove-volume preserves the selected field ID across reordering`, () => {
     const props = mount_layers([make_layer(`0`), make_layer(`1`)], { active_volume_id: `1` })
     props.volumes = props.volumes.toReversed().map((volume) => ({ ...volume }))
     flushSync()

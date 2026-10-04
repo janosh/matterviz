@@ -9,7 +9,7 @@ import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 
 describe(`StructureInfoPane`, () => {
@@ -32,17 +32,8 @@ describe(`StructureInfoPane`, () => {
       hm_symbol: `F d -3 m`,
       hall_number: 523,
       pearson_symbol: `cF4`,
-      operations: [
-        {
-          rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-          translation: [0, 0, 0],
-        },
-      ],
-      std_cell: {
-        lattice: { basis: [5, 0, 0, 0, 5, 0, 0, 0, 5] },
-        positions,
-        numbers,
-      },
+      operations: [{ rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] }],
+      std_cell: { lattice: { basis: [5, 0, 0, 0, 5, 0, 0, 0, 5] }, positions, numbers },
     }
   }
 
@@ -148,67 +139,53 @@ describe(`StructureInfoPane`, () => {
       hovered_site_idx: null as number | null,
       selected_sites: [0, 1, 2],
     })
+    // afterEach restores this spy
     const clipboard_spy = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
+    mount_info_pane(bind_props({ structure, pane_open: true }, state))
+    const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
+    expect(site_cards()).toHaveLength(3)
+    expect(site_cards()[0].textContent).toContain(`Frac.`)
+    expect(site_cards()[0].textContent).toContain(`Cart.`)
+    expect(document.querySelector(`.site-color`)).toBeNull()
 
-    try {
-      mount_info_pane(
-        bind_props(
-          {
-            structure,
-            pane_open: true,
-          },
-          state,
-        ),
-      )
-      const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
-      expect(site_cards()).toHaveLength(3)
-      expect(site_cards()[0].textContent).toContain(`Frac.`)
-      expect(site_cards()[0].textContent).toContain(`Cart.`)
-      expect(document.querySelector(`.site-color`)).toBeNull()
+    const site_row = site_cards()[1]
+    site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([1])
+    expect(state.hovered_site_idx).toBe(1)
+    site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([])
+    expect(state.hovered_site_idx).toBeNull()
 
-      const site_row = site_cards()[1]
-      site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-      expect(state.highlighted_sites).toEqual([1])
-      expect(state.hovered_site_idx).toBe(1)
-      site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-      expect(state.highlighted_sites).toEqual([])
-      expect(state.hovered_site_idx).toBeNull()
+    const filter_input = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
+    set_input(filter_input, `H2`)
+    await tick()
 
-      const filter_input = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
-      filter_input.value = `H2`
-      filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
+    expect(site_cards()).toHaveLength(3) // searching does not change the selection
+    const match = doc_query<HTMLButtonElement>(`.site-matches button`)
+    expect(match.textContent?.trim()).toBe(`H2`)
+    match.click()
+    await tick()
+    expect(state.selected_sites).toEqual([1])
+    expect(site_cards()).toHaveLength(1)
+    expect(site_cards()[0].textContent).toContain(`H2`)
+    expect(filter_input.value).toBe(``)
 
-      expect(site_cards()).toHaveLength(3) // searching does not change the selection
-      const match = doc_query<HTMLButtonElement>(`.site-matches button`)
-      expect(match.textContent?.trim()).toBe(`H2`)
-      match.click()
-      await tick()
-      expect(state.selected_sites).toEqual([1])
-      expect(site_cards()).toHaveLength(1)
-      expect(site_cards()[0].textContent).toContain(`H2`)
-      expect(filter_input.value).toBe(``)
+    site_cards()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `c`, bubbles: true }))
+    expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
 
-      site_cards()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `c`, bubbles: true }))
-      expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
+    set_input(filter_input, `H1`)
+    await tick()
+    doc_query(`.site-matches button`).dispatchEvent(
+      new MouseEvent(`click`, { bubbles: true, shiftKey: true }),
+    )
+    await tick()
+    expect(state.selected_sites).toEqual([1, 0])
 
-      filter_input.value = `H1`
-      filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
-      doc_query(`.site-matches button`).dispatchEvent(
-        new MouseEvent(`click`, { bubbles: true, shiftKey: true }),
-      )
-      await tick()
-      expect(state.selected_sites).toEqual([1, 0])
-
-      site_cards()[0].focus()
-      site_cards()[0].dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-      )
-      expect(document.activeElement).toBe(site_cards()[1])
-    } finally {
-      clipboard_spy.mockRestore()
-    }
+    site_cards()[0].focus()
+    site_cards()[0].dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+    )
+    expect(document.activeElement).toBe(site_cards()[1])
   })
 
   test.each([30, 600])(
@@ -240,12 +217,10 @@ describe(`StructureInfoPane`, () => {
       expect(cards[0].textContent).not.toContain(`image_of`)
       expect(document.body.textContent).toContain(`(1 sites)`)
       const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
-      search.value = `O`
-      search.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(search, `O`)
       await tick()
       expect(document.querySelectorAll(`.site-matches button`)).toHaveLength(20)
-      search.value = `not-an-element`
-      search.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(search, `not-an-element`)
       await tick()
       expect(document.querySelector(`.site-matches`)?.textContent).toContain(
         `No matching sites`,

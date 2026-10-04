@@ -9,7 +9,7 @@ import type {
   HotspotResult,
 } from '#lib/trajectory/hotspots.js'
 import type { HotspotScale } from '#lib/trajectory/hotspot-colors.js'
-import { doc_query, fire, form_controls } from '../setup'
+import { doc_query, fire, form_controls, set_input } from '../setup'
 
 let mounted: ReturnType<typeof mount> | undefined
 afterEach(async () => {
@@ -162,8 +162,7 @@ it(`requires units, calculates a map, and keeps display changes independent of a
     [`Hotspot color`, `#00ffff`],
   ]) {
     const hex = doc_query<HTMLInputElement>(`[aria-label="${label} hex"]`)
-    hex.value = value
-    hex.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(hex, value)
     await tick()
     expect(doc_query<HTMLInputElement>(`[aria-label="${label}"]`).value).toBe(value)
   }

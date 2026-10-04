@@ -492,7 +492,7 @@ export function parse_extxyz_columns(comment: string): {
   const force_column = layout?.forces ?? layout?.force
   const forces_col = force_column && force_column.ncols >= 3 ? force_column.offset : -1
   // Keyed off the spec, not `layout.pos`: one bad count anywhere (`pos:R:0`, or an earlier
-  // `id:I:x`) discards `layout` wholesale, which used to read as "no spec at all"
+  // `id:I:x`) discards `layout` wholesale, which must not read as "no spec at all"
   let spec_error: string | null = null
   if (spec !== undefined) {
     if (duplicate) spec_error = `Properties=${spec} declares '${duplicate}' more than once`

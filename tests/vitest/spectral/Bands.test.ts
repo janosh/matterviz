@@ -342,15 +342,26 @@ describe(`Bands component`, () => {
   // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
   // boundary instead of throwing inside convert_frequencies
   it.each([`cm^-1`, `cm-1`, `cm⁻¹`])(
-    `renders the phonon y-axis in %s as cm⁻¹`,
+    `renders the phonon y-axis in %s as cm⁻¹ and rescales on unit change`,
     async (units) => {
-      await mount_bands({
-        band_structs: { '': base_band_structure },
-        units: units as FrequencyUnit,
-        show_controls: true,
-        controls_open: true,
-      })
+      await mount_sized(
+        Bands,
+        {
+          band_structs: { '': base_band_structure },
+          units: units as FrequencyUnit,
+          show_controls: true,
+          controls_open: true,
+        },
+        { selector: `.scatter` },
+      )
+      const max_y_tick = () =>
+        Math.max(
+          ...[...document.querySelectorAll(`.y-axis .tick text`)].map((element) =>
+            Number(element.textContent),
+          ),
+        )
       expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
+      expect(max_y_tick()).toBeGreaterThan(100) // 0..130 cm⁻¹
       const select = doc_query<HTMLSelectElement>(`#bands-units`)
       expect(select.value).toBe(`cm^-1`)
       // picking an option writes the canonical unit back to `units` (the handler is delegated, so
@@ -358,6 +369,10 @@ describe(`Bands component`, () => {
       select.value = `meV`
       await fire(select, new Event(`change`, { bubbles: true }))
       expect(document.body.textContent).toContain(`Frequency (meV)`)
+      // 0..16 meV: the default range must follow the data instead of the stale copy the zoom
+      // sync mirrored into the y_axis prop
+      expect(max_y_tick()).toBeGreaterThan(10)
+      expect(max_y_tick()).toBeLessThan(20)
       const selector = `button[title="Reset path to defaults"]`
       await fire(
         doc_query<HTMLButtonElement>(selector),
@@ -367,26 +382,6 @@ describe(`Bands component`, () => {
       expect(document.querySelector(selector)).toBeNull()
     },
   )
-
-  it(`rescales the y axis when the units change`, async () => {
-    await mount_sized(
-      Bands,
-      { band_structs: { '': base_band_structure }, show_controls: true, controls_open: true },
-      { selector: `.scatter` },
-    )
-    const y_ticks = () =>
-      [...document.querySelectorAll(`.y-axis .tick text`)].map((element) =>
-        Number(element.textContent),
-      )
-    // 0..3.9 THz
-    expect(Math.max(...y_ticks())).toBeLessThan(5)
-    const select = doc_query<HTMLSelectElement>(`#bands-units`)
-    select.value = `meV`
-    await fire(select, new Event(`change`, { bubbles: true }))
-    // 0..16 meV: the default range must follow the data instead of the THz copy the zoom
-    // sync mirrored into the y_axis prop
-    expect(Math.max(...y_ticks())).toBeGreaterThan(10)
-  })
 
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
@@ -419,15 +414,6 @@ describe(`Bands component`, () => {
     await expect_plot_controls(document, controls_state, `bands`)
   })
 
-  it(`renders one highlight fill region from props`, async () => {
-    await mount_bands({
-      band_structs: { '': base_band_structure },
-      highlight_regions: [{ y_min: 0.5, y_max: 1.5, label: `Window` }],
-    })
-    const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
-    expect(fill_region_paths).toHaveLength(1)
-  })
-
   // One width scale per structure: tiny weights stay thin and no segment is blown up to
   // max_width by its local max; non-finite/negative widths draw nothing (Infinity isn't the max)
   it(`scales fat-band ribbons by one max width across bands and segments`, async () => {
@@ -451,14 +437,16 @@ describe(`Bands component`, () => {
     expect(half_widths.map(String)).toEqual([`10,20`, `1,0`, `100,50`])
   })
 
-  it(`emphasizes the selection and extends clickable marker hit areas`, async () => {
+  it(`emphasizes the selection, extends marker hit areas, draws highlight regions`, async () => {
     const on_point_click = vi.fn()
     await mount_bands({
       band_structs: { '': base_band_structure },
       highlighted_band_index: 2,
       highlighted_qpoint_index: 1,
+      highlight_regions: [{ y_min: 0.5, y_max: 1.5, label: `Window` }],
       on_point_click,
     })
+    expect(document.querySelectorAll(`g.fill-region path[fill-opacity]`)).toHaveLength(1)
     expect(
       document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-selected-color"]`),
     ).toHaveLength(1)

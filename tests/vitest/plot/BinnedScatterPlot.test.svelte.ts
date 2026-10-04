@@ -660,38 +660,26 @@ describe(`BinnedScatterPlot`, () => {
     expect(ctx.clip).not.toHaveBeenCalled()
   })
 
-  test(`scales point radii from size values in point mode`, async () => {
-    const radii = capture_radii()
-
-    mount_plot({
-      series: [{ x: [0.2, 0.5, 0.8], y: [0.5, 0.5, 0.5], size_values: [1, 4, 16] }],
-      ...point_mode(),
-      ...unit_axes,
-    })
-    await settle()
-
-    expect(radii).toHaveLength(3)
-    expect(radii[0]).toBe(4)
-    expect(radii[1]).toBeGreaterThan(radii[0] ?? 0)
-    expect(radii[2]).toBe(12)
-  })
-
+  // default linear scale over the data extent [1, 16] maps onto radii [4, 12]
   test.each([
-    [{ radius_range: [2, 18] as Vec2 }, [2, 18]],
-    [{ radius_range: [2, 18] as Vec2, value_range: [0, 64] as Vec2 }, [2, 10]],
-  ])(`supports size_scale config %#`, async (size_scale, expected_radii) => {
-    const radii = capture_radii()
-
-    mount_plot({
-      series: [{ x: [0.2, 0.8], y: [0.5, 0.5], size_values: [0, 32] }],
-      ...point_mode(),
-      size_scale,
-      ...unit_axes,
-    })
-    await settle()
-
-    expect(radii).toEqual(expected_radii)
-  })
+    [[1, 4, 16], undefined, [4, 5.6, 12]],
+    [[0, 32], { radius_range: [2, 18] as Vec2 }, [2, 18]],
+    [[0, 32], { radius_range: [2, 18] as Vec2, value_range: [0, 64] as Vec2 }, [2, 10]],
+  ])(
+    `scales point radii from size_values %j with size_scale %j`,
+    async (size_values, size_scale, expected_radii) => {
+      const radii = capture_radii()
+      const x_coords = size_values.map((_, idx) => 0.2 + idx * 0.2)
+      mount_plot({
+        series: [{ x: x_coords, y: x_coords.map(() => 0.5), size_values }],
+        ...point_mode(),
+        ...(size_scale && { size_scale }),
+        ...unit_axes,
+      })
+      await settle()
+      expect(radii).toEqual(expected_radii.map((radius) => expect.closeTo(radius, 6)))
+    },
+  )
 
   test(`radius changes reuse size bounds and projected visible points`, async () => {
     const extents = vi.spyOn(density_utils, `series_extents`)
@@ -773,9 +761,7 @@ describe(`BinnedScatterPlot`, () => {
     expect(stroke).toHaveBeenCalled()
     expect(Math.max(...radii)).toBeGreaterThan(4)
 
-    // Assert the pulse actually advances rather than just rendering one highlighted frame:
-    // the visibility gate silently froze it everywhere before, and a frozen pulse still
-    // draws that first frame. Redraws show up as further arc() calls.
+    // a frozen pulse still draws its first frame, so assert redraws (further arc() calls)
     const after_mount = radii.length
     advance_frames(3)
     await settle()
@@ -1153,8 +1139,7 @@ describe(`BinnedScatterPlot`, () => {
     )
   })
 
-  // Regression: colorless multi-series must use the series index color everywhere. This catches the
-  // old plot_color(0)-for-all fallback in both point rendering and per-series marginals.
+  // colorless multi-series must use the series index color in both points and per-series marginals
   test(`colorless series use distinct per-index colors`, async () => {
     const fill_styles: string[] = []
     const ctx = mock_canvas_context()
@@ -1390,14 +1375,7 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`applies point label font size to rendered and measured labels`, async () => {
-    mount_plot({
-      series: [{ x: [0.5], y: [0.5], point_ids: [`wbm-1`] }],
-      ...point_mode(),
-      point_labels: { render: point_label_snippet(), font_size: `20px` },
-      ...unit_axes,
-    })
-    await settle()
-
+    await mount_labelled_point({ font_size: `20px` })
     expect(getComputedStyle(doc_query(`.point-labels .point-label`)).fontSize).toBe(`20px`)
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
   })
@@ -1478,10 +1456,8 @@ describe(`BinnedScatterPlot`, () => {
   }, 10_000)
 })
 
-// The component supplied its own `.2~g` tick format, and format_tick_values short-circuits its
-// whole duplicate-avoidance escalation the moment a formatter is given. So a tight window over
-// large values labelled every tick identically with zero configuration - and the default
-// density bin_click is `zoom`, which lands in exactly such a window.
+// A forced `.2~g` format would bypass format_tick_values' duplicate-avoidance, so a tight window
+// over large values (as reached by the default `zoom` bin_click) labels every tick identically.
 test(`does not force a tick format that collapses distinct labels`, async () => {
   const values = Array.from({ length: 400 }, (_unused, idx) => 1000 + (idx % 20) / 2)
   mount_plot({ series: [{ x: values, y: values }] })
@@ -1493,6 +1469,6 @@ test(`does not force a tick format that collapses distinct labels`, async () => 
   for (const side of [`x`, `y`]) {
     const ticks = labels(side)
     expect(ticks.length).toBeGreaterThan(1)
-    expect(new Set(ticks).size).toBe(ticks.length) // was six identical `1e+3`
+    expect(new Set(ticks).size).toBe(ticks.length)
   }
 })

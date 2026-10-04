@@ -144,12 +144,9 @@ describe(`display pipeline`, () => {
     expect(
       session.displayed_structure?.sites.every((site) => site.species[0].element === `Na`),
     ).toBe(true)
-    expect(session.tool_input?.sites).toHaveLength(3)
-    expect(session.tool_input?.sites.map((site) => site.species[0].element)).toEqual([
-      `Na`,
-      `Na`,
-      `Na`,
-    ])
+    expect(session.tool_input?.sites.map((site) => site.species[0].element)).toEqual(
+      Array(3).fill(`Na`),
+    )
     expect(session.tool_input?.sites.map((site) => site.xyz)).toEqual(
       host.structure?.sites.map((site) => site.xyz),
     )
@@ -184,14 +181,10 @@ describe(`display pipeline`, () => {
     ])
     const foreign = make_supercell(base, [2, 1, 1])
     expect(foreign.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 1, 0, 1])
-    const coordination_config: AtomColorConfig = {
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      mode: `coordination`,
-    }
     const { host, session } = make_session({
       structure: foreign,
       show_image_atoms: true,
-      atom_color_config: coordination_config,
+      atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `coordination` },
     })
     const displayed = session.displayed_structure?.sites ?? []
     expect(displayed.length).toBeGreaterThan(4)
@@ -552,18 +545,9 @@ describe(`edit-atoms`, () => {
   // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice
   // is shown once per loaded structure (not once per edit) and again after an external load
   it(`edits a singular-lattice crystal with a single notice instead of throwing`, () => {
+    // oxfmt-ignore
     const make_singular = () =>
-      make_crystal(
-        [
-          [5, 0, 0],
-          [0, 5, 0],
-          [0, 0, 0],
-        ],
-        [
-          { element: `Na`, abc: [0.1, 0.2, 0] },
-          { element: `Cl`, abc: [0.6, 0.7, 0] },
-        ],
-      )
+      make_crystal([[5, 0, 0], [0, 5, 0], [0, 0, 0]], [[`Na`, [0.1, 0.2, 0]], [`Cl`, [0.6, 0.7, 0]]])
     const { host, session, notices } = make_session({
       measure_mode: `edit-atoms`,
       structure: make_singular(),

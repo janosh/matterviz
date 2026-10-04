@@ -1,4 +1,5 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { dot, subtract } from '#lib/math.js'
 import type { FlyToControls } from '#lib/scene/fly-to.js'
 import { create_fly_to, ease_in_out } from '#lib/scene/fly-to.js'
 import {
@@ -29,9 +30,6 @@ const cubic: Matrix3x3 = [
 // a/h, b/k, c/l (max component difference 1.1e-16, i.e. below f64 eps of 2.2e-16), and
 // inv(A).T matched ase.cell.Cell.reciprocal() to 1.2e-16.
 const DIRECTION_TOL = 1e-12
-
-const dot_3d = (vec_a: Vec3, vec_b: Vec3): number =>
-  vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
 
 test.each([
   [`2x user zoom survives growth`, 80, 40, 60, undefined, undefined, 120],
@@ -114,40 +112,26 @@ describe(`zone axis directions`, () => {
     [[2, -1, 3] as Vec3, 27.3584],
     [[1, -1, 0] as Vec3, 16.6352],
   ])(
-    `separates [uvw] from (hkl) by a large angle in a triclinic cell for %s`,
+    `[uvw] and (hkl) %s differ by %s deg in a triclinic cell but coincide in a cubic one`,
     (indices, expected_deg) => {
       const uvw = zone_axis_direction(triclinic, indices, `uvw`)
       const hkl = zone_axis_direction(triclinic, indices, `hkl`)
-      const angle_deg = (Math.acos(dot_3d(uvw, hkl)) * 180) / Math.PI
+      const angle_deg = (Math.acos(dot(uvw, hkl)) * 180) / Math.PI
       expect(angle_deg).toBeCloseTo(expected_deg, 3)
       expect(angle_deg).toBeGreaterThan(15) // far beyond any rounding: the two really differ
+      const cubic_hkl = zone_axis_direction(cubic, indices, `hkl`)
+      expect(zone_axis_direction(cubic, indices, `uvw`)).toEqual(
+        cubic_hkl.map((component) => expect.closeTo(component, 14)),
+      )
     },
   )
-
-  test.each([
-    [[0, 0, 1] as Vec3],
-    [[1, 1, 1] as Vec3],
-    [[1, 0, 1] as Vec3],
-    [[2, -1, 3] as Vec3],
-    [[1, -1, 0] as Vec3],
-  ])(`collapses [uvw] and (hkl) onto each other in a cubic cell for %s`, (indices) => {
-    const uvw = zone_axis_direction(cubic, indices, `uvw`)
-    const hkl = zone_axis_direction(cubic, indices, `hkl`)
-    for (const [idx, component] of uvw.entries()) {
-      expect(hkl[idx]).toBeCloseTo(component, 14)
-    }
-  })
 
   test(`makes each (hkl) normal perpendicular to lattice vectors lying in that plane`, () => {
     // (110) contains c and the in-plane vector a - b
     const normal = zone_axis_direction(triclinic, [1, 1, 0], `hkl`)
-    const in_plane_diff: Vec3 = [
-      triclinic[0][0] - triclinic[1][0],
-      triclinic[0][1] - triclinic[1][1],
-      triclinic[0][2] - triclinic[1][2],
-    ]
-    expect(dot_3d(normal, triclinic[2])).toBeCloseTo(0, 13)
-    expect(dot_3d(normal, in_plane_diff)).toBeCloseTo(0, 13)
+    const in_plane_diff = subtract(triclinic[0], triclinic[1])
+    expect(dot(normal, triclinic[2])).toBeCloseTo(0, 13)
+    expect(dot(normal, in_plane_diff)).toBeCloseTo(0, 13)
   })
 
   test.each([
@@ -171,7 +155,7 @@ describe(`zone axis directions`, () => {
         expect(doubled[idx]).toBeCloseTo(component, 14)
         expect(negated[idx]).toBeCloseTo(-component, 14)
       }
-      expect(Math.abs(dot_3d(base, doubled) - 1)).toBeLessThan(DIRECTION_TOL)
+      expect(Math.abs(dot(base, doubled) - 1)).toBeLessThan(DIRECTION_TOL)
     },
   )
 
@@ -180,6 +164,7 @@ describe(`zone axis directions`, () => {
     [`a NaN index`, [Number.NaN, 0, 1] as Vec3, /Degenerate/],
     [`an infinite index`, [1, Number.POSITIVE_INFINITY, 0] as Vec3, /Degenerate/],
   ])(`refuses %s`, (_name, indices, pattern) => {
+    expect(is_valid_zone_axis(indices)).toBe(false)
     expect(() => zone_axis_direction(triclinic, indices, `uvw`)).toThrow(pattern)
     expect(() => zone_axis_direction(triclinic, indices, `hkl`)).toThrow(pattern)
   })
@@ -195,14 +180,8 @@ describe(`zone axis directions`, () => {
     expect(zone_axis_direction(flat, [1, 0, 0], `uvw`)).toEqual([1, 0, 0])
   })
 
-  test.each([
-    [[0, 0, 1] as Vec3, true],
-    [[-1, 0, 0] as Vec3, true],
-    [[0, 0, 0] as Vec3, false],
-    [[Number.NaN, 0, 1] as Vec3, false],
-    [[1, Number.POSITIVE_INFINITY, 0] as Vec3, false],
-  ])(`validates indices %s as %s`, (indices, expected) => {
-    expect(is_valid_zone_axis(indices)).toBe(expected)
+  test.each([[[0, 0, 1] as Vec3], [[-1, 0, 0] as Vec3]])(`accepts indices %s`, (indices) => {
+    expect(is_valid_zone_axis(indices)).toBe(true)
   })
 })
 
@@ -332,28 +311,18 @@ describe(`camera fly-to`, () => {
 
   test(`reports through the hooks, repaints each frame and suspends orbiting until landing`, () => {
     const rig = make_rig()
+    // [repaints, orbit controls enabled, flight active]
+    const status = () => [rig.invalidations(), rig.controls.enabled, rig.fly.active]
     expect(rig.controls.enabled).toBe(true)
     rig.fly.start([1, 0, 0])
     expect(rig.hook_calls).toEqual([`start`])
-    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
-      1,
-      false,
-      true,
-    ])
+    expect(status()).toEqual([1, false, true])
     rig.fly.step(0.1) // 100 ms of a 400 ms flight
     expect(rig.hook_calls).toEqual([`start`, `change`])
-    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
-      2,
-      false,
-      true,
-    ])
+    expect(status()).toEqual([2, false, true])
     rig.fly.step(0.4) // lands
     expect(rig.hook_calls).toEqual([`start`, `change`, `change`, `end`])
-    expect([rig.invalidations(), rig.controls.enabled, rig.fly.active]).toEqual([
-      3,
-      true,
-      false,
-    ])
+    expect(status()).toEqual([3, true, false])
     rig.fly.step(0.1) // nothing left to animate, so nothing more is reported
     expect(rig.hook_calls).toEqual([`start`, `change`, `change`, `end`])
     expect(rig.invalidations()).toBe(3)

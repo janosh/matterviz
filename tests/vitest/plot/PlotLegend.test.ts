@@ -18,7 +18,7 @@ import {
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, keydown, mouse } from '../setup'
+import { doc_query, keydown, mouse, set_input } from '../setup'
 
 const legend_item = (
   label: string,
@@ -174,19 +174,36 @@ describe(`PlotLegend`, () => {
     expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(3, auto)`)
   })
 
-  test(`reports hovered item and marks active series`, () => {
-    const on_item_hover = vi.fn()
-    mount_legend({ active_series_idx: 1, on_item_hover })
-
-    const items = document.querySelectorAll(`.legend-item`)
-    expect(items[1].classList.contains(`active`)).toBe(true)
-
-    items[2].dispatchEvent(mouse(`mouseenter`))
-    expect(on_item_hover).toHaveBeenLastCalledWith(expect.objectContaining({ series_idx: 2 }))
-
-    items[2].dispatchEvent(mouse(`mouseleave`))
-    expect(on_item_hover).toHaveBeenLastCalledWith(null)
-  })
+  // active_fill_idx marks only the matching fill item (not the series sharing its index), and
+  // hovering a fill item reports it whole (with fill_idx) so the plot can highlight it
+  test.each([
+    [{ active_series_idx: 1 }, default_series_data, 1, 2, { series_idx: 2 }],
+    [
+      { active_fill_idx: 1 },
+      [
+        legend_item(`Series 1`, 0),
+        legend_item(`Fill A`, -1, {}, { item_type: `fill`, fill_idx: 0 }),
+        legend_item(`Fill B`, -1, {}, { item_type: `fill`, fill_idx: 1 }),
+      ],
+      2,
+      1,
+      { item_type: `fill`, fill_idx: 0 },
+    ],
+  ] as const)(
+    `%j marks the active item and reports hovered items`,
+    (active_props, series_data, active_idx, hover_idx, hovered) => {
+      const on_item_hover = vi.fn()
+      mount_legend({ ...active_props, series_data: [...series_data], on_item_hover })
+      const items = [...document.querySelectorAll(`.legend-item`)]
+      expect(items.map((item) => item.classList.contains(`active`))).toEqual(
+        items.map((_, idx) => idx === active_idx),
+      )
+      items[hover_idx].dispatchEvent(mouse(`mouseenter`))
+      expect(on_item_hover).toHaveBeenLastCalledWith(expect.objectContaining(hovered))
+      items[hover_idx].dispatchEvent(mouse(`mouseleave`))
+      expect(on_item_hover).toHaveBeenLastCalledWith(null)
+    },
+  )
 
   test(`patterned swatches paint a half-scale tile in the item color, translucent colors included`, () => {
     const series_data: LegendItem[] = [
@@ -223,30 +240,6 @@ describe(`PlotLegend`, () => {
     )
   })
 
-  test(`fill legend items report the fill item on hover and honor active_fill_idx`, () => {
-    const on_item_hover = vi.fn()
-    const series_data: LegendItem[] = [
-      legend_item(`Series 1`, 0),
-      legend_item(`Fill A`, -1, {}, { item_type: `fill`, fill_idx: 0 }),
-      legend_item(`Fill B`, -1, {}, { item_type: `fill`, fill_idx: 1 }),
-    ]
-    mount_legend({ series_data, active_fill_idx: 1, on_item_hover })
-
-    const items = document.querySelectorAll(`.legend-item`)
-    // active_fill_idx=1 marks only the Fill B item (fill_idx 1), not the series or Fill A
-    expect([...items].map((item) => item.classList.contains(`active`))).toEqual([
-      false,
-      false,
-      true,
-    ])
-
-    // hovering a fill item reports the full item (with fill_idx) so the plot can highlight it
-    items[1].dispatchEvent(mouse(`mouseenter`))
-    expect(on_item_hover).toHaveBeenLastCalledWith(
-      expect.objectContaining({ item_type: `fill`, fill_idx: 0 }),
-    )
-  })
-
   // filtering and aria labels go by the text readers see: tags dropped, entities decoded
   test(`filters large legends`, async () => {
     const group = { legend_group: `Fe &amp; O` }
@@ -258,8 +251,7 @@ describe(`PlotLegend`, () => {
     mount_legend({ series_data })
 
     const filter = doc_query(`.legend-filter`, HTMLInputElement)
-    filter.value = `α-fe2`
-    filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(filter, `α-fe2`)
     await tick()
 
     const items = document.querySelectorAll(`.legend-item`)
@@ -347,7 +339,6 @@ describe(`PlotLegend`, () => {
     (layout_tracks) => {
       mount_legend({ series_data: [], layout_tracks, available_edge_length: 0 })
       const wrapper = doc_query(`.legend`)
-      expect(wrapper).toBeInstanceOf(HTMLElement)
       expect(wrapper.querySelector(`.legend-item`)).toBeNull()
       expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
       expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
@@ -355,7 +346,6 @@ describe(`PlotLegend`, () => {
   )
 
   describe(`legend groups`, () => {
-    // Helper to create grouped test data
     const make_grouped_data = (): LegendItem[] => [
       legend_item(`Li-Li`, 0, { line_color: `red` }, { legend_group: `Li₂O` }),
       legend_item(`Li-O`, 1, { line_color: `blue` }, { legend_group: `Li₂O` }),
@@ -399,8 +389,7 @@ describe(`PlotLegend`, () => {
         })
         if (filter_value) {
           const filter = doc_query(`.legend-filter`, HTMLInputElement)
-          filter.value = filter_value
-          filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+          set_input(filter, filter_value)
           await tick()
           expect(document.querySelectorAll(`.legend-item`)).toHaveLength(1)
         }
@@ -495,18 +484,11 @@ describe(`PlotLegend`, () => {
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
     })
 
+    // only a group whose members are all hidden gets the hidden class
     test.each([
-      {
-        desc: `all hidden shows hidden class`,
-        visibilities: [false, false],
-        expected_hidden: true,
-      },
-      {
-        desc: `mixed visibility shows no hidden class`,
-        visibilities: [false, true],
-        expected_hidden: false,
-      },
-    ])(`group header $desc`, ({ visibilities, expected_hidden }) => {
+      [[false, false], true],
+      [[false, true], false],
+    ])(`group header with visibilities %j: hidden=%s`, (visibilities, expected_hidden) => {
       const data: LegendItem[] = visibilities.map((vis, idx) =>
         legend_item(`Item${idx}`, idx, {}, { visible: vis, legend_group: `Group` }),
       )
@@ -518,22 +500,18 @@ describe(`PlotLegend`, () => {
   })
 
   describe(`fill region legend items`, () => {
+    // fill items use fill_idx instead of series_idx
     const fill_item = (
       display_style: LegendItem[`display_style`],
       extra: Partial<LegendItem> = {},
-    ): LegendItem => ({
-      label: `Fill`,
-      visible: true,
-      series_idx: -1, // fill items use fill_idx instead
-      item_type: `fill`,
-      fill_idx: 0,
-      fill_source_type: `fill_region`,
-      fill_source_idx: 0,
-      display_style,
-      ...extra,
-    })
-    const mount_fills = (series_data: LegendItem[], props: Record<string, unknown> = {}) =>
-      mount_legend({ series_data, ...props })
+    ): LegendItem =>
+      legend_item(`Fill`, -1, display_style, {
+        item_type: `fill`,
+        fill_idx: 0,
+        fill_source_type: `fill_region`,
+        fill_source_idx: 0,
+        ...extra,
+      })
     const fill_series_data: LegendItem[] = [
       legend_item(`Data Series`, 0, { symbol_type: `Circle`, symbol_color: `blue` }),
       fill_item(
@@ -547,7 +525,7 @@ describe(`PlotLegend`, () => {
     ]
 
     test(`renders fill swatch with correct styling and hidden state`, () => {
-      mount_fills(fill_series_data)
+      mount_legend({ series_data: fill_series_data })
       const items = document.querySelectorAll(`.legend-item`)
 
       // Regular series: no fill swatch
@@ -569,7 +547,12 @@ describe(`PlotLegend`, () => {
       const on_toggle = vi.fn()
       const on_fill_toggle = vi.fn()
       const on_fill_double_click = vi.fn()
-      mount_fills(fill_series_data, { on_toggle, on_fill_toggle, on_fill_double_click })
+      mount_legend({
+        series_data: fill_series_data,
+        on_toggle,
+        on_fill_toggle,
+        on_fill_double_click,
+      })
       const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
 
       // Regular series click → on_toggle
@@ -602,7 +585,7 @@ describe(`PlotLegend`, () => {
     ] as const)(
       `fill swatch renders %s opaque so colors stay distinct`,
       (fill_color, expected, fill_opacity) => {
-        mount_fills([fill_item({ fill_color, fill_opacity })])
+        mount_legend({ series_data: [fill_item({ fill_color, fill_opacity })] })
         const rect = doc_query(`.fill-swatch rect`)
         // color forced opaque (strips faint baked-in alpha), then a light uniform fill-opacity
         expect(rect.getAttribute(`fill`)).toBe(expected)
@@ -640,7 +623,9 @@ describe(`PlotLegend`, () => {
         { cx: `0.3`, cy: `0.7` },
       ],
     ])(`renders gradient swatch %j`, (gradient, fill_color, fill_idx, attributes) => {
-      mount_fills([fill_item({ fill_color, fill_gradient: gradient }, { fill_idx })])
+      mount_legend({
+        series_data: [fill_item({ fill_color, fill_gradient: gradient }, { fill_idx })],
+      })
       const element = doc_query(`${gradient.type}Gradient`)
       // IDs include an instance token and the fill index; the chip must reference that exact ID.
       expect(element.id).toMatch(new RegExp(`^legend-grad-.+-${fill_idx}$`))

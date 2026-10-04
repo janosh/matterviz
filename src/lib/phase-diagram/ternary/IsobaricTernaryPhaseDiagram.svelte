@@ -24,7 +24,7 @@
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
-  import { onMount, untrack } from 'svelte'
+  import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import { compute_ternary_phase_diagram_async } from './async-compute.svelte'
@@ -194,9 +194,9 @@
       sweep = null
       return
     }
-    const controller = new AbortController()
+    const signal = getAbortSignal()
     compute_ternary_phase_diagram_async(current_entries, current_options, {
-      signal: controller.signal,
+      signal,
       on_progress: (update) => (progress = update),
     })
       .then((result) => {
@@ -204,12 +204,11 @@
         sweep = { diagram: result, entries: current_entries, options: current_options }
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) compute_error = to_error(error).message
+        if (!signal.aborted) compute_error = to_error(error).message
       })
       .finally(() => {
-        if (!controller.signal.aborted) computing = false
+        if (!signal.aborted) computing = false
       })
-    return () => controller.abort()
   })
   // The module's worker outlives a finished sweep; terminate it once this diagram is gone
   $effect(() => () => compute_ternary_phase_diagram_async.release())

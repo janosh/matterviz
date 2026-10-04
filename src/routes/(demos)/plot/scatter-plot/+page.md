@@ -2356,7 +2356,7 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
 
 ## Fill Between Series with Mismatched X-Values
 
-When series have different x-values, fill-between interpolates automatically. Here two series sit on different grids; the fill utility aligns them with linear interpolation.
+Series on different x-grids need no resampling: each boundary keeps its own points and is drawn with the region's `curve`.
 
 ```svelte example
 <script lang="ts">
@@ -2405,9 +2405,9 @@ When series have different x-values, fill-between interpolates automatically. He
 />
 ```
 
-## Non-Overlapping Series with Extrapolation
+## Fills Between Partially Overlapping Series
 
-When series have non-overlapping x-ranges, the fill utility extrapolates from the nearest values. Three cases: partial overlap, no overlap, and one series inside another.
+Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping parts get no fill. A constant boundary follows its companion's x positions, so it spans the companion's full range.
 
 ```svelte example
 <script lang="ts">
@@ -2456,7 +2456,7 @@ When series have non-overlapping x-ranges, the fill utility extrapolates from th
       upper: { type: 'series', series_idx: 2 },
       lower: 2, // Constant boundary
       fill: 'rgba(46, 204, 113, 0.3)',
-      label: 'No Overlap (extrapolates)',
+      label: 'Constant Boundary',
       curve: 'linear',
     },
   ]
@@ -2788,7 +2788,7 @@ Reference lines support interactive features including hover styling, click hand
 
 ## Reference Lines with Z-Index Layering
 
-Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines`, `below-points` (default), and `above-all`. Toggle the layer below and watch the reference band move up the stack, progressively covering the grid, then the connecting line, then the on-band points (which switch from crisp on top to dimmed underneath):
+Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines` (default), `below-points`, and `above-all`. Toggle the layer below and watch the reference band move up the stack, progressively covering the grid, then the connecting line, then the on-band points (which switch from crisp on top to dimmed underneath):
 
 ```svelte example
 <script lang="ts">
@@ -3442,7 +3442,9 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   let sync_mode = $state(`none`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+<div
+  style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 0.5em 1.5em; align-items: center"
+>
   <strong>Y2 Sync:</strong>
   {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
@@ -3495,7 +3497,7 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
     },
   ]
 
-  let y2_axis = $state({ label: `Secondary Metrics`, sync: `synced` })
+  let y2_axis = $state({ label: `Secondary Metrics`, sync: `none` })
 </script>
 
 <ScatterPlot

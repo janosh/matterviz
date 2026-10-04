@@ -15,7 +15,7 @@ import {
 import { to_error } from '#lib/utils.js'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, settle } from '../setup'
+import { bind_props, doc_query, settle, set_input } from '../setup'
 import { make_frame, make_run } from '../test-fixtures'
 
 const frame_only_run = (n_frames: number): TrajectoryRun => {
@@ -78,6 +78,12 @@ const click_collect = async () => {
   }
   throw new Error(`collect never finished: button still disabled`)
 }
+const set_labeled = async (label: string, value: number | string) => {
+  const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
+  set_input(input, String(value))
+  await settle()
+  return input
+}
 const timestep_inputs = () => ({
   use_dt: doc_query(`.stub-controls input[type="checkbox"]`, HTMLInputElement),
   dt: doc_query(`.stub-controls input[type="number"][step="0.001"]`, HTMLInputElement),
@@ -138,31 +144,16 @@ describe(`timestep seeding`, () => {
     },
   )
 
-  test(`renders no timestep controls unless the analysis opts in`, async () => {
-    mount_pane({ default_dt: 2, default_time_unit: `fs` })
-    await settle()
-    expect(document.querySelector(`input[aria-label="Time unit"]`)).toBeNull()
-    expect(pane_text()).not.toContain(`per collected frame`)
-  })
-
   test(`folds the frame stride into the time per collected frame and keeps the collected stride after a retype`, async () => {
     mount_pane({ default_dt: 0.5, default_time_unit: `ps`, time_unit_fallback: `fs` })
     await settle()
-    const stride = doc_query(
-      `.stub-controls input[aria-label="Frame stride"]`,
-      HTMLInputElement,
-    )
-    stride.value = `4`
-    stride.dispatchEvent(new Event(`input`))
-    await settle()
+    await set_labeled(`Frame stride`, 4)
     expect(pane_text()).toContain(`5 frames × 2 atoms`)
     expect(pane_text()).toContain(`2 ps per collected frame`)
     // Regression: retyping the stride without recollecting used to rescale dt for a buffer
     // that was still strided by 4, so the downstream analysis recomputed with the wrong dt
     await click_collect()
-    stride.value = `10`
-    stride.dispatchEvent(new Event(`input`))
-    await settle()
+    await set_labeled(`Frame stride`, 10)
     expect(pane_text()).toContain(`2 frames × 2 atoms`)
     expect(pane_text()).toContain(`2 ps per collected frame`)
     expect(pane_text()).not.toContain(`5 ps per collected frame`)
@@ -184,13 +175,7 @@ describe(`frame stride`, () => {
     `normalises a typed stride of %j to %i and collects with it`,
     async (raw, stride, frames) => {
       const collect = mount_pane({})
-      const input = doc_query(
-        `.stub-controls input[aria-label="Frame stride"]`,
-        HTMLInputElement,
-      )
-      input.value = raw
-      input.dispatchEvent(new Event(`input`))
-      await settle()
+      await set_labeled(`Frame stride`, raw)
       expect(pane_text()).toContain(`${frames} frames × 2 atoms ≈ ${frames * 2 * 24} B`)
       expect(pane_text()).not.toContain(`NaN`)
       await click_collect()
@@ -216,26 +201,19 @@ describe(`frame stride`, () => {
     })
     await settle()
     expect(pane_text()).toContain(`needs ≥ 5`)
-    const input = doc_query(
-      `.stub-controls input[aria-label="Frame stride"]`,
-      HTMLInputElement,
-    )
-    input.value = `5`
-    input.dispatchEvent(new Event(`input`))
-    await settle()
+    await set_labeled(`Frame stride`, 5)
     expect(pane_text()).not.toContain(`needs ≥`)
-    input.value = `1`
-    input.dispatchEvent(new Event(`input`))
-    const end = doc_query(`input[aria-label="End frame (exclusive)"]`, HTMLInputElement)
-    end.value = `8`
-    end.dispatchEvent(new Event(`input`))
-    await settle()
+    await set_labeled(`Frame stride`, 1)
+    await set_labeled(`End frame (exclusive)`, 8)
     expect(pane_text()).toContain(`needs ≥ 2`)
   })
 
-  test(`omits the stride control, size estimate and hint line for analyses without a buffer to budget`, async () => {
-    mount_pane({ suggest_stride: undefined })
+  // analyses opt in to timestep controls (time_unit_fallback) and stride budgeting separately
+  test(`omits timestep controls, stride control, size estimate and hint line unless opted in`, async () => {
+    mount_pane({ default_dt: 2, default_time_unit: `fs`, suggest_stride: undefined })
     await settle()
+    expect(document.querySelector(`input[aria-label="Time unit"]`)).toBeNull()
+    expect(pane_text()).not.toContain(`per collected frame`)
     expect(
       document.querySelector(`.stub-controls input[aria-label="Frame stride"]`),
     ).toBeNull()
@@ -318,12 +296,6 @@ describe(`frame window`, () => {
           }
         }),
       )
-      const set = async (label: string, value: number) => {
-        const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
-        input.value = String(value)
-        input.dispatchEvent(new Event(`input`))
-        await settle()
-      }
       await settle()
       const button = doc_query(`.stub-controls button`, HTMLButtonElement)
       if (sparse) expect(read_step).not.toHaveBeenCalled()
@@ -331,28 +303,26 @@ describe(`frame window`, () => {
         expect(button.disabled).toBe(true)
         expect(button.title).toContain(`uniformly spaced steps`)
       }
-      await set(`End frame (exclusive)`, 5)
-      await set(`Frame stride`, 2)
+      await set_labeled(`End frame (exclusive)`, 5)
+      await set_labeled(`Frame stride`, 2)
       await click_collect() // sampled steps 0, 20, 40: 10 fs, despite irregular skipped steps
       expect(pane_text()).toContain(`10 fs per collected frame`)
-      await set(`End frame (exclusive)`, 8)
-      await set(`Start frame`, 5)
-      await set(`Frame stride`, 1)
+      await set_labeled(`End frame (exclusive)`, 8)
+      await set_labeled(`Start frame`, 5)
+      await set_labeled(`Frame stride`, 1)
       expect(pane_text()).toContain(`10 fs per collected frame`)
       button.click()
       await settle()
       if (sparse) {
         const { dt: delta_time, unit } = timestep_inputs()
-        delta_time.value = `3`
-        delta_time.dispatchEvent(new Event(`input`, { bubbles: true }))
-        unit.value = `ps`
-        unit.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(delta_time, `3`)
+        set_input(unit, `ps`)
         await settle()
       }
       pending.resolve(undefined)
       await vi.waitFor(() => expect(button.disabled).toBe(false))
       expect(pane_text()).toContain(`${sparse ? `3 ps` : `25 fs`} per collected frame`)
-      await set(`Start frame`, 0)
+      await set_labeled(`Start frame`, 0)
       if (sparse) {
         button.click()
         await vi.waitFor(() => expect(state.error_msg).toContain(`uniformly spaced steps`))
@@ -393,10 +363,7 @@ describe(`frame window`, () => {
     await settle()
     expect(analysis_frame_times(run)?.values).toEqual([5, 10, 25, 45])
     const set = async (label: string, value: string) => {
-      const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
-      input.value = value
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await settle()
+      const input = await set_labeled(label, value)
       if (label.includes(`time`)) {
         // Typing must not snap the field after the first digit; commit only on change.
         expect(input.value).toBe(value)
@@ -577,10 +544,7 @@ describe(`trajectory state`, () => {
     button.click()
     await settle()
     // the button is disabled while collecting, so a second run only starts programmatically
-    const end = doc_query(`input[aria-label="End frame (exclusive)"]`, HTMLInputElement)
-    end.value = `10`
-    end.dispatchEvent(new Event(`input`))
-    await settle()
+    await set_labeled(`End frame (exclusive)`, 10)
     expect(signals[0].aborted).toBe(false)
     button.disabled = false
     button.click()

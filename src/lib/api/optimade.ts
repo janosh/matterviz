@@ -128,9 +128,7 @@ export async function fetch_optimade_structure(
   const response = await fetch_optimade(`${api_base}/structures/${encoded_id}`)
   const data = await response.json()
 
-  // An empty array is a valid "no such entry" answer, not a hit: `!data.data` misses it
-  // (`[]` is truthy) and `data.data[0]` then handed callers `undefined` typed as a
-  // structure, so the viewer kept showing the previously loaded one with no error.
+  // `[]` is a valid "no such entry" answer, and truthy, so test the entry itself
   const entry = Array.isArray(data.data) ? data.data[0] : data.data
   if (!entry) throw new Error(`Structure ${structure_id} not found`)
   return entry

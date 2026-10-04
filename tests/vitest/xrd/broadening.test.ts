@@ -32,20 +32,6 @@ function measure_fwhm(x_values: number[], y_values: number[]): number {
 }
 
 describe(`compute_broadened_pattern`, () => {
-  const dummy_pattern = { x: [20, 40], y: [100, 50] }
-
-  test.each([
-    { step: 0, range: [10, 80], err: `step_size must be > 0 and finite` },
-    { step: Infinity, range: [10, 80], err: `step_size must be > 0 and finite` },
-    { step: 0.02, range: [-Infinity, 80], err: `range must be finite and max > min` },
-    { step: 0.02, range: [50, 40], err: `range must be finite and max > min` },
-    { step: 0.02, range: [40, 40], err: `range must be finite and max > min` },
-  ])(`throws "$err" for step=$step, range=$range`, ({ step, range, err }) => {
-    expect(() =>
-      compute_broadened_pattern(dummy_pattern, DEFAULT_BROADENING, range as Vec2, step),
-    ).toThrow(err)
-  })
-
   test(`generates correct grid based on range and step_size`, () => {
     const empty = { x: [], y: [] }
     // both ends are included when the span divides evenly, otherwise the last whole step
@@ -151,12 +137,8 @@ describe(`compute_broadened_pattern`, () => {
     )
   })
 
-  // Regression guard for the fwhm_fn injection refactor and the f32 -> f64 grid change.
-  // n_nonzero, sum and max together cover every one of the 4650 grid points, so no per-point
-  // probe list is needed. n_nonzero is unchanged from the f32 era (2440 and 172), i.e. the
-  // same peaks reach the same points; only the accumulated values moved, by ~4e-7 relative,
-  // which is f32 eps (1.2e-7) as expected. Tolerance is relative 1e-12, ~4 orders above f64
-  // eps, so any real change in arithmetic or ordering still trips it.
+  // Regression guard: n_nonzero, sum and max together pin every grid point. Relative 1e-12
+  // sits ~4 orders above f64 eps, so any real change in arithmetic or ordering trips it.
   const rel_tol = 1e-12
 
   test.each([
@@ -305,63 +287,56 @@ describe(`broaden_peaks`, () => {
     expect(measure_fwhm(result.x.slice(split), result.y.slice(split))).toBeCloseTo(5, 2)
   })
 
-  test.each([
-    { step: 0, range: [10, 80], pattern: { x: [20], y: [100] }, err: `step_size must be > 0` },
-    {
-      step: 0.02,
-      range: [50, 40],
-      pattern: { x: [20], y: [100] },
-      err: `range must be finite and max > min`,
-    },
+  const peak = { x: [20], y: [100] }
+  test.each<[string, { x: number[]; y: number[] }, Vec2, number, string]>([
+    [`zero step`, peak, [10, 80], 0, `step_size must be > 0 and finite`],
+    [`infinite step`, peak, [10, 80], Infinity, `step_size must be > 0 and finite`],
+    [`infinite range`, peak, [-Infinity, 80], 0.02, `range must be finite and max > min`],
+    [`reversed range`, peak, [50, 40], 0.02, `range must be finite and max > min`],
+    [`empty range`, peak, [40, 40], 0.02, `range must be finite and max > min`],
     // A short y otherwise NaNs the whole grid; a long one lets the relative floor be set by
     // an intensity with no position, which silently drops the peaks that do have one
-    {
-      step: 0.02,
-      range: [10, 80],
-      pattern: { x: [20, 40], y: [100] },
-      err: `2 positions but 1 intensities`,
-    },
-    {
-      step: 0.02,
-      range: [10, 80],
-      pattern: { x: [20], y: [1, 1e9] },
-      err: `1 positions but 2 intensities`,
-    },
+    [`short y`, { x: [20, 40], y: [100] }, [10, 80], 0.02, `2 positions but 1 intensities`],
+    [`long y`, { x: [20], y: [1, 1e9] }, [10, 80], 0.02, `1 positions but 2 intensities`],
     // a two-column CSV whose x is not 2theta hands XrdPlot its own extent as angle_range:
     // 1e9 grid points is 8 GB per array
-    {
-      step: 0.02,
-      range: [0, 2e7],
-      pattern: { x: [20], y: [100] },
-      err: `needs 1000000001 grid points, past the 10000000 cap`,
-    },
+    [
+      `oversized grid`,
+      peak,
+      [0, 2e7],
+      0.02,
+      `needs 1000000001 grid points, past the 10000000 cap`,
+    ],
     // NaN poisons every grid point; Infinity puts the relative floor at Infinity and drops
     // the real peaks with it, so both come back looking like "nothing to plot"
-    {
-      step: 0.02,
-      range: [10, 80],
-      pattern: { x: [20, 40], y: [100, NaN] },
-      err: `intensities must be finite, got NaN`,
-    },
-    {
-      step: 0.02,
-      range: [10, 80],
-      pattern: { x: [20, 40], y: [100, Infinity] },
-      err: `intensities must be finite, got Infinity`,
-    },
+    [
+      `NaN intensity`,
+      { x: [20, 40], y: [100, NaN] },
+      [10, 80],
+      0.02,
+      `intensities must be finite, got NaN`,
+    ],
+    [
+      `infinite intensity`,
+      { x: [20, 40], y: [100, Infinity] },
+      [10, 80],
+      0.02,
+      `intensities must be finite, got Infinity`,
+    ],
     // A non-finite position fails both reach tests and leaves start_idx NaN, so the fill loop
     // never runs: the curve came back identical to one that never carried the peak
-    {
-      step: 0.02,
-      range: [10, 80],
-      pattern: { x: [30, Infinity], y: [100, 100] },
-      err: `peak positions must be finite, got Infinity at index 1`,
-    },
-  ])(`validates inputs before touching fwhm_fn ($err)`, ({ step, range, pattern, err }) => {
+    [
+      `infinite position`,
+      { x: [30, Infinity], y: [100, 100] },
+      [10, 80],
+      0.02,
+      `peak positions must be finite, got Infinity at index 1`,
+    ],
+  ])(`validates %s before touching fwhm_fn`, (_label, pattern, range, step, err) => {
     const fwhm_fn = () => {
       throw new Error(`fwhm_fn must not be called`)
     }
-    expect(() => broaden_peaks(pattern, fwhm_fn, 0.5, range as Vec2, step)).toThrow(err)
+    expect(() => broaden_peaks(pattern, fwhm_fn, 0.5, range, step)).toThrow(err)
   })
 
   // The width decides both the profile and whether the peak is in reach of the grid, so an

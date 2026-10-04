@@ -314,16 +314,12 @@ test.each([
 
 describe(`per-request options`, () => {
   test.each(
-    [
-      { use_worker: true, shared: true },
-      { use_worker: false, shared: true },
-      { use_worker: true, shared: false },
-      { use_worker: false, shared: false },
-    ].flatMap((config) =>
-      [new Error(`progress failed`), Object.create(null), { toString: null }].map((error) => ({
-        ...config,
-        error,
-      })),
+    [true, false].flatMap((shared) =>
+      [true, false].flatMap((use_worker) =>
+        [new Error(`progress failed`), Object.create(null), { toString: null }].map(
+          (error) => ({ use_worker, shared, error }),
+        ),
+      ),
     ),
   )(
     `throwing progress rejects only its caller (worker=$use_worker, shared=$shared)`,
@@ -408,12 +404,11 @@ describe(`per-request options`, () => {
     },
   )
 
-  test.each([
-    { use_worker: true, shared_options: false },
-    { use_worker: false, shared_options: false },
-    { use_worker: true, shared_options: true },
-    { use_worker: false, shared_options: true },
-  ])(
+  test.each(
+    [false, true].flatMap((shared_options) =>
+      [true, false].map((use_worker) => ({ use_worker, shared_options })),
+    ),
+  )(
     `progress reaches every shared caller (worker=$use_worker, shared options=$shared_options)`,
     async ({ use_worker, shared_options }) => {
       if (!use_worker) vi.stubGlobal(`Worker`, undefined)

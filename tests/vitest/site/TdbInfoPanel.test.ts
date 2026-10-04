@@ -59,9 +59,13 @@ const mount_panel = (
 const panel_text = () => document.querySelector(`.tdb-info-panel`)?.textContent
 
 describe(`TdbInfoPanel`, () => {
-  test(`displays system name, phases, and temperature range`, () => {
-    mount_panel({ system_name: `Al-Zn` })
-    expect(panel_text()).toContain(`Al-Zn`)
+  // without system_name the title falls back to binary_system
+  test.each([
+    [`Al-Zn`, `Al-Zn`],
+    [undefined, `AL-ZN`],
+  ])(`system_name=%s shows %s, phases, and temperature range`, (system_name, title) => {
+    mount_panel({ system_name })
+    expect(panel_text()).toContain(title)
     expect(panel_text()).toMatch(/300\s*–\s*1000\s*K/)
 
     const phases = document.querySelector(`.phases`)
@@ -73,29 +77,21 @@ describe(`TdbInfoPanel`, () => {
     mount_panel(
       {},
       {
-        functions: [
-          { name: `F1`, expression: ``, temperature_ranges: [] },
-          { name: `F2`, expression: ``, temperature_ranges: [] },
-          { name: `F3`, expression: ``, temperature_ranges: [] },
-        ],
-        parameters: [
-          { type: `G`, phase: `L`, constituents: [], order: 0, expression: `` },
-          { type: `L`, phase: `L`, constituents: [], order: 0, expression: `` },
-        ],
+        functions: [`F1`, `F2`, `F3`].map((name) => ({
+          name,
+          expression: ``,
+          temperature_ranges: [],
+        })),
+        parameters: [`G`, `L`].map((type) => ({
+          type,
+          phase: `L`,
+          constituents: [],
+          order: 0,
+          expression: ``,
+        })),
         phases: [
-          { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
-          {
-            name: `FCC_A1`,
-            model_hints: `%A`,
-            sublattice_count: 2,
-            sublattice_sites: [1, 1],
-          },
-          {
-            name: `HCP`,
-            model_hints: `%A`,
-            sublattice_count: 2,
-            sublattice_sites: [1, 0.5],
-          },
+          ...create_tdb_result().data.phases,
+          { name: `HCP`, model_hints: `%A`, sublattice_count: 2, sublattice_sites: [1, 0.5] },
         ],
       },
     )
@@ -139,10 +135,5 @@ describe(`TdbInfoPanel`, () => {
       expect(code?.textContent).toContain(`from pycalphad import Database, binplot`)
       expect(code?.textContent).toMatch(/\['AL', 'ZN', 'VA'\]/)
     })
-  })
-
-  test(`falls back to binary_system when no system_name provided`, () => {
-    mount_panel()
-    expect(panel_text()).toContain(`AL-ZN`)
   })
 })

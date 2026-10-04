@@ -67,7 +67,9 @@
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { clamp01 } from '#lib/utils.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { clamp, type Vec2 } from '#lib/math.js'
+  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
@@ -97,6 +99,8 @@
 
   // Extended point type with computed screen coordinates (used internally for rendering)
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
+
+  const BAR_LABEL_FONT = { ...DEFAULT_FONT_SPEC, font_size: 11 } // matches .bar-label
 
   let {
     series: series_in = [],
@@ -301,8 +305,7 @@
     () => (category_list.length > 0 ? cat_axis : null),
   )
 
-  // Keep every category available to the shared adaptive resolver. Its measured, bounded
-  // thinning candidate replaces the former fixed 28px/category heuristic.
+  // Every category goes to the shared adaptive resolver, which thins them by measured width
   let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
@@ -922,13 +925,22 @@
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}
+                    {@const label_rotation = bar_state.label_rotation ?? 0}
+                    <!-- a centred label on an edge bar would spill onto the axis tick labels -->
+                    {@const half_width =
+                      vertical && !label_rotation
+                        ? measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT) / 2
+                        : 0}
                     {@const label_x = vertical
-                      ? (cat_start + cat_end) / 2
+                      ? clamp(
+                          (cat_start + cat_end) / 2,
+                          pad.l + half_width,
+                          frame.width - pad.r - half_width,
+                        )
                       : Math.max(value_base, value_tip) + 4}
                     {@const label_y = vertical
                       ? Math.max(0, Math.min(value_base, value_tip) - 6)
                       : (cat_start + cat_end) / 2}
-                    {@const label_rotation = bar_state.label_rotation ?? 0}
                     <text
                       x={label_x}
                       y={label_y}

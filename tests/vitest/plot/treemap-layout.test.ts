@@ -79,14 +79,7 @@ describe(`compute_treemap_layout`, () => {
     // d3's squarify (golden-ratio target) tiles the 400x300 area as two 400x150
     // rows for the equal-value A/B pair; inside A's row, A2 (6) and A1 (4) sit side
     // by side at 240px and 160px. Zero padding -> areas exactly proportional.
-    expect(
-      rects.map(({ x: coord_x, y: coord_y, width, height }) => [
-        coord_x,
-        coord_y,
-        width,
-        height,
-      ]),
-    ).toEqual(
+    expect(rects.map((rect) => [rect.x, rect.y, rect.width, rect.height])).toEqual(
       [
         [0, 0, 400, 300],
         [0, 0, 400, 150], // A
@@ -112,44 +105,42 @@ describe(`compute_treemap_layout`, () => {
     expect(treemap_hover_veil(arcs, zoomed, 3)).toBe(`M0,0h240v300h-240Z`)
   })
 
-  test(`padding_top reserves a header strip on branches only`, () => {
-    const { arcs, rects } = compute_treemap_layout(tree, size, {
-      ...no_pad,
-      padding_top: 20,
-    })
-    const [rect_a, rect_a1, rect_a2, rect_b] = [rects[1], rects[2], rects[3], rects[4]]
-    // A's children start >= 20px below A's top edge; leaf B reserves nothing
-    const child_top = Math.min(rect_a1.y, rect_a2.y)
-    expect(child_top - rect_a.y).toBeGreaterThanOrEqual(20)
-    expect(area(rect_b)).toBeGreaterThan(
-      area({ width: rect_a1.width, height: rect_a1.height }),
-    )
-    expect(arcs[4].is_leaf).toBe(true)
-  })
+  // d3 applies paddingTop after paddingOuter, so the reserved strip is the larger of the two
+  test.each([
+    [20, 0, 20],
+    [20, 4, 20],
+    [4, 10, 10],
+  ])(
+    `padding_top=%i, padding_outer=%i: branch children sit below a %ipx header strip, inset on other edges`,
+    (padding_top, padding_outer, strip) => {
+      expect(header_strip(padding_top, padding_outer)).toBe(strip)
+      const opts = { padding_inner: 0, padding_top, padding_outer }
+      const [rect_a, ...kids] = compute_treemap_layout(tree, size, opts).rects.slice(1, 4)
+      expect(Math.min(...kids.map((kid) => kid.y)) - rect_a.y).toBeCloseTo(strip, 9)
+      for (const kid of kids) {
+        expect(kid.x).toBeGreaterThanOrEqual(rect_a.x + padding_outer)
+        expect(kid.x + kid.width).toBeLessThanOrEqual(
+          rect_a.x + rect_a.width - padding_outer + 1e-6,
+        )
+        expect(kid.y + kid.height).toBeLessThanOrEqual(
+          rect_a.y + rect_a.height - padding_outer + 1e-6,
+        )
+      }
+    },
+  )
 
-  test(`padding_outer insets children within their parent's left/right/bottom edges`, () => {
-    const inset = 4
-    const { rects } = compute_treemap_layout(tree, size, {
-      ...no_pad,
-      padding_outer: inset,
-      padding_top: 20,
-    })
-    const [rect_a, rect_a1, rect_a2] = [rects[1], rects[2], rects[3]]
-    for (const child of [rect_a1, rect_a2]) {
-      expect(child.x).toBeGreaterThanOrEqual(rect_a.x + inset)
-      expect(child.x + child.width).toBeLessThanOrEqual(rect_a.x + rect_a.width - inset + 1e-6)
-      expect(child.y + child.height).toBeLessThanOrEqual(
-        rect_a.y + rect_a.height - inset + 1e-6,
-      )
-      expect(child.y).toBeGreaterThanOrEqual(rect_a.y + 20) // header strip on top
-    }
-  })
-
-  test(`empty data and zero size produce empty/zero layouts without NaN`, () => {
+  test(`empty data, zero size and oversized padding_top produce layouts without NaN`, () => {
     expect(compute_treemap_layout([], size)).toMatchObject({ rects: [], root: null })
     const { rects } = compute_treemap_layout(tree, { width: 0, height: 300 }, no_pad)
     expect(rects.every((rect) => area(rect) === 0)).toBe(true)
     expect(all_coords_finite(rects)).toBe(true)
+    // padding_top larger than a cell collapses children without NaN
+    const tiny = { width: 60, height: 40 }
+    expect(
+      all_coords_finite(
+        compute_treemap_layout(tree, tiny, { ...no_pad, padding_top: 500 }).rects,
+      ),
+    ).toBe(true)
   })
 
   test.each([
@@ -170,51 +161,24 @@ describe(`compute_treemap_layout`, () => {
     expect(area(rects[1])).toBeCloseTo(size.width * size.height, 4) // good leaf fills
   })
 
-  test(`value_mode total overflow (children > parent) clamps to the chart area`, () => {
-    const { rects } = compute_treemap_layout(
-      {
-        label: `P`,
-        value: 10,
-        children: [
-          { label: `c1`, value: 8 },
-          { label: `c2`, value: 4 },
-        ],
-      },
-      size,
-      { value_mode: `total`, ...no_pad },
-    )
-    expect(all_coords_finite(rects)).toBe(true)
-    for (const rect of rects) {
+  test(`value_mode total: a shortfall stays unfilled, an overflow clamps to the chart`, () => {
+    const total_rects = (children: TreemapNode[]) =>
+      compute_treemap_layout({ label: `P`, value: 10, children }, size, {
+        value_mode: `total`,
+        ...no_pad,
+      }).rects
+    // parent worth 10, single child worth 3 -> child fills 30% of the parent cell
+    const shortfall = total_rects([{ label: `c1`, value: 3 }])
+    expect(area(shortfall[1])).toBeCloseTo(size.width * size.height * 0.3, 6)
+    const overflow = total_rects([
+      { label: `c1`, value: 8 },
+      { label: `c2`, value: 4 },
+    ])
+    expect(all_coords_finite(overflow)).toBe(true)
+    for (const rect of overflow) {
       expect(rect.x + rect.width).toBeLessThanOrEqual(size.width + 1e-6)
       expect(rect.y + rect.height).toBeLessThanOrEqual(size.height + 1e-6)
     }
-  })
-
-  // d3 applies paddingTop after paddingOuter, so the reserved strip is the larger of the two
-  test(`header_strip is the band the tiling actually reserves`, () => {
-    expect([header_strip(4, 10), header_strip(20, 4)]).toEqual([10, 20])
-    const opts = { padding_inner: 0, padding_top: 4, padding_outer: 10 }
-    const [rect_a, rect_a1, rect_a2] = compute_treemap_layout(tree, size, opts).rects.slice(1)
-    expect(Math.min(rect_a1.y, rect_a2.y) - rect_a.y).toBeCloseTo(header_strip(4, 10), 9)
-  })
-
-  test(`padding_top larger than a cell collapses children without NaN`, () => {
-    const { rects } = compute_treemap_layout(
-      tree,
-      { width: 60, height: 40 },
-      { ...no_pad, padding_top: 500 },
-    )
-    expect(all_coords_finite(rects)).toBe(true)
-  })
-
-  test(`value_mode total leaves unfilled space for unassigned remainder`, () => {
-    // parent worth 10, single child worth 3 -> child fills 30% of the parent cell
-    const { rects } = compute_treemap_layout(
-      { label: `P`, value: 10, children: [{ label: `c1`, value: 3 }] },
-      size,
-      { value_mode: `total`, ...no_pad },
-    )
-    expect(area(rects[1])).toBeCloseTo(size.width * size.height * 0.3, 6)
   })
 
   test(`min_fraction bucketing carries over from the shared layout`, () => {
@@ -397,34 +361,50 @@ describe(`align_tiling`, () => {
   const arcs = (ids: string[]) =>
     ids.map((identifier, idx) => ({ id: identifier, parent_idx: idx === 0 ? null : 0 }))
 
-  test(`matches by id, not position`, () => {
+  const tiling = (ids: string[], x_coords: number[]) => ({
+    rects: x_coords.map(rect),
+    arcs: arcs(ids),
+  })
+
+  test.each([
     // `b` moved from index 1 to index 2 between the two tilings
-    const prev = { rects: [rect(0), rect(10), rect(20)], arcs: arcs([`P`, `b`, `c`]) }
-    const next = { rects: [rect(0), rect(50), rect(60)], arcs: arcs([`P`, `c`, `b`]) }
-    expect(align_tiling(prev, next)).toEqual([rect(0), rect(20), rect(10)])
-  })
-
-  // Nodes revealed by a dissolved bucket have no counterpart; starting them at their
-  // parent's old rect makes them unfold out of the region the bucket occupied
-  test(`a new cell starts from its nearest surviving ancestor`, () => {
-    const prev = { rects: [rect(0), rect(10)], arcs: arcs([`P`, `P/Other`]) }
-    const next = {
-      rects: [rect(0), rect(30), rect(40)],
-      arcs: arcs([`P`, `P/a`, `P/b`]),
-    }
-    expect(align_tiling(prev, next)).toEqual([rect(0), rect(0), rect(0)])
-  })
-
-  test(`a cell with no ancestor in the previous tiling starts where it lands`, () => {
-    const prev = { rects: [rect(0)], arcs: arcs([`Q`]) }
-    const next = { rects: [rect(5), rect(6)], arcs: arcs([`P`, `P/a`]) }
-    expect(align_tiling(prev, next)).toEqual([rect(5), rect(6)])
-  })
-
-  // The realigned array is what lerp_rects consumes, and it bails on a length mismatch
-  test(`always returns one rect per cell of the new tiling`, () => {
-    const prev = { rects: [rect(0), rect(10), rect(20)], arcs: arcs([`P`, `x`, `y`]) }
-    const next = { rects: [rect(0)], arcs: arcs([`P`]) }
-    expect(align_tiling(prev, next)).toHaveLength(1)
+    [
+      `matches by id, not position`,
+      [`P`, `b`, `c`],
+      [0, 10, 20],
+      [`P`, `c`, `b`],
+      [0, 50, 60],
+      [0, 20, 10],
+    ],
+    // Nodes revealed by a dissolved bucket have no counterpart; starting them at their
+    // parent's old rect makes them unfold out of the region the bucket occupied
+    [
+      `a new cell starts from its nearest surviving ancestor`,
+      [`P`, `P/Other`],
+      [0, 10],
+      [`P`, `P/a`, `P/b`],
+      [0, 30, 40],
+      [0, 0, 0],
+    ],
+    [
+      `a cell with no ancestor in the previous tiling starts where it lands`,
+      [`Q`],
+      [0],
+      [`P`, `P/a`],
+      [5, 6],
+      [5, 6],
+    ],
+    // The realigned array is what lerp_rects consumes, and it bails on a length mismatch
+    [
+      `always returns one rect per cell of the new tiling`,
+      [`P`, `x`, `y`],
+      [0, 10, 20],
+      [`P`],
+      [0],
+      [0],
+    ],
+  ])(`%s`, (_name, prev_ids, prev_x, next_ids, next_x, expected_x) => {
+    const aligned = align_tiling(tiling(prev_ids, prev_x), tiling(next_ids, next_x))
+    expect(aligned).toEqual(expected_x.map(rect))
   })
 })

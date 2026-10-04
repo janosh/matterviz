@@ -42,7 +42,7 @@ import sio2_raman_json from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { bind_props, doc_query, expect_plot_controls } from '../setup'
+import { bind_props, doc_query, expect_plot_controls, set_input } from '../setup'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -83,17 +83,10 @@ const sio2_spectrum = spectrum_from_phonon_data(sio2_data, parse_born(sio2_born)
 })
 
 describe(`eigenvector mass-weighting convention`, () => {
-  // HONEST CAVEAT: these two tests are circular as evidence about phonopy. Both fixtures
-  // were hand-written FROM the assumption that eigenvectors are those of the mass-weighted
-  // dynamical matrix, so what follows proves the fixtures and the code agree, not that the
-  // assumption matches what phonopy writes. The assumption is in fact phonopy's convention,
-  // but that is documentation, not measurement — only a genuine phonopy-produced
-  // qpoints.yaml would settle it, and none was available offline. Read these as regression
-  // guards on the convention, not as a check of it.
-  //
-  // Given the assumption, a pure translation is the sharpest discriminator: every atom
-  // moves by the same amount, so a mass-weighted eigenvector has components proportional to
-  // sqrt(M) while a displacement eigenvector would have equal components on every atom.
+  // Regression guard, not evidence about phonopy: the fixtures were hand-written assuming
+  // eigenvectors of the mass-weighted dynamical matrix, so this pins fixture/code agreement.
+  // A pure translation discriminates sharpest: mass-weighted components scale as sqrt(M)
+  // (so dividing by sqrt(M) gives a rigid translation), displacement ones are equal.
   it.each([
     [`NaCl acoustic`, nacl_data],
     [`CO2 T_x`, co2_data],
@@ -105,15 +98,6 @@ describe(`eigenvector mass-weighting convention`, () => {
     expect(ratio).toBeCloseTo(mass_ratio, 12)
     // Sanity: the two hypotheses are distinguishable, i.e. the masses actually differ
     expect(Math.abs(mass_ratio - 1)).toBeGreaterThan(0.1)
-  })
-
-  it(`dividing by sqrt(M) turns an acoustic eigenvector into a rigid translation`, () => {
-    const eigenvector = nacl_data.qpoints[0].modes[0].eigenvector
-    if (!eigenvector) throw new Error(`fixture has no eigenvector`)
-    const displacements = eigenvector.map(
-      (atom_block, atom_idx) => atom_block[0][0] / Math.sqrt(nacl_masses[atom_idx]),
-    )
-    expect(displacements[0]).toBeCloseTo(displacements[1], 12)
   })
 })
 
@@ -144,15 +128,18 @@ describe(`acoustic mode identification`, () => {
     },
   )
 
-  it(`away from Gamma no mode is labelled acoustic`, () => {
-    expect(is_gamma_point([0.25, 0, 0])).toBe(false)
-    const off_gamma = acoustic_mode_indices(co2_data.qpoints[0].modes, [0.25, 0, 0])
-    expect(off_gamma.size).toBe(0)
-  })
-
-  it(`only counts near-zero modes even when fewer than three qualify`, () => {
-    const modes = [0.1, 0.2, 3, 4].map((frequency) => ({ frequency, eigenvector: null }))
-    expect([...acoustic_mode_indices(modes, [0, 0, 0])]).toEqual([0, 1])
+  const few_soft = [0.1, 0.2, 3, 4].map((frequency) => ({ frequency, eigenvector: null }))
+  it.each([
+    [`no mode away from Gamma`, co2_data.qpoints[0].modes, [0.25, 0, 0] as Vec3, []],
+    [
+      `only near-zero modes when fewer than three qualify`,
+      few_soft,
+      [0, 0, 0] as Vec3,
+      [0, 1],
+    ],
+  ])(`acoustic_mode_indices labels %s`, (_name, modes, q_position, expected) => {
+    expect(is_gamma_point(q_position)).toBe(expected.length > 0)
+    expect([...acoustic_mode_indices(modes, q_position)]).toEqual(expected)
   })
 })
 
@@ -231,17 +218,6 @@ describe(`IR intensities against closed-form results`, () => {
 })
 
 describe(`selection rules`, () => {
-  it(`CO2 gerade modes are IR silent, ungerade modes IR active`, () => {
-    // Gerade modes of a centrosymmetric structure cannot carry a dipole derivative. This is
-    // exact, not small: the O atoms move oppositely while their Z* tensors are identical
-    // (Z* is even under inversion), so every contribution cancels.
-    const ir_of = (mode_idx: number) => co2_spectrum.modes[mode_idx].ir_intensity
-    expect(CO2_GERADE.map((mode_idx) => Math.abs(ir_of(mode_idx)) < 1e-15)).not.toContain(
-      false,
-    )
-    expect(CO2_UNGERADE.map((mode_idx) => ir_of(mode_idx) > 1e-2)).not.toContain(false)
-  })
-
   // The real-data counterpart of the CO2 selection-rule checks below. Point group 32 has no
   // inversion centre, so mutual exclusion does not apply — but A2 modes still carry IR
   // intensity with zero Raman activity, and the split has to survive the whole pipeline.
@@ -275,6 +251,13 @@ describe(`selection rules`, () => {
     // ...and the split is the textbook one, not vacuously empty on both sides
     expect(ir_active).toEqual(CO2_UNGERADE)
     expect(raman_active).toEqual([7])
+    // Gerade IR silence is exact, not small: the O atoms move oppositely while their Z*
+    // tensors are identical (Z* is even under inversion), so every contribution cancels.
+    for (const mode_idx of CO2_GERADE) {
+      expect(Math.abs(modes[mode_idx].ir_intensity)).toBeLessThan(1e-15)
+    }
+    for (const mode_idx of CO2_UNGERADE)
+      expect(modes[mode_idx].ir_intensity).toBeGreaterThan(1e-2)
   })
 
   it(`NaCl has an IR-active optical mode and no Raman data`, () => {
@@ -492,66 +475,38 @@ describe(`broaden_spectrum`, () => {
     expect(Math.max(...curve.y) / expected).toBeCloseTo(1, 3)
   })
 
-  // A caller-supplied fwhm_fn gets the same check as the constant. Without it the failure
-  // surfaces downstream as "step_size must be > 0", naming a derived value rather than the
-  // width model that produced it.
-  it.each([
-    [`zero fwhm`, { fwhm: 0 }, /fwhm must be > 0/],
-    [`an fwhm_fn returning 0`, { fwhm_fn: () => 0 }, /fwhm must be > 0.*got 0/],
-    [`an fwhm_fn returning NaN`, { fwhm_fn: () => NaN }, /got NaN/],
-  ])(`throws on %s`, (_name, options, pattern) => {
-    expect(() => broaden_spectrum({ x: [100], y: [1] }, options)).toThrow(pattern)
-  })
-
-  // ...but only the bad one, and the message has to name which stick it was
-  it(`names the stick whose width model went bad`, () => {
-    const fwhm_fn = (center: number) => (center === 2000 ? 0 : 10)
-    expect(() => broaden_spectrum({ x: [500, 2000], y: [1, 1] }, { fwhm_fn })).toThrow(
-      /got 0 at peak 2000/,
-    )
-  })
-
-  // Every width can be individually valid while their ratio is not: the grid spans
-  // 10*max_width in steps of min_width/20, so this asks for ~2.4e12 points and used to
-  // hand broaden_peaks an uninterruptible fill loop (measured: still running after 4 min).
-  const wide_ratio_sticks = { x: [0, 1000], y: [1, 1] }
+  // A wide width ratio: the grid spans 10*max_width in steps of min_width/20, so ~2.4e12
+  // points, which used to hand broaden_peaks an uninterruptible fill loop (>4 min).
   const wide_ratio_fwhm = (center: number) => (center === 0 ? 1e-8 : 10)
 
-  it(`refuses a width ratio that would explode the grid`, () => {
-    const broaden = () => broaden_spectrum(wide_ratio_sticks, { fwhm_fn: wide_ratio_fwhm })
-    expect(broaden).toThrow(
-      /grid points over \[-100, 1100\] at step 5e-10.*Widths span 1e-8\.\.10/s,
-    )
+  // A bad fwhm_fn would otherwise surface downstream as "step_size must be > 0", and must
+  // name the stick it failed at. NaN intensities would come back as an all-NaN curve, a
+  // negative one as an all-zero curve (dropped under the relative floor), neither with any
+  // signal. NaN and shape_factor are broaden_peaks' own checks; the negative one is local.
+  // oxfmt-ignore
+  it.each([
+    [`zero fwhm`, [100], [1], { fwhm: 0 }, /fwhm must be > 0/],
+    [`an fwhm_fn returning 0`, [100], [1], { fwhm_fn: () => 0 }, /fwhm must be > 0.*got 0/],
+    [`an fwhm_fn returning NaN`, [100], [1], { fwhm_fn: () => NaN }, /got NaN/],
+    [`an fwhm_fn bad at one stick`, [500, 2000], [1, 1], { fwhm_fn: (center: number) => (center === 2000 ? 0 : 10) }, /got 0 at peak 2000/],
+    [`a width ratio that would explode the grid`, [0, 1000], [1, 1], { fwhm_fn: wide_ratio_fwhm }, /grid points over \[-100, 1100\] at step 5e-10.*Widths span 1e-8\.\.10/s],
+    [`a NaN stick intensity`, [1000], [NaN], { fwhm: 10 }, /intensities must be finite, got NaN/],
+    [`a negative stick intensity`, [1000], [-5], { fwhm: 10 }, /stick 0 at 1000 has negative intensity -5/],
+    [`a NaN shape_factor`, [1000], [1], { fwhm: 10, shape_factor: NaN }, /shape_factor must be in \[0, 1\]/],
+    [`mismatched stick arrays`, [1, 2], [1], {}, /2 positions but 1 intensities/],
+  ] as [string, number[], number[], BroadenOptions, RegExp][])(`rejects %s`, (_name, x, y, options, pattern) => {
+    expect(() => broaden_spectrum({ x, y }, options)).toThrow(pattern)
   })
 
   // ...but an explicit step_size means the caller has taken responsibility for the grid
   it(`allows a wide width ratio when step_size is given explicitly`, () => {
     const opts = { fwhm_fn: wide_ratio_fwhm, range: [-50, 1050] as Vec2, step_size: 0.5 }
-    const curve = broaden_spectrum(wide_ratio_sticks, opts)
+    const curve = broaden_spectrum({ x: [0, 1000], y: [1, 1] }, opts)
     expect(curve.x).toHaveLength(2201) // [-50, 1050] at 0.5 is 2200 steps plus the endpoint
     expect(curve.y.every(Number.isFinite)).toBe(true)
   })
 
-  // NaN would otherwise come back as a full curve of NaN, a negative as an all-zero curve
-  // (broaden_peaks drops it under the relative intensity floor), neither with any signal.
-  // NaN and shape_factor are broaden_peaks' own checks; the negative one is local.
-  it.each([
-    [`a NaN stick intensity`, { y: [NaN] }, {}, /intensities must be finite, got NaN/],
-    [
-      `a negative stick intensity`,
-      { y: [-5] },
-      {},
-      /stick 0 at 1000 has negative intensity -5/,
-    ],
-    [`a NaN shape_factor`, {}, { shape_factor: NaN }, /shape_factor must be in \[0, 1\]/],
-  ])(`rejects %s`, (_name, stick_override, opt_override, pattern) => {
-    const sticks = { x: [1000], y: [1], ...stick_override }
-    expect(() => broaden_spectrum(sticks, { fwhm: 10, ...opt_override })).toThrow(pattern)
-  })
-
-  it(`throws on mismatched stick arrays and returns empty for no sticks`, () => {
-    const mismatched = () => broaden_spectrum({ x: [1, 2], y: [1] })
-    expect(mismatched).toThrow(/2 positions but 1 intensities/)
+  it(`returns an empty curve for no sticks`, () => {
     expect(broaden_spectrum({ x: [], y: [] })).toEqual({ x: [], y: [] })
   })
 
@@ -633,19 +588,20 @@ it(`spectrum_from_phonon_data selects the Gamma point automatically`, () => {
   expect(co2_spectrum.n_atoms).toBe(3)
 })
 
-it(`spectrum_from_phonon_data throws when no Gamma point is present`, () => {
-  const shifted: PhononModeData = {
-    ...nacl_data,
-    qpoints: [{ ...nacl_data.qpoints[0], q_position: [0.5, 0, 0] }],
-  }
-  expect(() => spectrum_from_phonon_data(shifted, nacl_born_data)).toThrow(/no Gamma point/)
-})
-
 // A negative index used to fall into the Gamma-search branch and report "no Gamma point",
 // which says nothing about the index the caller actually passed
-it.each([5, -1])(`spectrum_from_phonon_data throws on q-point index %i`, (qpoint_index) => {
-  const compute = () => spectrum_from_phonon_data(nacl_data, nacl_born_data, { qpoint_index })
-  expect(compute).toThrow(/out of range/)
+const off_gamma: PhononModeData = {
+  ...nacl_data,
+  qpoints: [{ ...nacl_data.qpoints[0], q_position: [0.5, 0, 0] }],
+}
+it.each([
+  [`no Gamma point`, off_gamma, undefined, /no Gamma point/],
+  [`q-point index 5`, nacl_data, 5, /out of range/],
+  [`q-point index -1`, nacl_data, -1, /out of range/],
+])(`spectrum_from_phonon_data throws on %s`, (_name, data, qpoint_index, pattern) => {
+  expect(() => spectrum_from_phonon_data(data, nacl_born_data, { qpoint_index })).toThrow(
+    pattern,
+  )
 })
 
 // Frequencies as declared in the fixtures, in file order (THz). The parser must not sort.
@@ -850,7 +806,7 @@ describe(`parse_born`, () => {
   })
 })
 
-it(`apply_born_sum_rule removes the residual, leaves neutral charges untouched`, () => {
+it(`apply_born_sum_rule removes the residual, keeps neutral charges, rejects empty input`, () => {
   const violating = [
     mat3([1.2, 0, 0], [0, 1.2, 0], [0, 0, 1.2]),
     mat3([-1, 0, 0], [0, -1, 0], [0, 0, -1]),
@@ -865,9 +821,6 @@ it(`apply_born_sum_rule removes the residual, leaves neutral charges untouched`,
 
   const neutral = nacl_born_data.born_charges
   expect(apply_born_sum_rule(neutral)).toEqual(neutral)
-})
-
-it(`apply_born_sum_rule throws on empty input`, () => {
   expect(() => apply_born_sum_rule([])).toThrow(/no Born charges given/)
 })
 
@@ -961,8 +914,7 @@ describe(`IrRamanSpectrum component`, () => {
       const fwhm_input = doc_query<HTMLInputElement>(`#ir-raman-fwhm`)
       const reset_width = Number(fwhm_input.value)
       if (variant === `single peak`) expect(reset_width).toBe(10)
-      fwhm_input.value = String(reset_width * 2)
-      fwhm_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(fwhm_input, String(reset_width * 2))
       await tick()
       await reset_section(`broadening`)
       expect(Number(fwhm_input.value)).toBe(reset_width)
@@ -984,17 +936,22 @@ describe(`IrRamanSpectrum component`, () => {
     expect(on_mode_select).toHaveBeenCalledTimes(2)
   })
 
-  it(`shows an empty state when Raman is requested without polarizability data`, () => {
-    render({ spectrum: nacl_spectrum, kind: `raman` })
+  const silent_modes = co2_spectrum.modes.map((mode) => ({ ...mode, ir_intensity: 0 }))
+  it.each([
+    [
+      `Raman without polarizability data`,
+      { spectrum: nacl_spectrum, kind: `raman` } as const,
+      /polarizability derivatives must be supplied/,
+    ],
+    [
+      `every mode silent`,
+      { spectrum: { ...co2_spectrum, modes: silent_modes } },
+      /No IR-active modes/,
+    ],
+  ])(`shows an empty state for %s`, (_name, props, message) => {
+    render(props)
     expect(document.querySelector(`.scatter`)).toBeNull()
-    expect(document.body.textContent).toMatch(/polarizability derivatives must be supplied/)
-  })
-
-  it(`shows an empty state when every mode is silent`, () => {
-    const modes = co2_spectrum.modes.map((mode) => ({ ...mode, ir_intensity: 0 }))
-    render({ spectrum: { ...co2_spectrum, modes } })
-    expect(document.querySelector(`.scatter`)).toBeNull()
-    expect(document.body.textContent).toMatch(/No IR-active modes/)
+    expect(document.body.textContent).toMatch(message)
   })
 
   // fwhm is one physical width in cm^-1: unit switches only rescale the slider's display

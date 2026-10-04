@@ -29,20 +29,6 @@ const frame_run = (structures: AnyStructure[]): TrajectoryRun => {
   }
 }
 
-const counting_run = (total_frames: number): TrajectoryRun & { requested: number[] } => {
-  const requested: number[] = []
-  return Object.assign(
-    frame_run(Array.from({ length: total_frames }, () => make_fcc([2, 2, 2]))),
-    {
-      requested,
-      read_frame: (frame_idx: number) => {
-        requested.push(frame_idx)
-        return encode_frame({ step: frame_idx, structure: make_fcc([2, 2, 2]) })
-      },
-    },
-  )
-}
-
 describe(`sweep_frame_plan`, () => {
   it.each([
     [10, 3, 4, [0, 4, 8]],
@@ -193,6 +179,24 @@ describe(`collect_structure_id_sweep`, () => {
     },
   )
 
+  it(`loads exactly the sampled source frames through read_frame`, async () => {
+    const requested: number[] = []
+    const base = frame_run(Array.from({ length: 50 }, () => make_fcc([2, 2, 2])))
+    const run = {
+      ...base,
+      read_frame: (frame_idx: number) => {
+        requested.push(frame_idx)
+        return base.read_frame(frame_idx)
+      },
+    }
+    const sweep = await collect_structure_id_sweep(run, {
+      max_frames: 5,
+      options: { skip_csp: true },
+    })
+    expect([sweep.frame_numbers, sweep.frame_stride]).toEqual([[0, 10, 20, 30, 40], 10])
+    expect(requested).toEqual(sweep.frame_numbers)
+  })
+
   it(`refuses a sweep whose frames disagree on the atom count`, async () => {
     const trajectory = frame_run([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])
     await expect(
@@ -222,17 +226,5 @@ describe(`collect_structure_id_sweep`, () => {
       options: { skip_csp: true },
     })
     expect(sweep.results[0].cna_types).not.toEqual(wrapped.cna_types)
-  })
-})
-
-describe(`on-demand runs`, () => {
-  it(`loads exactly the sampled source frames through read_frame`, async () => {
-    const run = counting_run(50)
-    const sweep = await collect_structure_id_sweep(run, {
-      max_frames: 5,
-      options: { skip_csp: true },
-    })
-    expect([sweep.frame_numbers, sweep.frame_stride]).toEqual([[0, 10, 20, 30, 40], 10])
-    expect(run.requested).toEqual(sweep.frame_numbers)
   })
 })

@@ -1909,7 +1909,8 @@
         type="button"
         class="atom-label"
         style="font-size: {site_label_size *
-          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color}"
+          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color ||
+          `var(--text-color)`}"
         onpointerdown={(event) => {
           event.preventDefault()
           event.stopImmediatePropagation()

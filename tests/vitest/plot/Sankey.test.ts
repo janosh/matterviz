@@ -58,10 +58,13 @@ describe(`Sankey`, () => {
   })
 
   test.each([`horizontal`, `vertical`] as const)(
-    `renders one rect per node and one path per link (%s)`,
+    `renders one colored rect per node and one path per link (%s)`,
     async (orientation) => {
       const plot = await mount_sized_sankey({ data, orientation })
-      expect(plot.querySelectorAll(`.nodes rect`)).toHaveLength(data.nodes.length)
+      // explicit node colors win, the rest fall back to the palette by node position
+      expect(
+        [...plot.querySelectorAll(`.nodes rect`)].map((rect) => rect.getAttribute(`fill`)),
+      ).toEqual([`#e15759`, `#4e79a7`, `#59a14f`, plot_color(3)])
       expect(plot.querySelectorAll(`.links path`)).toHaveLength(data.links.length)
     },
   )
@@ -88,17 +91,6 @@ describe(`Sankey`, () => {
       `cycle A -> B -> A`,
     )
     expect(plot.querySelectorAll(`.nodes rect`)).toHaveLength(0)
-  })
-
-  test(`uses explicit node colors and cycles palette for the rest`, async () => {
-    const plot = await mount_sized_sankey({ data })
-    const fills = [...plot.querySelectorAll(`.nodes rect`)].map((rect) =>
-      rect.getAttribute(`fill`),
-    )
-    expect(fills[0]).toBe(`#e15759`)
-    expect(fills[1]).toBe(`#4e79a7`)
-    expect(fills[2]).toBe(`#59a14f`)
-    expect(fills[3]).toBe(plot_color(3)) // palette fallback indexed by node position
   })
 
   test(`gradient mode emits one linearGradient per link`, async () => {
@@ -268,24 +260,15 @@ describe(`Sankey`, () => {
     expect(dim_links()).toBe(0)
   })
 
-  test(`orphan-only nodes do not open an empty legend`, async () => {
-    const plot = await mount_sized_sankey({
-      data: {
-        nodes: [{ label: `orphan-a` }, { label: `orphan-b` }],
-        links: [],
-      },
-      show_legend: true,
-    })
-    expect(plot.querySelector(`.legend`)).toBeNull()
-  })
-
   test.each([
-    { data: { nodes: [], links: [] } },
-    { data: { nodes: [{ label: `solo` }], links: [] } },
-  ])(`renders without error for empty/degenerate data %#`, async (props) => {
-    const plot = await mount_sized_sankey(props)
+    { nodes: [], links: [] },
+    { nodes: [{ label: `solo` }], links: [] },
+    { nodes: [{ label: `orphan-a` }, { label: `orphan-b` }], links: [] },
+  ])(`renders link-less data %# without error or an empty legend`, async (graph) => {
+    const plot = await mount_sized_sankey({ data: graph, show_legend: true })
     expect(plot.querySelector(`.viewer-error`)).toBeNull()
     expect(plot.querySelectorAll(`.links path`)).toHaveLength(0)
+    expect(plot.querySelector(`.legend`)).toBeNull()
   })
 })
 
@@ -319,33 +302,36 @@ describe(`bucket_sankey_data`, () => {
     expect(bucket_sankey_data(tail, opts).links).toHaveLength(expected)
   })
 
-  // A bucket of one is just that link renamed, so it is left alone
-  test(`a single qualifying link is not bucketed`, () => {
-    const one_small = {
-      nodes: [{ id: `src` }, { id: `big` }, { id: `a` }],
-      links: [
-        { source: `src`, target: `big`, value: 99 },
-        { source: `src`, target: `a`, value: 1 },
+  // Each case leaves the graph untouched: a bucket of one is just that link renamed; folding a
+  // target that carries flow onward would delete that flow from the diagram (`mid` survives, so
+  // only `t` qualifies and the >= 2 rule applies); an unknown target is a broken reference, not
+  // a terminal node, and folding it would hide the error compute_sankey_layout reports
+  test.each([
+    [`a single qualifying link`, 99, [[`src`, `a`, 1]]],
+    [
+      `a target with outgoing flow`,
+      90,
+      [
+        [`src`, `mid`, 5],
+        [`mid`, `sink`, 5],
+        [`src`, `t`, 5],
       ],
-    }
-    expect(bucket_sankey_data(one_small, { min_fraction: 0.1 })).toBe(one_small)
-  })
-
-  // Folding a target that carries flow onward would delete that flow from the diagram
-  test(`never folds a link whose target has outgoing flow`, () => {
-    const passthrough = {
-      nodes: [{ id: `src` }, { id: `big` }, { id: `mid` }, { id: `sink` }, { id: `t` }],
-      links: [
-        { source: `src`, target: `big`, value: 90 },
-        { source: `src`, target: `mid`, value: 5 },
-        { source: `mid`, target: `sink`, value: 5 },
-        { source: `src`, target: `t`, value: 5 },
+    ],
+    [
+      `unresolved targets`,
+      90,
+      [
+        [`src`, `ghost`, 1],
+        [`src`, `phantom`, 1],
       ],
-    }
-    const { links } = bucket_sankey_data(passthrough, { min_fraction: 0.5 })
-    // `mid` survives (it has downstream flow); only one terminal link qualifies, so
-    // the >= 2 rule leaves the graph untouched rather than bucketing `t` alone
-    expect(links).toEqual(passthrough.links)
+    ],
+  ] as const)(`never buckets %s`, (_desc, big_value, rows) => {
+    const links = [[`src`, `big`, big_value] as const, ...rows].map(
+      ([source, target, value]) => ({ source, target, value }),
+    )
+    const nodes = [`src`, `big`, `a`, `mid`, `sink`, `t`].map((id) => ({ id }))
+    const graph = { nodes, links }
+    expect(bucket_sankey_data(graph, { min_fraction: 0.5 })).toBe(graph)
   })
 
   // `max_links` bounds the links kept under their own name, not the total drawn: the
@@ -444,19 +430,5 @@ describe(`bucket_sankey_data`, () => {
     // reuse an id held by any retained node
     const ids = nodes.map((node) => node.id)
     expect(new Set(ids).size).toBe(ids.length)
-  })
-
-  // An unknown target is a broken reference, not a terminal node: folding it would
-  // replace it with a valid link and hide the error compute_sankey_layout reports
-  test(`links with unresolved targets are never folded`, () => {
-    const broken = {
-      nodes: [{ id: `src` }, { id: `big` }],
-      links: [
-        { source: `src`, target: `big`, value: 90 },
-        { source: `src`, target: `ghost`, value: 1 },
-        { source: `src`, target: `phantom`, value: 1 },
-      ],
-    }
-    expect(bucket_sankey_data(broken, { min_fraction: 0.1 }).links).toEqual(broken.links)
   })
 })

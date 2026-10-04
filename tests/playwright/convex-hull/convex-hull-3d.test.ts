@@ -133,18 +133,6 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect.poll(() => get_canvas_hash(canvas), { timeout: 10000 }).toBe(hash_before)
   })
 
-  test(`renders ternary diagram canvas and toggles hull faces`, async ({ page }) => {
-    const diagram = ternary_diagram(page)
-    const canvas = diagram.locator(`canvas`).first()
-    await expect(canvas).toBeVisible()
-
-    await dom_click(diagram.locator(`.legend-controls-btn`))
-    const pane = page.locator(`.draggable-pane.convex-hull-controls-pane`).last()
-    const hull_toggle = pane.getByText(`Hull Faces`, { exact: false })
-    await hull_toggle.click()
-    await expect(canvas).toBeVisible()
-  })
-
   test(`info pane stats show chemical system and counts`, async ({ page }) => {
     const diagram = ternary_diagram(page)
     const info = await open_info_pane(page, diagram)
@@ -158,7 +146,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     expect(unstable_match ? Number(unstable_match[1]) : 0).toBeGreaterThan(0)
   })
 
-  test(`controls pane exposes camera inputs, face color modes and the color scale selector`, async ({
+  test(`controls pane exposes camera inputs, hull face toggle, color modes and scale selector`, async ({
     page,
   }) => {
     const diagram = ternary_diagram(page)
@@ -176,6 +164,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
         .first()
         .fill(value)
     }
+    // test_without_errors fails a canvas redraw that throws on the hull-face toggle
+    await controls.getByText(`Hull Faces`, { exact: false }).click()
     await expect(diagram.locator(`canvas`).first()).toBeVisible()
 
     // All 4 mode buttons present with Uniform active by default, which shows the color picker

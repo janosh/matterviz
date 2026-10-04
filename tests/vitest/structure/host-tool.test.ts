@@ -63,10 +63,8 @@ describe(`host prediction ownership`, () => {
       if (parsed.type !== `structure`) throw new Error(`Expected parsed structure`)
       const { controller } = controller_fixture(parsed.data)
       const run = controller.start_run(provenance)
-      expect(run.structure.sites.map(({ properties }) => properties)).toEqual([
-        {},
-        { charge: 0.5 },
-      ])
+      const properties = run.structure.sites.map((site) => site.properties)
+      expect(properties).toEqual([{}, { charge: 0.5 }])
     },
   )
 
@@ -186,11 +184,8 @@ describe(`host prediction ownership`, () => {
       id: `density`,
       dims: [2, 2, 2],
       values: Array(8).fill(1),
-      lattice: [
-        [5, 0, 0],
-        [0, 5, 0],
-        [0, 0, 5],
-      ],
+      // oxfmt-ignore
+      lattice: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
     })
     expect(state.structure.sites[0].properties?.charge).toBeUndefined()
     expect(prediction_from_json(JSON.stringify(exported)).result).toEqual(exported.result)
@@ -314,22 +309,12 @@ test.each([
   { order: `x_fastest` },
   { origin: [NaN, 0, 0] },
   { periodic: `yes` },
-  {
-    lattice: [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
-    ],
-  },
+  // oxfmt-ignore
+  { lattice: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] },
   { values: new Float64Array(8).fill(Infinity) },
   { values: new Float64Array(8).fill(1e308) },
-  {
-    lattice: [
-      [1e308, 1e308, 0],
-      [1e308, 1e308, 0],
-      [0, 0, 1],
-    ],
-  },
+  // oxfmt-ignore
+  { lattice: [[1e308, 1e308, 0], [1e308, 1e308, 0], [0, 0, 1]] },
   { values: new Float32Array(8) },
 ])(`rejects malformed density atomically: %j`, (overrides) => {
   const { on_prediction, controller } = controller_fixture()

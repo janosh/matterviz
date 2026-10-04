@@ -11,27 +11,30 @@ import { mount_sized, plot_svg, translate_of } from '../setup'
 type LocalPoint = { x: number; y: number; button?: number }
 
 const xy_series = () => [{ x: [0, 1, 2], y: [1, 2, 3] }]
-const y_series = () => [{ y: [1, 2, 3] }]
-const histogram_series = () => [{ values: [1, 2, 3] }]
+const mount_bar = async () =>
+  plot_svg(await mount_sized(BarPlot, { series: xy_series() }, { selector: `.bar-plot` }))
 const plot_cases = [
-  [`BarPlot`, () => mount_sized(BarPlot, { series: xy_series() }, { selector: `.bar-plot` })],
-  [`BoxPlot`, () => mount_sized(BoxPlot, { series: y_series() }, { selector: `.box-plot` })],
+  [`BarPlot`, mount_bar],
   [
-    `Histogram`,
-    () =>
-      mount_sized(
-        Histogram,
-        { series: histogram_series() },
-        {
-          selector: `.histogram`,
-        },
+    `BoxPlot`,
+    async () =>
+      plot_svg(
+        await mount_sized(BoxPlot, { series: [{ y: [1, 2, 3] }] }, { selector: `.box-plot` }),
       ),
   ],
   [
-    `ScatterPlot`,
-    () => mount_sized(ScatterPlot, { series: xy_series() }, { selector: `.scatter` }),
+    `Histogram`,
+    async () =>
+      plot_svg(
+        await mount_sized(
+          Histogram,
+          { series: [{ values: [1, 2, 3] }] },
+          { selector: `.histogram` },
+        ),
+      ),
   ],
-] satisfies [string, () => Promise<HTMLElement>][]
+  [`ScatterPlot`, () => mount_scatter()],
+] satisfies [string, () => Promise<SVGSVGElement>][]
 
 type DragOptions = { shift?: boolean; alt?: boolean; mid_drag?: () => void }
 
@@ -105,49 +108,22 @@ describe(`alt+drag rect selection`, () => {
     expect(on_select).toHaveBeenCalledWith(expect.objectContaining({ points: [] }))
   })
 
-  // Scatter always offers selection (selected_points is bindable with or without a
-  // callback), so the rect's mode follows the modifier alone
-  test(`alt+drag draws the select rect, plain drag the zoom rect`, async () => {
-    const svg = await mount_scatter()
-    const rect_class = async (alt: boolean) => {
-      let seen = ``
-      await drag(
-        svg,
-        { x: 60, y: 40 },
-        { x: 300, y: 200 },
-        {
-          alt,
-          mid_drag: () => {
-            seen = svg.querySelector(`.zoom-rect`)?.getAttribute(`class`) ?? ``
-          },
-        },
-      )
-      return seen
-    }
-    expect(await rect_class(true)).toContain(`select`)
-    expect(await rect_class(false)).not.toContain(`select`)
-  })
-
-  // A chart with no marks to enumerate implements no on_rect_select, and there the
-  // gesture must stay a zoom rather than being swallowed
-  test(`alt+drag stays a zoom on a chart that cannot select`, async () => {
-    const svg = plot_svg(
-      await mount_sized(BarPlot, { series: xy_series() }, { selector: `.bar-plot` }),
-    )
+  // Scatter always offers selection (selected_points is bindable with or without a callback),
+  // so the rect's mode follows the modifier alone. A chart with no marks to enumerate (BarPlot)
+  // implements no on_rect_select, and there alt+drag must stay a zoom rather than be swallowed
+  test.each([
+    [`ScatterPlot`, () => mount_scatter(), true, true],
+    [`ScatterPlot`, () => mount_scatter(), false, false],
+    [`BarPlot`, mount_bar, true, false],
+  ])(`%s alt=%s drag draws a select rect: %s`, async (_name, mount_plot, alt, selects) => {
+    const svg = await mount_plot()
     let seen = ``
-    await drag(
-      svg,
-      { x: 60, y: 40 },
-      { x: 300, y: 200 },
-      {
-        alt: true,
-        mid_drag: () => {
-          seen = svg.querySelector(`.zoom-rect`)?.getAttribute(`class`) ?? ``
-        },
-      },
-    )
+    const mid_drag = () => {
+      seen = svg.querySelector(`.zoom-rect`)?.getAttribute(`class`) ?? ``
+    }
+    await drag(svg, { x: 60, y: 40 }, { x: 300, y: 200 }, { alt, mid_drag })
     expect(seen).toContain(`zoom-rect`)
-    expect(seen).not.toContain(`select`)
+    expect(seen.includes(`select`)).toBe(selects)
   })
 })
 
@@ -155,7 +131,7 @@ describe(`shared plot drag zoom bounds`, () => {
   test.each(plot_cases)(
     `%s cancels scrolling only during an active two-finger gesture`,
     async (_name, mount_plot) => {
-      const svg = plot_svg(await mount_plot())
+      const svg = await mount_plot()
       const bounds = svg.getBoundingClientRect()
       // oxfmt-ignore
       const gestures: [string, Vec2[], boolean][] = [
@@ -192,8 +168,7 @@ describe(`shared plot drag zoom bounds`, () => {
   test.each(plot_cases)(
     `%s rejects margin starts but allows the endpoint outside`,
     async (_name, mount_plot) => {
-      const root = await mount_plot()
-      const svg = plot_svg(root)
+      const svg = await mount_plot()
 
       // Default 400×300 plots end at y=240; y=290 is in the x-label margin.
       expect(await drag(svg, { x: 100, y: 290 }, { x: 300, y: 100 })).toBe(false)

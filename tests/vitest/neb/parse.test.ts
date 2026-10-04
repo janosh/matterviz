@@ -29,12 +29,19 @@ const minimal_doc = (extra: Record<string, unknown> = {}) => ({
 
 describe(`reaction-path JSON`, () => {
   test(`single-path document parses into one path keyed by its label, else the filename`, () => {
-    const paths = parse_reaction_path_json(JSON.stringify(minimal_doc()), `hop.json`)
+    // an unrecognised top-level key such as _comment provenance is tolerated
+    const doc = minimal_doc({ _comment: `synthetic fixture, not a real calculation` })
+    doc.images[0].forces = [[0.1, -0.2, 0.3]]
+    const paths = parse_reaction_path_json(JSON.stringify(doc), `hop.json`)
     expect(Object.keys(paths)).toEqual([`hop.json`])
     const path = paths[`hop.json`]
-    expect(path.images).toHaveLength(3)
     expect(path.energy_unit).toBe(`eV`)
     expect(path.images.map((image) => image.label)).toEqual([`IS`, `TS`, `FS`])
+    expect(path.images.map((image) => image.forces)).toEqual([
+      [[0.1, -0.2, 0.3]],
+      undefined,
+      undefined,
+    ])
     expect(analyze_barrier(path).forward_barrier).toBeCloseTo(0.8, 12)
 
     // a document label takes over as the key, and stands in for a missing filename
@@ -57,20 +64,6 @@ describe(`reaction-path JSON`, () => {
     const paths = parse_reaction_path_json(JSON.stringify(doc), `multi.json`)
     expect(Object.keys(paths)).toEqual([`vacancy`, `interstitial`])
     expect(paths.vacancy.energy_unit).toBe(`meV`)
-  })
-
-  test(`per-image forces and labels survive the parse`, () => {
-    const doc = minimal_doc()
-    doc.images[0].forces = [[0.1, -0.2, 0.3]]
-    const path = parse_reaction_path_json(JSON.stringify(doc), `f.json`)[`f.json`]
-    expect(path.images[0].forces).toEqual([[0.1, -0.2, 0.3]])
-    expect(path.images[1].forces).toBeUndefined()
-  })
-
-  test(`an unrecognised top-level key such as _comment provenance is tolerated`, () => {
-    const doc = minimal_doc({ _comment: `synthetic fixture, not a real calculation` })
-    const path = parse_reaction_path_json(JSON.stringify(doc), `hop.json`)[`hop.json`]
-    expect(path.images).toHaveLength(3)
   })
 
   // Every image after the first is well-formed, so each row isolates one defect
@@ -112,8 +105,6 @@ describe(`extended XYZ reaction paths`, () => {
     expect(analyze_barrier(path).forward_barrier).toBeCloseTo(0.8, 12)
   })
 
-  // Routing through the trajectory XYZ reader buys the wider key set for free; the old
-  // hand-rolled regex only knew `energy=`.
   test.each([`E`, `etot`, `total_energy`, `energy`])(`reads a %s= energy key`, (key) => {
     const content = [frame(0, -10, false, key), frame(1, -9.2, false, key)].join(`\n`)
     const path = parse_xyz_reaction_path(content, `neb.xyz`)
@@ -144,8 +135,7 @@ describe(`extended XYZ reaction paths`, () => {
   })
 
   test(`a malformed count line does not discard the frames around it`, () => {
-    // The old hand-rolled splitter bailed on the first bad count field; the trajectory
-    // walker resynchronises on the next plausible frame header instead.
+    // the trajectory walker resynchronises on the next plausible frame header
     const content = [frame(0, -10), `oops`, frame(1, -9.2), frame(2, -9.7)].join(`\n`)
     const path = parse_xyz_reaction_path(content, `neb.xyz`)
     expect(path.images.map((image) => image.energy)).toEqual([-10, -9.2, -9.7])

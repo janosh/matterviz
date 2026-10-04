@@ -5,7 +5,7 @@ import type { LeverRuleResult, PhaseDiagramData } from '#lib/phase-diagram/types
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
-import { create_hover_info } from './fixtures/test-data'
+import { create_hover_info, pts, rect } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
@@ -15,37 +15,11 @@ const eutectic: PhaseDiagramData = {
   components: [`Al`, `Cu`],
   temperature_range: [0, 1000],
   regions: [
-    {
-      id: `liq`,
-      name: `Liquid`,
-      vertices: [
-        [0, 500],
-        [1, 500],
-        [1, 1000],
-        [0, 1000],
-      ],
-    },
-    {
-      id: `ab`,
-      name: `α + β`, // 2+ phases -> gradient fill + lever rule
-      vertices: [
-        [0, 0],
-        [1, 0],
-        [1, 500],
-        [0, 500],
-      ],
-    },
+    { id: `liq`, name: `Liquid`, vertices: rect(0, 500, 1, 1000) },
+    // 2+ phases -> gradient fill + lever rule
+    { id: `ab`, name: `α + β`, vertices: rect(0, 0, 1, 500) },
   ],
-  boundaries: [
-    {
-      id: `eut-line`,
-      type: `eutectic`,
-      points: [
-        [0, 500],
-        [1, 500],
-      ],
-    },
-  ],
+  boundaries: [{ id: `eut-line`, type: `eutectic`, points: pts(0, 500, 1, 500) }],
   special_points: [{ id: `eut`, type: `eutectic`, position: [0.5, 500], label: `E` }],
 }
 
@@ -62,11 +36,7 @@ const mount_diagram = (
   mount_sized(
     IsobaricBinaryPhaseDiagram,
     { data: eutectic, ...props },
-    {
-      selector: `.binary-phase-diagram`,
-      width,
-      height,
-    },
+    { selector: `.binary-phase-diagram`, width, height },
   )
 
 const hover_at = async (
@@ -83,6 +53,17 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
+  // A container briefly narrower than the margins (mid-resize) gave a negative plot width,
+  // which the SVG rejected (`<rect> attribute width: A negative value is not valid`)
+  test(`renders no plot while smaller than its margins`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      { data: eutectic },
+      { selector: `.binary-phase-diagram`, width: 40, height },
+    )
+    expect(wrapper.querySelector(`svg`)).toBeNull()
+  })
+
   test(`recovers across missing, loaded, cleared, and reloaded data`, async () => {
     const wrapper = await mount_sized(
       IsobaricBinaryPhaseDiagramHarness,
@@ -148,7 +129,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.y-axis`)?.textContent).toContain(`Temperature (K)`)
   })
 
-  test(`hover reports phase info, shows the tooltip, and clears on leave`, async () => {
+  test(`hover reports phase info and the two-phase lever rule/tie-line, clears on leave`, async () => {
     const on_phase_hover = vi.fn()
     const wrapper = await mount_diagram({ on_phase_hover })
     await hover_at(wrapper, 0.5, 750) // inside Liquid
@@ -156,20 +137,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(info?.region?.id).toBe(`liq`)
     expect(info?.composition).toBeCloseTo(0.5, 9)
     expect(info?.temperature).toBeCloseTo(750, 9)
+    expect(info?.lever_rule).toBeUndefined()
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`Liquid`)
+    expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
 
-    // outside the plot area (left of the y-axis) -> hover cleared
-    plot_svg(wrapper).dispatchEvent(
-      new PointerEvent(`pointermove`, { clientX: 10, clientY: 100, bubbles: true }),
-    )
-    await tick()
-    expect(on_phase_hover).toHaveBeenLastCalledWith(null)
-    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
-  })
-
-  test(`two-phase hover computes the lever rule and draws the tie-line`, async () => {
-    const on_phase_hover = vi.fn()
-    const wrapper = await mount_diagram({ on_phase_hover })
     await hover_at(wrapper, 0.25, 250) // inside the α + β field spanning x: [0, 1]
     const lever_rule = on_phase_hover.mock.lastCall?.[0]?.lever_rule as LeverRuleResult
     expect(lever_rule).toMatchObject({ left_phase: `α`, right_phase: `β` })
@@ -183,6 +154,14 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     if (!tie_line?.parentElement) throw new Error(`missing tie line`)
     expect(getComputedStyle(tie_line.parentElement).pointerEvents).toBe(`none`)
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`α + β`)
+
+    // outside the plot area (left of the y-axis) -> hover cleared
+    plot_svg(wrapper).dispatchEvent(
+      new PointerEvent(`pointermove`, { clientX: 10, clientY: 100, bubbles: true }),
+    )
+    await tick()
+    expect(on_phase_hover).toHaveBeenLastCalledWith(null)
+    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
   })
 
   test(`click locks the tooltip; click again or Escape unlocks`, async () => {
@@ -310,13 +289,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   }
   const good_input: DiagramInput = {
     ...bad_input,
-    curves: {
-      liquidus: [
-        [0, 1000],
-        [1, 1000],
-        [1, 500],
-      ],
-    },
+    curves: { liquidus: pts(0, 1000, 1, 1000, 1, 500) },
   }
   const bad_data = {
     ...eutectic,

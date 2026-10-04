@@ -9,11 +9,10 @@ import { resolve_axis_range } from '#lib/plot/core/interactions.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 
 const type_into = (input: HTMLInputElement, value: string) => {
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(input, value)
   flushSync()
 }
 
@@ -21,10 +20,7 @@ describe(`PlotControls`, () => {
   const mount_controls = (props: ComponentProps<typeof PlotControls> = {}) => {
     props.show_controls ??= true
     props.controls_open ??= true
-    return mount(PlotControls, {
-      target: document.body,
-      props,
-    })
+    return mount(PlotControls, { target: document.body, props })
   }
 
   describe(`range input handling`, () => {
@@ -301,11 +297,7 @@ describe(`PlotControls`, () => {
       expect(display).toEqual({ x_grid: false })
     })
 
-    test.each<{
-      x_range: [number, number]
-      y_range: [number, number]
-      expected: number
-    }>([
+    test.each<{ x_range: Vec2; y_range: Vec2; expected: number }>([
       { x_range: [-10, 10], y_range: [-5, 5], expected: 2 },
       { x_range: [0, 10], y_range: [-5, 5], expected: 2 },
       { x_range: [1, 10], y_range: [-5, 5], expected: 1 },
@@ -313,8 +305,7 @@ describe(`PlotControls`, () => {
       { x_range: [1, 10], y_range: [1, 5], expected: 0 },
     ])(`shows $expected zero line controls for ranges`, ({ x_range, y_range, expected }) => {
       mount_controls({ auto_ranges: { x: x_range, y: y_range } })
-      const zero_lines = get_checkboxes_in_group(`zero line`)
-      expect(zero_lines).toHaveLength(expected)
+      expect(get_checkboxes_in_group(`zero line`)).toHaveLength(expected)
     })
   })
 
@@ -328,7 +319,6 @@ describe(`PlotControls`, () => {
 
   test(`packs related display and axis fields onto shared rows`, async () => {
     mount_controls({ auto_ranges: { x: [0, 1], y: [0, 1] } })
-    // Shared names avoid the old empty-prefix "-controls-*" classes.
     expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
     expect(doc_query(`.plot-controls-pane`).classList.contains(`compact-settings`)).toBe(true)
     // Poll for the rows instead of reading the DOM straight after mount: the pane's sections

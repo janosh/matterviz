@@ -82,7 +82,6 @@ const format_formula_generic = (
     options,
   )
 
-// Create alphabetical formula
 export const get_alphabetical_formula = (
   input: FormulaInput,
   options: FormulaFormatOptions = {},
@@ -113,7 +112,6 @@ export const sort_by_hill_notation = (symbols: ElementSymbol[]): ElementSymbol[]
   return symbols.toSorted((el_a, el_b) => rank(el_a) - rank(el_b) || el_a.localeCompare(el_b))
 }
 
-// Create electronegativity-sorted formula
 export const get_electro_neg_formula = (
   input: FormulaInput,
   options: FormulaFormatOptions = {},

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
-test(`settings align native fields and custom rows at different pane widths`, async ({
+test(`settings align fields and rows at different pane widths, exports download filtered data`, async ({
   page,
 }) => {
   await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
@@ -36,12 +36,7 @@ test(`settings align native fields and custom rows at different pane widths`, as
     expect(layout.expected_gap).toBeGreaterThan(0)
     for (const gap of layout.row_gaps) expect(gap).toBeCloseTo(layout.expected_gap, 1)
   }
-})
 
-test(`CSV and JSON exports download the filtered heatmap data`, async ({ page }) => {
-  await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
-  await page.locator(`.heatmap-matrix-controls-toggle`).first().click({ force: true })
-  const pane = page.locator(`.heatmap-controls`).first()
   await pane
     .getByRole(`textbox`, { name: `File name`, exact: true })
     .fill(`element-differences`)

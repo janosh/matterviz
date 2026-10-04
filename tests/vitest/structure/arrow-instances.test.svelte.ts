@@ -72,14 +72,16 @@ const vector_options = (): VectorLayerOptions => ({
   vector_arrow_head_radius: -0.09,
   vector_arrow_head_length: -0.2,
 })
-
-test.each([
+// [color mode, normalize, origin gap]
+const color_mode_cases: [VectorColorMode, boolean, number][] = [
   [`auto`, false, 0],
   [`element`, true, 0.5],
   [`magnitude`, false, 0.7],
   [`spin_direction`, true, 0],
   [`uniform`, false, 1],
-] as [VectorColorMode, boolean, number][])(
+]
+
+test.each(color_mode_cases)(
   `numeric vector layers preserve values and snapshots in %s mode`,
   (vector_color_mode, vector_normalize, vector_origin_gap) => {
     const options = {
@@ -297,13 +299,7 @@ test.each([
   },
 )
 
-test.each([
-  [`auto`, false, 0],
-  [`element`, true, 0.5],
-  [`magnitude`, false, 0.7],
-  [`spin_direction`, true, 0],
-  [`uniform`, false, 1],
-] as [VectorColorMode, boolean, number][])(
+test.each(color_mode_cases)(
   `vector placements track visibility, key order and composition in %s mode`,
   (vector_color_mode, vector_normalize, vector_origin_gap) => {
     const options = {

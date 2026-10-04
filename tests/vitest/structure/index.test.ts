@@ -1,4 +1,4 @@
-import type { AnyStructure, Crystal, ElementSymbol, Site, Species, Vec3 } from '#lib'
+import type { AnyStructure, Crystal, ElementSymbol, Site, Vec3 } from '#lib'
 import * as struct_utils from '#lib/structure/index.js'
 import type { StructureFitOpts } from '#lib/structure/index.js'
 import {
@@ -36,49 +36,16 @@ import {
 } from '#lib/trajectory/frame.js'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 
-const ref_data: Record<
-  string,
-  {
-    amounts: Record<string, number>
-    density: number
-    center_of_mass: Vec3
-  }
-> = {
-  'mp-1': {
-    amounts: { Cs: 2 },
-    density: 1.8019302505603234,
-    center_of_mass: [1.564, 1.564, 1.564],
-  },
-  'mp-2': {
-    amounts: { Pd: 4 },
-    density: 11.759135742447171,
-    center_of_mass: [0.979, 0.979, 0.979],
-  },
-  'mp-1234': {
-    amounts: { Lu: 8, Al: 16 },
-    density: 6.63,
-    center_of_mass: [3.119, 3.119, 3.119],
-  },
-  'mp-30855': {
-    amounts: { U: 2, Pt: 6 },
-    density: 19.14,
-    center_of_mass: [3.535, 3.535, 3.535],
-  },
-  'mp-756175': {
-    amounts: { Zr: 16, Bi: 16, O: 56 },
-    density: 7.457890165317997,
-    center_of_mass: [5.261, 5.261, 5.261],
-  },
-  'mp-1229155': {
-    amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 },
-    density: 6.107930572082895,
-    center_of_mass: [2.216, 3.594, 6.502],
-  },
-  'mp-1229168': {
-    amounts: { Al: 54, Fe: 4, Ni: 8 },
-    density: 3.6567149052096903,
-    center_of_mass: [1.802, 2.991, 12.542],
-  },
+type RefData = { amounts: Record<string, number>; density: number; center_of_mass: Vec3 }
+// oxfmt-ignore
+const ref_data: Record<string, RefData> = {
+  'mp-1': { amounts: { Cs: 2 }, density: 1.8019302505603234, center_of_mass: [1.564, 1.564, 1.564] },
+  'mp-2': { amounts: { Pd: 4 }, density: 11.759135742447171, center_of_mass: [0.979, 0.979, 0.979] },
+  'mp-1234': { amounts: { Lu: 8, Al: 16 }, density: 6.63, center_of_mass: [3.119, 3.119, 3.119] },
+  'mp-30855': { amounts: { U: 2, Pt: 6 }, density: 19.14, center_of_mass: [3.535, 3.535, 3.535] },
+  'mp-756175': { amounts: { Zr: 16, Bi: 16, O: 56 }, density: 7.457890165317997, center_of_mass: [5.261, 5.261, 5.261] },
+  'mp-1229155': { amounts: { Ag: 4, Hg: 4, S: 4, Br: 1, Cl: 3 }, density: 6.107930572082895, center_of_mass: [2.216, 3.594, 6.502] },
+  'mp-1229168': { amounts: { Al: 54, Fe: 4, Ni: 8 }, density: 3.6567149052096903, center_of_mass: [1.802, 2.991, 12.542] },
 }
 
 describe.each(structures)(`structure-utils`, (structure) => {
@@ -226,60 +193,33 @@ describe(`get_center_of_mass`, () => {
     expect(max_rel_error(actual, expected)).toBe(0)
   })
 
-  const create_simple_structure = (sites: (Species & { xyz: Vec3 })[]): AnyStructure => ({
-    sites: sites.map((site, idx) => ({
-      species: [{ element: site.element, occu: site.occu, oxidation_state: 0 }],
-      abc: site.xyz,
-      xyz: site.xyz,
-      label: `${site.element}${idx + 1}`,
+  // [element, occupancy, xyz] per site
+  const create_simple_structure = (sites: [ElementSymbol, number, Vec3][]): AnyStructure => ({
+    sites: sites.map(([element, occu, xyz], idx) => ({
+      species: [{ element, occu, oxidation_state: 0 }],
+      abc: xyz,
+      xyz,
+      label: `${element}${idx + 1}`,
       properties: {},
     })),
     charge: 0,
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      sites: [
-        { element: `H` as const, xyz: [0, 0, 0] as Vec3, occu: 1, oxidation_state: 0 },
-        { element: `O` as const, xyz: [2, 2, 2] as Vec3, occu: 1, oxidation_state: 0 },
-        { element: `H` as const, xyz: [4, 4, 4] as Vec3, occu: 1, oxidation_state: 0 },
-      ],
-      expected: [2.0, 2.0, 2.0] as Vec3,
-      desc: `simple structure with equal occupancies`,
+    [`equal occupancies`, [[`H`, 1, [0, 0, 0]], [`O`, 1, [2, 2, 2]], [`H`, 1, [4, 4, 4]]], [2, 2, 2]],
+    [`weighted occupancies`, [[`H`, 0.5, [0, 0, 0]], [`O`, 2, [2, 2, 2]]], [1.969, 1.969, 1.969]],
+    [`a single atom`, [[`H`, 1, [1, 2, 3]]], [1, 2, 3]],
+    // null instead of [NaN, NaN, NaN] when nothing carries weight
+    [`no site carrying weight`, [[`H`, 0, [1, 2, 3]]], null],
+  ] satisfies [string, [ElementSymbol, number, Vec3][], Vec3 | null][])(
+    `center of mass for %s`,
+    (_desc, sites, expected) => {
+      const result = struct_utils.get_center_of_mass(create_simple_structure(sites))
+      if (expected === null) expect(result).toBeNull()
+      else expected.forEach((val, idx) => expect(result?.[idx]).toBeCloseTo(val, 3))
     },
-    {
-      sites: [
-        { element: `H` as const, xyz: [0, 0, 0] as Vec3, occu: 0.5, oxidation_state: 0 },
-        { element: `O` as const, xyz: [2, 2, 2] as Vec3, occu: 2.0, oxidation_state: 0 },
-      ],
-      expected: [1.969, 1.969, 1.969] as Vec3,
-      desc: `weighted occupancies`,
-    },
-    {
-      sites: [
-        {
-          element: `H` as const,
-          xyz: [1, 2, 3] as Vec3,
-          occu: 1,
-          oxidation_state: 0,
-        },
-      ],
-      expected: [1, 2, 3] as Vec3,
-      desc: `single atom structure`,
-    },
-  ])(`should calculate center of mass for $desc`, ({ sites, expected }) => {
-    const structure = create_simple_structure(sites)
-    const result = struct_utils.get_center_of_mass(structure)
-    expected.forEach((val, idx) => expect(result?.[idx]).toBeCloseTo(val, 3))
-  })
-
-  // null instead of [NaN, NaN, NaN] when nothing carries weight
-  test(`returns null when no site carries weight`, () => {
-    const sites = [
-      { element: `H` as const, occu: 0, oxidation_state: 0, xyz: [1, 2, 3] as Vec3 },
-    ]
-    expect(struct_utils.get_center_of_mass(create_simple_structure(sites))).toBeNull()
-  })
+  )
 })
 
 // Content AABB framing (camera-fit.ts) — look-at center + padded sphere extent for zoom.
@@ -700,18 +640,19 @@ describe(`default_vector_configs`, () => {
   })
 })
 
+const thin_arrow = {
+  scale: 0.05,
+  shaft_radius: 0.2,
+  arrow_head_radius: 0.1,
+  arrow_head_length: 0.1,
+}
+const unit_arrow = { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }
 test.each([
-  [`force`, { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }],
-  [
-    `velocity`,
-    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
-  ],
-  [
-    `velocities_mace`,
-    { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 },
-  ],
+  [`force`, unit_arrow],
+  [`velocity`, thin_arrow],
+  [`velocities_mace`, thin_arrow],
   // case-sensitive like is_vector_key, which gates every key that reaches this
-  [`VELOCITY`, { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }],
+  [`VELOCITY`, unit_arrow],
 ])(`vector display defaults for %s`, (key, expected) => {
   expect(vector_display_defaults(key)).toEqual(expected)
 })
@@ -879,39 +820,12 @@ describe(`characteristic_atom_spacing`, () => {
     ).toBe(characteristic_atom_spacing(structure))
   })
 
+  // planar and linear arrangements have a zero-thickness box; the floor keeps them finite
+  // oxfmt-ignore
   test.each([
-    [
-      `a compact molecule`,
-      [
-        [0, 0, 0],
-        [0.96, 0, 0],
-        [-0.24, 0.93, 0],
-      ],
-      0.7,
-      1.3,
-    ],
-    // planar and linear arrangements have a zero-thickness box; the floor keeps them finite
-    [
-      `a flat ring`,
-      [
-        [0, 0, 0],
-        [1.4, 0, 0],
-        [2.1, 1.2, 0],
-        [1.4, 2.4, 0],
-      ],
-      0.5,
-      2,
-    ],
-    [
-      `a straight chain`,
-      [
-        [0, 0, 0],
-        [1.5, 0, 0],
-        [3, 0, 0],
-      ],
-      0.5,
-      2,
-    ],
+    [`a compact molecule`, [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]], 0.7, 1.3],
+    [`a flat ring`, [[0, 0, 0], [1.4, 0, 0], [2.1, 1.2, 0], [1.4, 2.4, 0]], 0.5, 2],
+    [`a straight chain`, [[0, 0, 0], [1.5, 0, 0], [3, 0, 0]], 0.5, 2],
   ] satisfies [string, Vec3[], number, number][])(
     `falls back to the bounding box for %s`,
     (_name, positions, low, high) => {

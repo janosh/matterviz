@@ -61,7 +61,7 @@ describe(`FilePicker`, () => {
   // only the last remaining extension counts, extensionless names (VASP inputs) are typed by
   // their lowercased name so they hit the lowercase paint keys (`poscar` is orange out of the
   // box, a caller-supplied `incar` paint is honoured), and an empty name falls back to `file`
-  // with the grey fallback paint.
+  // with the grey fallback paint. An explicit FileInfo.type beats the extension.
   const grey = `rgba(128, 128, 128, 0.08)`
   it.each([
     [`compressed.cif.gz`, `CIF`, `rgba(100, 149, 237, 0.08)`],
@@ -75,25 +75,22 @@ describe(`FilePicker`, () => {
     [`README`, `README`, grey],
     [`edge case`, `EDGE CASE`, grey],
     [``, `FILE`, grey],
-  ])(`infers the type of %j as %s painted %s`, (name, expected_type, expected_row_bg) => {
-    const file_type_paints = {
-      ...DEFAULT_FILE_TYPE_PAINTS,
-      incar: file_type_paint(`rgb(1, 2, 3)`),
-    }
-    mount(FilePicker, {
-      target: document.body,
-      props: { files: [{ name, url: `` }], file_type_paints },
-    })
-    expect(doc_query(`.file-item`).title).toBe(`Drag this ${expected_type} file`)
-    expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
-  })
-
-  it(`renders the chip from an explicit FileInfo.type over the extension`, () => {
-    const files = [{ ...mock_file(`foo.custom`), type: `xyz` }]
-    mount(FilePicker, { target: document.body, props: { files } })
-    expect(doc_query(`.file-item`).title).toBe(`Drag this XYZ file`)
-    expect(doc_query(`.file-item`).style.backgroundColor).toContain(`50, 205, 50`) // xyz green
-  })
+    [`foo.custom`, `XYZ`, `rgba(50, 205, 50, 0.08)`, `xyz`],
+  ])(
+    `infers the type of %j as %s painted %s`,
+    (name, expected_type, expected_row_bg, type?) => {
+      const file_type_paints = {
+        ...DEFAULT_FILE_TYPE_PAINTS,
+        incar: file_type_paint(`rgb(1, 2, 3)`),
+      }
+      mount(FilePicker, {
+        target: document.body,
+        props: { files: [{ name, url: ``, type }], file_type_paints },
+      })
+      expect(doc_query(`.file-item`).title).toBe(`Drag this ${expected_type} file`)
+      expect(doc_query(`.file-item`).style.backgroundColor).toBe(expected_row_bg)
+    },
+  )
 
   it.each([
     [`a single type`, false, [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `molecule`)]],

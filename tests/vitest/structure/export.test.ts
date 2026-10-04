@@ -637,19 +637,12 @@ describe(`Export functionality`, () => {
       expect(cif_occ(`Au`)).toBeCloseTo(0.3, 8)
 
       // Round-trip: each element keeps its own partial occupancy through parse_cif
-      const species = parse_cif(cif_content)?.sites.flatMap((site) => site.species) ?? []
-      expect(species.map((site_species) => site_species.element).toSorted()).toEqual([
-        `Au`,
-        `Cu`,
-      ])
-      expect(species.find((site_species) => site_species.element === `Cu`)?.occu).toBeCloseTo(
-        0.7,
-        8,
-      )
-      expect(species.find((site_species) => site_species.element === `Au`)?.occu).toBeCloseTo(
-        0.3,
-        8,
-      )
+      const species = parse_cif(cif_content).sites.flatMap((site) => site.species)
+      expect(Object.fromEntries(species.map(({ element, occu }) => [element, occu]))).toEqual({
+        Cu: expect.closeTo(0.7, 8),
+        Au: expect.closeTo(0.3, 8),
+      })
+      expect(species).toHaveLength(2)
     })
 
     const occu_site = (occu: number | undefined) => ({
@@ -755,24 +748,19 @@ describe(`Export functionality`, () => {
   })
 })
 
-// Helper function to sort sites for consistent comparison
+// Sort by element, then fractional coords, so reordered sites compare equal
 const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
   [...sites].toSorted((site_a, site_b) => {
     const elem_a = site_a.species[0].element
     const elem_b = site_b.species[0].element
-    if (elem_a !== elem_b) {
-      return elem_a.localeCompare(elem_b)
-    }
-    // Sort by fractional coordinates if elements are the same
+    if (elem_a !== elem_b) return elem_a.localeCompare(elem_b)
     for (let idx = 0; idx < 3; idx++) {
-      if (Math.abs(site_a.abc[idx] - site_b.abc[idx]) > 1e-4) {
+      if (Math.abs(site_a.abc[idx] - site_b.abc[idx]) > 1e-4)
         return site_a.abc[idx] - site_b.abc[idx]
-      }
     }
     return 0
   })
 
-// Helper function to assert structure equality
 function assert_structures_equal(
   struct1: AnyStructure,
   struct2: AnyStructure,
@@ -782,7 +770,6 @@ function assert_structures_equal(
     struct1.sites.length,
   )
 
-  // Compare lattice for structures that have one
   if (`lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice) {
     const params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
     for (const param of params) {
@@ -795,7 +782,6 @@ function assert_structures_equal(
     expect(`lattice` in struct1).toBe(`lattice` in struct2)
   }
 
-  // Compare sites after sorting to handle potential reordering
   const sorted_sites1 = sort_sites(struct1.sites)
   const sorted_sites2 = sort_sites(struct2.sites)
 
@@ -806,7 +792,6 @@ function assert_structures_equal(
       site1.species,
     )
 
-    // Compare fractional coordinates
     for (const comp_idx of [0, 1, 2]) {
       expect(
         site2.abc[comp_idx],

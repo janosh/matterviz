@@ -27,6 +27,7 @@ import {
   expect_labelled_settings_grid,
   query,
   trigger_resize_observer,
+  set_input,
 } from '../setup'
 import {
   cubic_matrix,
@@ -62,10 +63,6 @@ const raw_scene_state = (initial: Partial<StructureSettings>) => {
       scene_props = value
     },
   }
-}
-const set_input = (input: HTMLInputElement, value: string): void => {
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
 const find_label = (root: ParentNode, text: string, exact = false) =>
   [...root.querySelectorAll(`label`)].find((label) =>
@@ -135,59 +132,21 @@ describe(`StructureControls inputs`, () => {
   })
 
   // Cell styling/tiling needs a lattice; image/vector controls and reduction need periodicity.
+  const h_box = (pbc: [boolean, boolean, boolean]) =>
+    make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc })
+  const with_matrix = (matrix: Matrix3x3): AnyStructure => ({
+    ...simple_structure,
+    lattice: { ...make_crystal(1, []).lattice, matrix },
+  })
+  // oxfmt-ignore
   test.each<[string, AnyStructure | undefined, boolean, boolean]>([
-    [
-      `structure without lattice`,
-      { id: `test_no_lattice`, sites: simple_structure.sites },
-      false,
-      false,
-    ],
+    [`structure without lattice`, { id: `test_no_lattice`, sites: simple_structure.sites }, false, false],
     [`undefined structure`, undefined, false, false],
-    [
-      `aperiodic lattice`,
-      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [false, false, false] }),
-      true,
-      false,
-    ],
+    [`aperiodic lattice`, h_box([false, false, false]), true, false],
     [`periodic crystal`, simple_structure, true, true],
-    [
-      `slab`,
-      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [true, true, false] }),
-      true,
-      true,
-    ],
-    [
-      `singular cell`,
-      {
-        ...simple_structure,
-        lattice: {
-          ...make_crystal(1, []).lattice,
-          matrix: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 0],
-          ],
-        },
-      },
-      true,
-      false,
-    ],
-    [
-      `nonfinite cell`,
-      {
-        ...simple_structure,
-        lattice: {
-          ...make_crystal(1, []).lattice,
-          matrix: [
-            [NaN, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-        },
-      },
-      false,
-      false,
-    ],
+    [`slab`, h_box([true, true, false]), true, true],
+    [`singular cell`, with_matrix([[1, 0, 0], [0, 1, 0], [0, 0, 0]]), true, false],
+    [`nonfinite cell`, with_matrix([[NaN, 0, 0], [0, 1, 0], [0, 0, 1]]), false, false],
   ])(`lattice-dependent controls for %s`, async (_name, structure, cell_rows, reducible) => {
     await mount_controls({ structure, controls_open: true })
     expect(document.querySelectorAll(`input[placeholder="1x1x1"]`).length > 0).toBe(cell_rows)
@@ -216,8 +175,7 @@ describe(`StructureControls inputs`, () => {
     })
     const miller_input = doc_query<HTMLInputElement>(`.zone-axis .miller-input input`)
     return async (typed: string) => {
-      miller_input.value = typed
-      miller_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(miller_input, typed)
       await tick()
     }
   }
@@ -247,17 +205,10 @@ describe(`StructureControls inputs`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
-    {
-      site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`,
-      expected_hex_color: `#ff0000`,
-      expected_opacity: 0.6,
-    },
-    {
-      site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`,
-      expected_hex_color: `#00ff00`,
-      expected_opacity: 1,
-    },
+    { site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`, expected_hex_color: `#ff0000`, expected_opacity: 0.6 },
+    { site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`, expected_hex_color: `#00ff00`, expected_opacity: 1 },
   ])(
     `parses and resets site label background from $site_label_bg_color`,
     async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
@@ -351,7 +302,7 @@ describe(`StructureControls schema rows`, () => {
       [`bond_color`, DEFAULTS.structure.bond_color],
       [`cell_edge_color`, `#123456`],
       [`displacement_arrow_color`, DEFAULTS.structure.displacement_arrow_color],
-      [`site_label_color`, DEFAULTS.structure.site_label_color],
+      [`site_label_color`, `#808080`], // the theme-following default shows a neutral swatch
     ] as const
     for (const [key, expected] of swatches) {
       const swatch = row_of(key).querySelector<HTMLInputElement>(`input[type="color"]`)
@@ -1149,15 +1100,8 @@ describe(`StructureControls reactive props`, () => {
       ...initial,
     })
     const expected = { ...state.scene_props }
-    const stream = make_position_stream(
-      [
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-        ],
-      ],
-      [`H`, `He`],
-    )
+    // oxfmt-ignore
+    const stream = make_position_stream([[[0, 0, 0], [1, 0, 0]]], [`H`, `He`])
     const target = await mount_bound_controls(state, {
       show_trajectory_lines: true,
       trajectory_position_stream: stream,

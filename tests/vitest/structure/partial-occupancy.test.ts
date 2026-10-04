@@ -30,57 +30,29 @@ const make_site = (species: Site[`species`], xyz: Vec3, label: string): Site => 
   label,
 })
 
+const species = (...entries: [ElementSymbol, number][]): Site[`species`] =>
+  entries.map(([element, occu]) => ({ element, occu, oxidation_state: 0 }))
+
 describe(`partial occupancy render-site logic`, () => {
+  const shared_xyz: Vec3 = [1.234567, 2.345678, 3.456789]
+  // oxfmt-ignore
   test.each([
-    {
-      name: `merges split partial sites at identical coordinates`,
-      sites: [
-        make_site(
-          [{ element: `O`, occu: 0.5, oxidation_state: 0 }],
-          [1.234567, 2.345678, 3.456789],
-          `O`,
-        ),
-        make_site(
-          [{ element: `F`, occu: 0.5, oxidation_state: 0 }],
-          [1.234567, 2.345678, 3.456789],
-          `F`,
-        ),
-        make_site([{ element: `Mg`, occu: 1, oxidation_state: 0 }], [9, 9, 9], `Mg`),
-      ],
-      expected_count: 2,
-      expected_merged_elements: [`F`, `O`],
-    },
-    {
-      name: `does not merge full-occupancy single-species sites at same coordinates`,
-      sites: [
-        make_site([{ element: `Na`, occu: 1, oxidation_state: 0 }], [0, 0, 0], `Na1`),
-        make_site([{ element: `Na`, occu: 1, oxidation_state: 0 }], [0, 0, 0], `Na2`),
-      ],
-      expected_count: 2,
-      expected_merged_elements: null,
-    },
-    {
-      name: `does not merge nearby split partial sites that differ by tiny coordinate offset`,
-      sites: [
-        make_site([{ element: `O`, occu: 0.5, oxidation_state: 0 }], [0, 0, 0], `O`),
-        make_site([{ element: `F`, occu: 0.5, oxidation_state: 0 }], [0, 0, 0.000004], `F`),
-      ],
-      expected_count: 2,
-      expected_merged_elements: null,
-    },
+    { name: `merges split partial sites at identical coordinates`, sites: [
+        make_site(species([`O`, 0.5]), shared_xyz, `O`), make_site(species([`F`, 0.5]), shared_xyz, `F`),
+        make_site(species([`Mg`, 1]), [9, 9, 9], `Mg`),
+      ], expected_count: 2, expected_merged_elements: [`F`, `O`] },
+    { name: `does not merge full-occupancy single-species sites at same coordinates`, sites: [
+        make_site(species([`Na`, 1]), [0, 0, 0], `Na1`), make_site(species([`Na`, 1]), [0, 0, 0], `Na2`),
+      ], expected_count: 2, expected_merged_elements: null },
+    { name: `does not merge nearby split partial sites that differ by tiny coordinate offset`, sites: [
+        make_site(species([`O`, 0.5]), [0, 0, 0], `O`), make_site(species([`F`, 0.5]), [0, 0, 0.000004], `F`),
+      ], expected_count: 2, expected_merged_elements: null },
   ])(`$name`, ({ sites, expected_count, expected_merged_elements }) => {
     const render_sites = merge_split_partial_sites(sites)
     expect(render_sites).toHaveLength(expected_count)
     if (!expected_merged_elements) return
-    const merged_site = render_sites.find(
-      (site_data) =>
-        site_data.site.species.length === 2 &&
-        site_data.site.species.some((species) => species.element === `O`) &&
-        site_data.site.species.some((species) => species.element === `F`),
-    )
-    expect(merged_site).toBeDefined()
-    if (!merged_site) throw new Error(`Expected merged O/F site to exist`)
-    expect(merged_site.site.species.map((species) => species.element).toSorted()).toEqual(
+    const merged_site = render_sites.find(({ site }) => site.species.length === 2)
+    expect(merged_site?.site.species.map(({ element }) => element).toSorted()).toEqual(
       expected_merged_elements,
     )
   })
@@ -95,15 +67,13 @@ describe(`partial occupancy render-site logic`, () => {
     for (const n_buckets of [1, 2, 7, 1234]) {
       const face = n_buckets * bucket + bucket / 2 // exactly on a bucket face
       const sites = [
-        make_site([{ element: `O`, occu: 0.5, oxidation_state: 0 }], [face - 1e-9, 0, 0], `O`),
-        make_site([{ element: `F`, occu: 0.5, oxidation_state: 0 }], [face + 1e-9, 0, 0], `F`),
+        make_site(species([`O`, 0.5]), [face - 1e-9, 0, 0], `O`),
+        make_site(species([`F`, 0.5]), [face + 1e-9, 0, 0], `F`),
       ]
       const [merged, ...rest] = merge_split_partial_sites(sites)
       expect(rest).toEqual([]) // 2 Å apart in bucket terms, 2e-9 Å apart in real terms
-      expect(merged.site.species.map((species) => species.element).toSorted()).toEqual([
-        `F`,
-        `O`,
-      ])
+      const elements = merged.site.species.map(({ element }) => element)
+      expect(elements.toSorted()).toEqual([`F`, `O`])
     }
   })
 
@@ -113,7 +83,7 @@ describe(`partial occupancy render-site logic`, () => {
   test(`groups split-partial sites in linear time`, () => {
     const min_ms = (n_sites: number) => {
       const sites = Array.from({ length: n_sites }, (_unused, idx) =>
-        make_site([{ element: `Na`, occu: 0.5, oxidation_state: 0 }], [idx * 3, 0, 0], `Na`),
+        make_site(species([`Na`, 0.5]), [idx * 3, 0, 0], `Na`),
       )
       const samples = Array.from({ length: 7 }, () => {
         const start = performance.now()
@@ -133,29 +103,16 @@ describe(`partial occupancy render-site logic`, () => {
 
 describe(`partial occupancy slice flags`, () => {
   test.each([
-    {
-      name: `single species with vacancy renders both caps`,
-      site: make_site([{ element: `O`, occu: 0.5, oxidation_state: 0 }], [0, 0, 0], `O`),
-      expected_start: true,
-      expected_end: true,
-    },
-    {
-      name: `two species filling full sphere renders no caps`,
-      site: make_site(
-        [
-          { element: `O`, occu: 0.5, oxidation_state: 0 },
-          { element: `F`, occu: 0.5, oxidation_state: 0 },
-        ],
-        [0, 0, 0],
-        `OF`,
-      ),
-      expected_start: false,
-      expected_end: false,
-    },
-  ])(`$name`, ({ site, expected_start, expected_end }) => {
-    const slices = compute_slice_geometry(site.species)
-    expect(slices[0].render_start_cap).toBe(expected_start)
-    expect(slices[slices.length - 1].render_end_cap).toBe(expected_end)
+    [`single species with vacancy renders both caps`, species([`O`, 0.5]), true],
+    [
+      `two species filling full sphere renders no caps`,
+      species([`O`, 0.5], [`F`, 0.5]),
+      false,
+    ],
+  ])(`%s`, (_name, site_species, caps) => {
+    const slices = compute_slice_geometry(site_species)
+    expect(slices[0].render_start_cap).toBe(caps)
+    expect(slices.at(-1)?.render_end_cap).toBe(caps)
     for (const slice of slices) expect(slice.phi_length).toBeGreaterThan(0)
     for (let slice_idx = 1; slice_idx < slices.length; slice_idx += 1) {
       expect(slices[slice_idx].start_phi).toBeGreaterThanOrEqual(
@@ -166,10 +123,7 @@ describe(`partial occupancy slice flags`, () => {
   })
 
   test(`normalizes overfull occupancies to avoid wedge overflow`, () => {
-    const slices = compute_slice_geometry([
-      { element: `O`, occu: 0.8, oxidation_state: 0 },
-      { element: `F`, occu: 0.8, oxidation_state: 0 },
-    ])
+    const slices = compute_slice_geometry(species([`O`, 0.8], [`F`, 0.8]))
     // 0.8 + 0.8 is rescaled to a full turn split evenly, with no vacancy caps and only the
     // half-gap (1e-3 / 2) trimmed off each wedge end
     expect(slices.map((slice) => slice.occupancy)).toEqual([0.5, 0.5])
@@ -182,8 +136,6 @@ describe(`partial occupancy slice flags`, () => {
   })
 })
 
-const species = (...entries: [ElementSymbol, number][]): Site[`species`] =>
-  entries.map(([element, occu]) => ({ element, occu, oxidation_state: 0 }))
 const palette: Partial<Record<ElementSymbol, string>> = {
   Fe: `#e06633`,
   Cu: `#c88033`,

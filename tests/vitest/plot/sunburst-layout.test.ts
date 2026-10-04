@@ -9,6 +9,16 @@ import { hsl } from 'd3-color'
 import { describe, expect, test, vi } from 'vitest'
 
 const close = (val: number) => expect.closeTo(val, 9)
+// labels of one ring in angular order
+const ring_labels = (
+  data: SunburstNode | SunburstNode[],
+  opts: SunburstLayoutOptions = {},
+  depth = 1,
+) =>
+  compute_sunburst_layout(data, opts)
+    .arcs.filter((arc) => arc.depth === depth)
+    .toSorted((arc_a, arc_b) => arc_a.x0 - arc_b.x0)
+    .map((arc) => arc.label)
 
 // Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20. A and A1 carry a fill
 // pattern to check it passes through per-node without inheriting (A2/B stay plain).
@@ -34,17 +44,11 @@ describe(`compute_sunburst_layout`, () => {
     // arc: pre-order indexing gives contiguous subtree ranges, auto-ids slash-join
     // labels, descendants inherit their depth-1 ancestor's palette color, and pattern
     // passes through per-node without inheriting
-    const fields = ({
-      id: identifier,
-      node_idx,
-      subtree_end,
-      parent_idx,
-      ...arc
-    }: (typeof arcs)[0]) => [
-      identifier,
-      node_idx,
-      subtree_end,
-      parent_idx,
+    const fields = (arc: (typeof arcs)[0]) => [
+      arc.id,
+      arc.node_idx,
+      arc.subtree_end,
+      arc.parent_idx,
       arc.depth,
       arc.value,
       arc.is_leaf,
@@ -60,7 +64,7 @@ describe(`compute_sunburst_layout`, () => {
     ])
     // sort 'none' preserves input order (A first half, B second, closing the circle);
     // children subdivide the parent span proportionally (4:6); y0 === depth
-    expect(arcs.map(({ x0: coord_x_0, x1: coord_x_1 }) => [coord_x_0, coord_x_1])).toEqual(
+    expect(arcs.map((arc) => [arc.x0, arc.x1])).toEqual(
       [
         [0, 1],
         [0, 0.5],
@@ -77,13 +81,6 @@ describe(`compute_sunburst_layout`, () => {
       fraction: close(0.2),
       parent_fraction: close(0.4),
     })
-  })
-
-  test(`label_short passes through layout onto arcs`, () => {
-    const { arcs } = compute_sunburst_layout([
-      { label: `A`, children: [{ label: `A1`, label_short: `5%`, value: 4 }] },
-    ])
-    expect(arcs.map((arc) => arc.label_short)).toEqual([undefined, undefined, `5%`])
   })
 
   // An unlabeled node's id falls back to its sibling index, so it must be the index the
@@ -123,13 +120,21 @@ describe(`compute_sunburst_layout`, () => {
         .arcs.filter((arc) => arc.depth === 2)
         .map((arc) => arc.id)
 
-    test(`at the data root, every child of the thin branch is below the threshold`, () => {
-      expect(ids_under_thin(null)).toEqual([`thin/Other`])
-    })
-
-    test(`zooming the thin branch re-measures its children against it`, () => {
+    test.each([
+      [
+        `at the data root, every child of the thin branch is below the threshold`,
+        null,
+        [`thin/Other`],
+      ],
       // 40/30/30 of 100 all clear 10%, so the bucket dissolves into the real nodes
-      expect(ids_under_thin(`thin`)).toEqual([`thin/a`, `thin/b`, `thin/c`])
+      [
+        `zooming the thin branch re-measures its children against it`,
+        `thin`,
+        [`thin/a`, `thin/b`, `thin/c`],
+      ],
+      [`an unresolvable zoom_root_id falls back to the root total`, `ghost`, [`thin/Other`]],
+    ])(`%s`, (_name, zoom_root_id, expected) => {
+      expect(ids_under_thin(zoom_root_id)).toEqual(expected)
     })
 
     // Rings outside the zoomed subtree must not move, or an unrelated branch unfolding
@@ -192,10 +197,6 @@ describe(`compute_sunburst_layout`, () => {
       expect(ids({ expanded_parents: new Set([`Other/gpu`]) })).toEqual(unfolded)
     })
 
-    test(`an unresolvable zoom_root_id falls back to the root total`, () => {
-      expect(ids_under_thin(`ghost`)).toEqual(ids_under_thin(null))
-    })
-
     // Bucketing off means no basis lookup at all, so the option cannot perturb anything
     test.each([null, `thin`])(`zoom_root_id %s is inert without bucketing`, (zoom_root_id) => {
       expect(
@@ -250,23 +251,17 @@ describe(`compute_sunburst_layout`, () => {
     })
   })
 
-  describe(`sort`, () => {
-    const unordered: SunburstNode[] = [
-      { label: `small`, value: 1 },
-      { label: `big`, value: 9 },
-      { label: `mid`, value: 5 },
-    ]
-
-    test.each([
-      [`none`, [`small`, `big`, `mid`]],
-      [`descending`, [`big`, `mid`, `small`]],
-      [`ascending`, [`small`, `mid`, `big`]],
-    ] as const)(`%s ordering`, (sort, expected) => {
-      const { arcs } = compute_sunburst_layout(unordered, { sort })
-      const depth1 = arcs.filter((arc) => arc.depth === 1)
-      depth1.sort((arc_a, arc_b) => arc_a.x0 - arc_b.x0) // by angular position
-      expect(depth1.map((arc) => arc.label)).toEqual(expected)
-    })
+  const unordered: SunburstNode[] = [
+    { label: `small`, value: 1 },
+    { label: `big`, value: 9 },
+    { label: `mid`, value: 5 },
+  ]
+  test.each([
+    [`none`, [`small`, `big`, `mid`]],
+    [`descending`, [`big`, `mid`, `small`]],
+    [`ascending`, [`small`, `mid`, `big`]],
+  ] as const)(`sort %s ordering`, (sort, expected) => {
+    expect(ring_labels(unordered, { sort })).toEqual(expected)
   })
 
   describe(`colors`, () => {
@@ -324,14 +319,14 @@ describe(`compute_sunburst_layout`, () => {
     }
   })
 
-  test(`does not mutate the input data; metadata carried through`, () => {
-    const data: SunburstNode<{ num: number }>[] = [
-      { label: `A`, children: [{ label: `A1`, value: 4, metadata: { num: 42 } }] },
-    ]
+  test(`does not mutate the input data; metadata and label_short carried through`, () => {
+    const leaf = { label: `A1`, label_short: `5%`, value: 4, metadata: { num: 42 } }
+    const data: SunburstNode<{ num: number }>[] = [{ label: `A`, children: [{ ...leaf }] }]
     const { arcs } = compute_sunburst_layout(data)
+    expect(arcs.map((arc) => arc.label_short)).toEqual([undefined, undefined, `5%`])
     expect(arcs[2].metadata).toEqual({ num: 42 })
     for (const key of [`x0`, `value`, `id`]) expect(data[0]).not.toHaveProperty(key)
-    expect(data[0].children?.[0]).toEqual({ label: `A1`, value: 4, metadata: { num: 42 } })
+    expect(data[0].children?.[0]).toEqual(leaf)
   })
 })
 
@@ -452,6 +447,8 @@ describe(`min_fraction 'Other' bucketing`, () => {
       x0: close(0.94), // smalls were reordered to the end -> contiguous trailing run
       x1: close(1),
     })
+    // other_count is set only on bucketed arcs
+    expect(arcs.map((arc) => arc.other_count)).toEqual([undefined, undefined, undefined, 2])
   })
 
   test(`does not bucket a single small sibling; min_fraction 0 disables`, () => {
@@ -512,7 +509,7 @@ describe(`min_fraction 'Other' bucketing`, () => {
     })
   })
 
-  // The Hive usage case: cluster -> user -> partition -> job, where folding small
+  // A cluster-usage hierarchy: cluster -> user -> partition -> job, where folding small
   // users must not empty the partition and job rings under them. Bucketing recurses
   // into the merged subtree with the same threshold, so a merged partition that is
   // itself too thin folds again (`Other/Other`) rather than leaking through.
@@ -585,14 +582,6 @@ describe(`min_fraction 'Other' bucketing`, () => {
     expect(bucket(jobs())?.pattern).toBeUndefined()
   })
 
-  test(`composes with sort descending (smalls still trail)`, () => {
-    const opts = { min_fraction: 0.05, sort: `descending` } as const
-    const { arcs } = compute_sunburst_layout(long_tail, opts)
-    const depth1 = arcs.filter((arc) => arc.depth === 1)
-    depth1.sort((arc_a, arc_b) => arc_a.x0 - arc_b.x0)
-    expect(depth1.map((arc) => arc.label)).toEqual([`big`, `s3`, `Other`])
-  })
-
   // What a threshold cannot promise: that anything survives it. Children that split
   // their parent evenly all fail one together, whatever the threshold is measured
   // against — so no choice of basis rescues the ring; only ranking siblings does.
@@ -607,12 +596,8 @@ describe(`min_fraction 'Other' bucketing`, () => {
         })),
       },
     ]
-    const ring2 = (opts: object) =>
-      compute_sunburst_layout(even, opts)
-        .arcs.filter((arc) => arc.depth === 2)
-        .map((arc) => arc.label)
-    expect(ring2({ min_fraction: 0.05 })).toEqual([`Other`]) // nothing left to read
-    expect(ring2({ max_children: 3 })).toEqual([`c0`, `c1`, `c2`, `Other`])
+    expect(ring_labels(even, { min_fraction: 0.05 }, 2)).toEqual([`Other`]) // nothing left to read
+    expect(ring_labels(even, { max_children: 3 }, 2)).toEqual([`c0`, `c1`, `c2`, `Other`])
   })
 
   test(`max_children keeps the largest N per parent whatever the spread`, () => {
@@ -620,56 +605,58 @@ describe(`min_fraction 'Other' bucketing`, () => {
       label: `job-${idx}`,
       value: idx + 1,
     }))
-    const { arcs } = compute_sunburst_layout(flat, { max_children: 3 })
-    const depth1 = arcs.filter((arc) => arc.depth === 1)
-    expect(depth1.map((arc) => arc.label)).toEqual([`job-47`, `job-48`, `job-49`, `Other`])
-    // Kept children hold their input order; only the bucket moves to the end.
-    expect(depth1.slice(0, 3).map((arc) => arc.x0)).toEqual(
-      depth1
-        .slice(0, 3)
-        .map((arc) => arc.x0)
-        .toSorted((left, right) => left - right),
-    )
-    const bucket = depth1.at(-1)
-    expect(bucket).toMatchObject({ is_other: true, other_count: 47 })
+    // Kept children hold their input order (in angle too); only the bucket moves to the end.
+    expect(ring_labels(flat, { max_children: 3 })).toEqual([
+      `job-47`,
+      `job-48`,
+      `job-49`,
+      `Other`,
+    ])
+    const bucket = compute_sunburst_layout(flat, { max_children: 3 }).arcs.at(-1)
     // 1..50 sums to 1275; the three kept are 48 + 49 + 50.
-    expect(bucket?.value).toBe(1275 - 147)
+    expect(bucket).toMatchObject({ is_other: true, other_count: 47, value: 1275 - 147 })
   })
 
-  // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
-  // says strictly less than the child itself does.
-  test(`max_children lets a lone over-the-limit child through`, () => {
-    const four: SunburstNode[] = [
-      { label: `a`, value: 4 },
-      { label: `b`, value: 3 },
-      { label: `c`, value: 2 },
-      { label: `d`, value: 1 },
-    ]
-    expect(
-      compute_sunburst_layout(four, { max_children: 3 })
-        .arcs.filter((arc) => arc.depth === 1)
-        .map((arc) => arc.label),
-    ).toEqual([`a`, `b`, `c`, `d`])
-    // Two over the limit and the bucket appears.
-    expect(
-      compute_sunburst_layout(four, { max_children: 2 })
-        .arcs.filter((arc) => arc.depth === 1)
-        .map((arc) => arc.label),
-    ).toEqual([`a`, `b`, `Other`])
-  })
-
-  // A rank has to break ties somehow, and the answer has to be the same twice.
-  test(`max_children breaks value ties by input order, reproducibly`, () => {
-    const tied: SunburstNode[] = [`a`, `b`, `c`, `d`, `e`].map((label) => ({
-      label,
-      value: 5,
-    }))
-    const labels = () =>
-      compute_sunburst_layout(tied, { max_children: 2 })
-        .arcs.filter((arc) => arc.depth === 1)
-        .map((arc) => arc.label)
-    expect(labels()).toEqual([`a`, `b`, `Other`])
-    expect(labels()).toEqual(labels())
+  const leaves = (values: number[]) =>
+    values.map((value, idx) => ({ label: `abcde`[idx], value }))
+  const four = leaves([4, 3, 2, 1])
+  test.each<[string, SunburstNode[], SunburstLayoutOptions, string[]]>([
+    // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
+    // says strictly less than the child itself does.
+    [
+      `max_children lets a lone over-the-limit child through`,
+      four,
+      { max_children: 3 },
+      [`a`, `b`, `c`, `d`],
+    ],
+    [
+      `max_children buckets two over-the-limit children`,
+      four,
+      { max_children: 2 },
+      [`a`, `b`, `Other`],
+    ],
+    // A rank has to break ties somehow
+    [
+      `max_children breaks value ties by input order`,
+      leaves([5, 5, 5, 5, 5]),
+      { max_children: 2 },
+      [`a`, `b`, `Other`],
+    ],
+    // max_children alone would keep `c` (8 of 100); min_fraction 0.1 rules it out
+    [
+      `a child has to clear both max_children and min_fraction`,
+      leaves([50, 40, 8, 2]),
+      { max_children: 3, min_fraction: 0.1 },
+      [`a`, `b`, `Other`],
+    ],
+    [
+      `bucketing composes with sort descending (smalls still trail)`,
+      long_tail,
+      { min_fraction: 0.05, sort: `descending` },
+      [`big`, `s3`, `Other`],
+    ],
+  ])(`%s`, (_name, data, opts, expected) => {
+    expect(ring_labels(data, opts)).toEqual(expected)
   })
 
   // The pass reorders `node.children` while d3's `each` is still walking the tree.
@@ -764,45 +751,27 @@ describe(`min_fraction 'Other' bucketing`, () => {
     })
   })
 
-  test(`a child has to clear both max_children and min_fraction`, () => {
-    const mixed: SunburstNode[] = [
-      { label: `a`, value: 50 },
-      { label: `b`, value: 40 },
-      { label: `c`, value: 8 },
-      { label: `d`, value: 2 },
-    ]
-    // max_children alone would keep `c`; min_fraction 0.1 rules it out.
-    expect(
-      compute_sunburst_layout(mixed, { max_children: 3, min_fraction: 0.1 })
-        .arcs.filter((arc) => arc.depth === 1)
-        .map((arc) => arc.label),
-    ).toEqual([`a`, `b`, `Other`])
-  })
-
   test(`a callable other_label names what was folded away`, () => {
-    const seen: OtherBucketInfo[] = []
-    const { arcs } = compute_sunburst_layout(
-      [
-        {
-          label: `a100-80-shared`,
-          children: [
-            { label: `keep`, value: 60 },
-            { label: `t1`, value: 1 },
-            { label: `t2`, value: 1 },
-            { label: `t3`, value: 1 },
-          ],
-        },
-      ],
+    const shared = (n_small: number): SunburstNode[] => [
       {
-        min_fraction: 0.05,
-        other_label: (bucket) => {
-          seen.push(bucket)
-          return `${bucket.count} smaller in ${bucket.parent_label}`
-        },
+        label: `a100-80-shared`,
+        children: [
+          { label: `keep`, value: 60 },
+          ...Array.from({ length: n_small }, (_item, idx) => ({ label: `t${idx}`, value: 1 })),
+        ],
       },
+    ]
+    const other_label = vi.fn(
+      (bucket: OtherBucketInfo) => `${bucket.count} smaller in ${bucket.parent_label}`,
     )
+    const { arcs } = compute_sunburst_layout(shared(3), { min_fraction: 0.05, other_label })
     // Called once per bucket, with the ring it lands on (not its parent's).
-    expect(seen).toEqual([{ count: 3, value: 3, depth: 2, parent_label: `a100-80-shared` }])
+    expect(other_label).toHaveBeenCalledExactlyOnceWith({
+      count: 3,
+      value: 3,
+      depth: 2,
+      parent_label: `a100-80-shared`,
+    })
     // The generated name is display text only. The id is a lookup key (zoom root,
     // legend muting) and a compact form is what a thin ring can actually show, so
     // neither may carry a count that moves with the data.
@@ -814,19 +783,11 @@ describe(`min_fraction 'Other' bucketing`, () => {
       value: 3,
     })
     // Fold one more sibling in: the label follows, the id does not move.
-    const relabelled = compute_sunburst_layout(
-      [
-        {
-          label: `a100-80-shared`,
-          children: [
-            { label: `keep`, value: 60 },
-            ...[`t1`, `t2`, `t3`, `t4`].map((label) => ({ label, value: 1 })),
-          ],
-        },
-      ],
-      { min_fraction: 0.05, other_label: (bucket) => `${bucket.count} smaller` },
-    ).arcs.find((arc) => arc.is_other)
-    expect(relabelled).toMatchObject({ label: `4 smaller`, id: `a100-80-shared/Other` })
+    const relabelled = compute_sunburst_layout(shared(4), { min_fraction: 0.05, other_label })
+    expect(relabelled.arcs.find((arc) => arc.is_other)).toMatchObject({
+      label: `4 smaller in a100-80-shared`,
+      id: `a100-80-shared/Other`,
+    })
 
     // A literal label still names the id, as it always has.
     expect(
@@ -837,21 +798,14 @@ describe(`min_fraction 'Other' bucketing`, () => {
     ).toMatchObject({ id: `Rest`, label: `Rest`, label_short: undefined })
 
     // Under the synthetic root of an array input there is no parent to name.
-    const at_root: OtherBucketInfo[] = []
-    compute_sunburst_layout(long_tail, {
-      min_fraction: 0.05,
-      other_label: (bucket) => {
-        at_root.push(bucket)
-        return `Other`
-      },
+    const at_root = vi.fn(() => `Other`)
+    compute_sunburst_layout(long_tail, { min_fraction: 0.05, other_label: at_root })
+    expect(at_root).toHaveBeenCalledExactlyOnceWith({
+      count: 2,
+      value: 6,
+      depth: 1,
+      parent_label: undefined,
     })
-    expect(at_root).toEqual([{ count: 2, value: 6, depth: 1, parent_label: undefined }])
-  })
-
-  test(`other_count is set only on bucketed arcs`, () => {
-    const { arcs } = compute_sunburst_layout(long_tail, { min_fraction: 0.05 })
-    expect(arcs.filter((arc) => arc.other_count !== undefined)).toHaveLength(1)
-    expect(arcs.find((arc) => arc.label === `big`)?.other_count).toBeUndefined()
   })
 })
 

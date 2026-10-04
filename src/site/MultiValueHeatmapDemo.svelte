@@ -48,7 +48,7 @@ The periodic table supports multiple values per element with different visual la
     >
       {#snippet inset()}
         <TableInset
-          style="display: flex; gap: 0 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
+          style="display: flex; gap: 1.5em 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
         >
           {#each [[`Atomic Mass (u)`, atomic_mass_range], [`Density (g/cm³)`, density_range]] as const as [title, range] (title)}
             <ColorBar

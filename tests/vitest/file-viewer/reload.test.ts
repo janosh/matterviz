@@ -332,10 +332,8 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
   )
 })
 
-// A failed bootstrap display (the parse threw, the error display is on screen) used to be
-// retried by the host rebuilding the webview HTML on every config change; settingsChanged must
-// re-attempt the display from the bootstrap payload the same way instead of bailing because
-// there is nothing to remount
+// A failed bootstrap display (the parse threw, the error display is on screen) must be
+// re-attempted from the bootstrap payload on settingsChanged, not skipped for lack of a mount
 test(`settingsChanged re-attempts a failed initial display from the bootstrap payload`, async () => {
   parse_file_content.mockRejectedValueOnce(new Error(`needs a bigger index threshold`))
   expect(await boot(`retry`)).toBeNull()

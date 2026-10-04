@@ -98,7 +98,7 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
 
 ### Path Alignment Modes (`strict`, `intersection`, `union`)
 
-When comparing multiple structures, `path_mode="strict"` now fails fast if symmetry-path segments do not match exactly.
+When comparing multiple structures, `path_mode="strict"` (the default) fails fast if symmetry-path segments do not match exactly.
 
 ```svelte example
 <script lang="ts">

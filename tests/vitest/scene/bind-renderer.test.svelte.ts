@@ -55,9 +55,8 @@ test(`bind_renderer registers the canvas and re-binds on every camera swap until
 })
 
 // three's destroyAttribute does data.buffer.destroy() unguarded, which throws for an attribute
-// whose createBuffer was refused. It threw 13 times on CI run 30428266317 from a Threlte <T>
-// effect teardown, and Svelte runs teardowns outside the try/catch that feeds error boundaries,
-// so it escaped mid-flush and froze the whole page (all 11 edit-bonds failures on that shard).
+// whose createBuffer was refused. Svelte runs effect teardowns outside the try/catch that feeds
+// error boundaries, so the throw escaped mid-flush and froze the whole page.
 describe(`destroyAttribute guard`, () => {
   beforeAll(async () => {
     // create_renderer installs the prototype guard before it constructs anything, so no GPU is

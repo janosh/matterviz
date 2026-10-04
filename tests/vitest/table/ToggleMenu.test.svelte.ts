@@ -77,7 +77,7 @@ describe(`ToggleMenu`, () => {
 
         const summary = doc_query(`summary`)
         const menu = doc_query(`.column-menu`)
-        expect(menu?.parentElement).toBe(document.body)
+        expect(menu.parentElement).toBe(document.body)
         const trigger_rect_spy = vi
           .spyOn(summary, `getBoundingClientRect`)
           .mockReturnValue(new DOMRect(left, top, 60, 22))
@@ -151,12 +151,11 @@ describe(`ToggleMenu`, () => {
     ] as const)(`%s key sets panel open=%s`, async (key, expect_open) => {
       mount_menu()
 
-      const details = document.querySelector(`details`)
-      expect(details?.open).toBe(true)
-
+      const details = doc_query<HTMLDetailsElement>(`details`)
+      expect(details.open).toBe(true)
       globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
       await tick()
-      expect(details?.open).toBe(expect_open)
+      expect(details.open).toBe(expect_open)
     })
 
     it(`filters large menus without changing which column a toggle controls`, async () => {
@@ -223,20 +222,16 @@ describe(`ToggleMenu`, () => {
 
       expect(document.querySelector(`.sections-container`)).not.toBeNull()
 
-      const sections = document.querySelectorAll(`.section`)
-      expect(sections).toHaveLength(3) // two groups + ungrouped
-
+      // two groups of two toggles, then the headerless ungrouped section
+      const sections = [...document.querySelectorAll(`.section`)]
+      expect(sections.map((section) => section.querySelectorAll(`input`).length)).toEqual([
+        2, 2, 1,
+      ])
       expect(
-        [...document.querySelectorAll(`.section-header`)].map((header) =>
-          header.textContent?.replace(`▼`, ``).trim(),
+        sections.map((section) =>
+          section.querySelector(`.section-header`)?.textContent?.replace(`▼`, ``).trim(),
         ),
-      ).toEqual(headers) // ungrouped has no header
-
-      // Toggle counts: each group=2, ungrouped=1
-      expect(sections[0].querySelectorAll(`input`)).toHaveLength(2)
-      expect(sections[1].querySelectorAll(`input`)).toHaveLength(2)
-      expect(sections[2].querySelectorAll(`input`)).toHaveLength(1)
-      expect(sections[2].querySelector(`.section-header`)).toBeNull() // no header for ungrouped
+      ).toEqual([...headers, undefined])
     })
 
     it(`filtering preserves group order and resets only matching columns`, async () => {

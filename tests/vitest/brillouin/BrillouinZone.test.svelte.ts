@@ -221,11 +221,13 @@ test(`a caller-supplied bz_data without a structure renders the zone`, async () 
 
 // A coplanar lattice has no reciprocal lattice: the viewer must report that (error_msg +
 // on_error) rather than render NaN geometry or quietly show nothing
-test(`reports a singular lattice instead of computing a zone`, async () => {
+test(`reports a singular lattice and clears the error once a structure derives again`, async () => {
   const on_error = vi.fn()
+  const { children, rendered } = zone_probe()
   const props = $state({
     structure: coplanar,
     on_error,
+    children,
     error_msg: undefined as string | undefined,
   })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
@@ -235,6 +237,10 @@ test(`reports a singular lattice instead of computing a zone`, async () => {
   expect(doc_query(`.brillouin-zone > .viewer-error [role="alert"]`).textContent).toMatch(
     /singular/,
   )
+
+  props.structure = cubic
+  await vi.waitFor(() => expect(rendered()?.order).toBe(1))
+  expect(props.error_msg).toBeUndefined()
 })
 
 // The zone the component renders, observed through its `children` snippet (the derived zone
@@ -337,20 +343,6 @@ test(`a caller-supplied bz_data keeps rendering when the structure's zone fails 
   expect(document.body.querySelector(`.brillouin-zone`)?.textContent).not.toMatch(/singular/)
 })
 
-test(`a structure that derives again clears the previous BZ computation error`, async () => {
-  const { children, rendered } = zone_probe()
-  const props = $state({
-    structure: coplanar,
-    children,
-    error_msg: undefined as string | undefined,
-  })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(props.error_msg).toMatch(/singular/))
-  props.structure = cubic
-  await vi.waitFor(() => expect(rendered()?.order).toBe(1))
-  expect(props.error_msg).toBeUndefined()
-})
-
 // The IBZ is an optional overlay: a failure used to land in the fatal error_msg and blank the
 // whole viewer (and stuck there after show_ibz was switched off)
 test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, async () => {
@@ -427,21 +419,17 @@ test(`hovering the zone and pressing f fullscreens it`, async () => {
   expect(props.fullscreen).toBe(true)
 })
 
-test.each([
-  [`i`, false, false],
-  [`Escape`, false, false],
-  [`i`, true, false],
-  [`Escape`, true, false],
-  [`i`, false, true],
-  [`Escape`, false, true],
-] as const)(
+test.each(
+  [`i`, `Escape`].flatMap((key) => [
+    [key, false, false],
+    [key, true, false],
+    [key, false, true],
+  ]),
+)(
   `pane shortcut %s respects canceled=%s composing=%s`,
   async (key, canceled, is_composing) => {
     const state = $state({ info_pane_open: true })
-    mounted_component = mount(BrillouinZone, {
-      target: document.body,
-      props: state,
-    })
+    mounted_component = mount(BrillouinZone, { target: document.body, props: state })
     await tick()
     const event = new KeyboardEvent(`keydown`, {
       key,

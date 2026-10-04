@@ -4,7 +4,7 @@ import { default_controls } from '#lib/convex-hull/index.js'
 import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 
 const mag = (magnetic_ordering?: string): ConvexHullEntry => ({
   composition: { Fe: 1, O: 1 },
@@ -46,12 +46,6 @@ const press = (toggle: HTMLElement, key: string): KeyboardEvent => {
 }
 
 describe(`ConvexHullControls category filters (magnetic default)`, () => {
-  test(`hides category row when no entry has magnetic ordering data`, () => {
-    mount_controls({ stable_entries: [mag()], unstable_entries: [mag()] })
-    expect(document.querySelector(`.category-filters`)).toBeNull()
-    expect(document.body.textContent).not.toContain(`Magnetic`)
-  })
-
   test(`shows one toggle per ordering in data with counts, swatches, initial hidden state`, () => {
     mount_controls({
       stable_entries: [mag(`FM`), mag(`AFM`)],
@@ -72,25 +66,21 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     // FiM/NM absent from data -> no toggles
     expect(document.body.textContent).not.toContain(`FiM`)
     expect(document.body.textContent).not.toContain(`NM`)
-  })
 
-  test(`clicking a toggle hides/shows that ordering`, () => {
-    mount_controls({ stable_entries: [mag(`FM`), mag(`NM`)] })
-    const [fm_toggle] = magnetic_toggles()
-    expect(fm_toggle.classList.contains(`active`)).toBe(true)
-    expect(fm_toggle.getAttribute(`aria-pressed`)).toBe(`true`)
-    expect(fm_toggle.textContent?.trim()).toBe(`FM (1)`)
-
+    // clicking toggles visibility both ways; a hidden ordering shows shown/total
+    const [fm_toggle, afm_toggle] = toggles
+    afm_toggle.click()
     fm_toggle.click()
     flushSync()
+    expect(toggles.map((toggle) => toggle.textContent?.trim())).toEqual([
+      `FM (0/2)`,
+      `AFM (1)`,
+    ])
+    expect(toggles.map((toggle) => toggle.getAttribute(`aria-pressed`))).toEqual([
+      `false`,
+      `true`,
+    ])
     expect(fm_toggle.classList.contains(`inactive`)).toBe(true)
-    expect(fm_toggle.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(fm_toggle.textContent?.trim()).toBe(`FM (0/1)`) // hidden -> shown/total format
-
-    fm_toggle.click()
-    flushSync()
-    expect(fm_toggle.classList.contains(`active`)).toBe(true)
-    expect(fm_toggle.textContent?.trim()).toBe(`FM (1)`)
   })
 
   // preventDefault stops Space from scrolling the page on keyboard activation
@@ -139,11 +129,9 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     ).toBe(expected)
     const [first_input] = inputs
     if (!first_input) throw new Error(`missing ${expected.split(`|`)[0]} camera input`)
-    first_input.value = `12`
-    first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(first_input, `12`)
     expect(state).toMatchObject({ [key]: 12 })
-    first_input.value = ``
-    first_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(first_input, ``)
     expect(state).toMatchObject({ [key]: 12 })
   })
 
@@ -163,6 +151,8 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
   test(`legend toggles and threshold inputs preserve valid display settings`, () => {
     const state = { max_hull_dist_show_phases: 0.1 }
     mount_controls({ stable_entries: [mag()], unstable_entries: [mag(), mag()] }, state)
+    // no entry has a magnetic ordering, so there is no category row
+    expect(document.querySelector(`.category-filters`)).toBeNull()
     // Points row (stability mode) renders stable + unstable toggles outside .category-filters
     const point_toggles = [...document.querySelectorAll<HTMLElement>(`.legend-item`)]
     const labels = () => point_toggles.map((item) => item.textContent?.trim())
@@ -192,8 +182,7 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
       [`0.6`, 0.2],
       [`0`, 0],
     ] as const) {
-      threshold.value = draft
-      threshold.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(threshold, draft)
       flushSync()
       expect(state.max_hull_dist_show_phases).toBe(committed)
       threshold.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -219,12 +208,8 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     expect(swatch()).toBeNull()
     buttons()[0].click()
     flushSync()
-    expect(buttons().map((btn) => btn.classList.contains(`active`))).toEqual([
-      true,
-      false,
-      false,
-      false,
-    ])
+    const active = buttons().filter((btn) => btn.classList.contains(`active`))
+    expect(active.map((btn) => btn.textContent?.trim())).toEqual([`Uniform`])
     expect(swatch()).not.toBeNull()
   })
 

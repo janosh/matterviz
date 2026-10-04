@@ -109,10 +109,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
           fullscreen_toggle: false,
         }
         Object.defineProperty(props, `facet_layout`, { get: get_context })
-        const component = mount(plot_case.component, {
-          target: element,
-          props,
-        })
+        const component = mount(plot_case.component, { target: element, props })
         return () => void unmount(component)
       },
     }
@@ -124,11 +121,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
   }>
   const component = mount(typed_facet_grid, {
     target,
-    props: {
-      panels,
-      columns: 2,
-      children,
-    },
+    props: { panels, columns: 2, children },
   })
   mounted_grids.push({ component, target })
   await tick()
@@ -139,15 +132,8 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
     if (!getter) throw new Error(`No facet context for key "${key}"`)
     return getter()
   }
-  const panel_for = (key: string): HTMLElement => {
-    const panel = query(root, `[data-facet-key="${key}"]`)
-    return panel
-  }
-  return {
-    context_for,
-    panel_for,
-    plot_mounts: () => plot_mounts,
-  }
+  const panel_for = (key: string): HTMLElement => query(root, `[data-facet-key="${key}"]`)
+  return { context_for, panel_for, plot_mounts: () => plot_mounts }
 }
 
 describe(`FacetGrid + Cartesian plots`, () => {
@@ -232,14 +218,15 @@ describe(`FacetGrid + Cartesian plots`, () => {
       key,
       data: { series: [{ x: [], y: values }] },
     })
+    const nine = Array.from({ length: 9 }, (_, value_idx) => value_idx)
     const clustered_panels = [
       panel(
         `low`,
-        Array.from({ length: 9 }, (_, value_idx) => (value_idx + 1) / 10),
+        nine.map((idx) => (idx + 1) / 10),
       ),
       panel(
         `high`,
-        Array.from({ length: 9 }, (_, value_idx) => 90 + value_idx),
+        nine.map((idx) => 90 + idx),
       ),
     ]
     const { context_for } = await mount_facet_plot(
@@ -269,40 +256,13 @@ describe(`FacetGrid + Cartesian plots`, () => {
       const panel = panel_for(`top-left`)
       const plot = panel.querySelector<HTMLElement>(plot_case.root_selector)
       if (!plot) throw new Error(`Top-left ${plot_case.name} not found`)
-      const svg = plot.querySelector<SVGSVGElement>(`svg[role="application"]`)
-
-      if (svg) {
-        svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
-        svg.dispatchEvent(
-          new MouseEvent(`mousedown`, {
-            bubbles: true,
-            cancelable: true,
-            button: 0,
-            clientX: 180,
-            clientY: 80,
-          }),
-        )
-        window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
-        window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
-      } else {
-        const canvas = query(plot, `canvas`)
-        vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(
-          DOMRect.fromRect({ width: 800, height: 600 }),
-        )
-        const pointer = (type: string, client_x: number, client_y: number, button?: number) =>
-          plot.dispatchEvent(
-            new PointerEvent(type, {
-              bubbles: true,
-              button,
-              pointerId: 1,
-              clientX: client_x,
-              clientY: client_y,
-            }),
-          )
-        pointer(`pointerdown`, 180, 80, 0)
-        pointer(`pointermove`, 600, 420)
-        pointer(`pointerup`, 600, 420)
-      }
+      const svg = query<SVGSVGElement>(plot, `svg[role="application"]`)
+      svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
+      svg.dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true, button: 0, clientX: 180, clientY: 80 }),
+      )
+      window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
+      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
 
       await vi.waitFor(() => {
         const zoomed_x = context_for(`top-left`).ranges.x
@@ -313,8 +273,7 @@ describe(`FacetGrid + Cartesian plots`, () => {
         expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => zoomed_y))
       })
 
-      const reset_target = svg ?? plot
-      reset_target.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+      svg.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
       await vi.waitFor(() => {
         expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => initial_x))
         expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => initial_y))

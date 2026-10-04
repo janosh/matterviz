@@ -1,7 +1,7 @@
 import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, svg_query } from '../setup'
+import { doc_query } from '../setup'
 
 const mount_popup = (props: Partial<ComponentProps<typeof FloatingPopup>> = {}): void => {
   mount(FloatingPopup, { target: document.body, props })
@@ -67,21 +67,24 @@ describe(`FloatingPopup`, () => {
 
   // the close_button snippet handed to children is exercised by the StructurePopup and
   // BrillouinZonePopup tests, which place it in their viewers' control rows
-  test(`renders children inside the content box`, () => {
+  test(`renders children inside a content box that clips while the drag handle stays visible`, () => {
     const children = createRawSnippet<[{ close_button: unknown }]>(() => ({
       render: () => `<div class="popup-body">body</div>`,
     }))
     mount_popup({ children })
 
     expect(doc_query(`.floating-popup-content .popup-body`).textContent).toBe(`body`)
+    expect(getComputedStyle(doc_query(`.floating-popup`)).overflow).toBe(`visible`)
+    const content_style = getComputedStyle(doc_query(`.floating-popup-content`))
+    expect(content_style.overflow).toBe(`hidden`)
+    expect(content_style.borderRadius).toBe(`8px`)
   })
 
   test(`reuses draggable pane handle for dragging`, () => {
     mount_popup()
 
     const popup = doc_query(`.floating-popup`)
-    const handle = svg_query(`.floating-popup .control-tab .drag-handle`)
-    expect(handle).toBeInstanceOf(SVGSVGElement)
+    const handle = doc_query(`.floating-popup .control-tab .drag-handle`, SVGSVGElement)
 
     // svelte-widgets' draggable follows the captured pointer on the handle itself, so the
     // move and release have to be dispatched there rather than on window
@@ -123,14 +126,5 @@ describe(`FloatingPopup`, () => {
     expect(arrow.previousElementSibling?.classList.contains(`floating-popup-content`)).toBe(
       true,
     )
-  })
-
-  test(`clips popup content while leaving drag handle visible`, () => {
-    mount_popup()
-
-    expect(getComputedStyle(doc_query(`.floating-popup`)).overflow).toBe(`visible`)
-    const content_style = getComputedStyle(doc_query(`.floating-popup-content`))
-    expect(content_style.overflow).toBe(`hidden`)
-    expect(content_style.borderRadius).toBe(`8px`)
   })
 })

@@ -145,11 +145,17 @@ test.describe(`Histogram Component Tests`, () => {
     await expect.poll(visible_series).toBe(item_count)
   })
 
-  test(`controls pane re-bins and switches scale type`, async ({ page }) => {
+  test(`controls pane opens with Enter, re-bins, switches scale type and closes with Escape`, async ({
+    page,
+  }) => {
     const histogram = page.locator(`#basic-single-series`)
     await wait_for_bars(histogram)
     const initial_bars = await bar_count(histogram)
-    const { pane } = await open_plot_controls(histogram)
+    await histogram.hover()
+    await histogram.locator(`button.pane-toggle`).focus()
+    await page.keyboard.press(`Enter`)
+    const pane = histogram.locator(`.draggable-pane`)
+    await expect(pane).toBeVisible()
 
     const bins_input = pane
       .locator(`label`)
@@ -166,19 +172,6 @@ test.describe(`Histogram Component Tests`, () => {
     await expect
       .poll(async () => (await get_tick_range(histogram.locator(`g.y-axis`))).ticks)
       .not.toEqual(initial_y.ticks)
-    await y_scale_select.selectOption(`linear`)
-  })
-
-  test(`controls pane opens with Enter on its toggle and closes with Escape`, async ({
-    page,
-  }) => {
-    const histogram = page.locator(`#basic-single-series`)
-    await wait_for_bars(histogram)
-    await histogram.hover()
-    await histogram.locator(`button.pane-toggle`).focus()
-    await page.keyboard.press(`Enter`)
-    const pane = histogram.locator(`.draggable-pane`)
-    await expect(pane).toBeVisible()
     await page.keyboard.press(`Escape`)
     await expect(pane).toBeHidden()
   })
@@ -250,7 +243,9 @@ test.describe(`Histogram Component Tests`, () => {
     }
   })
 
-  test(`drag zoom shrinks both axes and double-click resets`, async ({ page }) => {
+  test(`drag zoom shrinks both axes, double-click resets, Shift+drag pans`, async ({
+    page,
+  }) => {
     const histogram = page.locator(`#basic-single-series`)
     await wait_for_bars(histogram)
     await expect(histogram.locator(`> svg[role="application"]`)).toHaveCSS(
@@ -258,11 +253,6 @@ test.describe(`Histogram Component Tests`, () => {
       `crosshair`,
     )
     await expect_zoom_shrinks_axes(page, histogram)
-  })
-
-  test(`Shift+drag pans the histogram instead of zooming`, async ({ page }) => {
-    const histogram = page.locator(`#basic-single-series`)
-    await wait_for_bars(histogram)
     await expect_shift_drag_pans(page, histogram)
   })
 

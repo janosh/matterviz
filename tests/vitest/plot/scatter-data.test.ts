@@ -83,27 +83,18 @@ describe(`filter_series_to_ranges`, () => {
     },
   )
 
-  test(`drops series whose points are all filtered out (and hidden series)`, () => {
+  test(`drops off-range point and hidden series, keeps off-range lines whole`, () => {
     const series: DataSeries[] = [
       { x: [20, 30], y: [5, 5], label: `off-range`, markers: `points` },
       { x: [1, 2], y: [1, 2], label: `in-range` },
       { x: [3], y: [3], label: `hidden`, visible: false },
+      { x: [20, 30], y: [4, 6], label: `line`, markers: `line` },
     ]
-    const result = filter_to_ranges(series, ranges)
-    // orig_series_idx 1 (not 0) keeps color cycling stable after dropping series
-    expect(result).toMatchObject([{ label: `in-range`, orig_series_idx: 1 }])
-  })
-
-  test(`retains off-range line series with full arrays and no marker data`, () => {
-    const series: DataSeries[] = [{ x: [20, 30], y: [4, 6], label: `line`, markers: `line` }]
-    const [result] = filter_to_ranges(series, ranges)
-    expect(result).toMatchObject({
-      x: [20, 30],
-      y: [4, 6],
-      label: `line`,
-      filtered_data: [],
-      orig_series_idx: 0,
-    })
+    // orig_series_idx survives dropped series so color cycling stays stable
+    expect(filter_to_ranges(series, ranges)).toMatchObject([
+      { label: `in-range`, orig_series_idx: 1 },
+      { x: [20, 30], y: [4, 6], label: `line`, filtered_data: [], orig_series_idx: 3 },
+    ])
   })
 
   test(`y2-axis series filters against y2 range, x2 series against x2 range`, () => {
@@ -115,12 +106,6 @@ describe(`filter_series_to_ranges`, () => {
     const [y2_series, x2_series] = filter_to_ranges(series, ranges)
     expect(y2_series.filtered_data.map((point) => point.y)).toEqual([40, -40]) // 60 > 50 excluded
     expect(x2_series.filtered_data.map((point) => point.x)).toEqual([150]) // 250 > 200 excluded
-  })
-
-  test(`handles inverted ranges via min/max of the bounds`, () => {
-    const series: DataSeries[] = [{ x: [1, 5, 15], y: [2, 8, 3] }]
-    const [result] = filter_to_ranges(series, { ...ranges, x: [10, 0], y: [10, 0] })
-    expect(result.filtered_data.map((point) => point.x)).toEqual([1, 5]) // 15 outside effective [0, 10]
   })
 
   // Non-finite coords must drop even with an infinite range — `!isNaN` misses ±Infinity.
@@ -177,6 +162,27 @@ describe(`filter_series_to_ranges`, () => {
       { id: `energy`, x: [0, 1], y: [2, 3], line_underlays: [{ x: [0, 1], y: [2] }] },
       `x=2, y=1`,
       ` line_underlays[0]`,
+    ],
+    // each side of an asymmetric error is indexed on its own, so each is checked
+    [
+      `short y_error`,
+      { id: `energy`, x: [0, 1], y: [2, 3], y_error: [1] },
+      `x=2, y=2, y_error[0]=1`,
+    ],
+    [
+      `long upper error`,
+      { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: [1, 2, 3], lower: 1 } },
+      `x=2, y=2, y_error[0]=3`,
+    ],
+    [
+      `long lower error`,
+      { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: 1, lower: [1, 2, 3] } },
+      `x=2, y=2, y_error[0]=3`,
+    ],
+    [
+      `unequal error sides`,
+      { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: [1, 2], lower: [1, 2, 3] } },
+      `x=2, y=2, y_error[0]=2, y_error[1]=3`,
     ],
   ])(`rejects %s`, (_name, series, lengths, group = ``) => {
     expect(() => filter_to_ranges([series], ranges)).toThrow(

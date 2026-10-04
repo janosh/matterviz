@@ -37,24 +37,18 @@ const blob = (
   center_z: number,
 ) =>
   Math.exp(-((idx_x - center_x) ** 2 + (idx_y - center_y) ** 2 + (idx_z - center_z) ** 2) / 4)
-const positive_volume = () =>
-  make_volume(
-    make_grid(SIZE, SIZE, SIZE, (idx_x, idx_y, idx_z) => blob(idx_x, idx_y, idx_z, 5, 5, 5)),
-    {
-      label: `density`,
-    },
-  )
+const blob_volume = (label: string, field: (...idx: [number, number, number]) => number) =>
+  make_volume(make_grid(SIZE, SIZE, SIZE, field), { label })
+const positive_volume = () => blob_volume(`density`, (...idx) => blob(...idx, 5, 5, 5))
 const signed_volume = () =>
-  make_volume(
-    make_grid(
-      SIZE,
-      SIZE,
-      SIZE,
-      (idx_x, idx_y, idx_z) =>
-        blob(idx_x, idx_y, idx_z, 3, 3, 3) - blob(idx_x, idx_y, idx_z, 7, 7, 7),
-    ),
-    { label: `spin` },
-  )
+  blob_volume(`spin`, (...idx) => blob(...idx, 3, 3, 3) - blob(...idx, 7, 7, 7))
+// ≥ 200k grid points routes geometry through the worker
+const big_n = 59
+const big_volume = (): VolumetricData => ({
+  ...positive_volume(),
+  values: new Float64Array(big_n ** 3).fill(0.1),
+  dims: [big_n, big_n, big_n],
+})
 
 type Props = {
   volumes: VolumetricData[]
@@ -112,6 +106,7 @@ afterEach(() => {
   teardown?.()
   teardown = undefined
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe(`Isosurface`, () => {
@@ -276,12 +271,6 @@ describe(`Isosurface`, () => {
         (_input: unknown, { signal }: { signal: AbortSignal }) =>
           new Promise((resolve) => pending.push({ resolve, signal })),
       )
-    const big_n = 59 // ≥ 200k grid points routes geometry through the worker
-    const big_volume = (): VolumetricData => ({
-      ...positive_volume(),
-      values: new Float64Array(big_n ** 3).fill(0.1),
-      dims: [big_n, big_n, big_n],
-    })
     const props = mount_isosurface({ volumes: [big_volume()] })
     await settle()
     for (const isovalue of [0.4, 0.5]) {
@@ -301,7 +290,6 @@ describe(`Isosurface`, () => {
     flushSync()
     expect(pending[1].signal.aborted).toBe(true)
     compute_geometries_async.mockReset()
-    vi.unstubAllGlobals()
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {
@@ -391,13 +379,8 @@ describe(`Isosurface`, () => {
       const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
       const prop_handler = vi.fn()
       const context_handler = vi.fn()
-      // ≥ 200k grid points routes geometry through the worker
-      const big_n = 59
-      const values = new Float64Array(big_n ** 3).fill(0.1)
-      const vol = positive_volume()
-      const big_volume: VolumetricData = { ...vol, values, dims: [big_n, big_n, big_n] }
       mount_isosurface(
-        { volumes: [big_volume], on_error: with_prop ? prop_handler : undefined },
+        { volumes: [big_volume()], on_error: with_prop ? prop_handler : undefined },
         with_context ? new Map([[ISOSURFACE_ERROR_CONTEXT, context_handler]]) : undefined,
       )
       await settle()
@@ -410,7 +393,6 @@ describe(`Isosurface`, () => {
       expect(loser).not.toHaveBeenCalled()
       expect(meshes()).toHaveLength(0)
       expect(error_spy).toHaveBeenCalled()
-      vi.unstubAllGlobals()
     },
   )
 })

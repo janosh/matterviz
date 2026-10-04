@@ -142,7 +142,7 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
 
 Compare distributions with vastly different scales using **dual y-axes**. Some distributions use the left axis, while others use the independent right y2-axis:
 
-Use `mode="single"` with `bind:selected_series_idx` to show one series at a time. The index refers to the original `series` array, so duplicate or missing labels work independently. If that series is hidden or removed, the chart displays the first visible series.
+Use `mode="single"` with `bind:selected_series_idx` to show one series at a time. The index refers to the original `series` array, so duplicate or missing labels work independently. If that series is hidden or removed, the chart displays the first visible series. The single-distribution toggle in [Reference Lines](#reference-lines-statistical-markers-and-distribution-comparison) shows this mode.
 
 ```svelte example
 <script lang="ts">
@@ -235,11 +235,11 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
   {series}
   mode="overlay"
   bins={50}
-  {bar}
-  {x_axis}
-  {y_axis}
-  {y2_axis}
-  {display}
+  bind:bar
+  bind:x_axis
+  bind:y_axis
+  bind:y2_axis
+  bind:display
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
@@ -311,8 +311,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   {series}
   mode="overlay"
   {bins}
-  {x_axis}
-  {y_axis}
+  bind:x_axis
+  bind:y_axis
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ value, count, property })}
@@ -396,8 +396,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     },
   ]}
   bins={60}
-  {x_axis}
-  {y_axis}
+  bind:x_axis
+  bind:y_axis
   style="height: 400px"
 >
   {#snippet tooltip({ value, count })}
@@ -487,8 +487,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <Histogram
   series={series_data}
   {mode}
-  {x_axis}
-  {y_axis}
+  bind:x_axis
+  bind:y_axis
   bins={selected === `discrete` ? 10 : 40}
   show_legend={mode === `overlay`}
   style="height: 450px; margin-block: 1em"
@@ -676,8 +676,8 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 
 <Histogram
   {series}
-  {x_axis}
-  {y_axis}
+  bind:x_axis
+  bind:y_axis
   {normalize}
   bins={35}
   style="height: 450px; border: 2px solid {color_schemes[

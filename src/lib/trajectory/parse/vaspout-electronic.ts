@@ -71,7 +71,7 @@ export const read_vaspout_dos = (h5_file: h5wasm.File): ElectronicDos | null => 
       h5_file,
       DOS_TOTAL_NAMES.map((name) => `${group}/${name}`),
     )
-    // to_number_array, not typeof: the old guard let NaN/Infinity sentinels reach the DOS plot
+    // to_number_array, not typeof: it rejects NaN/Infinity sentinels before the DOS plot
     const energy_values = to_number_array(energies)
     if (!energy_values || !Array.isArray(total)) continue
 

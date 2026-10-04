@@ -519,7 +519,10 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0.5,
       maximum: 2,
     },
-    site_label_color: { value: `#111111`, description: `Text color for atom labels` },
+    site_label_color: {
+      value: ``,
+      description: `Text color for atom labels (empty follows the theme's text color)`,
+    },
     site_label_bg_color: {
       value: `transparent`,
       description: `Background color for atom labels`,
@@ -827,7 +830,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
     index_above_bytes: {
       value: 25000000,
-      description: `Trajectory files (XYZ, EXTXYZ, ASE .traj, LAMMPS dump, XDATCAR) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once`,
+      description: `Trajectory files (XYZ, EXTXYZ, LAMMPS dump, XDATCAR) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once (ASE .traj always is)`,
       minimum: 1000000,
       maximum: 2000000000,
     },

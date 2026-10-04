@@ -25,7 +25,7 @@ import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
 vi.mock(`#lib/io/fetch.js`, async (import_original) => ({
@@ -116,10 +116,10 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
     expect(comment).not.toMatch(/NaN|Infinity/)
   })
 
-  test(`round-trips per-atom forces, velocities and charges through parse and export`, () => {
+  test(`round-trips per-atom vectors and frame scalars through parse and export`, () => {
     const source = [
       `2`,
-      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1`,
+      `Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:charges:R:1 energy=-1 n_scf_steps=7 density=2.33 coords_unwrapped=T`,
       `Si 0 0 0 0.1 0.2 0.3 1e-7 2 3 0.25`,
       `O 1 1 1 -0.1 -0.2 -0.3 4 5 6 -0.5`,
     ].join(`\n`)
@@ -131,22 +131,20 @@ describe(`trajectory_frame_to_extxyz_str`, () => {
       { force: [0.1, 0.2, 0.3], velocity: [1e-7, 2, 3], charge: 0.25 },
       { force: [-0.1, -0.2, -0.3], velocity: [4, 5, 6], charge: -0.5 },
     ])
+    // An old fixed allow-list of 7 comment keys dropped every other scalar on reopen. For
+    // coords_unwrapped that is corruption: MSD/VACF then re-applies the minimum image.
+    expect(parse_exported_frames(text)[0].metadata).toMatchObject({
+      energy: -1,
+      n_scf_steps: 7,
+      density: 2.33,
+      coords_unwrapped: true,
+    })
   })
-})
-
-// The old fixed allow-list of 7 comment keys dropped every other scalar on reopen. For
-// coords_unwrapped that is corruption: MSD/VACF then re-applies the minimum image.
-test(`extXYZ round trip preserves scalars outside the old allow-list`, () => {
-  const props = { energy: -10.5, n_scf_steps: 7, density: 2.33, coords_unwrapped: true }
-  const [reparsed] = parse_exported_frames(
-    trajectory_frame_to_extxyz_str(make_frame(0, two_sites, props)),
-  )
-  expect(reparsed.metadata).toMatchObject(props)
 })
 
 describe(`serialize_extxyz_frame_range`, () => {
   // Uses an async resolver: indexed trajectories load frames from a loader, not a frames array.
-  test(`round-trips through the trajectory parser`, async () => {
+  test(`round-trips full and sub-ranges through the trajectory parser`, async () => {
     const on_progress = vi.fn()
     const async_resolver = make_async_resolver()
     const text = await serialize_extxyz_frame_range(0, 2, async_resolver, on_progress)
@@ -161,11 +159,8 @@ describe(`serialize_extxyz_frame_range`, () => {
     expect(reparsed.map((frame) => frame.step)).toEqual([0, 5, 9])
     expect(reparsed.map((frame) => frame.metadata?.energy)).toEqual([-10.5, -11.25, -11.5])
     expect(reparsed[2].structure.sites[0].xyz[0]).toBeCloseTo(0.2, 6)
-  })
-
-  test(`exports only the requested sub-range`, async () => {
-    const text = await serialize_extxyz_frame_range(1, 2, resolver)
-    expect(parse_exported_frames(text).map((frame) => frame.step)).toEqual([5, 9])
+    const sub_range = await serialize_extxyz_frame_range(1, 2, resolver)
+    expect(parse_exported_frames(sub_range).map((frame) => frame.step)).toEqual([5, 9])
   })
 
   test.each([
@@ -335,11 +330,7 @@ describe(`collect_frame_property_rows`, () => {
       [2, 9],
     ])
     expect(rows[2].properties).toEqual({ energy: -11.5, force_max: 0.01 })
-  })
-
-  // the property-row shortcut must not skip the range check the resolver path applies
-  // (serialize_extxyz_frame_range above covers the full set of rejected ranges)
-  test(`rejects a reversed range even when properties cover it`, async () => {
+    // the property-row shortcut must not skip the resolver path's range check
     await expect(
       collect_frame_property_rows(2, 1, resolver, run_with_properties),
     ).rejects.toThrow(`Invalid trajectory frame range`)
@@ -511,8 +502,7 @@ describe(`TrajectoryExportPane property export`, () => {
     }
     // Preview is frame zero; excluding it must allow the valid remaining frames.
     const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-    start_input.value = `1`
-    start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(start_input, `1`)
     await tick()
     expect(poscar.disabled).toBe(false)
     expect(xyz.disabled).toBe(false)
@@ -589,8 +579,7 @@ describe(`TrajectoryExportPane property export`, () => {
           [2560, 1440, 40],
         ].entries()) {
           for (const [offset, value] of [width, height, bitrate_mbps].entries()) {
-            number_inputs[3 + offset].value = String(value)
-            number_inputs[3 + offset].dispatchEvent(new Event(`input`, { bubbles: true }))
+            set_input(number_inputs[3 + offset], String(value))
           }
           await tick()
           for (const label of [`WebM`, `MP4`]) {
@@ -846,8 +835,7 @@ describe(`TrajectoryExportPane property export`, () => {
       expect(document.querySelector(reset_selector)).toBeNull()
 
       const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-      start_input.value = `1`
-      start_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(start_input, `1`)
       await tick()
       doc_query<HTMLButtonElement>(reset_selector).click()
       await tick()
@@ -874,8 +862,7 @@ describe(`TrajectoryExportPane property export`, () => {
     const [, end_input] = document.querySelectorAll<HTMLInputElement>(
       `.settings-section input[type="number"]`,
     )
-    end_input.value = `1`
-    end_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(end_input, `1`)
     await tick()
 
     await click(`Download extXYZ`)

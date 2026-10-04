@@ -1,7 +1,7 @@
 import PropertyFilter from '#lib/layout/PropertyFilter.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 
 describe(`PropertyFilter`, () => {
   const inputs = () => document.querySelectorAll<HTMLInputElement>(`input[type="number"]`)
@@ -44,13 +44,9 @@ describe(`PropertyFilter`, () => {
     expect([...inputs()].map((input) => input.placeholder)).toEqual([`min`, `max`])
   })
 
-  test.each([
-    [`eV/atom`, true],
-    [undefined, false],
-  ])(`unit %p renders a unit label = %s`, (unit, expected) => {
+  test.each([`eV/atom`, undefined])(`unit %p renders a matching unit label`, (unit) => {
     mount_filter({ unit })
     expect(document.querySelector(`.unit-label`)?.textContent ?? null).toBe(unit ?? null)
-    expect(Boolean(document.querySelector(`.unit-label`))).toBe(expected)
   })
 
   test(`clear button and Escape reset both bounds and fire on_clear before on_change, a cleared input unsets its bound`, () => {
@@ -98,8 +94,7 @@ describe(`PropertyFilter`, () => {
     // A cleared input reports null, which must read back as undefined: consumers testing
     // `max === undefined` would filter a leaked null as `val <= 0`
     for (const text of [`3`, ``]) {
-      inputs()[1].value = text
-      inputs()[1].dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(inputs()[1], text)
       inputs()[1].dispatchEvent(new Event(`blur`, { bubbles: true }))
       flushSync()
     }

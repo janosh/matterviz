@@ -24,7 +24,7 @@ const long_tail: SunburstNode[] = Array.from({ length: 8 }, (_item, idx) => ({
   value: idx + 1,
 }))
 
-// 3-level chain for zoom-depth tests: L1 -> L2 -> {L3a, L3b}
+// 4-level chain for zoom-depth tests: L1 -> L2 -> L3 -> {L4a, L4b}
 const deep: SunburstNode[] = [
   {
     label: `L1`,
@@ -32,8 +32,13 @@ const deep: SunburstNode[] = [
       {
         label: `L2`,
         children: [
-          { label: `L3a`, value: 1 },
-          { label: `L3b`, value: 2 },
+          {
+            label: `L3`,
+            children: [
+              { label: `L4a`, value: 1 },
+              { label: `L4b`, value: 2 },
+            ],
+          },
         ],
       },
     ],
@@ -57,15 +62,23 @@ const mount_sized_sunburst = (
 // Pre-order node indices for the `tree` fixture (root=0)
 const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const
 
-const node_at = (plot: HTMLElement, node_idx: number): SVGPathElement => {
-  const path = query<SVGPathElement>(plot, `[data-sunburst-node-idx="${node_idx}"]`)
-  return path
-}
+const node_at = (plot: HTMLElement, node_idx: number): SVGPathElement =>
+  query<SVGPathElement>(plot, `[data-sunburst-node-idx="${node_idx}"]`)
 
 const arc_path = (plot: HTMLElement, label: keyof typeof IDX): SVGPathElement =>
   node_at(plot, IDX[label])
 
 const n_arcs = (plot: HTMLElement) => plot.querySelectorAll(`.arcs path`).length
+
+// controls-pane number inputs are identified by their schema-derived max
+const set_number_input = async (plot: HTMLElement, max: string, value: string) => {
+  const input = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)].find(
+    (element) => element.min === `0` && element.max === max,
+  )
+  if (!input) throw new Error(`no number input with max ${max}`)
+  input.value = value
+  await fire(input, new Event(`input`, { bubbles: true }))
+}
 
 describe(`Sunburst`, () => {
   test(`renders arcs, center total and resolved colors`, async () => {
@@ -101,9 +114,13 @@ describe(`Sunburst`, () => {
     expect(n_arcs(plot)).toBe(expected)
   })
 
-  test(`shows the default tooltip and fires hover callback with breadcrumb payload`, async () => {
+  // Hover dimming is one evenodd veil path with holes over the hovered subtree and its
+  // ancestors, so a hover never rewrites per-arc fill-opacity (thousands of arcs otherwise)
+  test(`hover shows tooltip, veil and breadcrumb payload; leaving clears them once`, async () => {
     const on_node_hover = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
+    const veil = () => plot.querySelector<SVGPathElement>(`.hover-veil`)
+    expect(veil()).toBeNull()
     await fire(arc_path(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(
       /A › A1[\s\S]*20 % of total[\s\S]*40 % of parent/,
@@ -123,6 +140,20 @@ describe(`Sunburst`, () => {
       fraction: expect.closeTo(0.2, 9),
       parent_fraction: expect.closeTo(0.4, 9),
     })
+    const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
+    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `1`])
+    // disk + hovered wedge (A1, out to the rim) + ancestor A; the root is collapsed
+    expect(veil()?.getAttribute(`d`)?.match(/M/g)).toHaveLength(3)
+
+    // regression for cf6e3e62: leaving the chart must reset the bindable hover state.
+    // It fires mouseleave on both the chart <g> and the <svg>; a hover clear must only
+    // report null once (and not at all when nothing was hovered)
+    const svg = plot.querySelector(`svg[role="application"]`)
+    await fire(svg, mouse(`mouseleave`))
+    await fire(svg, mouse(`mouseleave`))
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    expect(veil()).toBeNull()
+    expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
   })
 
   test(`clicking a branch zooms, fires callbacks, and dismisses its tooltip`, async () => {
@@ -359,21 +390,6 @@ describe(`Sunburst`, () => {
     expect(label_opacity(`A`)).toBeNull()
   })
 
-  // Hover dimming is one evenodd veil path with holes over the hovered subtree and its
-  // ancestors, so a hover never rewrites per-arc fill-opacity (thousands of arcs otherwise)
-  test(`hovering an arc draws a veil with holes for it and its ancestors`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree })
-    const veil = () => plot.querySelector<SVGPathElement>(`.hover-veil`)
-    expect(veil()).toBeNull()
-    await fire(arc_path(plot, `A1`), mouse(`mousemove`))
-    const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
-    expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `1`])
-    // disk + hovered wedge (A1, out to the rim) + ancestor A; the root is collapsed
-    expect(veil()?.getAttribute(`d`)?.match(/M/g)).toHaveLength(3)
-    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
-    expect(veil()).toBeNull()
-  })
-
   test(`value_mode total respects authoritative parent values`, async () => {
     const data: SunburstNode[] = [
       { label: `P`, value: 10, children: [{ label: `c1`, value: 3 }] },
@@ -438,21 +454,6 @@ describe(`Sunburst`, () => {
     },
   )
 
-  // regression for cf6e3e62: leaving the chart must reset the bindable hover state
-  test(`mouseleave clears the tooltip and reports one null hover`, async () => {
-    const on_node_hover = vi.fn()
-    const plot = await mount_sized_sunburst({ data: tree, on_node_hover })
-    await fire(arc_path(plot, `A1`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
-    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
-    expect(on_node_hover).toHaveBeenLastCalledWith(null)
-    // leaving the chart fires mouseleave on both the chart <g> and the <svg>; a hover
-    // clear must only report null once (and not at all when nothing was hovered)
-    await fire(plot.querySelector(`svg[role="application"]`), mouse(`mouseleave`))
-    expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
-  })
-
   // hover/focus state is index-based - swapping data must clear it, else the old
   // tooltip lingers and whatever node now occupies the index renders as hovered
   test(`swapping data clears stale hover/tooltip state`, async () => {
@@ -495,27 +496,8 @@ describe(`Sunburst`, () => {
   // a fast double-click on the center zoom-out button fires click+click+dblclick;
   // the dblclick background-reset must not compound onto the two zoom-out steps
   test(`double-clicking the center circle steps out without resetting to root`, async () => {
-    const chain: SunburstNode[] = [
-      {
-        label: `L1`,
-        children: [
-          {
-            label: `L2`,
-            children: [
-              {
-                label: `L3`,
-                children: [
-                  { label: `L4a`, value: 1 },
-                  { label: `L4b`, value: 2 },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ]
     const on_zoom = vi.fn()
-    const plot = await mount_sized_sunburst({ data: chain, on_zoom })
+    const plot = await mount_sized_sunburst({ data: deep, on_zoom })
     await fire(plot.querySelector(`[data-sunburst-node-idx="3"]`)) // zoom to L3 (depth 3)
     const center = plot.querySelector(`.center-circle`)
     await fire(center) // zoom out -> L2
@@ -796,13 +778,7 @@ describe(`controls pane`, () => {
     const plot = await mount_sized_sunburst({ data: tree, controls_open: true })
     expect(n_arcs(plot)).toBe(4)
     // the max-depth number input is bound via the num_row snippet's get/set pair
-    const inputs = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)]
-    const max_depth_input = inputs.find(
-      (element) => element.min === `0` && element.max === `10`,
-    )
-    if (!max_depth_input) throw new Error(`max depth input not found`)
-    max_depth_input.value = `1`
-    await fire(max_depth_input, new Event(`input`, { bubbles: true }))
+    await set_number_input(plot, `10`, `1`)
     expect(n_arcs(plot)).toBe(2) // only depth-1 ring left
   })
 
@@ -811,18 +787,9 @@ describe(`controls pane`, () => {
   test(`exposes max_children alongside min_fraction`, async () => {
     const plot = await mount_sized_sunburst({ data: long_tail, controls_open: true })
     expect(n_arcs(plot)).toBe(8)
-    // number inputs are identified by their schema-derived max
-    const set = async (max: string, value: string) => {
-      const input = [...plot.querySelectorAll<HTMLInputElement>(`input[type="number"]`)].find(
-        (element) => element.min === `0` && element.max === max,
-      )
-      if (!input) throw new Error(`no number input with max ${max}`)
-      input.value = value
-      await fire(input, new Event(`input`, { bubbles: true }))
-    }
-    await set(`20`, `2`) // max_children
+    await set_number_input(plot, `20`, `2`) // max_children
     expect(n_arcs(plot)).toBe(3) // two largest + Other
-    await set(`0.2`, `0.2`) // min_fraction composes: a child must clear both
+    await set_number_input(plot, `0.2`, `0.2`) // min_fraction composes: a child must clear both
     expect(n_arcs(plot)).toBe(2) // only job-7 (8/36) clears 0.2, plus Other
   })
 })

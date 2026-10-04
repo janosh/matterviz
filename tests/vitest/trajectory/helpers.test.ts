@@ -24,7 +24,7 @@ describe(`trajectory helpers`, () => {
     expect(columns_to_csv({})).toBe(``)
   })
 
-  it(`create_structure keeps positions and species, rejects non-3D positions`, () => {
+  it(`create_structure keeps positions and species, fractionalizes skew cells, rejects non-3D positions`, () => {
     const elements: ElementSymbol[] = [`H`, `He`]
     const structure = create_structure(
       [
@@ -61,6 +61,17 @@ describe(`trajectory helpers`, () => {
         elements,
       ),
     ).toThrow(/Invalid position at index 0/)
+    // fractional coordinates follow a non-orthogonal lattice
+    const sheared = create_structure(
+      [[2, 1, 0]],
+      [`H`],
+      [
+        [2, 1, 0],
+        [0, 2, 0],
+        [0, 0, 2],
+      ],
+    )
+    expect(`lattice` in sheared && sheared.sites[0].abc).toEqual([1, 0, 0])
   })
 
   // Number(``) is 0 and parseFloat(`1.0abc`) is 1: both would turn corruption into a coordinate
@@ -103,18 +114,6 @@ describe(`trajectory helpers`, () => {
     expect(warnings).toEqual([
       `Singular lattice [[4,0,0],[8,0,0],[0,0,4]], using axis-length fallback for cart→frac`,
     ])
-  })
-
-  it(`computes fractional coordinates correctly for non-orthogonal lattices`, () => {
-    const lattice: Matrix3x3 = [
-      [2, 1, 0],
-      [0, 2, 0],
-      [0, 0, 2],
-    ]
-    const structure = create_structure([[2, 1, 0]], [`H`], lattice)
-
-    expect(`lattice` in structure).toBe(true)
-    expect(structure.sites[0]?.abc).toEqual([1, 0, 0])
   })
 
   // oxfmt-ignore

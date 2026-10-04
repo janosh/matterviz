@@ -24,18 +24,19 @@ describe(`compute_box_stats`, () => {
     }
   })
   test(`quartiles match d3 type-7 interpolation`, () => {
-    const stats = compute_box_stats(one_to_ten, { whisker_mode: `tukey` })
-    expect(stats.n).toBe(10)
-    expect(stats.min).toBe(1)
-    expect(stats.max).toBe(10)
-    expect(stats.q1).toBeCloseTo(3.25, 12)
-    expect(stats.median).toBeCloseTo(5.5, 12)
-    expect(stats.q3).toBeCloseTo(7.75, 12)
-    expect(stats.mean).toBeCloseTo(5.5, 12)
     // tukey bounds: [-3.5, 14.5] => no outliers, whiskers at data extremes
-    expect(stats.whisker_low).toBe(1)
-    expect(stats.whisker_high).toBe(10)
-    expect(stats.outliers).toEqual([])
+    expect(compute_box_stats(one_to_ten, { whisker_mode: `tukey` })).toMatchObject({
+      n: 10,
+      min: 1,
+      max: 10,
+      q1: expect.closeTo(3.25, 12),
+      median: expect.closeTo(5.5, 12),
+      q3: expect.closeTo(7.75, 12),
+      mean: expect.closeTo(5.5, 12),
+      whisker_low: 1,
+      whisker_high: 10,
+      outliers: [],
+    })
   })
 
   // Reference values hand-computed with the type-7 rule q(p) = x[(n-1)p] (linear interpolation
@@ -117,9 +118,7 @@ describe(`compute_box_stats`, () => {
   test(`std mode clamps whiskers to data extent`, () => {
     // mean = 5.5, sample std ≈ 3.0277 => bounds ≈ [0.96, 10.04], clamped to [1, 10]
     const stats = compute_box_stats(one_to_ten, { whisker_mode: `std`, whisker_range: 1.5 })
-    expect(stats.whisker_low).toBe(1)
-    expect(stats.whisker_high).toBe(10)
-    expect(stats.outliers).toEqual([])
+    expect(stats).toMatchObject({ whisker_low: 1, whisker_high: 10, outliers: [] })
   })
 
   test.each<[string, number[], number]>([
@@ -144,11 +143,13 @@ describe(`compute_box_stats`, () => {
   test(`filters non-finite values and does not mutate input`, () => {
     const input = [3, NaN, 1, Infinity, 2, -Infinity]
     const snapshot = [...input]
-    const stats = compute_box_stats(input)
-    expect(stats.n).toBe(3) // only 1, 2, 3 are finite
-    expect(stats.min).toBe(1)
-    expect(stats.max).toBe(3)
-    expect(stats.median).toBeCloseTo(2, 12)
+    // only 1, 2, 3 are finite
+    expect(compute_box_stats(input)).toMatchObject({
+      n: 3,
+      min: 1,
+      max: 3,
+      median: expect.closeTo(2, 12),
+    })
     expect(input).toEqual(snapshot) // input untouched
   })
 
@@ -195,14 +196,10 @@ describe(`compute_box_stats`, () => {
       const upper = quartile_3 + 1.5 * iqr
       // matplotlib boxplot_stats: extreme in-fence datum, clamped so it never enters the box
       const in_bounds = sorted.filter((val) => val >= lower && val <= upper)
-      expect(stats.whisker_low).toBeCloseTo(
-        Math.min(in_bounds[0] ?? quartile_1, quartile_1),
-        9,
-      )
-      expect(stats.whisker_high).toBeCloseTo(
-        Math.max(in_bounds.at(-1) ?? quartile_3, quartile_3),
-        9,
-      )
+      const whisker_low = Math.min(in_bounds[0] ?? quartile_1, quartile_1)
+      const whisker_high = Math.max(in_bounds.at(-1) ?? quartile_3, quartile_3)
+      expect(stats.whisker_low).toBeCloseTo(whisker_low, 9)
+      expect(stats.whisker_high).toBeCloseTo(whisker_high, 9)
       expect(stats.outliers).toEqual(sorted.filter((val) => val < lower || val > upper))
     }
     expect(worst_quartile).toBeLessThan(1e-9)

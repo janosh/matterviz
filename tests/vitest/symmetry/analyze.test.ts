@@ -63,12 +63,9 @@ describe(`moyo cell → structure`, () => {
       [0, 5, 0],
       [0, 0, 5],
     ])
-    for (const param of [`a`, `b`, `c`] as const) {
-      expect(result.lattice[param]).toBeCloseTo(5, 5)
-    }
-    for (const angle of [`alpha`, `beta`, `gamma`] as const) {
-      expect(result.lattice[angle]).toBeCloseTo(90, 5)
-    }
+    const [length, angle] = [expect.closeTo(5, 5), expect.closeTo(90, 5)]
+    expect(result.lattice).toMatchObject({ a: length, b: length, c: length })
+    expect(result.lattice).toMatchObject({ alpha: angle, beta: angle, gamma: angle })
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`])
   })
 
@@ -109,21 +106,16 @@ describe(`moyo cell → structure`, () => {
       [26, 26], // Fe
     )
 
-    const result = to_structure(moyo_cell)
-
+    const { sites } = to_structure(moyo_cell)
     const expected_abc = [
       [0.2, 0.7, 0.5], // 1.2 -> 0.2, -0.3 -> 0.7, 0.5 stays
       [0.5, 0.7, 0.9], // 2.5 -> 0.5, 1.7 -> 0.7, -1.1 -> 0.9
     ]
-    result.sites.forEach((site, site_idx) => {
-      site.abc.forEach((coord, dim) =>
-        expect(coord).toBeCloseTo(expected_abc[site_idx][dim], 5),
-      )
-      // Cartesian coordinates match wrapped fractional * lattice
-      site.xyz.forEach((coord, dim) =>
-        expect(coord).toBeCloseTo(expected_abc[site_idx][dim] * 4, 5),
-      )
-    })
+    const close_to = (scale: number) =>
+      expected_abc.map((abc) => abc.map((coord) => expect.closeTo(coord * scale, 5)))
+    expect(sites.map((site) => site.abc)).toEqual(close_to(1))
+    // Cartesian coordinates match wrapped fractional * lattice
+    expect(sites.map((site) => site.xyz)).toEqual(close_to(4))
   })
 })
 

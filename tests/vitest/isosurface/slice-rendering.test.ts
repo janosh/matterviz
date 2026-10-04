@@ -19,17 +19,19 @@ const make_slice = () => ({
 describe(`slice rendering helpers`, () => {
   // Asymmetric fixtures so the three symmetric modes give distinguishable answers
   test.each([
-    [`auto`, [-1, 3], [-3, 3]], // signed data: centred on zero
-    [`auto`, [1, 3], [1, 3]], // positive-only data: left alone
-    [false, [-1, 3], [-1, 3]],
-    [true, [1, 3], [-3, 3]],
-  ] as const)(`symmetric=%s resolves %j to %j`, (symmetric, [min, max], expected) => {
-    expect(resolve_slice_color_range({ min, max }, undefined, symmetric)).toEqual(expected)
-  })
-
-  test(`honors an explicit color range`, () => {
-    expect(resolve_slice_color_range(make_slice(), [3, -1], `auto`)).toEqual([3, -1])
-  })
+    [`auto`, [-1, 3], undefined, [-3, 3]], // signed data: centred on zero
+    [`auto`, [1, 3], undefined, [1, 3]], // positive-only data: left alone
+    [false, [-1, 3], undefined, [-1, 3]],
+    [true, [1, 3], undefined, [-3, 3]],
+    [`auto`, [-2, 2], [3, -1], [3, -1]], // an explicit range wins as is
+  ] as const)(
+    `symmetric=%s resolves %j (explicit %j) to %j`,
+    (symmetric, [min, max], explicit, expected) => {
+      expect(
+        resolve_slice_color_range({ min, max }, explicit && [...explicit], symmetric),
+      ).toEqual(expected)
+    },
+  )
 
   test(`maps finite values to opaque sRGB, masked values to transparency, flipping rows into a reused buffer`, () => {
     const slice = make_slice()
@@ -116,7 +118,6 @@ describe(`contour_segments`, () => {
     const values = Float64Array.from({ length: width * height }, (_, idx) => {
       const [col, row] = [idx % width, Math.floor(idx / width)]
       if (field === `random`) return rng() * 2 - 1
-      if (field === `steps`) return Math.round(rng() * 4) / 4 - 0.5
       const wave = Math.sin(col / 4) * Math.cos(row / 5) + 0.3 * Math.sin((col + row) / 3)
       // masked pixels carry a below-every-level stand-in, as VolumeSlice fills them
       return field === `masked` && (col - 32) ** 2 + (row - 32) ** 2 > 28 ** 2 ? -9 : wave

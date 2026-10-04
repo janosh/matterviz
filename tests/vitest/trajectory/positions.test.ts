@@ -219,25 +219,24 @@ describe.each([false, true])(`step plausibility (numeric: %s)`, (numeric) => {
       { frame_stride },
     )
 
+  // [label, shift, coords_unwrapped, frame_stride, accepted]
+  // oxfmt-ignore
   it.each([
-    { label: `half-cell jump of wrapped coords`, shift: 5, unwrapped: false, stride: 1 },
-    { label: `half-cell jump of unwrapped coords`, shift: 5, unwrapped: true, stride: 1 },
-  ])(`rejects a $label`, async ({ shift, unwrapped, stride }) => {
-    await expect(collect(frames_with_shift(shift, unwrapped), stride)).rejects.toThrow(
-      /moved more than a quarter of the cell/,
-    )
-  })
-
-  it.each([
-    { label: `small step`, shift: 1, unwrapped: false, stride: 1 },
+    [`half-cell jump of wrapped coords`, 5, false, 1, false],
+    [`half-cell jump of unwrapped coords`, 5, true, 1, false],
+    [`small step`, 1, false, 1, true],
     // 9 A through the boundary is a 1 A minimum-image step for wrapped coordinates
-    { label: `wrap-around of wrapped coords`, shift: 9, unwrapped: false, stride: 1 },
+    [`wrap-around of wrapped coords`, 9, false, 1, true],
     // a stride weakens the bound, so unwrapped coordinates skip the check
-    { label: `strided unwrapped coords`, shift: 5, unwrapped: true, stride: 2 },
-  ])(`accepts a $label`, async ({ shift, unwrapped, stride }) => {
-    const stream = await collect(frames_with_shift(shift, unwrapped), stride)
-    expect(stream.n_frames).toBe(Math.ceil(3 / stride))
-  })
+    [`strided unwrapped coords`, 5, true, 2, true],
+  ] as const)(
+    `%s (shift %s, unwrapped %s, stride %s): accepted=%s`,
+    async (_label, shift, unwrapped, stride, accepted) => {
+      const collecting = collect(frames_with_shift(shift, unwrapped), stride)
+      if (accepted) expect((await collecting).n_frames).toBe(Math.ceil(3 / stride))
+      else await expect(collecting).rejects.toThrow(/moved more than a quarter of the cell/)
+    },
+  )
 })
 
 describe(`numeric position input`, () => {

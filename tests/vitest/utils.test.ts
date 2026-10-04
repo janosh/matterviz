@@ -73,21 +73,21 @@ describe(`parse_num_token / parse_leading_num`, () => {
 })
 
 describe(`decode_url_safe_base64`, () => {
+  const json = JSON.stringify({ lattice: [[1, 0, 0]], sites: [{ element: `Na` }] })
   test.each([
     [`dGVzdA`, `test`],
     [``, ``],
     // URL-safe: _ → /, - → +
     [`c3ViamVjdHM_`, `subjects?`],
     [`PDw_Pz4-`, `<<??>>`],
-    // invalid → undefined
+    // UTF-8 text, not one Latin-1 char per byte (atob alone gave `Ã\x85 Î±`)
+    [`w4UgzrE`, `Å α`],
+    // invalid → undefined, including bytes that are not UTF-8
     [`!!!not-base64!!!`, undefined],
+    [`__4`, undefined],
+    // realistic JSON structure payload
+    [btoa(json).replaceAll(`+`, `-`).replaceAll(`/`, `_`).replace(/=+$/, ``), json],
   ])(`decodes %s → %s`, (encoded, expected) => {
     expect(decode_url_safe_base64(encoded)).toBe(expected)
-  })
-
-  test(`decodes a realistic JSON structure payload`, () => {
-    const json = JSON.stringify({ lattice: [[1, 0, 0]], sites: [{ element: `Na` }] })
-    const url_safe = btoa(json).replaceAll('+', `-`).replaceAll('/', `_`).replace(/=+$/, ``)
-    expect(decode_url_safe_base64(url_safe)).toBe(json)
   })
 })

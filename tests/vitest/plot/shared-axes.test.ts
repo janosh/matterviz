@@ -52,26 +52,24 @@ describe(`shared range helpers`, () => {
 })
 
 describe(`max_side_padding`, () => {
-  it(`returns selected side-wise maxima and omits unshared sides`, () => {
-    expect(
-      max_side_padding(
-        [{ t: 5, b: 50, l: 80 }, { t: 20, b: 40, r: 30 }, { b: 60 }],
-        [`t`, `b`],
-      ),
-    ).toEqual({ t: 20, b: 60 })
-  })
-
-  it(`reconciles every side by default and preserves zero`, () => {
-    expect(
-      max_side_padding([
+  it.each([
+    [
+      `selected sides only, omitting unshared ones`,
+      [{ t: 5, b: 50, l: 80 }, { t: 20, b: 40, r: 30 }, { b: 60 }],
+      [`t`, `b`],
+      { t: 20, b: 60 },
+    ],
+    [
+      `every side by default, preserving zero`,
+      [
         { t: 0, l: 10 },
         { t: -2, r: 0 },
-      ]),
-    ).toEqual({
-      t: 0,
-      l: 10,
-      r: 0,
-    })
+      ],
+      undefined,
+      { t: 0, l: 10, r: 0 },
+    ],
+  ] as const)(`reconciles %s`, (_name, paddings, sides, expected) => {
+    expect(max_side_padding(paddings, sides)).toEqual(expected)
   })
 
   it(`rejects non-finite padding with its location`, () => {

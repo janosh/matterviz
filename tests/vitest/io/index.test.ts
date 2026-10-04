@@ -113,20 +113,20 @@ describe(`dropped_file_url`, () => {
     ({ dataTransfer: { getData: () => data } }) as unknown as DragEvent
 
   test.each([
-    [`no JSON data`, ``],
-    [`no URL in JSON`, JSON.stringify({ name: `test.json` })],
-    [`empty string URL`, JSON.stringify({ url: `` })],
+    [`no JSON data`, ``, undefined],
+    [`no URL in JSON`, JSON.stringify({ name: `test.json` }), undefined],
+    [`empty string URL`, JSON.stringify({ url: `` }), undefined],
     // Drop payloads are external input: truthy non-string urls must not reach fetch
-    [`numeric URL`, JSON.stringify({ url: 123 })],
-    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } })],
-    [`malformed JSON`, `invalid`],
-  ])(`%s → undefined`, (_, data) => {
-    expect(dropped_file_url(drag_event(data))).toBeUndefined()
-  })
-
-  test(`valid JSON with URL`, () => {
-    const data = JSON.stringify({ name: `test.json`, url: `https://example.com/test.json` })
-    expect(dropped_file_url(drag_event(data))).toBe(`https://example.com/test.json`)
+    [`numeric URL`, JSON.stringify({ url: 123 }), undefined],
+    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } }), undefined],
+    [`malformed JSON`, `invalid`, undefined],
+    [
+      `valid URL`,
+      JSON.stringify({ name: `t.json`, url: `https://x.com/t.json` }),
+      `https://x.com/t.json`,
+    ],
+  ])(`%s → %s`, (_, data, expected) => {
+    expect(dropped_file_url(drag_event(data))).toBe(expected)
   })
 })
 
@@ -144,25 +144,36 @@ describe(`load_from_url`, () => {
     return { received_content, received_filename, received_metadata }
   }
 
-  test(`text content`, async () => {
+  // A .bin URL without a known magic, a blob: URL (UUID basename) and extensionless VASP
+  // names all decode to text
+  const blob_uuid = `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`
+  test.each([
+    [`https://example.com/test.json`, `test.json`],
+    [`https://example.com/data.bin`, `data.bin`],
+    [`blob:http://localhost:5173/${blob_uuid}`, blob_uuid],
+    [`https://example.com/POSCAR`, `POSCAR`],
+    [`https://example.com/xdatcar`, `xdatcar`],
+  ])(`text from %s reaches the callback as %s`, async (url, filename) => {
     const { received_content, received_filename, received_metadata } = await load_test_url(
-      `https://example.com/test.json`,
-      `data`,
+      url,
+      `text content`,
       { 'content-type': `text/plain` },
     )
-    expect(received_content).toBe(`data`)
-    expect(received_filename).toBe(`test.json`)
-    expect(received_metadata).toEqual({
-      source_filename: `test.json`,
-      source_url: `https://example.com/test.json`,
-    })
-    expect(fetch).toHaveBeenCalledWith(`https://example.com/test.json`, { signal: undefined })
+    expect(received_content).toBe(`text content`)
+    expect(received_filename).toBe(filename)
+    expect(received_metadata).toEqual({ source_filename: filename, source_url: url })
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(url, { signal: undefined })
   })
 
-  // extension lists are unit-tested in io/is-binary.test.ts; .raw is Bruker/Rigaku XRD binary
-  test.each([`test.h5`, `scan.raw`])(`binary extension %s`, async (filename) => {
+  // extension lists are unit-tested in io/is-binary.test.ts; .raw is Bruker/Rigaku XRD binary.
+  // Pre-signed URL query strings must not hide the extension or leak into the filename.
+  test.each([
+    [`test.h5`, `test.h5`],
+    [`scan.raw`, `scan.raw`],
+    [`data.h5?sig=abc`, `data.h5`],
+  ])(`binary extension %s`, async (basename, filename) => {
     const { received_content, received_filename } = await load_test_url(
-      `https://example.com/${filename}`,
+      `https://example.com/${basename}`,
       new ArrayBuffer(8),
       { 'content-type': `application/octet-stream` },
     )
@@ -262,18 +273,6 @@ describe(`load_from_url`, () => {
     expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
-  test(`query string and hash are stripped before extension detection`, async () => {
-    // Pre-signed URLs like traj.h5?X-Amz-Expires=300 must still hit the binary
-    // path and not leak the query string into the callback filename
-    const { received_content, received_filename } = await load_test_url(
-      `https://example.com/data.h5?sig=abc`,
-      new ArrayBuffer(8),
-      { 'content-type': `application/octet-stream` },
-    )
-    expect(received_content).toBeInstanceOf(ArrayBuffer)
-    expect(received_filename).toBe(`data.h5`)
-  })
-
   // A .bin URL says nothing about the format, so the payload's magic bytes decide: known
   // binary signatures stay ArrayBuffer (byte for byte), anything else is decoded as text
   const binary_payload = (magic_bytes: number[]) =>
@@ -291,16 +290,6 @@ describe(`load_from_url`, () => {
     expect(await as_bytes(received_content)).toEqual(payload)
     expect(received_filename).toBe(`data.bin`)
     expect(globalThis.fetch).toHaveBeenCalledOnce()
-  })
-
-  test(`a .bin URL without a known magic decodes to text`, async () => {
-    const { received_content, received_filename } = await load_test_url(
-      `https://example.com/data.bin`,
-      `unknown format content`,
-      { 'content-type': `text/plain` },
-    )
-    expect(received_content).toBe(`unknown format content`)
-    expect(received_filename).toBe(`data.bin`)
   })
 
   test(`a rejecting callback rejects load_from_url itself`, async () => {
@@ -340,16 +329,6 @@ describe(`load_from_url`, () => {
     else expect(new TextDecoder().decode(await as_bytes(received_content))).toBe(`inner bytes`)
     expect(received_filename).toBe(expected_name)
     expect(globalThis.fetch).toHaveBeenCalledOnce()
-  })
-
-  test(`blob: object URL with text content passes UUID basename to callback`, async () => {
-    const xyz_content = `3\ncomment\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-    const { received_content, received_filename } = await load_test_url(
-      `blob:http://localhost:5173/8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`,
-      xyz_content,
-    )
-    expect(received_content).toBe(xyz_content)
-    expect(received_filename).toBe(`8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
   })
 
   test.each([
@@ -427,21 +406,6 @@ describe(`load_from_url`, () => {
       expect(received_filename).toBe(expected)
     })
   })
-
-  test.each([`POSCAR`, `xdatcar`])(
-    `recognizes extensionless VASP file %s as text`,
-    async (basename) => {
-      const poscar = `Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`
-      const { received_content, received_filename } = await load_test_url(
-        `https://example.com/${basename}`,
-        poscar,
-        { 'content-type': `text/plain` },
-      )
-      expect(received_content).toBe(poscar)
-      expect(received_filename).toBe(basename)
-      expect(globalThis.fetch).toHaveBeenCalledOnce()
-    },
-  )
 
   test(`awaits async callback`, async () => {
     const mock_response = new Response(`content`, {

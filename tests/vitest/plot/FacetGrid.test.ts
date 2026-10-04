@@ -63,14 +63,9 @@ const mount_grid = async (
       get panels() {
         return panel_state.get(`panels`) ?? []
       },
+      ...options,
       columns: options.columns ?? 1,
-      gap: options.gap,
-      axis_modes: options.axis_modes,
-      shared_bands: options.shared_bands,
       children: make_panel_snippet(context_getters),
-      title: options.title,
-      legend: options.legend,
-      color_bar: options.color_bar,
     },
   })
   mounted_grids.push({ component, target })
@@ -244,15 +239,14 @@ describe(`FacetGrid`, () => {
     await tick()
     const resolved_left = context_for(context_getters, `left`)
 
+    // echo the resolved layout back from both panels, as charts do after every resolve
     for (let report_idx = 0; report_idx < 20; report_idx++) {
-      context_for(context_getters, `left`).report_layout({
-        padding: { l: 80 },
-        ranges: { x: [0, 10] },
-      })
-      context_for(context_getters, `right`).report_layout({
-        padding: { l: 80 },
-        ranges: { x: [0, 10] },
-      })
+      for (const key of [`left`, `right`]) {
+        context_for(context_getters, key).report_layout({
+          padding: { l: 80 },
+          ranges: { x: [0, 10] },
+        })
+      }
       await tick()
     }
 
@@ -270,10 +264,7 @@ describe(`FacetGrid`, () => {
       gap: 10,
     })
     const initial_left = context_for(context_getters, `left`)
-    initial_left.report_layout({
-      padding: { l: 60 },
-      ranges: { x: [-2, 2] },
-    })
+    initial_left.report_layout({ padding: { l: 60 }, ranges: { x: [-2, 2] } })
     await tick()
     const report_layout = context_for(context_getters, `left`).report_layout
 

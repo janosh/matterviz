@@ -2,7 +2,7 @@ import type { SymmetryDataset } from '#lib/symmetry/index.js'
 import SymmetryStats from '#lib/symmetry/SymmetryStats.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, set_input } from '../setup'
 import { make_wyckoff_dataset } from '../test-fixtures'
 
 // Mock dataset: one H atom on Wyckoff `a`, space group 225, plus the given overrides
@@ -37,8 +37,7 @@ const mount_stats = (
 const get_symprec_input = () => doc_query<HTMLInputElement>(`.controls input[type="number"]`)
 // Type into the symprec field the way a user does: one input event per keystroke
 const type_symprec = (input: HTMLInputElement, value: string) => {
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(input, value)
   flushSync()
 }
 
@@ -78,27 +77,18 @@ describe(`SymmetryStats`, () => {
     })
 
     test.each([
-      {
-        symprec: 1e-5,
-        algo: `Moyo` as const,
-        expected_symprec: `0.00001`,
-        expected_algo: `Moyo`,
-      },
-      {
-        symprec: 1e-4,
-        algo: `Spglib` as const,
-        expected_symprec: `0.0001`,
-        expected_algo: `Spglib`,
-      },
-    ])(
-      `accepts custom settings: symprec=$symprec, algo=$algo`,
-      ({ symprec, algo, expected_symprec, expected_algo }) => {
-        mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo } })
-        flushSync()
-        expect(get_symprec_input().value).toBe(expected_symprec)
-        expect(doc_query<HTMLSelectElement>(`.controls select`).value).toBe(expected_algo)
-      },
-    )
+      [1e-5, `Moyo`],
+      [1e-4, `Spglib`],
+      [1e-10, `Moyo`],
+      [1e-2, `Spglib`],
+      [0.5, `Moyo`],
+      [1.0, `Moyo`],
+    ] as const)(`accepts custom settings: symprec=%f, algo=%s`, (symprec, algo) => {
+      mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo } })
+      flushSync()
+      expect(Number(get_symprec_input().value)).toBeCloseTo(symprec, 12)
+      expect(doc_query<HTMLSelectElement>(`.controls select`).value).toBe(algo)
+    })
 
     // Mount with a tracked bindable settings prop and return the symprec input plus
     // a live view of how often the component reassigned settings
@@ -118,16 +108,11 @@ describe(`SymmetryStats`, () => {
     }
 
     test(`symprec uses oninput for immediate updates`, () => {
-      // Verifies symprec input triggers updates while typing.
       const { state, symprec_input } = mount_with_tracked_settings()
-
-      // Simulate typing (input events should trigger updates)
-      for (const val of [`0.0`, `0.00`, `0.001`]) {
-        type_symprec(symprec_input, val)
-      }
+      for (const val of [`0.0`, `0.00`, `0.001`]) type_symprec(symprec_input, val)
       expect(state.update_count).toBe(3)
 
-      // Change event no longer drives the update.
+      // Change event no longer drives the update
       symprec_input.dispatchEvent(new Event(`change`, { bubbles: true }))
       flushSync()
       expect(state.update_count).toBe(3)
@@ -149,10 +134,7 @@ describe(`SymmetryStats`, () => {
       `symprec step follows order of magnitude for $symprec_input_value`,
       ({ symprec_input_value, expected_step }) => {
         mount_stats()
-
         const symprec_input = get_symprec_input()
-        expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
-
         type_symprec(symprec_input, symprec_input_value)
         expect(Number(symprec_input.step)).toBeCloseTo(expected_step, 12)
       },
@@ -216,32 +198,29 @@ describe(`SymmetryStats`, () => {
       expect(doc_query(`.stats-grid`).textContent).toContain(expected)
     })
 
+    // The number → system mapping is pinned in spacegroups.test.ts; this covers the tile's
+    // lattice-system suffix, shown only where it differs from the crystal system (trigonal)
     test.each([
-      [1, `triclinic`],
-      [15, `monoclinic`],
-      [74, `orthorhombic`],
-      [142, `tetragonal`],
-      [167, `trigonal`],
-      [194, `hexagonal`],
-      [225, `cubic`],
-    ] as const)(`space group %d → %s crystal system`, (space_group, crystal_system) => {
+      [225, `Crystal System cubic`],
+      [167, `Crystal System trigonal (rhombohedral lattice)`],
+      [143, `Crystal System trigonal (hexagonal lattice)`],
+    ] as const)(`space group %d → %s tile`, (space_group, expected) => {
       mount_stats({ sym_data: create_mock_sym_data({ number: space_group }) })
-      expect(doc_query(`.stats-grid`).textContent).toContain(crystal_system)
+      const tiles = Array.from(document.querySelectorAll(`.stats-grid > div`)).map((tile) =>
+        tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
+      )
+      expect(tiles).toContain(expected)
     })
   })
 
   describe(`Operations summary section`, () => {
     test.each([
       {
-        desc: `default ops (3 total)`,
-        operations: undefined, // use default
-        expected: { total: `3`, patterns: [`1T`, `1R`, `1RT`] },
+        desc: `default ops (identity counts as R)`,
+        operations: undefined,
+        expected: `3 (1T + 1R + 1RT)`,
       },
-      {
-        desc: `empty ops`,
-        operations: [],
-        expected: { total: `0`, patterns: [`0T`, `0R`, `0RT`] },
-      },
+      { desc: `empty ops`, operations: [], expected: `0 (0T + 0R + 0RT)` },
       {
         desc: `1T + 1R + 1RT`,
         operations: [
@@ -249,52 +228,25 @@ describe(`SymmetryStats`, () => {
           { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1], translation: [0.0, 0.0, 0.0] }, // rotation
           { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1], translation: [0.5, 0.0, 0.0] }, // roto-translation
         ] as SymmetryDataset[`operations`],
-        expected: { total: `3`, patterns: [`1T`, `1R`, `1RT`] },
+        expected: `3 (1T + 1R + 1RT)`,
       },
     ])(`$desc`, ({ operations, expected }) => {
-      const sym_data =
-        operations === undefined
-          ? create_mock_sym_data()
-          : create_mock_sym_data({ operations })
-      mount_stats({ sym_data })
-
-      const text = doc_query(`.sym-ops-summary`).textContent || ``
-      expect(text).toContain(expected.total)
-      for (const pattern of expected.patterns) {
-        expect(text).toMatch(new RegExp(pattern))
-      }
+      mount_stats({ sym_data: create_mock_sym_data(operations && { operations }) })
+      const text = doc_query(`.sym-ops-summary`).textContent?.replaceAll(/\s+/g, ` `).trim()
+      expect(text).toBe(`Total sym ops: ${expected}`)
     })
   })
 
   describe(`Tooltips`, () => {
     test.each([
-      {
-        show_tooltips: true,
-        symprec_contains: `Symmetry precision`,
-        algo_contains: `Moyo`,
-      },
-      { show_tooltips: false, symprec_contains: ``, algo_contains: `` },
-    ])(
-      `show_tooltips=$show_tooltips`,
-      ({ show_tooltips, symprec_contains, algo_contains }) => {
-        mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
-
-        const symprec_title = doc_query(`.controls label:has(input[type="number"]) span`).title
-        const algo_title = doc_query(`.controls label:has(select) span`).title
-
-        if (show_tooltips) {
-          expect(symprec_title).toContain(symprec_contains)
-          expect(algo_title).toContain(algo_contains)
-        } else {
-          expect(symprec_title).toBe(``)
-          expect(algo_title).toBe(``)
-        }
-      },
-    )
-  })
-
-  test.each([1e-10, 1e-2, 0.5, 1.0])(`accepts extreme symprec: %f`, (symprec) => {
-    mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo: `Moyo` } })
-    expect(Number(get_symprec_input().value)).toBeCloseTo(symprec, 10)
+      { show_tooltips: true, symprec_title: /Symmetry precision/, algo_title: /Moyo/ },
+      { show_tooltips: false, symprec_title: /^$/, algo_title: /^$/ },
+    ])(`show_tooltips=$show_tooltips`, ({ show_tooltips, symprec_title, algo_title }) => {
+      mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
+      expect(doc_query(`.controls label:has(input[type="number"]) span`).title).toMatch(
+        symprec_title,
+      )
+      expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
+    })
   })
 })

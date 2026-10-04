@@ -325,6 +325,13 @@ describe(`XDATCAR`, () => {
     expect([lattice_a, lattice_b, lattice_c]).toEqual(expected_abc)
   })
 
+  // VASP 6 writes POTCAR-style species (`Si_GW/abc123`); POSCAR already strips the suffix
+  it(`reads POTCAR-suffixed species like POSCAR does`, async () => {
+    const frames = [1, 2].map((step) => config(step, `0 0 0`, `0.5 0.5 0.5`))
+    const run = await open(xdatcar(`Si_GW/abc123 O_h\n1 1`, frames), `XDATCAR`)
+    expect(elements_of(run.preview)).toEqual([`Si`, `O`])
+  })
+
   // A writer still appending leaves a frame with missing lines or a half-written last
   // line: only that final frame is dropped, with a warning that says what was lost
   // oxfmt-ignore
@@ -499,6 +506,8 @@ describe(`vasprun.xml`, () => {
     // POTIM is only a time step for MD (IBRION = 0)
     expect(run.time_step).toBeUndefined()
     expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `6.4.2`, mass_unit: `amu` })
+    // recognised by content when the filename gives no hint
+    expect((await open(vasprun(two_steps))).provenance.format).toBe(`vasprun`)
   })
 
   it(`treats POTIM as the MD time step and keeps thermostat energies for IBRION = 0`, async () => {
@@ -524,12 +533,6 @@ describe(`vasprun.xml`, () => {
     const frame = await materialize_frame_result(run.read_frame(2))
     expect(frame.metadata).not.toHaveProperty(`forces`)
     expect(frame.structure.sites[0].properties?.force).toBeUndefined()
-  })
-
-  it(`is recognised by content when the filename gives no hint`, async () => {
-    const run = await open(vasprun(two_steps))
-    expect(run.provenance.format).toBe(`vasprun`)
-    expect(run.frame_count).toBe(2)
   })
 
   // oxfmt-ignore
@@ -687,6 +690,8 @@ describe(`OUTCAR`, () => {
     expect(run.atom_masses).toEqual([28.085, 15.999, 15.999])
     expect(run.time_step).toBeUndefined()
     expect(run.metadata).toMatchObject({ ibrion: 2, vasp_version: `vasp.6.4.2` })
+    // recognised by content when the filename gives no hint
+    expect((await open(relaxation)).provenance.format).toBe(`outcar`)
   })
 
   it(`reads MD thermostat lines, ML-labelled tables and POTIM as the time step`, async () => {
@@ -696,16 +701,15 @@ describe(`OUTCAR`, () => {
     ].join(`\n`)
     const run = await open(content, `md/OUTCAR`)
     expect(run.time_step).toEqual({ value: 1.5, unit: `fs` })
-    expect((await materialize_frame_result(run.read_frame(0))).metadata).toMatchObject({
+    const { metadata } = await materialize_frame_result(run.read_frame(0))
+    expect(metadata).toMatchObject({
       energy: -20,
       energy_wo_entropy: -19.999,
       kinetic_energy: 0.25,
       temperature: 300.5,
       total_energy: -19.75,
     })
-    expect((await materialize_frame_result(run.read_frame(0))).metadata).not.toHaveProperty(
-      `n_scf_steps`,
-    )
+    expect(metadata).not.toHaveProperty(`n_scf_steps`)
   })
 
   it(`falls back to the POTCAR echo for species when VRHFIN lines are absent`, async () => {
@@ -725,12 +729,6 @@ describe(`OUTCAR`, () => {
     expect(run.warnings).toEqual([
       expect.stringContaining(`Dropping truncated final OUTCAR frame 3`),
     ])
-  })
-
-  it(`is recognised by content when the filename gives no hint`, async () => {
-    const run = await open(relaxation)
-    expect(run.provenance.format).toBe(`outcar`)
-    expect(run.frame_count).toBe(2)
   })
 
   // oxfmt-ignore
@@ -1051,18 +1049,11 @@ describe(`LAMMPS`, () => {
     [`mass only`, `id mass x y z`, [`1 28.0855 0 0 0`, `2 15.999 1 1 1`], [`Si`, `O`], 0],
     [`element column over mass`, `id element mass x y z`, [`1 Ge 28.0855 0 0 0`, `2 O 15.999 1 1 1`], [`Ge`, `O`], 0],
     [`coarse-grained mass falls back to type`, `id type mass x y z`, [`1 1 72.0 0 0 0`, `2 2 15.999 1 1 1`], [`H`, `O`], 1],
-  ] as const)(`resolves elements from a mass column: %s`, async (_name, cols, atom_lines, expected, n_warnings) => {
+    [`case-mangled element column`, `id element x y z`, [`1 FE 0 0 0`, `2 si 1 0 0`], [`Fe`, `Si`], 0],
+  ] as const)(`resolves elements from a mass or element column: %s`, async (_name, cols, atom_lines, expected, n_warnings) => {
     const run = await open(lammps_frame(cols, [...atom_lines]), `m.lammpstrj`, { atom_type_mapping: undefined })
     expect(elements_of(run.preview)).toEqual(expected)
     expect(run.warnings).toHaveLength(n_warnings)
-  })
-
-  it(`reads a case-mangled element column`, async () => {
-    const run = await open(
-      lammps_frame(`id element x y z`, [`1 FE 0 0 0`, `2 si 1 0 0`]),
-      `e.lammpstrj`,
-    )
-    expect(elements_of(run.preview)).toEqual([`Fe`, `Si`])
   })
 
   describe(`triclinic boxes`, () => {

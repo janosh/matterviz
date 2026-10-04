@@ -18,17 +18,11 @@ test(`merge_hull_config overrides defaults and merges colors one level deep`, ()
   })
 })
 
-describe(`arity helpers`, () => {
+test(`get_arity counts positive amounts only, is_unary_entry matches arity 1`, () => {
   const make = (composition: Record<string, number>) => ({ composition }) as PhaseData
-
-  test(`get_arity counts positive amounts only`, () => {
-    expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)
-  })
-
-  test(`is_unary_entry matches arity 1`, () => {
-    expect(is_unary_entry(make({ A: 1 }))).toBe(true)
-    expect(is_unary_entry(make({ A: 1, B: 1 }))).toBe(false)
-  })
+  expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)
+  expect(is_unary_entry(make({ A: 1, B: 0 }))).toBe(true)
+  expect(is_unary_entry(make({ A: 1, B: 1 }))).toBe(false)
 })
 
 describe(`is_on_hull`, () => {
@@ -47,7 +41,6 @@ describe(`is_on_hull`, () => {
     [{ is_stable: false, e_above_hull: 0 }, false, `is_stable false overrides e_above_hull`],
     [{}, false, `neither is_stable nor e_above_hull set`],
     [{ is_stable: false }, false, `is_stable false, no e_above_hull`],
-    [{ e_above_hull: undefined }, false, `e_above_hull undefined`],
     [{ exclude_from_hull: true, is_stable: true }, false, `excluded overrides is_stable`],
     [
       { exclude_from_hull: true, e_above_hull: 0 },
@@ -60,15 +53,13 @@ describe(`is_on_hull`, () => {
       `excluded with both`,
     ],
     [{ exclude_from_hull: false, is_stable: true }, true, `not excluded, stable`],
-  ] as [Partial<PhaseData>, boolean, string][])(`%o → %s (%s)`, (overrides, expected) => {
-    expect(is_on_hull(make(overrides))).toBe(expected)
-  })
-
-  test(`custom tolerance overrides default`, () => {
-    const entry = make({ e_above_hull: 0.05 })
-    expect(is_on_hull(entry)).toBe(false)
-    expect(is_on_hull(entry, 0.1)).toBe(true)
-  })
+    [{ e_above_hull: 0.05 }, true, `custom tolerance 0.1 overrides default`, 0.1],
+  ] as [Partial<PhaseData>, boolean, string, number?][])(
+    `%o → %s (%s)`,
+    (overrides, expected, _desc, tol) => {
+      expect(is_on_hull(make(overrides), tol)).toBe(expected)
+    },
+  )
 })
 
 describe(`compute_hull_stability`, () => {

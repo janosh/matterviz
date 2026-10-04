@@ -208,10 +208,14 @@ export function parse_vasp_header(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
     } else if (strict_species) {
-      // Keep the invalid value in the error, including an empty symbol.
-      const invalid = raw_symbols.find((symbol) => !is_elem_symbol(symbol))
-      if (invalid !== undefined) return fail(`Invalid element symbol in ${format}: ${invalid}`)
-      elements = raw_symbols as ElementSymbol[]
+      // POTCAR suffixes (`Si_GW`, `Fe/abc123` in VASP 6 headers) are dropped like in POSCAR;
+      // the error keeps the raw value, including an empty symbol
+      const cleaned = raw_symbols.map((symbol) => symbol.split(/[_/]/)[0])
+      const invalid_idx = cleaned.findIndex((symbol) => !is_elem_symbol(symbol))
+      if (invalid_idx !== -1) {
+        return fail(`Invalid element symbol in ${format}: ${raw_symbols[invalid_idx]}`)
+      }
+      elements = cleaned as ElementSymbol[]
     } else {
       elements = raw_symbols.map((symbol, idx) => validate_element_symbol(symbol, idx))
     }

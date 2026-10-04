@@ -10,7 +10,7 @@ import type {
 } from '#lib/synthesis-planning/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, install_stub_worker } from '../setup'
+import { bind_props, doc_query, install_stub_worker, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
@@ -51,8 +51,7 @@ test(
     const calls = hull_compute.mock.calls.length
     expect(calls).toBeGreaterThan(0)
     const choice = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
-    choice.value = `1100`
-    choice.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(choice, `1100`)
     await tick()
     expect(hull_compute).toHaveBeenCalledTimes(calls)
   },
@@ -90,16 +89,14 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     expect(document.querySelector(`.detail`)).not.toBeNull()
   })
   const temperature = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
-  temperature.value = `1100`
-  temperature.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(temperature, `1100`)
   await tick()
   const route_id = state.plan?.routes[0].id
   expect(state.plan?.routes[0].recipe.assumptions.temperature_K).toBe(`1100`)
   const mass_input = document.querySelector<HTMLInputElement>(`.recipe-card header input`)
   expect(mass_input).not.toBeNull()
   if (!mass_input) return
-  mass_input.value = `2`
-  mass_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(mass_input, `2`)
   await tick()
 
   expect(stub.posted).toHaveLength(1)
@@ -116,8 +113,7 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   const shortlist = [alternative.id, ...state.shortlist_ids]
   state.shortlist_ids = shortlist
   const slider = doc_query<HTMLInputElement>(`input[type="range"]`)
-  slider.value = `1000`
-  slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(slider, `1000`)
   await tick()
   // the plan follows the slider while it moves, not once it is released
   expect(state.conditions.temperature).toBe(1000)
@@ -242,8 +238,7 @@ test(`experiment cards edit and copy each firing without losing quantities or as
   for (const [idx, label] of holds.entries()) {
     const input = label.querySelector(`input`)
     if (!input) throw new Error(`Missing hold field`)
-    input.value = `${idx + 4}`
-    input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(input, `${idx + 4}`)
   }
   await tick()
   expect(props.route.intermediate_step?.recipe.assumptions.hold_hours).toBe(`4`)
@@ -251,15 +246,13 @@ test(`experiment cards edit and copy each firing without losing quantities or as
   const original_mass = Number(doc_query(`.recipe-step tr.target td:nth-child(3)`).textContent)
   const mass_input = doc_query<HTMLInputElement>(`input[aria-label="Target mass (g)"]`)
   for (const value of [``, `0`, `-1`]) {
-    mass_input.value = value
-    mass_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(mass_input, value)
     await tick()
     expect(props.target_mass_g).toBe(1)
     expect(document.querySelectorAll(`.recipe-step`)).toHaveLength(2)
     expect(doc_query(`[role="alert"]`).textContent).toContain(`greater than zero`)
   }
-  mass_input.value = `2`
-  mass_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(mass_input, `2`)
   await tick()
   expect(Number(doc_query(`.recipe-step tr.target td:nth-child(3)`).textContent)).toBeCloseTo(
     original_mass * 2,

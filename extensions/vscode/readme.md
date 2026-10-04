@@ -146,7 +146,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 }
 ```
 
-`matterviz.trajectory.index_above_bytes` (default 25 MB) is the single large-file threshold: XYZ/EXTXYZ and ASE `.traj` files above it are indexed and decoded frame by frame on demand instead of being materialised up front. It replaces the former `bin_file_threshold`, `text_file_threshold` and `use_indexing` settings.
+`matterviz.trajectory.index_above_bytes` (default 25 MB) is the single large-file threshold: XYZ/EXTXYZ, XDATCAR and LAMMPS dump files above it are indexed and decoded frame by frame on demand instead of being materialised up front. ASE `.traj` files are always indexed.
 
 ### Setting Categories
 
@@ -214,14 +214,11 @@ vsce package  # creates .vsix for local install
 
 ### Publishing
 
-Publish to both [Open VSX](https://open-vsx.org/extension/janosh/matterviz) and [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz):
+[Open VSX](https://open-vsx.org/extension/janosh/matterviz) is published by `.github/workflows/publish.yml` on release; only the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz) upload is manual:
 
 ```bash
 cd extensions/vscode
 npm run package
-
-# Open VSX (token at ~/.config/matterviz/ovsx-token)
-npx ovsx publish matterviz-*.vsix -p $(cat ~/.config/matterviz/ovsx-token)
 
 # VS Code Marketplace (requires `brew install azure-cli` for auth)
 az login --allow-no-subscriptions --scope https://app.vssps.visualstudio.com/.default

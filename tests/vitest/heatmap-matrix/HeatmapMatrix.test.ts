@@ -57,13 +57,15 @@ const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
 const get_x_labels = () => query_all(`.x-label`)
 const get_y_labels = () => query_all(`.y-label`)
+const cell_at = (x_idx: number, y_idx: number) =>
+  doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 // color_scale whose red channel reads back the normalized position on the ramp
 const red_scale = (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`
 const red_of = (cell: HTMLElement) => Number(/\d+/.exec(cell.style.backgroundColor)?.[0])
 
 describe(`HeatmapMatrix rendering`, () => {
-  test(`renders cells, labels, corner, data attributes, and CSS vars`, () => {
-    mount_matrix()
+  test(`renders cells, labels, corner, data attributes, class, gap and CSS vars`, () => {
+    mount_matrix({ class: `my-matrix`, gap: `2px` })
     // 3x3 = 9 cells
     const cells = get_data_cells()
     expect(cells).toHaveLength(9)
@@ -85,10 +87,11 @@ describe(`HeatmapMatrix rendering`, () => {
     expect(first.dataset.y).toBe(`0`)
     expect(last.dataset.x).toBe(`2`)
     expect(last.dataset.y).toBe(`2`)
-    // CSS variables
     const container = doc_query(`.grid`)
     expect(container.style.getPropertyValue(`--n-cols`)).toBe(`3`)
     expect(container.style.getPropertyValue(`--n-rows`)).toBe(`3`)
+    expect(container.classList.contains(`my-matrix`)).toBe(true)
+    expect(container.style.gap).toBe(`2px`)
   })
 
   test.each([
@@ -104,13 +107,6 @@ describe(`HeatmapMatrix rendering`, () => {
       expect(document.querySelectorAll(`.corner`)).toHaveLength(0)
     },
   )
-
-  test(`applies custom class and gap via props`, () => {
-    mount_matrix({ class: `my-matrix`, gap: `2px` })
-    const container = doc_query(`.grid`)
-    expect(container.classList.contains(`my-matrix`)).toBe(true)
-    expect(container.style.gap).toBe(`2px`)
-  })
 })
 
 describe(`axis replacement`, () => {
@@ -167,32 +163,22 @@ describe(`values and colors`, () => {
     expect(get_data_cells().map(red_of)).toEqual([0, 128, 255, 64, 191, 0, 255, 0, 128])
   })
 
-  test(`null values get the missing color, non-null values don't`, () => {
+  test(`missing color, label and style decorate only null cells`, () => {
     mount_matrix({
       x: [`A`, `B`, `C`],
       y: [`X`],
       values: [[null, 1, null]],
-      missing: { color: `red` },
+      missing: { color: `red`, label: `N/A`, style: `opacity: 0.4` },
     })
     const cells = get_data_cells()
-    expect(cells[0].style.backgroundColor).toBe(`red`)
+    for (const idx of [0, 2]) {
+      expect(cells[idx].style.backgroundColor).toBe(`red`)
+      expect(cells[idx].textContent?.trim()).toBe(`N/A`)
+      expect(cells[idx].style.opacity).toBe(`0.4`)
+      expect(cells[idx].style.color).toBe(``)
+    }
+    // B=1 is present -> regular color, no label, not dimmed
     expect(cells[1].style.backgroundColor).not.toBe(`red`)
-    expect(cells[2].style.backgroundColor).toBe(`red`)
-  })
-
-  test(`missing.label and missing.style decorate only missing cells`, () => {
-    mount_matrix({
-      x: [`A`, `B`],
-      y: [`X`],
-      values: [[null, 1]],
-      missing: { label: `N/A`, style: `opacity: 0.4` },
-    })
-    const cells = get_data_cells()
-    // A=null is missing -> label + dimmed
-    expect(cells[0].textContent?.trim()).toBe(`N/A`)
-    expect(cells[0].style.opacity).toBe(`0.4`)
-    expect(cells[0].style.color).toBe(``)
-    // B=1 is present -> no label, not dimmed
     expect(cells[1].textContent).not.toContain(`N/A`)
     expect(cells[1].style.opacity).toBe(``)
   })
@@ -345,31 +331,21 @@ describe(`values and colors`, () => {
 })
 
 describe(`click and dblclick handlers`, () => {
-  test(`on_click receives correct CellContext`, () => {
+  test.each([
+    [`on_click`, `click`],
+    [`on_double_click`, `dblclick`],
+  ] as const)(`%s receives the CellContext of a %s`, (prop, event_type) => {
     const handler = vi.fn()
-    mount_matrix({
-      values: numbered_values,
-      on_click: handler,
+    mount_matrix({ values: numbered_values, [prop]: handler })
+    cell_at(1, 2).dispatchEvent(mouse(event_type))
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler.mock.calls[0][0]).toMatchObject({
+      x_idx: 1,
+      y_idx: 2,
+      value: 8,
+      x_item: { label: `B` },
+      y_item: { label: `Z` },
     })
-    // Click cell at x=1, y=2 (value=8)
-    const cell = get_data_cells()[7]
-    expect(cell.dataset.x).toBe(`1`)
-    expect(cell.dataset.y).toBe(`2`)
-    cell.click()
-    expect(handler).toHaveBeenCalledOnce()
-    const ctx = handler.mock.calls[0][0]
-    expect(ctx).toMatchObject({ x_idx: 1, y_idx: 2, value: 8 })
-    expect(ctx.x_item.label).toBe(`B`)
-    expect(ctx.y_item.label).toBe(`Z`)
-  })
-
-  test(`on_double_click receives correct CellContext`, () => {
-    const handler = vi.fn()
-    mount_matrix({ values: [[10, 20, 30]], on_double_click: handler })
-    const cell = doc_query(`.cell:not(.empty)`)
-    cell.dispatchEvent(mouse(`dblclick`))
-    expect(handler).toHaveBeenCalledOnce()
-    expect(handler.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
   })
 
   test(`disambiguates click vs dblclick when both handlers are set`, () => {
@@ -434,16 +410,16 @@ describe(`click and dblclick handlers`, () => {
       on_click: () => {},
     })
     await tick()
-    const start = doc_query(`.cell[data-x="1"][data-y="1"]`)
+    const start = cell_at(1, 1)
     start.focus()
     const arrow_right = keydown(`ArrowRight`, { cancelable: true })
     start.dispatchEvent(arrow_right)
     expect(arrow_right.defaultPrevented).toBe(true)
     await tick()
-    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="1"]`))
+    expect(document.activeElement).toBe(cell_at(0, 1))
     document.activeElement?.dispatchEvent(keydown(`ArrowDown`))
     await tick()
-    expect(document.activeElement).toBe(doc_query(`.cell[data-x="0"][data-y="0"]`))
+    expect(document.activeElement).toBe(cell_at(0, 0))
   })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
@@ -465,33 +441,23 @@ describe(`click and dblclick handlers`, () => {
   })
 })
 
-describe(`edge cases`, () => {
-  test.each([
-    {
-      desc: `4x2 asymmetric`,
-      x: [`A`, `B`, `C`, `D`],
-      y: [`X`, `Y`],
-      symmetric: false,
-      data: 8,
-      empty: 0,
-    },
-    {
-      desc: `1x1 symmetric`,
-      x: [`A`],
-      y: [`A`],
-      symmetric: `lower`,
-      data: 1,
-      empty: 0,
-    },
-  ] as const)(
-    `$desc renders $data data cells and $empty empty cells`,
-    ({ x: coord_x, y: coord_y, symmetric, data, empty }) => {
-      mount_matrix({ x: coord_x, y: coord_y, symmetric })
-      expect(get_data_cells()).toHaveLength(data)
-      expect(get_empty_cells()).toHaveLength(empty)
-    },
-  )
-})
+test.each([
+  {
+    desc: `4x2 asymmetric`,
+    x: [`A`, `B`, `C`, `D`],
+    y: [`X`, `Y`],
+    symmetric: false,
+    data: 8,
+  },
+  { desc: `1x1 symmetric`, x: [`A`], y: [`A`], symmetric: `lower`, data: 1 },
+] as const)(
+  `$desc renders $data data cells and no empty cells`,
+  ({ desc: _desc, data, ...props }) => {
+    mount_matrix(props)
+    expect(get_data_cells()).toHaveLength(data)
+    expect(get_empty_cells()).toHaveLength(0)
+  },
+)
 
 describe(`hide_empty`, () => {
   // 3x3 grid where column B and row Y are entirely null; x_order renders C B A as A B C
@@ -631,11 +597,6 @@ describe(`milestone feature props`, () => {
     expect(get_y_labels()[0].textContent?.trim()).toBe(`X`)
   })
 
-  test(`show_color_bar renders color bar with label`, () => {
-    mount_matrix({ show_color_bar: true, color_bar_label: `Custom` })
-    expect(doc_query(`.color-bar .label`).textContent).toContain(`Custom`)
-  })
-
   // HeatmapMatrix binds show_color_bar/color_bar_position into its controls pane, so both must
   // be $bindable - a plain prop drops the checkbox/select writes (and fails to compile).
   // The `log` shorthand only sets normalize when it changes, so the select can still undo it.
@@ -674,15 +635,17 @@ describe(`milestone feature props`, () => {
     expect(state.show_color_bar).toBe(false)
   })
 
-  test(`color_bar_format passes through to format_num`, () => {
+  test(`show_color_bar renders a color bar with color_bar_label and color_bar_format`, () => {
     mount_matrix({
       x: [`A`],
       y: [`X`],
       values: [[1.234]],
       show_color_bar: true,
+      color_bar_label: `Custom`,
       color_bar_format: `.1f`,
       color_scale_range: [1.234, 1.234],
     })
+    expect(doc_query(`.color-bar .label`).textContent).toContain(`Custom`)
     const tick_text = Array.from(document.querySelectorAll(`.color-bar .tick-label`))
       .map((item) => item.textContent?.trim())
       .find(Boolean)
@@ -691,31 +654,18 @@ describe(`milestone feature props`, () => {
 
   test(`selection_mode multi updates selected class on click`, async () => {
     const select_handler = vi.fn()
-    mount_matrix({
-      selection_mode: `multi`,
-      values: [[1, 2, 3]],
-      on_select: select_handler,
-    })
+    mount_matrix({ selection_mode: `multi`, values: [[1, 2, 3]], on_select: select_handler })
     const cells = get_data_cells()
-    cells[0].dispatchEvent(mouse(`click`, { ctrlKey: true }))
-    await tick()
-    expect(cells[0].classList.contains(`selected`)).toBe(true)
-    cells[1].dispatchEvent(mouse(`click`, { ctrlKey: true }))
-    await tick()
-    expect(cells[1].classList.contains(`selected`)).toBe(true)
-    // Both cells selected, handler receives exact array
-    const last_selection = select_handler.mock.calls.at(-1)?.[0] as
-      | { x_idx: number; y_idx: number }[]
-      | undefined
-    expect(last_selection).toHaveLength(2)
-    expect(last_selection).toEqual([
+    for (const cell of cells.slice(0, 2)) {
+      cell.dispatchEvent(mouse(`click`, { ctrlKey: true }))
+      await tick()
+      expect(cell.classList.contains(`selected`)).toBe(true)
+    }
+    expect(select_handler.mock.calls.at(-1)?.[0]).toEqual([
       { x_idx: 0, y_idx: 0 },
       { x_idx: 1, y_idx: 0 },
     ])
   })
-
-  const cell_at = (x_idx: number, y_idx: number) =>
-    doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 
   // Shift+click spans the rectangle from the last selected cell (cells listed as x:y); the
   // hidden triangle of a symmetric matrix and columns filtered out by the search are left out
@@ -954,8 +904,6 @@ describe(`virtualization`, () => {
     [
       ...new Set(query_all(`.cell[data-x]`).map((cell) => Number(cell.dataset[axis]))),
     ].toSorted((left, right) => left - right)
-  const cell_at = (x_idx: number, y_idx: number) =>
-    document.querySelector<HTMLElement>(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 
   // Stepping off the edge of the window lands on a cell that has no DOM node yet, so the
   // component has to scroll it in and wait for the re-render. Focusing without that simply
@@ -980,7 +928,6 @@ describe(`virtualization`, () => {
     const fixed_axis = axis === `x` ? `y` : `x`
     const fixed = rendered_idxs(fixed_axis)[1] // safely inside the other axis's window
     const start = axis === `x` ? cell_at(from, fixed) : cell_at(fixed, from)
-    if (!start) throw new Error(`edge cell ${from} was not rendered`)
     start.focus()
     start.dispatchEvent(keydown(key))
     await tick()

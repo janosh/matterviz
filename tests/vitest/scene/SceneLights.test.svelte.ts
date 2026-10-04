@@ -1,5 +1,4 @@
-// SceneLights replaced per-scene light rigs; each scene passes the positions it used to
-// render with, so the props must reach the Threlte nodes unchanged.
+// Each scene passes its own light positions, so the props must reach the Threlte nodes unchanged
 import SceneLights from '#lib/scene/SceneLights.svelte'
 import { DEFAULTS } from '#lib/settings.js'
 import { mount, unmount } from 'svelte'

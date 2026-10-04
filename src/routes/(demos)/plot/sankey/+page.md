@@ -136,7 +136,7 @@ its depth from the sources.
 
 ## Orientation, alignment and link coloring
 
-All layout knobs are reactive props (also exposed in the settings pane): `orientation`, `node_align`, `node_width`, `node_padding`, `link_opacity`, `link_color_mode` (`source` | `target` | `gradient` | `static`) and `show_node_labels`.
+Layout knobs are reactive props, also exposed in the settings pane: `orientation`, `node_align`, `node_width`, `node_padding`, `link_opacity`, `show_node_labels`, `min_fraction` and `max_links`. `link_color_mode` (`source` | `target` | `gradient` | `static`) is a prop only.
 
 ```svelte example
 <script lang="ts">

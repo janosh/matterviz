@@ -25,7 +25,6 @@ const mp_2_struct = structure_map.get(`mp-2`) as Crystal
 const mp_1204603_struct = structure_map.get(`mp-1204603`) as Crystal
 const tl_bi_se2_struct = structure_map.get(`TlBiSe2-highly-oblique-cell`) as Crystal
 
-// Helpers to reduce duplication while preserving coverage
 function assert_xyz_matches_lattice(
   lattice_matrix: Matrix3x3,
   frac: Vec3,
@@ -333,15 +332,8 @@ test.each(lattices)(
     // the corner atom has replicas in every +a/+b/+c combination; the center atom is beyond the
     // face tolerance so gets no boundary images (bond-completing ones are allowed)
     const corner_xyz = image_atoms.filter(([idx]) => idx === 0).map(([, xyz]) => xyz)
-    for (const shift of [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [1, 1, 0],
-      [1, 0, 1],
-      [0, 1, 1],
-      [1, 1, 1],
-    ]) {
+    // oxfmt-ignore
+    for (const shift of [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]]) {
       const expected = frac_to_cart(shift as Vec3)
       expect(corner_xyz.some((xyz) => euclidean_dist(xyz, expected) < 1e-8)).toBe(true)
     }
@@ -404,53 +396,19 @@ test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
   ])
 })
 
-// Comprehensive tests for find_image_atoms with real structure files
+// Image counts are bounds, not exact: phase 2 also completes metal shells (fcc Pd would render
+// CN 8 instead of 12 without them) and shells of boundary-image copies, reaching Na-Na contacts
+// against the metallic radii, while every image still carries a drawn bond
+// oxfmt-ignore
 test.each([
-  {
-    content: mp_1_struct,
-    filename: `mp-1.json`,
-    expected_min_images: 7, // Based on actual test output: 10 images found, atom at (0,0,0) creates 7 images
-    expected_max_images: 40,
-    description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)`,
-  },
-  {
-    content: mp_2_struct,
-    filename: `mp-2.json`,
-    expected_min_images: 10, // Based on actual test output: 13 images found
-    // fcc Pd: every atom is a surface atom in a 4-site cell, and phase 2 now completes
-    // metal shells too (without them fcc metals rendered CN 8 instead of 12)
-    expected_max_images: 70,
-    description: `Four Pd atoms in FCC structure`,
-  },
-  {
-    content: nacl_poscar,
-    filename: `NaCl-cubic.poscar`,
-    expected_min_images: 19,
-    // phase 2 also completes shells of boundary-image copies, and reaches Na-Na contacts
-    // (4.02 A) against the metallic radii; every image still carries a drawn Na-Cl bond
-    expected_max_images: 100,
-    description: `8 atoms (4 Na + 4 Cl) in cubic structure`,
-  },
-  {
-    content: quartz_cif,
-    filename: `quartz-alpha.cif`,
-    expected_min_images: 3, // Based on actual test output: 5 images found
-    expected_max_images: 20,
-    description: `Si and O atoms with some near cell edges`,
-  },
-  {
-    content: extended_xyz_quartz,
-    filename: `quartz.extxyz`,
-    expected_min_images: 0,
-    expected_max_images: 20,
-    min_dist: 1e-4,
-    tol: 1e-4,
-    description: `Quartz structure from extended XYZ format`,
-  },
+  { content: mp_1_struct, filename: `mp-1.json`, expected_min_images: 7, expected_max_images: 40, description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)` },
+  { content: mp_2_struct, filename: `mp-2.json`, expected_min_images: 10, expected_max_images: 70, description: `Four Pd atoms in FCC structure` },
+  { content: nacl_poscar, filename: `NaCl-cubic.poscar`, expected_min_images: 19, expected_max_images: 100, description: `8 atoms (4 Na + 4 Cl) in cubic structure` },
+  { content: quartz_cif, filename: `quartz-alpha.cif`, expected_min_images: 3, expected_max_images: 20, description: `Si and O atoms with some near cell edges` },
+  { content: extended_xyz_quartz, filename: `quartz.extxyz`, expected_min_images: 0, expected_max_images: 20, min_dist: 1e-4, tol: 1e-4, description: `Quartz structure from extended XYZ format` },
 ])(
   `find_image_atoms with real structures: $description`,
   ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
-    // Parse the structure
     let structure: Crystal
     if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
@@ -459,17 +417,11 @@ test.each([
       structure = parsed
     }
 
-    // Test find_image_atoms
     const image_atoms = find_image_atoms(structure)
-
-    // Check expected count range (allow some flexibility for different interpretations)
     expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min_images)
     expect(image_atoms.length).toBeLessThanOrEqual(expected_max_images)
-
-    // Validate all image atoms
     validate_image_tuples(structure, image_atoms, { min_dist, tol })
 
-    // Test get_pbc_image_sites
     const symmetrized = get_pbc_image_sites(structure)
     // When deduplication removes coincident images, symmetrized may contain fewer than tuple count
     expect(symmetrized.sites.length).toBeGreaterThanOrEqual(structure.sites.length)
@@ -537,17 +489,11 @@ describe(`wrap_to_unit_cell`, () => {
     { input: [5.8, -10.7, 100.9], expected: [0.8, 0.3, 0.9], desc: `large values wrap` },
     { input: [1.0, -2.0, 0.0], expected: [0.0, 0.0, 0.0], desc: `exact ints -> 0` },
     // values within epsilon of 1 snap to 0 to suppress floating-point noise
-    {
-      input: [1.0 - 1e-12, 1 - 1e-15, 1e-15],
-      expected: [0.0, 0.0, 0.0],
-      desc: `all dims ~ 1 (or ~ 0) snap to 0`,
-    },
+    // oxfmt-ignore
+    { input: [1.0 - 1e-12, 1 - 1e-15, 1e-15], expected: [0.0, 0.0, 0.0], desc: `all dims ~ 1 (or ~ 0) snap to 0` },
     { input: [0.9999999999, 0.5, 0.5], expected: [0.0, 0.5, 0.5], desc: `x ~ 1 snaps to 0` },
-    {
-      input: [1.0 - 1e-12, 1.0 - 1e-11, 1.0 - 1e-10],
-      expected: [0.0, 0.0, 0.0],
-      desc: `all dims within epsilon of 1 snap to 0`,
-    },
+    // oxfmt-ignore
+    { input: [1.0 - 1e-12, 1.0 - 1e-11, 1.0 - 1e-10], expected: [0.0, 0.0, 0.0], desc: `all dims within epsilon of 1 snap to 0` },
   ] as { input: Vec3; expected: Vec3; desc: string }[])(`$desc`, ({ input, expected }) => {
     const result = wrap_to_unit_cell(input)
     for (let dim = 0; dim < 3; dim++) {

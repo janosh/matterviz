@@ -287,16 +287,17 @@ describe(`canvas_to_png_blob`, () => {
     expect(canvas.toBlob).not.toHaveBeenCalled()
   })
 
-  test(`rejects when toBlob returns null`, async () => {
-    const canvas = make_mock_canvas((callback_fn) => callback_fn(null))
-    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Failed to generate PNG`)
-  })
-
-  test(`rejects when toBlob throws`, async () => {
-    const canvas = make_mock_canvas(() => {
-      throw new Error(`Canvas tainted`)
-    })
-    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
+  test.each<[string, (callback_fn: BlobCallback) => void, string]>([
+    [`returns null`, (callback_fn) => callback_fn(null), `Failed to generate PNG`],
+    [
+      `throws`,
+      () => {
+        throw new Error(`Canvas tainted`)
+      },
+      `Canvas tainted`,
+    ],
+  ])(`rejects when toBlob %s`, async (_desc, to_blob, message) => {
+    await expect(canvas_to_png_blob(make_mock_canvas(to_blob), 72)).rejects.toThrow(message)
   })
 
   test.each([`setDrawingBufferSize`, `render`, `toBlob`] as const)(

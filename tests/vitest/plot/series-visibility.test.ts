@@ -272,26 +272,32 @@ describe(`create_legend_visibility`, () => {
     },
   )
 
-  test.each([false, true])(
-    `rejects ambiguous legend/drawing keys (reversed=%s)`,
-    (reverse) => {
-      const series = [
-        { id: `a`, legend_id: `shared`, x: [], y: [] },
-        { id: `shared`, x: [], y: [] },
-      ]
-      expect(() => make_store(reverse ? series.toReversed() : series).visible()).toThrow(
-        `Legend key "shared" conflicts with a drawing series ID`,
-      )
-    },
-  )
-
-  test(`rejects a shared identity spanning different legend headers`, () => {
-    expect(() =>
-      make_store([
+  const legend_drawing_clash: DataSeries[] = [
+    { id: `a`, legend_id: `shared`, x: [], y: [] },
+    { id: `shared`, x: [], y: [] },
+  ]
+  const drawing_clash_msg = `Legend key "shared" conflicts with a drawing series ID`
+  test.each<[string, DataSeries[], string]>([
+    [`legend/drawing keys`, legend_drawing_clash, drawing_clash_msg],
+    [`reversed legend/drawing keys`, legend_drawing_clash.toReversed(), drawing_clash_msg],
+    [
+      `a shared identity spanning legend headers`,
+      [
         { id: `a`, legend_id: `shared`, legend_group: `First`, x: [], y: [] },
         { id: `b`, legend_id: `shared`, legend_group: `Second`, x: [], y: [] },
-      ]).visible(),
-    ).toThrow(`Legend key "shared" spans different legend groups`)
+      ],
+      `Legend key "shared" spans different legend groups`,
+    ],
+    [
+      `explicit IDs clashing with index-derived keys`,
+      [
+        { id: 1, x: [], y: [] },
+        { x: [], y: [] },
+      ],
+      `Series keys must be unique`,
+    ],
+  ])(`rejects ambiguous %s`, (_desc, series, message) => {
+    expect(() => make_store(series).visible()).toThrow(message)
   })
 
   test.each([`toggle`, `group`, `external`, `replacement`] as const)(
@@ -318,15 +324,6 @@ describe(`create_legend_visibility`, () => {
       expect(visible()).toEqual(expected)
     },
   )
-
-  test(`rejects ambiguous explicit IDs and index-derived keys`, () => {
-    expect(() =>
-      make_store([
-        { id: 1, x: [], y: [] },
-        { x: [], y: [] },
-      ]).visible(),
-    ).toThrow(`Series keys must be unique`)
-  })
   test.each([`toggle`, `group`, `isolate`] as const)(
     `%s preserves hidden IDs absent from a filtered series array`,
     (action) => {

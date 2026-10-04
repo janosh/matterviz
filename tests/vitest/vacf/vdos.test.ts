@@ -95,23 +95,18 @@ describe(`VDOS peak position`, () => {
     )
   })
 
-  it(`labels the axis in inverse frames when no timestep was supplied`, () => {
-    const result = calc_vacf(orbit(1000, 0.02))
+  it.each([
+    [`no timestep was supplied`, {}],
+    // cycles per collected frame, so the grid (and Nyquist) are independent of the numerical dt
+    [
+      `dt is supplied but the axis asks for frames`,
+      { dt: 2, time_unit: `fs`, vdos: { frequency_unit: `1/frame` } },
+    ],
+  ] as const)(`reports inverse-frame frequencies when %s`, (_label, options) => {
+    const result = calc_vacf(orbit(600, 0.02), options)
     expect(result.frequency_unit).toBe(`1/frame`)
     expect(result.frequency_label).toBe(`Frequency (1/frame)`)
-    expect(result.time_unit).toBe(`frame`)
-    expect_peak_within_bin(result, 0.02)
-  })
-
-  it(`reports inverse-frame frequencies when dt is supplied but the axis asks for frames`, () => {
-    // Inverse frames means cycles per collected frame, so the grid (and Nyquist) are
-    // independent of the numerical dt
-    const result = calc_vacf(orbit(600, 0.02), {
-      dt: 2,
-      time_unit: `fs`,
-      vdos: { frequency_unit: `1/frame` },
-    })
-    expect(result.frequency_unit).toBe(`1/frame`)
+    expect(result.time_unit).toBe(`dt` in options ? `fs` : `frame`)
     expect_peak_within_bin(result, 0.02)
     expect(result.frequencies.at(-1)).toBeCloseTo(0.5, 12)
   })

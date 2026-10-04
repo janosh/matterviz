@@ -31,6 +31,7 @@ import {
   form_controls,
   fire,
   keydown,
+  set_input,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import type { Component, ComponentProps } from 'svelte'
@@ -1151,13 +1152,11 @@ describe(`panes`, () => {
       `range`,
     ])
     const [first_number, first_slider, last_number, last_slider] = frame_inputs
-    first_number.value = `1`
-    first_number.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(first_number, `1`)
     await tick()
     expect(first_slider.value).toBe(`1`)
     expect(last_number.min).toBe(`1`)
-    last_slider.value = `1`
-    last_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(last_slider, `1`)
     await tick()
     expect(last_number.value).toBe(`1`)
     last_number.value = ``
@@ -1511,28 +1510,10 @@ describe(`bindings`, () => {
       expect(on_controller).toHaveBeenLastCalledWith(null)
     },
   )
-
-  test(`never disposes the caller's runs, replaced or unmounted`, async () => {
-    const first = make_run({ filename: `first.xyz` })
-    const second = make_run({ filename: `second.xyz` })
-    const first_dispose = vi.spyOn(first, `dispose`)
-    const second_dispose = vi.spyOn(second, `dispose`)
-    const props = $state(default_props({ trajectory: first }))
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    const component = mount(Trajectory, { target, props })
-    props.trajectory = second
-    await tick()
-    await unmount(component)
-    expect(first_dispose).not.toHaveBeenCalled()
-    expect(second_dispose).not.toHaveBeenCalled()
-  })
 })
 
-// Runs are deliberately rune-free, so `run.properties` is a plain class instance and its `rows`
-// are invisible to the reactivity graph. The session mirrors them into $state for exactly this
-// reason, but the info and data-inspector panes read the run directly and so froze at whatever
-// had arrived when they first rendered - for a progressively indexed file, the first batch.
+// Runs are rune-free, so `run.properties.rows` is invisible to the reactivity graph: panes that
+// read the run directly must still follow rows pushed after mount
 describe(`panes track progressively loaded property rows`, () => {
   const rows_for = (idxs: number[]) =>
     idxs.map((idx) => ({

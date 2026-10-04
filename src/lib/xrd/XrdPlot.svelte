@@ -371,9 +371,12 @@
       <StatusMessage bind:message={error_msg} type="error" dismissible />
     {:else}
       <StatusMessage
-        message={allow_file_drop
-          ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
-          : `No XRD data to display`}
+        message={loading
+          ? `Reading dropped file…`
+          : allow_file_drop
+            ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
+            : `No XRD data to display`}
+        style="border: none"
       />
     {/if}
   </EmptyState>

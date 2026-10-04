@@ -30,6 +30,7 @@ import {
   shift_to_fermi,
 } from '#lib/spectral/helpers.js'
 import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
+import * as math from '#lib/math.js'
 import { describe, expect, it, vi } from 'vitest'
 
 // pymatgen input needs a reciprocal lattice to measure its k-path; the identity keeps the
@@ -306,6 +307,12 @@ describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
 })
 
 describe(`extract_k_path_points`, () => {
+  const fcc_recip: Matrix3x3 = [
+    [-1, 1, 1],
+    [1, -1, 1],
+    [1, 1, -1],
+  ]
+
   it(`maps fractional to Cartesian with row-vector reciprocal lattice vectors`, () => {
     const band_structure = make_bs([`GAMMA`, `X`, `K`])
     band_structure.qpoints[2].frac_coords = [1 / 3, 1 / 3, 0]
@@ -327,6 +334,55 @@ describe(`extract_k_path_points`, () => {
     expect(frac_k_to_cartesian([1 / 3, 1 / 3, 0], recip, false)).toEqual(k_point)
   })
 
+  // A sheared (non-reduced) basis needs shifts beyond ±1: the old 27-image search left
+  // 25% of random points up to 2.7x too far from Γ, outside the rendered zone
+  it.each([
+    [
+      `sheared cubic`,
+      [
+        [1, 0, 0],
+        [-4, 1, 0],
+        [0, 0, 1],
+      ],
+    ],
+    [
+      `sheared triclinic`,
+      [
+        [1, 0, 0],
+        [-3.2, 1, 0],
+        [-1.7, -2.4, 1],
+      ],
+    ],
+    [`FCC`, fcc_recip],
+  ] as [string, Matrix3x3][])(`folds into the first zone of a %s lattice`, (_name, recip) => {
+    let seed = 3
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1
+    const recip_t = math.transpose_3x3_matrix(recip)
+    for (let trial = 0; trial < 200; trial++) {
+      const frac: Vec3 = [rand(), rand(), rand()]
+      const folded = frac_k_to_cartesian(frac, recip)
+      let min_norm = Infinity
+      for (let n_1 = -8; n_1 <= 8; n_1++)
+        for (let n_2 = -8; n_2 <= 8; n_2++)
+          for (let n_3 = -8; n_3 <= 8; n_3++) {
+            const image = math.mat3x3_vec3_multiply(recip_t, [
+              frac[0] + n_1,
+              frac[1] + n_2,
+              frac[2] + n_3,
+            ])
+            min_norm = Math.min(min_norm, Math.hypot(...image))
+          }
+      // brute force and the fold agree to round-off (measured ≤ 1.3e-15)
+      expect(Math.abs(Math.hypot(...folded) - min_norm)).toBeLessThan(1e-12)
+      // and the fold moved the point by a lattice vector only
+      const shift = math.mat3x3_vec3_multiply(
+        math.matrix_inverse_3x3(recip_t),
+        math.subtract(folded, math.mat3x3_vec3_multiply(recip_t, frac)),
+      )
+      for (const coord of shift) expect(Math.abs(coord - Math.round(coord))).toBeLessThan(1e-9)
+    }
+  })
+
   it(`k_path_labels pairs labeled q-points with their Cartesian positions`, () => {
     const band_structure = make_bs([`GAMMA`, null, `X`])
     const points: Vec3[] = [
@@ -345,33 +401,13 @@ describe(`extract_k_path_points`, () => {
     ])
   })
 
+  // a point near FCC K where per-axis wrapping is not the Wigner-Seitz image
   it(`folds to the minimum-image point of the first Brillouin zone`, () => {
-    // FCC reciprocal lattice; a point near K where per-axis wrapping is not the WS image
-    const fcc_recip: Matrix3x3 = [
-      [-1, 1, 1],
-      [1, -1, 1],
-      [1, 1, -1],
-    ]
     const band_structure = make_bs([`K`], {
       qpoints: [{ label: `K`, frac_coords: [0.3713, 0.3713, 0.7425] }],
     })
     const [k_point] = extract_k_path_points(band_structure, fcc_recip)
-    const norm_sq = (vec: Vec3) => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
     expect(k_point.map((val) => Math.round(val * 1e4) / 1e4)).toEqual([0.7425, 0.7425, 0.0001])
-    for (const count_1 of [-1, 0, 1]) {
-      for (const count of [-1, 0, 1]) {
-        for (const count_3 of [-1, 0, 1]) {
-          const translated: Vec3 = [0, 1, 2].map(
-            (axis) =>
-              k_point[axis] +
-              count_1 * fcc_recip[0][axis] +
-              count * fcc_recip[1][axis] +
-              count_3 * fcc_recip[2][axis],
-          ) as Vec3
-          expect(norm_sq(k_point)).toBeLessThanOrEqual(norm_sq(translated) + 1e-9)
-        }
-      }
-    }
   })
 })
 
@@ -1135,6 +1171,17 @@ describe(`compute_frequency_range`, () => {
       { sample: { type: `electronic` as const, energies: [-5, 0, 5], densities: [0, 1, 0] } },
       [-5.3, 10.3],
     ],
+    [
+      `spin-down extrema in the shared electronic range`,
+      {
+        sample: {
+          ...bands_of([[0, 1]], `electronic`).sample,
+          spin_down_bands: [[-5, 10]],
+        },
+      },
+      {},
+      [-5.3, 10.3],
+    ],
   ])(`%s`, (_label, bands, doses, expected) => {
     const range = compute_frequency_range(bands, doses)
     expect(range?.[0]).toBeCloseTo(expected[0], 9)
@@ -1156,12 +1203,6 @@ describe(`compute_frequency_range`, () => {
     expect(() => compute_frequency_range(bands, doses)).toThrow(
       /Cannot mix phonon and electronic spectra/,
     )
-  })
-
-  it(`includes spin-down extrema in the shared electronic range`, () => {
-    const bands = bands_of([[0, 1]], `electronic`)
-    bands.sample.spin_down_bands = [[-5, 10]]
-    expect(compute_frequency_range(bands, {})).toEqual([-5.3, 10.3])
   })
 
   it(`returns undefined for empty collections and honours padding`, () => {
@@ -1236,25 +1277,19 @@ describe(`acoustic classification`, () => {
   )
 
   it.each([
-    [0, [0], true],
-    [-0.3, [0], true],
-    [ACOUSTIC_FREQ_THRESHOLD, [0], false],
-    [5, [], null], // no Gamma point: undecidable
-  ])(`a band at %f THz at Gamma %j → %s`, (freq, gamma_indices, expected) => {
-    expect(
-      classify_acoustic(
-        make_bs([null, null, null], { bands: [[freq, 5, 10]] }),
-        0,
-        gamma_indices,
-      ),
-    ).toBe(expected)
-  })
-
-  it(`is acoustic if any Gamma point is near zero and false for a missing band`, () => {
-    const band_structure = make_bs([null, null, null], { bands: [[5, 10, 0.1]] })
-    expect(classify_acoustic(band_structure, 0, [0, 2])).toBe(true)
-    expect(classify_acoustic(band_structure, 99, [0])).toBe(false)
-  })
+    [[0, 5, 10], 0, [0], true],
+    [[-0.3, 5, 10], 0, [0], true],
+    [[ACOUSTIC_FREQ_THRESHOLD, 5, 10], 0, [0], false],
+    [[5, 5, 10], 0, [], null], // no Gamma point: undecidable
+    [[5, 10, 0.1], 0, [0, 2], true], // acoustic if any Gamma point is near zero
+    [[0, 5, 10], 99, [0], false], // missing band
+  ])(
+    `classify_acoustic(%j, band %i, Gamma %j) → %s`,
+    (band, band_idx, gamma_indices, expected) => {
+      const band_structure = make_bs([null, null, null], { bands: [band] })
+      expect(classify_acoustic(band_structure, band_idx, gamma_indices)).toBe(expected)
+    },
+  )
 })
 
 describe(`build_point_metadata`, () => {

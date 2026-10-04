@@ -185,60 +185,20 @@ describe(`helpers: thresholds and tooltips`, () => {
     expect(next(source_a, 0.25, 0.4)).toBeUndefined() // user changed it: preserve
   })
 
+  // show all (max_hull_dist) up to 25 entries, the static default from 100, linear between
   test.each([
-    {
-      name: `very few entries (≤25) → show all (use max_hull_dist)`,
-      n_entries: 10,
-      max_hull_dist: 0.5,
-      static_default: 0.1,
-      expected: 0.5,
-    },
-    {
-      name: `at threshold (25 entries) → show all`,
-      n_entries: 25,
-      max_hull_dist: 0.5,
-      static_default: 0.1,
-      expected: 0.5,
-    },
-    {
-      name: `many entries (≥100) → use static default`,
-      n_entries: 100,
-      max_hull_dist: 0.5,
-      static_default: 0.1,
-      expected: 0.1,
-    },
-    {
-      name: `very many entries → use static default`,
-      n_entries: 500,
-      max_hull_dist: 0.5,
-      static_default: 0.1,
-      expected: 0.1,
-    },
-    {
-      name: `mid-range entries (62) → interpolates based on position`,
-      n_entries: 62,
-      max_hull_dist: 0.5,
-      static_default: 0.1,
-      // t = (62 - 25) / (100 - 25) = 37/75; result = 0.5 * (1 - t) + 0.1 * t
-      expected: 0.302667,
-    },
-    {
-      name: `linear interpolation at 50 entries`,
-      n_entries: 50,
-      max_hull_dist: 0.6,
-      static_default: 0.2,
-      // t = 1/3; result = 0.6 * 2/3 + 0.2 * 1/3
-      expected: 0.466667,
-    },
+    [`few entries`, 10, 0.5, 0.1, 0.5],
+    [`at the lower threshold`, 25, 0.5, 0.1, 0.5],
+    [`at the upper threshold`, 100, 0.5, 0.1, 0.1],
+    [`very many entries`, 500, 0.5, 0.1, 0.1],
+    [`interpolated mid-range`, 62, 0.5, 0.1, 0.5 * (1 - 37 / 75) + 0.1 * (37 / 75)],
+    [`interpolated at 50 entries`, 50, 0.6, 0.2, 0.6 * (2 / 3) + 0.2 / 3],
   ])(
-    `compute_auto_hull_dist_threshold: $name`,
-    ({ n_entries, max_hull_dist, static_default, expected }) => {
-      const result = helpers.compute_auto_hull_dist_threshold(
-        n_entries,
-        max_hull_dist,
-        static_default,
-      )
-      expect(result).toBeCloseTo(expected, 4)
+    `compute_auto_hull_dist_threshold: %s (n=%i)`,
+    (_name, n_entries, max_hull_dist, static_default, expected) => {
+      expect(
+        helpers.compute_auto_hull_dist_threshold(n_entries, max_hull_dist, static_default),
+      ).toBeCloseTo(expected, 12)
     },
   )
 
@@ -507,39 +467,36 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`analyze_temperature_data`, () => {
+    const no_temps = [
+      { composition: { Fe: 1 }, energy: 0 },
+      { composition: { Li: 1 }, energy: 0 },
+    ]
     test.each([
-      { desc: `empty entries`, entries: [] as PhaseData[], expected: [] as number[] },
-      {
-        desc: `entries without temp data`,
-        entries: [
-          { composition: { Fe: 1 }, energy: 0 },
-          { composition: { Li: 1 }, energy: 0 },
-        ] as PhaseData[],
-        expected: [],
+      [`empty entries`, [], []],
+      [`entries without temp data`, no_temps, []],
+      [
+        `the union of temperatures from multiple entries`,
+        [make_entry([300, 600], [-1, -2]), make_entry([600, 900, 1200], [-1, -2, -3])],
+        [300, 600, 900, 1200],
+      ],
+      [
+        `entries with mismatched array lengths ignored`,
+        [make_entry([300, 600], [-1]), make_entry([900], [-2])],
+        [900],
+      ],
+      [
+        `entries with empty arrays ignored`,
+        [make_entry([], []), make_entry([300, 600], [-1, -2])],
+        [300, 600],
+      ],
+    ] as [string, PhaseData[], number[]][])(
+      `available_temperatures for %s`,
+      (_desc, entries, expected) => {
+        const result = helpers.analyze_temperature_data(entries)
+        expect(result.has_temp_data).toBe(expected.length > 0)
+        expect(result.available_temperatures).toEqual(expected)
       },
-      {
-        desc: `the union of temperatures from multiple entries`,
-        entries: [
-          make_entry([300, 600], [-1, -2]),
-          make_entry([600, 900, 1200], [-1, -2, -3]),
-        ],
-        expected: [300, 600, 900, 1200],
-      },
-      {
-        desc: `entries with mismatched array lengths ignored`,
-        entries: [make_entry([300, 600], [-1]), make_entry([900], [-2])],
-        expected: [900],
-      },
-      {
-        desc: `entries with empty arrays ignored`,
-        entries: [make_entry([], []), make_entry([300, 600], [-1, -2])],
-        expected: [300, 600],
-      },
-    ])(`available_temperatures for $desc`, ({ entries, expected }) => {
-      const result = helpers.analyze_temperature_data(entries)
-      expect(result.has_temp_data).toBe(expected.length > 0)
-      expect(result.available_temperatures).toEqual(expected)
-    })
+    )
   })
 
   describe(`interpolate_energy_at_temperature`, () => {
@@ -580,52 +537,29 @@ describe(`helpers: temperature interpolation`, () => {
 
   describe(`filter_entries_at_temperature with interpolation`, () => {
     const static_entry: PhaseData = { composition: { Fe: 1 }, energy: -0.5 }
+    const tabulated = make_entry([300, 600], [-1, -2])
+    const wide_gap = make_entry([300, 900], [-1, -2])
+    type FilterOptions = Parameters<typeof helpers.filter_entries_at_temperature>[2]
+    // interpolation is on by default
     test.each([
-      {
-        desc: `exact temperature match`,
-        entries: [make_entry([300, 600], [-1, -2])],
-        temp: 300,
-        options: undefined,
-        expected: [-1],
+      [`exact temperature match`, [tabulated], 300, undefined, [-1]],
+      [`interpolation when bracketed`, [tabulated], 450, undefined, [-1.5]],
+      [`interpolation off → dropped`, [tabulated], 450, { interpolate: false }, []],
+      [`gap too wide → dropped`, [wide_gap], 600, { max_interpolation_gap: 500 }, []],
+      [`static entries kept unchanged`, [static_entry, tabulated], 450, {}, [-0.5, -1.5]],
+    ] as [string, PhaseData[], number, FilterOptions, number[]][])(
+      `%s`,
+      (_desc, entries, temp, options, expected) => {
+        const result = helpers.filter_entries_at_temperature(entries, temp, options)
+        expect(result.map((entry) => entry.energy)).toEqual(
+          expected.map((energy) => expect.closeTo(energy, 10)),
+        )
+        // G(T) is per atom; both fields are updated for temperature-dependent entries
+        for (const entry of result.filter((ent) => ent.temperatures)) {
+          expect(entry.energy_per_atom).toBe(entry.energy)
+        }
       },
-      {
-        desc: `interpolation when bracketed (default options)`,
-        entries: [make_entry([300, 600], [-1, -2])],
-        temp: 450,
-        options: undefined,
-        expected: [-1.5],
-      },
-      {
-        desc: `interpolation disabled and no exact match → dropped`,
-        entries: [make_entry([300, 600], [-1, -2])],
-        temp: 450,
-        options: { interpolate: false },
-        expected: [],
-      },
-      {
-        desc: `gap exceeds max_interpolation_gap → dropped`,
-        entries: [make_entry([300, 900], [-1, -2])],
-        temp: 600,
-        options: { interpolate: true, max_interpolation_gap: 500 },
-        expected: [],
-      },
-      {
-        desc: `static entries (no temp data) kept unchanged`,
-        entries: [static_entry, make_entry([300, 600], [-1, -2])],
-        temp: 450,
-        options: { interpolate: true },
-        expected: [-0.5, -1.5],
-      },
-    ])(`$desc`, ({ entries, temp, options, expected }) => {
-      const result = helpers.filter_entries_at_temperature(entries, temp, options)
-      expect(result.map((entry) => entry.energy)).toEqual(
-        expected.map((energy) => expect.closeTo(energy, 10)),
-      )
-      // G(T) is per atom; both fields are updated for temperature-dependent entries
-      for (const entry of result.filter((ent) => ent.temperatures)) {
-        expect(entry.energy_per_atom).toBe(entry.energy)
-      }
-    })
+    )
 
     // `correction` and the 0 K hull cache (`e_form_per_atom` and friends) both silently
     // outrank G(T) if left in the spread, so the temperature switch moves nothing.
@@ -678,67 +612,29 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`get_entry_label`, () => {
+    const li_fe_o2 = { Li: 1, Fe: 1, O: 2 }
     test.each([
-      {
-        desc: `uses reduced_formula when available`,
-        entry: { reduced_formula: `LiFeO2`, composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `uses name as fallback`,
-        entry: { name: `lithium iron oxide`, composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `lithium iron oxide`,
-      },
-      {
-        desc: `prefers reduced_formula over name`,
-        entry: {
-          reduced_formula: `LiFeO2`,
-          name: `lithium iron oxide`,
-          composition: { Li: 1, Fe: 1, O: 2 },
-        },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `builds formula from composition when both missing`,
-        entry: { composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `omits subscript 1 for single atoms`,
-        entry: { composition: { Na: 1, Cl: 1 } },
-        expected: `NaCl`,
-      },
-      {
-        desc: `formats fractional amounts`,
-        entry: { composition: { Fe: 2, O: 3 } },
-        expected: `Fe2O3`,
-      },
-      {
-        desc: `filters zero-count elements`,
-        entry: { composition: { Li: 1, Fe: 0, O: 2 } },
-        expected: `LiO2`,
-      },
-      {
-        desc: `handles single element`,
-        entry: { composition: { Fe: 1 } },
-        expected: `Fe`,
-      },
-      {
-        desc: `handles large integer compositions (unreduced cell)`,
-        entry: { composition: { La: 12, Ni: 6, O: 25 } },
-        expected: `La12Ni6O25`,
-      },
-      {
-        desc: `handles multi-atom unary composition`,
-        entry: { composition: { La: 4 } },
-        expected: `La4`,
-      },
-    ] as { desc: string; entry: Record<string, unknown>; expected: string }[])(
-      `$desc`,
-      ({ entry, expected }) => {
-        expect(helpers.get_entry_label(entry as { composition: Record<string, number> })).toBe(
-          expected,
-        )
+      [`reduced_formula`, { reduced_formula: `LiFeO2`, composition: li_fe_o2 }, `LiFeO2`],
+      [
+        `name fallback`,
+        { name: `lithium iron oxide`, composition: li_fe_o2 },
+        `lithium iron oxide`,
+      ],
+      [
+        `reduced_formula over name`,
+        { reduced_formula: `LiFeO2`, name: `lithium iron oxide`, composition: li_fe_o2 },
+        `LiFeO2`,
+      ],
+      // built from the composition: subscript 1 omitted, zero counts dropped, unreduced cells kept
+      [`composition fallback`, { composition: li_fe_o2 }, `LiFeO2`],
+      [`zero-count elements`, { composition: { Li: 1, Fe: 0, O: 2 } }, `LiO2`],
+      [`single element`, { composition: { Fe: 1 } }, `Fe`],
+      [`unreduced cell`, { composition: { La: 12, Ni: 6, O: 25 } }, `La12Ni6O25`],
+      [`multi-atom unary`, { composition: { La: 4 } }, `La4`],
+    ] as [string, { composition: Record<string, number> }, string][])(
+      `%s → %s`,
+      (_desc, entry, expected) => {
+        expect(helpers.get_entry_label(entry)).toBe(expected)
       },
     )
 

@@ -501,11 +501,9 @@ describe(`grid/lattice conventions`, () => {
 })
 
 describe(`compute_fermi_slice`, () => {
-  // An endpoint-inclusive (BXSF) grid with an odd point count puts a grid plane exactly through
-  // the centre, so the default Γ slice cuts through mesh vertices. Those sit at distance 0 from
-  // the plane, and requiring strictly opposite signs discarded their edges: a cut triangle gave
-  // one crossing instead of two and was skipped, leaving the default view of such a file empty.
-  // The even grid has no on-plane vertex and always worked, so it pins the fix as a no-op there.
+  // An odd endpoint-inclusive (BXSF) grid puts a grid plane through the centre, so the Γ slice
+  // cuts through on-plane mesh vertices whose edges a strict sign test would drop. The even
+  // grid has no on-plane vertex and checks the fix is a no-op there.
   test.each([21, 22, 31])(
     `slices a %i-point grid through Γ, on-plane vertices and all`,
     (count) => {
@@ -580,23 +578,18 @@ describe(`compute_fermi_slice`, () => {
     for (const value of isoline.properties ?? []) expect(value).toBeCloseTo(0.5, 6)
   })
 
-  test(`throws error for zero miller indices [0, 0, 0]`, () => {
-    expect(() =>
-      compute_fermi_slice(make_box_fermi_data(), { miller_indices: [0, 0, 0] }),
-    ).toThrow(/Invalid miller indices.*at least one index must be non-zero/)
-  })
-
-  test(`throws error for degenerate k_lattice producing zero plane normal`, () => {
-    const fermi_data = make_box_fermi_data()
-    fermi_data.k_lattice = [
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 0],
-    ]
-
-    expect(() => compute_fermi_slice(fermi_data, { miller_indices: [1, 0, 0] })).toThrow(
-      /Degenerate plane normal.*zero-length normal/,
-    )
+  const zero_lattice: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  // oxfmt-ignore
+  test.each([
+    [`zero miller indices`, IDENTITY_MATRIX3, [0, 0, 0], /Invalid miller indices.*at least one index must be non-zero/],
+    [`a degenerate k_lattice`, zero_lattice, [1, 0, 0], /Degenerate plane normal.*zero-length normal/],
+  ] as [string, Matrix3x3, Vec3, RegExp][])(`throws for %s`, (_label, k_lattice, miller_indices, pattern) => {
+    const fermi_data = { ...make_box_fermi_data(), k_lattice }
+    expect(() => compute_fermi_slice(fermi_data, { miller_indices })).toThrow(pattern)
   })
 })
 

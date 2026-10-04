@@ -1,7 +1,7 @@
 import BrillouinZoneControls from '#lib/brillouin/BrillouinZoneControls.svelte'
 import { mount, tick } from 'svelte'
 import { DEFAULTS } from '#lib/settings.js'
-import { doc_query } from '../setup'
+import { doc_query, set_input } from '../setup'
 import { expect, test } from 'vitest'
 
 test(`Brillouin zone controls preserve slider precision, edit hex colors and reset values`, async () => {
@@ -20,8 +20,7 @@ test(`Brillouin zone controls preserve slider precision, edit hex colors and res
     const hex = doc_query<HTMLInputElement>(`input[aria-label="${label} hex"]`)
     const picker = doc_query<HTMLInputElement>(`input[aria-label="${label}"]`)
     const initial = picker.value
-    hex.value = `#wrong`
-    hex.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(hex, `#wrong`)
     await tick()
     expect(hex.getAttribute(`aria-invalid`)).toBe(`true`)
     expect(picker.value).toBe(initial)

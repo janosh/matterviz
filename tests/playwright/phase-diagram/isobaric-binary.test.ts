@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { IS_CI, require_bbox } from '../helpers'
 import { readFile } from 'node:fs/promises'
 
 // CI environments are slower - use longer timeouts
@@ -63,7 +63,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     if (await labels.count()) await expect(labels.first()).not.toHaveText(``)
   })
 
-  test(`tooltip shows phase info on hover and hides on leave`, async ({ page }) => {
+  test(`tooltip shows phase info over regions only and hides on leave`, async ({ page }) => {
     const { diagram, svg } = get_diagram_elements(page)
     const tooltip = diagram.locator(`.tooltip-container`)
     const region = svg.locator(`.phase-regions path`).first()
@@ -79,6 +79,13 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(svg.locator(`.phase-regions path.hovered`)).toBeVisible()
 
     await page.mouse.move(10, 10)
+    await expect(tooltip).toHaveCount(0)
+
+    // the bottom and left margins hold axes, not phase regions
+    const box = await require_bbox(svg, `diagram svg`)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 5)
+    await expect(tooltip).toHaveCount(0)
+    await page.mouse.move(box.x + 5, box.y + box.height / 2)
     await expect(tooltip).toHaveCount(0)
   })
 
@@ -190,20 +197,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await input.press(`Enter`)
     await expect(diagram).toHaveAttribute(`aria-label`, `Edited-B binary phase diagram`)
     await expect(svg.locator(`text`).filter({ hasText: `Edited` })).toBeVisible()
-  })
-
-  test(`no tooltip in axis/margin areas`, async ({ page }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`No bounding box`)
-
-    // Hover in bottom margin (axis area)
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 5)
-    await expect(diagram.locator(`.tooltip-container`)).toHaveCount(0)
-
-    // Hover in left margin
-    await page.mouse.move(box.x + 5, box.y + box.height / 2)
-    await expect(diagram.locator(`.tooltip-container`)).toHaveCount(0)
   })
 
   test(`responsive: SVG resizes with viewport`, async ({ page }) => {

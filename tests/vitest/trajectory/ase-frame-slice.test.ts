@@ -1,4 +1,4 @@
-// Desktop hosts (Hive) stream a `.traj` frame by frame: the backend reads one
+// Desktop hosts stream a `.traj` frame by frame: the backend reads one
 // frame's byte range off disk and the frontend decodes that slice alone. These
 // tests pin the two things that makes possible — that a frame's byte span is
 // self-contained, and that decoding the span yields exactly the frame the
@@ -15,8 +15,8 @@ import { read_binary_test_file } from '../test-fixtures'
 const FIXTURE = `ase-LiMnO2-chgnet-relax.traj`
 const no_warnings = (message: string) => expect.unreachable(message)
 
-// Bytes the ULM header occupies before the first frame's payload data. Mirrors
-// ULM_HEADER_BYTES in Hive's src-tauri/src/trajectory.rs.
+// Bytes the ULM header occupies before the first frame's payload data, as a native
+// indexer must assume.
 const ULM_HEADER_BYTES = 48
 
 interface FrameSpan {
@@ -25,7 +25,7 @@ interface FrameSpan {
   header_offset: number
 }
 
-// The same span algorithm Hive's Rust indexer runs. ASE writes a frame's ndarray
+// The span algorithm a native frame indexer must run. ASE writes a frame's ndarray
 // payloads *before* the JSON header that points at them, so a frame occupies
 // `[end of the previous header, end of this header)` — not the range between
 // consecutive entries of the offsets table, which would cut the payloads off.
@@ -61,8 +61,7 @@ describe(`ASE frame slicing`, () => {
 
   test(`frame spans tile the data region and contain their own header`, () => {
     expect(spans).toHaveLength(2)
-    // Golden values for this fixture, cross-checked against the Rust indexer's
-    // assertions in Hive's src-tauri/src/tests.rs.
+    // Golden values for this fixture, cross-checked against a native indexer
     expect(spans).toEqual([
       { byte_offset: 48, size: 1490, header_offset: 760 },
       { byte_offset: 1538, size: 1340, header_offset: 2184 },
@@ -108,16 +107,14 @@ describe(`ASE frame slicing`, () => {
     expect(() =>
       decode_span(second_span, 1, { base_offset, fallback_numbers: numbers }),
     ).toThrow(/missing pbc/)
-    const { frame } = decode_span(second_span, 1, {
-      base_offset,
-      fallback_numbers: numbers,
-      fallback_pbc: pbc,
-    })
-    expect(frame.structure.sites.map((site) => site.species[0].element)).toEqual(
-      parse_ase_trajectory(buffer, no_warnings).frames[1].structure.sites.map(
-        (site) => site.species[0].element,
-      ),
-    )
+    // with both fallbacks it decodes exactly (see the whole-file comparison above)
+    expect(() =>
+      decode_span(second_span, 1, {
+        base_offset,
+        fallback_numbers: numbers,
+        fallback_pbc: pbc,
+      }),
+    ).not.toThrow()
   })
 
   // Mutation check on base_offset: dropping it leaves the ULM absolute offsets

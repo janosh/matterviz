@@ -5,6 +5,7 @@ import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
+import type { Vec3 } from '#lib/math.js'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
@@ -16,6 +17,35 @@ afterEach(async () => {
   vi.useRealTimers()
   for (const component of mounted.splice(0)) await unmount(component)
 })
+
+// Faking rAF keeps the extraction frames on the fake clock (~16 ms each), so a test can
+// observe the viewer between them
+const fake_frames = () =>
+  vi.useFakeTimers({
+    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
+  })
+
+// Nested [kx][ky][kz] energies |k − centre| on an endpoint-inclusive grid_n³ unit cell
+const sphere_energies = (grid_n: number): number[][][] =>
+  Array.from({ length: grid_n }, (_x, idx_x) =>
+    Array.from({ length: grid_n }, (_y, idx_y) =>
+      Array.from({ length: grid_n }, (_z, idx_z) =>
+        Math.hypot(...[idx_x, idx_y, idx_z].map((idx) => idx / (grid_n - 1) - 0.5)),
+      ),
+    ),
+  )
+const typed_grid = (nested: number[][][]): BandGridData => {
+  const dims: Vec3 = [nested.length, nested.length, nested.length]
+  const values = Float64Array.from(nested.flat(2))
+  return {
+    energies: [[{ values, dims, order: `z_fastest` }]],
+    k_grid: dims,
+    k_lattice: IDENTITY_MATRIX3,
+    fermi_energy: 0.3,
+    n_bands: 1,
+    n_spins: 1,
+  }
+}
 
 test.each([
   [false, false],
@@ -88,9 +118,7 @@ test(`built-in drops load typed Fermi surface data and provenance`, async () => 
 test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
   `a second source still loads after re-extraction with a bound fermi_data (%s)`,
   async (source) => {
-    vi.useFakeTimers({
-      toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
-    })
+    fake_frames()
     vi.spyOn(globalThis, `fetch`).mockImplementation(() =>
       Promise.resolve(new Response(make_bxsf(6))),
     )
@@ -112,37 +140,8 @@ test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
 )
 
 test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`, async () => {
-  // Faking rAF keeps the extraction frames on the fake clock (~16 ms each), so the test can
-  // observe the viewer between them
-  vi.useFakeTimers({
-    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
-  })
-  const grid_n = 6
-  const values = new Float64Array(grid_n ** 3)
-  let idx = 0
-  for (let idx_x = 0; idx_x < grid_n; idx_x++) {
-    for (let idx_y = 0; idx_y < grid_n; idx_y++) {
-      for (let idx_z = 0; idx_z < grid_n; idx_z++) {
-        values[idx++] = Math.hypot(idx_x / 5 - 0.5, idx_y / 5 - 0.5, idx_z / 5 - 0.5)
-      }
-    }
-  }
-  const band_data = {
-    energies: [
-      [
-        {
-          values,
-          dims: [grid_n, grid_n, grid_n] as [number, number, number],
-          order: `z_fastest` as const,
-        },
-      ],
-    ],
-    k_grid: [grid_n, grid_n, grid_n] as [number, number, number],
-    k_lattice: IDENTITY_MATRIX3,
-    fermi_energy: 0.3,
-    n_bands: 1,
-    n_spins: 1,
-  }
+  fake_frames()
+  const band_data = typed_grid(sphere_energies(6))
   const props = $state<{
     band_data?: BandGridData
     fermi_data?: FermiSurfaceData
@@ -196,13 +195,12 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   await vi.advanceTimersByTimeAsync(100)
   expect(props.fermi_data).toBe(committed)
   expect(spinner_shown()).toBe(false)
-  vi.useRealTimers()
 })
 
 // pymatviz's FermiSurfaceWidget(fermi_data=...) trait can only carry JSON, so the mesh arrives
 // as plain vertices/faces/normals rows (IFermi `as_dict()` or our own export format) rather
 // than the Float32Array/Uint32Array form parse_fermi_file returns. Both must render the same
-// surface; previously the JSON form threw inside detect_irreducible_bz/compute_surface_radius.
+// surface.
 // 12 vertices in the positive octant (enough for irreducible-BZ detection) forming a fan of
 // 10 triangles plus one quad that fan-triangulates into two
 const json_vertices = Array.from({ length: 12 }, (_, idx) => [
@@ -316,26 +314,11 @@ test(`malformed fermi_data reports via error_msg/on_error and a later valid one 
 
 // band_data travels the same JSON route with nested [spin][band][kx][ky][kz] energies
 test(`band_data with nested JSON energies is extracted like the typed grid`, async () => {
-  vi.useFakeTimers({
-    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
-  })
-  const grid_n = 5
-  const nested = Array.from({ length: grid_n }, (_unused_coord_x, idx_x) =>
-    Array.from({ length: grid_n }, (_unused_coord_y, idx_y) =>
-      Array.from({ length: grid_n }, (_unused_coord_z, idx_z) =>
-        Math.hypot(idx_x / 4 - 0.5, idx_y / 4 - 0.5, idx_z / 4 - 0.5),
-      ),
-    ),
-  )
+  fake_frames()
+  const nested = sphere_energies(5)
+  const typed = typed_grid(nested)
   const props = $state<{ fermi_data?: FermiSurfaceData }>({ fermi_data: undefined })
-  const band_data: BandGridJson = {
-    energies: [[nested]],
-    k_grid: [grid_n, grid_n, grid_n],
-    k_lattice: IDENTITY_MATRIX3,
-    fermi_energy: 0.3,
-    n_bands: 1,
-    n_spins: 1,
-  }
+  const band_data: BandGridJson = { ...typed, energies: [[nested]] }
   mounted.push(
     mount(FermiSurface, { target: document.body, props: bind_props({ band_data }, props) }),
   )
@@ -343,23 +326,9 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)
   // the nested [kx][ky][kz] JSON must flatten z-fastest to the same mesh the typed grid
   // (default mu = 0, auto interpolation_factor) extracts
-  const typed_grid: BandGridData = {
-    ...band_data,
-    energies: [
-      [
-        {
-          values: Float64Array.from(nested.flat(2)),
-          dims: [grid_n, grid_n, grid_n],
-          order: `z_fastest`,
-        },
-      ],
-    ],
-  }
-  const expected = extract_fermi_surface(typed_grid, { interpolation_factor: 0 })
-    .isosurfaces[0]
+  const expected = extract_fermi_surface(typed, { interpolation_factor: 0 }).isosurfaces[0]
   expect(expected.positions.length).toBeGreaterThan(0)
   expect(props.fermi_data?.isosurfaces[0].positions).toEqual(expected.positions)
   expect(props.fermi_data?.isosurfaces[0].indices).toEqual(expected.indices)
   expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
-  vi.useRealTimers()
 })

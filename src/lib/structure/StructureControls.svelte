@@ -924,7 +924,10 @@
         <ColorInput
           {...setting_row(key)}
           {label}
-          value={as_hex_color(row_value(current) as string | undefined, String(schema.value))}
+          value={as_hex_color(
+            row_value(current) as string | undefined,
+            as_hex_color(String(schema.value), `#808080`), // theme-following defaults are no hex
+          )}
           labels={{ picker: aria_label ?? label, hex: `${aria_label ?? label} hex` }}
           on_commit={set}
         />

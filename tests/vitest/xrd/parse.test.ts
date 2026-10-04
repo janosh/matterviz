@@ -205,16 +205,19 @@ describe(`parse_ras_file`, () => {
   const wrap = (data: string, header = ``) =>
     `*RAS_HEADER_START\n${header}*RAS_HEADER_END\n*RAS_INT_START\n${data}\n*RAS_INT_END`
 
-  test(`three-column rows (2theta, intensity, attenuation) use the row angles`, () => {
-    const content = wrap(`10.0 100 1.0\n20.0 200 1.0\n30.0 300 1.0`)
-    expect(rounded(parse_ras_file(content))).toEqual(THREE_POINTS)
-  })
-
-  test(`single-column counts use the quoted *MEAS_SCAN_START / *MEAS_SCAN_STEP`, () => {
-    const header = `*MEAS_SCAN_START "10.0000000000"\n*MEAS_SCAN_START_TIME "11/01/12"\n*MEAS_SCAN_STEP "10.0000000000"\n`
-    const content = wrap(`100\n200\n300`, header)
-    expect(rounded(parse_ras_file(content))).toEqual(THREE_POINTS)
-  })
+  test.each([
+    [
+      `three-column rows (2theta, intensity, attenuation) use the row angles`,
+      wrap(`10.0 100 1.0\n20.0 200 1.0\n30.0 300 1.0`),
+    ],
+    [
+      `single-column counts use the quoted *MEAS_SCAN_START / *MEAS_SCAN_STEP`,
+      wrap(
+        `100\n200\n300`,
+        `*MEAS_SCAN_START "10.0000000000"\n*MEAS_SCAN_START_TIME "11/01/12"\n*MEAS_SCAN_STEP "10.0000000000"\n`,
+      ),
+    ],
+  ])(`%s`, (_name, content) => expect(rounded(parse_ras_file(content))).toEqual(THREE_POINTS))
 
   test.each([
     [`no *RAS_INT_START`, `*RAS_HEADER_START\n*RAS_HEADER_END\n100 200`, /no \*RAS_INT_START/],
@@ -254,11 +257,14 @@ describe(`parse_uxd_file`, () => {
 })
 
 describe(`parse_gsas_file`, () => {
+  // CONST start and step are centidegrees; FXYE banks carry their own centidegree x
   test.each([
-    `BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`,
+    [`CONST`, `BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`],
     // NCHAN = 3 but the last record is zero-padded to a full line
-    `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`,
-  ])(`CONST/STD bank %#: centidegree start and step, first NCHAN values`, (content) =>
+    [`zero-padded STD`, `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`],
+    [`ESD with interleaved sigmas`, `BANK 1 3 1 CONST 1000 1000 0 0 ESD\n100 5 200 7 300 9`],
+    [`FXYE`, `BANK 1 3 1 CONST 0 0 0 0 FXYE\n1000 100 5 2000 200 7 3000 300 9`],
+  ])(`%s bank`, (_name, content) =>
     expect(rounded(parse_gsas_file(content))).toEqual(THREE_POINTS),
   )
 
@@ -269,15 +275,6 @@ describe(`parse_gsas_file`, () => {
     const result = parse_gsas_file(`BANK 1 11 2 CONST 1000 100 0 0\n${record}\n${padded}`)
     expect(result.y).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 50])
     expect(result.x[10]).toBeCloseTo(20, 9)
-  })
-
-  test(`ESD banks interleave sigmas and FXYE banks carry their own centidegree x`, () => {
-    const esd = parse_gsas_file(`BANK 1 3 1 CONST 1000 1000 0 0 ESD\n100 5 200 7 300 9`)
-    expect(rounded(esd)).toEqual(THREE_POINTS)
-    const fxye = parse_gsas_file(
-      `BANK 1 3 1 CONST 0 0 0 0 FXYE\n1000 100 5 2000 200 7 3000 300 9`,
-    )
-    expect(rounded(fxye)).toEqual(THREE_POINTS)
   })
 
   test.each([
@@ -358,16 +355,11 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
   })
 
   test.each([
-    [
-      `a RAW2 file`,
-      () => new TextEncoder().encode(`RAW2.00${`\0`.repeat(2000)}`).buffer,
-      /version 'RAW2.00' is not supported/,
-    ],
-    [
-      `a RAW4 file`,
-      () => new TextEncoder().encode(`RAW4.00${`\0`.repeat(2000)}`).buffer,
-      /RAW4.00/,
-    ],
+    ...[`RAW2.00`, `RAW4.00`].map((version): [string, () => ArrayBuffer, RegExp] => [
+      `a ${version} file`,
+      () => new TextEncoder().encode(`${version}${`\0`.repeat(2000)}`).buffer,
+      new RegExp(`version '${version}' is not supported`),
+    ]),
     [`an unrelated binary`, () => new ArrayBuffer(100), /bad magic/],
     [
       `a truncated header`,
@@ -561,10 +553,20 @@ describe(`parse_xrd_file routing`, () => {
       `scan.xrdml`,
       `<xrdMeasurements><scan><dataPoints><positions axis="2Theta"><startPosition>10</startPosition><endPosition>20</endPosition></positions><intensities>100 200</intensities></dataPoints></scan></xrdMeasurements>`,
     ],
+    [
+      `scan.brml`,
+      zipSync({
+        'RawData0.xml': new TextEncoder().encode(
+          `<RawData><Start>10</Start><Step>10</Step><Intensities>100 200</Intensities></RawData>`,
+        ),
+      }).buffer,
+    ],
   ])(`routes %s to the right parser`, async (filename, content) => {
-    const result = await parse_xrd_file(content, filename)
-    expect(result.x).toEqual([10, 20])
-    expect(result.y).toEqual([50, 100])
+    expect(await parse_xrd_file(content, filename)).toEqual({
+      x: [10, 20],
+      y: [50, 100],
+      kind: `profile`,
+    })
   })
 
   test(`routes a count block under the catch-all .dat to the block parser`, async () => {
@@ -575,16 +577,6 @@ describe(`parse_xrd_file routing`, () => {
     expect(result.x[0]).toBe(10)
     expect(result.x[19]).toBe(29)
     expect(result.y[0]).toBe(100)
-  })
-
-  test(`routes .brml to the ZIP parser`, async () => {
-    const xml = `<RawData><Start>10</Start><Step>10</Step><Intensities>100 200</Intensities></RawData>`
-    const files = { 'RawData0.xml': new TextEncoder().encode(xml) }
-    expect(await parse_xrd_file(zipSync(files).buffer, `scan.brml`)).toEqual({
-      x: [10, 20],
-      y: [50, 100],
-      kind: `profile`,
-    })
   })
 
   test.each([`data.pdf`, `datafile`])(`rejects %s`, async (filename) => {
@@ -623,8 +615,8 @@ describe(`real example files`, () => {
     )
   }
 
-  test.each([
-    // [file, first 2θ, last 2θ]
+  // [file, first 2θ, last 2θ]
+  const example_files: [string, number, number][] = [
     [`2Theta.asc.gz`, 4, 80], // Rigaku ASC: *START 4, *STOP 80
     [`BT86-siemens.uxd.gz`, 3, 40], // _2THETACOUNTS rows
     [`BT86_.UXD.gz`, 3, 40],
@@ -642,7 +634,8 @@ describe(`real example files`, () => {
     [`YBCO-B1-BM-600C-950C.brml`, 4.9979, 89.9933],
     [`aimat-powder-xrd-30-110deg.xy.gz`, 30.0031, 110.0656], // stitched two-range scan
     [`synthetic-quartz-xrd.xye`, 20.85, 136.55],
-  ])(`%s spans 2θ = %f … %f`, async (filename, first, last) => {
+  ]
+  test.each(example_files)(`%s spans 2θ = %f … %f`, async (filename, first, last) => {
     const result = await load(filename)
     expect(result.x).toHaveLength(result.y.length)
     expect(result.x.length).toBeGreaterThan(10)
@@ -662,10 +655,8 @@ describe(`real example files`, () => {
   })
 
   test(`every example file is covered above`, () => {
-    const files = file_system
-      .readdirSync(site_xrd_dir)
-      .filter((name) => is_xrd_data_file(name))
-    expect(files).toHaveLength(17)
+    const files = file_system.readdirSync(site_xrd_dir).filter(is_xrd_data_file)
+    expect(files.toSorted()).toEqual(example_files.map(([filename]) => filename).toSorted())
   })
 
   // The binary RAW1.01 scan and its UXD text export describe the same measurement, so the

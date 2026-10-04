@@ -7,7 +7,7 @@ import type {
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
 afterEach(() => {
@@ -80,8 +80,7 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
   filter_toggle.click()
   await tick()
   const filter_input = doc_query<HTMLInputElement>(`.info-filter`)
-  filter_input.value = `energy`
-  filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(filter_input, `energy`)
   await tick()
   expect(document.querySelectorAll(`.info-card`)).toHaveLength(1)
   expect(pane_text()).toContain(`Energy Range`)
@@ -134,6 +133,12 @@ test(`labels ranges from sampled property rows honestly`, async () => {
 })
 
 test(`omits sampled and fixed-volume notes from complete property rows`, async () => {
+  // summaries must not spread every row into Math.min (argument-count limits on long runs)
+  const native_min = Math.min
+  vi.spyOn(Math, `min`).mockImplementation((...values) => {
+    if (values.length === 40) throw new RangeError(`simulated argument limit`)
+    return native_min(...values)
+  })
   const rows = make_metadata(40, (frame_number) => ({
     energy: -10 - frame_number * 0.1,
     force_max: 0.5,
@@ -147,23 +152,6 @@ test(`omits sampled and fixed-volume notes from complete property rows`, async (
   // constant volume and force carry no statistics worth a card
   expect(text).not.toContain(`Volume Range`)
   expect(text).not.toContain(`Fmax Range`)
-})
-
-test(`summarises many property rows without spreading them into Math.min`, async () => {
-  const total_frames = 20
-  const native_min = Math.min
-  vi.spyOn(Math, `min`).mockImplementation((...values) => {
-    if (values.length === total_frames) throw new RangeError(`simulated argument limit`)
-    return native_min(...values)
-  })
-  await mount_pane(
-    sampled_run(
-      total_frames,
-      make_metadata(total_frames, (frame_number) => ({ energy: -10 - frame_number * 1e-4 })),
-    ),
-    5,
-  )
-  expect(pane_text()).toContain(`Energy Range`)
 })
 
 test(`shows no ranges when a run has no property rows`, async () => {

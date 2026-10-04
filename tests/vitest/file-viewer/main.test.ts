@@ -427,7 +427,7 @@ describe(`create_display trajectory display options`, () => {
     filename: `relax.h5`,
   })
 
-  // Regression: Hive (and other non-VS Code hosts) leave --vscode-* unset. Falling
+  // Regression: non-VS Code hosts leave --vscode-* unset. Falling
   // back to dark hex made light-mode traj shells black and bleached info-pane text.
   test(`viewer shell follows MatterViz theme tokens when VS Code vars are absent`, () => {
     const container = make_container()
@@ -544,8 +544,8 @@ describe(`create_display trajectory display options`, () => {
 
 // A file past the host's inline limit arrives as a marker instead of its bytes.
 // Handling it here (rather than in the host entry point, as it used to be) is
-// what lets callers that parse through this module — notably Hive's worker
-// wrapper — reach the host's streaming bridge at all. Before this, a marker fell
+// what lets callers that parse through this module (such as a desktop host's worker
+// wrapper) reach the host's streaming bridge at all. Before this, a marker fell
 // through to the structure parser and died with "XYZ frame too short".
 describe(`LARGE_FILE markers`, () => {
   const marker = `LARGE_FILE:/data/movie.extxyz:268435456`
@@ -825,31 +825,14 @@ describe(`VSCode Download Integration`, () => {
     vi.stubGlobal(`FileReader`, FakeFileReader)
   }
 
-  test(`handles binary data (PNG) correctly`, async () => {
-    stub_file_reader(`load`)
-    const mock_post_message = await init_download()
-    globalThis.download(
-      new Blob([`fake png data`], { type: `image/png` }),
-      `structure.png`,
-      `image/png`,
-    )
-    await vi.runAllTimersAsync()
-
-    expect(mock_post_message).toHaveBeenCalledWith({
-      command: `saveAs`,
-      content: `data:image/png;base64,ZmFrZSBwbmcgZGF0YQ==`,
-      filename: `structure.png`,
-      is_binary: true,
-    })
-  })
-
   // The shared `download` contract also admits an ArrayBuffer and a view over one, and that is
   // exactly what the STL and GLB scene exports pass. readAsDataURL takes a Blob only, so both
   // failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast and no file.
   test.each([
+    [`a Blob`, () => new Blob([`fake stl data`], { type: `model/stl` })],
     [`an ArrayBuffer`, () => new TextEncoder().encode(`fake stl data`).buffer],
     [`a typed-array view`, () => new TextEncoder().encode(`fake stl data`)],
-  ])(`saves %s the way it saves a Blob`, async (_case, make_data) => {
+  ])(`saves %s as base64 binary`, async (_case, make_data) => {
     stub_file_reader(`load`)
     const mock_post_message = await init_download()
     globalThis.download(make_data(), `structure.stl`, `model/stl`)

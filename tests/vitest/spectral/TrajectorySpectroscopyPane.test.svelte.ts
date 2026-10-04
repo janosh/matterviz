@@ -9,7 +9,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, query, set_select } from '../setup'
+import { bind_props, query, set_select, set_input } from '../setup'
 import { make_position_stream } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
@@ -105,8 +105,7 @@ beforeEach(() => {
 
 const set_timing = async (target: HTMLElement, label: string, value: string) => {
   const input = query<HTMLInputElement>(target, `input[aria-label="Simulation ${label}"]`)
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(input, value)
   await tick()
 }
 const calculation_button = (target: HTMLElement, text = `Recompute spectroscopy`) => {

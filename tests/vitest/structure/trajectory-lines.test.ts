@@ -354,10 +354,8 @@ describe(`anchoring trails to the displayed atoms`, () => {
     })
     // Each whole polyline moves rigidly by its own anchor - head, so the heads at frame 2
     // ([2, 0, 0] and [0, 2, 0]) land exactly on their anchors
-    const shifts = [
-      [98, 0, 0],
-      [0, 198, 0],
-    ]
+    // oxfmt-ignore
+    const shifts = [[98, 0, 0], [0, 198, 0]]
     const shifted = plain.segments.map(({ atom_idx, from, to }) =>
       [from, to].map((xyz) => xyz.map((coord, axis) => coord + shifts[atom_idx][axis])),
     )
@@ -396,11 +394,8 @@ describe(`anchoring trails to the displayed atoms`, () => {
 describe(`sliding the window of one trail`, () => {
   // Seeded random walk of 7 mixed-species atoms folded into a sheared cell, so unwrapping and
   // `break` mode see real crossings through both periodic faces and the aperiodic b face
-  const lattice: Matrix3x3 = [
-    [6, 0, 0],
-    [1.5, 5, 0],
-    [0.5, -1, 5.5],
-  ]
+  // oxfmt-ignore
+  const lattice: Matrix3x3 = [[6, 0, 0], [1.5, 5, 0], [0.5, -1, 5.5]]
   const walk_stream = (n_frames: number): TrajectoryPositionStream => {
     let seed = 7
     const rand = () => {

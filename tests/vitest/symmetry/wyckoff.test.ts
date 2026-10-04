@@ -18,190 +18,92 @@ import { cubic_matrix, make_crystal, make_wyckoff_dataset } from '../test-fixtur
 describe(`wyckoff_positions_from_moyo`, () => {
   // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has
   // no input_cell; it runs inside $derived so it must return [] rather than throw
-  test(`returns [] for a plain MoyoDataset without input_cell`, () => {
+  test(`returns [] for null or a plain MoyoDataset without input_cell`, () => {
+    expect(wyckoff_positions_from_moyo(null)).toEqual([])
     const { input_cell: _input, ...plain } = make_wyckoff_dataset([[0, 0, 0]], [1], [`1a`])
     expect(wyckoff_positions_from_moyo(plain as unknown as MoyoDataset)).toEqual([])
   })
 
-  test(`handles various input scenarios`, () => {
-    // Null input
-    expect(wyckoff_positions_from_moyo(null)).toEqual([])
-
-    // Sorting by multiplicity then alphabetically
-    const sorted = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-        [0.75, 0.75, 0.75],
-      ],
-      [1, 8, 1, 1],
-      [`b`, `a`, `b`, `b`],
-    )
-    expect(wyckoff_positions_from_moyo(sorted)).toEqual([
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
-      { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 2, 3] },
-    ])
-
-    // simplicity_score picks the orbit representative; the old ¼ + ½·min(u, 1 − u) scored
-    // u = 1/2 WORST, so a generic 0.30 beat the special 0.50
-    const special_vs_generic = make_wyckoff_dataset(
-      [
-        [0.3, 0.3, 0.3],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-      ],
-      [1, 1, 1],
-      [`a`, `a`, `a`],
-    )
-    expect(wyckoff_positions_from_moyo(special_vs_generic)[0].abc).toEqual([0.5, 0.5, 0.5])
-
-    // moyo echoes back the atomic numbers analyze_structure handed it, so one off the table
-    // means the two disagree about the cell; a `?` row used to be printed instead
+  // moyo echoes back the atomic numbers analyze_structure handed it, so one off the table
+  // means the two disagree about the cell; a `?` row used to be printed instead
+  test(`throws on an unknown atomic number`, () => {
     expect(() =>
       wyckoff_positions_from_moyo(make_wyckoff_dataset([[0, 0, 0]], [0], [`1a`])),
     ).toThrow(/atomic number 0, not a known element/)
-
-    // Sites without Wyckoff letters
-    const no_letters = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [1, 8],
-      [``, `1a`],
-    )
-    expect(wyckoff_positions_from_moyo(no_letters)).toEqual([
-      { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
-      { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
-    ])
   })
 
-  test(`handles advanced scenarios`, () => {
-    // Complex mixed occupancy sites - letter extraction and counting
-    const mixed = make_wyckoff_dataset(
-      [
+  const three_sites = [
+    [0, 0, 0],
+    [0.5, 0.5, 0.5],
+    [0.25, 0.25, 0.25],
+  ]
+  const four_sites = [...three_sites, [0.75, 0.75, 0.75]]
+  test.each<{
+    desc: string
+    positions: number[][]
+    numbers: number[]
+    wyckoffs: (string | null)[]
+    orig_indices?: number[][]
+    expected: WyckoffPos[]
+  }>([
+    {
+      desc: `sorts rows by multiplicity, then label`,
+      positions: four_sites,
+      numbers: [1, 8, 1, 1],
+      wyckoffs: [`b`, `a`, `b`, `b`],
+      expected: [
+        { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+        { wyckoff: `3b`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 2, 3] },
+      ],
+    },
+    {
+      // the old ¼ + ½·min(u, 1 − u) score rated u = 1/2 WORST, so a generic 0.30 beat it
+      desc: `picks the special 1/2 over a generic coordinate as orbit representative`,
+      positions: [[0.3, 0.3, 0.3], ...three_sites.slice(1)],
+      numbers: [1, 1, 1],
+      wyckoffs: [`a`, `a`, `a`],
+      expected: [{ wyckoff: `3a`, elem: `H`, abc: [0.5, 0.5, 0.5], site_indices: [0, 1, 2] }],
+    },
+    {
+      desc: `picks the simplest coordinates, not ones near the cell edge`,
+      positions: [
+        [0.999, 0.999, 0.999],
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+        [0.001, 0.001, 0.001],
+      ],
+      numbers: [1, 1, 1, 1],
+      wyckoffs: [`a`, `a`, `a`, `a`],
+      expected: [{ wyckoff: `4a`, elem: `H`, abc: [0, 0, 0], site_indices: [0, 1, 2, 3] }],
+    },
+    {
+      desc: `one orbit per letter with multiplicity counted over its members`,
+      positions: [
         [0.1576, 0, 0.5754],
         [0.1576, 0, 0.5754],
         [0.0201, 0.3033, 0.256],
         [0.3069, 0, 0.3081],
         [0.7091, 0, 0.0177],
       ],
-      [8, 8, 8, 8, 8],
-      [`4i`, `4i`, `8j`, `4i`, `4i`],
-    )
-    const result = wyckoff_positions_from_moyo(mixed)
-    expect(result).toHaveLength(2)
-    expect(result.map((pos) => pos.wyckoff).toSorted()).toEqual([`1j`, `4i`])
-    expect(result.map((pos) => pos.elem)).toEqual([`O`, `O`])
-    result.forEach((pos) => expect(mixed.std_cell.positions).toContainEqual(pos.abc))
-
-    // Simplest coordinates selection
-    const simple = make_wyckoff_dataset(
-      [
-        [0.999, 0.999, 0.999],
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.001, 0.001, 0.001],
+      numbers: [8, 8, 8, 8, 8],
+      wyckoffs: [`4i`, `4i`, `8j`, `4i`, `4i`],
+      expected: [
+        { wyckoff: `1j`, elem: `O`, abc: [0.0201, 0.3033, 0.256], site_indices: [2] },
+        { wyckoff: `4i`, elem: `O`, abc: [0.7091, 0, 0.0177], site_indices: [0, 1, 3, 4] },
       ],
-      [1, 1, 1, 1],
-      [`a`, `a`, `a`, `a`],
-    )
-    expect(wyckoff_positions_from_moyo(simple)).toEqual([
-      {
-        wyckoff: `4a`,
-        elem: `H`,
-        abc: [0, 0, 0],
-        site_indices: [0, 1, 2, 3],
-      },
-    ])
-
-    // Different elements at same Wyckoff position
-    const multi_elem = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-        [0.25, 0.25, 0.25],
-        [0.75, 0.75, 0.75],
+    },
+    {
+      desc: `different elements on the same letter stay separate rows`,
+      positions: four_sites,
+      numbers: [1, 8, 26, 6],
+      wyckoffs: [`a`, `a`, `b`, `b`],
+      expected: [
+        { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+        { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
+        { wyckoff: `1b`, elem: `Fe`, abc: [0.25, 0.25, 0.25], site_indices: [2] },
+        { wyckoff: `1b`, elem: `C`, abc: [0.75, 0.75, 0.75], site_indices: [3] },
       ],
-      [1, 8, 26, 6],
-      [`a`, `a`, `b`, `b`],
-    )
-    const multi_result = wyckoff_positions_from_moyo(multi_elem)
-    expect(multi_result).toHaveLength(4)
-    expect(multi_result.map((pos) => `${pos.wyckoff}-${pos.elem}`).toSorted()).toEqual([
-      `1a-H`,
-      `1a-O`,
-      `1b-C`,
-      `1b-Fe`,
-    ])
-    expect(multi_result.find((pos) => pos.elem === `H`)?.abc).toEqual([0, 0, 0])
-    expect(multi_result.find((pos) => pos.elem === `O`)?.abc).toEqual([0.5, 0.5, 0.5])
-
-    // Multiplicity scales by the std/input size ratio (can't use make_wyckoff_dataset,
-    // which assumes input == std): a primitive input with one Cu site (orbit size 1) but a
-    // 4-site conventional std_cell must give 1·(n_std/n_input) = 4a, NOT raw orbit size 1.
-    // Also pins site_symmetry propagation.
-    const primitive_input = {
-      input_cell: { positions: [[0, 0, 0]], numbers: [29] }, // Cu
-      std_cell: {
-        positions: [
-          [0, 0, 0],
-          [0, 0.5, 0.5],
-          [0.5, 0, 0.5],
-          [0.5, 0.5, 0],
-        ],
-        numbers: [29, 29, 29, 29],
-      },
-      wyckoffs: [`4a`],
-      orbits: [0],
-      site_symmetry_symbols: [`m-3m`],
-      std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      std_origin_shift: [0, 0, 0],
-      orig_site_indices_by_input_idx: [[0]],
-    } as unknown as SymmetryDataset
-    expect(wyckoff_positions_from_moyo(primitive_input)).toEqual([
-      { wyckoff: `4a`, elem: `Cu`, abc: [0, 0, 0], site_indices: [0], site_symmetry: `m-3m` },
-    ])
-  })
-})
-
-describe(`orig site mapping`, () => {
-  test(`wyckoff table expands merged input indices to original sites`, () => {
-    // input site 0 (O, 2a) was merged from original sites [0, 1]; input site 1 (Li, 1b)
-    // from original site [2]. orig_site_indices_by_input_idx must expand both rows.
-    const sym_data = make_wyckoff_dataset(
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-      [8, 3],
-      [`2a`, `1b`],
-      [[0, 1], [2]],
-    )
-
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    const oxygen_row = rows.find((row) => row.elem === `O`)
-    const lithium_row = rows.find((row) => row.elem === `Li`)
-    expect(oxygen_row?.site_indices).toEqual([0, 1])
-    expect(lithium_row?.site_indices).toEqual([2])
-  })
-})
-
-describe(`site coverage verification`, () => {
-  // empty/null single-site letters are covered in `handles various input scenarios`
-  const three_sites = [
-    [0, 0, 0],
-    [0.5, 0.5, 0.5],
-    [0.25, 0.25, 0.25],
-  ]
-  test.each<{
-    desc: string
-    positions: number[][]
-    numbers: number[]
-    wyckoffs: (string | null)[]
-    expected: WyckoffPos[]
-  }>([
+    },
     {
       desc: `three 1-site orbits of distinct elements each get their own row`,
       positions: three_sites,
@@ -211,6 +113,16 @@ describe(`site coverage verification`, () => {
         { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
         { wyckoff: `1b`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
         { wyckoff: `1c`, elem: `Fe`, abc: [0.25, 0.25, 0.25], site_indices: [2] },
+      ],
+    },
+    {
+      desc: `an empty-string letter gives a bare multiplicity`,
+      positions: three_sites.slice(0, 2),
+      numbers: [1, 8],
+      wyckoffs: [``, `1a`],
+      expected: [
+        { wyckoff: `1`, elem: `H`, abc: [0, 0, 0], site_indices: [0] },
+        { wyckoff: `1a`, elem: `O`, abc: [0.5, 0.5, 0.5], site_indices: [1] },
       ],
     },
     {
@@ -227,10 +139,7 @@ describe(`site coverage verification`, () => {
     },
     {
       desc: `mixed valid and missing Wyckoff letters`,
-      positions: [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
+      positions: three_sites.slice(0, 2),
       numbers: [1, 8],
       wyckoffs: [`a`, null],
       expected: [
@@ -259,10 +168,52 @@ describe(`site coverage verification`, () => {
         },
       ],
     },
-  ])(`$desc`, ({ positions, numbers, wyckoffs, expected }) => {
+    {
+      // input site 0 (O) was merged from original sites [0, 1], input site 1 (Li) from [2]
+      desc: `expands merged input indices to original sites`,
+      positions: three_sites.slice(0, 2),
+      numbers: [8, 3],
+      wyckoffs: [`2a`, `1b`],
+      orig_indices: [[0, 1], [2]],
+      expected: [
+        { wyckoff: `1a`, elem: `O`, abc: [0, 0, 0], site_indices: [0, 1] },
+        { wyckoff: `1b`, elem: `Li`, abc: [0.5, 0.5, 0.5], site_indices: [2] },
+      ],
+    },
+  ])(`$desc`, ({ positions, numbers, wyckoffs, orig_indices, expected }) => {
     expect(
-      wyckoff_positions_from_moyo(make_wyckoff_dataset(positions, numbers, wyckoffs)),
+      wyckoff_positions_from_moyo(
+        make_wyckoff_dataset(positions, numbers, wyckoffs, orig_indices),
+      ),
     ).toEqual(expected)
+  })
+
+  // Multiplicity scales by the std/input size ratio (make_wyckoff_dataset assumes input ==
+  // std): a primitive input with one Cu site (orbit size 1) but a 4-site conventional
+  // std_cell must give 1·(n_std/n_input) = 4a, NOT raw orbit size 1. Also pins
+  // site_symmetry propagation.
+  test(`scales multiplicity by the std/input cell size ratio`, () => {
+    const primitive_input = {
+      input_cell: { positions: [[0, 0, 0]], numbers: [29] }, // Cu
+      std_cell: {
+        positions: [
+          [0, 0, 0],
+          [0, 0.5, 0.5],
+          [0.5, 0, 0.5],
+          [0.5, 0.5, 0],
+        ],
+        numbers: [29, 29, 29, 29],
+      },
+      wyckoffs: [`4a`],
+      orbits: [0],
+      site_symmetry_symbols: [`m-3m`],
+      std_linear: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      std_origin_shift: [0, 0, 0],
+      orig_site_indices_by_input_idx: [[0]],
+    } as unknown as SymmetryDataset
+    expect(wyckoff_positions_from_moyo(primitive_input)).toEqual([
+      { wyckoff: `4a`, elem: `Cu`, abc: [0, 0, 0], site_indices: [0], site_symmetry: `m-3m` },
+    ])
   })
 })
 
@@ -326,13 +277,6 @@ describe(`apply_symmetry_operations`, () => {
       2,
     ],
     [
-      `negative coordinates wrapping`,
-      [0.25, 0.25, 0.25] as Vec3,
-      [operations.inversion],
-      [[0.75, 0.75, 0.75]],
-      1,
-    ],
-    [
       `deduplication of equivalent positions`,
       [0, 0, 0] as Vec3,
       [operations.identity, operations.identity],
@@ -386,18 +330,13 @@ describe(`apply_symmetry_operations`, () => {
   })
 
   test(`wraps coordinates to unit cell with floating point precision`, () => {
-    const position: Vec3 = [0.8, 0.8, 0.8]
-    const result = apply_symmetry_operations(position, [operations.translation])
-
-    expect(result).toHaveLength(1)
-    // 0.8 + 0.5 = 1.3, wrapped to 0.3 (with floating point precision)
-    expect(result[0][0]).toBeCloseTo(0.3, 10)
-    expect(result[0][1]).toBeCloseTo(0.3, 10)
-    expect(result[0][2]).toBeCloseTo(0.3, 10)
+    // 0.8 + 0.5 = 1.3 wraps to 0.3, up to float error
+    expect(apply_symmetry_operations([0.8, 0.8, 0.8], [operations.translation])).toEqual([
+      Array(3).fill(expect.closeTo(0.3, 10)),
+    ])
   })
 
   test.each([
-    [[0, 0, 0] as Vec3, [0, 0, 0]],
     [[1, 1, 1] as Vec3, [0, 0, 0]], // Wraps to origin
     [[0.999999, 0.999999, 0.999999] as Vec3, [0.999999, 0.999999, 0.999999]],
   ])(`handles edge case coordinates %j -> %j`, (position, expected) => {
@@ -423,7 +362,6 @@ describe(`apply_symmetry_operations`, () => {
 })
 
 describe(`map_wyckoff_to_all_atoms`, () => {
-  // Helper factory using make_crystal
   const mock_structure = (sites: { abc: Vec3; element: ElementSymbol }[]): Crystal =>
     make_crystal(
       1,
@@ -454,48 +392,21 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       symprec: 1e-6,
     }) as unknown as MoyoDataset
 
-  test.each([
-    [
-      `null symmetry data`,
-      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [0] }],
-      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
-      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
-      null,
-      undefined,
-      (result: WyckoffPos[], input: [WyckoffPos[], ...unknown[]]) =>
-        expect(result).toEqual(input[0]),
-    ],
+  const h_row: WyckoffPos = { wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }
+  const h_crystal = mock_structure([{ abc: [0, 0, 0], element: `H` }])
+  test.each<[string, WyckoffPos[], Crystal, MoyoDataset | null, WyckoffPos[]]>([
+    [`null symmetry data`, [h_row], h_crystal, null, [h_row]],
     [
       `empty displayed sites`,
-      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0] as Vec3, site_indices: [0] }],
-      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
-      { ...mock_structure([{ abc: [0, 0, 0], element: `H` }]), sites: [] },
+      [h_row],
+      { ...h_crystal, sites: [] },
       mock_sym_data(),
-      undefined,
-      (result: WyckoffPos[]) => expect(result[0].site_indices).toEqual([]),
+      [{ ...h_row, site_indices: [] }],
     ],
-    [
-      `empty wyckoff positions`,
-      [],
-      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
-      mock_structure([{ abc: [0, 0, 0], element: `H` }]),
-      mock_sym_data(),
-      undefined,
-      (result: WyckoffPos[]) => expect(result).toEqual([]),
-    ],
-  ])(
-    `handles %s gracefully`,
-    (_, wyckoff_pos, original, displayed, sym_data, tolerance, assertion) => {
-      const result = map_wyckoff_to_all_atoms(
-        wyckoff_pos,
-        displayed,
-        original,
-        sym_data,
-        tolerance,
-      )
-      assertion(result, [wyckoff_pos, original, displayed, sym_data])
-    },
-  )
+    [`empty wyckoff positions`, [], h_crystal, mock_sym_data(), []],
+  ])(`handles %s gracefully`, (_, rows, displayed, sym_data, expected) => {
+    expect(map_wyckoff_to_all_atoms(rows, displayed, h_crystal, sym_data)).toEqual(expected)
+  })
 
   test(`handles different elements correctly`, () => {
     const original = mock_structure([
@@ -568,6 +479,15 @@ describe(`map_wyckoff_to_all_atoms`, () => {
     [`a strict tolerance`, [0, 0, 0], near_zero, [0], 1e-8, [0]],
     [`a loose tolerance`, [0, 0, 0], near_zero, [0], 1e-2, [0, 1, 2]],
     [`indices past the structure`, [0, 0, 0], [[0, 0, 0]], [5, 10], undefined, []],
+    // the equivalent position wraps to 0.0, so matching must probe neighbouring hash cells
+    [
+      `a site 1e-7 below the 0/1 wrap`,
+      [0, 0, 0],
+      [[0.9999999, 0.9999999, 0.9999999]],
+      [0],
+      undefined,
+      [0],
+    ],
   ])(
     `maps an orbit onto %s`,
     (_label, orbit, displayed_abc, site_indices, tolerance, expected) => {
@@ -598,23 +518,6 @@ describe(`map_wyckoff_to_all_atoms`, () => {
       { ...mock_sym_data(), symprec: 0.1 },
     )
     expect(rows.map((row) => row.site_indices)).toEqual([[0, 2], [1]])
-  })
-
-  test(`matches sites within tolerance across the 0/1 wrap boundary`, () => {
-    // displayed site sits 1e-7 below 1.0; the equivalent position wraps to 0.0 —
-    // matching requires probing neighbor cells of the spatial hash with wraparound
-    const original = make_crystal(1, [{ element: `H` as const, abc: [0, 0, 0] }])
-    const displayed = make_crystal(1, [
-      { element: `H` as const, abc: [0.9999999, 0.9999999, 0.9999999] },
-    ])
-    const sym_data = mock_sym_data()
-    const rows = map_wyckoff_to_all_atoms(
-      [{ wyckoff: `1a`, elem: `H`, abc: [0, 0, 0], site_indices: [0] }],
-      displayed,
-      original,
-      sym_data,
-    )
-    expect(rows[0].site_indices).toEqual([0])
   })
 })
 

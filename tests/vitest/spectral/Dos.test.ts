@@ -9,7 +9,7 @@ import {
   validate_sigma_range,
 } from '#lib/spectral/helpers.js'
 import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '#lib/spectral/types.js'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import {
   bind_props,
@@ -68,7 +68,8 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
 describe(`Dos component`, () => {
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
-  it.each([
+  type RenderCase = [string, ComponentProps<typeof Dos>, number]
+  it.each<RenderCase>([
     [`phonon DOS`, { doses: { '': phonon_dos } }, 1],
     [
       `hidden up channel`,
@@ -90,35 +91,15 @@ describe(`Dos component`, () => {
       2,
     ],
     [`stacked DOS`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos }, stack: true }, 2],
-    [
-      `horizontal orientation`,
-      { doses: { '': phonon_dos }, orientation: `horizontal` as const },
-      1,
-    ],
-    [
-      `mirror spin mode`,
-      { doses: { '': spin_polarized_dos }, spin_mode: `mirror` as const },
-      2,
-    ],
-    [
-      `up_only spin mode`,
-      { doses: { '': spin_polarized_dos }, spin_mode: `up_only` as const },
-      1,
-    ],
-    [
-      `down_only spin mode`,
-      { doses: { '': spin_polarized_dos }, spin_mode: `down_only` as const },
-      1,
-    ],
+    [`horizontal orientation`, { doses: { '': phonon_dos }, orientation: `horizontal` }, 1],
+    ...([`mirror`, `up_only`, `down_only`] as const).map((spin_mode): RenderCase => [
+      `${spin_mode} spin mode`,
+      { doses: { '': spin_polarized_dos }, spin_mode },
+      spin_mode === `mirror` ? 2 : 1,
+    ]),
     [`atom pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`) ?? {} }, 4],
     [`orbital pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `orbital`) ?? {} }, 3],
-    [
-      `filtered pDOS`,
-      {
-        doses: extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`]) ?? {},
-      },
-      2,
-    ],
+    [`filtered pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`]) ?? {} }, 2],
   ])(`renders %s`, async (_desc, props, n_lines) => {
     mount(Dos, { target: document.body, props })
     await tick()
@@ -284,9 +265,7 @@ describe(`Dos component`, () => {
   })
 
   it(`stacks spin-up and spin-down independently in overlay mode`, async () => {
-    // With 2 spin-polarized DOS entries, stack=true, overlay mode:
-    // - Should have 4 stacked areas: 2 for spin-up + 2 for spin-down
-    // - Each spin channel stacks on its own cumulative, not on the other
+    // each spin channel stacks on its own cumulative: 2 DOS x (up + down) = 4 areas
     const multi_spin_dos = {
       'DOS 1': spin_polarized_dos,
       'DOS 2': {
@@ -299,8 +278,6 @@ describe(`Dos component`, () => {
       props: { doses: multi_spin_dos, stack: true, spin_mode: `overlay` as SpinMode },
     })
     await tick()
-    // Each spin-polarized DOS with overlay+stack should render 2 areas (up + down)
-    // So 2 DOS entries = 4 area paths total
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)
     expect(area_paths).toHaveLength(4)
 
@@ -335,16 +312,12 @@ describe(`extract_spin_channels`, () => {
 
 describe(`extract_pdos`, () => {
   it.each([
-    [`atom`, [`Fe`, `O`]],
-    [`orbital`, [`s`, `p`, `d`]],
-  ] as const)(`extracts %s DOS with expected keys`, (pdos_type, expected_keys) => {
-    const result = extract_pdos(pymatgen_complete_dos, pdos_type)
+    [`atom`, undefined, [`Fe`, `O`]],
+    [`orbital`, undefined, [`s`, `p`, `d`]],
+    [`atom`, [`Fe`], [`Fe`]],
+  ] as const)(`extracts %s DOS filtered to %j`, (pdos_type, filter, expected_keys) => {
+    const result = extract_pdos(pymatgen_complete_dos, pdos_type, filter && [...filter])
     expect(Object.keys(result ?? {})).toEqual(expected_keys)
-  })
-
-  it(`filters by specified keys`, () => {
-    const result = extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`])
-    expect(Object.keys(result ?? {})).toEqual([`Fe`])
   })
 
   it.each([{}, { atom_dos: {} }])(`returns null for missing pdos: %j`, (input) => {
@@ -415,17 +388,28 @@ describe(`format_dos_tooltip`, () => {
   })
 })
 
-describe(`validate_sigma_range`, () => {
-  it(`returns valid ranges unchanged`, () => {
-    expect(validate_sigma_range([0, 1])).toEqual([0, 1])
-    expect(validate_sigma_range([-5, 5])).toEqual([-5, 5])
-  })
-
-  it.each<{ input: Vec2 }>([
-    { input: [1, 0] }, // min > max
-    { input: [0, 0] }, // equal values
-    { input: [NaN, 1] }, // non-finite
-  ])(`invalid range $input returns [0, 1]`, ({ input }) => {
-    expect(validate_sigma_range(input)).toEqual([0, 1])
-  })
+// valid ranges pass through, invalid ones (min > max, equal, non-finite) fall back to [0, 1]
+it.each<[Vec2, Vec2]>([
+  [
+    [0, 1],
+    [0, 1],
+  ],
+  [
+    [-5, 5],
+    [-5, 5],
+  ],
+  [
+    [1, 0],
+    [0, 1],
+  ],
+  [
+    [0, 0],
+    [0, 1],
+  ],
+  [
+    [NaN, 1],
+    [0, 1],
+  ],
+])(`validate_sigma_range(%j) returns %j`, (input, expected) => {
+  expect(validate_sigma_range(input)).toEqual(expected)
 })

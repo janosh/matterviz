@@ -3,6 +3,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
   expect_canvas_changed,
+  expect_canvas_changed_by,
   expect_gizmo_click_flies_camera,
   get_canvas_timeout,
   IS_CI,
@@ -210,21 +211,15 @@ test.describe(`ScatterPlot3D`, () => {
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
-  // Both helpers assert: wait_for_3d_canvas requires a visible, non-zero-size canvas and
-  // wait_for_canvas_rendered requires it to have actually painted.
-  test(`renders 3D canvas with content`, async ({ page }) => {
-    await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
-  })
-
   // Text overlays must not swallow pointer events meant for the canvas below them
-  for (const selector of [`.axis-label`, `.tick-label`]) {
-    test(`${selector} does not intercept pointer events`, async ({ page }) => {
-      await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+  test(`axis and tick labels do not intercept pointer events`, async ({ page }) => {
+    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+    for (const selector of [`.axis-label`, `.tick-label`]) {
       const label = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
       await expect(label).toBeVisible({ timeout: get_canvas_timeout() })
       await expect(label).toHaveCSS(`pointer-events`, `none`)
-    })
-  }
+    }
+  })
 
   test(`gizmo handles stay reachable beside the color bar and fly the camera`, async ({
     page,
@@ -436,20 +431,23 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
-  // Parameterized tests for each projection plane toggle
   for (const plane of [`XY`, `XZ`, `YZ`] as const) {
-    test(`toggling ${plane} projection changes canvas`, async ({ page }) => {
+    test(`toggling ${plane} projection on and off changes canvas`, async ({ page }) => {
       const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       await wait_for_canvas_rendered(canvas)
       const pane = await open_controls_pane(page)
-      const initial = await canvas.screenshot()
-
       const checkbox = get_projection_checkbox(pane, plane)
-      await expect(checkbox).not.toBeChecked() // verify default unchecked
-      await checkbox.click()
-      await expect(checkbox).toBeChecked()
-
-      await expect_canvas_changed(canvas, initial, get_canvas_timeout())
+      await expect(checkbox).not.toBeChecked() // default off
+      for (const checked of [true, false]) {
+        await expect_canvas_changed_by(
+          canvas,
+          async () => {
+            await checkbox.click()
+            await expect(checkbox).toBeChecked({ checked })
+          },
+          get_canvas_timeout(),
+        )
+      }
     })
   }
 
@@ -510,22 +508,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
     }
     await expect(opacity_row.locator(`input[type="range"]`)).toHaveValue(`0.3`)
     await expect(size_row.locator(`input[type="range"]`)).toHaveValue(`0.5`)
-  })
-
-  test(`disabling projection removes it from canvas`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    const pane = await open_controls_pane(page)
-
-    const xy_checkbox = get_projection_checkbox(pane, `XY`)
-    await xy_checkbox.click()
-    await page.waitForTimeout(200)
-    const with_projection = await canvas.screenshot()
-
-    await xy_checkbox.click()
-    await expect(xy_checkbox).not.toBeChecked()
-
-    await expect_canvas_changed(canvas, with_projection, get_canvas_timeout())
   })
 
   test(`projections update when camera rotates`, async ({ page }) => {

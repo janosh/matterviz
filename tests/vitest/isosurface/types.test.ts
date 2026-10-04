@@ -32,62 +32,19 @@ test.each([
 })
 
 describe(`grid_data_range`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      // oxfmt-ignore
-      grid: [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
-      min: 1,
-      max: 8,
-      abs_max: 8,
-      mean: 4.5,
-      label: `all-positive`,
-    },
-    {
-      // oxfmt-ignore
-      grid: [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]],
-      min: -7,
-      max: 6,
-      abs_max: 7,
-      mean: 0.25,
-      label: `mixed pos/neg`,
-    },
-    {
-      grid: [[[-10, 1]]],
-      min: -10,
-      max: 1,
-      abs_max: 10,
-      mean: -4.5,
-      label: `abs_max driven by min`,
-    },
-    {
-      // oxfmt-ignore
-      grid: [[[0, 0], [0, 0]]],
-      min: 0,
-      max: 0,
-      abs_max: 0,
-      mean: 0,
-      label: `uniform zero`,
-    },
-    { grid: [[[42]]], min: 42, max: 42, abs_max: 42, mean: 42, label: `single element` },
-    {
-      grid: [[[-3.5]]],
-      min: -3.5,
-      max: -3.5,
-      abs_max: 3.5,
-      mean: -3.5,
-      label: `single negative`,
-    },
-    { grid: [], min: 0, max: 0, abs_max: 0, mean: 0, label: `empty grid` },
-  ])(
-    `$label: min=$min max=$max abs_max=$abs_max mean=$mean`,
-    ({ grid, min, max, abs_max, mean }) => {
-      const range = grid_data_range(grid.length ? flatten_grid(grid).values : [])
-      expect(range.min).toBe(min)
-      expect(range.max).toBe(max)
-      expect(range.abs_max).toBe(abs_max)
-      expect(range.mean).toBeCloseTo(mean)
-    },
-  )
+    [`all-positive`, [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [1, 8, 8, 4.5]],
+    [`mixed pos/neg`, [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]], [-7, 6, 7, 0.25]],
+    [`abs_max driven by min`, [[[-10, 1]]], [-10, 1, 10, -4.5]],
+    [`uniform zero`, [[[0, 0], [0, 0]]], [0, 0, 0, 0]],
+    [`single element`, [[[42]]], [42, 42, 42, 42]],
+    [`single negative`, [[[-3.5]]], [-3.5, -3.5, 3.5, -3.5]],
+    [`empty grid`, [], [0, 0, 0, 0]],
+  ] as [string, number[][][], number[]][])(`%s: [min, max, abs_max, mean] = %j`, (_label, grid, [min, max, abs_max, mean]) => {
+    const range = grid_data_range(grid.length ? flatten_grid(grid).values : [])
+    expect(range).toEqual({ min, max, abs_max, mean: expect.closeTo(mean) })
+  })
 })
 
 const vol_with_range = (min: number, max: number): VolumetricData =>
@@ -111,12 +68,16 @@ describe(`auto_isosurface_settings`, () => {
 })
 
 describe(`auto_volume_layer`, () => {
-  test(`sets isovalue to 20% of abs_max and binds volume_id`, () => {
-    const layer = auto_volume_layer(vol_with_range(0, 10))
+  test(`defaults to a visible 20%-of-abs_max layer bound to the volume, palette color by offset`, () => {
+    const vol = vol_with_range(0, 10)
+    const layer = auto_volume_layer(vol)
     expect(layer.isovalue).toBeCloseTo(2)
-    expect(layer.volume_id).toBe(`0`)
-    expect(layer.visible).toBe(true)
+    expect(layer).toMatchObject({ volume_id: `0`, visible: true, color: LAYER_COLORS[0] })
     expect(layer.color_volume_id).toBeUndefined()
+    expect(auto_volume_layer(vol, 1).color).toBe(LAYER_COLORS[1])
+    expect(auto_volume_layer(vol, LAYER_COLORS.length).color).toBe(LAYER_COLORS[0])
+    // all-zero data falls back to a small positive isovalue
+    expect(auto_volume_layer(vol_with_range(0, 0)).isovalue).toBe(0.05)
   })
 
   test.each([
@@ -127,39 +88,25 @@ describe(`auto_volume_layer`, () => {
     expect(auto_volume_layer(vol_with_range(min, max)).show_negative).toBe(show_negative)
   })
 
-  test(`color_offset picks successive palette colors`, () => {
-    const vol = vol_with_range(0, 10)
-    expect(auto_volume_layer(vol, 0).color).toBe(LAYER_COLORS[0])
-    expect(auto_volume_layer(vol, 1).color).toBe(LAYER_COLORS[1])
-    expect(auto_volume_layer(vol, LAYER_COLORS.length).color).toBe(LAYER_COLORS[0])
-  })
-
-  test(`falls back to a small positive isovalue for all-zero data`, () => {
-    expect(auto_volume_layer(vol_with_range(0, 0)).isovalue).toBe(0.05)
-  })
-
   // Repeated "+" clicks on one volume used to stack coincident 20%/0.6 surfaces. Shells
   // step the 0.8 → 0.1 ladder like the old generate_layers: distinct isovalues, inner
   // (high-isovalue) shells more opaque than outer ones.
   test.each([
-    { shell_idx: 0, fraction: 0.2, opacity: 0.6 },
-    { shell_idx: 1, fraction: 0.8, opacity: 0.8 },
-    { shell_idx: 2, fraction: 0.5, opacity: 0.7 },
-    { shell_idx: 3, fraction: 0.1, opacity: 0.3 },
-    { shell_idx: SHELL_STEPS.length, fraction: 0.2, opacity: 0.6 }, // wraps around
-  ])(
-    `shell $shell_idx sits at $fraction·abs_max with opacity $opacity`,
-    ({ shell_idx, fraction, opacity }) => {
-      const layer = auto_volume_layer(vol_with_range(-5, 10), 1, shell_idx)
-      expect(layer.isovalue).toBeCloseTo(10 * fraction)
-      expect(layer.opacity).toBe(opacity)
-      expect(layer).toMatchObject({
-        volume_id: `0`,
-        color: LAYER_COLORS[1],
-        show_negative: true,
-      })
-    },
-  )
+    [0, 0.2, 0.6],
+    [1, 0.8, 0.8],
+    [2, 0.5, 0.7],
+    [3, 0.1, 0.3],
+    [SHELL_STEPS.length, 0.2, 0.6], // wraps around
+  ])(`shell %i sits at %s·abs_max with opacity %s`, (shell_idx, fraction, opacity) => {
+    const layer = auto_volume_layer(vol_with_range(-5, 10), 1, shell_idx)
+    expect(layer.isovalue).toBeCloseTo(10 * fraction)
+    expect(layer.opacity).toBe(opacity)
+    expect(layer).toMatchObject({
+      volume_id: `0`,
+      color: LAYER_COLORS[1],
+      show_negative: true,
+    })
+  })
 
   test(`successive shells of one volume never coincide and inner shells are more opaque`, () => {
     const vol = vol_with_range(0, 10)
@@ -215,9 +162,14 @@ describe(`label_file_volumes`, () => {
 
   test(`single volume gets the compression-stripped filename as label + source`, () => {
     const [labeled] = label_file_volumes([vol(`charge density`)], `esp.cube.gz`)
-    expect(labeled.label).toBe(`esp.cube`)
-    expect(labeled.source).toBe(`esp.cube`)
-    expect(labeled.source_filename).toBe(`esp.cube.gz`)
+    expect(labeled).toMatchObject({
+      label: `esp.cube`,
+      source: `esp.cube`,
+      source_filename: `esp.cube.gz`,
+    })
+    // an explicit source filename stays separate from the logical parse filename
+    const [renamed] = label_file_volumes([vol()], `esp.cube`, `esp.cube.gz`)
+    expect([renamed.source, renamed.source_filename]).toEqual([`esp.cube`, `esp.cube.gz`])
   })
 
   // The hand-rolled suffix list carried a dead `.zst` (nothing here inflates it) and omitted
@@ -235,27 +187,24 @@ describe(`label_file_volumes`, () => {
     expect(label_file_volumes([vol()], filename)[0].source).toBe(expected)
   })
 
-  test(`keeps source filename separate from the logical parse filename`, () => {
-    const [labeled] = label_file_volumes([vol()], `esp.cube`, `esp.cube.gz`)
-    expect([labeled.source, labeled.source_filename]).toEqual([`esp.cube`, `esp.cube.gz`])
-  })
-
-  test(`multi-block files get "file: block" labels sharing one source`, () => {
-    const labeled = label_file_volumes(
-      [vol(`charge density`), vol(`magnetization density`)],
+  // block labels when present, else 1-based positions
+  test.each([
+    [
+      [`charge`, `magnetization`],
       `Fe-CHGCAR.bz2`,
-    )
-    expect(labeled.map((entry) => entry.label)).toEqual([
-      `Fe-CHGCAR: charge density`,
-      `Fe-CHGCAR: magnetization density`,
-    ])
-    expect(labeled.every((entry) => entry.source === `Fe-CHGCAR`)).toBe(true)
-  })
-
-  test(`multi-block files use positional labels when block labels are absent`, () => {
-    const labeled = label_file_volumes([vol(), vol()], `density.cube`)
-    expect(labeled.map((entry) => entry.label)).toEqual([`density.cube: 1`, `density.cube: 2`])
-  })
+      [`Fe-CHGCAR: charge`, `Fe-CHGCAR: magnetization`],
+    ],
+    [[undefined, undefined], `density.cube`, [`density.cube: 1`, `density.cube: 2`]],
+  ])(
+    `multi-block %j in %s share one source with "file: block" labels`,
+    (block_labels, filename, expected) => {
+      const labeled = label_file_volumes(block_labels.map(vol), filename)
+      expect(labeled.map((entry) => entry.label)).toEqual(expected)
+      expect(new Set(labeled.map((entry) => entry.source))).toEqual(
+        new Set([expected[0].split(`:`)[0]]),
+      )
+    },
+  )
 })
 
 describe(`merge_imported_volumes`, () => {
@@ -379,47 +328,20 @@ describe(`isovalue slider aids`, () => {
   const slider = { min: 0.01, step: 0.01, reach: 0.03 }
   const band: [number, number] = [0.0501, 0.913]
   test.each([
-    {
-      value: 0.04,
-      sticky: true,
-      previous: 0.2,
-      expected: 0.06,
-      why: `just below: up to the first step drawing a surface`,
+    [0.04, true, 0.2, 0.06, `just below: up to the first step drawing a surface`],
+    [0.04, false, 0.06, 0.04, `a keyboard step from the edge passes through`],
+    [0.04, true, 0.06, 0.06, `a drag stays at the edge`],
+    [0.01, true, 0.06, 0.01, `beyond reach: free`],
+    [0.92, true, 0.5, 0.91, `just above: down to the last step`],
+    [0.5, true, 0.4, 0.5, `inside: untouched`],
+    [0.913, true, 0.5, 0.913, `the band's top still draws`],
+  ] as [number, boolean, number, number, string][])(
+    `snap %s (sticky=%s, previous %s) → %s: %s`,
+    (value, sticky, previous, expected) => {
+      const snapped = snap_isovalue(value, band, { ...slider, sticky, previous })
+      expect(snapped).toBeCloseTo(expected, 12)
     },
-    {
-      value: 0.04,
-      sticky: false,
-      previous: 0.06,
-      expected: 0.04,
-      why: `a keyboard step from the edge passes through`,
-    },
-    {
-      value: 0.04,
-      sticky: true,
-      previous: 0.06,
-      expected: 0.06,
-      why: `a drag stays at the edge`,
-    },
-    { value: 0.01, sticky: true, previous: 0.06, expected: 0.01, why: `beyond reach: free` },
-    {
-      value: 0.92,
-      sticky: true,
-      previous: 0.5,
-      expected: 0.91,
-      why: `just above: down to the last step`,
-    },
-    { value: 0.5, sticky: true, previous: 0.4, expected: 0.5, why: `inside: untouched` },
-    {
-      value: 0.913,
-      sticky: true,
-      previous: 0.5,
-      expected: 0.913,
-      why: `the band's top still draws`,
-    },
-  ])(`snap $value → $expected: $why`, ({ value, sticky, previous, expected }) => {
-    const snapped = snap_isovalue(value, band, { ...slider, sticky, previous })
-    expect(snapped).toBeCloseTo(expected, 12)
-  })
+  )
 
   test(`snap leaves values alone without a band or when it is narrower than a step`, () => {
     const options = { ...slider, sticky: true, previous: 0 }

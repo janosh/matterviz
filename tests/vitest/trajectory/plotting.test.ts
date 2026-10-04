@@ -570,9 +570,7 @@ describe(`generate_axis_scale_types`, () => {
 })
 
 describe(`SCF convergence series axis grouping and log scale`, () => {
-  // Mirrors vaspout.h5 single-point SCF pseudo-frames: monotonic energy plus
-  // |dE| and density residuals spanning many decades (uses the built-in
-  // trajectory_property_config where scf_energy_delta has its own axis_group)
+  // vaspout.h5 single-point SCF pseudo-frames: energy plus residuals spanning many decades
   const scf_frames = [
     { energy: -10.1, scf_energy_delta: 2.5, scf_rms: 0.9, scf_charge_rms: 0.5 },
     { energy: -10.6, scf_energy_delta: 5e-2, scf_rms: 1e-2, scf_charge_rms: 8e-3 },
@@ -592,8 +590,6 @@ describe(`SCF convergence series axis grouping and log scale`, () => {
     // axis_group separates it from the eV energy group while unit stays displayable
     expect(delta_series?.unit).toBe(`eV`)
     expect(delta_series?.axis_group).toBe(`eV (SCF)`)
-    // log-scale decision for the SCF axis_group is covered by the
-    // generate_axis_scale_types table above
   })
 
   it(`keeps energy + force on the axes for relax trajectories (scf delta hidden)`, () => {
@@ -642,11 +638,6 @@ describe(`x axis quantity`, () => {
     },
   )
 
-  it(`plots against frame index by default`, () => {
-    const series = generate_plot_series(strided_rows())
-    expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1, 2, 3])
-  })
-
   it.each([
     { quantity: `frame` as const, expected_x: [0, 1, 2, 3], label: `Frame`, unit: `` },
     { quantity: `step` as const, expected_x: [0, 500, 1000, 1500], label: `Step`, unit: `` },
@@ -666,6 +657,9 @@ describe(`x axis quantity`, () => {
     const series = generate_plot_series(rows, { x_map })
     const energy = find_series_by_label(series, `energy`)
     expect(energy?.x).toEqual(expected_x)
+    // frame index is also the default axis without an x_map
+    if (quantity === `frame`)
+      expect(find_series_by_label(generate_plot_series(rows), `energy`)?.x).toEqual(expected_x)
     expect(series.find((srs) => srs.id === `force_max`)?.x).toBe(energy?.x)
     expect(series.find((srs) => srs.id === `volume`)?.x).toEqual([
       expected_x[1],
@@ -710,24 +704,15 @@ describe(`x axis quantity`, () => {
   // An indexed trajectory only records steps at sampled frames, so intermediate frames
   // have to be interpolated rather than dropped
   it(`interpolates steps between sampled frames of an indexed trajectory`, () => {
-    const samples = { frame_numbers: [0, 10, 20], steps: [0, 1000, 2000] }
-    const x_map = build_x_map(samples, `step`, {})
-    expect(x_map.to_x(0)).toBe(0)
-    expect(x_map.to_x(5)).toBe(500)
-    expect(x_map.to_x(15)).toBe(1500)
-    expect(x_map.to_frame(500)).toBe(5)
-    expect(x_map.to_frame(1500)).toBe(15)
-  })
-
-  it(`maps streaming series x values through the same axis`, () => {
-    const plot_metadata = [0, 10, 20].map((frame_number) => ({
+    const rows = [0, 10, 20].map((frame_number) => ({
       frame_number,
       step: frame_number * 100,
       properties: { energy: -10 - frame_number },
     }))
-    const x_map = build_x_map(get_frame_step_samples(plot_metadata), `step`, {})
-
-    const series = generate_plot_series(plot_metadata, { x_map })
+    const x_map = build_x_map(get_frame_step_samples(rows), `step`, {})
+    expect([0, 5, 15].map(x_map.to_x)).toEqual([0, 500, 1500])
+    expect([500, 1500].map(x_map.to_frame)).toEqual([5, 15])
+    const series = generate_plot_series(rows, { x_map })
     expect(find_series_by_label(series, `energy`)?.x).toEqual([0, 1000, 2000])
   })
 

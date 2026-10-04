@@ -37,13 +37,8 @@ describe(`facet panel assignment`, () => {
   it(`fills an uneven grid in deterministic row-major order`, () => {
     const layout = assign_facet_panels(panels(5), 3)
     expect(layout.rows).toBe(2)
-    expect(layout.panels.map(({ row, column }) => [row, column])).toEqual([
-      [0, 0],
-      [0, 1],
-      [0, 2],
-      [1, 0],
-      [1, 1],
-    ])
+    // oxfmt-ignore
+    expect(layout.panels.map(({ row, column }) => [row, column])).toEqual([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]])
   })
 
   it(`honors explicit placement and skips occupied spans`, () => {
@@ -62,29 +57,12 @@ describe(`facet panel assignment`, () => {
     ])
   })
 
+  // oxfmt-ignore
   it.each([
-    [
-      `duplicate keys`,
-      [
-        { key: `duplicate`, data: 1 },
-        { key: `duplicate`, data: 2 },
-      ],
-      `Duplicate facet key`,
-    ],
+    [`duplicate keys`, [{ key: `duplicate`, data: 1 }, { key: `duplicate`, data: 2 }], `Duplicate facet key`],
     [`zero row span`, [{ key: `bad-row`, data: 1, row_span: 0 }], `row_span`],
-    [
-      `oversized column span`,
-      [{ key: `bad-column`, data: 1, column_span: 3 }],
-      `exceeds 2 columns`,
-    ],
-    [
-      `overlapping explicit cells`,
-      [
-        { key: `first`, data: 1, row: 0, column: 0 },
-        { key: `second`, data: 2, row: 0, column: 0 },
-      ],
-      `Cannot place facet`,
-    ],
+    [`oversized column span`, [{ key: `bad-column`, data: 1, column_span: 3 }], `exceeds 2 columns`],
+    [`overlapping explicit cells`, [{ key: `first`, data: 1, row: 0, column: 0 }, { key: `second`, data: 2, row: 0, column: 0 }], `Cannot place facet`],
   ] as const)(`rejects %s`, (_name, input, message) => {
     expect(() => assign_facet_panels(input, 2)).toThrow(message)
   })
@@ -104,51 +82,15 @@ describe(`facet layout reconciliation`, () => {
   }))
 
   it(`takes the maximum reported value on every padding side`, () => {
-    expect(reconcile_facet_padding(layout, reports)).toEqual({
-      t: 13,
-      b: 26,
-      l: 39,
-      r: 52,
-    })
+    expect(reconcile_facet_padding(layout, reports)).toEqual({ t: 13, b: 26, l: 39, r: 52 })
   })
 
+  // oxfmt-ignore
   it.each([
-    {
-      mode: `shared`,
-      expected: [
-        [0, 31],
-        [0, 31],
-        [0, 31],
-        [0, 31],
-      ],
-    },
-    {
-      mode: `free`,
-      expected: [
-        [0, 1],
-        [10, 11],
-        [20, 21],
-        [30, 31],
-      ],
-    },
-    {
-      mode: `row`,
-      expected: [
-        [0, 11],
-        [0, 11],
-        [20, 31],
-        [20, 31],
-      ],
-    },
-    {
-      mode: `col`,
-      expected: [
-        [0, 21],
-        [10, 31],
-        [0, 21],
-        [10, 31],
-      ],
-    },
+    { mode: `shared`, expected: [[0, 31], [0, 31], [0, 31], [0, 31]] },
+    { mode: `free`, expected: [[0, 1], [10, 11], [20, 21], [30, 31]] },
+    { mode: `row`, expected: [[0, 11], [0, 11], [20, 31], [20, 31]] },
+    { mode: `col`, expected: [[0, 21], [10, 31], [0, 21], [10, 31]] },
   ] as { mode: FacetAxisMode; expected: number[][] }[])(
     `reconciles $mode axis ranges`,
     ({ mode, expected }) => {
@@ -164,27 +106,15 @@ describe(`facet layout reconciliation`, () => {
       height: 310,
       column_gap: 10,
       row_gap: 10,
-      shared_bands: {
-        title_height: 30,
-        legend_width: 80,
-        color_bar_width: 40,
-        gap: 10,
-      },
+      shared_bands: { title_height: 30, legend_width: 80, color_bar_width: 40, gap: 10 },
     })
 
     expect(geometry.panel_grid).toEqual({ x: 0, y: 40, width: 380, height: 270 })
-    expect(geometry.title).toEqual({
-      band: `title`,
-      rect: { x: 0, y: 0, width: 520, height: 30 },
-    })
-    expect(geometry.legend).toEqual({
-      band: `legend`,
-      rect: { x: 390, y: 40, width: 80, height: 270 },
-    })
-    expect(geometry.color_bar).toEqual({
-      band: `color_bar`,
-      rect: { x: 480, y: 40, width: 40, height: 270 },
-    })
+    expect([geometry.title, geometry.legend, geometry.color_bar]).toEqual([
+      { band: `title`, rect: { x: 0, y: 0, width: 520, height: 30 } },
+      { band: `legend`, rect: { x: 390, y: 40, width: 80, height: 270 } },
+      { band: `color_bar`, rect: { x: 480, y: 40, width: 40, height: 270 } },
+    ])
     expect(geometry.panels.map(({ rect }) => rect)).toEqual([
       { x: 0, y: 40, width: 120, height: 130 },
       { x: 130, y: 40, width: 120, height: 130 },
@@ -210,16 +140,9 @@ describe(`facet range propagation`, () => {
     ranges: { x: [10 * panel_idx, 10 * panel_idx + 1] as [number, number] },
   }))
 
+  // oxfmt-ignore
   it.each([
-    {
-      mode: `shared`,
-      expected: [
-        [4, 6],
-        [4, 6],
-        [4, 6],
-        [4, 6],
-      ],
-    },
+    { mode: `shared`, expected: [[4, 6], [4, 6], [4, 6], [4, 6]] },
     { mode: `free`, expected: [[4, 6], undefined, undefined, undefined] },
     { mode: `row`, expected: [[4, 6], [4, 6], undefined, undefined] },
     { mode: `col`, expected: [[4, 6], undefined, [4, 6], undefined] },
@@ -232,12 +155,8 @@ describe(`facet range propagation`, () => {
   )
 
   it(`resets a linked zoom back to each group's intrinsic union`, () => {
-    const zoomed = propagate_facet_range(layout, [], `panel-0`, `x`, [4, 6], {
-      x: `row`,
-    })
-    const reset = propagate_facet_range(layout, zoomed, `panel-1`, `x`, null, {
-      x: `row`,
-    })
+    const zoomed = propagate_facet_range(layout, [], `panel-0`, `x`, [4, 6], { x: `row` })
+    const reset = propagate_facet_range(layout, zoomed, `panel-1`, `x`, null, { x: `row` })
     expect(reconcile_facet_ranges(layout, reports, { x: `row` }, reset)).toEqual([
       { key: `panel-0`, ranges: { x: [0, 11] } },
       { key: `panel-1`, ranges: { x: [0, 11] } },
@@ -253,28 +172,22 @@ describe(`facet axis visibility`, () => {
 
   it(`shows every outer side of a 1x1 panel`, () => {
     const single_layout = assign_facet_panels(panels(1), 1)
-    expect(resolve_facet_axis_visibility(single_layout.panels[0], single_layout)).toEqual({
-      x: true,
-      x2: true,
-      y: true,
-      y2: true,
-    })
+    const all_visible = { x: true, x2: true, y: true, y2: true }
+    expect(resolve_facet_axis_visibility(single_layout.panels[0], single_layout)).toEqual(
+      all_visible,
+    )
   })
 
   it(`suppresses inner shared axes and keeps free axes visible`, () => {
+    const all_shared = { x: `shared`, x2: `shared`, y: `shared`, y2: `shared` } as const
+    expect(resolve_facet_axis_visibility(top_left, layout, all_shared)).toEqual({
+      x: false,
+      x2: true,
+      y: true,
+      y2: false,
+    })
     expect(
-      resolve_facet_axis_visibility(top_left, layout, {
-        x: `shared`,
-        x2: `shared`,
-        y: `shared`,
-        y2: `shared`,
-      }),
-    ).toEqual({ x: false, x2: true, y: true, y2: false })
-    expect(
-      resolve_facet_axis_visibility(top_left, layout, {
-        x: `free`,
-        y: `free`,
-      }),
+      resolve_facet_axis_visibility(top_left, layout, { x: `free`, y: `free` }),
     ).toMatchObject({ x: true, y: true })
     expect(resolve_facet_axis_visibility(top_left, layout, { x: `row` })).toMatchObject({
       x: true,
@@ -282,6 +195,7 @@ describe(`facet axis visibility`, () => {
     expect(resolve_facet_axis_visibility(bottom_right, layout, { y: `col` })).toMatchObject({
       y: true,
     })
+    // default axis modes are shared
     expect(resolve_facet_axis_visibility(bottom_right, layout)).toEqual({
       x: true,
       x2: false,

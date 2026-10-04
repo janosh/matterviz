@@ -132,11 +132,10 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
       selector: `.bar-plot, .status-message, section`,
     })
 
+  // Input shapes are covered by the to_structure_entries table above; the single-crystal
+  // default split_mode=by_element is mounted by the tooltip test below
   test.each([
-    [`single crystal`, { structures: simple_cubic }],
     [`single lattice-less molecule`, { structures: water }],
-    [`record of structures`, { structures: { cubic: simple_cubic } }],
-    [`array of entries`, { structures: [{ label: `cubic`, structure: simple_cubic }] }],
     [
       `split_mode=by_structure`,
       { structures: { cubic: simple_cubic }, split_mode: `by_structure` },

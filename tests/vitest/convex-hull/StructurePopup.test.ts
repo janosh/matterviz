@@ -71,7 +71,7 @@ describe(`StructurePopup`, () => {
     },
   )
 
-  test(`custom top_left snippet replaces default stats content`, () => {
+  test(`custom top_left snippet replaces default stats content, children render beside the structure`, () => {
     let received_context: StructurePopupContext | undefined
     const top_left = createRawSnippet<[StructurePopupContext]>((context) => {
       received_context = context()
@@ -80,8 +80,11 @@ describe(`StructurePopup`, () => {
           `<strong class="custom-popup-info">${context().stats?.id} custom</strong>`,
       }
     })
+    const children = createRawSnippet<[StructurePopupContext]>((context) => ({
+      render: () => `<div class="popup-children">${context().stats?.id} extra</div>`,
+    }))
 
-    mount_popup({ stats: { id: `custom-id`, formula: `Li2O` }, top_left })
+    mount_popup({ stats: { id: `custom-id`, formula: `Li2O` }, top_left, children })
 
     const stats = doc_query(`.structure-stats`)
     expect(stats.textContent).toBe(`custom-id custom`)
@@ -89,16 +92,7 @@ describe(`StructurePopup`, () => {
     expect(stats.querySelector(`.custom-popup-info`)).toBeInstanceOf(HTMLElement)
     expect(received_context?.structure).toBe(mock_structure)
     expect(received_context?.formula_html).toContain(`Li<sub>2</sub>`)
-  })
-
-  test(`renders children beside the structure with shared context`, () => {
-    const children = createRawSnippet<[StructurePopupContext]>((context) => ({
-      render: () => `<div class="popup-children">${context().stats?.id} extra</div>`,
-    }))
-
-    mount_popup({ stats: { id: `mp-1` }, children })
-
     const extra = doc_query(`.floating-popup-content .popup-children`)
-    expect(extra.textContent).toBe(`mp-1 extra`)
+    expect(extra.textContent).toBe(`custom-id extra`)
   })
 })

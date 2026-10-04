@@ -72,7 +72,7 @@ const vscode_api: VSCodeAPI | null = get_vscode_api()
 // main thread when the constructor throws, so throw synchronously and make that fallback
 // instant. Real off-thread work in a webview needs self-contained single-file worker bundles
 // fetched on the main thread and handed over as blob URLs under a Trusted Types policy.
-// Same-origin URLs (Hive, the docs site) construct as-is.
+// Same-origin URLs (desktop hosts, the docs site) construct as-is.
 const install_cross_origin_worker_guard = (): void => {
   if (typeof Worker === `undefined`) return
   const NativeWorker = Worker
@@ -332,14 +332,12 @@ const parse_file_data = (
   )
 }
 
-// Create error display in container
 const create_error_display = (
   container: HTMLElement,
   error: Error,
   filename: string,
 ): void => {
-  // Fall back to MatterViz theme tokens (not VS Code dark hex): Hive and other
-  // non-VS Code hosts apply --page-bg/--text-color and leave --vscode-* unset.
+  // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
     <div style="padding: 20px; text-align: center;
                 background: var(--vscode-editor-background, var(--page-bg, Canvas));
@@ -365,8 +363,8 @@ export const create_display = (
   display_options?: DisplayOptions,
 ): MatterVizApp => {
   const { filename } = result
-  // Prefer VS Code tokens when present; otherwise MatterViz theme vars so Hive
-  // light mode is not stuck on the old dark hex fallbacks.
+  // Prefer VS Code tokens when present, else MatterViz theme vars so non-VS Code hosts
+  // follow their light/dark theme.
   Object.assign(container.style, {
     width: `100%`,
     height: `100%`,
@@ -381,7 +379,6 @@ export const create_display = (
   })
   container.innerHTML = ``
 
-  // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
 
   let app: MatterVizApp

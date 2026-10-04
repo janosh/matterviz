@@ -121,13 +121,10 @@ describe(`parse_decimal_token`, () => {
 
 describe(`parse_float_block`, () => {
   const text = `1 2 3\n\n  4 5\n6 7\naugmentation 8\n`
-  test.each([
-    { first_column_only: false, values: [1, 2, 3, 4, 5, 6, 7], label: `every token` },
-    { first_column_only: true, values: [1, 4, 6], label: `the first token per line` },
-  ])(`reads $label and stops at a letter-led line`, ({ first_column_only, values }) => {
+  test(`reads every token and stops at a letter-led line`, () => {
     const data = new Float64Array(10)
-    const { count, end_pos } = parse_float_block(text, 0, 10, data, 0, first_column_only)
-    expect(Array.from(data.subarray(0, count))).toEqual(values)
+    const { count, end_pos } = parse_float_block(text, 0, 10, data)
+    expect(Array.from(data.subarray(0, count))).toEqual([1, 2, 3, 4, 5, 6, 7])
     expect(text.slice(end_pos)).toBe(`\naugmentation 8\n`)
   })
 
@@ -160,7 +157,6 @@ describe(`parse_chgcar`, () => {
         data: `1.0D+00 2.0D+00 3.0D+00\n  4.0D+00 5.0D+00\n  6.0D+00 7.0D+00 8.0D+00`,
       }),
     )
-    expect(result).not.toBeNull()
     // Structure
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.structure.sites[0].species[0].element).toBe(`Si`)
@@ -181,6 +177,13 @@ describe(`parse_chgcar`, () => {
     const position = grid_at(result)
     expect(position(0, 0, 0)).toBeCloseTo(1.0 / cell_volume, 5)
     expect(position(1, 1, 1)).toBeCloseTo(8.0 / cell_volume, 5)
+    const scaled = (value: number) => expect.closeTo(value / cell_volume, 5)
+    expect(result?.volumes[0].data_range).toEqual({
+      min: scaled(1),
+      max: scaled(8),
+      abs_max: scaled(8),
+      mean: scaled(4.5),
+    })
   })
 
   test(`maps CHGCAR flattened data using x-fastest order`, () => {
@@ -190,16 +193,11 @@ describe(`parse_chgcar`, () => {
         data: `1 2 3 4 5 6 7 8 9 10 11 12`,
       }),
     )
-    expect(result).not.toBeNull()
-    const position = grid_at(result)
-    const cell_volume = result?.structure.lattice?.volume ?? 1
-
-    expect(position(0, 0, 0)).toBeCloseTo(1 / cell_volume, 8)
-    expect(position(1, 0, 0)).toBeCloseTo(2 / cell_volume, 8)
-    expect(position(0, 1, 0)).toBeCloseTo(3 / cell_volume, 8)
-    expect(position(1, 1, 0)).toBeCloseTo(4 / cell_volume, 8)
-    expect(position(0, 0, 1)).toBeCloseTo(7 / cell_volume, 8)
-    expect(position(1, 2, 1)).toBeCloseTo(12 / cell_volume, 8)
+    // the file runs x fastest (value = 1 + ix + 2·iy + 6·iz), storage z fastest
+    const cell_volume = result.structure.lattice.volume
+    expect(Array.from(result.volumes[0].values, (value) => value * cell_volume)).toEqual(
+      [1, 7, 3, 9, 5, 11, 2, 8, 4, 10, 6, 12].map((value) => expect.closeTo(value, 8)),
+    )
   })
 
   // Both forms come from the header grammar parse_poscar has always implemented and
@@ -211,6 +209,8 @@ describe(`parse_chgcar`, () => {
     [`negative factor = target volume`, `-27.0`, unit_cube, [3, 3, 3], 27],
     // 0.5 * 6 = 3 per axis; parseFloat used to stop at the `D` and read this as 5.0
     [`Fortran exponent factor`, `5.0D-01`, [`6 0 0`, `0 6 0`, `0 0 6`], [3, 3, 3], 27],
+    // a trailing comment is ignored, as parseFloat did
+    [`commented factor`, `2.0 ! scale`, unit_cube, [2, 2, 2], 8],
   ])(`applies %s to the lattice`, (_label, scale, lattice, abc, volume) => {
     const result = parse_chgcar(
       make_chgcar({ scale, lattice, elements: `Si`, counts: `1`, positions: [`0.0 0.0 0.0`] }),
@@ -235,17 +235,19 @@ describe(`parse_chgcar`, () => {
     expect(result?.structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
   })
 
-  test(`handles selective dynamics line`, () => {
+  test(`reads selective-dynamics site lines and wraps fractional coords to [0, 1)`, () => {
     const result = parse_chgcar(
       make_chgcar({
         selective_dynamics: true,
-        positions: [`0.0  0.0  0.0  T T T`, `0.5  0.5  0.5  F F F`],
+        positions: [`-0.1  1.2  0.8  T T T`, `0.5  0.5  0.5  F F F`],
       }),
     )
-    expect(result).not.toBeNull()
-    expect(result?.structure.sites).toHaveLength(2)
-    expect(result?.structure.sites[0].abc[0]).toBeCloseTo(0.0)
-    expect(result?.structure.sites[1].abc[0]).toBeCloseTo(0.5)
+    expect(result?.structure.sites.map(({ abc }) => abc)).toEqual(
+      [
+        [0.9, 0.2, 0.8],
+        [0.5, 0.5, 0.5],
+      ].map((abc) => abc.map((frac) => expect.closeTo(frac, 5))),
+    )
     // CHGCAR only skips the line: unlike parse_poscar it keeps no per-site move flags
     expect(result?.structure.sites[0].properties).toEqual({})
   })
@@ -287,16 +289,6 @@ describe(`parse_chgcar`, () => {
     },
   )
 
-  test(`spin-polarized CHGCAR parses two volumes`, () => {
-    const result = parse_chgcar(
-      make_chgcar({ second_volume: `   2   2   2\n  0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8` }),
-    )
-    expect(result?.volumes).toHaveLength(2)
-    expect(result?.volumes[0].label).toBe(`charge density`)
-    expect(result?.volumes[1].label).toBe(`magnetization density`)
-    expect(result?.volumes[1].dims).toEqual([2, 2, 2])
-  })
-
   test(`handles VASP 4 format (no element symbols)`, () => {
     // VASP 4 has no element symbols line - just goes straight to atom counts. Two groups,
     // so the index-1 fallback (He) is exercised: FALLBACK_ELEMENTS[0] is H, which alone
@@ -331,6 +323,7 @@ describe(`parse_chgcar`, () => {
   // the magnetization block
   const aug = `augmentation occupancies   1   8\n  0.1234E+00  0.2345E+00 -0.3456E-01`
   test.each([
+    [`no augmentation`, ``],
     [`augmentation only`, aug],
     [`augmentation and a moment line`, `${aug}\n 2.0 2.0`],
   ])(`keeps every block across %s`, (_desc, augmentation) => {
@@ -344,22 +337,10 @@ describe(`parse_chgcar`, () => {
       `charge density`,
       `magnetization density`,
     ])
+    expect(result.volumes[1].dims).toEqual([2, 2, 2])
     const volume = result.structure.lattice.volume
     expect(grid_at(result, 1)(1, 1, 1)).toBeCloseTo(-8 / volume, 12)
     expect(grid_at(result, 1)(0, 0, 0)).toBeCloseTo(-1 / volume, 12)
-  })
-
-  test(`wraps fractional coords to [0, 1)`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        positions: [`-0.1  1.2  0.8`, `0.5  0.5  0.5`],
-      }),
-    )
-    const abc = result?.structure.sites[0].abc
-    // -0.1 wraps to 0.9, 1.2 wraps to 0.2
-    expect(abc?.[0]).toBeCloseTo(0.9, 5)
-    expect(abc?.[1]).toBeCloseTo(0.2, 5)
-    expect(abc?.[2]).toBeCloseTo(0.8, 5)
   })
 
   // oxfmt-ignore
@@ -403,24 +384,6 @@ describe(`parse_chgcar`, () => {
     )
   })
 
-  test(`tolerates trailing comment on scale line like parseFloat did`, () => {
-    // default 5.43 Å lattice scaled by 2
-    expect(
-      parse_chgcar(make_chgcar({ scale: `2.0 ! scale` }))?.structure.lattice?.a,
-    ).toBeCloseTo(10.86, 5)
-  })
-
-  test(`computes data_range with correct min, max, abs_max, and mean`, () => {
-    const result = parse_chgcar(make_chgcar())
-    const range = result?.volumes[0].data_range
-    const vol = result?.structure.lattice?.volume ?? 1
-    // Default data: 1.0..8.0 divided by cell volume
-    expect(range?.min).toBeCloseTo(1.0 / vol, 5)
-    expect(range?.max).toBeCloseTo(8.0 / vol, 5)
-    expect(range?.abs_max).toBeCloseTo(8.0 / vol, 5)
-    expect(range?.mean).toBeCloseTo(4.5 / vol, 5)
-  })
-
   test(`non-orthogonal lattice produces correct lattice params`, () => {
     const result = parse_chgcar(
       make_chgcar({
@@ -434,12 +397,10 @@ describe(`parse_chgcar`, () => {
         positions: [`0.0  0.0  0.0`],
       }),
     )
-    expect(result).not.toBeNull()
     const lat = result?.structure.lattice
-    expect(lat?.a).toBeCloseTo(2.5, 2)
-    expect(lat?.b).toBeCloseTo(2.5, 1)
-    expect(lat?.c).toBeCloseTo(6.66, 2)
-    expect(lat?.gamma).toBeCloseTo(60, 0)
+    expect([lat?.a, lat?.b, lat?.c, lat?.gamma]).toEqual(
+      [2.5, 2.5, 6.66, 60].map((param) => expect.closeTo(param, 2)),
+    )
   })
 })
 
@@ -521,15 +482,19 @@ describe(`parse_cube`, () => {
     expect(performance.now() - start).toBeLessThan(100) // the atom spin alone took 847 ms
   })
 
-  test(`parses valid .cube with correct structure, grid shape, and volume`, () => {
-    const result = parse_cube(make_cube())
-    expect(result).not.toBeNull()
+  test(`parses valid .cube with correct structure, z-fastest values, and volume`, () => {
+    // blank lines inside the data block are skipped
+    const data = `0.001  0.002\n\n  0.003  0.004\n\n  0.005  0.006\n  0.007  0.008`
+    const result = parse_cube(make_cube({ data }))
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.volumes).toHaveLength(1)
     expect(result?.volumes[0].label).toBe(`volumetric data`)
-    // Grid dimensions
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
-    expect(result?.volumes[0].values).toHaveLength(8)
+    // .cube data is z fastest like the flat storage: (0,0,1) = 0.002, (0,1,0) = 0.003, ...
+    expect(Array.from(result?.volumes[0].values ?? [])).toEqual([
+      0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008,
+    ])
+    expect(grid_at(result)(1, 0, 0)).toBe(0.005)
     // Pin CODATA 2022 through parser output so conversion changes must be deliberate.
     expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * 0.529177210544, 10)
   })
@@ -584,7 +549,6 @@ describe(`parse_cube`, () => {
         data: Array(27).fill(`1.0`).join(`  `),
       }),
     )
-    expect(result).not.toBeNull()
     // Negative dims = Angstrom, no conversion: lattice = 3 * 1.0 = 3.0 A
     expect(result?.structure.lattice?.a).toBeCloseTo(3.0, 3)
   })
@@ -597,7 +561,6 @@ describe(`parse_cube`, () => {
         orbital_header: `    1    1`,
       }),
     )
-    expect(result).not.toBeNull()
     expect(result?.structure.sites).toHaveLength(1)
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
@@ -619,24 +582,6 @@ describe(`parse_cube`, () => {
     expect(() => parse_cube(make_cube({ ...overrides, data }))).toThrow(
       /2 values per grid point/,
     )
-  })
-
-  test(`reads volumetric data values correctly`, () => {
-    const result = parse_cube(make_cube())
-    const position = grid_at(result)
-    // Data: 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008, z fastest
-    // (0,0,0)=0.001, (0,0,1)=0.002, (0,1,0)=0.003, (0,1,1)=0.004
-    // (1,0,0)=0.005, (1,0,1)=0.006, (1,1,0)=0.007, (1,1,1)=0.008
-    expect(position(0, 0, 0)).toBeCloseTo(0.001, 5)
-    expect(position(0, 0, 1)).toBeCloseTo(0.002, 5)
-    expect(position(0, 1, 0)).toBeCloseTo(0.003, 5)
-    expect(position(1, 0, 0)).toBeCloseTo(0.005, 5)
-    expect(position(1, 1, 1)).toBeCloseTo(0.008, 5)
-  })
-
-  test(`normalizes non-zero grid origin to the structure frame`, () => {
-    const result = parse_cube(make_cube({ origin: [1.0, 2.0, 3.0] }))
-    expect(result.volumes[0].origin).toEqual([0, 0, 0])
   })
 
   // oxfmt-ignore
@@ -663,44 +608,26 @@ describe(`parse_cube`, () => {
     expect(range?.mean).toBeCloseTo((-2 + 1 + 0.5 + 3 - 1 + 0 + 2 + 0.5) / 8, 5)
   })
 
+  // the grid origin is normalized into the structure frame either way
   test.each([
-    {
-      origin: [0, 0, 0] as Vec3,
-      pbc: true,
-      label: `periodic (origin at 0)`,
-    },
+    { origin: [0, 0, 0] as Vec3, periodic: undefined, pbc: true, label: `origin at 0` },
     {
       origin: [-5, -5, -5] as Vec3,
+      periodic: undefined,
       pbc: false,
-      label: `molecular (non-zero origin)`,
+      label: `molecular origin`,
     },
-  ])(`$label sets pbc=$pbc`, ({ origin, pbc }) => {
-    const result = parse_cube(make_cube({ origin }))
+    {
+      origin: [1, 2, 3] as Vec3,
+      periodic: true,
+      pbc: true,
+      label: `explicit periodic option`,
+    },
+  ])(`$label sets pbc=$pbc`, ({ origin, periodic, pbc }) => {
+    const result = parse_cube(make_cube({ origin }), { periodic })
     expect(result?.structure.lattice?.pbc).toEqual([pbc, pbc, pbc])
-    // Volume periodic flag should match structure pbc
     expect(result?.volumes[0].periodic).toBe(pbc)
-  })
-
-  test(`skips blank lines in volumetric data section`, () => {
-    const result = parse_cube(
-      make_cube({
-        data: `0.001  0.002\n\n  0.003  0.004\n\n  0.005  0.006\n  0.007  0.008`,
-      }),
-    )
-    expect(result).not.toBeNull()
-    expect(grid_at(result)(0, 0, 0)).toBeCloseTo(0.001, 5)
-    expect(grid_at(result)(1, 1, 1)).toBeCloseTo(0.008, 5)
-  })
-
-  test(`periodic option overrides origin-based heuristic`, () => {
-    // Non-zero origin would normally be detected as non-periodic
-    const molecular_origin: Vec3 = [-5, -5, -5]
-    const auto_result = parse_cube(make_cube({ origin: molecular_origin }))
-    expect(auto_result?.volumes[0].periodic).toBe(false)
-    // Explicit override forces periodic=true despite non-zero origin
-    const forced = parse_cube(make_cube({ origin: molecular_origin }), { periodic: true })
-    expect(forced?.volumes[0].periodic).toBe(true)
-    expect(forced?.structure.lattice?.pbc).toEqual([true, true, true])
+    expect(result?.volumes[0].origin).toEqual([0, 0, 0])
   })
 
   test(`skips malformed atom lines and parses valid ones`, () => {
@@ -714,7 +641,6 @@ describe(`parse_cube`, () => {
         ],
       }),
     )
-    expect(result).not.toBeNull()
     // Only 2 valid atoms should be parsed (malformed one skipped)
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.structure.sites[0].species[0].element).toBe(`C`)
@@ -913,12 +839,9 @@ describe(`parse_volumetric_file`, () => {
     `unknown_file`,
     `molecule.cube.gz`,
     `orbital.cube.xz`,
+    undefined,
   ])(`detects .cube for %s`, (filename) => {
     expect(parse_volumetric_file(minimal_cube, filename)?.volumes.length).toBe(1)
-  })
-
-  test(`detects .cube with no filename at all`, () => {
-    expect(parse_volumetric_file(minimal_cube)).not.toBeNull()
   })
 
   // Only CHGCAR-family densities store rho·V_cell; ELFCAR and LOCPOT values are stored as is
@@ -946,6 +869,19 @@ describe(`parse_volumetric_file`, () => {
     expect(result?.volumes.map((volume) => volume.label)).toEqual([label])
     const cell_volume = result?.structure.lattice.volume ?? NaN
     expect(grid_at(result)(1, 1, 1)).toBeCloseTo(divided_by_volume ? 8 / cell_volume : 8, 10)
+  })
+
+  test(`a noncollinear LOCPOT reads its scalar potential and three B-field blocks`, () => {
+    const block = (value: number) => `   2   2   2\n${`${value} `.repeat(8)}`
+    const content = make_chgcar({ second_volume: [2, 3, 4].map(block).join(`\n\n`) })
+    expect(
+      parse_volumetric_file(content, `LOCPOT`)?.volumes.map(({ label }) => label),
+    ).toEqual([
+      `local potential`,
+      `magnetic potential (B1)`,
+      `magnetic potential (B2)`,
+      `magnetic potential (B3)`,
+    ])
   })
 
   // Read without a LOCPOT name, a potential used to count as a density and shrink by V_cell

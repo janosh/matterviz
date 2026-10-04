@@ -3,6 +3,7 @@ import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import al_cu_data from './fixtures/al-cu-sample.json' with { type: 'json' }
+import { set_input } from '../setup'
 
 test.each([`edit`, `stale edit`, `read-only`])(
   `editor handles %s with callback availability and stale-path protection`,
@@ -26,8 +27,7 @@ test.each([`edit`, `stale edit`, `read-only`])(
       return
     }
     if (!input) throw new Error(`Missing edit input`)
-    input.value = `edited-unit`
-    input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(input, `edited-unit`)
     // The source can change while a leaf editor is open.
     if (mode === `stale edit`) Reflect.deleteProperty(data, `temperature_unit`)
     input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))

@@ -331,8 +331,8 @@ export const parse_xyz = (content: string): AnyStructure => {
 
 // Parse a single symmetry expression dimension (e.g., "x-y+1/3" or "-x+y")
 // Returns the numeric coefficient for each variable and the translation constant
-// Null when a term cannot be resolved: every dimension defaults to 0, so degrading a bad op
-// in place used to map the whole asymmetric unit onto the origin and invent an atom there.
+// Null when a term cannot be resolved: every dimension defaults to 0, so a bad op degraded
+// in place would map the whole asymmetric unit onto the origin, inventing an atom there.
 const parse_symmetry_expression = (
   expr_input: string,
 ): { coefficients: Vec3; translation: number } | null => {
@@ -381,8 +381,7 @@ type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
 // Ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops).
 const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
   operations.flatMap((operation) => {
-    // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`,
-    // which used to miss the x/y/z lookup and resolve to the all-zero map onto the origin.
+    // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`
     const parts = operation.toLowerCase().split(`,`)
     // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that leaves positions alone
     if (parts.length === 4 && /^[+-]?1$/.test(parts[3])) parts.pop()
@@ -624,8 +623,8 @@ const cif_symop_of = (row: string, n_columns: number, symop_col: number): string
 
 // Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_
 // block. Blank lines and `#` comments are skipped, and so are data names (`_tag value`),
-// which a key-value item written after the loop starts with: feeding one to the row readers
-// used to invent a symop (and with it a phantom atom). They are skipped rather than treated
+// which a key-value item written after the loop starts with (fed to the row readers, one
+// would invent a symop and with it a phantom atom). They are skipped rather than treated
 // as the loop terminator CIF says they are, because writers do interleave unknown tags with
 // a loop's rows and truncating there would lose real atoms. A semicolon-delimited text field
 // is one value whose body lines can start with anything, including `_`/`loop_`/`data_`, so
@@ -668,6 +667,30 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
   return rows
 }
 
+// Loop values are a token stream, not one row per line: a long row may wrap onto the next lines
+// and one line may hold several rows. A line with at least `n_columns` values is self-contained
+// (whole rows, or one over-long row) and flushes a pending short row as is, so an invalid row
+// never shifts the rows after it.
+const cif_loop_rows = (lines: readonly string[], n_columns: number): string[][] => {
+  const rows: string[][] = []
+  let pending: string[] = []
+  for (const line of lines) {
+    const tokens = split_cif_tokens(line)
+    if (tokens.length < n_columns) {
+      pending.push(...tokens)
+      if (pending.length >= n_columns) rows.push(pending.splice(0))
+      continue
+    }
+    if (pending.length) rows.push(pending.splice(0))
+    if (tokens.length % n_columns) rows.push(tokens)
+    else
+      for (let start = 0; start < tokens.length; start += n_columns)
+        rows.push(tokens.slice(start, start + n_columns))
+  }
+  if (pending.length) rows.push(pending)
+  return rows
+}
+
 // Keep one disorder group per assembly (the lowest-numbered, by absolute value since a minus
 // prefix marks a site disordered about a special position) and drop the mutually exclusive
 // others; rows without a group (`.`, `?`, blank) are always kept, rows without an assembly
@@ -697,7 +720,11 @@ export const parse_cif = (content: string): Crystal => {
   const text = content.trim()
   if (!text) throw new Error(`CIF file is empty`)
 
-  const lines = text.split(`\n`)
+  // CIF2 spells data names with a dot after the category (`_atom_site.fract_x`), the same
+  // names as the underscore spelling (`_atom_site_fract_x`) that every reader below matches
+  const lines = text
+    .split(`\n`)
+    .map((line) => line.replace(/^(?<name>[ \t]*_[^\s.]+)\./, `$<name>_`))
   const block_ids = cif_block_ids(lines)
 
   // The first atom-site loop that has coordinates (fract or Cartn) and data rows
@@ -707,16 +734,16 @@ export const parse_cif = (content: string): Crystal => {
       const header_indices = build_cif_atom_site_header_indices(headers)
       const coord_cols = cif_coord_columns(header_indices)
       if (!coord_cols) continue
-      const atom_data_lines = cif_loop_lines(lines, data_start)
-      if (atom_data_lines.length === 0) continue
-      return { header_indices, coord_cols, atom_data_lines, block_id: block_ids[data_start] }
+      const atom_rows = cif_loop_rows(cif_loop_lines(lines, data_start), headers.length)
+      if (atom_rows.length === 0) continue
+      return { header_indices, coord_cols, atom_rows, block_id: block_ids[data_start] }
     }
     return null
   }
 
   const atom_loop = find_atom_loop()
   if (!atom_loop) throw new Error(`No valid atom site loop found in CIF file`)
-  const { header_indices, coord_cols, atom_data_lines, block_id } = atom_loop
+  const { header_indices, coord_cols, atom_rows, block_id } = atom_loop
   // Everything else describing these atoms — cell, space group, symops, atom-type counts —
   // is read from the data block the atom-site loop lives in. A multi-block file (a global
   // block plus one per phase) declares a different cell and space group in each, so
@@ -738,11 +765,8 @@ export const parse_cif = (content: string): Crystal => {
 
   const max_required_idx = Math.max(...coord_cols.columns)
 
-  // Rows too short to reach their coordinate columns wrapped a value onto a continuation
-  // line (multi-line records are not supported) and are dropped
-  const complete_rows = atom_data_lines
-    .map(split_cif_tokens)
-    .filter((tokens) => tokens.length > max_required_idx)
+  // Invalid short rows that do not reach their coordinate columns are dropped
+  const complete_rows = atom_rows.filter((tokens) => tokens.length > max_required_idx)
   const atoms = keep_one_disorder_group(complete_rows, header_indices)
     .map((tokens, atom_idx) => {
       try {
@@ -1091,10 +1115,8 @@ const parse_json_structure: FormatParser = (content) => {
 
 type FormatParser = (content: string) => AnyStructure
 
-// mmCIF's dot-notation tags (_atom_site.Cartn_x) are invisible to parse_cif's
-// underscore-tag matching, so the whole CIF family is routed by content: that also
-// catches mmCIF saved under a .cif name and keeps magnetic .mcif files (underscore tags
-// despite the extension) on the plain CIF path.
+// The whole CIF family is routed by content, which catches mmCIF saved under a .cif name
+// and keeps magnetic .mcif and dotted small-molecule CIF2 files on the plain CIF path.
 const parse_cif_family: FormatParser = (content) =>
   is_mmcif_content(content) ? parse_mmcif(content) : parse_cif(content)
 

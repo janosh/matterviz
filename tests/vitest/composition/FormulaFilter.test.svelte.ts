@@ -3,7 +3,7 @@ import FormulaFilter from '#lib/composition/FormulaFilter.svelte'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import type { Mock } from 'vitest'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse } from '../setup'
+import { bind_props, doc_query, keydown, mouse, set_input } from '../setup'
 
 describe(`FormulaFilter`, () => {
   const get_input = (): HTMLInputElement => doc_query(`input`)
@@ -39,8 +39,7 @@ describe(`FormulaFilter`, () => {
   const press = (key: string) => fire_input(keydown(key))
   // No flush between typing and the commit: the value prop would sync back over the input
   const type_value = (value: string): void => {
-    get_input().value = value
-    get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(get_input(), value)
   }
   // Type a raw value and commit it by blurring
   const submit_input = (raw_value: string): void => {
@@ -56,14 +55,11 @@ describe(`FormulaFilter`, () => {
     }
   }
 
-  test(`renders with default props and initial value`, () => {
-    mount_filter({ value: `` })
-    expect(get_input()).toBeInstanceOf(HTMLElement)
+  test(`renders initial value, aria-label and spreads extra attributes onto the wrapper`, () => {
+    mount_filter({ value: `Fe,O`, 'data-testid': `test` })
     expect(get_input().getAttribute(`aria-label`)).toBe(`Formula filter`)
-
-    document.body.innerHTML = ``
-    mount_filter({ value: `Fe,O` })
     expect(get_input().value).toBe(`Fe,O`)
+    expect(doc_query(`[data-testid="test"]`)).toBe(get_filter())
   })
 
   // Mode is inferred from the value on first render (e.g. URL params without search_mode),
@@ -241,11 +237,6 @@ describe(`FormulaFilter`, () => {
     expect(state.search_mode).toBe(expected_mode)
   })
 
-  test(`spreads additional attributes to wrapper`, () => {
-    mount_filter({ value: ``, 'data-testid': `test` })
-    expect(doc_query(`[data-testid="test"]`).classList.contains(`formula-filter`)).toBe(true)
-  })
-
   test(`placeholders show wildcard examples`, async () => {
     const state = await mount_bound(``)
     expect(get_input().placeholder).toBe(`Li,Fe,O or Li,*,*`)
@@ -413,25 +404,22 @@ describe(`FormulaFilter`, () => {
       expect(get_stored()).toEqual([`Fe,O`, `Li,Na`, `O,Si`])
     })
 
-    test(`adds entries on submit and persists to localStorage`, () => {
-      mount_with_history()
-      submit(`Fe,O`)
-      expect(get_stored()).toEqual([`Fe,O`])
-    })
-
-    test(`deduplicates: re-submitting moves value to top`, () => {
-      // Pre-normalized values since sync_value normalizes on submit
-      seed([`Fe,O`, `Li,Na`, `O,Si`])
-      mount_with_history()
-      submit(`Si,O`) // normalized to O,Si
-      expect(get_stored()).toEqual([`O,Si`, `Fe,O`, `Li,Na`])
-    })
-
-    test(`caps history at max_history entries`, () => {
-      seed([`a`, `b`, `c`])
-      mount_with_history({ max_history: 3 })
-      submit(`Fe,O`)
-      expect(get_stored()).toEqual([`Fe,O`, `a`, `b`])
+    // seeds are pre-normalized since submit normalizes (Si,O -> O,Si)
+    test.each([
+      [`persists a new entry`, [], 5, `Fe,O`, [`Fe,O`]],
+      [
+        `moves a re-submitted entry to the top`,
+        [`Fe,O`, `Li,Na`, `O,Si`],
+        5,
+        `Si,O`,
+        [`O,Si`, `Fe,O`, `Li,Na`],
+      ],
+      [`caps at max_history`, [`a`, `b`, `c`], 3, `Fe,O`, [`Fe,O`, `a`, `b`]],
+    ])(`submit %s`, (_desc, entries, max_history, value, expected) => {
+      seed(entries)
+      mount_with_history({ max_history })
+      submit(value)
+      expect(get_stored()).toEqual(expected)
     })
 
     test(`max_history=0 disables history entirely`, () => {
@@ -449,13 +437,6 @@ describe(`FormulaFilter`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`], { value: `Fe,O` })
       expect(history_values()).toHaveLength(1)
       expect(history_values()[0].textContent?.trim()).toBe(`Li,Na`)
-    })
-
-    test(`does not show dropdown on focus when history is empty`, () => {
-      mount_with_history()
-      focus_input()
-      flushSync()
-      expect(history_dropdown()).toBeNull()
     })
 
     test(`clicking a history item sets value and closes dropdown`, () => {
@@ -566,30 +547,14 @@ describe(`FormulaFilter`, () => {
       expect(history_dropdown()).toBeNull()
     })
 
-    test(`separate history_key props maintain independent histories`, () => {
-      const key_a = `${HISTORY_KEY}-a`
-      const key_b = `${HISTORY_KEY}-b`
-      localStorage.setItem(key_a, JSON.stringify([`Fe,O`]))
-      localStorage.setItem(key_b, JSON.stringify([`Li,Na`, `Si,O`]))
-      mount(FormulaFilter, {
-        target: document.body,
-        props: { value: ``, history_key: key_a },
-      })
-      focus_input()
-      flushSync()
-      expect(history_values()).toHaveLength(1)
-      expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
-      localStorage.removeItem(key_a)
-      localStorage.removeItem(key_b)
-    })
-
     test.each([
+      { stored: `[]`, desc: `empty history` },
       { stored: `not valid json{{{`, desc: `invalid JSON` },
       { stored: `"just a string"`, desc: `string instead of array` },
       { stored: `42`, desc: `number instead of array` },
       { stored: `{"a":1}`, desc: `object instead of array` },
       { stored: `[1, 2, true, null]`, desc: `array of non-strings` },
-    ])(`handles malformed localStorage ($desc)`, ({ stored }) => {
+    ])(`no dropdown on focus for $desc`, ({ stored }) => {
       localStorage.setItem(HISTORY_KEY, stored)
       mount_with_history()
       focus_input()
@@ -692,24 +657,14 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_change, on_validation })
       submit_input(`Li,Xx`)
       expect(on_change).not.toHaveBeenCalled()
-      const invalid_validation = on_validation.mock.calls
-        .map(
-          (call) =>
-            call[0] as {
-              state: string
-              message: string | null
-            },
-        )
-        .find((validation) => validation.state === `invalid`)
-      expect(invalid_validation).toBeDefined()
-      expect(invalid_validation?.message).toContain(`Invalid token`)
-      const last_validation = on_validation.mock.calls[
-        on_validation.mock.calls.length - 1
-      ][0] as {
-        state: string
-        message: string | null
-      }
-      expect(last_validation.state).toBe(`valid`)
+      const states = on_validation.mock.calls.map(([validation]) => validation)
+      expect(states).toContainEqual(
+        expect.objectContaining({
+          state: `invalid`,
+          message: expect.stringContaining(`Invalid token`),
+        }),
+      )
+      expect(states.at(-1)?.state).toBe(`valid`)
     })
 
     test.each([
@@ -771,26 +726,19 @@ describe(`FormulaFilter`, () => {
       expect(state.mode_locked).toBe(false)
     })
 
-    test(`renders removable token chips for tokenized input`, () => {
-      mount_filter({ value: `+Li,-O` })
+    // a duplicate token chip removes only one instance
+    test.each([
+      [`+Li,-O`, `-O`],
+      [`Li,Li`, `+Li`],
+    ])(`clicking the first token chip of %s leaves %s`, (value, remaining) => {
+      mount_filter({ value })
       flushSync()
-      const chips = document.querySelectorAll(`.token-chip`)
-      expect(chips).toHaveLength(2)
-      ;(chips[0] as HTMLButtonElement).click()
+      const chips = () => document.querySelectorAll<HTMLButtonElement>(`.token-chip`)
+      expect(chips()).toHaveLength(2)
+      chips()[0].click()
       flushSync()
-      expect(document.querySelectorAll(`.token-chip`)).toHaveLength(1)
-    })
-
-    test(`removing one duplicate token chip only removes one instance`, () => {
-      mount_filter({ value: `Li,Li` })
-      flushSync()
-      let chips = document.querySelectorAll(`.token-chip`)
-      expect(chips).toHaveLength(2)
-      ;(chips[0] as HTMLButtonElement).click()
-      flushSync()
-      chips = document.querySelectorAll(`.token-chip`)
-      expect(chips).toHaveLength(1)
-      expect(chips[0].textContent).toContain(`+Li`)
+      expect(chips()).toHaveLength(1)
+      expect(chips()[0].textContent).toContain(remaining)
     })
 
     test(`normalizes and sorts constrained include/exclude token input`, () => {

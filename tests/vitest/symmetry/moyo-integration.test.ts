@@ -1,6 +1,4 @@
-// Integration tests for moyo-wasm symmetry analysis
-// Uses real WASM binary to verify symmetry detection behavior
-// Note: Most symmetry tests use mocks (see index.test.ts)
+// Integration tests for moyo-wasm symmetry analysis using the real WASM binary
 
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { Crystal } from '#lib'
@@ -39,6 +37,13 @@ const analyze = (identifier: string, symprec = 1e-4) =>
 
 const analyze_crystal = (crystal: Crystal, symprec = 1e-4) =>
   analyze_structure_symmetry(crystal, { symprec })
+
+// Wyckoff multiplicities of all rows must sum to the std cell atom count
+const expect_multiplicities_fill_std_cell = (sym_data: SymmetryDataset) => {
+  const rows = wyckoff_positions_from_moyo(sym_data)
+  const total = rows.reduce((sum, row) => sum + Number(/^\d+/.exec(row.wyckoff)?.[0]), 0)
+  expect(total).toBe(sym_data.std_cell.positions.length)
+}
 
 // Shared primitive/non-conventional input cells reused across the orbit-mapping tests.
 // Each returns a fresh Crystal so tests can't cross-contaminate via shared references.
@@ -209,6 +214,11 @@ describe(`reference structures`, () => {
             row.site_indices,
           ]),
         ).toEqual(rows)
+        // moyo std positions can be negative (-0.125 for diamond), rows must wrap to [0, 1)
+        for (const coord of enriched.flatMap((row) => row.abc)) {
+          expect(coord).toBeGreaterThanOrEqual(0)
+          expect(coord).toBeLessThan(1)
+        }
       }
     },
   )
@@ -264,7 +274,9 @@ describe(`moyo-wasm integration`, () => {
     [`mp-1183085-Ac4Mg2-orthorhombic`, [`Ac`, `Mg`]],
     [`mp-1183089-Ac4Mg2-monoclinic`, [`Ac`, `Mg`]],
   ])(`%s Wyckoff table includes expected elements`, async (identifier, expected) => {
-    const rows = wyckoff_positions_from_moyo(await analyze(identifier))
+    const sym_data = await analyze(identifier)
+    expect_multiplicities_fill_std_cell(sym_data)
+    const rows = wyckoff_positions_from_moyo(sym_data)
     expect(rows.map((pos) => pos.elem)).toEqual(expect.arrayContaining(expected))
     // every row must carry a proper "multiplicity + letter" label (no bogus letter-less
     // rows from misindexing the input-cell wyckoffs array with std_cell indices)
@@ -288,6 +300,7 @@ describe(`moyo-wasm integration`, () => {
     expect(wyckoff_positions_from_moyo(sym_data).map((row) => row.wyckoff + row.elem)).toEqual(
       rows,
     )
+    expect_multiplicities_fill_std_cell(sym_data)
   })
 
   // Regression: moyo-wasm serializes operation.rotation as a flat 9-array in COLUMN-major
@@ -352,105 +365,46 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     ])
   })
 
-  test(`primitive diamond Si (2 atom input, 8 atom std cell) → single 8a row`, async () => {
-    const sym_data = await analyze_crystal(prim_diamond_si())
-    expect(sym_data.number).toBe(227) // Fd-3m
-
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].wyckoff).toBe(`8a`)
-    expect(rows[0].elem).toBe(`Si`)
-    expect(rows[0].site_indices).toEqual([0, 1])
-    expect(rows[0].site_symmetry).toBe(`-43m`)
-    // representative coordinate must be wrapped to [0, 1) (moyo std positions can be
-    // negative, e.g. -0.125 for diamond)
-    for (const coord of rows[0].abc) {
-      expect(coord).toBeGreaterThanOrEqual(0)
-      expect(coord).toBeLessThan(1)
-    }
-  })
-
   test(`2x1x1 supercell of simple-cubic Po (2 atom input, 1 atom std cell) → single 1a row`, async () => {
     const sym_data = await analyze_crystal(supercell_po())
     expect(sym_data.number).toBe(221) // Pm-3m
     expect(sym_data.std_cell.positions).toHaveLength(1)
 
+    // NOT 2a: multiplicity counts the conventional cell; both supercell copies map to the row
     const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].wyckoff).toBe(`1a`) // NOT 2a: multiplicity counts the conventional cell
-    expect(rows[0].site_indices).toEqual([0, 1]) // both supercell copies map to the row
+    expect(rows.map((row) => [row.wyckoff, row.site_indices])).toEqual([[`1a`, [0, 1]]])
   })
 
   test(`NaCl conventional cell with Cl listed first → 4a Na and 4b Cl rows`, async () => {
-    const cl_sites: Vec3[] = [
-      [0.5, 0.5, 0.5],
-      [0.5, 0, 0],
-      [0, 0.5, 0],
-      [0, 0, 0.5],
-    ]
-    const na_sites: Vec3[] = [
-      [0, 0, 0],
-      [0, 0.5, 0.5],
-      [0.5, 0, 0.5],
-      [0.5, 0.5, 0],
-    ]
-    const crystal = make_crystal(5.64, [
-      ...cl_sites.map((abc) => ({ element: `Cl`, abc })),
-      ...na_sites.map((abc) => ({ element: `Na`, abc })),
-    ])
+    const crystal = nacl()
+    crystal.sites = [...crystal.sites.slice(4), ...crystal.sites.slice(0, 4)]
     const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(225)
-
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows).toHaveLength(2)
-    const na_row = rows.find((row) => row.elem === `Na`)
-    const cl_row = rows.find((row) => row.elem === `Cl`)
-    expect(na_row?.wyckoff).toBe(`4a`)
-    expect(cl_row?.wyckoff).toBe(`4b`)
     // site indices must track the input order (Cl occupies indices 0-3)
-    expect(cl_row?.site_indices).toEqual([0, 1, 2, 3])
-    expect(na_row?.site_indices).toEqual([4, 5, 6, 7])
+    expect(
+      wyckoff_positions_from_moyo(sym_data).map((row) => [
+        row.wyckoff,
+        row.elem,
+        row.site_indices,
+      ]),
+    ).toEqual([
+      [`4a`, `Na`, [4, 5, 6, 7]],
+      [`4b`, `Cl`, [0, 1, 2, 3]],
+    ])
   })
 
+  // Regression: grouping rows by letter+element merged distinct orbits that share a Wyckoff
+  // letter into a single row with inflated multiplicity ("3a")
   test(`P1 cell with 3 inequivalent same-element sites → 3 separate 1a rows`, async () => {
-    // Regression: grouping rows by letter+element merged distinct orbits that share a
-    // Wyckoff letter into a single row with inflated multiplicity ("3a")
-    const crystal = make_crystal(
-      [
-        [5, 0, 0],
-        [0.3, 6, 0],
-        [0.2, 0.4, 7],
-      ],
-      [
-        { element: `Si`, abc: [0.1, 0.2, 0.3] },
-        { element: `Si`, abc: [0.45, 0.05, 0.65] },
-        { element: `Si`, abc: [0.8, 0.6, 0.15] },
-      ],
-    )
-    const sym_data = await analyze_crystal(crystal)
+    const sites = triclinic_p1().sites.map(({ abc }): [string, Vec3] => [`Si`, abc])
+    const sym_data = await analyze_crystal(make_crystal(TRICLINIC_LATTICE, sites))
     expect(sym_data.number).toBe(1)
-
     const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows).toHaveLength(3)
-    for (const row of rows) expect(row.wyckoff).toBe(`1a`)
-    // each row maps to exactly one distinct original site
-    const all_indices = rows.flatMap((row) => row.site_indices ?? [])
-    expect(all_indices.toSorted((idx_a, idx_b) => idx_a - idx_b)).toEqual([0, 1, 2])
-  })
-
-  test.each([
-    [`Cu-FCC`],
-    [`Fe-BCC`],
-    [`mp-862690-Ac4-hexagonal`],
-    [`mp-1183089-Ac4Mg2-monoclinic`],
-  ])(`%s: Wyckoff multiplicities sum to std cell atom count`, async (identifier) => {
-    const sym_data = await analyze(identifier)
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    const total_multiplicity = rows.reduce(
-      (sum, row) => sum + Number(/^\d+/.exec(row.wyckoff)?.[0]),
-      0,
-    )
-    expect(total_multiplicity).toBe(sym_data.std_cell.positions.length)
+    expect(rows.map((row) => [row.wyckoff, row.site_indices])).toEqual([
+      [`1a`, [0]],
+      [`1a`, [1]],
+      [`1a`, [2]],
+    ])
   })
 })
 

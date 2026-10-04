@@ -3,6 +3,7 @@ import ExportDestination from '#lib/io/ExportDestination.svelte'
 import { FileExportState } from '#lib/io/file-export.svelte.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
+import { set_input } from '../setup'
 
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
@@ -26,8 +27,7 @@ test(`filename follows the source until edited, rejects paths, and resets the de
   source = `changed`
   await tick()
   expect(input.value).toBe(`changed`)
-  input.value = `My movie`
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(input, `My movie`)
   await tick()
   await export_state.run(({ filename, save }) => {
     expect(export_state.disabled).toBe(true)

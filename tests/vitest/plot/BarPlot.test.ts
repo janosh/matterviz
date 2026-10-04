@@ -3,6 +3,7 @@ import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
 import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
+import { point_in_rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   clip_rect,
@@ -88,10 +89,7 @@ describe(`BarPlot`, () => {
     },
   )
 
-  // Both mark kinds regressed the same policy in opposite directions: every bar was
-  // tabindex=0 (230 tab stops on a spacegroup plot), while the line-point group put
-  // its only 0 on the *hovered* point - so with nothing hovered every point was -1
-  // and Tab could not enter the group at all.
+  // exactly one tab stop per mark group, even with nothing hovered
   test.each([
     [`bars`, { series: [basic] }],
     [
@@ -201,6 +199,18 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // A centred label on the first bar spilled onto the y-axis tick labels (XRD peak labels)
+  test(`shifts an edge bar's wide label inside the plot area`, async () => {
+    const label_x = async (text: string) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1, 2, 3, 4, 5, 6, 7, 8], y: [9, 1, 1, 1, 1, 1, 1, 1], labels: [text] }],
+      })
+      return Number(plot.querySelector(`.bar-label`)?.getAttribute(`x`))
+    }
+    // a one-character label still sits centred on its bar
+    expect(await label_x(`a long peak label at 20.07°`)).toBeGreaterThan(await label_x(`a`))
+  })
+
   test(`rotates vertical bar labels outward`, async () => {
     const plot = await mount_sized_bar_plot({
       series: [{ x: [1], y: [5], labels: [`Material 1`] }],
@@ -277,41 +287,21 @@ describe(`BarPlot`, () => {
     },
   )
 
-  const valid_values = [1, 2]
-  const invalid_values = [NaN, Infinity]
-  const invalid_x = { x: invalid_values, y: valid_values }
-  const invalid_y = { x: valid_values, y: invalid_values }
-  const unpaired_values = { x: [1, NaN], y: [NaN, 2] }
   test.each([
-    {
-      name: `vertical x2 with invalid categories`,
-      axis: `x2`,
-      orientation: `vertical`,
-      invalid_series: { ...invalid_x, x_axis: `x2` },
-      primary_axis: { x_axis: `x` },
-    },
-    {
-      name: `vertical x2 with unpaired coordinates`,
-      axis: `x2`,
-      orientation: `vertical`,
-      invalid_series: { ...unpaired_values, x_axis: `x2` },
-      primary_axis: { x_axis: `x` },
-    },
-    {
-      name: `horizontal x2 with invalid values`,
-      axis: `x2`,
-      orientation: `horizontal`,
-      invalid_series: { ...invalid_y, x_axis: `x2` },
-      primary_axis: { x_axis: `x` },
-    },
+    [`vertical`, `invalid categories`, { x: [NaN, Infinity], y: [1, 2] }],
+    [`vertical`, `unpaired coordinates`, { x: [1, NaN], y: [NaN, 2] }],
+    [`horizontal`, `invalid values`, { x: [1, 2], y: [NaN, Infinity] }],
   ] as const)(
-    `does not render an axis without a finite point ($name)`,
-    async ({ axis, orientation, invalid_series, primary_axis }) => {
+    `does not render a %s x2 axis without a finite point (%s)`,
+    async (orientation, _desc, invalid_coords) => {
       const plot = await mount_sized_bar_plot({
         orientation,
-        series: [{ ...basic, ...primary_axis }, invalid_series],
+        series: [
+          { ...basic, x_axis: `x` },
+          { x: [...invalid_coords.x], y: [...invalid_coords.y], x_axis: `x2` },
+        ],
       })
-      expect(plot.querySelector(`g.${axis}-axis`)).toBeNull()
+      expect(plot.querySelector(`g.x2-axis`)).toBeNull()
       for (const path of plot.querySelectorAll(`path[role="button"]`)) {
         expect(path.getAttribute(`d`)).not.toContain(`NaN`)
       }
@@ -319,8 +309,7 @@ describe(`BarPlot`, () => {
   )
 
   test(`line markers preserve zero-valued inputs and fractional range edges`, async () => {
-    // Regression: .filter(Boolean) incorrectly removed 0 from auto-range calculation
-    // Zero is a valid value for color/size scales (e.g. minimum on a gradient)
+    // zero is a valid color/size value (e.g. the minimum of a gradient), not a missing one
     const on_point_hover = vi.fn()
     const on_point_click = vi.fn()
     const plot = await mount_sized_bar_plot({
@@ -395,7 +384,7 @@ describe(`BarPlot`, () => {
   })
 
   test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
-    // Regression test: offsets accumulated per array index stacked B's x=4 bar on A's x=3 total
+    // offsets accumulated per array index would stack B's x=4 bar on A's x=3 total
     const plot = await mount_sized_bar_plot({
       series: [
         { x: [1, 2, 3], y: [10, 20, 30] },
@@ -418,8 +407,8 @@ describe(`BarPlot`, () => {
   test.each([`vertical`, `horizontal`] as const)(
     `%s bars on a log value axis grow from the plot edge and skip zero bars`,
     async (orientation) => {
-      // Regression: base 0 mapped to an infinite pixel on the log scale, so every bar had NaN
-      // geometry and none rendered; the zero bar also dragged the auto range down to 1e-9.
+      // base 0 maps to an infinite pixel on a log scale, and a zero bar must not drag the
+      // auto range down to 1e-9
       const vertical = orientation === `vertical`
       const plot = await mount_sized_bar_plot({
         series: [{ x: [1, 2, 3, 4], y: [0, 10, 100, 1000], label: `A` }],
@@ -451,7 +440,7 @@ describe(`BarPlot`, () => {
     },
   )
 
-  // Anchors once missed the group slot and stack base, and floored the wrong axis on log ones
+  // anchors must follow the group slot and stack base, and floor the value axis on log ones
   const grouped = [0, 1, 2].map((idx) => ({ x: [1, 2], y: [5 + idx, 20], label: `S${idx}` }))
   // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof BarPlot>>]>([
@@ -483,7 +472,7 @@ describe(`BarPlot`, () => {
     }
   })
 
-  // A snapshot tooltip kept stale values under a resting pointer, broke once its bar was gone
+  // the tooltip must not be a snapshot: it tracks new data under a resting pointer
   test(`a resting hover follows replaced data and closes once its bar is gone`, async () => {
     const [s0, s1] = grouped
     // a reactive getter lets this plain .ts test replace the series under the resting pointer
@@ -579,7 +568,7 @@ describe(`BarPlot`, () => {
       },
     )
 
-    // x2 once got numeric ticks and ignored a pinned x range; panned-out ticks are culled
+    // x2 gets category ticks and honours a pinned x range; panned-out ticks are culled
     test.each([
       { x_axis: {}, labels: [`A`, `B`, `C`, `D`] },
       { x_axis: { range: [0.5, 2.5] as [number, number] }, labels: [`B`, `C`] },
@@ -716,16 +705,10 @@ describe(`BarPlot`, () => {
       show_legend: true,
       bar: { border_radius: 0 },
     })
-    const { x: coord_x, y: coord_y } = legend_position(plot)
-    const legend_rect = { x: coord_x, y: coord_y, width: 120, height: 60 }
-    const overlaps = bar_rects(plot).some(
-      (bar_rect) =>
-        legend_rect.x < bar_rect.x + bar_rect.width &&
-        legend_rect.x + legend_rect.width > bar_rect.x &&
-        legend_rect.y < bar_rect.y + bar_rect.height &&
-        legend_rect.y + legend_rect.height > bar_rect.y,
+    const legend_rect = { ...legend_position(plot), width: 120, height: 60 }
+    expect(bar_rects(plot).some((bar_rect) => rects_overlap(legend_rect, bar_rect))).toBe(
+      false,
     )
-    expect(overlaps).toBe(false)
     const line_points = (
       plot.querySelector(`.line-series polyline`)?.getAttribute(`points`) ?? ``
     )
@@ -744,12 +727,8 @@ describe(`BarPlot`, () => {
       })
     })
     expect(
-      sampled_line_points.some(
-        ([point_x, point_y]) =>
-          point_x >= legend_rect.x &&
-          point_x <= legend_rect.x + legend_rect.width &&
-          point_y >= legend_rect.y &&
-          point_y <= legend_rect.y + legend_rect.height,
+      sampled_line_points.some(([point_x, point_y]) =>
+        point_in_rect({ x: point_x, y: point_y }, legend_rect),
       ),
     ).toBe(false)
   })

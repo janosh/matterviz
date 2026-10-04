@@ -2,7 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import MillerIndexInput from '#lib/MillerIndexInput.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from './setup'
+import { doc_query, set_input } from './setup'
 
 describe(`MillerIndexInput`, () => {
   const mount_input = (initial: Vec3 = [0, 0, 1]) => {
@@ -22,8 +22,7 @@ describe(`MillerIndexInput`, () => {
     flushSync()
     const input = doc_query<HTMLInputElement>(`label.miller-input input`)
     const type = (text: string) => {
-      input.value = text
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(input, text)
       flushSync()
     }
     return {
@@ -65,10 +64,7 @@ describe(`MillerIndexInput`, () => {
     [`  `, null],
     [`000`, null],
     [`0 0 0`, null],
-    [`1`, null],
-    [`10`, null],
     [`1 0`, null],
-    [`10 0`, null], // was silently parsed as compact [1, 0, 0]
     [`1 0 1 1`, null],
     [`0011`, null],
     [`1.5 0 0`, null],
@@ -100,7 +96,8 @@ describe(`MillerIndexInput`, () => {
     expect(field.input.title).toContain(`uvw indices`)
     expect(field.input.value).toBe(`001`)
 
-    // intermediate keystrokes towards "10 0 1" never emit nor get rewritten
+    // intermediate keystrokes towards "10 0 1" never emit nor get rewritten (`10 0` was once
+    // parsed as compact [1, 0, 0])
     for (const partial of [`1`, `10`, `10 `, `10 0`, `10 0 `]) {
       field.type(partial)
       expect(field.value).toEqual([0, 0, 1])

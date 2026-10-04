@@ -25,13 +25,23 @@ describe(`Phonon Module Tests`, () => {
   const MIN_QPOINTS = 100
 
   it.each(band_entries)(
-    `%s has valid band structure with correct dimensions and physical frequencies`,
+    `%s has valid band structure matching its raw data, with physical frequencies`,
     (identifier, band_struct) => {
       expect(band_struct.type, identifier).toBe(`phonon`)
       expect(band_struct.qpoints.length, identifier).toBeGreaterThan(MIN_QPOINTS)
       expect(band_struct.distance, identifier).toHaveLength(band_struct.qpoints.length)
       expect(band_struct.nb_bands, identifier).toBeGreaterThan(0)
       expect(band_struct.bands, identifier).toHaveLength(band_struct.nb_bands)
+      // the transform preserves the raw dimensions, labels and phonon flags
+      const raw = phonon_data[identifier].phonon_bandstructure
+      if (!raw) throw new Error(`${identifier}: missing raw bands`)
+      expect(band_struct.qpoints, identifier).toHaveLength(raw.qpoints.length)
+      expect(band_struct.nb_bands, identifier).toBe(raw.bands.length)
+      expect(Object.keys(band_struct.labels_dict).toSorted(), identifier).toEqual(
+        Object.keys(raw.labels_dict).toSorted(),
+      )
+      expect(band_struct.has_nac, identifier).toBe(raw.has_nac)
+      expect(band_struct.has_imaginary_modes, identifier).toBe(raw.has_imaginary_modes)
 
       for (const qpt of band_struct.qpoints) {
         expect(qpt.frac_coords, identifier).toHaveLength(3)
@@ -196,25 +206,6 @@ describe(`Phonon Module Tests`, () => {
         )
         expect(is_boundary, `${identifier}: labeled qpoint ${qpt_idx}`).toBe(true)
       })
-    },
-  )
-
-  it.each(Object.keys(phonon_data))(
-    `%s raw data is correctly transformed to PhononBandStructure`,
-    (identifier) => {
-      const raw = phonon_data[identifier].phonon_bandstructure
-      const transformed = phonon_bands[identifier]
-      if (!raw || !transformed)
-        throw new Error(`${identifier}: missing raw or transformed bands`)
-
-      // Transformation preserves data dimensions, labels and the phonon flags
-      expect(transformed.qpoints, identifier).toHaveLength(raw.qpoints.length)
-      expect(transformed.nb_bands, identifier).toBe(raw.bands.length)
-      expect(Object.keys(transformed.labels_dict).toSorted(), identifier).toEqual(
-        Object.keys(raw.labels_dict).toSorted(),
-      )
-      expect(transformed.has_nac, identifier).toBe(raw.has_nac)
-      expect(transformed.has_imaginary_modes, identifier).toBe(raw.has_imaginary_modes)
     },
   )
 

@@ -63,7 +63,7 @@
   // The marginal datum under the pointer (set by the hit-rects, drives the tooltip below)
   let hovered = $state<MarginalHover | null>(null)
 
-  // Map a pointer event on a strip hit-rect to a MarginalHover via the pure marginal_hit. The svg
+  // Map a pointer event on a strip hit-rect to a MarginalHover via create_marginal_hit_test. The svg
   // has no scaling viewBox, so wrapper px = svg user-space px = the coords PlotTooltip expects.
   const on_marginal_move = (
     event: PointerEvent,
@@ -204,7 +204,7 @@
             : { x: val_min, y: pos_min, width: val_len, height: pos_len }
         })
         // all four must be finite: a custom reduce/data bin with a non-finite edge/value would
-        // otherwise emit width/height="Infinity" (invalid SVG). mirrors marginal_hit's bar filter
+        // otherwise emit width/height="Infinity" (invalid SVG). mirrors create_marginal_hit_test's bar filter
         .filter((bar) => [bar.x, bar.y, bar.width, bar.height].every(isFinite))
       return base
     }
@@ -225,7 +225,7 @@
       const pixel_x = (point: LinePt) => (is_x ? pos_scale(point.pos) : val_scale(point.value))
       const pixel_y = (point: LinePt) => (is_x ? val_scale(point.value) : pos_scale(point.pos))
       // drop points whose scaled pixels are non-finite (degenerate/log scales) so the path stays
-      // valid — mirrors marginal_hit, which also skips non-finite scaled coords
+      // valid — mirrors create_marginal_hit_test, which also skips non-finite scaled coords
       const pts = raw_pts.filter(
         (point) => isFinite(pixel_x(point)) && isFinite(pixel_y(point)),
       )

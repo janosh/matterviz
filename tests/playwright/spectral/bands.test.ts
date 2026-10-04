@@ -60,9 +60,13 @@ test.describe(`Bands Component Tests`, () => {
     })
   }
 
-  test(`renders multiple band structures with toggleable legend`, async ({ page }) => {
+  test(`multiple band structures get a toggleable legend and series-labelled tooltips`, async ({
+    page,
+  }) => {
     const plot = page.getByTestId(`multiple-bands-plot`)
     const paths = band_paths(plot)
+    await expect(paths.first()).toBeVisible()
+    await hover_expect_tooltip(plot, paths.first(), [/BS[12]/, `THz`, `→`])
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
@@ -104,32 +108,14 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toContainText(`different q-point paths`)
   })
 
-  test(`tooltip shows frequency, path and band index, and hides when the mouse leaves`, async ({
+  test(`tooltip shows frequency, path and band index, switches between bands, and hides on leave`, async ({
     page,
   }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    const first_path = band_paths(plot).first()
-    await expect(first_path).toBeVisible()
-    await hover_expect_tooltip(plot, first_path, [`THz`, `→`, /Band:\s*\d+/])
-
-    const box = await require_bbox(plot, `plot`)
-    await page.mouse.move(box.x - 50, box.y - 50)
-    await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
-  })
-
-  test(`tooltip shows series label with multiple band structures`, async ({ page }) => {
-    const plot = page.getByTestId(`multiple-bands-plot`)
-    const first_path = band_paths(plot).first()
-    await expect(first_path).toBeVisible()
-    await hover_expect_tooltip(plot, first_path, [/BS[12]/, `THz`, `→`])
-  })
-
-  test(`tooltip switches band index and content between bands`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     const paths = band_paths(plot)
     await expect(paths.first()).toBeVisible()
     const tooltip = plot.locator(`.plot-tooltip`)
-    await hover_expect_tooltip(plot, paths.nth(0), [/Band:\s*1/])
+    await hover_expect_tooltip(plot, paths.nth(0), [`THz`, `→`, /Band:\s*1/])
     await hover_expect_tooltip(plot, paths.nth(2), [/Band:\s*3/])
 
     // Bounding-box centers can resolve to the same nearby discrete point, so target
@@ -154,6 +140,10 @@ test.describe(`Bands Component Tests`, () => {
       await hover_path_start(0)
       expect(await tooltip.textContent()).not.toBe(first_text)
     }).toPass({ timeout: 5000 })
+
+    const box = await require_bbox(plot, `plot`)
+    await page.mouse.move(box.x - 50, box.y - 50)
+    await expect(tooltip).toBeHidden()
   })
 
   test(`applies phonon unit conversion and renders custom highlight region`, async ({

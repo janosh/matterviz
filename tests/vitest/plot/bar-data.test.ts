@@ -149,28 +149,12 @@ describe(`compute_bar_auto_ranges`, () => {
     expect(auto_ranges(series, { mode: `stacked` }).y).toEqual(expected)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `stacked line abs`,
-      {
-        mode: `stacked`,
-        series: [bar({ y: [3, 4] }), bar({ y: [10, 10], render_mode: `line` })],
-        key: `y`,
-        range: [0, 10],
-      },
-    ],
-    [
-      `explicit y_range`,
-      {
-        axes: { y: { range: [2, 6] as [number, number] } },
-        series: [bar({ y: [4, 5] })],
-        key: `y`,
-        range: [2, 6],
-      },
-    ],
-  ] as const)(`$0`, (_desc, options) => {
-    const { series, key, range, ...overrides } = options
-    expect(auto_ranges(series, overrides)[key]).toEqual(range)
+    [`stacked line abs`, [bar({ y: [3, 4] }), bar({ y: [10, 10], render_mode: `line` })], { mode: `stacked` }, [0, 10]],
+    [`explicit y_range`, [bar({ y: [4, 5] })], { axes: { y: { range: [2, 6] as [number, number] } } }, [2, 6]],
+  ] as const)(`%s`, (_desc, series, overrides, range) => {
+    expect(auto_ranges(series, overrides).y).toEqual(range)
   })
 
   // A pinned value bound is honored exactly; an automatic one keeps the zero baseline, as
@@ -337,17 +321,11 @@ describe(`compute_stacked_offsets`, () => {
 
   test(`horizontal bars stack per x2/x1 value axis`, () => {
     const series = [bar({ y: [1, 1] }), bar({ y: [2, 2], x_axis: `x2` }), bar({ y: [3, 3] })]
-    expect(compute_stacked_offsets(series, `stacked`, `horizontal`)).toEqual([
-      [0, 0],
-      [0, 0],
-      [1, 1],
-    ])
+    // oxfmt-ignore
+    expect(compute_stacked_offsets(series, `stacked`, `horizontal`)).toEqual([[0, 0], [0, 0], [1, 1]])
     // vertical bars ignore x_axis for stacking (x2 is a second category axis there)
-    expect(compute_stacked_offsets(series, `stacked`, `vertical`)).toEqual([
-      [0, 0],
-      [1, 1],
-      [3, 3],
-    ])
+    // oxfmt-ignore
+    expect(compute_stacked_offsets(series, `stacked`, `vertical`)).toEqual([[0, 0], [1, 1], [3, 3]])
   })
 })
 

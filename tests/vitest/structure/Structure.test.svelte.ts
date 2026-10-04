@@ -54,6 +54,7 @@ import {
   press_window_key,
   trigger_resize_observer,
   resize_element,
+  set_input,
 } from '../setup'
 import {
   fcc_primitive_matrix,
@@ -134,8 +135,7 @@ const select_measure_mode = (label: string): Promise<void> =>
 
 const set_aria_input = (aria_label: string, value: string): void => {
   const input = doc_query<HTMLInputElement>(`input[aria-label="${aria_label}"]`)
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(input, value)
 }
 
 const click_button = (label: string) => {
@@ -998,7 +998,6 @@ const stub_fullscreen_api = () => {
   return { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element }
 }
 
-// Tests for Structure component functionality
 describe(`Structure`, () => {
   test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
     const page_colors = { ...colors.element }
@@ -1017,8 +1016,7 @@ describe(`Structure`, () => {
       ]),
     )
     const picker = doc_query<HTMLInputElement>(`.element-legend input[type="color"]`)
-    picker.value = `#123456`
-    picker.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(picker, `#123456`)
     await vi.waitFor(() =>
       expect(swatches()).toEqual([`#123456`, ELEMENT_COLOR_SCHEMES.Vesta.O]),
     )
@@ -1146,14 +1144,18 @@ describe(`Structure`, () => {
     }
   })
 
-  test(`renders slice mode for volume-only data with no atomic sites`, async () => {
-    mount_volumetric({
-      structure: { ...structure, sites: [] },
+  // volume-only data has no sites to show, and a stale volume ID falls back to the first one
+  test.each([
+    [`volume-only data with no atomic sites`, { structure: { ...structure, sites: [] } }],
+    [`a missing selected volume ID with controls closed`, { active_volume_id: `9` }],
+  ])(`renders slice mode for %s`, async (_label, overrides) => {
+    const props = mount_volumetric({
       display_mode: `slice`,
       slice_settings: { plane_mode: `hkl`, resolution: 2 },
+      ...overrides,
     })
     await tick()
-
+    if (`active_volume_id` in overrides) expect(props.active_volume_id).toBe(`density`)
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
   })
@@ -1172,18 +1174,6 @@ describe(`Structure`, () => {
 
     expect(props.display_mode).toBe(`structure`)
     expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
-  })
-
-  test(`resets a missing selected volume ID with controls closed`, async () => {
-    const props = mount_volumetric({
-      active_volume_id: `9`,
-      display_mode: `slice`,
-      slice_settings: { resolution: 2 },
-    })
-    await tick()
-
-    expect(props.active_volume_id).toBe(`density`)
-    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`reveals atom color mode toggle while viewer is hovered or focused`, async () => {
@@ -2115,13 +2105,20 @@ describe(`Structure`, () => {
 
 describe(`Structure empty states`, () => {
   test.each([
-    [`undefined structure`, undefined, `No structure provided`],
-    [`structure without sites`, {}, `No sites found in structure`],
-    [`structure with null sites`, { sites: null }, `No sites found in structure`],
-    [`structure with empty sites`, { sites: [] }, `No sites found in structure`],
-  ])(`shows the expected message for %s`, (_description, test_structure, message) => {
-    mount_structure({ structure: test_structure as AnyStructure })
-    expect(document.body.textContent).toContain(message)
+    [`undefined structure`, undefined, false, `No structure provided`],
+    [`structure without sites`, {}, false, `No sites found in structure`],
+    [`structure with null sites`, { sites: null }, false, `No sites found in structure`],
+    [`structure with empty sites`, { sites: [] }, false, `No sites found in structure`],
+    // the loading overlay replaces both messages, which its label would overlap
+    [`undefined structure while loading`, undefined, true, null],
+    [`empty sites while loading`, { sites: [] }, true, null],
+  ])(`shows the expected message for %s`, (_description, test_structure, loading, message) => {
+    mount_structure({ structure: test_structure as AnyStructure, loading })
+    const text = document.body.textContent ?? ``
+    if (message) expect(text).toContain(message)
+    else
+      for (const empty of [`No structure provided`, `No sites found`])
+        expect(text).not.toContain(empty)
   })
 })
 
@@ -2156,8 +2153,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
   expect(scene_stub.props?.auto_rotate).toBe(0.5)
   if (!auto_rotate_input) throw new Error(`Missing auto-rotate input`)
-  auto_rotate_input.value = `1.5`
-  auto_rotate_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(auto_rotate_input, `1.5`)
   await tick()
   expect(scene_stub.props?.auto_rotate).toBe(1.5)
 })
@@ -2256,8 +2252,7 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
 
   const [first_auto_rotate] = auto_rotate_inputs()
   if (!first_auto_rotate) throw new Error(`First viewer is missing its auto-rotate input`)
-  first_auto_rotate.value = `1.5`
-  first_auto_rotate.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(first_auto_rotate, `1.5`)
   flushSync()
   expect(DEFAULTS.structure.auto_rotate).toBe(default_auto_rotate)
 
@@ -2269,7 +2264,6 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
   expect(Number(inputs[1].value)).toBe(default_auto_rotate)
 })
 
-// Atom label controls tests
 describe(`atom label controls`, () => {
   test(`controls reflect scene_props bindings`, () => {
     mount_structure({
@@ -2301,7 +2295,6 @@ describe(`atom label controls`, () => {
   })
 
   test(`state isolation between instances works`, async () => {
-    // Mount first instance
     mount_structure({
       structure,
       active_pane: `controls`,
@@ -2309,7 +2302,6 @@ describe(`atom label controls`, () => {
       scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
     })
 
-    // Mount second instance
     mount_structure({
       structure,
       active_pane: `controls`,
@@ -2490,6 +2482,8 @@ describe(`source acquisition`, () => {
     expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
       `Loading structure...`,
     )
+    // the empty-state text would be drawn right under the spinner's label
+    expect(document.body.textContent).not.toContain(`No structure provided`)
     resolve(undefined)
     await vi.waitFor(() => expect(state.loading).toBe(false))
   })

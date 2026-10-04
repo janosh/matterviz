@@ -191,7 +191,7 @@ export function parse_xyz_comment_metadata(comment: string): {
     }
     // Lowercase, so `Free_Energy=` and `free_energy=` are one series, not two half-populated
     const canonical = METADATA_KEY_ALIASES[lower] ?? lower
-    // leftmost wins, as the old regexes did
+    // leftmost wins
     if (canonical in properties || canonical in flags) continue
     if (typeof value === `boolean`) flags[canonical] = value
     else properties[canonical] = value

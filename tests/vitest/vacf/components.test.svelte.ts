@@ -74,14 +74,23 @@ describe(`VacfPlot`, () => {
   const mount_plot = (props: ComponentProps<typeof VacfPlot>): Promise<string> =>
     mount_and_read(VacfPlot, { style: `width: 400px; height: 300px`, ...props })
 
-  // Default panel is `both`; covers the two-plot case that the panel it.each below omits
-  it(`renders both panels and the summary for a computed result`, async () => {
-    const result = calc_vacf(orbit_input(120), { dt: 1, time_unit: `fs` })
-    const text = await mount_plot({ result })
-    expect(document.querySelectorAll(`.scatter`)).toHaveLength(2)
-    expect(text).toContain(`Total`)
-    expect(text).toContain(`velocities read from the file`)
-    expect(text).toContain(`hann window`)
+  // the default panel is `both`; without a timestep the axis is in inverse frames
+  it.each([
+    [undefined, 2],
+    [`vacf` as const, 1],
+    [`vdos` as const, 1],
+  ])(`renders panel=%s as %i plot(s)`, async (panel, expected) => {
+    const text = await mount_plot({ result: calc_vacf(orbit_input(80)), panel })
+    expect(document.querySelectorAll(`.scatter`)).toHaveLength(expected)
+    if (panel) return
+    for (const snippet of [
+      `Total`,
+      `velocities read from the file`,
+      `hann window`,
+      `no timestep supplied, so frequencies are per collected frame`,
+      `Frequency (1/frame)`,
+    ])
+      expect(text).toContain(snippet)
   })
 
   it(`keeps VACF and VDOS control panes independent`, async () => {
@@ -99,20 +108,6 @@ describe(`VacfPlot`, () => {
     first_toggle.click()
     await tick()
     expect(expanded_states()).toEqual([`false`, `false`])
-  })
-
-  it.each([
-    [`vacf` as const, 1],
-    [`vdos` as const, 1],
-  ])(`renders %s as %i plot(s)`, async (panel, expected) => {
-    await mount_plot({ result: calc_vacf(orbit_input(80)), panel })
-    expect(document.querySelectorAll(`.scatter`)).toHaveLength(expected)
-  })
-
-  it(`says the axis is in inverse frames when no timestep was supplied`, async () => {
-    const text = await mount_plot({ result: calc_vacf(orbit_input(80)) })
-    expect(text).toContain(`no timestep supplied, so frequencies are per collected frame`)
-    expect(text).toContain(`Frequency (1/frame)`)
   })
 
   it(`replaces stale curves with the error when a compute fails`, async () => {
@@ -215,7 +210,10 @@ describe(`TrajectoryVacfPane`, () => {
     throw new Error(`collect never finished: button still disabled`)
   }
 
-  it(`starts empty, then collects and plots on click`, async () => {
+  // Without a timestep the options do not depend on the stride, so editing it must not
+  // hand VacfPlot a fresh options object and send the buffer back through the worker
+  it(`starts empty, collects and plots on click, and ignores stride edits without a timestep`, async () => {
+    const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
     const initial_text = await mount_and_read(TrajectoryVacfPane, {
       run: orbit_run(60, 0.04, 1),
       pane_open: true,
@@ -228,6 +226,15 @@ describe(`TrajectoryVacfPane`, () => {
     expect(text).toContain(`Recollect velocities`)
     // both the VACF and the VDOS panel are drawn by default
     expect(document.querySelectorAll(`.scatter`)).toHaveLength(2)
+    expect(compute).toHaveBeenCalledTimes(1)
+    const stride_input = document.querySelector<HTMLInputElement>(
+      `.trajectory-vacf-controls input[min='1'][step='1']`,
+    )
+    if (!stride_input) throw new Error(`no frame-stride input in the VACF pane`)
+    stride_input.value = `3`
+    stride_input.dispatchEvent(new Event(`input`))
+    await settle()
+    expect(compute).toHaveBeenCalledTimes(1)
   })
 
   it(`keeps an unrecognized time unit for lag while using inverse-frame VDOS`, async () => {
@@ -253,26 +260,6 @@ describe(`TrajectoryVacfPane`, () => {
     expect(state.result?.x_label).toBe(`Lag time (steps)`)
     expect(state.result?.frequency_unit).toBe(`1/frame`)
     expect(state.result?.times[1]).toBe(2)
-  })
-
-  // Without a timestep the options do not depend on the stride, so editing it must not
-  // hand VacfPlot a fresh options object and send the buffer back through the worker
-  it(`does not recompute the VACF when the stride changes without a timestep`, async () => {
-    const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
-    await mount_and_read(TrajectoryVacfPane, {
-      run: orbit_run(40, 0.04, 1),
-      pane_open: true,
-    })
-    await run_collect()
-    expect(compute).toHaveBeenCalledTimes(1)
-    const stride_input = document.querySelector<HTMLInputElement>(
-      `.trajectory-vacf-controls input[min='1'][step='1']`,
-    )
-    if (!stride_input) throw new Error(`no frame-stride input in the VACF pane`)
-    stride_input.value = `3`
-    stride_input.dispatchEvent(new Event(`input`))
-    await settle()
-    expect(compute).toHaveBeenCalledTimes(1)
   })
 
   it(`disables collection for a frame-only run`, async () => {

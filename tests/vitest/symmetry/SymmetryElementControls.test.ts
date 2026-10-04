@@ -100,7 +100,7 @@ const mount_controls = (props: ComponentProps<typeof SymmetryElementControls>) =
 }
 
 describe(`SymmetryElementControls`, () => {
-  test(`renders one checkbox per PRESENT kind with counts, in display order`, () => {
+  test(`renders one checkbox per PRESENT kind with counts, only rotation checked`, () => {
     mount_controls({ elements: SAMPLE_ELEMENTS })
     const labels = [...document.body.querySelectorAll(`label`)]
     // display order = SYM_ELEM_KINDS: axes (rotation, screw, rotoinversion) before planes
@@ -112,12 +112,8 @@ describe(`SymmetryElementControls`, () => {
       `glide planes (1)`,
       `inversion centers (3)`,
     ])
-  })
-
-  test(`default state checks only rotation axes`, () => {
-    mount_controls({ elements: SAMPLE_ELEMENTS })
+    // DEFAULT_SHOW_SYM_KINDS enables rotation axes only
     const checked = [...document.body.querySelectorAll(`input`)].map((inp) => inp.checked)
-    // only the first checkbox (rotation axes) is checked by DEFAULT_SHOW_SYM_KINDS
     expect(checked).toEqual([true, false, false, false, false, false])
   })
 

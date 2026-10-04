@@ -97,11 +97,9 @@ const mount_hull = async (
   return target
 }
 
-beforeEach(() => document.body.replaceChildren())
 afterEach(async () => {
   for (const component of mounted_components.splice(0)) await unmount(component)
   vi.restoreAllMocks()
-  document.body.replaceChildren()
 })
 
 describe(`convex hull replacement state`, () => {

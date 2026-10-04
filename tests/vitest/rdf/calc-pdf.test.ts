@@ -281,7 +281,6 @@ describe(`reduced PDF G(r)`, () => {
   })
 
   test(`rho_0 = N/V holds for a non-cubic cell, where a³ would be wrong`, () => {
-    // Triclinic; det = 4·(6·8) - 0 + 1.5·(0 - 0) ... computed below from the triple product
     const matrix: Matrix3x3 = [
       [4, 0, 0],
       [1.5, 6, 0],
@@ -322,19 +321,18 @@ describe(`reduced PDF G(r)`, () => {
     expect(rdf.r[1] - rdf.r[0]).toBeCloseTo(0.2, 12)
   })
 
+  const fcc_pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FRAC), { cutoff: 8, n_bins: 100 })
   test.each([
-    { r_min: 3, r_max: 2, why: `r_max below r_min` },
-    { r_min: 1, r_max: 1, why: `an empty window` },
-  ])(`coordination_number throws on $why`, ({ r_min, r_max }) => {
-    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FRAC), { cutoff: 8, n_bins: 100 })
-    expect(() => coordination_number(pattern, pattern.rho_0, { r_min, r_max })).toThrow(
-      /Empty integration window/,
-    )
-  })
-
-  test(`coordination_number needs at least two bins to infer a bin width`, () => {
-    const single: RdfPattern = { r: [0.5], g_r: [1] }
-    expect(() => coordination_number(single, 0.1)).toThrow(/at least 2 uniformly spaced/)
+    [`r_max below r_min`, fcc_pattern, { r_min: 3, r_max: 2 }, /Empty integration window/],
+    [`an empty window`, fcc_pattern, { r_min: 1, r_max: 1 }, /Empty integration window/],
+    [
+      `a single bin, leaving no bin width to infer`,
+      { r: [0.5], g_r: [1] },
+      {},
+      /at least 2 uniformly spaced/,
+    ],
+  ])(`coordination_number throws on %s`, (_why, pattern: RdfPattern, options, error) => {
+    expect(() => coordination_number(pattern, 0.1, options)).toThrow(error)
   })
 })
 

@@ -87,7 +87,14 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
   </label>
 </div>
 
-<BarPlot series={band_gaps} {mode} {orientation} {x_axis} {y_axis} style="height: 400px" />
+<BarPlot
+  series={band_gaps}
+  {mode}
+  {orientation}
+  bind:x_axis
+  bind:y_axis
+  style="height: 400px"
+/>
 ```
 
 Series can have **different categories**: DFT (PBE) includes CdTe while GW only covers three materials. Missing categories are zero-height bars in stacked mode, and absent in grouped mode.
@@ -199,7 +206,7 @@ Patterns are the natural way to mark measured vs. predicted values within one co
 
 ## Automatic Tick Label Layout
 
-Long category names no longer collide or waste most of the chart on a deep rotated-label gutter. `x`/`x2` tick labels default to `rotation: 'auto'`, which balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
+`x`/`x2` tick labels default to `rotation: 'auto'`, so long category names neither collide nor waste the chart on a deep rotated-label gutter: it balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
 
 Automatic wrapping uses at most three lines by default; set `tick_label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
 
@@ -268,7 +275,7 @@ Automatic wrapping uses at most three lines by default; set `tick_label.max_line
   <label><input type="checkbox" bind:checked={inside} /> Labels inside</label>
 </div>
 
-<BarPlot {series} {x_axis} y_axis={{ label: `Samples` }} style="height: 400px" />
+<BarPlot {series} bind:x_axis y_axis={{ label: `Samples` }} style="height: 400px" />
 ```
 
 ## Mode Comparison: Band Gap Measurements
@@ -618,7 +625,7 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   {/if}
 </div>
 
-<BarPlot series={energy_data} x_axis={{ label: `Element` }} {y_axis} style="height: 400px">
+<BarPlot series={energy_data} x_axis={{ label: `Element` }} bind:y_axis style="height: 400px">
   {#snippet tooltip({ y: coord_y, category_label })}
     <strong>{category_label}</strong><br />
     Energy: {coord_y.toLocaleString()} eV
@@ -729,7 +736,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
   </label>
 </div>
 
-<BarPlot series={yearly_data} {x_axis} {y_axis} {y2_axis} style="height: 400px" />
+<BarPlot series={yearly_data} bind:x_axis bind:y_axis bind:y2_axis style="height: 400px" />
 ```
 
 ## Spectroscopy Data with Zoom

@@ -124,7 +124,6 @@ function infer_boundary_type(curve_name: string): BoundaryType {
   return `custom`
 }
 
-// Get default boundary style based on type
 function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
   if (btype === `liquidus`) return { color: `#1565c0`, width: 2.5 }
   if (btype === `solidus`) return { color: `#2e7d32`, width: 2, dash: `4,2` }

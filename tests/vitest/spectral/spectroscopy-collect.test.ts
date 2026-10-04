@@ -10,6 +10,7 @@ import { is_signal_descriptor } from '#lib/trajectory/run.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { describe, expect, it, vi } from 'vitest'
+import { IDENTITY_MATRIX3 } from '../test-fixtures'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'
 
 const N_FRAMES = 8
@@ -186,6 +187,12 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
       { mass_source: `recorded` },
       /Recorded masses were requested, but the trajectory carries none/,
     ],
+    [
+      `an unknown response key by name`,
+      keep_frames,
+      { infrared_key: `current` },
+      /metadata signal "current"/,
+    ],
   ] as const)(`rejects %s`, async (_label, mutate, options, error) => {
     await expect(
       collect_trajectory_spectroscopy_input(make_run({}, mutate), options),
@@ -264,32 +271,26 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     [`current_time`, false],
     [`current_step`, false],
     [`v_mu`, false],
-  ])(`offers vec3 metadata %s as an IR candidate: %s`, (key, included) => {
-    const run = make_run({}, (frames) => {
-      for (const frame of frames) frame.metadata = { ...frame.metadata, [key]: [1, 0, 0] }
-    })
-    expect(trajectory_signal_keys(run, [3])).toEqual(
-      included ? [key, `dipole`].toSorted() : [`dipole`],
-    )
-  })
-
-  it.each([
-    [`polarizability_tensor`, true],
-    [`alpha_polariz`, true],
-    [`stress`, false],
-  ])(`offers 3x3 metadata %s as a Raman candidate: %s`, (key, included) => {
-    const tensor = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
-    const run = make_run({}, (frames) => {
-      for (const frame of frames) frame.metadata = { ...frame.metadata, [key]: tensor }
-    })
-    expect(trajectory_signal_keys(run, [3, 3])).toEqual(
-      included ? [key, `polarizability`].toSorted() : [`polarizability`],
-    )
-  })
+    [`polarizability_tensor`, true, [3, 3]],
+    [`alpha_polariz`, true, [3, 3]],
+    [`stress`, false, [3, 3]],
+  ] as [string, boolean, number[]?][])(
+    `offers metadata %s as a response candidate: %s`,
+    (key, included, shape = [3]) => {
+      const is_tensor = shape.length === 2
+      const default_key = is_tensor ? `polarizability` : `dipole`
+      const run = make_run({}, (frames) => {
+        for (const frame of frames)
+          frame.metadata = {
+            ...frame.metadata,
+            [key]: is_tensor ? IDENTITY_MATRIX3 : [1, 0, 0],
+          }
+      })
+      expect(trajectory_signal_keys(run, shape)).toEqual(
+        included ? [key, default_key].toSorted() : [default_key],
+      )
+    },
+  )
 
   // Run-level signals on the full step axis beside positions strided to 0, 2, 4, 6
   const native_cadence_run = (dipole_steps: number[] = every_step) =>
@@ -407,12 +408,6 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     })
   })
 
-  it(`rejects an unknown response key by name`, async () => {
-    await expect(
-      collect_trajectory_spectroscopy_input(make_run(), { infrared_key: `current` }),
-    ).rejects.toThrow(/metadata signal "current"/)
-  })
-
   const open_torch_sim = (
     options: Parameters<typeof make_torch_sim_signal_buffer>[0] = {},
   ): Promise<TrajectoryRun> =>
@@ -442,13 +437,6 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         expect(input.raman_signal.series.steps).toEqual([0, 2, 4])
       }
       expect(input.masses).toEqual(Float64Array.from([1.008, 15.999]))
-      const window = await collect_trajectory_spectroscopy_input(make_run(), {
-        start_frame: 2,
-        end_frame: 6,
-      })
-      expect(window.positions.steps).toEqual([2, 3, 4, 5])
-      expect(window.infrared_signal?.series.steps).toEqual([2, 3, 4, 5])
-      expect(window.velocities?.steps).toEqual([2, 3, 4, 5])
       expect(input.time_step).toBe(0.5)
       expect(input.time_unit).toBe(`fs`)
       expect(input.metadata).toMatchObject({

@@ -81,6 +81,8 @@ const scroll_track = (
   track[axis] = offset
   track.dispatchEvent(new Event(`scroll`))
   flushSync()
+  // the browser fires scrollend once the scroll settles; until then cards stay label shells
+  setTimeout(() => track.dispatchEvent(new Event(`scrollend`)), 0)
 }
 
 const card_labels = (): (string | null)[] =>
@@ -487,28 +489,13 @@ describe(`StructureGallery`, () => {
 
   // One corner grip per layout, driving both axes. The width axis writes an exact
   // card width in a vertical column, the fit-then-stretch minimum in the others.
+  // horizontal: the wider minimum fits 2 across, then stretches; vertical: an exact width,
+  // a single column never stretches; grid: clamped to the 120px floor, so 6 fit
+  // oxfmt-ignore
   test.each([
-    {
-      layout: `horizontal`,
-      props: { height: 210, min_card_width: 180 },
-      drag: [100, 80],
-      card_width: (800 - 8) / 2, // the wider minimum fits 2 across, then stretches
-      card_height: 290,
-    },
-    {
-      layout: `vertical`,
-      props: { height: 300, min_card_width: 240 },
-      drag: [-100, 50],
-      card_width: 200, // an exact width: a single column never stretches
-      card_height: 350,
-    },
-    {
-      layout: `grid`,
-      props: { height: 200, min_card_width: 240 },
-      drag: [-200, 100],
-      card_width: (800 - 8 * 5) / 6, // clamped to the 120px floor, so 6 fit
-      card_height: 300,
-    },
+    { layout: `horizontal`, props: { height: 210, min_card_width: 180 }, drag: [100, 80], card_width: (800 - 8) / 2, card_height: 290 },
+    { layout: `vertical`, props: { height: 300, min_card_width: 240 }, drag: [-100, 50], card_width: 200, card_height: 350 },
+    { layout: `grid`, props: { height: 200, min_card_width: 240 }, drag: [-200, 100], card_width: (800 - 8 * 5) / 6, card_height: 300 },
   ] as const)(
     `$layout corner grip resizes cards on both axes at once`,
     ({ layout, props, drag, card_width, card_height }) => {

@@ -15,7 +15,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     decoration: ColorbarDecoration
     color_bar: ComponentProps<typeof ColorBar>
-    // Appended to the wrapper's inline style (users pin the bar with `position`/`left`/...)
+    // Replaces the solver's placement (users pin the bar with `left`/`right`/...)
     wrapper_style?: string
   } = $props()
 </script>
@@ -29,8 +29,8 @@
   aria-label="Color scale legend"
   {...decoration.data_attrs}
   {...rest}
-  style="left: {decoration.tween.coords.current.x}px; top: {decoration.tween.coords.current
-    .y}px; {wrapper_style}"
+  style={wrapper_style ||
+    `left: ${decoration.tween.coords.current.x}px; top: ${decoration.tween.coords.current.y}px`}
 >
   <ColorBar {...color_bar} />
 </div>

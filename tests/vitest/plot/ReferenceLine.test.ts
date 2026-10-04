@@ -6,12 +6,10 @@ import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-// Helper to query all elements of a type
 const query_all = <T extends Element>(selector: string): T[] =>
   Array.from(document.querySelectorAll<T>(selector))
 
 describe(`ReferenceLine`, () => {
-  // Scale functions mapping data to pixels
   const x_scale = (val: number) => 50 + (val / 100) * 700 // 0-100 -> 50-750
   const y_scale = (val: number) => 550 - (val / 100) * 500 // 0-100 -> 550-50 (inverted)
   const axes = { x_min: 0, x_max: 100, y_min: 0, y_max: 100, x_scale, y_scale }
@@ -101,34 +99,18 @@ describe(`ReferenceLine`, () => {
     expect(target.querySelector(`.reference-line`)).toBeNull()
   })
 
-  test(`calls on_click handler`, () => {
-    const on_click = vi.fn()
-    mount_line({ type: `horizontal`, y: 50, id: `test-line`, label: `Test` }, { on_click })
-
-    doc_query(`.reference-line`).dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-
-    expect(on_click).toHaveBeenCalledTimes(1)
-    expect(on_click).toHaveBeenCalledWith(
-      expect.objectContaining({
-        line_idx: 0,
-        line_id: `test-line`,
-        type: `horizontal`,
-        label: `Test`,
-      }),
+  test(`calls on_click, on_hover on mouseenter and on_hover(null) on mouseleave`, () => {
+    const [on_click, on_hover] = [vi.fn(), vi.fn()]
+    mount_line(
+      { type: `horizontal`, y: 50, id: `test-line`, label: `Test` },
+      { on_click, on_hover },
     )
-  })
-
-  test(`calls on_hover on mouseenter and with null on mouseleave`, () => {
-    const on_hover = vi.fn()
-    mount_line({ type: `horizontal`, y: 50 }, { on_hover })
-
     const group = doc_query(`.reference-line`)
+    const expected = { line_idx: 0, line_id: `test-line`, type: `horizontal`, label: `Test` }
+    group.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(on_click).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(expected))
     group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    expect(on_hover).toHaveBeenCalledTimes(1)
-    expect(on_hover).toHaveBeenCalledWith(
-      expect.objectContaining({ line_idx: 0, type: `horizontal` }),
-    )
-
+    expect(on_hover).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(expected))
     group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })

@@ -2,7 +2,7 @@ import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
 import PhaseDiagramControls from '#lib/phase-diagram/PhaseDiagramControls.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, query } from '../setup'
+import { bind_props, query, set_input } from '../setup'
 import { PHASE_DIAGRAM_DEFAULTS } from '#lib/phase-diagram/utils.js'
 
 const sample_data: PhaseDiagramData = {
@@ -22,7 +22,7 @@ const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {})
 }
 
 describe(`PhaseDiagramControls`, () => {
-  test(`renders sections and controls when open`, () => {
+  test(`renders sections and controls when open, export only when enabled`, () => {
     const target = mount_controls({ enable_export: true })
     expect(target.innerHTML).toContain(`Phase diagram controls`)
     const expected_text =
@@ -44,11 +44,7 @@ describe(`PhaseDiagramControls`, () => {
     expect(dpi_value.style.display).toBe(`inline-flex`)
     expect(input.style.opacity).not.toBe(`0.8`)
     expect(readout.style.opacity).toBe(`0.8`)
-  })
-
-  test(`hides export section when enable_export is false`, () => {
-    const target = mount_controls({ enable_export: false })
-    expect(target.textContent).not.toContain(`Export`)
+    expect(mount_controls({ enable_export: false }).textContent).not.toContain(`Export`)
   })
 
   test(`ignores empty axis tick inputs and clamps finite values`, () => {
@@ -67,8 +63,7 @@ describe(`PhaseDiagramControls`, () => {
       [``, 5],
       [`99`, 15],
     ] as const) {
-      tick_input.value = input
-      tick_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(tick_input, input)
       expect(state.x_axis.ticks).toBe(expected)
     }
   })

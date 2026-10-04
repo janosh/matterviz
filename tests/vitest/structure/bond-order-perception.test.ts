@@ -54,6 +54,8 @@ describe(`perceive_bond_orders on small molecules`, () => {
     perceived: boolean
     warns?: string
   }>([
+    { name: `no bonds -> empty result`, elements: [`Na`, `Cl`], coords: [[0, 0, 0], [2.8, 0, 0]],
+      edges: [], expected: [], perceived: true },
     { name: `H2`, elements: [`H`, `H`], coords: [[0, 0, 0], [0.74, 0, 0]], edges: [[0, 1]],
       expected: [1], perceived: true },
     // stale out-of-range bond (2.4 A C-O) stays single without throwing
@@ -134,18 +136,6 @@ describe(`perceive_bond_orders on small molecules`, () => {
       expected.toSorted(by_order),
     )
     expect(result.every((bond) => bond.perceived === perceived)).toBe(true)
-  })
-
-  test(`no bonds -> empty result`, () => {
-    const { sites, bonds } = make_input(
-      [`Na`, `Cl`],
-      [
-        [0, 0, 0],
-        [2.8, 0, 0],
-      ],
-      [],
-    )
-    expect(perceive_bond_orders(sites, bonds, {})).toHaveLength(0)
   })
 })
 
@@ -244,58 +234,37 @@ describe(`aromaticity`, () => {
     expect(result.filter((bond) => bond.bond_order === `aromatic`)).toHaveLength(18)
   })
 
+  // 6-ring of `ring_elements` (1.54 A bonds) with substituent_counts[idx] substituents on ring
+  // atom idx, placed 1 A radially outward and 0.9 A above (first) or below (second) the plane
   const make_saturated_six_ring = (
     ring_elements: ElementSymbol[],
     substituent: ElementSymbol,
     substituent_counts: number[],
   ) => {
-    const ring_coords: [number, number, number][] = Array.from(
-      { length: 6 },
-      (_, ring_idx): [number, number, number] => [
-        Math.cos((ring_idx * Math.PI) / 3) * 1.54,
-        Math.sin((ring_idx * Math.PI) / 3) * 1.54,
-        0,
-      ],
+    const ring_coords = circle(6, 1.54)
+    const substituent_coords = ring_coords.flatMap(([coord_x, coord_y], ring_idx) =>
+      Array.from({ length: substituent_counts[ring_idx] }, (_, sub_idx): Vec3 => [
+        coord_x * (1 + 1 / 1.54),
+        coord_y * (1 + 1 / 1.54),
+        sub_idx === 0 ? 0.9 : -0.9,
+      ]),
     )
-    const substituent_coords: [number, number, number][] = ring_coords.flatMap(
-      ([coord_x, coord_y], ring_idx): [number, number, number][] => {
-        const radial_len = Math.hypot(coord_x, coord_y)
-        const radial_x = coord_x / radial_len
-        const radial_y = coord_y / radial_len
-        return Array.from(
-          { length: substituent_counts[ring_idx] },
-          (_, substituent_idx): [number, number, number] => [
-            coord_x + radial_x,
-            coord_y + radial_y,
-            substituent_idx === 0 ? 0.9 : -0.9,
-          ],
-        )
-      },
+    let next_idx = 6
+    const substituent_edges = substituent_counts.flatMap((count, ring_idx) =>
+      Array.from({ length: count }, (): Vec2 => [ring_idx, next_idx++]),
     )
-    const ring_edges: Vec2[] = Array.from({ length: 6 }, (_, ring_idx): Vec2 => [
-      ring_idx,
-      (ring_idx + 1) % 6,
-    ])
-    const substituent_edges: Vec2[] = []
-    let substituent_site_idx = 6
-    for (const [ring_idx, substituent_count] of substituent_counts.entries()) {
-      for (let count_idx = 0; count_idx < substituent_count; count_idx++) {
-        substituent_edges.push([ring_idx, substituent_site_idx++])
-      }
-    }
     return make_input(
-      [
-        ...ring_elements,
-        ...Array.from({ length: substituent_coords.length }, () => substituent),
-      ],
+      [...ring_elements, ...substituent_coords.map(() => substituent)],
       [...ring_coords, ...substituent_coords],
-      [...ring_edges, ...substituent_edges],
+      [...ring(0, 6), ...substituent_edges],
     )
   }
 
   const ring_bonds_from = (result: PerceivedBond[]) =>
     result.filter(({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6)
 
+  const c5 = carbons(5)
+  // oxfmt-ignore
   test.each<{
     description: string
     ring_elements: ElementSymbol[]
@@ -303,34 +272,10 @@ describe(`aromaticity`, () => {
     substituent_counts: number[]
     has_double_bond: boolean
   }>([
-    {
-      description: `planar saturated cyclohexane with explicit H substituents`,
-      ring_elements: Array.from({ length: 6 }, () => `C`),
-      substituent: `H`,
-      substituent_counts: [2, 2, 2, 2, 2, 2],
-      has_double_bond: false,
-    },
-    {
-      description: `planar saturated cyclohexane with explicit Cl substituents`,
-      ring_elements: Array.from({ length: 6 }, () => `C`),
-      substituent: `Cl`,
-      substituent_counts: [2, 2, 2, 2, 2, 2],
-      has_double_bond: false,
-    },
-    {
-      description: `planar saturated piperidine`,
-      ring_elements: [`N`, ...Array.from({ length: 5 }, (): ElementSymbol => `C`)],
-      substituent: `H`,
-      substituent_counts: [1, 2, 2, 2, 2, 2],
-      has_double_bond: false,
-    },
-    {
-      description: `partially conjugated six-membered heterocycle`,
-      ring_elements: [`N`, ...Array.from({ length: 5 }, (): ElementSymbol => `C`)],
-      substituent: `H`,
-      substituent_counts: [1, 1, 1, 1, 1, 2],
-      has_double_bond: true,
-    },
+    { description: `planar saturated cyclohexane with explicit H substituents`, ring_elements: carbons(6), substituent: `H`, substituent_counts: [2, 2, 2, 2, 2, 2], has_double_bond: false },
+    { description: `planar saturated cyclohexane with explicit Cl substituents`, ring_elements: carbons(6), substituent: `Cl`, substituent_counts: [2, 2, 2, 2, 2, 2], has_double_bond: false },
+    { description: `planar saturated piperidine`, ring_elements: [`N`, ...c5], substituent: `H`, substituent_counts: [1, 2, 2, 2, 2, 2], has_double_bond: false },
+    { description: `partially conjugated six-membered heterocycle`, ring_elements: [`N`, ...c5], substituent: `H`, substituent_counts: [1, 1, 1, 1, 1, 2], has_double_bond: true },
   ])(
     `$description is not aromatic`,
     ({ ring_elements, substituent, substituent_counts, has_double_bond }) => {
@@ -395,73 +340,17 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     ...(cell_shift === undefined ? {} : { cell_shift }),
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      name: `explicit order wins over perceived`,
-      perceived: [perceived_bond(0, 1, 1)],
-      explicit: [expl(0, 1, 2)],
-      mode: `aromatic` as const,
-      expected: [2],
-    },
-    {
-      name: `explicit aromatic preserved over perceived single`,
-      perceived: [perceived_bond(0, 1, 1)],
-      explicit: [expl(0, 1, `aromatic`)],
-      mode: `aromatic` as const,
-      expected: [`aromatic`],
-    },
-    {
-      name: `explicit key is order-insensitive`,
-      perceived: [perceived_bond(0, 1, 1)],
-      explicit: [expl(1, 0, 3)],
-      mode: `aromatic` as const,
-      expected: [3],
-    },
-    {
-      name: `explicit periodic bonds only override matching cell shifts`,
-      perceived: [
-        perceived_bond(0, 1, 1, undefined, [1, 0, 0]),
-        perceived_bond(0, 1, 1, undefined, [-1, 0, 0]),
-      ],
-      explicit: [expl(0, 1, 3, [1, 0, 0])],
-      mode: `aromatic` as const,
-      expected: [3, 1],
-    },
-    {
-      name: `non-explicit aromatic stays aromatic in aromatic mode`,
-      perceived: [perceived_bond(0, 1, `aromatic`, 2)],
-      explicit: [],
-      mode: `aromatic` as const,
-      expected: [`aromatic`],
-    },
-    {
-      name: `non-explicit aromatic remapped to kekule_order in kekule mode`,
-      perceived: [perceived_bond(0, 1, `aromatic`, 2)],
-      explicit: [],
-      mode: `kekule` as const,
-      expected: [2],
-    },
-    {
-      name: `explicit aromatic not remapped in kekule mode`,
-      perceived: [perceived_bond(0, 1, `aromatic`, 1)],
-      explicit: [expl(0, 1, `aromatic`)],
-      mode: `kekule` as const,
-      expected: [`aromatic`],
-    },
-    {
-      name: `non-explicit non-aromatic perceived order passes through`,
-      perceived: [perceived_bond(0, 1, 3)],
-      explicit: [expl(2, 3, 2)],
-      mode: `kekule` as const,
-      expected: [3],
-    },
-    {
-      name: `aromatic without kekule_order falls back to aromatic`,
-      perceived: [perceived_bond(0, 1, `aromatic`)],
-      explicit: [],
-      mode: `kekule` as const,
-      expected: [`aromatic`],
-    },
+    { name: `explicit order wins over perceived`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, 2)], mode: `aromatic` as const, expected: [2] },
+    { name: `explicit aromatic preserved over perceived single`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `aromatic` as const, expected: [`aromatic`] },
+    { name: `explicit key is order-insensitive`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(1, 0, 3)], mode: `aromatic` as const, expected: [3] },
+    { name: `explicit periodic bonds only override matching cell shifts`, perceived: [perceived_bond(0, 1, 1, undefined, [1, 0, 0]), perceived_bond(0, 1, 1, undefined, [-1, 0, 0])], explicit: [expl(0, 1, 3, [1, 0, 0])], mode: `aromatic` as const, expected: [3, 1] },
+    { name: `non-explicit aromatic stays aromatic in aromatic mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `aromatic` as const, expected: [`aromatic`] },
+    { name: `non-explicit aromatic remapped to kekule_order in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `kekule` as const, expected: [2] },
+    { name: `explicit aromatic not remapped in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `kekule` as const, expected: [`aromatic`] },
+    { name: `non-explicit non-aromatic perceived order passes through`, perceived: [perceived_bond(0, 1, 3)], explicit: [expl(2, 3, 2)], mode: `kekule` as const, expected: [3] },
+    { name: `aromatic without kekule_order falls back to aromatic`, perceived: [perceived_bond(0, 1, `aromatic`)], explicit: [], mode: `kekule` as const, expected: [`aromatic`] },
   ])(`$name`, ({ perceived, explicit, mode, expected }) => {
     const out = compose_perceived_bonds(perceived, explicit, mode)
     expect(out.map((bond) => bond.bond_order)).toEqual(expected)

@@ -41,7 +41,7 @@ import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { mock_fullscreen, bind_props, expect_plot_controls, query } from '../setup'
+import { mock_fullscreen, bind_props, expect_plot_controls, query, set_input } from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
@@ -53,10 +53,6 @@ vi.mock(`$app/state`, () => ({
     },
   },
 }))
-
-// Smoke tests to ensure component mounts without errors.
-// Meaningful 3D rendering tests require Playwright visual regression testing,
-// not jsdom-based unit tests which cannot verify WebGL/Three.js output.
 
 const basic_series: DataSeries3D = {
   x: [1, 2, 3, 4, 5],
@@ -522,7 +518,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
   ])(`mounts with %s`, async (_desc, props) => {
     await mount_plot(props)
-    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
+    // the chart's fullscreen background is mapped onto the shared shell
+    expect(query(container, `.scatter-3d`).getAttribute(`style`)).toContain(
+      `--chart-shell-fullscreen-bg: var(--scatter3d-fullscreen-bg, var(--scatter3d-bg, var(--plot-bg, transparent)))`,
+    )
     const pane = query(container, `.draggable-pane`)
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
   })
@@ -549,32 +548,19 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   const multi_series = [basic_series, { ...basic_series, label: `Other` }]
   const color_series = { ...basic_series, color_values: [0, 1, 2, 3, 4] }
-  test.each<[string, ComponentProps<typeof ScatterPlot3D>, boolean]>([
-    [`auto hides a single series`, { series: [basic_series] }, false],
-    [
-      `explicit true forces a one-series legend`,
-      { series: [basic_series], show_legend: true },
-      true,
-    ],
-    [`explicit false hides multiple`, { series: multi_series, show_legend: false }, false],
-    [
-      `legend=null overrides show_legend=true`,
-      { series: multi_series, show_legend: true, legend: null },
-      false,
-    ],
-    [`auto shows multiple series`, { series: multi_series }, true],
-  ])(`legend visibility: %s`, async (_desc, props, expect_legend) => {
+  // oxfmt-ignore
+  test.each<[string, ComponentProps<typeof ScatterPlot3D>, `.legend` | `.colorbar`, boolean]>([
+    [`auto hides a single series`, { series: [basic_series] }, `.legend`, false],
+    [`explicit true forces a one-series legend`, { series: [basic_series], show_legend: true }, `.legend`, true],
+    [`explicit false hides multiple`, { series: multi_series, show_legend: false }, `.legend`, false],
+    [`legend=null overrides show_legend=true`, { series: multi_series, show_legend: true, legend: null }, `.legend`, false],
+    [`auto shows multiple series`, { series: multi_series }, `.legend`, true],
+    [`color values`, { series: [color_series] }, `.colorbar`, true],
+    [`no color values`, { series: [basic_series] }, `.colorbar`, false],
+    [`color bar disabled`, { series: [color_series], color_bar: null }, `.colorbar`, false],
+  ])(`%s: renders %s = %s`, async (_desc, props, selector, expected) => {
     await mount_plot(props)
-    expect(Boolean(container.querySelector(`.legend`))).toBe(expect_legend)
-  })
-
-  test.each<[string, ComponentProps<typeof ScatterPlot3D>, boolean]>([
-    [`color values`, { series: [color_series] }, true],
-    [`no color values`, { series: [basic_series] }, false],
-    [`color bar disabled`, { series: [color_series], color_bar: null }, false],
-  ])(`color bar with %s`, async (_desc, props, expected) => {
-    await mount_plot(props)
-    expect(Boolean(container.querySelector(`.colorbar`))).toBe(expected)
+    expect(Boolean(container.querySelector(selector))).toBe(expected)
   })
 
   // A caller's wrapper_style must append to the corner placement, not replace it
@@ -590,13 +576,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(style).toContain(`opacity: 0.5`)
     // `style` rides the same root element, so it must survive the corner placement too
     expect(style).toContain(`border: 1px solid red`)
-  })
-
-  test(`maps the chart's fullscreen background onto the shared shell`, async () => {
-    await mount_plot({ series: [basic_series] })
-    expect(container.querySelector(`.scatter-3d`)?.getAttribute(`style`)).toContain(
-      `--chart-shell-fullscreen-bg: var(--scatter3d-fullscreen-bg, var(--scatter3d-bg, var(--plot-bg, transparent)))`,
-    )
   })
 
   test(`legend click hides the series and writes bound hidden_series`, async () => {
@@ -702,9 +681,15 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(state.fullscreen).toBe(false)
   })
 
-  // The standalone controls component is exported from #lib/plot, so its prop names are
-  // public API: it must speak controls_open/show_controls like every other *Controls
-  // component rather than the generic DraggablePane `open`.
+  const type_into = (input: HTMLInputElement, value: string) => {
+    set_input(input, value)
+    flushSync()
+  }
+  const click_titled = (title: string) => {
+    query<HTMLButtonElement>(container, `button[title="${title}"]`).click()
+    flushSync()
+  }
+
   // Each surface extends beyond the scatter samples, so controls must include its bounds.
   test.each([
     { name: `scatter`, max_value: 5.5, surface: undefined },
@@ -738,28 +723,21 @@ describe(`ScatterPlot3D smoke tests`, () => {
       expect(Number(x_max.placeholder)).toBe(max_value)
 
       show_axes.click()
-      x_min.value = `2`
-      x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_into(x_min, `2`)
 
       expect(controls_state.display).toEqual({ show_axes: false })
       controls_state.display.projections = { xy: true }
       controls_state.display.projection_opacity = 0.7
       controls_state.display.projection_scale = 0.9
       flushSync()
-      query<HTMLButtonElement>(
-        container,
-        `button[title="Reset projections to defaults"]`,
-      ).click()
-      flushSync()
+      click_titled(`Reset projections to defaults`)
       expect(controls_state.display).toEqual({
         show_axes: false,
         projections: { xy: false, xz: false, yz: false },
         projection_opacity: 0.3,
         projection_scale: 0.5,
       })
-      query<HTMLButtonElement>(container, `button[title="Reset display to defaults"]`).click()
-      flushSync()
+      click_titled(`Reset display to defaults`)
       expect(controls_state.display).toMatchObject({
         show_axes: true,
         show_grid: true,
@@ -778,26 +756,15 @@ describe(`ScatterPlot3D smoke tests`, () => {
         [`0.00000001`, 1e-8],
         [``, null],
       ] as const) {
-        x_min.value = value
-        x_min.dispatchEvent(new Event(`input`, { bubbles: true }))
-        flushSync()
+        type_into(x_min, value)
         expect(controls_state.x_axis.range).toEqual([expected, null])
         expect(x_min.value).toBe(expected === null ? `` : String(expected))
       }
-      x_max.value = `7`
-      x_max.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_into(x_max, `7`)
       expect(controls_state.x_axis.range).toEqual([null, 7])
-      const label_input = query<HTMLInputElement>(container, `[aria-label="X label"]`)
-      label_input.value = `Energy`
-      label_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
+      type_into(query<HTMLInputElement>(container, `[aria-label="X label"]`), `Energy`)
       expect(controls_state.x_axis.label).toBe(`Energy`)
-      query<HTMLButtonElement>(
-        container,
-        `button[title="Restore axes to initial values"]`,
-      ).click()
-      flushSync()
+      click_titled(`Restore axes to initial values`)
       expect(controls_state.x_axis).toEqual({ label: `X`, range: [0.25, null] })
       expect(x_min.value).toBe(`0.25`)
       expect(
@@ -806,6 +773,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     },
   )
 
+  // The standalone controls are exported from #lib/plot, so their prop names are public API:
+  // controls_open/show_controls like every other *Controls, not DraggablePane's `open`.
   test(`standalone controls expose show_controls and a two-way controls_open`, async () => {
     const controls_state = { controls_open: true }
     mounted_component = mount(ScatterPlot3DControls, {
@@ -942,24 +911,13 @@ describe(`scene coordinates`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each<[[number | null, number | null] | undefined, [number, number]]>([
     [undefined, [0, 100]],
-    [
-      [20, 80],
-      [20, 80],
-    ],
-    [
-      [null, 80],
-      [0, 80],
-    ],
-    [
-      [20, null],
-      [20, 100],
-    ],
-    [
-      [null, null],
-      [0, 100],
-    ],
+    [[20, 80], [20, 80]],
+    [[null, 80], [0, 80]],
+    [[20, null], [20, 100]],
+    [[null, null], [0, 100]],
   ])(`span_or(%j) fills nullish bounds from the range`, (span, expected) => {
     expect(span_or(span, [0, 100])).toEqual(expected)
   })

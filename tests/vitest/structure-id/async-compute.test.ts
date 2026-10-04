@@ -21,7 +21,10 @@ describe(`worker payload`, () => {
   ])(`round-trips %s to an identical result`, (_label, structure, options) => {
     const payload = to_structure_id_payload(structure)
     expect(payload.xyz).toHaveLength(structure.sites.length * 3)
-    expect(`lattice` in payload).toBe(`lattice` in structure)
+    // only the analysed keys cross the worker boundary, and no lattice key without a lattice
+    expect(Object.keys(payload).toSorted()).toEqual(
+      `lattice` in structure ? [`lattice`, `xyz`] : [`xyz`],
+    )
     expect(calc_structure_id(structure_from_payload(payload), options)).toEqual(
       calc_structure_id(structure, options),
     )
@@ -35,14 +38,7 @@ describe(`worker payload`, () => {
 })
 
 describe(`calc_structure_id_async`, () => {
-  test(`resolves with the same result the synchronous path produces`, async () => {
-    const crystal = make_fcc([2, 2, 2])
-    const options = { skip_csp: true }
-    const result = await calc_structure_id_async(crystal, options)
-    expect(result).toEqual(calc_structure_id(crystal, options))
-  })
-
-  test(`dedupes in-flight requests and does not reuse a settled promise`, async () => {
+  test(`matches the sync result, dedupes in-flight requests, never reuses a settled one`, async () => {
     const crystal = make_fcc([2, 2, 2])
     const first = calc_structure_id_async(crystal, { skip_csp: true })
     const second = calc_structure_id_async(crystal, { skip_csp: true })
@@ -51,6 +47,7 @@ describe(`calc_structure_id_async`, () => {
     const third = calc_structure_id_async(crystal, { skip_cna: true })
     expect(third).not.toBe(first)
     const [first_result] = await Promise.all([first, second, third])
+    expect(first_result).toEqual(calc_structure_id(crystal, { skip_csp: true }))
 
     const after_settle = calc_structure_id_async(crystal, { skip_csp: true })
     expect(after_settle).not.toBe(first)

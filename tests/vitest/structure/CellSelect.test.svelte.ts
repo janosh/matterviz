@@ -2,9 +2,8 @@ import CellSelect from '#lib/structure/CellSelect.svelte'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse } from '../setup'
+import { bind_props, doc_query, keydown, mouse, set_input } from '../setup'
 
-// Mock sym_data for testing cell type buttons
 const mock_sym_data = {
   number: 225,
   hall_number: 523,
@@ -60,19 +59,16 @@ describe(`CellSelect`, () => {
       vi.useFakeTimers()
       mount_select({ supercell_scaling: `1x1x1` })
 
-      // Initially hidden
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
       expect(doc_query(`.cell-select`).getAttribute(`role`)).toBe(`group`)
       expect(document.querySelector(`.dropdown`)).toBeNull()
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
 
-      // Opens on click
       toggle.click()
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
-      // Close by mouseleave
       doc_query(`.cell-select`).dispatchEvent(mouse(`mouseleave`))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeNull()
@@ -185,15 +181,7 @@ describe(`CellSelect`, () => {
       `clicking Prim button with sym_data=%s results in cell_type=%s`,
       async (sym_data, expected) => {
         const state: { cell_type: CellType } = $state({ cell_type: `original` })
-        await mount_and_open(
-          bind_props(
-            {
-              supercell_scaling: `1x1x1`,
-              sym_data,
-            },
-            state,
-          ),
-        )
+        await mount_and_open(bind_props({ supercell_scaling: `1x1x1`, sym_data }, state))
         document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)[1].click()
         await tick()
         expect(state.cell_type).toBe(expected)
@@ -239,35 +227,23 @@ describe(`CellSelect`, () => {
       expect(input.value).toBe(`3x3x1`)
     })
 
-    // validity itself is parse_supercell_scaling's job (supercell.test.ts); this is the class
+    // validity itself is parse_supercell_scaling's job (supercell.test.ts); this is the
+    // invalid class and the apply button, which also refuses the current scaling
     test.each([
-      [`2x2x2`, false],
-      [`2x2`, true],
-    ])(`input "%s" has invalid class: %s`, async (input_val, should_be_invalid) => {
-      await mount_and_open({ supercell_scaling: `1x1x1` })
-      const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
-      input.value = input_val
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
-      expect(input.classList.contains(`invalid`)).toBe(should_be_invalid)
-    })
-
-    test.each([
-      [`invalid`, `1x1x1`, true], // Invalid input
-      [`1x1x1`, `1x1x1`, true], // Same as current
-      [`4x4x4`, `1x1x1`, false], // Valid different
+      [`2x2x2`, false, false],
+      [`2x2`, true, true],
+      [`invalid`, true, true],
+      [`1x1x1`, false, true], // same as current
+      [`4x4x4`, false, false],
     ])(
-      `apply button disabled=%s for input="%s" when scaling="%s"`,
-      async (input_val, scaling, should_be_disabled) => {
-        await mount_and_open({ supercell_scaling: scaling })
+      `input "%s" has invalid class: %s, apply disabled: %s`,
+      async (input_val, invalid_class, apply_disabled) => {
+        await mount_and_open({ supercell_scaling: `1x1x1` })
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
-        const apply_btn = doc_query<HTMLButtonElement>(`.apply-btn`)
-
-        input.value = input_val
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(input, input_val)
         await tick()
-
-        expect(apply_btn.disabled).toBe(should_be_disabled)
+        expect(input.classList.contains(`invalid`)).toBe(invalid_class)
+        expect(doc_query<HTMLButtonElement>(`.apply-btn`).disabled).toBe(apply_disabled)
       },
     )
 
@@ -282,8 +258,7 @@ describe(`CellSelect`, () => {
         await mount_and_open(bind_props({}, state))
 
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
-        input.value = input_val
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(input, input_val)
         await tick()
 
         if (method === `click`) {

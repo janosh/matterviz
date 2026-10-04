@@ -13,10 +13,9 @@ import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
 import { export_chart_image } from '#lib/plot/core/utils/chart-export.js'
 import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-import { materialize_series_points } from '#lib/plot/scatter/scatter-data.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   clip_rect,
@@ -33,6 +32,7 @@ import {
   resize_element,
   roving_tabindexes,
   svg_query,
+  set_input,
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
@@ -47,6 +47,11 @@ const basic = {
   x: [1, 2, 3, 4, 5],
   y: [5, 3, 8, 2, 7],
   point_style: { fill: `steelblue`, radius: 5 },
+}
+
+const dense = {
+  x: Array.from({ length: 40 }, (_, idx) => idx),
+  y: Array.from({ length: 40 }, (_, idx) => idx % 7),
 }
 
 const mount_sized_scatter_plot = (
@@ -150,45 +155,33 @@ describe(`ScatterPlot`, () => {
   // Past the marker threshold the SVG points that carry role/tabindex/aria-label are
   // gone, so arrow keys drive a cursor through the data instead
   describe(`canvas keyboard cursor`, () => {
-    const dense = {
-      x: Array.from({ length: 40 }, (_, idx) => idx),
-      y: Array.from({ length: 40 }, (_, idx) => idx % 7),
-    }
     const arrow = async (svg: Element, key: string) => {
       svg.dispatchEvent(keydown(key))
       await tick()
     }
-    const mount_dense = async () => {
-      document.body.innerHTML = ``
+    const announced = (plot: HTMLElement) =>
+      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+
+    test(`End and arrows step and wrap, Escape clears the announcement`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [dense],
         marker_renderer: `canvas`,
       })
-      return { plot, svg: plot_svg(plot) }
-    }
-    const announced = (plot: HTMLElement) =>
-      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
-
-    test.each([
-      [`ArrowRight`, 1],
-      [`End`, 40],
-    ])(`%s announces point %i`, async (key, point_number) => {
-      const { plot, svg } = await mount_dense()
-      await arrow(svg, key)
-      expect(announced(plot)).toContain(`point ${point_number}`)
-    })
-
-    test(`arrows step and wrap, Escape clears the announcement`, async () => {
-      const { plot, svg } = await mount_dense()
-      await arrow(svg, `ArrowRight`)
-      await arrow(svg, `ArrowRight`)
-      expect(announced(plot)).toContain(`point 2`)
-      // Backwards off the start wraps to the end rather than dead-ending
-      await arrow(svg, `ArrowLeft`)
-      await arrow(svg, `ArrowLeft`)
-      expect(announced(plot)).toContain(`point 40`)
-      await arrow(svg, `Escape`)
-      expect(announced(plot)).toBe(``)
+      const svg = plot_svg(plot)
+      for (const [key, expected] of [
+        [`End`, `point 40`],
+        [`Escape`, ``],
+        [`ArrowRight`, `point 1`],
+        [`ArrowRight`, `point 2`],
+        [`ArrowLeft`, `point 1`],
+        // Backwards off the start wraps to the end rather than dead-ending
+        [`ArrowLeft`, `point 40`],
+        [`Escape`, ``],
+      ]) {
+        await arrow(svg, key)
+        if (expected) expect(announced(plot), key).toContain(expected)
+        else expect(announced(plot), key).toBe(``)
+      }
     })
 
     // The cursor is one flat index across both series, so the series boundary is where an
@@ -356,9 +349,6 @@ describe(`ScatterPlot`, () => {
       [...plot.querySelectorAll(`path.error-bars`)]
         .map((path) => (path.getAttribute(`d`) ?? ``).match(/M/g)?.length ?? 0)
         .reduce((sum, n_moves) => sum + n_moves, 0) / 3
-    beforeEach(() => {
-      document.body.innerHTML = ``
-    })
 
     test.each([
       [`symmetric scalar`, { y_error: 1 }, 5],
@@ -371,18 +361,9 @@ describe(`ScatterPlot`, () => {
     ])(`%s renders %i bars`, async (_name, error_props, expected) => {
       const plot = await mount_sized_scatter_plot({ series: [{ ...basic, ...error_props }] })
       expect(n_bars(plot)).toBe(expected)
-    })
-
-    // Thousands of points must not remount thousands of nodes and undo the canvas threshold
-    test(`a series emits a single path however many points carry errors`, async () => {
-      const plot = await mount_sized_scatter_plot({
-        series: [
-          { ...basic, y_error: 1 },
-          { ...basic, y: [1, 2, 3, 4, 5], y_error: 2 },
-        ],
-      })
-      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(2)
-      expect(n_bars(plot)).toBe(10)
+      // One path holds all of a series' bars: thousands of points must not remount thousands
+      // of nodes and undo the canvas threshold
+      expect(plot.querySelectorAll(`path.error-bars`)).toHaveLength(expected > 0 ? 1 : 0)
     })
 
     test(`bar spans the point's value +/- its error and the axis reaches it`, async () => {
@@ -397,25 +378,11 @@ describe(`ScatterPlot`, () => {
       const y_values = nums.filter((_, idx) => idx % 2 === 1)
       expect(Math.max(...y_values) - Math.min(...y_values)).toBeGreaterThan(1)
     })
-
-    // Mismatched lengths are a data bug that silently mislabels uncertainty otherwise
-    test.each([
-      [`symmetric array`, { y_error: [1, 2] }],
-      [`asymmetric upper`, { y_error: { upper: [1, 2], lower: 1 } }],
-      // The side that used to escape the check: only `upper` was measured
-      [`asymmetric lower`, { y_error: { upper: 1, lower: [1, 2] } }],
-      [`asymmetric both, unequal`, { y_error: { upper: [1, 2], lower: [1, 2, 3] } }],
-    ])(`a %s of the wrong length throws`, (_name, error_props) => {
-      expect(() => materialize_series_points([{ ...basic, ...error_props }])).toThrow(
-        /equal lengths/,
-      )
-    })
   })
 
   // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
   // one press per bin/point/box. Exactly one mark holds the group's tab stop.
   test(`marks are reachable by Tab exactly once`, async () => {
-    document.body.innerHTML = ``
     const tabindexes = roving_tabindexes(
       await mount_sized_scatter_plot({ series: [basic], on_point_click: () => {} }),
     )
@@ -530,10 +497,6 @@ describe(`ScatterPlot`, () => {
   })
 
   describe(`marker_renderer`, () => {
-    const dense = {
-      x: Array.from({ length: 40 }, (_, idx) => idx),
-      y: Array.from({ length: 40 }, (_, idx) => idx % 7),
-    }
     const labelled_series = (point_idx = 3) => ({
       ...dense,
       point_label: dense.x.map((_, idx) =>
@@ -872,22 +835,6 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(5)
   })
 
-  test(`x hover resolves duplicate x-values by vertical distance`, async () => {
-    const on_point_hover = vi.fn()
-    const plot = await mount_sized_scatter_plot({
-      series: [{ x: [1, 1, 1], y: [0, 0.5, 1], markers: `points` }],
-      x_axis: { range: [0, 2] },
-      y_axis: { range: [0, 1] },
-      hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
-      point_tween: { duration: 0 },
-      on_point_hover,
-      legend: null,
-    })
-    await move_to_marker(plot, 2)
-    expect(on_point_hover).toHaveBeenCalledOnce()
-    expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
-  })
-
   test.each([false, true])(
     `legend hover follows shared identity (grouped=%s)`,
     async (grouped) => {
@@ -1065,8 +1012,7 @@ describe(`ScatterPlot`, () => {
         expect(toggle.checked).toBe(true)
         const input = doc_query(`[aria-label="${kind} color hex"]`, HTMLInputElement)
         expect(input.value).toBe(`#ff0000`) // authored CSS colors stay editable as hex
-        input.value = `#0000ff`
-        input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(input, `#0000ff`)
         await tick()
         for (const [series_idx, color] of [`red`, `#0000ff`].entries()) {
           const legend_item = plot.querySelectorAll(`.legend-item`)[series_idx]
@@ -1095,8 +1041,7 @@ describe(`ScatterPlot`, () => {
             `[data-key="${kind}.${key}"] input[type="range"]`,
             HTMLInputElement,
           )
-          range_input.value = value
-          range_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+          set_input(range_input, value)
           await tick()
           const marks = plot.querySelectorAll(`[data-series-id="1"] ${selector}`)
           expect([...marks].map((mark) => mark.getAttribute(numeric_attribute))).toEqual(
@@ -1206,8 +1151,7 @@ describe(`ScatterPlot`, () => {
     expect(state.styles).toEqual({})
     // An explicit override equal to the shipped default must still offer Reset.
     for (const width of [`5`, `2`]) {
-      line_width_input.value = width
-      line_width_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(line_width_input, width)
       await tick()
       expect([...lines].map((line) => line.getAttribute(`stroke-width`))).toEqual([`1`, width])
       expect(state.styles).toEqual({ line: { width: Number(width) } })
@@ -1652,60 +1596,25 @@ describe(`ScatterPlot`, () => {
     ).toEqual([`−1539`, `−1538`, `−1537`])
   })
 
-  describe(`default tooltip content`, () => {
-    const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
-      document.body.replaceChildren()
-      mount(ScatterPlot, { target: document.body, props: { hovered: true, ...props } })
-      await tick()
-      return document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    }
-
-    test(`shows axis labels instead of bare x/y`, async () => {
-      const text = await tooltip_text({
-        series: [{ x: [1, 2, 3], y: [10, 20, 30] }],
-        x_axis: { label: `Time (s)` },
-        y_axis: { label: `Speed` },
-        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
-      })
-      expect(text).toContain(`Time: 2 s`)
-      expect(document.querySelector(`.plot-tooltip small`)?.textContent).toBe(`s`)
-      expect(text).toContain(`Speed`)
-    })
-
-    test(`shows series label only when multiple series`, async () => {
-      const multi = await tooltip_text({
-        series: [
-          { x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` },
-          { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` },
-        ],
-        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
-      })
-      expect(multi).toContain(`Alpha`)
-
-      const single = await tooltip_text({
-        series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }],
-        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
-      })
-      expect(single).not.toContain(`Only`)
-    })
-
-    test(`shows color value with title, falls back to "Color"`, async () => {
-      const with_title = await tooltip_text({
-        series: [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }],
-        color_bar: { title: `Temperature` },
-        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1, color_value: 200 },
-      })
-      expect(with_title).toContain(`Temperature`)
-      expect(with_title).toContain(`200`)
-
-      const no_title = await tooltip_text({
-        series: [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }],
-        color_bar: {},
-        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1, color_value: 200 },
-      })
-      expect(no_title).toContain(`Color`)
-      expect(no_title).toContain(`200`)
-    })
+  const color_series = [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }]
+  const mid_point = { x: 2, y: 20, series_idx: 0, point_idx: 1 }
+  const june_15 = new Date(2023, 5, 15).getTime()
+  // the tooltip shows the plotted point with the hovered key, so each case plots it
+  // oxfmt-ignore
+  test.each<[string, Partial<ComponentProps<typeof ScatterPlot>>, string[], string[]]>([
+    [`axis labels instead of bare x/y`, { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], x_axis: { label: `Time (s)` }, y_axis: { label: `Speed` }, tooltip_point: mid_point }, [`Time: 2 s`, `Speed`], []],
+    [`series label with several series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`Alpha`], []],
+    [`no series label for a single series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }], tooltip_point: mid_point }, [], [`Only`]],
+    [`color value with color bar title`, { series: color_series, color_bar: { title: `Temperature` }, tooltip_point: { ...mid_point, color_value: 200 } }, [`Temperature`, `200`], []],
+    [`color value without title`, { series: color_series, color_bar: {}, tooltip_point: { ...mid_point, color_value: 200 } }, [`Color`, `200`], []],
+    [`time and number formats`, { series: [{ x: [june_15, june_15 + 864e5], y: [123.45, 130] }], tooltip_point: { x: june_15, y: 123.45, series_idx: 0, point_idx: 0 }, x_axis: { scale_type: `time`, format: `%b %d, %Y` }, y_axis: { format: `.2r` } }, [`Jun 15, 2023`, `120`], []],
+  ])(`default tooltip shows %s`, async (_desc, props, includes, excludes) => {
+    const plot = await mount_sized_scatter_plot({ hovered: true, ...props })
+    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    for (const expected of includes) expect(text).toContain(expected)
+    for (const unexpected of excludes) expect(text).not.toContain(unexpected)
+    // an axis label's unit is split off into a <small>
+    if (props.x_axis?.label) expect(plot.querySelector(`.plot-tooltip small`)?.textContent).toBe(`s`)
   })
 
   test(`invalid data`, async () => {
@@ -1810,27 +1719,6 @@ describe(`ScatterPlot`, () => {
       y_axis: { range: y_range },
     })
     expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(1)
-  })
-
-  // The tooltip shows the plotted point with the hovered key, so each case plots it
-  const june_15 = new Date(2023, 5, 15).getTime()
-  test.each([
-    {
-      series: [{ x: [june_15, june_15 + 864e5], y: [123.45, 130] }],
-      tooltip_point: { x: june_15, y: 123.45, series_idx: 0, point_idx: 0 },
-      x_axis: { scale_type: `time` as const, format: `%b %d, %Y` },
-      y_axis: { format: `.2r` },
-      expected: [`Jun 15, 2023`, `120`],
-    },
-    {
-      series: [{ x: [1, 2, 3], y: [10, 20, 30] }],
-      tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
-      expected: [`2`, `20`],
-    },
-  ])(`tooltip format`, async ({ expected, ...props }) => {
-    const plot = await mount_sized_scatter_plot({ hovered: true, ...props })
-    const tooltip_text = plot.querySelector(`.plot-tooltip`)?.textContent
-    for (const text of expected) expect(tooltip_text).toContain(text)
   })
 
   // styles.point.symbol_type (the VS Code scatter.symbol_type setting) replaces the per-series
@@ -1957,15 +1845,17 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
+  // x mode ignores vertical distance, except to break ties between duplicate x-values
+  const peak = [0, 1, 0]
   test.each([
-    { label: `ascending`, x_values: [0, 1, 2], target_idx: 1 },
-    { label: `descending`, x_values: [2, 1, 0], target_idx: 1 },
-    { label: `unordered`, x_values: [0, 2, 1], target_idx: 2 },
+    { label: `ascending`, x_values: [0, 1, 2], y_values: peak, target_idx: 1 },
+    { label: `descending`, x_values: [2, 1, 0], y_values: peak, target_idx: 1 },
+    { label: `unordered`, x_values: [0, 2, 1], y_values: peak, target_idx: 2 },
+    { label: `duplicate-x`, x_values: [1, 1, 1], y_values: [0, 0.5, 1], target_idx: 2 },
   ])(
-    `x hover finds the nearest $label point without vertical proximity`,
-    async ({ x_values, target_idx }) => {
+    `x hover finds the nearest $label point`,
+    async ({ label, x_values, y_values, target_idx }) => {
       const on_point_hover = vi.fn()
-      const y_values = [0, 1, 0]
       const plot = await mount_sized_scatter_plot({
         series: [{ x: x_values, y: y_values, markers: `points` }],
         x_axis: { range: [0, 2] },
@@ -1975,9 +1865,10 @@ describe(`ScatterPlot`, () => {
         on_point_hover,
         legend: null,
       })
-      // hover far above/below the target marker: x mode ignores the vertical distance
+      // hover far above/below distinct-x targets
       const { y: coord_y } = marker_position(plot, target_idx)
-      await move_to_marker(plot, target_idx, { dy: (coord_y < 150 ? 290 : 10) - coord_y })
+      const delta_y = label === `duplicate-x` ? 0 : (coord_y < 150 ? 290 : 10) - coord_y
+      await move_to_marker(plot, target_idx, { dy: delta_y })
 
       expect(on_point_hover).toHaveBeenCalledOnce()
       expect(on_point_hover.mock.calls[0][0]).toMatchObject({
@@ -2005,9 +1896,6 @@ describe(`ScatterPlot`, () => {
 
     expect(on_point_hover).not.toHaveBeenCalled()
   })
-
-  // Remaining cursor-style behavior lives in Playwright because happy-dom lacks
-  // dimensions unless each chart element is explicitly stubbed as above.
 
   const fill_plot_props = (): Partial<ComponentProps<typeof ScatterPlot>> => ({
     series: [{ x: [0, 1], y: [0, 1] }],
@@ -2160,40 +2048,11 @@ describe(`ScatterPlot`, () => {
     { ...basic, label: `B` },
   ]
 
-  test(`solver auto tracks count grouped series, fill entries, and group headers`, async () => {
-    mock_decoration_measurements()
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { ...basic, label: `A`, legend_group: `Signals` },
-        { ...basic, label: `B`, legend_group: `Signals` },
-      ],
-      fill_regions: [
-        {
-          label: `Band`,
-          legend_group: `Signals`,
-          lower: 2,
-          upper: 4,
-          fill: `steelblue`,
-        },
-      ],
-      legend: {
-        layout: `vertical`,
-        layout_tracks: `auto`,
-      },
-    })
-
-    await vi.waitFor(() =>
-      expect(plot.querySelector<HTMLElement>(`.legend`)?.style.gridTemplateRows).toBe(
-        `repeat(4, auto)`,
-      ),
-    )
-  })
-
-  // The solver must count the grid the legend renders after a chevron toggle, whether the
-  // collapsed set comes from the caller or the plot owns it
+  // The solver counts grouped series, fill entries and group headers in the grid the legend
+  // renders after a chevron toggle, whether the collapsed set comes from the caller or the plot
   test.each([
-    [`caller set`, new SvelteSet([`Signals`]), 1, 3],
-    [`plot-owned set`, undefined, 3, 1],
+    [`caller set`, new SvelteSet([`Signals`]), 1, 4],
+    [`plot-owned set`, undefined, 4, 1],
   ])(
     `auto tracks follow chevron toggles with %s`,
     async (_, collapsed_groups, before, after) => {
@@ -2202,6 +2061,9 @@ describe(`ScatterPlot`, () => {
         series: [
           { ...basic, label: `A`, legend_group: `Signals` },
           { ...basic, label: `B`, legend_group: `Signals` },
+        ],
+        fill_regions: [
+          { label: `Band`, legend_group: `Signals`, lower: 2, upper: 4, fill: `steelblue` },
         ],
         legend: { layout: `vertical`, layout_tracks: `auto`, collapsed_groups },
       })
@@ -2244,7 +2106,8 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot({
       series: decorated_series(),
       legend: { style: `position: absolute; left: 23px; top: 31px;` },
-      color_bar: { wrapper_style: `position: absolute; left: 211px; top: 17px;` },
+      // pinned by `right`: a solver `left: 0px` written alongside stretched the bar across the plot
+      color_bar: { wrapper_style: `position: absolute; right: 9px; top: 17px;` },
     })
     const legend = plot.querySelector<HTMLElement>(`.legend`)
     const colorbar = plot.querySelector<HTMLElement>(`.colorbar-wrapper`)
@@ -2254,10 +2117,11 @@ describe(`ScatterPlot`, () => {
       left: `23px`,
       top: `31px`,
     })
-    expect({ left: colorbar.style.left, top: colorbar.style.top }).toEqual({
-      left: `211px`,
-      top: `17px`,
-    })
+    expect([colorbar.style.left, colorbar.style.right, colorbar.style.top]).toEqual([
+      ``,
+      `9px`,
+      `17px`,
+    ])
     expect(legend.getAttribute(`data-decoration-x`)).toBeNull()
     expect(colorbar.getAttribute(`data-decoration-x`)).toBeNull()
 
@@ -2509,14 +2373,10 @@ describe(`ScatterPlot`, () => {
     expect(state.x_axis.range).toEqual([0, 100])
   })
 
-  // Regression guard for effect_update_depth_exceeded: with an explicit y range the
-  // range-sync effect assigns zoom_y_range a fresh array every run, and the y2-sync
-  // branch reads it back - a tracked read would re-trigger the effect forever. Svelte's
-  // loop guard logs via console.error and throws, so a clean mount proves the fix.
-  // A synced y2 is also derived from y, so every writer of y has to re-derive it. Panning,
-  // rect zoom and reset all do; the `view` prop reached ranges.current.y through the raw facet
-  // bridge and skipped the sync, leaving y2 stale until something unrelated (new data, a
-  // tick-count edit) re-ran the range effect and snapped it over in one jump.
+  // Regression guard for effect_update_depth_exceeded: with an explicit y range the range-sync
+  // effect writes a fresh y array every run, and the y2 sync reads it back, so a tracked read
+  // loops forever (Svelte logs via console.error). A synced y2 derives from y, so every writer
+  // of y, including the `view` prop, must re-derive it in the same flush.
   test(`explicit y range + synced y2: no loop, view.y writes re-derive y2`, async () => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     const state = $state<{ view: Partial<AxisRanges> | undefined; y2_axis: AxisConfig }>({

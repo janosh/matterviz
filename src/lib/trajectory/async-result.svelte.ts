@@ -1,8 +1,9 @@
 // Drives a worker-backed analysis from reactive inputs inside a component. An async compute
-// cannot be a $derived, so this owns the one effect every analysis plot used to copy: the
+// cannot be a $derived, so this owns the one effect every analysis plot shares: the
 // superseded job is aborted so the worker client stops tracking it (and terminates the busy
 // worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
+import { getAbortSignal } from 'svelte'
 import { to_error } from '#lib/utils.js'
 import type { TrajectoryPositionStream } from './index'
 
@@ -82,10 +83,9 @@ export function use_async_result<Input, Options, Result>(
     const input = binding.input()
     const options: Options = JSON.parse(options_key)
     if (input !== last_input) computed = undefined
-    // Aborted by the cleanup below, so `signal.aborted` is exactly "superseded or unmounted":
-    // nobody will read that answer (nor its abort rejection)
-    const controller = new AbortController()
-    const { signal } = controller
+    // Aborted when the effect re-runs or unmounts, so `signal.aborted` is exactly "superseded
+    // or unmounted": nobody will read that answer (nor its abort rejection)
+    const signal = getAbortSignal()
     if (input) {
       binding.set_loading(true)
       binding.set_error(undefined)
@@ -108,7 +108,6 @@ export function use_async_result<Input, Options, Result>(
       if (binding.clear_error_on_withdraw) binding.set_error(undefined)
     }
     last_input = input
-    return () => controller.abort()
   })
   // Without an input the result prop holds the caller's precomputed curves, left untouched
   $effect(() => {

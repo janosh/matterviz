@@ -613,10 +613,11 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
   })
 
-  test(`measured_sites shows selection order labels and measurement overlays`, async ({
+  test(`measured_sites shows order labels and measurements; clear and reset both remove them`, async ({
     page,
   }) => {
-    await page.locator(`[data-testid="btn-set-measured"]`).click()
+    const set_measured = page.locator(`[data-testid="btn-set-measured"]`)
+    await set_measured.click()
 
     const labels = page.locator(`.selection-label`)
     await expect(labels).toHaveText([`1`, `2`, `3`])
@@ -635,24 +636,14 @@ test.describe(`Structure Component Tests`, () => {
 
     await page.locator(`[data-testid="btn-clear-measured"]`).click()
     await expect(labels).toHaveCount(0)
-  })
 
-  test(`reset selection button clears both measured_sites and selected_sites`, async ({
-    page,
-  }) => {
-    // measured sites also set selected_sites, which drive the selection labels
-    await page.locator(`[data-testid="btn-set-measured"]`).click()
-    const labels = page.locator(`.selection-label`)
+    // the reset button clears measured_sites and the selected_sites they set, then leaves
+    await set_measured.click()
     await expect(labels).toHaveCount(3)
-
     const reset_button = page.locator(
       `#test-structure button[aria-label="Reset selection and bond edits"]`,
     )
-    await expect(reset_button).toBeVisible()
     await reset_button.click()
-
-    // labels (and the pulsating animation they share a source with) clear, and the reset
-    // button leaves with the now-empty measured_sites
     await expect(labels).toHaveCount(0)
     await expect(reset_button).toBeHidden()
   })
@@ -1083,7 +1074,9 @@ test.describe(`Element Visibility Toggle`, () => {
     expect(text_color).not.toMatch(/rgb\(255,\s*255,\s*255\)/)
   })
 
-  test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {
+  test(`toggling an element hides its atoms, and the hidden state persists`, async ({
+    page,
+  }) => {
     const canvas = structure_canvas(page)
     const first_item = legend_item(page)
     const toggle_button = first_item.locator(`button.toggle-visibility`)
@@ -1091,57 +1084,27 @@ test.describe(`Element Visibility Toggle`, () => {
 
     const initial_opacity = await opacity_of(label)
     await expect(toggle_button).toHaveAttribute(`aria-label`, /Hide .+ atoms/)
+    expect(await opacity_of(toggle_button)).toBe(0) // revealed only on hover
 
-    // Hide element
     await expect_canvas_changed_by(canvas, async () => {
       await first_item.hover()
+      await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0)
       await toggle_button.click()
       await expect(label).toHaveClass(/hidden/)
     })
 
-    // Wait for CSS transition to complete (opacity 0.2s ease)
+    // CSS transitions .element-legend label.hidden to opacity 0.4
     await expect(async () => {
       const hidden_opacity = await opacity_of(label)
       expect(hidden_opacity).toBeLessThan(initial_opacity)
-      // CSS sets .element-legend label.hidden { opacity: 0.4 }
       expect(hidden_opacity).toBeGreaterThan(0.3)
       expect(hidden_opacity).toBeLessThan(0.5)
     }).toPass({ timeout: 2000 })
 
-    // After toggle, the button should have 'element-hidden' class (indicates atoms are hidden)
-    await expect(toggle_button).toHaveClass(/element-hidden/)
-
-    // Show
-    await expect_canvas_changed_by(canvas, async () => {
-      await toggle_button.click()
-      await expect(label).not.toHaveClass(/hidden/)
-    })
-  })
-
-  test(`hidden state persists and button visibility works`, async ({ page }) => {
-    const first_item = legend_item(page)
-    const toggle_button = first_item.locator(`button.toggle-visibility`)
-    const label = first_item.locator(`label`)
-
-    // Button hidden initially
-    expect(await opacity_of(toggle_button)).toBe(0)
-
-    // Button visible on hover - wait for opacity to change
-    await first_item.hover()
-    await expect(async () => {
-      expect(await opacity_of(toggle_button)).toBeGreaterThan(0)
-    }).toPass({ timeout: get_canvas_timeout() })
-
-    // Hide element
-    await toggle_button.click()
-    await expect(label).toHaveClass(/hidden/)
-
-    // Button stays visible when element hidden (via element-hidden class which sets opacity: 1)
+    // element-hidden keeps the button visible once the pointer leaves
     await page.mouse.move(0, 0)
     await expect(toggle_button).toHaveClass(/element-hidden/)
-    await expect(async () => {
-      expect(await opacity_of(toggle_button)).toBeGreaterThan(0.9)
-    }).toPass({ timeout: 2000 })
+    await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0.9)
 
     // Hidden state persists through control pane interactions
     const controls_checkbox = page.locator(
@@ -1150,6 +1113,12 @@ test.describe(`Element Visibility Toggle`, () => {
     await controls_checkbox.check()
     await controls_checkbox.uncheck()
     await expect(label).toHaveClass(/hidden/)
+
+    await expect_canvas_changed_by(canvas, async () => {
+      await first_item.hover()
+      await toggle_button.click()
+      await expect(label).not.toHaveClass(/hidden/)
+    })
   })
 })
 
@@ -1388,15 +1357,6 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })
 
-  // A real click leaves the viewer focused *and* hovered, so the root handler and the
-  // window forwarder both see the key. Clicking first would double-toggle without a guard.
-  test(`g toggles once from a clicked viewer`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    await structure_div.click()
-    await page.keyboard.press(`g`)
-    await expect(structure_div).toHaveClass(/multi-view/)
-  })
-
   test(`g toggles between grid and single view`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const cells = structure_div.locator(`.viewport-cell`)
@@ -1414,6 +1374,12 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await page.keyboard.press(`g`)
     await expect(structure_div).not.toHaveClass(/multi-view/)
     await expect(cells).toHaveCount(1)
+
+    // A real click leaves the viewer focused *and* hovered, so the root handler and the
+    // window forwarder both see the key. Without a guard it would double-toggle.
+    await structure_div.click()
+    await page.keyboard.press(`g`)
+    await expect(structure_div).toHaveClass(/multi-view/)
   })
 
   test(`active pane raises overlays while its canvas stays clipped`, async ({ page }) => {

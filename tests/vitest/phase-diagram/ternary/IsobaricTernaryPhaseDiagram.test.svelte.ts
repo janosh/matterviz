@@ -19,7 +19,7 @@ import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../../setup'
+import { bind_props, doc_query, set_input } from '../../setup'
 import { make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -57,6 +57,16 @@ const brackets = () =>
     btn.disabled ? null : btn.textContent?.trim(),
   )
 const diagram = compute_ternary_phase_diagram(toy_entries, { elements: toy_elements })
+// pointermove over composition xy in the mocked 800×600 canvas (triangle 614.3 px, origin
+// 92.85/566)
+const move_to = ([x_pos, y_pos]: Vec2) =>
+  doc_query(`.ternary-section canvas`).dispatchEvent(
+    new PointerEvent(`pointermove`, {
+      clientX: 92.85 + x_pos * 614.3,
+      clientY: 566 - y_pos * 614.3,
+      bubbles: true,
+    }),
+  )
 
 describe(`IsobaricTernaryPhaseDiagram`, () => {
   test(`sweeps in the background, lists transitions, links them to the live section and releases the worker on unmount`, async () => {
@@ -187,7 +197,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
   })
 })
 
-// Hovering the Li corner (xy [1, 0] in the mocked 800×600 canvas) must hit the ground state
+// Hovering the Li corner (xy [1, 0]) must hit the ground state
 // even when another Li entry comes first in entry order
 test.each([
   {
@@ -218,9 +228,7 @@ test.each([
       settings: { ...TERNARY_DISPLAY_DEFAULTS, ...settings },
       on_hover: (data: SectionHover | null) => hovers.push(data),
     })
-    doc_query(`.ternary-section canvas`).dispatchEvent(
-      new PointerEvent(`pointermove`, { clientX: 707, clientY: 566, bubbles: true }),
-    )
+    move_to([1, 0])
     const [hovered] = hovers
     expect(hovered?.kind === `phase` && hovered.phase.entry.entry_id).toBe(`Li-gs`)
   },
@@ -272,16 +280,9 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     expect(fills.base).toBeGreaterThan(0)
     // nothing is hovered yet, so the overlay has painted no text
     expect(fills.overlay).toBe(0)
-    // 5 hovers over compositions inside the triangle (xy → px via the mocked 800×600 canvas)
-    const canvas = doc_query(`.ternary-section canvas`)
-    const hover = async ([x_pos, y_pos]: Vec2) => {
-      canvas.dispatchEvent(
-        new PointerEvent(`pointermove`, {
-          clientX: 92.85 + x_pos * 614.3,
-          clientY: 566 - y_pos * 614.3,
-          bubbles: true,
-        }),
-      )
+    // 5 hovers over compositions inside the triangle
+    const hover = async (xy: Vec2) => {
+      move_to(xy)
       flushSync()
       await let_frames_run()
     }
@@ -332,16 +333,8 @@ test(`TernarySectionCanvas: a section change rebuilds entries without mutating t
       state,
     ),
   )
-  // AB's xy projected into the mocked 800×600 canvas (triangle size 614.3 px, origin 92.85/566)
-  const [ab_x, ab_y] = model.phases[ab_idx].xy
   const hover_ab = () => {
-    doc_query(`.ternary-section canvas`).dispatchEvent(
-      new PointerEvent(`pointermove`, {
-        clientX: 92.85 + ab_x * 614.3,
-        clientY: 566 - ab_y * 614.3,
-        bubbles: true,
-      }),
-    )
+    move_to(model.phases[ab_idx].xy)
     return hovers.at(-1)
   }
   const at_300 = hover_ab()
@@ -510,8 +503,7 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   const p_slider = doc_query<HTMLInputElement>(`input[type=range][min="-12"]`)
   expect(Number(p_slider.value)).toBeCloseTo(Math.log10(0.2095), 6)
   // Dragging previews the slider in bar; a full re-sweep commits only on release.
-  p_slider.value = `-6`
-  p_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(p_slider, `-6`)
   flushSync()
   expect(state.gas_pressures.O2).toBeUndefined()
   expect(p_slider.getAttribute(`aria-valuenow`)).toBe(`0.000001`)

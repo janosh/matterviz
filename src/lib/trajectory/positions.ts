@@ -48,7 +48,7 @@ export const curve_slots = (labels: string[]): { label: string; slot: number }[]
 // Turn per-frame WRAPPED Cartesian positions into a continuous unwrapped trajectory by
 // accumulating minimum-image steps straight into a second flat buffer. Stays flat because
 // a Vec3[][] round trip costs ~660 MB of nested arrays for a 96 MB buffer (2000 frames x
-// 2000 atoms, measured), putting the module's own 512 MB collect budget out of reach. The
+// 2000 atoms, measured), putting the 512 MB DEFAULT_POSITION_STREAM_MAX_BYTES budget out of reach. The
 // kernel is still math's verified minimum-image search, over one reused scratch triple so
 // the inner loop allocates nothing per atom-frame.
 //

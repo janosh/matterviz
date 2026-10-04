@@ -1,6 +1,6 @@
 <script lang="ts">
   // Summary table plus provenance note under an analysis plot (MSD, VACF, RDF): one place
-  // for the column headers, the compact styling, the faint note line each plot used to copy
+  // for the column headers, the compact styling, the faint note line
   // and downloads of the curves and their analysis metadata
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import { FileExportState } from '#lib/io/file-export.svelte.js'

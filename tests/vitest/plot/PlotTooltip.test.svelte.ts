@@ -61,8 +61,14 @@ const mount_tooltip = (
 }
 
 describe(`PlotTooltip`, () => {
-  test(`renders with default offset, absolute position, and nowrap chips`, () => {
-    const tooltip = mount_tooltip({ x: 100, y: 200, children: make_children(`Test content`) })
+  test(`renders with default offset, absolute position, nowrap chips, class and style`, () => {
+    const tooltip = mount_tooltip({
+      x: 100,
+      y: 200,
+      children: make_children(`Test content`),
+      class: `custom-tooltip my-class`,
+      style: `z-index: 9999; backdrop-filter: blur(4px);`,
+    })
     expect(tooltip.style.left).toBe(`106px`) // 100 + default offset 6
     expect(tooltip.style.top).toBe(`200px`)
     expect(tooltip.style.position).toBe(`absolute`)
@@ -70,6 +76,10 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.textContent).toBe(`Test content`)
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
+    expect([...tooltip.classList]).toEqual(
+      expect.arrayContaining([`plot-tooltip`, `custom-tooltip`, `my-class`]),
+    )
+    expect(tooltip.style.zIndex).toBe(`9999`)
   })
 
   // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
@@ -149,17 +159,6 @@ describe(`PlotTooltip`, () => {
     }
   })
 
-  test(`passes through class and style`, () => {
-    const tooltip = mount_tooltip({
-      class: `custom-tooltip my-class`,
-      style: `z-index: 9999; backdrop-filter: blur(4px);`,
-    })
-    expect(tooltip.className).toContain(`plot-tooltip`)
-    expect(tooltip.className).toContain(`custom-tooltip`)
-    expect(tooltip.className).toContain(`my-class`)
-    expect(tooltip.style.zIndex).toBe(`9999`)
-  })
-
   // Position clamping is covered in layout.test.ts; this only checks wrap width = box - 16.
   test(`wraps inside a constrained width`, () => {
     const tooltip = mount_tooltip({
@@ -171,32 +170,51 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
   })
 
-  // Without a constraining box the signed offset is applied verbatim, absolute or fixed
-  test.each([
-    {
-      fixed: false,
-      position: `absolute`,
-      offset: { x: -10, y: -5 },
-      left: `40px`,
-      top: `35px`,
-    },
-    { fixed: true, position: `fixed`, offset: { x: -10, y: -5 }, left: `40px`, top: `35px` },
-    {
-      fixed: false,
-      position: `absolute`,
-      offset: { x: 10, y: -10 },
-      left: `60px`,
-      top: `30px`,
-    },
-  ])(
-    `$position placement applies offset $offset`,
-    ({ fixed, position, offset, left, top }) => {
-      const tooltip = mount_tooltip({ x: 50, y: 40, fixed, offset })
-      expect(tooltip.style.position).toBe(position)
-      expect(tooltip.style.left).toBe(left)
-      expect(tooltip.style.top).toBe(top)
-    },
-  )
+  // Without a constraining box the signed offset is applied verbatim, absolute or fixed.
+  // With one, the fallback size drives decoration-aware placement until a measurement lands.
+  const box = { width: 100, height: 100 }
+  test.each<[string, Partial<ComponentProps<typeof PlotTooltip>>, number, number]>([
+    [`absolute offset`, { x: 50, y: 40, offset: { x: -10, y: -5 } }, 40, 35],
+    [`fixed offset`, { x: 50, y: 40, fixed: true, offset: { x: -10, y: -5 } }, 40, 35],
+    [`positive x offset`, { x: 50, y: 40, offset: { x: 10, y: -10 } }, 60, 30],
+    [
+      `fallback size dodging an exclusion rect`,
+      {
+        x: 50,
+        y: 50,
+        offset: { x: 0, y: 0 },
+        constrain_to: box,
+        fallback_size: { width: 20, height: 10 },
+        exclusion_rects: [{ x: 50, y: 50, width: 20, height: 10 }],
+      },
+      50,
+      40,
+    ],
+    [
+      `fallback size flipping at the box edge`,
+      { x: 95, y: 50, constrain_to: box, fallback_size: { width: 30, height: 20 } },
+      59,
+      50,
+    ],
+    [
+      `decoration-aware placement kept fixed`,
+      {
+        x: 95,
+        y: 50,
+        fixed: true,
+        offset: { x: 5, y: 5 },
+        constrain_to: box,
+        fallback_size: { width: 20, height: 10 },
+        exclusion_rects: [],
+      },
+      70,
+      55,
+    ],
+  ])(`placement: %s`, (_desc, props, left, top) => {
+    const tooltip = mount_tooltip(props)
+    expect(tooltip.style.position).toBe(props.fixed ? `fixed` : `absolute`)
+    expect([tooltip.style.left, tooltip.style.top]).toEqual([`${left}px`, `${top}px`])
+  })
 
   // Fixed tooltips are bounded by the viewport: anchors near its right/bottom edges flip the
   // tooltip to the other side instead of letting it overflow off-screen.
@@ -236,31 +254,6 @@ describe(`PlotTooltip`, () => {
     }
   })
 
-  test(`uses fallback size for decoration-aware placement before measurement`, () => {
-    const tooltip = mount_tooltip({
-      x: 50,
-      y: 50,
-      offset: { x: 0, y: 0 },
-      constrain_to: { width: 100, height: 100 },
-      fallback_size: { width: 20, height: 10 },
-      exclusion_rects: [{ x: 50, y: 50, width: 20, height: 10 }],
-    })
-    expect(tooltip.style.position).toBe(`absolute`)
-    expect(tooltip.style.left).toBe(`50px`)
-    expect(tooltip.style.top).toBe(`40px`)
-  })
-
-  test(`uses fallback size for constrained placement before measurement`, () => {
-    const tooltip = mount_tooltip({
-      x: 95,
-      y: 50,
-      constrain_to: { width: 100, height: 100 },
-      fallback_size: { width: 30, height: 20 },
-    })
-    expect(tooltip.style.left).toBe(`59px`)
-    expect(tooltip.style.top).toBe(`50px`)
-  })
-
   test(`prefers measured size over fallback size`, () => {
     const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(40)
     const height_spy = vi
@@ -282,21 +275,6 @@ describe(`PlotTooltip`, () => {
       width_spy.mockRestore()
       height_spy.mockRestore()
     }
-  })
-
-  test(`keeps decoration-aware placement fixed when requested`, () => {
-    const tooltip = mount_tooltip({
-      x: 95,
-      y: 50,
-      fixed: true,
-      offset: { x: 5, y: 5 },
-      constrain_to: { width: 100, height: 100 },
-      fallback_size: { width: 20, height: 10 },
-      exclusion_rects: [],
-    })
-    expect(tooltip.style.position).toBe(`fixed`)
-    expect(tooltip.style.left).toBe(`70px`)
-    expect(tooltip.style.top).toBe(`55px`)
   })
 
   // Most anchors track the pointer, so clearing its glyph is the default and only

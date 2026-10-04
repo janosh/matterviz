@@ -1,7 +1,7 @@
 <script lang="ts">
   // Hover tooltip shared by ChemPotDiagram (wrapper), ChemPotDiagram2D and ChemPotDiagram3D.
   // Placed with PlotTooltip inside the diagram container; `hover_info.pointer` is already
-  // container-relative (see pointer.ts).
+  // container-relative (see container_pointer in controls-state.svelte.ts).
   import {
     get_electro_neg_formula,
     get_formula_label_segments,

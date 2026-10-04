@@ -27,14 +27,8 @@ describe(`suggest_legend_tracks`, () => {
   ] as const)(
     `suggests $expected $orientation tracks for a $available_edge_length px edge`,
     ({ orientation, available_edge_length, item_count, expected }) => {
-      expect(
-        suggest_legend_tracks({
-          item_count,
-          orientation,
-          available_edge_length,
-          item_extents,
-        }),
-      ).toBe(expected)
+      const options = { item_count, orientation, available_edge_length, item_extents }
+      expect(suggest_legend_tracks(options)).toBe(expected)
     },
   )
 

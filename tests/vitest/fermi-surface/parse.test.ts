@@ -191,7 +191,7 @@ END_BLOCK_BANDGRID_3D
         expect(band_data.grid_shift).toEqual([0, 0, 0]) // lshift=1: Γ-centred
         expect(band_data.energies[0][0].dims).toEqual([3, 3, 3])
         // FRMSF energies and reciprocal vectors are in arbitrary units, so values pass through
-        // unscaled; they used to be multiplied by HARTREE_TO_EV and 1/BOHR_TO_ANGSTROM
+        // unscaled
         expect(energy_at(band_data, 0, 0, 0)).toBe(0.1)
         // 14th value (0.4) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
         expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
@@ -230,9 +230,12 @@ END_BLOCK_BANDGRID_3D
       )
     })
 
-    test(`ignores auxiliary columns after the energy`, () => {
-      const with_colors = sample_frmsf.replace(/^0\.2$/m, `0.2 0.77 -0.1`)
-      expect(energy_at(parse_grid(with_colors, `test.frmsf`), 0, 0, 1)).toBe(0.2)
+    // FermiSurfer reads FRMSF with fscanf, so energies may share lines
+    test(`reads energies as a token stream`, () => {
+      const [header, energies] = [sample_frmsf.split(`\n`).slice(0, 6), frmsf_energies]
+      const band_data = parse_grid(`${header.join(`\n`)}\n${energies}\n`, `test.frmsf`)
+      expect(energy_at(band_data, 0, 0, 1)).toBe(0.2)
+      expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
     })
 
     test.each([
@@ -359,20 +362,9 @@ END_BLOCK_BANDGRID_3D
       expect(Array.from(band_data.energies[0][0].values)).toEqual([0, 1, 2, 3])
     })
 
-    test(`rejects BandGridData JSON whose band shape disagrees with k_grid`, () => {
-      const content = JSON.stringify({
-        energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]], // 2×1×3
-        k_grid: [3, 1, 2],
-        k_lattice: IDENTITY_MATRIX3,
-      })
-      expect(() => parse_fermi_file(content, `bad.json`)).toThrow(
-        /energies\[0\]\[0\] has shape 2×1×3 but k_grid is 3×1×2/,
-      )
-    })
-
     test.each([
-      [`non-integer k_grid dim`, { k_grid: [2, 2.5, 2] }],
-      [`zero k_grid dim`, { k_grid: [2, 0, 2] }],
+      [`non-integer k_grid dim`, { k_grid: [2, 2.5, 2] }, /Invalid BandGridData/],
+      [`zero k_grid dim`, { k_grid: [2, 0, 2] }, /Invalid BandGridData/],
       [
         `non-finite k_lattice entry`,
         {
@@ -382,11 +374,17 @@ END_BLOCK_BANDGRID_3D
             [0, 0, 1],
           ],
         },
+        /Invalid BandGridData/,
       ],
-    ])(`rejects BandGridData JSON with %s`, (_label, overrides) => {
+      [
+        `a band shape that disagrees with k_grid`,
+        { energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]], k_grid: [3, 1, 2] },
+        /energies\[0\]\[0\] has shape 2×1×3 but k_grid is 3×1×2/,
+      ],
+    ])(`rejects BandGridData JSON with %s`, (_label, overrides, message) => {
       const base = { energies: [[[[1]]]], k_grid: [1, 1, 1], k_lattice: IDENTITY_MATRIX3 }
       const content = JSON.stringify({ ...base, ...overrides })
-      expect(() => parse_fermi_file(content, `test.json`)).toThrow(/Invalid BandGridData/)
+      expect(() => parse_fermi_file(content, `test.json`)).toThrow(message)
     })
 
     test(`parses IFermi JSON format`, () => {
@@ -627,12 +625,8 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
   })
 })
 
-// Regression test for production bug where fermi_surface_files derived their `url`
-// from import.meta.glob's `?url` values. The rolldown production build treats
-// .json/.json.gz as JSON modules and drops the `?url` query, so the value became the
-// parsed object instead of a URL string, and load_from_url() threw
-// `url.split is not a function`. URLs must be path-derived strings served from
-// /fermi-surfaces/ (the static symlink), like the structures/molecules/trajectories demos.
+// The production build treats .json/.json.gz as JSON modules and drops a `?url` query, so
+// URLs must be path-derived strings served from /fermi-surfaces/ (the static symlink)
 describe(`fermi_surface_files`, () => {
   test.each([
     [`pb.bxsf.gz`, `BXSF`],
@@ -643,8 +637,7 @@ describe(`fermi_surface_files`, () => {
   })
 
   test(`serves every file from a path-derived /fermi-surfaces/ url, no .json duplicates`, () => {
-    // the prod bug produced non-string urls; the glob must not match plain .json files
-    // (vite's json_gz_plugin serves .json.gz directly, no gunzipped copies exist)
+    // the glob must not match plain .json files (json_gz_plugin serves .json.gz directly)
     expect(fermi_surface_files.length).toBeGreaterThanOrEqual(12)
     for (const file of fermi_surface_files) {
       expect(file.url).toBe(`/fermi-surfaces/${file.name}`)

@@ -157,7 +157,7 @@ export function contour_segments(
     const padded_row = (row + 1) * padded_width + 1
     for (let col = 0; col < width; col++) {
       const value = values[row * width + col]
-      // NaN reaches no threshold, like the old `value >= threshold` corner test
+      // NaN reaches no threshold (counts as below every level)
       if (!(value >= lowest)) continue
       let band = value >= highest ? n_levels : Math.floor((value - lowest) * inv_spacing) + 1
       while (band < n_levels && value >= thresholds[band]) band++

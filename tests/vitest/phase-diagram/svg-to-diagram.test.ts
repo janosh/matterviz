@@ -6,25 +6,14 @@ import {
   trace_region_outline,
 } from '#lib/phase-diagram/svg-to-diagram.js'
 import { describe, expect, it, vi } from 'vitest'
+import { pts, rect } from './fixtures/test-data'
 
 // Both fixtures draw the same diagram: plot area px x 100..500 ↔ composition 0..1,
 // px y 500..100 ↔ temperature 500..1500 K. A vertical boundary at x=0.5 (T 500..1000) and a
 // horizontal boundary at T=1000 (x 0..0.5) carve a rectangle out of the bottom-left corner,
 // leaving an L-shaped region covering the rest.
-const RECT_REGION: DiagramPoint[] = [
-  [0, 500],
-  [0.5, 500],
-  [0.5, 1000],
-  [0, 1000],
-]
-const L_REGION: DiagramPoint[] = [
-  [0.5, 500],
-  [1, 500],
-  [1, 1500],
-  [0, 1500],
-  [0, 1000],
-  [0.5, 1000],
-]
+const RECT_REGION = rect(0, 500, 0.5, 1000)
+const L_REGION = pts(0.5, 500, 1, 500, 1, 1500, 0, 1500, 0, 1000, 0.5, 1000)
 
 const simple_svg = (boundaries: string, extra = ``) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
@@ -92,25 +81,19 @@ describe(`parse_phase_diagram_svg`, () => {
     const input = parse_phase_diagram_svg(svg)
     expect(input.meta.temp_range).toEqual([500, 1500])
     expect(input.curves).toEqual({
-      vertical_0: [
-        [0.5, 500],
-        [0.5, 1000],
-      ],
-      horizontal_0: [
-        [0, 1000],
-        [0.5, 1000],
-      ],
+      vertical_0: pts(0.5, 500, 0.5, 1000),
+      horizontal_0: pts(0, 1000, 0.5, 1000),
     })
     expect(input.regions).toHaveLength(2)
-    const [rect, l_shape] = input.regions
+    const [rect_region, l_shape] = input.regions
     // Regions are inline point polygons, so the bounds are the vertices
-    expect_points_close(rect.bounds as DiagramPoint[], RECT_REGION)
+    expect_points_close(rect_region.bounds as DiagramPoint[], RECT_REGION)
     expect_points_close(l_shape.bounds as DiagramPoint[], L_REGION)
 
     // The rectangle's centroid must resolve to the rectangle even though the L-shaped
     // region is defined later (a bounding box for the L would swallow it)
     const data = build_diagram(input)
-    expect(find_phase_at_point(0.25, 750, data)?.id).toBe(rect.id)
+    expect(find_phase_at_point(0.25, 750, data)?.id).toBe(rect_region.id)
     expect(find_phase_at_point(0.75, 750, data)?.id).toBe(l_shape.id)
     expect(find_phase_at_point(0.25, 1250, data)?.id).toBe(l_shape.id)
   })
@@ -128,14 +111,7 @@ describe(`parse_phase_diagram_svg`, () => {
         <line class="phase-boundary" x1="200" y1="300" x2="200" y2="200"/>
         <line class="phase-boundary" x1="200" y1="200" x2="300" y2="200"/>`,
       region_idx: 1,
-      expected: [
-        [0, 750],
-        [0.5, 750],
-        [0.5, 1000],
-        [1, 1000],
-        [1, 1500],
-        [0, 1500],
-      ] as DiagramPoint[],
+      expected: pts(0, 750, 0.5, 750, 0.5, 1000, 1, 1000, 1, 1500, 0, 1500),
       n_regions: 3,
     },
     {
@@ -145,12 +121,7 @@ describe(`parse_phase_diagram_svg`, () => {
         <line class="phase-boundary" x1="200" y1="400" x2="200" y2="200"/>
         <line class="phase-boundary" x1="400" y1="400" x2="400" y2="200"/>`,
       region_idx: 0,
-      expected: [
-        [0, 500],
-        [1, 500],
-        [1, 1500],
-        [0, 1500],
-      ] as DiagramPoint[],
+      expected: rect(0, 500, 1, 1500),
       n_regions: 2,
     },
   ])(`traces $label`, ({ boundaries, region_idx, expected, n_regions }) => {
@@ -258,12 +229,7 @@ describe(`parse_phase_diagram_svg`, () => {
       const input = parse_phase_diagram_svg(svg)
       expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
       const top = input.regions.find(({ name }) => name === `L + c`)
-      expect(top?.bounds).toEqual([
-        [0, 1550],
-        [1, 1550],
-        [1, 1600],
-        [0, 1600],
-      ])
+      expect(top?.bounds).toEqual(rect(0, 1550, 1, 1600))
     },
   )
 
@@ -284,10 +250,7 @@ describe(`parse_phase_diagram_svg`, () => {
     { label: `relative arc endpoint`, d_attr: `m 300 500 a 1 1 0 0 1 0 -200` },
   ])(`parses boundary path variant: $label`, ({ d_attr }) => {
     const input = parse_phase_diagram_svg(matplotlib_svg([d_attr, MPL_BOUNDARIES[1]]))
-    expect(input.curves.vertical_0).toEqual([
-      [0.5, 500],
-      [0.5, 1000],
-    ])
+    expect(input.curves.vertical_0).toEqual(pts(0.5, 500, 0.5, 1000))
   })
 
   it.each([
@@ -349,38 +312,14 @@ describe(`parse_phase_diagram_svg`, () => {
 
 describe(`trace_region_outline`, () => {
   it.each([
-    {
-      label: `single cell`,
-      cells: [[0]],
-      n_cols: 1,
-      n_rows: 1,
-      expected: [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ],
+    [`single cell`, [[0]], 1, rect(0, 0, 1, 1)],
+    [`L of three cells`, pts(0, 0, 0, 1), 2, pts(0, 0, 2, 0, 2, 1, 1, 1, 1, 2, 0, 2)],
+  ] as [string, number[][], number, DiagramPoint[]][])(
+    `traces a closed outline (%s)`,
+    (_label, cells, size, expected) => {
+      expect(trace_region_outline(cells, 0, size, size)).toEqual(expected)
     },
-    {
-      label: `L of three cells`,
-      cells: [
-        [0, 0],
-        [0, 1],
-      ],
-      n_cols: 2,
-      n_rows: 2,
-      expected: [
-        [0, 0],
-        [2, 0],
-        [2, 1],
-        [1, 1],
-        [1, 2],
-        [0, 2],
-      ],
-    },
-  ])(`traces a closed outline ($label)`, ({ cells, n_cols, n_rows, expected }) => {
-    expect(trace_region_outline(cells, 0, n_cols, n_rows)).toEqual(expected)
-  })
+  )
 
   it(`falls back to the bounding box with a warning when the outline cannot be closed`, () => {
     // Flood-filled regions always close, so break the invariant synthetically: cell (1, 0)
@@ -401,12 +340,7 @@ describe(`trace_region_outline`, () => {
       `Phase region "α + β": outline is not closed at grid vertex (1,0); using its bounding box instead`,
     )
     // Bounding box of the cells seen in region 0 (cell (0, 0) only)
-    expect(outline).toEqual([
-      [0, 0],
-      [1, 0],
-      [1, 1],
-      [0, 1],
-    ])
+    expect(outline).toEqual(rect(0, 0, 1, 1))
     warn.mockRestore()
   })
 

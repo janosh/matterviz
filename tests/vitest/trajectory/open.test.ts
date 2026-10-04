@@ -101,12 +101,6 @@ describe(`loading policy`, () => {
     },
   )
 
-  it(`reads the threshold from DEFAULTS.trajectory when not given`, async () => {
-    expect(DEFAULTS.trajectory.index_above_bytes).toBeGreaterThan(1_000_000)
-    const run = await open(text, `run.extxyz`)
-    expect(run.properties.complete).toBe(true)
-  })
-
   it.each([undefined, `frame.xyz`, `blob-id`])(
     `opens a single XYZ frame named %s`,
     async (filename) => {
@@ -158,13 +152,15 @@ describe(`loading policy`, () => {
     },
   )
 
-  it(`reports progress and the final stage`, async () => {
+  it(`reports progress and materialises below the DEFAULTS.trajectory threshold`, async () => {
     const stages: string[] = []
-    await open(text, `run.extxyz`, {
+    const run = await open(text, `run.extxyz`, {
       on_progress: ({ stage, current }) => stages.push(`${Math.round(current)}:${stage}`),
     })
     expect(stages[0]).toMatch(/^0:Detecting/)
     expect(stages.at(-1)).toBe(`100:Complete`)
+    expect(DEFAULTS.trajectory.index_above_bytes).toBeGreaterThan(1_000_000)
+    expect(run.properties.complete).toBe(true)
   })
 
   it(`honours an already-aborted signal and an abort during HDF5 parsing`, async () => {

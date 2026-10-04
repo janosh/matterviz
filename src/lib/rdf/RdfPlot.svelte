@@ -140,9 +140,11 @@
 {#if series.length === 0}
   <div class="empty-drop" {@attach drop_zone}>
     <StatusMessage
-      message={allow_file_drop
-        ? `Drag and drop structure files here to visualize RDFs`
-        : `No RDF data to display`}
+      message={loading
+        ? `Reading dropped file…`
+        : allow_file_drop
+          ? `Drag and drop structure files here to visualize RDFs`
+          : `No RDF data to display`}
       style="border: none"
     />
   </div>

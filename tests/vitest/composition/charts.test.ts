@@ -131,21 +131,17 @@ describe(`shared segment helpers`, () => {
     )
   })
 
+  const fe2o3 = { Fe: 2, O: 3 }
   test.each([
-    [{ show_amounts: true, show_percentages: false }, `2`],
-    [{ show_amounts: false, show_percentages: true }, `40%`],
-    [{ show_amounts: true, show_percentages: true }, `2=40%`],
-    [{ show_amounts: false, show_percentages: false }, ``],
-  ])(`segment_suffix %j -> %s`, (opts, expected) => {
-    const [iron] = composition_segments({ Fe: 2, O: 3 }, `Vesta`, {}, `p`)
-    expect(segment_suffix(iron, opts)).toBe(expected)
-  })
-
-  test(`segment_suffix avoids SI prefixes and float noise for sub-1 amounts`, () => {
-    const [lithium] = composition_segments({ Li: 0.1 + 0.2, O: 1 }, `Vesta`, {}, `p`)
-    expect(segment_suffix(lithium, { show_amounts: true, show_percentages: false })).toBe(
-      `0.3`,
-    )
+    [fe2o3, { show_amounts: true, show_percentages: false }, `2`],
+    [fe2o3, { show_amounts: false, show_percentages: true }, `40%`],
+    [fe2o3, { show_amounts: true, show_percentages: true }, `2=40%`],
+    [fe2o3, { show_amounts: false, show_percentages: false }, ``],
+    // no SI prefix or float noise for sub-1 amounts
+    [{ Li: 0.1 + 0.2, O: 1 }, { show_amounts: true, show_percentages: false }, `0.3`],
+  ])(`segment_suffix %j %j -> %s`, (composition, opts, expected) => {
+    const [first] = composition_segments(composition, `Vesta`, {}, `p`)
+    expect(segment_suffix(first, opts)).toBe(expected)
   })
 
   test.each([
@@ -255,17 +251,14 @@ describe(`BubbleChart`, () => {
     }
   })
 
-  test(`empty composition renders no bubbles`, () => {
-    mount_chart(BubbleChart, { composition: {} })
-    expect(document.querySelectorAll(`circle`)).toHaveLength(0)
-  })
-
+  // an empty composition, or a size/padding that leaves no drawable area, renders nothing
   test.each([
-    [0, 0],
-    [200, 100],
-    [200, 120],
-  ])(`size=%s, padding=%s leaves no drawable area`, (size, padding) => {
-    mount_chart(BubbleChart, { composition: { H: 4, O: 1 }, size, padding })
+    [{}, 200, 10],
+    [{ H: 4, O: 1 }, 0, 0],
+    [{ H: 4, O: 1 }, 200, 100],
+    [{ H: 4, O: 1 }, 200, 120],
+  ])(`%j at size=%s, padding=%s renders no bubbles`, (composition, size, padding) => {
+    mount_chart(BubbleChart, { composition, size, padding })
     expect(document.querySelectorAll(`circle, text`)).toHaveLength(0)
   })
 })

@@ -6,8 +6,8 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
-import { make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
+import { bind_props, doc_query, set_input } from '../setup'
+import { IDENTITY_MATRIX3, make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // One single-vertex sheet per band, optionally carrying a per-vertex property
 const make_fermi_data = (band_indices = [0, 1], with_properties = false): FermiSurfaceData =>
@@ -42,11 +42,7 @@ describe(`FermiSurfaceControls`, () => {
       const band_data: BandGridData = {
         energies: [[{ values: new Float64Array(8), dims: [2, 2, 2], order: `z_fastest` }]],
         k_grid: [2, 2, 2],
-        k_lattice: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
+        k_lattice: IDENTITY_MATRIX3,
         fermi_energy: 0,
         n_bands: 1,
         n_spins: 1,
@@ -63,8 +59,7 @@ describe(`FermiSurfaceControls`, () => {
       expect(document.body.textContent).toContain(`E_F =`)
       expect(Boolean(offset)).toBe(has_grid)
       if (offset) {
-        offset.value = `0.25`
-        offset.dispatchEvent(new Event(`input`, { bubbles: true }))
+        set_input(offset, `0.25`)
         expect(state.mu).toBe(0.25)
       }
     },

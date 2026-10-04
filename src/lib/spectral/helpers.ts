@@ -2,11 +2,14 @@
 import { parse_axis_label, SUBSCRIPT_MAP } from '#lib/labels.js'
 import { is_plain_object } from '#lib/utils.js'
 import {
+  add,
   array_extent,
   array_max,
   euclidean_dist,
   is_finite_matrix3x3,
   mat3x3_vec3_multiply,
+  matrix_inverse_3x3,
+  reduce_basis,
   subtract,
   transpose_3x3_matrix,
 } from '#lib/math.js'
@@ -348,7 +351,7 @@ function convert_pymatgen_band_structure(
   // Like pymatgen, any step between two labelled q-points is a segment boundary, not path: a
   // jump (`Z|X`) or the zero-length duplicate at a junction (`X, X`). Step size is no signal:
   // paths put a fixed point count per segment, so in anisotropic cells every step of a long
-  // segment can exceed any multiple of the median and used to collapse it.
+  // segment can exceed any multiple of the median.
   // Ascending indices of the q-points that start a new segment after a boundary
   const disc_indices = steps.flatMap((_step, idx) =>
     qpoints[idx].label && qpoints[idx + 1].label ? [idx + 1] : [],
@@ -597,22 +600,20 @@ export const k_path_labels = (
     return { position, label: label ? pretty_sym_point(label) : null }
   })
 
-// Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone
-// by choosing the periodic image with the smallest norm (minimum-image convention).
-// The ±1 search (27 images) suffices for typical reciprocal lattices; extremely skewed
-// cells could in principle need a wider search.
+// Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone: its
+// periodic image with the smallest norm. Wrapping by the nearest lattice vector of the reduced
+// basis first leaves that image within the ±1 shell, which a sheared basis does not guarantee.
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
-  let best = cart
-  let best_norm = cart[0] ** 2 + cart[1] ** 2 + cart[2] ** 2
+  const basis = reduce_basis(recip)
+  const basis_t = transpose_3x3_matrix(basis) // cart = basis_t · frac (rows are lattice vectors)
+  const frac = mat3x3_vec3_multiply(matrix_inverse_3x3(basis_t), cart)
+  let best = subtract(cart, mat3x3_vec3_multiply(basis_t, frac.map(Math.round) as Vec3))
+  let best_norm = best[0] ** 2 + best[1] ** 2 + best[2] ** 2
+  const start = best
   for (let count_1 = -1; count_1 <= 1; count_1++) {
-    for (let count = -1; count <= 1; count++) {
+    for (let count_2 = -1; count_2 <= 1; count_2++) {
       for (let count_3 = -1; count_3 <= 1; count_3++) {
-        if (count_1 === 0 && count === 0 && count_3 === 0) continue
-        const cand: Vec3 = [
-          cart[0] + count_1 * recip[0][0] + count * recip[1][0] + count_3 * recip[2][0],
-          cart[1] + count_1 * recip[0][1] + count * recip[1][1] + count_3 * recip[2][1],
-          cart[2] + count_1 * recip[0][2] + count * recip[1][2] + count_3 * recip[2][2],
-        ]
+        const cand = add(start, mat3x3_vec3_multiply(basis_t, [count_1, count_2, count_3]))
         const norm = cand[0] ** 2 + cand[1] ** 2 + cand[2] ** 2
         if (norm < best_norm - 1e-9) [best, best_norm] = [cand, norm]
       }
@@ -931,8 +932,8 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
 // Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
 // negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0.
 // A genuine imaginary mode (any of `mode_values`, the band frequencies in THz, below
-// -ACOUSTIC_FREQ_THRESHOLD) is never noise: one soft branch in a large cell is a tiny
-// fraction of all values and used to be clipped off the plot. DOS grids are no such signal
+// -ACOUSTIC_FREQ_THRESHOLD) is never noise, even when one soft branch in a large cell is a
+// tiny fraction of all values. DOS grids are no such signal
 // (they extend below 0 with zero density), so callers mixing them in pass the bands alone.
 export function padded_frequency_range(
   values: readonly number[],

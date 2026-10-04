@@ -18,15 +18,15 @@ import {
 import { describe, expect, test } from 'vitest'
 import { mock_text_measurement } from '../setup'
 
-const make_rect = (x_value: number, y_value: number, width: number, height: number) => ({
-  x: x_value,
-  y: y_value,
+const make_rect = (x_pos: number, y_pos: number, width: number, height: number) => ({
+  x: x_pos,
+  y: y_pos,
   w: width,
   h: height,
 })
-const labeled = (x_value: number, y_value: number, text: string): LabeledPoint => ({
-  x: x_value,
-  y: y_value,
+const labeled = (x_pos: number, y_pos: number, text: string): LabeledPoint => ({
+  x: x_pos,
+  y: y_pos,
   text,
 })
 
@@ -42,37 +42,12 @@ type LabelSeries = {
 
 describe(`rect_overlap_area`, () => {
   test.each([
-    {
-      label: `non-overlapping`,
-      a: make_rect(0, 0, 10, 10),
-      b: make_rect(20, 20, 10, 10),
-      expected: 0,
-    },
-    {
-      label: `edge-touching`,
-      a: make_rect(0, 0, 10, 10),
-      b: make_rect(10, 0, 10, 10),
-      expected: 0,
-    },
-    {
-      label: `partial overlap`,
-      a: make_rect(0, 0, 10, 10),
-      b: make_rect(5, 5, 10, 10),
-      expected: 25,
-    },
-    {
-      label: `fully contained`,
-      a: make_rect(0, 0, 20, 20),
-      b: make_rect(5, 5, 5, 5),
-      expected: 25,
-    },
-    {
-      label: `identical`,
-      a: make_rect(5, 5, 10, 20),
-      b: make_rect(5, 5, 10, 20),
-      expected: 200,
-    },
-  ])(`$label → $expected`, ({ a: rect_a, b: rect_b, expected }) => {
+    [`non-overlapping`, make_rect(0, 0, 10, 10), make_rect(20, 20, 10, 10), 0],
+    [`edge-touching`, make_rect(0, 0, 10, 10), make_rect(10, 0, 10, 10), 0],
+    [`partial overlap`, make_rect(0, 0, 10, 10), make_rect(5, 5, 10, 10), 25],
+    [`fully contained`, make_rect(0, 0, 20, 20), make_rect(5, 5, 5, 5), 25],
+    [`identical`, make_rect(5, 5, 10, 20), make_rect(5, 5, 10, 20), 200],
+  ])(`%s → %d`, (_label, rect_a, rect_b, expected) => {
     expect(rect_overlap_area(rect_a, rect_b)).toBe(expected)
     expect(rect_overlap_area(rect_b, rect_a)).toBe(expected) // commutative
   })
@@ -94,36 +69,27 @@ describe(`rect_circle_overlap`, () => {
   })
 })
 
+type Segment = [number, number, number, number]
+
 describe(`segments_intersect`, () => {
-  test.each([
+  test.each<{ label: string; a: Segment; b: Segment; expected: boolean }>([
     { label: `X-shaped cross`, a: [0, 0, 10, 10], b: [0, 10, 10, 0], expected: true },
     { label: `parallel`, a: [0, 0, 10, 0], b: [0, 5, 10, 5], expected: false },
     { label: `collinear non-overlapping`, a: [0, 0, 5, 0], b: [6, 0, 10, 0], expected: false },
     { label: `L-shape non-crossing`, a: [0, 0, 5, 0], b: [6, -1, 6, 5], expected: false },
     { label: `shared endpoint (strict)`, a: [0, 0, 5, 5], b: [5, 5, 10, 0], expected: false },
   ])(`$label → $expected`, ({ a: seg_a, b: seg_b, expected }) => {
-    expect(
-      segments_intersect(
-        seg_a[0],
-        seg_a[1],
-        seg_a[2],
-        seg_a[3],
-        seg_b[0],
-        seg_b[1],
-        seg_b[2],
-        seg_b[3],
-      ),
-    ).toBe(expected)
+    expect(segments_intersect(...seg_a, ...seg_b)).toBe(expected)
   })
 })
 
 describe(`segment_rect_intersects`, () => {
-  test.each([
+  test.each<{ label: string; seg: Segment; expected: boolean }>([
     { label: `crosses left edge`, seg: [-5, 5, 15, 5], expected: true },
     { label: `entirely outside`, seg: [20, 20, 30, 30], expected: false },
     { label: `entirely inside`, seg: [3, 3, 7, 7], expected: false },
   ])(`$label → $expected`, ({ seg, expected }) => {
-    expect(segment_rect_intersects(seg[0], seg[1], seg[2], seg[3], unit_rect)).toBe(expected)
+    expect(segment_rect_intersects(...seg, unit_rect)).toBe(expected)
   })
 })
 
@@ -133,21 +99,9 @@ describe(`rect_out_of_bounds_area`, () => {
   test.each([
     { label: `fully inside`, rect: make_rect(10, 10, 20, 20), expected: 0 },
     { label: `left overshoot 5px, h=20`, rect: make_rect(-5, 10, 20, 20), expected: 100 },
-    {
-      label: `right overshoot 10px, h=20`,
-      rect: make_rect(90, 10, 20, 20),
-      expected: 200,
-    },
-    {
-      label: `top overshoot 10px, w=30 (non-square)`,
-      rect: make_rect(10, -10, 30, 10),
-      expected: 300,
-    },
-    {
-      label: `bottom overshoot 10px, w=15 (non-square)`,
-      rect: make_rect(10, 90, 15, 20),
-      expected: 150,
-    },
+    { label: `right overshoot 10px, h=20`, rect: make_rect(90, 10, 20, 20), expected: 200 },
+    { label: `top overshoot 10px, w=30`, rect: make_rect(10, -10, 30, 10), expected: 300 },
+    { label: `bottom overshoot 10px, w=15`, rect: make_rect(10, 90, 15, 20), expected: 150 },
     { label: `left+top combined`, rect: make_rect(-5, -3, 25, 40), expected: 275 },
   ])(`$label → $expected`, ({ rect, expected }) => {
     expect(rect_out_of_bounds_area(rect, bounds)).toBe(expected)
@@ -248,12 +202,7 @@ describe(`label_leader_segment`, () => {
 // === Candidate generation ===
 
 describe(`generate_candidates`, () => {
-  const axis_x = 50,
-    axis_y = 50,
-    radius = 5,
-    label_w = 30,
-    label_h = 10,
-    gap = 4
+  const [axis_x, axis_y, radius, label_w, label_h, gap] = [50, 50, 5, 30, 10, 4]
   const candidates = generate_candidates(axis_x, axis_y, radius, label_w, label_h, gap)
 
   test(`places 8 top-left corners R, TR, T, TL, L, BL, B, BR at offset radius + gap`, () => {
@@ -293,23 +242,11 @@ test(`neighbor index handles collinear anchors spanning a huge extent`, () => {
 
 describe(`compute_delta_energy`, () => {
   const bounds = { min_x: 0, min_y: 0, max_x: 400, max_y: 300 }
-  const zero_weights = {
-    overlap: 0,
-    marker: 0,
-    leader_cross: 0,
-    leader_text: 0,
-    distance: 0,
-    bounds: 0,
-  }
+  // oxfmt-ignore
+  const zero_weights = { overlap: 0, marker: 0, leader_cross: 0, leader_text: 0, distance: 0, bounds: 0 }
   // every term active, so the randomized comparison below exercises all of them at once
-  const all_weights = {
-    overlap: 30,
-    marker: 100,
-    leader_cross: 10,
-    leader_text: 8,
-    distance: 0.5,
-    bounds: 100,
-  }
+  // oxfmt-ignore
+  const all_weights = { overlap: 30, marker: 100, leader_cross: 10, leader_text: 8, distance: 0.5, bounds: 100 }
 
   // The solver always supplies a neighbour index, widened to cover every label's reach from
   // its anchor plus the move being scored. Queries would drop real neighbours otherwise.
@@ -395,14 +332,7 @@ describe(`compute_delta_energy`, () => {
     old_state: LabelState,
     new_state: LabelState,
   ): number => {
-    const {
-      overlap,
-      marker,
-      leader_cross,
-      leader_text,
-      distance,
-      bounds: bounds_weight,
-    } = all_weights
+    const { overlap, marker, leader_cross, leader_text, distance } = all_weights
     const { x: axis_x, y: axis_y } = anchors[new_state.anchor_idx]
     const [old_cx, old_cy] = mid(old_state)
     const [new_cx, new_cy] = mid(new_state)
@@ -410,7 +340,7 @@ describe(`compute_delta_energy`, () => {
       distance *
         (Math.hypot(new_cx - axis_x, new_cy - axis_y) -
           Math.hypot(old_cx - axis_x, old_cy - axis_y)) +
-      bounds_weight *
+      all_weights.bounds *
         (rect_out_of_bounds_area(new_state, bounds) -
           rect_out_of_bounds_area(old_state, bounds))
     for (const { x: coord_x, y: coord_y, radius } of anchors) {
@@ -423,29 +353,12 @@ describe(`compute_delta_energy`, () => {
       if (jdx === changed_idx) continue
       const { x: neighbor_x, y: neighbor_y } = anchors[other.anchor_idx]
       const [offset_x, offset_y] = mid(other)
+      const other_leader = [neighbor_x, neighbor_y, offset_x, offset_y] as const
       delta +=
         overlap * (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
       delta += toggle(
-        segments_intersect(
-          axis_x,
-          axis_y,
-          old_cx,
-          old_cy,
-          neighbor_x,
-          neighbor_y,
-          offset_x,
-          offset_y,
-        ),
-        segments_intersect(
-          axis_x,
-          axis_y,
-          new_cx,
-          new_cy,
-          neighbor_x,
-          neighbor_y,
-          offset_x,
-          offset_y,
-        ),
+        segments_intersect(axis_x, axis_y, old_cx, old_cy, ...other_leader),
+        segments_intersect(axis_x, axis_y, new_cx, new_cy, ...other_leader),
         leader_cross,
       )
       delta += toggle(
@@ -730,8 +643,7 @@ describe(`compute_label_positions`, () => {
     })
 
     // A warm re-solve runs warm_sa_iterations, not the cold sa_iterations budget: the carried
-    // layout must come out identical whatever cold budget the config names (a wall-clock ratio
-    // used to assert this and flaked under load)
+    // layout must come out identical whatever cold budget the config names
     test(`warm re-solve ignores the cold iteration budget`, () => {
       const series = make_labeled_series(
         Array.from({ length: 20 }, (_unused, idx) =>
@@ -784,10 +696,8 @@ describe(`compute_label_positions`, () => {
   })
 
   test(`fallback clamps right-edge point to keep label within bounds`, () => {
-    // Two points to exceed max_labels=1 and trigger fallback.
-    // Second point at far right edge: anchor_x=380, +5 gives 385,
-    // but label width ≈ 22px so right edge = 407 > max_x=390
-    // Should clamp x to max_x - label_width = 390 - 22 = 368
+    // max_labels=1 forces the fallback; the right-edge label (380 + 5 + ~22px > max_x=390)
+    // clamps to max_x - label_width
     const points = [labeled(50, 50, `OK`), labeled(380, 150, `RR`)]
     const result = place_and_expect_finite(points, { ...default_config, max_labels: 1 })
     const edge_key = Object.keys(result)[1]

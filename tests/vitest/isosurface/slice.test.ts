@@ -29,6 +29,9 @@ describe(`trilinear_interpolate`, () => {
   // Periodic: gx = fx * nx, so grid point ix sits at fx = ix / nx and fx wraps modulo 1.
   // Non-periodic: gx = fx * (nx - 1) and anything outside [0, 1] reads 0.
   const x_ramp = flat(4, 4, 4, (idx_x) => idx_x)
+  const y_ramp = flat(4, 4, 4, (_ix, idx_y) => idx_y)
+  const z_ramp = flat(4, 4, 4, (_ix, _iy, idx_z) => idx_z)
+  const constant = flat(4, 4, 4, () => 10)
   test.each([
     [
       `grid point (1, 2, 3) of an ix*100 + iy*10 + iz field`,
@@ -58,20 +61,13 @@ describe(`trilinear_interpolate`, () => {
     ],
     [`periodic singleton cell`, flat(1, 1, 1, () => 42), [-3, 2.5, 7.25], true, 42],
     [`the non-periodic midpoint between ix=1 and ix=2`, x_ramp, [0.5, 0, 0], false, 1.5],
-    [
-      `a non-periodic point below the grid`,
-      flat(4, 4, 4, () => 10),
-      [-0.1, 0.5, 0.5],
-      false,
-      0,
-    ],
-    [
-      `a non-periodic point above the grid`,
-      flat(4, 4, 4, () => 10),
-      [0.5, 1.1, 0.5],
-      false,
-      0,
-    ],
+    // fx=1 must hit the last point (a floor-based fraction read grid[nx-2] = 2 there)
+    [`the non-periodic upper x boundary`, x_ramp, [1, 0, 0], false, 3],
+    [`the non-periodic upper y boundary`, y_ramp, [0, 1, 0], false, 3],
+    [`the non-periodic upper z boundary`, z_ramp, [0, 0, 1], false, 3],
+    [`a non-periodic point below the grid`, constant, [-0.1, 0.5, 0.5], false, 0],
+    [`a non-periodic point above the grid`, constant, [0.5, 1.1, 0.5], false, 0],
+    [`an empty grid`, flatten_grid([]), [0.5, 0.5, 0.5], true, 0],
   ] as [string, ReturnType<typeof flat>, Vec3, boolean, number][])(
     `%s`,
     (_label, grid, [frac_x, frac_y, frac_z], periodic, expected) => {
@@ -79,21 +75,6 @@ describe(`trilinear_interpolate`, () => {
       expect(trilinear_interpolate(grid, frac_x, frac_y, frac_z, periodic)).toBe(expected)
     },
   )
-
-  test(`non-periodic grid is exact and continuous at the upper boundary`, () => {
-    const grid = flat(4, 4, 4, (idx_x) => idx_x)
-    // fx=1 must hit grid[3]=3 (floor-based xd gave grid[nx-2]=2, vs f(0.999)≈2.997)
-    expect(trilinear_interpolate(grid, 1, 0, 0, false)).toBe(3)
-    expect(trilinear_interpolate(grid, 0.999, 0, 0, false)).toBeCloseTo(2.997)
-    const grid_y = flat(4, 4, 4, (_ix, idx_y) => idx_y)
-    const grid_z = flat(4, 4, 4, (_ix, _iy, idx_z) => idx_z)
-    expect(trilinear_interpolate(grid_y, 0, 1, 0, false)).toBe(3)
-    expect(trilinear_interpolate(grid_z, 0, 0, 1, false)).toBe(3)
-  })
-
-  test(`returns 0 for empty grid`, () => {
-    expect(trilinear_interpolate(flatten_grid([]), 0.5, 0.5, 0.5, true)).toBe(0)
-  })
 })
 
 describe(`sample_hkl_slice`, () => {
@@ -223,22 +204,14 @@ describe(`Cartesian slice point helpers`, () => {
     ],
     origin: [10, -2, 5],
   })
-  const expected_center: Vec3 = [11.75, 0.5, 8]
 
-  test(`converts the fractional volume center into absolute Cartesian coordinates`, () => {
-    expect(volume_center(volume)).toEqual(expected_center)
-  })
-
-  test(`preserves a provided Cartesian point`, () => {
+  test(`resolves an explicit point, else the volume center, else the Cartesian origin`, () => {
     const point: Vec3 = [7, 8, 9]
     expect(resolve_slice_cartesian_point(point, volume)).toBe(point)
-  })
-
-  test.each([
-    [`volume center`, volume, expected_center],
-    [`Cartesian origin`, undefined, [0, 0, 0] as Vec3],
-  ])(`defaults an omitted point to the %s`, (_fallback, fallback_volume, expected) => {
-    expect(resolve_slice_cartesian_point(undefined, fallback_volume)).toEqual(expected)
+    // the fractional center (0.5, 0.5, 0.5) in absolute Cartesian coordinates
+    expect(volume_center(volume)).toEqual([11.75, 0.5, 8])
+    expect(resolve_slice_cartesian_point(undefined, volume)).toEqual([11.75, 0.5, 8])
+    expect(resolve_slice_cartesian_point(undefined, undefined)).toEqual([0, 0, 0])
   })
 })
 

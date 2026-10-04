@@ -1,7 +1,4 @@
-// Tests for element data including basic structure and physicality checks.
-// Physicality tests validate that physical properties follow expected periodic trends.
-// Would have caught the bug where H had larger atomic_radius than O.
-
+// Element data structure plus physicality checks that properties follow periodic trends
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_data } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
@@ -70,224 +67,81 @@ test.each([
   expect(members.map(({ symbol }) => symbol)).toContain(member)
 })
 
-describe(`atomic_radius`, () => {
-  // Pairs where first element should have LARGER atomic_radius than second
-  const LARGER_THAN_PAIRS = [
-    // All common elements > H (would catch original bug)
-    [`O`, `H`],
-    [`N`, `H`],
-    [`C`, `H`],
-    [`B`, `H`],
-    [`Be`, `H`],
-    [`Li`, `H`],
-    [`S`, `H`],
-    [`P`, `H`],
-    [`Si`, `H`],
-    [`Cl`, `H`],
-    [`F`, `H`],
-    // Halogens: I > Br > Cl > F
-    [`I`, `Br`],
-    [`Br`, `Cl`],
-    [`Cl`, `F`],
-    // Chalcogens: Te > Se > S > O
-    [`Te`, `Se`],
-    [`Se`, `S`],
-    [`S`, `O`],
-    // Alkali metals: Cs > Rb > K > Na > Li
-    [`Cs`, `Rb`],
-    [`Rb`, `K`],
-    [`K`, `Na`],
-    [`Na`, `Li`],
-    // Alkaline earth metals: Ba > Sr > Ca > Mg > Be
-    [`Ba`, `Sr`],
-    [`Sr`, `Ca`],
-    [`Ca`, `Mg`],
-    [`Mg`, `Be`],
-    // Pnictogens: Bi > Sb > As > P > N
-    [`Bi`, `Sb`],
-    [`Sb`, `As`],
-    [`As`, `P`],
-    [`P`, `N`],
-  ] as const
+type TrendProp = `atomic_radius` | `covalent_radius` | `electronegativity` | `first_ionization`
+const chain = (symbols: ElementSymbol[]): [ElementSymbol, ElementSymbol][] =>
+  symbols.slice(1).map((next, idx) => [symbols[idx], next])
+const above_h = (symbols: ElementSymbol[]): [ElementSymbol, ElementSymbol][] =>
+  symbols.map((symbol) => [symbol, `H`])
+const pairs = (
+  prop: TrendProp,
+  list: [ElementSymbol, ElementSymbol][],
+  strict = true,
+): [TrendProp, ElementSymbol, `>` | `>=`, ElementSymbol][] =>
+  list.map(([larger, smaller]) => [prop, larger, strict ? `>` : `>=`, smaller])
 
-  test.each(LARGER_THAN_PAIRS)(`%s > %s`, (larger, smaller) => {
-    const larger_el = get_element(larger)
-    const smaller_el = get_element(smaller)
-    expect(larger_el.atomic_radius).not.toBeNull()
-    expect(smaller_el.atomic_radius).not.toBeNull()
-    expect(larger_el.atomic_radius).toBeGreaterThan(smaller_el.atomic_radius as number)
-  })
-
-  test.each([
-    [`period 2: Li > Be > B > C > N > O > F`, [`Li`, `Be`, `B`, `C`, `N`, `O`, `F`], null],
-    [
-      `period 3: Na > Mg > Al > Si >= P >= S >= Cl`,
-      [`Na`, `Mg`, `Al`, `Si`, `P`, `S`, `Cl`],
-      new Set<string>([`Si/P`, `P/S`, `S/Cl`]),
-    ],
-  ] as const)(`%s`, (_name, order, equal_pairs) => {
-    for (let idx = 0; idx < order.length - 1; idx++) {
-      const larger = get_element(order[idx])
-      const smaller = get_element(order[idx + 1])
-      expect(larger.atomic_radius, `${larger.symbol} atomic_radius`).not.toBeNull()
-      expect(smaller.atomic_radius, `${smaller.symbol} atomic_radius`).not.toBeNull()
-      if (equal_pairs?.has(`${larger.symbol}/${smaller.symbol}`)) {
-        expect(larger.atomic_radius).toBeGreaterThanOrEqual(smaller.atomic_radius as number)
-      } else {
-        expect(larger.atomic_radius).toBeGreaterThan(smaller.atomic_radius as number)
-      }
-    }
-  })
-
-  test(`all radii in valid range (0.1, 3.0) Å`, () => {
-    for (const element of element_data) {
-      if (element.atomic_radius !== null) {
-        expect(element.atomic_radius, element.symbol).toBeGreaterThan(0.1)
-        expect(element.atomic_radius, element.symbol).toBeLessThan(3.0)
-      }
-    }
-  })
-})
-
-describe(`covalent_radius`, () => {
-  const LARGER_THAN_PAIRS = [
-    [`O`, `H`],
-    [`N`, `H`],
-    [`C`, `H`],
-    [`I`, `Br`],
-    [`Br`, `Cl`],
-    [`Cl`, `F`],
-    [`Te`, `Se`],
-    [`Se`, `S`],
-    [`S`, `O`],
-    [`Cs`, `Rb`],
-    [`Rb`, `K`],
-    [`K`, `Na`],
-    [`Na`, `Li`],
-  ] as const
-
-  test.each(LARGER_THAN_PAIRS)(`%s > %s`, (larger, smaller) => {
-    const larger_el = get_element(larger)
-    const smaller_el = get_element(smaller)
-    expect(larger_el.covalent_radius).not.toBeNull()
-    expect(smaller_el.covalent_radius).not.toBeNull()
-    expect(larger_el.covalent_radius).toBeGreaterThan(smaller_el.covalent_radius as number)
-  })
-
-  test(`all radii in valid range (0.1, 2.6] Å`, () => {
-    for (const element of element_data) {
-      if (element.covalent_radius !== null) {
-        expect(element.covalent_radius, element.symbol).toBeGreaterThan(0.1)
-        expect(element.covalent_radius, element.symbol).toBeLessThanOrEqual(2.6)
-      }
-    }
-  })
-})
-
-describe(`electronegativity`, () => {
-  // High electronegativity ordering
-  const HIGH_PAIRS = [
-    [`F`, `O`],
-    [`O`, `Cl`],
-    [`Cl`, `N`],
-    [`N`, `Br`],
-    [`Br`, `S`],
-    [`S`, `C`],
-    [`C`, `H`],
-  ] as const
-
-  test.each(HIGH_PAIRS)(`%s > %s`, (higher, lower) => {
-    const higher_el = get_element(higher)
-    const lower_el = get_element(lower)
-    expect(higher_el.electronegativity).not.toBeNull()
-    expect(lower_el.electronegativity).not.toBeNull()
-    expect(higher_el.electronegativity).toBeGreaterThan(lower_el.electronegativity as number)
-  })
-
-  // Alkali metals decrease down group (K == Rb in this dataset, so skip Rb)
-  const ALKALI_PAIRS = [
-    [`Li`, `Na`],
-    [`Na`, `K`],
-    [`K`, `Cs`],
-  ] as const
-
-  test.each(ALKALI_PAIRS)(`%s >= %s`, (higher, lower) => {
-    expect(get_element(higher).electronegativity).toBeGreaterThanOrEqual(
-      get_element(lower).electronegativity as number,
-    )
-  })
-
-  test(`fluorine has highest electronegativity`, () => {
-    const max = Math.max(
-      ...element_data
-        .filter((element) => element.electronegativity !== null)
-        .map((element) => element.electronegativity as number),
-    )
-    expect(get_element(`F`).electronegativity).toBe(max)
-  })
-
-  test(`all values in range [0.7, 4.0]`, () => {
-    for (const element of element_data) {
-      if (element.electronegativity !== null) {
-        expect(element.electronegativity, element.symbol).toBeGreaterThanOrEqual(0.7)
-        expect(element.electronegativity, element.symbol).toBeLessThanOrEqual(4.0)
-      }
-    }
-  })
-})
-
-describe(`first_ionization`, () => {
-  // Noble gases decrease down group
-  const NOBLE_PAIRS = [
-    [`He`, `Ne`],
-    [`Ne`, `Ar`],
-    [`Ar`, `Kr`],
-    [`Kr`, `Xe`],
-  ] as const
-
-  test.each(NOBLE_PAIRS)(`%s > %s`, (higher, lower) => {
-    expect(get_element(higher).first_ionization).toBeGreaterThan(
-      get_element(lower).first_ionization as number,
-    )
-  })
-
-  // Alkali metals decrease down group
-  const ALKALI_PAIRS = [
-    [`Li`, `Na`],
-    [`Na`, `K`],
-    [`K`, `Rb`],
-    [`Rb`, `Cs`],
-  ] as const
-
-  test.each(ALKALI_PAIRS)(`%s > %s`, (higher, lower) => {
-    expect(get_element(higher).first_ionization).toBeGreaterThan(
-      get_element(lower).first_ionization as number,
-    )
-  })
-
-  // Noble gases > adjacent alkali metals
-  const NOBLE_VS_ALKALI = [
+// Each pair asserts the first element's value exceeds the second's
+const TREND_PAIRS = [
+  // Every common element is larger than H (catches H having a larger radius than O)
+  ...pairs(
+    `atomic_radius`,
+    above_h([`O`, `N`, `C`, `B`, `Be`, `Li`, `S`, `P`, `Si`, `Cl`, `F`]),
+  ),
+  // down-group trends for halogens, chalcogens, alkali, alkaline earth, pnictogens
+  ...pairs(`atomic_radius`, chain([`I`, `Br`, `Cl`, `F`])),
+  ...pairs(`atomic_radius`, chain([`Te`, `Se`, `S`, `O`])),
+  ...pairs(`atomic_radius`, chain([`Cs`, `Rb`, `K`, `Na`, `Li`])),
+  ...pairs(`atomic_radius`, chain([`Ba`, `Sr`, `Ca`, `Mg`, `Be`])),
+  ...pairs(`atomic_radius`, chain([`Bi`, `Sb`, `As`, `P`, `N`])),
+  // across periods 2 and 3 (Si/P/S/Cl tie in this dataset)
+  ...pairs(`atomic_radius`, chain([`Li`, `Be`, `B`, `C`, `N`, `O`, `F`])),
+  ...pairs(`atomic_radius`, chain([`Na`, `Mg`, `Al`, `Si`])),
+  ...pairs(`atomic_radius`, chain([`Si`, `P`, `S`, `Cl`]), false),
+  ...pairs(`covalent_radius`, above_h([`O`, `N`, `C`])),
+  ...pairs(`covalent_radius`, chain([`I`, `Br`, `Cl`, `F`])),
+  ...pairs(`covalent_radius`, chain([`Te`, `Se`, `S`, `O`])),
+  ...pairs(`covalent_radius`, chain([`Cs`, `Rb`, `K`, `Na`, `Li`])),
+  ...pairs(`electronegativity`, chain([`F`, `O`, `Cl`, `N`, `Br`, `S`, `C`, `H`])),
+  // K == Rb in this dataset, so Rb is skipped
+  ...pairs(`electronegativity`, chain([`Li`, `Na`, `K`, `Cs`]), false),
+  ...pairs(`first_ionization`, chain([`He`, `Ne`, `Ar`, `Kr`, `Xe`])),
+  ...pairs(`first_ionization`, chain([`Li`, `Na`, `K`, `Rb`, `Cs`])),
+  // noble gases > adjacent alkali metals
+  ...pairs(`first_ionization`, [
     [`He`, `Li`],
     [`Ne`, `Na`],
     [`Ar`, `K`],
     [`Kr`, `Rb`],
     [`Xe`, `Cs`],
-  ] as const
+  ]),
+]
 
-  test.each(NOBLE_VS_ALKALI)(`%s > %s`, (noble, alkali) => {
-    expect(get_element(noble).first_ionization).toBeGreaterThan(
-      get_element(alkali).first_ionization as number,
-    )
-  })
+test.each(TREND_PAIRS)(`%s: %s %s %s`, (prop, larger, op, smaller) => {
+  const [larger_val, smaller_val] = [get_element(larger)[prop], get_element(smaller)[prop]]
+  if (larger_val === null || smaller_val === null)
+    throw new Error(`${prop} missing for ${larger} or ${smaller}`)
+  if (op === `>`) expect(larger_val).toBeGreaterThan(smaller_val)
+  else expect(larger_val).toBeGreaterThanOrEqual(smaller_val)
+})
 
-  test(`all values in range (3, 25) eV`, () => {
-    for (const element of element_data) {
-      if (element.first_ionization !== null) {
-        expect(element.first_ionization, element.symbol).toBeGreaterThan(3)
-        expect(element.first_ionization, element.symbol).toBeLessThan(25)
-      }
-    }
-  })
+test.each([
+  [`atomic_radius`, 0.1, 3.0],
+  [`covalent_radius`, 0.1, 2.6],
+  [`electronegativity`, 0.7, 4.0],
+  [`first_ionization`, 3, 25],
+] as const)(`all non-null %s values lie in [%s, %s]`, (prop, min, max) => {
+  for (const element of element_data) {
+    const value = element[prop]
+    if (value === null) continue
+    expect(value, element.symbol).toBeGreaterThanOrEqual(min)
+    expect(value, element.symbol).toBeLessThanOrEqual(max)
+  }
+})
+
+test(`fluorine has highest electronegativity`, () => {
+  const max = Math.max(
+    ...element_data.map(({ electronegativity }) => electronegativity ?? -Infinity),
+  )
+  expect(get_element(`F`).electronegativity).toBe(max)
 })
 
 describe(`atomic_mass`, () => {
