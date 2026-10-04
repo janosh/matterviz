@@ -123,18 +123,30 @@ describe(`compute_hull_model`, () => {
     ])
   })
 
-  test(`an excluded unary gets a synthetic corner, which phase counts leave out`, () => {
+  // An excluded unary is never a formation-energy reference: from absolute energies nothing
+  // with Fe can be placed, while precomputed E_form still plots against a synthetic Fe corner
+  test(`an excluded unary is no reference but gets a synthetic corner, left out of counts`, () => {
+    const absolute = [
+      make_phase({ Fe: 1 }, -8, { exclude_from_hull: true }),
+      make_phase({ O: 1 }, -4),
+      make_phase({ Fe: 1, O: 1 }, -7.5),
+    ]
+    const from_energies = compute_hull_model(absolute, { energy_source_mode: `on-the-fly` })
+    expect(
+      from_energies.entries.filter((entry) => entry.composition.Fe && !entry.is_synthetic),
+    ).toEqual([])
+
+    const e_forms = [0.1, 0, -1.5, -0.5]
     const entries = [
       make_phase({ Fe: 1 }, -8, { exclude_from_hull: true }),
       make_phase({ O: 1 }, -4),
       make_phase({ Fe: 1, O: 1 }, -7.5),
       make_phase({ Fe: 3, O: 1 }, -7.5),
-    ]
+    ].map((entry, idx) => ({ ...entry, e_form_per_atom: e_forms[idx] }))
     const model = compute_hull_model(entries, { energy_source_mode: `on-the-fly` })
     expect(model.entries.at(-1)).toMatchObject({ composition: { Fe: 1 }, is_synthetic: true })
-    // E_form(FeO) = −7.5 − (−8 − 4)/2 = −1.5 against the (excluded) Fe reference energy, so
-    // the hull runs Fe corner (0) → FeO (−1.5): at x_O = 0.25 it is −0.75, Fe3O's E_form is
-    // −7.5 − (3·−8 − 4)/4 = −0.5, i.e. 0.25 eV/atom above the hull
+    // the hull runs Fe corner (0) → FeO (−1.5): at x_O = 0.25 it is −0.75, so Fe3O at −0.5
+    // sits 0.25 eV/atom above it
     expect(model.entries[3].e_above_hull).toBeCloseTo(0.25, 12)
     expect(model.phase_stats?.total).toBe(entries.length)
   })

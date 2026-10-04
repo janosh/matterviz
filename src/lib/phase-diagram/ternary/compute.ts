@@ -83,12 +83,12 @@ export function prepare_diagram(
   const missing = elements.filter((element) => !normalized.some(has_corner(element)))
   // A 0 eV corner is only a formation-energy reference when the other references are 0 eV too;
   // next to absolute DFT energies (Li at -1.9 eV/atom) it would make every compound's dG_f wrong
-  const absolute_refs = Object.entries(
-    find_lowest_energy_unary_refs(normalized.filter((entry) => !entry.exclude_from_hull)),
-  ).flatMap(([element, ref]) => {
-    const energy = get_energy_per_atom(ref)
-    return Math.abs(energy) > 1e-6 ? [`${element} (${energy} eV/atom)`] : []
-  })
+  const absolute_refs = Object.entries(find_lowest_energy_unary_refs(normalized)).flatMap(
+    ([element, ref]) => {
+      const energy = get_energy_per_atom(ref)
+      return Math.abs(energy) > 1e-6 ? [`${element} (${energy} eV/atom)`] : []
+    },
+  )
   if (missing.length > 0 && absolute_refs.length > 0) {
     throw new Error(
       `No reference entry for ${missing.join(`, `)}, while ${absolute_refs.join(`, `)} carry absolute energies: add the missing elemental entries or pass formation energies`,

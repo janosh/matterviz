@@ -124,22 +124,16 @@ export function compute_e_form_per_atom(
 
 // Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
 // (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
-// without absolute-energy unaries, since their E_form is measured against those. Within that
-// tier, an exclude_from_hull unary is only a fallback for elements without a hull-eligible
-// one: it is still drawn, and letting it set the zero shifted every plotted formation energy.
+// without absolute-energy unaries, since their E_form is measured against those. An
+// exclude_from_hull unary is never a reference: it is drawn, but neither anchors the hull
+// nor sets the formation-energy zero, so an element with only excluded unaries has none.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
-  type Ref = { entry: PhaseData; score: number; absolute: boolean; excluded: boolean }
-  const better = (cand: Ref, current: Ref): boolean =>
-    cand.absolute !== current.absolute
-      ? cand.absolute
-      : cand.excluded !== current.excluded
-        ? !cand.excluded
-        : cand.score < current.score
+  type Ref = { entry: PhaseData; score: number; absolute: boolean }
   const refs: Record<string, Ref> = {}
   for (const entry of entries) {
-    if (!is_unary_entry(entry)) continue
+    if (!is_unary_entry(entry) || entry.exclude_from_hull) continue
     const absolute =
       typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
     const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
@@ -148,8 +142,9 @@ export function find_lowest_energy_unary_refs(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
     )
     if (!element) continue
-    const cand = { entry, score, absolute, excluded: Boolean(entry.exclude_from_hull) }
-    if (!refs[element] || better(cand, refs[element])) refs[element] = cand
+    const current = refs[element]
+    if (!current || (absolute === current.absolute ? score < current.score : absolute))
+      refs[element] = { entry, score, absolute }
   }
   return Object.fromEntries(
     Object.entries(refs).map(([element, { entry }]) => [element, entry]),
