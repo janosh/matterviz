@@ -1,10 +1,13 @@
 <script lang="ts">
+  // Compact single-select: an inline trigger showing the selected option (HTML labels like
+  // E<sub>form</sub> allowed, sanitized) that opens a native popover list. Controlled: it
+  // reports picks through `on_select` and shows whatever `selected_key` the caller commits.
+  // Plots use it for interactive axis labels and colorbar property pickers.
   import { anchored_popover } from '#lib/overlays/anchored-popover.js'
+  import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import type { HTMLButtonAttributes } from 'svelte/elements'
-
-  type Option = { key: string; label: string; unit?: string }
 
   let {
     options,

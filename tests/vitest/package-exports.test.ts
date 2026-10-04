@@ -191,6 +191,8 @@ describe(`package.json exports`, () => {
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
     expect(resolve_plot_title({ text: `Title` }, { width: 100 }).title?.kind).toBe(`title`)
+    // the picker behind interactive axis labels, for consumers' own property menus
+    expect(lib.PopoverSelect).toBeTypeOf(`function`)
   })
 
   // The changelog promises the three worker clients and their shared `WorkerClient` type on
