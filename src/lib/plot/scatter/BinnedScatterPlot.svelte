@@ -234,6 +234,7 @@
   })
 
   const frame = create_cartesian_frame({
+    controls_row: () => fullscreen_toggle, // no settings pane, only the fullscreen button
     // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
     // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
     // ticks over [1000, 1010] as `1e+3` six times, and six `1`s after a density bin_click zoom.

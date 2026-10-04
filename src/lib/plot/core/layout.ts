@@ -331,6 +331,7 @@ export interface AutoPaddingConfig {
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
   width?: number // Plot width, needed to know whether x tick labels have to rotate
   height?: number // Plot height, needed for y/y2 wrapping and thinning
+  controls_row?: boolean // whether the corner controls row (gear, fullscreen) is drawn
 }
 
 const project_measured_axis = (
@@ -380,6 +381,7 @@ export const calc_auto_padding = ({
   label_gap = LABEL_GAP_DEFAULT,
   width,
   height,
+  controls_row = false,
 }: AutoPaddingConfig): Required<Sides> => {
   const title_layout_for = (axis: MeasuredAxis, available_width: number): AxisTitleLayout =>
     resolve_axis_title_layout(
@@ -457,7 +459,8 @@ export const calc_auto_padding = ({
   // The top y2 tick label can sit entirely above the plot's top edge, right under the chart's
   // corner controls (gear, fullscreen), so a y2 axis keeps the top band clear of that row
   const y2_outside_ticks = Boolean(y2_axis.tick_values?.length) && !y2_axis.tick_label?.inside
-  const controls_floor = y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
+  const controls_floor =
+    controls_row && y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
     const title_layout = title_layout_for(x2_axis, available_width)

@@ -1,3 +1,4 @@
+import { has_controls_row } from '#lib/plot/core/cartesian-frame.svelte.js'
 import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout.js'
 import {
   AXIS_LABEL_HEIGHT,
@@ -612,24 +613,51 @@ describe(`layout utility functions`, () => {
       expect(pad_top).toBeLessThanOrEqual(band + 8)
     })
 
-    // The top y2 tick label sits right under ChartShell's corner controls (gear, fullscreen)
+    // The top y2 tick label sits right under ChartShell's corner controls (gear, fullscreen),
+    // so only a drawn controls row needs the extra top band
     it.each([
-      [`outside y2 ticks clear the controls row`, slot_axis([0, 50, 100]), 40],
+      [`outside y2 ticks clear the controls row`, slot_axis([0, 50, 100]), true, 40],
+      [
+        `hidden controls leave the default`,
+        slot_axis([0, 50, 100]),
+        false,
+        DEFAULT_PLOT_PADDING.t,
+      ],
       [
         `inside y2 ticks leave the default`,
         slot_axis([0, 50, 100], { tick_label: { inside: true } }),
+        true,
         DEFAULT_PLOT_PADDING.t,
       ],
-      [`no y2 axis leaves the default`, undefined, DEFAULT_PLOT_PADDING.t],
-    ])(`top pad: %s`, (_desc, y2_axis, expected) => {
+      [`no y2 axis leaves the default`, undefined, true, DEFAULT_PLOT_PADDING.t],
+    ])(`top pad: %s`, (_desc, y2_axis, controls_row, expected) => {
       const config = {
         padding: {},
         default_padding: DEFAULT_PLOT_PADDING,
         width: 400,
         height: 300,
+        controls_row,
       }
       expect(calc_auto_padding({ ...config, ...(y2_axis && { y2_axis }) }).t).toBe(expected)
     })
+
+    it.each([
+      [`hover`, true, true],
+      [`never`, true, false],
+      [false, true, false],
+      [{ mode: `always`, hidden: [`controls`] }, true, true], // the fullscreen button remains
+      [{ mode: `always`, hidden: [`controls`] }, false, false],
+      [{ mode: `hover`, hidden: [`controls`, `fullscreen`] }, true, false],
+    ] as const)(
+      `has_controls_row(%o, fullscreen_toggle=%s) is %s`,
+      (show_controls, fullscreen_toggle, expected) => {
+        const prop =
+          typeof show_controls === `object`
+            ? { ...show_controls, hidden: [...show_controls.hidden] }
+            : show_controls
+        expect(has_controls_row(prop, fullscreen_toggle)).toBe(expected)
+      },
+    )
 
     const default_b = DEFAULT_PLOT_PADDING.b
     it.each([

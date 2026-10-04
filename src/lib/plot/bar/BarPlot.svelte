@@ -39,7 +39,10 @@
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
@@ -220,6 +223,7 @@
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     // Categorical x2 shares x's category slots, pinned range included

@@ -106,7 +106,10 @@
     range_bounds,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import type { Rect, Sides } from '#lib/plot/core/layout.js'
   import { stride_sample } from '#lib/plot/core/layout.js'
@@ -437,6 +440,7 @@
     y2: auto_range(extents_by_axis.y2, final_y2_axis),
   })
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => intrinsic_ranges,
     // Keep the current view on an axis whose series are all hidden instead of snapping to
