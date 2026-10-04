@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises'
 
 test.beforeEach(async ({ page }) => {
   await page.goto(`/test/toggle-menu`, { waitUntil: `networkidle` })
-  // Portaling happens after hydration; SSR buttons can be clicked before handlers exist.
-  await expect(page.locator(`body > .column-menu`).first()).toBeAttached()
+  // SSR buttons can be clicked before their handlers exist
+  await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`)
 })
 
 test(`table settings reset authored overrides and preserve column widths`, async ({
@@ -80,15 +80,15 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   await expect(rows).toContainText([`Alpha`, `Gamma`, `Beta`])
   await score_header.click()
   await expect(rows.first()).toContainText(`Beta`)
-  await table.locator(`summary[aria-label="Columns"]`).click()
-  const column_menu = page.locator(`.column-menu:visible`)
+  await table.getByRole(`button`, { name: `Columns`, exact: true }).click()
+  const column_menu = page.locator(`.column-menu:popover-open`)
   await column_menu.getByLabel(`Score`, { exact: true }).uncheck()
   await expect(score_header).toHaveCount(0)
   await table
     .getByRole(`button`, { name: `Reset all columns to defaults`, exact: true })
     .click()
   await expect(score_header).toBeVisible()
-  await table.locator(`summary[aria-label="Columns"]`).click()
+  await table.getByRole(`button`, { name: `Columns`, exact: true }).click() // closes the menu
   await rows.first().getByRole(`checkbox`).check()
   const clear_selection = table.getByTitle(`Clear 1 selected rows`)
   await expect(clear_selection).toBeVisible()

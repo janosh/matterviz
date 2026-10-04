@@ -2,7 +2,7 @@ import type { Column } from '#lib/table/index.js'
 import ToggleMenu from '#lib/table/ToggleMenu.svelte'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bind_props, fire, doc_query } from '../setup'
+import { bind_props, dismiss_popover, doc_query, fire } from '../setup'
 
 afterEach(() => {
   document.body.innerHTML = ``
@@ -22,6 +22,7 @@ describe(`ToggleMenu`, () => {
       visible: true,
     }))
 
+  const get_trigger = () => doc_query<HTMLButtonElement>(`.column-toggles > button`)
   const checkbox_states = () =>
     Array.from(
       document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
@@ -46,11 +47,11 @@ describe(`ToggleMenu`, () => {
         columns[0].description = `<b>Column details</b>`
         columns[2].label = `E<sub>hull</sub>`
         mount_menu(columns, { column_panel_open: false })
-        const summary = doc_query(`summary`)
-        expect(doc_query<HTMLDetailsElement>(`details`).open).toBe(false)
-        await fire(summary)
-        expect(summary.textContent?.trim()).toBe(`Columns`)
-        expect(summary.getAttribute(`aria-expanded`)).toBe(`true`)
+        const trigger = get_trigger()
+        expect(document.querySelector(`[role="group"]`)).toBeNull()
+        await fire(trigger)
+        expect(trigger.textContent?.trim()).toBe(`Columns`)
+        expect(trigger.getAttribute(`aria-expanded`)).toBe(`true`)
         expect(checkbox_states()).toEqual([true, false, true])
         expect(document.querySelector(`[role="group"]`)).not.toBeNull()
         expect(document.querySelector(`.sections-container`)).toBeNull()
@@ -64,98 +65,36 @@ describe(`ToggleMenu`, () => {
       },
     )
 
-    it.each([
-      [240, 20, 140, 46],
-      [0, 20, 8, 46],
-      [innerWidth - 60, 20, innerWidth - 168, 46],
-      [240, innerHeight - 42, 140, innerHeight - 226],
-    ])(
-      `positions the portaled dropdown at trigger (%s, %s)`,
-      async (left, top, expected_left, expected_top) => {
-        mount_menu()
-        await tick()
-
-        const summary = doc_query(`summary`)
-        const menu = doc_query(`.column-menu`)
-        expect(menu.parentElement).toBe(document.body)
-        const trigger_rect_spy = vi
-          .spyOn(summary, `getBoundingClientRect`)
-          .mockReturnValue(new DOMRect(left, top, 60, 22))
-        const menu_rect_spy = vi
-          .spyOn(menu, `getBoundingClientRect`)
-          .mockReturnValue(new DOMRect(0, 0, 160, 180))
-        await fire(summary)
-        await fire(summary)
-        await vi.waitFor(() => {
-          expect(menu.style.left).toBe(`${expected_left}px`)
-          expect(menu.style.top).toBe(`${expected_top}px`)
-          expect(menu.hidden).toBe(false)
-          expect(getComputedStyle(menu).visibility).not.toBe(`hidden`)
-        })
-        trigger_rect_spy.mockReturnValue(new DOMRect(260, 30, 60, 22))
-        window.dispatchEvent(new Event(`resize`))
-        await vi.waitFor(() => {
-          expect(menu.style.left).toBe(`160px`)
-          expect(menu.style.top).toBe(`56px`)
-        })
-        trigger_rect_spy.mockRestore()
-        menu_rect_spy.mockRestore()
-      },
-    )
-
-    it(`keeps panel open on presses inside the portaled dropdown`, async () => {
+    // The list is a native auto popover anchored to the trigger: the top layer escapes table
+    // overflow, and the browser owns light dismiss and Escape (anchored_popover)
+    it(`opens an anchored popover that inside presses keep and dismissal closes`, async () => {
       mount_menu(make_columns(), {
+        column_panel_open: false,
         header: createRawSnippet(() => ({
           render: () =>
             `<label><input type="checkbox" aria-label="Extra setting" />Extra setting</label>`,
         })),
       })
-      await tick()
-
-      const details = doc_query<HTMLDetailsElement>(`details`)
-      const summary = doc_query(`summary`)
-      const menu = doc_query(`.column-menu`)
-      // The dropdown lives outside <details>, so only the inside selector keeps it exempt
-      expect(details.contains(menu)).toBe(false)
-      const unrelated = document.createElement(`div`)
-      document.body.append(unrelated)
-      const press = (element: Element) =>
-        element.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+      await tick() // let bind:this land before the trigger's handler reads it
+      const trigger = get_trigger()
+      const menu = () => document.querySelector<HTMLElement>(`.column-menu`)
+      await fire(trigger)
+      expect(menu()?.getAttribute(`popover`)).toBe(`auto`)
+      expect(trigger.popoverTargetElement).toBe(menu())
 
       const extra_setting = doc_query<HTMLInputElement>(`[aria-label="Extra setting"]`)
-      expect(menu.contains(extra_setting)).toBe(true)
-      expect(menu.firstElementChild?.contains(extra_setting)).toBe(true)
-      press(extra_setting)
-      extra_setting.click()
-      await tick()
+      await fire(extra_setting)
       expect(extra_setting.checked).toBe(true)
-      expect(details.open).toBe(true)
+      expect(menu()).not.toBeNull()
 
-      press(summary)
-      summary.click() // trigger presses are inside, so only its own onclick toggles
+      await fire(trigger) // the trigger toggles it shut
+      expect(menu()).toBeNull()
+      expect(trigger.getAttribute(`aria-expanded`)).toBe(`false`)
+
+      await fire(trigger)
+      dismiss_popover(doc_query(`.column-menu`))
       await tick()
-      expect(details.open).toBe(false)
-
-      press(summary)
-      await fire(summary)
-      expect(details.open).toBe(true)
-
-      press(unrelated)
-      await tick()
-      expect(details.open).toBe(false)
-    })
-
-    it.each([
-      [`Escape`, false],
-      [`Enter`, true],
-    ] as const)(`%s key sets panel open=%s`, async (key, expect_open) => {
-      mount_menu()
-
-      const details = doc_query<HTMLDetailsElement>(`details`)
-      expect(details.open).toBe(true)
-      globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-      await tick()
-      expect(details.open).toBe(expect_open)
+      expect(menu()).toBeNull()
     })
 
     it(`filters large menus without changing which column a toggle controls`, async () => {
@@ -397,7 +336,9 @@ describe(`ToggleMenu`, () => {
         const calls = () =>
           on_toggle.mock.calls.map(([column, visible]) => [column.id, visible])
         mount_menu(columns, { on_toggle })
-        const selector = section ? `.section-header-row .reset-btn` : `summary .reset-btn`
+        const selector = section
+          ? `.section-header-row .reset-btn`
+          : `.column-toggles > .reset-btn`
         expect(document.querySelector(selector)).toBeNull()
         const labels = document.querySelectorAll<HTMLElement>(`.toggle-label`)
         for (const idx of toggle) labels[idx].click()
@@ -416,7 +357,8 @@ describe(`ToggleMenu`, () => {
     // resnapshot defaults and strand the shown column with no way back to hidden.
     it(`keeps the reset baseline when only column order changes`, async () => {
       const state = mount_bound_menu()
-      const reset_btn = () => document.querySelector<HTMLElement>(`summary .reset-btn`)
+      const reset_btn = () =>
+        document.querySelector<HTMLElement>(`.column-toggles > .reset-btn`)
       const col2_checked = () =>
         [...document.querySelectorAll<HTMLLabelElement>(`.toggle-label`)]
           .find((label) => label.textContent?.includes(`Column 2`))
@@ -444,22 +386,22 @@ describe(`ToggleMenu`, () => {
       }
 
       expect(checkbox_states()).toEqual([true, false])
-      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
+      expect(document.querySelector(`.column-toggles > .reset-btn`)).toBeNull()
 
       state.columns = state.columns.map((col, idx) => ({ ...col, visible: idx === 1 }))
       await wait_for_default_snapshot()
       expect(checkbox_states()).toEqual([false, true])
-      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
+      expect(document.querySelector(`.column-toggles > .reset-btn`)).toBeNull()
 
       await fire(doc_query(`.toggle-label`))
       expect(checkbox_states()[0]).toBe(true)
-      await fire(doc_query(`summary .reset-btn`))
+      await fire(doc_query(`.column-toggles > .reset-btn`))
       expect(checkbox_states()).toEqual([false, true])
 
       state.columns = state.columns.map((col) => ({ ...col, visible: true }))
       await wait_for_default_snapshot()
       expect(checkbox_states()).toEqual([true, true])
-      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
+      expect(document.querySelector(`.column-toggles > .reset-btn`)).toBeNull()
     })
 
     it(`section reset button tracks changed sections and restores only its own`, async () => {

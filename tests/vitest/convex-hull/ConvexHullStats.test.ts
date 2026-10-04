@@ -460,7 +460,7 @@ describe(`ConvexHullStats`, () => {
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls (HeatmapTable built-in) should still be available without filters
       expect(
-        document.querySelector(`.table-container .dropdown-wrapper .icon-btn`),
+        document.querySelector(`.table-container button[aria-label="Export"]`),
       ).toBeInstanceOf(HTMLElement)
     })
 
@@ -497,7 +497,7 @@ describe(`ConvexHullStats`, () => {
         })
       onTestFinished(() => anchor_click.mockRestore())
       mount_stats_table(export_props)
-      doc_query(`.table-container .dropdown-wrapper .icon-btn`).click()
+      doc_query(`.table-container button[aria-label="Export"]`).click()
       flushSync()
 
       const options = Array.from(

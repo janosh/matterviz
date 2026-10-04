@@ -2,7 +2,8 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
   import { Columns, Reset } from 'svelte-widgets/icons'
-  import { portal, float, click_outside, tooltip } from 'svelte-widgets/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
+  import { anchored_popover } from '#lib/overlays/anchored-popover.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Column } from '#lib/table/index.js'
   import { html_to_text } from '#lib/utils.js'
@@ -27,7 +28,7 @@
     // Every visibility change, resets included, for hosts that track it outside
     // `col.visible` (HeatmapTable keeps an id list)
     on_toggle?: (col: MenuColumn, visible: boolean) => void
-    // Replaces the default "Columns" button. The summary keeps owning the click.
+    // Replaces the default "Columns" label; the button around it keeps owning the click.
     trigger?: Snippet<[{ open: boolean }]>
     // Extra controls beside the column filter, above the column choices.
     header?: Snippet
@@ -35,8 +36,6 @@
 
   const default_visible = (col: MenuColumn): boolean =>
     col.default_visible ?? col.visible !== false
-  const toggle_menu_id = $props.id()
-  const dropdown_selector = `[data-toggle-menu-id="${toggle_menu_id}"]`
   const COLUMN_FILTER_THRESHOLD = 20
   const MAX_MENU_COLUMNS = 3
   const MAX_MENU_ROWS = 10
@@ -125,9 +124,7 @@
     return `repeat(${Math.min(MAX_MENU_COLUMNS, preferred)}, max-content)`
   }
 
-  // Portal the dropdown to <body> so ancestor overflow/stacking contexts cannot clip it.
-  const dropdown_target = typeof document === `undefined` ? undefined : document.body
-  let trigger_el = $state<HTMLElement>()
+  let trigger_el = $state<HTMLButtonElement>()
 </script>
 
 {#snippet toggle_item(col: MenuColumn)}
@@ -155,158 +152,137 @@
   {/if}
 {/snippet}
 
-<svelte:window
-  onkeydown={(event) => {
-    if (event.key === `Escape` && column_panel_open) {
-      column_panel_open = false
-      event.preventDefault()
-    }
-  }}
-/>
-
-<details
-  class="column-toggles"
-  open={column_panel_open}
-  {@attach click_outside({
-    enabled: column_panel_open,
-    callback: () => (column_panel_open = false),
-    inside: [dropdown_selector],
-  })}
->
-  <summary
+<!-- The column list is a native popover (anchored_popover): the top layer escapes table
+overflow and stacking contexts, and the browser owns light dismiss and Escape -->
+<div class="column-toggles">
+  <button
     bind:this={trigger_el}
-    class:custom={Boolean(trigger)}
+    type="button"
+    class={{ custom: Boolean(trigger) }}
     aria-expanded={column_panel_open}
     aria-label={trigger ? `Columns` : undefined}
-    onclick={(event) => {
-      event.preventDefault()
-      column_panel_open = !column_panel_open
-    }}
+    onclick={() => (column_panel_open = !column_panel_open)}
   >
     {#if trigger}
       {@render trigger({ open: column_panel_open })}
     {:else}
       Columns <Icon icon={Columns} />
     {/if}
-    {#if has_any_changes}
-      <button
-        class="reset-btn"
-        onclick={(event) => {
-          event.stopPropagation()
-          event.preventDefault()
-          reset_columns(columns)
-        }}
-        type="button"
-        aria-label="Reset all columns to defaults"
-        {@attach tooltip()}
-      >
-        <Icon icon={Reset} width="12px" />
-      </button>
-    {/if}
-  </summary>
+  </button>
+  {#if has_any_changes}
+    <button
+      class="reset-btn"
+      onclick={() => reset_columns(columns)}
+      type="button"
+      aria-label="Reset all columns to defaults"
+      {@attach tooltip()}
+    >
+      <Icon icon={Reset} width="12px" />
+    </button>
+  {/if}
 
-  <div
-    class={has_sections ? `sections-container` : `column-menu`}
-    data-toggle-menu-id={toggle_menu_id}
-    hidden={!column_panel_open}
-    role="group"
-    {@attach portal(dropdown_target)}
-    {@attach float({
-      anchor: trigger_el,
-      enabled: column_panel_open,
-      placement: `bottom`,
-      align: `end`,
-      flip: [`bottom`, `top`],
-      offset: 4,
-      padding: 8,
-    })}
-  >
-    {#if header || show_column_filter}
-      <div class="column-menu-header">
-        {#if show_column_filter}
-          <input
-            aria-label="Filter columns"
-            bind:value={column_filter}
-            class="column-filter"
-            placeholder="Filter columns…"
-            type="search"
-          />
-        {/if}
-        {@render header?.()}
-      </div>
-    {/if}
-    {#if has_sections}
-      {#each filtered_sections as section (section.name)}
-        {@const is_collapsed =
-          !normalized_column_filter &&
-          section.name !== `` &&
-          collapsed_sections.includes(section.name)}
-        <div class="section">
-          {#if section.name}
-            <div class="section-header-row">
-              <button
-                class="section-header"
-                aria-expanded={!is_collapsed}
-                onclick={() => toggle_section(section.name)}
-                type="button"
-              >
-                <span class="collapse-icon">{is_collapsed ? `▶` : `▼`}</span>
-                {section.name}
-              </button>
-              {#if section.items.some(is_changed)}
-                <button
-                  class="reset-btn"
-                  onclick={() => reset_columns(section.items)}
-                  type="button"
-                  aria-label="Reset {section.name} to defaults"
-                  {@attach tooltip()}
-                >
-                  <Icon icon={Reset} width="12px" />
-                </button>
-              {/if}
-            </div>
+  {#if column_panel_open}
+    <div
+      class={has_sections ? `sections-container` : `column-menu`}
+      role="group"
+      {@attach anchored_popover({
+        anchor: trigger_el,
+        on_close: () => (column_panel_open = false),
+      })}
+    >
+      {#if header || show_column_filter}
+        <div class="column-menu-header">
+          {#if show_column_filter}
+            <input
+              aria-label="Filter columns"
+              bind:value={column_filter}
+              class="column-filter"
+              placeholder="Filter columns…"
+              type="search"
+            />
           {/if}
-          {#if !is_collapsed}
-            <div
-              class="section-items"
-              style:grid-template-columns={grid_template(section.items.length)}
-              transition:slide={{ duration: 200 }}
-            >
-              {#each section.items as col (col.id)}
-                {@render toggle_item(col)}
-              {/each}
-            </div>
-          {/if}
+          {@render header?.()}
         </div>
-      {/each}
-    {:else}
-      <div
-        class="column-items"
-        style:grid-template-columns={grid_template(filtered_columns.length)}
-      >
-        {#each filtered_columns as col (col.id)}
-          {@render toggle_item(col)}
+      {/if}
+      {#if has_sections}
+        {#each filtered_sections as section (section.name)}
+          {@const is_collapsed =
+            !normalized_column_filter &&
+            section.name !== `` &&
+            collapsed_sections.includes(section.name)}
+          <div class="section">
+            {#if section.name}
+              <div class="section-header-row">
+                <button
+                  class="section-header"
+                  aria-expanded={!is_collapsed}
+                  onclick={() => toggle_section(section.name)}
+                  type="button"
+                >
+                  <span class="collapse-icon">{is_collapsed ? `▶` : `▼`}</span>
+                  {section.name}
+                </button>
+                {#if section.items.some(is_changed)}
+                  <button
+                    class="reset-btn"
+                    onclick={() => reset_columns(section.items)}
+                    type="button"
+                    aria-label="Reset {section.name} to defaults"
+                    {@attach tooltip()}
+                  >
+                    <Icon icon={Reset} width="12px" />
+                  </button>
+                {/if}
+              </div>
+            {/if}
+            {#if !is_collapsed}
+              <div
+                class="section-items"
+                style:grid-template-columns={grid_template(section.items.length)}
+                transition:slide={{ duration: 200 }}
+              >
+                {#each section.items as col (col.id)}
+                  {@render toggle_item(col)}
+                {/each}
+              </div>
+            {/if}
+          </div>
         {/each}
-      </div>
-    {/if}
-    {#if filtered_columns.length === 0}
-      <span class="no-matching-columns">No matching columns</span>
-    {/if}
-  </div>
-</details>
+      {:else}
+        <div
+          class="column-items"
+          style:grid-template-columns={grid_template(filtered_columns.length)}
+        >
+          {#each filtered_columns as col (col.id)}
+            {@render toggle_item(col)}
+          {/each}
+        </div>
+      {/if}
+      {#if filtered_columns.length === 0}
+        <span class="no-matching-columns">No matching columns</span>
+      {/if}
+    </div>
+  {/if}
+</div>
 
 <style>
   .column-toggles {
-    position: relative;
-    summary {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    > button:first-child {
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 4px;
-      &::-webkit-details-marker {
-        display: none;
-      }
       /* A custom trigger brings its own chrome. */
+      &.custom {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+      }
       &:where(:not(.custom)) {
         background: var(--tgl-btn-bg, var(--btn-bg));
         padding: 0 6pt;
@@ -336,7 +312,7 @@
     max-width: calc(100vw - 16px);
     max-height: var(--tgl-dropdown-max-height, min(70vh, 600px));
     overflow: auto;
-    z-index: var(--tgl-dropdown-z-index, 10000);
+    color: inherit; /* not the UA [popover] CanvasText */
   }
   .column-items,
   .section-items {
@@ -351,10 +327,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-  .column-menu[hidden],
-  .sections-container[hidden] {
-    display: none;
   }
   .column-menu-header {
     position: sticky;
@@ -411,9 +383,6 @@
       opacity: 1;
     }
   }
-  summary .reset-btn {
-    margin-left: auto;
-  }
   .section-header-row {
     display: flex;
     align-items: center;
@@ -467,9 +436,5 @@
         cursor: not-allowed;
       }
     }
-  }
-  details :global(:is(sub, sup)) {
-    transform: translate(-3pt, 6pt);
-    font-size: 0.7em;
   }
 </style>

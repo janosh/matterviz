@@ -129,7 +129,7 @@ describe(`HeatmapTable`, () => {
     element.click()
     await tick()
   }
-  const open_export_menu = () => click(doc_query(`.dropdown-wrapper .icon-btn`))
+  const open_export_menu = () => click(doc_query(`button[aria-label="Export"]`))
 
   it.each([false, true])(
     `renders table structure, hidden columns and row numbers=%s`,
@@ -162,7 +162,7 @@ describe(`HeatmapTable`, () => {
       ).toEqual(show_row_numbers ? [`1`, `2`, `3`] : [])
       expect(document.querySelector(`tfoot`)).toBeNull() // no footer snippet -> no tfoot
       expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
-      expect(document.querySelector(`.dropdown-wrapper`)).toBeNull()
+      expect(document.querySelector(`button[aria-label="Export"]`)).toBeNull()
       expect(document.querySelector(`.pane-toggle`)).toBeNull()
       expect(document.querySelector(`.sort-hint`)).toBeNull()
     },
@@ -1036,27 +1036,28 @@ describe(`HeatmapTable`, () => {
       await tick()
       expect(document.querySelectorAll(`th`)).toHaveLength(2)
 
-      await click(doc_query(`.column-toggles summary`))
+      await click(doc_query(`.column-toggles > button`))
       const boxes = [
         ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
       ]
       expect(boxes).toHaveLength(4)
       expect(boxes.at(-1)?.disabled).toBe(true)
 
-      // Portaled menus are outside the table; moving into one must not dismiss it.
+      // The menu sits in the top layer, outside the table's box; moving into it must not
+      // dismiss it.
       doc_query(`.table-container`).dispatchEvent(
         new MouseEvent(`mouseleave`, {
           relatedTarget: boxes[0],
         }),
       )
       await tick()
-      expect(doc_query<HTMLDetailsElement>(`.column-toggles`).open).toBe(true)
+      expect(doc_query(`.column-toggles > button`).getAttribute(`aria-expanded`)).toBe(`true`)
 
       await click(boxes[0])
       expect(state.hidden_columns).toEqual([`Value`, `Model`])
       expect(document.querySelectorAll(`th`)).toHaveLength(1)
 
-      await click(doc_query(`.column-toggles summary .reset-btn`))
+      await click(doc_query(`.column-toggles > .reset-btn`))
       expect(state.hidden_columns).toEqual([])
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
     })
@@ -1078,14 +1079,14 @@ describe(`HeatmapTable`, () => {
       )
       await tick()
 
-      await click(doc_query(`.column-toggles summary`))
+      await click(doc_query(`.column-toggles > button`))
       document
         .querySelectorAll<HTMLInputElement>(`.sections-container input`)
         .forEach((checkbox) => checkbox.click())
       await tick()
       expect(state.hidden_columns).toEqual([`grouped`, `ungrouped`])
 
-      await click(doc_query(`.column-toggles summary .reset-btn`))
+      await click(doc_query(`.column-toggles > .reset-btn`))
       expect(state.hidden_columns).toEqual([])
     })
 
@@ -1098,12 +1099,11 @@ describe(`HeatmapTable`, () => {
           show_column_toggle: true,
           export_data: true,
         })
-        const columns_btn = () => doc_query(`.column-toggles summary`)
-        const export_btn = () => doc_query<HTMLButtonElement>(`.dropdown-wrapper .icon-btn`)
-        // ToggleMenu keeps its dropdown mounted and toggles `hidden`; export renders on demand
+        const columns_btn = () => doc_query(`.column-toggles > button`)
+        const export_btn = () => doc_query<HTMLButtonElement>(`button[aria-label="Export"]`)
         const open_menus = () =>
           [
-            document.querySelector(`.column-menu:not([hidden])`),
+            document.querySelector(`.column-menu`),
             document.querySelector(`.dropdown-pane`),
           ].filter(Boolean).length
 
@@ -2141,7 +2141,9 @@ describe(`HeatmapTable`, () => {
       doc_query(`.table-container`).dispatchEvent(new MouseEvent(`mouseleave`))
       await tick()
       expect(dropdown?.isConnected).toBe(true)
-      document.body.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+      // an outside press is the browser's light dismiss of the native popover
+      expect(dropdown?.getAttribute(`popover`)).toBe(`auto`)
+      if (dropdown) dismiss_popover(dropdown)
       await tick()
       expect(dropdown?.isConnected).toBe(false)
     })
