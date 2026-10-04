@@ -793,7 +793,7 @@
   const cutaway = $derived(
     field_geometry && hotspot_cutaway.mode !== `off`
       ? { ...hotspot_cutaway, cartesian_to_fractional: field_geometry.cartesian_to_fractional }
-      : undefined,
+      : structure_props.cutaway,
   )
   let total_frames = $derived(session.frame_count)
   let current_frame = $derived(session.current_frame)

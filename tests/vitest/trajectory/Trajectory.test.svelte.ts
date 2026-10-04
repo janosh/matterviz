@@ -13,6 +13,8 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import * as plotting from '#lib/trajectory/plotting.js'
 import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
+import type { StructureCutaway } from '#lib/structure/cutaway.js'
+import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { FrameView } from '#lib/trajectory/frame.js'
@@ -517,7 +519,11 @@ describe(`controls`, () => {
   test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {
     const render_structure = vi.spyOn(
       structure_component as unknown as {
-        default: Component<{ atom_opacity?: number; volume_color_field?: unknown }>
+        default: Component<{
+          atom_opacity?: number
+          volume_color_field?: unknown
+          cutaway?: StructureCutaway
+        }>
       },
       `default`,
     )
@@ -550,6 +556,15 @@ describe(`controls`, () => {
         active_pane: `hotspots`,
         current_step_idx: 1,
         display_mode: `structure+plot`,
+        structure_props: {
+          cutaway: {
+            mode: `slab`,
+            axis: 2,
+            position: 0.5,
+            thickness: 0.05,
+            cartesian_to_fractional: new Matrix4(),
+          },
+        },
       }),
     )
     const target = mount_trajectory(props)
@@ -572,6 +587,11 @@ describe(`controls`, () => {
     expect(pane.textContent).toContain(`Heatmap on atoms`)
     expect(target.querySelector(`.structure`)).toBe(structure)
     const structure_props = render_structure.mock.lastCall?.[1]
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
+    await set_value(`Cutaway mode`, `plane`)
+    expect(structure_props?.cutaway?.mode).toBe(`plane`)
+    await set_value(`Cutaway mode`, `off`)
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
     expect(structure_props?.atom_opacity).toBe(1)
     control(`Volume cloud`).click()
     await tick()
@@ -623,6 +643,7 @@ describe(`controls`, () => {
     await tick()
     expect(target.querySelector(`.hotspot-coverage`)).toBeNull()
     expect(structure_props?.atom_opacity).toBe(1)
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
   })
 
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {

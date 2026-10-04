@@ -155,6 +155,8 @@ pnpm movie render movie.json --output movie.mp4
 
 The CLI starts a private local viewer automatically; `--url http://localhost:3000` uses an existing server. Its dedicated `/trajectory/render` page exposes the same controller as `window.matterviz_movie`, plus `configure(structure_props)`. Files selected through `#movie-source` stay browser `File` objects, so indexed HDF5 loading does not copy an entire large file into JavaScript memory. Results are JSON on stdout; progress and errors go to stderr. Ctrl+C cancels the job. Existing output files are never overwritten.
 
+From another directory, invoke `node /path/to/matterviz/src/scripts/movie.mjs render movie.json --output movie.mp4`. The private viewer starts from the checkout while the input JSON and output keep their caller-relative paths. `visuals.cutaway` accepts the same cutaway settings as `Structure`; use a slice when a dense bulk system would obscure the motion.
+
 ```json
 {
   "source": { "path": "./trajectory.h5" },
@@ -184,6 +186,8 @@ The CLI starts a private local viewer automatically; `--url http://localhost:300
 ```
 
 Local source paths resolve relative to the JSON file; a `source.url` or `source.hdf5_group_path` can also be supplied. Omit `frames` to cover the whole trajectory or provide `{ "start": 0, "end": 100 }` with an exclusive end. Omit `camera` to hold the fitted view, use the orbit preset, or provide an explicit `CameraFlight` with timed keyframes. Orbit fitting starts from the current frame; inspect a storyboard for expanding cells or moving atoms before committing to a long render. A completed job saves the resolved camera path, reference viewport and encoding settings beside the output as `<output>.json`; edit its FPS or duration and render it again to produce a new frame schedule while retaining camera framing.
+
+For irregular simulation timestamps, provide `source_frames` with one zero-based source index per encoded video frame. Indices must lie within the selected `frames` range; repeated indices hold actual recorded coordinates. The array length must equal `round(video.duration_s * video.fps)`, so editing the duration or FPS of an explicit schedule requires updating the schedule too. Previews sample the same schedule, and the saved plan records it for reproducible offline rendering.
 
 During rendering, `<output>.review/plan.json` records the plan and `<output>.review/latest.png` is atomically replaced with sampled frames from the actual encoder input. JSON `sample` events identify the image path, video frame, source frame and timestamp. Inspect that image while the command runs; Ctrl+C or SIGTERM cancels a bad render. `encoding` and `verifying` events distinguish finalization from validation. The final `<output>.review/storyboard.png` is decoded from the encoded video, and validation checks decoding errors, frame count, dimensions and duration. Review artifacts remain available after cancellation or failure. `--samples` controls the sample count for previews and render inspection (default six). Output, manifest and review-path collisions are rejected before loading.
 

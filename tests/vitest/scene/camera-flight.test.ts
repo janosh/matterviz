@@ -91,6 +91,37 @@ describe(`movie plans`, () => {
     expect(plan.camera.keyframes[0]).toEqual({ ...pose, time: 0 })
     expect(plan.frames).toEqual({ start: 5, end: 8 })
   })
+  it(`preserves an explicit irregular source schedule when saving and rendering`, () => {
+    const source_frames = [2, 2, 2, 4, 7, 7]
+    const plan = plan_movie(
+      {
+        video: { ...video, fps: 6, duration_s: 1 },
+        frames: { start: 2, end: 8 },
+        source_frames,
+      },
+      10,
+      pose,
+    )
+    source_frames[0] = 9
+    // oxlint-disable-next-line unicorn/prefer-structured-clone -- a saved plan goes through JSON
+    const restored = plan_movie(JSON.parse(JSON.stringify(plan)), 10, pose)
+    expect(restored).toEqual(plan)
+    expect(Array.from({ length: 6 }, (_unused, idx) => movie_frame(restored, idx))).toEqual(
+      [2, 2, 2, 4, 7, 7].map((source_frame, idx) => ({
+        source_frame,
+        camera_time: idx / 5,
+        timestamp_us: Math.round((idx * 1e6) / 6),
+      })),
+    )
+    // the error names the offending entry, not just the expected shape
+    expect(() =>
+      plan_movie(
+        { video: { ...video, fps: 2, duration_s: 1 }, source_frames: [0, 10] },
+        10,
+        pose,
+      ),
+    ).toThrow(`got 2 with 10 at 1`)
+  })
   it.each([`perspective`, `orthographic`] as const)(
     `builds a serializable %s orbit`,
     (projection) => {
@@ -122,6 +153,15 @@ describe(`movie plans`, () => {
     { video: { ...video, bitrate: -1 } },
     { video, frames: { start: 3, end: 3 } },
     { video, frames: { start: 0, end: 11 } },
+    { video, source_frames: [] },
+    { video: { ...video, fps: 2, duration_s: 1 }, source_frames: [0, 10] },
+    { video: { ...video, fps: 2, duration_s: 1 }, source_frames: [0, 1.5] },
+    { video: { ...video, fps: 2, duration_s: 1 }, source_frames: Array(2) },
+    {
+      video: { ...video, fps: 2, duration_s: 1 },
+      frames: { start: 2, end: 4 },
+      source_frames: [1, 3],
+    },
     { video, camera: { preset: `orbit`, distance_scale: 0 } },
   ] satisfies MovieRequest[])(`rejects invalid movie settings: %j`, (request) => {
     expect(() => plan_movie(request, 10, pose)).toThrow(/movie|Movie|orbit/)

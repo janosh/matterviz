@@ -75,6 +75,7 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
     const plan = plan_movie(
       {
         video: { width: 1280, height: 720, fps: 30, duration_s: 0.1 },
+        source_frames: [0, 0, 5],
         camera: { preset: `orbit`, turns: 0.5 },
       },
       6,
@@ -121,7 +122,7 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
     await vi.runAllTimersAsync()
     if (outcome === `success`) {
       expect(await result).toBeUndefined()
-      expect(captured).toEqual([0, 3, 5])
+      expect(captured).toEqual([0, 0, 5])
       const rendered_camera = renderer.render.mock.calls.at(-1)?.[1] as PerspectiveCamera
       expect(rendered_camera.aspect).toBe(16 / 9)
       expect(rendered_camera.position.toArray()).toEqual(

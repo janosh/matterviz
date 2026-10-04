@@ -49,6 +49,9 @@ export type MovieRequest = {
   // Zero-based source frames, start inclusive and end exclusive. Repeated video frames
   // hold a source frame; atomic coordinates are never interpolated.
   frames?: { start: number; end: number }
+  // One exact source index per encoded frame, useful for irregular simulation timestamps.
+  // Repeated indices hold recorded coordinates; no atomic motion is synthesized.
+  source_frames?: number[]
   camera?:
     | CameraFlight
     | {
@@ -71,6 +74,7 @@ export type MovieRequest = {
 
 export type MoviePlan = {
   frames: { start: number; end: number }
+  source_frames?: number[]
   camera: CameraFlight
   // Orthographic poses store zoom in CSS pixels. Retain their reference frustum height
   // so reopening this plan in a different-sized viewer preserves world-space framing.
@@ -119,6 +123,17 @@ export function plan_movie(
     throw new RangeError(`Movie bitrate must be positive, got ${video.bitrate}`)
   // Quantize duration to whole video frames and report the actual encoded duration.
   const duration_s = frame_count / video.fps
+  if (request.source_frames) {
+    // Array.from turns holes into undefined, which fails the integer check too
+    const schedule = Array.from(request.source_frames)
+    const bad_idx = schedule.findIndex(
+      (idx) => !Number.isInteger(idx) || idx < frames.start || idx >= frames.end,
+    )
+    if (schedule.length !== frame_count || bad_idx !== -1)
+      throw new RangeError(
+        `Movie source_frames must contain ${frame_count} indices in ${frames.start}..${frames.end - 1}, got ${schedule.length}${bad_idx === -1 ? `` : ` with ${schedule[bad_idx]} at ${bad_idx}`}`,
+      )
+  }
   let flight: CameraFlight
   if (camera && `keyframes` in camera) {
     validate_camera_flight(camera)
@@ -188,6 +203,7 @@ export function plan_movie(
   validate_camera_flight(flight)
   return {
     frames: { ...frames },
+    ...(request.source_frames ? { source_frames: [...request.source_frames] } : {}),
     camera: flight,
     camera_viewport_height,
     video: { ...video, duration_s, frame_count },
@@ -201,9 +217,9 @@ export const movie_frame = (plan: MoviePlan, idx: number) => {
     throw new RangeError(`Movie frame ${idx} is outside 0..${plan.video.frame_count - 1}`)
   const progress = plan.video.frame_count === 1 ? 0 : idx / (plan.video.frame_count - 1)
   return {
-    source_frame: Math.round(
-      plan.frames.start + progress * (plan.frames.end - plan.frames.start - 1),
-    ),
+    source_frame: plan.source_frames
+      ? plan.source_frames[idx]
+      : Math.round(plan.frames.start + progress * (plan.frames.end - plan.frames.start - 1)),
     camera_time: progress * plan.video.duration_s,
     timestamp_us: Math.round((idx * 1e6) / plan.video.fps),
   }
