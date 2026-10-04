@@ -13,7 +13,6 @@ describe(`ColorScaleSelect`, () => {
       target: document.body,
       props: {
         value: `interpolateViridis`,
-
         style,
       },
     })
@@ -61,7 +60,6 @@ describe(`ColorScaleSelect`, () => {
       props: {
         options,
         value: options[0],
-
         color_bar: custom
           ? {
               tick_side: `secondary`,

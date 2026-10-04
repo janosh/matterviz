@@ -89,7 +89,9 @@ describe(`Settings`, () => {
       expect(merge({ structure: undefined })).toEqual(DEFAULTS)
     })
 
-    test(`overrides specified values while preserving defaults`, () => {
+    test(`overrides specified values while preserving (and never mutating) defaults`, () => {
+      // deep clone: a shallow spread shares the nested objects and would miss an in-place write
+      const original = structuredClone(DEFAULTS)
       // PartialSettings is deep-partial, so a single leaf of a nested group type-checks
       const result = merge({
         color_scheme: `Jmol`,
@@ -119,6 +121,7 @@ describe(`Settings`, () => {
       expect(result.scatter.point.color).toBe(DEFAULTS.scatter.point.color)
       expect(result.scatter.line).toEqual(DEFAULTS.scatter.line)
       expect(result.plot).toEqual(DEFAULTS.plot)
+      expect(DEFAULTS).toEqual(original)
     })
 
     // The merge recurses wherever both sides are plain objects: a level-3 leaf override keeps
@@ -172,14 +175,6 @@ describe(`Settings`, () => {
   })
 
   describe(`Edge cases and robustness`, () => {
-    test(`merge preserves immutability of DEFAULTS`, () => {
-      // deep clone: a shallow spread shares the nested objects and would miss an in-place write
-      const original = structuredClone(DEFAULTS)
-      merge({ structure: { atom_radius: 999 } })
-      expect(DEFAULTS).toEqual(original)
-      expect(DEFAULTS.structure.atom_radius).not.toBe(999)
-    })
-
     // Locks the shipped structure-viewer defaults. The clone test below deliberately does
     // not, since it compares DEFAULTS against values read from DEFAULTS.
     test(`structure viewer ships the intended defaults`, () => {
@@ -191,10 +186,8 @@ describe(`Settings`, () => {
 
     // sync-config turns every editor-context setting into a VS Code `contributes.
     // configuration` entry, so a key nothing reads becomes a documented toggle wired to
-    // nothing. That shipped for 13 keys (trajectory.loop_playback, pause_on_hover,
-    // smooth_playback, structure.show_cell, ...) plus four plot.show_*_grid keys that lost
-    // to scatter.display.*_grid. Leaf-name matching, so a generic name like `opacity` can
-    // still hide, but every distinctive dead key gets caught.
+    // nothing. Leaf-name matching, so a generic name like `opacity` can still hide, but every
+    // distinctive dead key gets caught.
     test(`every setting is read somewhere outside settings.ts`, () => {
       const leaf_paths: string[] = []
       const walk = (node: unknown, path: string[]): void => {
@@ -253,10 +246,7 @@ describe(`Settings`, () => {
     })
   })
 
-  // Components used to declare their defaults twice: once as $bindable() props and once as
-  // a `defaults` object in their Controls, with nothing keeping the two in step (Trajectory
-  // shipped fps = 5 against the schema's 10). For every component that reads DEFAULTS, each
-  // $props() default whose name is a leaf of a schema group that component reads must
+  // For every component that reads DEFAULTS, each $props() default whose name is a leaf of a schema group that component reads must
   // evaluate to that leaf's value. Static evaluation of the default expression rather than a
   // mount: Threlte scenes and components with required props can't mount propless in
   // happy-dom, and it covers every prop either way.

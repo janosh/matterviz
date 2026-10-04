@@ -75,6 +75,7 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
     const plan = plan_movie(
       {
         video: { width: 1280, height: 720, fps: 30, duration_s: 0.1 },
+        source_frames: [0, 0, 5],
         camera: { preset: `orbit`, turns: 0.5 },
       },
       6,
@@ -121,7 +122,7 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
     await vi.runAllTimersAsync()
     if (outcome === `success`) {
       expect(await result).toBeUndefined()
-      expect(captured).toEqual([0, 3, 5])
+      expect(captured).toEqual([0, 0, 5])
       const rendered_camera = renderer.render.mock.calls.at(-1)?.[1] as PerspectiveCamera
       expect(rendered_camera.aspect).toBe(16 / 9)
       expect(rendered_camera.position.toArray()).toEqual(
@@ -287,16 +288,17 @@ describe(`canvas_to_png_blob`, () => {
     expect(canvas.toBlob).not.toHaveBeenCalled()
   })
 
-  test(`rejects when toBlob returns null`, async () => {
-    const canvas = make_mock_canvas((callback_fn) => callback_fn(null))
-    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Failed to generate PNG`)
-  })
-
-  test(`rejects when toBlob throws`, async () => {
-    const canvas = make_mock_canvas(() => {
-      throw new Error(`Canvas tainted`)
-    })
-    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
+  test.each<[string, (callback_fn: BlobCallback) => void, string]>([
+    [`returns null`, (callback_fn) => callback_fn(null), `Failed to generate PNG`],
+    [
+      `throws`,
+      () => {
+        throw new Error(`Canvas tainted`)
+      },
+      `Canvas tainted`,
+    ],
+  ])(`rejects when toBlob %s`, async (_desc, to_blob, message) => {
+    await expect(canvas_to_png_blob(make_mock_canvas(to_blob), 72)).rejects.toThrow(message)
   })
 
   test.each([`setDrawingBufferSize`, `render`, `toBlob`] as const)(

@@ -89,20 +89,19 @@ describe(`VolumeSlice`, () => {
   test.each(mode_cases)(`renders $mode mode`, async ({ mode, fills, contours }) => {
     const { canvas, context } = await mount_volume_slice({ mode, contour_levels: [4, 8, 12] })
 
-    expect(canvas?.width).toBe(4)
-    expect(canvas?.height).toBe(4)
+    expect([canvas?.width, canvas?.height]).toEqual([4, 4])
+    expect(canvas?.getAttribute(`aria-label`)).toBe(`Volumetric scalar-field slice`)
+    expect(canvas?.getAttribute(`style`)).toContain(`aspect-ratio: 2`) // physical u:v extent
     expect(context.putImageData).toHaveBeenCalledTimes(fills ? 1 : 0)
     // every threshold level shares one stroked path
     expect(context.stroke).toHaveBeenCalledTimes(contours ? 1 : 0)
-    // beyond the 4-corner clip polygon, contours add segments
-    if (contours) expect(context.moveTo.mock.calls.length).toBeGreaterThan(4)
-    else expect(context.moveTo).not.toHaveBeenCalled()
-  })
-
-  test(`renders an accessible canvas with physical aspect ratio`, async () => {
-    const { canvas } = await mount_volume_slice()
-    expect(canvas?.getAttribute(`aria-label`)).toBe(`Volumetric scalar-field slice`)
-    expect(canvas?.getAttribute(`style`)).toContain(`aspect-ratio: 2`)
+    expect(context.clip).toHaveBeenCalledTimes(contours ? 1 : 0)
+    if (contours) {
+      // the first clip-path corner is polygon corner (-2, -1) → pixel (0.5, 0.5), flipped
+      // to v-up row 3.5; beyond the 4-corner clip polygon, contours add segments
+      expect(context.moveTo).toHaveBeenNthCalledWith(1, 0.5, 3.5)
+      expect(context.moveTo.mock.calls.length).toBeGreaterThan(4)
+    } else expect(context.moveTo).not.toHaveBeenCalled()
   })
 
   test(`centers a bounded horizontal colorbar`, async () => {
@@ -173,13 +172,6 @@ describe(`VolumeSlice`, () => {
 
     expect(context.moveTo).toHaveBeenCalledTimes(1)
     expect(context.lineTo).toHaveBeenCalledTimes(3)
-  })
-
-  test(`clips contours to the polygon in flipped (v up) canvas rows`, async () => {
-    const { context } = await mount_volume_slice({ mode: `contours`, contour_levels: [4] })
-    // the first clip-path corner is polygon corner (-2, -1) → pixel (0.5, 0.5), flipped to 3.5
-    expect(context.moveTo).toHaveBeenNthCalledWith(1, 0.5, 3.5)
-    expect(context.clip).toHaveBeenCalledOnce()
   })
 
   // Canvas takes a colour value, so `currentColor` has to be sampled in JS and the slice

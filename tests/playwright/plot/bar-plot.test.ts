@@ -106,12 +106,12 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect.poll(() => bars.count()).toBe(initial_bars)
   })
 
-  test(`drag zoom shrinks both axes and double-click resets`, async ({ page }) => {
-    await expect_zoom_shrinks_axes(page, page.locator(`#basic-bar .bar-plot`))
-  })
-
-  test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {
-    await expect_shift_drag_pans(page, page.locator(`#basic-bar .bar-plot`))
+  test(`drag zoom shrinks both axes, double-click resets, Shift+drag pans`, async ({
+    page,
+  }) => {
+    const plot = page.locator(`#basic-bar .bar-plot`)
+    await expect_zoom_shrinks_axes(page, plot)
+    await expect_shift_drag_pans(page, plot)
   })
 
   test(`on_bar_hover and on_bar_click handlers with pointer cursor`, async ({ page }) => {

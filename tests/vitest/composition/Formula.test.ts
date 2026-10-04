@@ -61,13 +61,18 @@ test.each([
 })
 
 test.each([
-  [`H2O`, [`2`]], // subscript for amounts > 1
-  [`HO`, []], // no subscript for amount = 1
-])(`Formula component subscripts for %s -> %j`, (formula, expected) => {
-  mount_formula({ formula })
-  const subscripts = Array.from(document.querySelectorAll(`sub`))
-  expect(subscripts.map((sub) => sub.textContent)).toEqual(expected)
-})
+  [`H2O`, undefined, [`2`]], // subscript for amounts > 1
+  [`HO`, undefined, []], // no subscript for amount = 1
+  [`H2O`, `.2f`, [`2.00`]],
+])(
+  `Formula subscripts for %s (amount_format=%s) -> %j`,
+  (formula, amount_format, expected) => {
+    mount_formula({ formula, amount_format })
+    expect([...document.querySelectorAll(`sub`)].map((sub) => sub.textContent)).toEqual(
+      expected,
+    )
+  },
+)
 
 test.each([`span`, `div`, `h1`, `strong`, `p`])(
   `Formula renders with as="%s"`,
@@ -93,38 +98,16 @@ test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
   },
 )
 
-test(`Formula formats amounts with custom format string`, () => {
-  mount_formula({ formula: `H2O`, amount_format: `.2f` })
-  const subscript = document.querySelector(`sub`)
-  expect(subscript?.textContent).toBe(`2.00`)
-})
-
 test.each([`Vesta`, `Jmol`] as const)(
   `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,
   async (color_scheme) => {
     mount_formula({ formula: `Fe2O3`, color_scheme })
-
-    const element_group = document.querySelector(`.element-group`) as HTMLElement
-    expect(element_group).toBeInstanceOf(HTMLElement)
-
-    // Trigger mouseenter to show tooltip
-    element_group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-
-    // Wait for Svelte to update the DOM
+    doc_query(`.element-group`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 0))
-
-    const tooltip = document.querySelector(`.tooltip`)
-    expect(tooltip).toBeInstanceOf(HTMLElement)
-
-    // Get the ElementTile inside the tooltip
-    const tile = tooltip?.querySelector(`.element-tile`) as HTMLElement
-    expect(tile).toBeInstanceOf(HTMLElement)
-
-    // The tile background should match the color scheme for Fe
-    const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.Fe
-    if (!expected_hex) throw new Error(`Missing color for Fe in ${color_scheme}`)
-    const actual_hex = rgb(tile.style.backgroundColor).formatHex()
-    expect(actual_hex).toBe(expected_hex.toLowerCase())
+    const tile = doc_query(`.tooltip .element-tile`)
+    expect(rgb(tile.style.backgroundColor).formatHex()).toBe(
+      ELEMENT_COLOR_SCHEMES[color_scheme].Fe.toLowerCase(),
+    )
   },
 )
 

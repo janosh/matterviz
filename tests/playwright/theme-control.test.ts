@@ -6,17 +6,11 @@ test.describe(`ThemeControl`, () => {
   const theme_icons = THEME_OPTIONS.map((option) => option.icon)
 
   test.beforeEach(async ({ page }) => {
-    // Ensure clean state for each test
     await page.addInitScript(() => localStorage.removeItem(`matterviz-theme`))
   })
 
-  // ThemeControl lives in the root layout, so it's identical on every route. We
-  // land on the lightweight /acknowledgements markdown page instead of the heavy
-  // homepage (multiple periodic tables + 3D scenes) so the layout hydrates fast
-  // even under CI contention -- selectOption only triggers ThemeControl's
-  // reactive effect after hydration. We also avoid waitUntil: `networkidle`
-  // (Playwright discourages it as flaky); auto-retrying assertions are the real
-  // readiness signal.
+  // ThemeControl lives in the root layout, so the light markdown page hydrates it fastest
+  // under CI contention (the homepage carries periodic tables and 3D scenes)
   const light_route = `/acknowledgements`
 
   async function get_theme_control(page: Page) {
@@ -26,13 +20,8 @@ test.describe(`ThemeControl`, () => {
     return control
   }
 
-  // Select a (non-auto) theme, retrying until ThemeControl's reactive effect has
-  // run. selectOption updates the native <select> immediately, but the effect
-  // that applies the theme + writes localStorage only attaches after Svelte
-  // hydration. An inline FOUC script in app.html sets data-theme pre-hydration,
-  // so the attribute merely existing is NOT a hydration signal -- but it flips to
-  // `mode` once the effect runs, which is what we retry on. This replaces the
-  // previous flaky `networkidle` wait that raced hydration under CI contention.
+  // The effect applying a theme only attaches after hydration, and app.html's inline FOUC
+  // script sets data-theme before that, so retry the selection until data-theme flips to it
   async function select_theme(page: Page, control: Locator, mode: ThemeMode) {
     await expect(async () => {
       await control.selectOption(mode)
@@ -42,35 +31,18 @@ test.describe(`ThemeControl`, () => {
     }).toPass({ timeout: 15_000 })
   }
 
-  test(`renders with all theme options`, async ({ page }) => {
+  test(`lists every theme option and applies each one's color scheme`, async ({ page }) => {
     const theme_control = await get_theme_control(page)
-    await expect(theme_control).toBeVisible()
-
-    // Check scoped class contains theme-control
-    const class_attr = await theme_control.getAttribute(`class`)
-    expect(class_attr).toContain(`theme-control`)
-
-    // Check all options are present with correct icons and count
     const options = theme_control.locator(`option`)
     await expect(options).toHaveCount(5)
-
     for (let idx = 0; idx < themes.length; idx++) {
       await expect(options.nth(idx)).toHaveText(
         new RegExp(`${theme_icons[idx]}.*${themes[idx]}`, `i`),
       )
     }
-  })
-
-  test(`applies all themes correctly`, async ({ page }) => {
-    const theme_control = await get_theme_control(page)
-    const html_element = page.locator(`html`)
 
     for (const theme of themes.filter((theme_name) => theme_name !== `auto`)) {
-      // select_theme retries until the applied data-theme matches `theme`
       await select_theme(page, theme_control, theme)
-      await expect(html_element).toHaveAttribute(`data-theme`, theme, { timeout: 15_000 })
-
-      // Use expect.poll for evaluated values
       const expected_scheme = theme === `white` || theme === `light` ? `light` : `dark`
       await expect
         .poll(
@@ -147,52 +119,31 @@ test.describe(`ThemeControl`, () => {
   })
 
   test(`persists preferences and handles page navigation`, async ({ browser }) => {
-    // Use a fresh context without addInitScript to properly test persistence
+    // a fresh context without the beforeEach init script, which would wipe the stored theme
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    // Clear any existing theme preference and navigate. Use lightweight routes
-    // (layout hydrates fast under CI contention) and avoid waitUntil:
-    // `networkidle` (flaky); select_theme gates the interaction on hydration and
-    // assertions auto-retry.
     await page.goto(light_route)
     await page.evaluate(() => localStorage.removeItem(`matterviz-theme`))
     await page.reload()
-
-    let theme_control = page.locator(`.theme-control`)
+    const theme_control = page.locator(`.theme-control`)
     await expect(theme_control).toBeVisible({ timeout: 15_000 })
-
-    // Set theme (retries until hydrated) and check localStorage
     await select_theme(page, theme_control, `dark`)
-
-    // Use expect.poll for evaluated values
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)), {
         timeout: 15_000,
       })
       .toBe(`dark`)
 
-    // Test persistence across reload (no addInitScript to interfere)
-    await page.reload()
-    theme_control = page.locator(`.theme-control`)
-    await expect(theme_control).toBeVisible({ timeout: 15_000 })
-
-    await expect(theme_control).toHaveValue(`dark`, { timeout: 15_000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
-      timeout: 15_000,
-    })
-
-    // Test persistence across navigation to a different (also lightweight) route
-    // -- not the heavy /bohr-atoms page (~118 animated SVG atoms) that was timing
-    // out under CI's software renderer.
-    await page.goto(`/acknowledgements`)
-    const nav_theme_control = page.locator(`.theme-control`)
-    await expect(nav_theme_control).toBeVisible({ timeout: 15_000 })
-    await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 15_000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
-      timeout: 15_000,
-    })
-
+    // survives a reload and a navigation (a light route: the heavy /bohr-atoms page timed
+    // out under CI's software renderer)
+    for (const reload of [true, false]) {
+      if (reload) await page.reload()
+      else await page.goto(`/acknowledgements`)
+      await expect(theme_control).toHaveValue(`dark`, { timeout: 15_000 })
+      await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
+        timeout: 15_000,
+      })
+    }
     await context.close()
   })
 })

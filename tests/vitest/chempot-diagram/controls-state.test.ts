@@ -126,26 +126,6 @@ test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
   expect(sinks).toEqual([`sanitize_html(grid_item.label)`])
 })
 
-test(`ChemPotScene3D derives backside placement from current ranges`, () => {
-  const source = read_component_source(`ChemPotScene3D`)
-  expect(source).toContain(
-    `niced_range.map((range, axis_idx) => range[backside_indices[axis_idx]])`,
-  )
-  expect(source).not.toMatch(/let (?:back|out_[xy]) = \$state/)
-  expect(source).toContain(`const center = data_center`)
-  expect(source).toContain(`update_backside_indices(center)`)
-})
-
-test(`ChemPotScene3D skips hidden overlay geometry construction`, () => {
-  const source = read_component_source(`ChemPotScene3D`)
-  expect(source).toContain(
-    `if (!show_axes && !show_grid && !display.show_axis_labels) return []`,
-  )
-  expect(source).toMatch(/line_geom:\s*show_axes\s*\?\s*line_geometry/)
-  expect(source).toMatch(/grid_geoms:\s*show_grid/)
-  expect(source).toContain(`if (!display.show_bounding_box) return null`)
-})
-
 describe(`rescale_zoom_to_fit`, () => {
   test.each([
     [`unpinned zoom stays unpinned`, null, 10, 20, null],

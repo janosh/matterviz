@@ -168,18 +168,6 @@ describe(`create_file_drop_handler`, () => {
     expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: parse failed`)
   })
 
-  test(`processes all dropped files sequentially in drop order`, async () => {
-    vi.mocked(decompress_file)
-      .mockResolvedValueOnce({ content: `first`, filename: `a.cube` })
-      .mockResolvedValueOnce({ content: `second`, filename: `b.cube` })
-    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
-    expect(on_drop).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(on_drop).mock.calls).toEqual([
-      [`first`, `a.cube`, source_meta(`a.cube.gz`)],
-      [`second`, `b.cube`, source_meta(`b.cube.gz`)],
-    ])
-  })
-
   test.each([
     [0, [new File([`x`], `a.yaml`)], `Drop at most 0 files at a time (received 1)`],
     [
@@ -238,24 +226,42 @@ describe(`create_file_drop_handler`, () => {
     ])
   })
 
-  test(`one failing file does not abort the rest of the batch`, async () => {
-    vi.mocked(decompress_file)
-      .mockRejectedValueOnce(new Error(`corrupt`))
-      .mockResolvedValueOnce({ content: `ok`, filename: `b.cube` })
-    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
-    expect(on_drop).toHaveBeenCalledWith(`ok`, `b.cube`, source_meta(`b.cube.gz`))
-    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — a.cube.gz: corrupt`)
-    expect(set_loading).toHaveBeenLastCalledWith(false)
-  })
-
-  test(`aggregates multiple failures into one plural message`, async () => {
-    vi.mocked(decompress_file)
-      .mockRejectedValueOnce(new Error(`corrupt`))
-      .mockRejectedValueOnce(new Error(`bad header`))
-    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
-    expect(on_error).toHaveBeenCalledWith(
+  // Files load sequentially in drop order; a failing file never aborts the rest and all
+  // failures aggregate into one message
+  const ok_a = { content: `first`, filename: `a.cube` }
+  const ok_b = { content: `second`, filename: `b.cube` }
+  test.each([
+    [
+      `both load`,
+      [ok_a, ok_b],
+      [
+        [`first`, `a.cube`, source_meta(`a.cube.gz`)],
+        [`second`, `b.cube`, source_meta(`b.cube.gz`)],
+      ],
+      undefined,
+    ],
+    [
+      `first fails`,
+      [new Error(`corrupt`), ok_b],
+      [[`second`, `b.cube`, source_meta(`b.cube.gz`)]],
+      `Failed to load 1 file — a.cube.gz: corrupt`,
+    ],
+    [
+      `both fail`,
+      [new Error(`corrupt`), new Error(`bad header`)],
+      [],
       `Failed to load 2 files — a.cube.gz: corrupt; b.cube.gz: bad header`,
-    )
+    ],
+  ])(`two-file batch where %s`, async (_desc, outcomes, drops, error) => {
+    for (const outcome of outcomes) {
+      if (outcome instanceof Error) vi.mocked(decompress_file).mockRejectedValueOnce(outcome)
+      else vi.mocked(decompress_file).mockResolvedValueOnce(outcome)
+    }
+    await run({}, [new File([`x`], `a.cube.gz`), new File([`y`], `b.cube.gz`)])
+    expect(vi.mocked(on_drop).mock.calls).toEqual(drops)
+    if (error) expect(on_error).toHaveBeenCalledExactlyOnceWith(error)
+    else expect(on_error).not.toHaveBeenCalled()
+    expect(set_loading).toHaveBeenLastCalledWith(false)
   })
 
   test(`overlapping drops are processed sequentially, not interleaved`, async () => {
@@ -361,10 +367,6 @@ describe(`create_file_drop_handler`, () => {
   })
 })
 
-// DataTransfer.files stops at the top level: drop a directory and it reports one
-// zero-byte File named after the directory, which used to surface as "file is empty".
-// The entry API is the only way inside, so these go through the real expansion rather
-// than a mock of it.
 // Overlapping drops must serialize here too: the raw zone hands sources straight to
 // open_material, whose commit mutates viewer state the same way the reading zone's does.
 test(`raw_file_drop_zone queues overlapping drops`, async () => {

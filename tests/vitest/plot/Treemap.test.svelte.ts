@@ -67,6 +67,10 @@ describe(`Treemap`, () => {
     }
     expect(size_of(`A`)).toBeCloseTo(size_of(`B`), 4)
     expect(size_of(`A2`)).toBeGreaterThan(size_of(`A1`)) // 6 > 4
+    // cells expose button semantics with a roving tabindex
+    expect(cell_rect(plot, `A`).getAttribute(`role`)).toBe(`button`)
+    expect(cell_rect(plot, `A`).getAttribute(`aria-label`)).toBe(`A: 10`)
+    expect(plot.querySelectorAll(`.cells rect[tabindex="0"]`)).toHaveLength(1)
   })
 
   test.each([
@@ -175,15 +179,6 @@ describe(`Treemap`, () => {
     },
   )
 
-  test(`breadcrumb 'all' zooms back out to the root`, async () => {
-    const plot = await mount_sized_treemap()
-    await fire(cell_rect(plot, `A`))
-    await fire(plot.querySelector(`.breadcrumb`)) // 'all'
-    await tick()
-    expect(n_cells(plot)).toBe(4)
-    expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
-  })
-
   // The chrome floats over the cells, so its icons take their color from whatever is
   // painted beneath. Asserted on the buttons, not the row: a <button> does not inherit
   // `color`, so setting it on the row left the gear at its UA default while the
@@ -207,63 +202,48 @@ describe(`Treemap`, () => {
     if (pane) expect(getComputedStyle(pane).color).not.toBe(expected)
   })
 
-  // Clicking a bucket used to zoom *into* it, landing on one meaningless full-viewport
-  // cell, because a bucket stands for nodes it does not itself contain.
-  test(`clicking an 'Other' bucket reveals the nodes it stood for`, async () => {
-    // Every child of `thin` is tiny next to the root total, so all three bucket
-    const long_tail: TreemapNode[] = [
-      { label: `fat`, value: 900 },
-      {
-        label: `thin`,
-        children: [
-          { label: `a`, value: 40 },
-          { label: `b`, value: 30 },
-          { label: `c`, value: 30 },
-        ],
-      },
-    ]
-    const plot = await mount_sized_treemap({ data: long_tail, min_fraction: 0.1 })
-    const label_of = (rect: Element) => rect.getAttribute(`aria-label`) ?? ``
-    const cells = () => [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)]
-    const bucket = cells().find((rect) => label_of(rect).startsWith(`Other`))
-    expect(bucket).toBeDefined()
-
-    await fire(bucket)
+  test.each([
+    // Clicking a bucket used to zoom *into* it, landing on one meaningless full-viewport
+    // cell, because a bucket stands for nodes it does not itself contain. Every child
+    // of `thin` is tiny next to the root total, so all three bucket; re-rooted on
+    // `thin`, they clear the threshold measured against it.
+    {
+      name: `clicking a min_fraction bucket reveals the nodes it stood for`,
+      data: [
+        { label: `fat`, value: 900 },
+        {
+          label: `thin`,
+          children: [40, 30, 30].map((value, idx) => ({ label: `abc`[idx], value })),
+        },
+      ],
+      props: { min_fraction: 0.1 },
+      revealed: [`a`, `b`, `c`],
+    },
+    // `max_children` is a rank cap, not a threshold: re-measuring against the zoom root
+    // re-applies it identically, so the bucket would reappear and the click do nothing
+    {
+      name: `clicking a max_children bucket opens it`,
+      data: [
+        {
+          label: `p`,
+          children: [5, 4, 3, 2, 1].map((value, idx) => ({ label: `abcde`[idx], value })),
+        },
+      ],
+      props: { max_children: 3 },
+      revealed: [`a`, `b`, `c`, `d`, `e`],
+    },
+  ])(`$name`, async ({ data, props, revealed }) => {
+    const plot = await mount_sized_treemap({ data, ...props })
+    const cell_names = () =>
+      [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)].map(
+        (rect) => rect.getAttribute(`aria-label`)?.split(`:`)[0] ?? ``,
+      )
+    const bucket_idx = cell_names().findIndex((name) => name.startsWith(`Other`))
+    expect(bucket_idx).toBeGreaterThanOrEqual(0)
+    await fire(plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)[bucket_idx])
     await tick()
-    // Re-rooted on `thin`, whose children now clear the threshold measured against it
-    const shown = cells()
-      .map(label_of)
-      .map((label) => label.split(`:`)[0])
-    expect(shown).toEqual(expect.arrayContaining([`a`, `b`, `c`]))
-    expect(shown.some((label) => label.startsWith(`Other`))).toBe(false)
-  })
-
-  // `max_children` is a rank cap, not a threshold: re-measuring against the zoom root
-  // re-applies it identically, so the bucket would reappear and the click do nothing
-  test(`clicking a max_children bucket opens it`, async () => {
-    const wide: TreemapNode[] = [
-      {
-        label: `p`,
-        children: [
-          { label: `a`, value: 5 },
-          { label: `b`, value: 4 },
-          { label: `c`, value: 3 },
-          { label: `d`, value: 2 },
-          { label: `e`, value: 1 },
-        ],
-      },
-    ]
-    const plot = await mount_sized_treemap({ data: wide, max_children: 3 })
-    const label_of = (rect: Element) => rect.getAttribute(`aria-label`) ?? ``
-    const cells = () => [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)]
-    const bucket = cells().find((rect) => label_of(rect).startsWith(`Other`))
-    expect(bucket).toBeDefined()
-
-    await fire(bucket)
-    await tick()
-    const shown = cells().map((rect) => label_of(rect).split(`:`)[0])
-    expect(shown).toEqual(expect.arrayContaining([`a`, `b`, `c`, `d`, `e`]))
-    expect(shown.some((label) => label.startsWith(`Other`))).toBe(false)
+    expect(cell_names()).toEqual(expect.arrayContaining(revealed))
+    expect(cell_names().some((name) => name.startsWith(`Other`))).toBe(false)
   })
 
   // Zoom-aware bucketing rebuilds the arcs on every zoom, so the tween can no longer
@@ -336,6 +316,10 @@ describe(`Treemap`, () => {
   })
 
   test.each([
+    [
+      `breadcrumb 'all'`,
+      (plot: HTMLElement): Promise<void> => fire(plot.querySelector(`.breadcrumb`)),
+    ],
     [`Escape key`, (_plot: HTMLElement): Promise<void> => fire(globalThis, keydown(`Escape`))],
     [
       `background double-click on the svg`,
@@ -351,6 +335,7 @@ describe(`Treemap`, () => {
     plot.querySelector<SVGRectElement>(`.cells rect[tabindex="0"]`)?.focus()
     await zoom_out(plot)
     expect(n_cells(plot)).toBe(4)
+    expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
 
   test(`branch cells show header labels, leaves centered labels`, async () => {
@@ -578,14 +563,5 @@ describe(`Treemap`, () => {
     flushSync()
     await tick()
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
-  })
-
-  test(`cells expose button semantics with a roving tabindex`, async () => {
-    const plot = await mount_sized_treemap()
-    const branch = cell_rect(plot, `A`)
-    expect(branch.getAttribute(`role`)).toBe(`button`)
-    expect(branch.getAttribute(`aria-label`)).toBe(`A: 10`)
-    const tabbable = plot.querySelectorAll(`.cells rect[tabindex="0"]`)
-    expect(tabbable).toHaveLength(1)
   })
 })

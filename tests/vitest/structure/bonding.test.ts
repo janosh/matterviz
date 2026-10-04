@@ -16,7 +16,7 @@ import * as math from '#lib/math.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { test_molecules } from '#site/molecules.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
 
@@ -159,60 +159,53 @@ describe(`Explicit Bond Metadata`, () => {
     },
   )
 
-  test(`ignores invalid explicit bond metadata with warnings`, () => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.4, 0, 0], element: `C` },
-    ])
-    const raw_bonds = [
-      { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
-      { site_idx_1: 0.5, site_idx_2: 1, order: 2 },
-      { site_idx_1: 0, site_idx_2: 8, order: 2 },
-      { site_idx_1: 1, site_idx_2: 1, order: 1 },
-      { site_idx_1: 0, site_idx_2: 1, order: 4 },
-      { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0.5, 0] },
-      null,
-    ]
-    structure.properties = { bonds: raw_bonds as unknown as StructureBond[] }
-
-    try {
-      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
+  test.each<{
+    desc: string
+    bonds: unknown[]
+    expected: StructureBond[]
+    n_warnings?: number
+    warning?: string
+  }>([
+    {
+      desc: `drops invalid entries`,
+      bonds: [
         { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
-      ])
-      expect(warn_spy).toHaveBeenCalledTimes(6)
-    } finally {
-      warn_spy.mockRestore()
-    }
-  })
-
-  test(`warns before duplicate explicit bonds overwrite earlier entries`, () => {
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `C` },
-      { xyz: [1.4, 0, 0], element: `C` },
-    ])
-    structure.properties = {
+        { site_idx_1: 0.5, site_idx_2: 1, order: 2 },
+        { site_idx_1: 0, site_idx_2: 8, order: 2 },
+        { site_idx_1: 1, site_idx_2: 1, order: 1 },
+        { site_idx_1: 0, site_idx_2: 1, order: 4 },
+        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0.5, 0] },
+        null,
+      ],
+      expected: [{ site_idx_1: 0, site_idx_2: 1, order: `aromatic` }],
+      n_warnings: 6,
+    },
+    {
+      desc: `lets a later duplicate overwrite an earlier one`,
       bonds: [
         { site_idx_1: 0, site_idx_2: 1, order: 1 },
         { site_idx_1: 1, site_idx_2: 0, order: 2 },
       ],
-    }
-
-    try {
-      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
-        { site_idx_1: 0, site_idx_2: 1, order: 2 },
+      expected: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      warning:
+        `Duplicate explicit bond definition at index 1 for site indices 1, 0 ` +
+        `with order 2; will overwrite the previous entry`,
+    },
+  ])(
+    `explicit bond metadata $desc with warnings`,
+    ({ bonds, expected, n_warnings, warning }) => {
+      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
+      onTestFinished(() => warn_spy.mockRestore())
+      const structure = make_struct([
+        { xyz: [0, 0, 0], element: `C` },
+        { xyz: [1.4, 0, 0], element: `C` },
       ])
-      expect(warn_spy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          `Duplicate explicit bond definition at index 1 for site indices 1, 0 ` +
-            `with order 2; will overwrite the previous entry`,
-        ),
-      )
-    } finally {
-      warn_spy.mockRestore()
-    }
-  })
+      structure.properties = { bonds: bonds as unknown as StructureBond[] }
+      expect(bonding.get_explicit_bond_metadata(structure)).toEqual(expected)
+      if (n_warnings !== undefined) expect(warn_spy).toHaveBeenCalledTimes(n_warnings)
+      if (warning) expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
+    },
+  )
 
   const empty_bond_edit_state = (): BondEditState => ({
     added_bonds: [],
@@ -275,92 +268,58 @@ describe(`Explicit Bond Metadata`, () => {
     }
   })
 
-  test(`adds, reports, and restores bonds without toggling visible bonds`, () => {
-    const add_result = bonding.add_or_restore_bond(
-      empty_bond_edit_state(),
-      { site_idx_1: 2, site_idx_2: 0 },
-      calculated_bonds(),
-      2,
-    )
-    expect(add_result).toMatchObject({ action: `added`, changed: true })
-    expect(add_result.state.added_bonds).toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 2 }])
-
-    const visible_result = bonding.add_or_restore_bond(
-      add_result.state,
-      { site_idx_1: 0, site_idx_2: 1 },
-      calculated_bonds(),
-      3,
-    )
-    expect(visible_result).toMatchObject({ action: `already-visible`, changed: false })
-    expect(visible_result.state.removed_bonds).toEqual([])
-
-    const removed_state: BondEditState = {
-      ...empty_bond_edit_state(),
-      removed_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-    }
-    const restore_result = bonding.add_or_restore_bond(
-      removed_state,
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(),
-      1,
-    )
-    expect(restore_result).toMatchObject({ action: `restored`, changed: true })
-    expect(restore_result.state.removed_bonds).toEqual([])
-    expect(restore_result.state.bond_order_overrides).toEqual([])
-
-    const restore_with_order_result = bonding.add_or_restore_bond(
-      removed_state,
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(),
-      2,
-    )
-    expect(restore_with_order_result).toMatchObject({ action: `restored`, changed: true })
-    expect(restore_with_order_result.state.removed_bonds).toEqual([])
-    expect(restore_with_order_result.state.bond_order_overrides).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 2 },
-    ])
+  const edge = (site_idx_1: number, site_idx_2: number, order: BondOrder) => ({
+    site_idx_1,
+    site_idx_2,
+    order,
   })
-
-  test(`deletes calculated and manually added bonds explicitly`, () => {
-    const calculated_result = bonding.delete_bond(
-      empty_bond_edit_state(),
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(),
-    )
-    expect(calculated_result).toMatchObject({
-      action: `deleted-calculated`,
-      changed: true,
-    })
-    expect(calculated_result.state.removed_bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 1 },
-    ])
-
-    const added_state: BondEditState = {
-      ...empty_bond_edit_state(),
-      added_bonds: [{ site_idx_1: 2, site_idx_2: 3, order: 3 }],
-    }
-    const added_result = bonding.delete_bond(
-      added_state,
-      { site_idx_1: 3, site_idx_2: 2 },
-      calculated_bonds(),
-    )
-    expect(added_result).toMatchObject({ action: `deleted-added`, changed: true })
-    expect(added_result.state.added_bonds).toEqual([])
-
-    const missing_result = bonding.delete_bond(
-      empty_bond_edit_state(),
-      { site_idx_1: 4, site_idx_2: 5 },
-      calculated_bonds(),
-    )
-    expect(missing_result).toMatchObject({ action: `not-visible`, changed: false })
+  const bond_0_1 = (order: BondOrder) => [edge(0, 1, order)]
+  // Each edit runs against a calculated 0-1 bond (order 1 unless calc_order says otherwise);
+  // reversed targets check the helpers normalize site order. Expected state is a subset.
+  type EditCase = [
+    desc: string,
+    op: `add` | `delete` | `order`,
+    before: Partial<BondEditState>,
+    target: [number, number],
+    order: BondOrder,
+    calc_order: BondOrder | undefined,
+    action: string,
+    changed: boolean,
+    after: Partial<BondEditState>,
+  ]
+  // oxfmt-ignore
+  test.each<EditCase>([
+    [`adds a missing bond`, `add`, {}, [2, 0], 2, undefined, `added`, true, { added_bonds: [edge(0, 2, 2)] }],
+    [`leaves a visible bond alone`, `add`, { added_bonds: [edge(0, 2, 2)] }, [0, 1], 3, undefined, `already-visible`, false, { removed_bonds: [] }],
+    [`restores a removed bond at its calculated order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 1, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: [] }],
+    [`restores a removed bond with a new order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 2, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(2) }],
+    [`restoring clears stale same-key edits`, `add`, { added_bonds: bond_0_1(1), removed_bonds: bond_0_1(2), bond_order_overrides: bond_0_1(3) }, [1, 0], 2, 2, `restored`, true, { added_bonds: [], removed_bonds: [], bond_order_overrides: [] }],
+    [`deletes a calculated bond`, `delete`, {}, [1, 0], 1, undefined, `deleted-calculated`, true, { removed_bonds: bond_0_1(1) }],
+    [`deletes a manually added bond`, `delete`, { added_bonds: [edge(2, 3, 3)] }, [3, 2], 1, undefined, `deleted-added`, true, { added_bonds: [] }],
+    [`ignores deleting a missing bond`, `delete`, {}, [4, 5], 1, undefined, `not-visible`, false, {}],
+    [`overrides a calculated bond's order`, `order`, {}, [1, 0], 3, undefined, `ordered-calculated`, true, { bond_order_overrides: bond_0_1(3) }],
+    [`restores a removed bond when ordering it`, `order`, { removed_bonds: bond_0_1(1) }, [0, 1], 2, undefined, `ordered-calculated`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(2) }],
+    [`adds a bond when ordering a missing pair`, `order`, {}, [2, 3], `aromatic`, undefined, `ordered-added`, true, { added_bonds: [edge(2, 3, `aromatic`)] }],
+    [`skips a redundant calculated override`, `order`, {}, [1, 0], 2, 2, `ordered-calculated`, false, { bond_order_overrides: [] }],
+    [`drops a stale override matching the calculated order`, `order`, { bond_order_overrides: bond_0_1(3) }, [1, 0], 2, 2, `ordered-calculated`, true, { bond_order_overrides: [] }],
+  ])(`bond edit: %s`, (_desc, op, before, [site_idx_1, site_idx_2], order, calc_order, action, changed, after) => {
+    const args = [
+      { ...empty_bond_edit_state(), ...before },
+      { site_idx_1, site_idx_2 },
+      calculated_bonds(calc_order),
+    ] as const
+    const result =
+      op === `add`
+        ? bonding.add_or_restore_bond(...args, order)
+        : op === `delete`
+          ? bonding.delete_bond(...args)
+          : bonding.set_bond_order(...args, order)
+    expect(result).toMatchObject({ action, changed, state: after })
   })
 
   test.each<{ selected_order: BondOrder; expected_overrides: StructureBond[] }>([
     { selected_order: 2, expected_overrides: [] },
-    {
-      selected_order: 1,
-      expected_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-    },
+    { selected_order: 1, expected_overrides: bond_0_1(1) },
   ])(
     `restores deleted order-2 calculated bonds as $selected_order`,
     ({ selected_order, expected_overrides }) => {
@@ -369,108 +328,16 @@ describe(`Explicit Bond Metadata`, () => {
         { site_idx_1: 1, site_idx_2: 0 },
         calculated_bonds(2),
       )
-
-      expect(deleted_result.state.removed_bonds).toEqual([
-        { site_idx_1: 0, site_idx_2: 1, order: 2 },
-      ])
-
+      expect(deleted_result.state.removed_bonds).toEqual(bond_0_1(2))
       const restored_result = bonding.add_or_restore_bond(
         deleted_result.state,
         { site_idx_1: 0, site_idx_2: 1 },
         calculated_bonds(2),
         selected_order,
       )
-
       expect(restored_result.state.bond_order_overrides).toEqual(expected_overrides)
     },
   )
-
-  test(`restoring a deleted bond clears stale same-key edits`, () => {
-    const stale_state: BondEditState = {
-      added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-      removed_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-      bond_order_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3 }],
-    }
-
-    const restored_result = bonding.add_or_restore_bond(
-      stale_state,
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(2),
-      2,
-    )
-
-    expect(restored_result.state).toEqual({
-      added_bonds: [],
-      removed_bonds: [],
-      bond_order_overrides: [],
-    })
-  })
-
-  test(`sets bond order for calculated, added, and removed bonds`, () => {
-    const calculated_result = bonding.set_bond_order(
-      empty_bond_edit_state(),
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(),
-      3,
-    )
-    expect(calculated_result).toMatchObject({
-      action: `ordered-calculated`,
-      changed: true,
-    })
-    expect(calculated_result.state.bond_order_overrides).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 3 },
-    ])
-
-    const removed_state: BondEditState = {
-      ...empty_bond_edit_state(),
-      removed_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-    }
-    const restored_order_result = bonding.set_bond_order(
-      removed_state,
-      { site_idx_1: 0, site_idx_2: 1 },
-      calculated_bonds(),
-      2,
-    )
-    expect(restored_order_result.state.removed_bonds).toEqual([])
-    expect(restored_order_result.state.bond_order_overrides).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 2 },
-    ])
-
-    const added_result = bonding.set_bond_order(
-      empty_bond_edit_state(),
-      { site_idx_1: 2, site_idx_2: 3 },
-      calculated_bonds(),
-      `aromatic`,
-    )
-    expect(added_result).toMatchObject({ action: `ordered-added`, changed: true })
-    expect(added_result.state.added_bonds).toEqual([
-      { site_idx_1: 2, site_idx_2: 3, order: `aromatic` },
-    ])
-  })
-
-  test.each([
-    { state: empty_bond_edit_state(), expected_changed: false },
-    {
-      state: {
-        ...empty_bond_edit_state(),
-        bond_order_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3 }],
-      } satisfies BondEditState,
-      expected_changed: true,
-    },
-  ])(`set_bond_order skips redundant calculated overrides`, ({ state, expected_changed }) => {
-    const result = bonding.set_bond_order(
-      state,
-      { site_idx_1: 1, site_idx_2: 0 },
-      calculated_bonds(2),
-      2,
-    )
-
-    expect(result).toMatchObject({
-      action: `ordered-calculated`,
-      changed: expected_changed,
-    })
-    expect(result.state.bond_order_overrides).toEqual([])
-  })
 
   test(`bond edit helpers preserve periodic cell-shift keys`, () => {
     const shifted_bonds = [
@@ -592,17 +459,13 @@ describe(`Explicit Bond Metadata`, () => {
       ],
     }
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-
-    try {
-      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
-        { site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [1, 0, 0] },
-      ])
-      expect(warn_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`Ignoring invalid explicit bond at index 0`),
-      )
-    } finally {
-      warn_spy.mockRestore()
-    }
+    onTestFinished(() => warn_spy.mockRestore())
+    expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
+      { site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [1, 0, 0] },
+    ])
+    expect(warn_spy).toHaveBeenCalledWith(
+      expect.stringContaining(`Ignoring invalid explicit bond at index 0`),
+    )
   })
 })
 
@@ -1583,27 +1446,16 @@ describe(`compute_bonds memo`, () => {
     expect(next).not.toBe(base)
   })
 
-  test(`caches per-structure so interleaved distinct structures don't thrash`, () => {
-    // Two Structure components on one page compute bonds for different structures in the same
-    // flush (as do the 4 panes of the multi-side view). A single global memo slot would evict
-    // each other every call; the per-structure WeakMap keeps both warm so repeat calls hit.
-    const value_a_1 = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const value_b_1 = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
-    expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(value_a_1)
-    expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(value_b_1)
-  })
-
-  test(`alternating strategies/options on one structure reuse results (no slot thrash)`, () => {
-    // A single { sig, bonds } slot per structure would evict the prior result on every
-    // strategy/options switch; the per-signature map keeps each warm so switching back hits cache.
+  test(`caches per structure and per strategy/options signature`, () => {
+    // Several Structure components (or the multi-side view's panes) compute bonds for
+    // different structures and settings in one flush; a single memo slot would thrash
     const eneg = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const wide = bonding.compute_bonds(structure, `electroneg_ratio`, {
-      max_distance_ratio: 3,
-    })
+    const other = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
+    const wide_opts = { max_distance_ratio: 3 }
+    const wide = bonding.compute_bonds(structure, `electroneg_ratio`, wide_opts)
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
-    expect(
-      bonding.compute_bonds(structure, `electroneg_ratio`, { max_distance_ratio: 3 }),
-    ).toBe(wide)
+    expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(other)
+    expect(bonding.compute_bonds(structure, `electroneg_ratio`, { ...wide_opts })).toBe(wide)
   })
 })
 

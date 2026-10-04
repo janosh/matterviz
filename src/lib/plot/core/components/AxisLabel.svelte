@@ -1,12 +1,12 @@
 <script lang="ts">
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import PortalSelect from '#lib/plot/core/components/PortalSelect.svelte'
+  import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
   import type { AxisOption } from '#lib/plot/core/types.js'
 
   // Axis title centered on (x, y). Static titles are SVG text wrapped by the same
   // measured layout auto-padding reserves for them; titles with selectable `options`
-  // render a PortalSelect trigger inside a foreignObject sized to the closed trigger.
+  // render a PopoverSelect trigger inside a foreignObject sized to the closed trigger.
   let {
     x: coord_x,
     y: coord_y,
@@ -73,7 +73,7 @@
         onkeydown={stop_key}
         role="group"
       >
-        <PortalSelect
+        <PopoverSelect
           {options}
           {selected_key}
           placeholder={label || title_layout.label}

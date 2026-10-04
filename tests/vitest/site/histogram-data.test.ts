@@ -2,7 +2,7 @@ import * as utils from '#site/histogram-data.js'
 import type { Rng } from '#site/histogram-data.js'
 import { describe, expect, test } from 'vitest'
 
-// Note: stochastic functions are tested with shape/invariants, not exact values
+// stochastic functions are tested with shape/invariants, not exact values
 describe(`histogram-data random generators`, () => {
   const size = 10
   const generators: readonly ((rng?: Rng) => number[])[] = [
@@ -81,7 +81,6 @@ describe(`histogram-data random generators`, () => {
     }
   })
 
-  // (feeding generators from a seeded rng is covered by the reproducibility test above)
   test(`seeded_rng is deterministic and draws from [0, 1)`, () => {
     const draws = (seed: number) => Array.from({ length: 5 }, utils.seeded_rng(seed))
     expect(draws(42)).toEqual(draws(42))

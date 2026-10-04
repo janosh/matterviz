@@ -1,4 +1,3 @@
-// Tests for fill-between: utility functions and type structures
 import type { Vec2 } from '#lib/math.js'
 import type { Pt } from '#lib/plot/core/fill-utils.js'
 import {
@@ -46,29 +45,15 @@ const fill_path_is_cubic = (region: FillRegion, fill_series: DataSeries[]): bool
 }
 
 describe(`monotone_interpolate`, () => {
-  it(`returns exact y at knots`, () => {
-    const x_values = [0, 10, 20, 30]
-    const y_values = [0, 30, 15, 40]
-    for (let idx = 0; idx < x_values.length; idx++) {
-      expect(monotone_interpolate(x_values, y_values, x_values[idx])).toBeCloseTo(
-        y_values[idx],
-        9,
-      )
+  // oxfmt-ignore
+  it.each([
+    [`returns exact y at knots`, [0, 10, 20, 30], [0, 30, 15, 40], [[0, 0], [10, 30], [20, 15], [30, 40]]],
+    [`clamps to endpoints outside the domain`, [0, 10], [5, 25], [[-5, 5], [15, 25]]],
+    [`is linear for collinear points`, [0, 10, 20], [0, 10, 20], [[5, 5], [17, 17]]],
+  ])(`%s`, (_desc, x_values, y_values, queries) => {
+    for (const [query_x, expected] of queries) {
+      expect(monotone_interpolate(x_values, y_values, query_x)).toBeCloseTo(expected, 9)
     }
-  })
-
-  it(`clamps to endpoints outside the domain`, () => {
-    const x_values = [0, 10]
-    const y_values = [5, 25]
-    expect(monotone_interpolate(x_values, y_values, -5)).toBe(5)
-    expect(monotone_interpolate(x_values, y_values, 15)).toBe(25)
-  })
-
-  it(`is linear for collinear points`, () => {
-    const x_values = [0, 10, 20]
-    const y_values = [0, 10, 20]
-    expect(monotone_interpolate(x_values, y_values, 5)).toBeCloseTo(5)
-    expect(monotone_interpolate(x_values, y_values, 17)).toBeCloseTo(17)
   })
 
   it(`stays within neighboring knot bounds (monotonicity)`, () => {
@@ -221,23 +206,17 @@ describe(`resolve_boundary_points`, () => {
     expect(result?.points.at(-1)).toEqual(make_point(20, 100))
   })
 
-  it(`resolves data with explicit x natively`, () => {
-    const result = resolve_boundary_points(
-      { type: `data`, x: [0, 10, 20], values: [1, 2, 3] },
-      series,
-      domains,
-    )
-    expect(result?.points).toEqual([make_point(0, 1), make_point(10, 2), make_point(20, 3)])
-  })
-
-  it(`aligns data without x to the companion x positions`, () => {
-    const result = resolve_boundary_points(
+  // data with explicit x resolves natively; without x it aligns to the companion x positions
+  it.each<[FillBoundary, Pt[] | undefined, number[]]>([
+    [{ type: `data`, x: [0, 10, 20], values: [1, 2, 3] }, undefined, [0, 10, 20]],
+    [
       { type: `data`, values: [1, 2, 3] },
-      series,
-      domains,
-      [make_point(0, 0), make_point(5, 0), make_point(10, 0)],
-    )
-    expect(result?.points).toEqual([make_point(0, 1), make_point(5, 2), make_point(10, 3)])
+      [0, 5, 10].map((coord) => make_point(coord, 0)),
+      [0, 5, 10],
+    ],
+  ])(`resolves data boundary %j`, (boundary, companion_pts, expected_x) => {
+    const result = resolve_boundary_points(boundary, series, domains, companion_pts)
+    expect(result?.points).toEqual(expected_x.map((coord, idx) => make_point(coord, idx + 1)))
   })
 
   it(`returns null for an unresolvable series reference`, () => {
@@ -273,11 +252,7 @@ describe(`compute_fill_segments`, () => {
 
   it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
     const segments = compute_fill_segments(
-      {
-        upper: series_ref(1),
-        lower: series_ref(0),
-        x_range: [5, 15],
-      },
+      { upper: series_ref(1), lower: series_ref(0), x_range: [5, 15] },
       series,
       domains,
     )
@@ -403,23 +378,16 @@ describe(`generate_fill_path`, () => {
     expect(path.endsWith(`${lower_reversed.slice(1)}Z`)).toBe(true)
   })
 
-  it.each([
-    `linear`,
-    `monotoneX`,
-    `monotoneY`,
-    `step`,
-    `stepBefore`,
-    `stepAfter`,
-    `basis`,
-    `cardinal`,
-    `catmullRom`,
-    `natural`,
-  ] as FillCurveType[])(`supports %s curve type`, (curve_type) => {
-    const path = generate_fill_path(upper, lower, curve_type, curve_type)
-    expect(path.length).toBeGreaterThan(0)
-    expect(path).toMatch(/^M/)
-    expect(path).toMatch(/Z$/)
-  })
+  const curve_types = `linear monotoneX monotoneY step stepBefore stepAfter basis cardinal catmullRom natural`
+  it.each(curve_types.split(` `) as FillCurveType[])(
+    `supports %s curve type`,
+    (curve_type) => {
+      const path = generate_fill_path(upper, lower, curve_type, curve_type)
+      expect(path.length).toBeGreaterThan(0)
+      expect(path).toMatch(/^M/)
+      expect(path).toMatch(/Z$/)
+    },
+  )
 })
 
 describe(`resolve_fill_binding`, () => {
@@ -483,23 +451,12 @@ describe(`convert_error_band_to_fill_region`, () => {
   })
 
   it(`resolves series by id and includes label/id`, () => {
+    const style = { id: `eb-1`, label: `Error`, fill: `#ff0000`, fill_opacity: 0.5 }
     const result = convert_error_band_to_fill_region(
-      {
-        series: { type: `series`, series_id: `test-series` },
-        error: 5,
-        id: `eb-1`,
-        label: `Error`,
-        fill: `#ff0000`,
-        fill_opacity: 0.5,
-      },
+      { series: { type: `series`, series_id: `test-series` }, error: 5, ...style },
       mock_series,
     )
-    expect(result).toMatchObject({
-      id: `eb-1`,
-      label: `Error`,
-      fill: `#ff0000`,
-      fill_opacity: 0.5,
-    })
+    expect(result).toMatchObject(style)
   })
 
   it(`error band edges coincide with the central series line`, () => {
@@ -523,29 +480,10 @@ describe(`convert_error_band_to_fill_region`, () => {
 })
 
 describe(`is_fill_gradient`, () => {
+  // oxfmt-ignore
   it.each<[string, unknown, boolean]>([
-    [
-      `linear gradient`,
-      {
-        type: `linear`,
-        stops: [
-          [0, `red`],
-          [1, `blue`],
-        ],
-      },
-      true,
-    ],
-    [
-      `radial gradient`,
-      {
-        type: `radial`,
-        stops: [
-          [0, `white`],
-          [1, `black`],
-        ],
-      },
-      true,
-    ],
+    [`linear gradient`, { type: `linear`, stops: [[0, `red`], [1, `blue`]] }, true],
+    [`radial gradient`, { type: `radial`, stops: [[0, `white`], [1, `black`]] }, true],
     [`string color`, `steelblue`, false],
     [`undefined`, undefined, false],
     [`null`, null, false],

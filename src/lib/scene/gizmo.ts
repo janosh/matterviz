@@ -45,7 +45,7 @@ export function gizmo_rect(
   height: number,
 ): GizmoRect {
   if (placement === `fill`) return { x: 0, y: 0, width, height }
-  // Unsized gizmos scale with the viewport, as the old DOM gizmo did via CSS clamp()
+  // Unsized gizmos scale with the viewport
   const responsive = clamp(0.18 * Math.min(width, height), 70, 100)
   const box = Math.min(size ?? responsive, width, height)
   const gap = 5

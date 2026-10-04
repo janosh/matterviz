@@ -21,9 +21,8 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     expect(structure.sites).toHaveLength(2)
     expect(structure.sites.map((site) => site.species[0].element)).toEqual([`Si`, `Si`])
     expect(structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
-    expect(structure.lattice?.a).toBeCloseTo(4, 6)
-    expect(structure.lattice?.b).toBeCloseTo(5, 6)
-    expect(structure.lattice?.c).toBeCloseTo(6, 6)
+    const { a: len_a, b: len_b, c: len_c } = structure.lattice
+    expect([len_a, len_b, len_c]).toEqual([4, 5, 6].map((len) => expect.closeTo(len, 6)))
     expect(structure.lattice?.volume).toBeCloseTo(CELL_VOLUME, 9)
 
     expect(volumes).toHaveLength(2)

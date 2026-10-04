@@ -200,36 +200,6 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   return vertices
 }
 
-// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
-// multiple of one vector from another while that shortens it. Every step is unimodular, so
-// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
-// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
-// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the radius-bounded
-// G enumeration below grows as s⁴ (47 s at s = 3, out of memory by s = 30). Also used by
-// lattice_point_group_matrices, whose {-1,0,1} integer-matrix search assumes a reduced basis.
-export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
-  const reduced = basis.map((row) => [...row]) as Matrix3x3
-  for (let iter = 0; iter < 64; iter++) {
-    let changed = false
-    for (let idx_i = 0; idx_i < 3; idx_i++) {
-      for (let idx_j = 0; idx_j < 3; idx_j++) {
-        if (idx_i === idx_j) continue
-        const len_sq_j = math.dot(reduced[idx_j], reduced[idx_j])
-        const coeff = Math.round(math.dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
-        if (coeff === 0) continue
-        const candidate = math.subtract(reduced[idx_i], math.scale(reduced[idx_j], coeff))
-        const len_sq_i = math.dot(reduced[idx_i], reduced[idx_i])
-        if (math.dot(candidate, candidate) < len_sq_i * (1 - 1e-12)) {
-          reduced[idx_i] = candidate
-          changed = true
-        }
-      }
-    }
-    if (!changed) break
-  }
-  return reduced
-}
-
 // Exact first zone (Wigner-Seitz cell of the reciprocal lattice). Pass 1 uses the ±1 index
 // shell: ±b₁, ±b₂, ±b₃ alone bound a parallelepiped, so it always yields a bounded cell that
 // contains the true one. Its faces need not come from that shell though — a non-reduced basis
@@ -278,7 +248,7 @@ export function generate_bz_vertices(
   const clamped_order = Math.min(order, 3) as typeof order
   // Vertices are Cartesian, so any basis of the same lattice gives the same zones; a
   // reduced one keeps the index shells small and meaningful
-  const basis = reduce_basis(k_lattice)
+  const basis = math.reduce_basis(k_lattice)
   const dual = math.reciprocal_lattice(basis) // throws for a singular k_lattice
   if (clamped_order === 1) return first_bz_vertices(basis, dual)
 

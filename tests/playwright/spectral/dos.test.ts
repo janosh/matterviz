@@ -1,406 +1,153 @@
-import { expect, test } from '@playwright/test'
-import { get_chart_svg } from '../helpers'
+import { expect, type Locator, type Page, test } from '@playwright/test'
+import { get_chart_svg, require_bbox } from '../helpers'
+
+const curves = (plot: Locator) => plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
+
+// Move onto points along the first curve until one raises the tooltip; resolves to its text
+const hover_until_tooltip = async (page: Page, plot: Locator): Promise<string> => {
+  const tooltip = plot.locator(`.plot-tooltip`)
+  await plot.scrollIntoViewIfNeeded()
+  const points = await curves(get_chart_svg(plot))
+    .first()
+    .evaluate((element) => {
+      const path = element as SVGPathElement
+      const screen_matrix = path.getScreenCTM()
+      if (!screen_matrix) throw new Error(`DOS curve has no screen transform`)
+      const length = path.getTotalLength()
+      return [0.5, 0.3, 0.7, 0.2, 0.8].map((fraction) => {
+        const point = path.getPointAtLength(fraction * length).matrixTransform(screen_matrix)
+        return { x: point.x, y: point.y }
+      })
+    })
+  for (const { x, y } of points) {
+    await page.mouse.move(x - 2, y)
+    await page.mouse.move(x, y)
+    const shown = await expect(tooltip)
+      .toBeVisible({ timeout: 500 })
+      .then(() => true)
+      .catch(() => false)
+    if (shown) return (await tooltip.textContent()) ?? ``
+  }
+  throw new Error(`no DOS tooltip at any probed curve point: ${JSON.stringify(points)}`)
+}
+
+// position of the earliest of `labels` in tooltip text (-1 if none occur)
+const first_idx = (text: string, labels: string[]): number => {
+  const indices = labels.map((label) => text.indexOf(label)).filter((idx) => idx >= 0)
+  return indices.length > 0 ? Math.min(...indices) : -1
+}
 
 test.describe(`DOS Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/dos`, { waitUntil: `networkidle` })
   })
 
-  test(`renders single DOS with axes`, async ({ page }) => {
+  test(`renders single DOS with axes, hides configured legend and resizes`, async ({
+    page,
+  }) => {
     const plot = page.locator(`[data-testid="dos-single"]`)
-    await expect(plot).toBeVisible()
-
-    // Check SVG and DOS curve (use stroke to identify line paths)
-    const paths = plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`)
-    await expect(paths.first()).toBeVisible()
-
-    // Check both axes
+    await expect(curves(plot.locator(`svg`)).first()).toBeVisible()
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
+    await expect(page.locator(`[data-testid="dos-no-legend"] .legend`)).toBeHidden()
+
+    const initial_box = await require_bbox(plot, `plot`)
+    await page.setViewportSize({ width: 800, height: 600 })
+    await expect
+      .poll(async () => (await plot.boundingBox())?.width)
+      .not.toBe(initial_box.width)
   })
 
-  test(`renders multiple DOS with toggleable legend`, async ({ page }) => {
+  test(`multiple DOS get a toggleable legend and series-labelled tooltips`, async ({
+    page,
+  }) => {
     const plot = page.locator(`[data-testid="dos-multiple"]`)
-    const svg = plot.locator(`svg`)
-
-    // Check legend with correct labels
     const legend = plot.locator(`.legend`)
-    await expect(legend).toBeVisible()
-    expect(await legend.locator(`.legend-item`).count()).toBe(2)
-    await expect(legend).toContainText(`DOS1`)
-    await expect(legend).toContainText(`DOS2`)
+    await expect(legend.locator(`.legend-item`)).toHaveText([/DOS1/, /DOS2/])
 
-    // Test toggling
-    const curves = svg.locator(`path.line, path[stroke]:not([stroke="none"])`)
-    await expect(curves).toHaveCount(2)
+    // the series label heads the tooltip, above density and frequency/energy
+    const text = await hover_until_tooltip(page, plot)
+    const label_idx = text.search(/DOS[12]/)
+    expect(label_idx, text).toBeGreaterThan(-1)
+    expect(label_idx, text).toBeLessThan(first_idx(text, [`Density`, `Frequency`, `Energy`]))
+
+    const svg_curves = curves(plot.locator(`svg`))
+    await expect(svg_curves).toHaveCount(2)
     await legend.locator(`.legend-item`).first().click()
-    await expect(curves).toHaveCount(1, { timeout: 2000 })
+    await expect(svg_curves).toHaveCount(1, { timeout: 2000 })
   })
 
-  test(`applies normalization correctly`, async ({ page }) => {
-    // Max normalization should have y-values <= 1
+  test(`applies max and sum normalization`, async ({ page }) => {
     const max_plot = page.locator(`[data-testid="dos-max-norm"]`)
-    await expect(
-      max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
-    ).toBeVisible()
-    const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
-    const nums = y_ticks
+    await expect(curves(max_plot).first()).toBeVisible()
+    const y_ticks = (await max_plot.locator(`g.y-axis text`).allTextContents())
       .map((tick) => Number(tick.replaceAll(/[^\d.\-+eE]/g, ``)))
       .filter(Number.isFinite)
-    const max_val = Math.max(...nums)
-    expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
-
-    // Sum normalization should render correctly
-    const sum_plot = page.locator(`[data-testid="dos-sum-norm"]`)
-    await expect(
-      sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
-    ).toBeVisible()
+    expect(Math.max(...y_ticks)).toBeLessThanOrEqual(1.01) // margin for tick rounding
+    await expect(curves(page.locator(`[data-testid="dos-sum-norm"]`)).first()).toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
-    // Stacked DOS should have 2 curves, second higher than first
-    const stacked_plot = page.locator(`[data-testid="dos-stacked"]`)
-    // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
-    const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
-    await expect(paths).toHaveCount(2)
-    await expect(paths.nth(0)).toBeVisible()
-    await expect(paths.nth(1)).toBeVisible()
+    // the second stacked curve sits on the first, so it spans more height
+    const stacked = curves(page.locator(`[data-testid="dos-stacked"]`))
+    await expect(stacked).toHaveCount(2)
+    const [box_1, box_2] = await Promise.all([
+      require_bbox(stacked.nth(0), `stacked curve 1`),
+      require_bbox(stacked.nth(1), `stacked curve 2`),
+    ])
+    expect(box_2.height).toBeGreaterThan(box_1.height)
 
-    // Verify second curve spans greater vertical extent (stacked higher)
-    const bbox_1 = await paths.nth(0).boundingBox()
-    const bbox_2 = await paths.nth(1).boundingBox()
-    expect(bbox_1 && bbox_2).toBeTruthy()
-    if (bbox_1 && bbox_2) {
-      expect(bbox_2.height).toBeGreaterThan(bbox_1.height)
-    }
-
-    // Check Gaussian smearing produces smooth curves
-    const smeared_plot = page.locator(`[data-testid="dos-smeared"]`)
-    const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
-    await expect(path).toBeVisible()
-    const path_d = await path.getAttribute(`d`)
-    // Verify path has data and is sufficiently complex (indicates smoothing/interpolation)
-    expect(path_d).toBeTruthy()
-    if (path_d) {
-      const cmds = path_d.match(/[MLCQSTVHZ]/g) ?? []
-      expect(cmds.length).toBeGreaterThan(5) // Smooth curve should have multiple drawing commands
-    }
+    // smoothing/interpolation yields many drawing commands
+    const smeared = curves(page.locator(`[data-testid="dos-smeared"]`)).first()
+    await expect(smeared).toBeVisible()
+    const path_d = (await smeared.getAttribute(`d`)) ?? ``
+    expect((path_d.match(/[MLCQSTVHZ]/g) ?? []).length).toBeGreaterThan(5)
   })
 
-  test(`renders with horizontal orientation`, async ({ page }) => {
+  test(`horizontal orientation swaps axes`, async ({ page }) => {
     const plot = page.locator(`[data-testid="dos-horizontal"]`)
-    await expect(
-      plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
-    ).toBeVisible()
-    await expect(plot.locator(`g.x-axis`)).toBeVisible()
-    await expect(plot.locator(`g.y-axis`)).toBeVisible()
-
-    // For horizontal: X should have numeric density values, Y should have frequency values
-    const x_ticks = await plot.locator(`g.x-axis text`).allTextContents()
-    const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
-    expect(x_ticks.some((tick) => !Number.isNaN(Number(tick)))).toBe(true)
-    expect(y_ticks.some((tick) => !Number.isNaN(Number(tick)))).toBe(true)
-
-    // Assert axis labels reflect horizontal swap
+    await expect(curves(plot).first()).toBeVisible()
+    for (const axis of [`x`, `y`]) {
+      const ticks = await plot.locator(`g.${axis}-axis text`).allTextContents()
+      expect(
+        ticks.some((tick) => !Number.isNaN(Number(tick))),
+        `${axis} ticks`,
+      ).toBe(true)
+    }
     await expect(plot.locator(`.x-label`)).toContainText(/Density/i)
     await expect(plot.locator(`.y-label`)).toContainText(/(?:Frequency|Energy)/i)
   })
 
   test(`converts frequencies to different units`, async ({ page }) => {
-    await Promise.all(
-      [
-        [`eV`, `[data-testid="dos-ev"]`],
-        [`meV`, `[data-testid="dos-mev"]`],
-      ].map(async ([unit, selector]) => {
-        const plot = page.locator(selector)
-        await expect(plot).toBeVisible()
-        const x_label = plot.locator(`.x-label`)
-        if ((await x_label.count()) > 0) {
-          expect(await x_label.textContent()).toContain(unit)
-        }
-      }),
-    )
-  })
-
-  test(`hides legend when configured and maintains responsive layout`, async ({ page }) => {
-    // Check legend hidden
-    const no_legend_plot = page.locator(`[data-testid="dos-no-legend"]`)
-    await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
-
-    // Check responsive layout
-    const plot = page.locator(`[data-testid="dos-single"]`)
-    expect(await plot.boundingBox()).toBeTruthy()
-    await page.setViewportSize({ width: 800, height: 600 })
-    await expect(plot).toBeVisible()
-  })
-
-  test(`shows tooltip with density and frequency on hover`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"]`)
-    await expect(plot).toBeVisible()
-
-    const svg = get_chart_svg(plot)
-    const box = await svg.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-    const curve = plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
-
-    // Try hovering the curve directly first
-    await curve.hover({ force: true }).catch(() => {})
-
-    let tooltip_found = await tooltip.isVisible()
-
-    // Fall back to grid probing if curve hover didn't work
-    if (!tooltip_found) {
-      for (const x_frac of [0.2, 0.35, 0.5, 0.65, 0.8]) {
-        for (const y_frac of [0.2, 0.35, 0.5, 0.65, 0.8]) {
-          await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-          // Wait for tooltip with assertion-based wait (avoids CI timing issues)
-          await expect(tooltip)
-            .toBeVisible({ timeout: 250 })
-            .catch(() => {})
-          if (await tooltip.isVisible()) {
-            tooltip_found = true
-            break
-          }
-        }
-        if (tooltip_found) break
-      }
-    }
-
-    expect(tooltip_found).toBe(true)
-    const tooltip_text = await tooltip.textContent()
-    expect(tooltip_text).toBeTruthy()
-
-    // Tooltip should show density (y-axis)
-    expect(tooltip_text).toMatch(/Density.*:/)
-
-    // Tooltip should show frequency/energy with unit (x-axis)
-    expect(tooltip_text).toMatch(/(?:Frequency|Energy)/)
-  })
-
-  test(`tooltip shows series label with multiple DOS`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-multiple"]`)
-    await expect(plot).toBeVisible()
-
-    const svg = get_chart_svg(plot)
-    const box = await svg.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-    let tooltip_found = false
-
-    // Try more positions since multiple DOS might be harder to hit
-    for (const [x_frac, y_frac] of [
-      [0.2, 0.3],
-      [0.3, 0.5],
-      [0.4, 0.6],
-      [0.5, 0.5],
-      [0.6, 0.4],
-      [0.7, 0.5],
-      [0.8, 0.6],
-    ]) {
-      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-
-      if (await tooltip.isVisible()) {
-        tooltip_found = true
-        const tooltip_text = await tooltip.textContent()
-        expect(tooltip_text).toBeTruthy()
-        if (!tooltip_text) break
-
-        // With multiple DOS, series label should be at the top in bold
-        expect(tooltip_text).toMatch(/DOS[12]/)
-
-        // Verify label appears before density/frequency (series label should be first line)
-        const value_idx = Math.min(
-          ...[`Density`, `Frequency`, `Energy`].map((label) => {
-            const idx = tooltip_text.indexOf(label)
-            return idx === -1 ? Infinity : idx
-          }),
-        )
-        const label_idx = tooltip_text.search(/DOS[12]/) ?? -1
-        expect(label_idx).toBeGreaterThan(-1)
-        if (value_idx !== Infinity) {
-          expect(label_idx).toBeLessThan(value_idx)
-        }
-        break
-      }
-    }
-
-    // This test is less critical, so we'll just verify the plot renders even if tooltip is elusive
-    if (!tooltip_found) {
-      console.warn(`Tooltip not found for multiple DOS, but plot rendered successfully`)
+    for (const unit of [`eV`, `meV`]) {
       await expect(
-        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
-      ).toBeVisible()
-    } else {
-      expect(tooltip_found).toBe(true)
+        page.locator(`[data-testid="dos-${unit.toLowerCase()}"] .x-label`),
+      ).toContainText(unit)
     }
   })
 
-  test(`tooltip shows correct labels for horizontal orientation`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-horizontal"]`)
-    await expect(plot).toBeVisible()
-
-    const svg = get_chart_svg(plot)
-    const box = await svg.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-    let tooltip_found = false
-
-    // Try more positions
-    for (const [x_frac, y_frac] of [
-      [0.2, 0.3],
-      [0.3, 0.5],
-      [0.4, 0.6],
-      [0.5, 0.5],
-      [0.6, 0.4],
-      [0.7, 0.5],
-      [0.8, 0.6],
-    ]) {
-      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-
-      if (await tooltip.isVisible()) {
-        tooltip_found = true
-        const tooltip_text = await tooltip.textContent()
-        expect(tooltip_text).toBeTruthy()
-        if (!tooltip_text) break
-
-        // In horizontal orientation:
-        // - y-axis is frequency/energy (should appear FIRST in tooltip)
-        // - x-axis is density (should appear SECOND in tooltip)
-        // The fix ensures Frequency/Energy comes before Density
-        const freq_candidates = [
-          tooltip_text.indexOf(`Frequency`),
-          tooltip_text.indexOf(`Energy`),
-        ].filter((idx) => idx >= 0)
-        const freq_idx = freq_candidates.length > 0 ? Math.min(...freq_candidates) : -1
-        const density_idx = tooltip_text.indexOf(`Density`)
-
-        // Both should be present
-        expect(freq_idx).toBeGreaterThan(-1)
-        expect(density_idx).toBeGreaterThan(-1)
-
-        // Frequency/Energy should come BEFORE Density in horizontal mode
-        // This is the key regression test for the tooltip bug fix
-        expect(freq_idx).toBeLessThan(density_idx)
-        break
-      }
-    }
-
-    // Fallback: verify plot renders if tooltip is hard to hit
-    if (!tooltip_found) {
-      console.warn(`Tooltip not found for horizontal DOS, but plot rendered successfully`)
-      await expect(
-        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
-      ).toBeVisible()
-    } else {
-      expect(tooltip_found).toBe(true)
-    }
-  })
-
-  test(`tooltip shows correct labels for vertical orientation`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"]`)
-    await expect(plot).toBeVisible()
-
-    const svg = get_chart_svg(plot)
-    const box = await svg.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-    let tooltip_found = false
-
-    // Try various positions
-    for (const [x_frac, y_frac] of [
-      [0.2, 0.3],
-      [0.3, 0.5],
-      [0.4, 0.6],
-      [0.5, 0.5],
-      [0.6, 0.4],
-      [0.7, 0.5],
-    ]) {
-      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-
-      if (await tooltip.isVisible()) {
-        tooltip_found = true
-        const tooltip_text = await tooltip.textContent()
-        expect(tooltip_text).toBeTruthy()
-        if (!tooltip_text) break
-
-        // In vertical orientation:
-        // - y-axis is density (should appear FIRST in tooltip)
-        // - x-axis is frequency/energy (should appear SECOND in tooltip)
-        const freq_candidates = [
-          tooltip_text.indexOf(`Frequency`),
-          tooltip_text.indexOf(`Energy`),
-        ].filter((idx) => idx >= 0)
-        const freq_idx = freq_candidates.length > 0 ? Math.min(...freq_candidates) : -1
-        const density_idx = tooltip_text.indexOf(`Density`)
-
-        // Both should be present
-        expect(freq_idx).toBeGreaterThan(-1)
-        expect(density_idx).toBeGreaterThan(-1)
-
-        // Density should come BEFORE Frequency/Energy in vertical mode
+  // the y-axis quantity leads the tooltip: density when vertical, frequency when horizontal
+  for (const [orientation, test_id] of [
+    [`vertical`, `dos-single`],
+    [`horizontal`, `dos-horizontal`],
+  ] as const) {
+    test(`${orientation} tooltip orders density and frequency, hides on leave`, async ({
+      page,
+    }) => {
+      const plot = page.locator(`[data-testid="${test_id}"]`)
+      const text = await hover_until_tooltip(page, plot)
+      const density_idx = text.indexOf(`Density`)
+      const freq_idx = first_idx(text, [`Frequency`, `Energy`])
+      expect(density_idx, text).toBeGreaterThan(-1)
+      expect(freq_idx, text).toBeGreaterThan(-1)
+      if (orientation === `vertical`) {
+        expect(text).toMatch(/Density.*:/)
         expect(density_idx).toBeLessThan(freq_idx)
-        break
-      }
-    }
+      } else expect(freq_idx).toBeLessThan(density_idx)
 
-    // Fallback: verify plot renders if tooltip is hard to hit
-    if (!tooltip_found) {
-      console.warn(`Tooltip not found for vertical DOS, but plot rendered successfully`)
-      await expect(
-        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
-      ).toBeVisible()
-    } else {
-      expect(tooltip_found).toBe(true)
-    }
-  })
-
-  test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"]`)
-    const svg = get_chart_svg(plot)
-    const box = await svg.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
-
-    const tooltip = plot.locator(`.plot-tooltip`)
-
-    // Hover to show tooltip
-    let tooltip_shown = false
-    for (const [x_frac, y_frac] of [
-      [0.2, 0.3],
-      [0.3, 0.5],
-      [0.4, 0.6],
-      [0.5, 0.5],
-      [0.6, 0.4],
-      [0.7, 0.5],
-    ]) {
-      await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
-      if (await tooltip.isVisible()) {
-        tooltip_shown = true
-        break
-      }
-    }
-
-    if (tooltip_shown) {
-      // Move mouse outside plot
+      const box = await require_bbox(plot, `plot`)
       await page.mouse.move(box.x - 50, box.y - 50)
-
-      // Tooltip should be hidden
-      await expect(tooltip).toBeHidden()
-    } else {
-      // If tooltip didn't show, just verify plot rendered
-      console.warn(`Tooltip not found, but plot rendered successfully`)
-      await expect(
-        plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
-      ).toBeVisible()
-    }
-  })
+      await expect(plot.locator(`.plot-tooltip`)).toBeHidden()
+    })
+  }
 })

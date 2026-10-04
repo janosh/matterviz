@@ -46,33 +46,20 @@ const has_formula = (entries: PhaseData[], formula: string): boolean =>
 const get_formula_entry = (entries: PhaseData[], formula: string): PhaseData | undefined =>
   entries.find((entry) => formula_key_from_composition(entry.composition) === formula)
 
-const get_formula_set = (entries: PhaseData[]): Set<string> =>
-  new Set(entries.map((entry) => formula_key_from_composition(entry.composition)))
-
 const get_payload_at_700 = (config: Parameters<typeof get_temp_filter_payload>[2] = {}) =>
   get_temp_filter_payload(temp_entries_fixture, 700, config)
 
 describe(`get_temp_filter_payload`, () => {
-  test(`returns no-temp analysis and original entries when dataset has no temperature data`, () => {
-    const payload = get_temp_filter_payload(static_entries_fixture, 700, {})
-    expect(payload.has_temp_data).toBe(false)
-    expect(payload.available_temperatures).toEqual([])
-    expect(payload.temp_filtered_entries).toEqual(static_entries_fixture)
-    expect(get_formula_set(payload.temp_filtered_entries)).toEqual(new Set([`Li`, `O`]))
-  })
+  test(`without temperature data or a temperature, entries pass through unfiltered`, () => {
+    const static_payload = get_temp_filter_payload(static_entries_fixture, 700, {})
+    expect(static_payload.has_temp_data).toBe(false)
+    expect(static_payload.available_temperatures).toEqual([])
+    expect(static_payload.temp_filtered_entries).toEqual(static_entries_fixture)
 
-  test(`returns sorted unique available temperatures across all entries`, () => {
-    const payload = get_payload_at_700()
-    expect(payload.has_temp_data).toBe(true)
-    expect(payload.available_temperatures).toEqual([300, 700, 900])
-  })
-
-  test(`does not filter when temperature is undefined`, () => {
     const payload = get_temp_filter_payload(temp_entries_fixture, undefined, {})
+    expect(payload.has_temp_data).toBe(true)
+    expect(payload.available_temperatures).toEqual([300, 700, 900]) // sorted, unique
     expect(payload.temp_filtered_entries).toEqual(temp_entries_fixture)
-    expect(get_formula_set(payload.temp_filtered_entries)).toEqual(
-      get_formula_set(temp_entries_fixture),
-    )
   })
 
   // Li's bracket around 700 K spans 300 -> 900 K, i.e. a 600 K gap: it survives only by
@@ -112,40 +99,17 @@ describe(`get_temp_filter_payload`, () => {
 })
 
 describe(`get_valid_temperature`, () => {
-  const available_temperatures = [300, 700, 900]
-
+  const available = [300, 700, 900]
   test.each([
-    {
-      label: `returns existing value when no temperature data exists`,
-      temperature: 700,
-      available: [],
-      expected_temperature: 700,
+    [`keeps the value when there is no temperature data`, 700, [], 700],
+    [`keeps an available value`, 700, available, 700],
+    [`falls back to the first available temperature for undefined`, undefined, available, 300],
+    [`keeps a non-exact value inside the available range`, 500, available, 500],
+    [`falls back to the first available temperature out of range`, 1200, available, 300],
+  ] as [string, number | undefined, number[], number][])(
+    `%s`,
+    (_label, temp, temps, expected) => {
+      expect(get_valid_temperature(temp, temps)).toBe(expected)
     },
-    {
-      label: `returns existing value when temperature is available`,
-      temperature: 700,
-      available: available_temperatures,
-      expected_temperature: 700,
-    },
-    {
-      label: `falls back to first available temperature when value is undefined`,
-      temperature: undefined,
-      available: available_temperatures,
-      expected_temperature: 300,
-    },
-    {
-      label: `keeps non-exact temperature inside available range`,
-      temperature: 500,
-      available: available_temperatures,
-      expected_temperature: 500,
-    },
-    {
-      label: `falls back to first available temperature when value is out of range`,
-      temperature: 1200,
-      available: available_temperatures,
-      expected_temperature: 300,
-    },
-  ])(`$label`, ({ temperature, available, expected_temperature }) => {
-    expect(get_valid_temperature(temperature, available)).toBe(expected_temperature)
-  })
+  )
 })

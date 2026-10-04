@@ -70,9 +70,7 @@ test(`a camera flight ends and blocks fly-tos on its controls until it lets go`,
   expect(fly.active).toBe(true)
 })
 
-// Shared by BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene, so a
-// regression here hits four renderers at once — and both bugs this replaced lived in exactly
-// this logic.
+// Shared by BrillouinZoneScene, FermiSurfaceScene, ScatterPlot3DScene and StructureScene
 type ZoomInputs = { fit: number; measured: boolean; max: number; camera: Camera | undefined }
 
 // `camera` stands in for the renderer's live camera
@@ -216,11 +214,8 @@ test(`reset_to_fit snaps to the new fit in the same flush instead of rescaling b
   })
 })
 
-// Regression guard for #459: a trajectory frame change left the camera fit stale until the
-// pointer entered the viewport, because the fit effect untracked the extent (so a frame could
-// not schedule it) but still read the live extent whenever something else re-ran it — hover
-// revealing the gizmo hands StructureScene a fresh scene_props object, which does exactly that.
-// A resize stands in for that re-run here.
+// #459: the fit effect must not read the live extent when something else re-runs it (hover
+// revealing the gizmo hands StructureScene fresh scene_props). A resize stands in for that re-run.
 type FitInputs = { extent: number; width: number; measured: boolean }
 
 const with_fit_zoom = (

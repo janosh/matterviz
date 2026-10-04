@@ -167,7 +167,7 @@ describe(`periodic unwrapping`, () => {
     expect(max_rel_error(result.curves[0].msd, expected)).toBeLessThan(1e-12)
   })
 
-  it(`sawtooths without unwrapping, bounded by the box`, () => {
+  it(`sawtooths without unwrapping (flagged or lattice-free), bounded by the box`, () => {
     // Flagging the coordinates as already unwrapped is the one way to skip the unwrap
     const result = calc_msd(
       build_positions(wrapped_frames, { lattice: box, coords_unwrapped: true }),
@@ -178,54 +178,37 @@ describe(`periodic unwrapping`, () => {
     const max_wrapped = Math.max(...result.curves[0].msd)
     expect(max_wrapped).toBeLessThan(box_length ** 2)
     expect((drift * result.lags[result.lags.length - 1]) ** 2).toBeGreaterThan(50)
-  })
-
-  it(`applies no unwrapping when the frames carry no lattice`, () => {
+    // frames without a lattice are never unwrapped either
     expect(calc_msd(build_positions(wrapped_frames)).unwrapped).toBe(false)
   })
 
-  it(`a single frame missing its lattice does not corrupt the unwrap`, () => {
-    // The unwrap decision is global, but the per-frame step used to fall back to a plain
-    // coordinate difference wherever that frame's lattice was null. Its neighbours are
-    // still wrapped, so that difference is a jump of up to one box length — and because
-    // the unwrap accumulates, one null cell poisoned every later frame. Measured before
-    // the fix on this exact input: 445 Å² at lag 10 against a true 900 Å².
-    // The null cell has to land on a frame where the atom actually crossed a face —
-    // elsewhere the raw difference coincides with the minimum image and hides the bug.
-    const crossing_frame = wrapped_frames.findIndex(
-      (frame, frame_idx) =>
-        frame_idx > 0 &&
-        Math.abs(frame[0][0] - wrapped_frames[frame_idx - 1][0][0]) > box_length / 2,
-    )
-    expect(crossing_frame).toBeGreaterThan(0)
-
-    const reference = calc_msd(build_positions(wrapped_frames, { lattice: box }))
-    const with_gap = build_positions(wrapped_frames, { lattice: box })
-    if (!with_gap.lattice_matrices) throw new Error(`expected per-frame lattices`)
-    with_gap.lattice_matrices = with_gap.lattice_matrices.map((mat, frame_idx) =>
-      frame_idx === crossing_frame ? null : mat,
-    )
-    const gapped = calc_msd(with_gap)
-    expect(gapped.unwrapped).toBe(true)
-    expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
+  // The unwrap decision is global, but the per-frame step used to fall back to a plain
+  // coordinate difference wherever that frame's lattice was null. Its neighbours are still
+  // wrapped, so that difference is a jump of up to one box length, and since the unwrap
+  // accumulates, one null cell poisoned every later frame (445 Å² at lag 10 against a true
+  // 900 Å²). The null cell must land on a frame where the atom crossed a face: elsewhere the
+  // raw difference coincides with the minimum image and hides the bug.
+  const crossing_frame = wrapped_frames.findIndex(
+    (frame, frame_idx) =>
+      frame_idx > 0 &&
+      Math.abs(frame[0][0] - wrapped_frames[frame_idx - 1][0][0]) > box_length / 2,
+  )
+  // Offsetting the drift puts the first crossing between frames 0 and 1: the unwrap loop
+  // starts at frame 1, so a null cell there must fall back to the frame-0 seed
+  const shifted = Array.from({ length: n_frames }, (_unused, frame_idx) => {
+    const raw = box_length - drift / 2 + drift * frame_idx
+    return [[raw - box_length * Math.floor(raw / box_length), 0.5, 0.5]]
   })
-
-  it(`a null lattice at frame 1 falls back to the frame-0 cell`, () => {
-    // The unwrap loop starts at frame 1, so frame 0's cell is only ever reachable as a seed.
-    // Offsetting the drift puts the first face crossing between frames 0 and 1, the one
-    // arrangement where an unseeded cache shows up: elsewhere the plain difference already
-    // coincides with the minimum image and hides it. wrapped_frames first crosses at frame
-    // 6, so nulling ITS frame 1 proves nothing.
-    const shifted = Array.from({ length: n_frames }, (_unused, frame_idx) => {
-      const raw = box_length - drift / 2 + drift * frame_idx
-      return [[raw - box_length * Math.floor(raw / box_length), 0.5, 0.5]]
-    })
-    expect(shifted[1][0][0]).toBeLessThan(shifted[0][0][0]) // wrapped between frames 0 and 1
-
-    const reference = calc_msd(build_positions(shifted, { lattice: box }))
-    const with_gap = build_positions(shifted, { lattice: box })
+  it.each([
+    [`a face-crossing frame`, wrapped_frames, crossing_frame],
+    [`frame 1, seeded from the frame-0 cell`, shifted, 1],
+  ])(`a null lattice at %s does not corrupt the unwrap`, (_label, frames, null_idx) => {
+    expect(null_idx).toBeGreaterThan(0)
+    expect(frames[null_idx][0][0]).toBeLessThan(frames[null_idx - 1][0][0]) // wrapped here
+    const reference = calc_msd(build_positions(frames, { lattice: box }))
+    const with_gap = build_positions(frames, { lattice: box })
     if (!with_gap.lattice_matrices) throw new Error(`expected per-frame lattices`)
-    with_gap.lattice_matrices[1] = null
+    with_gap.lattice_matrices[null_idx] = null
     const gapped = calc_msd(with_gap)
     expect(gapped.unwrapped).toBe(true)
     expect(max_rel_error(gapped.curves[0].msd, reference.curves[0].msd)).toBeLessThan(1e-12)
@@ -273,6 +256,8 @@ describe(`time-origin averaging`, () => {
     expect(result.lags[0]).toBe(1)
     expect(result.lags[result.lags.length - 1]).toBe(Math.floor((n_frames - 1) * 0.5))
     expect(total.n_origins).toEqual(result.lags.map((lag) => n_frames - lag))
+    // a single species emits only the total curve
+    expect(result.curves.map((curve) => curve.label)).toEqual([`Total`])
     // strictly decreasing
     for (let idx = 1; idx < total.n_origins.length; idx++) {
       expect(total.n_origins[idx]).toBeLessThan(total.n_origins[idx - 1])
@@ -324,11 +309,6 @@ describe(`per-element decomposition`, () => {
     // Each curve owns its origin counts; sharing one array lets a caller corrupt the rest
     expect(by_label.Li.n_origins).not.toBe(by_label.Total.n_origins)
     expect(by_label.Li.n_origins).toEqual(by_label.Total.n_origins)
-  })
-
-  it(`emits only a total curve for a single-species trajectory`, () => {
-    const result = calc_msd(ballistic([0.1, 0, 0], 20))
-    expect(result.curves.map((curve) => curve.label)).toEqual([`Total`])
   })
 })
 
@@ -429,13 +409,6 @@ describe(`time axis`, () => {
       expect(fit_msd_curves(result)[0]?.units).toBe(`Å²/${unit}`)
     },
   )
-
-  // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
-  it(`refuses to invent a time unit when dt is supplied without one`, () => {
-    expect(() => calc_msd(ballistic([0.1, 0, 0], 20), { dt: 0.5 })).toThrow(
-      /dt was supplied .* without time_unit/,
-    )
-  })
 })
 
 describe(`input validation`, () => {
@@ -469,6 +442,12 @@ describe(`input validation`, () => {
       `fractional max_lags`,
       () => calc_msd(drifting(20), { max_lags: 1.5 }),
       /max_lags must be a positive integer/,
+    ],
+    // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
+    [
+      `dt without a time unit`,
+      () => calc_msd(drifting(20), { dt: 0.5 }),
+      /dt was supplied .* without time_unit/,
     ],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)

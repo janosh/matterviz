@@ -57,6 +57,7 @@ describe(`parse_tdb`, () => {
       `Comment line should be captured`,
     ])
     expect(data.elements.map((element) => element.symbol)).toEqual([`/-`, `VA`, `AL`, `ZN`])
+    expect(data.elements[0].reference_phase).toBe(`ELECTRON_GAS`)
     expect(data.elements[2]).toEqual({
       symbol: `AL`,
       reference_phase: `FCC_A1`,
@@ -67,6 +68,7 @@ describe(`parse_tdb`, () => {
     expect(data.phases.map((phase) => phase.name)).toEqual([`LIQUID`, `FCC_A1`, `HCP_ZN`])
     expect(data.functions.map((func) => func.name)).toEqual([`GHSERAL`, `GHSERZN`])
     expect(data.parameters).toHaveLength(3)
+    // /- and VA are excluded from binary system detection
     expect(binary_system).toEqual([`AL`, `ZN`])
     // min over all FUNCTION ranges (298.15) and max (GHSERAL's last breakpoint, 2900 K)
     expect(temperature_range).toEqual([298.15, 2900])
@@ -132,6 +134,66 @@ describe(`parse_tdb`, () => {
     expect(data.elements[0].symbol).toBe(`AL`)
     expect(data.phases[0].name).toBe(`liquid`)
   })
+
+  test(`handles nested parentheses in PARAMETER expressions`, () => {
+    const content = `PARAMETER G(FCC_A1,AL:VA;0) 298.15 +GHSER(AL)+1000*(T-298.15); 6000 N !`
+    const result = parse_tdb(content)
+    expect(result.data.parameters).toHaveLength(1)
+    expect(result.data.parameters[0]?.expression).toContain(`GHSER(AL)`)
+  })
+
+  test(`handles scientific notation with lowercase e`, () => {
+    const content = `ELEMENT AL FCC_A1 2.698e-02 4.577e+03 2.832e+01!`
+    const result = parse_tdb(content)
+    expect(result.data.elements[0]?.mass).toBeCloseTo(0.02698, 4)
+  })
+
+  test(`handles TYPE_DEFINITION and DEFINE_SYSTEM_DEFAULT gracefully`, () => {
+    const content = `
+TYPE_DEFINITION % SEQ *!
+DEFINE_SYSTEM_DEFAULT ELEMENT 2 !
+DEFAULT_COMMAND DEF_SYS_ELEMENT VA !
+ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
+`
+    expect(parse_tdb(content).data.elements).toHaveLength(1)
+  })
+
+  test(`handles real-world TDB from NIMS database`, () => {
+    const content = `
+$ TDB-file for Cu-Mg system
+$ Copyright (C) NIMS 2008
+ELEMENT /-   ELECTRON_GAS              0.0000E+00  0.0000E+00  0.0000E+00!
+ELEMENT VA   VACUUM                    0.0000E+00  0.0000E+00  0.0000E+00!
+ELEMENT CU   FCC_A1                    6.3546E+01  5.0041E+03  3.3150E+01!
+ELEMENT MG   HCP_A3                    2.4305E+01  4.9980E+03  3.2671E+01!
+FUNCTION GHSERCU    298.15  -7770.458+130.485403*T-24.112392*T*LN(T)
+                  -.00265684*T**2+1.29223E-07*T**3+52478*T**(-1); 1358.02 Y
+        -13542.33+183.804197*T-31.38*T*LN(T)+3.64643E+29*T**(-9);  3200 N !
+PHASE LIQUID:L %  1  1.0  !
+PHASE FCC_A1  %&  2 1   1 !
+PHASE HCP_A3  %  2 1   .5 !
+PHASE CU2MG  %  2 2 1 !
+CONSTITUENT CU2MG :CU,MG : CU,MG : !
+`
+    const { data, binary_system, temperature_range } = parse_tdb(content)
+    expect(binary_system).toEqual([`CU`, `MG`])
+    expect(data.phases.map((phase) => phase.name)).toEqual([
+      `LIQUID:L`,
+      `FCC_A1`,
+      `HCP_A3`,
+      `CU2MG`,
+    ])
+    expect(data.phases[1]).toMatchObject({ model_hints: `%&`, sublattice_count: 2 })
+    expect(data.phases[3].constituents).toEqual([
+      [`CU`, `MG`],
+      [`CU`, `MG`],
+    ])
+    expect(data.functions[0].temperature_ranges.map(({ min, max }) => [min, max])).toEqual([
+      [298.15, 1358.02],
+      [1358.02, 3200],
+    ])
+    expect(temperature_range).toEqual([298.15, 3200])
+  })
 })
 
 describe(`get_system_name`, () => {
@@ -174,118 +236,6 @@ describe(`normalize_system_name`, () => {
   })
 })
 
-describe(`parse_tdb edge cases`, () => {
-  test(`handles PHASE line with special model hints`, () => {
-    const content = `PHASE BCC_A2 %& 2 1 3 !\nCONSTITUENT BCC_A2 :AL,FE : VA% : !`
-    const result = parse_tdb(content)
-    expect(result.data.phases[0]?.model_hints).toBe(`%&`)
-    expect(result.data.phases[0]?.sublattice_count).toBe(2)
-  })
-
-  test(`handles nested parentheses in PARAMETER expressions`, () => {
-    const content = `PARAMETER G(FCC_A1,AL:VA;0) 298.15 +GHSER(AL)+1000*(T-298.15); 6000 N !`
-    const result = parse_tdb(content)
-    expect(result.data.parameters).toHaveLength(1)
-    expect(result.data.parameters[0]?.expression).toContain(`GHSER(AL)`)
-  })
-
-  test(`handles multiple comment lines with metadata`, () => {
-    const content = `
-$ Database: Test TDB v1.0
-$ Author: Test Author
-$ Date: 2024-01-01
-$ Reference: Test Reference
-ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
-`
-    // every $ line is kept in order with its marker and surrounding whitespace stripped
-    expect(parse_tdb(content).data.comments).toEqual([
-      `Database: Test TDB v1.0`,
-      `Author: Test Author`,
-      `Date: 2024-01-01`,
-      `Reference: Test Reference`,
-    ])
-  })
-
-  test(`handles scientific notation with lowercase e`, () => {
-    const content = `ELEMENT AL FCC_A1 2.698e-02 4.577e+03 2.832e+01!`
-    const result = parse_tdb(content)
-    expect(result.data.elements[0]?.mass).toBeCloseTo(0.02698, 4)
-  })
-
-  test(`handles TYPE_DEFINITION and DEFINE_SYSTEM_DEFAULT gracefully`, () => {
-    const content = `
-TYPE_DEFINITION % SEQ *!
-DEFINE_SYSTEM_DEFAULT ELEMENT 2 !
-DEFAULT_COMMAND DEF_SYS_ELEMENT VA !
-ELEMENT AL FCC_A1 0.02698 4577.3 28.32!
-`
-    expect(parse_tdb(content).data.elements).toHaveLength(1)
-  })
-
-  test(`handles elements with ELECTRON_GAS reference phase`, () => {
-    const content = `ELEMENT /-   ELECTRON_GAS 0 0 0!`
-    const result = parse_tdb(content)
-    expect(result.data.elements[0]?.symbol).toBe(`/-`)
-    expect(result.data.elements[0]?.reference_phase).toBe(`ELECTRON_GAS`)
-  })
-
-  test(`correctly excludes /- and VA from binary system detection`, () => {
-    const content = `
-ELEMENT /-   ELECTRON_GAS 0 0 0!
-ELEMENT VA   VACUUM 0 0 0!
-ELEMENT CU   FCC_A1 0.06355 5004 33.15!
-ELEMENT MG   HCP_A3 0.02431 4998 32.67!
-`
-    const result = parse_tdb(content)
-    expect(result.binary_system).toEqual([`CU`, `MG`])
-  })
-
-  test(`handles CONSTITUENT with complex sublattice structure`, () => {
-    // Note: CONSTITUENT must come after PHASE and on a separate line
-    const content = `PHASE CU2MG %  2 2 1 !
-CONSTITUENT CU2MG :CU,MG : CU,MG : !`
-    const result = parse_tdb(content)
-    const phase = result.data.phases.find(
-      (candidate_phase) => candidate_phase.name === `CU2MG`,
-    )
-    expect(phase?.constituents?.[0]).toEqual([`CU`, `MG`])
-    expect(phase?.constituents?.[1]).toEqual([`CU`, `MG`])
-  })
-
-  test(`handles real-world TDB from NIMS database`, () => {
-    const content = `
-$ TDB-file for Cu-Mg system
-$ Copyright (C) NIMS 2008
-ELEMENT /-   ELECTRON_GAS              0.0000E+00  0.0000E+00  0.0000E+00!
-ELEMENT VA   VACUUM                    0.0000E+00  0.0000E+00  0.0000E+00!
-ELEMENT CU   FCC_A1                    6.3546E+01  5.0041E+03  3.3150E+01!
-ELEMENT MG   HCP_A3                    2.4305E+01  4.9980E+03  3.2671E+01!
-FUNCTION GHSERCU    298.15  -7770.458+130.485403*T-24.112392*T*LN(T)
-                  -.00265684*T**2+1.29223E-07*T**3+52478*T**(-1); 1358.02 Y
-        -13542.33+183.804197*T-31.38*T*LN(T)+3.64643E+29*T**(-9);  3200 N !
-PHASE LIQUID:L %  1  1.0  !
-PHASE FCC_A1  %&  2 1   1 !
-PHASE HCP_A3  %  2 1   .5 !
-PHASE CU2MG  %  2 2 1 !
-`
-    const { data, binary_system, temperature_range } = parse_tdb(content)
-    expect(binary_system).toEqual([`CU`, `MG`])
-    expect(data.phases.map((phase) => phase.name)).toEqual([
-      `LIQUID:L`,
-      `FCC_A1`,
-      `HCP_A3`,
-      `CU2MG`,
-    ])
-    expect(data.functions[0].temperature_ranges.map(({ min, max }) => [min, max])).toEqual([
-      [298.15, 1358.02],
-      [1358.02, 3200],
-    ])
-    expect(temperature_range).toEqual([298.15, 3200])
-  })
-})
-
-// === extract_tdb_reference ===
-
 describe(`extract_tdb_reference`, () => {
   test(`returns the first keyword comment verbatim, minus its $ marker`, () => {
     const ref = extract_tdb_reference([
@@ -313,8 +263,6 @@ describe(`extract_tdb_reference`, () => {
     expect(extract_tdb_reference(comments)).toBeNull()
   })
 })
-
-// === summarize_models ===
 
 describe(`summarize_models`, () => {
   test.each([

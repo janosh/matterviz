@@ -81,11 +81,18 @@ describe(`barrier arithmetic`, () => {
     expect(ts_image_idx).toBe(expected_idx)
   })
 
-  test(`reverse barrier is negative when the final state is the highest image`, () => {
+  test(`reverse barrier is zero when the final state is the highest image`, () => {
     const uphill = analyze_barrier(walk_path([0, 1, 2], [0, 0.5, 1.2]))
     expect(uphill.ts_image_idx).toBe(2)
     expect(uphill.reverse_barrier).toBeCloseTo(0, 12)
     expect(uphill.forward_barrier).toBeCloseTo(1.2, 12)
+  })
+
+  test(`shifting every energy by the initial one leaves barriers unchanged`, () => {
+    const images = walk_path([0, 1, 2], [-100.4, -99.6, -100.1])
+    const shifted = images.map((image) => ({ ...image, energy: image.energy + 100.4 }))
+    const raw_barrier = analyze_barrier(images).forward_barrier
+    expect(analyze_barrier(shifted).forward_barrier).toBeCloseTo(raw_barrier, 12)
   })
 })
 
@@ -186,19 +193,6 @@ describe(`cumulative arc length`, () => {
   })
 })
 
-describe(`energy reference`, () => {
-  const images = walk_path([0, 1, 2], [-100.4, -99.6, -100.1])
-
-  test(`shifting every energy by the initial one leaves barriers unchanged`, () => {
-    const shifted = images.map((image) => ({
-      ...image,
-      energy: image.energy - images[0].energy,
-    }))
-    const raw_barrier = analyze_barrier(images).forward_barrier
-    expect(analyze_barrier(shifted).forward_barrier).toBeCloseTo(raw_barrier, 12)
-  })
-})
-
 describe(`degenerate paths fail loudly`, () => {
   test.each([
     [`an empty path`, [], /at least 2 images.*got 0/],
@@ -224,18 +218,18 @@ describe(`degenerate paths fail loudly`, () => {
 })
 
 describe(`force projection`, () => {
-  test(`projected slope is minus the force along the tangent`, () => {
-    // Straight-line path: the tangent is +x everywhere, so dE/ds = -F_x
-    const slopes = projected_force_slopes(walk_path([0, 1, 2], [0, 0.1, 0.2], [-0.3, 0, 0.4]))
-    expect(slopes).toEqual([0.3, -0, -0.4])
-  })
-
-  test(`forces perpendicular to the path project to zero slope`, () => {
-    const perpendicular: Vec3 = [0, 1.5, 0]
-    const slopes = projected_force_slopes(
-      walk_path([0, 1, 2], [0, 0.1, 0.2], [perpendicular, perpendicular, perpendicular]),
+  // Straight-line path: the tangent is +x everywhere, so dE/ds = -F_x
+  test.each([
+    [`along the tangent give minus the force`, [-0.3, 0, 0.4], [0.3, -0, -0.4]],
+    [
+      `perpendicular to the path give zero`,
+      Array.from({ length: 3 }, (): Vec3 => [0, 1.5, 0]),
+      [-0, -0, -0],
+    ],
+  ])(`projected slopes of forces %s`, (_name, forces, expected) => {
+    expect(projected_force_slopes(walk_path([0, 1, 2], [0, 0.1, 0.2], forces))).toEqual(
+      expected,
     )
-    expect(slopes?.every((slope) => Math.abs(slope) < 1e-15)).toBe(true)
   })
 
   test(`returns null when any image lacks forces`, () => {
@@ -262,17 +256,18 @@ describe(`input normalization`, () => {
   const images = walk_path([0, 1, 2], [0, 1, 0.5])
 
   test.each([
-    [`a bare image array`, () => images, 1],
-    [`a single path object`, () => ({ images, label: `hop` }), 1],
-    [`a keyed record of paths`, () => ({ vacancy: images, interstitial: { images } }), 2],
-  ])(`%s normalizes to named paths`, (_name, make_input, expected_count) => {
+    [`a bare image array`, () => images, [`path 1`]],
+    [`a single path object`, () => ({ images, label: `hop` }), [`hop`]],
+    [`an unlabelled single path`, () => ({ images }), [`path 1`]],
+    [
+      `a keyed record of paths`,
+      () => ({ vacancy: images, interstitial: { images } }),
+      [`vacancy`, `interstitial`],
+    ],
+  ])(`%s normalizes to named paths`, (_name, make_input, expected_keys) => {
     const paths = normalize_paths(make_input())
-    expect(paths).toHaveLength(expected_count)
+    expect(paths.map(({ key }) => key)).toEqual(expected_keys)
     for (const { path } of paths) expect(path.images).toHaveLength(3)
-  })
-
-  test(`a single path keeps its label as key`, () => {
-    expect(normalize_paths({ images, label: `hop` })[0].key).toBe(`hop`)
   })
 
   test(`an empty record throws`, () => {
@@ -352,15 +347,6 @@ describe(`natural cubic slopes`, () => {
     // extrapolating back to the end knot must land on zero
     expect(Math.abs(2 * curvature(0.1) - curvature(0.2))).toBeLessThan(1e-6)
     expect(Math.abs(2 * curvature(3.4) - curvature(3.3))).toBeLessThan(1e-6)
-  })
-
-  test(`interpolate every knot value exactly`, () => {
-    const x_values = [0, 0.7, 2.1, 5]
-    const y_values = [1, -2, 3.5, 0.25]
-    const slopes = natural_cubic_slopes(x_values, y_values)
-    for (const [idx, coord] of x_values.entries()) {
-      expect(eval_hermite(x_values, y_values, slopes, coord)).toBeCloseTo(y_values[idx], 12)
-    }
   })
 
   test.each([

@@ -1,5 +1,5 @@
 // The postMessage channel to whatever host embeds the viewer (the VS Code
-// extension, or Hive's Tauri backend impersonating it).
+// extension, or a desktop host speaking the same protocol).
 //
 // Deliberately free of DOM and Svelte imports so the worker-safe parser can
 // reach the host for a `LARGE_FILE:` marker without dragging in the viewer's

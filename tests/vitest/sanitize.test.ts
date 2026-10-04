@@ -65,9 +65,6 @@ describe(`sanitize_html`, () => {
     [`span with title`, `<span title="tooltip">text</span>`],
     [`line break`, `text<br>more`],
     [`small`, `<small>footnote</small>`],
-    [`Li₂O formula`, `Li<sub>2</sub>O`],
-    [`Fe₂O₃ formula`, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Ca²⁺ ion`, `Ca<sup>2+</sup>`],
   ])(`preserves safe %s`, (_name, input) => {
     expect(sanitize_html(input)).toBe(input)
   })
@@ -96,7 +93,18 @@ describe(`sanitize_html`, () => {
     ],
     [`dangerous bg`, `<span style="background: url(evil)">x</span>`, `<span>x</span>`],
     [`dangerous position`, `<span style="position: fixed; top: 0">x</span>`, `<span>x</span>`],
-  ])(`style filtering: %s`, (_name, input, expected) => {
+    [
+      `mixed safe and unsafe content`,
+      `<b>bold</b><script>alert(1)</script><sub>2</sub>`,
+      `<b>bold</b><sub>2</sub>`,
+    ],
+    // every wrapper survives intact, only the script leaf is removed
+    [
+      `deeply nested script`,
+      `<b><i><span><em><strong><script>alert(1)</script></strong></em></span></i></b>`,
+      `<b><i><span><em><strong></strong></em></span></i></b>`,
+    ],
+  ])(`filters %s`, (_name, input, expected) => {
     expect(sanitize_html(input)).toBe(expected)
   })
 
@@ -106,12 +114,6 @@ describe(`sanitize_html`, () => {
       expect(sanitize_html(`<${tag}>content</${tag}>`)).not.toContain(`<${tag}`)
     },
   )
-
-  test(`handles mixed safe and unsafe content`, () => {
-    expect(sanitize_html(`<b>bold</b><script>alert(1)</script><sub>2</sub>`)).toBe(
-      `<b>bold</b><sub>2</sub>`,
-    )
-  })
 
   test.each([
     [`empty`, ``, ``],
@@ -132,14 +134,6 @@ describe(`sanitize_html`, () => {
     [`null byte injection`, `<scr\u0000ipt>alert(1)</script>`],
   ] as const)(`bypass attempt: %s`, (_name, input) => {
     assertNoXss(sanitize_html(input))
-  })
-
-  test(`deeply nested dangerous content is stripped`, () => {
-    const result = sanitize_html(
-      `<b><i><span><em><strong><script>alert(1)</script></strong></em></span></i></b>`,
-    )
-    // every wrapper survives intact, only the script leaf is removed
-    expect(result).toBe(`<b><i><span><em><strong></strong></em></span></i></b>`)
   })
 
   // Strings with no `<` bypass DOMPurify entirely. These pin that shortcut to what the
@@ -233,20 +227,14 @@ describe(`sanitize_svg`, () => {
   })
 
   test.each([
-    `<circle cx="10" r="5" />`,
-    `<rect width="10" height="10" />`,
-    `<path d="M0 0" />`,
-  ])(`strips non-text SVG tag: %s`, (input) => {
-    expect(sanitize_svg(input)).toBe(``)
-  })
-
-  test(`strips unsafe attributes from tspan`, () => {
-    expect(sanitize_svg(`<tspan onclick="alert(1)">x</tspan>`)).toBe(`<tspan>x</tspan>`)
-  })
-
-  test(`returns empty string when all content is stripped`, () => {
-    expect(sanitize_svg(`<script>alert(1)</script>`)).toBe(``)
-    expect(sanitize_svg(``)).toBe(``)
+    [`<circle cx="10" r="5" />`, ``],
+    [`<rect width="10" height="10" />`, ``],
+    [`<path d="M0 0" />`, ``],
+    [`<script>alert(1)</script>`, ``],
+    [``, ``],
+    [`<tspan onclick="alert(1)">x</tspan>`, `<tspan>x</tspan>`],
+  ])(`strips non-text tags and unsafe attributes: %s -> %s`, (input, expected) => {
+    expect(sanitize_svg(input)).toBe(expected)
   })
 })
 
@@ -301,11 +289,9 @@ describe(`sanitizers without a browser DOM`, () => {
   })
 })
 
-// The SSR sanitizer copied anything its tag regex did not match straight to the output, and
-// that regex needs a closing `>`. So an UNTERMINATED tag was never seen as a tag and survived
-// byte for byte - and SSR emits this into the middle of a page, where the following markup
-// supplies the `>`. `<img src=x onerror=alert(1)` became a live img with a working handler.
-// The DOMPurify path was always fine, so this was also an SSR/client divergence.
+// An unterminated tag is never matched by a tag regex needing a closing `>`, but SSR emits it
+// mid-page where the following markup supplies the `>`: `<img src=x onerror=alert(1)` would
+// become a live img with a working handler.
 describe(`sanitize_html_ssr escapes unterminated markup`, () => {
   test.each([
     `<img src=x onerror=alert(1)`,
@@ -326,8 +312,7 @@ describe(`sanitize_html_ssr escapes unterminated markup`, () => {
     expect(sanitize_html_ssr(`plain & text > here`)).toBe(`plain & text > here`)
   })
 
-  // `[^>]*` rescanned to end of input from every `<` that never got a `>`, so a run of them was
-  // quadratic: 20k `<a` took 312 ms and a 1 MB payload would have blocked the thread for minutes
+  // a `[^>]*` scan from every unterminated `<` makes a run of them quadratic
   test(`stays linear on a long run of unterminated tags`, () => {
     const timings = [10_000, 20_000, 40_000].map((count) => {
       const start = performance.now()

@@ -53,9 +53,7 @@ test.each([
       const needs = Object.fromEntries(
         dependencies.map((name) => [
           name,
-          {
-            result: name === dependency ? result : `success`,
-          },
+          { result: name === dependency ? result : `success` },
         ]),
       )
       const expression = step.env.RESULT.slice(3, -2).replaceAll(
@@ -129,10 +127,11 @@ test.each([
   },
 )
 
+const { jobs: release_jobs } = load(readFileSync(`.github/workflows/publish.yml`, `utf8`)) as {
+  jobs: Record<string, { needs?: string | string[]; steps: { run?: string }[] }>
+}
+
 test(`release builds overlap CI while every publisher waits for CI and all artifacts`, () => {
-  const { jobs: release_jobs } = load(
-    readFileSync(`.github/workflows/publish.yml`, `utf8`),
-  ) as { jobs: Record<string, { needs?: string | string[] }> }
   const packages = Object.keys(release_jobs).filter((name) => name.startsWith(`package_`))
   expect(packages).toHaveLength(4)
   for (const name of packages) expect(release_jobs[name].needs).toBe(`prepare`)
@@ -144,15 +143,11 @@ test(`release builds overlap CI while every publisher waits for CI and all artif
   expect(new Set(release_jobs.finalize.needs)).toEqual(new Set([`prepare`, ...publishers]))
 })
 
-test.each([
-  [`publish_npm`, true],
-  [`publish_npm`, false],
-  [`publish_pypi`, true],
-  [`publish_pypi`, false],
-])(`%s dry_run=%s keeps version-conflict overrides out of real releases`, (job, dry_run) => {
-  const { jobs: release_jobs } = load(
-    readFileSync(`.github/workflows/publish.yml`, `utf8`),
-  ) as { jobs: Record<string, { steps: { run?: string }[] }> }
+test.each(
+  [`publish_npm`, `publish_pypi`].flatMap((job) =>
+    [true, false].map((dry_run) => [job, dry_run] as const),
+  ),
+)(`%s dry_run=%s keeps version-conflict overrides out of real releases`, (job, dry_run) => {
   const script = release_jobs[job].steps.find((step) => step.run)?.run
   if (!script) throw new Error(`Missing publish script: ${job}`)
   const scratch = mkdtempSync(join(tmpdir(), `matterviz-publish-`))

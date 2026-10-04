@@ -76,55 +76,45 @@ describe(`FermiSurfaceTooltip`, () => {
     },
   )
 
-  describe(`tiling info`, () => {
-    test.each([
-      { n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },
-      { n_symmetry_ops: undefined, expected: `Symmetry copy #6` },
-    ])(
-      `shows symmetry info when tiled and symmetry_index > 0 (n_ops=$n_symmetry_ops)`,
-      ({ n_symmetry_ops, expected }) => {
-        mount_tooltip({
-          hover_data: mock_hover_data({ is_tiled: true, symmetry_index: 5, n_symmetry_ops }),
-        })
-        expect(document.body.textContent).toContain(expected)
-        if (!n_symmetry_ops) expect(document.body.textContent).not.toContain(`#6/`)
-      },
-    )
-
-    test.each([
-      { is_tiled: false, symmetry_index: 5, reason: `not tiled` },
-      { is_tiled: true, symmetry_index: 0, reason: `identity (index=0)` },
-      { is_tiled: true, symmetry_index: undefined, reason: `undefined index` },
-    ])(`hides tiling info when $reason`, ({ is_tiled, symmetry_index }) => {
-      mount_tooltip({ hover_data: mock_hover_data({ is_tiled, symmetry_index }) })
-      expect(document.body.textContent).not.toContain(`Symmetry`)
-    })
-  })
+  // only tiled copies past the identity (index 0) are labelled
+  test.each([
+    { is_tiled: true, symmetry_index: 5, n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },
+    {
+      is_tiled: true,
+      symmetry_index: 5,
+      n_symmetry_ops: undefined,
+      expected: `Symmetry copy #6`,
+    },
+    { is_tiled: false, symmetry_index: 5, n_symmetry_ops: 48, expected: null },
+    { is_tiled: true, symmetry_index: 0, n_symmetry_ops: 48, expected: null },
+    { is_tiled: true, symmetry_index: undefined, n_symmetry_ops: 48, expected: null },
+  ])(
+    `tiling info for is_tiled=$is_tiled index=$symmetry_index n_ops=$n_symmetry_ops`,
+    ({ expected, ...tiling }) => {
+      mount_tooltip({ hover_data: mock_hover_data(tiling) })
+      const text = document.querySelector(`.tiling-info`)?.textContent?.trim() ?? null
+      expect(text).toBe(expected)
+    },
+  )
 
   describe(`custom tooltip config`, () => {
     test.each([
-      { key: `prefix`, html: `<em>Header</em>`, class_name: `.tooltip-prefix` },
-      { key: `suffix`, html: `<strong>Footer</strong>`, class_name: `.tooltip-suffix` },
-    ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
-      mount_tooltip({ tooltip: { [key]: html } })
-      expect(doc_query(class_name).innerHTML).toBe(html)
-    })
-
-    test.each([
+      { key: `prefix`, value: `<em>Header</em>`, expected: `<em>Header</em>` },
+      { key: `suffix`, value: `<strong>Footer</strong>`, expected: `<strong>Footer</strong>` },
       {
         key: `prefix`,
-        fn: (data: FermiHoverData) => `Band: ${data.band_index}`,
+        value: (data: FermiHoverData) => `Band: ${data.band_index}`,
         expected: `Band: 5`,
       },
       {
         key: `suffix`,
-        fn: (data: FermiHoverData) => `Spin: ${data.spin}`,
+        value: (data: FermiHoverData) => `Spin: ${data.spin}`,
         expected: `Spin: up`,
       },
-    ])(`renders $key as function`, ({ key, fn: callback, expected }) => {
+    ])(`renders $key from $value`, ({ key, value, expected }) => {
       const hover_data = mock_hover_data({ band_index: 5, spin: `up` })
-      mount_tooltip({ hover_data, tooltip: { [key]: callback } })
-      expect(document.body.textContent).toContain(expected)
+      mount_tooltip({ hover_data, tooltip: { [key]: value } })
+      expect(doc_query(`.tooltip-${key}`).innerHTML).toBe(expected)
     })
 
     test(`prefix appears before content, suffix after`, () => {

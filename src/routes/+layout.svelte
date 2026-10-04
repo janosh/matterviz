@@ -13,7 +13,6 @@
   import { theme_state } from '#lib/state.svelte.js'
   import {
     apply_theme_to_dom,
-    AUTO_THEME,
     get_theme_preference,
     THEME_OPTIONS,
     THEME_STORAGE_KEY,
@@ -24,6 +23,7 @@
   import { link_source_mentions } from '#site/source-links.js'
   import { nav_routes, routes } from '#site/state.svelte.js'
   import type { Snippet } from 'svelte'
+  import { MediaQuery } from 'svelte/reactivity'
   import type { CmdAction } from 'svelte-widgets'
   import CopyButton from 'svelte-widgets/CopyButton.svelte'
   import GitHubCorner from 'svelte-widgets/GitHubCorner.svelte'
@@ -38,23 +38,12 @@
   let cmd_palette_open = $state(false)
   let theme_mode = $derived(theme_state.mode)
 
-  // Apply the chosen mode; re-resolve `auto` when the OS preference flips and follow a
-  // preference saved by another tab. Everything else reads the root's resulting color-scheme.
+  // Apply the chosen mode, re-resolving `auto` when the OS preference flips; a preference saved
+  // by another tab is followed below. Everything else reads the root's resulting color-scheme.
+  const prefers_dark = new MediaQuery(`(prefers-color-scheme: dark)`)
   $effect(() => {
+    void prefers_dark.current
     apply_theme_to_dom(theme_state.mode)
-    const media_query = window.matchMedia(`(prefers-color-scheme: dark)`)
-    const follow_system = () => {
-      if (theme_state.mode === AUTO_THEME) apply_theme_to_dom(AUTO_THEME)
-    }
-    const follow_other_tabs = (event: StorageEvent) => {
-      if (event.key === THEME_STORAGE_KEY) theme_state.mode = get_theme_preference()
-    }
-    media_query.addEventListener(`change`, follow_system)
-    window.addEventListener(`storage`, follow_other_tabs)
-    return () => {
-      media_query.removeEventListener(`change`, follow_system)
-      window.removeEventListener(`storage`, follow_other_tabs)
-    }
   })
 
   // Matched locally by the palette, so page navigation works in dev where the Pagefind index
@@ -88,6 +77,12 @@
     !page.url.pathname.startsWith(`/test`) && page.url.pathname !== `/404`,
   )
 </script>
+
+<svelte:window
+  onstorage={(event) => {
+    if (event.key === THEME_STORAGE_KEY) theme_state.mode = get_theme_preference()
+  }}
+/>
 
 <!-- z-index: above nav dropdown and Structure control toggles.
      --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz

@@ -1,15 +1,13 @@
-<script module lang="ts">
-  // Track active dropdown across all instances - only one can be open at a time
-  let active_close_fn: (() => void) | null = null
-</script>
-
 <script lang="ts">
+  // Compact single-select: an inline trigger showing the selected option (HTML labels like
+  // E<sub>form</sub> allowed, sanitized) that opens a native popover list. Controlled: it
+  // reports picks through `on_select` and shows whatever `selected_key` the caller commits.
+  // Plots use it for interactive axis labels and colorbar property pickers.
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
+  import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import { click_outside, float, portal } from 'svelte-widgets/attachments'
   import type { HTMLButtonAttributes } from 'svelte/elements'
-
-  type Option = { key: string; label: string; unit?: string }
 
   let {
     options,
@@ -35,26 +33,14 @@
 
   const selected_option = $derived(options.find((opt) => opt.key === selected_key))
 
-  function open_dropdown() {
-    if (!trigger_el || !options.length) return
-    if (active_close_fn && active_close_fn !== close_dropdown) active_close_fn()
-    dropdown_open = true
-    active_close_fn = close_dropdown
-  }
-
-  function close_dropdown(return_focus = true) {
-    if (active_close_fn === close_dropdown) active_close_fn = null
-    dropdown_open = false
-    if (return_focus) trigger_el?.focus()
-  }
-
   function select(key: string) {
-    close_dropdown()
+    dropdown_open = false
+    trigger_el?.focus()
     if (key !== selected_key) on_select?.(key)
   }
 
-  // Handle both the trigger and portalled list before a host widget stops key propagation.
-  // Escape is handled by click_outside({ escape: true }) below — not duplicated here.
+  // Handle both the trigger and the list before a host widget stops key propagation. The
+  // popover closes on Escape and outside presses (anchored_popover).
   function handle_keydown(evt: KeyboardEvent) {
     // Cmd/Ctrl+Arrow scrolls the page; the list only answers bare keys
     if (!dropdown_el || is_modifier_chord(evt)) return
@@ -74,10 +60,8 @@
     }
   }
 
-  // Close dropdown when disabled, options empty, or component unmounts
   $effect(() => {
-    if ((disabled || !options.length) && dropdown_open) close_dropdown(false)
-    return () => close_dropdown(false)
+    if (disabled || !options.length) dropdown_open = false
   })
 </script>
 
@@ -85,7 +69,7 @@
   <button
     bind:this={trigger_el}
     type="button"
-    onclick={() => (dropdown_open ? close_dropdown() : open_dropdown())}
+    onclick={() => (dropdown_open = !dropdown_open)}
     {disabled}
     aria-expanded={dropdown_open}
     aria-haspopup="listbox"
@@ -94,7 +78,7 @@
       rest.onkeydown?.(evt)
       if (dropdown_open && !evt.defaultPrevented) handle_keydown(evt)
     }}
-    class={[`portal-select-trigger`, rest.class]}
+    class={[`popover-select-trigger`, rest.class]}
   >
     {@html sanitize_html(selected_option ? format_option(selected_option) : placeholder)}
     <span class="arrow">▾</span>
@@ -102,29 +86,17 @@
 {/if}
 
 {#if dropdown_open}
-  <!-- portalled out of the plot to escape its overflow clipping, then parked under the
-  trigger by `float`. Scoped CSS survives the move, so no inline styles are needed. Inside
-  an open <dialog> the list stays in the dialog: under showModal() everything outside is
-  inert and painted below the top layer, so a <body> portal would be unclickable. -->
   <div
     bind:this={dropdown_el}
-    class="portal-select-dropdown"
+    class="popover-select-dropdown"
     role="listbox"
     tabindex="-1"
     onkeydown={handle_keydown}
-    {@attach portal(trigger_el?.closest(`dialog[open]`) ?? document.body)}
-    {@attach float({
+    out:close_before_removal
+    {@attach anchored_popover({
       anchor: trigger_el,
-      placement: `bottom`,
       align: `center`,
-      offset: 4,
-      padding: 4,
-      flip: [`bottom`, `top`],
-    })}
-    {@attach click_outside({
-      inside: [trigger_el],
-      escape: true,
-      callback: (_node, _config, { via }) => close_dropdown(via === `escape`),
+      on_close: () => (dropdown_open = false),
     })}
   >
     <ul>
@@ -150,7 +122,7 @@
 {/if}
 
 <style>
-  .portal-select-trigger {
+  .popover-select-trigger {
     display: inline-flex;
     align-items: baseline;
     gap: 0.3em;
@@ -164,10 +136,10 @@
     color: inherit;
     cursor: pointer;
   }
-  .portal-select-trigger:hover {
-    background-color: var(--portal-select-hover-bg, rgba(128, 128, 128, 0.15));
+  .popover-select-trigger:hover {
+    background-color: var(--popover-select-hover-bg, rgba(128, 128, 128, 0.15));
   }
-  .portal-select-trigger:disabled {
+  .popover-select-trigger:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
@@ -177,8 +149,11 @@
     line-height: 0;
     opacity: 0.8;
   }
-  .portal-select-dropdown {
-    z-index: 10000;
+  .popover-select-dropdown {
+    /* the list carries the chrome */
+    padding: 0;
+    border: 0;
+    background: none;
     ul {
       margin: 0;
       padding: 0;
@@ -216,17 +191,17 @@
       background: rgba(0, 100, 200, 0.15);
     }
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(:is(sub, sup)) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(:is(sub, sup)) {
     font-size: 0.75em;
     line-height: 0;
     margin: 0 0 0 -0.25em;
     padding: 0;
     position: relative;
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(sub) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(sub) {
     top: 0.25em;
   }
-  :is(.portal-select-trigger, .portal-select-dropdown) :global(sup) {
+  :is(.popover-select-trigger, .popover-select-dropdown) :global(sup) {
     top: -0.4em;
   }
 </style>

@@ -182,31 +182,21 @@ const tetrahedron_sites = (center: string, vertex: string, origin: Vec3, dist: n
 }
 
 describe(`convex_hull_3d`, () => {
+  const tetra: Vec3[] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  // oxfmt-ignore
   test.each([
-    [
-      `tetrahedron`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      4,
-      4,
-      1 / 6,
-      10,
-    ],
+    [`tetrahedron`, tetra, 4, 4, 1 / 6, 10],
     [`octahedron`, octahedron_points, 8, 6, 4 / 3, 10],
     [`cube (side 2.5)`, cube_points(2.5), 12, 8, 2.5 ** 3, 8],
     // interior points must not survive as hull vertices
-    [
-      `octahedron + interior points`,
-      [...octahedron_points, [0, 0, 0], [0.1, 0.1, 0.1]],
-      8,
-      6,
-      4 / 3,
-      10,
-    ],
+    [`octahedron + interior points`, [...octahedron_points, [0, 0, 0], [0.1, 0.1, 0.1]], 8, 6, 4 / 3, 10],
+    // a point within eps of another is deduped
+    [`tetrahedron + near-duplicate point`, [...tetra, [1e-9, 0, 0]], 4, 4, 1 / 6, 8],
   ] as const)(
     `%s hulls to %i faces / %i vertices`,
     (_name, points, faces, vertices, volume, precision) => {
@@ -217,59 +207,16 @@ describe(`convex_hull_3d`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
-    [
-      `fewer than 4 points`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-      ] as Vec3[],
-    ],
-    [
-      `coplanar square`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [1, 1, 0],
-        [0, 1, 0],
-      ] as Vec3[],
-    ],
-    [
-      `collinear points`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [2, 0, 0],
-        [3, 0, 0],
-      ] as Vec3[],
-    ],
-    [
-      `duplicate points only`,
-      [
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-      ] as Vec3[],
-    ],
-  ])(`degenerate input: %s -> no faces, zero volume`, (_label, points) => {
+    [`fewer than 4 points`, [[0, 0, 0], [1, 0, 0], [0, 1, 0]]],
+    [`coplanar square`, [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]],
+    [`collinear points`, [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]]],
+    [`duplicate points only`, [[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]]],
+  ] as [string, Vec3[]][])(`degenerate input: %s -> no faces, zero volume`, (_label, points) => {
     const hull = convex_hull_3d(points)
     expect(hull.faces).toHaveLength(0)
     expect(hull.volume).toBe(0)
-  })
-
-  test(`near-duplicate points are deduped`, () => {
-    // 2nd point duplicates the first within eps
-    const hull = convex_hull_3d([
-      [0, 0, 0],
-      [1e-9, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
-    expect(hull.vertices).toHaveLength(4)
-    expect(hull.volume).toBeCloseTo(1 / 6, 8)
   })
 
   test(`random point clouds satisfy Euler formula and outward normals`, () => {
@@ -332,18 +279,19 @@ const neighbor_idxs = (adjacency: ReturnType<typeof build_adjacency>, center: nu
     .toSorted((idx_a, idx_b) => idx_a - idx_b)
 
 describe(`build_adjacency`, () => {
-  test(`symmetric adjacency from bond pairs`, () => {
-    const adjacency = build_adjacency([make_bond(0, 1), make_bond(1, 2), make_bond(0, 2)])
+  test(`symmetric adjacency from bond pairs, minus self-bonds and repeats`, () => {
+    const adjacency = build_adjacency([
+      make_bond(0, 1),
+      make_bond(1, 2),
+      make_bond(0, 2),
+      make_bond(0, 0),
+      make_bond(1, 0),
+    ])
     expect(neighbor_idxs(adjacency, 0)).toEqual([1, 2])
     expect(neighbor_idxs(adjacency, 1)).toEqual([0, 2])
     expect(neighbor_idxs(adjacency, 2)).toEqual([0, 1])
     // proximity-perceived bonds carry no cell_shift, so vertices stay at site positions
     expect(adjacency.get(0)?.every((nbr) => nbr.offset === null)).toBe(true)
-  })
-
-  test(`ignores self-bonds and dedupes repeated pairs`, () => {
-    const adjacency = build_adjacency([make_bond(0, 0), make_bond(0, 1), make_bond(1, 0)])
-    expect(neighbor_idxs(adjacency, 0)).toEqual([1])
   })
 
   test(`same site through different cell shifts counts as separate neighbors`, () => {
@@ -388,17 +336,15 @@ describe(`compute_polyhedra`, () => {
     }
   })
 
-  test(`SiO4 tetrahedron detected with Si center`, () => {
-    const structure = make_crystal(10, tetrahedron_sites(`Si`, `O`, [5, 5, 5], 1.6))
+  // C is more electronegative than H, so methane gets no polyhedron
+  test.each([
+    [`Si`, `O`, 1.6, [`Si`]],
+    [`C`, `H`, 1.09, []],
+  ])(`%s%s4 tetrahedron yields centers %j`, (center, vertex, dist, expected) => {
+    const structure = make_crystal(10, tetrahedron_sites(center, vertex, [5, 5, 5], dist))
     const polyhedra = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))
-    expect(polyhedra).toHaveLength(1)
-    expect(polyhedra[0].center_element).toBe(`Si`)
-    expect(polyhedra[0].faces).toHaveLength(4)
-  })
-
-  test(`methane: C is more electronegative than H, no polyhedron`, () => {
-    const structure = make_crystal(10, tetrahedron_sites(`C`, `H`, [5, 5, 5], 1.09))
-    expect(compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))).toHaveLength(0)
+    expect(polyhedra.map((poly) => poly.center_element)).toEqual(expected)
+    for (const poly of polyhedra) expect(poly.faces).toHaveLength(4)
   })
 
   test.each([

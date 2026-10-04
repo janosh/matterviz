@@ -21,6 +21,7 @@ import {
   pattern_id_of,
   plot_svg,
   roving_tabindexes,
+  set_input,
 } from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
@@ -112,8 +113,7 @@ const counts_of = (...args: Parameters<typeof bin_values>) =>
 
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
-  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
-  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  // exactly one mark holds the group's tab stop so Tab skips past the chart in one press
   test(`marks are reachable by Tab exactly once`, async () => {
     const tabindexes = roving_tabindexes(
       await mount_histogram({
@@ -159,7 +159,7 @@ describe(`Histogram`, () => {
       y_ticks_after({
         series: log_series,
         bins: 5,
-        // Read fractional log ranges without the raw-count default's integer rounding.
+        // read fractional log ranges without the raw-count default's integer rounding
         y_axis: { scale_type: `log`, format: `.6~g`, ...(range ? { range } : {}) },
       })
     const valid_ticks = [await log_ticks(), await log_ticks([1, null])]
@@ -223,7 +223,6 @@ describe(`Histogram`, () => {
   })
 
   const repeated = { values: [0, 1, 2], label: `Repeated` }
-  // Keyed on the visible subset, `single` mode painted every swatch the shared bar color
   test(`legend swatches stay per-series in single mode`, async () => {
     await mount_histogram({
       series: [`A`, `B`, `C`].map((label) => ({ values: [1, 2, 3], label })),
@@ -379,13 +378,9 @@ describe(`Histogram`, () => {
     expect(state.series[1].values).toBe(second_series.values)
   })
 
-  // Regression on both axes, one flip at a time against a shared ascending reference:
-  // - x: bin edges are always ascending, so on a descending x range x_scale(bin.x0) is the
-  //   bar's RIGHT edge. Using it as the left edge shifted every bar one full bin outward,
-  //   pushing the last bar past the clip rect.
-  // - y: on a descending value range the baseline sits ABOVE the bar's value pixel, so
-  //   `baseline - y_scale(value)` went negative and `Math.max(0, ...)` clamped every bar to
-  //   zero height, leaving the chart completely empty.
+  // One flip at a time against an ascending reference: bin edges stay ascending, so on a
+  // descending x range x_scale(bin.x0) is the bar's RIGHT edge; on a descending y range the
+  // baseline sits ABOVE the bar's value pixel.
   test(`bars mirror rather than shift or vanish on reversed x and y ranges`, async () => {
     const props = { series: [{ values: [1, 3, 5, 7, 9], label: `A` }], bins: 5 }
     const spans = (boxes: ReturnType<typeof bar_boxes>) =>
@@ -417,7 +412,7 @@ describe(`Histogram`, () => {
     expect(flipped_y[0].top).toBeLessThan(ascending[0].bottom)
   })
 
-  // Obstacles were once empty on reversed axes, linear on log ones and only each bar's center
+  // legend obstacles must track reversed and log axes and each bar's full width
   // oxfmt-ignore
   test.each([
     // bars hang from the top baseline on [2, 0]
@@ -531,23 +526,19 @@ describe(`Histogram`, () => {
       )
       const initial_reads = sample_reads
       const fill_input = doc_query<HTMLInputElement>(`input[aria-label="Fill color hex"]`)
-      fill_input.value = `#wrong`
-      fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(fill_input, `#wrong`)
       await tick()
       expect(fill_input.getAttribute(`aria-invalid`)).toBe(`true`)
       expect(state.bar).toEqual({ color: `#112233` })
-      fill_input.value = `#abcdef`
-      fill_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(fill_input, `#abcdef`)
       expect(state.bar).toEqual({ color: `#abcdef` })
       const stroke_color = doc_query<HTMLInputElement>(`input[aria-label="Stroke color"]`)
-      stroke_color.value = `#fedcba`
-      stroke_color.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(stroke_color, `#fedcba`)
       const stroke_opacity = [...document.querySelectorAll<HTMLLabelElement>(`label`)]
         .find((label) => label.textContent?.trim() === `Stroke opacity`)
         ?.querySelector<HTMLInputElement>(`input[type="number"]`)
       if (!stroke_opacity) throw new Error(`Missing stroke opacity input`)
-      stroke_opacity.value = `0.25`
-      stroke_opacity.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(stroke_opacity, `0.25`)
       expect(state.bar).toEqual({
         color: `#abcdef`,
         stroke_color: `#fedcba`,
@@ -576,7 +567,7 @@ describe(`Histogram`, () => {
     const on_bar_hover = vi.fn()
     const on_bar_click = vi.fn()
     await mount_histogram({
-      // 5 bins over [0, 10]: [0,2) holds weight 2.5 of 5, which the tooltip once showed as 2
+      // 5 bins over [0, 10]: [0,2) holds fractional weight 2.5 of 5
       series: [series_of([0, 1, 5, 9], { label: `A`, weights: [1.25, 1.25, 1.5, 1] })],
       bins: 5,
       normalize: `probability`,
@@ -730,7 +721,6 @@ describe(`Histogram`, () => {
 
   test(`bin_values: weights must align, and non-finite ones drop like non-finite values`, () => {
     const values = [1, 3, 5, 7, 9]
-    // a short array yields `undefined` weights, one of which NaNs the whole Float64Array
     expect(() => bin_values(values, [0, 10], 5, `linear`, [1, 2])).toThrow(
       `bin_values got 2 weights for 5 values`,
     )
@@ -743,8 +733,7 @@ describe(`Histogram`, () => {
     expect(Array.from(bin_values([5, 5], [5, 5], 4, `linear`, [2, NaN]).counts)).toEqual([2])
   })
 
-  // n_bins IS the allocation (edges + counts + one <rect> each): 5e7 is a 400 MB Float64Array,
-  // and NaN slipped through `Math.max(1, ...)` to a zero-length edge array.
+  // n_bins IS the allocation (edges + counts + one <rect> each): 5e7 is a 400 MB Float64Array
   test.each([[5e7], [NaN], [Infinity]])(`bin_values rejects n_bins %p`, (n_bins) => {
     expect(() => bin_values([1, 2], [0, 10], n_bins)).toThrow(
       `bin_geometry: n_bins must be finite and at most 1000000, got ${n_bins}`,

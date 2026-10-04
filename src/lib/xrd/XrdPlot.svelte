@@ -50,6 +50,7 @@
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
+    loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
     broadening_enabled = $bindable(false),
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
@@ -74,6 +75,8 @@
       metadata: file_io.FileLoadMeta,
     ) => Promise<void> | void
     loading?: boolean
+    // Empty-state text while `loading`
+    loading_message?: string
     error_msg?: string
     broadening_enabled?: boolean
     broadening_params?: BroadeningParams
@@ -371,9 +374,12 @@
       <StatusMessage bind:message={error_msg} type="error" dismissible />
     {:else}
       <StatusMessage
-        message={allow_file_drop
-          ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
-          : `No XRD data to display`}
+        message={loading
+          ? loading_message
+          : allow_file_drop
+            ? `Drag and drop structure files (.cif, .json, etc.) or XRD data files (.xy, .csv, .ras, .uxd, .gsas, .xrdml, .brml, .raw, + .gz) here`
+            : `No XRD data to display`}
+        style="border: none"
       />
     {/if}
   </EmptyState>

@@ -319,7 +319,9 @@
     },
   })
 
-  // Callers may supply plain settings; controls need reactive nested writes, including after replacement.
+  // Callers may supply plain settings, which become this viewer's own reactive copy (the
+  // caller's object is never written). StructureControls edits that proxy in place, so a parent
+  // that bound or passed $state sees every change without a new object per edit.
   $effect.pre(() => {
     const reactive_settings = $state(scene_props)
     scene_props = reactive_settings
@@ -1161,7 +1163,7 @@
             bind:controls_open={
               () => is_pane_open(`controls`), (open) => set_pane_open(`controls`, open)
             }
-            bind:scene_props
+            {scene_props}
             bind:show_trajectory_lines={
               () =>
                 scene_props.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines,
@@ -1311,10 +1313,9 @@
           style="position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%); max-width: 90%; font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
         />
       {/if}
-    {:else if structure}
-      <p class="warn">No sites found in structure</p>
-    {:else}
-      <p class="warn">No structure provided</p>
+    {:else if !loading}
+      <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
+      <p class="warn">{structure ? `No sites found in structure` : `No structure provided`}</p>
     {/if}
   {/if}
   <ViewerError bind:message={error_msg} dismissible />

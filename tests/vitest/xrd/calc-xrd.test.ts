@@ -23,7 +23,6 @@ import { make_crystal, read_maybe_gz } from '../test-fixtures'
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 
-// Shared helper for test suites
 const make_simple_cubic_structure = (a_len: number, element: ElementSymbol = `H`): Crystal =>
   make_crystal(a_len, [{ element, abc: [0, 0, 0], label: `${element}1` }])
 
@@ -117,7 +116,6 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
   )
 })
 
-// Concise edge-case tests for recent fixes
 describe(`compute_xrd_pattern edge cases`, () => {
   test.each([
     [`CuKa`, 1.54184],
@@ -221,19 +219,11 @@ describe(`compute_xrd_pattern edge cases`, () => {
     const structure = make_simple_cubic_structure(3)
     const base_opts = { wavelength: `CuKa` as const, two_theta_range: [0, 90] as Vec2 }
 
-    const none_pass = compute_xrd_pattern(structure, {
-      ...base_opts,
-      scaled: true,
-      scaled_intensity_tol: 101, // higher than any scaled intensity
-    })
-    expect(none_pass.x).toHaveLength(0)
-
-    const many_pass = compute_xrd_pattern(structure, {
-      ...base_opts,
-      scaled: true,
-      scaled_intensity_tol: 0, // include everything after scaling
-    })
-    expect(many_pass.x.length).toBeGreaterThan(0)
+    // 101 is above any scaled intensity, 0 keeps everything
+    const with_tol = (scaled_intensity_tol: number) =>
+      compute_xrd_pattern(structure, { ...base_opts, scaled: true, scaled_intensity_tol }).x
+    expect(with_tol(101)).toHaveLength(0)
+    expect(with_tol(0).length).toBeGreaterThan(0)
   })
 
   // Regression: hkl bounds from reciprocal-row norms (max_radius/|b_i| + 2) miss in-sphere
@@ -402,20 +392,13 @@ describe(`radiation types`, () => {
     scaled_intensity_tol: -1,
   })
 
-  // One structure suffices: the default-parameter fallthrough is the same for every input
-  test.each(probe_structures.slice(0, 1))(
-    `%s: omitting radiation is exactly the X-ray path`,
-    (_label, structure) => {
-      const implicit = compute_xrd_pattern(structure, { wavelength: cu_wavelength })
-      const explicit = compute_xrd_pattern(structure, {
-        wavelength: cu_wavelength,
-        radiation: `xray`,
-      })
-      expect(implicit).toEqual(explicit)
-      // The pymatgen-parity fixtures above pin the absolute values; this pins the branch
-      expect(implicit.x.length).toBeGreaterThan(0)
-    },
-  )
+  test(`omitting radiation is exactly the X-ray path`, () => {
+    const implicit = compute_xrd_pattern(tic, { wavelength: cu_wavelength })
+    const explicit = compute_xrd_pattern(tic, { wavelength: cu_wavelength, radiation: `xray` })
+    expect(implicit).toEqual(explicit)
+    // The pymatgen-parity fixtures above pin the absolute values; this pins the branch
+    expect(implicit.x.length).toBeGreaterThan(0)
+  })
 
   // The same structure through the X-ray and neutron paths
   const xray_and_neutron = (structure: Crystal, two_theta_max: number) => {
@@ -663,14 +646,15 @@ describe(`add_xrd_pattern`, () => {
   // Bragg angle of the (100) line of the a = 3 Å simple cubic cell: 2θ = 2·asin(λ / 2a)
   const two_theta_100 = (wavelength: number) => (2 * Math.asin(wavelength / 6) * 180) / Math.PI
 
+  // null wavelength → compute_xrd_pattern's CuKa default
   test.each([
-    [`JSON string`, cubic_json],
-    [`ArrayBuffer`, new TextEncoder().encode(cubic_json).buffer],
-  ])(`computes a pattern from a %s`, async (_label, content) => {
-    const entry = await add_xrd_pattern(content, `test.json`, null)
+    [`JSON string`, cubic_json, null, WAVELENGTHS.CuKa],
+    [`ArrayBuffer`, new TextEncoder().encode(cubic_json).buffer, null, WAVELENGTHS.CuKa],
+    [`JSON string at MoKa`, cubic_json, WAVELENGTHS.MoKa, WAVELENGTHS.MoKa],
+  ])(`computes a pattern from a %s`, async (_label, content, wavelength, expected) => {
+    const entry = await add_xrd_pattern(content, `test.json`, wavelength)
     expect(entry.label).toBe(`test.json`)
-    // null wavelength → compute_xrd_pattern's CuKa default
-    expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.CuKa), 6)
+    expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
   })
 
   test.each([
@@ -683,15 +667,6 @@ describe(`add_xrd_pattern`, () => {
     ],
   ])(`throws for %s`, async (_label, content, pattern) => {
     await expect(add_xrd_pattern(content, `test.json`, null)).rejects.toThrow(pattern)
-  })
-
-  test(`respects wavelength parameter`, async () => {
-    const res_cu = await add_xrd_pattern(cubic_json, `cu.json`, WAVELENGTHS.CuKa)
-    const res_mo = await add_xrd_pattern(cubic_json, `mo.json`, WAVELENGTHS.MoKa)
-    // Bragg: 2θ = 2·asin(λ/2d), so halving λ moves the first (100) line of a = 3 Å from
-    // ~29.8° (Cu) to ~13.6° (Mo)
-    expect(res_cu.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.CuKa), 6)
-    expect(res_mo.pattern.x[0]).toBeCloseTo(two_theta_100(WAVELENGTHS.MoKa), 6)
   })
 })
 

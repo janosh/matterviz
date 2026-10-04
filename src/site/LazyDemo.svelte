@@ -78,6 +78,9 @@
       place-items: center;
       min-height: inherit;
       margin: 0;
+      padding: 1em;
+      box-sizing: border-box;
+      text-align: center;
       color: var(--text-muted);
       background: var(--surface-bg);
     }

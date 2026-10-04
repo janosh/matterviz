@@ -17,3 +17,20 @@ export const colors = $state({
 
 // get_theme_preference handles SSR + missing/invalid localStorage (falls back to AUTO_THEME)
 export const theme_state = $state<{ mode: ThemeMode }>({ mode: get_theme_preference() })
+
+// The page's --text-color as a concrete color. The custom property reads back as specified
+// (`light-dark(#374151, #eee)` under the default themes), so resolve it through a probe's
+// computed `color`. Reads theme_state.mode so a $derived caller re-resolves when the theme
+// flips. Undefined without a DOM or when no --text-color is set.
+export const resolve_theme_text_color = (): string | undefined => {
+  void theme_state.mode
+  if (typeof document === `undefined`) return undefined
+  const root = document.documentElement
+  if (!getComputedStyle(root).getPropertyValue(`--text-color`).trim()) return undefined
+  const probe = document.createElement(`span`)
+  probe.style.color = `var(--text-color)`
+  root.append(probe)
+  const { color } = getComputedStyle(probe)
+  probe.remove()
+  return color || undefined
+}

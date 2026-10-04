@@ -110,11 +110,6 @@ describe(`PlotMarginals integration`, () => {
     expect(path.hasAttribute(`transform`)).toBe(false)
   })
 
-  test(`no marginal strips render by default`, async () => {
-    const root = await mount_scatter({ series: [scatter_series] })
-    expect(root.querySelectorAll(`.marginal`)).toHaveLength(0)
-  })
-
   test(`marginals=true renders top + right histogram strips with bars`, async () => {
     const root = await mount_scatter({ marginals: true })
     expect(root.querySelector(`.marginal-top`)).not.toBeNull()
@@ -128,17 +123,9 @@ describe(`PlotMarginals integration`, () => {
     const with_margin = await mount_scatter({
       marginals: { top: { type: `histogram`, size: 90 } },
     })
-    const without = await mount_scatter({ series: [scatter_series] })
+    const without = await mount_scatter({})
+    expect(without.querySelectorAll(`.marginal`)).toHaveLength(0) // none by default
     expect(clip_rect(with_margin).height).toBeLessThan(clip_rect(without).height)
-  })
-
-  test.each([`kde`, `rug`] as const)(`%s marginal renders path elements`, async (type) => {
-    const root = await mount_scatter({
-      marginals: { top: type },
-    })
-    expect(root.querySelectorAll(`.marginal-top path`).length).toBeGreaterThan(0)
-    // only the requested side is active
-    expect(root.querySelector(`.marginal-right`)).toBeNull()
   })
 
   // All rug ticks share a stroke, so they collapse into one <path> of disjoint segments
@@ -152,6 +139,7 @@ describe(`PlotMarginals integration`, () => {
     expect(paths).toHaveLength(1)
     expect(paths[0].getAttribute(`d`)?.match(/M/g)).toHaveLength(4)
     expect(root.querySelectorAll(`.marginal-top line`)).toHaveLength(0)
+    expect(root.querySelector(`.marginal-right`)).toBeNull() // only the requested side
   })
 
   test(`per-side styling props reach the rendered bars`, async () => {
@@ -271,14 +259,6 @@ describe(`PlotMarginals integration`, () => {
     }
   })
 
-  test(`a custom snippet replaces the built-in rendering`, async () => {
-    const root = await mount_scatter({
-      marginals: { top: { type: `histogram`, snippet: marker_snippet } },
-    })
-    expect(root.querySelector(`.marginal-top .custom-marker`)).not.toBeNull()
-    expect(root.querySelectorAll(`.marginal-top rect`)).toHaveLength(0)
-  })
-
   test(`a marginal only summarizes series on the axis it binds to`, async () => {
     const x2_only = [{ ...scatter_series, x_axis: `x2` as const }]
     // default top binds x1: no x1 series -> no bars
@@ -337,13 +317,8 @@ describe(`PlotMarginals integration`, () => {
     const nums = (line_path.getAttribute(`d`) ?? ``).match(/-?\d+\.?\d*/g)?.map(Number) ?? []
     const y_values = nums.filter((_, idx) => idx % 2 === 1)
     expect(y_values.length).toBeGreaterThan(2)
-    const ascending = [...y_values].toSorted(
-      (left_value, right_value) => left_value - right_value,
-    )
-    const is_monotonic =
-      y_values.every((val, idx) => val === ascending[idx]) ||
-      y_values.every((val, idx) => val === ascending[ascending.length - 1 - idx])
-    expect(is_monotonic).toBe(true)
+    const sorted = y_values.toSorted((val_a, val_b) => val_a - val_b)
+    expect([sorted, sorted.toReversed()]).toContainEqual(y_values)
   })
 })
 
@@ -378,17 +353,11 @@ describe(`marginal hover tooltips`, () => {
       marginals: { top: { type: `histogram`, value_range: [0, 1000] } },
     })
     expect(root.querySelector(`.plot-tooltip`)).toBeNull() // none before hover
+    // the strip's outer edge sits far above the value_range-squashed bars
     const hit = query(root, `.marginal-hit`)
-    const [hit_x, hit_y, hit_width] = [`x`, `y`, `width`].map((attr) =>
-      Number(hit.getAttribute(attr)),
-    )
-    hit.dispatchEvent(
-      new MouseEvent(`pointermove`, {
-        clientX: hit_x + hit_width / 2,
-        clientY: hit_y + 1,
-        bubbles: true,
-      }),
-    )
+    const { x: hit_x, y: hit_y, width: hit_width } = svg_rect(hit)
+    const [clientX, clientY] = [hit_x + hit_width / 2, hit_y + 1]
+    hit.dispatchEvent(new MouseEvent(`pointermove`, { clientX, clientY, bubbles: true }))
     await tick()
     expect(root.querySelector(`.plot-tooltip`)).toBeNull()
 
@@ -406,14 +375,16 @@ describe(`marginal hover tooltips`, () => {
     expect(root.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
-  // hover:false and custom snippets both opt out of the hit-rect while still drawing the strip
+  // hover:false and custom snippets both opt out of the hit-rect while still drawing the strip;
+  // a snippet also replaces the built-in bars
   test.each([
-    [`hover: false`, { type: `histogram`, hover: false }],
-    [`a custom snippet`, { type: `histogram`, snippet: marker_snippet }],
-  ] as const)(`%s renders the strip but no hit-rect`, async (_desc, top) => {
+    [`hover: false`, { type: `histogram`, hover: false }, false],
+    [`a custom snippet`, { type: `histogram`, snippet: marker_snippet }, true],
+  ] as const)(`%s renders the strip but no hit-rect`, async (_desc, top, custom) => {
     const build_index = vi.spyOn(marginal_utils, `create_marginal_hit_test`)
     const root = await mount_scatter({ marginals: { top } })
-    expect(root.querySelector(`.marginal-top`)).not.toBeNull()
+    expect(root.querySelector(`.marginal-top .custom-marker`) !== null).toBe(custom)
+    expect(root.querySelectorAll(`.marginal-top rect`).length > 0).toBe(!custom)
     expect(root.querySelector(`.marginal-hit`)).toBeNull()
     await resize_element(root, 900, 600)
     expect(build_index).not.toHaveBeenCalled()
@@ -434,14 +405,6 @@ describe(`marginal hover tooltips`, () => {
     },
   )
 
-  // AXIS_DEFAULTS.format is `` (empty), so the pos fallback must use || (not ??) to avoid raw floats
-  test(`tooltip position uses the compact default format when the axis format is empty`, async () => {
-    const root = await mount_scatter({ marginals: { top: `kde` } })
-    const text = (await hover_strip(root))?.textContent ?? ``
-    expect(text).toContain(`pos`)
-    expect(text).not.toMatch(/\d\.\d{6,}/) // compact `.3~g`, never a raw 16-digit float
-  })
-
   test(`BarPlot categorical marginal tooltip shows the category label, not the index`, async () => {
     const root = await mount_bar({
       series: [{ x: [`A`, `B`, `C`, `D`], y: [10, 5, 3, 2], color: `slateblue` }],
@@ -453,8 +416,11 @@ describe(`marginal hover tooltips`, () => {
   })
 
   // the position row is labelled with the host axis title of the axis the strip shares (top/bottom
-  // share x, left/right share y), falling back to `range` (bars) / `pos` (else) without a title
+  // share x, left/right share y), falling back to `range` (bars) / `pos` (else) without a title.
+  // AXIS_DEFAULTS.format is `` (empty), so the value format must fall back with || (not ??) to the
+  // compact `.3~g`, never a raw 16-digit float
   test.each([
+    [`top kde without a title -> "pos"`, { marginals: { top: `kde` } }, `pos`],
     [
       `top kde -> x-axis title`,
       { marginals: { top: `kde` }, x_axis: { label: `Error` } },
@@ -478,8 +444,9 @@ describe(`marginal hover tooltips`, () => {
   ] as [string, Partial<ComponentProps<typeof ScatterPlot>>, string][])(
     `position row label: %s`,
     async (_desc, props, expected) => {
-      const root = await mount_scatter({ ...props })
-      expect((await hover_strip(root))?.textContent ?? ``).toContain(`${expected}: `)
+      const text = (await hover_strip(await mount_scatter(props)))?.textContent ?? ``
+      expect(text).toContain(`${expected}: `)
+      expect(text).not.toMatch(/\d\.\d{6,}/)
     },
   )
 
@@ -554,15 +521,19 @@ describe(`marginal value-axis`, () => {
     )
   })
 
-  test(`histogram normalize drives the title and percent ticks`, async () => {
-    const root = await mount_histogram({
-      series: hist_series,
-      marginals: { top: { type: `histogram`, normalize: `probability` } },
-    })
-    const axis = root.querySelector(`.marginal-axis-top`)
-    expect(axis?.querySelector(`.marginal-axis-title`)?.textContent).toBe(`probability`)
-    expect(tick_labels(axis).some((text) => text.endsWith(`%`))).toBe(true)
-  })
+  // an explicit label overrides the auto (normalize-driven) title
+  test.each([
+    [{ type: `histogram`, normalize: `probability` }, `probability`],
+    [{ type: `cdf`, label: `Cumulative` }, `Cumulative`],
+  ] as [MarginalSideInput, string][])(
+    `%j sets title %s and percent ticks`,
+    async (top, title) => {
+      const root = await mount_histogram({ series: hist_series, marginals: { top } })
+      const axis = root.querySelector(`.marginal-axis-top`)
+      expect(axis?.querySelector(`.marginal-axis-title`)?.textContent).toBe(title)
+      expect(tick_labels(axis).some((text) => text.endsWith(`%`))).toBe(true)
+    },
+  )
 
   test(`value_range pins the value-axis tick labels`, async () => {
     const root = await mount_histogram({
@@ -589,43 +560,22 @@ describe(`marginal value-axis`, () => {
     expect(spine?.getAttribute(`y2`)).toBe(spine?.getAttribute(`y1`))
   })
 
-  test(`label overrides the auto value-axis title`, async () => {
-    const root = await mount_histogram({
-      series: hist_series,
-      marginals: { top: { type: `cdf`, label: `Cumulative` } },
-    })
-    expect(root.querySelector(`.marginal-axis-top .marginal-axis-title`)?.textContent).toBe(
-      `Cumulative`,
-    )
-  })
-
-  // rug has no value, and value_axis:false opts out: both render the strip but no value-axis
+  // rug has no value and value_axis:false opts out; empty data gives a degenerate [0,0] domain
+  // unless a value_range pins the scale. The strip itself always renders
   test.each([
-    [`value_axis: false`, { type: `cdf`, value_axis: false }],
-    [`rug type`, { type: `rug` }],
-  ] as const)(`%s renders the strip but no value-axis`, async (_desc, top) => {
-    const root = await mount_histogram({ series: hist_series, marginals: { top } })
-    expect(root.querySelector(`.marginal-top`)).not.toBeNull()
-    expect(root.querySelector(`.marginal-axis-top`)).toBeNull()
-  })
-
-  // empty data => degenerate [0,0] domain, so no value-axis is drawn... unless a value_range pins
-  // the scale, in which case the axis renders even with no data
-  test.each([
-    [`empty data renders no value-axis`, { type: `histogram` }, false],
-    [
-      `value_range renders it even with empty data`,
-      {
-        type: `histogram`,
-        value_range: [0, 100],
-      },
-      true,
-    ],
-  ] as [string, MarginalSideInput, boolean][])(`%s`, async (_desc, top, present) => {
-    const root = await mount_histogram({
-      series: [{ values: [], label: `empty` }],
-      marginals: { top },
-    })
-    expect(root.querySelector(`.marginal-axis-top`) !== null).toBe(present)
-  })
+    [`value_axis: false`, samples, { type: `cdf`, value_axis: false }, false],
+    [`rug type`, samples, { type: `rug` }, false],
+    [`empty data`, [], { type: `histogram` }, false],
+    [`value_range with empty data`, [], { type: `histogram`, value_range: [0, 100] }, true],
+  ] as [string, number[], MarginalSideInput, boolean][])(
+    `%s renders the strip, value-axis per config`,
+    async (_desc, values, top, present) => {
+      const root = await mount_histogram({
+        series: [{ values, label: `vals` }],
+        marginals: { top },
+      })
+      expect(root.querySelector(`.marginal-top`)).not.toBeNull()
+      expect(root.querySelector(`.marginal-axis-top`) !== null).toBe(present)
+    },
+  )
 })

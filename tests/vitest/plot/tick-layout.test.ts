@@ -45,16 +45,18 @@ const collisions = (items: TickLabelItem[], side: `x` | `x2` | `y` | `y2`, gap =
 
 describe(`tick label AABBs`, () => {
   test.each([
-    [`x below its origin`, `x`, `start`, [10, 20, 30, 30, 20, 10]],
-    [`x2 above its origin`, `x2`, `start`, [10, 10, 30, 20, 20, 10]],
-    [`y ending at its origin`, `y`, `end`, [0, 5, 20, 15, 20, 10]],
-    [`y2 starting at its origin`, `y2`, `start`, [20, 5, 40, 15, 20, 10]],
-  ] as const)(`places multiline blocks on %s`, (_name, side, anchor, expected) => {
+    [`x below its origin`, `x`, `start`, 0, [10, 20, 30, 30, 20, 10]],
+    [`x2 above its origin`, `x2`, `start`, 0, [10, 10, 30, 20, 20, 10]],
+    [`y ending at its origin`, `y`, `end`, 0, [0, 5, 20, 15, 20, 10]],
+    [`y2 starting at its origin`, `y2`, `start`, 0, [20, 5, 40, 15, 20, 10]],
+    // rotation pivots around the actual label position, not the block center
+    [`x rotated 90° around its origin`, `x`, `start`, 90, [0, 20, 10, 40, 10, 20]],
+  ] as const)(`places multiline blocks on %s`, (_name, side, anchor, rotation, expected) => {
     const aabb = tick_label_aabb({
       position: { axis: 10, cross_axis: 20 },
       side,
       anchor,
-      rotation: 0,
+      rotation,
       dimensions: { line_widths: [10, 20], line_height: 5 },
     })
     expect([aabb.min_x, aabb.min_y, aabb.max_x, aabb.max_y, aabb.width, aabb.height]).toEqual(
@@ -78,17 +80,6 @@ describe(`tick label AABBs`, () => {
     })
     expect(aabb.width).toBeCloseTo(width, 12)
     expect(aabb.height).toBeCloseTo(height, 12)
-  })
-
-  it(`rotates the block around the actual label position`, () => {
-    const aabb = tick_label_aabb({
-      position: { axis: 10, cross_axis: 20 },
-      side: `x`,
-      anchor: `start`,
-      rotation: 90,
-      dimensions: { line_widths: [10, 20], line_height: 5 },
-    })
-    expect([aabb.min_x, aabb.min_y, aabb.max_x, aabb.max_y]).toEqual([0, 20, 10, 40])
   })
 })
 
@@ -127,14 +118,50 @@ describe(`anchor selection`, () => {
 })
 
 describe(`collision detection`, () => {
-  it(`uses irregular nonmonotonic positions rather than nominal tick pitch`, () => {
-    const items = [
-      tick_item(`right`, 80),
-      tick_item(`left`, 0),
-      tick_item(`near-left`, 14),
-      tick_item(`middle`, 45),
-    ]
-    expect(collisions(items, `x`)).toEqual({ colliding_indices: [1, 2], count: 1 })
+  const rotated = (id: string, axis: number, width: number, overrides = {}) =>
+    tick_item(id, axis, width, { anchor: `start`, rotation: 30, ...overrides })
+  test.each<[string, TickLabelItem[], number[], number]>([
+    [
+      `irregular nonmonotonic positions rather than nominal tick pitch`,
+      [
+        tick_item(`right`, 80),
+        tick_item(`left`, 0),
+        tick_item(`near-left`, 14),
+        tick_item(`middle`, 45),
+      ],
+      [1, 2],
+      1,
+    ],
+    [
+      `actual cross-axis positions for staggered rows`,
+      [
+        tick_item(`row-0`, 20, 20, { stagger_row: 0 }),
+        tick_item(`row-1`, 20, 20, { stagger_row: 1, position: { axis: 20, cross_axis: 20 } }),
+      ],
+      [],
+      0,
+    ],
+    [
+      `signed rotation for cross-axis distances`,
+      [
+        rotated(`first`, 0, 20, { dimensions: dimensions(20, 16), rotation: -30 }),
+        rotated(`second`, 10, 20, {
+          dimensions: dimensions(20, 16),
+          position: { axis: 10, cross_axis: -20 },
+          rotation: -30,
+        }),
+      ],
+      [0, 1],
+      1,
+    ],
+    [
+      `rotated text blocks rather than their overlapping AABBs`,
+      [rotated(`first`, 0, 8), rotated(`second`, 10, 8)],
+      [],
+      0,
+    ],
+  ])(`uses %s`, (_name, items, colliding_indices, count) => {
+    expect(collisions(items, `x`)).toEqual({ colliding_indices, count })
   })
 
   test.each([`x`, `x2`, `y`, `y2`] as const)(`%s labels honor exact gaps`, (side) => {
@@ -144,39 +171,6 @@ describe(`collision detection`, () => {
     expect(collides(8)).toBe(true)
     expect(collides(15, 5)).toBe(false)
     expect(collides(15, 5.01)).toBe(true)
-  })
-
-  it(`uses actual cross-axis positions for staggered rows`, () => {
-    const items = [
-      tick_item(`row-0`, 20, 20, { stagger_row: 0 }),
-      tick_item(`row-1`, 20, 20, { stagger_row: 1, position: { axis: 20, cross_axis: 20 } }),
-    ]
-    expect(collisions(items, `x`).count).toBe(0)
-  })
-
-  it(`uses signed rotation for cross-axis collision distances`, () => {
-    const items = [
-      tick_item(`first`, 0, 20, {
-        anchor: `start`,
-        dimensions: dimensions(20, 16),
-        rotation: -30,
-      }),
-      tick_item(`second`, 10, 20, {
-        anchor: `start`,
-        dimensions: dimensions(20, 16),
-        position: { axis: 10, cross_axis: -20 },
-        rotation: -30,
-      }),
-    ]
-    expect(collisions(items, `x`).count).toBe(1)
-  })
-
-  it(`separates rotated labels whose AABBs overlap but whose text blocks do not`, () => {
-    const items = [
-      tick_item(`first`, 0, 8, { anchor: `start`, rotation: 30 }),
-      tick_item(`second`, 10, 8, { anchor: `start`, rotation: 30 }),
-    ]
-    expect(collisions(items, `x`).count).toBe(0)
   })
 
   it(`reports every colliding label and the pair count`, () => {
@@ -195,47 +189,29 @@ describe(`collision detection`, () => {
 })
 
 describe(`axis-edge overflow`, () => {
+  const forward = { start: 0, end: 100 }
   test.each([
-    [`x`, 2, 3, 0],
-    [`x2`, 98, 0, 3],
-    [`y`, 2, 3, 0],
-    [`y2`, 98, 0, 3],
+    [`x`, 2, forward, 0, 3, 0],
+    [`x2`, 98, forward, 0, 0, 3],
+    [`y`, 2, forward, 0, 3, 0],
+    [`y2`, 98, forward, 0, 0, 3],
+    [`x`, 2, forward, 2, 5, 0], // edge gap adds to the overflow
+    [`x`, 98, { start: 100, end: 0 }, 0, 3, 0], // reversed axes keep start/end semantics
   ] as const)(
-    `%s reports endpoint overflow from AABB coordinates`,
-    (side, axis, start, end) => {
+    `%s at %d reports endpoint overflow from AABB coordinates (extent %j, gap %d)`,
+    (side, axis, axis_extent, edge_gap, start, end) => {
       const [label] = analyze_tick_label_geometry({
         items: [tick_item(`edge`, axis, 10)],
         side,
-        axis_extent: { start: 0, end: 100 },
+        axis_extent,
       }).labels
-      expect(axis_edge_overflow(label.aabb, side, { start: 0, end: 100 })).toEqual({
+      expect(axis_edge_overflow(label.aabb, side, axis_extent, edge_gap)).toEqual({
         start,
         end,
         total: start + end,
       })
     },
   )
-
-  it(`adds edge gap and preserves start/end semantics for reversed axes`, () => {
-    const aabb_at = (axis: number) =>
-      tick_label_aabb({
-        position: { axis, cross_axis: 0 },
-        side: `x`,
-        anchor: `middle`,
-        rotation: 0,
-        dimensions: dimensions(10),
-      })
-    expect(axis_edge_overflow(aabb_at(2), `x`, { start: 0, end: 100 }, 2)).toEqual({
-      start: 5,
-      end: 0,
-      total: 5,
-    })
-    expect(axis_edge_overflow(aabb_at(98), `x`, { start: 100, end: 0 })).toEqual({
-      start: 3,
-      end: 0,
-      total: 3,
-    })
-  })
 })
 
 describe(`tick density`, () => {
@@ -341,30 +317,43 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
     ])
   })
 
+  // Re-measures the visible labels of a resolved layout as positioned geometry items
+  const layout_items = (
+    layout: ReturnType<typeof resolve_tick_layout>,
+    positions: number[],
+    tick_font: FontSpec,
+    outward_direction = 1,
+  ): TickLabelItem[] =>
+    layout.labels
+      .filter(({ visible }) => visible)
+      .map((label) => ({
+        id: label.tick_index,
+        lines: label.lines,
+        position: {
+          axis: positions[label.tick_index],
+          cross_axis: outward_direction * label.stagger_row * layout.stagger_step,
+        },
+        rotation: label.rotation,
+        anchor: label.anchor,
+        stagger_row: label.stagger_row,
+        dimensions: {
+          line_widths: label.lines.map((line) => measure_text_width(line, tick_font)),
+          line_height: tick_font.line_height,
+        },
+      }))
+
   it(`prefers a feasible layout over an infeasible upright one`, () => {
     const labels = [`Formation energy`, `Average temperature`, `Pressure`]
     const layout = resolve(labels, [10, 50, 90], [`upright`, `rotate`])
     expect(layout.strategy).toBe(`rotate`)
     expect(layout.rotation).toBeLessThan(0)
-    const items: TickLabelItem[] = layout.labels.map((label) => ({
-      id: label.tick_index,
-      lines: label.lines,
-      position: { axis: [10, 50, 90][label.tick_index], cross_axis: 0 },
-      rotation: label.rotation,
-      anchor: label.anchor,
-      dimensions: {
-        line_widths: label.lines.map((line) => line.length * 7.2),
-        line_height: 16,
-      },
-    }))
-    expect(
-      analyze_tick_label_geometry({
-        items,
-        side: `x`,
-        axis_extent: { start: 0, end: 100 },
-        gap: 1,
-      }).collisions.count,
-    ).toBe(0)
+    const { collisions: rotated_collisions } = analyze_tick_label_geometry({
+      items: layout_items(layout, [10, 50, 90], DEFAULT_FONT_SPEC),
+      side: `x`,
+      axis_extent: { start: 0, end: 100 },
+      gap: TICK_LABEL_GAP,
+    })
+    expect(rotated_collisions.count).toBe(0)
   })
 
   // Cross-feature regressions: every strategy is allowed and the chosen layout must be
@@ -435,16 +424,9 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       name: `large 24-tick axis`,
       side: `x`,
       size: 720,
+      // evenly spaced except two near-coincident ticks mid-axis
       positions: Array.from({ length: 24 }, (_unused, tick_idx) =>
-        tick_idx === 0
-          ? 4
-          : tick_idx === 23
-            ? 716
-            : tick_idx === 11
-              ? 348
-              : tick_idx === 12
-                ? 353
-                : 4 + (712 * tick_idx) / 23,
+        tick_idx === 11 ? 348 : tick_idx === 12 ? 353 : 4 + (712 * tick_idx) / 23,
       ),
       tick_font: font(12, 16),
       max_band: 80,
@@ -492,23 +474,7 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       if (expected_strategy) expect(first.strategy).toBe(expected_strategy)
 
       const outward_direction = side === `x` || side === `y2` ? 1 : -1
-      const items: TickLabelItem[] = first.labels
-        .filter(({ visible }) => visible)
-        .map((label) => ({
-          id: label.tick_index,
-          lines: label.lines,
-          position: {
-            axis: positions[label.tick_index],
-            cross_axis: outward_direction * label.stagger_row * first.stagger_step,
-          },
-          rotation: label.rotation,
-          anchor: label.anchor,
-          stagger_row: label.stagger_row,
-          dimensions: {
-            line_widths: label.lines.map((line) => measure_text_width(line, tick_font)),
-            line_height: tick_font.line_height,
-          },
-        }))
+      const items = layout_items(first, positions, tick_font, outward_direction)
       const geometry = analyze_tick_label_geometry({
         items,
         side,

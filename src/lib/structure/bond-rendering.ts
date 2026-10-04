@@ -203,8 +203,7 @@ export function prepare_bond_placements(bonds: BondData): BondPlacements {
 }
 
 // Write one Y-up unit-cylinder transform directly into an InstancedMesh matrix buffer.
-// Keeping the renderer transform out of BondPair means topology-only consumers no longer
-// allocate or calculate 16 floats per bond.
+// Kept out of BondPair so topology-only consumers skip the 16 floats per bond.
 export function write_bond_transform(
   matrix_buffer: TypedArray,
   instance_idx: number,

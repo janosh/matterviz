@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mount, tick, unmount } from 'svelte'
 import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
+import { set_input } from '../setup'
 
 vi.mock(`#lib/structure/Structure.svelte`, async () => ({
   default: (await import(`#lib/EmptyState.svelte`)).default,
@@ -33,13 +34,11 @@ describe(`OPTIMADE API utilities`, () => {
     [`user@id`],
     [`odbx.9/1.2-3_4?param=value#fragment`],
     [``],
-  ])(`should round-trip encode/decode: %s`, (identifier) => {
-    const encoded = encode_structure_id(identifier)
-    const decoded = decodeURIComponent(encoded)
-    expect(decoded).toBe(identifier)
+  ])(`round-trips encode/decode: %s`, (identifier) => {
+    expect(decodeURIComponent(encode_structure_id(identifier))).toBe(identifier)
   })
 
-  test(`should encode dots as %2E and slashes as %2F`, () => {
+  test(`encodes dots as %2E and slashes as %2F`, () => {
     expect(encode_structure_id(`odbx.9/1.2`)).toBe(`odbx%2E9%2F1%2E2`)
   })
 
@@ -51,17 +50,10 @@ describe(`OPTIMADE API utilities`, () => {
     [`mp-100%`, `mp`],
     [`mp-%2F`, `mp`], // The literal ID must not be decoded again
     [`MP-149`, `mp`],
-  ])(`should detect provider from slug %s (expected: %s)`, (slug, expected_provider) => {
-    const provider = detect_provider_from_id(slug, MOCK_PROVIDERS)
-    expect(provider).toBe(expected_provider)
-  })
-
-  test.each([
-    [`unknown-123`, `unknown provider`],
-    [`123`, `slug without provider prefix`],
-  ])(`should return empty string for %s`, (slug) => {
-    const provider = detect_provider_from_id(slug, MOCK_PROVIDERS)
-    expect(provider).toBe(``)
+    [`unknown-123`, ``], // unknown provider
+    [`123`, ``], // no provider prefix
+  ])(`detects provider from slug %s as %j`, (slug, expected_provider) => {
+    expect(detect_provider_from_id(slug, MOCK_PROVIDERS)).toBe(expected_provider)
   })
 })
 
@@ -86,8 +78,7 @@ test.each([true, false])(
       }
       const input = document.querySelector<HTMLInputElement>(`input.structure-input`)
       if (!input) throw new Error(`Structure input missing`)
-      input.value = ``
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(input, ``)
       await tick()
       pending.resolve(MOCK_STRUCTURES[`mp-1`])
       await tick()

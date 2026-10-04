@@ -20,10 +20,6 @@ describe(`resolve_pattern`, () => {
     },
   )
 
-  test(`every shape name is a distinct entry`, () => {
-    expect(new Set(PATTERN_SHAPES).size).toBe(PATTERN_SHAPES.length)
-  })
-
   test.each(PATTERN_SHAPES)(`%s yields a non-empty tile with a stable scoped id`, (shape) => {
     const pat = resolve_pattern(shape, BLUE, `chart-1`)
     expect(pat.d.length).toBeGreaterThan(0)

@@ -10,17 +10,11 @@ import {
 } from '#lib/structure/lattice-planes.js'
 import { describe, expect, test } from 'vitest'
 
-const cubic: Matrix3x3 = [
-  [4, 0, 0],
-  [0, 4, 0],
-  [0, 0, 4],
-]
+// oxfmt-ignore
+const cubic: Matrix3x3 = [[4, 0, 0], [0, 4, 0], [0, 0, 4]]
 // hexagonal a = 3, c = 5 (gamma = 120°), so plane normals are not along cell vectors
-const hexagonal: Matrix3x3 = [
-  [3, 0, 0],
-  [-1.5, (3 * Math.sqrt(3)) / 2, 0],
-  [0, 0, 5],
-]
+// oxfmt-ignore
+const hexagonal: Matrix3x3 = [[3, 0, 0], [-1.5, (3 * Math.sqrt(3)) / 2, 0], [0, 0, 5]]
 const triclinic = math.cell_to_lattice_matrix(4, 5, 6, 70, 80, 100)
 
 // A valid clipped polygon: every vertex on the plane and inside the cell (fractional), no
@@ -238,12 +232,8 @@ describe(`clip_frac_plane_to_cell`, () => {
 })
 
 describe(`polygon_fan_vertices / polygon_edge_vertices`, () => {
-  const square: Vec3[] = [
-    [0, 0, 0],
-    [1, 0, 0],
-    [1, 1, 0],
-    [0, 1, 0],
-  ]
+  // oxfmt-ignore
+  const square: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
   test(`fan of an n-gon is n − 2 triangles sharing vertex 0, outline is n edges`, () => {
     const from_indices = (indices: number[]) => indices.map((idx) => square[idx])
     expect(polygon_fan_vertices(square)).toEqual(from_indices([0, 1, 2, 0, 2, 3]))

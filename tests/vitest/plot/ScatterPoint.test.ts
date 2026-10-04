@@ -67,7 +67,6 @@ describe(`ScatterPoint`, () => {
 
   test(`extends the transparent hit radius without changing the visible marker`, () => {
     mount_point({ style: { radius: 5 }, hit_padding: 3 })
-
     const hit_target = doc_query(`circle.marker-hit-target`)
     expect(hit_target.getAttribute(`r`)).toBe(`8`)
     expect(hit_target.getAttribute(`fill`)).toBe(`transparent`)
@@ -114,7 +113,6 @@ describe(`ScatterPoint`, () => {
 
   test(`applies dimmed marker state`, () => {
     mount_point({ is_dimmed: true })
-
     expect(doc_query(`path.marker`).classList.contains(`is-dimmed`)).toBe(true)
   })
 
@@ -135,49 +133,35 @@ describe(`ScatterPoint`, () => {
     expect(text.style.fontFamily).toBe(label.font_family)
   })
 
-  test(`handles empty label configuration`, () => {
-    mount_point({ label: {} }) // Empty label object
-
-    // Should not render text element
+  test(`renders no text for an empty label`, () => {
+    mount_point({ label: {} })
     expect(document.querySelector(`text`)).toBeNull()
   })
 
-  test.each([
-    [`pointer`, `pointer`],
-    [`grab`, `grab`],
-    [`crosshair`, `crosshair`],
-    [`move`, `move`],
-    [`not-allowed`, `not-allowed`],
-    [undefined, ``],
-  ])(`cursor style %s renders as '%s'`, (cursor, expected) => {
+  test.each([`pointer`, `not-allowed`, undefined])(`cursor style %s`, (cursor) => {
     mount_point({ style: { cursor } })
-    expect(doc_query(`path.marker`).style.cursor).toBe(expected)
+    expect(doc_query(`path.marker`).style.cursor).toBe(cursor ?? ``)
   })
 
+  // the ring is style.radius (default 4) * 2.5, and only drawn for selected points
   test.each([
-    { is_selected: false, desc: `is_selected=false` },
-    { is_selected: undefined, desc: `is_selected omitted (defaults false)` },
-  ])(`no effect ring when $desc`, ({ is_selected }) => {
-    mount_point({ is_selected })
-    expect(document.querySelector(`circle.effect-ring`)).toBeNull()
-  })
-
-  test.each([
-    { radius: 6, expected_r: `15`, desc: `custom radius 6` },
-    { radius: undefined, expected_r: `10`, desc: `default radius 4` },
-  ])(`effect ring radius = style.radius * 2.5 ($desc)`, ({ radius, expected_r }) => {
-    mount_point({ is_selected: true, style: { radius } })
-
-    const ring = doc_query(`circle.effect-ring`)
-    const marker = doc_query(`path.marker`)
-    const group = doc_query(`g`)
-
-    expect(ring).toBeInstanceOf(SVGCircleElement)
-    expect(ring.getAttribute(`r`)).toBe(expected_r)
-    // Ring must come before marker in DOM so it renders behind
-    const children = Array.from(group.children)
-    expect(children.indexOf(ring)).toBeLessThan(children.indexOf(marker))
-  })
+    { is_selected: false, radius: undefined, expected_r: null },
+    { is_selected: undefined, radius: undefined, expected_r: null },
+    { is_selected: true, radius: 6, expected_r: `15` },
+    { is_selected: true, radius: undefined, expected_r: `10` },
+  ])(
+    `effect ring for is_selected=$is_selected, radius=$radius`,
+    ({ is_selected, radius, expected_r }) => {
+      mount_point({ is_selected, style: { radius } })
+      const ring = document.querySelector(`circle.effect-ring`)
+      expect(ring?.getAttribute(`r`) ?? null).toBe(expected_r)
+      // Ring must come before marker in DOM so it renders behind
+      const children = [...doc_query(`g`).children]
+      if (ring) {
+        expect(children.indexOf(ring)).toBeLessThan(children.indexOf(doc_query(`path.marker`)))
+      }
+    },
+  )
 
   describe(`auto-placed labels`, () => {
     test.each([
@@ -226,7 +210,7 @@ describe(`ScatterPoint`, () => {
       else expect(line).toBeNull()
     })
 
-    test(`leader line endpoint stops outside text bounding box`, () => {
+    test(`leader line stops outside the text box and uses default dash and opacity`, () => {
       const label = { text: `LongLabel`, offset: { x: 60, y: 0 } }
       mount_point({ label, leader_line_threshold: 10, style: { radius: 3 } })
       const line = doc_query(`line.leader-line`)
@@ -235,12 +219,6 @@ describe(`ScatterPoint`, () => {
       // x2 should be well before the text center (< 60) but past the midpoint
       expect(coord_x).toBeLessThan(50)
       expect(coord_x).toBeGreaterThan(20)
-    })
-
-    test(`leader line has correct CSS custom property defaults`, () => {
-      const label = { text: `Styled`, offset: { x: 40, y: 0 } }
-      mount_point({ label, leader_line_threshold: 10 })
-      const line = doc_query(`line.leader-line`)
       expect(line.getAttribute(`stroke-dasharray`)).toContain(`2 2`)
       expect(line.getAttribute(`stroke-opacity`)).toContain(`0.6`)
     })
@@ -262,7 +240,7 @@ describe(`ScatterPoint`, () => {
       { x: 100, y: 150, point_tween: { duration: 800 } },
       `translate(100 150)`,
     ],
-  ] as const)(`renders at $name without animating on mount`, (_name, props, expected) => {
+  ] as const)(`renders at %s without animating on mount`, (_name, props, expected) => {
     mount_point(props)
     expect(doc_query(`g`).getAttribute(`transform`)).toBe(expected)
   })

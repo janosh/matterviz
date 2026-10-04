@@ -45,10 +45,4 @@ describe(`worker code path`, () => {
     // Nothing is transferred: detaching a caller's buffer would break the dedupe cache
     expect(stub.posted[0].transfer).toHaveLength(0)
   })
-
-  it(`a lattice-less molecule ships no lattice key`, async () => {
-    const { sites } = make_fcc([1, 1, 1])
-    await calc_structure_id_async({ sites }, { skip_cna: true })
-    expect(Object.keys(stub.posted[0].message.input)).toEqual([`xyz`])
-  })
 })

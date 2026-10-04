@@ -51,7 +51,7 @@ import tio2_cif from '#site/structures/TiO2.cif?raw'
 import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
 import process from 'node:process'
 import { join } from 'node:path'
-import { assert, describe, expect, it, test, vi } from 'vitest'
+import { assert, describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { get_dummy_structure, read_maybe_gz } from '../test-fixtures'
 
 // Helpers to reduce duplication and strengthen invariants
@@ -160,8 +160,8 @@ describe(`POSCAR Parser`, () => {
     // Fortran exponent on the SCALE line: parseFloat used to stop at the `D` and read 5.0,
     // inflating a 3 Å cube to 30 Å. 0.5 * 6 = 3 per axis, so volume 27.
     { name: `Fortran exponent scale factor`, content: `Test\n5.0D-01\n6.0 0.0 0.0\n0.0 6.0 0.0\n0.0 0.0 6.0\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
-    // VASP 4 has no symbol line, so groups fall back by index. Two groups, because
-    // FALLBACK_ELEMENTS[0] is H and an index-0-only check can't tell the indexed fallback
+    // VASP 4 has no symbol line, so groups get placeholders by index. Two groups, because
+    // the first placeholder is H and an index-0-only check can't tell the indexed placeholders
     // apart from a blanket "unknown element becomes hydrogen".
     { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
   ])(`should handle $name`, ({ content, expected }) => {
@@ -532,9 +532,20 @@ describe(`Auto-detection & Error Handling`, () => {
   })
 
   it(`should not misread a blank POSCAR element line as VASP 4 zero counts`, () => {
-    // A blank line 6 must not become atom_counts=[0] via Number(``) === 0
+    // A blank line 6 must not become atom_counts=[0] via Number(``) === 0; it names no
+    // species, so they are VASP 4 placeholders rather than one invalid empty symbol
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn.mockRestore())
     const result = parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\n\n1\nDirect\n0 0 0`)
     expect(result.sites).toHaveLength(1)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`no element symbols`))
+  })
+
+  // An unknown symbol used to be drawn as H, He, … by position: a wrong but plausible cell
+  it(`rejects a POSCAR element symbol that names no element`, () => {
+    expect(() =>
+      parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\nFe Xx\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`),
+    ).toThrow(`Invalid element symbol in POSCAR: Xx`)
   })
 
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {
@@ -1032,13 +1043,37 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(split_cif_tokens(`${line}\r`)).toEqual(expected)
   })
 
+  // Loop values are a token stream: rows may share a line or wrap across lines anywhere (all
+  // valid CIF). A heuristic row splitter dropped Cl1 from the row-boundary-mid-line cases.
+  test.each([
+    [`two rows on one line`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5 0.5`],
+    [`row wrapped onto the next line`, `Fe1 Fe 0.1 0.2\n 0.3\nO1 O 0.5 0.5 0.5`],
+    [`continuation line carrying the next row`, `Fe1 Fe\n0.1 0.2 0.3 O1 O 0.5 0.5 0.5`],
+    [`row boundary inside a continuation line`, `Fe1 Fe 0.1\n0.2 0.3 O1 O\n0.5 0.5 0.5`],
+    [`over-full line then a short one`, `Fe1 Fe 0.1 0.2 0.3 O1 O\n0.5 0.5 0.5`],
+    [`rows split mid-line twice`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5\n0.5`],
+  ])(`reads atom-site loop rows as a token stream: %s`, (_desc, rows) => {
+    const result = parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)
+    expect(result.sites.map((site) => [site.label, site.abc])).toEqual([
+      [`Fe1`, [0.1, 0.2, 0.3]],
+      [`O1`, [0.5, 0.5, 0.5]],
+    ])
+  })
+
+  // A value count off a multiple of the columns has no unambiguous row split
+  test.each([
+    [`short row before a full row`, `Fe1 Fe 0.1\nO1 O 0.5 0.5 0.5`, 8],
+    [`over-long row before a full row`, `Fe1 Fe 0.1 0.2 0.3 junk\nO1 O 0.5 0.5 0.5`, 11],
+  ])(`rejects an atom-site loop with a ragged row: %s`, (_desc, rows, n_values) => {
+    expect(() => parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)).toThrow(
+      `has ${n_values} values, not a multiple of its 5 columns`,
+    )
+  })
+
   // A quote closes a CIF value only when whitespace or the line end follows it, so an
-  // apostrophe inside a label is content. Stripping every quote in the token cut primed labels
-  // short (`H2'` and `H2''` are different atoms, both became `H2`), and one stray apostrophe
-  // let the quoted-value alternation swallow the whole row into a single token, which the
-  // short-row filter then discarded with no diagnostic at all.
+  // apostrophe inside a label is content (`H2'` and `H2''` are different atoms)
   test(`keeps primed atom labels and the rows that carry them`, () => {
-    const cif = `data_t\n${cell5}\n${site_loop}\nC1' C 0.1 0.2 0.3 1.0\n"O2'" O 0.4 0.5 0.6 1.0\nH3 H 0.7 0.8 0.9 1.0`
+    const cif = `data_t\n${cell5}\n${site_loop}\nC1' C 0.1 0.2 0.3\n"O2'" O 0.4 0.5 0.6\nH3 H 0.7 0.8 0.9`
     const result = parse_cif(cif)
     expect(result.sites.map((site) => site.label)).toEqual([`C1'`, `O2'`, `H3`])
   })
@@ -1049,57 +1084,16 @@ O2   O   0.410  0.140  0.880  1.000`
   // describes those atoms. Reading them file-wide used to take the global block's 20 Å cell
   // for a 5 Å phase (64x the volume) and expand its atoms by the global block's symops.
   // mmCIF is a CIF dialect with its own cell and symop readers, which had the same bug.
+  // the global block's inversion op would double the phase's single atom. CIF reserved words
+  // are case-insensitive, so `DATA_phase_1` opens a block just as `data_` does
+  // oxfmt-ignore
+  const multi_block_cif = (data: string, loop: string) =>
+    [`${data}_global`, cif_cell(20), loop, `_symmetry_equiv_pos_as_xyz`, `'x, y, z'`, `'-x, -y, -z'`, `${data}_phase_1`, cell5, site_loop, `Na1 Na 0.5 0.5 0.5`].join(`\n`)
+  // oxfmt-ignore
   test.each([
-    [
-      `CIF`,
-      // the global block's inversion op would double the phase's single atom
-      [
-        `data_global`,
-        cif_cell(20),
-        `loop_`,
-        `_symmetry_equiv_pos_as_xyz`,
-        `'x, y, z'`,
-        `'-x, -y, -z'`,
-        `data_phase_1`,
-        cell5,
-        site_loop,
-        `Na1 Na 0.5 0.5 0.5`,
-      ].join(`\n`),
-      `multi-block.cif`,
-      [[0.5, 0.5, 0.5]],
-    ],
-    [
-      // CIF reserved words are case-insensitive, so `DATA_phase_1` opens a block just as
-      // `data_` does. Matching raw text left it inside the global block, whose 20 Å cell and
-      // inversion op then applied to a phase that declares neither.
-      `CIF with uppercase reserved words`,
-      [
-        `DATA_global`,
-        cif_cell(20),
-        `LOOP_`,
-        `_symmetry_equiv_pos_as_xyz`,
-        `'x, y, z'`,
-        `'-x, -y, -z'`,
-        `DATA_phase_1`,
-        cell5,
-        site_loop,
-        `Na1 Na 0.5 0.5 0.5`,
-      ].join(`\n`),
-      `multi-block-upper.cif`,
-      [[0.5, 0.5, 0.5]],
-    ],
-    [
-      `mmCIF`,
-      `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `fract`, [
-        `Si 0.0 0.0 0.0`,
-        `Si 0.5 0.5 0.5`,
-      ])}`,
-      `multi-block.mmcif`,
-      [
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ],
-    ],
+    [`CIF`, multi_block_cif(`data`, `loop_`), `multi-block.cif`, [[0.5, 0.5, 0.5]]],
+    [`CIF with uppercase reserved words`, multi_block_cif(`DATA`, `LOOP_`), `multi-block-upper.cif`, [[0.5, 0.5, 0.5]]],
+    [`mmCIF`, `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `Cartn`, [`Si 0 0 0`, `Si 2.5 2.5 2.5`])}`, `multi-block.mmcif`, [[0, 0, 0], [0.5, 0.5, 0.5]]],
   ])(
     `%s reads cell and symops from the atom loop's own data_ block`,
     (format, content, filename, expected_abc) => {
@@ -1287,10 +1281,8 @@ O3 O2- 0.75 0.25 0.75`
     // oxfmt-ignore
     test.each([
       [`complex labels`, [`site1_Fe_center 0.0 0.0 0.0 1.0`, `site2_Cu_surface 0.5 0.5 0.5 1.0`], [`Fe`, `Cu`], [`site1_Fe_center`, `site2_Cu_surface`]],
-      // both atoms parsed, Xx1 falls back to He via validate_element_symbol
-      [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`, `He`], [`Fe1`, `Xx1`]],
-      // Cu1 is two tokens short of the declared loop headers, so only Fe1 survives
-      [`a row missing coordinates`, [`Fe1 0.0 0.0 1.0`, `Cu1 0.5 0.5`], [`Fe`], [`Fe1`]],
+      // Xx1 names no element: skipped with a warning rather than drawn as He
+      [`an invalid element symbol`, [`Fe1 0.0 0.0 0.0 1.0`, `Xx1 0.5 0.5 0.5 1.0`], [`Fe`], [`Fe1`]],
     ])(`should infer elements from labels with %s`, (_name, rows, elements, labels) => {
       const result = parse_cif(label_cif(...rows))
 
@@ -1538,15 +1530,10 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
   })
 
   test(`handles symmetry operations with dangling operators correctly`, () => {
+    // oxfmt-ignore
     const symops = [
-      `x, y, z`,
-      `x+1/2, y+1/2, z+1/2`,
-      `x+1/2+, y+1/2, z+1/2`,
-      `x+1/2, y+1/2+, z+1/2`,
-      `x+1/2, y+1/2, z+1/2+`,
-      `x+1/2-, y+1/2, z+1/2`,
-      `x+1/2, y+1/2-, z+1/2`,
-      `x+1/2, y+1/2, z+1/2-`,
+      `x, y, z`, `x+1/2, y+1/2, z+1/2`, `x+1/2+, y+1/2, z+1/2`, `x+1/2, y+1/2+, z+1/2`,
+      `x+1/2, y+1/2, z+1/2+`, `x+1/2-, y+1/2, z+1/2`, `x+1/2, y+1/2-, z+1/2`, `x+1/2, y+1/2, z+1/2-`,
     ]
     // Dangling operators contribute 0, so every op is either the identity or the body-center
     // translation: exactly the original site plus one translated copy, no NaN sites
@@ -1694,6 +1681,8 @@ unit_cell:
       [0.333333333333333, 0.666666666666667, 0.376708787364615],
     ])
     expect(structure.sites.map((site) => site.properties.mass)).toEqual([107.8682, 126.90447])
+    // labelled like every other parser
+    expect(structure.sites.map((site) => site.label)).toEqual([`Ag1`, `I2`])
   })
 
   // oxfmt-ignore
@@ -1708,11 +1697,6 @@ unit_cell:
     // auto-detection must reach the same parser by extension and by content sniffing
     expect(parse_structure_file(content, filename).sites).toHaveLength(expected_sites)
     expect(parse_structure_file(content).sites).toHaveLength(expected_sites)
-  })
-
-  it(`labels phonopy sites like every other parser`, () => {
-    const structure = parse_phonopy_yaml(simple_phonopy_yaml)
-    expect(structure.sites.map((site) => site.label)).toEqual([`Ag1`, `I2`])
   })
 })
 
@@ -1746,7 +1730,6 @@ describe(`parse_structure_file`, () => {
   })
 
   test(`parses nested JSON structure correctly`, () => {
-    // Read the actual test file
     const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
 
     const result = parse_structure_file(content, hea_hcp_filename)
@@ -1755,16 +1738,6 @@ describe(`parse_structure_file`, () => {
     expect(result.sites[0].species[0].element).toBe(`Ta`)
     expect(result.lattice.matrix.every((row) => row.length === 3)).toBe(true)
     expect(result.lattice.volume).toBeCloseTo(3218.0139605153627, 5)
-  })
-
-  test(`parses simple JSON structure correctly`, () => {
-    const simple_structure = {
-      sites: [make_json_site(`H`, [0, 0, 0])],
-      lattice: cubic_lattice_json(1),
-    }
-    const result = parse_structure_file(JSON.stringify(simple_structure), `simple.json`)
-    expect(result.sites).toHaveLength(1)
-    expect(result.sites[0].species[0].element).toBe(`H`)
   })
 
   describe(`comprehensive nested structure parsing`, () => {
@@ -2193,14 +2166,8 @@ describe(`optimade_to_structure`, () => {
 
   it(`picks mass/concentration for the dominant element, not index 0`, () => {
     // Disordered site: dominant element (Ni, conc 0.7) is NOT chemical_symbols[0]
-    const species = [
-      {
-        name: `D`,
-        chemical_symbols: [`Fe`, `Ni`],
-        mass: [55.845, 58.693],
-        concentration: [0.3, 0.7],
-      },
-    ]
+    // oxfmt-ignore
+    const species = [{ name: `D`, chemical_symbols: [`Fe`, `Ni`], mass: [55.845, 58.693], concentration: [0.3, 0.7] }]
     const result = optimade_to_structure(
       optimade(`disordered`, {
         lattice_vectors: cubic_vectors(5),
@@ -2274,15 +2241,10 @@ describe(`CIF cell parameter errors`, () => {
   it.each([
     [`invalid`, `Invalid CIF cell parameter in line: _cell_length_a  invalid`],
     [`0`, `CIF cell has non-positive edge lengths: [0, 5, 5, 90, 90, 90]`],
-  ])(`rejects _cell_length_a %s naming the offending value`, (value, message) => {
+    // `.` / `?` mean unset, so the cell is missing rather than corrupt
+    [`?`, `Insufficient cell parameters in CIF file`],
+  ])(`rejects _cell_length_a %s naming the problem`, (value, message) => {
     expect(() => parse_cif(cif_with_length_a(value))).toThrow(message)
-  })
-
-  // `.` / `?` mean unset, so the cell is missing rather than corrupt
-  it(`treats a placeholder value as a missing cell`, () => {
-    expect(() => parse_cif(cif_with_length_a(`?`))).toThrow(
-      `Insufficient cell parameters in CIF file`,
-    )
   })
 })
 
@@ -2306,41 +2268,12 @@ describe(`shared numeric coercion`, () => {
   // The char-code fast path must round exactly like Number(): every token below is compared
   // bit for bit against parse_float_token, including the ones that must take the slow path
   test(`LineScanner tokenizes like split(/\\s+/) and decodes like parse_float_token`, () => {
+    // oxfmt-ignore
     const tokens = [
-      `0`,
-      `-0`,
-      `+5`,
-      `1.`,
-      `.5`,
-      `-.5`,
-      `.`,
-      `-`,
-      `+`,
-      `1e3`,
-      `1E-3`,
-      `-2.5e+2`,
-      `1.0D-3`,
-      `0x10`,
-      `Infinity`,
-      `NaN`,
-      `abc`,
-      `1,5`,
-      `1.0abc`,
-      `0.000123`,
-      `123456789012345`,
-      `1234567890123456`,
-      `0.1234567890123456789`,
-      `1e400`,
-      `9.87654321e-300`,
-      `Fe`,
-      `T`,
-      `00012`,
-      `1e`,
-      `1e+`,
-      `--1`,
-      `1.2.3`,
-      `0.30000000000000004`,
-      `-0.0000000000000000000001`,
+      `0`, `-0`, `+5`, `1.`, `.5`, `-.5`, `.`, `-`, `+`, `1e3`, `1E-3`, `-2.5e+2`, `1.0D-3`, `0x10`,
+      `Infinity`, `NaN`, `abc`, `1,5`, `1.0abc`, `0.000123`, `123456789012345`, `1234567890123456`,
+      `0.1234567890123456789`, `1e400`, `9.87654321e-300`, `Fe`, `T`, `00012`, `1e`, `1e+`, `--1`,
+      `1.2.3`, `0.30000000000000004`, `-0.0000000000000000000001`,
     ]
     const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
     const random = rng(3)
@@ -2513,11 +2446,8 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     '@class': `Structure`,
     '@module': `pymatgen.core.structure`,
     lattice: {
-      matrix: [
-        [3.887614, 0, 2e-16],
-        [2e-16, -3.887614, -2e-16],
-        [2.5e-15, 2.5e-15, -49.0954],
-      ],
+      // oxfmt-ignore
+      matrix: [[3.887614, 0, 2e-16], [2e-16, -3.887614, -2e-16], [2.5e-15, 2.5e-15, -49.0954]],
       pbc: [true, true, true],
       ...extra_lattice,
     },
@@ -2815,7 +2745,19 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(parse_structure_file(content, `short.mmcif`).sites).toHaveLength(2)
   })
 
-  test(`mmCIF fractional coordinates wrap into the unit cell`, () => {
+  // Small-molecule CIF2 spells tags with dots too, but stores fractional coordinates and
+  // symops that only the CIF path expands (mmCIF shows deposited coordinates as is)
+  test(`dotted small-molecule CIF expands its symops`, () => {
+    const content = `${mmcif_cell(5.0, `fract`, [`Fe 0.1 0.2 0.3`])}\nloop_\n_space_group_symop.operation_xyz\n'x,y,z'\n'-x,-y,-z'`
+    const result = parse_structure_file(content, `cif2.cif`)
+    expect(rounded_abc(result.sites)).toEqual([
+      [0.1, 0.2, 0.3],
+      [0.9, 0.8, 0.7],
+    ])
+  })
+
+  // A .mmcif name with fractional-only sites is small-molecule CIF2, wrapped like any CIF
+  test(`dotted fractional sites in an .mmcif file wrap into the unit cell`, () => {
     const content = mmcif_cell(4.0, `fract`, [`Na 1.25 0.0 0.0`, `Cl 0.5 0.5 0.5`])
     const result = parse_structure_file(content, `test.mmcif`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Na`, `Cl`])
@@ -2825,9 +2767,20 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_sites_reconstruct(result)
   })
 
+  // Single-type `atomic` LAMMPS data file with the given box lines, mass line and atom rows
+  const lammps_data = (box: string[], mass: string, atoms: string[]) =>
+    // oxfmt-ignore
+    [`# test`, ``, `${atoms.length} atoms`, `1 atom types`, ...box, ``, `Masses`, ``, mass, ``, `Atoms # atomic`, ``, ...atoms].join(`\n`)
+
   test(`LAMMPS data maps atom types to elements by mass and reads triclinic tilts`, () => {
     // mass 26.9815 identifies Al; the `xy xz yz` line adds a 1 Å tilt on the b vector
-    const content = `# triclinic Al\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n1.0 0.0 0.0 xy xz yz\n\nMasses\n\n1 26.9815\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n2 1 2.0 2.0 2.0`
+    const box = [
+      `0.0 4.0 xlo xhi`,
+      `0.0 4.0 ylo yhi`,
+      `0.0 4.0 zlo zhi`,
+      `1.0 0.0 0.0 xy xz yz`,
+    ]
+    const content = lammps_data(box, `1 26.9815`, [`1 1 0.0 0.0 0.0`, `2 1 2.0 2.0 2.0`])
     const result = parse_structure_file(content, `Al.lmp`)
     assert(`lattice` in result)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Al`, `Al`])
@@ -2880,23 +2833,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
   })
 
   test(`LAMMPS data shifts coordinates by the box origin`, () => {
-    const content = [
-      `# offset box`,
-      ``,
-      `1 atoms`,
-      `1 atom types`,
-      `-2.0 2.0 xlo xhi`,
-      `-2.0 2.0 ylo yhi`,
-      `-2.0 2.0 zlo zhi`,
-      ``,
-      `Masses`,
-      ``,
-      `1 12.011  # C`,
-      ``,
-      `Atoms # atomic`,
-      ``,
-      `1 1 -1.0 0.0 1.0`,
-    ].join(`\n`)
+    const box = [`-2.0 2.0 xlo xhi`, `-2.0 2.0 ylo yhi`, `-2.0 2.0 zlo zhi`]
+    const content = lammps_data(box, `1 12.011  # C`, [`1 1 -1.0 0.0 1.0`])
     const result = parse_structure_file(content, `offset.lmp`)
     expect(result.sites[0].species[0].element).toBe(`C`)
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
@@ -2904,31 +2842,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
   })
 
   test(`LAMMPS data normalizes a general triclinic box origin`, () => {
-    const content = [
-      `# general triclinic box`,
-      ``,
-      `1 atoms`,
-      `1 atom types`,
-      `4 0 0 avec`,
-      `1 5 0 bvec`,
-      `0.5 0.25 6 cvec`,
-      `-2 -3 -4 abc   origin`,
-      ``,
-      `Masses`,
-      ``,
-      `1 12.011 # C`,
-      ``,
-      `Atoms # atomic`,
-      ``,
-      `1 1 0.75 -0.375 -1.0`,
-    ].join(`\n`)
+    const box = [`4 0 0 avec`, `1 5 0 bvec`, `0.5 0.25 6 cvec`, `-2 -3 -4 abc   origin`]
+    const content = lammps_data(box, `1 12.011 # C`, [`1 1 0.75 -0.375 -1.0`])
     const result = parse_structure_file(content, `general.lmp`)
     assert(`lattice` in result)
-    expect(result.lattice.matrix).toEqual([
-      [4, 0, 0],
-      [1, 5, 0],
-      [0.5, 0.25, 6],
-    ])
+    // oxfmt-ignore
+    expect(result.lattice.matrix).toEqual([[4, 0, 0], [1, 5, 0], [0.5, 0.25, 6]])
     expect_vec3_close(result.sites[0].xyz, [2.75, 2.625, 3], 8)
     expect_vec3_close(result.sites[0].abc, [0.5, 0.5, 0.5], 8)
   })
@@ -3124,7 +3043,8 @@ describe(`malformed molecular / LAMMPS input records a failure reason`, () => {
     // `bbb` is mandatory in an MDL counts line, so a bare atom count is not "0 bonds"
     [`MOL whose counts line omits the bond count`, `nobonds.mol`, `x\n\n\n  2\n    0.0000    0.0000    0.0000 C   0  0\n    1.0000    0.0000    0.0000 C   0  0\nM  END\n`, /Invalid atom\/bond counts in MOL counts line/],
     [`MOL2 without an ATOM section`, `empty.mol2`, `@<TRIPOS>MOLECULE\nx\n 0 0 0 0 0\nSMALL\nNO_CHARGES\n`, /no @<TRIPOS>ATOM section/],
-    [`mmCIF without coordinate columns`, `no-coords.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.label_atom_id\nC C1\n`, /missing coordinates/],
+    [`dotted CIF without coordinate columns`, `no-coords.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.label_atom_id\nC C1\n`, /No valid atom site loop/],
+    [`mmCIF with only some Cartesian columns`, `partial.mmcif`, `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\nC 1.0\n`, /missing Cartn_x\/y\/z coordinates/],
     [`LAMMPS data without an Atoms section`, `empty.lmp`, `# header only\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n`, /no Atoms section/],
     [`LAMMPS data whose atom count disagrees with its Atoms section`, `count.lmp`, `# mismatch\n\n3 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /declares 3 atoms but its Atoms section has 1 rows/],
     [`LAMMPS data without box bounds`, `nobox.lmp`, `# no box\n\n1 atoms\n1 atom types\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /box bounds/],

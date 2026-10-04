@@ -149,14 +149,24 @@ describe(`common neighbor analysis`, () => {
   ])(`adaptive CNA classifies a perfect %s supercell`, (_label, build, expected, n_atoms) => {
     const result = calc_structure_id(build(), { skip_csp: true })
     expect(result.n_atoms).toBe(n_atoms)
-    expect(result.populations[expected]).toBe(n_atoms)
+    // all five keys are always present, the unpopulated ones at 0
+    const empty = { bcc: 0, fcc: 0, hcp: 0, ico: 0, other: 0 }
+    expect(result.populations).toEqual({ ...empty, [expected]: n_atoms })
   })
 
   test.each([
     [`fcc`, () => make_fcc([4, 4, 4]), 0.854 * FCC_LATTICE_CONST, `fcc` as const, 256],
     [`bcc`, () => make_bcc([4, 4, 4]), 1.207 * BCC_LATTICE_CONST, `bcc` as const, 128],
+    // the bcc cutoff swallows the fcc second shell, so no atom has 12 or 14 neighbors
+    [
+      `fcc with the bcc cutoff`,
+      () => make_fcc([4, 4, 4]),
+      1.207 * FCC_LATTICE_CONST,
+      `other` as const,
+      256,
+    ],
   ])(
-    `fixed-cutoff CNA classifies a perfect %s supercell`,
+    `fixed-cutoff CNA on a perfect %s supercell`,
     (_label, build, cutoff, expected, n_atoms) => {
       const result = calc_structure_id(build(), { cna_mode: `fixed`, cutoff, skip_csp: true })
       expect(result.populations[expected]).toBe(n_atoms)
@@ -164,17 +174,6 @@ describe(`common neighbor analysis`, () => {
       expect(result.neighbor_cutoff).toBe(cutoff)
     },
   )
-
-  test(`fixed-cutoff CNA with a cutoff meant for the wrong phase misclassifies`, () => {
-    // The bcc cutoff swallows the fcc second shell, so no atom has 12 or 14 neighbors
-    const result = calc_structure_id(make_fcc([4, 4, 4]), {
-      cna_mode: `fixed`,
-      cutoff: 1.207 * FCC_LATTICE_CONST,
-      skip_csp: true,
-    })
-    expect(result.populations.fcc).toBe(0)
-    expect(result.populations.other).toBe(256)
-  })
 
   // 0.05 Å (~2% of the 2.556 Å nn distance) is thermal noise CNA should ignore; 0.6 Å
   // (~23%) is past where any signature survives.
@@ -381,15 +380,6 @@ describe(`calc_structure_id plumbing`, () => {
   ])(`rejects %s`, (_label, structure, options, pattern) => {
     const input = structure ?? make_fcc([2, 2, 2])
     expect(() => calc_structure_id(input as Crystal, options)).toThrow(pattern)
-  })
-
-  test(`populations always carry all five keys and sum to the atom count`, () => {
-    const result = calc_structure_id(make_hcp([3, 3, 3]), { skip_csp: true })
-    expect(Object.keys(result.populations).toSorted()).toEqual(
-      [`bcc`, `fcc`, `hcp`, `ico`, `other`].toSorted(),
-    )
-    const total = Object.values(result.populations).reduce((sum, count) => sum + count, 0)
-    expect(total).toBe(result.n_atoms)
   })
 
   test(`a cluster too small to supply 12 neighbors reports NaN instead of guessing`, () => {

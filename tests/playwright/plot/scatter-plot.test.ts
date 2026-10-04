@@ -84,7 +84,7 @@ test(`interactive axis labels hide export text and switch properties`, async ({ 
     await expect(label).toHaveCSS(`display`, `flex`)
     const trigger = label.getByRole(`button`)
     await trigger.click()
-    const option = page.locator(`.portal-select-dropdown [aria-selected="false"]`).first()
+    const option = page.locator(`.popover-select-dropdown [aria-selected="false"]`).first()
     const selected_text = (await option.textContent())?.trim()
     if (!selected_text) throw new Error(`Missing axis property label`)
     await option.click()
@@ -926,16 +926,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   // PAN FUNCTIONALITY TESTS
 
-  test(`Shift+drag pans the plot instead of zooming`, async ({ page }) => {
-    await expect_shift_drag_pans(page, page.locator(`#basic-example .scatter`))
-  })
-
-  test(`cursor changes to grab/grabbing during pan`, async ({ page }) => {
-    const svg = get_chart_svg(page.locator(`#basic-example .scatter`))
+  test(`Shift+drag pans the plot instead of zooming, with grab/grabbing cursors`, async ({
+    page,
+  }) => {
+    const plot = page.locator(`#basic-example .scatter`)
+    const svg = get_chart_svg(plot)
     await expect(svg).toHaveCSS(`cursor`, `crosshair`)
     await page.keyboard.down(`Shift`)
     await expect(svg).toHaveCSS(`cursor`, `grab`)
-
     const svg_box = await require_bbox(svg, `svg`)
     await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
     await page.mouse.down()
@@ -944,6 +942,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.mouse.up()
     await page.keyboard.up(`Shift`)
     await expect(svg).toHaveCSS(`cursor`, `crosshair`)
+
+    await expect_shift_drag_pans(page, plot)
   })
 
   test(`pan requires focus for wheel events`, async ({ page }) => {

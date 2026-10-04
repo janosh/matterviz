@@ -1,10 +1,8 @@
-// mmCIF (PDBx/mmCIF): a CIF dialect whose data names use dot notation
-// (`_atom_site.Cartn_x`) rather than the underscore tags (`_atom_site_fract_x`) that
-// parse_cif understands, which is why it needs its own atom-site loop reader.
+// mmCIF (PDBx/mmCIF): macromolecular CIF with Cartesian atom sites (`_atom_site.Cartn_x`),
+// shown as deposited (first model, conformer A, no symop expansion or wrapping), which is
+// why it has its own atom-site loop reader rather than parse_cif's.
 import type { ElementSymbol } from '#lib/element/index.js'
-import * as math from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
-import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import {
   cell_frame,
@@ -14,6 +12,7 @@ import {
   is_cif_data_header,
   is_cif_loop_header,
   iter_cif_loops,
+  normalize_cif_names,
   parsed_result,
   parse_cif_uncertain_number,
   read_cell_params,
@@ -21,21 +20,22 @@ import {
   vec3_from_values,
 } from './shared'
 
-// Dot-notation atom-site tags are the distinguishing feature of mmCIF; a plain CIF (or a
-// magnetic .mcif, which uses underscore tags) never has them
+// Cartesian dot-notation atom sites mark macromolecular mmCIF. A small-molecule CIF2 file
+// spells its tags with dots too (`_atom_site.fract_x`) but stores fractional coordinates
+// plus symops, which only parse_cif expands.
 // Horizontal whitespace only, never `\s`: under /m the `^` retries at every line start and
 // `\s*` then swallows the whole remaining run of newlines before failing, which is quadratic.
 // This runs on the raw text of any dropped file, so a file of blank lines was a denial of
 // service - 80 kB of them took 631 ms. The sibling LAMMPS sniffers had the same shape.
 export const is_mmcif_content = (content: string): boolean =>
-  /^[ \t]*_atom_site\./im.test(content)
+  /^[ \t]*_atom_site\.cartn_[xyz]\b/im.test(content)
 
 // mmCIF writes unset values as `.` (inapplicable) or `?` (unknown)
 const is_missing = (token: string | undefined): boolean =>
   token === undefined || token === `.` || token === `?`
 
-// Map the part after `_atom_site.` to the field we need, lowercased for case-insensitive
-// matching (mmCIF mixes cases, e.g. `Cartn_x` and `B_iso_or_equiv`)
+// Map the part after `_atom_site_` (names normalized from `_atom_site.`) to the field we need,
+// lowercased for case-insensitive matching (mmCIF mixes cases, e.g. `Cartn_x`)
 const ATOM_SITE_FIELDS: Record<string, string> = {
   type_symbol: `symbol`,
   label_atom_id: `label`,
@@ -43,9 +43,6 @@ const ATOM_SITE_FIELDS: Record<string, string> = {
   cartn_x: `cart_x`,
   cartn_y: `cart_y`,
   cartn_z: `cart_z`,
-  fract_x: `frac_x`,
-  fract_y: `frac_y`,
-  fract_z: `frac_z`,
   occupancy: `occupancy`,
   label_alt_id: `alt_id`,
   label_comp_id: `residue`,
@@ -57,8 +54,10 @@ const ATOM_SITE_FIELDS: Record<string, string> = {
 const build_atom_site_indices = (headers: string[]): Record<string, number> => {
   const indices: Record<string, number> = {}
   headers.forEach((header, col_idx) => {
-    const suffix = header.trim().toLowerCase().split(`.`)[1]
-    const field = suffix ? ATOM_SITE_FIELDS[suffix] : undefined
+    const name = header.trim().toLowerCase()
+    const field = name.startsWith(`_atom_site_`)
+      ? ATOM_SITE_FIELDS[name.slice(`_atom_site_`.length)]
+      : undefined
     if (field && indices[field] === undefined) indices[field] = col_idx
   })
   return indices
@@ -91,7 +90,7 @@ const mmcif_element = (
 }
 
 export const parse_mmcif = (content: string): AnyStructure => {
-  const lines = content.split(/\r?\n/)
+  const lines = normalize_cif_names(content.split(/\r?\n/))
 
   const block_ids = cif_block_ids(lines)
   let headers: string[] = []
@@ -99,7 +98,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   let atom_block_id = 0
   for (const loop of iter_cif_loops(lines)) {
     const is_atom_site = (header: string) =>
-      header.trim().toLowerCase().startsWith(`_atom_site.`)
+      header.trim().toLowerCase().startsWith(`_atom_site_`)
     if (!loop.headers.some(is_atom_site)) continue
     headers = loop.headers
     atom_block_id = block_ids[loop.data_start]
@@ -117,18 +116,12 @@ export const parse_mmcif = (content: string): AnyStructure => {
   if (data_rows.length === 0) throw new Error(`mmCIF _atom_site loop has no data rows`)
 
   const indices = build_atom_site_indices(headers)
-  const has_coords = (kind: `frac` | `cart`) =>
-    [`x`, `y`, `z`].every((axis) => indices[`${kind}_${axis}`] !== undefined)
-  const is_fractional = has_coords(`frac`)
-  if (!is_fractional && !has_coords(`cart`))
+  // Fractional-only atom sites are small-molecule CIF2, which parse_cif reads
+  if ([`x`, `y`, `z`].some((axis) => indices[`cart_${axis}`] === undefined))
     throw new Error(
-      `mmCIF _atom_site loop missing coordinates (need Cartn_x/y/z or fract_x/y/z), got tags: ${headers.join(
-        `, `,
-      )}`,
+      `mmCIF _atom_site loop missing Cartn_x/y/z coordinates, got tags: ${headers.join(`, `)}`,
     )
-  const coord_indices = is_fractional
-    ? [indices.frac_x, indices.frac_y, indices.frac_z]
-    : [indices.cart_x, indices.cart_y, indices.cart_z]
+  const coord_indices = [indices.cart_x, indices.cart_y, indices.cart_z]
   // type_symbol is mandatory in the PDBx dictionary; without it elements have to come
   // from the atom names, which are ambiguous (`CA` is an alpha carbon in a protein but
   // calcium in a ligand)
@@ -204,11 +197,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   }
 
   const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(block_lines), `mmCIF _cell`)
-  if (is_fractional && !lattice_matrix)
-    throw new Error(`mmCIF has fractional coordinates but no usable _cell parameters`)
-  // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact;
-  // fractional input is wrapped into the primary cell like parse_cif does
-  const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
+  // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact
 
   // Read a row's value for a field the loop may not declare at all
   const text_at = (row: string[], field: string): string | undefined =>
@@ -218,7 +207,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
 
   const sites: Site[] = []
   for (const [atom_idx, row] of rows.entries()) {
-    const coords = vec3_from_values(
+    const xyz = vec3_from_values(
       coord_indices.map((col_idx) => {
         const token = row[col_idx]
         if (is_missing(token)) throw new Error(`Missing coordinate in row: ${row.join(` `)}`)
@@ -231,9 +220,6 @@ export const parse_mmcif = (content: string): AnyStructure => {
 
     const element = mmcif_element(text_at(row, `symbol`), text_at(row, `label`), atom_idx)
 
-    const abc = is_fractional ? wrap_to_unit_cell(coords) : to_frac(coords)
-    const xyz = is_fractional && frac_to_cart ? frac_to_cart(abc) : coords
-
     const occupancy = number_at(row, `occupancy`)
     const b_factor = number_at(row, `b_factor`)
     const residue = text_at(row, `residue`)
@@ -245,7 +231,14 @@ export const parse_mmcif = (content: string): AnyStructure => {
     }
 
     sites.push(
-      make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties, occupancy ?? 1),
+      make_site(
+        element,
+        to_frac(xyz),
+        xyz,
+        `${element}${atom_idx + 1}`,
+        properties,
+        occupancy ?? 1,
+      ),
     )
   }
 

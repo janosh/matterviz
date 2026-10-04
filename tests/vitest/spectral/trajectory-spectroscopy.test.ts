@@ -217,23 +217,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
     },
   )
 
-  it(`velocity_source 'stored' throws without a velocity signal`, () => {
-    const input = make_input()
-    input.velocities = null
-    expect(() =>
-      calc_trajectory_spectroscopy(input, { ...RAW_SPECTRUM, velocity_source: `stored` }),
-    ).toThrow(/velocity_source 'stored' was requested but no velocity signal was supplied/)
-  })
-
-  it(`rejects an unknown velocity_source`, () => {
-    expect(() =>
-      calc_trajectory_spectroscopy(make_input(), {
-        ...RAW_SPECTRUM,
-        velocity_source: `finite_difference` as unknown as `auto`,
-      }),
-    ).toThrow(/velocity_source/)
-  })
-
   // Ground truth for the VDOS pipeline: a pure velocity sinusoid at a known physical
   // frequency must peak there, and the curve must be exactly the mass-weighted
   // one_sided_periodogram of those velocities with the fs → THz Jacobian applied.
@@ -282,23 +265,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(result.peaks).not.toHaveLength(0)
     expect(result.peaks.every(({ ir_activity }) => ir_activity === `unknown`)).toBe(true)
     expect(result.peaks.every(({ raman_activity }) => raman_activity === `unknown`)).toBe(true)
-  })
-
-  it(`rejects malformed signal units and nonuniform sampling`, () => {
-    const bad_unit = make_input()
-    bad_unit.infrared_signal = {
-      kind: `dipole`,
-      series: { ...signal(128, [3], () => [0, 0, 0]), unit: ` ` },
-    }
-    expect(() => calc_trajectory_spectroscopy(bad_unit, RAW)).toThrow(
-      /unit must be a non-empty string/,
-    )
-
-    const nonuniform = make_input()
-    nonuniform.velocities?.steps.splice(5, 1, 7)
-    expect(() => calc_trajectory_spectroscopy(nonuniform, RAW)).toThrow(
-      /steps must increase strictly|not uniformly sampled/,
-    )
   })
 
   it.each([
@@ -384,6 +350,14 @@ describe(`calc_trajectory_spectroscopy`, () => {
       },
       /wrapped periodic positions require a lattice matrix for the first frame/,
     ],
+    [
+      `one-percent cadence mismatch at a large step origin`,
+      (input: TrajectorySpectroscopyInput) => {
+        input.positions.steps = input.positions.steps.map((step) => 1e12 + step)
+        input.positions.steps[64] += 0.01
+      },
+      /positions is not uniformly sampled/,
+    ],
   ])(`rejects malformed position input: %s`, (_label, mutate, expected) => {
     const input = make_input()
     mutate(input)
@@ -443,8 +417,46 @@ describe(`calc_trajectory_spectroscopy`, () => {
       /polarization must be explicitly marked branch_continuous/,
     ],
     [`unknown window`, () => {}, { window: `blackman` }, /window 'blackman' is not supported/],
+    [
+      `unknown velocity_source`,
+      () => {},
+      { velocity_source: `finite_difference` },
+      /velocity_source/,
+    ],
+    [
+      `stored velocity_source without a velocity signal`,
+      (input: TrajectorySpectroscopyInput) => (input.velocities = null),
+      { velocity_source: `stored` },
+      /velocity_source 'stored' was requested but no velocity signal was supplied/,
+    ],
+    [
+      `blank signal unit`,
+      (input: TrajectorySpectroscopyInput) => {
+        input.infrared_signal = {
+          kind: `dipole`,
+          series: { ...signal(128, [3], () => [0, 0, 0]), unit: ` ` },
+        }
+      },
+      {},
+      /unit must be a non-empty string/,
+    ],
+    [
+      `nonuniform velocity sampling`,
+      (input: TrajectorySpectroscopyInput) => input.velocities?.steps.splice(5, 1, 7),
+      {},
+      /steps must increase strictly|not uniformly sampled/,
+    ],
+    [
+      `periodic total dipole`,
+      (input: TrajectorySpectroscopyInput) => {
+        make_periodic(input, [true, false, false])
+        input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [1, 0, 0]) }
+      },
+      { preprocessing: `remove_com` },
+      /total dipole is not a valid periodic IR signal/,
+    ],
   ])(
-    `rejects unsupported public discriminants: %s`,
+    `rejects unsupported options and signals: %s`,
     (_label, mutate, raw_options, expected) => {
       const input = make_input()
       mutate(input)
@@ -546,15 +558,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const maximum_idx = vdos.power.indexOf(Math.max(...vdos.power))
     expect(maximum_idx).toBe(16)
     expect(vdos.frequencies[maximum_idx]).toBeCloseTo(1.25, 2)
-  })
-
-  it(`rejects a one-percent cadence mismatch at a large step origin`, () => {
-    const input = make_input()
-    input.positions.steps = input.positions.steps.map((step) => 1e12 + step)
-    input.positions.steps[64] += 0.01
-    expect(() => calc_trajectory_spectroscopy(input, RAW_SPECTRUM)).toThrow(
-      /positions is not uniformly sampled/,
-    )
   })
 
   it(`separates an IR-active response peak from an IR-inactive VDOS mode`, () => {
@@ -863,15 +866,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(() =>
       calc_trajectory_spectroscopy(input, { ...RAW, preprocessing: `body_fixed` }),
     ).toThrow(/body-frame processing has no position at that step/)
-  })
-
-  it(`rejects periodic total dipoles`, () => {
-    const input = make_input()
-    make_periodic(input, [true, false, false])
-    input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [1, 0, 0]) }
-    expect(() => calc_trajectory_spectroscopy(input, { preprocessing: `remove_com` })).toThrow(
-      /total dipole is not a valid periodic IR signal/,
-    )
   })
 
   it(`preserves the initial periodic center while removing center-of-mass drift`, () => {

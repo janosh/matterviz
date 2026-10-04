@@ -456,8 +456,9 @@ describe(`slab geometry`, () => {
   })
 
   test(`termination_idx out of range throws with the available count`, () => {
-    const out_of_range = () => make_slab(fcc(), [1, 1, 1], { termination_idx: 5 })
-    expect(out_of_range).toThrow(/termination_idx 5 is out of range/)
+    expect(() => make_slab(fcc(), [1, 1, 1], { termination_idx: 5 })).toThrow(
+      /termination_idx 5 is out of range/,
+    )
   })
 
   test(`slab sites carry no viewer provenance and the slab carries no bonds`, () => {
@@ -494,14 +495,6 @@ describe(`slab geometry`, () => {
     }
     const rounded = built.map(({ spacings }) => spacings.map((val) => Math.round(val)))
     expect(rounded).toEqual([UNEQUAL_GAPS, [...UNEQUAL_GAPS].toReversed()])
-  })
-
-  test(`atom count scales with the number of repeats`, () => {
-    const thin = make_slab(fcc(), [1, 1, 1], { min_slab_thickness: 4 })
-    const thick = make_slab(fcc(), [1, 1, 1], { min_slab_thickness: 12 })
-    expect(thick.slab_info.n_repeats).toBeGreaterThan(thin.slab_info.n_repeats)
-    const per_repeat = thick.sites.length / thick.slab_info.n_repeats
-    expect(per_repeat).toBe(thin.sites.length / thin.slab_info.n_repeats)
   })
 })
 

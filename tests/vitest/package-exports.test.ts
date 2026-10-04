@@ -92,7 +92,6 @@ describe(`package.json exports`, () => {
   test(`reusable file-viewer barrel excludes the side-effectful webview bootstrap`, () => {
     const source = readFileSync(join(lib_dir, `file-viewer/index.ts`), `utf8`)
     expect(source).not.toMatch(/from\s+['"]\.\/main['"]/)
-    expect(pkg.exports[`./file-viewer/webview`]).toBeDefined()
   })
 
   test.each([
@@ -101,6 +100,7 @@ describe(`package.json exports`, () => {
     `./file-viewer/host-protocol`,
     `./file-viewer/host-transfer`,
     `./file-viewer/parse-in-worker`,
+    `./file-viewer/webview`,
     `./isosurface/parse-vaspwave`,
     `./optimade`,
     `./sanitize`,
@@ -116,11 +116,9 @@ describe(`package.json exports`, () => {
 
   test(`plot publishes a curated core surface, never all of plot/core`, () => {
     // A blanket re-export would make tick math, layout solvers, pan/zoom internals and
-    // decoration plumbing public API. Only the prop-facing types and standalone components
-    // named in plot/index.ts are published.
+    // decoration plumbing public API. Whole-core and single-module wildcards both leak;
+    // only chart prop types and plot titles are sanctioned.
     const source = readFileSync(join(lib_dir, `plot/index.ts`), `utf8`)
-    // Whole-core and single-module wildcards both leak, declarations added later included.
-    // Only chart prop types and plot titles are sanctioned; adding a third needs a decision.
     const wildcard = /export (?:type )?\*(?: as \w+)? from ['"](?<mod>\.\/core[\w/-]*)['"]/g
     const core_wildcards = [...source.matchAll(wildcard)].map((match) => match.groups?.mod)
     expect(core_wildcards).toEqual([`./core/types`, `./core/plot-title`])
@@ -193,6 +191,8 @@ describe(`package.json exports`, () => {
     expectTypeOf<FreeAnnotationDecorationItem[`kind`]>().toEqualTypeOf<`free-annotation`>()
     expectTypeOf<PlotTitleLineKind>().toEqualTypeOf<`title` | `subtitle`>()
     expect(resolve_plot_title({ text: `Title` }, { width: 100 }).title?.kind).toBe(`title`)
+    // the picker behind interactive axis labels, for consumers' own property menus
+    expect(lib.PopoverSelect).toBeTypeOf(`function`)
   })
 
   // The changelog promises the three worker clients and their shared `WorkerClient` type on
@@ -272,14 +272,11 @@ describe(`package.json exports`, () => {
     expect(orphans, `dist/ entries without a src/lib source`).toEqual([])
   })
 
-  // I/O-bound, not logic: dynamically importing the svelte-package output in dist/ (the
-  // structure export pulls in three.js) shares disk and CPU with every other worker under a
-  // full-suite run, where 15 s was not always enough.
+  // I/O-bound: importing the built structure export pulls in three.js
   test.skipIf(!has_dist)(
     `built structure export entry point retains strict public exports`,
     { timeout: 60_000 },
     async () => {
-      // This inspects the built module's runtime keys. Source-only type checks need no dist/.
       const structure_export: Record<string, unknown> = await import(
         `${dist_dir}/structure/export.js`
       )

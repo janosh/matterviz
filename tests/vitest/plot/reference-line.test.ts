@@ -200,50 +200,22 @@ describe(`resolve_line_endpoints`, () => {
     [{ type: `diagonal`, slope: -1, intercept: 100 }, [0, 100, 100, 0]],
     [{ type: `diagonal`, slope: 1, intercept: 0, x_span: [20, 80] }, [20, 20, 80, 80]],
     [{ type: `diagonal`, slope: 1, intercept: 0, y_span: [30, 70] }, [30, 30, 70, 70]],
-  ] as const)(
-    `%o resolves expected endpoints`,
-    (line, [coord_x_1, coord_y_1, coord_x, coord_y_2]) => {
-      expect(resolve_line_endpoints(line as RefLine, line_axes)).toEqual(
-        scaled_endpoints([coord_x_1, coord_y_1, coord_x, coord_y_2]),
-      )
-    },
-  )
+  ] as const)(`%o resolves expected endpoints`, (line, expected) => {
+    expect(resolve_line_endpoints(line as RefLine, line_axes)).toEqual(
+      scaled_endpoints(expected),
+    )
+  })
 
   // Liang-Barsky segment clipping: preserves angle by computing true intersections
-  test.each([
-    {
-      desc: `inside bounds`,
-      p1: [10, 10] as Vec2,
-      p2: [90, 90] as Vec2,
-      expected: [10, 10, 90, 90],
-    },
-    {
-      desc: `horizontal crossing x bounds`,
-      p1: [-50, 50] as Vec2,
-      p2: [150, 50] as Vec2,
-      expected: [0, 50, 100, 50],
-    },
-    {
-      desc: `diagonal crossing x bound (angle preserved)`,
-      p1: [-10, 0] as Vec2,
-      p2: [50, 100] as Vec2,
-      expected: [0, 50 / 3, 50, 100],
-    },
-    {
-      desc: `diagonal crossing all 4 bounds`,
-      p1: [-50, -50] as Vec2,
-      p2: [150, 150] as Vec2,
-      expected: [0, 0, 100, 100],
-    },
-    {
-      desc: `crossing only y bounds`,
-      p1: [25, -25] as Vec2,
-      p2: [75, 125] as Vec2,
-      expected: [25 + 25 / 3, 0, 25 + 125 / 3, 100],
-    },
-  ])(`segment clipping: $desc`, ({ p1: point_1, p2: point, expected }) => {
+  test.each<[string, Vec2, Vec2, number[]]>([
+    [`inside bounds`, [10, 10], [90, 90], [10, 10, 90, 90]],
+    [`horizontal crossing x bounds`, [-50, 50], [150, 50], [0, 50, 100, 50]],
+    [`diagonal crossing x bound, angle kept`, [-10, 0], [50, 100], [0, 50 / 3, 50, 100]],
+    [`diagonal crossing all 4 bounds`, [-50, -50], [150, 150], [0, 0, 100, 100]],
+    [`crossing only y bounds`, [25, -25], [75, 125], [25 + 25 / 3, 0, 25 + 125 / 3, 100]],
+  ])(`segment clipping: %s`, (_desc, point_1, point_2, expected) => {
     expect(
-      resolve_line_endpoints({ type: `segment`, p1: point_1, p2: point }, line_axes),
+      resolve_line_endpoints({ type: `segment`, p1: point_1, p2: point_2 }, line_axes),
     ).toEqual(scaled_endpoints(expected))
   })
 
@@ -266,7 +238,6 @@ describe(`resolve_line_endpoints`, () => {
     },
   )
 
-  // Lines outside bounds should return null
   test.each([
     { type: `horizontal`, y: 150 },
     { type: `diagonal`, slope: 0, intercept: 150 },

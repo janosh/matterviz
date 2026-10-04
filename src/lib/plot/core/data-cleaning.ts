@@ -499,7 +499,7 @@ function local_median_and_mad(
 // always computed from the original values (not the progressively filtered ones) so one removal
 // cannot shift its neighbours' statistics and cascade into false positives. Points within
 // window_half of either end are never flagged: their one-sided window makes the local median
-// trail any trend, which used to delete the genuine endpoints of every monotonic series.
+// trail any trend and would flag the genuine endpoints of every monotonic series.
 function remove_local_outliers(
   y_values: readonly number[],
   config: LocalOutlierConfig,

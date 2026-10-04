@@ -18,8 +18,7 @@ afterEach(() => {
   for (const app of mounted.splice(0)) void unmount(app)
 })
 
-// Mount a Trajectory viewer and return its wrapper. Pass `state` to two-way bind
-// current_step_idx for navigation assertions; `extra` to override props.
+// `state` two-way binds current_step_idx for navigation assertions
 const mount_trajectory = async (
   state?: { current_step_idx: number },
   extra?: Partial<ComponentProps<typeof Trajectory>>,
@@ -50,11 +49,16 @@ describe(`Trajectory keyboard shortcuts`, () => {
     await assertHoverScopedShortcut({ viewer, trigger, read_state })
   })
 
-  test(`suppresses browser defaults only for handled keys outside editing contexts`, async () => {
+  test(`navigates and suppresses browser defaults only for handled keys outside editing contexts`, async () => {
     const state = { current_step_idx: 0 }
     const viewer = await mount_trajectory(state)
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))
     await tick()
+    // Cmd/Ctrl is ignored for navigation except on arrows, which jump to the first/last frame
+    press_window_key({ key: `1`, ctrlKey: true })
+    expect(state.current_step_idx, `Ctrl+1 must not navigate`).toBe(0)
+    press_window_key({ key: `ArrowRight`, ctrlKey: true })
+    expect(state.current_step_idx, `Ctrl+ArrowRight → last frame`).toBe(4)
     // handled (nav keys + Cmd/Ctrl+Arrow) suppress default; plain typing keys and
     // Cmd/Ctrl browser shortcuts (find/tab/jump) keep theirs
     const cases: [KeyboardEventInit, boolean][] = [
@@ -107,17 +111,5 @@ describe(`Trajectory keyboard shortcuts`, () => {
     ] as const) {
       expect(press_window_key({ key }).defaultPrevented, key).toBe(prevented)
     }
-  })
-
-  test(`Cmd/Ctrl modifier is ignored for navigation except arrows (first/last)`, async () => {
-    const state = { current_step_idx: 0 }
-    const viewer = await mount_trajectory(state)
-    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
-    await tick()
-
-    press_window_key({ key: `1`, ctrlKey: true }) // browser shortcut → no navigation
-    expect(state.current_step_idx, `Ctrl+1 must not navigate`).toBe(0)
-    press_window_key({ key: `ArrowRight`, ctrlKey: true }) // intentional → jump to last
-    expect(state.current_step_idx, `Ctrl+ArrowRight → last frame`).toBe(4)
   })
 })

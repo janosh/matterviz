@@ -5,7 +5,14 @@ import { ELEMENT_ORDERINGS, ORDERING_LABELS } from '#lib/heatmap-matrix/index.js
 import HeatmapMatrixControls from '#lib/heatmap-matrix/HeatmapMatrixControls.svelte'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, expect_labelled_settings_grid, fire, query } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_labelled_settings_grid,
+  fire,
+  query,
+  set_input,
+} from '../setup'
 import HeatmapDemo from '../../../src/routes/(demos)/plot/heatmap-matrix/+page.svelte'
 
 const mount_controls = (
@@ -20,13 +27,11 @@ const mount_controls = (
   })
 }
 
-const get_toggle = () =>
-  document.querySelector(`button.heatmap-matrix-controls-toggle`) as HTMLButtonElement
-
-// Find the color bar position select by its option values (right/bottom)
-const find_position_select = () =>
+const toggle_sel = `button.heatmap-matrix-controls-toggle`
+// first pane select offering an option with this value
+const select_with = (value: string) =>
   [...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`)].find(
-    (select) => select.querySelector(`option[value="right"]`),
+    (select) => select.querySelector(`option[value="${value}"]`),
   )
 
 describe(`HeatmapMatrixControls`, () => {
@@ -118,8 +123,7 @@ describe(`HeatmapMatrixControls`, () => {
     for (const pane_idx of [1, 0]) {
       const unchanged = labels(1 - pane_idx)
       const search = query<HTMLInputElement>(setting(pane_idx, `Search`), `input`)
-      search.value = `Co`
-      search.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(search, `Co`)
       await tick()
       expect(labels(pane_idx)).toEqual([`Co`])
       expect(labels(1 - pane_idx)).toEqual(unchanged)
@@ -145,7 +149,7 @@ describe(`HeatmapMatrixControls`, () => {
         toggle_props: { class: `custom-toggle` },
         pane_props: { class: `custom-pane` },
       })
-      const toggle = get_toggle()
+      const toggle = doc_query(toggle_sel)
       const pane = doc_query(`.draggable-pane`)
       for (const class_name of [
         `heatmap-matrix-controls-toggle`,
@@ -173,29 +177,19 @@ describe(`HeatmapMatrixControls`, () => {
 
   test(`show_controls=false hides toggle and pane`, () => {
     mount_controls({ show_controls: false })
-    expect(get_toggle()).toBeNull()
+    expect(document.querySelector(toggle_sel)).toBeNull()
     expect(document.querySelector(`.heatmap-controls`)).toBeNull()
   })
 
   // HeatmapMatrix's built-in pane never binds an element ordering, so no dead select there
   test(`omits the ordering select when no ordering is bound`, () => {
     mount_controls({ ordering: undefined })
-    const selects = [
-      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
-    ]
-    expect(
-      selects.some((select) => select.querySelector(`option[value="atomic_number"]`)),
-    ).toBe(false)
+    expect(select_with(`atomic_number`)).toBeUndefined()
   })
 
   test(`normalize and domain selects offer every mode and reflect the bound value`, async () => {
     mount_controls({ normalize: `log`, domain_mode: `robust`, search_query: `Fe` })
     await tick()
-    const selects = [
-      ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
-    ]
-    const select_with = (value: string) =>
-      selects.find((select) => select.querySelector(`option[value="${value}"]`))
     const search = doc_query<HTMLInputElement>(`input[placeholder="Filter labels/keys"]`)
     expect(search.value).toBe(`Fe`)
     expect(search.getAttribute(`type`)).toBeNull() // styled by input:not([type])
@@ -215,15 +209,14 @@ describe(`HeatmapMatrixControls`, () => {
   test(`color bar position select only visible when show_color_bar is true`, async () => {
     mount_controls({ controls_open: true, show_color_bar: false })
     await tick()
-    expect(find_position_select()).toBeUndefined()
+    expect(select_with(`right`)).toBeUndefined()
 
     const color_bar_checkbox = doc_query<HTMLInputElement>(
       `.heatmap-controls input[type="checkbox"]`,
     )
     color_bar_checkbox.click()
     await tick()
-    expect(find_position_select()).toBeDefined()
-    expect(find_position_select()?.labels?.[0]?.textContent).toContain(`Color bar side`)
+    expect(select_with(`right`)?.labels?.[0]?.textContent).toContain(`Color bar side`)
   })
 
   test.each([undefined, [], [`csv`, `json`]] as const)(

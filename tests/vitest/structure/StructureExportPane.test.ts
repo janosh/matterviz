@@ -16,7 +16,7 @@ import type { ComponentProps } from 'svelte'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, mock_canvas_context } from '../setup'
+import { doc_query, mock_canvas_context, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
 const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
@@ -27,7 +27,6 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
 
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
-// Mock the export functions
 vi.mock(`#lib/structure/export.js`, async (import_original) => {
   const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
   const structure_to_xyz_str = vi.fn(() => `3\ntest\nH 0 0 0`)
@@ -169,8 +168,7 @@ describe(`StructureExportPane`, () => {
       vi.mocked(download).mockClear()
       mount_pane({ structure: simple_structure })
       const name_input = doc_query<HTMLInputElement>(`.export-destination input`)
-      name_input.value = `Relaxed structure`
-      name_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(name_input, `Relaxed structure`)
       await tick()
       get_button(`${action} ${format.toUpperCase()}`).click()
       const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
@@ -229,8 +227,7 @@ describe(`StructureExportPane`, () => {
     expect(get_button(`PNG`).title).toContain(`(150 DPI)`)
 
     // editing the DPI updates the download button's title
-    dpi_input.value = `200`
-    dpi_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(dpi_input, `200`)
     await tick()
     expect(get_button(`PNG`).title).toContain(`(200 DPI)`)
   })
@@ -424,19 +421,8 @@ describe(`StructureExportPane`, () => {
     console_error_spy.mockRestore()
   })
 
-  test.each([
-    null,
-    [
-      [NaN, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 0],
-    ],
-  ])(`invalid lattice %s disables formats that require it`, (matrix) => {
+  // oxfmt-ignore
+  test.each([null, [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 0]]])(`invalid lattice %s disables formats that require it`, (matrix) => {
     const structure = {
       sites: simple_structure.sites.map(({ abc: _abc, ...site }) => site),
       ...(matrix && { lattice: { matrix } }),

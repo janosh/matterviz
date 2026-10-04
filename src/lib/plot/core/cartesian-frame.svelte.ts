@@ -5,6 +5,7 @@
 // and reads back scales/pad/ticks. Creates $effects, so it must be called during
 // component init. Render the returned state with CartesianFrame.svelte.
 
+import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
 import { clamp, type Vec2 } from '#lib/math.js'
 import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
 import {
@@ -67,6 +68,8 @@ interface CartesianFrameOptions {
   has_x2: () => boolean
   has_y2: () => boolean
   padding: () => Sides
+  // Whether CartesianFrame draws its corner controls row, which a y2 axis's top tick avoids
+  controls_row: () => boolean
   title: () => PlotTitleProp | null | undefined
   // Normalized [0, 1] obstacle field (mark geometry) the decoration solver avoids
   obstacles: () => readonly { x: number; y: number }[]
@@ -119,6 +122,15 @@ interface CartesianFrameOptions {
 }
 
 export type CartesianFrame = ReturnType<typeof create_cartesian_frame>
+
+// Whether CartesianFrame draws its corner controls row: the settings toggle or fullscreen button
+export const has_controls_row = (
+  show_controls: ShowControlsProp<`controls` | `fullscreen`> | undefined,
+  fullscreen_toggle: boolean,
+): boolean => {
+  const config = normalize_show_controls(show_controls)
+  return config.visible(`controls`) || (fullscreen_toggle && config.visible(`fullscreen`))
+}
 
 export function create_cartesian_frame(opts: CartesianFrameOptions) {
   let width = $state(0)
@@ -325,6 +337,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
               default_padding: DEFAULT_PLOT_PADDING,
               width,
               height,
+              controls_row: opts.controls_row(),
               ...measured_axes,
             })
           : filter_padding(padding, DEFAULT_PLOT_PADDING),

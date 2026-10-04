@@ -118,7 +118,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
     ).toBeVisible()
   })
 
-  test(`2D tooltip lock toggles and unlocks with Escape`, async ({ page }) => {
+  test(`2D tooltip lock unlocks with Escape; color controls swap colorbar and arity legend`, async ({
+    page,
+  }) => {
     const diagram = await get_diagram_by_heading(
       page,
       /Binary System \(Li-O\)/,
@@ -128,14 +130,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(svg_surface).toBeVisible()
     const tooltip = diagram.locator(`.chempot-tooltip`)
     await assert_pin_toggle_and_escape(page, svg_surface, tooltip, diagram)
-  })
-
-  test(`2D color controls switch between colorbar and arity legend`, async ({ page }) => {
-    const diagram = await get_diagram_by_heading(
-      page,
-      /Binary System \(Li-O\)/,
-      `.chempot-diagram-2d`,
-    )
+    // the unpinned hover tooltip must not linger over the controls below
+    await page.mouse.move(0, 0)
+    await expect(tooltip).toBeHidden()
 
     const controls_toggle = diagram.locator(`button.plot-controls-toggle`).first()
     const icons = diagram.locator(`.header-controls > button > svg`)

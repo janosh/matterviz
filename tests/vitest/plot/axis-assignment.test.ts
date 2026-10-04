@@ -17,12 +17,7 @@ const create_series = (
   label: string,
   unit = ``,
   options: Partial<AxisValueSeries> = {},
-): AxisValueSeries => ({
-  label,
-  unit,
-  y: [1, 2],
-  ...options,
-})
+): AxisValueSeries => ({ label, unit, y: [1, 2], ...options })
 
 const assign_overflow = (
   series: AxisValueSeries[],
@@ -261,9 +256,8 @@ describe(`assign_axes`, () => {
     { max_axes: 1 as const, expected: [`y`, undefined] },
     { max_axes: 2 as const, expected: [`y`, `y2`] },
   ])(`respects the explicit $max_axes-axis limit`, ({ max_axes, expected }) => {
-    const result = assign_axes([create_series(`A`, `unit_a`), create_series(`B`, `unit_b`)], {
-      max_axes,
-    })
+    const input = [create_series(`A`, `unit_a`), create_series(`B`, `unit_b`)]
+    const result = assign_axes(input, { max_axes })
     expect(result.assignments).toEqual(expected)
     expect(result.status).toBe(max_axes === 1 ? `overflow` : `assigned`)
   })

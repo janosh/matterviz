@@ -3,7 +3,7 @@
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D } from '#lib/math.js'
 import { to_error } from '#lib/utils.js'
-import { untrack } from 'svelte'
+import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'
 import { get_energy_stats_by_formula, get_min_entries_and_el_refs } from './compute'
@@ -119,26 +119,25 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       diagram_data = null
       computing = false
       error = null
-      return undefined
+      return
     }
-    const controller = new AbortController()
+    const signal = getAbortSignal()
     computing = true
-    compute_chempot_async(entries, config, { signal: controller.signal })
+    compute_chempot_async(entries, config, { signal })
       .then((data) => {
-        if (controller.signal.aborted) return
+        if (signal.aborted) return
         diagram_data = data.elements.length >= opts.min_elements ? data : null
         error = null
       })
       .catch((err: unknown) => {
-        if (controller.signal.aborted) return
+        if (signal.aborted) return
         console.error(`${opts.label}:`, err)
         diagram_data = null
         error = to_error(err).message
       })
       .finally(() => {
-        if (!controller.signal.aborted) computing = false
+        if (!signal.aborted) computing = false
       })
-    return () => controller.abort()
   })
   $effect(() => () => compute_chempot_async.release())
 

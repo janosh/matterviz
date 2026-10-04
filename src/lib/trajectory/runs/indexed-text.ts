@@ -4,7 +4,7 @@
 // ASE); frames are decoded on read and cached by the session, never all at once. Per-frame
 // scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
 // responsive.
-import { to_error } from '#lib/utils.js'
+import { to_error, yield_turn } from '#lib/utils.js'
 import { encode_frame } from '../frame'
 import { TextLines } from '../helpers'
 import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'
@@ -21,9 +21,6 @@ import { accumulate_positions } from './accumulate'
 // Bound both cheap row counts and expensive per-atom force scans between event-loop turns.
 const PROPERTY_BATCH = 2000
 const PROPERTY_BUDGET_MS = 8
-
-const yield_to_event_loop = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 0))
 
 // === XYZ / EXTXYZ ===
 
@@ -97,7 +94,7 @@ export const indexed_text_run = (
   void (async () => {
     try {
       for (let frame_idx = 0; frame_idx < frame_count;) {
-        await yield_to_event_loop()
+        await yield_turn()
         if (properties.complete || !source) return
         const end = Math.min(frame_idx + PROPERTY_BATCH, frame_count)
         const deadline = performance.now() + PROPERTY_BUDGET_MS

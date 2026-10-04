@@ -69,25 +69,14 @@ const expect_events_consistent = (diagram: TernaryPhaseDiagram) => {
 describe(`prepare_diagram`, () => {
   test(`orders corners, appends synthetic elements and places phases`, () => {
     const model = prepare_diagram(toy_entries, { elements: toy_elements })
-    expect(model.phases.map((entry) => entry.label)).toEqual([
-      `NaLi`,
-      `KLi`,
-      `KNa`,
-      `KNaLi`,
-      `Li`,
-      `Na`,
-      `K`,
-    ])
+    const phase_labels = model.phases.map((entry) => entry.label)
+    expect(phase_labels).toEqual([`NaLi`, `KLi`, `KNa`, `KNaLi`, `Li`, `Na`, `K`])
     expect(model.phases[4]).toMatchObject({
       xy: [1, 0],
       is_element: true,
       entry: { entry_id: `synthetic-element:Li` },
     })
-    expect(model.phases[3].barycentric.map((val) => val.toFixed(4))).toEqual([
-      `0.3333`,
-      `0.3333`,
-      `0.3333`,
-    ])
+    for (const frac of model.phases[3].barycentric) expect(frac).toBeCloseTo(1 / 3, 12)
     expect(model.phases[3].n_atoms).toBe(3)
     expect(model.t_range).toEqual([300, 1500])
     expect(prepare_diagram(toy_entries).elements).toEqual([`K`, `Na`, `Li`]) // electronegativity

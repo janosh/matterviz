@@ -225,10 +225,6 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
       return acc
     }, {})
 
-  test(`P1 (#1) has no symmetry elements`, () => {
-    expect(elements_for(1)).toEqual([])
-  })
-
   test(`P-1 (#2) has exactly the 8 inversion centers at half-lattice points`, () => {
     const elements = elements_for(2)
     expect(elements).toHaveLength(8)
@@ -299,69 +295,40 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
     expect(elements.some((elem) => elem.label === `2_1`)).toBe(true)
   })
 
+  // 4-fold axes along cell edges, 3-fold along body diagonals, 2-fold along face diagonals,
+  // mirrors normal to ⟨100⟩ and ⟨110⟩, inversion at the origin (glides: see the table above)
   test(`Fm-3m (#225) contains the full cubic element inventory`, () => {
     const elements = elements_for(225)
-    const has = (pred: (elem: SymmetryElement) => boolean) => elements.some(pred)
-
-    // 4-fold axes along cell edges, 3-fold along body diagonals, 2-fold along face
-    // diagonals, mirrors normal to ⟨100⟩ and ⟨110⟩, inversion at the origin
-    expect(
-      has(
-        (element) =>
-          element.kind === `rotation` &&
-          element.order === 4 &&
-          String(element.axis) === `0,0,1`,
+    const signatures = new Set(
+      elements.map(({ kind, order, axis, point }) =>
+        axis ? `${kind} ${order} [${axis}]` : `${kind} (${point})`,
       ),
-    ).toBe(true)
-    expect(
-      has(
-        (element) =>
-          element.kind === `rotation` &&
-          element.order === 3 &&
-          String(element.axis) === `1,1,1`,
-      ),
-    ).toBe(true)
-    expect(
-      has(
-        (element) =>
-          element.kind === `rotation` &&
-          element.order === 2 &&
-          String(element.axis) === `1,1,0`,
-      ),
-    ).toBe(true)
-    expect(
-      has((element) => element.kind === `mirror` && String(element.axis) === `0,0,1`),
-    ).toBe(true)
-    expect(
-      has((element) => element.kind === `mirror` && String(element.axis) === `1,1,0`),
-    ).toBe(true)
-    expect(
-      has((element) => element.kind === `inversion` && String(element.point) === `0,0,0`),
-    ).toBe(true)
-    expect(has((element) => element.kind === `rotoinversion`)).toBe(true)
-    // F-centering composes mirrors into glides
-    expect(has((element) => element.kind === `glide`)).toBe(true)
+    )
+    for (const signature of [
+      `rotation 4 [0,0,1]`,
+      `rotation 3 [1,1,1]`,
+      `rotation 2 [1,1,0]`,
+      `mirror 2 [0,0,1]`,
+      `mirror 2 [1,1,0]`,
+      `inversion (0,0,0)`,
+    ])
+      expect(signatures).toContain(signature)
+    expect(elements.some((elem) => elem.kind === `rotoinversion`)).toBe(true)
   })
 
-  test(`Fd-3m (#227, diamond) has d-glides, 4_1 screws, and -3 rotoinversions`, () => {
-    const elements = elements_for(227)
-    const labels = new Set(elements.map((elem) => elem.label))
-    expect(labels).toContain(`d`)
-    expect(labels).toContain(`4_1`)
-    expect(labels).toContain(`-3`)
-    // diamond is centrosymmetric (inversion on 8b sites, not at the 8a origin setting?
-    // moyo's Standard setting uses origin choice 2 with -1 at the origin)
-    expect(elements.some((elem) => elem.kind === `inversion`)).toBe(true)
+  // moyo's Standard setting for diamond is origin choice 2, with -1 at the origin
+  test(`Fd-3m (#227, diamond) has d-glides, 4_1 screws, -3 rotoinversions, inversion`, () => {
+    const labels = new Set(elements_for(227).map((elem) => elem.label))
+    for (const label of [`d`, `4_1`, `-3`, `-1`]) expect(labels).toContain(label)
   })
 
-  // Exact in-cell counts pin element_locus_key dedup and the centering handling:
+  // Exact in-cell counts pin element_locus_key dedup and the centering handling (R-3m's
+  // exact per-label counts are pinned below):
   // - P4mm=14: dropping the plane-offset wrap splits lattice-equivalent mirrors
-  // - R-3m=81: locus-key fmt precision 4→1 collides/shifts trigonal loci; ignoring the
-  //   centerings lifted into mirror planes miscounts its glides
   // - Cm=4: the C-centering alternates mirrors (y = 0, 1/2) with a-glides (y = 1/4, 3/4)
   test.each([
+    [`P1`, 1, 0],
     [`P4mm`, 99, 14],
-    [`R-3m`, 166, 81],
     [`Cm`, 8, 4],
   ])(`%s (#%i) has exactly %i distinct in-cell elements`, (_, spg, expected) => {
     expect(elements_for(spg)).toHaveLength(expected)
@@ -370,9 +337,8 @@ describe(`symmetry_elements_from_ops: space group inventories`, () => {
   // R-3m is the metric-sensitive case: in the hexagonal setting the plane-equation normal
   // is G·axis, not axis, and keying the offset off the direct-space normal used the wrong
   // period. The hexagonal cell holds 3 primitive rhombohedral cells, so every element
-  // family appears 3 times in it and each per-kind count must be divisible by 3. Keying
-  // off `axis` gave rotation:2 = 22, screw:2_1 = 20, m = 5 and g = 5 — orbits split
-  // inconsistently — against 18/18/3/3 once the covariant normal is used.
+  // family appears 3 times in it and each per-kind count must be divisible by 3. Locus-key
+  // precision and the centerings lifted into mirror planes also show up in these counts.
   test(`R-3m (#166) element counts respect the 3-fold R-centering multiplicity`, () => {
     const elements = elements_for(166)
     const by_kind = count_by(elements, `label`)

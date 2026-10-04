@@ -18,25 +18,9 @@ describe(`WyckoffTable`, () => {
   })
 
   test(`renders duplicate semantic rows without keyed-each crash`, () => {
-    const duplicate_semantic_rows: WyckoffPos[] = [
-      {
-        wyckoff: `1`,
-        elem: `Ac`,
-        abc: [0, 0, 0],
-        site_indices: [0],
-      },
-      {
-        wyckoff: `1`,
-        elem: `Ac`,
-        abc: [0, 0, 0],
-        site_indices: [0],
-      },
-    ]
-
-    mount_table(duplicate_semantic_rows)
-
-    const rendered_rows = document.querySelectorAll(`tbody tr`)
-    expect(rendered_rows).toHaveLength(2)
+    const row: WyckoffPos = { wyckoff: `1`, elem: `Ac`, abc: [0, 0, 0], site_indices: [0] }
+    mount_table([row, { ...row }])
+    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
   })
 
   // Element badge text contrast: a translucent user override must composite against the

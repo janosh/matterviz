@@ -171,17 +171,14 @@ describe(`thermal_properties`, () => {
   })
 
   test(`imaginary modes are dropped, not folded`, () => {
-    const dos: PhononDos = {
+    const flat_dos = (frequencies: number[]): PhononDos => ({
       type: `phonon`,
-      frequencies: [-2, -1, 0, 1, 2, 3],
-      densities: [1, 1, 1, 1, 1, 1],
-    }
-    const positive_only: PhononDos = {
-      type: `phonon`,
-      frequencies: [1, 2, 3],
-      densities: [1, 1, 1],
-    }
-    expect(thermal_properties(dos, [300])).toEqual(thermal_properties(positive_only, [300]))
+      frequencies,
+      densities: frequencies.map(() => 1),
+    })
+    expect(thermal_properties(flat_dos([-2, -1, 0, 1, 2, 3]), [300])).toEqual(
+      thermal_properties(flat_dos([1, 2, 3]), [300]),
+    )
   })
 
   // A lone positive point has no trapezoid segment; negative densities would give S, C_v < 0.

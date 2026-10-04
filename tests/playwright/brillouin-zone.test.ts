@@ -56,24 +56,19 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
 
-  test(`renders canvas with dimensions`, async ({ page }) => {
-    const viewer = page.locator(BZ_SELECTOR)
-    const canvas = viewer.locator(`canvas`)
-    const canvas_host = canvas.locator(`..`)
-    await expect(canvas).toBeVisible()
-    await expect(viewer).toHaveCSS(`overflow`, `visible`)
-    await expect(canvas_host).toHaveCSS(`overflow`, `hidden`)
-    expect(await canvas.getAttribute(`width`)).toBeTruthy()
-    expect(await canvas.getAttribute(`height`)).toBeTruthy()
-  })
-
-  test(`BZ order control updates`, async ({ page }) => {
-    const order_input = page.locator(`#bz-order`)
-    await order_input.fill(`2`)
-    await expect(status_locator(page, `bz-order`)).toHaveText(`2`)
-    await order_input.fill(`1`)
-    await expect(status_locator(page, `bz-order`)).toHaveText(`1`)
-  })
+  // inputs bound to the status readouts; bz-order's readout repeats in the Status section
+  for (const [setting, initial, changed] of [
+    [`bz-order`, `1`, `2`],
+    [`ibz-color`, `#ff8844`, `#00ff00`],
+    [`ibz-opacity`, `0.5`, `0.8`],
+  ]) {
+    test(`${setting} control updates its status`, async ({ page }) => {
+      const status = status_locator(page, setting)
+      await expect(status).toHaveText(initial)
+      await page.locator(`#${setting}`).fill(changed)
+      await expect(status).toHaveText(changed)
+    })
+  }
 
   test(`camera projection toggles and orthographic zoom fits the zone`, async ({ page }) => {
     const projection = page.locator(`#camera-projection`)
@@ -180,11 +175,14 @@ test.describe(`BrillouinZone Component Tests`, () => {
     }
   })
 
-  test(`handles camera rotation and zoom`, async ({ page }) => {
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    const box = await canvas.boundingBox()
-    expect(box, `Canvas bounding box should be available`).toBeTruthy()
-    if (!box) return // TypeScript narrowing
+  test(`clipped canvas handles camera rotation and zoom`, async ({ page }) => {
+    const viewer = page.locator(BZ_SELECTOR)
+    const canvas = viewer.locator(`canvas`)
+    await expect(viewer).toHaveCSS(`overflow`, `visible`)
+    await expect(canvas.locator(`..`)).toHaveCSS(`overflow`, `hidden`)
+    await expect(canvas).toHaveAttribute(`width`, /^[1-9]\d*$/)
+    await expect(canvas).toHaveAttribute(`height`, /^[1-9]\d*$/)
+    const box = await require_bbox(canvas, `BZ canvas`)
 
     const initial = await canvas.screenshot()
     await canvas.dragTo(canvas, {
@@ -232,6 +230,48 @@ test.describe(`BrillouinZone Component Tests`, () => {
     await expect(status).toHaveText(`false`)
     await expect(checkbox).not.toBeChecked()
   })
+
+  test(`IBZ loads, changes the rendering and clears when disabled`, async ({ page }) => {
+    const checkbox = page.locator(`#show-ibz`)
+    const status = page.locator(`[data-testid="show-ibz"]`)
+    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
+    const vertices_count = page.locator(`[data-testid="ibz-vertices-count"]`)
+    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+    await expect(checkbox).not.toBeChecked()
+    await expect(status).toHaveText(`false`)
+    await expect(data_status).toHaveText(`null`)
+    await expect(vertices_count).toHaveText(`0`)
+    const without_ibz = await canvas.screenshot()
+    await checkbox.check()
+    await expect(status).toHaveText(`true`)
+    await expect(checkbox).toBeChecked()
+    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
+    await expect
+      .poll(async () => Number(await vertices_count.textContent()), { timeout: 5000 })
+      .toBeGreaterThan(0)
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(without_ibz), { timeout: 5000 })
+      .toBe(false)
+    await checkbox.uncheck()
+    await expect(status).toHaveText(`false`)
+    await expect(data_status).toHaveText(`null`)
+  })
+
+  test(`IBZ can be enabled via URL parameter`, async ({ page }) => {
+    await page.goto(`/test/brillouin-zone?show_ibz=true`, { waitUntil: `networkidle` })
+    await wait_for_3d_canvas(page, BZ_SELECTOR)
+
+    const checkbox = page.locator(`#show-ibz`)
+    const status = page.locator(`[data-testid="show-ibz"]`)
+
+    await expect(checkbox).toBeChecked()
+    await expect(status).toHaveText(`true`)
+
+    // IBZ data should load automatically
+    await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
+      timeout: IBZ_LOAD_TIMEOUT,
+    })
+  })
 })
 
 test.describe(`BrillouinZone Event Handler Tests`, () => {
@@ -267,67 +307,5 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
     }
     await alert.getByRole(`button`, { name: `Dismiss message` }).click()
     await expect(alert).toHaveCount(0)
-  })
-})
-
-test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `BrillouinZone IBZ tests timeout in CI`)
-    await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, BZ_SELECTOR)
-  })
-
-  test(`IBZ loads, changes the rendering and clears when disabled`, async ({ page }) => {
-    const checkbox = page.locator(`#show-ibz`)
-    const status = page.locator(`[data-testid="show-ibz"]`)
-    const data_status = page.locator(`[data-testid="ibz-data-status"]`)
-    const vertices_count = page.locator(`[data-testid="ibz-vertices-count"]`)
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    await expect(checkbox).not.toBeChecked()
-    await expect(status).toHaveText(`false`)
-    await expect(data_status).toHaveText(`null`)
-    await expect(vertices_count).toHaveText(`0`)
-    const without_ibz = await canvas.screenshot()
-    await checkbox.check()
-    await expect(status).toHaveText(`true`)
-    await expect(checkbox).toBeChecked()
-    await expect(data_status).toHaveText(`loaded`, { timeout: IBZ_LOAD_TIMEOUT })
-    await expect
-      .poll(async () => Number(await vertices_count.textContent()), { timeout: 5000 })
-      .toBeGreaterThan(0)
-    await expect
-      .poll(async () => (await canvas.screenshot()).equals(without_ibz), { timeout: 5000 })
-      .toBe(false)
-    await checkbox.uncheck()
-    await expect(status).toHaveText(`false`)
-    await expect(data_status).toHaveText(`null`)
-  })
-
-  for (const [setting, initial, changed] of [
-    [`color`, `#ff8844`, `#00ff00`],
-    [`opacity`, `0.5`, `0.8`],
-  ]) {
-    test(`IBZ ${setting} control updates`, async ({ page }) => {
-      const status = page.locator(`[data-testid="ibz-${setting}"]`)
-      await expect(status).toHaveText(initial)
-      await page.locator(`#ibz-${setting}`).fill(changed)
-      await expect(status).toHaveText(changed)
-    })
-  }
-
-  test(`IBZ can be enabled via URL parameter`, async ({ page }) => {
-    await page.goto(`/test/brillouin-zone?show_ibz=true`, { waitUntil: `networkidle` })
-    await wait_for_3d_canvas(page, BZ_SELECTOR)
-
-    const checkbox = page.locator(`#show-ibz`)
-    const status = page.locator(`[data-testid="show-ibz"]`)
-
-    await expect(checkbox).toBeChecked()
-    await expect(status).toHaveText(`true`)
-
-    // IBZ data should load automatically
-    await expect(page.locator(`[data-testid="ibz-data-status"]`)).toHaveText(`loaded`, {
-      timeout: IBZ_LOAD_TIMEOUT,
-    })
   })
 })

@@ -209,9 +209,12 @@
     z-index: 1;
     pointer-events: none;
     color: var(--volume-slice-colorbar-color, currentColor);
-    text-shadow: var(
-      --volume-slice-colorbar-text-shadow,
-      0 1px 2px color-mix(in srgb, var(--struct-bg, #fff) 85%, transparent)
+    /* a chip, not a text halo: tick labels must stay legible over any slice colour */
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: var(
+      --volume-slice-colorbar-bg,
+      color-mix(in srgb, var(--struct-bg, var(--page-bg, #fff)) 75%, transparent)
     );
   }
   .volume-slice :global(.slice-colorbar.vertical) {

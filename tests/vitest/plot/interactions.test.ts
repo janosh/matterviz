@@ -1,4 +1,3 @@
-// Unit tests for plot interaction utilities
 import type { Vec2 } from '#lib/math.js'
 import { LOG_EPS } from '#lib/math.js'
 import {
@@ -56,12 +55,7 @@ it.each([`wheel_x`, `wheel_y`, `drag`, `touch_pan`, `pinch`] as const)(
       const listeners = vi.spyOn(window, `addEventListener`)
       onTestFinished(() => listeners.mockRestore())
       controller.on_mouse_down(
-        new MouseEvent(`mousedown`, {
-          button: 0,
-          shiftKey: true,
-          clientX: 100,
-          clientY: 100,
-        }),
+        new MouseEvent(`mousedown`, { button: 0, shiftKey: true, clientX: 100, clientY: 100 }),
       )
       const listener = listeners.mock.calls.find(([event]) => event === `mousemove`)?.[1]
       if (typeof listener !== `function`) throw new Error(`Pan listener missing`)
@@ -234,82 +228,46 @@ describe(`sync_y2_range`, () => {
   })
 
   // [y1, y2_base, expected]
+  // oxfmt-ignore
   it.each<[Vec2, Vec2, Vec2]>([
-    [
-      [0, 100],
-      [0, 50],
-      [0, 100],
-    ],
-    [
-      [25, 75],
-      [0, 50],
-      [25, 75],
-    ],
-    [
-      [-50, 50],
-      [100, 200],
-      [-50, 50],
-    ],
-    [
-      [0, 1000],
-      [0, 1],
-      [0, 1000],
-    ],
+    [[0, 100], [0, 50], [0, 100]],
+    [[25, 75], [0, 50], [25, 75]],
+    [[-50, 50], [100, 200], [-50, 50]],
+    [[0, 1000], [0, 1], [0, 1000]],
   ])(`synced: sync_y2_range(%j, %j) = %j`, (coord_y_1, y2_base, expected) => {
     expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(expected)
   })
 
-  // [y1, y2_base, expected, align_value, desc]
-  it.each([
-    { y1: [0, 100], y2_base: [0, 50], expected: [0, 50], desc: `0 at bottom` },
-    { y1: [-50, 50], y2_base: [0, 100], expected: [-100, 100], desc: `0 at middle` },
-    { y1: [-100, 0], y2_base: [0, 50], expected: [-50, 50], desc: `0 at top` },
-    { y1: [0, 40], y2_base: [60, 140], expected: [0, 140], desc: `y2 above 0` },
-    {
-      y1: [-20, 20],
-      y2_base: [60, 140],
-      expected: [-140, 140],
-      desc: `symmetric expand`,
-    },
-    { y1: [0, 0], y2_base: [0, 50], expected: [0, 50], desc: `zero span fallback` },
-    {
-      y1: [0, 200],
-      y2_base: [80, 120],
-      expected: [80, 120],
-      align_value: 100,
-      desc: `custom align 50%`,
-    },
-  ] as const)(`align: $desc`, ({ y1: coord_y_1, y2_base, expected, align_value }) => {
-    expect(
-      sync_y2_range([...coord_y_1], [...y2_base], { mode: `align`, align_value }),
-    ).toEqual([...expected])
-  })
-
-  // A descending y1 is a supported mode, but the span math assumes value rises with position,
-  // which is only true going up. Taking the fraction at face value both mirrored y2 against y1
-  // (y2 counting up while y1 counted down, so the alignment contract was broken outright) and
-  // sized the range off the wrong constraint. Each case is the ascending row above it reversed,
-  // so the answer has to be that row's answer reversed too.
-  it.each([
-    { y1: [100, 0], y2_base: [0, 50], expected: [50, 0], desc: `0 at bottom` },
-    { y1: [50, -50], y2_base: [0, 100], expected: [100, -100], desc: `0 at middle` },
-    { y1: [0, -100], y2_base: [0, 50], expected: [50, -50], desc: `0 at top` },
-    { y1: [40, 0], y2_base: [60, 140], expected: [140, 0], desc: `y2 above 0` },
-    {
-      y1: [200, 0],
-      y2_base: [80, 120],
-      expected: [120, 80],
-      align_value: 100,
-      desc: `custom align 50%`,
-    },
-  ] as const)(
-    `align on a descending y1: $desc`,
-    ({ y1: coord_y_1, y2_base, expected, align_value }) => {
-      expect(
-        sync_y2_range([...coord_y_1], [...y2_base], { mode: `align`, align_value }),
-      ).toEqual([...expected])
-    },
+  // A descending y1 must not mirror y2 against it: each descending case is its ascending
+  // twin reversed, so the answer is that twin's answer reversed too
+  // [desc, y1, y2_base, expected, align_value]
+  // oxfmt-ignore
+  const align_cases: [string, Vec2, Vec2, Vec2, number?][] = [
+    [`0 at bottom`, [0, 100], [0, 50], [0, 50]],
+    [`0 at middle`, [-50, 50], [0, 100], [-100, 100]],
+    [`0 at top`, [-100, 0], [0, 50], [-50, 50]],
+    [`y2 above 0`, [0, 40], [60, 140], [0, 140]],
+    [`custom align 50%`, [0, 200], [80, 120], [80, 120], 100],
+  ]
+  const reversed = (range: Vec2): Vec2 => [range[1], range[0]]
+  const descending_cases = align_cases.map(
+    ([desc, y1, y2_base, expected, align_value]): (typeof align_cases)[number] => [
+      `descending y1, ${desc}`,
+      reversed(y1),
+      y2_base,
+      reversed(expected),
+      align_value,
+    ],
   )
+  // oxfmt-ignore
+  it.each<(typeof align_cases)[number]>([
+    ...align_cases,
+    [`symmetric expand`, [-20, 20], [60, 140], [-140, 140]],
+    [`zero span fallback`, [0, 0], [0, 50], [0, 50]],
+    ...descending_cases,
+  ])(`align: %s`, (_desc, coord_y_1, y2_base, expected, align_value) => {
+    expect(sync_y2_range(coord_y_1, y2_base, { mode: `align`, align_value })).toEqual(expected)
+  })
 
   // Edge case: align_value outside y1_range — result must contain both data and align_value
   it.each<{ y1: Vec2; y2_base: Vec2; align_value: number }>([
@@ -320,37 +278,20 @@ describe(`sync_y2_range`, () => {
   ])(
     `align edge: align_value=$align_value with y1=$y1`,
     ({ y1: coord_y_1, y2_base, align_value }) => {
-      const result = sync_y2_range(coord_y_1, y2_base, {
-        mode: `align`,
-        align_value,
-      })
+      const result = sync_y2_range(coord_y_1, y2_base, { mode: `align`, align_value })
       expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
       expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
     },
   )
 
   // Non-finite inputs fall back to y2_base_range
+  // oxfmt-ignore
   it.each<[Vec2, Vec2]>([
-    [
-      [0, Infinity],
-      [0, 50],
-    ],
-    [
-      [-Infinity, 100],
-      [0, 50],
-    ],
-    [
-      [0, 100],
-      [0, Infinity],
-    ],
-    [
-      [NaN, 100],
-      [0, 50],
-    ],
-    [
-      [0, 100],
-      [NaN, 50],
-    ],
+    [[0, Infinity], [0, 50]],
+    [[-Infinity, 100], [0, 50]],
+    [[0, 100], [0, Infinity]],
+    [[NaN, 100], [0, 50]],
+    [[0, 100], [NaN, 50]],
   ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (coord_y_1, y2_base) => {
     expect(sync_y2_range(coord_y_1, y2_base, { mode: `synced` })).toEqual(y2_base)
   })
@@ -359,8 +300,8 @@ describe(`sync_y2_range`, () => {
 describe(`expand_range_if_needed`, () => {
   // [current, new_range, expected_range, expected_changed, desc]
   it.each([
-    // Adopt new range (expand and shrink), including ranges that happen to be [0, 1]: the
-    // old [0, 1] "no data" sentinel swallowed y data nicing to exactly [0, 1]
+    // Adopt new range (expand and shrink), including ranges that happen to be [0, 1], which
+    // must not be mistaken for a "no data" sentinel
     [[0, 1], [5, 15], [5, 15], true, `adopts new from default`],
     [[0, 1], [0, 50], [0, 50], true, `adopts [0,50] from default`],
     [[0, 1], [0, 0.5], [0, 0.5], true, `adopts [0,0.5] from default`],
@@ -409,9 +350,8 @@ describe(`expand_range_if_needed`, () => {
 })
 
 describe(`invert_rect_range`, () => {
-  // A drag rect arrives in either pixel order, so its inverted bounds get sorted. Writing that
-  // ascending pair back onto a descending axis silently mirrored the whole plot on every rect
-  // zoom, so the result has to be re-oriented to match the range it replaces.
+  // A drag rect arrives in either pixel order, so its sorted inverted bounds must be
+  // re-oriented to match the range they replace or a descending axis would mirror
   it.each<[string, Vec2, Vec2, Vec2 | undefined, Vec2 | null]>([
     [`descending axis keeps its direction`, [10, 0], [20, 60], [10, 0], [8, 4]],
     [`descending axis, drag dragged the other way`, [10, 0], [60, 20], [10, 0], [8, 4]],

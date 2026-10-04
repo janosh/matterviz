@@ -75,8 +75,8 @@ type ElementAxisOrdering =
   | ElementAxisOrderingKey
   | ((value_a: ChemicalElement, value_b: ChemicalElement) => number)
 
-// Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Prefixed because
-// bond-angles has its own NormalizeMode and both modules are star-exported from #lib.
+// Shared types used by both HeatmapMatrix and HeatmapMatrixControls, prefixed to stay
+// unique across the #lib star exports.
 export type HeatmapNormalizeMode = `linear` | `log`
 // auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
 export type HeatmapDomainMode = `auto` | `robust` | `fixed`

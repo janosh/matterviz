@@ -155,31 +155,24 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.arcs path`)).toHaveCount(2920)
   })
 
-  test(`opens the controls pane`, async ({ page }) => {
-    const section = page.locator(`#basic-sunburst`)
-    await section.locator(`.sunburst-controls-toggle`).click()
-    await expect(section.locator(`.sunburst-controls-pane`)).toBeVisible()
-  })
-
-  test(`breadcrumbs appear when zoomed and jump straight to any ancestor`, async ({
+  test(`breadcrumbs appear when zoomed, Escape zooms out a level, all jumps to root`, async ({
     page,
   }) => {
     const { section, plot } = zoom_section(page)
+    const handler_info = section.locator(`.handler-info`)
+    const crumbs = plot.locator(`.breadcrumbs button`)
     await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached() // hidden at root
     await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click() // zoom to Solar
-    await expect(plot.locator(`.breadcrumbs button`)).toHaveText([`all`, `Renewable`, `Solar`])
-    await plot.locator(`.breadcrumbs button`, { hasText: `all` }).click()
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: (root)`)
-    await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached()
-  })
-
-  test(`Escape zooms out one level while hovering the chart`, async ({ page }) => {
-    const { section, plot } = zoom_section(page)
-    await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click() // zoom to Solar
     await expect(plot.locator(`.arcs path`)).toHaveCount(2)
+    await expect(crumbs).toHaveText([`all`, `Renewable`, `Solar`])
+    // Escape only acts while the chart is hovered
     await plot.hover()
     await page.keyboard.press(`Escape`)
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: Renewable`)
+    await expect(handler_info).toContainText(`Zoom root: Renewable`)
+    await expect(crumbs).toHaveText([`all`, `Renewable`])
+    await crumbs.filter({ hasText: `all` }).click()
+    await expect(handler_info).toContainText(`Zoom root: (root)`)
+    await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached()
   })
 
   test(`icicle renders rect rows and zooms with breadcrumb navigation`, async ({ page }) => {
@@ -203,10 +196,13 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.plot-tooltip`)).toContainText(`Other`)
   })
 
-  test(`SVG/PNG export buttons download files`, async ({ page }) => {
+  test(`controls pane opens and its SVG/PNG export buttons download files`, async ({
+    page,
+  }) => {
     const section = page.locator(`#basic-sunburst`)
     await section.locator(`.sunburst`).hover() // toggle fades in on hover
     await section.locator(`.sunburst-controls-toggle`).click() // export buttons live in the pane
+    await expect(section.locator(`.sunburst-controls-pane`)).toBeVisible()
     const svg_download = page.waitForEvent(`download`)
     await section.locator(`[aria-label="Download SVG"]`).click()
     expect((await svg_download).suggestedFilename()).toBe(`sunburst.svg`)

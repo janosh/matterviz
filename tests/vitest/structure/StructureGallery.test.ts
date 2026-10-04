@@ -1,7 +1,7 @@
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import StructureGallery from '#lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query, keydown, mouse } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import StructureGalleryHarness from './StructureGalleryHarness.svelte'
@@ -76,11 +76,14 @@ const style_of = (selector: string): string => doc_query(selector).getAttribute(
 const scroll_track = (
   offset: number,
   axis: `scrollLeft` | `scrollTop` = `scrollTop`,
+  settle = true,
 ): void => {
   const track = doc_query(`.structure-gallery-track`)
   track[axis] = offset
   track.dispatchEvent(new Event(`scroll`))
   flushSync()
+  // the browser fires scrollend once the scroll settles; until then cards stay label shells
+  if (settle) setTimeout(() => track.dispatchEvent(new Event(`scrollend`)), 0)
 }
 
 const card_labels = (): (string | null)[] =>
@@ -136,16 +139,41 @@ describe(`StructureGallery`, () => {
 
     // scrolling one card on stays entirely within the overscan: same cards, all
     // still live, so nothing mounts mid-scroll
-    scroll_track(202, `scrollLeft`)
+    scroll_track(202, `scrollLeft`, false)
     expect(card_labels()).toEqual(many_labels(0, 12))
     expect(live_cards()).toBe(12)
 
     // past the overscan the window slides; the card entering it renders as a
     // label shell until the scroll settles, keeping GPU setup out of the fling
-    scroll_track(1800, `scrollLeft`) // first visible card is 8
+    scroll_track(1800, `scrollLeft`, false) // first visible card is 8
     expect(card_labels()).toEqual(many_labels(5, 17))
     expect(live_cards()).toBe(7)
-    await vi.waitFor(() => expect(live_cards()).toBe(12))
+    // a slow scroll outlasts any fixed settle delay: only scrollend mounts the shells
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(live_cards()).toBe(7)
+    doc_query(`.structure-gallery-track`).dispatchEvent(new Event(`scrollend`))
+    flushSync()
+    expect(live_cards()).toBe(12)
+  })
+
+  // Safari before 26.2 never fires scrollend: there a pause in scroll events ends the scroll,
+  // or the shells entering the window would never mount
+  test(`mounts the shells after a scroll pause where scrollend is unsupported`, async () => {
+    let owner: object | null = window // happy-dom may define it on a prototype
+    while (owner && !Object.hasOwn(owner, `onscrollend`)) owner = Object.getPrototypeOf(owner)
+    if (!owner) throw new Error(`happy-dom no longer defines onscrollend`)
+    const descriptor = Object.getOwnPropertyDescriptor(owner, `onscrollend`)
+    Reflect.deleteProperty(owner, `onscrollend`)
+    onTestFinished(() => {
+      if (owner && descriptor) Object.defineProperty(owner, `onscrollend`, descriptor)
+    })
+    expect(`onscrollend` in window).toBe(false)
+    mount_gallery({ items: many_items, layout: `horizontal`, min_card_width: 180 })
+    scroll_track(1800, `scrollLeft`, false)
+    expect(live_cards()).toBe(7)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    flushSync()
+    expect(live_cards()).toBe(12)
   })
 
   test.each([
@@ -487,28 +515,13 @@ describe(`StructureGallery`, () => {
 
   // One corner grip per layout, driving both axes. The width axis writes an exact
   // card width in a vertical column, the fit-then-stretch minimum in the others.
+  // horizontal: the wider minimum fits 2 across, then stretches; vertical: an exact width,
+  // a single column never stretches; grid: clamped to the 120px floor, so 6 fit
+  // oxfmt-ignore
   test.each([
-    {
-      layout: `horizontal`,
-      props: { height: 210, min_card_width: 180 },
-      drag: [100, 80],
-      card_width: (800 - 8) / 2, // the wider minimum fits 2 across, then stretches
-      card_height: 290,
-    },
-    {
-      layout: `vertical`,
-      props: { height: 300, min_card_width: 240 },
-      drag: [-100, 50],
-      card_width: 200, // an exact width: a single column never stretches
-      card_height: 350,
-    },
-    {
-      layout: `grid`,
-      props: { height: 200, min_card_width: 240 },
-      drag: [-200, 100],
-      card_width: (800 - 8 * 5) / 6, // clamped to the 120px floor, so 6 fit
-      card_height: 300,
-    },
+    { layout: `horizontal`, props: { height: 210, min_card_width: 180 }, drag: [100, 80], card_width: (800 - 8) / 2, card_height: 290 },
+    { layout: `vertical`, props: { height: 300, min_card_width: 240 }, drag: [-100, 50], card_width: 200, card_height: 350 },
+    { layout: `grid`, props: { height: 200, min_card_width: 240 }, drag: [-200, 100], card_width: (800 - 8 * 5) / 6, card_height: 300 },
   ] as const)(
     `$layout corner grip resizes cards on both axes at once`,
     ({ layout, props, drag, card_width, card_height }) => {

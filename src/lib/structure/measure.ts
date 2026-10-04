@@ -20,11 +20,9 @@ type AngleMode = `degrees` | `radians`
 
 export const MAX_SELECTED_SITES = 8
 
-// Modes that measure one fixed ordered tuple. They cap at that arity and a further pick rolls
-// the oldest out, keeping the measurement live: angle mode used to draw every center/pair
-// combination (N(N-1)(N-2)/2, i.e. 168 wedges at 8 sites) and dihedral mode rendered only at
-// exactly 4, blanking when a fifth atom joined. Every other mode accumulates a set up to the
-// shared ceiling and refuses past it, since no pick can be dropped without changing the answer.
+// Angle and dihedral measure one ordered tuple: past its arity the oldest pick rolls out, so
+// the measurement stays live. Other modes accumulate up to MAX_SELECTED_SITES and then refuse,
+// since no pick can be dropped without changing the answer.
 const ORDERED_TUPLE_SIZES = { angle: 3, dihedral: 4 } as const
 
 export const max_measured_sites = (mode: MeasureMode): number =>

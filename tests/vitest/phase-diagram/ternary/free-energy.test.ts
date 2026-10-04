@@ -26,6 +26,11 @@ const li2o_vol = make_phase({ Li: 2, O: 1 }, -4.5, {
   volume_per_atom: 8,
   e_form_per_atom: -2.1,
 })
+// Li2O atomic fractions, as SISSO's reduced-mass input
+const li2o_fractions: [ElementSymbol, number][] = [
+  [`Li`, 2 / 3],
+  [`O`, 1 / 3],
+]
 const phase_energy = (
   entries: Parameters<typeof build_free_energy_model>[0],
   options = {},
@@ -43,12 +48,7 @@ test.each([
 })
 
 test(`SISSO descriptor: reduced mass, G^delta and the elemental table`, () => {
-  expect(
-    sisso_reduced_mass([
-      [`Li`, 2 / 3],
-      [`O`, 1 / 3],
-    ]),
-  ).toBeCloseTo((6.94 * 15.999) / (6.94 + 15.999), 2)
+  expect(sisso_reduced_mass(li2o_fractions)).toBeCloseTo((6.94 * 15.999) / (6.94 + 15.999), 2)
   expect(sisso_reduced_mass([[`Li`, 1]])).toBeNull()
   // Bartel 2018 Eq. 4 evaluated by hand: pins all three fitted coefficients
   expect(sisso_g_delta(10, 12, 1000)).toBeCloseTo(-0.31002, 5)
@@ -119,11 +119,7 @@ describe(`build_free_energy_model`, () => {
       elements,
       { mode: `sisso` },
     )
-    const mass =
-      sisso_reduced_mass([
-        [`Li`, 2 / 3],
-        [`O`, 1 / 3],
-      ]) ?? NaN
+    const mass = sisso_reduced_mass(li2o_fractions) ?? NaN
     const expected =
       -2.1 +
       sisso_g_delta(8, mass, 1000) -
@@ -137,19 +133,11 @@ describe(`build_free_energy_model`, () => {
     expect(model.phases[1].dg_form(1000)).toBeCloseTo(0.05, 10)
     expect(default_t_range(model)).toEqual([300, 2000])
     // dH_f derived from the unary references when e_form_per_atom is absent
-    const derived = phase_energy(
-      [lithium, cobalt, oxygen_2, { ...li2o_vol, e_form_per_atom: undefined }],
-      {
+    const sisso_at_900 = (e_form_per_atom?: number) =>
+      phase_energy([lithium, cobalt, oxygen_2, { ...li2o_vol, e_form_per_atom }], {
         mode: `sisso`,
-      },
-    )
-    const explicit = phase_energy(
-      [lithium, cobalt, oxygen_2, { ...li2o_vol, e_form_per_atom: -4.5 - refs }],
-      {
-        mode: `sisso`,
-      },
-    )
-    expect(derived.dg_form(900)).toBeCloseTo(explicit.dg_form(900), 10)
+      }).dg_form(900)
+    expect(sisso_at_900(undefined)).toBeCloseTo(sisso_at_900(-4.5 - refs), 10)
   })
 
   test(`gas atmosphere shifts the oxygen reference`, () => {

@@ -33,33 +33,25 @@ const hexagonal: Matrix3x3 = [
   [2, 2 * Math.sqrt(3), 0],
   [0, 0, 6],
 ]
-const hexagonal_frac_to_cart = create_frac_to_cart(hexagonal)
 
 describe(`create_volume_sampler`, () => {
   test.each([
-    { frac: [0, 0, 0] as Vec3, expected: 0 },
-    { frac: [0.5, 0, 0] as Vec3, expected: 0.5 },
-    { frac: [0, 0.5, 0] as Vec3, expected: 1 },
-    { frac: [0, 0, 0.5] as Vec3, expected: 2 },
-    { frac: [0.25, 0.5, 0.75] as Vec3, expected: 0.25 + 1 + 3 },
-    { frac: [1, 1, 1] as Vec3, expected: 7 },
-  ])(
-    `samples linear field exactly on orthogonal lattice at frac $frac`,
-    ({ frac, expected }) => {
-      const sample = create_volume_sampler(linear_volume(11, cubic, false))
-      expect(sample([frac[0] * 10, frac[1] * 10, frac[2] * 10])).toBeCloseTo(expected, 10)
+    [`orthogonal`, cubic, [0, 0, 0]],
+    [`orthogonal`, cubic, [0.5, 0, 0]],
+    [`orthogonal`, cubic, [0, 0.5, 0]],
+    [`orthogonal`, cubic, [0, 0, 0.5]],
+    [`orthogonal`, cubic, [1, 1, 1]],
+    [`non-orthogonal`, hexagonal, [0.25, 0.5, 0.75]],
+    [`non-orthogonal`, hexagonal, [0.1, 0.9, 0.3]],
+    [`non-orthogonal`, hexagonal, [0.6, 0.2, 0.5]],
+  ] as [string, Matrix3x3, Vec3][])(
+    `samples linear field exactly on %s lattice at frac %j`,
+    (_label, lattice, frac) => {
+      const sample = create_volume_sampler(linear_volume(11, lattice, false))
+      const expected = frac[0] + 2 * frac[1] + 4 * frac[2]
+      expect(sample(create_frac_to_cart(lattice)(frac))).toBeCloseTo(expected, 10)
     },
   )
-
-  test.each([
-    [0.25, 0.5, 0.75],
-    [0.1, 0.9, 0.3],
-    [0.6, 0.2, 0.5],
-  ] as const)(`samples linear field exactly on non-orthogonal lattice at %j`, (...frac) => {
-    const sample = create_volume_sampler(linear_volume(13, hexagonal, false))
-    const expected = frac[0] + 2 * frac[1] + 4 * frac[2]
-    expect(sample(hexagonal_frac_to_cart([...frac]))).toBeCloseTo(expected, 10)
-  })
 
   test(`accounts for volume origin offset`, () => {
     const origin: Vec3 = [3, -2, 5]
@@ -144,19 +136,7 @@ describe(`create_volume_sampler`, () => {
 })
 
 describe(`sample_volume_at_positions`, () => {
-  test(`samples flat position triplets and preserves NaN markers`, () => {
-    const scalars = sample_volume_at_positions(
-      linear_volume(11, cubic, false),
-      new Float32Array([5, 5, 5, 0, 0, 0, 50, 5, 5]),
-      { out_of_bounds: `fallback` },
-    )
-    expect(scalars).toHaveLength(3)
-    expect(scalars[0]).toBeCloseTo(3.5, 5)
-    expect(scalars[1]).toBeCloseTo(0, 5)
-    expect(scalars[2]).toBeNaN()
-  })
-
-  test(`matches scalar sampling while applying an offset and reusing output`, () => {
+  test(`matches scalar sampling, applies an offset, reuses output and keeps NaN markers`, () => {
     const origin: Vec3 = [2, 3, 4]
     const vol = linear_volume(11, hexagonal, false, origin)
     const positions = new Float64Array([2, 1, 3, 0, 0, 0, -10, 0, 0])
@@ -169,6 +149,7 @@ describe(`sample_volume_at_positions`, () => {
     const sample = create_volume_sampler(vol, { out_of_bounds: `fallback` })
 
     expect(scalars).toBe(output)
+    expect(scalars[2]).toBeNaN() // [-10, 0, 0] lies outside the finite grid
     for (let point_idx = 0; point_idx < positions.length / 3; point_idx++) {
       const position_idx = point_idx * 3
       const expected = sample([
@@ -225,12 +206,9 @@ describe(`create_volume_sampler reads the current volume fields`, () => {
       () => linear_volume(11, cubic, false),
       [5, 5, 5],
       3.5, // frac (0.5, 0.5, 0.5)
-      (vol: VolumetricData) =>
-        (vol.lattice = [
-          [20, 0, 0],
-          [0, 20, 0],
-          [0, 0, 20],
-        ]),
+      (vol: VolumetricData): void => {
+        vol.lattice = cubic_matrix(20)
+      },
       1.75, // frac (0.25, 0.25, 0.25)
     ],
     [
@@ -293,16 +271,7 @@ describe(`compare_volume_grids`, () => {
     },
     {
       label: `voxel vectors`,
-      make_b: () =>
-        linear_volume(
-          11,
-          [
-            [12, 0, 0],
-            [0, 10, 0],
-            [0, 0, 10],
-          ],
-          false,
-        ),
+      make_b: () => linear_volume(11, [[12, 0, 0], cubic[1], cubic[2]], false),
       reason_match: /voxel vectors differ/,
     },
     {
@@ -323,124 +292,36 @@ describe(`compare_volume_grids`, () => {
 
     // 11 finite points → divisor 10: a 5e-4 lattice delta is a 5e-5 voxel delta
     // (within the 1e-4 tolerance), while 2e-3 → 2e-4 exceeds it
-    const near_voxel = linear_volume(
-      11,
-      [
-        [10.0005, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-      false,
-    )
-    const far_voxel = linear_volume(
-      11,
-      [
-        [10.002, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-      false,
-    )
-    expect(compare_volume_grids(base(), near_voxel).ok).toBe(true)
-    expect(compare_volume_grids(base(), far_voxel).ok).toBe(false)
+    const stretched = (lattice_a: number) =>
+      linear_volume(11, [[lattice_a, 0, 0], cubic[1], cubic[2]], false)
+    expect(compare_volume_grids(base(), stretched(10.0005)).ok).toBe(true)
+    expect(compare_volume_grids(base(), stretched(10.002)).ok).toBe(false)
   })
 })
 
 describe(`sanitize_display_range`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      label: `invalid axes → [0,1], keep valid`,
-      range: [
-        [NaN, 2],
-        [0.5, 0.5],
-        [-0.15, 2.15],
-      ] as DisplayRange,
-      periodic: true,
-      expected: [
-        [0, 1],
-        [0, 1],
-        [-0.15, 2.15],
-      ],
-    },
-    {
-      label: `non-periodic clamps to [0,1]`,
-      range: [
-        [-0.5, 1.5],
-        [0.2, 0.8],
-        [0, 1],
-      ] as DisplayRange,
-      periodic: false,
-      expected: [
-        [0, 1],
-        [0.2, 0.8],
-        [0, 1],
-      ],
-    },
-    {
-      label: `finite ranges entirely outside → [0,1]`,
-      range: [
-        [2, 3],
-        [-3, -2],
-        [0.2, 0.8],
-      ] as DisplayRange,
-      periodic: false,
-      expected: [
-        [0, 1],
-        [0, 1],
-        [0.2, 0.8],
-      ],
-    },
-  ])(`$label`, ({ range, periodic, expected }) => {
+    [`invalid axes → [0,1], keep valid`, [[NaN, 2], [0.5, 0.5], [-0.15, 2.15]], true, [[0, 1], [0, 1], [-0.15, 2.15]]],
+    [`non-periodic clamps to [0,1]`, [[-0.5, 1.5], [0.2, 0.8], [0, 1]], false, [[0, 1], [0.2, 0.8], [0, 1]]],
+    [`finite ranges entirely outside → [0,1]`, [[2, 3], [-3, -2], [0.2, 0.8]], false, [[0, 1], [0, 1], [0.2, 0.8]]],
+  ] as [string, DisplayRange, boolean, DisplayRange][])(`%s`, (_label, range, periodic, expected) => {
     expect(sanitize_display_range(range, periodic)).toEqual(expected)
   })
 })
 
 describe(`resolve_volume_display_range`, () => {
-  test(`periodic integer tiling becomes an endpoint-inclusive extraction range`, () => {
-    expect(
-      resolve_volume_display_range(linear_volume(10, cubic, true), { tiling: [2, 3, 1] }),
-    ).toEqual([
-      [0, 2],
-      [0, 3],
-      [0, 1],
-    ])
-  })
-
-  test(`explicit periodic range overrides atom tiling and includes halo`, () => {
-    expect(
-      resolve_volume_display_range(linear_volume(10, cubic, true), {
-        display_range: [
-          [-0.15, 2.15],
-          [0, 1],
-          [0.25, 0.75],
-        ],
-        tiling: [4, 4, 4],
-        halo: 0.1,
-      }),
-    ).toEqual([
-      [-0.25, 2.25],
-      [-0.1, 1.1],
-      [0.15, 0.85],
-    ])
-  })
-
-  test(`finite volume ignores atom tiling but supports explicit cropping`, () => {
-    const volume = linear_volume(11, cubic, false)
-    expect(resolve_volume_display_range(volume, { tiling: [3, 2, 1] })).toBeNull()
-    expect(
-      resolve_volume_display_range(volume, {
-        display_range: [
-          [-1, 0.8],
-          [0.2, 2],
-          [0, 1],
-        ],
-        tiling: [3, 2, 1],
-      }),
-    ).toEqual([
-      [0, 0.8],
-      [0.2, 1],
-      [0, 1],
-    ])
+  // Periodic tiling becomes an endpoint-inclusive extraction range; an explicit range
+  // overrides tiling and adds the halo; finite volumes ignore tiling but crop to [0, 1]
+  // oxfmt-ignore
+  test.each([
+    [`periodic tiling`, true, { tiling: [2, 3, 1] }, [[0, 2], [0, 3], [0, 1]]],
+    [`periodic explicit range + halo`, true, { display_range: [[-0.15, 2.15], [0, 1], [0.25, 0.75]], tiling: [4, 4, 4], halo: 0.1 }, [[-0.25, 2.25], [-0.1, 1.1], [0.15, 0.85]]],
+    [`finite tiling`, false, { tiling: [3, 2, 1] }, null],
+    [`finite explicit crop`, false, { display_range: [[-1, 0.8], [0.2, 2], [0, 1]], tiling: [3, 2, 1] }, [[0, 0.8], [0.2, 1], [0, 1]]],
+  ] as [string, boolean, Parameters<typeof resolve_volume_display_range>[1], DisplayRange | null][])(`%s`, (_label, periodic, options, expected) => {
+    const volume = linear_volume(periodic ? 10 : 11, cubic, periodic)
+    expect(resolve_volume_display_range(volume, options)).toEqual(expected)
   })
 })
 

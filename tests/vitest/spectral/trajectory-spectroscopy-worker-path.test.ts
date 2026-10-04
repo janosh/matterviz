@@ -9,6 +9,7 @@ import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectrosc
 import type { TrajectorySignal } from '#lib/trajectory/index.js'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
+import { make_position_stream } from '../test-fixtures'
 
 const signal = (
   n_samples: number,
@@ -25,9 +26,6 @@ const signal = (
 const make_input = (): TrajectorySpectroscopyInput => {
   const n_frames = 16
   const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
-  const positions = Float64Array.from(
-    steps.flatMap((step) => [-0.5 - 0.02 * Math.sin(step), 0, 0, 0.5, 0, 0]),
-  )
   const velocities = signal(n_frames, [2, 3], (sample_idx) => [
     Math.cos((2 * Math.PI * sample_idx) / 4),
     0,
@@ -46,17 +44,14 @@ const make_input = (): TrajectorySpectroscopyInput => {
     return [value, 0, 0, 0, value, 0, 0, 0, value]
   })
   return {
-    positions: {
-      positions,
-      n_frames,
-      n_atoms: 2,
-      elements: [`H`, `H`],
-      lattice_matrices: null,
-      pbc: [false, false, false],
-      coords_unwrapped: true,
-      frame_stride: 1,
-      steps,
-    },
+    positions: make_position_stream(
+      steps.map((step) => [
+        [-0.5 - 0.02 * Math.sin(step), 0, 0],
+        [0.5, 0, 0],
+      ]),
+      [`H`, `H`],
+      { lattice_matrices: null, pbc: [false, false, false], coords_unwrapped: true },
+    ),
     masses: Float64Array.from([1, 1]),
     velocities,
     infrared_signal: { kind: `dipole`, series: response },

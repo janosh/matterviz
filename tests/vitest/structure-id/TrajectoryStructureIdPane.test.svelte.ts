@@ -9,7 +9,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 import { make_fcc } from './lattices'
 
 const make_run = (n_frames: number): TrajectoryRun =>
@@ -65,15 +65,13 @@ test(`passes the frame window, cap and skip_csp to the sweep, relays progress, s
     HTMLInputElement,
   )
   expect(max_frames.closest(`label`)?.textContent).toContain(`Max frames`)
-  max_frames.value = `3`
-  max_frames.dispatchEvent(new Event(`input`))
+  set_input(max_frames, `3`)
   for (const [label, value] of [
     [`Start frame`, `2`],
     [`End frame (exclusive)`, `18`],
   ]) {
     const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
-    input.value = value
-    input.dispatchEvent(new Event(`input`))
+    set_input(input, value)
   }
   await settle()
   expect(controls.textContent).toContain(`3 of 16 frames (every 6)`)

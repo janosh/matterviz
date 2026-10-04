@@ -70,11 +70,7 @@ const displacement_at = (data: PhononModeData, frame_idx: number, site_idx: numb
   const trajectory = phonon_mode_trajectory(
     data,
     { qpoint_idx: 0, mode_idx: 0 },
-    {
-      amplitude: 1,
-      supercell: [1, 1, 1],
-      n_frames: 4,
-    },
+    { amplitude: 1, supercell: [1, 1, 1], n_frames: 4 },
   )
   return trajectory.frames[frame_idx].structure.sites[site_idx].properties
     .phonon_displacement as Vec3
@@ -196,11 +192,7 @@ describe(`phonon_mode_trajectory`, () => {
     const trajectory = phonon_mode_trajectory(
       make_mode_data(),
       { qpoint_idx: 0, mode_idx: 0 },
-      {
-        amplitude: 0.3,
-        supercell: [2, 1, 1],
-        n_frames: 8,
-      },
+      { amplitude: 0.3, supercell: [2, 1, 1], n_frames: 8 },
     )
     const first_displacement = trajectory.frames[0].structure.sites[0].properties
       .phonon_displacement as Vec3
@@ -323,26 +315,24 @@ describe(`phonon_mode_trajectory`, () => {
     },
   )
 
-  it.each([
-    [`zero amplitude`, { amplitude: 0 }, /amplitude must be a positive/],
-    [`one frame`, { n_frames: 1 }, /at least 2 integer frames/],
-    [`invalid supercell`, { supercell: [1, 0, 1] as Vec3 }, /positive integers/],
-    [
-      `oversized supercell`,
-      { supercell: [500, 500, 1] as Vec3 },
-      /would display 250000 sites.*exceeding the 200000 limit/,
-    ],
-  ])(`rejects %s`, (_name, options, error) => {
-    expect(() =>
-      phonon_mode_trajectory(make_mode_data(), { qpoint_idx: 0, mode_idx: 0 }, options),
-    ).toThrow(error)
-  })
-
-  it.each([
-    [{ qpoint_idx: 1, mode_idx: 0 }, /q-point index 1 is outside/],
-    [{ qpoint_idx: 0, mode_idx: 1 }, /mode index 1 is outside/],
-  ])(`rejects an invalid selection %j`, (selection, error) => {
-    expect(() => phonon_mode_trajectory(make_mode_data(), selection)).toThrow(error)
+  const no_eigenvector = make_mode_data()
+  no_eigenvector.qpoints[0].modes[0].eigenvector = null
+  const zero_mass = make_mode_data()
+  zero_mass.atoms[0].mass = 0
+  const first_mode = { qpoint_idx: 0, mode_idx: 0 }
+  type TrajectoryArgs = Parameters<typeof phonon_mode_trajectory>
+  // oxfmt-ignore
+  it.each<[string, TrajectoryArgs[0], TrajectoryArgs[1], TrajectoryArgs[2], RegExp]>([
+    [`zero amplitude`, make_mode_data(), first_mode, { amplitude: 0 }, /amplitude must be a positive/],
+    [`one frame`, make_mode_data(), first_mode, { n_frames: 1 }, /at least 2 integer frames/],
+    [`invalid supercell`, make_mode_data(), first_mode, { supercell: [1, 0, 1] }, /positive integers/],
+    [`oversized supercell`, make_mode_data(), first_mode, { supercell: [500, 500, 1] }, /would display 250000 sites.*exceeding the 200000 limit/],
+    [`q-point index out of range`, make_mode_data(), { qpoint_idx: 1, mode_idx: 0 }, {}, /q-point index 1 is outside/],
+    [`mode index out of range`, make_mode_data(), { qpoint_idx: 0, mode_idx: 1 }, {}, /mode index 1 is outside/],
+    [`a missing eigenvector`, no_eigenvector, first_mode, {}, /has no eigenvector/],
+    [`a zero mass`, zero_mass, first_mode, {}, /invalid mass 0/],
+  ])(`rejects %s`, (_name, data, selection, options, error) => {
+    expect(() => phonon_mode_trajectory(data, selection, options)).toThrow(error)
   })
 
   it.each([
@@ -350,25 +340,11 @@ describe(`phonon_mode_trajectory`, () => {
     [[0.5, 0, 0], [3, 1, 1], false],
     [[1 / 3, 0.25, 0], [3, 4, 1], true],
   ] as [Vec3, Vec3, boolean][])(
-    `detects q-point/supercell commensurability`,
+    `q-point %j is commensurate with supercell %j: %s`,
     (q_position, supercell, expected) => {
       expect(is_commensurate_phonon_supercell(q_position, supercell)).toBe(expected)
     },
   )
-
-  it(`rejects missing eigenvectors and invalid typed masses`, () => {
-    const missing_eigenvector = make_mode_data()
-    missing_eigenvector.qpoints[0].modes[0].eigenvector = null
-    expect(() =>
-      phonon_mode_trajectory(missing_eigenvector, { qpoint_idx: 0, mode_idx: 0 }),
-    ).toThrow(/has no eigenvector/)
-
-    const invalid_mass = make_mode_data()
-    invalid_mass.atoms[0].mass = 0
-    expect(() => phonon_mode_trajectory(invalid_mass, { qpoint_idx: 0, mode_idx: 0 })).toThrow(
-      /invalid mass 0/,
-    )
-  })
 })
 
 describe(`staged phonon runs`, () => {
@@ -457,11 +433,7 @@ describe(`phonon band helpers`, () => {
     const trajectory = phonon_mode_trajectory(
       data,
       { qpoint_idx: 4, mode_idx: 2 },
-      {
-        amplitude: 1,
-        supercell: [2, 1, 2],
-        n_frames: 4,
-      },
+      { amplitude: 1, supercell: [2, 1, 2], n_frames: 4 },
     )
     // Reference from phonopy.run_modulations([2,1,2], [[[0.5,0,0.5],2,1,0]]) using
     // the published full-precision phonopy_params.yaml, reordered to MatterViz cell-major

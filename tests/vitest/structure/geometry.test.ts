@@ -188,26 +188,13 @@ describe(`cylinder_between`, () => {
       expect(length).toBeCloseTo(len, 10)
       const half = new Vector3(0, length / 2, 0).applyEuler(new Euler(...rotation))
       const center = new Vector3(...position)
-      expect(
-        center
-          .clone()
-          .sub(half)
-          .distanceTo(new Vector3(...from)),
-      ).toBeCloseTo(0, 10)
-      expect(
-        center
-          .clone()
-          .add(half)
-          .distanceTo(new Vector3(...target)),
-      ).toBeCloseTo(0, 10)
+      const [start, end] = [new Vector3().subVectors(center, half), center.add(half)]
+      expect(start.distanceTo(new Vector3(...from))).toBeCloseTo(0, 10)
+      expect(end.distanceTo(new Vector3(...target))).toBeCloseTo(0, 10)
+      // coincident endpoints yield the identity rotation, not NaN
+      if (len === 0) for (const val of rotation) expect(val).toBeCloseTo(0, 12)
     },
   )
-
-  test(`coincident endpoints yield identity rotation (no NaN)`, () => {
-    cylinder_between([1, 2, 3], [1, 2, 3]).rotation.forEach((val) =>
-      expect(val).toBeCloseTo(0, 12),
-    )
-  })
 })
 
 // The direct buffer writer is a separate, three.js-object-free "+Y → direction"
@@ -219,31 +206,14 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
     expect(Array.from(matrix_buffer)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1])
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      [0, 0, 0],
-      [1, 0, 0],
-    ],
-    [
-      [0, 0, 0],
-      [0, 0, 1],
-    ],
-    [
-      [0, 0, 0],
-      [0, 1, 0],
-    ], // +Y special case
-    [
-      [0, 0, 0],
-      [0, -1, 0],
-    ], // -Y special case
-    [
-      [1, 1, 1],
-      [2, 3, -1],
-    ],
-    [
-      [-2, 0, 3],
-      [-5, -4, 1],
-    ],
+    [[0, 0, 0], [1, 0, 0]],
+    [[0, 0, 0], [0, 0, 1]],
+    [[0, 0, 0], [0, 1, 0]], // +Y special case
+    [[0, 0, 0], [0, -1, 0]], // -Y special case
+    [[1, 1, 1], [2, 3, -1]],
+    [[-2, 0, 3], [-5, -4, 1]],
   ] as [Vec3, Vec3][])(`uses a right-handed +Y orientation for %j → %j`, (start, end) => {
     // image of +Y under the bond transform (transformDirection strips translation + scale)
     const matrix_buffer = new Float32Array(16).fill(Number.NaN)

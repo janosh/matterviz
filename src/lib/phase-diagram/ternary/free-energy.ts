@@ -237,10 +237,7 @@ export function build_free_energy_model(
   options: FreeEnergyOptions = {},
 ): FreeEnergyModel {
   const { mode = `auto` } = options
-  // An exclude_from_hull element is shown but cannot define the formation-energy zero
-  const unary_refs = find_lowest_energy_unary_refs(
-    entries.filter((entry) => !entry.exclude_from_hull),
-  )
+  const unary_refs = find_lowest_energy_unary_refs(entries)
   // Without a reference entry the element's corner sits at dG_f = 0 (synthetic element)
   for (const element of elements)
     unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }

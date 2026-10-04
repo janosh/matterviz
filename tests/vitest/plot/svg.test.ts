@@ -49,15 +49,11 @@ describe(`bar_path`, () => {
 
 describe(`violin_path`, () => {
   const orient = (cross: number, val: number): [number, number] => [cross, val]
-  it(`mirrors density around the center for both sides and closes the path`, () => {
-    expect(violin_path([0, 10, 20], [0, 4, 0], 50, `both`, orient)).toBe(
-      `M50,0L54,10L50,20L50,20L46,10L50,0Z`,
-    )
-  })
   it.each([
+    [`both`, `M50,0L54,10L50,20L50,20L46,10L50,0Z`],
     [`positive`, `M50,0L54,10L50,20L50,20L50,0Z`],
     [`negative`, `M50,0L46,10L50,20L50,20L50,0Z`],
-  ] as const)(`draws one half for side=%s with a straight inner edge`, (side, expected) => {
+  ] as const)(`draws side=%s around the center and closes the path`, (side, expected) => {
     expect(violin_path([0, 10, 20], [0, 4, 0], 50, side, orient)).toBe(expected)
   })
   it(`returns an empty path for an empty grid`, () => {

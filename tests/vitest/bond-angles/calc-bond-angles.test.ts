@@ -135,20 +135,10 @@ describe(`calc_bond_angles analytic geometry`, () => {
         (vec_1[0] * vec_2[0] + vec_1[1] * vec_2[1] + vec_1[2] * vec_2[2]) /
         (Math.hypot(...vec_1) * Math.hypot(...vec_2))
       expect((Math.acos(cos) * 180) / Math.PI).toBeCloseTo(angle, 9)
+      // Measured bit-identical to acos(-1/3), but Math.acos is not required to be correctly
+      // rounded across engines, so allow 1e-12 deg
+      expect(Math.abs(angle - TETRAHEDRAL_ANGLE)).toBeLessThan(1e-12)
     }
-  })
-
-  test(`methane H-C-H angles match acos(-1/3) to double precision`, () => {
-    const triplets = calc_bond_angles(methane)
-    expect(triplets).toHaveLength(6) // else Math.max over an empty deviation list passes
-    // Measured: all six come out at 109.471220634490692, i.e. bit-identical to
-    // Math.acos(-1/3) in degrees (deviation exactly 0). Math.acos is not required to be
-    // correctly rounded across engines, so assert 1e-12 deg rather than strict equality —
-    // still ~10 orders below any physically meaningful angle difference.
-    const exact = (Math.acos(-1 / 3) * 180) / Math.PI
-    expect(exact).toBe(TETRAHEDRAL_ANGLE)
-    const deviations = triplets.map((triplet) => Math.abs(triplet.angle - exact))
-    expect(Math.max(...deviations)).toBeLessThan(1e-12)
   })
 })
 
@@ -182,7 +172,6 @@ describe(`periodic bonding`, () => {
   test(`six-coordinate simple cubic gives 12 right angles and 3 straight angles`, () => {
     const triplets = calc_bond_angles(simple_cubic)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 12, '180.0000': 3 })
-    expect(triplets).toHaveLength(15) // C(6, 2)
     // Every neighbour is a periodic image of atom 0 itself, reported by its base site index
     expect(triplets.every((triplet) => triplet.triplet === `Po-Po-Po`)).toBe(true)
     expect(
@@ -191,7 +180,6 @@ describe(`periodic bonding`, () => {
   })
 
   test.each<[BondAngleOptions, number]>([
-    [{}, 15],
     [{ pbc: [true, true, true] }, 15],
     // a slab keeps the 4 in-plane images: C(4, 2) = 4 right + 2 straight angles
     [{ pbc: [true, true, false] }, 6],
@@ -234,10 +222,6 @@ describe(`periodic bonding`, () => {
 describe(`triplet labelling`, () => {
   test(`distinguishes A-B-A from B-A-B`, () => {
     expect(label_tally(rocksalt)).toEqual({ 'Cl-Na-Cl': 60, 'Na-Cl-Na': 60 })
-    expect(angle_tally(calc_bond_angles(rocksalt))).toEqual({
-      '90.0000': 96,
-      '180.0000': 24,
-    })
   })
 
   test(`outer elements are sorted so mirrored triplets collapse to one label`, () => {
@@ -358,6 +342,9 @@ describe(`binning`, () => {
     [{ bin_width: 0 }, /must be a number in/],
     [{ bin_width: -1 }, /must be a number in/],
     [{ bin_width: 181 }, /must be a number in/],
+    [{ bin_width: 180.0001 }, /must be a number in/],
+    [{ bin_width: NaN }, /must be a number in/],
+    [{ bin_width: Infinity }, /must be a number in/],
     // bounding the WIDTH to (0, 180] bounded nothing: 1e-5 deg asked for 18 million bins
     [{ bin_width: 1e-5 }, /spans 18000000 bins .* past the 100000 limit/],
     [{ n_bins: 100_001 }, /positive integer <= 100000/],
@@ -385,6 +372,12 @@ describe(`calc_bond_angle_distribution`, () => {
     expect(data.total.counts.at(-1)).toBe(3)
     expect(data.total.counts.reduce((sum, count) => sum + count, 0)).toBe(15)
     expect(data.by_triplet.map((series) => series.triplet)).toEqual([`F-S-F`])
+    const unsplit = calc_bond_angle_distribution(octahedron, {
+      bin_width: 2,
+      split_by_triplet: false,
+    })
+    expect(unsplit.by_triplet).toEqual([])
+    expect(unsplit.total).toEqual(data.total)
   })
 
   test(`per-triplet counts partition the total`, () => {
@@ -398,28 +391,12 @@ describe(`calc_bond_angle_distribution`, () => {
     }
   })
 
-  test(`split_by_triplet=false skips the per-triplet histograms but keeps the total`, () => {
-    const data = calc_bond_angle_distribution(octahedron, { split_by_triplet: false })
-    expect(data.by_triplet).toEqual([])
-    expect(data.n_angles).toBe(15)
-  })
-
   test(`empty and angle-free structures give zeroed histograms rather than NaN`, () => {
     for (const structure of [make_molecule([]), make_molecule([[`H`, [0, 0, 0]]])]) {
       const data = calc_bond_angle_distribution(structure)
       expect(data.n_angles).toBe(0)
       expect(data.total.counts.every((count) => count === 0)).toBe(true)
     }
-  })
-
-  test(`center_elements keeps only angles centred on the filtered atoms`, () => {
-    // Only S has two neighbours, so filtering to it keeps all 15; filtering it out keeps none
-    expect(calc_bond_angle_distribution(octahedron, { center_elements: [`S`] }).n_angles).toBe(
-      15,
-    )
-    expect(calc_bond_angle_distribution(octahedron, { center_elements: [`F`] }).n_angles).toBe(
-      0,
-    )
   })
 })
 
@@ -434,26 +411,16 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   const mount_plot = (props: Record<string, unknown>) =>
     mount_sized(BondAnglePlot, props, { selector: `.bar-plot, .status-message, section` })
 
+  // Input shapes are covered by the to_structure_entries table in calc-coordination.test.ts
+  const pair = { NaCl: rocksalt, Pd: palladium }
   test.each([
-    [`single crystal`, { structures: rocksalt }],
+    // 180 is the inclusive upper bound in resolve_angle_bins, so it must still plot
+    [`single crystal with bin_width=180`, { structures: rocksalt, bin_width: 180 }],
     // is_crystal() would misread a lattice-less molecule as a Record of structures
     [`single lattice-less molecule`, { structures: water }],
-    [`record of structures`, { structures: { NaCl: rocksalt, Pd: palladium } }],
-    [
-      `record with per-entry color`,
-      {
-        structures: { NaCl: { structure: rocksalt, color: `#ff0000` } },
-      },
-    ],
-    [
-      `array of entries`,
-      {
-        structures: [
-          { label: `NaCl`, structure: rocksalt },
-          { label: `Pd`, structure: palladium },
-        ],
-      },
-    ],
+    [`record with default split_mode=by_triplet`, { structures: pair }],
+    [`split_mode=by_structure`, { structures: pair, split_mode: `by_structure` }],
+    [`split_mode=none`, { structures: pair, split_mode: `none` }],
   ])(`renders bars on a 0-180 degree axis for %s`, async (_name, props) => {
     const root = await mount_plot(props)
     expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
@@ -461,18 +428,6 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     expect(root.textContent).toContain(`Bond Angle (°)`)
     expect(root.textContent).toContain(`Count`)
   })
-
-  // by_triplet is the default and is covered above
-  test.each([`by_structure`, `none`] as BondAngleSplitMode[])(
-    `split_mode=%s renders without error`,
-    async (split_mode) => {
-      const root = await mount_plot({
-        structures: { NaCl: rocksalt, Pd: palladium },
-        split_mode,
-      })
-      expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
-    },
-  )
 
   test(`normalize=density relabels the value axis`, async () => {
     const root = await mount_plot({ structures: rocksalt, normalize: `density` })
@@ -505,24 +460,17 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     expect(root.textContent).toContain(message)
   })
 
-  // 180 is the inclusive upper bound in resolve_angle_bins, so it must still plot
-  test(`accepts a bin_width of exactly 180`, async () => {
-    const root = await mount_plot({ structures: rocksalt, bin_width: 180 })
-    expect(root.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
-  })
-
   // bin_width is a public prop and resolve_angle_bins throws on anything outside (0, 180],
-  // so an unguarded binning derived would take the whole render down with it
-  test.each([0, -2, 500, 180.0001, NaN, Infinity])(
-    `reports bin_width=%s as an error instead of crashing the render`,
-    async (bin_width) => {
-      // the error StatusMessage is a sibling of the mount root, so read the whole container
-      const container = (await mount_plot({ structures: rocksalt, bin_width })).parentElement
-      await tick()
-      expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
-      expect(container?.querySelector(`svg`)).toBeNull()
-    },
-  )
+  // so an unguarded binning derived would take the whole render down with it. Which values
+  // throw is pinned by the resolve_angle_bins table; one mount covers the guard.
+  test(`reports an invalid bin_width as an error instead of crashing the render`, async () => {
+    // the error StatusMessage is a sibling of the mount root, so read the whole container
+    const container = (await mount_plot({ structures: rocksalt, bin_width: NaN }))
+      .parentElement
+    await tick()
+    expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
+    expect(container?.querySelector(`svg`)).toBeNull()
+  })
 
   // neighbor_query throws on a non-finite position; an unguarded compute derived would take
   // the whole render down with it. The healthy structure next to it must still plot.

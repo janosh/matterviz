@@ -2,59 +2,24 @@ import type { CrystalSystem } from '#lib/symmetry/spacegroups.js'
 import * as spg from '#lib/symmetry/spacegroups.js'
 import { describe, expect, test, vi } from 'vitest'
 
-describe(`CRYSTAL_SYSTEM_RANGES`, () => {
-  test(`should have 7 contiguous systems from 1-230`, () => {
-    expect(Object.keys(spg.CRYSTAL_SYSTEM_RANGES)).toHaveLength(7)
-    expect(spg.CRYSTAL_SYSTEM_RANGES.triclinic[0]).toBe(1)
-    expect(spg.CRYSTAL_SYSTEM_RANGES.cubic[1]).toBe(230)
-
-    for (let idx = 0; idx < spg.CRYSTAL_SYSTEMS.length - 1; idx++) {
-      const [, current_max] = spg.CRYSTAL_SYSTEM_RANGES[spg.CRYSTAL_SYSTEMS[idx]]
-      const [next_min] = spg.CRYSTAL_SYSTEM_RANGES[spg.CRYSTAL_SYSTEMS[idx + 1]]
-      expect(next_min).toBe(current_max + 1)
-    }
-  })
-
-  // exact values are a cross-repo parity contract with pymatviz — don't change one side only
-  test(`CRYSTAL_SYSTEM_COLORS match pymatviz colors`, () => {
-    expect(spg.CRYSTAL_SYSTEM_COLORS).toEqual({
-      triclinic: `red`,
-      monoclinic: `teal`,
-      orthorhombic: `blue`,
-      tetragonal: `green`,
-      trigonal: `orange`,
-      hexagonal: `purple`,
-      cubic: `darkred`,
-    })
+// exact values are a cross-repo parity contract with pymatviz — don't change one side only
+test(`CRYSTAL_SYSTEM_COLORS match pymatviz colors`, () => {
+  expect(spg.CRYSTAL_SYSTEM_COLORS).toEqual({
+    triclinic: `red`,
+    monoclinic: `teal`,
+    orthorhombic: `blue`,
+    tetragonal: `green`,
+    trigonal: `orange`,
+    hexagonal: `purple`,
+    cubic: `darkred`,
   })
 })
 
-// Crystal system from number/symbol/numeric string; lattice system equals it except for the
-// 7 R-centered trigonal groups (rhombohedral) — P-trigonal groups have hexagonal lattices
+// Crystal system from symbol/numeric string; lattice system equals it except for the 7
+// R-centered trigonal groups (rhombohedral). Every space-group NUMBER (hence the
+// CRYSTAL_SYSTEM_RANGES boundaries) is cross-checked against moyo in moyo-integration.test.ts.
 describe(`spacegroup_to_crystal_sys / spacegroup_to_lattice_system`, () => {
   test.each([
-    [1, `triclinic`, `triclinic`],
-    [2, `triclinic`, `triclinic`],
-    [3, `monoclinic`, `monoclinic`],
-    [15, `monoclinic`, `monoclinic`],
-    [16, `orthorhombic`, `orthorhombic`],
-    [74, `orthorhombic`, `orthorhombic`],
-    [75, `tetragonal`, `tetragonal`],
-    [142, `tetragonal`, `tetragonal`],
-    [143, `trigonal`, `hexagonal`], // P3
-    [147, `trigonal`, `hexagonal`], // P-3
-    [150, `trigonal`, `hexagonal`], // P321
-    [146, `trigonal`, `rhombohedral`], // R3
-    [148, `trigonal`, `rhombohedral`], // R-3
-    [155, `trigonal`, `rhombohedral`], // R32
-    [160, `trigonal`, `rhombohedral`], // R3m
-    [161, `trigonal`, `rhombohedral`], // R3c
-    [166, `trigonal`, `rhombohedral`], // R-3m
-    [167, `trigonal`, `rhombohedral`], // R-3c
-    [168, `hexagonal`, `hexagonal`],
-    [194, `hexagonal`, `hexagonal`],
-    [195, `cubic`, `cubic`],
-    [230, `cubic`, `cubic`],
     [`P1`, `triclinic`, `triclinic`],
     [`C2/c`, `monoclinic`, `monoclinic`],
     [`Pnma`, `orthorhombic`, `orthorhombic`],
@@ -72,54 +37,49 @@ describe(`spacegroup_to_crystal_sys / spacegroup_to_lattice_system`, () => {
     expect(spg.spacegroup_to_lattice_system(input)).toBe(lattice_sys)
   })
 
-  test.each([0, -1, 231, 1000, 62.5, `invalid`, `P999`, ``, `0`, `231`, `-1`])(
-    `returns null for invalid input %j`,
-    (invalid) => {
-      expect(spg.spacegroup_to_crystal_sys(invalid)).toBeNull()
-      expect(spg.spacegroup_to_lattice_system(invalid)).toBeNull()
-    },
-  )
-})
-
-describe(`normalize_spacegroup`, () => {
   test.each([
-    [1, 1],
-    [62, 62],
-    [230, 230],
-    [`P1`, 1],
-    [`P-1`, 2],
-    [`P2`, 3],
-    [`Pnma`, 62],
-    [`Fm-3m`, 225],
-    [`Ia-3d`, 230],
-    [0, null],
-    [-1, null],
-    [231, null],
-    [1000, null],
-    [62.5, null],
-    [`invalid`, null],
-    [`P999`, null],
-    [``, null],
-    [`146`, 146],
-    [`146:R`, 146], // setting-qualified numeric strings keep the leading integer
-    [`62.0`, 62],
-    [`231:R`, null],
-  ])(`should return %s for %s`, (input, expected) => {
-    expect(spg.normalize_spacegroup(input)).toBe(expected)
+    0,
+    -1,
+    231,
+    1000,
+    62.5,
+    `invalid`,
+    `P999`,
+    ``,
+    `0`,
+    `231`,
+    `-1`,
+    `231:R`,
+    // Prototype members: a plain-object lookup inherits Object.prototype, so these passed
+    // the `!== undefined` test and came back as a function or object where the signature
+    // promises `number | null`, then slipped past `num == null` checks downstream.
+    `constructor`,
+    `toString`,
+    `__proto__`,
+    `valueOf`,
+    `hasOwnProperty`,
+  ])(`returns null for invalid input %j`, (invalid) => {
+    expect(spg.normalize_spacegroup(invalid)).toBeNull()
+    expect(spg.spacegroup_to_crystal_sys(invalid)).toBeNull()
+    expect(spg.spacegroup_to_lattice_system(invalid)).toBeNull()
   })
 })
 
+// Numbers and canonical symbols are covered by the all-230 round trip below
+test.each([
+  [`146`, 146],
+  [`146:R`, 146], // setting-qualified numeric strings keep the leading integer
+  [`62.0`, 62],
+])(`normalize_spacegroup parses numeric string %j as %i`, (input, expected) => {
+  expect(spg.normalize_spacegroup(input)).toBe(expected)
+})
+
+// Canonical symbols are pinned by SPACEGROUP_NUM_TO_SYMBOL plus the all-230 round trip
 describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
   test.each([
-    [`P1`, 1],
-    [`P-1`, 2],
-    [`P2`, 3],
     [`P121`, 3],
     [`P2_1`, 4],
     [`P12_11`, 4],
-    [`Pnma`, 62],
-    [`Fm-3m`, 225],
-    [`Ia-3d`, 230],
     [`P2/m`, 10],
     [`P6_3/mmc`, 194],
     [`I4/mmm`, 139],
@@ -132,17 +92,12 @@ describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {
   test.each([
     [1, `P1`],
     [2, `P-1`],
-    [3, [`P2`, `P121`]],
+    [3, `P2`], // first-listed alias wins over P121
     [62, `Pnma`],
     [225, `Fm-3m`],
     [230, `Ia-3d`],
   ])(`should map %i to %s`, (number, expected) => {
-    const symbol = spg.SPACEGROUP_NUM_TO_SYMBOL[number]
-    if (Array.isArray(expected)) {
-      expect(expected).toContain(symbol)
-    } else {
-      expect(symbol).toBe(expected)
-    }
+    expect(spg.SPACEGROUP_NUM_TO_SYMBOL[number]).toBe(expected)
   })
 })
 
@@ -212,13 +167,3 @@ describe(`spacegroup_sunburst_data`, () => {
     expect(n_leaves).toBe(230)
   })
 })
-
-// A plain-object lookup inherits Object.prototype, so these passed the `!== undefined` test and
-// came back as a function or object where the signature promises `number | null`. Downstream
-// they slipped past `num == null` checks and vanished without reaching the invalid-entry count.
-test.each([`constructor`, `toString`, `__proto__`, `valueOf`, `hasOwnProperty`])(
-  `rejects the prototype member %s`,
-  (key) => {
-    expect(spg.normalize_spacegroup(key)).toBeNull()
-  },
-)

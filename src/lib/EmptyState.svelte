@@ -23,7 +23,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* safe: content taller than a short viewer scrolls instead of clipping at both ends */
+    justify-content: safe center;
+    overflow-y: auto;
     flex: 1;
     width: 100%;
     height: 100%;

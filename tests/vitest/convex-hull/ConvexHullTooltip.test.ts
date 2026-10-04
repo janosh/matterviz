@@ -1,4 +1,3 @@
-// Tests for ConvexHullTooltip component
 import ConvexHullTooltip from '#lib/convex-hull/ConvexHullTooltip.svelte'
 import type { PolymorphStats } from '#lib/convex-hull/helpers.js'
 import type { ConvexHullTooltipProp } from '#lib/convex-hull/index.js'
@@ -49,28 +48,13 @@ describe(`ConvexHullTooltip`, () => {
   )
 
   test.each([
-    {
-      e_above_hull: undefined,
-      e_form_per_atom: -0.5,
-      omitted: `above hull`,
-      shown: `Eform`,
-    },
-    {
-      e_above_hull: 0.1,
-      e_form_per_atom: undefined,
-      omitted: `Eform`,
-      shown: `above hull`,
-    },
-    { e_above_hull: null, e_form_per_atom: null, omitted: `eV/atom`, shown: null },
-  ])(
-    `omits energy lines when null/undefined`,
-    ({ e_above_hull, e_form_per_atom, omitted, shown }) => {
-      mount_tooltip({
-        entry: mock_entry({
-          e_above_hull: e_above_hull as number | undefined,
-          e_form_per_atom: e_form_per_atom as number | undefined,
-        }),
-      })
+    [undefined, -0.5, `above hull`, `Eform`],
+    [0.1, undefined, `Eform`, `above hull`],
+    [null, null, `eV/atom`, null],
+  ] as [number | undefined, number | undefined, string, string | null][])(
+    `omits energy lines when null/undefined (E_hull=%s, E_form=%s)`,
+    (e_above_hull, e_form_per_atom, omitted, shown) => {
+      mount_tooltip({ entry: mock_entry({ e_above_hull, e_form_per_atom }) })
       const text = document.body.textContent ?? ``
       expect(text).not.toContain(omitted)
       if (shown) expect(text).toContain(shown)
@@ -151,13 +135,9 @@ describe(`ConvexHullTooltip`, () => {
     })
 
     test.each([
-      { desc: `unary entry`, composition: { Fe: 1 }, show_fractional: true },
-      {
-        desc: `show_fractional=false`,
-        composition: { Fe: 1, O: 2 },
-        show_fractional: false,
-      },
-    ])(`hides fractional for $desc`, ({ composition, show_fractional }) => {
+      [`unary entry`, { Fe: 1 }, true],
+      [`show_fractional=false`, { Fe: 1, O: 2 }, false],
+    ])(`hides fractional for %s`, (_desc, composition, show_fractional) => {
       mount_tooltip({ entry: mock_entry({ composition }), show_fractional })
       expect(document.body.textContent).not.toContain(`Fractional:`)
     })
@@ -222,32 +202,15 @@ describe(`ConvexHullTooltip`, () => {
   })
 
   describe(`custom tooltip config`, () => {
+    // strings render as (sanitized) HTML, functions receive the entry
     test.each([
-      { key: `prefix`, html: `<em>Custom</em>`, class_name: `.tooltip-prefix` },
-      { key: `suffix`, html: `<strong>Custom</strong>`, class_name: `.tooltip-suffix` },
-    ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
-      mount_tooltip({ tooltip: { [key]: html } })
-      expect(document.body.innerHTML).toContain(html)
-      expect(doc_query(class_name)).not.toBeNull()
-    })
-
-    test.each([
-      {
-        key: `prefix`,
-        fn: (entry: PhaseData) => `ID: ${entry.entry_id}`,
-        expected: `ID: mp-999`,
-      },
-      {
-        key: `suffix`,
-        fn: (entry: PhaseData) => `E: ${entry.e_above_hull}`,
-        expected: `E: 0.1`,
-      },
-    ])(`renders $key as function`, ({ key, fn: callback, expected }) => {
-      mount_tooltip({
-        entry: mock_entry({ entry_id: `mp-999` }),
-        tooltip: { [key]: callback },
-      })
-      expect(document.body.textContent).toContain(expected)
+      [`prefix`, `<em>Custom</em>`, `<em>Custom</em>`],
+      [`suffix`, `<strong>Custom</strong>`, `<strong>Custom</strong>`],
+      [`prefix`, (entry: PhaseData) => `ID: ${entry.entry_id}`, `ID: mp-999`],
+      [`suffix`, (entry: PhaseData) => `E: ${entry.e_above_hull}`, `E: 0.1`],
+    ] as const)(`renders %s from %s`, (key, value, expected) => {
+      mount_tooltip({ entry: mock_entry({ entry_id: `mp-999` }), tooltip: { [key]: value } })
+      expect(doc_query(`.tooltip-${key}`).innerHTML).toBe(expected)
     })
 
     test(`prefix appears before content, suffix after`, () => {

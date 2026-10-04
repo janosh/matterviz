@@ -44,7 +44,7 @@ runs:
         # explicitly where they need it, so skip the ~20 s svelte-package run on install.
         MATTERVIZ_SKIP_PREPARE: 1
       run: |
-        # Match Hive's setup: Git dependencies need prepare; generate the allowlist in CI.
+        # Git dependencies need prepare; generate the allowlist in CI.
         printf 'allowBuilds:\n  svelte-widgets: true\n' > pnpm-workspace.yaml
         # Registry packages ship their generated artifacts, so their prepare scripts do not
         # need to run. Keep their skipped builds non-fatal.

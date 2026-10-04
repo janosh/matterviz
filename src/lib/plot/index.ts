@@ -28,6 +28,7 @@ export {
   PlotControls,
   PlotLegend,
   PlotTooltip,
+  PopoverSelect,
 } from './core/components'
 // Types every chart takes as props: series, axes, ticks, scales, styles, handlers,
 // reference lines, fills and 3D variants.

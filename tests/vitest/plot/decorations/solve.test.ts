@@ -21,12 +21,10 @@ const base_pad = { t: 20, b: 40, l: 50, r: 20 }
 const width = 550
 const height = 400
 
-const dense_obstacles = Array.from({ length: 21 }, (_row, x_idx) =>
-  Array.from({ length: 21 }, (_col, y_idx) => ({
-    x: x_idx / 20,
-    y: y_idx / 20,
-  })),
-).flat()
+const grid_steps = Array.from({ length: 21 }, (_, idx) => idx / 20)
+const dense_obstacles = grid_steps.flatMap((x_pos) =>
+  grid_steps.map((y_pos) => ({ x: x_pos, y: y_pos })),
+)
 
 const placement_rect = ({ x: coord_x, y: coord_y, footprint }: DecorationPlacement): Rect => ({
   x: coord_x,
@@ -64,13 +62,7 @@ const reference_item = (
 const scene_for = (
   items: readonly DecorationItem[],
   obstacles_norm: DecorationScene[`obstacles_norm`] = [],
-): DecorationScene => ({
-  width,
-  height,
-  base_pad,
-  obstacles_norm,
-  items,
-})
+): DecorationScene => ({ width, height, base_pad, obstacles_norm, items })
 
 describe(`decoration solver`, () => {
   test(`matches direct interior placement`, () => {
@@ -168,13 +160,10 @@ describe(`decoration solver`, () => {
         { id: `free-note`, kind: `free-annotation`, footprint: { width: 90, height: 40 } },
         reference_item(
           `reference-note`,
-          [
-            [120, 70],
-            [310, 100],
-            [310, 250],
-            [520, 320],
-            [120, 320],
-          ].map(([coord_x, coord_y]) => reference_candidate(coord_x, coord_y, `center`)),
+          // oxfmt-ignore
+          [[120, 70], [310, 100], [310, 250], [520, 320], [120, 320]].map(([coord_x, coord_y]) =>
+            reference_candidate(coord_x, coord_y, `center`),
+          ),
         ),
       ],
     }
@@ -210,32 +199,61 @@ describe(`decoration solver`, () => {
     expect_no_overlaps(placement_rects)
   })
 
+  const right_side_items: DecorationItem[] = [
+    { id: `legend`, kind: `legend`, footprint: { width: 80, height: 200 } },
+    { id: `colorbar`, kind: `colorbar`, footprint: { width: 56, height: 150 } },
+  ]
   test(`resolves the existing right-side colorbar and legend conflict`, () => {
-    const solution = solve_decorations(
-      scene_for(
-        [
-          { id: `legend`, kind: `legend`, footprint: { width: 80, height: 200 } },
-          {
-            id: `colorbar`,
-            kind: `colorbar`,
-            footprint: { width: 56, height: 150 },
-          },
-        ],
-        dense_obstacles,
-      ),
-    )
-    const legend = solution.placements.find(({ id: identifier }) => identifier === `legend`)
-    const colorbar = solution.placements.find(
-      ({ id: identifier }) => identifier === `colorbar`,
-    )
-    expect(legend).toMatchObject({ location: `outside`, side: `bottom` })
-    expect(colorbar).toMatchObject({ location: `outside`, side: `right` })
+    const solution = solve_decorations(scene_for(right_side_items, dense_obstacles))
+    expect(solution.placements).toMatchObject([
+      { id: `legend`, location: `outside`, side: `bottom` },
+      { id: `colorbar`, location: `outside`, side: `right` },
+    ])
     expect(solution.pad).toEqual({
       ...base_pad,
       b: base_pad.b + 200 + 8,
       r: base_pad.r + 56 + 8,
     })
   })
+
+  // A short panel with a legend too wide for the right margin: a bottom band left 28 px
+  test.each([
+    [212, `interior`],
+    [400, `outside`],
+  ])(`a tall legend in a %i px frame goes %s`, (frame_height, location) => {
+    const legend = {
+      id: `legend`,
+      kind: `legend`,
+      footprint: { width: 250, height: 106 },
+    } as const
+    const scene = { ...scene_for([legend], dense_obstacles), height: frame_height }
+    const [placement] = solve_decorations(scene).placements
+    expect(placement.location).toBe(location)
+  })
+
+  // Measured inside, a legend is capped at the plot height; as a bottom strip at half the
+  // frame. Both measurements of the same legend must give the same placement.
+  test.each([480, 300])(
+    `a too-wide legend measured %i px tall goes below a 600 px frame`,
+    (legend_height) => {
+      const legend = {
+        id: `legend`,
+        kind: `legend`,
+        footprint: { width: 300, height: legend_height },
+      } as const
+      const scene = { ...scene_for([legend], dense_obstacles), width: 360, height: 600 }
+      const {
+        placements: [placement],
+        pad,
+      } = solve_decorations(scene)
+      expect(placement).toMatchObject({
+        location: `outside`,
+        side: `bottom`,
+        y: 600 - 300 - 8,
+      })
+      expect(pad.b).toBe(base_pad.b + 300 + 8)
+    },
+  )
 
   test(`returns a stable auto-track suggestion for legends`, () => {
     const auto_tracks: LegendAutoTrackConfig = {
@@ -260,25 +278,15 @@ describe(`decoration solver`, () => {
   })
 
   test(`keeps crowding decisions independent of other decorations`, () => {
-    const standard_items: DecorationItem[] = [
-      { id: `legend`, kind: `legend`, footprint: { width: 80, height: 200 } },
-      { id: `colorbar`, kind: `colorbar`, footprint: { width: 56, height: 150 } },
-    ]
-    const standard = solve_decorations(scene_for(standard_items, dense_obstacles))
+    const standard = solve_decorations(scene_for(right_side_items, dense_obstacles))
+    const note: DecorationItem = {
+      id: `note`,
+      kind: `free-annotation`,
+      footprint: { width: 400, height: 100 },
+    }
     const reference = reference_item(`reference`, [reference_candidate(200, 100)])
     const with_annotation = solve_decorations(
-      scene_for(
-        [
-          ...standard_items,
-          {
-            id: `note`,
-            kind: `free-annotation`,
-            footprint: { width: 400, height: 100 },
-          },
-          reference,
-        ],
-        dense_obstacles,
-      ),
+      scene_for([...right_side_items, note, reference], dense_obstacles),
     )
     expect(with_annotation.pad).toEqual(standard.pad)
     expect(with_annotation.placements.slice(0, 2)).toEqual(standard.placements)
@@ -315,9 +323,7 @@ describe(`decoration solver`, () => {
     const solution = solve_decorations(
       scene_for([reference_item(`reference`, [colliding_candidate, clear_candidate]), note]),
     )
-    const reference = solution.placements.find(
-      ({ id: identifier }) => identifier === `reference`,
-    )
+    const reference = solution.placements.find((placement) => placement.id === `reference`)
     expect(reference?.reference_annotation).toEqual(clear_candidate)
   })
 
@@ -342,7 +348,7 @@ describe(`decoration solver`, () => {
         reference_item(`z-pinned`, [shared_candidate], true),
       ]),
     )
-    expect(solution.placements.map(({ id: identifier }) => identifier)).toEqual([
+    expect(solution.placements.map((placement) => placement.id)).toEqual([
       `z-pinned`,
       `a-auto`,
     ])

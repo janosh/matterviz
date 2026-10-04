@@ -7,17 +7,12 @@
 // system vibrates. Longer lags have fewer origins, so `n_origins` comes back per lag and
 // callers are expected to show that the tail is statistically weak.
 //
-// The origin average is taken with the Wiener–Khinchin theorem rather than a direct
-// lags x origins x atoms loop: the sum over origins of v(t) . v(t + lag) is the
-// autocorrelation of each velocity component, i.e. the inverse transform of its power
-// spectrum. Zero-padding every component to >= n_frames + max_lag makes the circular
-// correlation linear at every reported lag, so the result is the exact origin sum up to
-// round-off: measured against the direct Welford loop at 2000 frames x 64 atoms (damped
-// oscillators + noise, stored and central-difference velocities), max |Δ| = 8e-16 on VACF
-// values of magnitude 0.17 and 8.5e-14 on VDOS values of magnitude 19 (both <= 5e-15 of the
-// curve maximum, i.e. a few tens of f64 eps), in 14 ms against 315 ms. The cost scales as
-// n log n instead of n^2 in the frame count, and no longer needs an origin-thinning budget:
-// 2000 atoms x 2000 frames run in 0.27 s.
+// The origin average uses the Wiener–Khinchin theorem instead of a lags x origins x atoms
+// loop: the sum over origins of v(t) . v(t + lag) is each velocity component's
+// autocorrelation, the inverse transform of its power spectrum. Zero-padding to
+// >= n_frames + max_lag makes the circular correlation linear at every reported lag, so the
+// result is the exact origin sum up to round-off (a few tens of f64 eps against the direct
+// loop) at n log n instead of n^2 cost in the frame count.
 import { correlation_window, cosine_spectrum_length, even_cosine_spectrum } from '#lib/fft.js'
 import {
   frequency_unit_label,

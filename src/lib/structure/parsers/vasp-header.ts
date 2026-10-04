@@ -3,16 +3,20 @@
 // Callers supply either an array or text cursor and adapt the result to their error contract.
 import type { ElementSymbol } from '#lib/element/index.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
+import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
-  FALLBACK_ELEMENTS,
   parse_coordinate,
   parse_float_token,
-  validate_element_symbol,
+  strip_potcar_suffix,
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
 import { parse_leading_num, to_error } from '#lib/utils.js'
+
+// A VASP 4 header has no symbol line (species come from the POTCAR), so outside strict mode
+// its species are drawn as placeholders (H to Ne), with a warning naming them
+const VASP4_PLACEHOLDER_ELEMENTS = ELEM_SYMBOLS.slice(0, 10)
 
 // === Line cursors ===
 
@@ -187,7 +191,9 @@ export function parse_vasp_header(
       }
       for (let offset = 0; offset < symbol_lines; offset++) {
         const symbol_line = cursor.peek(offset)
-        if (symbol_line !== undefined) raw_symbols.push(...split_tokens(symbol_line))
+        // a blank symbol line names no species (like VASP 4), not one empty symbol
+        if (symbol_line !== undefined)
+          raw_symbols.push(...split_tokens(symbol_line).filter(Boolean))
         const count_line = cursor.peek(symbol_lines + offset)
         if (count_line !== undefined) counts.push(...split_tokens(count_line).map(Number))
       }
@@ -203,17 +209,21 @@ export function parse_vasp_header(
       if (strict_species) {
         return fail(`${format}: element symbols are missing (VASP 4 header)`)
       }
-      elements = counts.map((_count, idx) => FALLBACK_ELEMENTS[idx % FALLBACK_ELEMENTS.length])
+      elements = counts.map(
+        (_count, idx) => VASP4_PLACEHOLDER_ELEMENTS[idx % VASP4_PLACEHOLDER_ELEMENTS.length],
+      )
       console.warn(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
-    } else if (strict_species) {
-      // Keep the invalid value in the error, including an empty symbol.
-      const invalid = raw_symbols.find((symbol) => !is_elem_symbol(symbol))
-      if (invalid !== undefined) return fail(`Invalid element symbol in ${format}: ${invalid}`)
-      elements = raw_symbols as ElementSymbol[]
     } else {
-      elements = raw_symbols.map((symbol, idx) => validate_element_symbol(symbol, idx))
+      // POTCAR suffixes (`Si_GW`, `Fe/abc123` in VASP 6 headers) are dropped; a symbol naming no
+      // element fails rather than being drawn as H, He, …, and the error keeps the raw value
+      const cleaned = raw_symbols.map(strip_potcar_suffix)
+      const invalid_idx = cleaned.findIndex((symbol) => !is_elem_symbol(symbol))
+      if (invalid_idx !== -1) {
+        return fail(`Invalid element symbol in ${format}: ${raw_symbols[invalid_idx]}`)
+      }
+      elements = cleaned as ElementSymbol[]
     }
 
     const count_requirement = `finite ${strict_species ? `positive` : `non-negative`} integers`

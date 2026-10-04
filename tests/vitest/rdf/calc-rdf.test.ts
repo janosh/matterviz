@@ -212,26 +212,18 @@ describe(`calculate_rdf`, () => {
   })
 
   test.each([
-    [`1D chain`, [true, false, false] as Pbc, 2],
-    [`2D square net`, [true, true, false] as Pbc, 4],
-    [`3D`, [true, true, true] as Pbc, 6],
-  ])(`%s: pbc %j images only along periodic axes`, (_name, pbc, first_shell) => {
+    [`1D chain`, [true, false, false] as Pbc, undefined, 2],
+    [`2D square net`, [true, true, false] as Pbc, undefined, 4],
+    [`3D`, [true, true, true] as Pbc, undefined, 6],
+    // without a pbc option the lattice's own flags decide; an explicit option overrides them
+    [`open lattice`, undefined, [false, false, false] as Pbc, 0],
+    [`open lattice, forced`, [true, true, true] as Pbc, [false, false, false] as Pbc, 6],
+  ])(`%s: pbc %j images only along periodic axes`, (_name, pbc, lattice_pbc, first_shell) => {
     const a_len = 5
-    const pattern = calculate_rdf(make_crystal(a_len, [[`Si`, [0, 0, 0]]]), {
-      cutoff: 9,
-      n_bins: 90,
-      pbc,
-    })
+    const crystal = make_crystal(a_len, [[`Si`, [0, 0, 0]]], { pbc: lattice_pbc })
+    const pattern = calculate_rdf(crystal, { cutoff: 9, n_bins: 90, pbc })
     expect(shell_coordination(pattern, 1 / a_len ** 3, 4.5, 5.5)).toBeCloseTo(first_shell, 9)
-  })
-
-  test(`pbc defaults to the lattice's own flags`, () => {
-    const open = make_crystal(5, [[`Si`, [0, 0, 0]]], { pbc: [false, false, false] })
-    const opts = { cutoff: 8, n_bins: 40 }
-    expect(calculate_rdf(open, opts).g_r).toEqual(Array(opts.n_bins).fill(0))
-    expect(
-      calculate_rdf(open, { ...opts, pbc: [true, true, true] }).g_r.some((val) => val > 0),
-    ).toBe(true)
+    if (!first_shell) expect(pattern.g_r).toEqual(Array(90).fill(0))
   })
 
   test(`distances are binned over the half-open range [0, cutoff)`, () => {

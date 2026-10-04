@@ -1,7 +1,7 @@
 import { NumberRangeInput } from '#lib/layout/index.js'
 import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, set_input } from '../setup'
 
 describe(`NumberRangeInput`, () => {
   test(`forwards props, binds finite values, and rejects empty updates`, async () => {
@@ -25,16 +25,14 @@ describe(`NumberRangeInput`, () => {
       [number, 0.8],
       [range, 0.3],
     ] as const) {
-      input.value = `${value}`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(input, `${value}`)
       await tick()
       expect(state.value).toBe(value)
       expect(number.valueAsNumber).toBe(value)
       expect(range.valueAsNumber).toBe(value)
     }
 
-    number.value = ``
-    number.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(number, ``)
     await tick()
     expect(state.value).toBe(0.3)
     expect(range.valueAsNumber).toBe(0.3)

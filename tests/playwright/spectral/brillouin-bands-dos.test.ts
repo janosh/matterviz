@@ -109,15 +109,22 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect(controls_container.locator(`button.controls-toggle`)).toBeVisible()
   })
 
-  test(`renders multiple structures with legend`, async ({ page }) => {
+  test(`renders multiple structures with legend and children snippet`, async ({ page }) => {
+    await page.locator(`#multiple-structures`).scrollIntoViewIfNeeded()
     const container = page.locator(`[data-testid="bz-bands-dos-multiple"]`)
-    // There may be multiple legends (Bands and DOS both show legends for multiple series)
-    // Just check that at least one legend exists and has the expected content
+    // Bands and DOS may each show a legend for multiple series
     const legend = container.locator(`.legend`).first()
-
     await expect(legend).toBeVisible()
     expect(await legend.locator(`.legend-item`).count()).toBeGreaterThanOrEqual(2)
     expect(await legend.textContent()).toContain(`DFT`)
+
+    const custom_overlay = container.locator(`.custom-overlay`)
+    await expect(custom_overlay).toBeVisible()
+    await expect(custom_overlay).toHaveText(`Custom Overlay`)
+    // all three panels still render alongside the child
+    await expect(container.locator(`canvas`).first()).toBeVisible()
+    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
+    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
 
   test(`BZ rotates with mouse drag`, async ({ page }) => {
@@ -136,8 +143,13 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect_canvas_changed(bz_canvas, initial, 5000)
   })
 
-  test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
+  test(`desktop panels share y-axis ticks; zoom and reset propagate from either panel`, async ({
+    page,
+  }) => {
     const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
+    // plot control panes can extend beyond their grid cells
+    await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
+    await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
 
     // Equal outer panel heights are insufficient: the clipped drawable regions
     // must use the same top offset and height for matching y coordinates.
@@ -151,18 +163,8 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       }
     }).toPass({ timeout: 30_000 })
     await expect_synced_y_ticks(bands_plot, dos_plot)
-  })
 
-  test(`plot control panes can extend beyond their grid cells`, async ({ page }) => {
-    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
-    await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
-    await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
-  })
-
-  test(`desktop y-axis zoom and reset propagate from either panel`, async ({ page }) => {
-    const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
     const bands_area = await measure_plot_area(bands_plot)
-    await expect_synced_y_ticks(bands_plot, dos_plot)
     const initial_bands_ticks = await numeric_y_ticks(bands_plot)
     await drag_plot_area(page, bands_area)
     await expect.poll(() => numeric_y_ticks(bands_plot)).not.toEqual(initial_bands_ticks)
@@ -261,24 +263,5 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       // Reference line should be added on hover (in addition to any existing fermi level lines)
       expect(current_dashed_count).toBeGreaterThan(initial_dashed_count)
     }).toPass({ timeout: 3000 })
-  })
-
-  test(`renders children snippet content`, async ({ page }) => {
-    // Navigate to section with children (multiple-structures)
-    await page.locator(`#multiple-structures`).scrollIntoViewIfNeeded()
-
-    // Find the container with children (multiple structures example)
-    const container = page.locator(`[data-testid="bz-bands-dos-multiple"]`)
-    await expect(container).toBeVisible()
-
-    // Verify the custom overlay child element is rendered
-    const custom_overlay = container.locator(`.custom-overlay`)
-    await expect(custom_overlay).toBeVisible()
-    await expect(custom_overlay).toHaveText(`Custom Overlay`)
-
-    // Verify all three panels are still working
-    await expect(container.locator(`canvas`).first()).toBeVisible()
-    await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
-    await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
   })
 })

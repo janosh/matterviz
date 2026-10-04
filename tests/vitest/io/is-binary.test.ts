@@ -141,12 +141,9 @@ describe(`magic_head`, () => {
     [2, 2],
     [8, 8],
     [64, 8],
-  ])(`%i-byte buffer yields %i leading bytes`, (size, expected) => {
-    expect(magic_head(new ArrayBuffer(size))).toHaveLength(expected)
-  })
-
-  test(`keeps gzip detectable in a buffer shorter than the 8-byte window`, () => {
-    const head = magic_head(to_buffer([0x1f, 0x8b]))
+  ])(`%i-byte gzip buffer yields %i leading bytes`, (size, expected) => {
+    const head = magic_head(to_buffer([...GZIP, ...Array(size - 2).fill(0)]))
+    expect(head).toHaveLength(expected)
     expect(has_gzip_magic(head)).toBe(true)
   })
 })

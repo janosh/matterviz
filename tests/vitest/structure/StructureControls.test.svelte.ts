@@ -1,4 +1,5 @@
 import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+import { theme_state } from '#lib/state.svelte.js'
 import {
   create_structure_view_state,
   load_structure_view_state,
@@ -27,6 +28,7 @@ import {
   expect_labelled_settings_grid,
   query,
   trigger_resize_observer,
+  set_input,
 } from '../setup'
 import {
   cubic_matrix,
@@ -36,24 +38,30 @@ import {
   simple_structure,
 } from '../test-fixtures'
 
-const mount_controls = async (
-  props: ComponentProps<typeof StructureControls>,
-): Promise<HTMLElement> => {
+type ControlsProps = Omit<ComponentProps<typeof StructureControls>, `scene_props`> & {
+  scene_props?: Partial<StructureSettings>
+}
+// scene_props is edited in place, so tests that don't supply one still get a reactive object.
+// Object.assign (not a spread) keeps bind_props getters live.
+const mount_controls = async (props: ControlsProps): Promise<HTMLElement> => {
   const target = document.createElement(`div`)
   document.body.append(target)
-  mount(StructureControls, { target, props })
+  const fallback_scene_props = $state<Partial<StructureSettings>>({})
+  const scene_props = props.scene_props ?? fallback_scene_props
+  mount(StructureControls, { target, props: Object.assign(props, { scene_props }) })
   await tick()
   return target
 }
 const mount_bound_controls = (
   state: Record<string, unknown>,
-  props: ComponentProps<typeof StructureControls> = {},
+  props: ControlsProps = {},
 ): Promise<HTMLElement> =>
   mount_controls(
     bind_props({ structure: simple_structure, controls_open: true, ...props }, state),
   )
-const raw_scene_state = (initial: Partial<StructureSettings>) => {
-  let scene_props = $state.raw(initial)
+// A plain accessor object (not a proxy) so bind_props can add getters beside scene_props
+const scene_state = (initial: Partial<StructureSettings>) => {
+  let scene_props = $state(initial)
   return {
     get scene_props() {
       return scene_props
@@ -62,10 +70,6 @@ const raw_scene_state = (initial: Partial<StructureSettings>) => {
       scene_props = value
     },
   }
-}
-const set_input = (input: HTMLInputElement, value: string): void => {
-  input.value = value
-  input.dispatchEvent(new Event(`input`, { bubbles: true }))
 }
 const find_label = (root: ParentNode, text: string, exact = false) =>
   [...root.querySelectorAll(`label`)].find((label) =>
@@ -135,59 +139,21 @@ describe(`StructureControls inputs`, () => {
   })
 
   // Cell styling/tiling needs a lattice; image/vector controls and reduction need periodicity.
+  const h_box = (pbc: [boolean, boolean, boolean]) =>
+    make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc })
+  const with_matrix = (matrix: Matrix3x3): AnyStructure => ({
+    ...simple_structure,
+    lattice: { ...make_crystal(1, []).lattice, matrix },
+  })
+  // oxfmt-ignore
   test.each<[string, AnyStructure | undefined, boolean, boolean]>([
-    [
-      `structure without lattice`,
-      { id: `test_no_lattice`, sites: simple_structure.sites },
-      false,
-      false,
-    ],
+    [`structure without lattice`, { id: `test_no_lattice`, sites: simple_structure.sites }, false, false],
     [`undefined structure`, undefined, false, false],
-    [
-      `aperiodic lattice`,
-      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [false, false, false] }),
-      true,
-      false,
-    ],
+    [`aperiodic lattice`, h_box([false, false, false]), true, false],
     [`periodic crystal`, simple_structure, true, true],
-    [
-      `slab`,
-      make_crystal(cubic_matrix(10), [[`H`, [0, 0, 0]]], { pbc: [true, true, false] }),
-      true,
-      true,
-    ],
-    [
-      `singular cell`,
-      {
-        ...simple_structure,
-        lattice: {
-          ...make_crystal(1, []).lattice,
-          matrix: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 0],
-          ],
-        },
-      },
-      true,
-      false,
-    ],
-    [
-      `nonfinite cell`,
-      {
-        ...simple_structure,
-        lattice: {
-          ...make_crystal(1, []).lattice,
-          matrix: [
-            [NaN, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-        },
-      },
-      false,
-      false,
-    ],
+    [`slab`, h_box([true, true, false]), true, true],
+    [`singular cell`, with_matrix([[1, 0, 0], [0, 1, 0], [0, 0, 0]]), true, false],
+    [`nonfinite cell`, with_matrix([[NaN, 0, 0], [0, 1, 0], [0, 0, 1]]), false, false],
   ])(`lattice-dependent controls for %s`, async (_name, structure, cell_rows, reducible) => {
     await mount_controls({ structure, controls_open: true })
     expect(document.querySelectorAll(`input[placeholder="1x1x1"]`).length > 0).toBe(cell_rows)
@@ -216,8 +182,7 @@ describe(`StructureControls inputs`, () => {
     })
     const miller_input = doc_query<HTMLInputElement>(`.zone-axis .miller-input input`)
     return async (typed: string) => {
-      miller_input.value = typed
-      miller_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(miller_input, typed)
       await tick()
     }
   }
@@ -247,25 +212,15 @@ describe(`StructureControls inputs`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
-    {
-      site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`,
-      expected_hex_color: `#ff0000`,
-      expected_opacity: 0.6,
-    },
-    {
-      site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`,
-      expected_hex_color: `#00ff00`,
-      expected_opacity: 1,
-    },
+    { site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`, expected_hex_color: `#ff0000`, expected_opacity: 0.6 },
+    { site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`, expected_hex_color: `#00ff00`, expected_opacity: 1 },
   ])(
     `parses and resets site label background from $site_label_bg_color`,
     async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
-      await mount_controls({
-        structure: simple_structure,
-        controls_open: true,
-        scene_props: { show_site_labels: true, site_label_bg_color },
-      })
+      const scene_props = $state({ show_site_labels: true, site_label_bg_color })
+      await mount_controls({ structure: simple_structure, controls_open: true, scene_props })
 
       const bg_color_input = doc_query<HTMLInputElement>(
         `input[aria-label="Site label background color hex"]`,
@@ -351,7 +306,7 @@ describe(`StructureControls schema rows`, () => {
       [`bond_color`, DEFAULTS.structure.bond_color],
       [`cell_edge_color`, `#123456`],
       [`displacement_arrow_color`, DEFAULTS.structure.displacement_arrow_color],
-      [`site_label_color`, DEFAULTS.structure.site_label_color],
+      [`site_label_color`, `#808080`], // the theme-following default shows a neutral swatch
     ] as const
     for (const [key, expected] of swatches) {
       const swatch = row_of(key).querySelector<HTMLInputElement>(`input[type="color"]`)
@@ -418,7 +373,7 @@ describe(`StructureControls schema rows`, () => {
       multi_view: false,
     })
     const state = bind_props(
-      raw_scene_state({
+      scene_state({
         ...DEFAULTS.structure,
         show_bonds: `always` as const,
         show_polyhedra: `always` as const,
@@ -549,7 +504,7 @@ describe(`StructureControls schema rows`, () => {
   })
 
   test(`per-axis inputs replace one component and leave the others`, async () => {
-    const state = raw_scene_state({
+    const state = scene_state({
       ...DEFAULTS.structure,
       show_site_labels: true,
       site_label_offset: [0.1, 0.2, 0.3] as Vec3,
@@ -700,7 +655,7 @@ const mount_persisted_controls = async (
     multi_view: false,
   })
   const initial_scene = { ...DEFAULTS.structure }
-  const state = bind_props(raw_scene_state(initial_scene), toggles)
+  const state = bind_props(scene_state(initial_scene), toggles)
   const target = await mount_bound_controls(state, {
     persist_settings: true,
     structure: property_structure,
@@ -820,12 +775,8 @@ describe(`StructureControls reactive props`, () => {
     const before_reset = state.scene_props
     doc_query<HTMLButtonElement>(`button.reset-all-settings`).click()
     await tick()
-    expect(state.scene_props).not.toBe(before_reset)
-    expect(before_reset).toMatchObject({
-      atom_radius: 1.35,
-      ambient_light: 2.5,
-      vector_configs: { force: { visible: false, color: `#ff0000`, scale: 4 } },
-    })
+    // reset edits the caller's settings object in place rather than swapping in a copy
+    expect(state.scene_props).toBe(before_reset)
     expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
     expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
     expect(state.scene_props.vector_configs).toEqual({})
@@ -860,7 +811,7 @@ describe(`StructureControls reactive props`, () => {
   test(`copies and imports viewer settings through the visible actions`, async () => {
     const initial_scene = { ...DEFAULTS.structure }
     const toggles = $state({ atom_color_config: DEFAULT_ATOM_COLOR_CONFIG })
-    const state = bind_props(raw_scene_state(initial_scene), toggles)
+    const state = bind_props(scene_state(initial_scene), toggles)
     const target = await mount_bound_controls(state, { persist_settings: false })
     vi.mocked(navigator.clipboard.writeText).mockClear()
     doc_query<HTMLButtonElement>(`button[aria-label="Copy viewer settings JSON"]`).click()
@@ -973,7 +924,7 @@ describe(`StructureControls reactive props`, () => {
   // in that string to live, so that one value is remembered here.
   test(`site label colors round-trip through scene props`, async () => {
     const bg_color = `color-mix(in srgb, #000000 20%, transparent)`
-    const state = raw_scene_state({
+    const state = scene_state({
       show_site_labels: true,
       site_label_color: `#111111`,
       site_label_bg_color: bg_color,
@@ -1015,6 +966,30 @@ describe(`StructureControls reactive props`, () => {
     )
   })
 
+  // An empty label color follows the theme's text color, so the swatch shows that (and
+  // re-resolves when the theme flips) without writing it back into the setting.
+  test(`empty site label color shows the theme text color`, async () => {
+    const root_style = document.documentElement.style
+    const initial_mode = theme_state.mode
+    try {
+      root_style.setProperty(`--text-color`, `#13579b`)
+      const state = scene_state({ show_site_labels: true, site_label_color: `` })
+      await mount_bound_controls(state)
+      const label_color_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label color hex"]`,
+      )
+      expect(label_color_input.value).toBe(`#13579b`)
+      root_style.setProperty(`--text-color`, `#eeeeee`)
+      theme_state.mode = initial_mode === `dark` ? `light` : `dark`
+      await tick()
+      expect(label_color_input.value).toBe(`#eeeeee`)
+      expect(state.scene_props.site_label_color).toBe(``)
+    } finally {
+      root_style.removeProperty(`--text-color`)
+      theme_state.mode = initial_mode
+    }
+  })
+
   test(`updates coloring when the selected property changes or disappears`, async () => {
     const state = $state<{ atom_color_config: AtomColorConfig; structure: AnyStructure }>({
       structure: property_structure,
@@ -1044,7 +1019,7 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`polyhedra center checkbox tracks configured intent, not just render state`, async () => {
-    const state = raw_scene_state({
+    const state = scene_state({
       show_polyhedra: `crystals` as const,
       polyhedra_included_elements: [`O`],
       polyhedra_excluded_elements: [] as string[],
@@ -1143,21 +1118,14 @@ describe(`StructureControls reactive props`, () => {
       trajectory_line_elements: null,
     },
   ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
-    const state = raw_scene_state({
+    const state = scene_state({
       show_polyhedra: `always`,
       trajectory_line_trail_frames: 0,
       ...initial,
     })
     const expected = { ...state.scene_props }
-    const stream = make_position_stream(
-      [
-        [
-          [0, 0, 0],
-          [1, 0, 0],
-        ],
-      ],
-      [`H`, `He`],
-    )
+    // oxfmt-ignore
+    const stream = make_position_stream([[[0, 0, 0], [1, 0, 0]]], [`H`, `He`])
     const target = await mount_bound_controls(state, {
       show_trajectory_lines: true,
       trajectory_position_stream: stream,
@@ -1202,7 +1170,7 @@ describe(`StructureControls reactive props`, () => {
     { vector_configs: { force: { visible: true } } },
     { vector_configs: { force: { visible: true, color: `#2468ac`, scale: 4 } } },
   ])(`vector resets preserve nested ownership and other rows' edits: %j`, async (initial) => {
-    const state = raw_scene_state(initial)
+    const state = scene_state(initial)
     const expected = $state.snapshot(state.scene_props)
     const target = await mount_bound_controls(state, { structure: vector_structure })
     const reset_row = async (key: string) => {

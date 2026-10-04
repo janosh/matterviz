@@ -2,7 +2,7 @@ import type { InfoPaneCard } from '#lib/overlays/index.js'
 import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, set_input } from '../setup'
 
 const card = (idx: number) => ({
   title: `Card ${idx}`,
@@ -25,7 +25,6 @@ describe(`InfoPaneCards`, () => {
             ],
           },
         ],
-        filter_placeholder: `Filter info`,
         empty_label: `info`,
       },
     })
@@ -57,14 +56,12 @@ describe(`InfoPaneCards`, () => {
 
     // A filter narrows the list below a page and hides the pager
     const filter = doc_query<HTMLInputElement>(`input.info-filter`)
-    filter.value = `Value 1`
-    filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(filter, `Value 1`)
     flushSync()
     expect(titles()).toEqual([`Card 1`]) // only `Value 1` matches; pager disappears
     expect(document.querySelector(`.pager`)).toBeNull()
 
-    filter.value = ``
-    filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(filter, ``)
     flushSync()
     expect(titles()).toEqual([`Card 0`, `Card 1`, `Card 2`]) // new filter restarts at page 1
   })

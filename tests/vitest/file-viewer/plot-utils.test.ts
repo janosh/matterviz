@@ -10,13 +10,23 @@ import {
 } from '#lib/file-viewer/plot-utils.js'
 
 describe(`extract_columns`, () => {
-  test(`column-based: extracts numeric and string columns`, () => {
-    const data = { x: [1, 2, 3], y: [4, 5, 6], label: [`a`, `b`, `c`] }
+  test.each([
+    [`column-based`, { x: [1, 2, 3], y: [4, 5, 6], label: [`a`, `b`, `c`] }],
+    [
+      `row-based`,
+      [
+        { x: 1, y: 4, label: `a` },
+        { x: 2, y: 5, label: `b` },
+        { x: 3, y: 6, label: `c` },
+      ],
+    ],
+  ])(`%s: extracts numeric and string columns`, (_label, data) => {
     const cols = extract_columns(data)
-    expect(cols.size).toBe(3)
-    expect(cols.get(`x`)?.type).toBe(`numeric`)
-    expect(cols.get(`y`)?.type).toBe(`numeric`)
-    expect(cols.get(`label`)?.type).toBe(`string`)
+    expect([...cols].map(([key, { type }]) => [key, type])).toEqual([
+      [`x`, `numeric`],
+      [`y`, `numeric`],
+      [`label`, `string`],
+    ])
     expect(cols.get(`x`)?.values).toEqual([1, 2, 3])
   })
 
@@ -25,20 +35,6 @@ describe(`extract_columns`, () => {
     const cols = extract_columns(data)
     expect(cols.has(`y`)).toBe(false)
     expect(cols.size).toBe(2)
-  })
-
-  test(`row-based: extracts from array of objects`, () => {
-    const data = [
-      { energy: -5.4, volume: 20.5, name: `Si` },
-      { energy: -4.6, volume: 22.7, name: `Ge` },
-      { energy: -7.4, volume: 11.2, name: `C` },
-    ]
-    const cols = extract_columns(data)
-    expect(cols.size).toBe(3)
-    expect(cols.get(`energy`)?.type).toBe(`numeric`)
-    expect(cols.get(`volume`)?.type).toBe(`numeric`)
-    expect(cols.get(`name`)?.type).toBe(`string`)
-    expect(cols.get(`energy`)?.values).toEqual([-5.4, -4.6, -7.4])
   })
 
   test(`row-based: tolerates null and non-object rows`, () => {

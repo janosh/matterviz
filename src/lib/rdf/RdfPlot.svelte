@@ -34,6 +34,7 @@
     allow_file_drop = true,
     on_file_drop,
     loading = $bindable(false),
+    loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
@@ -52,6 +53,8 @@
     // Replaces the built-in "parse as a crystal and plot it" handling of dropped files
     on_file_drop?: FileLoadCallback
     loading?: boolean
+    // Empty-state text while `loading`
+    loading_message?: string
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
@@ -140,9 +143,11 @@
 {#if series.length === 0}
   <div class="empty-drop" {@attach drop_zone}>
     <StatusMessage
-      message={allow_file_drop
-        ? `Drag and drop structure files here to visualize RDFs`
-        : `No RDF data to display`}
+      message={loading
+        ? loading_message
+        : allow_file_drop
+          ? `Drag and drop structure files here to visualize RDFs`
+          : `No RDF data to display`}
       style="border: none"
     />
   </div>

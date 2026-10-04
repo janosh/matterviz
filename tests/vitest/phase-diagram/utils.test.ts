@@ -23,32 +23,15 @@ import {
   transform_vertices,
 } from '#lib/phase-diagram/utils.js'
 import { describe, expect, test } from 'vitest'
+import { pts, rect } from './fixtures/test-data'
 
 describe(`find_phase_at_point`, () => {
   const test_data: PhaseDiagramData = {
     components: [`A`, `B`],
     temperature_range: [300, 900],
     regions: [
-      {
-        id: `liquid`,
-        name: `Liquid`,
-        vertices: [
-          [0, 700],
-          [1, 700],
-          [1, 900],
-          [0, 900],
-        ],
-      },
-      {
-        id: `solid`,
-        name: `Solid`,
-        vertices: [
-          [0, 300],
-          [1, 300],
-          [1, 700],
-          [0, 700],
-        ],
-      },
+      { id: `liquid`, name: `Liquid`, vertices: rect(0, 700, 1, 900) },
+      { id: `solid`, name: `Solid`, vertices: rect(0, 300, 1, 700) },
     ],
     boundaries: [],
   }
@@ -66,78 +49,29 @@ describe(`find_phase_at_point`, () => {
     const overlapping_data: PhaseDiagramData = {
       ...test_data,
       regions: [
-        {
-          id: `first`,
-          name: `First`,
-          vertices: [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 1],
-          ],
-        },
-        {
-          id: `second`,
-          name: `Second`,
-          vertices: [
-            [0.25, 0.25],
-            [0.75, 0.25],
-            [0.75, 0.75],
-            [0.25, 0.75],
-          ],
-        },
+        { id: `first`, name: `First`, vertices: rect(0, 0, 1, 1) },
+        { id: `second`, name: `Second`, vertices: rect(0.25, 0.25, 0.75, 0.75) },
       ],
     }
     expect(find_phase_at_point(0.5, 0.5, overlapping_data)?.name).toBe(`Second`)
   })
 })
 
-describe(`generate_region_path`, () => {
-  test.each([
-    {
-      vertices: [
-        [0, 0],
-        [100, 0],
-        [100, 100],
-        [0, 100],
-      ],
-      expected: `M0,0L100,0L100,100L0,100 Z`,
-    },
-    {
-      vertices: [
-        [0, 0],
-        [1, 1],
-      ],
-      expected: ``,
-    },
-    { vertices: [[0, 0]], expected: `` },
-    { vertices: [], expected: `` },
-  ] as { vertices: Vec2[]; expected: string }[])(
-    `vertices.length=$vertices.length → "$expected"`,
-    ({ vertices, expected }) => {
-      expect(generate_region_path(vertices)).toBe(expected)
-    },
-  )
+test.each([
+  [rect(0, 0, 100, 100), `M0,0L100,0L100,100L0,100 Z`],
+  [pts(0, 0, 1, 1), ``],
+  [pts(0, 0), ``],
+  [[], ``],
+] as [Vec2[], string][])(`generate_region_path: %j → "%s"`, (vertices, expected) => {
+  expect(generate_region_path(vertices)).toBe(expected)
 })
 
-describe(`generate_boundary_path`, () => {
-  test.each([
-    {
-      points: [
-        [0, 0],
-        [50, 50],
-        [100, 100],
-      ],
-      expected: `M0,0L50,50L100,100`,
-    },
-    { points: [[0, 0]], expected: `` },
-    { points: [], expected: `` },
-  ] as { points: Vec2[]; expected: string }[])(
-    `points.length=$points.length → "$expected"`,
-    ({ points, expected }) => {
-      expect(generate_boundary_path(points)).toBe(expected)
-    },
-  )
+test.each([
+  [pts(0, 0, 50, 50, 100, 100), `M0,0L50,50L100,100`],
+  [pts(0, 0), ``],
+  [[], ``],
+] as [Vec2[], string][])(`generate_boundary_path: %j → "%s"`, (points, expected) => {
+  expect(generate_boundary_path(points)).toBe(expected)
 })
 
 // Palette by key (hex); get_phase_color returns these opaque (`hex`) or with alpha (`rgba`)
@@ -254,86 +188,46 @@ describe(`format_temperature`, () => {
   })
 })
 
-describe(`transform_vertices`, () => {
+test(`transform_vertices maps every vertex through the x and y scales`, () => {
   const x_scale = (val: number) => val * 200
   const y_scale = (val: number) => 100 - val
-
-  test.each([
-    {
-      input: [
-        [0, 0],
-        [1, 100],
-        [0.5, 50],
-      ],
-      expected: [
-        [0, 100],
-        [200, 0],
-        [100, 50],
-      ],
-    },
-    { input: [], expected: [] },
-  ] as { input: Vec2[]; expected: Vec2[] }[])(
-    `transforms $input.length vertices`,
-    ({ input, expected }) => {
-      expect(transform_vertices(input, x_scale, y_scale)).toEqual(expected)
-    },
+  expect(transform_vertices(pts(0, 0, 1, 100, 0.5, 50), x_scale, y_scale)).toEqual(
+    pts(0, 100, 200, 0, 100, 50),
   )
+  expect(transform_vertices([], x_scale, y_scale)).toEqual([])
 })
 
 // Shared test fixtures for lever rule tests
-const two_phase_region: PhaseRegion = {
-  id: `alpha-beta`,
-  name: `α + β`,
-  vertices: [
-    [0.2, 400],
-    [0.8, 400],
-    [0.7, 600],
-    [0.3, 600],
-  ],
-}
+const trapezoid = pts(0.2, 400, 0.8, 400, 0.7, 600, 0.3, 600)
+const two_phase_region: PhaseRegion = { id: `alpha-beta`, name: `α + β`, vertices: trapezoid }
 const single_phase_region: PhaseRegion = {
   id: `liquid`,
   name: `Liquid`,
-  vertices: [
-    [0, 700],
-    [1, 700],
-    [1, 900],
-    [0, 900],
-  ],
+  vertices: rect(0, 700, 1, 900),
 }
-const three_phase_region: PhaseRegion = {
-  id: `alpha-beta-gamma`,
-  name: `α + β + γ`,
-  vertices: [
-    [0.2, 400],
-    [0.8, 400],
-    [0.7, 600],
-    [0.3, 600],
-  ],
-}
-const empty_plus_region: PhaseRegion = {
-  id: `test`,
-  name: `+`,
-  vertices: [
-    [0.2, 400],
-    [0.8, 400],
-    [0.7, 600],
-    [0.3, 600],
-  ],
-}
+const three_phase_region: PhaseRegion = { ...two_phase_region, name: `α + β + γ` }
+const empty_plus_region: PhaseRegion = { ...two_phase_region, name: `+` }
 const split_region_horizontal: PhaseRegion = {
   id: `alpha-beta-split`,
   name: `α + β`,
-  vertices: [
-    [0.1, 400],
-    [0.9, 400],
-    [0.9, 600],
-    [0.6, 600],
-    [0.6, 450],
-    [0.4, 450],
-    [0.4, 600],
-    [0.1, 600],
-  ],
+  vertices: pts(
+    0.1,
+    400,
+    0.9,
+    400,
+    0.9,
+    600,
+    0.6,
+    600,
+    0.6,
+    450,
+    0.4,
+    450,
+    0.4,
+    600,
+    0.1,
+    600,
+  ),
 }
 const split_region_boundary_cases = [
   { position: 0.35, expected_bounds: [0.1, 0.4] as Vec2 },
@@ -414,22 +308,12 @@ describe(`calculate_lever_rule`, () => {
   const alpha_field: PhaseRegion = {
     id: `alpha`,
     name: `α`,
-    vertices: [
-      [0, 400],
-      [0.2, 400],
-      [0.3, 600],
-      [0, 600],
-    ],
+    vertices: pts(0, 400, 0.2, 400, 0.3, 600, 0, 600),
   }
   const beta_field: PhaseRegion = {
     id: `beta`,
     name: `β`,
-    vertices: [
-      [0.8, 400],
-      [1, 400],
-      [1, 600],
-      [0.7, 600],
-    ],
+    vertices: pts(0.8, 400, 1, 400, 1, 600, 0.7, 600),
   }
 
   test.each([
@@ -486,31 +370,25 @@ describe(`compute_label_properties`, () => {
   })
 })
 
-describe(`merge_phase_diagram_config`, () => {
-  test(`returns defaults when config is empty`, () => {
-    const merged = merge_phase_diagram_config({})
-    expect(merged.font_size).toBe(PHASE_DIAGRAM_DEFAULTS.font_size)
-    expect(merged.margin).toEqual(PHASE_DIAGRAM_DEFAULTS.margin)
-    expect(merged.tie_line).toEqual(PHASE_DIAGRAM_DEFAULTS.tie_line)
-    expect(merged.colors).toEqual(PHASE_DIAGRAM_DEFAULTS.colors)
-  })
+test(`merge_phase_diagram_config returns defaults for {} and merges partial overrides`, () => {
+  const defaults = merge_phase_diagram_config({})
+  expect(defaults.font_size).toBe(PHASE_DIAGRAM_DEFAULTS.font_size)
+  expect(defaults.margin).toEqual(PHASE_DIAGRAM_DEFAULTS.margin)
+  expect(defaults.tie_line).toEqual(PHASE_DIAGRAM_DEFAULTS.tie_line)
+  expect(defaults.colors).toEqual(PHASE_DIAGRAM_DEFAULTS.colors)
 
-  test(`merges partial overrides while keeping other defaults`, () => {
-    const merged = merge_phase_diagram_config({
-      font_size: 16,
-      margin: { t: 50 },
-      tie_line: { stroke_width: 3 },
-      colors: { background: `#ff0000` },
-    })
-    expect(merged.font_size).toBe(16)
-    expect(merged.margin.t).toBe(50)
-    expect(merged.margin.r).toBe(PHASE_DIAGRAM_DEFAULTS.margin.r)
-    expect(merged.tie_line.stroke_width).toBe(3)
-    expect(merged.colors.background).toBe(`#ff0000`)
+  const merged = merge_phase_diagram_config({
+    font_size: 16,
+    margin: { t: 50 },
+    tie_line: { stroke_width: 3 },
+    colors: { background: `#ff0000` },
   })
+  expect(merged.font_size).toBe(16)
+  expect(merged.margin.t).toBe(50)
+  expect(merged.margin.r).toBe(PHASE_DIAGRAM_DEFAULTS.margin.r)
+  expect(merged.tie_line.stroke_width).toBe(3)
+  expect(merged.colors.background).toBe(`#ff0000`)
 })
-
-// === convert_temp ===
 
 describe(`convert_temp`, () => {
   test.each([
@@ -546,43 +424,21 @@ describe(`convert_temp`, () => {
   )
 })
 
-// === get_phase_stability_range ===
-
-describe(`get_phase_stability_range`, () => {
-  test.each([
-    {
-      vertices: [
-        [0, 400],
-        [1, 400],
-        [1, 800],
-        [0, 800],
-      ] as Vec2[],
-      expected: { t_min: 400, t_max: 800 },
-      desc: `rectangle`,
-    },
-    {
-      vertices: [[0.5, 600]] as Vec2[],
-      expected: { t_min: 600, t_max: 600 },
-      desc: `single vertex`,
-    },
-    {
-      vertices: [
-        [0.2, 400],
-        [0.8, 450],
-        [0.7, 650],
-        [0.3, 600],
-      ] as Vec2[],
-      expected: { t_min: 400, t_max: 650 },
-      desc: `irregular polygon`,
-    },
-  ])(`$desc → t_min=$expected.t_min, t_max=$expected.t_max`, ({ vertices, expected }) => {
+test.each([
+  [`rectangle`, rect(0, 400, 1, 800), { t_min: 400, t_max: 800 }],
+  [`single vertex`, pts(0.5, 600), { t_min: 600, t_max: 600 }],
+  [
+    `irregular polygon`,
+    pts(0.2, 400, 0.8, 450, 0.7, 650, 0.3, 600),
+    { t_min: 400, t_max: 650 },
+  ],
+  [`no vertices`, [], null],
+] as [string, Vec2[], { t_min: number; t_max: number } | null][])(
+  `get_phase_stability_range: %s → %o`,
+  (_desc, vertices, expected) => {
     expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(expected)
-  })
-
-  test(`returns null for empty vertices`, () => {
-    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices: [] })).toBeNull()
-  })
-})
+  },
+)
 
 // format_hover_info_text is covered in IsobaricBinaryPhaseDiagram.test.ts
 
@@ -590,12 +446,7 @@ describe(`compute_x_domain`, () => {
   const make_region = (name: string, x_lo: number, x_hi: number): PhaseRegion => ({
     id: name,
     name,
-    vertices: [
-      [x_lo, 300],
-      [x_hi, 300],
-      [x_hi, 600],
-      [x_lo, 600],
-    ],
+    vertices: rect(x_lo, 300, x_hi, 600),
   })
 
   const make_data = (regions: PhaseRegion[]): PhaseDiagramData => ({
@@ -608,56 +459,34 @@ describe(`compute_x_domain`, () => {
   // Al near 0 boundary, Cu near 1 boundary — triggers auto-extend
   const edge_data = make_data([make_region(`Al`, 0.02, 0.3), make_region(`Cu`, 0.7, 0.98)])
 
+  // section: data far from both boundaries; non-matching: region names aren't components
+  const section = make_data([make_region(`Al`, 0.3, 0.5), make_region(`Cu`, 0.5, 0.7)])
+  const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
   test.each([
-    {
-      range: [0.2, 0.8] as Vec2,
-      data: null,
-      expected: [0.2, 0.8],
-      desc: `explicit range returned as-is`,
+    [`explicit range returned as-is`, [0.2, 0.8], null, [0.2, 0.8]],
+    [`no range + no data defaults to [0, 1]`, undefined, null, [0, 1]],
+    [`undefined range auto-extends both edges`, undefined, edge_data, [0, 1]],
+    [`null range auto-extends both edges`, [null, null], edge_data, [0, 1]],
+    [`explicit lo preserved, hi auto-extends`, [0.1, null], edge_data, [0.1, 1]],
+    [`lo auto-extends, explicit hi preserved`, [null, 0.9], edge_data, [0, 0.9]],
+    [
+      `no auto-extend far from the boundaries (section diagram)`,
+      undefined,
+      section,
+      [0.3, 0.7],
+    ],
+    [
+      `data extent when region names don't match components`,
+      undefined,
+      non_matching,
+      [0.1, 0.9],
+    ],
+  ] as [string, Parameters<typeof compute_x_domain>[0], PhaseDiagramData | null, Vec2][])(
+    `%s`,
+    (_desc, range, data, expected) => {
+      expect(compute_x_domain(range, data)).toEqual(expected)
     },
-    {
-      range: undefined,
-      data: null,
-      expected: [0, 1],
-      desc: `no range + no data defaults to [0, 1]`,
-    },
-    {
-      range: undefined,
-      data: edge_data,
-      expected: [0, 1],
-      desc: `undefined range auto-extends both edges`,
-    },
-    {
-      range: [null, null] as [null, null],
-      data: edge_data,
-      expected: [0, 1],
-      desc: `null range auto-extends both edges`,
-    },
-    {
-      range: [0.1, null] as [number, null],
-      data: edge_data,
-      expected: [0.1, 1],
-      desc: `explicit lo preserved, hi auto-extends`,
-    },
-    {
-      range: [null, 0.9] as [null, number],
-      data: edge_data,
-      expected: [0, 0.9],
-      desc: `lo auto-extends, explicit hi preserved`,
-    },
-  ])(`$desc`, ({ range, data, expected }) => {
-    expect(compute_x_domain(range, data)).toEqual(expected)
-  })
-
-  test(`does not auto-extend when data is far from boundary (section diagram)`, () => {
-    const section = make_data([make_region(`Al`, 0.3, 0.5), make_region(`Cu`, 0.5, 0.7)])
-    expect(compute_x_domain(undefined, section)).toEqual([0.3, 0.7])
-  })
-
-  test(`uses data extent when region names don't match component names`, () => {
-    const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
-    expect(compute_x_domain(undefined, non_matching)).toEqual([0.1, 0.9])
-  })
+  )
 
   // components must match as whole words: Fe3C/SiC are compounds, α(Fe) and "Liquid + C" are
   // the pure components

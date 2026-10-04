@@ -363,7 +363,7 @@ Vertical orientation with the title on different sides:
 
 ## Large Value Ranges (Linear and Log)
 
-Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a positive range (min and max > 0). Tick labels use scientific notation via `tick_format='.0e'`.
+Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a positive range (min and max > 0). The linear bar uses SI-prefixed ticks via `tick_format='.1s'`; bars without `tick_format` use the default tick formatter.
 
 ```svelte example
 <script lang="ts">

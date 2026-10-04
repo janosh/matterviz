@@ -90,6 +90,9 @@ try {
   const height = spec.video?.height ?? 720
   let url = values.url
   if (!url) {
+    // SvelteKit resolves its configuration from cwd, even with an explicit Vite root.
+    // Input and output paths above already retain the caller's directory.
+    process.chdir(root)
     const { createServer } = await import(`vite`)
     server = await createServer({
       root,
@@ -147,13 +150,19 @@ try {
     const started = performance.now()
     temporary = await mkdtemp(`${dirname(output)}/.${basename(output)}-`)
     const partial = `${temporary}/movie${extname(output)}`
-    const sample_indices = [
-      ...new Set(
-        Array.from({ length: samples }, (_unused, idx) =>
-          Math.round((idx * (plan.video.frame_count - 1)) / (samples - 1)),
-        ),
-      ),
-    ]
+    // The source frame a video frame shows: movie_frame's rule (src/lib/trajectory/movie.ts),
+    // which this plain Node script cannot import
+    const source_frame_of = (idx) =>
+      plan.source_frames?.[idx] ??
+      Math.round(
+        plan.frames.start +
+          (plan.frames.end - plan.frames.start - 1) *
+            (plan.video.frame_count === 1 ? 0 : idx / (plan.video.frame_count - 1)),
+      )
+    const sample_frames = Array.from({ length: samples }, (_unused, idx) =>
+      Math.round((idx * (plan.video.frame_count - 1)) / (samples - 1)),
+    )
+    const sample_indices = [...new Set(sample_frames)]
     const latest = review && `${review}/latest.png`
     const storyboard = review && `${review}/storyboard.png`
     if (review) {
@@ -167,8 +176,10 @@ try {
     if (command === `preview`) {
       const preview_width = Math.min(width, 640)
       const preview_height = Math.max(2, 2 * Math.round((height * preview_width) / width / 2))
+      // the same source frames a render's sample events report
       capture_plan = {
         ...plan,
+        source_frames: sample_frames.map(source_frame_of),
         video: {
           ...plan.video,
           width: preview_width,
@@ -215,11 +226,7 @@ try {
           image: latest,
           frame: idx,
           timestamp_s: idx / plan.video.fps,
-          source_frame: Math.round(
-            plan.frames.start +
-              (plan.frames.end - plan.frames.start - 1) *
-                (plan.video.frame_count === 1 ? 0 : idx / (plan.video.frame_count - 1)),
-          ),
+          source_frame: source_frame_of(idx),
         })
       }
       if (review && frame_count % 30 === 0)

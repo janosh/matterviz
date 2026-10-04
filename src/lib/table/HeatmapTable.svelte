@@ -43,6 +43,7 @@
     resolve_color_domain,
   } from '#lib/table/index.js'
   import ColumnFilterMenu from './ColumnFilter.svelte'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'
   import {
@@ -334,6 +335,7 @@
 
   // Which toolbar dropdown is open, if any — they overlap, so only one ever is
   let open_dropdown = $state<`columns` | `export` | null>(null)
+  let export_btn = $state<HTMLButtonElement>()
   // Likewise for the header popovers: one column's filter panel or date/time format list
   type PopoverKind = `filter` | `datetime`
   let header_popover = $state<{ kind: PopoverKind; col_id: string } | null>(null)
@@ -1036,14 +1038,6 @@
   }
   function handle_window_pointerdown(event: PointerEvent) {
     const target = event.target instanceof Element ? event.target : null
-    // header popovers close on any pointerdown outside them
-    if (!target?.closest(`.header-popover`)) header_popover = null
-    if (
-      open_dropdown === `export` &&
-      !container_el?.querySelector(`.dropdown-wrapper`)?.contains(target)
-    ) {
-      open_dropdown = null
-    }
     // A drag's suppress flag is consumed by the click right after pointerup; if that click
     // never fired (released outside the table), any NEW interaction must not inherit it
     suppress_row_click = false
@@ -1411,9 +1405,9 @@
   onkeydown={handle_window_keydown}
 />
 
-{#snippet icon_btn(icon: IconData, tip: string, on_click: () => void, active = false)}
+{#snippet icon_btn(icon: IconData, tip: string, on_click: () => void)}
   <button
-    class={['icon-btn', { active }]}
+    class="icon-btn"
     aria-label={tip}
     onclick={on_click}
     {@attach tooltip({ content: tip, placement: `top` })}
@@ -1497,7 +1491,10 @@
           columns={toggle_columns}
           bind:column_panel_open={
             () => open_dropdown === `columns`,
-            (open) => (open_dropdown = open ? `columns` : null)
+            (open) => {
+              if (open) open_dropdown = `columns`
+              else if (open_dropdown === `columns`) open_dropdown = null
+            }
           }
           on_toggle={(col, visible) => set_column_visible(col.id, visible)}
         >
@@ -1512,46 +1509,57 @@
       {/if}
 
       {#if export_config}
-        <div class="dropdown-wrapper">
-          {@render icon_btn(
-            Export,
-            `Export`,
-            () => (open_dropdown = open_dropdown === `export` ? null : `export`),
-            open_dropdown === `export`,
-          )}
-          {#if open_dropdown === `export`}
-            <div class="dropdown-pane">
-              <ExportDestination state={export_state} />
-              {#each export_config.formats as format (format)}
-                <button
-                  class="dropdown-option"
-                  disabled={export_state.disabled}
-                  onclick={() =>
-                    export_state.run(async ({ filename, save }) => {
-                      await save(
-                        EXPORTERS[format](),
-                        `${filename}.${format}`,
-                        EXPORT_MIME_TYPES[format],
-                      )
-                      open_dropdown = null
-                    })}
-                >
-                  <Icon icon={Download} style="width: 12px" />
-                  {format.toUpperCase()}
-                </button>
-              {/each}
+        <button
+          bind:this={export_btn}
+          class={['icon-btn', { active: open_dropdown === `export` }]}
+          aria-label="Export"
+          aria-expanded={open_dropdown === `export`}
+          onclick={() => (open_dropdown = open_dropdown === `export` ? null : `export`)}
+          {@attach tooltip({ content: `Export`, placement: `top` })}
+        >
+          <Icon icon={Export} />
+        </button>
+        {#if open_dropdown === `export`}
+          <div
+            class="dropdown-pane"
+            out:close_before_removal
+            {@attach anchored_popover({
+              anchor: export_btn,
+              on_close: () => {
+                if (open_dropdown === `export`) open_dropdown = null
+              },
+            })}
+          >
+            <ExportDestination state={export_state} />
+            {#each export_config.formats as format (format)}
               <button
                 class="dropdown-option"
-                onclick={() => {
-                  copy_to_clipboard()
-                  open_dropdown = null
-                }}
+                disabled={export_state.disabled}
+                onclick={() =>
+                  export_state.run(async ({ filename, save }) => {
+                    await save(
+                      EXPORTERS[format](),
+                      `${filename}.${format}`,
+                      EXPORT_MIME_TYPES[format],
+                    )
+                    open_dropdown = null
+                  })}
               >
-                <Icon icon={Copy} style="width: 12px" /> Copy
+                <Icon icon={Download} style="width: 12px" />
+                {format.toUpperCase()}
               </button>
-            </div>
-          {/if}
-        </div>
+            {/each}
+            <button
+              class="dropdown-option"
+              onclick={() => {
+                copy_to_clipboard()
+                open_dropdown = null
+              }}
+            >
+              <Icon icon={Copy} style="width: 12px" /> Copy
+            </button>
+          </div>
+        {/if}
       {/if}
 
       {#if show_row_select && selected_ids.length > 0}
@@ -2052,10 +2060,6 @@
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }
   :global(.header-popover > :is(div, select)) {
-    position: absolute;
-    top: calc(100% + 2px);
-    right: 0;
-    z-index: 40;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
@@ -2376,14 +2380,7 @@
       text-align: center;
     }
   }
-  .dropdown-wrapper {
-    position: relative;
-  }
   .dropdown-pane {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
     padding: 4px 0;
     background: light-dark(rgba(255, 255, 255, 0.98), rgba(30, 30, 30, 0.98));
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15));
@@ -2391,7 +2388,6 @@
     box-shadow: 0 4px 12px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4));
     max-height: 280px;
     overflow-y: auto;
-    z-index: 100;
     color: light-dark(#333, #eee);
     font-size: 0.95em;
   }

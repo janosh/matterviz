@@ -124,13 +124,16 @@ export function compute_e_form_per_atom(
 
 // Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
 // (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
-// without absolute-energy unaries, since their E_form is measured against those.
+// without absolute-energy unaries, since their E_form is measured against those. An
+// exclude_from_hull unary is never a reference: it is drawn, but neither anchors the hull
+// nor sets the formation-energy zero, so an element with only excluded unaries has none.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
-  const refs: Record<string, { entry: PhaseData; score: number; absolute: boolean }> = {}
+  type Ref = { entry: PhaseData; score: number; absolute: boolean }
+  const refs: Record<string, Ref> = {}
   for (const entry of entries) {
-    if (!is_unary_entry(entry)) continue
+    if (!is_unary_entry(entry) || entry.exclude_from_hull) continue
     const absolute =
       typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
     const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
@@ -581,11 +584,11 @@ export function compute_quickhull_nd(
 export const compute_lower_hull_nd = (points: number[][]): HullFacet[] =>
   compute_quickhull_nd(points).filter((facet) => (facet.normal.at(-1) ?? 0) < -HULL_EPS)
 
-// Energy above the lower hull for each query point (last coordinate = energy), unclamped.
-// The lower hull is a convex function of the spatial coordinates, so its value is the max
-// over the facets' hyperplanes. Coplanar facets tie at that max while only some of them
-// contain the query's projection, so every facet within HULL_EPS of the max is checked for
-// containment; queries outside the hull's composition domain get NaN.
+// Energy above the lower hull per query point (last coordinate = energy), unclamped: the
+// highest plane among facets whose projection contains the query. Covering facets tie at the
+// max over all planes, so only those are checked first; a sliver facet's plane can overshoot
+// the covering one, and only then are planes tried from the top. Queries outside the
+// composition domain get NaN.
 export function compute_e_above_hull_nd(
   query_points: number[][],
   facets: HullFacet[],
@@ -615,11 +618,19 @@ export function compute_e_above_hull_nd(
   return query_points.map((query) => {
     if (!query.every(Number.isFinite)) return NaN
     const energies = facets.map((facet) => facet_energy(facet, query))
-    const e_hull = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
-    if (!Number.isFinite(e_hull)) return NaN
-    const covered = facets.some(
-      (facet, idx) => energies[idx] >= e_hull - HULL_EPS && contains(facet, query),
+    const covers = (idx: number) =>
+      Number.isFinite(energies[idx]) && contains(facets[idx], query)
+    const e_max = energies.reduce((max, energy) => (energy > max ? energy : max), -Infinity)
+    const near_max = energies.findIndex(
+      (energy, idx) => energy >= e_max - HULL_EPS && covers(idx),
     )
-    return covered ? query[spatial_dim] - e_hull : NaN
+    const covering =
+      near_max !== -1
+        ? near_max
+        : energies
+            .map((_, idx) => idx)
+            .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
+            .find(covers)
+    return covering === undefined ? NaN : query[spatial_dim] - energies[covering]
   })
 }

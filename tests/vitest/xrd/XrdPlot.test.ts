@@ -11,6 +11,7 @@ import {
   expect_plot_controls,
   query,
   resize_element,
+  set_input,
 } from '../setup'
 import { gzip_bytes } from '../test-fixtures'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
@@ -29,7 +30,6 @@ const pattern: XrdPattern = {
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
 }
 
-// Helper to create a sized container for proper plot rendering.
 function create_sized_container(): HTMLDivElement {
   const target = document.createElement(`div`)
   target.style.width = `800px`
@@ -38,7 +38,7 @@ function create_sized_container(): HTMLDivElement {
   return target
 }
 
-// Helper to mock clientWidth/clientHeight and wait for render.
+// Mock clientWidth/clientHeight and wait for render (tolerates empty states without a plot)
 async function wait_for_plot_render(target: HTMLElement): Promise<void> {
   const plot = target.querySelector<HTMLElement>(`.bar-plot, .scatter`)
   if (plot) await resize_element(plot, 800, 600)
@@ -47,8 +47,6 @@ async function wait_for_plot_render(target: HTMLElement): Promise<void> {
 
 type XrdProps = ComponentProps<typeof XrdPlot>
 
-// Mounts XrdPlot in a sized container and waits for the plot to render
-// (tolerates empty states where no .bar-plot exists).
 const mount_xrd = async (props: XrdProps): Promise<HTMLDivElement> => {
   const target = create_sized_container()
   mount(XrdPlot, { target, props })
@@ -459,8 +457,7 @@ describe(`XrdPlot`, () => {
     // W at its own allowed minimum throws at 2theta = 10 deg, and the uncaught throw used to
     // blank the whole component
     const set_w = async (value: string) => {
-      inputs[2].value = value
-      inputs[2].dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(inputs[2], value)
       await tick()
       return [
         target.querySelector(`.status-message.error`)?.textContent ?? ``,
@@ -497,24 +494,16 @@ describe(`XrdPlot`, () => {
   })
 
   test.each([
-    [`pattern.xy.gz`, `pattern.xy`, false, `10 100\n20 50`],
-    [`Sample.BRML.gz`, `Sample.BRML`, true, `10 100\n20 50`],
+    [`pattern.xy.gz`, `pattern.xy`, false],
+    [`Sample.BRML.gz`, `Sample.BRML`, true],
   ] as const)(
     `file drop %s preserves content and source identity`,
-    async (source_filename, logical_filename, binary, content) => {
+    async (source_filename, logical_filename, binary) => {
       const on_file_drop = vi.fn()
-      const target = await mount_xrd({
-        patterns: [],
-        on_file_drop,
-      })
-
-      const payload = source_filename.toLowerCase().endsWith(`.gz`)
-        ? await gzip_bytes(content)
-        : content
-      const file = new File([payload], source_filename)
-      const drop_zone = query(target, `.xrd-empty-state`)
-      drop_zone.dispatchEvent(create_drop_event(file))
-
+      const target = await mount_xrd({ patterns: [], on_file_drop })
+      const content = `10 100\n20 50`
+      const file = new File([await gzip_bytes(content)], source_filename)
+      query(target, `.xrd-empty-state`).dispatchEvent(create_drop_event(file))
       await vi.waitFor(() =>
         expect(on_file_drop).toHaveBeenCalledWith(
           binary ? expect.any(ArrayBuffer) : content,
@@ -528,9 +517,20 @@ describe(`XrdPlot`, () => {
   test(`an empty dropped file is reported, not forwarded`, async () => {
     const on_file_drop = vi.fn()
     const target = await mount_xrd({ patterns: [], on_file_drop })
-    const drop_zone = query(target, `.xrd-empty-state`)
-    drop_zone.dispatchEvent(create_drop_event(new File([``], `empty.xy`)))
+    query(target, `.xrd-empty-state`).dispatchEvent(
+      create_drop_event(new File([``], `empty.xy`)),
+    )
     await vi.waitFor(() => expect(target.textContent).toContain(`empty.xy: file is empty`))
     expect(on_file_drop).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [{}, `Drag and drop structure files`],
+    [{ allow_file_drop: false }, `No XRD data to display`],
+    [{ loading: true }, `Reading dropped file…`],
+    [{ loading: true, loading_message: `Simulating XRD…` }, `Simulating XRD…`],
+  ])(`empty state message %#`, async (props, message) => {
+    const target = await mount_xrd({ patterns: [], ...props })
+    expect(query(target, `.xrd-empty-state`).textContent).toContain(message)
   })
 })

@@ -8,7 +8,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { bind_props, doc_query, set_input } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 
@@ -70,8 +70,7 @@ test.each([
       [cutoff, String(cutoff_value)],
       [bins, `70`],
     ] as const) {
-      input.value = value
-      input.dispatchEvent(new Event(`input`))
+      set_input(input, value)
     }
     await settle()
     expect(controls.textContent).toContain(`4 of 20 frames (every 5)`)
@@ -114,8 +113,7 @@ test.each([
       bins,
       doc_query<HTMLInputElement>(`input[aria-label="Start frame"]`),
     ]) {
-      input.value = `2`
-      input.dispatchEvent(new Event(`input`))
+      set_input(input, `2`)
     }
     await settle()
     const [csv_button, json_button] = document.querySelectorAll<HTMLButtonElement>(
@@ -232,8 +230,7 @@ test.each([
   await settle()
   expect(compute.disabled).toBe(true)
   const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
-  start.value = `1`
-  start.dispatchEvent(new Event(`input`))
+  set_input(start, `1`)
   await settle()
   expect(compute.disabled).toBe(false)
   compute.click()

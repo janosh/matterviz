@@ -70,11 +70,6 @@ const drop = (target: ParentNode, file: File, text_plain = ``): void => {
   zone.dispatchEvent(create_drop_event(file, { text_plain }))
 }
 
-// Fresh response per fetch call because response bodies are single-use streams
-const stub_fetch = (content: string, headers = new Headers()) =>
-  vi
-    .spyOn(globalThis, `fetch`)
-    .mockImplementation(() => Promise.resolve(new Response(content, { headers })))
 const stub_worker = (implementation: WorkerParse) =>
   vi
     .spyOn(parse_worker, `parse_in_worker`)
@@ -131,57 +126,46 @@ describe(`source`, () => {
     expect(on_file_load).not.toHaveBeenCalled()
   })
 
-  test(`loads multi-frame XYZ from a blob: URL with a UUID basename`, async () => {
-    stub_fetch(MULTI_FRAME_XYZ)
+  const XYZ_FILE = new File([MULTI_FRAME_XYZ], `dropped.xyz`)
+  const ASE_BYTES = read_binary_test_file(ASE_FIXTURE)
+  // oxfmt-ignore
+  test.each([
+    [`a blob: URL with a UUID basename`, BLOB_URL, `xyz`,
+      { frame_count: 2, total_atoms: 2, filename: BLOB_FILENAME, source_filename: BLOB_FILENAME, source_url: BLOB_URL }],
+    [`a File`, XYZ_FILE, `xyz`, { frame_count: 2, filename: `dropped.xyz`, source_filename: `dropped.xyz`, file: XYZ_FILE }],
+    // binary payloads rely on the filename for format detection
+    [`bytes with a filename`, { data: ASE_BYTES, filename: ASE_FIXTURE }, `ase`,
+      { frame_count: 2, total_atoms: 8, filename: ASE_FIXTURE, source_filename: ASE_FIXTURE, file_size: ASE_BYTES.byteLength }],
+  ] as const)(`loads %s and reports its identity`, async (_label, source, format, expected) => {
+    vi.spyOn(globalThis, `fetch`).mockImplementation(async () => new Response(MULTI_FRAME_XYZ))
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
     const on_error = vi.fn()
-    const target = mount_viewer({ source: BLOB_URL, on_file_load, on_error })
+    const target = mount_viewer({ source, show_controls: `always`, on_file_load, on_error })
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    expect(on_file_load.mock.calls[0][0]).toMatchObject({
-      frame_count: 2,
-      total_atoms: 2,
-      filename: BLOB_FILENAME,
-      source_filename: BLOB_FILENAME,
-      source_url: BLOB_URL,
-    })
-    expect(on_file_load.mock.calls[0][0].trajectory?.provenance.format).toBe(`xyz`)
+    const [payload] = on_file_load.mock.calls[0]
+    expect(payload).toMatchObject(expected)
+    expect(payload.trajectory?.provenance).toMatchObject({ format, filename: expected.filename })
     expect(on_error).not.toHaveBeenCalled()
-    expect(target.querySelector(`.trajectory`)).not.toBeNull()
     expect(target.querySelector(`.spinner`)).toBeNull()
+    expect(target.querySelector(`.filename`)?.textContent).toContain(expected.filename)
   })
 
   // oxfmt-ignore
   test.each([
-    [`blob URL`, BLOB_URL, new Headers(), BLOB_FILENAME],
-    [`compressed URL`, `https://example.com/bad.xyz.gz`,
-      new Headers({ 'content-encoding': `gzip` }), `bad.xyz.gz`],
-  ] as const)(
-    `reports source identity for unparsable $label content`,
-    async (_label, url, headers, source_filename) => {
-      stub_fetch(`not a trajectory in any format`, headers)
-      const on_file_load = vi.fn()
-      const on_error = vi.fn<(data: TrajHandlerData) => void>()
-      mount_viewer({ source: url, on_file_load, on_error })
-      await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
-      expect(on_error.mock.calls[0][0]).toMatchObject({ source_filename, source_url: url })
-      expect(on_file_load).not.toHaveBeenCalled()
-    },
-  )
-
-  test(`a failed fetch surfaces the HTTP status`, async () => {
-    vi.spyOn(globalThis, `fetch`).mockResolvedValue(
-      new Response(null, { status: 404, statusText: `Not Found` }),
-    )
+    [`unparsable blob URL content`, BLOB_URL, () => new Response(`not a trajectory in any format`), { source_filename: BLOB_FILENAME }],
+    [`unparsable compressed URL content`, `https://example.com/bad.xyz.gz`,
+      () => new Response(`not a trajectory in any format`, { headers: { 'content-encoding': `gzip` } }), { source_filename: `bad.xyz.gz` }],
+    [`a failed fetch`, `https://example.com/missing.xyz`, () => new Response(null, { status: 404, statusText: `Not Found` }),
+      { error_msg: expect.stringContaining(`HTTP 404 Not Found`), filename: `missing.xyz`, source_filename: `missing.xyz` }],
+  ])(`reports source identity for %s`, async (_label, url, make_response, expected) => {
+    vi.spyOn(globalThis, `fetch`).mockImplementation(async () => make_response())
     vi.spyOn(console, `error`).mockImplementation(() => {})
+    const on_file_load = vi.fn()
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ source: `https://example.com/missing.xyz`, on_error })
+    mount_viewer({ source: url, on_file_load, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
-    expect(on_error.mock.calls[0][0]).toMatchObject({
-      error_msg: expect.stringContaining(`HTTP 404 Not Found`),
-      filename: `missing.xyz`,
-      source_filename: `missing.xyz`,
-      source_url: `https://example.com/missing.xyz`,
-    })
+    expect(on_error.mock.calls[0][0]).toMatchObject({ ...expected, source_url: url })
+    expect(on_file_load).not.toHaveBeenCalled()
     expect(doc_query(`h3`).textContent).toBe(`Error`)
   })
 
@@ -195,19 +179,6 @@ describe(`source`, () => {
     expect(on_error).not.toHaveBeenCalled()
     // the empty-state prompt shows, not the error banner
     expect(doc_query(`h3`).textContent).not.toBe(`Error`)
-  })
-
-  test(`a File source carries its own name and identity`, async () => {
-    const file = new File([MULTI_FRAME_XYZ], `dropped.xyz`)
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ source: file, on_file_load })
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    expect(on_file_load.mock.calls[0][0]).toMatchObject({
-      frame_count: 2,
-      filename: `dropped.xyz`,
-      source_filename: `dropped.xyz`,
-      file,
-    })
   })
 
   // loading_options.atom_type_mapping is how hosts (the anywidget's trait, the VS Code
@@ -234,30 +205,6 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
       expect(run?.warnings).toHaveLength(atom_type_mapping ? 0 : 1)
     },
   )
-
-  test(`binary source uses filename for detection and reports the full payload`, async () => {
-    const bytes = read_binary_test_file(ASE_FIXTURE)
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const target = mount_viewer({
-      source: { data: bytes, filename: ASE_FIXTURE },
-      show_controls: `always`,
-      on_file_load,
-    })
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    const [payload] = on_file_load.mock.calls[0]
-    expect(payload).toMatchObject({
-      frame_count: 2,
-      total_atoms: 8,
-      filename: ASE_FIXTURE,
-      source_filename: ASE_FIXTURE,
-      file_size: bytes.byteLength,
-    })
-    expect(payload.trajectory?.provenance).toMatchObject({
-      format: `ase`,
-      filename: ASE_FIXTURE,
-    })
-    expect(target.querySelector(`.filename`)?.textContent).toContain(ASE_FIXTURE)
-  })
 
   test(`parse errors render TrajectoryError with the on_error payload and dismiss`, async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]).buffer
@@ -344,75 +291,58 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     },
   )
 
-  test(`changing source aborts the in-flight load and disposes its late result`, async () => {
-    const pending = deferred_worker()
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const props = $state<Props>({
-      source: new File([MULTI_FRAME_XYZ], `first.xyz`),
-      trajectory: undefined,
-      on_file_load,
-    })
-    const target = mount_viewer(props)
-    await vi.waitFor(() => expect(pending).toHaveLength(1))
-    expect(pending[0].signal?.aborted).toBe(false)
+  test.each([`a source change`, `a drop`])(
+    `%s aborts the in-flight load and disposes its late result`,
+    async (trigger) => {
+      const pending = deferred_worker()
+      const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
+      const props = $state<Props>({
+        source: new File([MULTI_FRAME_XYZ], `first.xyz`),
+        trajectory: undefined,
+        on_file_load,
+      })
+      const target = mount_viewer(props)
+      await vi.waitFor(() => expect(pending).toHaveLength(1))
+      expect(pending[0].signal?.aborted).toBe(false)
 
-    props.source = new File([MULTI_FRAME_XYZ], `second.xyz`)
-    await vi.waitFor(() => expect(pending).toHaveLength(2))
-    expect(pending[0].signal?.aborted).toBe(true)
-    expect(pending[0].signal?.reason).toMatchObject({ name: `AbortError` })
-    expect(target.querySelector(`.spinner`)).not.toBeNull()
+      const replacement = new File([MULTI_FRAME_XYZ], `second.xyz`)
+      if (trigger === `a drop`) drop(target, replacement)
+      else props.source = replacement
+      await vi.waitFor(() => expect(pending).toHaveLength(2))
+      expect(pending[0].signal?.aborted).toBe(true)
+      expect(pending[0].signal?.reason).toMatchObject({ name: `AbortError` })
+      expect(target.querySelector(`.spinner`)).not.toBeNull()
 
-    const second = make_run(`second.xyz`)
-    pending[1].resolve(second)
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    expect(props.trajectory?.provenance.filename).toBe(`second.xyz`)
+      const second = make_run(`second.xyz`)
+      const second_dispose = vi.spyOn(second, `dispose`)
+      pending[1].resolve(second)
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+      expect(props.trajectory?.provenance.filename).toBe(`second.xyz`)
 
-    // The stale result is disposed on arrival and never shown
-    const first = make_run(`first.xyz`)
-    const first_dispose = vi.spyOn(first, `dispose`)
-    pending[0].resolve(first)
-    await vi.waitFor(() => expect(first_dispose).toHaveBeenCalledOnce())
-    expect(on_file_load).toHaveBeenCalledOnce()
-    expect(props.trajectory?.provenance.filename).toBe(`second.xyz`)
-    expect(vi.spyOn(second, `dispose`)).not.toHaveBeenCalled()
-  })
-
-  test(`a drop supersedes a pending source load`, async () => {
-    const pending = deferred_worker()
-    const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const target = mount_viewer({
-      source: new File([MULTI_FRAME_XYZ], `slow.xyz`),
-      on_file_load,
-    })
-    await vi.waitFor(() => expect(pending).toHaveLength(1))
-    drop(target, new File([MULTI_FRAME_XYZ], `fast.xyz`))
-    await vi.waitFor(() => expect(pending).toHaveLength(2))
-    expect(pending[0].signal?.aborted).toBe(true)
-    pending[1].resolve(make_run(`fast.xyz`))
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-    const slow = make_run(`slow.xyz`)
-    const slow_dispose = vi.spyOn(slow, `dispose`)
-    pending[0].resolve(slow)
-    await vi.waitFor(() => expect(slow_dispose).toHaveBeenCalledOnce())
-    expect(on_file_load.mock.calls[0][0].filename).toBe(`fast.xyz`)
-  })
+      // The stale result is disposed on arrival and never shown
+      const first = make_run(`first.xyz`)
+      const first_dispose = vi.spyOn(first, `dispose`)
+      pending[0].resolve(first)
+      await vi.waitFor(() => expect(first_dispose).toHaveBeenCalledOnce())
+      expect(on_file_load).toHaveBeenCalledOnce()
+      expect(props.trajectory?.provenance.filename).toBe(`second.xyz`)
+      expect(second_dispose).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe(`run ownership`, () => {
-  test(`a caller-supplied trajectory is shown and never disposed`, async () => {
-    const run = make_run(`mine.xyz`)
-    const dispose = vi.spyOn(run, `dispose`)
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    const component = mount(Trajectory, {
-      target,
-      props: { trajectory: run, display_mode: `structure`, show_controls: `always` },
-    })
-    flushSync()
+  test(`caller-supplied trajectories are shown and never disposed, replaced or unmounted`, async () => {
+    const runs = [make_run(`mine.xyz`), make_run(`yours.xyz`)]
+    const disposes = runs.map((run) => vi.spyOn(run, `dispose`))
+    const props = $state<Props>({ trajectory: runs[0], show_controls: `always` })
+    const target = mount_viewer(props)
     expect(target.querySelector(`.filename`)?.textContent).toContain(`mine.xyz`)
     expect(target.querySelector(`.trajectory-empty-state`)).toBeNull()
-    await unmount(component)
-    expect(dispose).not.toHaveBeenCalled()
+    props.trajectory = runs[1]
+    await tick()
+    for (const component of mounted.splice(0)) await unmount(component)
+    for (const dispose of disposes) expect(dispose).not.toHaveBeenCalled()
   })
 
   test(`a run opened here stays live while shown and is disposed on unmount`, async () => {

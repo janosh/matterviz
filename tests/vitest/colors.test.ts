@@ -64,37 +64,22 @@ describe(`Element Color Schemes`, () => {
     }
   })
 
-  test(`all color scheme values are valid hex colors`, () => {
-    for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
-      for (const [element, color] of Object.entries(colors)) {
-        expect(color, `${scheme_name}.${element} should be a valid hex color`).toMatch(
-          /^#[0-9a-f]{6}$/i,
-        )
-      }
-    }
-  })
-
   test(`pastel scheme has pastel characteristics`, () => {
-    const pastel_colors = ELEMENT_COLOR_SCHEMES.Pastel
-    const sample_elements = [`H`, `C`, `O`, `Fe`, `Au`]
-
-    for (const element of sample_elements) {
-      const color = pastel_colors[element]
-      const red = parseInt(color.slice(1, 3), 16)
-      const green = parseInt(color.slice(3, 5), 16)
-      const blue = parseInt(color.slice(5, 7), 16)
-
-      const lightness = (Math.max(red, green, blue) + Math.min(red, green, blue)) / 2
-      expect(
-        lightness,
-        `${element} in Pastel scheme should have high lightness (got ${lightness})`,
-      ).toBeGreaterThan(120)
+    for (const element of [`H`, `C`, `O`, `Fe`, `Au`]) {
+      const color = ELEMENT_COLOR_SCHEMES.Pastel[element]
+      const channels = [1, 3, 5].map((idx) => parseInt(color.slice(idx, idx + 2), 16))
+      const lightness = (Math.max(...channels) + Math.min(...channels)) / 2
+      expect(lightness, `${element} Pastel lightness`).toBeGreaterThan(120)
     }
   })
 })
 
 describe(`color constants`, () => {
-  it.each([
+  it.each<[string, readonly string[]]>([
+    ...Object.entries(ELEMENT_COLOR_SCHEMES).map(([scheme, colors]): [string, string[]] => [
+      `${scheme} element`,
+      Object.values(colors),
+    ]),
     [`category`, Object.values(DEFAULT_CATEGORY_COLORS)],
     [`plot`, PLOT_COLORS],
   ])(`%s colors are all valid 6-digit hex`, (_label, colors) => {
@@ -126,14 +111,11 @@ describe(`is_color function`, () => {
     [`hsla(120, 100%, 50%, 0.8)`, true],
     [`hsla(120,100%,50%,0.8)`, true],
     [`var(--my-color)`, true],
-    [`var(--primary-color)`, true],
     [`color(srgb 1 0 0)`, true],
     [`color(display-p3 1 0.5 0)`, true],
 
     // Valid named colors
     [`red`, true],
-    [`blue`, true],
-    [`green`, true],
     [`rebeccapurple`, true],
     [`RED`, true], // named colors are case-insensitive
     [`transparent`, true],
@@ -192,57 +174,38 @@ describe(`is_color function`, () => {
   })
 })
 
-describe(`css_color_to_hex`, () => {
-  const fallback = `#000000`
-
-  test.each([
-    // Valid hex colors pass through
-    [`#ff0000`, `#ff0000`],
-    [`#FF0000`, `#ff0000`], // lowercase output
-    [`#f00`, `#ff0000`], // short hex expanded
-    [`#00ff00`, `#00ff00`],
-    // CSS color functions are parsed
-    [`rgb(255, 0, 0)`, `#ff0000`],
-    [`rgb(0 128 255)`, `#0080ff`],
-    [`rgb(0, 128, 255)`, `#0080ff`],
-    [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
-    [`rgba(255, 0, 0, 0)`, `#ff0000`],
-    [`hsl(0, 100%, 50%)`, `#ff0000`],
-    [`hsl(120, 100%, 50%)`, `#00ff00`],
-    [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
-    // Named colors
-    [`red`, `#ff0000`],
-    [`blue`, `#0000ff`],
-    [`green`, `#008000`], // CSS green is #008000, not #00ff00
-    [`white`, `#ffffff`],
-    [`black`, `#000000`],
-    [`orange`, `#ffa500`],
-  ] as const)(`converts %s to %s`, (input, expected) => {
-    expect(css_color_to_hex(input, fallback)).toBe(expected)
-  })
-
-  test.each([
-    // Undefined and empty
-    [undefined, fallback, fallback, `returns fallback for undefined`],
-    [``, fallback, fallback, `returns fallback for empty string`],
-    // CSS variables
-    [`var(--primary-color)`, fallback, fallback, `returns fallback for CSS variable`],
-    [`var(--bg)`, fallback, fallback, `returns fallback for CSS variable shorthand`],
-    [`var(--color)`, `#abcdef`, `#abcdef`, `uses custom fallback for CSS variable`],
-    // Invalid colors
-    [`not-a-color`, fallback, fallback, `returns fallback for invalid color name`],
-    [`#gggggg`, fallback, fallback, `returns fallback for invalid hex`],
-    [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
-    // Special cases
-    [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
-    [`TRANSPARENT`, fallback, `#ffffff`, `handles uppercase transparent`],
-    [` Transparent `, fallback, `#ffffff`, `handles padded mixed-case transparent`],
-    [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
-    // Element color scheme values
-    [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
-  ] as const)(`%s: %s`, (input, face_b, expected, _description) => {
-    expect(css_color_to_hex(input, face_b)).toBe(expected)
-  })
+test.each([
+  // hex passes through lowercased, short hex expanded
+  [`#ff0000`, `#ff0000`],
+  [`#FF0000`, `#ff0000`],
+  [`#f00`, `#ff0000`],
+  // CSS color functions are parsed, alpha ignored
+  [`rgb(255, 0, 0)`, `#ff0000`],
+  [`rgb(0 128 255)`, `#0080ff`],
+  [`rgb(0, 128, 255)`, `#0080ff`],
+  [`rgba(255, 0, 0, 0.5)`, `#ff0000`],
+  [`rgba(255, 0, 0, 0)`, `#ff0000`],
+  [`hsl(0, 100%, 50%)`, `#ff0000`],
+  [`hsl(120, 100%, 50%)`, `#00ff00`],
+  [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
+  [`red`, `#ff0000`],
+  [`green`, `#008000`], // CSS green is #008000, not #00ff00
+  [`white`, `#ffffff`],
+  [`black`, `#000000`],
+  [ELEMENT_COLOR_SCHEMES.Jmol.H, `#ffffff`],
+  // transparent maps to white, whatever its case or padding
+  [`transparent`, `#ffffff`],
+  [`TRANSPARENT`, `#ffffff`],
+  [` Transparent `, `#ffffff`],
+  // unresolvable inputs (CSS vars included) return the fallback
+  [undefined, `#abcdef`],
+  [``, `#abcdef`],
+  [`var(--color)`, `#abcdef`],
+  [`not-a-color`, `#abcdef`],
+  [`#gggggg`, `#abcdef`],
+  [`rgb(invalid)`, `#abcdef`],
+] as const)(`css_color_to_hex(%s) = %s`, (input, expected) => {
+  expect(css_color_to_hex(input, `#abcdef`)).toBe(expected)
 })
 
 test.each([

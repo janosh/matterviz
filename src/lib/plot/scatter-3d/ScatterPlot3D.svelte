@@ -208,7 +208,6 @@
     return { ...opts, offset: { bottom: 70, ...opts.offset } }
   })
 
-  // Handle point hover
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
     tooltip_point = data?.point ?? null

@@ -231,24 +231,18 @@ describe(`gaussian_kde`, () => {
     }
   })
 
-  test.each([
-    { bandwidth: 0 },
-    { bandwidth: -1 },
-    { bandwidth: NaN },
-    { bandwidth: Infinity },
-    { max_samples: 0 },
-    { max_samples: -1 },
-    { max_samples: 1.5 },
-    { max_samples: NaN },
-    { n_points: 1 },
-    { n_points: 2.5 },
-    { n_points: NaN },
-    { n_points: Infinity },
-    { cut: -1 },
-    { cut: NaN },
-    { points_per_bandwidth: 0 },
-    { points_per_bandwidth: NaN },
-  ])(`rejects invalid options %j`, (options) => {
+  const invalid_values = {
+    bandwidth: [0, -1, NaN, Infinity],
+    max_samples: [0, -1, 1.5, NaN],
+    n_points: [1, 2.5, NaN, Infinity],
+    cut: [-1, NaN],
+    points_per_bandwidth: [0, NaN],
+  }
+  test.each(
+    Object.entries(invalid_values).flatMap(([key, values]) =>
+      values.map((value) => ({ [key]: value })),
+    ),
+  )(`rejects invalid options %j`, (options) => {
     expect(() => gaussian_kde([1, 2, 3], options)).toThrow(RangeError)
   })
 })

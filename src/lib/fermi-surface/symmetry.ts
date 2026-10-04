@@ -1,5 +1,4 @@
 // Point group symmetry operations for Fermi surface tiling
-import { reduce_basis } from '#lib/brillouin/compute.js'
 import * as math from '#lib/math.js'
 import type { Matrix3x3, Matrix4Tuple } from '#lib/math.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -70,7 +69,7 @@ export function lattice_point_group_matrices(
 
   // The Cartesian R does not depend on the basis, but the {-1,0,1} search for M does: a
   // non-reduced basis (sheared supercell) expresses most operations with larger entries
-  const basis_t = math.transpose_3x3_matrix(reduce_basis(k_lattice))
+  const basis_t = math.transpose_3x3_matrix(math.reduce_basis(k_lattice))
   const basis_t_inv = math.matrix_inverse_3x3(basis_t)
   const matrices: Matrix4Tuple[] = []
   for (const int_mat of unimodular_candidates()) {

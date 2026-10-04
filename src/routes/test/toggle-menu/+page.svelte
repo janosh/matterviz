@@ -200,13 +200,19 @@
       .map((col) => col.label)
       .join(`, `) || `none`,
   )
+
+  // e2e waits on this: SSR buttons are clickable before their handlers exist
+  let hydrated = $state(false)
+  $effect(() => {
+    hydrated = true
+  })
 </script>
 
 <svelte:head>
   <title>ToggleMenu Demo</title>
 </svelte:head>
 
-<h1 id="togglemenu-component-demo">ToggleMenu Component Demo</h1>
+<h1 id="togglemenu-component-demo" data-hydrated={hydrated}>ToggleMenu Component Demo</h1>
 <p>
   A flexible toggle menu supporting grouped sections, collapsible headers, and disabled states.
 </p>

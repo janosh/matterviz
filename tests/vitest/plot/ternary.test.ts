@@ -15,33 +15,15 @@ const round = (values: readonly number[]): number[] =>
   values.map((val) => Number(val.toFixed(12)) + 0)
 
 describe(`ternary_fractions`, () => {
-  test.each([
-    [
-      [1, 0, 0],
-      [1, 0, 0],
-    ],
-    [
-      [0.2, 0.3, 0.5],
-      [0.2, 0.3, 0.5],
-    ],
-    [
-      [2, 3, 5],
-      [0.2, 0.3, 0.5],
-    ], // raw counts normalize
-    [
-      [50, 50, 0],
-      [0.5, 0.5, 0],
-    ],
+  test.each<{ triple: Vec3; expected: Vec3 }>([
+    { triple: [1, 0, 0], expected: [1, 0, 0] },
+    { triple: [0.2, 0.3, 0.5], expected: [0.2, 0.3, 0.5] },
+    { triple: [2, 3, 5], expected: [0.2, 0.3, 0.5] }, // raw counts normalize
+    { triple: [50, 50, 0], expected: [0.5, 0.5, 0] },
     // 1 - 0.3 - 0.7 = -1.1e-16: round-off from computing the third fraction clamps to 0
-    [
-      [0.3, 0.7, 1 - 0.3 - 0.7],
-      [0.3, 0.7, 0],
-    ],
-    [
-      [30, 70, -1e-8],
-      [0.3, 0.7, 0],
-    ], // tolerance scales with the total
-  ] as [Vec3, Vec3][])(`%j -> %j`, (triple, expected) => {
+    { triple: [0.3, 0.7, 1 - 0.3 - 0.7], expected: [0.3, 0.7, 0] },
+    { triple: [30, 70, -1e-8], expected: [0.3, 0.7, 0] }, // tolerance scales with the total
+  ])(`$triple -> $expected`, ({ triple, expected }) => {
     const fractions = ternary_fractions(triple)
     expect(round(fractions)).toEqual(round(expected))
     expect(fractions.every((frac) => frac >= 0)).toBe(true) // never -0 or below
@@ -60,24 +42,12 @@ describe(`ternary_fractions`, () => {
 })
 
 describe(`ternary_to_xy / xy_to_ternary`, () => {
-  test.each([
-    [
-      [1, 0, 0],
-      [1, 0],
-    ], // first component: right corner
-    [
-      [0, 1, 0],
-      [0.5, TRIANGLE_HEIGHT],
-    ], // second: apex
-    [
-      [0, 0, 1],
-      [0, 0],
-    ], // third: left corner
-    [
-      [1 / 3, 1 / 3, 1 / 3],
-      [0.5, TRIANGLE_HEIGHT / 3],
-    ], // centroid
-  ] as [Vec3, [number, number]][])(`%j sits at %j`, (fractions, coords_xy) => {
+  test.each<{ fractions: Vec3; coords_xy: [number, number] }>([
+    { fractions: [1, 0, 0], coords_xy: [1, 0] }, // first component: right corner
+    { fractions: [0, 1, 0], coords_xy: [0.5, TRIANGLE_HEIGHT] }, // second: apex
+    { fractions: [0, 0, 1], coords_xy: [0, 0] }, // third: left corner
+    { fractions: [1 / 3, 1 / 3, 1 / 3], coords_xy: [0.5, TRIANGLE_HEIGHT / 3] }, // centroid
+  ])(`$fractions sits at $coords_xy`, ({ fractions, coords_xy }) => {
     expect(round(ternary_to_xy(fractions))).toEqual(round(coords_xy))
   })
 

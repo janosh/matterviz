@@ -418,7 +418,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
       )
       .toEqual(expect.objectContaining({ fullscreen: selector.slice(1), inside: true }))
     await expect(pane).toBeVisible()
-    await page.screenshot({ path: `tmp/camera-flight-${kind}-fullscreen.png` })
     // A fitting manual position must survive responsive height updates on re-entry.
     const fitting_insets = await pane.evaluate((node) => {
       const rect = node.getBoundingClientRect()
@@ -445,7 +444,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await pane.locator(`.reset-button`).click()
     await fullscreen_button.click()
     await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, `false`)
-    await page.screenshot({ path: `tmp/camera-flight-${kind}.png`, fullPage: true })
     // Narrow panes must keep the timeline and actions inside their scrollable content.
     await page.setViewportSize({ width: 390, height: 844 })
     await expect
@@ -469,7 +467,6 @@ for (const kind of [`structure`, `trajectory`] as const) {
     }
     await preview.scrollIntoViewIfNeeded()
     await expect(preview).toBeInViewport()
-    await page.screenshot({ path: `tmp/camera-flight-${kind}-mobile.png`, fullPage: true })
     if (kind === `trajectory`) {
       await pane.getByRole(`button`, { name: `Export options →` }).click()
       await expect(export_pane.getByText(/Includes camera flight/)).toBeVisible()

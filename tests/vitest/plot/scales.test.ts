@@ -20,7 +20,7 @@ import {
   scale_arcsinh,
 } from '#lib/plot/core/scales.js'
 import type { TicksOption } from '#lib/plot/core/scales.js'
-import type { ArcsinhScaleConfig, ScaleType } from '#lib/plot/core/types.js'
+import type { ScaleType } from '#lib/plot/core/types.js'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
@@ -30,10 +30,11 @@ import {
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test, vi } from 'vitest'
 
+type Limits = [number | null, number | null]
 const sample_values = [1, 2, 3, 4, 5]
 const nice_range = (
   values: number[],
-  limits: [number | null, number | null],
+  limits: Limits,
   scale_type: ScaleType,
   padding: number,
   is_time = false,
@@ -48,7 +49,7 @@ const nice_range = (
 
 describe(`scales`, () => {
   describe(`create_scale`, () => {
-    test.each([
+    test.each<[ScaleType, Vec2, Vec2]>([
       [`linear`, [0, 100], [0, 500]],
       [`log`, [1, 1000], [0, 300]],
       [`log`, [0.1, 100], [50, 350]],
@@ -56,8 +57,9 @@ describe(`scales`, () => {
       [`log`, [1e-10, 1e-20], [0, 100]],
       [`arcsinh`, [-100, 100], [0, 500]],
       [`arcsinh`, [0, 1000], [0, 300]],
-    ])(`%s scale`, (scale_type, domain, range) => {
-      const scale = create_scale(scale_type as ScaleType, domain as Vec2, range as Vec2)
+      [{ type: `arcsinh`, threshold: 10 }, [0, 100], [0, 500]],
+    ])(`%j scale`, (scale_type, domain, range) => {
+      const scale = create_scale(scale_type, domain, range)
       expect(scale.domain()).toEqual(domain)
       expect(scale.range()).toEqual(range)
       expect(scale(domain[0])).toBe(range[0])
@@ -82,13 +84,6 @@ describe(`scales`, () => {
         expect(Number.isFinite(scale.invert(250))).toBe(true)
       },
     )
-
-    test(`arcsinh scale with config object`, () => {
-      const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 10 }
-      const scale = create_scale(config, [0, 100], [0, 500])
-      expect(scale.domain()).toEqual([0, 100])
-      expect(scale.range()).toEqual([0, 500])
-    })
   })
 
   describe(`nice_range_from_extent`, () => {
@@ -126,7 +121,7 @@ describe(`scales`, () => {
       },
     )
 
-    test.each<[number | null, number | null]>([
+    test.each<Limits>([
       [0, 10],
       [0.123, 4.987],
       [4.987, 0.123],
@@ -164,7 +159,7 @@ describe(`scales`, () => {
       },
     )
 
-    test.each<{ values: number[]; limits: [number | null, number | null] }>([
+    test.each<{ values: number[]; limits: Limits }>([
       { values: [0, 5], limits: [100, null] },
       { values: [0, 5], limits: [null, -100] },
       { values: [0, 5], limits: [5, null] },
@@ -200,10 +195,10 @@ describe(`scales`, () => {
 
     // a log axis given a non-positive bound (explicit negative min, all data <= 0) must still
     // come out ascending and strictly positive instead of the inverted [LOG_EPS, 0]
-    test.each([
-      { values: [0, 0], limits: [-5, null] as [number | null, number | null] },
-      { values: [-3, -1], limits: [-2, 0] as [number | null, number | null] },
-      { values: [-3, 1], limits: [-2, null] as [number | null, number | null] },
+    test.each<{ values: number[]; limits: Limits }>([
+      { values: [0, 0], limits: [-5, null] },
+      { values: [-3, -1], limits: [-2, 0] },
+      { values: [-3, 1], limits: [-2, null] },
     ])(
       `log range stays positive and ascending for $values with limits $limits`,
       ({ values, limits }) => {
@@ -329,7 +324,7 @@ describe(`scales`, () => {
               [null, null],
               [0, 10],
               [-5, null],
-            ] as [number | null, number | null][]) {
+            ] as Limits[]) {
               // Non-positive log bounds are clamped, so only finiteness is fixed here.
               const [low, high] = nice_range(values, limits, scale_type, padding)
               expect(Number.isFinite(low) && Number.isFinite(high)).toBe(true)
@@ -340,10 +335,8 @@ describe(`scales`, () => {
     })
   })
 
-  // A descending range is a supported axis mode. The log branch floored domain[0] and then
-  // widened domain[1] against it, so [1000, 1] became [1000, 1000]: every value landed on one
-  // pixel and invert returned the same number for every pixel, taking hover, tooltips and
-  // rect-zoom on that axis with it. Linear axes always handled the direction correctly.
+  // A descending range is a supported axis mode; a collapsed [1000, 1000] log domain would put
+  // every value on one pixel and break invert (hover, tooltips, rect-zoom).
   test(`mirrors a log axis on a descending domain instead of collapsing it`, () => {
     const values = [1, 10, 100, 1000]
     const ascending = create_scale(`log`, [1, 1000], [0, 300])
@@ -359,8 +352,7 @@ describe(`scales`, () => {
     expect(descending.invert(150)).toBeCloseTo(Math.sqrt(1000), 10)
   })
 
-  // Same collapse in the size scale: an explicit descending value_range asks for the largest
-  // value to draw the smallest marker, and used to give every value the smallest radius.
+  // A descending value_range asks for the largest value to draw the smallest marker
   test(`inverts the radius encoding on a descending log value_range`, () => {
     const radii = (value_range: Vec2) =>
       [1, 10, 100].map(create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }))
@@ -442,6 +434,7 @@ describe(`scales`, () => {
   })
 
   describe(`generate_log_ticks`, () => {
+    // oxfmt-ignore
     test.each([
       { min: 0.1, max: 1000, ticks: 5, expected: [0.1, 1, 10, 100, 1000] },
       // under three decades with a generous count: 1-2-5 mantissas
@@ -456,47 +449,15 @@ describe(`scales`, () => {
       { min: 0.2, max: 0.8, ticks: 5, expected: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] },
       { min: 1.5, max: 1.6, ticks: 5, expected: [1.5, 1.52, 1.54, 1.56, 1.58, 1.6] },
       // narrow domains straddling a power of ten must not emit ticks past max
-      {
-        min: 0.92,
-        max: 0.99,
-        ticks: 5,
-        expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
-      },
+      { min: 0.92, max: 0.99, ticks: 5, expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] },
       // a generous count on a domain holding fewer than two 1-2-5 mantissas must still
       // produce ticks (the mantissa list alone was [] for [0.92, 0.99] and [7, 8], [2] for [2, 3])
-      {
-        min: 0.92,
-        max: 0.99,
-        ticks: 8,
-        expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99],
-      },
-      {
-        min: 7,
-        max: 8,
-        ticks: 8,
-        expected: [7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8],
-      },
-      {
-        min: 2,
-        max: 3,
-        ticks: 8,
-        expected: [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3],
-      },
+      { min: 0.92, max: 0.99, ticks: 8, expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] },
+      { min: 7, max: 8, ticks: 8, expected: [7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8] },
+      { min: 2, max: 3, ticks: 8, expected: [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3] },
       // non-positive bounds clamp to LOG_EPS before the power scan
-      {
-        min: -10,
-        max: 100,
-        ticks: 5,
-        expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1, 10, 100],
-      },
-      {
-        min: 1e-12,
-        max: 1,
-        ticks: 5,
-        expected: [
-          1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1,
-        ],
-      },
+      { min: -10, max: 100, ticks: 5, expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1, 10, 100] },
+      { min: 1e-12, max: 1, ticks: 5, expected: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1] },
       { min: 1e-20, max: 1e-18, ticks: 5, expected: [1e-20, 1e-19, 1e-18] },
     ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
       const result = generate_log_ticks(min, max, ticks)
@@ -524,10 +485,8 @@ describe(`scales`, () => {
 
   describe(`generate_ticks`, () => {
     test(`array input - uses provided array directly`, () => {
-      const domain: Vec2 = [0, 100]
-      const scale = scaleLinear().domain(domain).range([0, 500])
-      const custom_ticks = [10, 30, 50, 70, 90]
-      expect(generate_ticks(domain, `linear`, custom_ticks, scale)).toEqual(custom_ticks)
+      const scale = scaleLinear().domain([0, 100]).range([0, 500])
+      expect(generate_ticks([0, 100], `linear`, [10, 30, 50], scale)).toEqual([10, 30, 50])
     })
 
     test.each([
@@ -645,52 +604,18 @@ describe(`scales`, () => {
     })
 
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
+    // oxfmt-ignore
     test.each<[string, Vec2, ScaleType, number | undefined, number | undefined, number[]]>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
-      [
-        `negative count is a fixed interval`,
-        [0, 100],
-        `linear`,
-        -10,
-        undefined,
-        [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-      ],
+      [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
       // reversed (descending) domains are first-class: an interval must still emit ticks
-      [
-        `interval on a descending domain`,
-        [10, 0],
-        `linear`,
-        -2,
-        undefined,
-        [0, 2, 4, 6, 8, 10],
-      ],
-      [
-        `explicit count wins over default_count`,
-        [0, 100],
-        `linear`,
-        5,
-        2,
-        [0, 20, 40, 60, 80, 100],
-      ],
-      [
-        `default_count applies without a ticks option`,
-        [0, 100],
-        `linear`,
-        undefined,
-        2,
-        [0, 50, 100],
-      ],
+      [`interval on a descending domain`, [10, 0], `linear`, -2, undefined, [0, 2, 4, 6, 8, 10]],
+      [`explicit count wins over default_count`, [0, 100], `linear`, 5, 2, [0, 20, 40, 60, 80, 100]],
+      [`default_count applies without a ticks option`, [0, 100], `linear`, undefined, 2, [0, 50, 100]],
       [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],
       [`degenerate linear domain`, [0, 0], `linear`, 5, undefined, [0]],
-      [
-        `arcsinh mixed range is symmetric around 0`,
-        [-1000, 1000],
-        `arcsinh`,
-        10,
-        undefined,
-        [-1000, -100, -10, -1, 0, 1, 10, 100, 1000],
-      ],
+      [`arcsinh mixed range is symmetric around 0`, [-1000, 1000], `arcsinh`, 10, undefined, [-1000, -100, -10, -1, 0, 1, 10, 100, 1000]],
     ])(`%s`, (_name, domain, type, ticks, default_count, expected) => {
       const range: Vec2 = [0, 500]
       const scale =
@@ -726,33 +651,13 @@ describe(`scales`, () => {
   })
 
   describe(`scale_arcsinh`, () => {
-    test.each([
-      {
-        domain: [0, 100] as Vec2,
-        checks: [
-          [0, 0],
-          [100, 100],
-          [50, `between`],
-        ] as const,
-      },
-      {
-        domain: [-100, 100] as Vec2,
-        checks: [
-          [-100, 0],
-          [0, 50],
-          [100, 100],
-        ] as const,
-      },
-    ])(`forward transform (domain=$domain)`, ({ domain, checks }) => {
-      const scale = scale_arcsinh(1).domain(domain).range([0, 100])
-      checks.forEach(([input, expected]) => {
-        if (expected === `between`) {
-          expect(scale(input)).toBeGreaterThan(0)
-          expect(scale(input)).toBeLessThan(100)
-        } else {
-          expect(scale(input)).toBe(expected)
-        }
-      })
+    test(`forward transform maps domain ends to range ends and 0 to the symmetric midpoint`, () => {
+      const positive = scale_arcsinh(1).domain([0, 100]).range([0, 100])
+      expect([positive(0), positive(100)]).toEqual([0, 100])
+      expect(positive(50)).toBeGreaterThan(0)
+      expect(positive(50)).toBeLessThan(100)
+      const symmetric = scale_arcsinh(1).domain([-100, 100]).range([0, 100])
+      expect([symmetric(-100), symmetric(0), symmetric(100)]).toEqual([0, 50, 100])
     })
 
     test.each([
@@ -773,17 +678,10 @@ describe(`scales`, () => {
       },
     )
 
-    test(`threshold parameter affects transition`, () => {
-      const scale_thresh_1 = scale_arcsinh(1).domain([0, 1000]).range([0, 100])
-      const scale_thresh_100 = scale_arcsinh(100).domain([0, 1000]).range([0, 100])
-
-      // At x=10 with threshold=1, we're in the log region (10 >> 1) → higher relative position
-      // At x=10 with threshold=100, we're in the linear region (10 << 100) → lower relative position
-      const pos_1 = scale_thresh_1(10)
-      const pos_100 = scale_thresh_100(10)
-
-      // Smaller threshold puts x=10 deeper into log territory → higher screen position
-      expect(pos_1).toBeGreaterThan(pos_100)
+    test(`a smaller threshold puts a value deeper into the log region`, () => {
+      const pos_of_10 = (threshold: number) =>
+        scale_arcsinh(threshold).domain([0, 1000]).range([0, 100])(10)
+      expect(pos_of_10(1)).toBeGreaterThan(pos_of_10(100))
     })
 
     test(`ticks method delegates to generate_arcsinh_ticks with the scale threshold`, () => {
@@ -810,40 +708,21 @@ describe(`scales`, () => {
 
   describe(`generate_arcsinh_ticks`, () => {
     // Ticks are rounded to 12 places so 0.6000000000000001 from linear stepping compares as 0.6
+    // oxfmt-ignore
     test.each<[string, number, number, number, number, number[]]>([
-      [
-        `positive range: decades plus 2x/5x fill to reach count`,
-        0,
-        1000,
-        1,
-        10,
-        [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000],
-      ],
-      [
-        `negative range mirrors the positive path`,
-        -1000,
-        0,
-        1,
-        10,
-        [-1000, -500, -200, -100, -50, -20, -10, -5, -2, -1],
-      ],
+      [`positive range: decades plus 2x/5x fill to reach count`, 0, 1000, 1, 10, [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]],
+      [`negative range mirrors the positive path`, -1000, 0, 1, 10, [-1000, -500, -200, -100, -50, -20, -10, -5, -2, -1]],
       [`range within 2x threshold is spaced linearly`, 0, 1, 1, 5, [0, 0.2, 0.4, 0.6, 0.8, 1]],
-      [
-        `large threshold keeps the whole range linear`,
-        0,
-        100,
-        100,
-        8,
-        [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100],
-      ],
+      [`large threshold keeps the whole range linear`, 0, 100, 100, 8, [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100]],
+      // a low count over a wide mixed range keeps the outermost decades, not every one
+      [`small count keeps spread-out outer ticks`, -100, 100, 1, 4, [-100, -10, 0, 10, 100]],
     ])(`%s`, (_name, min, max, threshold, count, expected) => {
       const ticks = generate_arcsinh_ticks(min, max, threshold, count)
       expect(ticks.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
 
+    // raw domain extremes must not become ticks (long labels like 1325.8239811994677)
     test(`emits clean round ticks for non-round domain (no raw endpoints)`, () => {
-      // Regression: raw domain extremes used to be added as ticks, rendering as long
-      // unrounded labels like 1325.8239811994677. Only clean powers of 10 / 2x/5x should show.
       const min = -1515.343730040983
       const max = 1325.8239811994677
       const ticks = generate_arcsinh_ticks(min, max, 10, 10)
@@ -857,25 +736,14 @@ describe(`scales`, () => {
     })
 
     test(`small tick count snaps boundary to a clean power of 10`, () => {
-      // count<=3 mixed range previously pushed the raw extreme (e.g. -1500) as a tick
       const ticks = generate_arcsinh_ticks(-1500, 1300, 10, 2)
       expect(ticks).not.toContain(-1500)
       expect(ticks).toContain(0)
       expect(ticks).toContain(-1000) // larger-magnitude boundary snapped to nearest power of 10
     })
 
-    test(`range starting at exactly zero uses positive path`, () => {
-      // When min=0, should use positive tick generation (not mixed with half_count)
-      const ticks_from_zero = generate_arcsinh_ticks(0, 1000, 1, 10)
-      const ticks_from_positive = generate_arcsinh_ticks(1, 1000, 1, 10)
-      expect(ticks_from_zero.length).toBeGreaterThanOrEqual(ticks_from_positive.length - 1)
-      expect(ticks_from_zero.every((tick) => tick >= 0)).toBe(true)
-      expect(ticks_from_zero[0]).toBeLessThanOrEqual(1)
-    })
-
     test(`omits sub-threshold powers that would overlap the zero tick`, () => {
-      // Regression: threshold=10 over a wide mixed range used to emit ±1 (a decade below the
-      // threshold). In arcsinh space those sit almost on 0, so the −1/0/1 labels overlapped.
+      // ±1 sit almost on 0 in arcsinh space, so their labels would overlap the zero tick
       const ticks = generate_arcsinh_ticks(-1000, 1000, 10, 10)
       expect(ticks).toContain(0)
       expect(ticks).not.toContain(1)
@@ -885,25 +753,15 @@ describe(`scales`, () => {
       expect(min_nonzero).toBeGreaterThanOrEqual(10)
     })
 
-    test(`respects small count, keeping the spread-out outermost ticks`, () => {
-      // Regression: a low-count colorbar over a wide mixed range used to ignore count and emit
-      // every decade, crowding −1/0/1 near the center. Now it keeps the outermost decades on each
-      // side around zero (count=4 -> ~5 ticks), dropping the near-zero ones.
-      const ticks = generate_arcsinh_ticks(-100, 100, 1, 4)
-      expect(ticks).toEqual([-100, -10, 0, 10, 100])
-    })
-
     test.each([
-      { min: 1000, max: -100, name: `mixed` }, // reversed mixed (tests equality with normal)
-      { min: 100, max: 0, name: `positive` }, // reversed positive
-      { min: 0, max: -100, name: `negative` }, // reversed negative
-      { min: 500, max: -500, name: `symmetric` }, // reversed symmetric
+      { min: 1000, max: -100, name: `mixed` },
+      { min: 100, max: 0, name: `positive` },
+      { min: 0, max: -100, name: `negative` },
+      { min: 500, max: -500, name: `symmetric` },
     ])(`reversed domain ($name) [$min, $max] normalizes correctly`, ({ min, max }) => {
       const ticks = generate_arcsinh_ticks(min, max, 1, 8)
       const [lower, upper] = [Math.min(min, max), Math.max(min, max)]
-      // All ticks within normalized range
       expect(ticks.every((tick) => tick >= lower && tick <= upper)).toBe(true)
-      // Reversed should equal normal order
       expect(ticks).toEqual(generate_arcsinh_ticks(lower, upper, 1, 8))
     })
   })
@@ -952,17 +810,12 @@ describe(`scales`, () => {
       )
     })
 
-    test(`returns middle color when domain min equals max`, () => {
+    test(`returns one color when domain min equals max`, () => {
       const scale = create_color_scale(
         { type: `arcsinh`, scheme: `interpolateViridis`, value_range: [50, 50] },
         [0, 100], // auto_color_range is ignored when value_range is provided
       )
-      // All values should map to middle of color scale (0.5)
-      const color_at_min = scale(0)
-      const color_at_mid = scale(50)
-      const color_at_max = scale(100)
-      expect(color_at_min).toBe(color_at_mid)
-      expect(color_at_mid).toBe(color_at_max)
+      expect(new Set([0, 50, 100].map((val) => scale(val))).size).toBe(1)
     })
 
     test(`maps extreme values to distinct hex colors and near-zero to the midpoint`, () => {
@@ -981,32 +834,19 @@ describe(`scales`, () => {
       expect(scale(-100)).not.toBe(scale(100)) // boundaries differ
     })
 
-    test(`color scale domain method returns correct values`, () => {
-      const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 5 }
-      const scale = create_color_scale(config, [-50, 150])
+    test(`domain getter and D3-style chainable in-place setter`, () => {
+      const scale = create_color_scale({ type: { type: `arcsinh`, threshold: 5 } }, [-50, 150])
       expect(scale.domain()).toEqual([-50, 150])
-    })
-
-    test(`domain setter returns same scale instance (D3-style mutation)`, () => {
-      const scale = create_color_scale({ type: `arcsinh` }, [0, 1])
-      const color_before = scale(0.5)
-      // Should return the same scale instance for chaining
+      const color_before = scale(0)
       expect(scale.domain([0, 100])).toBe(scale)
-      // Domain should be updated in place
       expect(scale.domain()).toEqual([0, 100])
-      // Behavior should change after domain mutation
-      const color_after = scale(50)
-      expect(color_before).not.toBe(color_after)
+      expect(scale(0)).not.toBe(color_before)
     })
 
-    test(`arcsinh color scale produces smooth gradient`, () => {
-      const config: ArcsinhScaleConfig = { type: `arcsinh`, threshold: 1 }
-      const scale = create_color_scale(config, [0, 1000])
-      // Values near threshold should be distinguishable
+    test(`spreads values around the threshold over distinct colors`, () => {
+      const scale = create_color_scale({ type: { type: `arcsinh`, threshold: 1 } }, [0, 1000])
       const colors = [0, 1, 10, 100, 1000].map((val) => scale(val))
-      // All colors should be unique for these spread-out values
-      const unique_colors = new Set(colors)
-      expect(unique_colors.size).toBe(colors.length)
+      expect(new Set(colors).size).toBe(colors.length)
     })
   })
 

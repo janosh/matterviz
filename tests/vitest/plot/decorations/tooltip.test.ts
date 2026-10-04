@@ -26,27 +26,13 @@ describe(`tooltip decoration placement`, () => {
     ])
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      name: `right edge`,
-      anchor: { x: 95, y: 50 },
-      expected: { direction: `left-below`, x: 70, y: 57 },
-    },
-    {
-      name: `bottom edge`,
-      anchor: { x: 50, y: 95 },
-      expected: { direction: `right-above`, x: 55, y: 78 },
-    },
-    {
-      name: `top-left corner with right-below negative offsets`,
-      anchor: { x: 2, y: 2 },
-      expected: { direction: `right-below`, x: 7, y: 9 },
-      offset: { x: -5, y: -7 },
-    },
-  ])(`chooses an unclamped candidate at the $name`, ({ anchor, expected, offset }) => {
-    expect(
-      place_tooltip({ ...base_config, anchor, offset: offset ?? base_config.offset }),
-    ).toMatchObject(expected)
+    [`right edge`, { anchor: { x: 95, y: 50 } }, { direction: `left-below`, x: 70, y: 57 }],
+    [`bottom edge`, { anchor: { x: 50, y: 95 } }, { direction: `right-above`, x: 55, y: 78 }],
+    [`top-left corner with right-below negative offsets`, { anchor: { x: 2, y: 2 }, offset: { x: -5, y: -7 } }, { direction: `right-below`, x: 7, y: 9 }],
+  ])(`chooses an unclamped candidate at the %s`, (_name, overrides, expected) => {
+    expect(place_tooltip({ ...base_config, ...overrides })).toMatchObject(expected)
   })
 
   test(`avoids exclusion rectangles before applying distance preferences`, () => {

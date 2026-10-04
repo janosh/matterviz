@@ -32,31 +32,28 @@ test.describe(`StructureExportPane Tests`, () => {
     expect(JSON.parse(await readFile(path, `utf8`)).sites.length).toBeGreaterThan(0)
   })
 
-  const text_format_tooltips = [
-    { label: `JSON`, expected_text: `Pymatgen`, link_href: `pymatgen.org` },
-    { label: `XYZ`, expected_text: `ASE`, link_href: `wiki.fysik.dtu.dk/ase` },
-    { label: `CIF`, expected_text: `IUCr`, link_href: `iucr.org` },
-    { label: `POSCAR`, expected_text: `VASP`, link_href: `vasp.at` },
-  ]
-  for (const { label, expected_text, link_href } of text_format_tooltips) {
-    test(`${label} format label shows tooltip with link on hover`, async ({ page }) => {
-      const { pane_div } = await open_structure_export_pane(page)
+  test(`format labels show tooltips linking their docs on hover`, async ({ page }) => {
+    const { pane_div } = await open_structure_export_pane(page)
+    for (const [label, expected_text, link_href] of [
+      [`JSON`, `Pymatgen`, `pymatgen.org`],
+      [`XYZ`, `ASE`, `wiki.fysik.dtu.dk/ase`],
+      [`CIF`, `IUCr`, `iucr.org`],
+      [`POSCAR`, `VASP`, `vasp.at`],
+    ]) {
       await pane_div.getByText(label, { exact: true }).hover()
-
       // format hints open as hover popovers named by ExportPane's export_label snippet
       const tooltip_elem = page
         .getByRole(`dialog`, { name: `Export format details` })
         .filter({ hasText: expected_text })
-      await expect(tooltip_elem).toBeVisible()
+      await expect(tooltip_elem, label).toBeVisible()
       const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)
-      await expect(tooltip_link).toBeVisible()
-      await expect(tooltip_link).toHaveAttribute(`target`, `_blank`)
+      await expect(tooltip_link, label).toBeVisible()
+      await expect(tooltip_link, label).toHaveAttribute(`target`, `_blank`)
 
-      // Move the pointer clear of BOTH label and tooltip. Hovering the section heading is not
-      // enough: the tooltip is placed to the left of its label, so for some formats it covers
-      // the heading and keeping the cursor on it holds the tooltip open.
+      // Move the pointer clear of BOTH label and tooltip: the tooltip sits left of its label
+      // and can cover the section heading, so hovering that would hold it open.
       await page.mouse.move(2, 2)
-      await expect(tooltip_elem).toBeHidden()
-    })
-  }
+      await expect(tooltip_elem, label).toBeHidden()
+    }
+  })
 })

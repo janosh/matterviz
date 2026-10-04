@@ -11,17 +11,11 @@ describe(`ElementStats`, () => {
     (element) => {
       mount(ElementStats, { target: document.body, props: { element } })
 
-      const atomic_mass = doc_query(`div > section:nth-child(2) > strong`)
-      expect(atomic_mass.textContent?.trim()).toBe(format_num(element.atomic_mass))
-
-      const density = doc_query(`div > section:nth-child(3) > strong`)
-      expect(density.textContent?.trim()).toBe(format_num(element.density))
-
-      const phase = doc_query(`div > section:nth-child(4) > strong`)
-      expect(phase.textContent?.trim()).toBe(element.phase)
-
-      const year = doc_query(`div > section:nth-child(5) > strong`)
-      expect(year.textContent?.trim()).toBe(`${element.year}`)
+      const { atomic_mass, density, phase, year } = element
+      const values = [2, 3, 4, 5].map((nth) =>
+        doc_query(`div > section:nth-child(${nth}) > strong`).textContent?.trim(),
+      )
+      expect(values).toEqual([format_num(atomic_mass), format_num(density), phase, `${year}`])
     },
   )
 })

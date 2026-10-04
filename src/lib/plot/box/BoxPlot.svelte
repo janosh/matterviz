@@ -41,7 +41,10 @@
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { compute_box_whiskers, summarize_box_samples } from '#lib/plot/box/box-plot.js'
   import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
@@ -238,6 +241,7 @@
     vertical ? (is_secondary(srs) ? `y2` : `y`) : is_secondary(srs) ? `x2` : `x`
 
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     has_x2: () => show_x2,

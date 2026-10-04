@@ -37,9 +37,7 @@ describe(`scalars_to_vertex_colors`, () => {
     // Viridis start is #440154 in sRGB; Three.js vertex colors must be linear.
     // Linear conversion of (0x44, 0x01, 0x54)/255 ≈ (0.0578, 0.0003, 0.0888).
     const colors = scalars_to_vertex_colors(new Float32Array([0]), viridis_opts)
-    expect(colors[0]).toBeCloseTo(0.0578, 3)
-    expect(colors[1]).toBeCloseTo(0.0003, 3)
-    expect(colors[2]).toBeCloseTo(0.0888, 3)
+    expect([...colors]).toEqual([0.0578, 0.0003, 0.0888].map((val) => expect.closeTo(val, 3)))
   })
 
   test(`maps range endpoints to LUT ends and clamps outside values`, () => {
@@ -65,20 +63,17 @@ describe(`scalars_to_vertex_colors`, () => {
     expect(rgb_at(flipped, 1)).toEqual(rgb_at(forward, 0))
   })
 
-  test.each([
-    { value: NaN, label: `NaN` },
-    { value: Infinity, label: `Infinity` },
-    { value: -Infinity, label: `-Infinity` },
-  ])(`$label scalars get the fallback color in linear space`, ({ value }) => {
-    // #808080 is 0.502 in sRGB → ≈0.2158 linear (discriminates the two spaces)
-    const colors = scalars_to_vertex_colors(new Float32Array([value]), {
-      ...viridis_opts,
-      fallback_color: `#808080`,
-    })
-    expect(colors[0]).toBeCloseTo(0.2158, 3)
-    expect(colors[1]).toBeCloseTo(0.2158, 3)
-    expect(colors[2]).toBeCloseTo(0.2158, 3)
-  })
+  test.each([NaN, Infinity, -Infinity])(
+    `%s scalars get the fallback color in linear space`,
+    (value) => {
+      // #808080 is 0.502 in sRGB → ≈0.2158 linear (discriminates the two spaces)
+      const colors = scalars_to_vertex_colors(new Float32Array([value]), {
+        ...viridis_opts,
+        fallback_color: `#808080`,
+      })
+      expect([...colors]).toEqual(Array(3).fill(expect.closeTo(0.2158, 3)))
+    },
+  )
 
   test(`zero-span range maps everything to one mid color`, () => {
     const colors = scalars_to_vertex_colors(new Float32Array([5, 7]), {
@@ -121,56 +116,39 @@ describe(`fit_color_range`, () => {
 
 describe(`compute_scalar_range`, () => {
   test.each([
-    {
-      arrays: [[1, 2, 3]],
-      options: {},
-      expected: [1, 3],
-      label: `positive values keep [min, max]`,
-    },
-    {
-      arrays: [[-2, 5]],
-      options: {},
-      expected: [-5, 5],
-      label: `mixed-sign values get symmetric range`,
-    },
-    {
-      arrays: [[2, 5]],
-      options: { symmetric: true },
-      expected: [-5, 5],
-      label: `symmetric option forces zero-centered range for one-signed samples`,
-    },
-    {
-      arrays: [[-4, -1]],
-      options: { symmetric: true },
-      expected: [-4, 4],
-      label: `symmetric option covers negative-only samples`,
-    },
-    {
-      arrays: [[-2, 5]],
-      options: { symmetric: false },
-      expected: [-2, 5],
-      label: `symmetric=false keeps mixed-sign samples as is`,
-    },
-    {
-      arrays: [
+    [`positive values keep [min, max]`, [[1, 2, 3]], {}, [1, 3]],
+    [`mixed-sign values get symmetric range`, [[-2, 5]], {}, [-5, 5]],
+    [
+      `symmetric forces zero-centered range for one-signed samples`,
+      [[2, 5]],
+      { symmetric: true },
+      [-5, 5],
+    ],
+    [`symmetric covers negative-only samples`, [[-4, -1]], { symmetric: true }, [-4, 4]],
+    [
+      `symmetric=false keeps mixed-sign samples as is`,
+      [[-2, 5]],
+      { symmetric: false },
+      [-2, 5],
+    ],
+    [
+      `multiple arrays merge, non-finite values ignored`,
+      [
         [1, NaN, 4],
         [2, Infinity, 8],
       ],
-      options: {},
-      expected: [1, 8],
-      label: `multiple arrays merge, non-finite values ignored`,
+      {},
+      [1, 8],
+    ],
+    [`all-non-finite falls back to [0, 1]`, [[NaN, Infinity]], {}, [0, 1]],
+    [`empty input falls back to [0, 1]`, [], {}, [0, 1]],
+  ] as [string, number[][], { symmetric?: boolean }, number[]][])(
+    `%s`,
+    (_label, arrays, options, expected) => {
+      const scalar_arrays = arrays.map((values) => new Float32Array(values))
+      expect(compute_scalar_range(scalar_arrays, options)).toEqual(expected)
     },
-    {
-      arrays: [[NaN, Infinity]],
-      options: {},
-      expected: [0, 1],
-      label: `all-non-finite falls back to [0, 1]`,
-    },
-    { arrays: [], options: {}, expected: [0, 1], label: `empty input falls back to [0, 1]` },
-  ])(`$label`, ({ arrays, options, expected }) => {
-    const scalar_arrays = arrays.map((values) => new Float32Array(values))
-    expect(compute_scalar_range(scalar_arrays, options)).toEqual(expected)
-  })
+  )
 })
 
 describe(`is_signed_range`, () => {
@@ -186,16 +164,13 @@ describe(`is_signed_range`, () => {
 })
 
 describe(`auto_color_config`, () => {
-  test(`signed data gets diverging RdBu with symmetric range`, () => {
-    const config = auto_color_config({ min: -3, max: 5, abs_max: 5, mean: 0.2 })
-    expect(config.colormap).toBe(`interpolateRdBu`)
-    expect(config.color_range).toEqual([-5, 5])
-  })
-
-  test(`non-negative data gets Viridis over [min, max]`, () => {
-    const range = { min: 0, max: 8, abs_max: 8, mean: 2 }
-    const config = auto_color_config(range)
-    expect(config.colormap).toBe(`interpolateViridis`)
-    expect(config.color_range).toEqual([range.min, range.max])
+  test.each([
+    [`signed data gets diverging RdBu with a symmetric`, -3, `interpolateRdBu`, [-5, 5]],
+    [`non-negative data gets Viridis over the [min, max]`, 1, `interpolateViridis`, [1, 5]],
+  ])(`%s range`, (_label, min, colormap, color_range) => {
+    expect(auto_color_config({ min, max: 5, abs_max: 5, mean: 1 })).toMatchObject({
+      colormap,
+      color_range,
+    })
   })
 })

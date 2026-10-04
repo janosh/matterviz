@@ -183,10 +183,10 @@ function parse_frmsf(content: string): BandGridData {
     throw new Error(`FRMSF: Invalid reciprocal lattice vector`)
   }
 
-  // Band energies, one per line in z-fastest order (trailing columns such as FermiSurfer's
-  // auxiliary colour data are dropped), kept as written: the format's energy unit is arbitrary
-  // with the Fermi level at 0 (producers write Ry, Ha or eV), so any fixed factor would rescale
-  // most files wrongly. FRMSF has a single spin channel.
+  // Band energies in z-fastest order, read as whitespace-separated tokens like FermiSurfer's
+  // fscanf (any number per line; the optional colour block follows), kept as written: the
+  // format's energy unit is arbitrary with the Fermi level at 0 (producers write Ry, Ha or
+  // eV), so any fixed factor would rescale most files wrongly. FRMSF has a single spin channel.
   const total_points = checked_grid_points(
     k_grid,
     content.length - reader.position(),
@@ -201,8 +201,6 @@ function parse_frmsf(content: string): BandGridData {
       reader.position(),
       total_points,
       energy_values,
-      0,
-      true,
     )
     reader.seek(end_pos)
     if (count < total_points) {

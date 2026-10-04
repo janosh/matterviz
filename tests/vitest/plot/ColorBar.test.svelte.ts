@@ -82,8 +82,7 @@ describe(`ColorBar layout`, () => {
   })
 
   test(`rejects invalid scales`, () => {
-    // Bare scheme names were silently prefixed before; only the canonical `interpolate*`
-    // name resolves now. The cast exercises the runtime guard JavaScript callers hit.
+    // only canonical `interpolate*` names resolve; the cast exercises the runtime guard
     const scale = `Viridis` as ColorBarScale
     expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
   })

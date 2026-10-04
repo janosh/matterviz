@@ -186,7 +186,8 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
 // Exact minimum-image displacement `to - from` for row-vector lattices. Rounded
 // fractional wrapping is only approximate for skewed cells, so it is the starting guess
 // and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
-// radius are then searched. Runs per atom pair in RDF/MSD/bonding loops, so it works in
+// radius are then searched (in the reduced basis when fully periodic, which keeps that
+// search a handful of candidates however sheared the cell is). Runs per atom pair in RDF/MSD/bonding loops, so it works in
 // scalars and allocates only the returned Vec3.
 export const min_image_displacement = (
   from: Vec3,
@@ -217,8 +218,10 @@ export function min_image_displacement_into(
     return out
   }
 
+  const all_converters = converters ?? create_lattice_converters(lattice_matrix)
+  // Basis reduction mixes axes, so a partly periodic cell keeps its own basis
   const { lattice, reciprocal, reciprocal_axis_norms } =
-    converters ?? create_lattice_converters(lattice_matrix)
+    pbc[0] && pbc[1] && pbc[2] ? all_converters.reduced : all_converters
   // An exactly diagonal cell has independent axes: rounding each periodic fractional
   // component already minimizes the Cartesian distance, including negative cell vectors.
   // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
@@ -378,6 +381,37 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
     )
   }
   return inverse
+}
+
+// Pairwise (Lagrange–Gauss) size reduction of a lattice basis: subtract the nearest integer
+// multiple of one vector from another while that shortens it. Every step is unimodular, so
+// the lattice (and its Wigner-Seitz cell) is unchanged, but the ±1 index shell of the result
+// bounds a cell close to the true one. Without it a sheared basis (e.g. the reciprocal of a
+// [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the
+// radius-bounded G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of
+// memory by s = 30). Also used by lattice_point_group_matrices, whose {-1,0,1} integer-matrix
+// search assumes a reduced basis.
+export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
+  const reduced = basis.map((row) => [...row]) as Matrix3x3
+  for (let iter = 0; iter < 64; iter++) {
+    let changed = false
+    for (let idx_i = 0; idx_i < 3; idx_i++) {
+      for (let idx_j = 0; idx_j < 3; idx_j++) {
+        if (idx_i === idx_j) continue
+        const len_sq_j = dot(reduced[idx_j], reduced[idx_j])
+        const coeff = Math.round(dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
+        if (coeff === 0) continue
+        const candidate = subtract(reduced[idx_i], scale(reduced[idx_j], coeff))
+        const len_sq_i = dot(reduced[idx_i], reduced[idx_i])
+        if (dot(candidate, candidate) < len_sq_i * (1 - 1e-12)) {
+          reduced[idx_i] = candidate
+          changed = true
+        }
+      }
+    }
+    if (!changed) break
+  }
+  return reduced
 }
 
 // Multiply a 3x3 matrix by a 3D vector
@@ -548,21 +582,29 @@ export const create_cart_to_frac = (lattice: Matrix3x3) => {
 // The raw matrices are exposed for allocation-free scalar arithmetic in hot loops
 // (min_image_displacement); reciprocal_axis_norms[i] = |b_i| bounds how far a Cartesian
 // radius can reach along fractional axis i.
-export type LatticeConverters = {
-  lattice: Matrix3x3
-  reciprocal: Matrix3x3
-  reciprocal_axis_norms: Vec3
+// A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
+type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
+
+export type LatticeConverters = LatticeBasis & {
+  // The same lattice in a reduced basis: the minimum-image search of a fully periodic cell
+  // runs there, since a sheared basis's candidate box grows with the shear (and throws)
+  reduced: LatticeBasis
   cart_to_frac: (cart: Vec3) => Vec3
   frac_to_cart: (frac: Vec3) => Vec3
 }
 
-export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
+const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
   const reciprocal = reciprocal_lattice(lattice)
+  const reciprocal_axis_norms = reciprocal.map((row) => Math.hypot(...row)) as Vec3
+  return { lattice, reciprocal, reciprocal_axis_norms }
+}
+
+export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
+  const basis = lattice_basis(lattice)
   return {
-    lattice,
-    reciprocal,
-    reciprocal_axis_norms: reciprocal.map((row) => Math.hypot(row[0], row[1], row[2])) as Vec3,
-    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart),
+    ...basis,
+    reduced: lattice_basis(reduce_basis(lattice)),
+    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(basis.reciprocal, cart),
     frac_to_cart: create_frac_to_cart(lattice),
   }
 }
@@ -581,12 +623,9 @@ export function cell_to_lattice_matrix(
   const cos_gamma = Math.cos(gamma * DEG_TO_RAD)
   const sin_gamma = Math.sin(gamma * DEG_TO_RAD)
 
-  // Calculate volume factor for triclinic system. The radicand goes negative whenever the
-  // angle triple violates the triclinic inequality, and sin_gamma is zero at gamma 0/180.
-  // Both used to sail through as NaN: (3,3,3,170,170,170) returned a c vector of
-  // [-2.95, -33.77, NaN] - already nonsense at c_y, which should have length 3 - so one
-  // mistyped CIF angle turned every derived Cartesian coordinate into NaN with no
-  // diagnostic anywhere. Fail here instead, naming the offending parameters.
+  // Triclinic volume factor. Fail fast, naming the cell: a negative radicand (angles that
+  // violate the triclinic inequality) or sin_gamma = 0 (gamma 0/180) would silently make
+  // every Cartesian coordinate NaN.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
   const cell_desc = `a=${lattice_a} b=${value_b} c=${value_c} alpha=${alpha} beta=${beta} gamma=${gamma}`

@@ -1,5 +1,5 @@
 // Smoke coverage for the FermiSurface viewer on its demo route: the WebGPU canvas renders and
-// tracks the viewport, a control toggles, and a dropped BXSF grid replaces the demo file.
+// tracks the viewport, its controls work, and a dropped BXSF grid replaces the demo file.
 // Every test fails on a console/page error, navigation and first render included.
 import { expect, type Page } from '@playwright/test'
 import {
@@ -67,7 +67,9 @@ test.describe(`FermiSurface smoke`, () => {
       .toBeLessThan(wide.width)
   })
 
-  test(`Show BZ toggle hides the BZ opacity slider`, async ({ page }) => {
+  test(`BZ, surface, clipping and camera controls work and meshes download`, async ({
+    page,
+  }) => {
     const pane = await open_controls(page)
     await expect(pane.getByText(`μ offset (eV)`, { exact: true })).toHaveCount(0)
     const show_bz = pane.getByLabel(`Show BZ`)
@@ -78,10 +80,7 @@ test.describe(`FermiSurface smoke`, () => {
     await expect(bz_opacity).toBeHidden()
     await show_bz.check()
     await expect(bz_opacity).toBeVisible()
-  })
 
-  test(`surface controls and mesh downloads work`, async ({ page }) => {
-    const pane = await open_controls(page)
     const bands = pane.locator(`.band-checkbox input`)
     await pane.getByRole(`button`, { name: `None`, exact: true }).click()
     await expect(pane.locator(`.band-checkbox input:checked`)).toHaveCount(0)

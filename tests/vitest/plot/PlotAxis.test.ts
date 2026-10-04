@@ -174,7 +174,8 @@ describe(`PlotAxis`, () => {
     expect(texts[0]?.getAttribute(`aria-label`)).toBe(`50 eV`)
   })
 
-  test(`non-finite projected ticks stay hidden with aligned accessible labels`, async () => {
+  // label_ticks override the formatted value, and stay aligned when non-finite ticks are hidden
+  test(`non-finite projected ticks stay hidden with aligned label_ticks`, async () => {
     const svg = await mount_axis({
       side: `x`,
       ticks: [40, 60, 80, 100],
@@ -183,25 +184,14 @@ describe(`PlotAxis`, () => {
       label_ticks: { 40: `tick-40`, 60: `tick-60`, 80: `tick-80`, 100: `tick-100` },
     })
 
-    const tick_groups = svg.querySelectorAll(`g.tick`)
-    const texts = svg.querySelectorAll(`g.tick text`)
-    expect(tick_groups).toHaveLength(2)
-    expect([...texts].map((text) => text.getAttribute(`aria-label`))).toEqual([
-      `tick-40`,
-      `tick-100`,
+    expect(svg.querySelectorAll(`g.tick`)).toHaveLength(2)
+    const texts = [...svg.querySelectorAll(`g.tick text`)]
+    expect(
+      texts.map((text) => [text.getAttribute(`aria-label`), text.textContent?.trim()]),
+    ).toEqual([
+      [`tick-40`, `tick-40`],
+      [`tick-100`, `tick-100`],
     ])
-  })
-
-  test(`label_ticks overrides the formatted value`, async () => {
-    const svg = await mount_axis({
-      side: `x`,
-      ticks: [0, 1],
-      label_ticks: { 0: `α`, 1: `β` },
-    })
-    const texts = [...svg.querySelectorAll(`g.tick text`)].map((node) =>
-      node.textContent?.trim(),
-    )
-    expect(texts).toEqual([`α`, `β`])
   })
 
   test(`axis.on_tick_click turns labels into buttons that report the tick value`, async () => {
@@ -357,7 +347,7 @@ describe(`PlotAxis`, () => {
       expect(svg.querySelector(`.spinner`) !== null).toBe(axis_loading)
       expect((trigger as HTMLButtonElement).disabled).toBe(axis_loading)
       expect(Number(foreign_obj.getAttribute(`width`))).toBeGreaterThan(expected.length * 7)
-      expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PortalSelect trigger
+      expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PopoverSelect trigger
       const static_label = query(svg, `text[data-export-only]`)
       expect(static_label.getAttribute(`display`)).toBe(`none`)
       const exported = new DOMParser().parseFromString(svg_to_svg_string(svg), `image/svg+xml`)

@@ -13,6 +13,8 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import * as plotting from '#lib/trajectory/plotting.js'
 import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
+import type { StructureCutaway } from '#lib/structure/cutaway.js'
+import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { FrameView } from '#lib/trajectory/frame.js'
@@ -31,6 +33,7 @@ import {
   form_controls,
   fire,
   keydown,
+  set_input,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import type { Component, ComponentProps } from 'svelte'
@@ -516,7 +519,11 @@ describe(`controls`, () => {
   test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {
     const render_structure = vi.spyOn(
       structure_component as unknown as {
-        default: Component<{ atom_opacity?: number; volume_color_field?: unknown }>
+        default: Component<{
+          atom_opacity?: number
+          volume_color_field?: unknown
+          cutaway?: StructureCutaway
+        }>
       },
       `default`,
     )
@@ -549,6 +556,15 @@ describe(`controls`, () => {
         active_pane: `hotspots`,
         current_step_idx: 1,
         display_mode: `structure+plot`,
+        structure_props: {
+          cutaway: {
+            mode: `slab`,
+            axis: 2,
+            position: 0.5,
+            thickness: 0.05,
+            cartesian_to_fractional: new Matrix4(),
+          },
+        },
       }),
     )
     const target = mount_trajectory(props)
@@ -571,6 +587,11 @@ describe(`controls`, () => {
     expect(pane.textContent).toContain(`Heatmap on atoms`)
     expect(target.querySelector(`.structure`)).toBe(structure)
     const structure_props = render_structure.mock.lastCall?.[1]
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
+    await set_value(`Cutaway mode`, `plane`)
+    expect(structure_props?.cutaway?.mode).toBe(`plane`)
+    await set_value(`Cutaway mode`, `off`)
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
     expect(structure_props?.atom_opacity).toBe(1)
     control(`Volume cloud`).click()
     await tick()
@@ -622,6 +643,7 @@ describe(`controls`, () => {
     await tick()
     expect(target.querySelector(`.hotspot-coverage`)).toBeNull()
     expect(structure_props?.atom_opacity).toBe(1)
+    expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
   })
 
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
@@ -1151,13 +1173,11 @@ describe(`panes`, () => {
       `range`,
     ])
     const [first_number, first_slider, last_number, last_slider] = frame_inputs
-    first_number.value = `1`
-    first_number.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(first_number, `1`)
     await tick()
     expect(first_slider.value).toBe(`1`)
     expect(last_number.min).toBe(`1`)
-    last_slider.value = `1`
-    last_slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(last_slider, `1`)
     await tick()
     expect(last_number.value).toBe(`1`)
     last_number.value = ``
@@ -1511,28 +1531,10 @@ describe(`bindings`, () => {
       expect(on_controller).toHaveBeenLastCalledWith(null)
     },
   )
-
-  test(`never disposes the caller's runs, replaced or unmounted`, async () => {
-    const first = make_run({ filename: `first.xyz` })
-    const second = make_run({ filename: `second.xyz` })
-    const first_dispose = vi.spyOn(first, `dispose`)
-    const second_dispose = vi.spyOn(second, `dispose`)
-    const props = $state(default_props({ trajectory: first }))
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    const component = mount(Trajectory, { target, props })
-    props.trajectory = second
-    await tick()
-    await unmount(component)
-    expect(first_dispose).not.toHaveBeenCalled()
-    expect(second_dispose).not.toHaveBeenCalled()
-  })
 })
 
-// Runs are deliberately rune-free, so `run.properties` is a plain class instance and its `rows`
-// are invisible to the reactivity graph. The session mirrors them into $state for exactly this
-// reason, but the info and data-inspector panes read the run directly and so froze at whatever
-// had arrived when they first rendered - for a progressively indexed file, the first batch.
+// Runs are rune-free, so `run.properties.rows` is invisible to the reactivity graph: panes that
+// read the run directly must still follow rows pushed after mount
 describe(`panes track progressively loaded property rows`, () => {
   const rows_for = (idxs: number[]) =>
     idxs.map((idx) => ({

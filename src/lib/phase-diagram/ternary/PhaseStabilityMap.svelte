@@ -36,20 +36,11 @@
   } = $props()
 
   let canvas = $state<HTMLCanvasElement>()
-  let root = $state<HTMLDivElement>()
   let dragging = false
   const [AXIS_HEIGHT, TOP_PAD] = [22, 4]
   // When the rows overflow the scroll container the bottom axis scrolls out of view, so a
   // second temperature axis is drawn above the rows
   let visible_height = $state(Infinity)
-  $effect(() => {
-    if (!root) return undefined
-    const observer = new ResizeObserver(
-      () => (visible_height = root?.clientHeight ?? Infinity),
-    )
-    observer.observe(root)
-    return () => observer.disconnect()
-  })
   const [FONT, SUB_FONT] = [`11px sans-serif`, `9px sans-serif`]
 
   // === Rows ===
@@ -192,7 +183,11 @@
     for (const tick of d3_ticks(t_min, t_max, Math.max(2, Math.floor(plot_width / 70)))) {
       ctx.moveTo(x_of(tick), y_pos)
       ctx.lineTo(x_of(tick), y_pos + 4 * dir)
-      ctx.fillText(`${tick}`, x_of(tick), y_pos + 6 * dir)
+      // centred on its tick but kept inside the plot: an edge label would run into `T (K)`
+      // on the left or past the canvas on the right
+      const half = ctx.measureText(`${tick}`).width / 2
+      const label_x = clamp(x_of(tick), label_width + half, surface.dims.width - half)
+      ctx.fillText(`${tick}`, label_x, y_pos + 6 * dir)
     }
     ctx.stroke()
     ctx.textAlign = `right`
@@ -303,7 +298,7 @@
   }
 </script>
 
-<div {...rest} bind:this={root} class={[`phase-stability-map`, rest.class]}>
+<div {...rest} bind:clientHeight={visible_height} class={[`phase-stability-map`, rest.class]}>
   <canvas
     bind:this={canvas}
     role="slider"

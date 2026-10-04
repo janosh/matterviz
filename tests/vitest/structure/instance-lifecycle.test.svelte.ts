@@ -38,11 +38,21 @@ import {
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
+// Spy on Threlte's interactivity() and return a getter for the scene's interactivity state
+const spy_interactivity = () => {
+  const capture = vi.spyOn(extras, `interactivity`)
+  onTestFinished(() => capture.mockRestore())
+  return () => {
+    const captured = capture.mock.results[0]
+    if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
+    return captured.value
+  }
+}
+
 test.each([`plane`, `slab`] as const)(
   `%s cutaway keeps a visible partial-occupancy cap pickable behind the clipped sphere surface`,
   (mode) => {
-    const capture = vi.spyOn(extras, `interactivity`)
-    onTestFinished(() => capture.mockRestore())
+    const interactivity = spy_interactivity()
     const settings: StructureCutaway = {
       mode,
       axis: 2,
@@ -64,9 +74,7 @@ test.each([`plane`, `slab`] as const)(
     )
     onTestFinished(unmount_scene)
     flushSync()
-    const captured = capture.mock.results[0]
-    if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
-    const { interactiveObjects: targets } = captured.value
+    const { interactiveObjects: targets } = interactivity()
     const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
     const hits = () => ray.intersectObjects(targets, true)
     expect(hits()[0]?.distance).toBeLessThan(2)
@@ -86,8 +94,7 @@ test.each([`plane`, `slab`] as const)(
 
 // Hover raycasts stay off while the camera moves or atoms are dragged, so tooltips don't flicker
 test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
-  const capture = vi.spyOn(extras, `interactivity`)
-  onTestFinished(() => capture.mockRestore())
+  const interactivity = spy_interactivity()
   const state = $state({ camera_is_moving: false, dragging_atoms: false })
   const { unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, {
@@ -104,9 +111,7 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const captured = capture.mock.results[0]
-  if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
-  const { enabled } = captured.value
+  const { enabled } = interactivity()
   for (const [camera_is_moving, dragging_atoms, hover] of [
     [false, false, true],
     [false, true, false],
@@ -128,8 +133,7 @@ test.each([
   [10, 0, 0.5],
   [-10, 1, 0.5],
 ])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
-  const capture = vi.spyOn(extras, `interactivity`)
-  onTestFinished(() => capture.mockRestore())
+  const interactivity = spy_interactivity()
   const hover = $state<{ idx: number | null }>({ idx: null })
   const { unmount_scene } = mount_scene((anchor) =>
     StructureScene(anchor, {
@@ -150,13 +154,11 @@ test.each([
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const captured = capture.mock.results[0]
-  if (captured?.type !== `return`) throw new Error(`Missing scene interactivity`)
   // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
-  const interactivity = captured.value
-  interactivity.compute = (_event, state) =>
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, state) =>
     state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
-  interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
   flushSync()
   expect(hover.idx).toBe(front_idx)
 })

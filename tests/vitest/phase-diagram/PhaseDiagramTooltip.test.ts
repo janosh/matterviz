@@ -10,7 +10,7 @@ import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { create_hover_info } from './fixtures/test-data'
+import { create_hover_info, pts } from './fixtures/test-data'
 
 const mount_tooltip = (props: ComponentProps<typeof PhaseDiagramTooltip>) =>
   mount(PhaseDiagramTooltip, { target: document.body, props })
@@ -27,13 +27,15 @@ const lever_bars = () => [
 ]
 
 describe(`PhaseDiagramTooltip`, () => {
-  test(`displays region name in header`, () => {
+  test(`header names the region, stability range spans its vertices, no lever rule for one phase`, () => {
     const hover_info = create_hover_info({
-      region: { id: `alpha`, name: `α (FCC)`, vertices: [] },
+      region: { id: `alpha`, name: `α (FCC)`, vertices: pts(0, 500, 0.3, 800, 0.2, 600) },
     })
-    mount_tooltip({ hover_info })
-
+    mount_tooltip({ hover_info, temperature_unit: `K` })
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α (FCC)`)
+    expect(tooltip_text()).toContain(`Stable`)
+    expect(tooltip_text()).toMatch(/500.*800/)
+    expect(document.querySelector(`.lever`)).toBeNull()
   })
 
   test.each<[number, TempUnit, string]>([
@@ -65,11 +67,10 @@ describe(`PhaseDiagramTooltip`, () => {
 
   // Weight percentages need real elements (Al-Cu), unknown components (A-B) get none
   test.each([
-    { composition: 0.3, components: [`Al`, `Cu`], contains: [`30 at%`, `Cu`, `70 at%`, `Al`] },
     {
       composition: 0.3,
       components: [`Al`, `Cu`],
-      contains: [`Weight`],
+      contains: [`30 at%`, `Cu`, `70 at%`, `Al`, `Weight`],
       matches: /50\.\d % Cu/,
     },
     { composition: 0.5, components: [`A`, `B`], absent: [`Weight`] },
@@ -87,24 +88,6 @@ describe(`PhaseDiagramTooltip`, () => {
       if (matches) expect(tooltip_text()).toMatch(matches)
     },
   )
-
-  test(`displays stability range from region vertices`, () => {
-    const hover_info = create_hover_info({
-      region: {
-        id: `alpha`,
-        name: `α`,
-        vertices: [
-          [0, 500],
-          [0.3, 800],
-          [0.2, 600],
-        ],
-      },
-    })
-    mount_tooltip({ hover_info, temperature_unit: `K` })
-
-    expect(tooltip_text()).toContain(`Stable`)
-    expect(tooltip_text()).toMatch(/500.*800/)
-  })
 
   test.each([
     // edge melting/congruent points name the pure component; other types get a generic badge
@@ -154,11 +137,6 @@ describe(`PhaseDiagramTooltip`, () => {
       }
       expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
     })
-
-    test(`not displayed without a lever rule`, () => {
-      mount_tooltip({ hover_info: create_hover_info({ region: two_phase }) })
-      expect(document.querySelector(`.lever`)).toBeNull()
-    })
   })
 
   describe(`boundary distance`, () => {
@@ -187,21 +165,11 @@ describe(`PhaseDiagramTooltip`, () => {
       },
     )
 
-    test(`not shown when no boundaries provided`, () => {
+    test.each([
+      [`no boundaries`, []],
+      [`a non-relevant boundary type`, [{ id: `t1`, type: `tie-line`, points: [[0.5, 900]] }]],
+    ] as [string, PhaseBoundary[]][])(`not shown for %s`, (_desc, boundaries) => {
       const hover_info = create_hover_info({ composition: 0.5, temperature: 900 })
-      mount_tooltip({ hover_info, boundaries: [] })
-      expect(document.querySelector(`.boundary-info`)).toBeNull()
-    })
-
-    test(`not shown for non-relevant boundary types`, () => {
-      const hover_info = create_hover_info({ composition: 0.5, temperature: 900 })
-      const boundaries: PhaseBoundary[] = [
-        {
-          id: `t1`,
-          type: `tie-line`,
-          points: [[0.5, 900]],
-        },
-      ]
       mount_tooltip({ hover_info, boundaries })
       expect(document.querySelector(`.boundary-info`)).toBeNull()
     })
@@ -230,18 +198,13 @@ describe(`PhaseDiagramTooltip`, () => {
     test.each([
       [`no tooltip prop`, undefined],
       [`empty config`, {}],
+      [`an empty string from a function`, { suffix: () => `` }],
     ])(`no prefix/suffix rendered with %s`, (_, tooltip) => {
       const hover_info = create_hover_info()
       mount_tooltip({ hover_info, tooltip })
       expect(document.querySelector(`.tooltip-prefix`)).toBeNull()
       expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
       expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
-    })
-
-    test(`empty string from function hides element`, () => {
-      const hover_info = create_hover_info()
-      mount_tooltip({ hover_info, tooltip: { suffix: () => `` } })
-      expect(document.querySelector(`.tooltip-suffix`)).toBeNull()
     })
   })
 })

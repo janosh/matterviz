@@ -112,15 +112,12 @@ export function parse_decimal_token(text: string, start: number, end: number): n
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
 // Stops at `max_count` numbers, end of string, or when encountering a line
 // starting with a letter (e.g. "augmentation" in CHGCAR, "BAND:" in BXSF).
-// `first_column_only` reads one number per line and drops trailing columns (FRMSF's
-// auxiliary colour data).
 export function parse_float_block(
   text: string,
   pos: number,
   max_count: number,
   data: Float64Array,
   data_offset: number = 0,
-  first_column_only = false,
 ): { count: number; end_pos: number } {
   let idx = data_offset
   const target = data_offset + max_count
@@ -161,7 +158,6 @@ export function parse_float_block(
       )
     }
     data[idx++] = num
-    if (first_column_only) while (pos < len && text.charCodeAt(pos) !== 10) pos++
   }
   return { count: idx - data_offset, end_pos: pos }
 }
@@ -204,6 +200,8 @@ const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = 
   locpot: {
     1: [`local potential`],
     2: [`local potential (spin up)`, `local potential (spin down)`],
+    // noncollinear: the scalar potential plus the B-field-like B1..B3 in the SAXIS basis
+    4: [`local potential`, ...[1, 2, 3].map((idx) => `magnetic potential (B${idx})`)],
   },
 }
 
@@ -523,7 +521,7 @@ export function parse_cube(
       console.warn(`.cube atom ${atom_idx}: skipping Z = 0 ghost/BSSE centre`)
       continue
     }
-    // Any other Z off the table is a malformed header, which used to render as hydrogen
+    // Any other Z off the table is a malformed header, never hydrogen
     const element = element_from_atomic_number(atom_line[0])
     if (!element) {
       throw new Error(

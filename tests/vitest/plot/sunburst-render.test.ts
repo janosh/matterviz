@@ -30,7 +30,24 @@ const sun_geom: ScreenGeometry = {
   radius: 200,
   hole_r: 20,
 }
+const icicle_geom: ScreenGeometry = {
+  shape: `icicle`,
+  inner_width: 400,
+  inner_height: 300,
+  radius: 0,
+  hole_r: 0,
+}
 const full_win: ViewWindow = { x0: 0, x1: 1, y0: 0, n_rings: 2 }
+// view window that zooms onto `arc`
+const zoom_to = (
+  arc: { x0: number; x1: number; y0: number },
+  n_rings: number,
+): ViewWindow => ({
+  x0: arc.x0,
+  x1: arc.x1,
+  y0: arc.y0,
+  n_rings,
+})
 const angular_span = (screen: { a0: number; a1: number }): number => screen.a1 - screen.a0
 const screens_by_label = (screens: ScreenArc[]): Record<string, ScreenArc> =>
   Object.fromEntries(screens.map((screen) => [screen.arc.label, screen]))
@@ -104,15 +121,7 @@ describe(`project_arcs`, () => {
     const { arcs: zoom_arcs } = compute_sunburst_layout([
       { label: `user`, children: grouped_tree },
     ])
-    const user = zoom_arcs.find((arc) => arc.label === `user`)
-    if (!user) throw new Error(`expected user arc`)
-    const zoom_win: ViewWindow = {
-      x0: user.x0,
-      x1: user.x1,
-      y0: user.y0,
-      n_rings: 2,
-    }
-    const { all } = project_arcs(zoom_arcs, zoom_win, sun_geom, {
+    const { all } = project_arcs(zoom_arcs, zoom_to(zoom_arcs[1], 2), sun_geom, {
       group_gap: { select: (arc) => arc.depth === 2, gap_px: 20 },
     })
     const screen_by_label = screens_by_label(all)
@@ -123,8 +132,6 @@ describe(`project_arcs`, () => {
   })
 
   test(`removes a selected group's gap when that group becomes the zoom root`, () => {
-    const group_a = grouped_arcs.find((arc) => arc.label === `A`)
-    if (!group_a) throw new Error(`expected group A`)
     const mid_zoom = project_arcs(grouped_arcs, { ...full_win, y0: 0.5 }, sun_geom, {
       group_gap: { select: (arc) => arc.depth === 1, gap_px: 20 },
     })
@@ -133,12 +140,9 @@ describe(`project_arcs`, () => {
       (mid_screen_by_label.B.a0 - mid_screen_by_label.A.a1) * sun_geom.radius,
     ).toBeCloseTo(10, 9)
 
-    const { all } = project_arcs(
-      grouped_arcs,
-      { x0: group_a.x0, x1: group_a.x1, y0: group_a.y0, n_rings: 1 },
-      sun_geom,
-      { group_gap: { select: (arc) => arc.depth === 1, gap_px: 20 } },
-    )
+    const { all } = project_arcs(grouped_arcs, zoom_to(grouped_arcs[1], 1), sun_geom, {
+      group_gap: { select: (arc) => arc.depth === 1, gap_px: 20 },
+    })
     const screen_by_label = screens_by_label(all)
 
     expect(screen_by_label.A1.a0).toBeCloseTo(0, 9)
@@ -176,8 +180,7 @@ describe(`project_arcs`, () => {
   })
 
   test(`zoomed window: the zoom root's child fills the circle, everything else collapses`, () => {
-    const win = { x0: arcs[1].x0, x1: arcs[1].x1, y0: arcs[1].y0, n_rings: 1 } // zoom to a
-    const { all, visible } = project_arcs(arcs, win, sun_geom)
+    const { all, visible } = project_arcs(arcs, zoom_to(arcs[1], 1), sun_geom) // zoom to a
     expect(visible.map((screen) => screen.arc.label)).toEqual([`a1`])
     const [, scr_a, scr_a1, scr_b] = all
     expect(scr_a1.a0).toBe(0)
@@ -191,31 +194,23 @@ describe(`project_arcs`, () => {
   })
 
   test(`icicle: x in [0, inner_width], rows top-down`, () => {
-    const geom: ScreenGeometry = {
-      shape: `icicle`,
-      inner_width: 400,
-      inner_height: 300,
-      radius: 0,
-      hole_r: 0,
-    }
-    const projection = project_arcs(arcs, full_win, geom)
+    const projection = project_arcs(arcs, full_win, icicle_geom)
     const select_group = vi.fn(() => true)
+    // group gaps are a sunburst-only feature: icicles ignore them without calling select
     expect(
-      project_arcs(arcs, full_win, geom, {
+      project_arcs(arcs, full_win, icicle_geom, {
         group_gap: { select: select_group, gap_px: 20 },
       }),
     ).toEqual(projection)
     expect(select_group).not.toHaveBeenCalled()
     expect(
-      projection.visible.map(
-        ({ arc, a0: value_a_0, a1: value_a_1, r0: radius_0, r1: radius_1 }) => [
-          arc.label,
-          value_a_0,
-          value_a_1,
-          radius_0,
-          radius_1,
-        ],
-      ),
+      projection.visible.map((screen) => [
+        screen.arc.label,
+        screen.a0,
+        screen.a1,
+        screen.r0,
+        screen.r1,
+      ]),
     ).toEqual([
       [`a`, 0, 100, 0, 150],
       [`a1`, 0, 100, 150, 300],
@@ -236,70 +231,22 @@ describe(`annular_sector_path`, () => {
     [
       `quarter sector`,
       [0, Math.PI / 2, 20, 100],
-      [
-        `M`,
-        0,
-        -100,
-        `A`,
-        100,
-        100,
-        0,
-        0,
-        1,
-        100,
-        0,
-        `L`,
-        20,
-        0,
-        `A`,
-        20,
-        20,
-        0,
-        0,
-        0,
-        0,
-        -20,
-        `Z`,
-      ],
+      `M0,-100A100,100,0,0,1,100,0L20,0A20,20,0,0,0,0,-20Z`,
     ],
+    // sweeps past 180° set the large-arc flag on both boundaries
     [
-      // sweeps past 180° set the large-arc flag on both boundaries
       `three-quarter sector`,
       [0, 1.5 * Math.PI, 20, 100],
-      [
-        `M`,
-        0,
-        -100,
-        `A`,
-        100,
-        100,
-        0,
-        1,
-        1,
-        -100,
-        0,
-        `L`,
-        -20,
-        0,
-        `A`,
-        20,
-        20,
-        0,
-        1,
-        0,
-        0,
-        -20,
-        `Z`,
-      ],
+      `M0,-100A100,100,0,1,1,-100,0L-20,0A20,20,0,1,0,0,-20Z`,
     ],
     [
       `wedge from the center`,
       [0, Math.PI / 2, 0, 100],
-      [`M`, 0, -100, `A`, 100, 100, 0, 0, 1, 100, 0, `L`, 0, 0, `A`, 0, 0, 0, 0, 0, 0, 0, `Z`],
+      `M0,-100A100,100,0,0,1,100,0L0,0A0,0,0,0,0,0,0Z`,
     ],
-  ])(`%s`, (_label, [value_a_0, value_a_1, radius_0, radius_1], expected) => {
-    expect(tokens(annular_sector_path(value_a_0, value_a_1, radius_0, radius_1))).toEqual(
-      expected,
+  ])(`%s`, (_label, [angle_0, angle_1, radius_0, radius_1], expected) => {
+    expect(tokens(annular_sector_path(angle_0, angle_1, radius_0, radius_1))).toEqual(
+      tokens(expected),
     )
   })
 
@@ -327,25 +274,15 @@ describe(`hover_veil_path`, () => {
     expect(veil).toContain(annular_sector_path(all[1].a0, all[1].a1, all[1].r0, all[1].r1))
     // hovering a depth-1 node cuts out only that wedge
     expect(subpaths(hover_veil_path(all, 3, sun_geom))).toBe(2)
+    // an index that is not projected (stale hover after a data swap) draws no veil
+    expect(hover_veil_path(all, 99, sun_geom)).toBeNull()
   })
 
   test(`icicle: rectangles instead of sectors`, () => {
-    const geom: ScreenGeometry = {
-      shape: `icicle`,
-      inner_width: 400,
-      inner_height: 300,
-      radius: 0,
-      hole_r: 0,
-    }
-    const { all } = project_arcs(arcs, full_win, geom)
-    expect(hover_veil_path(all, 2, geom)).toBe(
+    const { all } = project_arcs(arcs, full_win, icicle_geom)
+    expect(hover_veil_path(all, 2, icicle_geom)).toBe(
       rect_path(0, 400, 0, 300) + rect_path(0, 100, 150, 300) + rect_path(0, 100, 0, 150),
     )
-  })
-
-  test(`returns null for an index that is not projected (stale hover after a data swap)`, () => {
-    const { all } = project_arcs(arcs, full_win, sun_geom)
-    expect(hover_veil_path(all, 99, sun_geom)).toBeNull()
   })
 })
 
@@ -353,6 +290,9 @@ describe(`arc_label_slots`, () => {
   // What Sunburst.svelte does with the slots; text_w leads so the rest are the real args
   const arc_label_transform = (text_w: number, ...args: Parameters<typeof arc_label_slots>) =>
     arc_label_slots(...args).find((slot) => text_w <= slot.room)?.transform ?? null
+  // wide shallow outer arc (angular room ~149px, radial ~14px) and a tall narrow one
+  const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
+  const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
 
   test.each([
     [
@@ -392,16 +332,13 @@ describe(`arc_label_slots`, () => {
   })
 
   test(`max_radius clips straight labels that would extend past the chart circle`, () => {
-    // Wide shallow outer arc -> tangential text. Arc length at mid radius
-    // (~149px) fits 120px of text, but the straight tangent line from a label
-    // centered at r=95 reaches hypot(95, 60) ~= 112px from the center.
-    const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
+    // Arc length at mid radius (~149px) fits 120px of tangential text, but the straight
+    // tangent line from a label centered at r=95 reaches hypot(95, 60) ~= 112px out.
     expect(arc_label_transform(120, wide_outer, `sunburst`, `tangential`)).not.toBeNull()
     expect(arc_label_transform(120, wide_outer, `sunburst`, `tangential`, 100)).toBeNull()
     // Shorter text stays within the circle and keeps its label
     expect(arc_label_transform(40, wide_outer, `sunburst`, `tangential`, 100)).not.toBeNull()
     // Radial labels are bounded by their ring already: max_radius is a no-op
-    const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
     expect(arc_label_transform(80, tall, `sunburst`, `radial`, 150)).not.toBeNull()
     // Horizontal at 3 o'clock reads along the radius: the far end lands
     // sqrt(95^2 + 60^2 + 120*95) ~= 155px from the center, past radius 100
@@ -410,10 +347,8 @@ describe(`arc_label_slots`, () => {
   })
 
   test(`auto rotation falls back to the other orientation before hiding`, () => {
-    // Wide shallow arc: tangential preferred (angular 149 > radial 14) but the
-    // text is too long for the tangent line, so auto falls back to radial —
-    // which also fails here (radial 14) -> null...
-    const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
+    // Tangential preferred (angular 149 > radial 14) but the text is too long for the
+    // tangent line, so auto falls back to radial — which also fails here -> null...
     expect(arc_label_transform(200, wide_outer, `sunburst`, `auto`)).toBeNull()
     // ...but a THICK wide arc (radial 120) keeps its label by reading radially
     // when the tangent line would poke past the chart circle (max_radius 110 <
@@ -427,7 +362,6 @@ describe(`arc_label_slots`, () => {
   test(`arc_label_slots reports the room each orientation has for text`, () => {
     // Tangential room is the arc length minus the 6px margin, capped by the chord
     // that keeps the straight tangent inside the chart: 2*sqrt(100^2 - 95^2) ~= 62.4px
-    const wide_outer = { a0: 0, a1: Math.PI / 2, r0: 88, r1: 102 }
     const [tangential] = arc_label_slots(wide_outer, `sunburst`, `tangential`)
     expect(tangential.room).toBeCloseTo((Math.PI / 2) * 95 - 6, 6)
     const [clipped] = arc_label_slots(wide_outer, `sunburst`, `tangential`, 100)
@@ -440,7 +374,6 @@ describe(`arc_label_slots`, () => {
       arc_label_transform(clipped.room + 1, wide_outer, `sunburst`, `tangential`, 100),
     ).toBeNull()
     // Radial room is the ring thickness minus the margin, roomiest orientation first
-    const tall = { a0: 0, a1: 0.4, r0: 50, r1: 150 }
     expect(arc_label_slots(tall, `sunburst`, `auto`).map((slot) => slot.room)).toEqual([
       94,
       0.4 * 100 - 6,

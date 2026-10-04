@@ -40,7 +40,7 @@ describe(`detect_compression_format`, () => {
 })
 
 describe(`decompress_data`, () => {
-  test(`should throw error when DecompressionStream is not supported`, async () => {
+  test(`throws when DecompressionStream is not supported`, async () => {
     const orig_decompression_stream = globalThis.DecompressionStream
     // @ts-expect-error - intentionally deleting for test
     delete globalThis.DecompressionStream
@@ -99,7 +99,7 @@ describe(`decompress_data`, () => {
   })
 
   test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
-    `should successfully decompress valid %s data`,
+    `decompresses valid %s data`,
     async (format) => {
       const test_string = `{"test": "data", "format": "${format}"}`
       const compressed = await compress(encode(test_string), format)
@@ -174,6 +174,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   test.each([
     [`POSCAR`, `H 0 0 0\nO 1 1 1`], // extensionless VASP text
     [`empty.txt`, ``], // 0-byte file resolves to empty content
+    [`payload.dump`, `plain text payload`], // unknown extension without binary magic
   ])(`decodes text file %s to a string`, async (filename, text) => {
     expect(await decompress_file(new File([text], filename))).toEqual({
       content: text,
@@ -195,14 +196,6 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     await expect(decompress_file(new File([text], `test.json.${ext}`))).rejects.toThrow(
       `Failed to decompress ${format} file`,
     )
-  })
-
-  test(`unzips a dropped .zip and strips the extension`, async () => {
-    const zip = zipSync({ 'test.json': encode(`{"zipped": true}`) })
-    expect(await decompress_file(new File([zip], `test.json.zip`))).toEqual({
-      content: `{"zipped": true}`,
-      filename: `test.json`,
-    })
   })
 
   test.each([`gzip/gzip`, `zip/gzip`, `gzip/zip`, `zip/zip`, `gzip/deflate`] as const)(
@@ -270,13 +263,6 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(array_buffer).not.toHaveBeenCalled()
   })
 
-  test(`rejects when a compressed file fails to decompress`, async () => {
-    const invalid = new Uint8Array(10).fill(255)
-    await expect(decompress_file(new File([invalid], `test.json.gz`))).rejects.toThrow(
-      `Failed to decompress gzip file`,
-    )
-  })
-
   // Binary stays ArrayBuffer whether flagged by extension or (for unknown extensions) by magic
   // bytes; a lossy UTF-8 decode would corrupt bytes >= 0x80 into U+FFFD. The individual
   // extension lists and magic signatures are unit-tested in io/is-binary.test.ts.
@@ -293,12 +279,6 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(bytes)
     expect(result.filename).toBe(filename)
-  })
-
-  test(`decodes an unknown-extension file without binary magic to string`, async () => {
-    const text = `plain text payload`
-    const result = await decompress_file(new File([text], `payload.dump`))
-    expect(result.content).toBe(text)
   })
 
   // a compressed binary payload without a binary inner extension must still stay ArrayBuffer

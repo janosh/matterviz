@@ -47,8 +47,7 @@ const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
 
 describe(`BoxPlot`, () => {
   afterEach(() => vi.restoreAllMocks())
-  // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
-  // one press per bin/point/box. Exactly one mark holds the group's tab stop.
+  // exactly one mark holds the group's tab stop so Tab skips past the chart in one press
   test(`marks are reachable by Tab exactly once`, async () => {
     const tabindexes = roving_tabindexes(
       await mount_sized_box_plot({ series: [basic, { ...basic, label: `Box B` }] }),
@@ -173,8 +172,8 @@ describe(`BoxPlot`, () => {
   })
 
   test(`show_mean keeps the mean line inside the plot even when outliers are hidden`, async () => {
-    // heavy outlier drags mean (~1004) far above whisker_high (~9); with outliers
-    // hidden, the mean used to be excluded from the auto-range and rendered off-plot
+    // heavy outlier drags mean (~1004) far above whisker_high (~9); with outliers hidden the
+    // auto-range must still include the mean
     const plot = await mount_sized_box_plot({
       series: [{ y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10_000], label: `skewed` }],
       show_mean: true,
@@ -184,17 +183,13 @@ describe(`BoxPlot`, () => {
     const mean_line = [...plot.querySelectorAll(`.box-series line`)].find((line) =>
       line.hasAttribute(`stroke-dasharray`),
     )
-    expect(mean_line).toBeDefined()
     const mean_y = Number(mean_line?.getAttribute(`y1`))
-    expect(mean_y).toBeGreaterThanOrEqual(0) // was ≈ -27000 before the fix
+    expect(mean_y).toBeGreaterThanOrEqual(0)
     expect(mean_y).toBeLessThanOrEqual(300)
   })
 
   test(`a far outlier expands the value-axis range`, async () => {
-    // value_points must reach the extreme outliers, not just the whiskers. The component
-    // pushes only the sorted outlier extremes (outliers[0]/[last]) so this also stays safe
-    // when a matbench-scale distribution produces tens of thousands of outliers (spreading
-    // them as Math/array call args would RangeError).
+    // value_points must reach the extreme outliers, not just the whiskers
     const cluster = dist(200, 0, 1) // ~[-1, 1.4]
     const series: BoxPlotSeries[] = [{ y: [...cluster, 500], label: `Tail` }]
     const plot = await mount_sized_box_plot({ series })
@@ -343,7 +338,7 @@ describe(`BoxPlot`, () => {
   const log_boxes = [100, 100, 1000].map((max) => ({
     y: Array.from({ length: 21 }, (_, idx) => 1e-3 * (max / 1e-3) ** (idx / 20)),
   }))
-  // Obstacles once mapped log whiskers linearly and cut violins down to a whisker line or IQR
+  // obstacles must map log whiskers in log space and cover a violin's full outline
   // oxfmt-ignore
   test.each([
     [`boxes on a log value axis`, { series: log_boxes, whisker_mode: `minmax`, y_axis: { scale_type: `log` } }],
@@ -413,13 +408,15 @@ describe(`BoxPlot`, () => {
   const iqr_box = (plot: HTMLElement) => plot.querySelectorAll(`.box-series rect.iqr-box`)
 
   test.each([
-    { kind: `box`, violins: 0, boxes: 1 },
-    { kind: `violin`, violins: 1, boxes: 0 },
-    { kind: `violin+box`, violins: 1, boxes: 1 },
+    { kind: `box`, series: [basic], violins: 0, boxes: 1 },
+    { kind: `violin`, series: [basic], violins: 1, boxes: 0 },
+    { kind: `violin+box`, series: [basic], violins: 1, boxes: 1 },
+    // per-series kind overrides the component default
+    { kind: `box`, series: [basic, { ...basic, kind: `violin` }], violins: 1, boxes: 1 },
   ] as const)(
-    `kind=$kind draws $violins violin and $boxes box`,
-    async ({ kind, violins, boxes }) => {
-      const plot = await mount_sized_box_plot({ series: [basic], kind })
+    `kind=$kind with $series.length series draws $violins violin and $boxes box`,
+    async ({ kind, series, violins, boxes }) => {
+      const plot = await mount_sized_box_plot({ series: [...series], kind })
       expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(violins)
       expect(iqr_box(plot)).toHaveLength(boxes)
     },
@@ -444,15 +441,6 @@ describe(`BoxPlot`, () => {
     document.body.innerHTML = ``
     const wide_plot = await wide()
     expect(rect_w(narrow_plot)).toBeLessThan(rect_w(wide_plot))
-  })
-
-  test(`per-series kind overrides the component default`, async () => {
-    const plot = await mount_sized_box_plot({
-      kind: `box`,
-      series: [basic, { ...basic, label: `V`, kind: `violin` }],
-    })
-    expect(plot.querySelectorAll(`.violin-area`)).toHaveLength(1) // only the violin series
-    expect(iqr_box(plot)).toHaveLength(1) // only the box series
   })
 
   // the KDE grid covers exactly the observed support (no tail extension), so with min/max
@@ -524,7 +512,7 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
   })
 
-  // Uncategorized series once keyed slots by index: index labels, merging with category `1`
+  // uncategorized series must not key slots by index (index labels, merging with category `1`)
   // oxfmt-ignore
   test.each([
     [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`], {}],
@@ -641,7 +629,6 @@ describe(`BoxPlot`, () => {
     const reset_btn = plot.querySelector<HTMLButtonElement>(
       `button[aria-label="Reset box / violin to defaults"]`,
     )
-    // a missing/no-op reset (the original bug) would leave the flipped values in place
     if (!reset_btn) throw new Error(`reset button not rendered`)
     reset_btn.click()
     await tick()

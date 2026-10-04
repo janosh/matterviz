@@ -4,6 +4,7 @@
   import {
     decoration_data_attrs,
     has_explicit_position,
+    LEGEND_STRIP_MAX_FRACTION,
     resolve_legend_layout_tracks,
   } from '#lib/plot/core/decorations/index.js'
   import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
@@ -50,8 +51,14 @@
   // A strip below/above the plot scrolls past half the frame height rather than leaving a
   // sliver of plot. 50% stays above the solver's too-tall fraction of the plot area, so a
   // capped legend never shrinks enough to flip back inside and re-expand.
+  // Inside the plot (where the solver keeps it once a strip would leave too little plot) it
+  // may not outgrow the plot area either: it scrolls instead of spilling over the axes
   const strip_style = $derived(
-    is_strip ? `max-height: min(var(--plot-legend-max-height, 80%), 50%); ` : ``,
+    is_strip
+      ? `max-height: min(var(--plot-legend-max-height, 80%), ${LEGEND_STRIP_MAX_FRACTION * 100}%); `
+      : outside_side
+        ? ``
+        : `max-height: min(var(--plot-legend-max-height, 80%), ${frame.chart_height}px); `,
   )
   // The solver counts auto tracks as columns for a strip and rows beside the plot (solve.ts),
   // so the legend must render in that orientation or the count lands on the wrong axis

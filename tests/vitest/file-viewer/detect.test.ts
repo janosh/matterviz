@@ -1,4 +1,3 @@
-// Tests for file-viewer data type detection.
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
@@ -15,20 +14,9 @@ const fixture = JSON.parse(
   ).toString(),
 )
 
+// Fixture-based detection is covered by scan_renderable_paths' exact path map plus the
+// re-detect round-trip below.
 describe(`detect_view_type`, () => {
-  // === Positive detections from the test fixture ===
-
-  test.each([
-    [`structures.Cu_FCC`, `structure`],
-    [`fermi_surface`, `fermi_surface`],
-    [`phase_diagram`, `phase_diagram`],
-    [`band_structure`, `band_structure`],
-    [`dos`, `dos`],
-    [`convex_hull_Li_Fe_P_O`, `convex_hull`],
-  ] as const)(`detects %s as %s`, (path, expected) => {
-    expect(detect_view_type(resolve(fixture, path))).toBe(expected)
-  })
-
   // === Null / non-renderable inputs ===
 
   test.each([
@@ -360,8 +348,7 @@ describe(`detect_view_type`, () => {
       ],
     ],
   ] as [string, string | null, unknown][])(`%s -> %s`, (_, expected, val) => {
-    if (expected === null) expect(detect_view_type(val)).toBeNull()
-    else expect(detect_view_type(val)).toBe(expected)
+    expect(detect_view_type(val)).toBe(expected)
   })
 })
 
@@ -526,9 +513,3 @@ describe(`is_plottable_data`, () => {
     expect(is_plottable_data(val)).toBe(expected)
   })
 })
-
-// Helper to resolve dotted paths like "structures.Cu_FCC"
-const resolve = (obj: Record<string, unknown>, path: string): unknown =>
-  path
-    .split(`.`)
-    .reduce<unknown>((current, key) => (current as Record<string, unknown>)?.[key], obj)

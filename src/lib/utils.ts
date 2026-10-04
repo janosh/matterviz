@@ -115,14 +115,27 @@ export const first_duplicate = <Item>(
   return items.find((item) => seen.size === seen.add(key_of(item)).size)
 }
 
-// Decode a URL-safe base64 string (RFC 4648 §5) to its original text.
-// Converts `-` → `+`, `_` → `/`, restores padding, then decodes.
-// Returns undefined if decoding fails.
+// Yield one event-loop turn via a message task: setTimeout(0) is clamped to 4 ms once timers
+// nest, which in a long chunked scan leaves the main thread idle for much of its budget.
+export const yield_turn = (): Promise<void> =>
+  new Promise((resolve) => {
+    const { port1, port2 } = new MessageChannel()
+    port1.addEventListener(`message`, () => {
+      port1.close() // closing one end closes the channel
+      resolve()
+    })
+    port1.start() // addEventListener (unlike onmessage) does not start the port
+    port2.postMessage(null)
+  })
+
+// Decode a URL-safe base64 string (RFC 4648 §5) of UTF-8 text. atob alone yields one
+// Latin-1 char per byte, which garbles any non-ASCII text. Undefined if decoding fails.
 export function decode_url_safe_base64(encoded: string): string | undefined {
-  const std_b64 = encoded.replaceAll('-', `+`).replaceAll('_', `/`)
+  const std_b64 = encoded.replaceAll(`-`, `+`).replaceAll(`_`, `/`)
   const padded = std_b64 + `=`.repeat((4 - (std_b64.length % 4)) % 4)
   try {
-    return atob(padded)
+    const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
+    return new TextDecoder(`utf-8`, { fatal: true }).decode(bytes)
   } catch {
     return undefined
   }

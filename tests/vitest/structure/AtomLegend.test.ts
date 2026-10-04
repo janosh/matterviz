@@ -7,7 +7,7 @@ import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
-import { doc_query } from '../setup'
+import { dismiss_popover, doc_query, set_input } from '../setup'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
@@ -119,8 +119,7 @@ describe(`AtomLegend Component`, () => {
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
     expect(color_input.title).toBe(`Double click to reset color`)
 
-    color_input.value = `#ff0000`
-    color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(color_input, `#ff0000`)
     expect(colors.element[shown]).toBe(`#ff0000`)
 
     doc_query(`label`).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
@@ -223,6 +222,14 @@ describe(`AtomLegend Component`, () => {
         expect(option_for(text)?.title ?? ``, text).toBe(``)
       }
 
+      // a native auto popover: the browser's light dismiss and Escape close it
+      const dropdown = doc_query(`.mode-dropdown`)
+      expect(dropdown.getAttribute(`popover`)).toBe(`auto`)
+      dismiss_popover(dropdown)
+      await tick()
+      expect(document.querySelector(`.mode-dropdown`)).toBeNull()
+
+      await open_mode_menu()
       mode_toggle.click()
       await tick()
       expect(document.querySelector(`.mode-dropdown`)).toBeNull()
@@ -350,24 +357,15 @@ describe(`AtomLegend Component`, () => {
       expect(legend.getAttribute(`style`)).toContain(`z-index`)
     })
 
+    // translucent overrides composite against the page backdrop (white in jsdom) rather
+    // than throwing; a faint wash reads as a light cell, half black as mid grey
+    // oxfmt-ignore
     test.each([
       [`empty unique_values`, [], [], []],
       [`single value`, [42], [`rgb(255, 128, 0)`], [`black`]],
       [`two values`, [1, 2], [`red`, `blue`], [`white`, `white`]],
-      [
-        `multiple values`,
-        [1, 2, 3, 4],
-        [`red`, `yellow`, `green`, `blue`],
-        [`white`, `black`, `white`, `white`],
-      ],
-      // translucent override composites against the page backdrop (white in jsdom) rather
-      // than throwing; a faint wash reads as a light cell, half black as mid grey
-      [
-        `translucent override`,
-        [1, 2],
-        [`rgba(0, 0, 0, 0.1)`, `rgba(0, 0, 0, 0.5)`],
-        [`black`, `white`],
-      ],
+      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`], [`white`, `black`, `white`, `white`]],
+      [`translucent override`, [1, 2], [`rgba(0, 0, 0, 0.1)`, `rgba(0, 0, 0, 0.5)`], [`black`, `white`]],
     ])(
       `handles %s without errors or NaN`,
       (_desc, unique_values, legend_colors, text_colors) => {
@@ -430,17 +428,12 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Mode Switching Behavior`, () => {
+    const element_config = { mode: `element`, scale_type: `continuous` } as const
+    // oxfmt-ignore
     test.each([
-      [`element`, { mode: `element`, scale_type: `continuous` } as const, null, true, false],
+      [`element`, element_config, null, true, false],
       [`coordination`, coordination(`continuous`), prop_colors([4]), false, true],
-      [
-        `element with no elements`,
-        { mode: `element`, scale_type: `continuous` } as const,
-        null,
-        false,
-        false,
-        {},
-      ],
+      [`element with no elements`, element_config, null, false, false, {}],
     ])(
       `%s mode shows element legend=%s, property legend=%s`,
       (
@@ -460,14 +453,9 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Element Remapping`, () => {
+    // oxfmt-ignore
     test.each([
-      [
-        `remapped`,
-        { H: `Na`, He: `Cl` } as const,
-        `Sodium (remapped from H)`,
-        [`Na 1`, `Cl 2`, `Li 3`],
-        [true, true, false],
-      ],
+      [`remapped`, { H: `Na`, He: `Cl` } as const, `Sodium (remapped from H)`, [`Na 1`, `Cl 2`, `Li 3`], [true, true, false]],
       [`not remapped`, undefined, `Hydrogen`, [`H 1`, `He 2`, `Li 3`], [false, false, false]],
     ])(
       `labels show the %s element's name, symbol, color and class`,
@@ -492,8 +480,7 @@ describe(`AtomLegend Component`, () => {
       // unfiltered: one option per element, no reset row while H is still displayed as H
       expect(document.querySelectorAll(`.remap-option`)).toHaveLength(ELEM_SYMBOLS.length)
 
-      search_input.value = `sodium`
-      search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(search_input, `sodium`)
       await tick()
       const filtered_options = document.querySelectorAll(`.remap-option`)
       expect(filtered_options).toHaveLength(1)
@@ -508,15 +495,10 @@ describe(`AtomLegend Component`, () => {
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
     })
 
+    // oxfmt-ignore
     test.each([
       [`picking Na maps H to Na`, undefined, `.remap-option:has(b)`, `Na`, { H: `Na` }],
-      [
-        `reset removes the mapping`,
-        { H: `Na` },
-        `.remap-option.reset`,
-        `Reset to H`,
-        undefined,
-      ],
+      [`reset removes the mapping`, { H: `Na` }, `.remap-option.reset`, `Reset to H`, undefined],
     ] as const)(`%s`, async (_desc, initial, selector, option_text, expected) => {
       let element_mapping: Record<string, string> | undefined = initial
       mount_legend({

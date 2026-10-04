@@ -58,16 +58,9 @@ describe(`adaptive density utilities`, () => {
       expect(result.first_point_idxs[3]).toBe(3)
       expect(result.first_series_idxs[0]).toBe(0)
       expect(result.first_series_idxs[3]).toBe(0)
+      const { counts, first_point_idxs } = result
       expect(result.series_bins).toEqual(
-        colored
-          ? [
-              {
-                counts: result.counts,
-                first_point_idxs: result.first_point_idxs,
-                max_count: 3,
-              },
-            ]
-          : undefined,
+        colored ? [{ counts, first_point_idxs, max_count: 3 }] : undefined,
       )
     },
   )
@@ -114,12 +107,7 @@ describe(`adaptive density utilities`, () => {
 
   it(`uses exact density-bin assignment for boundary points`, () => {
     const boundary_series: DensePointSeries<{ id: string }>[] = [
-      {
-        x: [0.5],
-        y: [0.25],
-        point_ids: [`boundary`],
-        metadata: [{ id: `boundary` }],
-      },
+      { x: [0.5], y: [0.25], point_ids: [`boundary`], metadata: [{ id: `boundary` }] },
     ]
     const density = bin_points(boundary_series, [0, 1], [0, 1], 2, 2)
 
@@ -207,11 +195,7 @@ describe(`adaptive density utilities`, () => {
     const distinct = series_extents([{ x: [1, 1000], y: [0, 1] }], `arcsinh`, `linear`).x
     expect(distinct[0]).toBeCloseTo(inverse(param_0 - pad))
     expect(distinct[1]).toBeCloseTo(inverse(param_1 + pad))
-    const [lower, upper] = series_extents(
-      [{ x: [1, 1.7e308], y: [0, 1] }],
-      `arcsinh`,
-      `linear`,
-    ).x
+    const [lower, upper] = series_extents([{ x: [1, 1.7e308], y: [0, 1] }], `arcsinh`).x
     expect(Number.isFinite(lower) && Number.isFinite(upper) && upper > lower).toBe(true)
   })
 
@@ -223,17 +207,10 @@ describe(`adaptive density utilities`, () => {
   )
 
   it(`does not pick outside visible ranges or radius`, () => {
-    const hidden = query_nearest(build_spatial_index(projected_points(), 30), {
-      x: 210,
-      y: 220,
-    })
-    const far = query_nearest(build_spatial_index(projected_points(), 10), {
-      x: 140,
-      y: 0,
-    })
-
-    expect(hidden).toBeNull()
-    expect(far).toBeNull()
+    const nearest = (radius: number, x_px: number, y_px: number) =>
+      query_nearest(build_spatial_index(projected_points(), radius), { x: x_px, y: y_px })
+    expect(nearest(30, 210, 220)).toBeNull() // outside the visible ranges
+    expect(nearest(10, 140, 0)).toBeNull() // beyond the pick radius
   })
 
   it(`retrieves singleton-bin points without rescanning the series`, () => {
@@ -245,23 +222,12 @@ describe(`adaptive density utilities`, () => {
           return Reflect.get(target, prop, receiver)
         },
       })
-    const counted_series = [
-      {
-        ...series[0],
-        x: counted(series[0].x),
-        y: counted(series[0].y),
-      },
-    ]
+    const counted_series = [{ ...series[0], x: counted(series[0].x), y: counted(series[0].y) }]
     const density = bin_points(counted_series, [0, 2], [0, 2], 2, 2)
     accesses = 0
 
-    const picked = first_point_in_bin(
-      counted_series,
-      density,
-      { x_bin: 1, y_bin: 1 },
-      pixel_scale,
-      pixel_scale,
-    )
+    const bin = { x_bin: 1, y_bin: 1 }
+    const picked = first_point_in_bin(counted_series, density, bin, pixel_scale, pixel_scale)
 
     expect(picked?.point_id).toBe(`d`)
     expect(picked?.metadata).toEqual({ id: `d` })
@@ -317,16 +283,9 @@ describe(`ordered x windows`, () => {
     ]
     const order = series_x_order(series)
     expect(order).toEqual([expected_order])
-    for (const range of [
-      [1, 2],
-      [2, 1],
-      [1, 1],
-      [-5, -1],
-      [4, 5],
-      [-Infinity, Infinity],
-      [NaN, 2],
-      [0, NaN],
-    ] satisfies Vec2[]) {
+    // oxfmt-ignore
+    const ranges: Vec2[] = [[1, 2], [2, 1], [1, 1], [-5, -1], [4, 5], [-Infinity, Infinity], [NaN, 2], [0, NaN]]
+    for (const range of ranges) {
       for (const axis of [`x`, `y`] as const) {
         const x_range: Vec2 = axis === `x` ? range : [0, 2]
         const y_range: Vec2 = axis === `y` ? range : [0, 2]

@@ -1,17 +1,9 @@
-// Unit tests for controls visibility configuration
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { normalize_show_controls, track_settings } from '#lib/controls.js'
 
 describe(`normalize_show_controls`, () => {
-  it(`returns hover mode with every control visible when undefined`, () => {
-    const config = normalize_show_controls(undefined)
-    expect(config.mode).toBe(`hover`)
-    expect(config.visible(`fullscreen`)).toBe(true)
-    expect(config.style).toBeUndefined()
-    expect(config.class).toBe(`hover-visible`)
-  })
-
   it.each([
+    [undefined, `hover`, `hover-visible`],
     // Boolean inputs
     [true, `always`, `always-visible`],
     [false, `never`, ``],
@@ -28,6 +20,7 @@ describe(`normalize_show_controls`, () => {
     expect(config.mode).toBe(expected_mode)
     expect(config.class).toBe(expected_class)
     expect(config.visible(`controls`)).toBe(expected_mode !== `never`)
+    expect(config.style).toBeUndefined()
   })
 
   it(`preserves style and hidden from object config`, () => {
@@ -48,8 +41,6 @@ describe(`normalize_show_controls`, () => {
     // [hidden_controls, control_to_check, expected_visible]
     [[`fullscreen`], `fullscreen`, false],
     [[`fullscreen`], `reset-camera`, true],
-    [[`a`, `b`], `a`, false],
-    [[`a`, `b`], `c`, true],
     [[], `any-control`, true],
   ])(`visible() with hidden=%j returns %s for %s`, (hidden, control, expected) => {
     const config = normalize_show_controls({ hidden })

@@ -53,6 +53,12 @@ describe(`normalize_marginals`, () => {
     [`undefined disables all`, undefined, { top: true, right: true }, []],
     [`true uses default sides`, true, { top: true, right: true }, [`top`, `right`]],
     [`per-side map`, { top: `cdf` }, {}, [`top`]],
+    [
+      `per-side map ignores default sides`,
+      { top: `kde` },
+      { top: true, right: true },
+      [`top`],
+    ],
     [`explicit false overrides default`, { top: false }, { top: true }, []],
   ] as const)(`%s`, (_desc, prop, defaults, active) => {
     const result = normalize_marginals(prop, defaults)
@@ -73,43 +79,36 @@ describe(`normalize_marginals`, () => {
     expect(result.bottom).toBeNull()
   })
 
-  test(`user config merges over plot default config`, () => {
-    // Histogram-style default: cdf with bins 20; user overrides type but inherits bins
-    const result = normalize_marginals(
+  // user config merges over the plot default (Histogram-style cdf with bins 20), then over
+  // MARGINAL_DEFAULTS
+  test.each([
+    [
       { top: `histogram` },
       { top: { type: `cdf`, bins: 20 } },
-    )
-    expect(result.top?.type).toBe(`histogram`)
-    expect(result.top?.bins).toBe(20)
-  })
-
-  test(`per-side map does not auto-activate unspecified default sides`, () => {
-    const result = normalize_marginals({ top: `kde` }, { top: true, right: true })
-    expect(result.top?.type).toBe(`kde`)
-    expect(result.right).toBeNull()
-    expect(result.bottom).toBeNull()
-    expect(result.left).toBeNull()
-  })
-
-  test(`config fields fall back to MARGINAL_DEFAULTS`, () => {
-    const result = normalize_marginals({ left: { type: `kde` } }, {})
-    expect(result.left).toMatchObject({ type: `kde`, size: 64, gap: 6, placement: `auto` })
+      `top`,
+      { type: `histogram`, bins: 20 },
+    ],
+    [
+      { left: { type: `kde` } },
+      {},
+      `left`,
+      { type: `kde`, size: 64, gap: 6, placement: `auto` },
+    ],
+  ] as const)(`config %j merges over defaults %j`, (prop, defaults, side, expected) => {
+    expect(normalize_marginals(prop, defaults)[side]).toMatchObject(expected)
   })
 })
 
-describe(`reserve_marginal_pad`, () => {
-  test(`reserves size+gap per active side`, () => {
-    const resolved_marginals = normalize_marginals(true, { top: true, right: true })
-    expect(reserve_marginal_pad(resolved_marginals)).toEqual({ t: 70, b: 0, l: 0, r: 70 })
-  })
-
-  test(`custom sizes/gaps per side`, () => {
-    const resolved_marginals = normalize_marginals(
-      { bottom: { size: 40, gap: 4 }, left: { size: 100, gap: 10 } },
-      {},
-    )
-    expect(reserve_marginal_pad(resolved_marginals)).toEqual({ t: 0, b: 44, l: 110, r: 0 })
-  })
+// reserves size+gap per active side
+test.each([
+  [true, { top: true, right: true }, { t: 70, b: 0, l: 0, r: 70 }],
+  [
+    { bottom: { size: 40, gap: 4 }, left: { size: 100, gap: 10 } },
+    {},
+    { t: 0, b: 44, l: 110, r: 0 },
+  ],
+] as const)(`reserve_marginal_pad(%j)`, (prop, defaults, expected) => {
+  expect(reserve_marginal_pad(normalize_marginals(prop, defaults))).toEqual(expected)
 })
 
 test(`add_sides sums two padding objects`, () => {
@@ -253,8 +252,8 @@ describe(`compute_marginal_curve`, () => {
   })
 
   // every cdf is monotonic, ends at 1, and collapses tied positions; per case we pin the resulting
-  // positions (and exact values where weights matter). negative weights are dropped (they'd make the
-  // cumulative non-monotone); zero is kept harmlessly
+  // positions and values. negative weights are dropped (they'd make the cumulative non-monotone);
+  // zero is kept harmlessly
   test.each([
     [`sorts tied positions`, [3, 1, 2, 1], undefined, range, [1, 2, 3], [0.5, 0.75, 1]],
     [`positive zero tie`, [2, 0, -0, 1], undefined, range, [0, 1, 2], [0.5, 0.75, 1]],
@@ -264,6 +263,8 @@ describe(`compute_marginal_curve`, () => {
     [`unsorted weights`, [3, 1, 2, 1], [1, 1, 2, 4], range, [1, 2, 3], [0.625, 0.875, 1]],
     [`reflects weights`, [1, 2], [1, 3], [0, 3], [1, 2], [0.25, 1]],
     [`skips negative weights`, [1, 2, 3], [1, -5, 3], [0, 4], [1, 3], [0.25, 1]],
+    // a zoomed range still ends at 1
+    [`drops out-of-range samples`, [1, 2, 100], undefined, [0, 10], [1, 2], [0.5, 1]],
   ] as const)(`cdf %s`, (_desc, positions, weights, range_in, expected_pos, expected_vals) => {
     const input = [...positions]
     const curve = compute(
@@ -277,14 +278,7 @@ describe(`compute_marginal_curve`, () => {
     const { points, max } = as_line(curve)
     expect(max).toBe(1)
     expect(points.map((point) => point.pos)).toEqual(expected_pos)
-    const values = points.map((point) => point.value)
-    expect(values.at(-1)).toBeCloseTo(1, 6)
-    for (let idx = 1; idx < values.length; idx++) {
-      expect(values[idx]).toBeGreaterThanOrEqual(values[idx - 1])
-    }
-    if (expected_vals) {
-      expected_vals.forEach((val, idx) => expect(values[idx]).toBeCloseTo(val, 6))
-    }
+    points.forEach(({ value }, idx) => expect(value).toBeCloseTo(expected_vals[idx], 6))
   })
 
   // kde yields a finite, non-negative 100-point density line — including for zero-variance input,
@@ -307,16 +301,21 @@ describe(`compute_marginal_curve`, () => {
     )
   })
 
-  test(`rug keeps finite positions only`, () => {
-    const curve = compute([1, 2, NaN, 3, Infinity], { type: `rug` }, range)
-    if (curve.kind !== `rug`) throw new Error(`expected rug`)
-    expect(curve.positions).toEqual([1, 2, 3])
-  })
-
-  test(`non-finite positions are filtered before binning`, () => {
-    const curve = compute([1, NaN, 2, Infinity, -Infinity], { bins: 4 }, [0, 4])
-    expect(sum_bins(curve)).toBe(2)
-  })
+  // marginals track zoom/pan, so besides non-finite samples every type drops those outside the
+  // positional range (and non-positive ones on a log axis). Measured as rug positions / bin sums
+  test.each([
+    [`histogram`, [1, NaN, 2, Infinity, -Infinity], [0, 4], `linear`, 2],
+    [`histogram`, [1, 2, 100], [0, 10], `linear`, 2],
+    [`histogram`, [-5, 0, 10], [0.001, 100], `log`, 1],
+    [`rug`, [1, 2, NaN, 3, Infinity], range, `linear`, [1, 2, 3]],
+    [`rug`, [1, 2, 100], [0, 10], `linear`, [1, 2]],
+  ] as const)(
+    `%s keeps finite in-range samples of %j`,
+    (type, positions, range_in, scale, expected) => {
+      const curve = compute(positions, { type, bins: 4 }, [range_in[0], range_in[1]], scale)
+      expect(curve.kind === `rug` ? curve.positions : sum_bins(curve)).toEqual(expected)
+    },
+  )
 
   test.each([`histogram`, `cdf`, `kde`, `rug`] as const)(
     `%s returns an empty curve for empty input`,
@@ -328,45 +327,10 @@ describe(`compute_marginal_curve`, () => {
     },
   )
 
-  // every type must restrict to the current positional range so marginals track zoom/pan
-  test.each([
-    [
-      `histogram`,
-      (value_c: MarginalCurve) =>
-        value_c.kind === `bars` ? value_c.bins.reduce((sum, bin) => sum + bin.value, 0) : -1,
-      2,
-    ],
-    [
-      `rug`,
-      (value_c: MarginalCurve) => (value_c.kind === `rug` ? value_c.positions.length : -1),
-      2,
-    ],
-    [
-      `cdf`,
-      (value_c: MarginalCurve) => (value_c.kind === `line` ? value_c.points.length : -1),
-      2,
-    ],
-  ] as const)(`%s drops samples outside the positional range`, (type, measure, expected) => {
-    const curve = compute([1, 2, 100], { type }, [0, 10])
-    expect(measure(curve)).toBe(expected)
-  })
-
-  test(`cdf over a zoomed range still ends at 1`, () => {
-    const curve = compute([1, 2, 100], { type: `cdf` }, [0, 10])
-    const { points } = as_line(curve)
-    expect(points.map((point) => point.pos)).toEqual([1, 2])
-    expect(points[points.length - 1].value).toBeCloseTo(1, 6)
-  })
-
   test(`log kde grid spans the view range, not the smallest sample`, () => {
     // range[0] = 1 > 0, so no clamping: the grid must start at 1, not at the min sample (10)
     const curve = compute([10, 20], { type: `kde` }, [1, 100], `log`)
     expect(as_line(curve).points[0].pos).toBeCloseTo(1, 6)
-  })
-
-  test(`log axis drops non-positive positions`, () => {
-    const curve = compute([-5, 0, 10], { bins: 4 }, [0.001, 100], `log`)
-    expect(sum_bins(curve)).toBe(1)
   })
 
   // a degenerate log range (lower bound <= 0) must clamp the histogram bin domain to the smallest
@@ -402,29 +366,26 @@ test(`curves_max returns the max across curves, ignoring rug`, () => {
   expect(curves_max(curves)).toBe(7)
 })
 
-describe(`value-axis label + format`, () => {
-  // type, normalize -> auto title (default_marginal_label) + tick format (marginal_value_format)
-  test.each([
-    [`cdf`, undefined, `CDF`, `.0%`],
-    [`kde`, undefined, `density`, `.2~g`],
-    [`histogram`, undefined, `count`, `.3~s`],
-    [`histogram`, `density`, `density`, `.2~g`],
-    [`histogram`, `probability`, `probability`, `.0%`],
-    [`rug`, undefined, ``, `.2~g`],
-  ] as const)(`%s (normalize=%s): label=%s, format=%s`, (type, normalize, label, format) => {
-    const cfg = resolved({ type, normalize })
-    expect(default_marginal_label(cfg)).toBe(label)
-    expect(marginal_value_format(cfg)).toBe(format)
-  })
-
-  test(`explicit label overrides the auto title`, () => {
-    expect(default_marginal_label(resolved({ type: `cdf`, label: `Cumulative` }))).toBe(
-      `Cumulative`,
-    )
-  })
+// config -> value-axis title (default_marginal_label; an explicit label overrides the auto one)
+// + tick format (marginal_value_format)
+test.each([
+  [{ type: `cdf` }, `CDF`, `.0%`],
+  [{ type: `cdf`, label: `Cumulative` }, `Cumulative`, `.0%`],
+  [{ type: `kde` }, `density`, `.2~g`],
+  [{ type: `histogram` }, `count`, `.3~s`],
+  [{ type: `histogram`, normalize: `density` }, `density`, `.2~g`],
+  [{ type: `histogram`, normalize: `probability` }, `probability`, `.0%`],
+  [{ type: `rug` }, ``, `.2~g`],
+] as const)(`value-axis of %j: label=%s, format=%s`, (over, label, format) => {
+  const cfg = resolved(over)
+  expect(default_marginal_label(cfg)).toBe(label)
+  expect(marginal_value_format(cfg)).toBe(format)
 })
 
 describe(`marginal_hit`, () => {
+  const marginal_hit = (ctx: MarginalRenderContext, pixel_x: number, pixel_y: number) =>
+    create_marginal_hit_test(ctx)(pixel_x, pixel_y)
+
   // A `top` strip (is_x): positional coord = px (scale: data*10), cross coord = py. value_scale
   // grows up from baseline 64 (value*6), matching marginal_value_scale for a top strip.
   const make_ctx = (
@@ -562,11 +523,11 @@ describe(`marginal_hit`, () => {
   })
 
   test.each([
-    [`NaN edges`, NaN, NaN, 5],
-    [`Infinity value`, 0, 5, Infinity],
-  ])(`bars: skips %s`, (_name, start, end, value) => {
-    const ctx = make_ctx([bars_curve([[start, end, value]])])
-    expect(marginal_hit(ctx, 25, 60)).toBeNull()
+    [`NaN edges`, [bars_curve([[NaN, NaN, 5]])]],
+    [`Infinity value`, [bars_curve([[0, 5, Infinity]])]],
+    [`empty curves`, []],
+  ])(`bars: %s return null`, (_name, curves) => {
+    expect(marginal_hit(make_ctx(curves), 25, 60)).toBeNull()
   })
 
   test.each([
@@ -620,10 +581,6 @@ describe(`marginal_hit`, () => {
     else expect(hit?.pos).toBe(expected)
   })
 
-  test(`empty curves return null`, () => {
-    expect(marginal_hit(make_ctx([]), 25, 30)).toBeNull()
-  })
-
   test.each([
     [{ config: resolved({ color: `purple` }) }, { color: `purple` }],
     [{ format: `.2f` }, { format: `.2f` }],
@@ -643,10 +600,8 @@ describe(`marginal_hit`, () => {
   })
 })
 
-// gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the UNWEIGHTED
-// density: positions [1, 2] weighted [1, 99] peaked at 1 rather than 2, with nothing said. The
-// histogram and cdf paths both honour weights, and `MarginalSeriesInput.weight` is documented
-// and passed in for every marginal type, so ignoring it was the one dishonest branch.
+// gaussian_kde takes no weights, so a weighted kde must throw rather than silently render the
+// unweighted density; histogram and cdf honour the weights
 describe(`weighted marginals`, () => {
   const positions = [1, 2]
   const weights = [1, 99]
@@ -666,10 +621,7 @@ describe(`weighted marginals`, () => {
 })
 
 // A marginal sits beside the main plot and must bin the same way it does. d3's binner is
-// uniform in DATA units, so under a log axis every bin but the last was a sliver: 5000 samples
-// spread log-uniformly over five decades put two thirds of them in one bar covering two thirds
-// of the strip, while the main Histogram shows the same data flat. The kde grid was worse - 99
-// of its 100 points landed in the top decade, drawing 2.5 decades as one straight segment.
+// uniform in DATA units, which under a log axis crams most samples into the top bins/grid points
 describe(`log-axis marginals bin in the axis' own space`, () => {
   // log-uniform over 1e-3..1e2, i.e. a flat density when viewed on a log axis
   const samples = Array.from({ length: 5000 }, (_unused, idx) => 10 ** (-3 + 5 * (idx / 4999)))
@@ -704,9 +656,3 @@ describe(`log-axis marginals bin in the axis' own space`, () => {
     ])
   })
 })
-
-const marginal_hit = (
-  ctx: Parameters<typeof create_marginal_hit_test>[0],
-  pixel_x: number,
-  pixel_y: number,
-) => create_marginal_hit_test(ctx)(pixel_x, pixel_y)

@@ -4,6 +4,7 @@
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '#lib/table/index.js'
   import { DATETIME_MODE_LABELS } from './data'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -28,6 +29,7 @@
   const label_id = $props.id()
   // Every event stops here so the sortable, draggable header underneath doesn't react
   const stop_event = (event: Event) => event.stopPropagation()
+  let trigger = $state<HTMLButtonElement>()
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -40,6 +42,7 @@
   onpointerdown={stop_event}
 >
   <button
+    bind:this={trigger}
     type="button"
     class="datetime-format-trigger"
     aria-labelledby={label_id}
@@ -61,11 +64,10 @@
       aria-labelledby={label_id}
       value={mode}
       size={options.length}
+      out:close_before_removal
+      {@attach anchored_popover({ anchor: trigger, on_close: on_toggle })}
       onclick={(event) => {
         if (event.currentTarget.value === mode) on_toggle() // re-picking the current mode closes
-      }}
-      onkeydown={(event) => {
-        if (event.key === `Escape`) on_toggle()
       }}
       oninput={(event) => {
         const picked = event.currentTarget.value as DateTimeFormatMode

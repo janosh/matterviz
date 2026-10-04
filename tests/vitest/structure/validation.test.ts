@@ -9,22 +9,11 @@ import { describe, expect, test } from 'vitest'
 import { cubic_matrix } from '../test-fixtures'
 
 describe(`is_crystal`, () => {
+  // oxfmt-ignore
   test.each([
-    // Valid
-    {
-      input: { sites: [{ element: `H` }], lattice: { a: 5 } },
-      expected: true,
-      label: `valid`,
-    },
+    { input: { sites: [{ element: `H` }], lattice: { a: 5 } }, expected: true, label: `valid` },
     { input: { sites: [{}], lattice: {} }, expected: true, label: `minimal` },
-    {
-      input: {
-        sites: [{}],
-        lattice: cubic_matrix(1),
-      },
-      expected: true,
-      label: `raw matrix`,
-    },
+    { input: { sites: [{}], lattice: cubic_matrix(1) }, expected: true, label: `raw matrix` },
     // Invalid: non-objects
     { input: null, expected: false, label: `null` },
     { input: `string`, expected: false, label: `primitive` },
@@ -36,11 +25,7 @@ describe(`is_crystal`, () => {
     // Invalid: missing/invalid lattice
     { input: { sites: [{}] }, expected: false, label: `no lattice` },
     { input: { sites: [{}], lattice: null }, expected: false, label: `lattice null` },
-    {
-      input: { sites: [{}], lattice: `invalid` },
-      expected: false,
-      label: `lattice string`,
-    },
+    { input: { sites: [{}], lattice: `invalid` }, expected: false, label: `lattice string` },
   ])(`$label → $expected`, ({ input, expected }) => {
     expect(is_crystal(input)).toBe(expected)
   })
@@ -75,13 +60,7 @@ test.each([
   [[true, true, false], true],
   [[false, false, false], false],
 ])(`periodicity follows axes %s`, (pbc, expected) => {
-  const structure = {
-    sites: [{}],
-    lattice: {
-      pbc,
-      matrix: cubic_matrix(1),
-    },
-  }
+  const structure = { sites: [{}], lattice: { pbc, matrix: cubic_matrix(1) } }
   expect(is_periodic(structure)).toBe(expected)
   expect(has_usable_lattice(structure)).toBe(true)
   expect(is_periodic({ sites: [{}] })).toBe(false)

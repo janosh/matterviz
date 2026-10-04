@@ -24,11 +24,8 @@ describe(`label placement`, () => {
 
   test(`moves label away from a bond aligned with the default upward offset`, () => {
     const base_offset: Vec3 = [0, 0.5, 0]
-    const bond_directions: Vec3[] = [
-      [-1, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-    ]
+    // oxfmt-ignore
+    const bond_directions: Vec3[] = [[-1, 0, 0], [1, 0, 0], [0, 1, 0]]
 
     const offset = choose_site_label_offset(bond_directions, base_offset)
 
@@ -155,23 +152,16 @@ describe(`label placement`, () => {
     }
   }
 
-  const make_rotated_perspective = (): PerspectiveCamera => {
-    const camera = new PerspectiveCamera(60, 800 / 600, 0.1, 100)
+  const look_from_corner = <Cam extends PerspectiveCamera | OrthographicCamera>(
+    camera: Cam,
+  ) => {
     camera.position.set(7, 5, 9)
     camera.lookAt(1, -1, 0)
     camera.updateMatrixWorld()
     camera.updateProjectionMatrix()
     return camera
   }
-  const make_rotated_ortho = (): OrthographicCamera => {
-    const aspect = 800 / 600
-    const camera = new OrthographicCamera(-6 * aspect, 6 * aspect, 6, -6, 0.1, 100)
-    camera.position.set(7, 5, 9)
-    camera.lookAt(1, -1, 0)
-    camera.updateMatrixWorld()
-    camera.updateProjectionMatrix()
-    return camera
-  }
+  const aspect = 800 / 600
   // rotation + translation anchor (matches the scene's nested rotation groups)
   const rotated_anchor = new Matrix4()
     .makeRotationY(0.7)
@@ -179,8 +169,11 @@ describe(`label placement`, () => {
     .setPosition(1, 2, 3)
 
   test.each([
-    [`perspective`, make_rotated_perspective],
-    [`orthographic`, make_rotated_ortho],
+    [`perspective`, () => look_from_corner(new PerspectiveCamera(60, aspect, 0.1, 100))],
+    [
+      `orthographic`,
+      () => look_from_corner(new OrthographicCamera(-6 * aspect, 6 * aspect, 6, -6, 0.1, 100)),
+    ],
   ] as const)(
     `%s fast path matches Vector3.project reference for rotated camera + anchor`,
     (_kind, make_camera) => {
@@ -198,15 +191,8 @@ describe(`label placement`, () => {
       ]
       for (const { position, offset, radius } of cases) {
         const actual = place(projector, position, offset, radius)
-        const expected = reference_place(
-          camera,
-          rotated_anchor,
-          view_size,
-          14,
-          position,
-          offset,
-          radius,
-        )
+        const args = [camera, rotated_anchor, view_size, 14, position, offset, radius] as const
+        const expected = reference_place(...args)
         expect(actual.visible, `visible for ${position}`).toBe(expected.visible)
         expect(actual.x, `x for ${position}/${offset}`).toBeCloseTo(expected.x, 3)
         expect(actual.y, `y for ${position}/${offset}`).toBeCloseTo(expected.y, 3)

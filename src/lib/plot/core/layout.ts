@@ -25,6 +25,8 @@ export const AXIS_TITLE_WRAP_WIDTH = 200
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 
+// Height of ChartShell's corner controls row (gear, fullscreen) from the plot's top edge
+const CONTROLS_ROW_HEIGHT = 24
 // Per-side floors; measured ticks and titles win when they need more
 export const DEFAULT_PLOT_PADDING: Required<Sides> = { t: 20, b: 50, l: 50, r: 12 }
 
@@ -189,7 +191,7 @@ export function resolve_axis_title_layout(
     const label_metrics = measure_text_line(label, font)
     const arrow_font = { ...font, font_size: font.font_size * 1.4 }
     const arrow_width = measure_text_line(`▾`, arrow_font).width
-    // PortalSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
+    // PopoverSelect: 4px horizontal padding on both sides plus a 0.3em flex gap.
     const width = label_metrics.width + arrow_width + 8 + 0.3 * font.font_size
     return {
       ...shared,
@@ -329,6 +331,7 @@ export interface AutoPaddingConfig {
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
   width?: number // Plot width, needed to know whether x tick labels have to rotate
   height?: number // Plot height, needed for y/y2 wrapping and thinning
+  controls_row?: boolean // whether the corner controls row (gear, fullscreen) is drawn
 }
 
 const project_measured_axis = (
@@ -378,6 +381,7 @@ export const calc_auto_padding = ({
   label_gap = LABEL_GAP_DEFAULT,
   width,
   height,
+  controls_row = false,
 }: AutoPaddingConfig): Required<Sides> => {
   const title_layout_for = (axis: MeasuredAxis, available_width: number): AxisTitleLayout =>
     resolve_axis_title_layout(
@@ -452,11 +456,16 @@ export const calc_auto_padding = ({
     )
   }
 
+  // The top y2 tick label can sit entirely above the plot's top edge, right under the chart's
+  // corner controls (gear, fullscreen), so a y2 axis keeps the top band clear of that row
+  const y2_outside_ticks = Boolean(y2_axis.tick_values?.length) && !y2_axis.tick_label?.inside
+  const controls_floor =
+    controls_row && y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
     const title_layout = title_layout_for(x2_axis, available_width)
     const has_title = title_layout.height > 0
-    if (ticks.length === 0 && !has_title) return default_padding.t
+    if (ticks.length === 0 && !has_title) return Math.max(controls_floor, default_padding.t)
     const inside = x2_axis.tick_label?.inside ?? false
     const has_outside_ticks = ticks.length > 0 && !inside
     const tick_shift = x2_axis.tick_label?.shift?.y ?? 0
@@ -473,7 +482,7 @@ export const calc_auto_padding = ({
         title_layout.height -
         title_layout.line_height / 2
       : 0
-    return Math.max(default_padding.t, Math.max(tick_reach, title_reach))
+    return Math.max(controls_floor, default_padding.t, tick_reach, title_reach)
   }
 
   // Bottom depends on the angle the x labels will render at, since a rotated label projects
@@ -589,14 +598,12 @@ const MAX_SAMPLE_POINTS = 500
 // Candidate positions sampled per axis (GRID_RESOLUTION² candidates per placement)
 const GRID_RESOLUTION = 10
 
-// Check if a point is inside a rectangle
 export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
   point.x >= rect.x &&
   point.x <= rect.x + rect.width &&
   point.y >= rect.y &&
   point.y <= rect.y + rect.height
 
-// Check if two rectangles overlap
 export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
   !(
     left_rect.x + left_rect.width <= right_rect.x ||

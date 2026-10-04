@@ -15,6 +15,7 @@ import {
   plot_svg,
   query,
   resize_element,
+  set_input,
 } from '../setup'
 
 const direct_path = reaction_paths[`direct hop`]
@@ -84,20 +85,14 @@ describe(`NebPlot`, () => {
   })
 
   // oxfmt-ignore
-  test.each(
-    [[`arc_length`, `Reaction coordinate (Å)`], [`image_index`, `Image index`]] as const,
-  )(`labels the x-axis for %s mode`, async (mode, expected) => {
-    const plot = await mount_plot({ paths: reaction_paths, coord_mode: mode })
-    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(expected)
-    expect(plot.querySelector<HTMLSelectElement>(`#neb-coord-mode`)?.value).toBe(mode)
-  })
-
-  // oxfmt-ignore
-  test.each(
-    [[`initial`, `Energy relative to initial state (eV)`], [`absolute`, `Energy (eV)`]] as const,
-  )(`labels the y-axis for the %s energy reference`, async (reference, expected) => {
-    const plot = await mount_plot({ paths: reaction_paths, energy_reference: reference })
-    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(expected)
+  test.each([
+    [`arc_length`, `initial`, `Reaction coordinate (Å)`, `Energy relative to initial state (eV)`],
+    [`image_index`, `absolute`, `Image index`, `Energy (eV)`],
+  ] as const)(`labels axes for %s mode and %s energy reference`, async (coord_mode, energy_reference, x_label, y_label) => {
+    const plot = await mount_plot({ paths: reaction_paths, coord_mode, energy_reference })
+    expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(x_label)
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(y_label)
+    expect(plot.querySelector<HTMLSelectElement>(`#neb-coord-mode`)?.value).toBe(coord_mode)
   })
 
   test(`profile reset clears authored overrides`, async () => {
@@ -116,7 +111,7 @@ describe(`NebPlot`, () => {
     expect(plot.querySelector(`button[title="Reset profile to defaults"]`)).toBeNull()
   })
 
-  test(`annotates the fitted saddle of the active path`, async () => {
+  test(`annotates the fitted saddle of the active path unless annotate_barrier=false`, async () => {
     const plot = await mount_plot({ paths: reaction_paths, active_path_key: `direct hop` })
     const spline = path_spline(direct_path)
     const e_act = spline.fitted_max.energy - direct_path.images[0].energy
@@ -137,11 +132,9 @@ describe(`NebPlot`, () => {
     const peak_x =
       (Number(fit_cross[0].getAttribute(`x1`)) + Number(fit_cross[0].getAttribute(`x2`))) / 2
     expect(Number(e_act_line?.getAttribute(`x1`))).toBeCloseTo(peak_x, 5)
-  })
 
-  test(`hides the barrier annotation when asked`, async () => {
-    const plot = await mount_plot({ paths: reaction_paths, annotate_barrier: false })
-    expect(squash(plot.textContent)).not.toContain(`Eact = `)
+    const hidden = await mount_plot({ paths: reaction_paths, annotate_barrier: false })
+    expect(squash(hidden.textContent)).not.toContain(`Eact = `)
   })
 
   // oxfmt-ignore
@@ -331,8 +324,7 @@ describe(`NebViewer`, () => {
     const state = $state({ active_path_key: `direct hop`, active_image_idx: 0 })
     const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
     const slider = query<HTMLInputElement>(viewer, `.step-slider`)
-    slider.value = `2`
-    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    set_input(slider, `2`)
     await flush_render()
     expect(state.active_image_idx).toBe(2)
 
@@ -388,8 +380,7 @@ describe(`NebViewer`, () => {
       [12.36, 12.4],
       [301, 300],
     ]) {
-      fps_input.value = String(input)
-      fps_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(fps_input, String(input))
       fps_input.dispatchEvent(new Event(`change`, { bubbles: true }))
       await flush_render()
       expect([state.fps, fps_input.value]).toEqual([expected, String(expected)])

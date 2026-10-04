@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { Crystal } from '#lib/structure/index.js'
+import type { Crystal, StructureBond } from '#lib/structure/index.js'
 import {
   generate_lattice_points,
   is_valid_supercell_input,
@@ -211,37 +211,34 @@ describe(`make_supercell`, () => {
     expect(supercell.sites.map((site) => site.label)).toContain(`Ti1_100`)
   })
 
-  test(`replicates explicit bond metadata for each generated cell`, () => {
-    const structure: Crystal = {
-      ...sample_structure,
-      properties: {
-        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-      },
-    }
-
-    const supercell = make_supercell(structure, [2, 1, 1])
-
-    expect(supercell.properties?.bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 2 },
-      { site_idx_1: 2, site_idx_2: 3, order: 2 },
-    ])
-  })
-
-  test(`replicates explicit periodic bond metadata across supercell boundaries`, () => {
-    const structure: Crystal = {
-      ...sample_structure,
-      properties: {
-        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
-      },
-    }
-
-    const supercell = make_supercell(structure, [2, 1, 1])
-
-    expect(supercell.properties?.bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 3, order: 2 },
-      { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] },
-    ])
-  })
+  // a periodic bond crossing into the next copy reconnects it in-cell and wraps the last one
+  test.each([
+    [
+      `within each generated cell`,
+      [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      [
+        { site_idx_1: 0, site_idx_2: 1, order: 2 },
+        { site_idx_1: 2, site_idx_2: 3, order: 2 },
+      ],
+    ],
+    [
+      `across supercell boundaries`,
+      [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+      [
+        { site_idx_1: 0, site_idx_2: 3, order: 2 },
+        { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] },
+      ],
+    ],
+  ] as [string, StructureBond[], StructureBond[]][])(
+    `replicates explicit bond metadata %s`,
+    (_desc, bonds, expected) => {
+      const supercell = make_supercell(
+        { ...sample_structure, properties: { bonds } },
+        [2, 1, 1],
+      )
+      expect(supercell.properties?.bonds).toEqual(expected)
+    },
+  )
 
   // Cartesian length of every explicit bond, reading cell_shift in supercell-lattice vectors
   const bond_lengths = (cell: Crystal): number[] => {
@@ -303,7 +300,7 @@ test.each([
 })
 
 describe(`integration tests`, () => {
-  test(`handles complex structures`, () => {
+  test(`multiplies charge and keeps per-site properties`, () => {
     const complex_structure = make_crystal(
       4,
       [
@@ -329,21 +326,6 @@ describe(`integration tests`, () => {
       .filter((site) => site.species[0].element === `O`)
       .map((site) => site.properties.force)
     expect(o_forces).toEqual(Array.from({ length: 4 }, () => [0.1, 0.2, 0.3]))
-  })
-
-  test(`works with different lattice shapes`, () => {
-    const hexagonal_structure = make_crystal(
-      math.cell_to_lattice_matrix(3, 3, 5, 90, 90, 120),
-      [
-        [`Ba`, [0, 0, 0], 2],
-        [`Ti`, [0.5, 0.5, 0.5], 4],
-      ],
-    )
-
-    const supercell = make_supercell(hexagonal_structure, [2, 2, 1])
-
-    expect(supercell.sites).toHaveLength(8)
-    expect(supercell.lattice.volume).toBeCloseTo(156.0, 0)
   })
 })
 
@@ -416,30 +398,19 @@ describe(`oblique cell bug tests`, () => {
       const lattice_matrix = supercell.lattice.matrix
       const transposed = math.transpose_3x3_matrix(lattice_matrix)
 
-      expect(math.det_3x3(lattice_matrix)).toBeGreaterThan(0) // Positive determinant
+      expect(math.det_3x3(lattice_matrix)).toBeGreaterThan(0)
       expect(supercell.sites).toHaveLength(sites.length * 8)
+      expect(supercell.lattice.volume).toBeCloseTo(8 * structure.lattice.volume, 8)
 
       for (const site of supercell.sites) {
-        // All fractional coordinates should be in [0, 1) after folding
+        // folded into [0, 1), with xyz = L^T abc
         for (const coord of site.abc) {
           expect(coord).toBeGreaterThanOrEqual(0)
           expect(coord).toBeLessThan(1)
         }
-
-        // Coordinate consistency: fractional → cartesian → fractional should match
         const recalc_xyz = math.mat3x3_vec3_multiply(transposed, site.abc)
-        const recalc_abc = math.mat3x3_vec3_multiply(
-          math.matrix_inverse_3x3(transposed),
-          recalc_xyz,
-        )
         for (let idx = 0; idx < 3; idx++) {
           expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
-
-          let wrapped_recalc = recalc_abc[idx] % 1
-          if (wrapped_recalc < 0) wrapped_recalc += 1
-          // Handle floating point precision: if very close to 1, set to 0
-          if (Math.abs(wrapped_recalc - 1) < 1e-10) wrapped_recalc = 0
-          expect(Math.abs(site.abc[idx] - wrapped_recalc)).toBeLessThan(1e-10)
         }
       }
     },
@@ -449,8 +420,8 @@ describe(`oblique cell bug tests`, () => {
 describe(`size limit`, () => {
   test(`refuses a supercell above MAX_SUPERCELL_SITES before allocating it`, () => {
     const two_sites = make_crystal(1, [
-      { element: `H`, abc: [0, 0, 0] as Vec3 },
-      { element: `H`, abc: [0.5, 0.5, 0.5] as Vec3 },
+      [`H`, [0, 0, 0]],
+      [`H`, [0.5, 0.5, 0.5]],
     ])
     expect(() => make_supercell(two_sites, `100x100x100`)).toThrow(
       /2,000,000 sites \(limit 1,000,000\)/,

@@ -39,7 +39,10 @@
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
@@ -67,7 +70,9 @@
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { clamp01 } from '#lib/utils.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { clamp, type Vec2 } from '#lib/math.js'
+  import { measure_text_width } from '#lib/plot/core/tick-layout.js'
+  import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
@@ -97,6 +102,8 @@
 
   // Extended point type with computed screen coordinates (used internally for rendering)
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
+
+  const BAR_LABEL_FONT = { ...DEFAULT_FONT_SPEC, font_size: 11 } // matches .bar-label
 
   let {
     series: series_in = [],
@@ -216,6 +223,7 @@
   const plot_axes = $derived({ x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis })
 
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => plot_axes,
     auto_ranges: () => auto_ranges,
     // Categorical x2 shares x's category slots, pinned range included
@@ -301,8 +309,7 @@
     () => (category_list.length > 0 ? cat_axis : null),
   )
 
-  // Keep every category available to the shared adaptive resolver. Its measured, bounded
-  // thinning candidate replaces the former fixed 28px/category heuristic.
+  // Every category goes to the shared adaptive resolver, which thins them by measured width
   let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
   let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
@@ -922,13 +929,25 @@
                     }}
                   />
                   {#if srs.labels?.[bar_idx]}
+                    {@const label_rotation = bar_state.label_rotation ?? 0}
+                    <!-- labels stay inside the plot: a centred one on an edge bar would spill onto
+                    the axis tick labels, one past the longest horizontal bar off the right edge -->
+                    {@const label_width = label_rotation
+                      ? 0
+                      : measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT)}
                     {@const label_x = vertical
-                      ? (cat_start + cat_end) / 2
-                      : Math.max(value_base, value_tip) + 4}
+                      ? clamp(
+                          (cat_start + cat_end) / 2,
+                          pad.l + label_width / 2,
+                          frame.width - pad.r - label_width / 2,
+                        )
+                      : Math.min(
+                          Math.max(value_base, value_tip) + 4,
+                          frame.width - pad.r - label_width,
+                        )}
                     {@const label_y = vertical
                       ? Math.max(0, Math.min(value_base, value_tip) - 6)
                       : (cat_start + cat_end) / 2}
-                    {@const label_rotation = bar_state.label_rotation ?? 0}
                     <text
                       x={label_x}
                       y={label_y}

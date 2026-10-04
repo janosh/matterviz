@@ -289,53 +289,17 @@ describe(`format_value`, () => {
   )
 
   test.each([
-    // Date formatting
-    {
-      value: new Date(2023, 0, 1).getTime(),
-      formatter: `%Y-%m-%d`,
-      expected: `2023-01-01`,
-    },
-    {
-      value: new Date(2023, 5, 15).getTime(),
-      formatter: `%b %d, %Y`,
-      expected: `Jun 15, 2023`,
-    },
-    {
-      value: new Date(2023, 11, 31, 23, 59, 59).getTime(),
-      formatter: `%Y-%m-%d %H:%M:%S`,
-      expected: `2023-12-31 23:59:59`,
-    },
-    {
-      value: new Date(2023, 0, 1).getTime(),
-      formatter: `%A, %B %d, %Y`,
-      expected: `Sunday, January 01, 2023`,
-    },
-    {
-      value: new Date(2023, 0, 1, 12, 0, 0).getTime(),
-      formatter: `%I:%M %p`,
-      expected: `12:00 PM`,
-    },
-    {
-      value: new Date(2023, 0, 1, 0, 0, 0).getTime(),
-      formatter: `%I:%M %p`,
-      expected: `12:00 AM`,
-    },
-    {
-      value: new Date(2023, 6, 4).getTime(),
-      formatter: `%j`,
-      expected: `185`,
-    },
-    {
-      value: new Date(2020, 1, 29).getTime(), // Leap year
-      formatter: `%Y-%m-%d`,
-      expected: `2020-02-29`,
-    },
-  ])(
-    `formats timestamp $value with formatter "$formatter" as "$expected"`,
-    ({ value, formatter, expected }) => {
-      expect(format_value(value, formatter)).toBe(expected)
-    },
-  )
+    [new Date(2023, 0, 1).getTime(), `%Y-%m-%d`, `2023-01-01`],
+    [new Date(2023, 5, 15).getTime(), `%b %d, %Y`, `Jun 15, 2023`],
+    [new Date(2023, 11, 31, 23, 59, 59).getTime(), `%Y-%m-%d %H:%M:%S`, `2023-12-31 23:59:59`],
+    [new Date(2023, 0, 1).getTime(), `%A, %B %d, %Y`, `Sunday, January 01, 2023`],
+    [new Date(2023, 0, 1, 12, 0, 0).getTime(), `%I:%M %p`, `12:00 PM`],
+    [new Date(2023, 0, 1, 0, 0, 0).getTime(), `%I:%M %p`, `12:00 AM`],
+    [new Date(2023, 6, 4).getTime(), `%j`, `185`],
+    [new Date(2020, 1, 29).getTime(), `%Y-%m-%d`, `2020-02-29`], // leap year
+  ])(`formats timestamp %s with %s as %s`, (value, formatter, expected) => {
+    expect(format_value(value, formatter)).toBe(expected)
+  })
 })
 
 test.each([

@@ -52,6 +52,12 @@ describe(`column stats and color domains`, () => {
     expect(compute_column_stats([1, 2, 3], `lower`)?.best).toBe(1)
     expect(compute_column_stats([1, 2, 3])?.best).toBeNull()
     expect(compute_column_stats([null, undefined, NaN])).toBeNull()
+    // without quantiles, q_lo/q_hi fall back to min/max and no median is computed
+    expect(compute_column_stats(values, undefined, false)).toMatchObject({
+      q_lo: 0,
+      q_hi: 10_000,
+      median: null,
+    })
     for (const zero of [-0, 0]) {
       expect(compute_column_stats([zero, -zero], undefined, false)).toMatchObject({
         min: zero,
@@ -101,29 +107,16 @@ describe(`column stats and color domains`, () => {
   })
 
   it(`keeps log scaling when a supplied domain reaches zero`, () => {
-    const log_scale = make_cell_color_scale(
-      [1, 10, 100],
-      `higher`,
-      `interpolateViridis`,
-      `log`,
-      [0, 100],
-    )
-    const linear_scale = make_cell_color_scale(
-      [1, 10, 100],
-      `higher`,
-      `interpolateViridis`,
-      `linear`,
-      [0, 100],
-    )
-    expect(log_scale(10).bg).not.toBe(linear_scale(10).bg)
-    expect(log_scale(10).bg).toBe(
-      make_cell_color_scale([1, 100], `higher`, `interpolateViridis`, `log`)(10).bg,
-    )
-  })
-
-  it(`falls back to min/max when quantiles are not requested`, () => {
-    const stats = compute_column_stats(values, undefined, false)
-    expect(stats).toMatchObject({ q_lo: 0, q_hi: 10_000, median: null, min: 0, max: 10_000 })
+    const bg_of_10 = (scale_type: `linear` | `log`, domain?: [number, number]) =>
+      make_cell_color_scale(
+        [1, 10, 100],
+        `higher`,
+        `interpolateViridis`,
+        scale_type,
+        domain,
+      )(10).bg
+    expect(bg_of_10(`log`, [0, 100])).not.toBe(bg_of_10(`linear`, [0, 100]))
+    expect(bg_of_10(`log`, [0, 100])).toBe(bg_of_10(`log`))
   })
 
   it.each([
@@ -295,19 +288,12 @@ describe(`strip_html`, () => {
     expect(strip_html(input)).toBe(expected)
   })
 
-  // Cell text feeds search, the filter panels and every export. `<[^>]*>` eats ordinary prose
-  // caught between a comparison pair just as happily as a tag, so this cell read back as
-  // `T  1 bar` and no longer matched `300`. A tag has to open with a letter, `/` or `!`.
-  it(`leaves a comparison pair in prose alone, since it is not markup`, () => {
-    const prose = `T < 300 K and P > 1 bar`
-    expect(cell_text(prose)).toBe(prose)
-    // a real tag in the same cell is still stripped
-    expect(cell_text(`<b>T < 300 K</b>`)).toBe(`T < 300 K`)
-  })
-
   // Entity cells render decoded via {@html}, so search, sort and export must read them decoded
-  // too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`
+  // too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`. A comparison pair in
+  // prose is not a tag (one must open with a letter, `/` or `!`), so it must survive intact.
   it.each([
+    [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`],
+    [`<b>T < 300 K</b>`, `T < 300 K`],
     [`AT&amp;T`, `AT&T`],
     [`<b>&Delta;H</b> = &minus;5&nbsp;&plusmn;&#160;0.1&#x3bc;m`, `ΔH = −5\u00A0±\u00A00.1μm`],
     [`&Aring; &angst; &Ouml;l &eacute; &ccedil; &micro; &deg; &times;`, `Å Å Öl é ç µ ° ×`],

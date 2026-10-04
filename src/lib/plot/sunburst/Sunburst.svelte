@@ -247,11 +247,7 @@
     project_arcs(chart_state.arcs, view.current, screen_geom, { group_gap }),
   )
   let screen_arcs = $derived(projection.all)
-  // Rendering iterates only non-collapsed arcs - when zoomed into a small subtree of
-  // a large hierarchy this keeps per-frame template work proportional to what's on screen
-  // Keep each-block items stable during the tween: only geometry changes per frame.
-  // Iterating freshly allocated ScreenArcs also invalidated every static fill, aria,
-  // cursor and tabindex binding for every slice on every animation frame.
+  // Only non-collapsed arcs, as stable items: per-frame tween work is geometry only
   let visible_nodes = $derived(projection.visible.map((screen) => screen.arc))
 
   // Every visible arc is focusable and labelled, not just the clickable ones, so arrow keys

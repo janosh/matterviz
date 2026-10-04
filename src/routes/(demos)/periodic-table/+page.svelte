@@ -140,7 +140,6 @@
     links="name"
     tooltip
     style="margin: 1em auto; max-width: 1000px"
-    {on_activate}
   >
     {#snippet inset()}
       {@const style = `display: flex; align-items: center; gap: 3pt;`}

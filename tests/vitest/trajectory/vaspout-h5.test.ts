@@ -223,111 +223,27 @@ describe(`line-mode k-path labels`, () => {
 
 describe(`HDF5 ion type expansion`, () => {
   it.each([
-    [`negative`, -1],
-    [`fractional`, 1.5],
-    [`infinite`, Infinity],
-  ])(`rejects %s ion counts`, (_case, ion_count) => {
-    expect(() => expand_ion_types([`Si`], [ion_count])).toThrow(
-      `Invalid ion count for Si: ${ion_count}`,
-    )
-  })
-
-  it.each([
-    [[`Si`, `O`], [2]],
-    [[`Si`], [2, 1]],
-  ])(`rejects mismatched lengths (%j vs %j)`, (ion_types, ion_counts) => {
-    expect(() => expand_ion_types(ion_types, ion_counts)).toThrow(
-      `ion_types (${ion_types.length}) and ion_counts (${ion_counts.length}) length mismatch`,
-    )
+    [`a negative count`, [`Si`], [-1], `Invalid ion count for Si: -1`],
+    [`a fractional count`, [`Si`], [1.5], `Invalid ion count for Si: 1.5`],
+    [`an infinite count`, [`Si`], [Infinity], `Invalid ion count for Si: Infinity`],
+    [
+      `fewer counts than types`,
+      [`Si`, `O`],
+      [2],
+      `ion_types (2) and ion_counts (1) length mismatch`,
+    ],
+    [
+      `more counts than types`,
+      [`Si`],
+      [2, 1],
+      `ion_types (1) and ion_counts (2) length mismatch`,
+    ],
+  ])(`rejects %s`, (_label, ion_types, ion_counts, message) => {
+    expect(() => expand_ion_types(ion_types, ion_counts)).toThrow(message)
   })
 })
 
 describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
-  it.each([`valid`, `missing`, `singular`])(
-    `reads TiNiSn bands with a %s cell`,
-    async (cell) => {
-      const bands = await with_h5_file(
-        read_vaspout(`vaspout-tinisn-bands-only.h5`),
-        `vaspout.h5`,
-        (h5_file) => {
-          const get_dataset = h5_file.get.bind(h5_file)
-          vi.spyOn(h5_file, `get`).mockImplementation((path) => {
-            const entity = get_dataset(path)
-            if (cell === `valid` || !path.endsWith(`/lattice_vectors`)) return entity
-            if (cell === `missing`) return null
-            if (entity && `to_array` in entity)
-              vi.spyOn(entity, `to_array`).mockReturnValue([
-                [0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0],
-              ])
-            return entity
-          })
-          return read_vaspout_bands(h5_file)
-        },
-      )
-      if (!bands) throw new Error(`expected bands`)
-      if (cell === `valid`) {
-        expect(bands.recip_lattice).toHaveLength(3)
-        expect(bands.recip_lattice?.flat().every(Number.isFinite)).toBe(true)
-      } else expect(bands.recip_lattice).toBeUndefined()
-
-      // eigenvalues shape (1, 306, 24) -> 24 bands over 306 k-points
-      expect(bands.nb_bands).toBe(24)
-      expect(bands.bands).toHaveLength(24)
-      expect(bands.bands[0]).toHaveLength(306)
-      expect(bands.qpoints).toHaveLength(306)
-      expect(bands.distance).toHaveLength(306)
-      expect(bands.is_spin_polarized).toBe(false)
-      expect(bands.spin_down_bands).toBeUndefined()
-      expect(bands.bands[0][0]).toBeCloseTo(-48.4674, 3)
-
-      // 12 line-mode labels + 51 points per segment -> 6 branches with Γ prettified
-      expect(bands.branches).toHaveLength(6)
-      expect(bands.branches[0]).toMatchObject({ start_index: 0, end_index: 50 })
-      expect(bands.qpoints[0].label).toBe(`Γ`)
-      expect(bands.qpoints[50].label).toBe(`X`)
-      expect(bands.labels_dict[`Γ`]).toEqual([0, 0, 0])
-
-      // Path distance is cumulative and non-decreasing
-      for (let idx = 1; idx < bands.distance.length; idx++) {
-        expect(bands.distance[idx]).toBeGreaterThanOrEqual(bands.distance[idx - 1])
-      }
-      expect(bands.distance.at(-1)).toBeGreaterThan(0)
-    },
-  )
-
-  // No fixture carries fermiweights, so they are injected (1 spin, 306 k-points, 24 bands)
-  const read_with_fermiweights = (weights: number[][][]) =>
-    with_h5_file(read_vaspout(`vaspout-tinisn-bands-only.h5`), `vaspout.h5`, (h5_file) => {
-      const get_dataset = h5_file.get.bind(h5_file)
-      vi.spyOn(h5_file, `get`).mockImplementation((path) => {
-        if (!path.endsWith(`/fermiweights`)) return get_dataset(path)
-        const entity = get_dataset(path.replace(`fermiweights`, `eigenvalues`))
-        if (entity && `to_array` in entity)
-          vi.spyOn(entity, `to_array`).mockReturnValue(weights)
-        return entity
-      })
-      return read_vaspout_bands(h5_file)
-    })
-
-  it(`reads fermiweights as occupations`, async () => {
-    const n_filled = 9
-    const bands = await read_with_fermiweights([
-      Array.from({ length: 306 }, () =>
-        Array.from({ length: 24 }, (_, band_idx) => (band_idx < n_filled ? 1 : 0)),
-      ),
-    ])
-    if (!bands?.occupations) throw new Error(`expected occupations`)
-    expect(bands.occupations).toHaveLength(24)
-    expect(bands.occupations[n_filled - 1].every((occ) => occ === 1)).toBe(true)
-    expect(bands.occupations[n_filled].every((occ) => occ === 0)).toBe(true)
-    expect(bands.spin_down_occupations).toBeUndefined()
-    const vbm = Math.max(...bands.bands[n_filled - 1])
-    const cbm = Math.min(...bands.bands[n_filled])
-    expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
-  })
-
   // The TiNiSn fixture only has the KPOINTS_OPT path. Remap datasets to stage other layouts:
   // a path maps to another dataset (null hides it), optionally with replaced contents
   type Remap = Record<string, null | { from: string; value?: unknown }>
@@ -362,6 +278,72 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     [`input/kpoints_opt/labels_kpoints`]: null,
     [`input/kpoints_opt/number_kpoints`]: null,
   }
+
+  const lattice_paths = [`results/positions/lattice_vectors`, `input/poscar/lattice_vectors`]
+  const zero_cell = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const cell_remaps: Record<string, Remap> = {
+    valid: {},
+    missing: Object.fromEntries(lattice_paths.map((path) => [path, null])),
+    singular: Object.fromEntries(
+      lattice_paths.map((path) => [path, { from: path, value: zero_cell }]),
+    ),
+  }
+  it.each(Object.keys(cell_remaps))(`reads TiNiSn bands with a %s cell`, async (cell) => {
+    const bands = await read_remapped(cell_remaps[cell])
+    if (!bands) throw new Error(`expected bands`)
+    if (cell === `valid`) {
+      expect(bands.recip_lattice).toHaveLength(3)
+      expect(bands.recip_lattice?.flat().every(Number.isFinite)).toBe(true)
+    } else expect(bands.recip_lattice).toBeUndefined()
+
+    // eigenvalues shape (1, 306, 24) -> 24 bands over 306 k-points
+    expect(bands.nb_bands).toBe(24)
+    expect(bands.bands).toHaveLength(24)
+    expect(bands.bands[0]).toHaveLength(306)
+    expect(bands.qpoints).toHaveLength(306)
+    expect(bands.distance).toHaveLength(306)
+    expect(bands.is_spin_polarized).toBe(false)
+    expect(bands.spin_down_bands).toBeUndefined()
+    expect(bands.bands[0][0]).toBeCloseTo(-48.4674, 3)
+
+    // 12 line-mode labels + 51 points per segment -> 6 branches with Γ prettified
+    expect(bands.branches).toHaveLength(6)
+    expect(bands.branches[0]).toMatchObject({ start_index: 0, end_index: 50 })
+    expect(bands.qpoints[0].label).toBe(`Γ`)
+    expect(bands.qpoints[50].label).toBe(`X`)
+    expect(bands.labels_dict[`Γ`]).toEqual([0, 0, 0])
+
+    // Path distance is cumulative and non-decreasing
+    for (let idx = 1; idx < bands.distance.length; idx++) {
+      expect(bands.distance[idx]).toBeGreaterThanOrEqual(bands.distance[idx - 1])
+    }
+    expect(bands.distance.at(-1)).toBeGreaterThan(0)
+  })
+
+  // No fixture carries fermiweights, so they are injected (1 spin, 306 k-points, 24 bands)
+  const read_with_fermiweights = (weights: unknown) =>
+    read_remapped({ [`${opt}/fermiweights`]: { from: `${opt}/eigenvalues`, value: weights } })
+
+  it(`reads fermiweights as occupations`, async () => {
+    const n_filled = 9
+    const bands = await read_with_fermiweights([
+      Array.from({ length: 306 }, () =>
+        Array.from({ length: 24 }, (_, band_idx) => (band_idx < n_filled ? 1 : 0)),
+      ),
+    ])
+    if (!bands?.occupations) throw new Error(`expected occupations`)
+    expect(bands.occupations).toHaveLength(24)
+    expect(bands.occupations[n_filled - 1].every((occ) => occ === 1)).toBe(true)
+    expect(bands.occupations[n_filled].every((occ) => occ === 0)).toBe(true)
+    expect(bands.spin_down_occupations).toBeUndefined()
+    const vbm = Math.max(...bands.bands[n_filled - 1])
+    const cbm = Math.min(...bands.bands[n_filled])
+    expect(electronic_band_gap(bands.bands, bands.occupations)?.gap).toBe(cbm - vbm)
+  })
 
   const tinisn_path = {
     n_kpoints: 306,
@@ -404,7 +386,7 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     [`a missing k-point`, [grid(305, 24)], `occupation row 0 needs 306 finite values`],
     [`a 1-D dataset`, [1, 0, 1], `0 occupation rows for 24 bands`],
   ])(`leaves %s to the gap check`, async (_label, weights, message) => {
-    const bands = await read_with_fermiweights(weights as number[][][])
+    const bands = await read_with_fermiweights(weights)
     const occupations = bands?.occupations
     if (!bands || !occupations) throw new Error(`expected occupations`)
     expect(bands.bands).toHaveLength(24)

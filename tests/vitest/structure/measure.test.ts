@@ -125,6 +125,8 @@ describe(`measure: angles`, () => {
     [`identical vectors`, [1, 1, 1], [1, 1, 1], 0],
   ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, vector_1, vector_2, deg) => {
     expect(angle_between_vectors(vector_1, vector_2, `degrees`)).toBeCloseTo(deg, 10)
+    // symmetric in its arguments
+    expect(angle_between_vectors(vector_2, vector_1, `degrees`)).toBeCloseTo(deg, 10)
   })
 
   // interior angle at `vertex` between the two `others` corners of a triangle
@@ -152,22 +154,6 @@ describe(`measure: angles`, () => {
     for (const [idx, expected] of (expected_angles ?? []).entries()) {
       expect(angles[idx]).toBeCloseTo(expected, 5)
     }
-  })
-
-  test.each([
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-    ],
-    [
-      [1, 1, 1],
-      [-1, -1, -1],
-    ],
-  ] as [Vec3, Vec3][])(`angle symmetry: angle(v1,v2) = angle(v2,v1)`, (vector_1, vector_2) => {
-    expect(angle_between_vectors(vector_1, vector_2, `degrees`)).toBeCloseTo(
-      angle_between_vectors(vector_2, vector_1, `degrees`),
-      12,
-    )
   })
 
   test.each([0.1, 2, 100])(`angle is independent of vector magnitude (scale %p)`, (scale) => {
@@ -205,13 +191,6 @@ describe(`measure: dihedral angles`, () => {
   const open_boundary = (points: Vec3[]): number =>
     dihedral_angle(points[0], points[1], points[2], points[3], null)
 
-  // Randomly generated open-boundary chain reused by the reversal test below
-  // oxfmt-ignore
-  const random_chain_a: Vec3[] = [
-    [1.0956934986, -1.8417062899, -3.6722118085], [-3.8677789158, 2.5061619136, 3.3020446182],
-    [0.8530862061, 1.8359724879, 0.3489999317], [3.4805793903, 2.526828433, -3.9780919986],
-  ]
-
   // oxfmt-ignore
   test.each([
     [`syn-periplanar (eclipsed) chain`, [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 1, 0]], 0],
@@ -219,13 +198,18 @@ describe(`measure: dihedral angles`, () => {
     [`quarter turn about the central bond`, [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]], 90],
     [`mirrored quarter turn reports the opposite sign`, [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, -1]], -90],
     [`gauche conformer`, [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0.5, Math.sqrt(3) / 2]], 60],
-    [`random open-boundary chain A`, random_chain_a, 74.11257999],
+    [`random open-boundary chain A`, [
+      [1.0956934986, -1.8417062899, -3.6722118085], [-3.8677789158, 2.5061619136, 3.3020446182],
+      [0.8530862061, 1.8359724879, 0.3489999317], [3.4805793903, 2.526828433, -3.9780919986],
+    ], 74.11257999],
     [`random open-boundary chain B (negative)`, [
       [-0.1133171293, 3.1159026748, 3.4723481276], [-1.1376384263, 0.5722386458, -1.4250448714],
       [0.7544002416, -1.2967101959, -0.8670479958], [3.122194816, -2.1827392517, 0.9854971575],
     ], -10.87298944],
   ] as [string, Vec3[], number][])(`measures %s`, (_name, points, expected) => {
     expect(open_boundary(points)).toBeCloseTo(expected, 8)
+    // the same torsion whichever end of the chain it starts from
+    expect(open_boundary(points.toReversed())).toBeCloseTo(expected, 7)
   })
 
   test(`distinguishes a torsion from its mirror image by sign alone`, () => {
@@ -256,14 +240,12 @@ describe(`measure: dihedral angles`, () => {
     // oxfmt-ignore
     const [point_1, point, point_3, point_4]: Vec3[] = [[9.7, 0.4, 0.3], [0.2, 0.4, 0.3], [0.2, 9.8, 0.3], [0.2, 9.8, 9.7]]
     // p3->p4 runs +9.4 A up the vacuum instead of -0.6 A through it, flipping the torsion sign
-    expect(dihedral_angle(point_1, point, point_3, point_4, lattice, SLAB_PBC)).toBeCloseTo(
-      -90,
-      10,
-    )
-    expect(dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL)).toBeCloseTo(
-      90,
-      10,
-    )
+    const torsion = (pbc: Pbc) =>
+      dihedral_angle(point_1, point, point_3, point_4, lattice, pbc)
+    expect([torsion(SLAB_PBC), torsion(PBC_ALL)]).toEqual([
+      expect.closeTo(-90, 10),
+      expect.closeTo(90, 10),
+    ])
   })
 
   test(`ignoring periodicity across a boundary gives a badly wrong torsion`, () => {
@@ -297,14 +279,6 @@ describe(`measure: dihedral angles`, () => {
     // PI, so the two orderings disagree by up to 1 ulp (measured 2.84e-14 over 200k angles
     // spanning the range). 12 digits is 5e-13, ~18 ulps of headroom; 14 would fail.
     expect((rad * 180) / Math.PI).toBeCloseTo(degrees, 12)
-  })
-
-  test(`gives the same torsion whichever end of the chain it starts from`, () => {
-    // absolute value is covered by the random-chain-A case; this pins reversal invariance
-    expect(open_boundary(random_chain_a)).toBeCloseTo(
-      open_boundary(random_chain_a.toReversed()),
-      7,
-    )
   })
 })
 
@@ -365,15 +339,9 @@ describe(`measure: overlay endpoints`, () => {
       )
     }
     // and the unwrapped chain measures the same torsion as the wrapped input
+    const [point_1, point, point_3, point_4] = corner_chain
     expect(dihedral_angle(drawn[0], drawn[1], drawn[2], drawn[3], null)).toBeCloseTo(
-      dihedral_angle(
-        corner_chain[0],
-        corner_chain[1],
-        corner_chain[2],
-        corner_chain[3],
-        lattice,
-        PBC_ALL,
-      ),
+      dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL),
       10,
     )
   })

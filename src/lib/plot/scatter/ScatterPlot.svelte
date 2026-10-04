@@ -60,6 +60,7 @@
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/colorbar-decoration.svelte.js'
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import {
@@ -88,7 +89,7 @@
     same_legend_item,
   } from '#lib/plot/core/utils/series-visibility.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { ComponentProps, Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
@@ -106,15 +107,17 @@
     range_bounds,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import type { Rect, Sides } from '#lib/plot/core/layout.js'
+  import type { Sides } from '#lib/plot/core/layout.js'
   import { stride_sample } from '#lib/plot/core/layout.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
   import { attach_canvas, prepare_canvas, resolve_line_tween } from '#lib/plot/core/utils.js'
-  import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { color as d3_color } from 'd3-color'
   import {
     build_fill_legend_items,
@@ -229,13 +232,7 @@
       >
       color_scale?: ColorScaleConfig | D3InterpolateName
       size_scale?: SizeScaleConfig
-      color_bar?:
-        | (ComponentProps<typeof ColorBar> & {
-            tween?: TweenOptions<Point2D>
-            responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
-            axis_clearance?: number // Min distance kept from plot edges/axes (default: 8)
-          })
-        | null
+      color_bar?: ColorBarDecorationProps | null
       label_placement_config?: Partial<LabelPlacementConfig>
       hover_config?: Partial<HoverConfig>
       legend?: LegendConfig | null
@@ -437,6 +434,7 @@
     y2: auto_range(extents_by_axis.y2, final_y2_axis),
   })
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => intrinsic_ranges,
     // Keep the current view on an axis whose series are all hidden instead of snapping to
@@ -458,7 +456,7 @@
     legend_items: () => legend_track_items,
     legend_footprint_fallback: { width: 120, height: 80 },
     decorations: () => colorbar.items,
-    exclusion_rects: () => pinned_colorbar_rects,
+    exclusion_rects: () => colorbar.pinned_rects,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -536,16 +534,12 @@
   })
 
   // === Colorbar: the frame owns the legend item, the colorbar is ScatterPlot's own decoration ===
-  // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too.
   const colorbar = create_colorbar_decoration({
     id: `colorbar`,
-    enabled: () => show_colorbar && !color_bar?.wrapper_style,
-    horizontal: () => (color_bar?.orientation ?? `horizontal`) === `horizontal`,
-    clearance: () => color_bar?.axis_clearance,
+    enabled: () => show_colorbar,
+    config: () => color_bar,
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
-    responsive: () => color_bar?.responsive ?? false,
-    tween: () => color_bar?.tween,
   })
 
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
@@ -572,17 +566,6 @@
       }),
     ),
   )
-
-  // An explicitly styled colorbar stays outside solver ownership, but its measured
-  // rectangle remains an exclusion for the automatic items (the frame does this for the legend)
-  const pinned_colorbar_rects = $derived.by((): Rect[] => {
-    const { element, footprint } = colorbar
-    if (!element || !color_bar?.wrapper_style) return []
-    const { offset_x, offset_y } = footprint
-    return [
-      { x: element.offsetLeft + offset_x, y: element.offsetTop + offset_y, ...footprint },
-    ]
-  })
 
   // Same rows, dedupe and series numbering as legend_data below, so the solver reserves
   // room for exactly the rows PlotLegend draws, without depending on frame geometry.
@@ -1924,7 +1907,6 @@
       ] as Vec2}
       <ColorBarDecoration
         decoration={colorbar}
-        wrapper_style={color_bar.wrapper_style}
         color_bar={{
           show_scale: has_color_scale,
           tick_labels: 4,
@@ -1934,7 +1916,6 @@
           range: color_domain,
           bar_style: `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.horizontal_bar_height}px; ${color_bar.style ?? ``}`,
           ...color_bar,
-          wrapper_style: color_bar.wrapper_style ? `height: 100%; width: 100%;` : ``,
         }}
       />
     {/if}

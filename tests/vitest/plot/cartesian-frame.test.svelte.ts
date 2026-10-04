@@ -1,4 +1,4 @@
-// Regression tests for the shared Cartesian scaffold (create_cartesian_frame) and the layers it
+// Tests for the shared Cartesian scaffold (create_cartesian_frame) and the layers it
 // feeds (PlotAxes, PlotLegendLayer, ReferenceLinesLayer), exercised through the charts that
 // mount it rather than in isolation (it creates $effects). Anything asserted here holds for
 // every chart, so the per-chart test files only keep behaviour specific to their own marks.
@@ -28,6 +28,7 @@ import {
   mount_sized,
   query,
   with_measured_text,
+  set_input,
 } from '../setup'
 
 const dist = (count: number, center = 0): number[] =>
@@ -315,9 +316,8 @@ describe(`cartesian frame`, () => {
     },
   )
 
-  // PlotLegendLayer binds frame.legend_filter_query, so the frame owns the text after mount.
-  // As a $derived it reset to the legend config on every new legend object, wiping what the
-  // user had typed whenever the parent re-rendered with an inline legend={{ ... }} literal.
+  // The frame owns the legend filter text after mount, so a parent re-rendering with an
+  // inline legend={{ ... }} literal must not wipe what the user typed
   test.each(frame_charts)(
     `$name keeps typed legend filter across a new legend object`,
     async (chart) => {
@@ -326,15 +326,13 @@ describe(`cartesian frame`, () => {
       await mount_chart(chart, bind_props({ ...chart.props(), show_legend: true }, bound))
 
       const input = doc_query<HTMLInputElement>(`input.legend-filter`)
-      input.value = `alp`
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(input, `alp`)
       await tick()
       expect(input.value).toBe(`alp`)
 
       bound.legend = { filter_threshold: 2 } // fresh object, as a parent re-render would pass
       await tick()
-      // Re-query rather than reuse `input`: a remounted input would leave the old node
-      // detached but still holding the typed text, which would pass for the wrong reason.
+      // re-query: a remounted input would leave the old detached node holding the typed text
       expect(doc_query<HTMLInputElement>(`input.legend-filter`).value).toBe(`alp`)
     },
   )
@@ -411,9 +409,8 @@ describe(`cartesian frame`, () => {
 
   // The frame owns legend dragging: a dropped legend keeps the drop position (clamped to the
   // plot) and leaves solver ownership, so the data-decoration-* stamps go away
-  // The drag measures the legend and the SVG once at grab time: re-measuring the SVG after
-  // every position write forced a reflow per mousemove (21 rect reads for this drag, now 2),
-  // and the legend box itself is measured in an effect, never in the handlers or derivations
+  // The drag measures the legend and the SVG once at grab time (2 rect reads), never per
+  // mousemove, so dragging doesn't force a reflow per frame
   test.each(frame_charts)(`$name legend drag pins it where it was dropped`, async (chart) => {
     await mount_chart(chart, { ...chart.props(), show_legend: true })
     const legend = doc_query(`.legend`)
@@ -551,6 +548,10 @@ describe(`cartesian frame`, () => {
         { width: 800 },
       )
       expect(legend_outside(sparse)).toBe(false)
+      // an interior legend scrolls rather than outgrow the plot
+      expect(query(sparse, `.legend`).getAttribute(`style`)).toMatch(
+        /max-height: min\(var\(--plot-legend-max-height, 80%\), [\d.]+px\)/,
+      )
       const dense = await mount_chart(chart, {
         ...chart.dense_props(),
         show_legend: true,
@@ -685,8 +686,7 @@ describe(`cartesian frame`, () => {
         chart.secondary_axes.includes(`x2`) ? `Top` : null,
       )
       expect(plot.querySelector(`.y2-label`)?.textContent).toBe(`Secondary`)
-      // both y titles rotate about the plot's vertical center; a stale label_shift default
-      // used to push the y2 title 60px below center
+      // both y titles rotate about the plot's vertical center
       const pivot_y = (selector: string) => axis_label_pivot_y(plot, selector)
       expect(pivot_y(`.axis-label.y2-label`)).toBeCloseTo(pivot_y(`.axis-label.y-label`), 5)
     },
@@ -752,8 +752,7 @@ describe(`cartesian frame`, () => {
       const before = y_tick_count()
       expect(before).toBeGreaterThan(0)
       const y_input = doc_query<HTMLInputElement>(`input[aria-label="Y axis tick count"]`)
-      y_input.value = `${before * 3}`
-      y_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      set_input(y_input, `${before * 3}`)
       await tick()
       expect(y_tick_count()).toBeGreaterThan(before)
     },
@@ -807,8 +806,7 @@ describe(`cartesian frame`, () => {
   )
 
   // Horizontal orientation moves the categories onto y, so the left padding has to be measured
-  // from the category names; measuring the integer slot indices behind them left long names
-  // overrunning the reserved gutter and the y title on top of the ticks
+  // from the category names, not the integer slot indices behind them
   test.each(categorical_charts)(
     `$name horizontal orientation sizes left padding from category names`,
     async (chart) => {
@@ -894,9 +892,13 @@ describe(`cartesian frame`, () => {
   // The solver reserves the colorbar's full footprint (bar plus tick labels overflowing it),
   // keeps that rectangle axis_clearance away from every plot edge and positions the wrapper
   // so the overflowing labels, not the bar, sit at the solved rect
-  test.each(colorbar_charts)(
-    `$name keeps overflowing colorbar ticks clear of the plot axes`,
-    async (chart) => {
+  test.each(
+    colorbar_charts.flatMap((chart) =>
+      [undefined, 20].map((axis_clearance) => ({ ...chart, axis_clearance })),
+    ),
+  )(
+    `$name keeps overflowing colorbar ticks clear of the plot axes (axis_clearance=$axis_clearance)`,
+    async ({ axis_clearance, ...chart }) => {
       vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(220)
       vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
       vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
@@ -907,8 +909,12 @@ describe(`cartesian frame`, () => {
         }
         return DOMRect.fromRect({ x: 100, y: 100, width: 220, height: 30 })
       })
-      const plot = await mount_chart(chart, chart.props(), { width: 800, height: 600 })
-      const clearance = COLOR_BAR_DEFAULTS.axis_clearance
+      const plot = await mount_chart(
+        chart,
+        { ...chart.props(), color_bar: { axis_clearance } },
+        { width: 800, height: 600 },
+      )
+      const clearance = axis_clearance ?? COLOR_BAR_DEFAULTS.axis_clearance
       await vi.waitFor(() => {
         const colorbar = doc_query(`.colorbar-wrapper`)
         const [coord_x, coord_y, width, height] = [`x`, `y`, `width`, `height`].map((key) =>
@@ -925,6 +931,39 @@ describe(`cartesian frame`, () => {
         )
         expect(Number(colorbar.style.left.replace(`px`, ``))).toBe(coord_x + 10)
       })
+    },
+  )
+
+  // Any user wrapper_style replaces the solver's position: a solver `left` written alongside
+  // a `right` pin stretched the bar across the plot, and BinnedScatterPlot used to forward
+  // the style to the inner ColorBar so the bar could not be pinned at all
+  test.each(colorbar_charts)(
+    `$name pins its colorbar with color_bar.wrapper_style`,
+    async (chart) => {
+      const plot = await mount_chart(chart, {
+        ...chart.props(),
+        color_bar: {
+          wrapper_style: `position: absolute; right: 9px; top: 17px;`,
+          bar_style: `width: 14px; height: 160px;`,
+          axis_clearance: 20,
+          responsive: true,
+        },
+      })
+      const wrapper = query(plot, `.colorbar-wrapper`)
+      expect([wrapper.style.left, wrapper.style.right, wrapper.style.top]).toEqual([
+        ``,
+        `9px`,
+        `17px`,
+      ])
+      expect(wrapper.getAttribute(`data-decoration-x`)).toBeNull()
+      // the pinned bar fills its wrapper; decoration-only keys never reach ColorBar's div
+      const bar_wrapper = query(wrapper, `.colorbar`)
+      expect([bar_wrapper.style.width, bar_wrapper.style.height]).toEqual([`100%`, `100%`])
+      expect(bar_wrapper.style.right).toBe(``)
+      expect(bar_wrapper.getAttributeNames()).not.toContain(`axis_clearance`)
+      expect(bar_wrapper.getAttributeNames()).not.toContain(`responsive`)
+      const bar = query(wrapper, `.colorbar .bar`)
+      expect([bar.style.width, bar.style.height]).toEqual([`14px`, `160px`])
     },
   )
 })

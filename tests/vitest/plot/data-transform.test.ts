@@ -8,68 +8,20 @@ import { describe, expect, test } from 'vitest'
 
 describe(`data-transform utility functions`, () => {
   describe(`extract_series_color`, () => {
+    const fallback = `#4A9EFF`
+    // oxfmt-ignore
     test.each([
-      {
-        name: `extracts color from line_style.stroke`,
-        series: { x: [1, 2, 3], y: [1, 2, 3], line_style: { stroke: `red` } },
-        expected: `red`,
-      },
-      {
-        name: `extracts color from point_style.fill when no line_style`,
-        series: { x: [1, 2, 3], y: [1, 2, 3], point_style: { fill: `blue` } },
-        expected: `blue`,
-      },
-      {
-        name: `extracts color from first point_style when array`,
-        series: {
-          x: [1, 2, 3],
-          y: [1, 2, 3],
-          point_style: [{ fill: `green` }, { fill: `yellow` }],
-        },
-        expected: `green`,
-      },
-      {
-        name: `line_style.stroke takes precedence over point_style.fill`,
-        series: {
-          x: [1, 2, 3],
-          y: [1, 2, 3],
-          line_style: { stroke: `red` },
-          point_style: { fill: `blue` },
-        },
-        expected: `red`,
-      },
-      {
-        name: `returns default color when no styles defined`,
-        series: { x: [1, 2, 3], y: [1, 2, 3] },
-        expected: `#4A9EFF`,
-      },
-      {
-        name: `returns default color when styles exist but no color`,
-        series: {
-          x: [1, 2, 3],
-          y: [1, 2, 3],
-          line_style: { stroke_width: 2 },
-          point_style: { radius: 5 },
-        },
-        expected: `#4A9EFF`,
-      },
-      {
-        name: `handles empty point_style array`,
-        series: { x: [1, 2, 3], y: [1, 2, 3], point_style: [] },
-        expected: `#4A9EFF`,
-      },
-      {
-        name: `handles undefined stroke color`,
-        series: { x: [1, 2, 3], y: [1, 2, 3], line_style: { stroke: undefined } },
-        expected: `#4A9EFF`,
-      },
-      {
-        name: `handles undefined fill color`,
-        series: { x: [1, 2, 3], y: [1, 2, 3], point_style: { fill: undefined } },
-        expected: `#4A9EFF`,
-      },
-    ])(`$name`, ({ series, expected }) => {
-      expect(extract_series_color(series)).toBe(expected)
+      [`extracts color from line_style.stroke`, { line_style: { stroke: `red` } }, `red`],
+      [`extracts color from point_style.fill when no line_style`, { point_style: { fill: `blue` } }, `blue`],
+      [`extracts color from first point_style when array`, { point_style: [{ fill: `green` }, { fill: `yellow` }] }, `green`],
+      [`line_style.stroke takes precedence over point_style.fill`, { line_style: { stroke: `red` }, point_style: { fill: `blue` } }, `red`],
+      [`returns default color when no styles defined`, {}, fallback],
+      [`returns default color when styles exist but no color`, { line_style: { stroke_width: 2 }, point_style: { radius: 5 } }, fallback],
+      [`handles empty point_style array`, { point_style: [] }, fallback],
+      [`handles undefined stroke color`, { line_style: { stroke: undefined } }, fallback],
+      [`handles undefined fill color`, { point_style: { fill: undefined } }, fallback],
+    ])(`%s`, (_name, styles, expected) => {
+      expect(extract_series_color({ x: [1, 2, 3], y: [1, 2, 3], ...styles })).toBe(expected)
     })
   })
 
@@ -78,11 +30,7 @@ describe(`data-transform utility functions`, () => {
       series_idx: number,
       label: string,
       symbol_color: string,
-      options: {
-        visible?: boolean
-        legend_group?: string
-        symbol_type?: string
-      } = {},
+      options: { visible?: boolean; legend_group?: string; symbol_type?: string } = {},
     ) => ({
       series_idx,
       label,
@@ -123,11 +71,8 @@ describe(`data-transform utility functions`, () => {
           { x: [3, 4], y: [3, 4], label: `Another`, point_style: { fill: `purple` } },
         ],
         expected: [
-          legend_item(0, `Custom`, `green`, {
-            visible: false,
-            legend_group: `A`,
-          }),
-          legend_item(1, `Another`, `purple`, {}),
+          legend_item(0, `Custom`, `green`, { visible: false, legend_group: `A` }),
+          legend_item(1, `Another`, `purple`),
         ],
       },
       { name: `handles empty series array`, series: [], expected: [] },
@@ -147,9 +92,7 @@ describe(`data-transform utility functions`, () => {
         ),
       ).toEqual([
         legend_item(0, `Box 1`, `c0`, { symbol_type: `Square` }),
-        legend_item(1, `Named`, `c1`, {
-          symbol_type: `Square`,
-        }),
+        legend_item(1, `Named`, `c1`, { symbol_type: `Square` }),
       ])
     })
   })

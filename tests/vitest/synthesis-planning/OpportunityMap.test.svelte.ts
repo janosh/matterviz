@@ -7,7 +7,7 @@ import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisConditions } from '#lib/synthesis-planning/types.js'
 import { mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { expect_module_worker, install_stub_worker } from '../setup'
+import { expect_module_worker, install_stub_worker, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
@@ -98,8 +98,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
     `[aria-label="Maximum map temperature"]`,
   )
   if (!max_temperature) throw new Error(`Map temperature control missing`)
-  max_temperature.value = `100`
-  max_temperature.dispatchEvent(new Event(`input`, { bubbles: true }))
+  set_input(max_temperature, `100`)
   await tick()
   expect(document.querySelector(`[role="alert"]`)?.textContent).toContain(`minimum`)
   expect(stub.posted).toHaveLength(2)

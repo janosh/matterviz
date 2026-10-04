@@ -480,7 +480,7 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  test(`basic controls and navigation work`, async () => {
+  test(`step navigation and play/pause controls work`, async () => {
     const step_input = controls.locator(`.step-input`)
     await expect(step_input).toHaveValue(`0`)
     await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
@@ -492,9 +492,7 @@ test.describe(`Trajectory Component`, () => {
     await step_input.fill(`2`)
     await step_input.press(`Enter`)
     await expect(step_input).toHaveValue(`2`)
-  })
 
-  test(`playback controls function properly`, async () => {
     const play_button = controls.locator(`.play-button`)
     await expect(play_button).toHaveText(`▶`)
     await play_button.click()
@@ -1393,7 +1391,7 @@ test.describe(`Trajectory Component`, () => {
 
       // 500px tall is what a chat sidebar card really measures, and minHeight has
       // to go for any height below that to stick: .trajectory's own 500px floor
-      // outranks an inline height, exactly as it does to Hive's card.
+      // outranks an inline height, exactly as it does in a desktop host's card.
       const set_size = (width: number, height = 500) =>
         trajectory.evaluate(
           (element: HTMLElement, size) => Object.assign(element.style, size),

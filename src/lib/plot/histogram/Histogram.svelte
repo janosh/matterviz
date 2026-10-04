@@ -22,7 +22,10 @@
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
-  import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
+  import {
+    create_cartesian_frame,
+    has_controls_row,
+  } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
@@ -311,6 +314,7 @@
   )
 
   const frame = create_cartesian_frame({
+    controls_row: () => has_controls_row(show_controls, fullscreen_toggle),
     axes: () => ({ x: final_x_axis, x2: final_x2_axis, y: final_y_axis, y2: final_y2_axis }),
     auto_ranges: () => auto_ranges,
     facet_ranges: () => intrinsic_ranges,

@@ -172,10 +172,21 @@ describe(`export_scene_as`, () => {
     expect(plain_meshes[1].geometry).toBe(plain_meshes[0].geometry)
     expect(plain_meshes[0].geometry).not.toBe(atoms.geometry)
     expect(plain_meshes[1].material).not.toBe(plain_meshes[0].material)
+    // per-instance colors are read instead of the white base material
+    const colors = plain_meshes.map(({ material }) => {
+      const { r, g, b } = (material as MeshStandardMaterial).color
+      return [r, g, b]
+    })
+    expect(colors).toEqual([
+      [1, 0, 0],
+      [0, 0, 1],
+    ])
     // the live scene keeps its InstancedMesh
     expect(instanced_scene.children[0]).toBe(atoms)
   })
 
+  // with all-white instance colors (as Three creates for material-colored instancing like
+  // ScatterPlot3D) the instanceColor multiplies rather than replaces material.color
   it.each([false, true])(
     `shares one material for identical colors (instance colors: %s)`,
     (instance_colors) => {
@@ -206,8 +217,6 @@ describe(`export_scene_as`, () => {
 // Tests for 3D export color preservation (Issue #203)
 describe(`3D Export Color Preservation`, () => {
   describe(`convert_instanced_meshes_to_regular color precedence`, () => {
-    // Colors below use component form (already in working color space) so values
-    // round-trip exactly through instanceColor buffers and material colors
     const converted_group_colors = (scene: Scene, name: string): number[][] => {
       const converted = convert_instanced_meshes_to_regular(scene)
       const colors: number[][] = []
@@ -221,41 +230,6 @@ describe(`3D Export Color Preservation`, () => {
       })
       return colors
     }
-
-    test(`reads per-instance colors instead of the white base material`, () => {
-      // Mirrors InstancedAtoms/ArrowInstances: white material + instanceColor buffer
-      const scene = new Scene()
-      const atoms = new InstancedMesh(
-        new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial(),
-        2,
-      )
-      atoms.name = `atoms`
-      atoms.setColorAt(0, new Color(1, 0, 0))
-      atoms.setColorAt(1, new Color(0, 0, 1))
-      scene.add(atoms)
-
-      expect(converted_group_colors(scene, `atoms`)).toEqual([
-        [1, 0, 0],
-        [0, 0, 1],
-      ])
-    })
-
-    test(`keeps the material color when every instance color is white`, () => {
-      // Mirrors material-colored instancing (for example ScatterPlot3D): Three creates an
-      // all-white instanceColor buffer that multiplies, rather than replaces, material.color.
-      const scene = new Scene()
-      const material_colored = new InstancedMesh(
-        new SphereGeometry(0.5, 4, 4),
-        new MeshStandardMaterial({ color: new Color(0, 1, 0) }),
-        1,
-      )
-      material_colored.name = `material-colored`
-      material_colored.setColorAt(0, new Color(1, 1, 1))
-      scene.add(material_colored)
-
-      expect(converted_group_colors(scene, `material-colored`)).toEqual([[0, 1, 0]])
-    })
 
     // Gradient bonds carry two colors per instance in geometry attributes; the export takes
     // their per-channel midpoint and ignores both the shader material and instanceColor
@@ -315,13 +289,14 @@ describe(`3D Export Color Preservation`, () => {
     test(`cleans cloned geometry without mutating the live scene`, () => {
       const scene = new Scene()
       const geometry = new BufferGeometry()
-      for (const attr of [
+      const attrs = [
         `instanceColorStart`,
         `instanceColorEnd`,
         `customColor`,
         `position`,
         `color`,
-      ]) {
+      ]
+      for (const attr of attrs) {
         geometry.setAttribute(attr, new Float32BufferAttribute([1, 0, 0], 3))
       }
       scene.add(new Mesh(geometry, new MeshStandardMaterial()))
@@ -330,13 +305,7 @@ describe(`3D Export Color Preservation`, () => {
       const converted_mesh = converted.children[0]
       if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
       expect(converted_mesh.geometry).not.toBe(geometry)
-      const kept = [
-        `instanceColorStart`,
-        `instanceColorEnd`,
-        `customColor`,
-        `position`,
-        `color`,
-      ].filter((attr) => converted_mesh.geometry.hasAttribute(attr))
+      const kept = attrs.filter((attr) => converted_mesh.geometry.hasAttribute(attr))
       expect(kept).toEqual([`position`, `color`])
       expect(geometry.hasAttribute(`instanceColorStart`)).toBe(true)
     })
@@ -354,31 +323,11 @@ describe(`3D Export Color Preservation`, () => {
     // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
     // instead would decode to ~4% and leave the ambient term far too dark.
     const rgb_cases = [
-      {
-        name: `red`,
-        rgb: [1, 0, 0],
-        kd: `1.000000 0.000000 0.000000`,
-        ka: `0.484535 0.000000 0.000000`,
-      },
-      {
-        name: `green`,
-        rgb: [0, 1, 0],
-        kd: `0.000000 1.000000 0.000000`,
-        ka: `0.000000 0.484535 0.000000`,
-      },
-      {
-        name: `blue`,
-        rgb: [0, 0, 1],
-        kd: `0.000000 0.000000 1.000000`,
-        ka: `0.000000 0.000000 0.484535`,
-      },
-      {
-        name: `purple`,
-        rgb: [0.5, 0, 0.5],
-        kd: `0.735361 0.000000 0.735361`,
-        ka: `0.349196 0.000000 0.349196`,
-      },
-    ]
+      [`red`, [1, 0, 0], `1.000000 0.000000 0.000000`, `0.484535 0.000000 0.000000`],
+      [`green`, [0, 1, 0], `0.000000 1.000000 0.000000`, `0.000000 0.484535 0.000000`],
+      [`blue`, [0, 0, 1], `0.000000 0.000000 1.000000`, `0.000000 0.000000 0.484535`],
+      [`purple`, [0.5, 0, 0.5], `0.735361 0.000000 0.735361`, `0.349196 0.000000 0.349196`],
+    ] as const
 
     const mtl_for_color = (rgb: number[], name = `test`): string => {
       const scene = new Scene()
@@ -391,9 +340,9 @@ describe(`3D Export Color Preservation`, () => {
     // Ka is string-only (MTLLoader ignores it). Kd must also round-trip through MTLLoader,
     // which treats it as sRGB — writing linear values reads back ~2x too dark.
     test.each(rgb_cases)(
-      `$name Kd/Ka strings and MTLLoader round-trip`,
-      ({ rgb, kd: diffuse_color, ka: ambient_color }) => {
-        const mtl = mtl_for_color(rgb)
+      `%s Kd/Ka strings and MTLLoader round-trip`,
+      (_name, rgb, diffuse_color, ambient_color) => {
+        const mtl = mtl_for_color([...rgb])
         expect(mtl).toContain(`Kd ${diffuse_color}`)
         expect(mtl).toContain(`Ka ${ambient_color}`)
         const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
@@ -408,7 +357,6 @@ describe(`3D Export Color Preservation`, () => {
       const scene = new Scene()
       const geom = new SphereGeometry(1)
 
-      // Add two meshes with same material name
       const mat1 = new MeshStandardMaterial({ color: new Color(1, 0, 0), opacity: 0.5 })
       mat1.name = `shared`
       scene.add(new Mesh(geom, mat1))

@@ -147,6 +147,20 @@ describe(`find_lowest_energy_unary_refs`, () => {
     },
   )
 
+  // an excluded entry is still drawn, but shifting the formation-energy zero by it moved
+  // every plotted E_form (FeO -0.8 instead of -0.9 eV/atom), so it is never a reference,
+  // not even for an element that has nothing else
+  test(`an exclude_from_hull unary is never a reference`, () => {
+    const entries = [
+      make_phase({ Fe: 1 }, -8.5, { exclude_from_hull: true }),
+      make_phase({ Fe: 1 }, -8.3),
+      make_phase({ O: 1 }, -5.1, { exclude_from_hull: true }),
+    ]
+    const refs = find_lowest_energy_unary_refs(entries)
+    expect(Object.keys(refs)).toEqual([`Fe`])
+    expect(refs.Fe.energy_per_atom).toBe(-8.3)
+  })
+
   test.each([false, true])(
     `ranks E_form-only unaries by E_form, below absolute-energy ones (reversed: %s)`,
     (reversed) => {
@@ -276,30 +290,9 @@ describe(`N-dimensional quickhull`, () => {
   })
 
   test.each([
-    [
-      `fewer than dim+1 points`,
-      [
-        [0, 0],
-        [1, 0],
-      ],
-    ],
-    [
-      `co-hyperplanar (all E = 0)`,
-      [
-        [0, 0],
-        [1, 0],
-        [0.5, 0],
-      ],
-    ],
-    [
-      `collinear in 3D`,
-      [
-        [0, 0, 0],
-        [1, 1, 1],
-        [2, 2, 2],
-        [3, 3, 3],
-      ],
-    ],
+    [`fewer than dim+1 points`, [0, 1].map((x_val) => [x_val, 0])],
+    [`co-hyperplanar (all E = 0)`, [0, 1, 0.5].map((x_val) => [x_val, 0])],
+    [`collinear in 3D`, [0, 1, 2, 3].map((val) => [val, val, val])],
     [`empty`, []],
   ])(`returns no facets for %s`, (_desc, points) => {
     expect(compute_quickhull_nd(points)).toEqual([])
@@ -312,11 +305,7 @@ describe(`N-dimensional quickhull`, () => {
   // Facet count is combinatorial in BOTH the point count and the dimension, and only the
   // running count bounds it: unguarded, 500 points in 8D built 1.16M facets over 210 s
   test(`throws once the facet budget is spent`, () => {
-    let seed = 42
-    const rng = () => {
-      seed = (seed * 1103515245 + 12345) % 2147483648
-      return seed / 2147483648
-    }
+    const rng = make_rng(42)
     // Points in convex position (on a paraboloid), so every one of them is a hull vertex
     const points = Array.from({ length: 120 }, () => {
       const spatial = Array.from({ length: 5 }, () => rng())
@@ -414,6 +403,22 @@ describe(`calculate_e_above_hull`, () => {
       `calculate_e_above_hull: duplicate entry_id "x", last wins`,
     )
     warn.mockRestore()
+  })
+
+  // Near-coplanar entries leave quickhull sliver facets whose planes overshoot the covering
+  // facet by more than HULL_EPS away from them, which used to make stable Li2Fe read NaN
+  test(`near-coplanar ternary entries all get finite hull distances`, () => {
+    const entries = [
+      ...[`Li`, `Fe`, `O`].map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
+      make_phase({ Li: 4, Fe: 2 }, -0.199999998, { entry_id: `Li2Fe` }),
+      make_phase({ Li: 2, Fe: 2 }, -0.1999999982, { entry_id: `LiFe` }),
+      make_phase({ Li: 2, Fe: 1, O: 4 }, -0.1999999995, { entry_id: `Li2FeO4` }),
+      make_phase({ Li: 2, Fe: 3, O: 1 }, -0.1999999994, { entry_id: `Li2Fe3O` }),
+    ]
+    const results = calculate_e_above_hull(entries, entries)
+    // an LP reference puts every entry on the hull; the gaps are ~1e-9 eV/atom
+    for (const [id, dist] of Object.entries(results))
+      expect(Math.abs(dist), id).toBeLessThan(1e-8)
   })
 
   test(`oxidation-state keys are normalized against plain-symbol references`, () => {
@@ -601,11 +606,8 @@ describe(`pymatgen cross-validation`, () => {
 })
 
 describe(`get_convex_hull_stats`, () => {
-  test(`returns null for empty entries`, () => {
+  test(`null for no entries, null e_form_range when no entry has a formation energy`, () => {
     expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
-  })
-
-  test(`e_form_range is null when no entry has a formation energy`, () => {
     const stats = get_convex_hull_stats([make_phase({ Fe: 1 }, -4.0)], [`Fe`], 1)
     expect(stats?.e_form_range).toBeNull()
   })
@@ -658,11 +660,8 @@ describe(`get_convex_hull_stats`, () => {
 })
 
 describe(`process_hull_for_stats`, () => {
-  test(`returns null for empty entries`, () => {
-    expect(process_hull_for_stats([])).toBeNull()
-  })
-
   test(`computes formation energies + hull distances, keeps precomputed e_form`, () => {
+    expect(process_hull_for_stats([])).toBeNull()
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
       make_phase({ O: 1 }, -2.0, { entry_id: `O` }),

@@ -97,11 +97,9 @@ const mount_hull = async (
   return target
 }
 
-beforeEach(() => document.body.replaceChildren())
 afterEach(async () => {
   for (const component of mounted_components.splice(0)) await unmount(component)
   vi.restoreAllMocks()
-  document.body.replaceChildren()
 })
 
 describe(`convex hull replacement state`, () => {
@@ -230,11 +228,12 @@ describe(`convex hull replacement state`, () => {
 
   // synthetic corners close the hull but are no data entries, so the pane counts skip them
   test(`pane counts leave out synthetic corners`, async () => {
+    // precomputed E_form: an excluded unary is no reference to compute it against
     const entries = [
-      make_phase({ Li: 1 }, 0),
+      make_phase({ Li: 1 }, 0, { e_form_per_atom: 0 }),
       // drawn (above the hull), but the hull needs a synthetic O corner in its place
-      make_phase({ O: 1 }, 0, { exclude_from_hull: true }),
-      make_phase({ Li: 2, O: 1 }, -6),
+      make_phase({ O: 1 }, 0, { exclude_from_hull: true, e_form_per_atom: 0.1 }),
+      make_phase({ Li: 2, O: 1 }, -6, { e_form_per_atom: -2 }),
     ]
     await mount_hull({ entries, info_pane_open: true })
     expect([`hull-visible-stable`, `hull-visible-unstable`].map(test_text)).toEqual([

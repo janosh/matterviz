@@ -51,7 +51,12 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
       .toBeLessThan(wide.width)
   })
 
-  test(`view toggle swaps the 2D section for the 3D prism and back`, async ({ page }) => {
+  // The plane's pointerdown pauses OrbitControls, but the controls see the press first and
+  // dispatch `start`; hover raycasts switched off on that start used to starve the drag of the
+  // pointermoves it follows, so the plane never moved
+  test(`3D prism view swaps in, its cutting plane drags the temperature, 2D swaps back`, async ({
+    page,
+  }) => {
     const toggle = page.locator(`${DIAGRAM} .view-toggle`)
     await expect(toggle.getByRole(`button`, { name: `2D section` })).toHaveAttribute(
       `aria-pressed`,
@@ -59,23 +64,6 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     )
     await toggle.getByRole(`button`, { name: `3D prism` }).click()
     await expect(page.locator(SECTION_CANVAS)).toHaveCount(0)
-    await expect(page.locator(`${DIAGRAM} .prism-canvas canvas`)).toBeVisible({
-      timeout: LOAD_TIMEOUT,
-    })
-    await toggle.getByRole(`button`, { name: `2D section` }).click()
-    await expect(page.locator(SECTION_CANVAS)).toBeVisible()
-  })
-
-  // The plane's pointerdown pauses OrbitControls, but the controls see the press first and
-  // dispatch `start`; hover raycasts switched off on that start used to starve the drag of the
-  // pointermoves it follows, so the plane never moved
-  test(`dragging the cutting plane in the 3D prism changes the temperature`, async ({
-    page,
-  }) => {
-    await page
-      .locator(`${DIAGRAM} .view-toggle`)
-      .getByRole(`button`, { name: `3D prism` })
-      .click()
     const canvas = page.locator(`${DIAGRAM} .prism-canvas canvas`)
     await expect(canvas).toBeVisible({ timeout: LOAD_TIMEOUT })
     await expect(page.locator(`${DIAGRAM} .phase-event-list li`).first()).toBeVisible({
@@ -97,6 +85,9 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     await page.mouse.move(center_x, center_y - 80, { steps: 10 })
     await page.mouse.up()
     await expect.poll(async () => Number(await kelvin.inputValue())).toBeGreaterThan(t_before)
+
+    await toggle.getByRole(`button`, { name: `2D section` }).click()
+    await expect(page.locator(SECTION_CANVAS)).toBeVisible()
   })
 
   test(`a dropped entries file recomputes the diagram`, async ({ page }) => {

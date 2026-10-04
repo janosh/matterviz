@@ -136,7 +136,6 @@ describe(`detect_instability`, () => {
     )
   })
 
-  // Regression: `combined_score >= 1.0` was hard-coded instead of the configured threshold
   it(`compares the combined score against oscillation_threshold`, () => {
     // a clean ramp scores 0 on derivative variance (flat baseline) and sign changes, and
     // exactly 1x baseline amplitude (score 1/10), so combined = (0 + 0.1 + 0) / 3. No
@@ -206,7 +205,7 @@ describe(`smooth_moving_average`, () => {
     expect(
       smooth_moving_average([max, -max, cutoff, -cutoff / 2, -cutoff / 2, 4 * min], 13),
     ).toEqual(Array(6).fill(min))
-    // Python math.fsum / 65; the old 32-slot sum returned NaN.
+    // reference: Python math.fsum / 65
     const wide = Array.from({ length: 65 }, (_, idx) => 10 ** (-300 + idx * 9))
     expect(smooth_moving_average(wide, 131)).toEqual(Array(65).fill(1.5384615400000002e274))
   })
@@ -441,7 +440,7 @@ describe(`clean_series`, () => {
     )
 
     // The odd/min/max window clamps must still leave a symmetric kernel that reproduces
-    // polynomials up to `order` at interior points (pre-fix, window=3/order=2 erred by ~11)
+    // polynomials up to `order` at interior points
     it.each([
       { length: 21, window: 3, order: 2, half: 1 }, // max(window, order + 2) -> even 4 -> 3
       { length: 21, window: 1, order: 2, half: 1 },
@@ -480,7 +479,7 @@ describe(`clean_series`, () => {
       { y: [1, 2, 3] }, // below window size
       { y: Array.from({ length: 30 }, (_, idx) => idx * 0.5) },
       { y: Array<number>(30).fill(5) }, // zero MAD
-      // Regression: one-sided edge windows flagged the endpoints of every monotonic series
+      // one-sided edge windows must not flag the endpoints of a monotonic series
       { y: Array.from({ length: 30 }, (_, idx) => idx * 50) },
     ])(`keeps every point of $y.length smooth values`, ({ y: coord_y }) => {
       const { series, quality } = clean_series(indexed(coord_y), {
@@ -721,9 +720,7 @@ describe(`clean_xyz`, () => {
       [0, NaN, 2, 3, 4],
       [0, Infinity, 2, 3, 4],
       [0, NaN, 4, 6, 8],
-      {
-        invalid_values: `interpolate`,
-      },
+      { invalid_values: `interpolate` },
     )
     expect(interpolated).toMatchObject({
       x: [0, 1, 2, 3, 4],
@@ -747,7 +744,7 @@ describe(`clean_xyz`, () => {
     expect(variance(result.z, 5)).toBeLessThan(variance(coord_z, 5))
   })
 
-  // Regression: x-dependent bounds resolve against x even when filtering on another axis
+  // x-dependent bounds resolve against x even when filtering on another axis
   it.each([
     [`filter`, [1, 3, 5], [1, 4, 8], 2],
     [`clamp`, [1, 2, 3, 4, 5], [1, 4, 4, 8, 8], 0],

@@ -6,27 +6,16 @@ import {
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { SpecialPoint } from '#lib/phase-diagram/types.js'
 import { describe, expect, test } from 'vitest'
+import { pts } from './fixtures/test-data'
 
 describe(`parse_curve_ref`, () => {
   test.each([
     { ref: `curve`, expected: { name: `curve`, reverse: false, start: null, end: null } },
     { ref: `~curve`, expected: { name: `curve`, reverse: true, start: null, end: null } },
-    {
-      ref: `curve[1:]`,
-      expected: { name: `curve`, reverse: false, start: 1, end: null },
-    },
-    {
-      ref: `curve[:-1]`,
-      expected: { name: `curve`, reverse: false, start: null, end: -1 },
-    },
-    {
-      ref: `~solidus_alpha[1:-1]`,
-      expected: { name: `solidus_alpha`, reverse: true, start: 1, end: -1 },
-    },
-    {
-      ref: `liquidus_right_2[2:5]`,
-      expected: { name: `liquidus_right_2`, reverse: false, start: 2, end: 5 },
-    },
+    { ref: `curve[1:]`, expected: { name: `curve`, reverse: false, start: 1, end: null } },
+    { ref: `curve[:-1]`, expected: { name: `curve`, reverse: false, start: null, end: -1 } },
+    { ref: `~solid_a[1:-1]`, expected: { name: `solid_a`, reverse: true, start: 1, end: -1 } },
+    { ref: `liq_r_2[2:5]`, expected: { name: `liq_r_2`, reverse: false, start: 2, end: 5 } },
   ])(`parses "$ref"`, ({ ref, expected }) => {
     expect(parse_curve_ref(ref)).toEqual(expected)
   })
@@ -61,16 +50,8 @@ describe(`build_diagram`, () => {
       title: `Test Diagram`,
     },
     curves: {
-      liquidus: [
-        [0, 800],
-        [0.5, 600],
-        [1, 700],
-      ],
-      solidus: [
-        [0, 800],
-        [0.3, 500],
-        [1, 700],
-      ],
+      liquidus: pts(0, 800, 0.5, 600, 1, 700),
+      solidus: pts(0, 800, 0.3, 500, 1, 700),
     },
     regions: [
       {
@@ -96,13 +77,7 @@ describe(`build_diagram`, () => {
     // ~liquidus[1:] reverses first, then slices: drops the [1, 700] the explicit vertex
     // already supplied (Python's reversed(curve)[1:] idiom)
     expect(result.regions.map((region) => region.vertices)).toEqual([
-      [
-        [0, 900],
-        [1, 900],
-        [1, 700],
-        [0.5, 600],
-        [0, 800],
-      ],
+      pts(0, 900, 1, 900, 1, 700, 0.5, 600, 0, 800),
     ])
     // boundary type inferred from the curve name, default style from the type
     expect(
@@ -133,17 +108,7 @@ describe(`build_diagram`, () => {
     expect(build_diagram(minimal_input).regions[0].color).toBe(`rgba(135, 206, 250, 0.6)`)
     const uncolored = {
       ...minimal_input,
-      regions: [
-        {
-          id: `liquid`,
-          name: `Liquid`,
-          bounds: [
-            [0, 900],
-            [1, 900],
-            [1, 700],
-          ],
-        },
-      ],
+      regions: [{ id: `liquid`, name: `Liquid`, bounds: pts(0, 900, 1, 900, 1, 700) }],
     } satisfies DiagramInput
     expect(`color` in build_diagram(uncolored).regions[0]).toBe(false)
   })
@@ -179,12 +144,7 @@ describe(`build_diagram`, () => {
   test(`deduplicates consecutive vertices`, () => {
     const input_with_dupes: DiagramInput = {
       meta: { components: [`A`, `B`], temp_range: [0, 100] },
-      curves: {
-        line: [
-          [0, 0],
-          [1, 1],
-        ],
-      },
+      curves: { line: pts(0, 0, 1, 1) },
       regions: [
         {
           id: `test`,
@@ -194,9 +154,6 @@ describe(`build_diagram`, () => {
         },
       ],
     }
-    expect(build_diagram(input_with_dupes).regions[0].vertices).toEqual([
-      [0, 0],
-      [1, 1],
-    ])
+    expect(build_diagram(input_with_dupes).regions[0].vertices).toEqual(pts(0, 0, 1, 1))
   })
 })

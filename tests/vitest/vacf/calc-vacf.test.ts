@@ -242,13 +242,6 @@ describe(`velocity sources`, () => {
     expect(max_abs_error(result.curves[0].vacf_normalized, expected)).toBeLessThan(1e-12)
   })
 
-  it(`refuses velocity_source 'stored' when the input carries none`, () => {
-    const { positions } = circular_motion(20, 0.1)
-    expect(() =>
-      calc_vacf(build_vacf_input(positions), { velocity_source: `stored` }),
-    ).toThrow(/velocity_source 'stored' was requested but the input carries no velocities/)
-  })
-
   it(`ignores stored velocities when central differences are requested`, () => {
     const { positions, velocities } = circular_motion(100, 0.06)
     const result = calc_vacf(build_vacf_input(positions, { velocity_frames: velocities }), {
@@ -258,20 +251,18 @@ describe(`velocity sources`, () => {
     expect(result.n_frames).toBe(98)
   })
 
-  it(`rejects a velocity buffer that does not match the position layout`, () => {
-    const { positions } = circular_motion(10, 0.1)
-    const input = build_vacf_input(positions)
-    input.velocities = new Float64Array(17)
-    expect(() => calc_vacf(input)).toThrow(
-      /velocities has 17 entries but 10 frames x 1 atoms x 3 requires 30/,
-    )
-  })
-
-  it.each([2, 1])(`refuses to differentiate %i frames`, (n_frames) => {
-    const { positions } = circular_motion(n_frames, 0.1)
-    expect(() => calc_vacf(build_vacf_input(positions))).toThrow(
-      /central differences need at least 3 frames/,
-    )
+  const orbit_input = (n_frames: number) =>
+    build_vacf_input(circular_motion(n_frames, 0.1).positions)
+  // oxfmt-ignore
+  it.each<[string, () => unknown, RegExp]>([
+    [`velocity_source 'stored' without stored velocities`, () => calc_vacf(orbit_input(20), { velocity_source: `stored` }),
+      /velocity_source 'stored' was requested but the input carries no velocities/],
+    [`a velocity buffer that does not match the position layout`, () => calc_vacf({ ...orbit_input(10), velocities: new Float64Array(17) }),
+      /velocities has 17 entries but 10 frames x 1 atoms x 3 requires 30/],
+    ...[2, 1].map((n_frames) => [`differentiating ${n_frames} frames`, () => calc_vacf(orbit_input(n_frames)),
+      /central differences need at least 3 frames/] satisfies [string, () => unknown, RegExp]),
+  ])(`refuses %s`, (_label, compute, error) => {
+    expect(compute).toThrow(error)
   })
 })
 

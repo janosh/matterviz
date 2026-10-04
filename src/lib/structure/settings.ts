@@ -73,6 +73,7 @@ export type StructureOptions = Pick<
     | 'symmetry_settings'
     | 'isosurface_settings'
     | 'slice_settings'
+    | 'cutaway'
     | 'display_mode'
     | 'on_camera_move'
     | 'on_camera_reset'

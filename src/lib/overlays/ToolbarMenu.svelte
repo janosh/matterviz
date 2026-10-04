@@ -1,13 +1,14 @@
 <script lang="ts">
   // Toolbar dropdown shared by the Structure and Trajectory viewers (view layout, measure/edit,
-  // display mode, analysis): an icon toggle anchoring a menu that floats below it and closes
-  // on outside press. Callers render the options as `<button class="view-mode-option">`
+  // display mode, analysis): an icon toggle anchoring a native popover menu below it (see
+  // anchored_popover). Callers render the options as `<button class="view-mode-option">`
   // children; the class names are stable hooks for tests and host CSS (--view-mode-* vars).
   // Menu colors fall back to app.css's --menu-* tokens and then to literal light-dark values,
   // so hosts that skip app.css still get a styled, positioned menu.
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { click_outside, tooltip } from 'svelte-widgets/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
+  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
 
   let {
     open = $bindable(false),
@@ -31,14 +32,13 @@
     trailing?: Snippet // extra wrapper children after the toggle: inline buttons, anchored panes
     children: Snippet // the `.view-mode-option` buttons
   } = $props()
+
+  let toggle = $state<HTMLButtonElement>()
 </script>
 
-<div
-  {...rest}
-  class={[`view-mode-control`, rest.class]}
-  {@attach click_outside({ enabled: open, callback: () => (open = false) })}
->
+<div {...rest} class={[`view-mode-control`, rest.class]}>
   <button
+    bind:this={toggle}
     type="button"
     class={[button_class, { active: active ?? open }]}
     style={button_style}
@@ -54,15 +54,8 @@
   {#if open}
     <div
       class={[`view-mode-dropdown`, menu_class]}
-      {@attach (menu) => {
-        // The menu hangs off the toggle's right edge, which runs it off the left of narrow
-        // screens once the toolbar wraps and the toggle sits near the left. Anchor it to
-        // the toggle's left edge instead when that happens.
-        const { left, width } = menu.getBoundingClientRect()
-        if (left >= 0 || width >= globalThis.innerWidth) return
-        menu.style.right = `auto`
-        menu.style.left = `0`
-      }}
+      out:close_before_removal
+      {@attach anchored_popover({ anchor: toggle, on_close: () => (open = false) })}
     >
       {@render children()}
     </div>
@@ -76,9 +69,9 @@
     align-items: center;
     height: fit-content;
     place-self: center;
-    /* lifted only while its menu or an anchored pane is open: a resting toggle painted over
-       panes dragged across the toolbar (which share its stacking context) */
-    &:has(> .view-mode-dropdown, :global(.draggable-pane.pane-open)) {
+    /* lifted only while an anchored pane is open: a resting toggle painted over panes
+       dragged across the toolbar (which share its stacking context) */
+    &:has(:global(.draggable-pane.pane-open)) {
       z-index: var(--view-mode-z-index, 20);
     }
     > :global(button) {
@@ -105,10 +98,7 @@
     }
   }
   .view-mode-dropdown {
-    position: absolute;
-    top: 115%;
-    right: 0;
-    z-index: var(--view-mode-dropdown-z-index, 30);
+    padding: 0;
     min-width: max-content;
     display: flex;
     flex-direction: column;
@@ -119,7 +109,6 @@
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
-    pointer-events: auto;
     > :global(.view-mode-option) {
       display: flex;
       align-items: center;

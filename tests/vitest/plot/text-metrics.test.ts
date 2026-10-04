@@ -120,15 +120,13 @@ describe(`text metrics`, () => {
     expect(resolve_font_spec(element).line_height).toBe(30)
   })
 
-  it(`caches measurements separately per font`, () => {
+  it(`caches measurements per font until cleared, bumping the revision`, () => {
     const { context, measure_text } = mock_canvas()
     const other_font = { ...TEST_FONT, font_size: 20, line_height: 30 }
+    const revision_before = get_text_metrics_revision()
 
     const first = measure_text_line(`cache me`, TEST_FONT)
-    const cached = measure_text_line(`cache me`, TEST_FONT)
-    const other = measure_text_line(`cache me`, other_font)
-
-    expect(first).toBe(cached)
+    expect(measure_text_line(`cache me`, TEST_FONT)).toBe(first)
     expect(first).toMatchObject({
       width: 40,
       ascent: 9,
@@ -136,9 +134,14 @@ describe(`text metrics`, () => {
       height: 12,
       source: `canvas`,
     })
-    expect(other.width).toBe(40)
+    expect(measure_text_line(`cache me`, other_font).width).toBe(40)
     expect(measure_text).toHaveBeenCalledTimes(2)
     expect(context.font).toBe(`italic small-caps 700 condensed 20px "Inter", sans-serif`)
+
+    expect(clear_text_metrics_cache()).toBe(revision_before + 1)
+    expect(get_text_metrics_revision()).toBe(revision_before + 1)
+    measure_text_line(`cache me`, TEST_FONT)
+    expect(measure_text).toHaveBeenCalledTimes(3)
   })
 
   it.each([
@@ -157,20 +160,6 @@ describe(`text metrics`, () => {
       ).toEqual(expected)
     },
   )
-
-  it(`clears cached measurements and increments the revision`, () => {
-    const { measure_text } = mock_canvas()
-    const revision_before = get_text_metrics_revision()
-
-    measure_text_line(`fresh`, TEST_FONT)
-    measure_text_line(`fresh`, TEST_FONT)
-    expect(measure_text).toHaveBeenCalledTimes(1)
-
-    expect(clear_text_metrics_cache()).toBe(revision_before + 1)
-    expect(get_text_metrics_revision()).toBe(revision_before + 1)
-    measure_text_line(`fresh`, TEST_FONT)
-    expect(measure_text).toHaveBeenCalledTimes(2)
-  })
 
   it(`invalidates only after font readiness resolves`, async () => {
     const { measure_text } = mock_canvas()

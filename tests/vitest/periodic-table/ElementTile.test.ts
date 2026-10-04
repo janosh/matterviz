@@ -1,7 +1,8 @@
 import element_data from '#lib/element/data.js'
 import ElementTile from '#lib/element/ElementTile.svelte'
-import type { SplitLayout, TileSegment } from '#lib/element/index.js'
+import type { SplitLayout } from '#lib/element/index.js'
 import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
+import { colors } from '#lib/state.svelte.js'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -209,14 +210,6 @@ describe(`ElementTile`, () => {
   })
 
   describe(`background color fallback`, () => {
-    test.each([
-      [`no segments`, [], DEFAULT_CATEGORY_COLORS[rand_element.category]],
-      [`a solid segment`, [{ color: `#123456` }], `#123456`],
-    ])(`%s paints the tile %s`, (_desc, segments, expected_color) => {
-      mount_tile({ segments })
-      expect(doc_query(`.element-tile`).style.backgroundColor).toBe(expected_color)
-    })
-
     test(`segment values and omitted colors are explicit`, () => {
       mount_tile({
         segments: [{ value: `#ff0000` }, { color: `white`, value: 2 }],
@@ -230,55 +223,35 @@ describe(`ElementTile`, () => {
       expect([first_value.textContent, first_value.style.color]).toEqual([`#ff0000`, `black`])
     })
 
-    test(`reacts to colors.category changes`, async () => {
-      const { colors } = await import(`#lib/state.svelte.js`)
-      const original_color = colors.category[rand_element.category]
-
-      mount_tile()
-
+    test(`empty segments paint the reactive category color`, async () => {
+      const { category } = rand_element
+      mount_tile({ segments: [] })
       const node = doc_query(`.element-tile`)
-      expect(node.style.backgroundColor).toBe(original_color)
-
-      // Change the category color
-      const new_color = `#abcdef`
-      colors.category[rand_element.category] = new_color
-      await tick()
-
-      expect(node.style.backgroundColor).toBe(new_color)
-
-      // Restore original color
-      colors.category[rand_element.category] = original_color
+      expect(node.style.backgroundColor).toBe(DEFAULT_CATEGORY_COLORS[category])
+      try {
+        colors.category[category] = `#abcdef`
+        await tick()
+        expect(node.style.backgroundColor).toBe(`#abcdef`)
+      } finally {
+        colors.category[category] = DEFAULT_CATEGORY_COLORS[category]
+      }
     })
   })
 
-  describe(`split_layout validation`, () => {
-    test.each([
-      [
-        Array.from({ length: 3 }, () => ({ color: `red` })),
-        `triangular`,
-        3,
-        `not valid for 3 segments`,
-      ],
-      [
-        Array.from({ length: 5 }, () => ({ color: `red` })),
-        undefined,
-        4,
-        `at most 4 segments`,
-      ],
-    ] as const)(
-      `falls back for unsupported segment/layout combinations`,
-      (segments, split_layout, expected_segments, warning) => {
-        const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-        mount_tile({
-          segments: segments.map((_segment, idx) => ({
-            color: `rgb(${idx}, 0, 0)`,
-          })) as TileSegment[],
-          split_layout,
-        })
-        expect(document.querySelectorAll(`.segment`)).toHaveLength(expected_segments)
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining(warning))
-        warn.mockRestore()
-      },
-    )
-  })
+  test.each([
+    [3, `triangular`, 3, `not valid for 3 segments`],
+    [5, undefined, 4, `at most 4 segments`],
+  ] as const)(
+    `%s segments with split_layout=%s fall back to %s segments`,
+    (n_segments, split_layout, expected_segments, warning) => {
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      const segments = Array.from({ length: n_segments }, (_unused, idx) => ({
+        color: `rgb(${idx}, 0, 0)`,
+      }))
+      mount_tile({ segments, split_layout })
+      expect(document.querySelectorAll(`.segment`)).toHaveLength(expected_segments)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(warning))
+      warn.mockRestore()
+    },
+  )
 })

@@ -26,7 +26,7 @@ export interface PhaseData {
   // Common computed fields
   e_above_hull?: number
   is_stable?: boolean
-  exclude_from_hull?: boolean // If true, entry is shown but not used in hull construction
+  exclude_from_hull?: boolean // If true, entry is shown but neither builds the hull nor serves as a formation-energy reference
   energy_per_atom?: number
   e_form_per_atom?: number // Formation energy per atom from src/scripts/fetch_mp_pd_data.py
   reduced_formula?: string

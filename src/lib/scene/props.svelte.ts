@@ -128,20 +128,11 @@ export const resize_orthographic_zoom = (
   return clamp(resized_zoom, bounds.min_zoom, bounds.max_zoom)
 }
 
-// The auto-fit zoom, pinned to the content extent it was last fitted for.
-//
-// Why pin, when create_orthographic_zoom below rescales against a live fit for the scenes that
-// pass it one? Because those frame a single object, while a trajectory is a time series where
-// apparent size is itself data: rescaling per frame holds a growing cell at constant apparent
-// size and hides the very thing a volume scan is showing. The two agree on new content that is
-// a new *object* — a new series, a camera reset, a projection change — which refits here too.
-//
-// So `extent` is read only by `refit()`, never by the effect below, and the fit follows nothing
-// but viewport resizes. Untracking the extent at the read site is not enough: that stops a
-// content change from *scheduling* a re-run, but any other re-run — a resize, or a prop object
-// that changed identity, e.g. a viewer revealing its gizmo on pointer enter — would still read
-// the newest extent and land the whole accumulated change as a zoom jump (issue #459). Pinning
-// makes the effect idempotent between refits, so only an explicit refit moves the framing.
+// The auto-fit zoom, pinned to the extent of the last refit(). A trajectory's apparent size
+// is data (a volume scan), so only viewport resizes and explicit refits (new series, camera
+// reset, projection change) move the framing. The effect below never reads `extent`: any
+// re-run reading the live extent (a resize, a prop changing identity) landed the accumulated
+// change as a zoom jump (#459).
 export function create_fit_zoom(opts: {
   extent: () => number
   // Maps an extent to a zoom. Must read the viewport size so resizes re-run the effect below.

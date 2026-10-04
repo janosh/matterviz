@@ -59,6 +59,7 @@ const cases = Object.entries(REFERENCE).flatMap(([name, data]) =>
 )
 
 describe(`fit_eos`, () => {
+  const truth: EosParams = { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 }
   test.each(cases)(`%s / %s matches pymatgen`, (_name, kind, { volumes, energies, fits }) => {
     const fit = fit_eos(volumes, energies, kind)
     const ref = to_params(fits[kind])
@@ -80,24 +81,23 @@ describe(`fit_eos`, () => {
   test.each(
     EOS_KINDS.flatMap((kind) =>
       [
-        { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 },
-        { e0: -10.5, v0: 40, b0: 1e-3, b0_prime: 4.5 },
-        { e0: -10.5, v0: 0.04, b0: 600, b0_prime: 4.5 },
-        { e0: -10.5, v0: 4e7, b0: 6e-7, b0_prime: 4.5 },
-      ].map((truth) => [kind, truth] as const),
+        truth,
+        { ...truth, b0: 1e-3 },
+        { ...truth, v0: 0.04, b0: 600 },
+        { ...truth, v0: 4e7, b0: 6e-7 },
+      ].map((params) => [kind, params] as const),
     ),
-  )(`%s recovers exact parameters from noise-free data %j`, (kind, truth) => {
-    const volumes = Array.from({ length: 11 }, (_, idx) => truth.v0 * (0.85 + 0.03 * idx))
-    const energies = volumes.map((vol) => eos_energy(kind, truth, vol))
+  )(`%s recovers exact parameters from noise-free data %j`, (kind, params) => {
+    const volumes = Array.from({ length: 11 }, (_, idx) => params.v0 * (0.85 + 0.03 * idx))
+    const energies = volumes.map((vol) => eos_energy(kind, params, vol))
     const fit = fit_eos(volumes, energies, kind)
-    for (const key of PARAM_KEYS) expect(rel_err(fit[key], truth[key])).toBeLessThan(1e-8)
+    for (const key of PARAM_KEYS) expect(rel_err(fit[key], params[key])).toBeLessThan(1e-8)
     expect(fit.rmse).toBeLessThan(1e-9)
   })
 
   // Expansion-heavy scan (0.95–1.6·V0): anharmonicity pulls the parabola vertex below the
   // smallest volume although V0 is bracketed, so a vertex-in-range guard rejected it
   test.each(EOS_KINDS)(`%s fits a bracketed but lopsided scan`, (kind) => {
-    const truth: EosParams = { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 }
     const volumes = Array.from({ length: 14 }, (_, idx) => 40 * (0.95 + 0.05 * idx))
     const energies = volumes.map((vol) => eos_energy(kind, truth, vol))
     const fit = fit_eos(volumes, energies, kind)
@@ -109,7 +109,6 @@ describe(`fit_eos`, () => {
   test.each(EOS_KINDS.flatMap((kind) => [1.2, 1.3].map((start) => [kind, start] as const)))(
     `%s refuses a scan that does not bracket the minimum (start %s·V0)`,
     (kind, start) => {
-      const truth: EosParams = { e0: -10.5, v0: 40, b0: 0.6, b0_prime: 4.5 }
       const volumes = Array.from({ length: 8 }, (_, idx) => 40 * (start + 0.04 * idx))
       const energies = volumes.map((vol) => eos_energy(kind, truth, vol))
       expect(() => fit_eos(volumes, energies, kind)).toThrow(/must bracket the energy minimum/)

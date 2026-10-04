@@ -476,7 +476,7 @@
       <h3>Missing phase diagram data</h3>
       <p>Provide diagram data through the <code>data</code> prop.</p>
     </EmptyState>
-  {:else if width > 0 && height > 0}
+  {:else if plot_width > 0 && plot_height > 0}
     <ViewerChrome
       {controls_config}
       bind:fullscreen

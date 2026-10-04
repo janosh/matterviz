@@ -2,6 +2,7 @@
   import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
   import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
   import { format_num } from '#lib/labels.js'
+  import { getAbortSignal } from 'svelte'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
   import { compute_opportunity_map_async } from './opportunity-map-async.svelte'
@@ -76,7 +77,7 @@
       pending = false
       return
     }
-    const controller = new AbortController()
+    const signal = getAbortSignal()
     cells = []
     error = ``
     pending = true
@@ -85,21 +86,17 @@
       pending = false
       return
     }
-    compute_opportunity_map_async(request, undefined, { signal: controller.signal })
+    compute_opportunity_map_async(request, undefined, { signal })
       .then((result) => {
-        if (!controller.signal.aborted) cells = result
+        if (!signal.aborted) cells = result
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
-          error = cause instanceof Error ? cause.message : String(cause)
+        if (!signal.aborted) error = cause instanceof Error ? cause.message : String(cause)
       })
       .finally(() => {
-        if (!controller.signal.aborted) pending = false
+        if (!signal.aborted) pending = false
       })
-    return () => {
-      controller.abort()
-      compute_opportunity_map_async.release()
-    }
+    return () => compute_opportunity_map_async.release()
   })
   const best_route = (cell: OpportunityCell) =>
     cell.routes

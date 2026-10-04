@@ -60,9 +60,6 @@ test.each([
 ])(`angle conversion round trip: %f rad ↔ %f deg`, (radians, degrees) => {
   expect(math.to_degrees(radians)).toBeCloseTo(degrees, 3)
   expect(math.to_radians(degrees)).toBeCloseTo(radians, 5)
-  // test round trip
-  expect(math.to_degrees(math.to_radians(radians))).toBeCloseTo(radians, 5)
-  expect(math.to_radians(math.to_degrees(degrees))).toBeCloseTo(degrees, 3)
 })
 
 test.each([
@@ -101,18 +98,16 @@ test.each([
   expect(math.add(vec1, vec2)).toEqual(expected)
 })
 
-test(`add sums more than two vectors and rejects arity/length mismatches`, () => {
-  // Test multiple vector addition
+test(`add sums more than two vectors; add/subtract reject arity/length mismatches`, () => {
   expect(math.add([1, 2], [3, 4], [5, 6])).toEqual([9, 12])
   expect(math.add([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])).toEqual([22, 26, 30])
   const sparse: number[] = []
   sparse[1] = 2
   expect(math.add(sparse, [3, 4])).toEqual([NaN, 6])
-
-  // Test error cases
   expect(() => math.add()).toThrow(/zero\s+vectors/i)
   expect(() => math.add([1, 2], [3, 4, 5])).toThrow(/same\s+length/i)
   expect(() => math.add([1, 2, 3], [4, 5], [6, 7, 8])).toThrow(/same\s+length/i)
+  expect(() => math.subtract([1, 2, 3], [4, 5])).toThrow(/same\s+length/i)
 })
 
 // oxfmt-ignore
@@ -127,10 +122,6 @@ test.each([
   expect(math.add(math.subtract(vec1, vec2), vec2)).toEqual(vec1)
 })
 
-test(`subtract throws on mismatched lengths`, () => {
-  expect(() => math.subtract([1, 2, 3], [4, 5])).toThrow(/same\s+length/i)
-})
-
 test.each([
   [[1, 2], [3, 4], 11],
   [[1, 2, 3], [4, 5, 6], 32],
@@ -143,7 +134,6 @@ test.each([
 })
 
 test(`dot handles matrix operands and rejects malformed shapes`, () => {
-  // Test matrix-vector and matrix-matrix multiplication
   // oxfmt-ignore
   const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
   const vector = [2, 3, 4]
@@ -162,7 +152,6 @@ test(`dot handles matrix operands and rejects malformed shapes`, () => {
     `First matrix columns must equal second matrix rows`,
   )
 
-  // Test edge cases - rectangular matrix validation
   // oxfmt-ignore
   const jagged_matrix = [[1, 2], [3, 4, 5], [6, 7]]
   const zero_cols_matrix: number[][] = [[], [], []]
@@ -227,13 +216,10 @@ test.each([
     { a: 3, b: Math.sqrt(5), c: Math.sqrt(5.25), alpha: 60.79, beta: 77.4, gamma: 63.43, volume: 12 }],
 ])(`calc_lattice_params case %#`, (matrix, expected) => {
   const result = math.calc_lattice_params(matrix as math.Matrix3x3)
-  expect(result.a).toBeCloseTo(expected.a, 2)
-  expect(result.b).toBeCloseTo(expected.b, 2)
-  expect(result.c).toBeCloseTo(expected.c, 2)
-  expect(result.alpha).toBeCloseTo(expected.alpha, 1)
-  expect(result.beta).toBeCloseTo(expected.beta, 1)
-  expect(result.gamma).toBeCloseTo(expected.gamma, 1)
-  expect(result.volume).toBeCloseTo(expected.volume, 1)
+  for (const [key, want] of Object.entries(expected)) {
+    const digits = [`a`, `b`, `c`].includes(key) ? 2 : 1
+    expect(result[key as keyof typeof expected], key).toBeCloseTo(want, digits)
+  }
 })
 
 // acos of a ratio that floating point pushed past 1, and division by a zero-length axis,
@@ -268,39 +254,18 @@ test.each([
   }
 })
 
-// The 90 degree sentinel above looks inconsistent with angle_between_vectors, which
-// returns 0 for a zero-length vector, and is a tempting thing to "fix". It must stay 90:
-// a slab reported as alpha = beta = 0 drives the triclinic volume factor negative, so
-// cell_to_lattice_matrix rejects the cell as unrealizable and a 2D/slab/molecule lattice
-// stops round-tripping. The two helpers serve different domains (cell parameters vs bond
-// geometry) and share no consumer; only the [-1, 1] acos clamp has to agree.
+// The 90 degree sentinel for a zero-length axis must not be "fixed" to match
+// angle_between_vectors (which returns 0): alpha = beta = 0 drives the triclinic volume factor
+// negative, so cell_to_lattice_matrix rejects the cell and 2D/slab/molecule lattices stop
+// round-tripping.
 test(`a degenerate slab cell survives a calc_lattice_params round-trip`, () => {
-  const slab: math.Matrix3x3 = [
-    [3, 0, 0],
-    [0, 3, 0],
-    [0, 0, 0],
-  ]
-  const {
-    a: lattice_a,
-    b: lattice_b,
-    c: lattice_c,
-    alpha,
-    beta,
-    gamma,
-  } = math.calc_lattice_params(slab)
-  const round_tripped = math.cell_to_lattice_matrix(
-    lattice_a,
-    lattice_b,
-    lattice_c,
-    alpha,
-    beta,
-    gamma,
-  )
+  // oxfmt-ignore
+  const slab: math.Matrix3x3 = [[3, 0, 0], [0, 3, 0], [0, 0, 0]]
+  const { a, b, c, alpha, beta, gamma } = math.calc_lattice_params(slab)
+  const round_tripped = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
   expect(round_tripped).toEqual(slab.map((row) => row.map((val) => expect.closeTo(val, 12))))
   // the sentinel that would break it
-  expect(() =>
-    math.cell_to_lattice_matrix(lattice_a, lattice_b, lattice_c, 0, 0, gamma),
-  ).toThrow(/realizable/)
+  expect(() => math.cell_to_lattice_matrix(a, b, c, 0, 0, gamma)).toThrow(/realizable/)
 })
 
 describe(`pbc_dist`, () => {
@@ -370,8 +335,6 @@ describe(`pbc_dist`, () => {
       const with_converters = math.pbc_dist(pos1, pos2, lattice, converters)
 
       expect(with_converters).toBeCloseTo(standard, 10)
-      expect(with_converters).toBeGreaterThanOrEqual(0)
-      expect(isFinite(with_converters)).toBe(true)
     },
   )
 
@@ -497,6 +460,41 @@ describe(`pbc_dist`, () => {
     }
   })
 
+  // A strongly sheared cell's own basis needed >100k candidate shifts and threw, breaking
+  // RDF/MSD on such supercells; the search now runs in the reduced basis of the same lattice
+  test(`finds the minimum image of a strongly sheared, fully periodic cell`, () => {
+    // oxfmt-ignore
+    const lattice: math.Matrix3x3 = [[1.26, 0, 0], [-6.56, 0.32, 0], [3.37, 0.07, 0.58]]
+    const frac_to_cart = math.create_frac_to_cart(lattice)
+    const cart_to_frac = math.create_cart_to_frac(lattice)
+    const from: Vec3 = [0, 0, 0]
+    // oxfmt-ignore
+    const targets: Vec3[] = [[-0.41, -3.66, -2.63], [-2.26, -2.66, -4.94], [2.53, -3.82, 1.43]]
+    for (const target of targets) {
+      // each threw on the cell's own basis
+      const wrapped = math
+        .subtract(cart_to_frac(target), cart_to_frac(from))
+        .map((val) => val - Math.round(val)) as Vec3
+      let brute = Infinity
+      for (let shift_a = -30; shift_a <= 30; shift_a++) {
+        for (let shift_b = -30; shift_b <= 30; shift_b++) {
+          for (let shift_c = -30; shift_c <= 30; shift_c++) {
+            const image = frac_to_cart(math.add(wrapped, [shift_a, shift_b, shift_c]))
+            brute = Math.min(brute, Math.hypot(...image))
+          }
+        }
+      }
+      const displacement = math.min_image_displacement(from, target, lattice)
+      expect(Math.hypot(...displacement)).toBeCloseTo(brute, 10)
+      // a lattice image of the plain difference, not just any short vector
+      const shift = math.subtract(
+        cart_to_frac(displacement),
+        cart_to_frac(math.subtract(target, from)),
+      )
+      for (const component of shift) expect(component).toBeCloseTo(Math.round(component), 8)
+    }
+  })
+
   test(`no periodic axis returns the plain difference without touching the lattice`, () => {
     // oxfmt-ignore
     const singular: math.Matrix3x3 = [[1, 0, 0], [1, 0, 0], [0, 0, 1]]
@@ -581,14 +579,9 @@ describe(`3x3 matrix and lattice utilities`, () => {
       [`identity`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
       [`negative`, [[-1, 2, -3], [4, -5, 6], [-7, 8, -9]],
         [[-1, 4, -7], [2, -5, 8], [-3, 6, -9]]],
-    ])(`%s matrix`, (_, input, expected) => {
+    ])(`%s matrix (and back: A^T^T = A)`, (_, input, expected) => {
       expect(math.transpose_3x3_matrix(input as math.Matrix3x3)).toEqual(expected)
-    })
-
-    it(`is involution (A^T^T = A)`, () => {
-      // oxfmt-ignore
-      const matrix: math.Matrix3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-      expect(math.transpose_3x3_matrix(math.transpose_3x3_matrix(matrix))).toEqual(matrix)
+      expect(math.transpose_3x3_matrix(expected as math.Matrix3x3)).toEqual(input)
     })
   })
 
@@ -647,25 +640,13 @@ describe(`3x3 matrix and lattice utilities`, () => {
     })
 
     it(`round-trip consistency with calc_lattice_params`, () => {
-      const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = [
-        4.5, 5.2, 6.8, 85, 92, 105,
-      ]
-      const matrix = math.cell_to_lattice_matrix(
-        lattice_a,
-        lattice_b,
-        lattice_c,
-        alpha,
-        beta,
-        gamma,
+      const cell = [4.5, 5.2, 6.8, 85, 92, 105] as const
+      const params = math.calc_lattice_params(math.cell_to_lattice_matrix(...cell))
+      const { a, b, c, alpha, beta, gamma } = params
+      // lengths round-trip to ~1e-15 Å; angles go through acos, which loses digits
+      expect([a, b, c, alpha, beta, gamma]).toEqual(
+        cell.map((val, idx) => expect.closeTo(val, idx < 3 ? 10 : 6)),
       )
-      const params = math.calc_lattice_params(matrix)
-
-      expect(params.a).toBeCloseTo(lattice_a, 10)
-      expect(params.b).toBeCloseTo(lattice_b, 10)
-      expect(params.c).toBeCloseTo(lattice_c, 10)
-      expect(params.alpha).toBeCloseTo(alpha, 6)
-      expect(params.beta).toBeCloseTo(beta, 6)
-      expect(params.gamma).toBeCloseTo(gamma, 6)
     })
   })
 
@@ -784,8 +765,9 @@ test.each([
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 0, `zero det`],
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], 1, `positive det`],
   [[[2, 1, 1], [1, 3, 2], [1, 0, 0]], -1, `negative det`],
-])(`det_3x3 $3`, (matrix, expected) => {
+])(`det_3x3 and det_nxn agree: $3`, (matrix, expected) => {
   expect(math.det_3x3(matrix as math.Matrix3x3)).toBeCloseTo(expected, 10)
+  expect(math.det_nxn(matrix)).toBeCloseTo(expected, 10)
 })
 
 // oxfmt-ignore
@@ -894,19 +876,7 @@ describe(`det_nxn`, () => {
     expect(math.det_nxn(matrix)).toBeCloseTo(expected, 10)
   })
 
-  test(`matches the det_3x3 fast path`, () => {
-    // oxfmt-ignore
-    const matrices_3x3: math.Matrix3x3[] = [
-      [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      [[1, 2, 3], [0, 1, 4], [5, 6, 0]],
-      [[2, 1, 1], [1, 3, 2], [1, 0, 0]],
-    ]
-    for (const matrix of matrices_3x3) {
-      expect(math.det_nxn(matrix)).toBeCloseTo(math.det_3x3(matrix), 10)
-    }
-  })
-
-  // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
+  // 5x5 and 6x6 for N-element convex hulls
   const make_diagonal = (size: number, diag_at: (idx: number) => number) =>
     Array.from({ length: size }, (_row, row) =>
       Array.from({ length: size }, (_col, col) => (row === col ? diag_at(row) : 0)),
@@ -968,8 +938,8 @@ describe(`det_nxn 4x4 fast path`, () => {
     [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1], 1, `negative identity`],
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
-  ])(`%s`, (radius_0, radius_1, radius, radius_3, expected) => {
-    expect(math.det_nxn([radius_0, radius_1, radius, radius_3])).toBeCloseTo(expected, 10)
+  ])(`%s`, (row_0, row_1, row_2, row_3, expected) => {
+    expect(math.det_nxn([row_0, row_1, row_2, row_3])).toBeCloseTo(expected, 10)
   })
 
   test(`barycentric coordinates (tetrahedron unit test)`, () => {
@@ -1012,26 +982,16 @@ describe(`cross_3d`, () => {
     expect(cross_ab).toEqual(cross_ba.map((val) => expect.closeTo(-val, 10)))
 
     // Orthogonality: (a × b) ⊥ a and (a × b) ⊥ b
-    expect(
-      cross_ab[0] * vec_a[0] + cross_ab[1] * vec_a[1] + cross_ab[2] * vec_a[2],
-    ).toBeCloseTo(0, 10)
-    expect(
-      cross_ab[0] * vec_b[0] + cross_ab[1] * vec_b[1] + cross_ab[2] * vec_b[2],
-    ).toBeCloseTo(0, 10)
+    expect(math.dot(cross_ab, vec_a)).toBeCloseTo(0, 10)
+    expect(math.dot(cross_ab, vec_b)).toBeCloseTo(0, 10)
 
     // Magnitude for orthogonal vectors: |a × b| = |a| * |b|
     const orth_cross = math.cross_3d([3, 0, 0], [0, 4, 0])
     expect(Math.hypot(...orth_cross)).toBeCloseTo(12, 10)
 
     // Distributive: a × (b + c) = a × b + a × c
-    const b_plus_c: Vec3 = [vec_b[0] + vec_c[0], vec_b[1] + vec_c[1], vec_b[2] + vec_c[2]]
-    const left = math.cross_3d(vec_a, b_plus_c)
-    const cross_ac = math.cross_3d(vec_a, vec_c)
-    const right: Vec3 = [
-      cross_ab[0] + cross_ac[0],
-      cross_ab[1] + cross_ac[1],
-      cross_ab[2] + cross_ac[2],
-    ]
+    const left = math.cross_3d(vec_a, math.add(vec_b, vec_c))
+    const right = math.add(cross_ab, math.cross_3d(vec_a, vec_c))
     expect(left).toEqual(right.map((val) => expect.closeTo(val, 10)))
   })
 })
@@ -1066,20 +1026,13 @@ describe(`frac_cutoff_per_axis`, () => {
     [`orthorhombic`, [[2, 0, 0], [0, 3, 0], [0, 0, 4]], [5 / 2, 5 / 3, 5 / 4]],
     // Degenerate (zero-volume) cell → 0 pad (no images)
     [`degenerate`, [[1, 0, 0], [2, 0, 0], [0, 0, 1]], [0, 0, 0]],
+    // Oblique: pad = dist / height, which exceeds the naive dist / |vec| on the sheared a and
+    // b axes, so neighbors the old 5/|vec| cutoff missed get imaged
+    [`oblique`, [[2, 0, 0], [1, 2, 0], [0, 0, 3]], [(5 * Math.sqrt(45)) / 12, 5 / 2, 5 / 3]],
   ] satisfies [string, math.Matrix3x3, Vec3][])(`%s`, (_name, matrix, expected) => {
     expect(math.frac_cutoff_per_axis(matrix, 5)).toEqual(
       expected.map((val) => expect.closeTo(val, 12)),
     )
-  })
-
-  test(`oblique pad exceeds the naive lattice-vector-length cutoff`, () => {
-    // height < |vec| on sheared axes → dist/height > dist/|vec|: the latent fix
-    // images neighbors the old 5/|vec| cutoff missed
-    // oxfmt-ignore
-    const matrix: math.Matrix3x3 = [[2, 0, 0], [1, 2, 0], [0, 0, 3]]
-    const cutoff = math.frac_cutoff_per_axis(matrix, 5)
-    expect(cutoff[0]).toBeGreaterThan(5 / Math.hypot(...matrix[0]))
-    expect(cutoff[1]).toBeGreaterThan(5 / Math.hypot(...matrix[1]))
   })
 })
 
@@ -1632,6 +1585,7 @@ describe(`array_min, array_max and array_extent`, () => {
     [[-5, -2, -9], -9, -2],
     [[42], 42, 42],
     [[0.1, 0.5, 0.3], 0.1, 0.5],
+    [[], Infinity, -Infinity], // callers guard length first
   ] as [number[], number, number][])(
     `%j → min %d, max %d`,
     (values, expected_min, expected_max) => {
@@ -1640,12 +1594,6 @@ describe(`array_min, array_max and array_extent`, () => {
       expect(math.array_extent(values)).toEqual([expected_min, expected_max])
     },
   )
-
-  test(`empty array yields ±Infinity (callers guard length first)`, () => {
-    expect(math.array_min([])).toBe(Infinity)
-    expect(math.array_max([])).toBe(-Infinity)
-    expect(math.array_extent([])).toEqual([Infinity, -Infinity])
-  })
 
   // A values[0] seed would return [NaN, NaN] for a leading NaN; the ±Infinity seed skips it.
   test(`array_extent skips NaN wherever it appears`, () => {

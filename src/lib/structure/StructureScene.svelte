@@ -35,7 +35,7 @@
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
   import { create_pulse_animation, pulsing_highlight_opacity } from '#lib/effects.svelte.js'
-  import { theme_state } from '#lib/state.svelte.js'
+  import { resolve_theme_text_color } from '#lib/state.svelte.js'
   import { get_element_palette } from './element-palette.svelte'
   import type {
     AnyStructure,
@@ -1889,14 +1889,7 @@
     return `${total} (${parts.join(`, `)})`
   })
 
-  let measure_line_color = $derived.by(() => {
-    // re-resolve --text-color when the light/dark theme flips
-    void theme_state.mode
-    if (typeof window === `undefined`) return
-    const root_styles = getComputedStyle(document.documentElement)
-    const text_color = root_styles.getPropertyValue(`--text-color`).trim()
-    return text_color || `#808080`
-  })
+  let measure_line_color = $derived(resolve_theme_text_color() ?? `#808080`)
 </script>
 
 {#snippet site_label_snippet(site_idx: number)}
@@ -1909,7 +1902,8 @@
         type="button"
         class="atom-label"
         style="font-size: {site_label_size *
-          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color}"
+          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color ||
+          `var(--text-color)`}"
         onpointerdown={(event) => {
           event.preventDefault()
           event.stopImmediatePropagation()

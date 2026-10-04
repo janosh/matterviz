@@ -1,5 +1,3 @@
-// @vitest-environment happy-dom
-// Tests for FermiSlice.svelte component (ScatterPlot-based implementation)
 import FermiSlice from '#lib/fermi-surface/FermiSlice.svelte'
 import type { FermiSliceData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
@@ -57,17 +55,7 @@ describe(`FermiSlice`, () => {
     expect(mock_error.mock.calls[0][0].message).toMatch(/Degenerate plane normal/)
   })
 
-  test(`passes class and style to wrapper`, () => {
-    mount(FermiSlice, {
-      target: document.body,
-      props: { class: `custom-class`, style: `background: red;` },
-    })
-    const wrapper = doc_query(`.fermi-slice`)
-    expect(wrapper.classList.contains(`custom-class`)).toBe(true)
-    expect(wrapper.getAttribute(`style`)).toContain(`background: red`)
-  })
-
-  test(`children snippet receives export_svg and slice_data`, async () => {
+  test(`passes class/style to the wrapper and export_svg/slice_data to children`, async () => {
     type SnippetData = { slice_data: FermiSliceData | null; export_svg: () => string | null }
     let received: SnippetData | undefined
     const children_snippet = createRawSnippet<[SnippetData]>((data) => {
@@ -79,9 +67,16 @@ describe(`FermiSlice`, () => {
       target: document.body,
       // Cast needed: HTMLAttributes<HTMLDivElement> includes children?: Snippet<[]>
       // which conflicts with the component's typed children prop
-      props: { children: children_snippet } as Record<string, unknown>,
+      props: {
+        children: children_snippet,
+        class: `custom-class`,
+        style: `background: red;`,
+      } as Record<string, unknown>,
     })
     await tick()
+    const wrapper = doc_query(`.fermi-slice`)
+    expect(wrapper.classList.contains(`custom-class`)).toBe(true)
+    expect(wrapper.getAttribute(`style`)).toContain(`background: red`)
 
     expect(document.querySelector(`.children-rendered`)).not.toBeNull()
     expect(received?.slice_data).toBeNull() // null when no fermi_data

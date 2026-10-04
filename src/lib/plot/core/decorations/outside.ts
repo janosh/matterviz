@@ -70,6 +70,14 @@ const LEGEND_MAX_INTERIOR_FRACTION = 0.45
 // A horizontal colorbar is a short strip that only costs the top margin its height, so it may
 // span more of the width (~80% of a phone-width plot, ~30% of a desktop one) before moving out.
 const COLORBAR_MAX_INTERIOR_FRACTION = 0.7
+// Plot height (px) a bottom legend band must leave. Below it (a short phone-width panel with a
+// long series list) the legend stays inside, where it is capped, scrolls and can be dragged or
+// collapsed, rather than squeezing the data to a sliver.
+const MIN_PLOT_HEIGHT_PAST_LEGEND = 80
+// Cap of a legend strip below the plot as a fraction of the frame height (PlotLegendLayer).
+// The solver reserves what the strip will take, never the legend's height where it sits now
+// (inside, it is capped at the plot height), so the choice does not depend on history.
+export const LEGEND_STRIP_MAX_FRACTION = 0.5
 
 export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
   const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
@@ -105,16 +113,20 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     !too_wide &&
     !colorbar_takes_right &&
     legend_height * base_w > legend_width * base_h
-  const legend_bottom = legend_outside && !legend_right
-
   // Top/bottom/colorbar-right reservations sit just past the axis band; a caller's larger
   // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
   const past_axis = (side: keyof Sides, size: number) =>
     Math.max(base_pad[side], axis_pad[side] + size + gap)
+  const strip_height = Math.min(legend_height, LEGEND_STRIP_MAX_FRACTION * height)
+  const strip_pad = past_axis(`b`, strip_height)
+  const legend_bottom =
+    legend_outside &&
+    !legend_right &&
+    base_h - (strip_pad - base_pad.b) >= MIN_PLOT_HEIGHT_PAST_LEGEND
   const pad: Required<Sides> = {
     t: colorbar_outside && colorbar_horizontal ? past_axis(`t`, colorbar_height) : base_pad.t,
     l: base_pad.l,
-    b: legend_bottom ? past_axis(`b`, legend_height) : base_pad.b,
+    b: legend_bottom ? strip_pad : base_pad.b,
     r: legend_right
       ? Math.max(base_pad.r, legend_width + 2 * gap)
       : colorbar_takes_right
@@ -128,11 +140,17 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
       }
     : {
         x: base_pad.l + reserved.l + (base_w - legend_width) / 2,
-        y: height - legend_height - gap,
+        y: height - strip_height - gap,
       }
 
   const legend_side = legend_right ? `right` : `bottom`
-  return { pad, legend_outside, legend_side, legend_pos, colorbar_outside }
+  return {
+    pad,
+    legend_outside: legend_right || legend_bottom,
+    legend_side,
+    legend_pos,
+    colorbar_outside,
+  }
 }
 
 export const get_outside_placement = (

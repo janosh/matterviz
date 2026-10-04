@@ -111,6 +111,16 @@ function make_session(initial: Partial<Host> = {}, options = {}) {
   return { host, session, events, errors }
 }
 
+// Captures rAF callbacks so tests drive animation frames by hand
+const stub_raf = (): FrameRequestCallback[] => {
+  const callbacks: FrameRequestCallback[] = []
+  vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) =>
+    callbacks.push(callback),
+  )
+  vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+  return callbacks
+}
+
 beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
 afterEach(() => {
   for (const destroy of session_roots.splice(0)) destroy()
@@ -493,13 +503,7 @@ describe(`frame loading`, () => {
 
 describe(`scrub vs commit`, () => {
   it(`coalesces a slider burst into one rAF write, settles after the quiet period, and no-ops on a non-finite index`, () => {
-    const raf_callbacks: FrameRequestCallback[] = []
-    const raf = vi
-      .spyOn(globalThis, `requestAnimationFrame`)
-      .mockImplementation((callback_fn) => {
-        raf_callbacks.push(callback_fn)
-        return raf_callbacks.length
-      })
+    const raf_callbacks = stub_raf()
     const run = trajectory_from_frames(frames(20))
     const { host, session, events } = make_session({ run })
     session.scrub(4)
@@ -534,15 +538,10 @@ describe(`scrub vs commit`, () => {
     session.commit(Number.NaN)
     expect(host.index).toBe(19)
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
-    raf.mockRestore()
   })
 
   it(`drops a pending scrub when the run is swapped before the next animation frame`, () => {
-    const raf_callbacks: FrameRequestCallback[] = []
-    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback_fn) => {
-      raf_callbacks.push(callback_fn)
-      return raf_callbacks.length
-    })
+    const raf_callbacks = stub_raf()
     const { host, session, events } = make_session({ run: trajectory_from_frames(frames(20)) })
     session.scrub(7)
     // the viewer adopts a new run and resets its index, as Trajectory's adopt() does
@@ -565,8 +564,7 @@ describe(`controller and playback`, () => {
   ])(
     `retains playback history only while its budget fits: %j`,
     async ({ site_counts, fits }) => {
-      vi.spyOn(globalThis, `requestAnimationFrame`).mockReturnValue(1)
-      vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+      stub_raf()
       const frame_list = site_counts.map((count, idx) =>
         make_trajectory_frame(idx * 10, count),
       )
@@ -612,8 +610,7 @@ describe(`controller and playback`, () => {
   it.each([false, true])(
     `bounds retained prefetch when the next frame grows (playing: %s)`,
     async (playing) => {
-      vi.spyOn(globalThis, `requestAnimationFrame`).mockReturnValue(1)
-      vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+      stub_raf()
       const frame_list = frames(5)
       frame_list[1] = make_trajectory_frame(10, 30)
       const run = trajectory_from_frames(frame_list)
@@ -665,8 +662,7 @@ describe(`controller and playback`, () => {
   it.each([2, 4, 7, 9])(
     `prepares a byte-bounded window of %i frames and cancels it on seek`,
     async (capacity) => {
-      vi.spyOn(globalThis, `requestAnimationFrame`).mockReturnValue(1)
-      vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+      stub_raf()
       const { run, pending, reads, resolve_next } = make_async_run(frames(12))
       Object.defineProperty(run, `preparation_concurrency`, { value: 3 })
       run.prepare_frame = async (idx, preparation, signal) => ({
@@ -716,12 +712,7 @@ describe(`controller and playback`, () => {
   )
 
   it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
-    let next_frame: FrameRequestCallback | undefined
-    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
-      next_frame = callback
-      return 1
-    })
-    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
     const cache_max_bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
@@ -733,7 +724,7 @@ describe(`controller and playback`, () => {
     await resolve_next()
     expect(session.current_frame?.step).toBe(0)
     expect(session.cached_frames).toBe(1)
-    next_frame?.(34)
+    raf_callbacks.at(-1)?.(34)
     flushSync()
     await Promise.resolve()
     flushSync()
@@ -746,12 +737,7 @@ describe(`controller and playback`, () => {
   })
 
   it(`advances only after read and render, rejects stale acknowledgements and pauses on failure`, async () => {
-    let next_frame: FrameRequestCallback | undefined
-    vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback) => {
-      next_frame = callback
-      return 1
-    })
-    vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
+    const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
     const { host, session, errors } = make_session({
@@ -760,7 +746,7 @@ describe(`controller and playback`, () => {
       wait_for_render: true,
     })
     const tick = (time: number) => {
-      next_frame?.(time)
+      raf_callbacks.at(-1)?.(time)
       flushSync()
     }
     session.player.play()

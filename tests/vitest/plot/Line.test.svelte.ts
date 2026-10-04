@@ -8,22 +8,10 @@ import { bind_props, doc_query, expect_transition_properties } from '../setup'
 
 describe(`resolve_line_tween (path-morph budget)`, () => {
   test.each([
-    {
-      name: `both at budget → morph`,
-      load: { series: 16, points: 8000 },
-      expected: undefined,
-    },
-    {
-      name: `series over budget → disabled`,
-      load: { series: 17, points: 0 },
-      expected: { duration: 0 },
-    },
-    {
-      name: `points over budget → disabled`,
-      load: { series: 0, points: 8001 },
-      expected: { duration: 0 },
-    },
-  ])(`$name`, ({ load, expected }) => {
+    [`both at budget → morph`, { series: 16, points: 8000 }, undefined],
+    [`series over budget → disabled`, { series: 17, points: 0 }, { duration: 0 }],
+    [`points over budget → disabled`, { series: 0, points: 8001 }, { duration: 0 }],
+  ])(`%s`, (_name, load, expected) => {
     expect(resolve_line_tween(undefined, load)).toEqual(expected)
   })
 
@@ -34,86 +22,41 @@ describe(`resolve_line_tween (path-morph budget)`, () => {
 })
 
 describe(`Line`, () => {
-  // Parameterized test for default and custom styles
+  const default_line = `rgba(255, 255, 255, 0.5)`
+  const default_area = `rgba(255, 255, 255, 0.1)`
+  // [name, props, [line stroke, stroke-width, stroke-dasharray], [area fill, area stroke]]
   test.each([
-    {
-      name: `default styles`,
-      props: {}, // Relies on component defaults
-      expected_line: {
-        stroke: `rgba(255, 255, 255, 0.5)`,
-        strokeWidth: `2`,
-        fill: `none`,
-      },
-      expected_area: {
-        fill: `rgba(255, 255, 255, 0.1)`,
-        stroke: null, // Default area_stroke is null
-      },
+    [`default styles`, {}, [default_line, `2`, null], [default_area, null]],
+    [
+      `custom styles`,
+      { line_color: `red`, line_width: 3, area_color: `blue`, area_stroke: `green` },
+      [`red`, `3`, null],
+      [`blue`, `green`],
+    ],
+    [
+      `custom dash array`,
+      { line_dash: `4 2` },
+      [default_line, `2`, `4 2`],
+      [default_area, null],
+    ],
+  ] as const)(
+    `renders with %s`,
+    (_name, props, [stroke, width, dash], [area_fill, area_stroke]) => {
+      // oxfmt-ignore
+      const points: Vec2[] = [[10, 10], [50, 50], [100, 20]]
+      mount(Line, { target: document.body, props: { points, origin: [0, 200], ...props } })
+      const [line_path, area_path] = document.querySelectorAll(`path`)
+      expect(line_path.getAttribute(`fill`)).toBe(`none`)
+      expect(line_path.getAttribute(`stroke`)).toBe(stroke)
+      expect(line_path.getAttribute(`stroke-width`)).toBe(width)
+      expect(line_path.getAttribute(`stroke-dasharray`)).toBe(dash)
+      expect(area_path.getAttribute(`fill`)).toBe(area_fill)
+      expect(area_path.getAttribute(`stroke`)).toBe(area_stroke)
     },
-    {
-      name: `custom styles`,
-      props: {
-        line_color: `red`,
-        line_width: 3,
-        area_color: `blue`,
-        area_stroke: `green`,
-      },
-      expected_line: {
-        stroke: `red`,
-        strokeWidth: `3`,
-        fill: `none`,
-      },
-      expected_area: {
-        fill: `blue`,
-        stroke: `green`,
-      },
-    },
-    {
-      name: `custom dash array`,
-      props: { line_dash: `4 2` },
-      expected_line: {
-        stroke: `rgba(255, 255, 255, 0.5)`,
-        strokeWidth: `2`,
-        fill: `none`,
-        strokeDasharray: `4 2`,
-      },
-      expected_area: {
-        fill: `rgba(255, 255, 255, 0.1)`,
-        stroke: null,
-      },
-    },
-  ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
-    const points: Vec2[] = [
-      [10, 10],
-      [50, 50],
-      [100, 20],
-    ]
-    const origin: Vec2 = [0, 200]
-
-    mount(Line, { target: document.body, props: { points, origin, ...props } })
-
-    const paths = document.querySelectorAll(`path`)
-    expect(paths).toHaveLength(2)
-
-    const line_path = paths[0]
-    const area_path = paths[1]
-
-    // Assert line styles
-    expect(line_path.getAttribute(`fill`)).toBe(expected_line.fill)
-    expect(line_path.getAttribute(`stroke`)).toBe(expected_line.stroke)
-    expect(line_path.getAttribute(`stroke-width`)).toBe(expected_line.strokeWidth)
-    expect(line_path.getAttribute(`stroke-dasharray`)).toBe(
-      expected_line.strokeDasharray ?? null,
-    )
-    // Assert area styles using getAttribute
-    expect(area_path.getAttribute(`fill`)).toBe(expected_area.fill)
-    expect(area_path.getAttribute(`stroke`)).toBe(expected_area.stroke ?? null)
-  })
+  )
 
   test(`does not CSS-transition path geometry`, () => {
-    mount(Line, {
-      target: document.body,
-      props: { points: [[0, 0]], origin: [0, 0] },
-    })
+    mount(Line, { target: document.body, props: { points: [[0, 0]], origin: [0, 0] } })
     const path = doc_query(`path`)
     expect(path).toBeInstanceOf(SVGElement)
     expect_transition_properties(path, [
@@ -127,91 +70,52 @@ describe(`Line`, () => {
     ])
   })
 
-  const three_points: Vec2[] = [
-    [0, 100],
-    [100, 0],
-    [200, 100],
-  ]
-  // line path per curve and point count; the area closes the line along y = origin[1]
+  // oxfmt-ignore
+  const three_points: Vec2[] = [[0, 100], [100, 0], [200, 100]]
+  // oxfmt-ignore
+  const two_points: Vec2[] = [[0, 50], [100, 0]]
+  // Line path per curve and point count; the area closes the line along y = origin[1]. Both
+  // paths always render, with an empty area `d` when area_color is transparent or none.
+  // oxfmt-ignore
   test.each([
-    {
-      name: `monotone over 3 points`,
-      points: three_points,
-      curve: undefined,
-      line: /^M0,100C.*100,0.*C.*200,100$/,
-    },
-    {
-      name: `linear over 3 points`,
-      points: three_points,
-      curve: `linear`,
-      line: /^M0,100L100,0L200,100$/,
-    },
-    {
-      name: `2 points (a straight segment)`,
-      points: [
-        [0, 50],
-        [100, 0],
-      ],
-      curve: undefined,
-      line: /^M0,50L100,0$/,
-      area: /^M0,50L100,0L100,100L0,100Z$/,
-    },
-  ] as const)(`draws $name`, ({ points, curve, line, area }) => {
+    [`monotone over 3 points`, three_points, {}, /^M0,100C.*100,0.*C.*200,100$/, undefined],
+    [`linear over 3 points`, three_points, { curve: `linear` }, /^M0,100L100,0L200,100$/, undefined],
+    [`2 points (a straight segment)`, two_points, {}, /^M0,50L100,0$/, /^M0,50L100,0L100,100L0,100Z$/],
+    [`no area for area_color=transparent`, two_points, { area_color: `transparent` }, /^M0,50L100,0$/, /^$/],
+    [`no area for area_color=none`, two_points, { area_color: `none` }, /^M0,50L100,0$/, /^$/],
+    [`no points`, [], {}, /^$/, /^$/],
+    [`a single point`, [[50, 50]], {}, /^M50,50Z?$/, /^M50,50Z?L50,100L50,100Z$/],
+  ] as const)(`draws %s`, (_name, points, extra, line, area) => {
     mount(Line, {
       target: document.body,
       props: {
         points: points.map((point): Vec2 => [...point]),
         origin: [0, 100],
-        curve,
         line_tween: { duration: 0 },
+        ...extra,
       },
     })
     const paths = document.querySelectorAll(`path`)
+    expect(paths).toHaveLength(2)
     expect(paths[0].getAttribute(`d`)).toMatch(line)
     if (area) expect(paths[1].getAttribute(`d`)).toMatch(area)
   })
 
-  test.each([`transparent`, `none`])(
-    `skips area path when area_color=%s (still renders line + 2 paths)`,
-    (area_color) => {
-      const points: Vec2[] = [
-        [0, 50],
-        [100, 0],
-      ]
-      mount(Line, {
-        target: document.body,
-        props: { points, origin: [0, 100], area_color, line_tween: { duration: 0 } },
-      })
-      const paths = document.querySelectorAll(`path`)
-      expect(paths).toHaveLength(2)
-      expect(paths[0].getAttribute(`d`)).toMatch(/^M0,50L100,0$/)
-      expect(paths[1].getAttribute(`d`)).toBe(``)
-    },
-  )
-
-  // While morphing is off the template binds the raw path, but the tween keeps its own value.
-  // Left frozen at whatever it last animated to, re-enabling would snap the line back there
-  // and morph forward again, so the tween has to track the live path throughout.
+  // While morphing is off the template binds the raw path, but the tween must keep tracking
+  // it: left frozen, re-enabling would snap the line back and morph forward again
   test(`re-enabling the morph does not rewind to where the tween was disabled`, () => {
     vi.useFakeTimers({ toFake: [`performance`] })
     try {
-      const state = $state({
-        points: [
-          [0, 100],
-          [100, 0],
-        ] as Vec2[],
-        line_tween: { duration: 0 },
-      })
+      const state = $state({ points: two_points, line_tween: { duration: 0 } })
       mount(Line, {
         target: document.body,
         props: bind_props({ origin: [0, 100] as Vec2 }, state),
       })
       vi.advanceTimersByTime(SETTLE_MS + 1) // past the window where every change snaps anyway
 
-      state.points = [
-        [0, 0],
-        [100, 100],
-      ] // move the line while morphing is disabled
+      // move the line while morphing is disabled
+      // oxfmt-ignore
+      state.points = [[0, 0], [100, 100]]
       flushSync()
       const while_disabled = document.querySelector(`path`)?.getAttribute(`d`)
       expect(while_disabled).toMatch(/^M0,0/)
@@ -224,52 +128,17 @@ describe(`Line`, () => {
     }
   })
 
-  test.each([
-    { name: `no points`, points: [], line: /^$/, area: /^$/ },
-    {
-      name: `a single point`,
-      points: [[50, 50]],
-      line: /^M50,50Z?$/,
-      area: /^M50,50Z?L50,100L50,100Z$/,
-    },
-  ] as const)(`renders both paths for $name`, ({ points, line, area }) => {
+  test(`passes additional props to both path elements`, () => {
+    const rest = { 'data-testid': `custom-line`, 'aria-label': `line chart element` }
     mount(Line, {
       target: document.body,
-      props: {
-        points: points.map((point): Vec2 => [...point]),
-        origin: [0, 100],
-        line_tween: { duration: 0 },
-      },
+      props: { points: two_points, origin: [0, 100], ...rest },
     })
     const paths = document.querySelectorAll(`path`)
     expect(paths).toHaveLength(2)
-    expect(paths[0].getAttribute(`d`)).toMatch(line)
-    expect(paths[1].getAttribute(`d`)).toMatch(area)
-  })
-
-  test(`passes additional props to path elements`, () => {
-    const points: Vec2[] = [
-      [10, 10],
-      [50, 50],
-    ]
-    const origin: Vec2 = [0, 100]
-    const rest = {
-      'data-testid': `custom-line`,
-      'aria-label': `line chart element`,
+    for (const path of paths) {
+      expect(path.getAttribute(`data-testid`)).toBe(rest[`data-testid`])
+      expect(path.getAttribute(`aria-label`)).toBe(rest[`aria-label`])
     }
-
-    mount(Line, {
-      target: document.body,
-      props: { points, origin, ...rest },
-    })
-
-    const paths = document.querySelectorAll(`path`)
-    expect(paths).toHaveLength(2)
-
-    // Check that both paths received the rest props
-    paths.forEach((path_element) => {
-      expect(path_element.getAttribute(`data-testid`)).toBe(rest[`data-testid`])
-      expect(path_element.getAttribute(`aria-label`)).toBe(rest[`aria-label`])
-    })
   })
 })

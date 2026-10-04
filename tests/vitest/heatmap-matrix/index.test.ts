@@ -31,17 +31,13 @@ describe(`elements_to_axis`, () => {
     expect(iron?.data?.name).toBe(`Iron`)
   })
 
-  test(`filters to subset of symbols`, () => {
-    const axis = elements_to_axis([`Fe`, `O`, `H`])
-    expect(axis.map((item) => item.label)).toEqual([`H`, `O`, `Fe`])
-  })
-
   test.each([
+    { input: [`Fe`, `O`, `H`], expected: [`H`, `O`, `Fe`], desc: `sorted by atomic number` },
     { input: [`Au`], expected: [`Au`], desc: `single element` },
     { input: [] as string[], expected: [], desc: `empty subset` },
     { input: [`Fe`, `Fe`, `O`], expected: [`O`, `Fe`], desc: `duplicates deduplicated` },
     { input: [`Fe`, `Xx`], expected: [`Fe`], desc: `invalid symbol ignored` },
-  ])(`subset edge case: $desc`, ({ input, expected }) => {
+  ])(`symbol subset: $desc`, ({ input, expected }) => {
     const axis = elements_to_axis(input as Parameters<typeof elements_to_axis>[0])
     expect(axis.map((item) => item.label)).toEqual(expected)
   })
@@ -75,44 +71,33 @@ describe(`built-in orderings`, () => {
   })
 
   test(`electronegativity uses pauling values (Tl/Cu order differs from plain EN)`, () => {
-    // Tl: electronegativity=2.04, electronegativity_pauling=1.62
-    // Cu: electronegativity=1.9, electronegativity_pauling=1.9
-    // pauling: Tl(1.62) < Cu(1.9) -- plain EN: Cu(1.9) < Tl(2.04)
+    // pauling: Tl(1.62) < Cu(1.9) < Pt(2.28) < Au(2.54); plain EN puts Tl(2.04) after Cu(1.9)
     const labels = elements_to_axis([`Tl`, `Cu`, `Au`, `Pt`], `electronegativity`).map(
       (item) => item.label,
     )
-    // pauling EN: Tl(1.62) < Cu(1.9) < Pt(2.28) < Au(2.54)
     expect(labels).toEqual([`Tl`, `Cu`, `Pt`, `Au`])
   })
 })
 
-describe(`custom comparator`, () => {
-  test(`reverse atomic number`, () => {
-    const axis = elements_to_axis(
-      undefined,
-      (value_a, value_b) => value_b.number - value_a.number,
-    )
-    expect(axis[0].label).toBe(`Og`)
-    expect(axis[117].label).toBe(`H`)
-  })
-
-  test(`sort by name length with subset`, () => {
-    const axis = elements_to_axis(
-      [`B`, `Fe`, `Au`, `C`],
-      (value_a, value_b) =>
-        value_a.name.length - value_b.name.length || value_a.name.localeCompare(value_b.name),
-    )
-    // Gold(4), Iron(4), Boron(5), Carbon(6)
-    expect(axis.map((item) => item.label)).toEqual([`Au`, `Fe`, `B`, `C`])
-  })
+test(`custom comparators sort all elements or a subset`, () => {
+  const reversed = elements_to_axis(
+    undefined,
+    (elem_a, elem_b) => elem_b.number - elem_a.number,
+  )
+  expect([reversed[0].label, reversed[117].label]).toEqual([`Og`, `H`])
+  const by_name_length = elements_to_axis(
+    [`B`, `Fe`, `Au`, `C`],
+    (elem_a, elem_b) =>
+      elem_a.name.length - elem_b.name.length || elem_a.name.localeCompare(elem_b.name),
+  )
+  // Gold(4), Iron(4), Boron(5), Carbon(6)
+  expect(by_name_length.map((item) => item.label)).toEqual([`Au`, `Fe`, `B`, `C`])
 })
 
-describe(`ORDERING_LABELS`, () => {
-  test(`unique labels, keys match ELEMENT_ORDERINGS`, () => {
-    const labels = Object.values(ORDERING_LABELS)
-    expect(new Set(labels).size).toBe(labels.length)
-    expect(new Set(ELEMENT_ORDERINGS)).toEqual(new Set(Object.keys(ORDERING_LABELS)))
-  })
+test(`ORDERING_LABELS has unique labels keyed by ELEMENT_ORDERINGS`, () => {
+  const labels = Object.values(ORDERING_LABELS)
+  expect(new Set(labels).size).toBe(labels.length)
+  expect(new Set(ELEMENT_ORDERINGS)).toEqual(new Set(Object.keys(ORDERING_LABELS)))
 })
 
 test(`matrix_to_rows keys rows by y label and x labels`, () => {
