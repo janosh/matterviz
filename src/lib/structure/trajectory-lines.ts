@@ -25,6 +25,9 @@ import type { Site } from '#lib/structure/index.js'
 // `time` runs a d3 ramp from the oldest sampled frame to the newest so the head of a
 // comet tail is visually distinct from its tail.
 export type TrajectoryLineColorMode = `element` | `time`
+// The d3 interpolator of the time ramp: viridis for trajectories; a host run's short trails
+// over atoms use a ramp without viridis's near-black start, which vanishes on dark viewers.
+export type TrajectoryLineTimeScheme = `interpolateViridis` | `interpolateCool`
 
 // `unwrap` accumulates minimum-image steps so an atom leaving the cell keeps going in a
 // straight line (the default, and the only mode that shows real diffusion paths).
@@ -401,9 +404,10 @@ export function trail_color_texels(
   trail: TrajectoryTrail,
   color_mode: TrajectoryLineColorMode,
   element_colors: Partial<Record<ElementSymbol, string>> = default_element_colors,
+  time_scheme: TrajectoryLineTimeScheme = `interpolateViridis`,
 ): Float32Array {
   if (color_mode === `time`) {
-    const interpolate = get_d3_interpolator(`interpolateViridis`)
+    const interpolate = get_d3_interpolator(time_scheme)
     const texels = texel_buffer(TIME_RAMP_SIZE + 1)
     // step / 256 lands exactly on step `step` of d3's floor(t * 256)
     for (let step = 0; step <= TIME_RAMP_SIZE; step++) {
@@ -440,4 +444,50 @@ export function trajectory_trail_anchors(
     anchors.set(site.xyz, site_idx * 3)
   }
   return anchors
+}
+
+// A trail window's segments as start/end point pairs with their colors, the vertex layout
+// three's fat lines (LineSegments2) take: what the 1-pixel shader computes per vertex (anchor
+// offset by atom slot, color by slot or by the frame's place on the time ramp), done once per
+// window on the CPU. For trails thick enough to see next to atoms, which WebGPU's native lines
+// (always 1 device pixel) are not; sized for host runs' small trails, not whole trajectories.
+export function trail_segments(
+  trail: TrajectoryTrail,
+  shown: TrajectoryTrailFrame,
+  color_texels: Float32Array,
+  time_colors: boolean,
+): { positions: Float32Array; colors: Float32Array } {
+  const ranges: [number, number][] = [
+    [shown.grid_start, shown.grid_count],
+    [trail.ends_start, shown.ends_count],
+  ]
+  const n_vertices = shown.grid_count + shown.ends_count
+  const positions = new Float32Array(n_vertices * 3)
+  const colors = new Float32Array(n_vertices * 3)
+  const atoms_per_row = Math.max(1, trail.atom_idxs.length)
+  const { start_frame, end_frame } = shown
+  let out = 0
+  for (const [first, count] of ranges) {
+    for (let idx = first; idx < first + count; idx++) {
+      const vertex = trail.indices[idx]
+      const slot = vertex % atoms_per_row
+      const row = Math.floor(vertex / atoms_per_row)
+      const frame =
+        row < trail.n_grid
+          ? row * trail.frame_stride
+          : row === trail.n_grid
+            ? start_frame
+            : end_frame
+      const color_idx = time_colors
+        ? Math.floor(((frame - start_frame) * TIME_RAMP_SIZE) / (end_frame - start_frame))
+        : slot
+      for (let axis = 0; axis < 3; axis++) {
+        positions[out * 3 + axis] =
+          trail.positions[vertex * 3 + axis] + trail.offsets[slot * 4 + axis]
+        colors[out * 3 + axis] = color_texels[color_idx * 4 + axis]
+      }
+      out++
+    }
+  }
+  return { positions, colors }
 }

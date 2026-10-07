@@ -18,7 +18,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf build && vp build",
+    "build": "vp build",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run build"
   },
@@ -27,9 +27,9 @@
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@types/node": "^26.6.4",
     "anywidget": "^0.11.0",
-    "matterviz": "file:../..",
+    "matterviz": "link:../..",
     "svelte": "^5.57.1",
-    "svelte-widgets": "github:janosh/svelte-widgets#main",
+    "svelte-widgets": "link:../../node_modules/svelte-widgets",
     "typescript": "^6.0.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
     "vite-plus": "1.0.0"

@@ -11,8 +11,8 @@ import {
   build_adjacency,
   compute_polyhedra,
   cache_prepared_polyhedra,
-  create_polyhedra_edges,
-  update_polyhedra_edges,
+  create_fat_segments,
+  update_fat_segments,
   update_polyhedra_faces,
   convex_hull_3d,
   merge_polyhedra_buffers,
@@ -42,7 +42,7 @@ test.each([`#222222`, `#ff8800`])(
     const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0])
     const rgb = new Color(color).toArray()
     const colors = new Float32Array([...rgb, 1, 0, 0, 1, 0, 0, ...rgb])
-    const edges = create_polyhedra_edges(positions, colors)
+    const edges = create_fat_segments(positions, colors)
     try {
       expect(DEFAULTS.structure.polyhedra_opacity).toBe(0.15)
       expect(edges.material.linewidth).toBe(1)
@@ -72,7 +72,7 @@ test.each([`#222222`, `#ff8800`])(
       for (const count of [3, 2, 0, 3]) {
         const moved = new Float32Array(count * 6).fill(count + 0.5)
         const recolored = new Float32Array(count * 6).fill(0.25)
-        update_polyhedra_edges(edges, moved, recolored)
+        update_fat_segments(edges, moved, recolored)
         // bounds cover the drawn edges only, never stale capacity from the larger frame before
         const { boundingBox: box, boundingSphere: sphere } = edges.geometry
         const bounds = count ? [count + 0.5, count + 0.5, 0] : [Infinity, -Infinity, -1] // empty

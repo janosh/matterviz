@@ -15,6 +15,7 @@ import {
   TrajectoryTrail,
   collected_frame_idx,
   trail_color_texels,
+  trail_segments,
   trajectory_trail_anchors,
 } from '#lib/structure/trajectory-lines.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
@@ -534,4 +535,54 @@ describe(`collected_frame_idx`, () => {
   ])(`stride %i maps source frame %i to collected %i`, (stride, source, expected) => {
     expect(collected_frame_idx({ n_frames: 10, frame_stride: stride }, source)).toBe(expected)
   })
+})
+
+// Emphasized trails (TrajectoryLines' fat lines) draw trail_segments' point pairs: they must be
+// the segments, positions and colors a window's definition (reference_draw) asks for.
+test.each([
+  [`whole run, element colors`, {}],
+  [`time colors`, { color_mode: `time` }],
+  [`off-grid window on a stride`, { frame_stride: 3, end_frame: 7, trail_frames: 5 }],
+  [
+    `time colors, off-grid window on a stride`,
+    { color_mode: `time`, frame_stride: 3, end_frame: 7, trail_frames: 6 },
+  ],
+  [
+    `anchored heads, time colors`,
+    { color_mode: `time`, anchor_positions: Float64Array.from([10, 0, 0, 0, 10, 0]) },
+  ],
+] as const)(`trail_segments draws the window's definition: %s`, (_label, options) => {
+  const stream = two_atom_stream(9)
+  const { frame_stride, color_mode = `element` } = options as LineOptions
+  const trail = new TrajectoryTrail(stream, { frame_stride })
+  const frame = trail.update(options as LineOptions)
+  const color_texels = trail_color_texels(trail, color_mode)
+  const { positions, colors } = trail_segments(
+    trail,
+    frame,
+    color_texels,
+    color_mode === `time`,
+  )
+  const pairs = Array.from({ length: positions.length / 6 }, (_, idx) => ({
+    from: Array.from(positions.subarray(idx * 6, idx * 6 + 3)),
+    to: Array.from(positions.subarray(idx * 6 + 3, idx * 6 + 6)),
+    from_rgb: Array.from(colors.subarray(idx * 6, idx * 6 + 3)),
+    to_rgb: Array.from(colors.subarray(idx * 6 + 3, idx * 6 + 6)),
+  }))
+  const expected = reference_draw(stream, options as LineOptions).segments.map(
+    ({ from, to, from_rgb, to_rgb }) => ({ from, to, from_rgb, to_rgb }),
+  )
+  expect(pairs).toHaveLength(frame.stats.segment_count)
+  const key = (pair: (typeof pairs)[number]) => JSON.stringify([pair.from, pair.to])
+  expect(pairs.toSorted((left, right) => key(left).localeCompare(key(right)))).toEqual(
+    expected.toSorted((left, right) => key(left).localeCompare(key(right))),
+  )
+})
+
+test(`a time ramp can use the cool scheme instead of viridis`, () => {
+  const trail = new TrajectoryTrail(two_atom_stream(3))
+  const texels = trail_color_texels(trail, `time`, undefined, `interpolateCool`)
+  const first = parse_linear_rgb(get_d3_interpolator(`interpolateCool`)(0)).slice(0, 3)
+  const expected = Array.from(Float32Array.from(first))
+  expect(Array.from(texels.subarray(0, 3))).toEqual(expected)
 })

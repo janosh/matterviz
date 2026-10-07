@@ -21,8 +21,8 @@
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
-    "build": "rm -rf lib data && vite build && jupyter labextension build . && cp install.json data/share/jupyter/labextensions/matterviz-jupyterlab/",
-    "build:viewer": "rm -rf lib && vite build",
+    "build": "vite build && jupyter labextension build . && node -e \"require('fs').copyFileSync('install.json', 'data/share/jupyter/labextensions/matterviz-jupyterlab/install.json')\"",
+    "build:viewer": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

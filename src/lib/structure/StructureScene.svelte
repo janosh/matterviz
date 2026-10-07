@@ -112,8 +112,8 @@
   import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
   import {
     compute_polyhedra,
-    create_polyhedra_edges,
-    update_polyhedra_edges,
+    create_fat_segments,
+    update_fat_segments,
     update_polyhedra_faces,
     merge_polyhedra_buffers,
   } from './polyhedra'
@@ -287,6 +287,7 @@
       .trajectory_line_color_mode as TrajectoryLineColorMode,
     trajectory_line_wrap_mode = DEFAULTS.structure
       .trajectory_line_wrap_mode as TrajectoryLineWrapMode,
+    trajectory_lines_emphasis = false,
     trajectory_lines_result = $bindable(null),
   }: SceneControlProps & {
     structure?: AnyStructure
@@ -441,6 +442,7 @@
     trajectory_line_elements?: readonly ElementSymbol[] | null // null = all species
     trajectory_line_color_mode?: TrajectoryLineColorMode
     trajectory_line_wrap_mode?: TrajectoryLineWrapMode
+    trajectory_lines_emphasis?: boolean // a host run's short trails (see TrajectoryLines)
     trajectory_lines_result?: TrajectoryLinesStats | null // (output) vertex/segment counts
   } = $props()
 
@@ -1617,13 +1619,13 @@
   })
   $effect(() => () => polyhedra_faces?.dispose())
 
-  let polyhedra_edges: ReturnType<typeof create_polyhedra_edges> | null = $state.raw(null)
+  let polyhedra_edges: ReturnType<typeof create_fat_segments> | null = $state.raw(null)
   $effect(() => {
     if (!polyhedra_show_edges || !polyhedra_buffers?.edge_count) return
     const current = untrack(() => polyhedra_edges)
     const { edge_positions, edge_colors } = polyhedra_buffers
-    if (current) update_polyhedra_edges(current, edge_positions, edge_colors)
-    else polyhedra_edges = create_polyhedra_edges(edge_positions, edge_colors)
+    if (current) update_fat_segments(current, edge_positions, edge_colors)
+    else polyhedra_edges = create_fat_segments(edge_positions, edge_colors)
     threlte.invalidate()
   })
   $effect(() => () => {
@@ -2035,6 +2037,7 @@
           element_colors={palette}
           wrap_mode={trajectory_line_wrap_mode}
           anchor_positions={trajectory_line_anchors}
+          emphasis={trajectory_lines_emphasis}
           bind:build_result={trajectory_lines_result}
         />
       {/if}

@@ -1,5 +1,4 @@
-import { det_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
+import type { Vec3 } from '#lib/math.js'
 import { attribute, clamp, float, floor, mix, texture3D, uniform, vec4 } from 'three/tsl'
 import type { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
@@ -22,42 +21,6 @@ export interface AtomColorField {
   dims: Vec3
   cartesian_to_fractional: Matrix4
   pbc: readonly [boolean, boolean, boolean]
-}
-
-// Cell-centered, C-ordered scalar samples in a periodic cell. A fixed reference keeps
-// changes visible between updates; negative numerical ringing has zero display opacity.
-export function density_color_field(
-  values: readonly number[],
-  dims: Vec3,
-  lattice: Matrix3x3,
-  reference_density: number,
-  color: string,
-): AtomColorField {
-  if (
-    dims.length !== 3 ||
-    !dims.every((size) => Number.isInteger(size) && size > 0) ||
-    values.length !== dims[0] * dims[1] * dims[2] ||
-    !values.every(Number.isFinite) ||
-    !Number.isFinite(reference_density) ||
-    reference_density <= 0 ||
-    !lattice.flat().every(Number.isFinite) ||
-    Math.abs(det_3x3(lattice)) < 1e-12
-  )
-    throw new Error(`Invalid density cloud (${dims.join(`×`)}, ${values.length} values)`)
-  const rgb = css_to_linear_rgb(color)
-  const colors = new Float32Array(values.length * 4)
-  for (const [idx, value] of values.entries()) {
-    colors.set(rgb, idx * 4)
-    colors[idx * 4 + 3] = Math.min(8, Math.max(0, value) / reference_density)
-  }
-  return {
-    colors,
-    dims,
-    pbc: [true, true, true],
-    cartesian_to_fractional: new Matrix4()
-      .fromArray([...lattice[0], 0, ...lattice[1], 0, ...lattice[2], 0, 0, 0, 0, 1])
-      .invert(),
-  }
 }
 
 export class ColorFieldTexture extends Data3DTexture {

@@ -9,9 +9,11 @@ so playback moves a draw range and re-uploads only the off-grid window ends and 
 offset per atom; the shader applies those offsets and the time ramp. One LineSegments, one
 draw call (two with off-grid ends) regardless of atom or frame count.
 
-WebGPU rasterizes lines at 1 device pixel. The fat-line alternative expands every segment
-into an instanced quad and costs three times the attributes, so this layer keeps a fixed
-subtle opacity instead of exposing width and opacity controls. -->
+WebGPU rasterizes lines at 1 device pixel, which whole trajectories draw at a fixed subtle
+opacity. `emphasis` (a host run's short trails beside atoms) instead draws 4 px fat lines
+(polyhedra.ts's fat segments) over the atoms, rebuilt on the CPU per window, which costs three
+times the attributes since every segment becomes an instanced quad.
+-->
 <script lang="ts">
   import type { ElementSymbol } from '#lib/element/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -25,9 +27,12 @@ subtle opacity instead of exposing width and opacity controls. -->
     TRAIL_TEXEL_ROW,
     TrajectoryTrail,
     trail_color_texels,
+    trail_segments,
   } from '#lib/structure/trajectory-lines.js'
+  import { create_fat_segments, update_fat_segments } from './polyhedra'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import { T, useThrelte } from '@threlte/core'
+  import { untrack } from 'svelte'
   import {
     positionGeometry,
     select,
@@ -61,6 +66,7 @@ subtle opacity instead of exposing width and opacity controls. -->
     element_colors = undefined,
     wrap_mode = DEFAULTS.structure.trajectory_line_wrap_mode as TrajectoryLineWrapMode,
     anchor_positions = null,
+    emphasis = false,
     build_result = $bindable(null),
   }: {
     // Whole-trajectory positions from TrajectoryRun.collect_positions.
@@ -83,6 +89,10 @@ subtle opacity instead of exposing width and opacity controls. -->
     // The scene wraps atoms into the cell while trails are unwrapped, so without these a
     // head can sit a whole cell from its sphere.
     anchor_positions?: Float64Array | null
+    // A host run's paths, mostly shorter than an atom's radius (a relaxation's): 4 px fat
+    // lines drawn over the atoms, which would hide them, in time colors on a ramp without
+    // viridis's near-black start, since element colors vanish on their own spheres.
+    emphasis?: boolean
     // (output) vertex/segment counts and the longest drawn segment, for readouts and tests
     build_result?: TrajectoryLinesStats | null
   } = $props()
@@ -142,7 +152,7 @@ subtle opacity instead of exposing width and opacity controls. -->
 
   // GPU mirrors of one trail's arrays; later windows update them in place
   let layer = $derived.by(() => {
-    if (!trail) return null
+    if (!trail || emphasis) return null
     const geometry = new BufferGeometry()
     const positions = new BufferAttribute(trail.positions, 3)
     const indices = new BufferAttribute(trail.indices, 1)
@@ -169,9 +179,16 @@ subtle opacity instead of exposing width and opacity controls. -->
     }
   })
 
+  const color_texels = $derived(
+    trail
+      ? emphasis
+        ? trail_color_texels(trail, `time`, element_colors, `interpolateCool`)
+        : trail_color_texels(trail, color_mode, element_colors)
+      : null,
+  )
   $effect(() => {
-    if (!trail) return
-    const colors = data_texture(trail_color_texels(trail, color_mode, element_colors))
+    if (!color_texels || !layer) return
+    const colors = data_texture(color_texels)
     color_texel.value = colors
     time_colors.value = color_mode === `time` ? 1 : 0
     invalidate()
@@ -189,19 +206,46 @@ subtle opacity instead of exposing width and opacity controls. -->
     attribute.needsUpdate = true
   }
 
+  // Emphasized trails' fat lines, kept across windows and streams and rewritten in place
+  let fat_line = $state.raw<ReturnType<typeof create_fat_segments> | null>(null)
+  const dispose_fat_line = (): void => {
+    fat_line?.geometry.dispose()
+    fat_line?.material.dispose()
+    fat_line = null
+  }
+  const draw_fat_line = (positions: Float32Array, colors: Float32Array): void => {
+    const current = untrack(() => fat_line)
+    if (current) return update_fat_segments(current, positions, colors)
+    const line = create_fat_segments(positions, colors)
+    // Opaque and over the atoms: depth-testing would hide paths inside their spheres
+    Object.assign(line.material, { linewidth: 4, depthTest: false, depthWrite: false })
+    line.renderOrder = 1
+    fat_line = line
+  }
+  $effect(() => {
+    if (!emphasis || !trail) untrack(dispose_fat_line)
+  })
+
   // Per playback frame: O(1) for the grid part, O(atoms) for off-grid ends and anchors
   $effect(() => {
-    if (!trail || !layer) {
+    if (!trail || !(layer || emphasis)) {
       build_result = null
       return
     }
-    const { line, positions, indices, offsets } = layer
     const shown = trail.update({
       end_frame,
       // trail_frames is a slider in the UI, where 0 is the natural "no limit" end stop
       trail_frames: trail_frames || null,
       anchor_positions,
     })
+    build_result = shown.stats
+    invalidate()
+    if (!layer) {
+      if (!color_texels) return
+      const segments = trail_segments(trail, shown, color_texels, true)
+      return draw_fat_line(segments.positions, segments.colors)
+    }
+    const { line, positions, indices, offsets } = layer
     const { geometry } = line
     // One draw per non-empty index range: the window's grid segments and its off-grid ends
     geometry.clearGroups()
@@ -220,16 +264,17 @@ subtle opacity instead of exposing width and opacity controls. -->
     )
     window_start.value = shown.start_frame
     window_end.value = shown.end_frame
-    build_result = shown.stats
-    invalidate()
   })
 
   $effect(() => () => {
     build_result = null
     material.dispose()
+    untrack(dispose_fat_line)
   })
 </script>
 
-{#if layer}
+{#if fat_line}
+  <T is={fat_line} dispose={false} />
+{:else if layer}
   <T is={layer.line} dispose={false} />
 {/if}

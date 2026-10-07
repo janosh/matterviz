@@ -38,6 +38,10 @@ export interface VolumetricData extends ScalarGrid3D<Float64Array> {
   source?: string
   // Original filename including compression suffix, for picker/URL identity.
   source_filename?: string
+  // Whether negative values are physical (magnetization, orbital, potential) and get a default
+  // negative lobe; false for non-negative fields with numerical artifacts (electron density).
+  // Unset infers it from the data.
+  signed?: boolean
 }
 
 // The geometric core of a VolumetricData: enough to sample, resample, and contour it.
@@ -95,6 +99,10 @@ export function volume_from_json(raw: unknown): VolumetricData {
   }
   const optional = (key: `label` | `source` | `source_filename`) =>
     typeof data[key] === `string` ? { [key]: data[key] } : {}
+  if (data.signed !== undefined && typeof data.signed !== `boolean`)
+    throw new TypeError(
+      `Volumetric data signed flag must be a boolean, got ${JSON.stringify(data.signed)}`,
+    )
   return make_volume(grid.values, grid.dims, {
     id: typeof data.id === `string` ? data.id : ``,
     lattice: data.lattice,
@@ -103,6 +111,7 @@ export function volume_from_json(raw: unknown): VolumetricData {
     ...optional(`label`),
     ...optional(`source`),
     ...optional(`source_filename`),
+    ...(data.signed === undefined ? {} : { signed: data.signed }),
   })
 }
 
@@ -229,7 +238,8 @@ export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number]
 
 // Build a default isosurface layer for a volume: the `shell_idx`th SHELL_STEPS entry (20% of
 // abs_max at opacity 0.6 for the first surface), next unused palette color (the negative lobe
-// takes the swatch after it) and the negative lobe enabled when the field is signed.
+// takes the swatch after it) and the negative lobe enabled when the field is signed (the
+// volume's `signed` hint, else whether it has non-negligible negative values).
 // `shell_idx` is how many layers the volume already has, so repeated "+" clicks add
 // distinguishable shells instead of coincident copies.
 export const auto_volume_layer = (
@@ -245,7 +255,7 @@ export const auto_volume_layer = (
     color: LAYER_COLORS[color_offset % LAYER_COLORS.length],
     opacity,
     visible: true,
-    show_negative: min < -abs_max * 0.01,
+    show_negative: volume.signed ?? min < -abs_max * 0.01,
     negative_color: LAYER_COLORS[(color_offset + 1) % LAYER_COLORS.length],
     volume_id: volume.id,
   }

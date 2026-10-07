@@ -6,7 +6,8 @@ import { make_position_stream } from '../test-fixtures'
 import { flushSync } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { BufferAttribute, LineSegments } from 'three/webgpu'
-import { expect, test } from 'vitest'
+import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
+import { expect, test, vi } from 'vitest'
 
 // Three atoms on straight lines through a 10 Å cell, never wrapping
 const stream = make_position_stream(
@@ -126,4 +127,66 @@ test(`playback moves the window in place, re-uploading only the window ends and 
   await unmount_scene()
   expect(bound.stats).toBeNull()
   expect(disposed).toEqual([geometry, rebuilt.geometry])
+})
+
+// Emphasized trails draw as fat lines instead of native ones: one opaque LineSegments2 over the
+// atoms holding the window's segments (an instance per segment). It is rewritten in place for
+// a new stream and disposed when emphasis turns off or the layer unmounts.
+test(`emphasis draws the window's segments as fat lines over the atoms`, async () => {
+  const props = $state({ emphasis: true, position_stream: stream })
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    TrajectoryLines(anchor, {
+      get position_stream() {
+        return props.position_stream
+      },
+      get emphasis() {
+        return props.emphasis
+      },
+      end_frame: 10,
+    }),
+  )
+  flushSync()
+  const drawn = () => {
+    const lines: { fat: LineSegments2[]; native: LineSegments[] } = { fat: [], native: [] }
+    scene.traverse((object) => {
+      if (object instanceof LineSegments2) lines.fat.push(object)
+      else if (object instanceof LineSegments) lines.native.push(object)
+    })
+    return lines
+  }
+  const [line] = drawn().fat
+  expect(drawn()).toEqual({ fat: [line], native: [] })
+  // Three atoms joined over frames 0..10: 30 segments.
+  expect(line.geometry.instanceCount).toBe(30)
+  expect(line.renderOrder).toBe(1)
+  expect(line.material).toMatchObject({ linewidth: 4, depthTest: false, transparent: false })
+  // Another stream (two atoms over frames 0..10) reuses the line.
+  props.position_stream = make_position_stream(
+    Array.from({ length: 11 }, (_, frame_idx) => [
+      [0.1 * frame_idx, 1, 1],
+      [2, 0.2 * frame_idx, 2],
+    ]),
+    [`Li`, `O`],
+  )
+  flushSync()
+  expect(drawn().fat).toEqual([line])
+  expect(line.geometry.instanceCount).toBe(20)
+  const disposed: unknown[] = []
+  const track = (target: { dispose: () => void }) =>
+    vi.spyOn(target, `dispose`).mockImplementation(() => void disposed.push(target))
+  track(line.geometry)
+  track(line.material)
+  props.emphasis = false
+  flushSync()
+  expect(drawn().fat).toEqual([])
+  expect(drawn().native).toHaveLength(1)
+  expect(disposed).toEqual([line.geometry, line.material])
+  props.emphasis = true
+  flushSync()
+  const [again] = drawn().fat
+  expect(again).not.toBe(line)
+  track(again.geometry)
+  track(again.material)
+  await unmount_scene()
+  expect(disposed.slice(2)).toEqual([again.geometry, again.material])
 })

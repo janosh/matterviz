@@ -1,6 +1,6 @@
 import Structure from '#lib/structure/Structure.svelte'
 import type { AnyStructure, MeasureMode } from '#lib'
-import { create_frac_to_cart, type Vec3 } from '#lib/math.js'
+import { create_frac_to_cart, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type {
   IsosurfaceLayer,
   IsosurfaceSettings,
@@ -11,7 +11,9 @@ import { type ColorSchemeName, ELEMENT_COLOR_SCHEMES } from '#lib/colors/index.j
 import { DEFAULTS } from '#lib/settings.js'
 import { colors } from '#lib/state.svelte.js'
 import {
+  clear_structure_view_state,
   create_structure_view_state,
+  load_structure_view_state,
   save_structure_view_state,
 } from '#lib/settings/viewer-state.js'
 import * as symmetry from '#lib/symmetry/index.js'
@@ -26,12 +28,13 @@ import type { Pbc } from '#lib/structure/pbc.js'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type {
+  StructureToolPrediction,
   StructureToolProps,
   StructureToolRun,
   StructureToolViewProps,
 } from '#lib/structure/host-tool.svelte.js'
 import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
-import { prediction_from_json } from '#lib/structure/prediction.js'
+import { prediction_from_json, prediction_to_json } from '#lib/structure/prediction.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import StructureOwnerHarness from './StructureOwnerHarness.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
@@ -479,7 +482,10 @@ const mount_host_structure = async (
   props: ComponentProps<typeof Structure>,
   mount_view = mount_structure,
 ): Promise<
-  StructureToolRun & Pick<StructureToolProps, `start_run` | `set_overlay_visible`>
+  StructureToolRun &
+    Pick<StructureToolProps, `start_run` | `set_overlay_visible`> & {
+      host_props: StructureToolProps
+    }
 > => {
   let tool_props: StructureToolProps | undefined
   structure_host_tool.component = (_anchor, host_props) => {
@@ -498,6 +504,7 @@ const mount_host_structure = async (
     }),
     start_run: tool_props.start_run,
     set_overlay_visible: tool_props.set_overlay_visible,
+    host_props: tool_props,
   }
 }
 
@@ -532,51 +539,548 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   expect(tool_props.structure).toBe(original_input)
 })
 
-test(`host clouds update the existing scene and clear without exporting a prediction`, async () => {
+// A host-built field with a grid of `value`, like a live SCF density frame.
+const live_volume = (identifier: string, value: number, label = identifier) =>
+  make_volume(
+    make_grid(2, 2, 2, (x_idx) => value * (1 + x_idx)),
+    { id: identifier, label },
+  )
+const scene_layer_ids = () =>
+  scene_stub.props?.isosurface_settings?.layers.map(
+    (layer: IsosurfaceLayer) => layer.volume_id,
+  )
+const volume_labels = (volumes: VolumetricData[]) => volumes.map(({ label }) => label)
+const two_site_crystal = () =>
+  make_crystal(4, [
+    { element: `H`, abc: [0, 0, 0] },
+    { element: `He`, abc: [0.5, 0.5, 0.5] },
+  ])
+type LiveVolumeState = {
+  structure: AnyStructure
+  volumetric_data: VolumetricData[]
+  isosurface_settings: IsosurfaceSettings
+  active_volume_id?: string
+  active_pane?: StructurePane | null
+}
+
+test(`transient overlays render one live surface, carry its edits into the same-ID result and never export`, async () => {
   mock_gpu()
-  const state = $state({ structure, supercell_scaling: `1x1x1` })
+  const state = $state<LiveVolumeState>({
+    structure,
+    volumetric_data: [],
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    active_volume_id: undefined,
+    active_pane: `export`,
+  })
   const tool = await mount_host_structure(bind_props({}, state))
-  const field: AtomColorField = {
-    colors: new Float32Array([0, 0.5, 1, 1]),
-    dims: [1, 1, 1],
-    cartesian_to_fractional: new Matrix4(),
-    pbc: [true, true, true],
+  const layers = () => state.isosurface_settings.layers
+  const export_prediction = `button[title="Download Export prediction"]`
+  flushSync(() =>
+    tool.on_overlay({
+      transient: true,
+      volumes: [live_volume(`density`, 1), live_volume(`spin`, 0.5)],
+    }),
+  )
+  await tick()
+  expect(volume_labels(state.volumetric_data)).toEqual([`density`, `spin`])
+  // One surface: the spin field is listed, but only the first field is drawn by default.
+  expect(scene_layer_ids()).toEqual([`density`])
+  expect(state.active_volume_id).toBe(`density`)
+  // A live preview is not a prediction: hosts, the export pane and its actions never see it.
+  expect(tool.host_props.prediction).toBeNull()
+  expect(document.querySelector(`button[title^="Download"]`)).not.toBeNull()
+  expect(document.querySelector(export_prediction)).toBeNull()
+  expect(document.body.textContent).not.toContain(`Reset prediction surfaces`)
+  flushSync(() => (layers()[0].isovalue = 0.123))
+  flushSync(() =>
+    tool.on_overlay({
+      transient: true,
+      volumes: [live_volume(`density`, 2, `Live 2`), live_volume(`spin`, 0.7)],
+    }),
+  )
+  expect(volume_labels(state.volumetric_data)).toEqual([`Live 2`, `spin`])
+  expect(layers()[0]).toMatchObject({ volume_id: `density`, isovalue: 0.123 })
+  for (const visible of [false, true]) {
+    flushSync(() => tool.set_overlay_visible(visible))
+    await tick()
+    expect(scene_layer_ids()).toEqual(visible ? [`density`] : [])
   }
-  tool.on_view({ cloud: field })
+  flushSync(() =>
+    tool.on_overlay({
+      result: { schema: `test-v1`, energy: -1 },
+      volumes: [live_volume(`density`, 3, `Converged`), live_volume(`potential`, 1)],
+    }),
+  )
+  expect(volume_labels(state.volumetric_data)).toEqual([`Converged`, `potential`])
+  expect(layers()).toEqual([
+    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
+  ])
   await tick()
-  expect(scene_stub.props?.volume_color_field).toBe(field)
-  expect(document.querySelector(`.host-view`)).toBeNull()
-  expect(doc_query(`.structure > div[style*="display"]`).style.display).toBe(`contents`)
-  const camera = scene_stub.props?.camera
-  state.supercell_scaling = `2x1x1`
-  await tick()
-  expect(scene_stub.props?.supercell_tiling).toEqual([2, 1, 1])
-  expect(scene_stub.props?.volume_color_field).toBe(field)
-  expect(tool.signal.aborted).toBe(false)
-  const updated = { ...field, colors: new Float32Array([0, 0.5, 1, 2]) }
-  tool.on_view({ cloud: updated })
-  await tick()
-  expect(scene_stub.props?.volume_color_field).toBe(updated)
-  expect(scene_stub.props?.camera).toBe(camera)
-  tool.set_overlay_visible(false)
-  await tick()
-  expect(scene_stub.props?.volume_color_field).toBeUndefined()
-  tool.set_overlay_visible(true)
-  await tick()
-  expect(scene_stub.props?.volume_color_field).toBe(updated)
-  const content = createRawSnippet(() => ({ render: () => `<div>Live view</div>` }))
-  tool.on_view({ content })
-  await tick()
-  expect(document.querySelector(`.host-view`)?.textContent).toBe(`Live view`)
-  tool.on_view({ cloud: updated })
-  await tick()
-  expect(document.querySelector(`.host-view`)).toBeNull()
-  expect(scene_stub.props?.volume_color_field).toBe(updated)
-  tool.cancel()
-  tool.on_view({ cloud: field })
-  await tick()
-  expect(scene_stub.props?.volume_color_field).toBeUndefined()
+  expect(document.querySelector(export_prediction)).not.toBeNull()
+  const { prediction } = tool.host_props
+  if (!prediction) throw new Error(`Missing prediction`)
+  const exported = JSON.parse(prediction_to_json(prediction))
+  expect(exported.volumes.map(({ id, values }: VolumetricData) => [id, values[0]])).toEqual([
+    [`density`, 3],
+    [`potential`, 1],
+  ])
+  expect(() => prediction_to_json({ ...prediction, transient: true })).toThrow(
+    `prediction.transient: live previews are not predictions`,
+  )
+  // Previewing an earlier frame over the result swaps only the shown field values on the
+  // same layer; the host keeps the result as its prediction and export keeps converged data.
+  const site_properties = structure.sites.map((_site, idx) => ({ charge: idx }))
+  flushSync(() =>
+    tool.on_overlay({
+      result: { schema: `test-v1`, energy: -1 },
+      volumes: [live_volume(`density`, 3, `Converged`)],
+      site_properties,
+    }),
+  )
+  const result = tool.host_props.prediction
+  for (const value of [1.5, 2.5]) {
+    flushSync(() =>
+      tool.on_overlay({ transient: true, volumes: [live_volume(`density`, value, `Step`)] }),
+    )
+    expect(state.volumetric_data.map(({ label, values }) => [label, values[0]])).toEqual([
+      [`Step`, value],
+    ])
+    expect(layers()).toEqual([
+      expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
+    ])
+    expect(tool.host_props.prediction).toBe(result)
+    // The result's site properties stay on the atoms while its fields are previewed.
+    const scene_sites: AnyStructure[`sites`] | undefined =
+      scene_stub.props?.structure?.sites.slice(0, site_properties.length)
+    expect(scene_sites?.map(({ properties }) => properties?.charge)).toEqual(
+      site_properties.map(({ charge }) => charge),
+    )
+  }
+  // A preview without fields (e.g. an earlier relaxation step) hides the density; its surface
+  // and settings return with the field instead of a fresh default surface.
+  flushSync(() => tool.on_overlay({ transient: true, volumes: [] }))
+  expect(state.volumetric_data).toEqual([])
+  expect(layers()).toEqual([])
+  flushSync(() =>
+    tool.on_overlay({ transient: true, volumes: [live_volume(`density`, 2.5, `Step`)] }),
+  )
+  expect(layers()).toEqual([
+    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
+  ])
+  expect(document.querySelector(export_prediction)).not.toBeNull()
+  expect(JSON.parse(prediction_to_json(result ?? prediction)).volumes[0].values[0]).toBe(3)
+  // Publishing the result again ends the preview.
+  flushSync(() =>
+    tool.on_overlay({
+      result: { schema: `test-v1`, energy: -1 },
+      volumes: [live_volume(`density`, 3, `Converged`)],
+      site_properties,
+    }),
+  )
+  expect(volume_labels(state.volumetric_data)).toEqual([`Converged`])
+  expect(layers()).toHaveLength(1)
+  // A new run's live frames never borrow the previous run's result.
+  const next = tool.start_run({ model: `test`, version: `2`, units: {}, settings: {} })
+  flushSync(() => next.on_overlay({ transient: true, volumes: [live_volume(`density`, 4)] }))
+  expect(tool.host_props.prediction).toBeNull()
 })
+
+test(`host geometry moves drawn atoms and cell, keeps the input, selection and volume frames, and exports only final geometry`, async () => {
+  mock_gpu()
+  const input = two_site_crystal()
+  const state = $state<
+    LiveVolumeState & { selected_sites: number[]; prediction?: StructureToolPrediction }
+  >({
+    structure: input,
+    volumetric_data: [],
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    selected_sites: [],
+    prediction: undefined,
+  })
+  const tool = await mount_host_structure(bind_props({}, state))
+  flushSync(() => {
+    state.selected_sites = [1]
+  })
+  const [tool_input, bound_input] = [tool.host_props.structure, state.structure]
+  // Drawn sites (images excluded) and cell box.
+  const drawn = () => ({
+    xyz: scene_stub.props?.structure?.sites
+      .slice(0, 2)
+      .map((site: AnyStructure[`sites`][number]) => site.xyz),
+    cell:
+      scene_stub.props?.base_structure && `lattice` in scene_stub.props.base_structure
+        ? scene_stub.props.base_structure.lattice.matrix
+        : undefined,
+  })
+  const step = (shift: number) => ({
+    positions: [
+      [shift, 0, 0],
+      [2 + shift, 2, 2],
+    ] as Vec3[],
+  })
+  // oxfmt-ignore
+  const relaxed_cell: Matrix3x3 = [[4.4, 0, 0], [0, 4.4, 0], [0, 0, 4.4]]
+  // A density on the relaxed cell keeps its own frame rather than the input's.
+  const relaxed_density = make_volume(
+    make_grid(2, 2, 2, (x_idx) => 1 + x_idx),
+    {
+      id: `density`,
+      lattice: relaxed_cell,
+    },
+  )
+  const input_drawn = { xyz: input.sites.map(({ xyz }) => xyz), cell: input.lattice.matrix }
+  const final_geometry = { ...step(0.3), lattice: relaxed_cell }
+  const publish_final = async () => {
+    flushSync(() =>
+      tool.on_overlay({
+        result: { schema: `test-v1`, energy: -1 },
+        geometry: final_geometry,
+        volumes: [relaxed_density],
+      }),
+    )
+    await tick()
+    expect(drawn()).toEqual({ xyz: final_geometry.positions, cell: relaxed_cell })
+  }
+  flushSync(() => tool.on_overlay({ transient: true, geometry: step(0.1) }))
+  await tick()
+  expect(drawn()).toEqual({ xyz: step(0.1).positions, cell: input.lattice.matrix })
+  expect(tool.host_props.prediction).toBeNull()
+  flushSync(() =>
+    tool.on_overlay({
+      transient: true,
+      geometry: { ...step(0.2), lattice: relaxed_cell },
+      volumes: [relaxed_density],
+    }),
+  )
+  await tick()
+  expect(drawn()).toEqual({ xyz: step(0.2).positions, cell: relaxed_cell })
+  expect(scene_stub.props?.volumetric_data?.[0].lattice).toEqual(relaxed_cell)
+  // The run, its input and site-indexed state survive every frame.
+  expect(tool.host_props.structure).toBe(tool_input)
+  expect(state.structure).toBe(bound_input)
+  expect(state.selected_sites).toEqual([1])
+  expect(tool.signal.aborted).toBe(false)
+  flushSync(() => tool.set_overlay_visible(false))
+  await tick()
+  expect(drawn()).toEqual(input_drawn)
+  flushSync(() => tool.set_overlay_visible(true))
+  await publish_final()
+  const result = tool.host_props.prediction
+  if (!result) throw new Error(`Missing prediction`)
+  // Previewing an earlier relaxation step over the result moves only the drawn atoms; the
+  // result's density and the exported prediction stay final.
+  flushSync(() => tool.on_overlay({ transient: true, geometry: step(0.15) }))
+  await tick()
+  expect(drawn()).toEqual({ xyz: step(0.15).positions, cell: input.lattice.matrix })
+  expect(state.volumetric_data.map(({ lattice }) => lattice)).toEqual([relaxed_cell])
+  expect(tool.host_props.prediction).toBe(result)
+  expect(JSON.parse(prediction_to_json(result)).geometry).toEqual(final_geometry)
+  await publish_final()
+  expect(state.selected_sites).toEqual([1])
+  // A reopened prediction shows its relaxed geometry over the original input.
+  const reopened = prediction_from_json(prediction_to_json(result))
+  flushSync(() => tool.on_overlay(null))
+  await tick()
+  expect(drawn()).toEqual(input_drawn)
+  flushSync(() => (state.prediction = reopened))
+  await tick()
+  expect(drawn()).toEqual({ xyz: final_geometry.positions, cell: relaxed_cell })
+  expect(state.structure).toEqual(input)
+})
+
+test(`replace_input adopts a result's geometry as the input, keeps its prediction and surfaces, undo restores the input and redo the result`, async () => {
+  mock_gpu()
+  const input = two_site_crystal()
+  const state = $state<
+    LiveVolumeState & { measure_mode: MeasureMode; selected_sites: number[] }
+  >({
+    structure: input,
+    volumetric_data: [],
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    measure_mode: `distance`,
+    selected_sites: [],
+  })
+  const tool = await mount_host_structure(bind_props({}, state))
+  // oxfmt-ignore
+  const relaxed_cell: Matrix3x3 = [[4.2, 0, 0], [0, 4.3, 0], [0.1, 0, 4.4]]
+  const geometry = {
+    positions: [
+      [0.1, 0, 0],
+      [2.2, 2.1, 2.3],
+    ] as Vec3[],
+    lattice: relaxed_cell,
+  }
+  const site_properties = [{ charge: 0.4 }, { charge: -0.4 }]
+  const publish = (energy: number) =>
+    flushSync(() =>
+      tool.on_overlay({
+        result: { schema: `test-v1`, energy },
+        geometry,
+        volumes: [live_volume(`density`, 1)],
+        site_properties,
+      }),
+    )
+  publish(-1)
+  flushSync(() => (state.isosurface_settings.layers[0].isovalue = 0.123))
+  // Invalid geometry throws before anything is written.
+  const bound_input = state.structure
+  expect(() => tool.replace_input({ positions: [[0, 0, 0]] })).toThrow(TypeError)
+  expect(state.structure).toBe(bound_input)
+  flushSync(() => tool.replace_input(geometry))
+  await tick()
+  // The bound input moved: sites keep order, species and labels, with abc in the new cell.
+  const replaced = state.structure
+  if (!(`lattice` in replaced)) throw new Error(`Expected a crystal`)
+  expect(replaced.lattice.matrix).toEqual(relaxed_cell)
+  expect(replaced.sites.map(({ xyz }) => xyz)).toEqual(geometry.positions)
+  expect(replaced.sites.map(({ label }) => label)).toEqual(
+    input.sites.map(({ label }) => label),
+  )
+  const to_cart = create_frac_to_cart(relaxed_cell)
+  for (const site of replaced.sites)
+    to_cart(site.abc).forEach((coord, axis) => expect(coord).toBeCloseTo(site.xyz[axis], 12))
+  expect(doc_query(`.edit-toast .toast-message`).textContent).toContain(`undo`)
+  // The run stays current and its prediction now describes the new input, without geometry.
+  expect(tool.signal.aborted).toBe(false)
+  const { prediction } = tool.host_props
+  expect(prediction?.input).toEqual($state.snapshot(tool.host_props.structure))
+  expect(prediction?.input.sites.map(({ xyz }) => xyz)).toEqual(geometry.positions)
+  expect(prediction?.geometry).toBeUndefined()
+  expect(prediction?.site_properties).toEqual(site_properties)
+  expect(state.volumetric_data.map(({ id }) => id)).toEqual([`density`])
+  expect(state.isosurface_settings.layers).toEqual([
+    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
+  ])
+  const drawn_sites = scene_stub.props?.structure?.sites.slice(0, 2)
+  expect(drawn_sites?.map(({ xyz }: AnyStructure[`sites`][number]) => xyz)).toEqual(
+    geometry.positions,
+  )
+  // Later publications of the same run still reach the host, carrying the new input.
+  publish(-2)
+  await tick()
+  expect(tool.host_props.prediction?.result?.energy).toBe(-2)
+  expect(tool.host_props.prediction?.input).toEqual(prediction?.input)
+  const rebased = tool.host_props.prediction
+  // Undo in edit-atoms mode restores the original input, which clears the run's output.
+  flushSync(() => (state.measure_mode = `edit-atoms`))
+  await tick()
+  const press = async (key: string, init: KeyboardEventInit = { ctrlKey: true }) => {
+    doc_query(`.structure`).dispatchEvent(keydown(key, { ...init, cancelable: true }))
+    await tick()
+  }
+  await press(`z`)
+  expect(state.structure).toEqual(input)
+  expect(tool.host_props.prediction).toBeNull()
+  expect(state.volumetric_data).toEqual([])
+  expect(tool.signal.aborted).toBe(true)
+  // The cancelled run can no longer replace the input.
+  const restored = state.structure
+  tool.replace_input(geometry)
+  expect(state.structure).toBe(restored)
+  // Redo brings back the replaced input with the result on it, without a running computation,
+  // and undo clears it again; the redo stays available.
+  for (let round = 0; round < 2; round++) {
+    await press(`y`)
+    expect(state.structure).toEqual($state.snapshot(replaced))
+    const redone = tool.host_props.prediction
+    expect(redone?.input).toEqual($state.snapshot(tool.host_props.structure))
+    expect({ ...redone, input: undefined }).toEqual({ ...rebased, input: undefined })
+    expect(redone?.site_properties).toEqual(site_properties)
+    expect(state.volumetric_data.map(({ id }) => id)).toEqual([`density`])
+    await press(`z`)
+    expect(state.structure).toEqual(input)
+    expect(tool.host_props.prediction).toBeNull()
+    expect(state.volumetric_data).toEqual([])
+  }
+  // A new edit after the undo drops the redo, and with it the result.
+  flushSync(() => (state.selected_sites = [1]))
+  await press(`Delete`, {})
+  expect(state.structure.sites).toHaveLength(1)
+  await press(`y`)
+  expect(state.structure.sites).toHaveLength(1)
+  expect(tool.host_props.prediction).toBeNull()
+  expect(state.volumetric_data).toEqual([])
+})
+
+// A host run that publishes a trail (a relaxation's path) gets every atom's trail drawn by the
+// trajectory trail renderer; one that publishes geometry alone gets none. The trail stays with
+// the result through an input replacement, undo clears it with the result, redo restores it,
+// and exports leave it out.
+test(`a host run's published trail feeds the trail renderer through undo and redo`, async () => {
+  mock_gpu()
+  const input = two_site_crystal()
+  const state = $state<{ structure: AnyStructure; measure_mode: MeasureMode }>({
+    structure: input,
+    measure_mode: `distance`,
+  })
+  const tool = await mount_host_structure(bind_props({}, state))
+  const frames = [0, 0.1, 0.25].map((shift) => ({
+    positions: input.sites.map(({ xyz }, idx): Vec3 =>
+      idx === 1 ? [xyz[0] + shift, xyz[1], xyz[2] - shift] : xyz,
+    ),
+  }))
+  const drawn = () => ({
+    stream: scene_stub.props?.trajectory_position_stream ?? null,
+    shown: scene_stub.props?.show_trajectory_lines,
+  })
+  flushSync(() => tool.on_overlay({ transient: true, geometry: frames[1] }))
+  expect(drawn().stream).toBeNull()
+  flushSync(() => tool.on_overlay({ transient: true, geometry: frames[2], trail: frames }))
+  const { stream, shown } = drawn()
+  expect(shown).toBe(true)
+  // Emphasized, since a relaxation's paths are shorter than an atom's radius, and whole at
+  // every step whatever the trajectory trail settings say.
+  expect(scene_stub.props).toMatchObject({
+    trajectory_lines_emphasis: true,
+    trajectory_line_frame_stride: 1,
+    trajectory_line_trail_frames: 0,
+  })
+  // Continuous frames: nothing to unwrap, so no lattices.
+  expect(stream).toMatchObject({
+    n_frames: 3,
+    n_atoms: 2,
+    elements: [`H`, `He`],
+    coords_unwrapped: true,
+    lattice_matrices: null,
+  })
+  expect(Array.from(stream?.positions ?? [])).toEqual(
+    frames.flatMap(({ positions }) => positions.flat()),
+  )
+  // The finished result keeps its trail on the replaced input.
+  flushSync(() =>
+    tool.on_overlay({ result: { schema: `test-v1` }, geometry: frames[2], trail: frames }),
+  )
+  flushSync(() => tool.replace_input(frames[2]))
+  await tick()
+  expect(drawn().stream?.n_frames).toBe(3)
+  const { prediction } = tool.host_props
+  if (!prediction) throw new Error(`Expected the result`)
+  expect(JSON.parse(prediction_to_json(prediction))).not.toHaveProperty(`trail`)
+  flushSync(() => (state.measure_mode = `edit-atoms`))
+  await tick()
+  const press = async (key: string) => {
+    doc_query(`.structure`).dispatchEvent(keydown(key, { ctrlKey: true, cancelable: true }))
+    await tick()
+  }
+  await press(`z`)
+  expect(drawn().stream).toBeNull()
+  await press(`y`)
+  expect(drawn()).toEqual({ stream: expect.objectContaining({ n_frames: 3 }), shown: true })
+})
+
+const shifted_trail = (input: AnyStructure) =>
+  [0, 0.1, 0.25].map((shift) => ({
+    positions: input.sites.map(({ xyz }): Vec3 => [xyz[0] + shift, xyz[1], xyz[2] - shift]),
+  }))
+
+// The controls' trail toggle hides only the shown run's trail: the next run shows its own, and
+// the saved trail setting, which a relaxation must not turn on for later trajectories, stays.
+test(`a host run's trail toggle hides that run's trail without saving it`, async () => {
+  mock_gpu()
+  clear_structure_view_state()
+  const input = two_site_crystal()
+  const trail = shifted_trail(input)
+  const tool = await mount_host_structure({
+    structure: input,
+    show_controls: `always`,
+    persist_settings: true,
+  })
+  const publish = (run: StructureToolRun) =>
+    flushSync(() => run.on_overlay({ transient: true, geometry: trail[2], trail }))
+  publish(tool)
+  doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click()
+  await tick()
+  const toggle = doc_query<HTMLInputElement>(`[data-key="show_trajectory_lines"] input`)
+  expect(toggle.checked).toBe(true)
+  // The options a host trail ignores stay hidden.
+  expect(document.querySelector(`[data-key="trajectory_line_trail_frames"]`)).toBeNull()
+  toggle.click()
+  await tick()
+  expect(scene_stub.props?.show_trajectory_lines).toBe(false)
+  expect(scene_stub.props?.trajectory_position_stream?.n_frames).toBe(3)
+  publish(tool.start_run({ model: `test`, version: `2`, units: {}, settings: {} }))
+  expect(scene_stub.props?.show_trajectory_lines).toBe(true)
+  // Past the controls' save debounce
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  expect(load_structure_view_state()?.settings.structure.show_trajectory_lines ?? false).toBe(
+    false,
+  )
+})
+
+// A host trail addresses the input sites, so a viewer showing another cell draws none, and a
+// trajectory's own whole-run stream takes precedence over it.
+test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const)(
+  `%s draws no host trail`,
+  async (shown) => {
+    mock_gpu()
+    await init_moyo_for_tests()
+    vi.stubEnv(`VITEST`, ``)
+    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
+      { element: `Cu`, abc: [0, 0, 0] },
+    ])
+    const own_stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`Cu`])
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: prim_fcc_cu,
+      cell_type: `original`,
+      supercell_scaling: `1x1x1`,
+      ...(shown === `a trajectory stream` ? { trajectory_position_stream: own_stream } : {}),
+    })
+    let analysis: { sym_data: unknown } | undefined
+    const tool = await mount_host_structure(props, (view_props) => {
+      analysis = mount_structure(view_props)
+      return analysis
+    })
+    const trail = shifted_trail(prim_fcc_cu)
+    flushSync(() => tool.on_overlay({ transient: true, geometry: trail[2], trail }))
+    const drawn = () => scene_stub.props?.trajectory_position_stream ?? null
+    if (shown === `a trajectory stream`) {
+      expect(drawn()?.n_frames).toBe(own_stream.n_frames)
+      expect(scene_stub.props?.trajectory_lines_emphasis).toBeUndefined()
+      return
+    }
+    expect(drawn()?.n_frames).toBe(3)
+    if (shown === `a supercell`) props.supercell_scaling = `2x1x1`
+    else {
+      await vi.waitFor(() => expect(analysis?.sym_data).not.toBeNull())
+      props.cell_type = `conventional`
+    }
+    flushSync()
+    expect(drawn()).toBeNull()
+  },
+)
+
+test.each([`cancel`, `failure`, `replace input`] as const)(
+  `a transient overlay clears on %s and leaves the viewer's own fields`,
+  async (reset) => {
+    const own_volume = live_volume(`own`, 1, `Own file`)
+    const state = $state<LiveVolumeState>({
+      structure,
+      volumetric_data: [own_volume],
+      isosurface_settings: {
+        ...DEFAULT_ISOSURFACE_SETTINGS,
+        layers: [{ ...auto_volume_layer(own_volume), isovalue: 0.9 }],
+      },
+    })
+    const tool = await mount_host_structure(bind_props({}, state))
+    flushSync(() =>
+      tool.on_overlay({
+        transient: true,
+        volumes: [live_volume(`density`, 1, `Live`), live_volume(`spin`, 1)],
+      }),
+    )
+    expect(volume_labels(state.volumetric_data)).toEqual([`Own file`, `Live`, `spin`])
+    expect(tool.host_props.prediction).toBeNull()
+    flushSync(() => {
+      if (reset === `cancel`) tool.cancel()
+      else if (reset === `failure`) tool.on_overlay(null)
+      else state.structure = { ...structure }
+    })
+    expect(volume_labels(state.volumetric_data)).toEqual([`Own file`])
+    expect(state.isosurface_settings.layers).toEqual([
+      { ...auto_volume_layer(own_volume), isovalue: 0.9 },
+    ])
+  },
+)
 
 test.each([
   [`clear`, true],
@@ -756,9 +1260,7 @@ test(`reruns preserve surface appearance by field ID and explicit reset restores
   flushSync(() => first.clear())
   expect(state.volumetric_data).toHaveLength(2)
   click_button(`Reset prediction surfaces`)
-  expect(state.isosurface_settings?.layers).toEqual(
-    reordered.map((volume) => auto_volume_layer(volume)),
-  )
+  expect(state.isosurface_settings?.layers).toEqual([auto_volume_layer(reordered[0])])
   click_button(`Clear prediction`)
   flushSync(() => next.on_overlay({ volumes: reordered }))
   expect(state.volumetric_data).toEqual([])
@@ -901,6 +1403,16 @@ test.each([false, true])(
       `Prediction density is hidden in standardized cells`,
     )
     expect(document.body.textContent).not.toContain(`Reset supercell to 1×1×1`)
+    // Host geometry follows only the input cell too.
+    const geometry = { positions: crystal.sites.map(({ xyz }) => xyz) }
+    flushSync(() => tool_props.on_overlay({ ...overlay, geometry }))
+    expect(document.body.textContent).toContain(
+      `Predicted geometry is hidden in standardized cells`,
+    )
+    flushSync(() => tool_props.set_overlay_visible(false))
+    expect(document.body.textContent).not.toContain(`hidden in standardized cells`)
+    flushSync(() => tool_props.set_overlay_visible(true))
+    flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => {
       state.display_mode = `slice`
     })
@@ -2682,7 +3194,11 @@ describe(`source acquisition`, () => {
 const mock_prediction_export = () => {
   const download = vi.fn<(data: string, filename: string, mime_type: string) => void>()
   vi.stubGlobal(`download`, download)
-  return async (prediction: ComponentProps<typeof Structure>[`prediction`]) => {
+  // The viewer gives an import a fresh `run_id`, so the export carries that one.
+  return async (
+    prediction: ComponentProps<typeof Structure>[`prediction`],
+    run_id: number,
+  ) => {
     // Export rows are created on opening; exercise the same control as the user.
     expect(document.querySelector(`[title="Download Export prediction"]`)).toBeNull()
     doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
@@ -2700,7 +3216,7 @@ const mock_prediction_export = () => {
         `application/json`,
       ),
     )
-    expect(prediction_from_json(download.mock.calls[0][0])).toEqual(prediction)
+    expect(prediction_from_json(download.mock.calls[0][0])).toEqual({ ...prediction, run_id })
   }
 }
 
@@ -2744,7 +3260,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
     expect(state.volumetric_data).toHaveLength(1)
     expect(state.cell_type).toBe(`original`)
     expect(state.supercell_scaling).toBe(`1x1x1`)
-    await check_export(state.prediction)
+    await check_export(state.prediction, 1)
     if (action === `mutate` && state.structure)
       state.structure.sites[0].species[0].element = `H`
     else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
@@ -2787,7 +3303,8 @@ test(`import survives a synchronous restart from the previous run's abort listen
   }
   await tick()
   expect(props.volumetric_data).toHaveLength(1)
-  await check_export(props.prediction)
+  // The mounted run took 1 and its abort listener's restart 2.
+  await check_export(props.prediction, 3)
   if (!restarted) throw new Error(`Abort listener did not restart`)
   expect(restarted.structure).toEqual(input)
   expect(restarted.signal.aborted).toBe(false)
@@ -2796,6 +3313,92 @@ test(`import survives a synchronous restart from the previous run's abort listen
   expect(props.volumetric_data).toEqual([])
   expect(document.querySelector(`[title="Download Export prediction"]`)).not.toBeNull()
 })
+
+// A file's run_id comes from another session, here the id the next run takes: either a run
+// started after the import or one restarted by the import's abort of the previous run.
+test.each([
+  [`after`, `transient preview`],
+  [`after`, `replace input`],
+  [`during`, `transient preview`],
+  [`during`, `replace input`],
+] as const)(
+  `a run started %s an import with its run_id never adopts the import on %s`,
+  async (started, action) => {
+    mock_gpu()
+    const state = $state<LiveVolumeState & { prediction?: StructureToolPrediction }>({
+      structure: make_crystal(1, [{ element: `Cu`, abc: [0, 0, 0] }]),
+      volumetric_data: [],
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+      prediction: undefined,
+    })
+    const tool = await mount_host_structure(bind_props({}, state))
+    const provenance = { model: `new`, version: `1`, units: {}, settings: {} }
+    let restarted: StructureToolRun | undefined
+    if (started === `during`)
+      tool.signal.addEventListener(`abort`, () => (restarted = tool.start_run(provenance)), {
+        once: true,
+      })
+    const input = two_site_crystal()
+    const imported: StructureToolPrediction = {
+      input,
+      run_id: tool.id + 1,
+      provenance: { model: `saved`, version: `1`, units: { charge: `e` }, settings: {} },
+      site_properties: [{ charge: 1 }, { charge: -1 }],
+      color_property: `charge`,
+      volumes: [live_volume(`density`, 1, `Saved`)],
+    }
+    const imported_snapshot = structuredClone(imported)
+    flushSync(() => {
+      state.prediction = imported
+    })
+    await tick()
+    expect(volume_labels(state.volumetric_data)).toEqual([`Saved`])
+    const shown_import = tool.host_props.prediction
+    if (!shown_import) throw new Error(`Import is not shown`)
+    const run = restarted ?? tool.start_run(provenance)
+    // Hosts match predictions to runs by id, so an import must never share one with a run.
+    expect(shown_import.run_id).not.toBe(run.id)
+    expect(run.signal.aborted).toBe(false)
+    const geometry = {
+      positions: [
+        [0.1, 0, 0],
+        [2.2, 2.1, 2.3],
+      ] as Vec3[],
+    }
+    if (action === `transient preview`) {
+      flushSync(() =>
+        run.on_overlay({ transient: true, volumes: [live_volume(`density`, 4, `Live`)] }),
+      )
+      await tick()
+      // The preview neither keeps the import as its run's result nor borrows its atom data.
+      expect(tool.host_props.prediction).toBeNull()
+      expect(volume_labels(state.volumetric_data)).toEqual([`Live`])
+      const scene_sites: AnyStructure[`sites`] | undefined =
+        scene_stub.props?.structure?.sites.slice(0, input.sites.length)
+      expect(scene_sites?.map(({ properties }) => properties?.charge)).toEqual([
+        undefined,
+        undefined,
+      ])
+    } else {
+      flushSync(() => run.replace_input(geometry))
+      await tick()
+      // The import describes the replaced input, so it clears rather than being rebased.
+      expect(state.structure.sites.map(({ xyz }) => xyz)).toEqual(geometry.positions)
+      expect(tool.host_props.prediction).toBeNull()
+      expect(state.volumetric_data).toEqual([])
+    }
+    expect(state.prediction).toEqual(imported_snapshot)
+    // The run stays current and publishes under its own id.
+    expect(run.signal.aborted).toBe(false)
+    flushSync(() => run.on_overlay({ site_properties: [{ charge: 2 }, { charge: -2 }] }))
+    await tick()
+    expect(tool.host_props.prediction?.run_id).toBe(run.id)
+    expect(tool.host_props.prediction?.site_properties).toEqual([
+      { charge: 2 },
+      { charge: -2 },
+    ])
+  },
+)
 
 test(`caller-owned Structure exposes live read-only analysis with file drops disabled`, async () => {
   const fetch = vi.fn()

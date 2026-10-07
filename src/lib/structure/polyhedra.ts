@@ -30,9 +30,10 @@ import { get_majority_element, has_framework_potential, is_spectator_center } fr
 
 export type PolyhedraColorMode = `vertex` | `center` | `uniform`
 
-// Screen-space outlines stay pronounced when zooming out, independently of face opacity.
-// The caller owns disposal of the returned geometry and material.
-export function create_polyhedra_edges(
+// Screen-space fat line segments (polyhedra outlines, host-run trajectory trails): they stay
+// pronounced when zooming out, independently of face opacity. The caller owns disposal of the
+// returned geometry and material.
+export function create_fat_segments(
   positions: Float32Array,
   colors: Float32Array,
 ): LineSegments2 {
@@ -49,8 +50,8 @@ export function create_polyhedra_edges(
 }
 
 // Keep the mesh/material and GPU attributes across frames. Only growth replaces geometry;
-// shrinking changes instanceCount so unused capacity never appears in the rendered outline.
-export function update_polyhedra_edges(
+// shrinking changes instanceCount so unused capacity never appears in the rendered lines.
+export function update_fat_segments(
   edges: LineSegments2,
   positions: Float32Array,
   colors: Float32Array,

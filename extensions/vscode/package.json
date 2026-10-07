@@ -17,7 +17,7 @@
   "scripts": {
     "sync-config": "npx tsx scripts/sync-config.ts",
     "prebuild": "npm run sync-config",
-    "build": "rm -rf dist && vite build --config vite.extension.config.ts && vite build",
+    "build": "vite build --config vite.extension.config.ts && vite build",
     "package": "npm run build && npx @vscode/vsce package --no-dependencies",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

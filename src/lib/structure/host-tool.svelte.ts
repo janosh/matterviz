@@ -1,13 +1,13 @@
 import type { Component, Snippet } from 'svelte'
 import type { StructureSettings } from './settings'
 import type { AnyStructure } from './index'
-import type { AtomColorField } from './atom-color-field'
 import {
   copy_prediction_input,
   copy_prediction_overlay,
   copy_prediction_provenance,
 } from './prediction'
 import type {
+  StructureToolGeometry,
   StructureToolOverlay,
   StructureToolPrediction,
   StructureToolProvenance,
@@ -16,6 +16,7 @@ import type {
 export { prediction_to_json, prediction_from_json } from './prediction'
 export type {
   StructureToolVolume,
+  StructureToolGeometry,
   StructureToolOverlay,
   StructureToolPrediction,
   StructureToolProvenance,
@@ -28,9 +29,8 @@ export interface StructureToolViewProps {
   show_image_atoms: boolean
 }
 export interface StructureToolView {
-  // Transient visuals: replace the viewer or overlay its structure, without exporting them.
+  // Transient visuals that replace the viewer without exporting them.
   content?: Snippet<[StructureToolViewProps]>
-  cloud?: AtomColorField
 }
 export interface StructureToolRun {
   id: number
@@ -38,6 +38,11 @@ export interface StructureToolRun {
   signal: AbortSignal
   on_overlay: (overlay: StructureToolOverlay | null) => void
   on_view: (view: StructureToolView | null) => void
+  // Adopt `geometry` as the viewer's input in one undoable edit (undo clears this run's
+  // output). The run stays current with `structure` updated and its prediction rebased onto
+  // the new input, minus `geometry`. Invalid geometry throws a TypeError without writing.
+  // A no-op once the run is no longer current.
+  replace_input: (geometry: StructureToolGeometry) => void
   // Clear just the result/view, or cancel the computation and clear both.
   clear: () => void
   cancel: () => void
@@ -59,6 +64,8 @@ export function create_structure_tool_controller(
   on_prediction: (prediction: StructureToolPrediction | null) => void,
   on_view: (view: StructureToolView | null) => void,
   get_revision: () => string,
+  // Synchronously writes validated geometry into the input and rebases `run_id`'s output.
+  on_replace_input: (geometry: StructureToolGeometry, run_id: number) => void,
 ) {
   let current: { abort: AbortController; is_current: () => boolean } | undefined
   let next_id = 0
@@ -75,12 +82,13 @@ export function create_structure_tool_controller(
   }
   return {
     start_run(provenance: StructureToolProvenance): StructureToolRun {
-      const structure = get_structure()
+      // Reassigned when the run replaces its own input, so it stays current.
+      let structure = get_structure()
       const owner = get_owner()
-      const revision = get_revision()
+      let revision = get_revision()
       if (disposed || !owner || !structure)
         throw new Error(`Cannot start a host run without a mounted, enabled structure viewer`)
-      const input = copy_prediction_input(structure)
+      let input = copy_prediction_input(structure)
       const captured_provenance = copy_prediction_provenance(provenance)
       const previous = current
       const stale_output = previous && !previous.is_current()
@@ -102,7 +110,7 @@ export function create_structure_tool_controller(
       on_view(null)
       // Abort listeners can synchronously start another run; it must retain ownership.
       previous?.abort.abort()
-      return {
+      const run: StructureToolRun = {
         id: identifier,
         structure: structuredClone(input),
         signal,
@@ -110,7 +118,7 @@ export function create_structure_tool_controller(
           if (!is_current()) return
           if (overlay === null) return on_prediction(null)
           on_prediction({
-            ...copy_prediction_overlay(overlay, input.sites.length),
+            ...copy_prediction_overlay(overlay, input),
             input,
             run_id: identifier,
             provenance: captured_provenance,
@@ -119,6 +127,17 @@ export function create_structure_tool_controller(
         on_view(view) {
           if (is_current()) on_view(view)
         },
+        replace_input(geometry) {
+          if (!is_current()) return
+          // Validates and copies, so a host cannot mutate the written positions afterwards.
+          const copied = copy_prediction_overlay({ geometry }, input).geometry
+          if (!copied) throw new TypeError(`geometry: expected positions, one per input site`)
+          on_replace_input(copied, identifier)
+          structure = get_structure()
+          revision = get_revision()
+          input = copy_prediction_input(structure)
+          run.structure = structuredClone(input)
+        },
         clear() {
           if (is_current()) clear()
         },
@@ -126,7 +145,11 @@ export function create_structure_tool_controller(
           if (is_current()) invalidate()
         },
       }
+      return run
     },
+    // An id no run of this controller takes, for output no run computes (e.g. an import):
+    // hosts and the viewer match output to its run by id.
+    reserve_run_id: (): number => ++next_id,
     invalidate_if_changed(): void {
       if (current && !current.is_current()) invalidate()
     },

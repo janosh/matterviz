@@ -17,7 +17,8 @@ export default defineConfig({
       external: [`vscode`, /^node:/, ...builtinModules],
     },
     minify: false,
-    emptyOutDir: false,
+    // The first of the two builds into dist/ starts it clean; vite.config.ts keeps this output
+    emptyOutDir: true,
   },
   resolve: { alias: lib_aliases },
   // No svelte(): the host deep-imports #lib modules (never the component barrels), so a

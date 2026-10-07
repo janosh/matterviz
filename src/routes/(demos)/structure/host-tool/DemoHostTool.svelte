@@ -98,6 +98,12 @@
   <label>Delay (ms) <input type="number" min="0" max="10000" bind:value={delay_ms} /></label>
   <label><input type="checkbox" bind:checked={fail} /> Fail prediction</label>
   <button onclick={show_trajectory}>Show predicted trajectory</button>
+  <button
+    onclick={() => prediction?.geometry && run?.replace_input(prediction.geometry)}
+    disabled={!prediction?.geometry || prediction.run_id !== run?.id}
+  >
+    Apply relaxed geometry
+  </button>
   <label
     ><input
       type="checkbox"

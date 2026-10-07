@@ -107,6 +107,7 @@
     trajectory_lines_result = null,
     trajectory_position_stream,
     show_trajectory_lines = $bindable(DEFAULTS.structure.show_trajectory_lines),
+    host_trail_shown = $bindable(null),
     on_reset_camera,
     fly_to_request = $bindable(undefined),
     persist_settings = false,
@@ -143,6 +144,10 @@
     // Trajectory-trail vertex counts, bound out of the scene, shown as a cost readout
     trajectory_lines_result?: TrajectoryLinesStats | null
     show_trajectory_lines?: boolean
+    // Whether a host run's own trail (e.g. a relaxation's) shows; null without one. Its toggle
+    // shows or hides that run's trail, never the saved trail setting, and the stride, length,
+    // color and boundary options, which do nothing for it, stay hidden.
+    host_trail_shown?: boolean | null
     on_reset_camera?: () => void // undefined while camera at home (hides button)
     fly_to_request?: Vec3 // (output) one-shot zone-axis camera command
     persist_settings?: boolean // Opt-in browser persistence for safely scoped single-view usage
@@ -471,10 +476,14 @@
       aria_label: `Displacement arrow color`,
     },
   ]
+  const trails_shown = $derived(host_trail_shown ?? show_trajectory_lines)
   const trail_toggle_row: Row = {
     ...row(`show_trajectory_lines`, `Show trajectory trails`),
-    get: () => show_trajectory_lines,
-    set: (value) => (show_trajectory_lines = Boolean(value)),
+    get: () => trails_shown,
+    set: (value) => {
+      if (host_trail_shown === null) show_trajectory_lines = Boolean(value)
+      else host_trail_shown = Boolean(value)
+    },
   }
   const trail_rows = [
     row(`trajectory_line_frame_stride`, `Frame stride`),
@@ -1564,7 +1573,7 @@
             ])}
           >
             {@render setting_rows([trail_toggle_row])}
-            {#if show_trajectory_lines && trajectory_position_stream}
+            {#if trails_shown && trajectory_position_stream}
               {#if trail_elements.length > 1}
                 {@render element_chips(
                   `trajectory_line_elements`,
@@ -1574,18 +1583,22 @@
                   toggle_trail_element,
                 )}
               {/if}
-              <NumberRangeInput
-                data-key="trajectory_line_trail_frames"
-                label="Trail length"
-                {...number_range_props(SETTINGS_CONFIG.structure.trajectory_line_trail_frames)}
-                max={Math.max(1, trajectory_position_stream.n_frames)}
-                bind:value={
-                  () => scene_props.trajectory_line_trail_frames,
-                  (trajectory_line_trail_frames) =>
-                    update_scene({ trajectory_line_trail_frames })
-                }>Trail length <small>(0 = all)</small></NumberRangeInput
-              >
-              {@render setting_rows(trail_rows)}
+              {#if host_trail_shown === null}
+                <NumberRangeInput
+                  data-key="trajectory_line_trail_frames"
+                  label="Trail length"
+                  {...number_range_props(
+                    SETTINGS_CONFIG.structure.trajectory_line_trail_frames,
+                  )}
+                  max={Math.max(1, trajectory_position_stream.n_frames)}
+                  bind:value={
+                    () => scene_props.trajectory_line_trail_frames,
+                    (trajectory_line_trail_frames) =>
+                      update_scene({ trajectory_line_trail_frames })
+                  }>Trail length <small>(0 = all)</small></NumberRangeInput
+                >
+                {@render setting_rows(trail_rows)}
+              {/if}
               {#if trajectory_lines_result}
                 {@const { point_count, segment_count, atom_count, max_segment_length } =
                   trajectory_lines_result}
@@ -1605,7 +1618,7 @@
                   </span>
                 </div>
               {/if}
-            {:else if show_trajectory_lines}
+            {:else if trails_shown}
               <Spinner text="Collecting trajectory positions..." style="margin: 4pt 0" />
             {/if}
           </SettingsSection>

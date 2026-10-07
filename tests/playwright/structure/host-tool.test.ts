@@ -238,7 +238,8 @@ test(`exports reproducible predictions separately from the original structure`, 
   await expect(density_surface).toHaveCount(1)
   const reopened_download = page.waitForEvent(`download`)
   await page.getByTitle(`Download Export prediction`, { exact: true }).click()
-  expect(await read_download(await reopened_download)).toEqual(data)
+  // The import takes a fresh run_id after run 1, so no later run can claim it.
+  expect(await read_download(await reopened_download)).toEqual({ ...data, run_id: 2 })
 })
 
 test(`worker predictions guard reversed completion, failure and cancellation`, async ({
@@ -304,7 +305,8 @@ test(`worker predictions guard reversed completion, failure and cancellation`, a
   await page.locator(`button.structure-export-toggle`).click()
   const imported = page.waitForEvent(`download`)
   await exporting.click()
-  expect(await read_download(await imported)).toEqual(retained)
+  // Runs took ids 1-5 (the last one aborted by the drop), so the import takes 6.
+  expect(await read_download(await imported)).toEqual({ ...retained, run_id: 6 })
   await page.evaluate(() => {
     document.documentElement.dataset.failWorkerSetup = `true`
   })

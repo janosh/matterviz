@@ -292,7 +292,7 @@
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && node src/scripts/check-dist-imports.mjs",
-    "build:anywidget": "pnpm package:dist && printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > extensions/anywidget/pnpm-workspace.yaml && pnpm -C extensions/anywidget install --config.strict-dep-builds=false && pnpm -C extensions/anywidget build",
+    "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install && pnpm -C extensions/anywidget build",
     "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
   },

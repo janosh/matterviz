@@ -34,10 +34,10 @@
 <svelte:head><title>Host prediction tools | MatterViz</title></svelte:head>
 <h1 id="host-prediction-tools">Host prediction tools</h1>
 <p>
-  This runnable example adds deterministic charges, dipole arrows, density and a six-frame
-  trajectory to an unchanged input crystal in a Web Worker. Set a delay to try cancelling or
-  restarting work, or enable failure to verify that the previous result remains available. No
-  model download or server is needed.
+  This runnable example adds deterministic charges, dipole arrows, density, a relaxed geometry
+  and a six-frame trajectory to an unchanged input crystal in a Web Worker. Set a delay to try
+  cancelling or restarting work, or enable failure to verify that the previous result remains
+  available. No model download or server is needed.
 </p>
 {#if ready}
   <Structure
@@ -66,6 +66,7 @@ run.on_overlay({
   site_properties: result.site_properties,
   volumes: result.volumes, // each field needs a stable, unique id
   color_property: 'charge',
+  geometry: { positions: result.positions, lattice: result.cell }, // optional
 })`}</code
   ></pre>
 <p>
@@ -81,7 +82,19 @@ run.on_overlay({
   schema. The <code>prediction</code> prop includes imported results.
   <code>set_overlay_visible(false)</code> hides visuals while retaining results and surface
   settings;
-  <code>run.on_overlay(null)</code> deletes the result.
+  <code>run.on_overlay(null)</code> deletes the result. Overlays marked
+  <code>transient: true</code> are live previews, e.g. SCF steps: they render, but the
+  <code>prediction</code> prop and export pane skip them. Published after the result, a preview replaces
+  only the fields or geometry it carries; publishing the result again ends it. Only the first field
+  of a publication gets a default surface.
+</p>
+<p>
+  <code>geometry</code> moves the drawn atoms and, with <code>lattice</code>, the cell, e.g.
+  along a relaxation: one Cartesian position in Å per input site. Runs, selections, edits and
+  structure exports keep addressing the input, and volumes keep their own frame. A result's
+  geometry is exported and reopened with the prediction.
+  <code>run.replace_input(geometry)</code> adopts it as the input in one undoable edit, rebasing
+  the run's prediction.
 </p>
 <p>
   Set <code>structure_host_tool.input_key</code> to select calculation inputs, including atom order.

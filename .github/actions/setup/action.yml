@@ -53,26 +53,20 @@ runs:
         # alongside vite-plus's optional Vitest 4 browser peers. Uppercase survives pnpm's
         # lifecycle env filtering; pnpm still checks peers and runs the package's prepare.
         NPM_CONFIG_LEGACY_PEER_DEPS=true pnpm install --no-lockfile --config.strict-dep-builds=false
-        # anywidget depends on `matterviz: file:../..`, which pnpm copies (hard-links) at install
-        # time, so the svelte-package output must exist before that install or the copy has no
-        # dist/ (dependencies never run `prepare`, only the root project does).
+        # anywidget links the root package (`matterviz: link:../..`) and bundles its dist/, which
+        # only the root's svelte-package run builds (dependencies never run `prepare`).
         if [ "$BUILD_PACKAGE" = true ]; then
           case " $EXTENSIONS " in *" anywidget "*) pnpm package:dist ;; esac
         fi
         # --ignore-workspace: a freshly released dep trips pnpm's cooldown
         # (minimumReleaseAge), auto-creating a pnpm-workspace.yaml that makes these
         # standalone extension installs no-ops (skipping anywidget/@types/node/matterviz).
-        # strict-dep-builds: anywidget's published svelte-widgets and JupyterLab's
-        # fontawesome ship built artifacts, so their skipped lifecycle scripts are safe.
+        # strict-dep-builds: JupyterLab's fontawesome ships built artifacts, so its skipped
+        # lifecycle script is safe. anywidget links the root's svelte-widgets instead of
+        # fetching and preparing its own Git copy.
         for ext in $EXTENSIONS; do
           if [ "$ext" = vscode ]; then strict_builds=true; else strict_builds=false; fi
-          workspace_args=(--ignore-workspace)
-          if [ "$ext" = anywidget ]; then
-            # Reuse the root's prepared Git package for both direct and transitive imports.
-            printf 'overrides:\n  svelte-widgets: file:../../node_modules/svelte-widgets\n' > "extensions/$ext/pnpm-workspace.yaml"
-            workspace_args=()
-          fi
-          pnpm -C "extensions/$ext" install --no-lockfile "${workspace_args[@]}" \
+          pnpm -C "extensions/$ext" install --no-lockfile --ignore-workspace \
             --config.strict-dep-builds="$strict_builds"
         done
     - name: Cache test compilation

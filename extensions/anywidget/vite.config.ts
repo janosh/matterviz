@@ -38,7 +38,7 @@ export default defineConfig({
       { find: `h5wasm`, replacement: resolve(import.meta.dirname, `h5wasm-stub.ts`) },
       three_compat_alias,
     ],
-    // `matterviz` is a file: dependency, so its dist resolves `three/webgpu` from the repo
+    // `matterviz` is a link: dependency, so its dist resolves `three/webgpu` from the repo
     // root's store while this package resolves it from its own. Two copies means the
     // lights registered by one are unknown to the other's LightsNode ("Light node not
     // found"), which renders every lit mesh black in the standalone/CDN bundle.

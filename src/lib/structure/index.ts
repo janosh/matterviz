@@ -27,6 +27,7 @@ export type {
   StructureToolProps,
   StructureToolRun,
   StructureToolOverlay,
+  StructureToolGeometry,
   StructureToolVolume,
   StructureToolProvenance,
   StructureToolPrediction,

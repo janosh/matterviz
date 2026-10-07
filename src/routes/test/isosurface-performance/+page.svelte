@@ -147,6 +147,7 @@
       },
       () => {},
       () => `benchmark`,
+      () => {},
     )
     const run = controller.start_run({
       model: `benchmark`,

@@ -47,9 +47,10 @@ describe(`grid_data_range`, () => {
   })
 })
 
-const vol_with_range = (min: number, max: number): VolumetricData =>
+const vol_with_range = (min: number, max: number, signed?: boolean): VolumetricData =>
   make_volume_fixture(make_grid(2, 2, 2, 1), {
     data_range: { min, max, abs_max: Math.max(Math.abs(min), Math.abs(max)), mean: 0 },
+    ...(signed === undefined ? {} : { signed }),
   })
 
 describe(`auto_isosurface_settings`, () => {
@@ -84,8 +85,13 @@ describe(`auto_volume_layer`, () => {
     { min: -5, max: 10, show_negative: true, label: `signed data` },
     { min: 0, max: 10, show_negative: false, label: `non-negative data` },
     { min: -0.005, max: 1, show_negative: false, label: `negatives below the 1% threshold` },
-  ])(`$label sets show_negative=$show_negative`, ({ min, max, show_negative }) => {
-    expect(auto_volume_layer(vol_with_range(min, max)).show_negative).toBe(show_negative)
+    // A charge density's negative values are artifacts: the host's hint overrides the data.
+    { min: -0.5, max: 10, signed: false, show_negative: false, label: `signed=false` },
+    { min: 0, max: 10, signed: true, show_negative: true, label: `signed=true` },
+  ])(`$label sets show_negative=$show_negative`, ({ min, max, signed, show_negative }) => {
+    expect(auto_volume_layer(vol_with_range(min, max, signed)).show_negative).toBe(
+      show_negative,
+    )
   })
 
   // Repeated "+" clicks on one volume used to stack coincident 20%/0.6 surfaces. Shells
@@ -296,6 +302,12 @@ describe(`volume_from_json`, () => {
     expect(vol.data_range.mean).toBe(4.5)
   })
 
+  test.each([true, false, undefined])(`keeps the signed hint %s`, (signed) => {
+    const vol = volume_from_json({ ...base, grid: [[[1]]], signed })
+    expect(vol.signed).toBe(signed)
+    expect(`signed` in vol).toBe(signed !== undefined)
+  })
+
   test.each([
     [{ ...base, grid: [[[1, 2]], [[3]]] }, /Ragged grid/],
     [{ ...base, values: [1, 2, 3], dims: [2, 2, 2] }, /does not match dims/],
@@ -303,6 +315,7 @@ describe(`volume_from_json`, () => {
     [{ ...base }, /nested grid or flat values/],
     [{ ...base, grid: [[[1]]], lattice: [[1, 0, 0]] }, /3x3 lattice/],
     [{ ...base, grid: [[[1]]], periodic: `yes` }, /boolean periodic/],
+    [{ ...base, grid: [[[1]]], signed: `no` }, /signed flag must be a boolean/],
     [{ ...base, grid: [[[1]]], id: undefined }, /nonempty string/],
     [42, /must be an object/],
   ])(`rejects malformed payload %#`, (payload, expected) => {

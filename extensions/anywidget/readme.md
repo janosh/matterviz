@@ -37,14 +37,12 @@ The publish workflow's size gate fails if either WASM creeps back in.
 ## Build
 
 ```sh
-# from the matterviz repo root, build the component library first so the
-# `matterviz` file: dependency resolves to dist/
+# from the matterviz repo root: the anywidget package links the root's matterviz
+# (bundling its dist/) and the svelte-widgets the root installed
 pnpm install && pnpm package:dist
 
 cd extensions/anywidget
-# strict-dep-builds=false: the published svelte-widgets dep ships its built artifacts, so
-# pnpm 11's default of failing on its skipped lifecycle script is safe to relax
-pnpm install --config.strict-dep-builds=false
+pnpm install
 pnpm build        # -> build/matterviz.js + build/matterviz.css
 ```
 
