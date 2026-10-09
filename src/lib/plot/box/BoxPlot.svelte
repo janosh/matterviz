@@ -1009,6 +1009,9 @@
       bind:show_outliers
       bind:show_mean
       bind:points
+      outliers_drawn={visible_boxes.some(
+        ({ series: srs }) => draws_box(srs) && point_mode(srs) === `none`,
+      )}
       bind:kind
       bind:side
       bind:x_axis

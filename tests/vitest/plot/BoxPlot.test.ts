@@ -363,26 +363,38 @@ describe(`BoxPlot`, () => {
       },
     )
 
-    test(`Points control switches the mode and disables the outlier toggle`, async () => {
-      const plot = await mount_sized_box_plot({
-        series: [{ y: [...dist(40), 50], label: `A` }],
-        show_controls: true,
-        controls_open: true,
-      })
-      const select = [...plot.querySelectorAll(`select`)].find((el) =>
-        el.parentElement?.textContent?.includes(`Points`),
-      )
-      if (!select) throw new Error(`Points select not rendered`)
-      const outliers = [
-        ...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-      ].find((input) => input.parentElement?.textContent?.includes(`Show outliers`))
-      expect([select.value, outliers?.disabled]).toEqual([`none`, false])
-      expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(0)
-      set_select(select, `swarm`)
-      await tick()
-      expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(41)
-      expect(outliers?.disabled).toBe(true)
-    })
+    // The outlier toggle disables only once no box draws outliers apart from its samples
+    test.each([
+      [`every box swarms`, [], true, 41],
+      [
+        `one series keeps points: none`,
+        [{ y: [...dist(40, 5), 60], label: `B`, points: `none` as const }],
+        false,
+        41,
+      ],
+    ])(
+      `Points control switches the mode; %s`,
+      async (_name, extra, disabled_after, n_samples) => {
+        const plot = await mount_sized_box_plot({
+          series: [{ y: [...dist(40), 50], label: `A` }, ...extra],
+          show_controls: true,
+          controls_open: true,
+        })
+        const select = [...plot.querySelectorAll(`select`)].find((el) =>
+          el.parentElement?.textContent?.includes(`Points`),
+        )
+        if (!select) throw new Error(`Points select not rendered`)
+        const outliers = [
+          ...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
+        ].find((input) => input.parentElement?.textContent?.includes(`Show outliers`))
+        expect([select.value, outliers?.disabled]).toEqual([`none`, false])
+        expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(0)
+        set_select(select, `swarm`)
+        await tick()
+        expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(n_samples)
+        expect(outliers?.disabled).toBe(disabled_after)
+      },
+    )
   })
 
   // horizontal boxes put their secondary values on x2, which the frame tests can't reach

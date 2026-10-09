@@ -20,6 +20,7 @@
     show_outliers = $bindable(true),
     show_mean = $bindable(false),
     points = $bindable(`none`),
+    outliers_drawn = true,
     kind = $bindable(`box`),
     side = $bindable(`both`),
     x_axis = $bindable({}),
@@ -37,6 +38,8 @@
     show_outliers?: boolean
     show_mean?: boolean
     points?: BoxPointMode
+    // Whether any box draws outliers on their own (drawn samples already include them)
+    outliers_drawn?: boolean
     kind?: ViolinKind
     side?: ViolinSide
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
@@ -119,8 +122,7 @@
     </div>
     <div class="ctrl-line">
       <label>
-        <!-- Drawn samples already include the outliers -->
-        <input type="checkbox" bind:checked={show_outliers} disabled={points !== `none`} />
+        <input type="checkbox" bind:checked={show_outliers} disabled={!outliers_drawn} />
         Show outliers
       </label>
       <label>
