@@ -29,6 +29,7 @@ import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
+  CylinderGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
@@ -1063,5 +1064,64 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
     for (const dispose of [...meshes.values(), ...resources.values()]) {
       expect(dispose).toHaveBeenCalledTimes(1)
     }
+  },
+)
+
+// Open bond cylinders rely on an opaque sphere covering each end. A polyhedron center hidden
+// by polyhedra_hide_center_atoms drops its sphere but keeps its bonds, with or without a
+// whole-atom cutaway (which otherwise renders complete atoms and skips caps).
+test.each([
+  { hide_centers: false, whole_atom_slab: false, capped: false },
+  { hide_centers: false, whole_atom_slab: true, capped: false },
+  { hide_centers: true, whole_atom_slab: false, capped: true },
+  { hide_centers: true, whole_atom_slab: true, capped: true },
+])(
+  `bonds capped=$capped with hidden centers=$hide_centers, whole-atom slab=$whole_atom_slab`,
+  ({ hide_centers, whole_atom_slab, capped }) => {
+    // SiO4 tetrahedron: Si-O 1.62 A along the cube diagonals
+    const arm = 1.62 / Math.sqrt(3)
+    const corners: Vec3[] = [
+      [arm, arm, arm],
+      [arm, -arm, -arm],
+      [-arm, arm, -arm],
+      [-arm, -arm, arm],
+    ]
+    const structure = {
+      sites: [
+        make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`),
+        ...corners.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`)),
+      ],
+    }
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        structure,
+        show_bonds: `always`,
+        show_polyhedra: `always`,
+        polyhedra_hide_center_atoms: hide_centers,
+        // Thin bonds, so opaque atoms alone always cover the open ends
+        bond_thickness: 0.05,
+        cutaway: whole_atom_slab
+          ? {
+              mode: `slab`,
+              axis: 2,
+              position: 0,
+              thickness: 0.2,
+              whole_atoms: true,
+              cartesian_to_fractional: new Matrix4(),
+            }
+          : undefined,
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    flushSync()
+    const bond = scene
+      .getObjectsByProperty(`type`, `Mesh`)
+      .find((mesh) => mesh instanceof BondMesh)
+    if (!(bond instanceof BondMesh)) throw new Error(`no bond mesh rendered`)
+    expect(bond.count).toBe(4)
+    const cylinder_indices = (open_ended: boolean) =>
+      new CylinderGeometry(1, 1, 1, 8, 1, open_ended).index?.count
+    expect(bond.geometry.index?.count).toBe(cylinder_indices(!capped))
   },
 )

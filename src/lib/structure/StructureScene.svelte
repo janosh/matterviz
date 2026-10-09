@@ -1583,6 +1583,8 @@
   let bonds_capped = $derived.by(() => {
     if (!show_atoms || atom_opacity < 1 || atom_groups.partial.length > 0) return true
     if (cutaway && cutaway.mode !== `off` && !cutaway.whole_atoms) return true
+    // Centers hidden inside their polyhedra drop the sphere, not the bonds to it
+    if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.size > 0) return true
     const reach = 2.35 * bond_thickness
     return [atom_groups.base, atom_groups.image].some((atoms) =>
       atoms.some((atom) => atom.radius < reach),
