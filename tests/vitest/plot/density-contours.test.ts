@@ -2,6 +2,7 @@ import {
   density_contours,
   density_grid,
   density_level_fractions,
+  level_densities,
   mass_thresholds,
   multipolygon_path,
 } from '#lib/plot/core/density-contours.js'
@@ -199,6 +200,64 @@ describe(`density_contours`, () => {
       const roundness = (Math.max(...vertex_radii) - Math.min(...vertex_radii)) / expected
       expect(roundness).toBeLessThan(2e-3)
     }
+  })
+
+  // Levels are fractions of the whole series, so panning cluster B out of view must not
+  // reshape A's contour. Measured: view-normalized levels jump 2.8x (0.276 -> 0.771 per px^2)
+  // for this pan, shrinking A's ring; series levels stay put. B is wider than A on purpose:
+  // for identical clusters both normalizations happen to agree.
+  test(`panning a cluster out of view leaves the other's contour unchanged`, () => {
+    const cluster_a = gaussian_cloud(2000, [300, 150], 12, 21)
+    const cluster_b = gaussian_cloud(2000, [80, 150], 30, 22)
+    const ring_radius = (shift: number) => {
+      const xs = [...cluster_a.xs, ...cluster_b.xs].map((val) => val + shift)
+      const ys = [...cluster_a.ys, ...cluster_b.ys]
+      const [ring] = density_contours(xs, ys, {
+        width: 400,
+        height: 300,
+        bandwidth: 6,
+        levels: [0.5],
+      })
+      const nums = path_numbers(ring.path)
+      const radii = []
+      for (let idx = 0; idx < nums.length; idx += 2) {
+        const radius = Math.hypot(nums[idx] - (300 + shift), nums[idx + 1] - 150)
+        if (radius < 60) radii.push(radius) // A's ring only
+      }
+      return radii.reduce((sum, val) => sum + val, 0) / radii.length
+    }
+    const both_in_view = ring_radius(0)
+    expect(both_in_view).toBeGreaterThan(5)
+    // B at x = -170, beyond the grid's blur pad. Same samples, translated: equal up to the
+    // 0.01 px path rounding
+    expect(Math.abs(ring_radius(-250) - both_in_view)).toBeLessThan(0.02)
+  })
+
+  test(`level grid ignores far outliers and stays bounded`, () => {
+    const { xs, ys } = gaussian_cloud(1000, [200, 150], 20, 31)
+    const fractions = [0.5]
+    const [plain] = level_densities(xs, ys, fractions, { bandwidth: 8 })
+    // Two points 1e6 px away would stretch a min/max box to 1e12 cells; the core box ignores them
+    const [with_outliers] = level_densities(
+      [...xs, 1e6, -1e6],
+      [...ys, 1e6, -1e6],
+      fractions,
+      {
+        bandwidth: 8,
+      },
+    )
+    // They shift the percentile picks a hair, realigning the grid: measured 0.67% apart. A
+    // min/max box would coarsen cells to ~4000 px and miss by orders of magnitude.
+    expect(Math.abs(with_outliers / plain - 1)).toBeLessThan(0.02)
+    // A series 1e5 px wide (deep zoom) coarsens instead of allocating ~6e8 cells
+    const wide = level_densities(
+      xs.map((val) => val * 500),
+      ys,
+      fractions,
+      { bandwidth: 8 },
+    )
+    expect(Number.isFinite(wide[0])).toBe(true)
+    expect(level_densities([NaN], [1], fractions)).toEqual([NaN])
   })
 
   test(`separate clusters give one ring each, outermost level first`, () => {

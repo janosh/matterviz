@@ -403,12 +403,12 @@ export type HoverConfig = {
 }
 
 // Kernel density contours drawn under each visible series (ScatterPlot `density_contours`).
-// The KDE runs in screen space over the plot area, so it follows log/arcsinh axes and
-// pan/zoom like the markers, and its levels are fractions of the density mass in view.
+// The KDE runs in screen space, so it follows log/arcsinh axes and pan/zoom like the markers.
+// Levels are fractions of the whole series' density, so panning moves contours unchanged.
 export type DensityContourConfig = {
   // Number of evenly spaced enclosed-mass fractions (4 -> 0.2, 0.4, 0.6, 0.8) or the fractions
   // themselves in (0, 1): the 0.5 contour bounds the densest region holding half a series'
-  // in-view density, so levels compare across series of any size
+  // density, so levels compare across series of any size
   levels?: number | readonly number[]
   bandwidth?: number // Gaussian kernel std in px (default 20)
   filled?: boolean // stack translucent bands instead of drawing lines (default false)

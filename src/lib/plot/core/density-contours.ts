@@ -7,12 +7,18 @@
 import { blur2 } from 'd3-array'
 import { contours } from 'd3-contour'
 import type { ContourMultiPolygon } from 'd3-contour'
+import { quantile_unordered } from '#lib/math.js'
+
+// Cells the series-wide level grid may hold; past this its cells double, coarser but bounded
+// per frame (a series spanning thousands of px when zoomed far in)
+const MAX_LEVEL_CELLS = 250_000
 
 type DensityContourOptions = {
   width: number // grid extent in px; points are in [0, width] x [0, height]
   height: number
   bandwidth?: number // standard deviation of the Gaussian kernel in px (d3 semantics)
   cell_size?: number // grid cell size in px, rounded down to a power of two like d3
+  origin?: [number, number] // px mapped to the grid's [0, 0] corner (default [0, 0])
   // Number of evenly spaced enclosed-mass fractions (4 -> 0.2, 0.4, 0.6, 0.8), or the
   // fractions themselves, each in (0, 1)
   levels?: number | readonly number[]
@@ -30,9 +36,9 @@ export type DensityContour = {
 export function density_grid(
   xs: ArrayLike<number>,
   ys: ArrayLike<number>,
-  opts: Pick<DensityContourOptions, `width` | `height` | `bandwidth` | `cell_size`>,
+  opts: Pick<DensityContourOptions, `width` | `height` | `bandwidth` | `cell_size` | `origin`>,
 ) {
-  const { width, height, bandwidth = 20, cell_size = 4 } = opts
+  const { width, height, bandwidth = 20, cell_size = 4, origin = [0, 0] } = opts
   // The one user-facing option here; sizes and arrays come from density_contours' caller
   if (!(bandwidth >= 0)) throw new RangeError(`density_grid: invalid bandwidth ${bandwidth}`)
   const log2_cell = Math.floor(Math.log2(cell_size))
@@ -45,8 +51,8 @@ export function density_grid(
   const values = new Float64Array(n_cols * n_rows)
   const inv_cell = 2 ** -log2_cell
   for (let idx = 0; idx < xs.length; idx++) {
-    const grid_x = (xs[idx] + offset) * inv_cell
-    const grid_y = (ys[idx] + offset) * inv_cell
+    const grid_x = (xs[idx] - origin[0] + offset) * inv_cell
+    const grid_y = (ys[idx] - origin[1] + offset) * inv_cell
     // Negated so NaN fails too
     if (!(grid_x >= 0 && grid_x < n_cols && grid_y >= 0 && grid_y < n_rows)) continue
     const col = Math.floor(grid_x)
@@ -97,6 +103,42 @@ export function mass_thresholds(values: Float64Array, fractions: readonly number
   })
 }
 
+// Densities (points per px^2) whose superlevel sets hold each fraction of the whole series'
+// mass. Gridded over the series' own core extent (0.5-99.5th percentiles, so one far outlier
+// can't inflate the grid) rather than the view, so panning moves contours without reshaping
+// them. Past MAX_LEVEL_CELLS the grid coarsens, approximating the levels when zoomed far in.
+export function level_densities(
+  xs: ArrayLike<number>,
+  ys: ArrayLike<number>,
+  fractions: readonly number[],
+  opts: Pick<DensityContourOptions, `bandwidth` | `cell_size`> = {},
+): number[] {
+  const { bandwidth = 20 } = opts
+  const finite = Array.from({ length: xs.length }, (_, idx) => idx).filter(
+    (idx) => Number.isFinite(xs[idx]) && Number.isFinite(ys[idx]),
+  )
+  if (finite.length === 0) return fractions.map(() => NaN)
+  const core = (vals: ArrayLike<number>): [number, number] => {
+    const picked = finite.map((idx) => vals[idx])
+    return [quantile_unordered(picked, 0.005), quantile_unordered(picked, 0.995)]
+  }
+  const [[x_lo, x_hi], [y_lo, y_hi]] = [core(xs), core(ys)]
+  const [width, height] = [x_hi - x_lo, y_hi - y_lo]
+  const pad = 6 * bandwidth // blur padding on both sides, as density_grid adds it
+  let cell_size = opts.cell_size ?? 4
+  while (((width + pad) / cell_size) * ((height + pad) / cell_size) > MAX_LEVEL_CELLS) {
+    cell_size *= 2
+  }
+  const grid = density_grid(xs, ys, {
+    width,
+    height,
+    bandwidth,
+    cell_size,
+    origin: [x_lo, y_lo],
+  })
+  return mass_thresholds(grid.values, fractions).map((value) => value / grid.cell_size ** 2)
+}
+
 // GeoJSON MultiPolygon -> SVG path with every coordinate mapped through `to_px` and rounded
 // to 0.01 px. Holes keep d3's opposite winding, so the default nonzero fill cuts them out.
 export function multipolygon_path(
@@ -114,8 +156,9 @@ export function multipolygon_path(
   return path
 }
 
-// Iso-proportion density contours, outermost (largest enclosed fraction) first so filled
-// layers stack with the densest core on top. Empty when there is no mass to contour.
+// Iso-proportion density contours of the whole series (see level_densities), drawn on a grid
+// over [0, width] x [0, height]. Outermost (largest enclosed fraction) first so filled layers
+// stack with the densest core on top. Empty when there is no mass to contour in view.
 export function density_contours(
   xs: ArrayLike<number>,
   ys: ArrayLike<number>,
@@ -124,7 +167,8 @@ export function density_contours(
   const fractions = density_level_fractions(opts.levels)
   if (xs.length === 0 || opts.width <= 0 || opts.height <= 0) return []
   const grid = density_grid(xs, ys, opts)
-  const thresholds = mass_thresholds(grid.values, fractions)
+  const cell_area = grid.cell_size ** 2
+  const thresholds = level_densities(xs, ys, fractions, opts).map((value) => value * cell_area)
   const contour_of = contours().size([grid.n_cols, grid.n_rows])
   // d3-contour's types want a plain array (it only indexes it)
   const values = Array.from(grid.values)

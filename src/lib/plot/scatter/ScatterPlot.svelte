@@ -694,8 +694,8 @@
   type FilteredSeries = (typeof filtered_series)[number]
 
   // === Density contours ===
-  // One KDE per series in its own px frame, gridded over the plot area (plus the blur pad):
-  // points just past the edges still count, but level fractions are of the mass in view
+  // One KDE per series in its own px frame: drawn on a grid over the plot area (plus the blur
+  // pad), with levels from a grid over the whole series so they survive panning
   const density_config = $derived(density_contours === true ? {} : density_contours || null)
   const density_layers = $derived.by(() => {
     if (!density_config) return []
