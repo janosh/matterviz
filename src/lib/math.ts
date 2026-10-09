@@ -95,6 +95,18 @@ const MAX_MIN_IMAGE_CANDIDATES = 100_000
 export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 
+// Seeded uniform PRNG on [0, 1) (mulberry32): deterministic layouts and test data. Uint32
+// state holds the same bits as the reference int32 one for every ^ and Math.imul below.
+export const mulberry32 = (seed: number): (() => number) => {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state)
+    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 // Clamp value into [lo, hi]. NaN passes through (Math.min/max propagate it), so callers
 // that need a finite result must check first.
 export const clamp = (value: number, lower: number, upper: number): number =>

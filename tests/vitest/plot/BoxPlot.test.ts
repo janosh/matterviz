@@ -13,6 +13,7 @@ import {
   one_tab_stop,
   pattern_id_of,
   query,
+  set_select,
   roving_tabindexes,
   svg_rect,
   with_measured_text,
@@ -237,6 +238,152 @@ describe(`BoxPlot`, () => {
       expect(minmax.querySelectorAll(`.box-series circle`)).toHaveLength(0)
     },
   )
+
+  describe(`strip and swarm points`, () => {
+    const sample_points = (plot: ParentNode) =>
+      [...plot.querySelectorAll(`.box-series circle.sample-point`)].map((circle) => ({
+        x: Number(circle.getAttribute(`cx`)),
+        y: Number(circle.getAttribute(`cy`)),
+        r: Number(circle.getAttribute(`r`)),
+      }))
+    // Category center of a box: its hover target spans the whisker caps symmetrically
+    const box_center = (plot: HTMLElement, orientation: Orientation, box_idx = 0) => {
+      const rect = svg_rect(
+        query(plot, `.box-series[data-box-idx="${box_idx}"] .hover-target`),
+      )
+      return orientation === `vertical` ? rect.x + rect.width / 2 : rect.y + rect.height / 2
+    }
+
+    test.each([`vertical`, `horizontal`] satisfies Orientation[])(
+      `%s swarm draws every finite sample once, packed around the box center`,
+      async (orientation) => {
+        const values = [...dist(80, 0, 1), NaN, 9, -7] // two tukey outliers, one NaN
+        const plot = await mount_sized_box_plot(
+          { series: [{ y: values, label: `S` }], points: `swarm`, orientation },
+          { width: 500, height: 400 },
+        )
+        const pts = sample_points(plot)
+        expect(pts).toHaveLength(82)
+        // Outliers are among the samples now, not drawn a second time
+        expect(plot.querySelectorAll(`.box-series circle:not(.sample-point)`)).toHaveLength(0)
+        const [value_of, cross_of] =
+          orientation === `vertical` ? ([`y`, `x`] as const) : ([`x`, `y`] as const)
+        const center = box_center(plot, orientation)
+        const offsets = pts.map((pt) => pt[cross_of] - center)
+        expect(Math.max(...offsets)).toBeGreaterThan(0)
+        expect(Math.min(...offsets)).toBeLessThan(0)
+        // Wide slot, 82 points: nothing clamped, so no two points overlap
+        for (const [idx, pt] of pts.entries()) {
+          for (const other of pts.slice(idx + 1)) {
+            expect(Math.hypot(pt.x - other.x, pt.y - other.y)).toBeGreaterThan(
+              2 * pt.r + 0.5 - 1e-9,
+            )
+          }
+        }
+        // The outlier at 9 is the extreme sample along the value axis
+        const extreme =
+          orientation === `vertical`
+            ? Math.min(...pts.map((pt) => pt.y))
+            : Math.max(...pts.map((pt) => pt.x))
+        expect(pts.some((pt) => pt[value_of] === extreme)).toBe(true)
+      },
+    )
+
+    test(`value range reaches every sample even with outliers hidden`, async () => {
+      const series = [{ y: [...dist(60, 0, 1), 500], label: `Far` }]
+      const strip = await mount_sized_box_plot({
+        series,
+        show_outliers: false,
+        points: `strip`,
+      })
+      const clip = svg_rect(query(strip, `clipPath rect`))
+      // Only in-view samples are drawn, so all 61 means the range stretched to reach 500,
+      // which then sits far above the cluster
+      const ys = sample_points(strip)
+        .map((pt) => pt.y)
+        .toSorted((left, right) => left - right)
+      expect(ys).toHaveLength(61)
+      expect(ys[0]).toBeGreaterThanOrEqual(clip.y)
+      expect(ys[1] - ys[0]).toBeGreaterThan(clip.height / 2)
+    })
+
+    // Strips jitter over half the box (0.8 slot), styled by sample_style
+    test(`per-series override and strip jitter within half the box`, async () => {
+      const plot = await mount_sized_box_plot(
+        {
+          series: [
+            { y: dist(200, 0, 1), label: `A` },
+            { y: dist(40, 5, 1), label: `B`, points: `none` },
+          ],
+          points: `strip`,
+          sample_style: { radius: 1.5, opacity: 0.4 },
+        },
+        { width: 500, height: 300 },
+      )
+      const pts = sample_points(plot)
+      expect(pts).toHaveLength(200) // B draws only its (here absent) outliers
+      expect(new Set(pts.map(({ r }) => r))).toEqual(new Set([1.5]))
+      const opacities = [...plot.querySelectorAll(`circle.sample-point`)].map((circle) =>
+        circle.getAttribute(`fill-opacity`),
+      )
+      expect(new Set(opacities)).toEqual(new Set([`0.4`]))
+      const center = box_center(plot, `vertical`)
+      const slot_px = Math.abs(box_center(plot, `vertical`, 1) - center)
+      const offsets = pts.map((pt) => Math.abs(pt.x - center))
+      expect(Math.max(...offsets)).toBeLessThanOrEqual((slot_px * 0.4) / 2 - 1.5 + 1e-9)
+      expect(Math.max(...offsets)).toBeGreaterThan((slot_px * 0.4) / 2 - 3.5)
+    })
+
+    // Split violins share a slot; each series' samples must stay on its own half
+    test.each([`strip`, `swarm`] as const)(
+      `%s on split violins keeps each side apart`,
+      async (mode) => {
+        const plot = await mount_sized_box_plot(
+          {
+            series: [
+              { y: dist(60, 0, 1), label: `L`, category: `c`, side: `negative` },
+              { y: dist(60, 0.5, 1), label: `R`, category: `c`, side: `positive` },
+            ],
+            kind: `violin`,
+            points: mode,
+          },
+          { width: 400, height: 400 },
+        )
+        const center = box_center(plot, `vertical`)
+        for (const [box_idx, sign] of [
+          [0, -1],
+          [1, 1],
+        ] as const) {
+          const offsets = sample_points(query(plot, `[data-box-idx="${box_idx}"]`)).map(
+            (pt) => sign * (pt.x - center),
+          )
+          expect(offsets).toHaveLength(60)
+          expect(Math.min(...offsets)).toBeGreaterThanOrEqual(0)
+        }
+      },
+    )
+
+    test(`Points control switches the mode and disables the outlier toggle`, async () => {
+      const plot = await mount_sized_box_plot({
+        series: [{ y: [...dist(40), 50], label: `A` }],
+        show_controls: true,
+        controls_open: true,
+      })
+      const select = [...plot.querySelectorAll(`select`)].find((el) =>
+        el.parentElement?.textContent?.includes(`Points`),
+      )
+      if (!select) throw new Error(`Points select not rendered`)
+      const outliers = [
+        ...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
+      ].find((input) => input.parentElement?.textContent?.includes(`Show outliers`))
+      expect([select.value, outliers?.disabled]).toEqual([`none`, false])
+      expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(0)
+      set_select(select, `swarm`)
+      await tick()
+      expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(41)
+      expect(outliers?.disabled).toBe(true)
+    })
+  })
 
   // horizontal boxes put their secondary values on x2, which the frame tests can't reach
   test(`does not render the x2 axis for a horizontal secondary box without finite values`, async () => {

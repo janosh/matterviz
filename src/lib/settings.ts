@@ -924,6 +924,11 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Show outlier points beyond the whiskers`,
     },
     show_mean: { value: false, description: `Show the mean marker inside each box` },
+    points: {
+      value: `none` as const,
+      description: `Draw every sample over its box/violin: as a jittered strip or as a non-overlapping swarm`,
+      enum: { none: `None`, strip: `Strip`, swarm: `Swarm` },
+    },
     kind: {
       value: `box` as const,
       description: `Glyph to draw per series: box, violin (KDE density), or both`,
@@ -991,17 +996,18 @@ export const SETTINGS_CONFIG = define_settings({
         description: `Median line color`,
       },
     },
-    outlier: {
+    // Sample dots: the outliers, or every sample when strip/swarm points are on
+    sample: {
       radius: {
         value: 2.5,
-        description: `Outlier point radius (px)`,
+        description: `Sample point radius (px)`,
         minimum: 0.5,
         maximum: 10,
       },
-      opacity: opacity_setting(0.6, `Outlier point opacity`),
+      opacity: opacity_setting(0.6, `Sample point opacity`),
       stroke_width: {
         value: 0,
-        description: `Outlier point stroke width`,
+        description: `Sample point stroke width`,
         minimum: 0,
         maximum: 3,
       },

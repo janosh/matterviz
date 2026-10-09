@@ -3,7 +3,14 @@
 
 import { ascending } from 'd3-array'
 import type { Vec2 } from '#lib/math.js'
-import { array_extent, mean as mean_of, quantile_unordered, sample_std } from '#lib/math.js'
+import {
+  array_extent,
+  mean as mean_of,
+  mulberry32,
+  quantile_unordered,
+  sample_std,
+} from '#lib/math.js'
+import { dodge, type DodgeSide } from '#lib/plot/core/dodge.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
 import type { HandlerProps } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -17,9 +24,11 @@ export type WhiskerMode = (typeof WHISKER_MODES)[number]
 // Which glyph(s) to draw per series: a box, a violin (KDE density), or both
 export type ViolinKind = `box` | `violin` | `violin+box`
 // Which half of the category slot a violin occupies (for one-sided / split violins)
-export type ViolinSide = `both` | `positive` | `negative`
+export type ViolinSide = DodgeSide
 // Bandwidth selector for the KDE (a number, or a rule-of-thumb name)
 export type BandwidthOption = number | `silverman` | `scott`
+// Every sample drawn over its box/violin: none, a jittered strip, or a beeswarm
+export type BoxPointMode = `none` | `strip` | `swarm`
 
 // One box/violin in a BoxPlot, summarizing a single raw distribution (y)
 export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
@@ -47,6 +56,7 @@ export interface BoxPlotSeries<Metadata = Record<string, unknown>> {
   bandwidth?: BandwidthOption // numeric: value-axis units, decades on a log value axis
   violin_width?: number // fraction of the category slot
   clip?: [number | null, number | null] // hard KDE bounds (e.g. [0, null] for RMSD)
+  points?: BoxPointMode // per-series override of the component's `points`
   // Series sharing a `category` occupy the same slot (for split/grouped violins).
   // When omitted, each series gets its own slot (default box/violin behavior).
   category?: string
@@ -224,4 +234,24 @@ export function compute_box_whiskers(
     outliers,
     n: n_vals,
   }
+}
+
+// Cross-axis px offset of each sample from its box's center line, given the samples'
+// value-axis px: uniform jitter for `strip`, non-overlapping packing for `swarm`, on one
+// side for half violins. Centers stay within half_width - radius so every point fits the
+// slot; an overfull swarm piles up at that edge, like seaborn's swarmplot. Jitter is seeded
+// so layouts survive re-renders.
+export function box_point_offsets(
+  value_px: ArrayLike<number>,
+  mode: Exclude<BoxPointMode, `none`>,
+  opts: { radius: number; half_width: number; side: ViolinSide; seed: number },
+): Float64Array {
+  const { radius, half_width, side, seed } = opts
+  const max_offset = Math.max(0, half_width - radius)
+  if (mode === `swarm`) return dodge(value_px, radius, { padding: 0.5, side, max_offset })
+  const [rand, sign] = [mulberry32(seed), side === `negative` ? -1 : 1]
+  return Float64Array.from(value_px, () => {
+    const jitter = rand() * 2 - 1
+    return (side === `both` ? jitter : sign * Math.abs(jitter)) * max_offset
+  })
 }

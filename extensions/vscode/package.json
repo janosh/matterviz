@@ -1068,6 +1068,16 @@
           "default": false,
           "description": "Show the mean marker inside each box"
         },
+        "matterviz.box.points": {
+          "type": "string",
+          "default": "none",
+          "description": "Draw every sample over its box/violin: as a jittered strip or as a non-overlapping swarm",
+          "enum": [
+            "none",
+            "strip",
+            "swarm"
+          ]
+        },
         "matterviz.box.kind": {
           "type": "string",
           "default": "box",
@@ -1173,24 +1183,24 @@
           "default": "var(--text-color, black)",
           "description": "Median line color"
         },
-        "matterviz.box.outlier.radius": {
+        "matterviz.box.sample.radius": {
           "type": "number",
           "default": 2.5,
-          "description": "Outlier point radius (px)",
+          "description": "Sample point radius (px)",
           "minimum": 0.5,
           "maximum": 10
         },
-        "matterviz.box.outlier.opacity": {
+        "matterviz.box.sample.opacity": {
           "type": "number",
           "default": 0.6,
-          "description": "Outlier point opacity",
+          "description": "Sample point opacity",
           "minimum": 0,
           "maximum": 1
         },
-        "matterviz.box.outlier.stroke_width": {
+        "matterviz.box.sample.stroke_width": {
           "type": "number",
           "default": 0,
-          "description": "Outlier point stroke width",
+          "description": "Sample point stroke width",
           "minimum": 0,
           "maximum": 3
         },

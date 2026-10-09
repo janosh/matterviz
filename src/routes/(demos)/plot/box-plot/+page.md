@@ -43,6 +43,65 @@ Pass one `BoxPlotSeries` per distribution. Use the controls (gear icon) to switc
 />
 ```
 
+## Strip and Swarm Points
+
+A box hides how many samples it summarizes and how they cluster. `points` draws every sample over its box or violin: `strip` jitters them across the slot, `swarm` packs them so none overlap (a beeswarm), which shows the distribution's shape point by point. Drawn samples include the outliers, so those are not drawn twice. Half violins keep their samples on their own half, so split violins (series sharing a `category`) stay apart. Points that don't fit the slot pile up at its edges. Style them (and outliers) with `sample_style={{ radius, opacity, stroke_width }}`. Override the mode per series with `BoxPlotSeries.points`, or switch modes from the controls (gear icon).
+
+```svelte example
+<script lang="ts">
+  import { BoxPlot } from 'matterviz'
+
+  let rng_state = 5
+  const rand = () => (rng_state = (rng_state * 16807) % 2147483647) / 2147483647
+  const normal = () => Math.sqrt(-2 * Math.log(rand())) * Math.cos(2 * Math.PI * rand())
+  // Band gaps (eV) per crystal system: a spike of metals at 0 plus a broad insulator peak
+  const gaps = (count, metal_frac, center, spread) =>
+    Array.from({ length: count }, () =>
+      rand() < metal_frac
+        ? Math.abs(0.05 * normal())
+        : Math.max(0, center + spread * normal()),
+    )
+  const series = [
+    { y: gaps(120, 0.4, 2.5, 1), label: `Cubic` },
+    { y: gaps(90, 0.2, 3.2, 1.2), label: `Hexagonal` },
+    { y: gaps(60, 0.1, 4, 1.4), label: `Orthorhombic` },
+    { y: gaps(40, 0.05, 4.5, 1.5), label: `Monoclinic` },
+  ]
+  // Split violins: DFT vs ML gaps per family, swarmed on their own halves
+  const split = [`Oxides`, `Nitrides`].flatMap((category, idx) => [
+    {
+      y: gaps(70, 0.1, 3 + idx, 1),
+      label: `DFT`,
+      category,
+      side: `negative`,
+      color: `#4c6ef5`,
+    },
+    {
+      y: gaps(70, 0.1, 3.4 + idx, 1.2),
+      label: `ML`,
+      category,
+      side: `positive`,
+      color: `#fa5252`,
+    },
+  ])
+</script>
+
+<BoxPlot
+  {series}
+  points="swarm"
+  box={{ opacity: 0.25 }}
+  y_axis={{ label: `Band gap`, unit: `eV` }}
+  style="height: 420px"
+/>
+<BoxPlot
+  series={split}
+  points="swarm"
+  kind="violin"
+  y_axis={{ label: `Band gap`, unit: `eV` }}
+  style="height: 360px"
+/>
+```
+
 ## Quartiles and Whisker Modes
 
 Quartiles use the type-7 rule `q(p) = x[(n - 1) p]` with linear interpolation between order statistics — the default of `numpy.percentile`, R's `quantile()` and d3 — not Tukey's hinges, so the box matches what those libraries report. Whiskers are configurable via `whisker_mode`:

@@ -2,6 +2,7 @@
   import { track_settings } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import type {
+    BoxPointMode,
     Orientation,
     PlotConfig,
     ViolinKind,
@@ -18,6 +19,7 @@
     whisker_mode = $bindable(`tukey`),
     show_outliers = $bindable(true),
     show_mean = $bindable(false),
+    points = $bindable(`none`),
     kind = $bindable(`box`),
     side = $bindable(`both`),
     x_axis = $bindable({}),
@@ -34,6 +36,7 @@
     whisker_mode?: WhiskerMode
     show_outliers?: boolean
     show_mean?: boolean
+    points?: BoxPointMode
     kind?: ViolinKind
     side?: ViolinSide
     children?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
@@ -47,6 +50,7 @@
       whisker_mode,
       show_outliers,
       show_mean,
+      points,
     }),
     { orientation: `vertical`, ...DEFAULTS.box },
   )
@@ -74,7 +78,7 @@
     title="Box / violin"
     changed_keys={box_violin_settings.changed_keys}
     on_reset={() =>
-      ({ orientation, kind, side, whisker_mode, show_outliers, show_mean } =
+      ({ orientation, kind, side, whisker_mode, show_outliers, show_mean, points } =
         box_violin_settings.snapshot())}
     layout="flow"
   >
@@ -106,10 +110,17 @@
           {@render options(enum_labels(SETTINGS_CONFIG.box.whisker_mode))}
         </select>
       </label>
+      <label>
+        <span>Points</span>
+        <select bind:value={points}>
+          {@render options(enum_labels(SETTINGS_CONFIG.box.points))}
+        </select>
+      </label>
     </div>
     <div class="ctrl-line">
       <label>
-        <input type="checkbox" bind:checked={show_outliers} />
+        <!-- Drawn samples already include the outliers -->
+        <input type="checkbox" bind:checked={show_outliers} disabled={points !== `none`} />
         Show outliers
       </label>
       <label>
