@@ -28,11 +28,11 @@
     "@types/node": "^26.6.4",
     "anywidget": "^0.11.0",
     "matterviz": "link:../..",
-    "svelte": "^5.57.1",
+    "svelte": "^5.57.2",
     "svelte-widgets": "link:../../node_modules/svelte-widgets",
     "typescript": "^6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
-    "vite-plus": "1.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.1.0",
+    "vite-plus": "1.1.0"
   },
   "packageManager": "pnpm@11.5.0"
 }

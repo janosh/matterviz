@@ -1194,8 +1194,8 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   <p
     style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
   >
-    ⚠️ <strong>X-axis log scale invalid:</strong> Data contains negative/zero values. Points with
-    x ≤ 0 will not render.
+    ⚠️ <strong>X-axis log scale invalid:</strong> Data contains negative/zero values. Points
+    with x ≤ 0 will not render.
   </p>
 {/if}
 
@@ -1203,8 +1203,8 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   <p
     style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
   >
-    ⚠️ <strong>Y-axis log scale invalid:</strong> Data contains negative/zero values. Points with
-    y ≤ 0 will not render.
+    ⚠️ <strong>Y-axis log scale invalid:</strong> Data contains negative/zero values. Points
+    with y ≤ 0 will not render.
   </p>
 {/if}
 
@@ -1212,14 +1212,14 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   <p
     style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
   >
-    ⚠️ <strong>Color log scale invalid:</strong> Data contains negative/zero values. Color mapping
-    may fail for those points.
+    ⚠️ <strong>Color log scale invalid:</strong> Data contains negative/zero values. Color
+    mapping may fail for those points.
   </p>
 {/if}
 
 <p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em">
-  <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes. Switch to "log"
-  to see points with negative values disappear.
+  <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes. Switch to
+  "log" to see points with negative values disappear.
 </p>
 
 <ScatterPlot
@@ -3095,8 +3095,8 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
 </script>
 
 <p style="margin-bottom: 0.5em; font-size: 0.9em; opacity: 0.85">
-  <strong>Stress test:</strong> 240 points across 3 series. Click axis labels to switch properties.
-  ~5% of loads will fail to test error recovery.
+  <strong>Stress test:</strong> 240 points across 3 series. Click axis labels to switch
+  properties. ~5% of loads will fail to test error recovery.
 </p>
 
 <div style="display: flex; gap: 1em; margin-bottom: 0.5em; font-size: 0.8em">
@@ -3288,9 +3288,9 @@ Axis changes simulate delayed loading. Color property and palette changes use th
 </script>
 
 <p style="font-size: 0.9em; opacity: 0.85; margin-bottom: 0.5em">
-  <strong>150 points</strong> with 3 interactive dimensions. Click axis labels to switch X/Y properties.
-  Click the ColorBar title to switch color property, or the color scale dropdown to change the color
-  scheme.
+  <strong>150 points</strong> with 3 interactive dimensions. Click axis labels to switch X/Y
+  properties. Click the ColorBar title to switch color property, or the color scale dropdown to
+  change the color scheme.
 </p>
 
 <div style="display: flex; gap: 1em; font-size: 0.8em; margin-bottom: 0.5em">
@@ -3662,8 +3662,8 @@ Series `unit` metadata groups compatible values onto one y-axis. `axis_group` ex
 </script>
 
 <label
-  ><input type="checkbox" bind:checked={split_residual} /> Give the residual an independent axis
-  group</label
+  ><input type="checkbox" bind:checked={split_residual} /> Give the residual an independent
+  axis group</label
 >
 <ScatterPlot
   {series}

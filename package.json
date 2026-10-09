@@ -314,14 +314,14 @@
     "dompurify": "3.4.16",
     "fflate": "^0.8.3",
     "h5wasm": "^0.10.3",
-    "js-yaml": "^5.4.2",
+    "js-yaml": "^5.4.3",
     "svelte-widgets": "github:janosh/svelte-widgets#main",
     "three": "^0.186.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@sveltejs/adapter-static": "^4.0.0",
-    "@sveltejs/kit": "^3.0.0",
+    "@sveltejs/kit": "^3.0.1",
     "@sveltejs/package": "^3.0.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@types/d3-array": "^3.2.2",
@@ -337,18 +337,18 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.6.4",
     "@types/three": "^0.186.0",
-    "@vitest/coverage-v8": "5.0.1",
+    "@vitest/coverage-v8": "5.0.3",
     "@wooorm/starry-night": "^3.11.0",
-    "happy-dom": "^20.14.5",
-    "knip": "^6.39.0",
+    "happy-dom": "^20.14.6",
+    "knip": "^6.40.0",
     "pagefind": "^1.5.2",
     "publint": "^0.3.25",
-    "svelte": "^5.57.1",
+    "svelte": "^5.57.2",
     "svelte-check": "^4.7.6",
     "typescript": "^6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
-    "vite-plus": "1.0.0",
-    "vitest": "5.0.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.1.0",
+    "vite-plus": "1.1.0",
+    "vitest": "5.0.3"
   },
   "peerDependencies": {
     "svelte": "^5.48.0"
@@ -368,7 +368,6 @@
           "src/routes/(demos)/structure/host-tool/prediction-worker.ts"
         ],
         "ignore": [
-          ".venv/**",
           "extensions/anywidget/**"
         ]
       },
@@ -378,9 +377,6 @@
         ]
       },
       "extensions/jupyterlab": {
-        "entry": [
-          "src/index.ts"
-        ],
         "ignoreDependencies": [
           "@jupyterlab/builder",
           "@spglib/moyo-wasm",
