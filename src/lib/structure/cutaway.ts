@@ -1,6 +1,6 @@
-import type { Vec3 } from '#lib/math.js'
-import type { Intersection, Matrix4, Mesh, Object3D, Raycaster } from 'three/webgpu'
-import { ClippingGroup, Plane, Vector3 } from 'three/webgpu'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Intersection, Mesh, Object3D, Raycaster } from 'three/webgpu'
+import { ClippingGroup, Matrix4, Plane, Vector3 } from 'three/webgpu'
 
 export interface CutawaySettings {
   mode: 'off' | 'plane' | 'slab'
@@ -20,6 +20,32 @@ export const DEFAULT_CUTAWAY: CutawaySettings = {
 
 export interface StructureCutaway extends CutawaySettings {
   cartesian_to_fractional: Matrix4
+}
+
+// A cutaway as hosts pass it: JSON settings (e.g. movie configs) carry no transform
+export type CutawayInput = CutawaySettings & { cartesian_to_fractional?: Matrix4 }
+
+// Cartesian -> fractional transform of a cell whose rows are the lattice vectors (columns
+// for Three's column-vector multiplication), with fractional 0 at `origin`
+export const cell_to_fractional = (cell: Matrix3x3, origin: Vec3 = [0, 0, 0]): Matrix4 =>
+  new Matrix4().fromArray([...cell[0], 0, ...cell[1], 0, ...cell[2], 0, ...origin, 1]).invert()
+
+// Slices without a transform cut the displayed structure's own cell. An active one needs
+// that cell: a lattice-free structure has no fractional coordinates to slice in.
+export function resolve_cutaway(
+  cutaway: CutawayInput | undefined,
+  cell: Matrix3x3 | undefined,
+): StructureCutaway | undefined {
+  if (!cutaway) return undefined
+  const { cartesian_to_fractional } = cutaway
+  if (cartesian_to_fractional) return { ...cutaway, cartesian_to_fractional }
+  if (cutaway.mode === `off`) return undefined
+  if (!cell) {
+    throw new Error(
+      `A ${cutaway.mode} cutaway needs cartesian_to_fractional or a structure with a lattice`,
+    )
+  }
+  return { ...cutaway, cartesian_to_fractional: cell_to_fractional(cell) }
 }
 
 // Plane retains the lower side; slab retains a centered interval in fractional cell space.

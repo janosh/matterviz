@@ -180,6 +180,17 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   await set_value(`Slab thickness`, `0.15`)
   expect(control(`Cutaway position`).value).toBe(`0.7`)
   expect(control(`Slab thickness`).value).toBe(`0.15`)
+  const whole_atoms = [
+    ...document.querySelectorAll<HTMLInputElement>(`.cutaway-controls input[type="checkbox"]`),
+  ].find((input) => input.parentElement?.textContent?.includes(`Whole atoms`))
+  if (!whole_atoms) throw new Error(`Whole atoms checkbox not rendered`)
+  expect(whole_atoms.checked).toBe(false)
+  whole_atoms.click()
+  await tick()
+  expect(whole_atoms.checked).toBe(true)
+  expect(document.querySelector(`.cutaway-controls`)?.textContent).toContain(
+    `Selects atoms by center`,
+  )
   await set_value(`Cutaway mode`, `off`)
   expect(compute).toHaveBeenCalledTimes(2)
   expect(compute.mock.calls[0][0]).toMatchObject({

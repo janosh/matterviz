@@ -9,6 +9,7 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import { capitalize, symbol_names } from '#lib/labels.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { GizmoOptions } from '#lib/scene/gizmo.js'
+import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import { is_plain_object } from '#lib/utils.js'
 
@@ -374,7 +375,10 @@ export const SETTINGS_CONFIG = define_settings({
     polyhedra_neighbor_mode: {
       value: `anion`,
       description: `Use more electronegative anion neighbors or every bonded neighbor as polyhedron vertices`,
-      enum: { anion: `Anion neighbors`, bonded: `All bonded neighbors` },
+      enum: {
+        anion: `Anion neighbors`,
+        bonded: `All bonded neighbors`,
+      } satisfies Record<PolyhedraNeighborMode, string>,
     },
     polyhedra_opacity: opacity_setting(0.15, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {

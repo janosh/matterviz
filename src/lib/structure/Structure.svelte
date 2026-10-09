@@ -64,7 +64,7 @@
   import type { Camera, Scene } from 'three/webgpu'
   import type { AtomColorConfig } from './atom-properties'
   import type { AtomColorField } from './atom-color-field'
-  import type { StructureCutaway } from './cutaway'
+  import type { CutawayInput } from './cutaway'
   import { DEFAULT_ATOM_COLOR_CONFIG, normalize_atom_color_config } from './atom-properties'
   import { set_element_palette, ViewerElementPalette } from './element-palette.svelte'
   import AtomLegend from './AtomLegend.svelte'
@@ -256,7 +256,7 @@
     atom_opacity?: number
     volume_color_field?: AtomColorField
     volume_opacity?: number
-    cutaway?: StructureCutaway
+    cutaway?: CutawayInput
     trajectory_position_stream?: TrajectoryPositionStream | null
     trajectory_line_end_frame?: number
     defer_expensive_geometry?: boolean
