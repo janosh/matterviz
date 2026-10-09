@@ -17,8 +17,13 @@
   import * as math from '#lib/math.js'
   import type { AtomColorField } from './atom-color-field'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
-  import type { StructureCutaway } from './cutaway'
-  import { cutaway_contains, enable_cutaway_picking, StructureCutawayGroup } from './cutaway'
+  import type { CutawayInput } from './cutaway'
+  import {
+    cutaway_contains,
+    enable_cutaway_picking,
+    resolve_cutaway,
+    StructureCutawayGroup,
+  } from './cutaway'
   import {
     bind_renderer,
     brighten_hex,
@@ -109,7 +114,7 @@
   } from './bonding'
   import { CanvasTooltip, compose_perceived_bonds, perceive_bond_orders } from './index'
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
-  import type { PolyhedraColorMode, Polyhedron } from './polyhedra'
+  import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
   import {
     compute_polyhedra,
     create_fat_segments,
@@ -200,6 +205,7 @@
     aromatic_display = DEFAULTS.structure.aromatic_display,
     bonding_options = {},
     show_polyhedra = DEFAULTS.structure.show_polyhedra,
+    polyhedra_neighbor_mode = DEFAULTS.structure.polyhedra_neighbor_mode,
     polyhedra_opacity = DEFAULTS.structure.polyhedra_opacity,
     polyhedra_show_edges = DEFAULTS.structure.polyhedra_show_edges,
     polyhedra_color_mode = DEFAULTS.structure.polyhedra_color_mode,
@@ -257,7 +263,7 @@
     atom_color_field,
     volume_color_field,
     volume_opacity = 0.35,
-    cutaway,
+    cutaway: cutaway_input,
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
@@ -325,6 +331,7 @@
     aromatic_display?: `aromatic` | `kekule`
     bonding_options?: Record<string, unknown>
     show_polyhedra?: ShowBonds // when to render coordination polyhedra
+    polyhedra_neighbor_mode?: PolyhedraNeighborMode
     polyhedra_opacity?: number
     polyhedra_show_edges?: boolean
     polyhedra_color_mode?: PolyhedraColorMode
@@ -399,7 +406,7 @@
     atom_opacity?: number
     volume_color_field?: AtomColorField
     volume_opacity?: number
-    cutaway?: StructureCutaway
+    cutaway?: CutawayInput
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
@@ -1083,6 +1090,8 @@
   $effect(() => hover_enabled.set(!camera_is_moving && !dragging_atoms))
   let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
+  // JSON cutaways (movie configs) carry no transform: slice the displayed cell
+  const cutaway = $derived(resolve_cutaway(cutaway_input, lattice?.matrix))
 
   let visual_lattice = $derived(
     base_structure && `lattice` in base_structure ? base_structure.lattice : lattice,
@@ -1286,6 +1295,46 @@
     structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
   )
 
+  // A shell neighbor reached by a periodic bond lands at its bond endpoint and at the
+  // polyhedron vertex center + (pos_2 - pos_1), which can differ by an ulp
+  const same_position = (left: Vec3, right: Vec3): boolean =>
+    left.every((value, axis) => Math.abs(value - right[axis]) < 1e-6)
+
+  // Whole-atom cutaways select centers, then retain their complete coordination shells.
+  // Selecting spheres separately from clipped cylinders leaves dangling bond fragments.
+  let cutaway_centers = $derived.by(() => {
+    if (!cutaway?.whole_atoms || cutaway.mode === `off`) return undefined
+    return new Set(
+      render_sites
+        .filter(({ site }) => cutaway_contains(cutaway, site.xyz))
+        .map(({ site_idx }) => site_idx),
+    )
+  })
+  let cutaway_visible_sites = $derived.by(() => {
+    if (!cutaway_centers || !structure) return undefined
+    const visible = new Map<number, Vec3[]>()
+    const add_position = (site_idx: number, position: Vec3) => {
+      const positions = visible.get(site_idx)
+      if (!positions) visible.set(site_idx, [position])
+      else if (!positions.some((other) => same_position(other, position)))
+        positions.push(position)
+    }
+    for (const site_idx of cutaway_centers) {
+      const site = get_site(structure, site_idx)
+      if (site) add_position(site_idx, site.xyz)
+    }
+    for (const bond of bond_records(bonds_to_render)) {
+      add_position(bond.site_idx_1, bond.pos_1)
+      add_position(bond.site_idx_2, bond.pos_2)
+    }
+    for (const poly of polyhedra) {
+      for (const [vertex_idx, site_idx] of poly.vertex_site_idxs.entries()) {
+        add_position(site_idx, poly.vertices[vertex_idx])
+      }
+    }
+    return visible
+  })
+
   // One reactive read per palette entry instead of one proxy access per atom/bond.
   const element_palette = get_element_palette()
   const palette = $derived({ ...element_palette.colors })
@@ -1334,7 +1383,9 @@
     const radius_scale = effective_atom_radius
     const radius_opts = radius_options
     const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
-    const reusable = !filter_prop_vals && !filter_elements && !hidden_centers?.size
+    const visible_cutaway_sites = cutaway_visible_sites
+    const reusable =
+      !filter_prop_vals && !filter_elements && !hidden_centers?.size && !visible_cutaway_sites
     const appearance = atom_appearance
     if (reusable && previous_atoms?.appearance === appearance && structure) {
       const columns = numeric_sites.get(structure)
@@ -1369,6 +1420,7 @@
 
     const groups: AtomGroups = { first_by_site: new Map(), base: [], image: [], partial: [] }
     for (const { site_idx, site, is_image_atom } of render_sites) {
+      if (visible_cutaway_sites && !visible_cutaway_sites.has(site_idx)) continue
       // Skip sites with hidden property values
       if (filter_prop_vals) {
         const prop_val = prop_values?.[site_idx]
@@ -1393,20 +1445,22 @@
       const visible_species = filter_elements
         ? site.species.filter(({ element }) => !hidden_elements.has(element))
         : site.species
-      for (const slice_data of compute_slice_geometry(visible_species)) {
-        const atom = {
-          ...slice_data,
-          site_idx,
-          species: site.species,
-          position: [...site.xyz] as Vec3,
-          radius,
-          color: site_property_color ?? element_colors?.[slice_data.element],
-          is_image_atom,
+      for (const position of visible_cutaway_sites?.get(site_idx) ?? [site.xyz]) {
+        for (const slice_data of compute_slice_geometry(visible_species)) {
+          const atom = {
+            ...slice_data,
+            site_idx,
+            species: site.species,
+            position: [...position] as Vec3,
+            radius,
+            color: site_property_color ?? element_colors?.[slice_data.element],
+            is_image_atom: is_image_atom || !same_position(position, site.xyz),
+          }
+          // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
+          if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
+          if (atom.occupancy < 1) groups.partial.push(atom)
+          else (atom.is_image_atom ? groups.image : groups.base).push(atom)
         }
-        // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
-        if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
-        if (atom.occupancy < 1) groups.partial.push(atom)
-        else (is_image_atom ? groups.image : groups.base).push(atom)
       }
     }
     previous_atoms =
@@ -1519,12 +1573,37 @@
   // hidden but manually added bonds stay visible (bond_pairs may still be computed
   // for polyhedra, so this can't rely on bond_pairs being empty).
   let bonds_to_render = $derived.by(() => {
-    if (applies_to_structure(effective_show_bonds, Boolean(lattice)))
-      return filtered_bond_pairs
-    const added_keys = new Set(added_bonds.map(bond_key_for))
-    return bond_records(filtered_bond_pairs).filter((bond) =>
-      added_keys.has(bond_key_for(bond)),
-    )
+    let bonds = filtered_bond_pairs
+    if (!applies_to_structure(effective_show_bonds, Boolean(lattice))) {
+      const added_keys = new Set(added_bonds.map(bond_key_for))
+      bonds = bond_records(bonds).filter((bond) => added_keys.has(bond_key_for(bond)))
+    }
+    const centers = cutaway_centers
+    if (!centers || !structure) return bonds
+    // A periodic bond runs from site_idx_1's own position to an image of site_idx_2, so a
+    // center at site_idx_2 gets the mirrored copy anchored at the center itself
+    return bond_records(bonds).flatMap((bond): BondPair[] => {
+      const shifted = Boolean(bond.cell_shift?.some(Boolean))
+      const kept: BondPair[] = []
+      if (centers.has(bond.site_idx_1) || (!shifted && centers.has(bond.site_idx_2))) {
+        kept.push(bond)
+      }
+      const center =
+        shifted && centers.has(bond.site_idx_2) && get_site(structure, bond.site_idx_2)
+      if (center) {
+        kept.push({
+          ...bond,
+          site_idx_1: bond.site_idx_2,
+          site_idx_2: bond.site_idx_1,
+          pos_1: center.xyz,
+          pos_2: center.xyz.map(
+            (val, axis) => val + bond.pos_1[axis] - bond.pos_2[axis],
+          ) as Vec3,
+          cell_shift: bond.cell_shift?.map((val) => -val) as Vec3,
+        })
+      }
+      return kept
+    })
   })
 
   // Open bond cylinders halve their triangles, but their hollow ends show wherever no opaque
@@ -1532,7 +1611,9 @@
   // smaller than a bond's reach (2.35 x thickness: a triple bond's outer copy, offset + radius)
   let bonds_capped = $derived.by(() => {
     if (!show_atoms || atom_opacity < 1 || atom_groups.partial.length > 0) return true
-    if (cutaway && cutaway.mode !== `off`) return true
+    if (cutaway && cutaway.mode !== `off` && !cutaway.whole_atoms) return true
+    // Centers hidden inside their polyhedra drop the sphere, not the bonds to it
+    if (polyhedra_hide_center_atoms && polyhedra_center_site_idxs.size > 0) return true
     const reach = 2.35 * bond_thickness
     return [atom_groups.base, atom_groups.image].some((atoms) =>
       atoms.some((atom) => atom.radius < reach),
@@ -1551,7 +1632,11 @@
   // never recompute the hull geometry.
   let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
-    if (defer_expensive_geometry) return last_polyhedra
+    if (defer_expensive_geometry) {
+      return cutaway_centers
+        ? last_polyhedra.filter((poly) => cutaway_centers.has(poly.center_site_idx))
+        : last_polyhedra
+    }
     if (
       !structure ||
       dragging_atoms ||
@@ -1562,6 +1647,7 @@
       return last_polyhedra
     }
     last_polyhedra = compute_polyhedra(structure, filtered_bond_pairs, {
+      neighbor_mode: polyhedra_neighbor_mode,
       min_neighbors: polyhedra_min_neighbors,
       // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
       // be dragged past each other. Widening the cap instead of honoring an empty window
@@ -1570,7 +1656,9 @@
       excluded_center_elements: polyhedra_excluded_elements,
       included_center_elements: polyhedra_included_elements,
     })
-    return last_polyhedra
+    return cutaway_centers
+      ? last_polyhedra.filter((poly) => cutaway_centers.has(poly.center_site_idx))
+      : last_polyhedra
   })
 
   // Face opacity and edge visibility don't rebuild buffers; recoloring doesn't rebuild hulls.
@@ -1861,14 +1949,18 @@
   let label_entries = $derived(
     show_site_labels || show_site_indices
       ? [...atom_groups.first_by_site.values()]
-          .filter((atom) => cutaway_contains(cutaway, atom.position))
+          // Whole-atom mode already selected these atoms, endpoints outside the slice included
+          .filter((atom) => cutaway?.whole_atoms || cutaway_contains(cutaway, atom.position))
           .map(site_anchor)
       : [],
   )
 
   const cutaway_group = new StructureCutawayGroup()
+  const atom_cutaway_group = new StructureCutawayGroup()
   $effect(() => {
+    // Overlays (arrows, trails, highlights, lattice, volumes) always keep surface clipping
     cutaway_group.set_cutaway(cutaway)
+    atom_cutaway_group.set_cutaway(cutaway?.whole_atoms ? undefined : cutaway)
     // Pointer position has not moved when a slider hides the currently hovered atom.
     if (cutaway && cutaway.mode !== `off`) hovered_idx = null
     threlte.invalidate()
@@ -1956,7 +2048,7 @@
 <!-- Apply manual rotation around center: translate to origin, rotate, translate back -->
 <T.Group position={rotation_target}>
   <T.Group {rotation}>
-    <T is={cutaway_group} position={neg_rotation_target}>
+    <T is={atom_cutaway_group} position={neg_rotation_target}>
       {#if show_atoms}
         <!-- Instanced rendering for full-occupancy atoms: one InstancedMesh for
           base atoms and one for PBC image atoms (which ghost + lose interaction
@@ -2001,18 +2093,8 @@
         {/if}
       {/if}
 
-      <!-- Per-site vector arrows (forces, magmoms, ...) as instanced meshes:
-        2 draw calls per layer instead of 2 meshes per site -->
-      {#each vector_layers as layer (layer.key)}
-        <ArrowInstances arrows={layer.arrows} />
-      {/each}
-
-      <!-- Displacement overlay: a sibling arrow layer, kept off the force/magmom vector path
-        so the legend never mislabels relaxation displacements as forces -->
-      {#if displacement_arrows.placements.count > 0}
-        <ArrowInstances arrows={displacement_arrows} />
-      {/if}
-
+      <!-- Bonds and polyhedra complete the atoms' shells, so they share the atoms' cutaway:
+        surface clipping, or none when whole-atom mode selects sites instead -->
       {#if bonds_to_render.length > 0}
         <Bond
           bonds={bonds_to_render}
@@ -2021,24 +2103,6 @@
           capped={bonds_capped}
           {ambient_light}
           {directional_light}
-        />
-      {/if}
-
-      <!-- Per-atom trajectory trails: every atom's whole path in one indexed
-        LineSegments (1 draw call no matter how many atoms or frames) -->
-      {#if interactive && show_trajectory_lines && trajectory_position_stream}
-        <TrajectoryLines
-          position_stream={trajectory_position_stream}
-          end_frame={trajectory_line_end_frame}
-          trail_frames={trajectory_line_trail_frames}
-          frame_stride={trajectory_line_frame_stride}
-          elements={trajectory_line_elements}
-          color_mode={trajectory_line_color_mode}
-          element_colors={palette}
-          wrap_mode={trajectory_line_wrap_mode}
-          anchor_positions={trajectory_line_anchors}
-          emphasis={trajectory_lines_emphasis}
-          bind:build_result={trajectory_lines_result}
         />
       {/if}
 
@@ -2064,6 +2128,38 @@
             dispose={false}
           />
         {/if}
+      {/if}
+    </T>
+
+    <T is={cutaway_group} position={neg_rotation_target}>
+      <!-- Per-site vector arrows (forces, magmoms, ...) as instanced meshes:
+        2 draw calls per layer instead of 2 meshes per site -->
+      {#each vector_layers as layer (layer.key)}
+        <ArrowInstances arrows={layer.arrows} />
+      {/each}
+
+      <!-- Displacement overlay: a sibling arrow layer, kept off the force/magmom vector path
+        so the legend never mislabels relaxation displacements as forces -->
+      {#if displacement_arrows.placements.count > 0}
+        <ArrowInstances arrows={displacement_arrows} />
+      {/if}
+
+      <!-- Per-atom trajectory trails: every atom's whole path in one indexed
+        LineSegments (1 draw call no matter how many atoms or frames) -->
+      {#if interactive && show_trajectory_lines && trajectory_position_stream}
+        <TrajectoryLines
+          position_stream={trajectory_position_stream}
+          end_frame={trajectory_line_end_frame}
+          trail_frames={trajectory_line_trail_frames}
+          frame_stride={trajectory_line_frame_stride}
+          elements={trajectory_line_elements}
+          color_mode={trajectory_line_color_mode}
+          element_colors={palette}
+          wrap_mode={trajectory_line_wrap_mode}
+          anchor_positions={trajectory_line_anchors}
+          emphasis={trajectory_lines_emphasis}
+          bind:build_result={trajectory_lines_result}
+        />
       {/if}
 
       <!-- Clickable bond hit-test cylinders in edit-bonds mode -->

@@ -1745,3 +1745,16 @@ describe(`solve_linear_program`, () => {
     expect(result.objective).toBeCloseTo(-3, 9) // scipy linprog reference
   })
 })
+
+test(`mulberry32 is deterministic per seed and uniform on [0, 1)`, () => {
+  const draw = (seed: number) => Array.from({ length: 10_000 }, math.mulberry32(seed))
+  const draws = draw(3)
+  expect(draws).toEqual(draw(3))
+  expect(draws).not.toEqual(draw(4))
+  expect(Math.min(...draws)).toBeGreaterThanOrEqual(0)
+  expect(Math.max(...draws)).toBeLessThan(1)
+  // U(0, 1) has std 1/sqrt(12), so the mean of 10k draws has std 2.9e-3; 0.01 is ~3.5 sigma
+  expect(Math.abs(draws.reduce((sum, val) => sum + val, 0) / draws.length - 0.5)).toBeLessThan(
+    0.01,
+  )
+})

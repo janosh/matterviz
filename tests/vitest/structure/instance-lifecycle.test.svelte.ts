@@ -2,6 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import type { BondPair, Site } from '#lib/structure/index.js'
 import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
 import type { StructureCutaway } from '#lib/structure/cutaway.js'
+import { cutaway_planes, StructureCutawayGroup } from '#lib/structure/cutaway.js'
 import * as extras from '@threlte/extras'
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import * as camera_fit from '#lib/structure/camera-fit.js'
@@ -26,12 +27,15 @@ import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
+import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
+  CylinderGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
+  type Object3D,
   Raycaster,
   Vector3,
 } from 'three/webgpu'
@@ -49,21 +53,33 @@ const spy_interactivity = () => {
   }
 }
 
-test.each([`plane`, `slab`] as const)(
-  `%s cutaway keeps a visible partial-occupancy cap pickable behind the clipped sphere surface`,
-  (mode) => {
+test.each(
+  ([`plane`, `slab`] as const).flatMap((mode) =>
+    [false, true].flatMap((whole_atoms) =>
+      [0.5, 1].map((occupancy) => ({ mode, whole_atoms, occupancy })),
+    ),
+  ),
+)(
+  `$mode cutaway selects whole atoms=$whole_atoms at occupancy=$occupancy while keeping visible surfaces pickable`,
+  ({ mode, whole_atoms, occupancy }) => {
     const interactivity = spy_interactivity()
     const settings: StructureCutaway = {
       mode,
       axis: 2,
       position: mode === `plane` ? 0.1 : 0,
       thickness: 0.2,
+      whole_atoms,
       cartesian_to_fractional: new Matrix4(),
     }
     let cutaway = $state<StructureCutaway | undefined>()
+    let structure = $state({
+      sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, occupancy)],
+    })
     const { unmount_scene } = mount_scene((anchor) =>
       StructureScene(anchor, {
-        structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, 0.5)] },
+        get structure() {
+          return structure
+        },
         get cutaway() {
           return cutaway
         },
@@ -80,8 +96,22 @@ test.each([`plane`, `slab`] as const)(
     expect(hits()[0]?.distance).toBeLessThan(2)
     cutaway = settings
     flushSync()
-    // The rendered vacancy cap lies exactly at z=0. The sphere's nearer surface is clipped.
-    expect(hits()[0]?.distance).toBe(2)
+    // Center selection preserves the near sphere surface across the slab boundary.
+    // Surface clipping instead exposes the vacancy cap at z=0 for partial occupancy.
+    if (whole_atoms) expect(hits()[0]?.distance).toBeLessThan(2)
+    else if (occupancy === 0.5) expect(hits()[0]?.distance).toBe(2)
+    else expect(hits()).toEqual([])
+    if (whole_atoms) {
+      // Moving atoms must leave and reenter a fixed slice instead of reusing its old selection.
+      for (const z_coord of [0.3, 0]) {
+        structure = {
+          sites: [make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, occupancy)],
+        }
+        flushSync()
+        if (z_coord) expect(hits()).toEqual([])
+        else expect(hits()[0]?.distance).toBeLessThan(2)
+      }
+    }
     cutaway = { ...settings, position: -0.3 }
     flushSync()
     expect(hits()).toEqual([])
@@ -89,6 +119,153 @@ test.each([`plane`, `slab`] as const)(
     cutaway = undefined
     flushSync()
     expect(hits()[0]?.distance).toBeLessThan(2)
+  },
+)
+
+test.each(
+  [false, true].flatMap((numeric) =>
+    [false, true].flatMap((periodic) =>
+      ([`always`, `never`] as const).map((show_bonds) => ({ numeric, periodic, show_bonds })),
+    ),
+  ),
+)(
+  `whole-atom cutaway completes moving coordination shells (numeric=$numeric, periodic=$periodic, bonds=$show_bonds)`,
+  ({ numeric, periodic, show_bonds }) => {
+    const vertices: Vec3[] = [
+      [1, 0, 0.5],
+      [-1, 0, 0.5],
+      [0, 1, -0.5],
+      [0, -1, -0.5],
+    ]
+    const make_structure = (center_z: number, vertex_z = 0.5) => {
+      const positions: Vec3[] = [
+        [0, 0, center_z],
+        ...vertices.map((position, idx) =>
+          idx === 0 ? ([position[0], position[1], vertex_z] as Vec3) : position,
+        ),
+        [10, 0, 2],
+        [11, 0, 2],
+      ]
+      const numbers = new Uint8Array([32, 14, 14, 14, 14, 14, 14])
+      if (periodic) positions[1] = [-3, 0, vertex_z]
+      const flat_positions = new Float64Array(positions.flat())
+      const next = numeric
+        ? new FrameView().update(
+            create_numeric_md_frame(flat_positions, numbers, undefined, undefined, 0, {}, []),
+          ).structure
+        : {
+            sites: positions.map((position, idx) => {
+              const element = idx ? `Si` : `Ge`
+              return make_site(element, [0, 0, 0], position, `${element}${idx}`)
+            }),
+          }
+      const pairs: BondPair[] = [1, 2, 3, 4].map((site_idx) => ({
+        site_idx_1: 0,
+        site_idx_2: site_idx,
+        pos_1: positions[0],
+        pos_2: positions[site_idx],
+        bond_length: Math.hypot(
+          ...positions[site_idx].map((value, axis) => value - positions[0][axis]),
+        ),
+      }))
+      if (periodic) pairs[0] = { ...pairs[0], pos_2: [1, 0, vertex_z], cell_shift: [1, 0, 0] }
+      pairs.push({
+        site_idx_1: 5,
+        site_idx_2: 6,
+        pos_1: positions[5],
+        pos_2: positions[6],
+        bond_length: 1,
+      })
+      cache_prepared_bonds(
+        next,
+        `electroneg_ratio`,
+        {},
+        numeric ? new BondFrame(next, pack_bonds(pairs)) : pairs,
+      )
+      return next
+    }
+    let structure = $state.raw(make_structure(0))
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        get structure() {
+          return structure
+        },
+        cutaway: {
+          mode: `slab`,
+          axis: 2,
+          position: 0,
+          thickness: 0.2,
+          whole_atoms: true,
+          cartesian_to_fractional: new Matrix4(),
+        },
+        show_bonds,
+        show_polyhedra: `always`,
+        polyhedra_neighbor_mode: `bonded`,
+        polyhedra_excluded_elements: [`Si`],
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    for (const [center_z, vertex_z] of [
+      [0, 0.5],
+      [0, 0.75],
+      [0.25, 0.75],
+      [0, 0.5],
+    ]) {
+      structure = make_structure(center_z, vertex_z)
+      flushSync()
+      const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
+      const atoms = meshes.filter(
+        (mesh): mesh is AtomInstances => mesh instanceof AtomInstances,
+      )
+      const bond = meshes.find((mesh) => mesh instanceof BondMesh)
+      const faces = meshes.find(
+        (mesh) =>
+          mesh instanceof Mesh &&
+          mesh.geometry.getAttribute(`normal`) &&
+          !(mesh instanceof AtomInstances) &&
+          !(mesh instanceof BondMesh),
+      )
+      if (center_z) {
+        expect(atoms).toHaveLength(0)
+        expect(bond).toBeUndefined()
+        expect(faces).toBeUndefined()
+        continue
+      }
+      const positions = atoms.flatMap((mesh) =>
+        Array.from({ length: mesh.count }, (_unused, idx) => [
+          mesh.positions.getX(idx),
+          mesh.positions.getY(idx),
+          mesh.positions.getZ(idx),
+        ]),
+      )
+      expect(positions).toHaveLength(5)
+      expect(positions).toEqual(
+        expect.arrayContaining([[0, 0, 0], [1, 0, vertex_z], ...vertices.slice(1)]),
+      )
+      for (const mesh of atoms) expect(cutaway_planes(mesh)).toEqual([])
+      expect(faces).toBeInstanceOf(Mesh)
+      if (!(faces instanceof Mesh)) throw new Error(`Missing complete polyhedron`)
+      expect(cutaway_planes(faces)).toEqual([])
+      expect(faces.geometry.getAttribute(`position`).count).toBe(12)
+      if (show_bonds === `never`) expect(bond).toBeUndefined()
+      else {
+        expect(bond).toBeInstanceOf(BondMesh)
+        if (!(bond instanceof BondMesh)) throw new Error(`Missing complete bonds`)
+        expect(bond.count).toBe(4)
+        expect(cutaway_planes(bond)).toEqual([])
+        for (let bond_idx = 0; bond_idx < bond.count; bond_idx++) {
+          for (const direction of [-1, 1]) {
+            const endpoint = [0, 1, 2].map(
+              (axis) =>
+                bond.centers.array[bond_idx * 3 + axis] +
+                (direction * bond.deltas.array[bond_idx * 3 + axis]) / 2,
+            )
+            expect(positions).toContainEqual(endpoint)
+          }
+        }
+      }
+    }
   },
 )
 
@@ -889,5 +1066,325 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
     for (const dispose of [...meshes.values(), ...resources.values()]) {
       expect(dispose).toHaveBeenCalledTimes(1)
     }
+  },
+)
+
+// Open bond cylinders rely on an opaque sphere covering each end. A polyhedron center hidden
+// by polyhedra_hide_center_atoms drops its sphere but keeps its bonds, with or without a
+// whole-atom cutaway (which otherwise renders complete atoms and skips caps).
+test.each([
+  { hide_centers: false, whole_atom_slab: false, capped: false },
+  { hide_centers: false, whole_atom_slab: true, capped: false },
+  { hide_centers: true, whole_atom_slab: false, capped: true },
+  { hide_centers: true, whole_atom_slab: true, capped: true },
+])(
+  `bonds capped=$capped with hidden centers=$hide_centers, whole-atom slab=$whole_atom_slab`,
+  ({ hide_centers, whole_atom_slab, capped }) => {
+    // SiO4 tetrahedron: Si-O 1.62 A along the cube diagonals
+    const arm = 1.62 / Math.sqrt(3)
+    const corners: Vec3[] = [
+      [arm, arm, arm],
+      [arm, -arm, -arm],
+      [-arm, arm, -arm],
+      [-arm, -arm, arm],
+    ]
+    const structure = {
+      sites: [
+        make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`),
+        ...corners.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`)),
+      ],
+    }
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        structure,
+        show_bonds: `always`,
+        show_polyhedra: `always`,
+        polyhedra_hide_center_atoms: hide_centers,
+        // Thin bonds, so opaque atoms alone always cover the open ends
+        bond_thickness: 0.05,
+        cutaway: whole_atom_slab
+          ? {
+              mode: `slab`,
+              axis: 2,
+              position: 0,
+              thickness: 0.2,
+              whole_atoms: true,
+              cartesian_to_fractional: new Matrix4(),
+            }
+          : undefined,
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    flushSync()
+    const bond = scene
+      .getObjectsByProperty(`type`, `Mesh`)
+      .find((mesh) => mesh instanceof BondMesh)
+    if (!(bond instanceof BondMesh)) throw new Error(`no bond mesh rendered`)
+    expect(bond.count).toBe(4)
+    const cylinder_indices = (open_ended: boolean) =>
+      new CylinderGeometry(1, 1, 1, 8, 1, open_ended).index?.count
+    expect(bond.geometry.index?.count).toBe(cylinder_indices(!capped))
+  },
+)
+
+// Whole-atom mode selects sites instead of clipping their atoms, bonds and polyhedra, but
+// per-site overlays (force arrows here) must keep the slice's surface clip, and every kept
+// atom keeps its label, including the shell endpoints outside the slice
+test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint labels`, () => {
+  const arm = 1.62 / Math.sqrt(3)
+  const corners: Vec3[] = [
+    [arm, arm, arm],
+    [arm, -arm, -arm],
+    [-arm, arm, -arm],
+    [-arm, -arm, arm],
+  ]
+  const structure = {
+    sites: [
+      make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`, { force: [0.5, 0, 0] }),
+      ...corners.map((xyz, idx) =>
+        make_site(`O`, [0, 0, 0], xyz, `O${idx}`, { force: [0.5, 0, 0] }),
+      ),
+    ],
+  }
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure,
+      show_bonds: `always`,
+      show_polyhedra: `always`,
+      show_site_labels: true,
+      cutaway: {
+        mode: `slab`,
+        axis: 2,
+        position: 0,
+        thickness: 0.2,
+        whole_atoms: true,
+        cartesian_to_fractional: new Matrix4(),
+      },
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const clipped = (object: Object3D): boolean => {
+    for (let node = object.parent; node; node = node.parent) {
+      if (node instanceof StructureCutawayGroup) return node.enabled
+    }
+    throw new Error(`${object.type} has no cutaway group`)
+  }
+  const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
+  const of_kind = <Kind extends Object3D>(kind: new (...args: never[]) => Kind) =>
+    meshes.filter((mesh): mesh is Kind => mesh instanceof kind)
+  const [atoms, bonds, arrows] = [
+    of_kind(AtomInstances),
+    of_kind(BondMesh),
+    of_kind(ArrowMesh),
+  ]
+  // The merged polyhedra faces: the one plain vertex-colored mesh
+  const polyhedra = meshes.find(
+    (mesh) =>
+      mesh instanceof Mesh &&
+      !(
+        mesh instanceof AtomInstances ||
+        mesh instanceof BondMesh ||
+        mesh instanceof ArrowMesh
+      ) &&
+      Boolean(mesh.geometry.getAttribute(`color`)),
+  )
+  expect([atoms.length, bonds.length]).toEqual([1, 1])
+  expect(arrows.length).toBeGreaterThan(0) // shafts and heads
+  expect(polyhedra).toBeDefined()
+  expect([...atoms, ...bonds].map(clipped)).toEqual([false, false])
+  if (polyhedra) expect(clipped(polyhedra)).toBe(false)
+  expect(arrows.every(clipped)).toBe(true)
+  // Si center plus its 4 O shell endpoints, all outside the 0.2 thick slab but Si
+  expect(document.querySelectorAll(`.site-label`)).toHaveLength(5)
+})
+
+// A periodic bond is stored once, from site_idx_1's own position to an image of site_idx_2.
+// When only site_idx_2 is a selected center, the shell bond must start at the center itself
+// (drawing the stored copy put a stray atom and a ghost center across the cell instead).
+test.each([
+  {
+    case: `center at site_idx_2 only`,
+    z_1: 3,
+    expected_bonds: [
+      [
+        [0, 0, 0.05],
+        [0, 0, -1],
+      ],
+    ],
+  },
+  {
+    case: `both ends are centers`,
+    z_1: -0.05,
+    expected_bonds: [
+      [
+        [0, 0, -0.05],
+        [0, 0, 4.05],
+      ],
+      [
+        [0, 0, 0.05],
+        [0, 0, -4.05],
+      ],
+    ],
+  },
+])(`whole-atom shell bonds with a periodic bond: $case`, ({ z_1, expected_bonds }) => {
+  // Cl image one 4 A cell up from its own position at z = 0.05
+  const pos_2: Vec3 = [0, 0, 4.05]
+  const structure = {
+    sites: [
+      make_site(`Na`, [0, 0, 0], [0, 0, z_1], `Na0`),
+      make_site(`Cl`, [0, 0, 0], [0, 0, 0.05], `Cl1`),
+    ],
+  }
+  const bond: BondPair = {
+    site_idx_1: 0,
+    site_idx_2: 1,
+    pos_1: [0, 0, z_1],
+    pos_2,
+    bond_length: pos_2[2] - z_1,
+    cell_shift: [0, 0, 1],
+  }
+  cache_prepared_bonds(structure, `electroneg_ratio`, {}, [bond])
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure,
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      cutaway: {
+        mode: `slab`,
+        axis: 2,
+        position: 0,
+        thickness: 0.2,
+        whole_atoms: true,
+        cartesian_to_fractional: new Matrix4(),
+      },
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const bond_mesh = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find((mesh) => mesh instanceof BondMesh)
+  if (!(bond_mesh instanceof BondMesh)) throw new Error(`no bond mesh rendered`)
+  const drawn = Array.from({ length: bond_mesh.count }, (_, bond_idx) =>
+    [-1, 1].map((direction) =>
+      [0, 1, 2].map(
+        (axis) =>
+          bond_mesh.centers.array[bond_idx * 3 + axis] +
+          (direction * bond_mesh.deltas.array[bond_idx * 3 + axis]) / 2,
+      ),
+    ),
+  )
+  expect(drawn).toHaveLength(expected_bonds.length)
+  for (const [start, end] of expected_bonds) {
+    const match = drawn.find((ends) =>
+      [start, end].every((point) =>
+        ends.some((drawn_end) =>
+          drawn_end.every((val, axis) => Math.abs(val - point[axis]) < 1e-6),
+        ),
+      ),
+    )
+    expect(match, `bond ${start} -> ${end}`).toBeDefined()
+  }
+})
+
+// A shell neighbor reached through a periodic bond is placed twice: at the bond's stored
+// endpoint and at the polyhedron vertex center + (pos_2 - pos_1). Those differ by an ulp
+// (0.2 + (0.9 - 0.2) = 0.8999999999999999), which must not draw a second coincident sphere.
+test.each([`center first`, `center second`])(
+  `whole-atom shells draw one sphere per neighbor despite ulp-different positions (%s)`,
+  (order) => {
+    const center: Vec3 = [0.2, 0.2, 0]
+    // Literal coordinates: built as center + offset they would round-trip exactly
+    const images: Vec3[] = [
+      [0.9, 0.9, 0.7],
+      [0.9, -0.5, -0.7],
+      [-0.5, 0.9, -0.7],
+      [-0.5, -0.5, 0.7],
+    ]
+    // Real O positions one 4 A cell down, far outside the slab: reached only via the bonds
+    const structure = {
+      sites: [
+        make_site(`Ti`, [0, 0, 0], center, `Ti0`),
+        ...images.map((image, idx) =>
+          make_site(`O`, [0, 0, 0], [image[0], image[1], image[2] - 4], `O${idx}`),
+        ),
+      ],
+    }
+    const bonds: BondPair[] = images.map((image, idx) =>
+      order === `center first`
+        ? {
+            site_idx_1: 0,
+            site_idx_2: idx + 1,
+            pos_1: center,
+            pos_2: image,
+            bond_length: 1.21,
+            cell_shift: [0, 0, 1],
+          }
+        : {
+            site_idx_1: idx + 1,
+            site_idx_2: 0,
+            pos_1: [image[0], image[1], image[2] - 4],
+            pos_2: [center[0], center[1], center[2] - 4],
+            bond_length: 1.21,
+            cell_shift: [0, 0, -1],
+          },
+    )
+    cache_prepared_bonds(structure, `electroneg_ratio`, {}, bonds)
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        structure,
+        show_bonds: `always`,
+        show_polyhedra: `always`,
+        cutaway: {
+          mode: `slab`,
+          axis: 2,
+          position: 0,
+          thickness: 0.2,
+          whole_atoms: true,
+          cartesian_to_fractional: new Matrix4(),
+        },
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    flushSync()
+    const spheres = scene
+      .getObjectsByProperty(`type`, `Mesh`)
+      .filter((mesh): mesh is AtomInstances => mesh instanceof AtomInstances)
+      .reduce((sum, mesh) => sum + mesh.count, 0)
+    expect(spheres).toBe(5) // Ti plus its 4 O images
+  },
+)
+
+// Movie configs set visuals.cutaway as plain JSON, without a transform: the scene slices the
+// structure's own cell instead of crashing on the missing cartesian_to_fractional
+test.each([false, true])(
+  `a JSON cutaway (whole_atoms=%s) slices the structure's cell`,
+  (whole_atoms) => {
+    const structure = make_crystal(4, [
+      [`Fe`, [0, 0, 0.5]],
+      [`Fe`, [0, 0, 0.1]],
+    ])
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        structure,
+        show_bonds: `never`,
+        show_polyhedra: `never`,
+        cutaway: { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2, whole_atoms },
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    flushSync()
+    const atoms = scene
+      .getObjectsByProperty(`type`, `Mesh`)
+      .filter((mesh): mesh is AtomInstances => mesh instanceof AtomInstances)
+    // Whole-atom mode keeps only the selected z = 0.5 atom; surface mode clips the cell's atoms
+    if (whole_atoms) expect(atoms.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(1)
+    else expect(atoms.flatMap((mesh) => cutaway_planes(mesh))).toHaveLength(2)
   },
 )

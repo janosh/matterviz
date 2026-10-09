@@ -1,9 +1,11 @@
 import {
+  box_point_offsets,
   compute_box_stats,
   compute_box_whiskers,
   summarize_box_samples,
   WHISKER_MODES,
 } from '#lib/plot/box/box-plot.js'
+import { dodge } from '#lib/plot/core/dodge.js'
 import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 
@@ -203,5 +205,60 @@ describe(`compute_box_stats`, () => {
       expect(stats.outliers).toEqual(sorted.filter((val) => val < lower || val > upper))
     }
     expect(worst_quartile).toBeLessThan(1e-9)
+  })
+})
+
+describe(`box_point_offsets`, () => {
+  const value_px = Array.from({ length: 200 }, (_, idx) => 100 + 30 * Math.sin(idx * 1.3))
+
+  // Centers stay within half_width - radius so whole points fit the slot
+  test.each([`strip`, `swarm`] as const)(`%s keeps points inside the slot`, (mode) => {
+    const opts = { radius: 3, half_width: 20, side: `both` as const, seed: 1 }
+    const offsets = box_point_offsets(value_px, mode, opts)
+    expect(offsets).toHaveLength(value_px.length)
+    expect(Math.max(...offsets.map(Math.abs))).toBeLessThanOrEqual(17)
+    expect(box_point_offsets(value_px, mode, opts)).toEqual(offsets)
+    // A slot narrower than one point puts every point on the center line
+    expect(new Set(box_point_offsets(value_px, mode, { ...opts, half_width: 2 }))).toEqual(
+      new Set([0]),
+    )
+  })
+
+  test(`an uncrowded swarm is the plain dodge, a crowded one piles at the edges`, () => {
+    const opts = { side: `both` as const, seed: 0 }
+    const roomy = box_point_offsets(value_px, `swarm`, { ...opts, radius: 1, half_width: 500 })
+    expect(roomy).toEqual(dodge(value_px, 1, { padding: 0.5 }))
+    const tight = box_point_offsets(value_px, `swarm`, { ...opts, radius: 3, half_width: 8 })
+    const at_edge = tight.filter((offset) => Math.abs(offset) === 5)
+    expect(at_edge.length).toBeGreaterThan(0)
+  })
+
+  // Half violins: every sample stays on the violin's half, reaching across most of it
+  test.each([
+    [`strip`, `positive`],
+    [`strip`, `negative`],
+    [`swarm`, `positive`],
+    [`swarm`, `negative`],
+  ] as const)(`%s on the %s side`, (mode, side) => {
+    const offsets = box_point_offsets(value_px, mode, {
+      radius: 2,
+      half_width: 30,
+      side,
+      seed: 3,
+    })
+    const signed = [...offsets].map((offset) => (side === `negative` ? -offset : offset))
+    expect(Math.min(...signed)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...signed)).toBeGreaterThan(14)
+    expect(Math.max(...signed)).toBeLessThanOrEqual(28)
+  })
+
+  test(`strip jitter changes with the seed, swarm does not depend on it`, () => {
+    const opts = { radius: 2, half_width: 20, side: `both` as const }
+    expect(box_point_offsets(value_px, `strip`, { ...opts, seed: 1 })).not.toEqual(
+      box_point_offsets(value_px, `strip`, { ...opts, seed: 2 }),
+    )
+    expect(box_point_offsets(value_px, `swarm`, { ...opts, seed: 1 })).toEqual(
+      box_point_offsets(value_px, `swarm`, { ...opts, seed: 2 }),
+    )
   })
 })

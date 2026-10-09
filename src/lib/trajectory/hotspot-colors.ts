@@ -1,8 +1,8 @@
 import { interpolateInferno } from 'd3-scale-chromatic'
-import { finite_vec3_from_values, type Vec3 } from '#lib/math.js'
+import { finite_vec3_from_values, subtract, type Vec3 } from '#lib/math.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import { atom_field_bin, type AtomColorField } from '#lib/structure/atom-color-field.js'
-import { Matrix4 } from 'three/webgpu'
+import { cell_to_fractional } from '#lib/structure/cutaway.js'
 import { clamp01 } from '#lib/utils.js'
 import type { NumericFrame } from './frame'
 import type { HotspotDisplayValues, HotspotMetric, HotspotResult } from './hotspots'
@@ -140,9 +140,9 @@ export function hotspot_field_geometry(
       : result.grid
   // Cell vectors are columns for Three's column-vector multiplication. Scene positions
   // are relative to the source's box origin; analysis positions are absolute.
-  const origin = grid.origin.map((value, axis) => value - render_origin[axis])
-  const cartesian_to_fractional = new Matrix4()
-    .fromArray([...grid.cell[0], 0, ...grid.cell[1], 0, ...grid.cell[2], 0, ...origin, 1])
-    .invert()
+  const cartesian_to_fractional = cell_to_fractional(
+    grid.cell,
+    subtract(grid.origin, render_origin),
+  )
   return { dims: grid.dims, pbc: grid.pbc, cartesian_to_fractional }
 }

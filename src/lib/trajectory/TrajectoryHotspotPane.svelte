@@ -489,10 +489,17 @@
             </label>
           {/if}
         {/each}
+        <label style="grid-column: 1 / -1">
+          <input type="checkbox" bind:checked={cutaway.whole_atoms} />
+          Whole atoms: keep complete atoms, bonds and polyhedra of centers inside
+        </label>
         <small style="grid-column: 1 / -1"
           >Fractional cell coordinates. {cutaway.mode === `plane`
             ? `Keeps the lower side of the plane.`
-            : `Keeps the centered slab.`} Clips atoms, bonds and cloud; analysis is unchanged.</small
+            : `Keeps the centered slab.`}
+          {cutaway.whole_atoms
+            ? `Selects atoms by center; the cloud and other overlays are still clipped.`
+            : `Clips atoms, bonds and cloud.`} Analysis is unchanged.</small
         >
       {/if}
     </fieldset>

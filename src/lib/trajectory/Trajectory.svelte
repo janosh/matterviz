@@ -540,6 +540,8 @@
       auto_bond_order: props.auto_bond_order ?? DEFAULTS.structure.auto_bond_order,
       ...(show_polyhedra && {
         polyhedra: {
+          neighbor_mode:
+            props.polyhedra_neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
           min_neighbors:
             props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
           max_neighbors: Math.max(

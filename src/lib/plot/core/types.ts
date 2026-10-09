@@ -9,6 +9,7 @@ import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
 import type { Sides } from '#lib/plot/core/layout.js'
 import type PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
+import type { PlacementConfig } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { PlotTitleConfig } from '#lib/plot/core/plot-title.js'
 import type { TicksOption } from '#lib/plot/core/scales.js'
 import type { TickStrategy } from '#lib/plot/core/tick-layout.js'
@@ -38,7 +39,7 @@ export interface PointStyle {
   stroke_opacity?: number
   fill_opacity?: number
   symbol_type?: D3SymbolName
-  symbol_size?: number | null // Optional override for marker size
+  symbol_size?: number | null // d3 symbol area overriding radius (not where size_values apply)
   cursor?: string // Cursor style for the point
   // Highlight ring animation for phase diagrams and other use cases (size/colour highlights
   // are expressed through radius/fill directly)
@@ -399,6 +400,31 @@ export type HoverConfig = {
   // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
   // this to keep pointer frames free of tooltip DOM work while another pane updates live.
   show_tooltip?: boolean
+}
+
+// Kernel density contours drawn under each visible series (ScatterPlot `density_contours`).
+// The KDE runs in screen space, so it follows log/arcsinh axes and pan/zoom like the markers.
+// Levels are fractions of the whole series' density, so panning moves contours unchanged
+// (zoomed so far in that the series can't be gridded at the kernel's scale, of the view's).
+export type DensityContourConfig = {
+  // Number of evenly spaced enclosed-mass fractions (4 -> 0.2, 0.4, 0.6, 0.8) or the fractions
+  // themselves in (0, 1): the 0.5 contour bounds the densest region holding half a series'
+  // density, so levels compare across series of any size
+  levels?: number | readonly number[]
+  bandwidth?: number // Gaussian kernel std in px (default 20)
+  filled?: boolean // stack translucent bands instead of drawing lines (default false)
+  fill_opacity?: number // per band; nested bands darken toward the core (default 0.15)
+  stroke_width?: number // contour line width in px (default 1, or 0 when filled)
+}
+
+// ScatterPlot `size_legend`: reference circles for the size scale, placed clear of the data
+// like the colorbar (`wrapper_style` pins it instead, e.g. `right: 1em; top: 2em`)
+export type SizeLegendConfig = PlacementConfig & {
+  title?: string
+  values?: readonly number[] // legend values (default: `count` round ones across the scale)
+  count?: number // default 3
+  format?: string // d3-format spec for the value labels
+  font_size?: number
 }
 
 // Legend callbacks observe chart-owned visibility updates; they do not replace them.

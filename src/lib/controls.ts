@@ -93,6 +93,9 @@ export const INITIAL_SETTINGS_LABELS = {
 }
 
 type RequiredKeys<Value> = {
+  // The empty object is the probe: it satisfies exactly the optional keys and index
+  // signatures (rewrites via Required<> mark index signatures required)
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type
   [Key in keyof Value]-?: Record<never, never> extends Pick<Value, Key> ? never : Key
 }[keyof Value]
 type SnapshotValues<Values, Reference> = {

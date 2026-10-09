@@ -119,7 +119,10 @@ function set_bounds(geometry: BufferGeometry, positions: Float32Array): void {
   )
 }
 
+export type PolyhedraNeighborMode = `anion` | `bonded`
+
 export interface PolyhedraOptions {
+  neighbor_mode?: PolyhedraNeighborMode // bonded includes covalent and metallic shells
   min_neighbors?: number // min coordination number to form a polyhedron
   max_neighbors?: number // max CN - skips e.g. CN-12 cuboctahedra around A-site cations
   excluded_center_elements?: readonly string[] // per-element off-toggles
@@ -131,6 +134,7 @@ export interface PolyhedraOptions {
 // different graph; appearance changes leave this geometry reusable.
 const polyhedra_options_key = (options: PolyhedraOptions): string =>
   JSON.stringify([
+    options.neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
     options.min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
     options.max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
     options.excluded_center_elements ?? [],
@@ -473,9 +477,8 @@ interface PolyhedronNeighbor {
   offset: Vec3 | null
 }
 
-// Symmetric site_idx -> neighbor list from rendered bond pairs. Self-bonds are dropped:
-// even a periodic one (an image of the center itself) shares the center's element and so
-// can never clear the strictly-higher-electronegativity test in is_anion_vertex.
+// Symmetric site_idx -> neighbor list from rendered bond pairs. Zero-shift self-bonds
+// are dropped; periodic images of the center are distinct geometric neighbors.
 export function build_adjacency(
   bonds: BondData,
   accepts: (center: number, neighbor: number) => boolean = () => true,
@@ -506,12 +509,12 @@ export function build_adjacency(
       bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
     const site_idx_2 =
       bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
-    if (site_idx_1 === site_idx_2) continue
+    const cell_shift =
+      bonds instanceof BondFrame ? bonds.cell_shift(idx) : bonds[idx].cell_shift
+    if (site_idx_1 === site_idx_2 && !cell_shift?.some((value) => value !== 0)) continue
     const forward = accepts(site_idx_1, site_idx_2)
     const reverse = accepts(site_idx_2, site_idx_1)
     if (!forward && !reverse) continue
-    const cell_shift =
-      bonds instanceof BondFrame ? bonds.cell_shift(idx) : bonds[idx].cell_shift
     if (!cell_shift?.some((value) => value !== 0)) {
       if (forward) link(site_idx_1, site_idx_2, null)
       if (reverse) link(site_idx_2, site_idx_1, null)
@@ -560,9 +563,10 @@ function is_anion_vertex(
 // === Top-level polyhedra computation ===
 
 // Detect coordination polyhedra from the rendered bond graph, VESTA-style:
-// vertices are every bonded anion-former neighbor (nonmetals/metalloids more
-// electronegative than the center) - rejecting an over-long contact is the bond
-// detector's job, so there is no extra distance trim here. Spectator A-site
+// vertices are bonded anion-former neighbors by default (nonmetals/metalloids more
+// electronegative than the center), or every bonded neighbor in bonded mode.
+// Rejecting an over-long contact is the bond detector's job, so there is no extra
+// distance trim here. In anion mode, spectator A-site
 // cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
 // CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
 // boundary-truncated copies only render when their vertex count matches the max
@@ -576,6 +580,7 @@ export function compute_polyhedra(
   options: PolyhedraOptions = {},
 ): Polyhedron[] {
   const {
+    neighbor_mode = DEFAULTS.structure.polyhedra_neighbor_mode,
     // Neighbor-count fallbacks derive from DEFAULTS.structure so they can't drift
     // from the polyhedra_min/max_neighbors settings defaults
     min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors,
@@ -618,8 +623,10 @@ export function compute_polyhedra(
       const center_en = data?.electronegativity ?? null
       const r_center = data?.covalent_radius ?? null
       const accepts = new Set(
-        unique_elements.filter((n_elem) =>
-          is_anion_vertex(center_en, data?.metal === true, n_elem, electronegativity_margin),
+        unique_elements.filter(
+          (n_elem) =>
+            neighbor_mode === `bonded` ||
+            is_anion_vertex(center_en, data?.metal === true, n_elem, electronegativity_margin),
         ),
       )
       const radii_sums = new Map<ElementSymbol, number>()
@@ -766,7 +773,7 @@ export function compute_polyhedra(
     has_strong_species && (species_norm(element) ?? 0) > WEAK_BOND_NORM
 
   const visible = candidates.filter(({ element }) => {
-    if (included.has(element)) return true
+    if (neighbor_mode === `bonded` || included.has(element)) return true
     if (is_spectator_center(element) && has_framework) return false
     return !is_weak_species(element)
   })

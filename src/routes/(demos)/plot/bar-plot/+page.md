@@ -781,8 +781,8 @@ Zoom and pan on a larger dataset (drag to zoom, double-click to reset). Line mar
 <div
   style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
 >
-  <strong>Instructions:</strong> Click and drag to zoom into a wavelength region. Double-click to
-  reset the view. Marker colors show intensity via color scale.
+  <strong>Instructions:</strong> Click and drag to zoom into a wavelength region. Double-click
+  to reset the view. Marker colors show intensity via color scale.
 </div>
 
 <BarPlot
@@ -981,7 +981,8 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
 </script>
 
 <label style="margin-bottom: 1em; display: block">
-  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars with means)
+  <input type="checkbox" bind:checked={comparison_mode} /> Comparison mode (grouped bars with
+  means)
 </label>
 
 <BarPlot

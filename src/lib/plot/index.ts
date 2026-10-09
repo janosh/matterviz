@@ -137,6 +137,8 @@ export type ScatterPlotOptions = PlotElementOptions &
     | 'color_scale'
     | 'size_scale'
     | 'color_bar'
+    | 'density_contours'
+    | 'size_legend'
     | 'label_placement_config'
     | 'hover_config'
     | 'point_tween'

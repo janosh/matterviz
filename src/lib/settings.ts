@@ -9,6 +9,7 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import { capitalize, symbol_names } from '#lib/labels.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { GizmoOptions } from '#lib/scene/gizmo.js'
+import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import { is_plain_object } from '#lib/utils.js'
 
@@ -370,6 +371,14 @@ export const SETTINGS_CONFIG = define_settings({
       value: `crystals`,
       description: `When to render coordination polyhedra around cation-like centers`,
       enum: SHOW_BONDS_ENUM,
+    },
+    polyhedra_neighbor_mode: {
+      value: `anion`,
+      description: `Use more electronegative anion neighbors or every bonded neighbor as polyhedron vertices`,
+      enum: {
+        anion: `Anion neighbors`,
+        bonded: `All bonded neighbors`,
+      } satisfies Record<PolyhedraNeighborMode, string>,
     },
     polyhedra_opacity: opacity_setting(0.15, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {
@@ -919,6 +928,11 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Show outlier points beyond the whiskers`,
     },
     show_mean: { value: false, description: `Show the mean marker inside each box` },
+    points: {
+      value: `none` as const,
+      description: `Draw every sample over its box/violin: as a jittered strip or as a non-overlapping swarm`,
+      enum: { none: `None`, strip: `Strip`, swarm: `Swarm` },
+    },
     kind: {
       value: `box` as const,
       description: `Glyph to draw per series: box, violin (KDE density), or both`,
@@ -986,17 +1000,18 @@ export const SETTINGS_CONFIG = define_settings({
         description: `Median line color`,
       },
     },
-    outlier: {
+    // Sample dots: the outliers, or every sample when strip/swarm points are on
+    sample: {
       radius: {
         value: 2.5,
-        description: `Outlier point radius (px)`,
+        description: `Sample point radius (px)`,
         minimum: 0.5,
         maximum: 10,
       },
-      opacity: opacity_setting(0.6, `Outlier point opacity`),
+      opacity: opacity_setting(0.6, `Sample point opacity`),
       stroke_width: {
         value: 0,
-        description: `Outlier point stroke width`,
+        description: `Sample point stroke width`,
         minimum: 0,
         maximum: 3,
       },

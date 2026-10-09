@@ -15,6 +15,7 @@
     BasePlotProps,
     BoxHandlerProps,
     BoxPlotSeries,
+    BoxPointMode,
     LayerZIndex,
     LegendConfig,
     Orientation,
@@ -39,7 +40,11 @@
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
-  import { compute_box_whiskers, summarize_box_samples } from '#lib/plot/box/box-plot.js'
+  import {
+    box_point_offsets,
+    compute_box_whiskers,
+    summarize_box_samples,
+  } from '#lib/plot/box/box-plot.js'
   import { gaussian_kde, type KdeResult, VIOLIN_KDE_OPTS } from '#lib/plot/box/kde.js'
   import {
     create_cartesian_frame,
@@ -95,7 +100,7 @@
     width?: number
     color?: string
   }
-  interface OutlierStyle {
+  interface SampleStyle {
     radius?: number
     opacity?: number
     stroke_width?: number
@@ -127,12 +132,13 @@
     box = {},
     whisker = {},
     median_style = {},
-    outlier_style = {},
+    sample_style = {},
     whisker_mode = $bindable(DEFAULTS.box.whisker_mode),
     whisker_range = 1.5,
     whisker_percentiles = [5, 95],
     show_outliers = $bindable(DEFAULTS.box.show_outliers),
     show_mean = $bindable(DEFAULTS.box.show_mean),
+    points = $bindable(DEFAULTS.box.points),
     show_value_labels = false,
     value_label_stat = `median`,
     value_label_format = ``,
@@ -177,12 +183,16 @@
       box?: BoxStyle
       whisker?: WhiskerStyle
       median_style?: BoxLineStyle
-      outlier_style?: OutlierStyle
+      // Sample dots: the outliers, or every sample when `points` draws them
+      sample_style?: SampleStyle
       whisker_mode?: WhiskerMode
       whisker_range?: number
       whisker_percentiles?: Vec2
       show_outliers?: boolean
       show_mean?: boolean
+      // Every sample over its box/violin: jittered `strip` or non-overlapping `swarm`. Drawn
+      // samples include the outliers, so the separate outlier markers are dropped.
+      points?: BoxPointMode
       show_value_labels?: boolean
       value_label_stat?: `median` | `mean`
       value_label_format?: string
@@ -229,8 +239,9 @@
   let box_state = $derived({ ...DEFAULTS.box.box, ...box })
   let whisker_state = $derived({ ...DEFAULTS.box.whisker, ...whisker })
   let median_state = $derived({ ...DEFAULTS.box.median, ...median_style })
-  let outlier_state = $derived({ ...DEFAULTS.box.outlier, ...outlier_style })
+  let sample_state = $derived({ ...DEFAULTS.box.sample, ...sample_style })
   let violin_state = $derived({ ...DEFAULTS.box.violin, ...violin_style })
+  const point_mode = (srs: BoxPlotSeries<Metadata>): BoxPointMode => srs.points ?? points
 
   let { y2: y2_axis, x2: x2_axis } = $derived(merge_secondary_axes(y2_axis_prop, x2_axis_prop))
 
@@ -380,6 +391,48 @@
     return map
   })
 
+  // === Strip / swarm sample points ===
+  // Marker centers are range-bounded; their full circles may reach into the plot padding
+  const in_plot = ([px_x, px_y]: Vec2): boolean => {
+    const { pad, width, height } = frame
+    return px_x >= pad.l && px_x <= width - pad.r && px_y >= pad.t && px_y <= height - pad.b
+  }
+  // Screen positions of each visible box's samples, inside the plot area only. Packed in px,
+  // so they re-lay out on resize/zoom; a log value axis drops non-positive samples.
+  let box_points = $derived.by(() => {
+    const map = new Map<number, Vec2[]>()
+    const cat_scale = vertical ? frame.scales.x : frame.scales.y
+    for (const { series: srs, idx, slot } of visible_boxes) {
+      const mode = point_mode(srs)
+      if (mode === `none`) continue
+      const axis_key = val_axis_key(srs)
+      const raw_scale = frame.scales[axis_key]
+      const log = get_scale_type_name(plot_axes[axis_key].scale_type) === `log`
+      const value_px = box_summaries[idx].values
+        .filter((val) => !log || val > 0)
+        .map((val) => raw_scale(val))
+      const body = violin_kdes.has(idx)
+        ? (srs.violin_width ?? violin_width)
+        : box_width_of(srs, idx)
+      // Swarms may fill the body; strip jitter keeps to half of it, reading as noise around
+      // the center line
+      const spread = mode === `strip` ? body / 2 : body
+      const center = cat_scale(slot)
+      const offsets = box_point_offsets(value_px, mode, {
+        radius: sample_state.radius,
+        half_width: Math.abs(cat_scale(slot + spread / 2) - center),
+        // Half violins keep their samples on their own half (split violins share a slot)
+        side: draws_violin(srs) ? to_screen_side(srs.side ?? side) : `both`,
+        seed: idx + 1,
+      })
+      const pts = value_px.map((val_px, pt_idx): Vec2 =>
+        vertical ? [center + offsets[pt_idx], val_px] : [val_px, center + offsets[pt_idx]],
+      )
+      map.set(idx, pts.filter(in_plot))
+    }
+    return map
+  })
+
   // Drawn box width (slot fraction); a box inside a violin defaults narrower
   const box_width_of = (srs: BoxPlotSeries<Metadata>, idx: number): number =>
     srs.box_width ??
@@ -426,6 +479,9 @@
       const vals = [whisker_low, whisker_high, quartile_1, quartile_3, median]
       // keep the drawn mean line in range even when hidden outliers drag it past the whiskers
       if (show_mean) vals.push(mean)
+      // Drawn samples reach the data extremes, past whiskers and hidden outliers alike
+      if (point_mode(box_item.series) !== `none`)
+        vals.push(box_item.stats.min, box_item.stats.max)
       // outliers are sorted ascending; auto-range only needs their extremes (avoids
       // spreading a potentially huge array as call args)
       if (show_outliers && outliers.length > 0) {
@@ -443,23 +499,27 @@
     const value_axis_pixels = vertical
       ? frame.height - initial_pad.t - initial_pad.b
       : frame.width - initial_pad.l - initial_pad.r
-    const outlier_extent = outlier_state.radius + outlier_state.stroke_width / 2
-    const outlier_range_padding =
-      value_axis_pixels > 2 * outlier_extent
-        ? outlier_extent / (value_axis_pixels - 2 * outlier_extent)
+    const marker_extent = sample_state.radius + sample_state.stroke_width / 2
+    const marker_range_padding =
+      value_axis_pixels > 2 * marker_extent
+        ? marker_extent / (value_axis_pixels - 2 * marker_extent)
         : 0.05
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (boxes: Box[], axis: AxisConfig): Vec2 => {
       const scale_type = axis.scale_type ?? `linear`
       const values = range_values(boxes, get_scale_type_name(scale_type) === `log`)
       if (values.length === 0) return [0, 1]
-      const has_outliers =
-        show_outliers && boxes.some((box_item) => box_item.stats.outliers.length > 0)
+      // Edge markers (outliers or drawn samples) need room for their radius
+      const has_edge_markers = boxes.some(
+        (box_item) =>
+          point_mode(box_item.series) !== `none` ||
+          (show_outliers && box_item.stats.outliers.length > 0),
+      )
       return nice_range_from_extent(
         accumulate_extent(empty_extent(), values),
         axis.range ?? [null, null],
         scale_type,
-        has_outliers ? Math.max(range_padding, outlier_range_padding) : range_padding,
+        has_edge_markers ? Math.max(range_padding, marker_range_padding) : range_padding,
       )
     }
     const value_primary = calc_value_range(primary_boxes, plot_axes[vertical ? `y` : `x`])
@@ -770,6 +830,15 @@
             cat_scale(box_item.slot + (box_item.series.violin_width ?? violin_width) / 2) -
               c_center,
           )}
+          <!-- Drawn samples (which include the outliers) or else the outliers alone -->
+          {@const samples = box_points.get(box_item.idx)}
+          {@const markers =
+            samples ??
+            (draw_box && show_outliers
+              ? stats.outliers
+                  .map((outlier) => point(c_center, val_scale(outlier)))
+                  .filter(in_plot)
+              : [])}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <g
             class="box-series"
@@ -906,22 +975,18 @@
               fill="transparent"
               clip-path="url(#{frame.clip_path_id})"
             />
-            {#if draw_box && show_outliers}
-              {#each stats.outliers as outlier, out_idx (out_idx)}
-                {@const [offset_x, offset_y] = point(c_center, val_scale(outlier))}
-                {#if offset_x >= pad.l && offset_x <= frame.width - pad.r && offset_y >= pad.t && offset_y <= frame.height - pad.b}
-                  <circle
-                    cx={offset_x}
-                    cy={offset_y}
-                    r={outlier_state.radius}
-                    fill={color}
-                    fill-opacity={outlier_state.opacity}
-                    stroke={box_state.stroke_color}
-                    stroke-width={outlier_state.stroke_width}
-                  />
-                {/if}
-              {/each}
-            {/if}
+            {#each markers as [marker_x, marker_y], marker_idx (marker_idx)}
+              <circle
+                class:sample-point={Boolean(samples)}
+                cx={marker_x}
+                cy={marker_y}
+                r={sample_state.radius}
+                fill={color}
+                fill-opacity={sample_state.opacity}
+                stroke={box_state.stroke_color}
+                stroke-width={sample_state.stroke_width}
+              />
+            {/each}
           </g>
         {/if}
       {/each}
@@ -943,6 +1008,10 @@
       bind:whisker_mode
       bind:show_outliers
       bind:show_mean
+      bind:points
+      outliers_drawn={visible_boxes.some(
+        ({ series: srs }) => draws_box(srs) && point_mode(srs) === `none`,
+      )}
       bind:kind
       bind:side
       bind:x_axis
