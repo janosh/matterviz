@@ -16,13 +16,11 @@
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
   import { create_cartesian_frame } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
-  import type { ColorBarDecorationProps } from '#lib/plot/core/colorbar-decoration.svelte.js'
-  import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
   import {
-    decoration_data_attrs,
-    get_decoration_placement,
-  } from '#lib/plot/core/decorations/index.js'
+    create_colorbar_decoration,
+    create_placed_decoration,
+  } from '#lib/plot/core/placed-decoration.svelte.js'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
   import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     axis_transform,
@@ -31,8 +29,6 @@
     range_bounds,
   } from '#lib/plot/core/interactions.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
-  import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-  import { element_position_for_footprint, full_footprint_or } from '#lib/plot/core/layout.js'
   import { plot_color } from '#lib/colors/index.js'
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import {
@@ -173,8 +169,6 @@
   let hovered_bin = $derived.by<DensityBin | null>(reset_hover)
   let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
-  let annotation_element = $state<HTMLDivElement>()
-  let annotation_size_revision = $state(0)
   let label_measure_root = $state<HTMLDivElement>()
   let label_sizes = new SvelteMap<string, LabelSize>()
 
@@ -254,7 +248,7 @@
     legend: () => null,
     legend_visible: () => false,
     legend_items: () => [],
-    decorations: () => decoration_items,
+    decorations: () => [...colorbar.items, ...annotation_deco.items],
     exclusion_rects: () => colorbar.pinned_rects,
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
@@ -412,35 +406,16 @@
     dims: () => ({ width, height }),
     decoration_solution: () => frame.decoration_solution,
   })
-  const annotation_footprint = $derived.by(() => {
-    void annotation_size_revision
-    return full_footprint_or(annotation_element, { width: 120, height: 50 })
-  })
-  const decoration_items = $derived.by((): DecorationItem[] => {
-    const items: DecorationItem[] = [...colorbar.items]
-    if (annotation && has_plot_size) {
-      items.push({
-        id: `free-annotation`,
-        kind: `free-annotation`,
-        footprint: annotation_footprint,
-        clearance: 12,
-      })
-    }
-    return items
-  })
-  const annotation_placement = $derived(
-    get_decoration_placement(frame.decoration_solution, `free-annotation`),
-  )
-  const annotation_tween = create_placed_tween({
-    placement: () =>
-      element_position_for_footprint(annotation_placement, annotation_footprint),
+  const annotation_deco = create_placed_decoration({
+    id: `free-annotation`,
+    kind: () => ({ kind: `free-annotation` }),
+    enabled: () => Boolean(annotation) && has_plot_size,
+    config: () => null,
+    fallback_footprint: () => ({ width: 120, height: 50 }),
+    clearance: 12,
     dims: () => ({ width, height }),
-    responsive: () => false,
-    element: () => annotation_element,
-    on_element_resize: () => (annotation_size_revision += 1),
-    placement_revision: () =>
-      annotation_placement &&
-      `${annotation_placement.x}:${annotation_placement.y}:${colorbar.size_revision}`,
+    decoration_solution: () => frame.decoration_solution,
+    sibling_revision: () => colorbar.size_revision,
   })
 
   // Switch to individual markers once few enough points are visible (unless disabled)
@@ -982,11 +957,10 @@
 
     {#if has_plot_size && annotation}
       <div
-        bind:this={annotation_element}
+        bind:this={annotation_deco.element}
         class="annotation"
-        {...decoration_data_attrs(annotation_placement)}
-        style="left: {annotation_tween.coords.current.x}px; top: {annotation_tween.coords
-          .current.y}px"
+        {...annotation_deco.data_attrs}
+        style={annotation_deco.style}
       >
         {@render annotation({ height, width, fullscreen })}
       </div>

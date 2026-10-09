@@ -33,6 +33,7 @@ import {
   roving_tabindexes,
   svg_query,
   set_input,
+  translate_of,
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
@@ -340,6 +341,240 @@ describe(`ScatterPlot`, () => {
       item.textContent?.includes(`A band`),
     )
     expect(band_item?.classList.contains(`hidden`)).toBe(true)
+  })
+
+  describe(`density contours`, () => {
+    // Symmetric cloud: rings of points around (cx, cy) plus the center, so the KDE peak sits
+    // exactly on the marker centroid
+    const cloud = (cx: number, cy: number, extra: Partial<DataSeries> = {}): DataSeries => {
+      const offsets = [
+        [0, 0],
+        ...[0.5, 1, 1.5].flatMap((radius) =>
+          Array.from({ length: 12 }, (_, idx) => [
+            radius * Math.cos((idx * Math.PI) / 6),
+            radius * Math.sin((idx * Math.PI) / 6),
+          ]),
+        ),
+      ]
+      return {
+        x: offsets.map(([dx]) => cx + dx),
+        y: offsets.map(([, dy]) => cy + dy),
+        ...extra,
+      }
+    }
+    const contour_groups = (plot: HTMLElement) => [
+      ...plot.querySelectorAll(`g.density-contours`),
+    ]
+    // Contour vertices in svg px (paths are drawn in plot-area coordinates under a translate)
+    const contour_vertices = (path: Element) => {
+      const offset = translate_of(path.parentElement)
+      const nums =
+        path
+          .getAttribute(`d`)
+          ?.match(/-?\d+(?:\.\d+)?/g)
+          ?.map(Number) ?? []
+      return Array.from({ length: nums.length / 2 }, (_, idx) => ({
+        x: nums[2 * idx] + offset.x,
+        y: nums[2 * idx + 1] + offset.y,
+      }))
+    }
+
+    test(`off by default, one line group per visible series when enabled`, async () => {
+      const series = [
+        cloud(2, 2, { point_style: { fill: `crimson` } }),
+        cloud(8, 8),
+        cloud(5, 5, { visible: false }),
+      ]
+      expect(contour_groups(await mount_sized_scatter_plot({ series }))).toHaveLength(0)
+      document.body.innerHTML = ``
+      const plot = await mount_sized_scatter_plot({ series, density_contours: true })
+      const groups = contour_groups(plot)
+      expect(groups.map((group) => group.getAttribute(`data-series-idx`))).toEqual([`0`, `1`])
+      const paths = [...groups[0].querySelectorAll(`path`)]
+      // Default levels, outermost first so the core paints last
+      expect(paths.map((path) => Number(path.getAttribute(`data-fraction`)))).toEqual([
+        0.8, 0.6, 0.4, 0.2,
+      ])
+      for (const path of paths) {
+        expect(path.getAttribute(`d`)).not.toMatch(/NaN|Infinity/)
+        expect(path.getAttribute(`stroke`)).toBe(`crimson`)
+        expect(path.getAttribute(`fill`)).toBe(`none`)
+      }
+      // Contours ignore the pointer so they never steal hover from the markers above them
+      expect(groups[0].getAttribute(`pointer-events`)).toBe(`none`)
+      // Hovering a legend entry fades the other series' contours with their markers
+      await hover(query(plot, `.legend-item`))
+      expect(groups.map((group) => group.getAttribute(`opacity`))).toEqual([`1`, `0.25`])
+    })
+
+    test(`contours ring the cluster centroid, inner levels tighter`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [cloud(5, 5)],
+        x_axis: { range: [0, 10] },
+        y_axis: { range: [0, 10] },
+        density_contours: { bandwidth: 10, levels: [0.3, 0.9] },
+      })
+      const n_markers = plot.querySelectorAll(`.marker`).length
+      const markers = Array.from({ length: n_markers }, (_, idx) => marker_position(plot, idx))
+      const center = {
+        x: markers.reduce((sum, pt) => sum + pt.x, 0) / n_markers,
+        y: markers.reduce((sum, pt) => sum + pt.y, 0) / n_markers,
+      }
+      const mean_radius = (path: Element) => {
+        const verts = contour_vertices(path)
+        // Centroid within 1 px of the markers' (the cloud is point-symmetric)
+        const centroid_x = verts.reduce((sum, pt) => sum + pt.x, 0) / verts.length
+        const centroid_y = verts.reduce((sum, pt) => sum + pt.y, 0) / verts.length
+        expect(Math.hypot(centroid_x - center.x, centroid_y - center.y)).toBeLessThan(1)
+        return (
+          verts.reduce((sum, pt) => sum + Math.hypot(pt.x - center.x, pt.y - center.y), 0) /
+          verts.length
+        )
+      }
+      const [outer, inner] = [...plot.querySelectorAll(`g.density-contours path`)]
+      expect(mean_radius(inner)).toBeLessThan(mean_radius(outer))
+    })
+
+    test.each([
+      [`filled with default opacity`, { filled: true }, `0.15`, `none`, `0`],
+      [
+        `filled with outline`,
+        { filled: true, fill_opacity: 0.3, stroke_width: 2 },
+        `0.3`,
+        `teal`,
+        `2`,
+      ],
+    ])(`%s`, async (_name, config, fill_opacity, stroke, stroke_width) => {
+      const plot = await mount_sized_scatter_plot({
+        series: [cloud(5, 5, { point_style: { fill: `teal` } })],
+        density_contours: config,
+      })
+      for (const path of plot.querySelectorAll(`g.density-contours path`)) {
+        expect(path.getAttribute(`fill`)).toBe(`teal`)
+        expect(path.getAttribute(`fill-opacity`)).toBe(fill_opacity)
+        expect(path.getAttribute(`stroke`)).toBe(stroke)
+        expect(path.getAttribute(`stroke-width`)).toBe(stroke_width)
+      }
+    })
+
+    // The arcsinh scale reads a JSON null as 0, a real pixel; on a log axis non-positive
+    // values have no pixel. Either way the contours must equal the series' without them.
+    test.each([
+      [`null on an arcsinh axis`, `arcsinh`, [null as unknown as number]],
+      [`non-positive on a log axis`, `log`, [0, -3]],
+    ] as const)(`%s is skipped, not drawn`, async (_name, scale_type, bad_ys) => {
+      const clean = cloud(5, 5)
+      const dirty: DataSeries = {
+        x: [...clean.x, ...bad_ys.map(() => 5)],
+        y: [...clean.y, ...bad_ys],
+      }
+      const contour_paths = async (srs: DataSeries) => {
+        document.body.innerHTML = ``
+        const plot = await mount_sized_scatter_plot({
+          series: [srs],
+          y_axis: { scale_type, range: scale_type === `log` ? [1, 10] : [0, 10] },
+          x_axis: { range: [0, 10] },
+          density_contours: true,
+        })
+        return [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
+          path.getAttribute(`d`),
+        )
+      }
+      const clean_paths = await contour_paths(clean)
+      expect(clean_paths.length).toBeGreaterThan(0)
+      expect(await contour_paths(dirty)).toEqual(clean_paths)
+    })
+  })
+
+  describe(`size legend`, () => {
+    const bubbles = (
+      size_values: (number | null)[],
+      extra: Partial<DataSeries> = {},
+    ): DataSeries => ({
+      x: size_values.map((_, idx) => idx),
+      y: size_values.map((_, idx) => (idx * 7) % 5),
+      size_values,
+      ...extra,
+    })
+    const decoration_rect = (el: Element): Rect => ({
+      x: Number(el.getAttribute(`data-decoration-x`)),
+      y: Number(el.getAttribute(`data-decoration-y`)),
+      width: Number(el.getAttribute(`data-decoration-width`)),
+      height: Number(el.getAttribute(`data-decoration-height`)),
+    })
+
+    test(`draws reference circles at the radii the markers get`, async () => {
+      // 20 and 60 are both data and legend values, so their markers must match the circles,
+      // even with a static symbol_size the size scale has to override
+      const size_values = [3, 20, 45, 60, 97]
+      const plot = await mount_sized_scatter_plot({
+        series: [
+          bubbles(size_values, { markers: `points`, point_style: { symbol_size: 400 } }),
+        ],
+        size_legend: { title: `Atoms` },
+        color_bar: null,
+        marker_renderer: `svg`,
+      })
+      const wrapper = query(plot, `.size-legend-wrapper`)
+      expect(wrapper.getAttribute(`data-decoration-location`)).toBe(`interior`)
+      expect(wrapper.querySelector(`.title`)?.textContent).toBe(`Atoms`)
+      const labels = [...wrapper.querySelectorAll(`text:not(.title)`)].map((el) =>
+        el.textContent?.trim(),
+      )
+      expect(labels).toEqual([`20`, `60`, `80`])
+      const legend_radii = [...wrapper.querySelectorAll(`circle`)].map((circle) =>
+        Number(circle.getAttribute(`r`)),
+      )
+      const markers = [...plot.querySelectorAll(`.marker`)]
+      expect(markers).toHaveLength(5)
+      // Marker paths carry 3 decimals (d3-path rounding), so agree to half the last digit
+      for (const [legend_idx, data_idx] of [
+        [0, 1],
+        [1, 3],
+      ]) {
+        expect(legend_radii[legend_idx]).toBeCloseTo(marker_radius(markers[data_idx]), 3)
+      }
+    })
+
+    test.each([
+      [`no size values`, [{ x: [0, 1, 2], y: [0, 1, 2] }], {}, {}],
+      [`one distinct size`, [bubbles([4, 4, 4])], {}, {}],
+      [`only non-finite sizes`, [bubbles([null, null])], {}, {}],
+      [
+        `sizes only in a hidden series`,
+        [bubbles([1, 9], { visible: false }), { x: [0], y: [0] }],
+        {},
+        {},
+      ],
+      [`size_legend null`, [bubbles([1, 5, 9])], null, {}],
+      // The legend explains marker sizes, so it goes with the markers
+      [`line-only markers`, [bubbles([1, 5, 9], { markers: `line` })], {}, {}],
+      [`points hidden`, [bubbles([1, 5, 9])], {}, { show_points: false }],
+    ] as const)(`hidden with %s`, async (_name, series, size_legend, styles) => {
+      const plot = await mount_sized_scatter_plot({ series: [...series], size_legend, styles })
+      expect(plot.querySelector(`.size-legend-wrapper`)).toBeNull()
+    })
+
+    test(`placed clear of the colorbar`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [bubbles([1, 4, 9, 16, 25], { color_values: [1, 2, 3, 4, 5] })],
+      })
+      const size_rect = decoration_rect(query(plot, `.size-legend-wrapper`))
+      const colorbar_rect = decoration_rect(query(plot, `.colorbar-wrapper`))
+      expect(size_rect.width).toBeGreaterThan(0)
+      expect(rects_overlap(size_rect, colorbar_rect)).toBe(false)
+    })
+
+    test(`wrapper_style pins it outside the solver`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [bubbles([1, 5, 9])],
+        size_legend: { wrapper_style: `right: 4px; bottom: 4px;` },
+      })
+      const wrapper = query(plot, `.size-legend-wrapper`)
+      expect(wrapper.getAttribute(`style`)).toBe(`right: 4px; bottom: 4px;`)
+      expect(wrapper.hasAttribute(`data-decoration-location`)).toBe(false)
+      expect(wrapper.querySelectorAll(`circle`)).toHaveLength(3)
+    })
   })
 
   describe(`error bars`, () => {

@@ -1,8 +1,8 @@
 <script lang="ts">
   import type {
     ColorBarDecorationProps,
-    ColorbarDecoration,
-  } from '#lib/plot/core/colorbar-decoration.svelte.js'
+    PlacedDecoration,
+  } from '#lib/plot/core/placed-decoration.svelte.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -14,7 +14,7 @@
     color_bar,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    decoration: ColorbarDecoration
+    decoration: PlacedDecoration
     // `wrapper_style` lands on this wrapper and replaces the solver's placement (users pin the
     // bar with `left`/`right`/...); the pinned bar then fills the wrapper
     color_bar: ColorBarDecorationProps
@@ -38,8 +38,7 @@
   aria-label="Color scale legend"
   {...decoration.data_attrs}
   {...rest}
-  style={wrapper_style ||
-    `left: ${decoration.tween.coords.current.x}px; top: ${decoration.tween.coords.current.y}px`}
+  style={decoration.style}
 >
   <ColorBar {...bar_props} wrapper_style={wrapper_style ? `height: 100%; width: 100%;` : ``} />
 </div>

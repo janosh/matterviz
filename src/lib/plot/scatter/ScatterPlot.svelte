@@ -20,6 +20,7 @@
     BasePlotProps,
     ColorScaleConfig,
     DataSeries,
+    DensityContourConfig,
     ErrorBand,
     FillHandlerEvent,
     FillRegion,
@@ -36,6 +37,7 @@
     RefLineEvent,
     ScatterHandlerEvent,
     ScatterHandlerProps,
+    SizeLegendConfig,
     SizeScaleConfig,
     StyleOverrides,
     UserContentProps,
@@ -59,8 +61,11 @@
   import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
-  import { create_colorbar_decoration } from '#lib/plot/core/colorbar-decoration.svelte.js'
-  import type { ColorBarDecorationProps } from '#lib/plot/core/colorbar-decoration.svelte.js'
+  import {
+    create_colorbar_decoration,
+    create_placed_decoration,
+  } from '#lib/plot/core/placed-decoration.svelte.js'
+  import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
   import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import {
@@ -70,9 +75,12 @@
   } from '#lib/plot/core/axis-assignment.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
   import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+  import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
   import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
+  import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
+  import { size_legend_entries } from '#lib/plot/core/size-legend.js'
   import {
     COLOR_BAR_DEFAULTS,
     DEFAULT_MARKERS,
@@ -168,6 +176,7 @@
     color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
     size_scale = SCALE_DEFAULTS.size,
+    size_legend = {},
     label_placement_config = {},
     hover_config = {},
     legend = {},
@@ -198,6 +207,7 @@
     on_axis_change,
     pan = {},
     marginals = false,
+    density_contours = false,
     facet_layout,
     marker_renderer = `auto`,
     error_bar_cap = 4,
@@ -232,6 +242,9 @@
       >
       color_scale?: ColorScaleConfig | D3InterpolateName
       size_scale?: SizeScaleConfig
+      // Reference circles for size_values, shown when the size scale maps 2+ legend values to
+      // distinct marker radii (null hides)
+      size_legend?: SizeLegendConfig | null
       color_bar?: ColorBarDecorationProps | null
       label_placement_config?: Partial<LabelPlacementConfig>
       hover_config?: Partial<HoverConfig>
@@ -268,6 +281,8 @@
       on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
       pan?: PanConfig
       marginals?: MarginalsProp
+      // Iso-proportion KDE contours under each series' markers (true for the defaults)
+      density_contours?: boolean | DensityContourConfig
       facet_layout?: FacetLayoutContext
       // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
       // Canvas keeps labelled, hovered, and selected points in an SVG overlay, and routes
@@ -455,8 +470,8 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_track_items,
     legend_footprint_fallback: { width: 120, height: 80 },
-    decorations: () => colorbar.items,
-    exclusion_rects: () => colorbar.pinned_rects,
+    decorations: () => [...colorbar.items, ...size_legend_deco.items],
+    exclusion_rects: () => [...colorbar.pinned_rects, ...size_legend_deco.pinned_rects],
     marginals: () => resolved_marginals,
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
@@ -587,6 +602,10 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
+  // A series' color as a whole (line, else first marker, else palette) for the marks that
+  // summarize it: marginals and density contours
+  const series_color = (srs: DataSeries<Metadata> | undefined, idx: number): string =>
+    srs?.line_style?.stroke ?? first_point_style(srs)?.fill ?? plot_color(idx)
   // Map series to the generic marginal input, reusing the line/legend color fallback. Skipped
   // (the default) while no strip is enabled so data changes don't pay for it.
   const marginal_series = $derived<MarginalSeriesInput[]>(
@@ -594,7 +613,7 @@
       ? assigned_series.map((srs, idx) => ({
           x: srs?.x ?? [],
           y: srs?.y ?? [],
-          color: srs?.line_style?.stroke ?? first_point_style(srs)?.fill ?? plot_color(idx),
+          color: series_color(srs, idx),
           label: srs?.label,
           visible: srs?.visible ?? true,
           x_axis: srs?.x_axis,
@@ -624,6 +643,34 @@
   )
   let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
 
+  // === Size legend: solver-placed clear of the data, after the legend and colorbar ===
+  // Only for drawn markers, and only when the scale gives 2+ legend values distinct radii
+  const has_sized_markers = $derived(
+    show_points &&
+      assigned_series.some(
+        (srs) =>
+          srs &&
+          srs.visible !== false &&
+          (srs.markers ?? DEFAULT_MARKERS).includes(`points`) &&
+          srs.size_values?.some(Number.isFinite),
+      ),
+  )
+  const size_legend_items = $derived(
+    size_legend && has_sized_markers ? size_legend_entries(size_scale_fn, size_legend) : [],
+  )
+  const show_size_legend = $derived(width > 0 && height > 0 && size_legend_items.length >= 2)
+  const size_legend_deco = create_placed_decoration({
+    id: `size-legend`,
+    kind: () => ({ kind: `free-annotation` }),
+    enabled: () => show_size_legend,
+    config: () => size_legend,
+    fallback_footprint: () => ({ width: 120, height: 40 }),
+    clearance: 12,
+    dims: () => ({ width, height }),
+    decoration_solution: () => frame.decoration_solution,
+    sibling_revision: () => colorbar.size_revision,
+  })
+
   // Visible series with their in-range points: InternalPoints are built once per data change
   // and only picked by range on each pan/zoom frame
   const materialized_series = $derived(materialize_series_points(assigned_series))
@@ -645,6 +692,40 @@
     ),
   )
   type FilteredSeries = (typeof filtered_series)[number]
+
+  // === Density contours ===
+  // One KDE per series in its own px frame, gridded over the plot area (plus the blur pad):
+  // points just past the edges still count, but level fractions are of the mass in view
+  const density_config = $derived(density_contours === true ? {} : density_contours || null)
+  const density_layers = $derived.by(() => {
+    if (!density_config) return []
+    const [plot_width, plot_height] = [width - pad.l - pad.r, height - pad.t - pad.b]
+    if (plot_width <= 0 || plot_height <= 0) return []
+    const { levels, bandwidth } = density_config
+    return assigned_series.flatMap((srs, series_idx) => {
+      if (!srs || srs.visible === false) return []
+      const x_scale = srs.x_axis === `x2` ? x2_scale_fn : x_scale_fn
+      const y_scale = srs.y_axis === `y2` ? y2_scale_fn : y_scale_fn
+      // x drives the point count, as for extents. Non-finite values (the arcsinh scale reads
+      // a JSON null as 0) and log-invalid ones become NaN pixels, which the density grid skips.
+      const [xs, ys] = [new Float64Array(srs.x.length), new Float64Array(srs.x.length)]
+      for (let idx = 0; idx < xs.length; idx++) {
+        const [x_val, y_val] = [srs.x[idx], srs.y[idx]]
+        const finite = Number.isFinite(x_val) && Number.isFinite(y_val)
+        xs[idx] = finite ? x_scale(x_val) - pad.l : NaN
+        ys[idx] = finite ? y_scale(y_val) - pad.t : NaN
+      }
+      const contours = compute_density_contours(xs, ys, {
+        width: plot_width,
+        height: plot_height,
+        levels,
+        bandwidth,
+      })
+      return contours.length
+        ? [{ series_idx, color: series_color(srs, series_idx), contours }]
+        : []
+    })
+  })
 
   // Tally line series/points to budget path-morph tweens (see resolve_line_tween).
   // Disabling the morph for high-cardinality plots (e.g. phonon bands) keeps them
@@ -720,7 +801,11 @@
           radius: is_finite_num(point.size_value)
             ? size_fn(point.size_value)
             : (point_ctrl?.size ?? pt?.radius ?? default_radius),
-          symbol_size: pt?.symbol_size ?? undefined,
+          // A size_value sizes the marker through the scale, overriding any static symbol
+          // area, so the size legend always reads true
+          symbol_size: is_finite_num(point.size_value)
+            ? undefined
+            : (pt?.symbol_size ?? undefined),
           symbol_type: pt?.symbol_type ?? default_symbol,
           fill: is_finite_num(point.color_value)
             ? color_fn(point.color_value)
@@ -1672,6 +1757,36 @@
     {@render fill_regions_layer(fills_by_z[`below-lines`])}
     {@render ref_lines_layer(`below-lines`)}
 
+    <!-- Density contours sit under lines and markers alike -->
+    {#if density_config}
+      {@const { filled = false, fill_opacity = 0.15 } = density_config}
+      {@const stroke_width = density_config.stroke_width ?? (filled ? 0 : 1)}
+      {#each density_layers as { series_idx, color, contours } (series_idx)}
+        <!-- Clip outside the translate: a clip path resolves in the referencing element's
+             user space, which would include the transform -->
+        <g
+          class="density-contours"
+          data-series-idx={series_idx}
+          clip-path="url(#{clip_path_id})"
+          opacity={is_legend_dimmed(series_idx) ? 0.25 : 1}
+          pointer-events="none"
+        >
+          <g transform="translate({pad.l} {pad.t})">
+            {#each contours as { fraction, path } (fraction)}
+              <path
+                d={path}
+                data-fraction={fraction}
+                fill={filled ? color : `none`}
+                fill-opacity={filled ? fill_opacity : undefined}
+                stroke={stroke_width > 0 ? color : `none`}
+                stroke-width={stroke_width}
+              />
+            {/each}
+          </g>
+        </g>
+      {/each}
+    {/if}
+
     {#if show_lines}
       {#each filtered_series as series_data (series_data._id)}
         {@const series_idx = series_data.orig_series_idx}
@@ -1776,6 +1891,7 @@
                   symbol_type: appearance.symbol_type,
                   ...point.point_style,
                   radius: appearance.radius,
+                  symbol_size: appearance.symbol_size,
                   fill: appearance.fill,
                   stroke_width: appearance.stroke_width,
                   stroke: appearance.stroke,
@@ -1920,6 +2036,25 @@
       />
     {/if}
 
+    {#if size_legend && show_size_legend}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        bind:this={size_legend_deco.element}
+        class="size-legend-wrapper"
+        onmouseenter={() => size_legend_deco.tween.set_locked(true)}
+        onmouseleave={() => size_legend_deco.tween.set_locked(false)}
+        {...size_legend_deco.data_attrs}
+        style={size_legend_deco.style}
+      >
+        <SizeLegend
+          entries={size_legend_items}
+          title={size_legend.title}
+          format={size_legend.format}
+          font_size={size_legend.font_size}
+        />
+      </div>
+    {/if}
+
     <PlotLegendLayer
       {frame}
       {legend}
@@ -1978,6 +2113,10 @@
     font-weight: var(--scatter-font-weight, normal);
     color: var(--text-color);
     white-space: nowrap;
+  }
+  .size-legend-wrapper {
+    position: absolute;
+    pointer-events: auto;
   }
   .current-frame-indicator {
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));

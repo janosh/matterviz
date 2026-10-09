@@ -210,6 +210,7 @@
             x_axis={{ label: mapping.x ?? `x` }}
             y_axis={{ label: mapping.y ?? `y` }}
             color_bar={mapping.color ? { title: mapping.color } : undefined}
+            size_legend={{ title: mapping.size }}
             style="height: 100%"
           />
         {:else if plot_type === `scatter3d`}

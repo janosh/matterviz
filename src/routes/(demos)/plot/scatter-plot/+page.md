@@ -222,6 +222,93 @@ For anything the built-ins don't cover, a per-side `snippet` draws the strip fro
 <ScatterPlot {series} marginals={{ top: { snippet: mean_marker } }} />
 ```
 
+## Density Contours
+
+Dense point clouds (e.g. parity plots of predicted vs. reference energies) hide where most points actually sit. `density_contours` draws Gaussian kernel density contours under each series' markers. Levels are iso-proportions: the `0.5` contour bounds the densest region holding half of a series' estimated density in view, so levels compare across series of different sizes. The density is estimated in screen space with a `bandwidth` in px, so the contours follow log axes and pan/zoom like the markers do. Use `filled` for stacked translucent bands and `levels` for the count or explicit fractions.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  // seeded parity data: two models' predicted vs. reference formation energies
+  let seed = 3
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const normal = () => Math.sqrt(-2 * Math.log(rand())) * Math.cos(2 * Math.PI * rand())
+  const model = (count, bias, noise, fill, label) => {
+    const ref = Array.from({ length: count }, () => -1.5 + 0.9 * normal())
+    return {
+      x: ref,
+      y: ref.map((val) => val + bias + noise * normal() * (1 + 0.4 * Math.abs(val))),
+      markers: `points`,
+      point_style: { fill, radius: 1.5, fill_opacity: 0.35, stroke_width: 0 },
+      label,
+    }
+  }
+  const series = [
+    model(3000, 0, 0.12, `steelblue`, `Model A`),
+    model(3000, 0.15, 0.3, `orangered`, `Model B`),
+  ]
+  let filled = $state(true)
+  let show_points = $state(true)
+  let n_levels = $state(4)
+  let bandwidth = $state(15)
+</script>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1em; margin-bottom: 1em">
+  <label><input type="checkbox" bind:checked={filled} /> filled</label>
+  <label><input type="checkbox" bind:checked={show_points} /> points</label>
+  <label>levels <input type="range" min="1" max="12" bind:value={n_levels} /> {n_levels}</label
+  >
+  <label
+    >bandwidth <input type="range" min="4" max="40" bind:value={bandwidth} />
+    {bandwidth} px</label
+  >
+</div>
+
+<ScatterPlot
+  {series}
+  styles={{ show_points }}
+  density_contours={{ filled, levels: n_levels, bandwidth }}
+  ref_lines={[{ type: `diagonal`, slope: 1, intercept: 0, style: { dash: `4 4` } }]}
+  x_axis={{ label: `E<sub>form</sub> reference`, unit: `eV/atom` }}
+  y_axis={{ label: `E<sub>form</sub> predicted`, unit: `eV/atom` }}
+  style="height: 450px"
+/>
+```
+
+## Bubble Size Legend
+
+When markers are sized by `size_values`, ScatterPlot adds a size legend that maps a few round values to the marker radii they get. Like the color bar, the plot places it clear of the data. Pass `size_legend={{ title, count, values, format }}` to configure it, `wrapper_style` to pin it, or `null` to hide it.
+
+```svelte example
+<script>
+  import { ScatterPlot } from 'matterviz'
+
+  let seed = 11
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const n_atoms = Array.from({ length: 60 }, () => Math.round(2 + 118 * rand() ** 2))
+  const series = [
+    {
+      x: n_atoms.map(() => 2 + 6 * rand()),
+      y: n_atoms.map((count) => Math.max(0, 6 - Math.log2(count) * 0.6 + rand())),
+      size_values: n_atoms,
+      markers: `points`,
+      point_style: { fill: `teal`, fill_opacity: 0.5 },
+      label: `Materials`,
+    },
+  ]
+</script>
+
+<ScatterPlot
+  {series}
+  size_scale={{ radius_range: [3, 22] }}
+  size_legend={{ title: `Atoms per cell` }}
+  x_axis={{ label: `Density`, unit: `g/cm³` }}
+  y_axis={{ label: `Band gap`, unit: `eV` }}
+  style="height: 420px"
+/>
+```
+
 ## Line Interpolation Curves
 
 The connecting line between points chooses its interpolation via `line_style.curve`. The default `monotone` smooths through points, while `linear` draws perfectly straight segments (usually the better choice for scientific data: no spline overshoot between samples). Toggle the curve below on a deliberately sharp signal to see the difference:

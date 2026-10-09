@@ -705,6 +705,7 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0
     type ClampedSizeScale = ((value: number) => number) & {
       domain: () => Vec2
       range: () => Vec2
+      ticks: (count?: number) => number[]
     }
 
     // Order the bounds first: a descending radius_range would otherwise collapse the scale to
@@ -716,6 +717,8 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0
 
     clamped_scale.domain = () => arcsinh_scale.domain()
     clamped_scale.range = () => arcsinh_scale.range()
+    // Size legends pick their values from these
+    clamped_scale.ticks = (count) => arcsinh_scale.ticks(count)
     return clamped_scale
   }
 
