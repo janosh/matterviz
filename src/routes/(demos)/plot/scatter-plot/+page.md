@@ -224,7 +224,7 @@ For anything the built-ins don't cover, a per-side `snippet` draws the strip fro
 
 ## Density Contours
 
-Dense point clouds (e.g. parity plots of predicted vs. reference energies) hide where most points actually sit. `density_contours` draws Gaussian kernel density contours under each series' markers. Levels are iso-proportions: the `0.5` contour bounds the densest region holding half of a series' estimated density, so levels compare across series of different sizes and stay put while panning. The density is estimated in screen space with a `bandwidth` in px, so the contours follow log axes and pan/zoom like the markers do. Use `filled` for stacked translucent bands and `levels` for the count or explicit fractions.
+Dense point clouds (e.g. parity plots of predicted vs. reference energies) hide where most points actually sit. `density_contours` draws Gaussian kernel density contours under each series' markers. Levels are iso-proportions: the `0.5` contour bounds the densest region holding half of a series' estimated density, so levels compare across series of different sizes and stay put while panning (zoomed far enough in, they become fractions of the density in view). The density is estimated in screen space with a `bandwidth` in px, so the contours follow log axes and pan/zoom like the markers do. Use `filled` for stacked translucent bands and `levels` for the count or explicit fractions.
 
 ```svelte example
 <script>

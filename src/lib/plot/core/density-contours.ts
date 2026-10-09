@@ -9,8 +9,8 @@ import { contours } from 'd3-contour'
 import type { ContourMultiPolygon } from 'd3-contour'
 import { quantile_unordered } from '#lib/math.js'
 
-// Cells the series-wide level grid may hold; past this its cells double, coarser but bounded
-// per frame (a series spanning thousands of px when zoomed far in)
+// Cells the series-wide level grid may hold per frame; past this its cells double, up to the
+// kernel's own scale
 const MAX_LEVEL_CELLS = 250_000
 
 type DensityContourOptions = {
@@ -106,13 +106,15 @@ export function mass_thresholds(values: Float64Array, fractions: readonly number
 // Densities (points per px^2) whose superlevel sets hold each fraction of the whole series'
 // mass. Gridded over the series' own core extent (0.5-99.5th percentiles, so one far outlier
 // can't inflate the grid) rather than the view, so panning moves contours without reshaping
-// them. Past MAX_LEVEL_CELLS the grid coarsens, approximating the levels when zoomed far in.
+// them. Past MAX_LEVEL_CELLS the grid coarsens, but never past the kernel's scale, where
+// square cells would blur the levels (or collapse an axis under one-axis zoom). A series too
+// large to grid that finely (zoomed far in) returns null: its contours use the view's mass.
 export function level_densities(
   xs: ArrayLike<number>,
   ys: ArrayLike<number>,
   fractions: readonly number[],
   opts: Pick<DensityContourOptions, `bandwidth` | `cell_size`> = {},
-): number[] {
+): number[] | null {
   const { bandwidth = 20 } = opts
   const finite = Array.from({ length: xs.length }, (_, idx) => idx).filter(
     (idx) => Number.isFinite(xs[idx]) && Number.isFinite(ys[idx]),
@@ -125,10 +127,13 @@ export function level_densities(
   const [[x_lo, x_hi], [y_lo, y_hi]] = [core(xs), core(ys)]
   const [width, height] = [x_hi - x_lo, y_hi - y_lo]
   const pad = 6 * bandwidth // blur padding on both sides, as density_grid adds it
+  const n_cells = (cell: number) => ((width + pad) / cell) * ((height + pad) / cell)
   let cell_size = opts.cell_size ?? 4
-  while (((width + pad) / cell_size) * ((height + pad) / cell_size) > MAX_LEVEL_CELLS) {
+  while (n_cells(cell_size) > MAX_LEVEL_CELLS && cell_size * 2 <= Math.max(4, bandwidth)) {
     cell_size *= 2
   }
+  // Negated so a non-finite extent (absurd zoom) is too large as well
+  if (!(n_cells(cell_size) <= MAX_LEVEL_CELLS)) return null
   const grid = density_grid(xs, ys, {
     width,
     height,
@@ -168,7 +173,10 @@ export function density_contours(
   if (xs.length === 0 || opts.width <= 0 || opts.height <= 0) return []
   const grid = density_grid(xs, ys, opts)
   const cell_area = grid.cell_size ** 2
-  const thresholds = level_densities(xs, ys, fractions, opts).map((value) => value * cell_area)
+  const levels = level_densities(xs, ys, fractions, opts)
+  const thresholds = levels
+    ? levels.map((value) => value * cell_area)
+    : mass_thresholds(grid.values, fractions)
   const contour_of = contours().size([grid.n_cols, grid.n_rows])
   // d3-contour's types want a plain array (it only indexes it)
   const values = Array.from(grid.values)

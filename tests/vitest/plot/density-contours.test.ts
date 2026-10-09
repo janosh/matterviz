@@ -233,31 +233,38 @@ describe(`density_contours`, () => {
     expect(Math.abs(ring_radius(-250) - both_in_view)).toBeLessThan(0.02)
   })
 
-  test(`level grid ignores far outliers and stays bounded`, () => {
+  test(`level grid ignores far outliers`, () => {
     const { xs, ys } = gaussian_cloud(1000, [200, 150], 20, 31)
-    const fractions = [0.5]
-    const [plain] = level_densities(xs, ys, fractions, { bandwidth: 8 })
-    // Two points 1e6 px away would stretch a min/max box to 1e12 cells; the core box ignores them
-    const [with_outliers] = level_densities(
-      [...xs, 1e6, -1e6],
-      [...ys, 1e6, -1e6],
-      fractions,
-      {
-        bandwidth: 8,
-      },
-    )
-    // They shift the percentile picks a hair, realigning the grid: measured 0.67% apart. A
-    // min/max box would coarsen cells to ~4000 px and miss by orders of magnitude.
-    expect(Math.abs(with_outliers / plain - 1)).toBeLessThan(0.02)
-    // A series 1e5 px wide (deep zoom) coarsens instead of allocating ~6e8 cells
-    const wide = level_densities(
-      xs.map((val) => val * 500),
+    const level = (xs_in: number[], ys_in: number[]) => {
+      const levels = level_densities(xs_in, ys_in, [0.5], { bandwidth: 8 })
+      if (!levels) throw new Error(`series did not fit the level grid`)
+      return levels[0]
+    }
+    // Two points 1e6 px away would stretch a min/max box to 1e12 cells; the core box ignores
+    // them. They shift the percentile picks a hair, realigning the grid: measured 0.67% apart.
+    const with_outliers = level([...xs, 1e6, -1e6], [...ys, 1e6, -1e6])
+    expect(Math.abs(with_outliers / level(xs, ys) - 1)).toBeLessThan(0.02)
+    expect(level_densities([NaN], [1], [0.5])).toEqual([NaN])
+  })
+
+  // Zoomed far along one axis, square cells coarse enough to fit the budget collapsed the
+  // other axis below one cell, losing all mass (NaN levels, no contours at all). Coarsening
+  // now stops at the kernel scale and a series too large to grid uses the view's mass.
+  test(`one-axis deep zoom falls back to view levels instead of dropping contours`, () => {
+    const { xs, ys } = gaussian_cloud(20_000, [200, 150], 20, 32)
+    const zoom = 2000
+    const zoomed_xs = xs.map((val) => 200 + (val - 200) * zoom)
+    const opts = { width: 400, height: 300, bandwidth: 8, levels: [0.5] }
+    expect(level_densities(zoomed_xs, ys, [0.5], opts)).toBeNull()
+    // Moderate zoom still fits at the kernel's scale
+    const moderate = level_densities(
+      xs.map((val) => 200 + (val - 200) * 50),
       ys,
-      fractions,
-      { bandwidth: 8 },
+      [0.5],
+      opts,
     )
-    expect(Number.isFinite(wide[0])).toBe(true)
-    expect(level_densities([NaN], [1], fractions)).toEqual([NaN])
+    expect(moderate?.[0]).toBeGreaterThan(0)
+    expect(density_contours(zoomed_xs, ys, opts).length).toBeGreaterThan(0)
   })
 
   test(`separate clusters give one ring each, outermost level first`, () => {
