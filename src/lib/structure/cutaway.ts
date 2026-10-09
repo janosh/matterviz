@@ -7,6 +7,8 @@ export interface CutawaySettings {
   axis: 0 | 1 | 2
   position: number
   thickness: number
+  // Select centers and complete their visible bonds/polyhedra with intact endpoint atoms.
+  whole_atoms?: boolean
 }
 
 export const DEFAULT_CUTAWAY: CutawaySettings = {

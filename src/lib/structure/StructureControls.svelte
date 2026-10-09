@@ -415,6 +415,7 @@
     row(`bond_thickness`, `Thickness`, 0.01),
   ]
   const polyhedra_rows: Row[] = [
+    row(`polyhedra_neighbor_mode`, `Neighbors`),
     row(`polyhedra_opacity`, `Opacity`, 0.05),
     {
       ...row(`polyhedra_color_mode`, `Color`),

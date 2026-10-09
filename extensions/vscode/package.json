@@ -262,6 +262,15 @@
             "molecules"
           ]
         },
+        "matterviz.structure.polyhedra_neighbor_mode": {
+          "type": "string",
+          "default": "anion",
+          "description": "Use more electronegative anion neighbors or every bonded neighbor as polyhedron vertices",
+          "enum": [
+            "anion",
+            "bonded"
+          ]
+        },
         "matterviz.structure.polyhedra_opacity": {
           "type": "number",
           "default": 0.15,

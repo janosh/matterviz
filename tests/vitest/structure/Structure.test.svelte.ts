@@ -1025,9 +1025,11 @@ test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const
       supercell_scaling: `1x1x1`,
       ...(shown === `a trajectory stream` ? { trajectory_position_stream: own_stream } : {}),
     })
-    let analysis: { sym_data: unknown } | undefined
+    // Live analysis getters, so read sym_data through the mounted object each time
+    let sym_data: () => unknown = () => null
     const tool = await mount_host_structure(props, (view_props) => {
-      analysis = mount_structure(view_props)
+      const analysis = mount_structure(view_props)
+      sym_data = () => analysis.sym_data
       return analysis
     })
     const trail = shifted_trail(prim_fcc_cu)
@@ -1041,7 +1043,7 @@ test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const
     expect(drawn()?.n_frames).toBe(3)
     if (shown === `a supercell`) props.supercell_scaling = `2x1x1`
     else {
-      await vi.waitFor(() => expect(analysis?.sym_data).not.toBeNull())
+      await vi.waitFor(() => expect(sym_data()).not.toBeNull())
       props.cell_type = `conventional`
     }
     flushSync()

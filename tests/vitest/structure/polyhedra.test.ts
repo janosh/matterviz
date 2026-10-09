@@ -316,6 +316,25 @@ const make_nacl_cluster = () => make_crystal(10, octahedron_sites(`Na`, `Cl`, [5
 const octahedral_bonds = bonds_from(0, [1, 2, 3, 4, 5, 6])
 
 describe(`compute_polyhedra`, () => {
+  test.each([false, true])(`bonded primitive-cell shell with packed bonds %s`, (packed) => {
+    const structure = make_crystal(2, [{ element: `Cu`, abc: [0, 0, 0] }])
+    const shifts: Vec3[] = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    const records = shifts.map((cell_shift) => image_bond(structure, 0, cell_shift))
+    const bonds = packed ? new BondFrame(structure, pack_bonds(records)) : records
+    expect(compute_polyhedra(structure, bonds)).toEqual([])
+    const [poly, ...rest] = compute_polyhedra(structure, bonds, { neighbor_mode: `bonded` })
+    expect(rest).toHaveLength(0)
+    expect(poly.vertex_site_idxs).toEqual([0, 0, 0, 0, 0, 0])
+    expect(poly.faces).toHaveLength(8)
+    expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 12)
+    for (const corner of octahedron_points)
+      expect(poly.vertices).toContainEqual(corner.map((coordinate) => coordinate * 2))
+  })
+
   test(`NaCl cluster: Na center forms octahedron, Cl does not`, () => {
     const structure = make_nacl_cluster()
     const polyhedra = compute_polyhedra(structure, octahedral_bonds)
@@ -338,14 +357,31 @@ describe(`compute_polyhedra`, () => {
 
   // C is more electronegative than H, so methane gets no polyhedron
   test.each([
-    [`Si`, `O`, 1.6, [`Si`]],
-    [`C`, `H`, 1.09, []],
-  ])(`%s%s4 tetrahedron yields centers %j`, (center, vertex, dist, expected) => {
-    const structure = make_crystal(10, tetrahedron_sites(center, vertex, [5, 5, 5], dist))
-    const polyhedra = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4]))
-    expect(polyhedra.map((poly) => poly.center_element)).toEqual(expected)
-    for (const poly of polyhedra) expect(poly.faces).toHaveLength(4)
-  })
+    [`Si`, `O`, 1.6, `anion`, [`Si`]],
+    [`C`, `H`, 1.09, `anion`, []],
+    [`C`, `H`, 1.09, `bonded`, [`C`]],
+    [`Si`, `Si`, 2.35, `anion`, []],
+    [`Si`, `Si`, 2.35, `bonded`, [`Si`]],
+    [`Ge`, `Si`, 2.35, `bonded`, [`Ge`]],
+  ] as const)(
+    `%s%s4 at %s A in %s mode yields centers %j`,
+    (center, vertex, dist, neighbor_mode, expected) => {
+      const structure = make_crystal(10, tetrahedron_sites(center, vertex, [5, 5, 5], dist))
+      const bonds = new BondFrame(structure, pack_bonds(bonds_from(0, [1, 2, 3, 4])))
+      const prepared = compute_polyhedra(structure, bonds)
+      cache_prepared_polyhedra(bonds, {}, prepared)
+      const polyhedra = compute_polyhedra(structure, bonds, { neighbor_mode })
+      expect(polyhedra.map((poly) => poly.center_element)).toEqual(expected)
+      for (const poly of polyhedra) {
+        expect(poly.faces).toHaveLength(4)
+        expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual([
+          1, 2, 3, 4,
+        ])
+        for (const [vertex_idx, site_idx] of poly.vertex_site_idxs.entries())
+          expect(poly.vertices[vertex_idx]).toEqual(structure.sites[site_idx].xyz)
+      }
+    },
+  )
 
   test.each([
     [{ min_neighbors: 7 }, 0],
@@ -355,6 +391,8 @@ describe(`compute_polyhedra`, () => {
     [{ excluded_center_elements: [`Na`] }, 0],
     // Na (0.93) vs Cl (3.16): margin of 3 exceeds the EN gap, so Na no longer qualifies
     [{ electronegativity_margin: 3 }, 0],
+    [{ neighbor_mode: `bonded` }, 1],
+    [{ neighbor_mode: `bonded`, excluded_center_elements: [`Na`] }, 0],
   ] satisfies [Parameters<typeof compute_polyhedra>[2], number][])(
     `NaCl center filters %j leave %i polyhedra`,
     (options, expected) => {

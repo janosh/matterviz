@@ -155,7 +155,9 @@ pnpm movie render movie.json --output movie.mp4
 
 The CLI starts a private local viewer automatically; `--url http://localhost:3000` uses an existing server. Its dedicated `/trajectory/render` page exposes the same controller as `window.matterviz_movie`, plus `configure(structure_props)`. Files selected through `#movie-source` stay browser `File` objects, so indexed HDF5 loading does not copy an entire large file into JavaScript memory. Results are JSON on stdout; progress and errors go to stderr. Ctrl+C cancels the job. Existing output files are never overwritten.
 
-From another directory, invoke `node /path/to/matterviz/src/scripts/movie.mjs render movie.json --output movie.mp4`. The private viewer starts from the checkout while the input JSON and output keep their caller-relative paths. `visuals.cutaway` accepts the same cutaway settings as `Structure`; use a slice when a dense bulk system would obscure the motion.
+From another directory, invoke `node /path/to/matterviz/src/scripts/movie.mjs render movie.json --output movie.mp4`. The private viewer starts from the checkout while the input JSON and output keep their caller-relative paths. `visuals.cutaway` accepts the same cutaway settings as `Structure`; use a slice when a dense bulk system would obscure the motion. Set `visuals.cutaway.whole_atoms` to `true` to select centers inside the slice and retain their complete visible bonds and coordination polyhedra, including intact endpoint atoms just outside it and periodic image endpoints. Volume fields retain their surface clipping.
+
+For covalent or metallic coordination shells, set `visuals.scene_props.polyhedra_neighbor_mode` to `"bonded"` with `show_polyhedra: "always"` and `show_bonds: "always"`. This constructs polyhedra from all bonded neighbors; the default `"anion"` mode selects more electronegative anion neighbors. Opacity, edge visibility, neighbor-count limits, and center-element filters use the normal structure settings.
 
 ```json
 {

@@ -371,6 +371,11 @@ export const SETTINGS_CONFIG = define_settings({
       description: `When to render coordination polyhedra around cation-like centers`,
       enum: SHOW_BONDS_ENUM,
     },
+    polyhedra_neighbor_mode: {
+      value: `anion`,
+      description: `Use more electronegative anion neighbors or every bonded neighbor as polyhedron vertices`,
+      enum: { anion: `Anion neighbors`, bonded: `All bonded neighbors` },
+    },
     polyhedra_opacity: opacity_setting(0.15, `Opacity of coordination polyhedra faces`),
     polyhedra_show_edges: {
       value: true,

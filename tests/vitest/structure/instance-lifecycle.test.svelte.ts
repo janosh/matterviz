@@ -2,6 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import type { BondPair, Site } from '#lib/structure/index.js'
 import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
 import type { StructureCutaway } from '#lib/structure/cutaway.js'
+import { cutaway_planes } from '#lib/structure/cutaway.js'
 import * as extras from '@threlte/extras'
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import * as camera_fit from '#lib/structure/camera-fit.js'
@@ -49,21 +50,33 @@ const spy_interactivity = () => {
   }
 }
 
-test.each([`plane`, `slab`] as const)(
-  `%s cutaway keeps a visible partial-occupancy cap pickable behind the clipped sphere surface`,
-  (mode) => {
+test.each(
+  ([`plane`, `slab`] as const).flatMap((mode) =>
+    [false, true].flatMap((whole_atoms) =>
+      [0.5, 1].map((occupancy) => ({ mode, whole_atoms, occupancy })),
+    ),
+  ),
+)(
+  `$mode cutaway selects whole atoms=$whole_atoms at occupancy=$occupancy while keeping visible surfaces pickable`,
+  ({ mode, whole_atoms, occupancy }) => {
     const interactivity = spy_interactivity()
     const settings: StructureCutaway = {
       mode,
       axis: 2,
       position: mode === `plane` ? 0.1 : 0,
       thickness: 0.2,
+      whole_atoms,
       cartesian_to_fractional: new Matrix4(),
     }
     let cutaway = $state<StructureCutaway | undefined>()
+    let structure = $state({
+      sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, occupancy)],
+    })
     const { unmount_scene } = mount_scene((anchor) =>
       StructureScene(anchor, {
-        structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, 0.5)] },
+        get structure() {
+          return structure
+        },
         get cutaway() {
           return cutaway
         },
@@ -80,8 +93,22 @@ test.each([`plane`, `slab`] as const)(
     expect(hits()[0]?.distance).toBeLessThan(2)
     cutaway = settings
     flushSync()
-    // The rendered vacancy cap lies exactly at z=0. The sphere's nearer surface is clipped.
-    expect(hits()[0]?.distance).toBe(2)
+    // Center selection preserves the near sphere surface across the slab boundary.
+    // Surface clipping instead exposes the vacancy cap at z=0 for partial occupancy.
+    if (whole_atoms) expect(hits()[0]?.distance).toBeLessThan(2)
+    else if (occupancy === 0.5) expect(hits()[0]?.distance).toBe(2)
+    else expect(hits()).toEqual([])
+    if (whole_atoms) {
+      // Moving atoms must leave and reenter a fixed slice instead of reusing its old selection.
+      for (const z_coord of [0.3, 0]) {
+        structure = {
+          sites: [make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, occupancy)],
+        }
+        flushSync()
+        if (z_coord) expect(hits()).toEqual([])
+        else expect(hits()[0]?.distance).toBeLessThan(2)
+      }
+    }
     cutaway = { ...settings, position: -0.3 }
     flushSync()
     expect(hits()).toEqual([])
@@ -89,6 +116,153 @@ test.each([`plane`, `slab`] as const)(
     cutaway = undefined
     flushSync()
     expect(hits()[0]?.distance).toBeLessThan(2)
+  },
+)
+
+test.each(
+  [false, true].flatMap((numeric) =>
+    [false, true].flatMap((periodic) =>
+      ([`always`, `never`] as const).map((show_bonds) => ({ numeric, periodic, show_bonds })),
+    ),
+  ),
+)(
+  `whole-atom cutaway completes moving coordination shells (numeric=$numeric, periodic=$periodic, bonds=$show_bonds)`,
+  ({ numeric, periodic, show_bonds }) => {
+    const vertices: Vec3[] = [
+      [1, 0, 0.5],
+      [-1, 0, 0.5],
+      [0, 1, -0.5],
+      [0, -1, -0.5],
+    ]
+    const make_structure = (center_z: number, vertex_z = 0.5) => {
+      const positions: Vec3[] = [
+        [0, 0, center_z],
+        ...vertices.map((position, idx) =>
+          idx === 0 ? ([position[0], position[1], vertex_z] as Vec3) : position,
+        ),
+        [10, 0, 2],
+        [11, 0, 2],
+      ]
+      const numbers = new Uint8Array([32, 14, 14, 14, 14, 14, 14])
+      if (periodic) positions[1] = [-3, 0, vertex_z]
+      const flat_positions = new Float64Array(positions.flat())
+      const next = numeric
+        ? new FrameView().update(
+            create_numeric_md_frame(flat_positions, numbers, undefined, undefined, 0, {}, []),
+          ).structure
+        : {
+            sites: positions.map((position, idx) => {
+              const element = idx ? `Si` : `Ge`
+              return make_site(element, [0, 0, 0], position, `${element}${idx}`)
+            }),
+          }
+      const pairs: BondPair[] = [1, 2, 3, 4].map((site_idx) => ({
+        site_idx_1: 0,
+        site_idx_2: site_idx,
+        pos_1: positions[0],
+        pos_2: positions[site_idx],
+        bond_length: Math.hypot(
+          ...positions[site_idx].map((value, axis) => value - positions[0][axis]),
+        ),
+      }))
+      if (periodic) pairs[0] = { ...pairs[0], pos_2: [1, 0, vertex_z], cell_shift: [1, 0, 0] }
+      pairs.push({
+        site_idx_1: 5,
+        site_idx_2: 6,
+        pos_1: positions[5],
+        pos_2: positions[6],
+        bond_length: 1,
+      })
+      cache_prepared_bonds(
+        next,
+        `electroneg_ratio`,
+        {},
+        numeric ? new BondFrame(next, pack_bonds(pairs)) : pairs,
+      )
+      return next
+    }
+    let structure = $state.raw(make_structure(0))
+    const { scene, unmount_scene } = mount_scene((anchor) =>
+      StructureScene(anchor, {
+        get structure() {
+          return structure
+        },
+        cutaway: {
+          mode: `slab`,
+          axis: 2,
+          position: 0,
+          thickness: 0.2,
+          whole_atoms: true,
+          cartesian_to_fractional: new Matrix4(),
+        },
+        show_bonds,
+        show_polyhedra: `always`,
+        polyhedra_neighbor_mode: `bonded`,
+        polyhedra_excluded_elements: [`Si`],
+        gizmo: false,
+      }),
+    )
+    onTestFinished(unmount_scene)
+    for (const [center_z, vertex_z] of [
+      [0, 0.5],
+      [0, 0.75],
+      [0.25, 0.75],
+      [0, 0.5],
+    ]) {
+      structure = make_structure(center_z, vertex_z)
+      flushSync()
+      const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
+      const atoms = meshes.filter(
+        (mesh): mesh is AtomInstances => mesh instanceof AtomInstances,
+      )
+      const bond = meshes.find((mesh) => mesh instanceof BondMesh)
+      const faces = meshes.find(
+        (mesh) =>
+          mesh instanceof Mesh &&
+          mesh.geometry.getAttribute(`normal`) &&
+          !(mesh instanceof AtomInstances) &&
+          !(mesh instanceof BondMesh),
+      )
+      if (center_z) {
+        expect(atoms).toHaveLength(0)
+        expect(bond).toBeUndefined()
+        expect(faces).toBeUndefined()
+        continue
+      }
+      const positions = atoms.flatMap((mesh) =>
+        Array.from({ length: mesh.count }, (_unused, idx) => [
+          mesh.positions.getX(idx),
+          mesh.positions.getY(idx),
+          mesh.positions.getZ(idx),
+        ]),
+      )
+      expect(positions).toHaveLength(5)
+      expect(positions).toEqual(
+        expect.arrayContaining([[0, 0, 0], [1, 0, vertex_z], ...vertices.slice(1)]),
+      )
+      for (const mesh of atoms) expect(cutaway_planes(mesh)).toEqual([])
+      expect(faces).toBeInstanceOf(Mesh)
+      if (!(faces instanceof Mesh)) throw new Error(`Missing complete polyhedron`)
+      expect(cutaway_planes(faces)).toEqual([])
+      expect(faces.geometry.getAttribute(`position`).count).toBe(12)
+      if (show_bonds === `never`) expect(bond).toBeUndefined()
+      else {
+        expect(bond).toBeInstanceOf(BondMesh)
+        if (!(bond instanceof BondMesh)) throw new Error(`Missing complete bonds`)
+        expect(bond.count).toBe(4)
+        expect(cutaway_planes(bond)).toEqual([])
+        for (let bond_idx = 0; bond_idx < bond.count; bond_idx++) {
+          for (const direction of [-1, 1]) {
+            const endpoint = [0, 1, 2].map(
+              (axis) =>
+                bond.centers.array[bond_idx * 3 + axis] +
+                (direction * bond.deltas.array[bond_idx * 3 + axis]) / 2,
+            )
+            expect(positions).toContainEqual(endpoint)
+          }
+        }
+      }
+    }
   },
 )
 

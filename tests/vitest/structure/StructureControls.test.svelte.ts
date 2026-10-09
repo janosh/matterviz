@@ -260,6 +260,7 @@ describe(`StructureControls schema rows`, () => {
         show_site_labels: true,
         auto_bond_order: true,
         polyhedra_color_mode: `uniform` as const,
+        polyhedra_neighbor_mode: `bonded` as const,
         bond_thickness: 0.2,
         cell_edge_color: `#123456`,
         show_cell_vectors: false,
@@ -276,6 +277,7 @@ describe(`StructureControls schema rows`, () => {
     const selects = [
       [`bonding_strategy`, DEFAULTS.structure.bonding_strategy],
       [`aromatic_display`, DEFAULTS.structure.aromatic_display],
+      [`polyhedra_neighbor_mode`, `bonded`],
       [`camera_projection`, DEFAULTS.structure.camera_projection],
       [`vector_color_mode`, undefined], // no vectors on this structure, so no row
       [`trajectory_line_wrap_mode`, undefined], // no trajectory stream either
@@ -341,6 +343,9 @@ describe(`StructureControls schema rows`, () => {
     expect(bond_color.getAttribute(`aria-invalid`)).toBe(`true`)
     expect(state.scene_props.bond_color).toBeUndefined()
     set_input(bond_color, `#abc`)
+    const neighbors = query(row_of(`polyhedra_neighbor_mode`), `select`, HTMLSelectElement)
+    neighbors.value = `anion`
+    neighbors.dispatchEvent(new Event(`change`, { bubbles: true }))
     query(row_of(`show_cell_vectors`), `input`).click()
     query(row_of(`show_image_atoms`), `input`).click()
     set_input(
@@ -349,6 +354,7 @@ describe(`StructureControls schema rows`, () => {
     )
     await tick()
     expect(state.scene_props.bond_color).toBe(`#aabbcc`)
+    expect(state.scene_props.polyhedra_neighbor_mode).toBe(`anion`)
     expect(state.scene_props.bond_thickness).toBe(0.35)
     expect(state.scene_props.show_cell_vectors).toBe(true)
     expect(state.show_image_atoms).toBe(true)
@@ -397,7 +403,7 @@ describe(`StructureControls schema rows`, () => {
       // Bonds
       `bonding_strategy`, `auto_bond_order`, `aromatic_display`, `bond_color`, `bond_thickness`,
       // Polyhedra
-      `polyhedra_opacity`, `polyhedra_color`, `polyhedra_show_edges`, `polyhedra_hide_center_atoms`, `polyhedra_min_neighbors`, `polyhedra_max_neighbors`, `polyhedra_centers`,
+      `polyhedra_neighbor_mode`, `polyhedra_opacity`, `polyhedra_color`, `polyhedra_show_edges`, `polyhedra_hide_center_atoms`, `polyhedra_min_neighbors`, `polyhedra_max_neighbors`, `polyhedra_centers`,
       // Labels
       `site_label_color`, `site_label_size`, `site_label_padding`, `site_label_bg_hex`, `site_label_bg_opacity`, `site_label_offset`,
       // Site vectors
