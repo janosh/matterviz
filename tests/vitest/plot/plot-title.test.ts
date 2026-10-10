@@ -17,7 +17,6 @@ const fixed_width_measure =
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  clear_text_metrics_cache()
 })
 
 describe(`resolve_plot_title`, () => {

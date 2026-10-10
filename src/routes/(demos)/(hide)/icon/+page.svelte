@@ -155,12 +155,6 @@
     border-radius: 4pt;
     transition: background 0.2s;
   }
-  .icon-card .svg-btn:hover {
-    background: color-mix(in srgb, currentColor 10%, transparent);
-  }
-  .icon-card .svg-btn.copied {
-    color: var(--success-color, #4caf50);
-  }
   .icon-card .name-btn {
     align-self: start;
     /* block padding lifts the 15px text row to a tappable height */
@@ -180,10 +174,10 @@
     border-radius: 3pt;
     transition: background 0.2s;
   }
-  .icon-card .name-btn:hover code {
+  .icon-card :is(.svg-btn:hover, .name-btn:hover code) {
     background: color-mix(in srgb, currentColor 10%, transparent);
   }
-  .icon-card .name-btn.copied code {
+  .icon-card :is(.svg-btn.copied, .name-btn.copied code) {
     color: var(--success-color, #4caf50);
   }
   .no-results {

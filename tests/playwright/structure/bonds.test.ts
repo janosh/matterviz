@@ -14,6 +14,7 @@ import {
   primary_modifier,
   primary_modifier_key,
   rendered_instance_counts,
+  require_bbox,
   set_scene_props,
   set_structure,
   structure_canvas,
@@ -741,8 +742,7 @@ test.describe(`Bond component`, () => {
       const label = (text: string) =>
         page.locator(`#test-structure .atom-label`).filter({ hasText: text })
       const label_center = async (text: string) => {
-        const box = await label(text).boundingBox()
-        if (!box) throw new Error(`Missing ${text} label`)
+        const box = await require_bbox(label(text), `${text} label`)
         return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
       }
       // midline between C-1 and O-3, and C-2's vertical gap from it, vs their horizontal span

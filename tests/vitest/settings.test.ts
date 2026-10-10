@@ -22,7 +22,6 @@ import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibilit
 import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SvelteSet } from 'svelte/reactivity'
 import { beforeAll, describe, expect, test } from 'vitest'
 
 const settings_module = join(`src`, `lib`, `settings.ts`)
@@ -349,7 +348,7 @@ describe(`Settings`, () => {
       const alias = /const defaults = DEFAULTS\.(?<path>[\w.]+)/.exec(source)?.groups?.path
       if (alias) aliases.defaults = at_path(DEFAULTS, alias.split(`.`))
       // Every schema group this component reads: DEFAULTS.a.b.leaf contributes group a.b
-      const groups = new SvelteSet<string>(hull_helper.test(source) ? hull_groups : [])
+      const groups = new Set<string>(hull_helper.test(source) ? hull_groups : [])
       for (const { 1: path } of source.matchAll(/\bDEFAULTS\.(?<path>[\w.]+)/g)) {
         const parts = path.split(`.`)
         while (parts.length && is_leaf(at_path(DEFAULTS, parts))) parts.pop()

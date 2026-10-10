@@ -4,7 +4,7 @@ import {
   wrap_text_paragraph,
 } from '#lib/plot/core/text-metrics.js'
 import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
-import type { Sides } from './layout'
+import type { Sides } from '#lib/plot/core/layout.js'
 
 type PlotTitleAlign = `start` | `middle` | `end`
 type PlotTitleFontOverrides = Partial<FontSpec>
@@ -242,31 +242,20 @@ export function resolve_plot_title(
       : align === `end`
         ? coord_x + available_width
         : coord_x + available_width / 2
-  const title_font = normalized_font(config?.font, DEFAULT_PLOT_TITLE_FONT)
-  const subtitle_font = normalized_font(config?.subtitle_font, DEFAULT_PLOT_SUBTITLE_FONT)
-  const title_label = normalize_label(config?.text)
+  const block = (kind: PlotTitleLineKind, label: string, top: number, font: FontSpec) =>
+    resolve_block(kind, label, anchor_x, top, available_width, max_lines, font, measure)
   const subtitle_label = normalize_label(config?.subtitle)
-
-  const title = resolve_block(
+  const title = block(
     `title`,
-    title_label,
-    anchor_x,
+    normalize_label(config?.text),
     top_y,
-    available_width,
-    max_lines,
-    title_font,
-    measure,
+    normalized_font(config?.font, DEFAULT_PLOT_TITLE_FONT),
   )
-  const subtitle_top = top_y + (title?.height ?? 0) + (title && subtitle_label ? gap : 0)
-  const subtitle = resolve_block(
+  const subtitle = block(
     `subtitle`,
     subtitle_label,
-    anchor_x,
-    subtitle_top,
-    available_width,
-    max_lines,
-    subtitle_font,
-    measure,
+    top_y + (title?.height ?? 0) + (title && subtitle_label ? gap : 0),
+    normalized_font(config?.subtitle_font, DEFAULT_PLOT_SUBTITLE_FONT),
   )
   const block_height =
     (title?.height ?? 0) + (title && subtitle ? gap : 0) + (subtitle?.height ?? 0)

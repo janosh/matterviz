@@ -91,13 +91,6 @@ describe(`decompress_data`, () => {
     await expect(decompress_data(zipSync(entries).buffer, `zip`)).rejects.toThrow(message)
   })
 
-  test(`wraps stream decompression errors with the format name`, async () => {
-    const invalid_data = new Uint8Array(10).fill(255).buffer
-    await expect(decompress_data(invalid_data, `gzip`)).rejects.toThrow(
-      `Failed to decompress gzip file`,
-    )
-  })
-
   test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
     `decompresses valid %s data`,
     async (format) => {

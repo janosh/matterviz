@@ -13,7 +13,6 @@
     IsosurfaceSettings,
     StructureDisplayMode,
     VolumetricData,
-    VolumetricFileData,
   } from 'matterviz'
   import {
     auto_isosurface_settings,
@@ -38,19 +37,9 @@
   let parse_time_ms = $state<number | undefined>()
   let dragover_hint = $state(false)
 
-  // Use precomputed data_range from the active volume
-  let data_range = $derived(
-    volumetric_data?.find(({ id: identifier }) => identifier === active_volume_id)?.data_range,
-  )
   let active_volume = $derived(
     volumetric_data?.find(({ id: identifier }) => identifier === active_volume_id),
   )
-
-  function reset_loaded_content() {
-    structure = undefined
-    volumetric_data = undefined
-    active_volume_id = undefined
-  }
 
   function apply_material(opened: OpenedMaterial) {
     if (opened.type === `structure`) {
@@ -96,7 +85,9 @@
     loading = true
     error_msg = undefined
     parse_time_ms = undefined
-    reset_loaded_content()
+    structure = undefined
+    volumetric_data = undefined
+    active_volume_id = undefined
 
     try {
       const parse_start = performance.now()
@@ -198,18 +189,14 @@
   <StatusMessage message={error_msg} type="error" />
 {/if}
 
-{#if data_range && volumetric_data}
-  {@const vol = active_volume}
+{#if active_volume}
+  {@const { dims, values, data_range } = active_volume}
   <div class="demo-stats-bar">
-    {#if vol}
-      <span title="Grid dimensions">Grid: {vol.dims.join(` × `)}</span>
-      <span title="Data minimum">Min: {format_data_value(data_range.min, data_range)}</span>
-      <span title="Data maximum">Max: {format_data_value(data_range.max, data_range)}</span>
-      <span title="Data mean">Mean: {format_data_value(data_range.mean, data_range)}</span>
-      <span title="Total grid points">
-        Points: {format_num(vol.values.length)}
-      </span>
-    {/if}
+    <span title="Grid dimensions">Grid: {dims.join(` × `)}</span>
+    <span title="Data minimum">Min: {format_data_value(data_range.min, data_range)}</span>
+    <span title="Data maximum">Max: {format_data_value(data_range.max, data_range)}</span>
+    <span title="Data mean">Mean: {format_data_value(data_range.mean, data_range)}</span>
+    <span title="Total grid points">Points: {format_num(values.length)}</span>
     {#if parse_time_ms !== undefined}
       <span title="Parse + decompress time">Parse: {parse_time_ms} ms</span>
     {/if}

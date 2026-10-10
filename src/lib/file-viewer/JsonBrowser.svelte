@@ -106,10 +106,7 @@
   let root_element: HTMLElement | undefined = $state()
 
   // Strip internal suffix used to register multiple renderable types at the same path
-  function strip_type_suffix(path: string): string {
-    const idx = path.indexOf(`\u0000`)
-    return idx !== -1 ? path.slice(0, idx) : path
-  }
+  const strip_type_suffix = (path: string): string => path.split(`\u0000`)[0]
 
   // The panel a badge, chip or drop payload asks for; null when its type is unknown or its
   // path no longer resolves in `value`
@@ -120,6 +117,10 @@
     const val = resolve_path(value, data_path)
     if (val === undefined) return null
     return { data_path, detected_type: detected_type as RenderableType, val }
+  }
+  const open_renderable = (raw_path: unknown, detected_type: unknown): void => {
+    const spec = resolve_renderable(raw_path, detected_type)
+    if (spec) replace_or_add_panel(spec)
   }
 
   // Convert a data path (relative to JSON root) to the tree path used by JsonTree, whose
@@ -212,9 +213,7 @@
     if (!badge) return
     event.stopPropagation()
     event.preventDefault()
-    const { renderable_path, renderable_type } = badge.dataset
-    const spec = resolve_renderable(renderable_path ?? ``, renderable_type)
-    if (spec) replace_or_add_panel(spec)
+    open_renderable(badge.dataset.renderable_path ?? ``, badge.dataset.renderable_type)
   }
 
   // Escape closes all panels. Listened for on the window so it works with nothing focused,
@@ -418,22 +417,18 @@
     if (event.dataTransfer) event.dataTransfer.dropEffect = `copy`
     if (!canvas_element) return
     // Default to center/first panel; override if cursor is inside a specific panel
-    drop_zone = `center`
-    drop_target_panel_idx = 0
-    const panel_els = canvas_element.querySelectorAll(`.viz-panel`)
-    for (let idx = 0; idx < panel_els.length; idx++) {
-      const rect = panel_els[idx].getBoundingClientRect()
-      if (
+    const rects = [...canvas_element.querySelectorAll(`.viz-panel`)].map((panel_el) =>
+      panel_el.getBoundingClientRect(),
+    )
+    const hit_idx = rects.findIndex(
+      (rect) =>
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
         event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      ) {
-        drop_zone = get_drop_zone(event, rect)
-        drop_target_panel_idx = idx
-        break
-      }
-    }
+        event.clientY <= rect.bottom,
+    )
+    drop_zone = hit_idx === -1 ? `center` : get_drop_zone(event, rects[hit_idx])
+    drop_target_panel_idx = Math.max(hit_idx, 0)
     // Prevent mixed-axis splits until nested layouts are supported
     const cross_axis = layout_direction === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
     if (panels.length > 1 && cross_axis.includes(drop_zone ?? ``)) {
@@ -598,10 +593,7 @@
                 style="background: {TYPE_COLORS[type]}22; border: 1px solid {TYPE_COLORS[
                   type
                 ]}66;"
-                onclick={() => {
-                  const spec = resolve_renderable(data_path, type)
-                  if (spec) replace_or_add_panel(spec)
-                }}
+                onclick={() => open_renderable(data_path, type)}
               >
                 <span class="chip-dot" style="background: {TYPE_COLORS[type]};"></span>
                 {TYPE_LABELS[type]}: <code>{strip_type_suffix(data_path) || `root`}</code>

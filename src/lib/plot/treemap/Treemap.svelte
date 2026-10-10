@@ -10,10 +10,7 @@
   import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
   import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-  import {
-    HierarchyChartState,
-    hierarchy_layout_options,
-  } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
+  import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
   import type { PositionedArc } from '#lib/plot/core/utils/hierarchy-layout.js'
   import {
     measure_treemap_label_block,
@@ -117,8 +114,6 @@
       label_max_font_size?: number // px ceiling for leaf/cutoff labels
       parent_label_font_size?: number // px size/ceiling for branch header labels
       // Zoom transition timing (resizes/data swaps snap instantly, plotly-style).
-      // interpolate is not overridable: the component's rect interpolator also
-      // handles rect-array length changes on data swaps (default would throw)
       // `interpolate` and `duration`-as-function are the component's own: the tweened
       // value is a tiling (rects keyed by their arcs), not a bare rect list
       tween?: Omit<TweenOptions<Rect[]>, `interpolate` | `duration`> & { duration?: number }
@@ -140,17 +135,14 @@
     uid,
     default_padding: DEFAULT_PADDING,
     data: () => data,
-    layout_options: () =>
-      hierarchy_layout_options({
-        value_mode,
-        sort,
-        level_lighten,
-        min_fraction,
-        max_children,
-        zoom_root_id,
-        expanded_parents: chart_state.expanded_parents,
-        other_label,
-      }),
+    layout_options: () => ({
+      value_mode,
+      sort,
+      level_lighten,
+      min_fraction,
+      max_children,
+      other_label,
+    }),
     label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
     width: () => width,
@@ -537,7 +529,7 @@
                       aria-hidden="true"
                       x={lbl.x}
                       y={lbl.lines[0].y}
-                      dominant-baseline={lbl.dominant_baseline}
+                      dominant-baseline="central"
                       transform={lbl.transform}
                       font-size={lbl.font_size}
                       style="fill: {label_halo}; stroke: {label_halo}"
@@ -551,7 +543,7 @@
                     data-treemap-node-idx={idx}
                     x={lbl.x}
                     y={lbl.lines[0].y}
-                    dominant-baseline={lbl.dominant_baseline}
+                    dominant-baseline="central"
                     transform={lbl.transform}
                     fill={label_fill}
                     fill-opacity={label_opacity}

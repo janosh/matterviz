@@ -95,8 +95,6 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     return qpoint_distance
   })
 
-  const labels_by_index: Record<number, string> = {}
-  const labels_dict: Record<string, Vec3> = {}
   const branches = data.path_segments.map((segment, segment_idx) => {
     const { start_index, end_index, start_label, end_label } = segment
     if (start_index < 0 || end_index < start_index || end_index >= data.qpoints.length) {
@@ -104,18 +102,15 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
         `Phonon path segment ${segment_idx} has invalid bounds ${start_index}–${end_index} for ${data.qpoints.length} q-points`,
       )
     }
-    for (const [qpoint_idx, label] of [
-      [start_index, start_label],
-      [end_index, end_label],
-    ] as const) {
-      if (!label) continue
-      labels_by_index[qpoint_idx] = label
-      labels_dict[label] = data.qpoints[qpoint_idx].q_position
-    }
     const name =
       start_label && end_label ? `${start_label}-${end_label}` : `segment-${segment_idx + 1}`
     return { start_index, end_index, name, is_discontinuity: false }
   })
+  const labels_by_index = phonon_qpoint_labels(data)
+  const labels_dict: Record<string, Vec3> = {}
+  for (const [qpoint_idx, label] of Object.entries(labels_by_index)) {
+    labels_dict[label] = data.qpoints[Number(qpoint_idx)].q_position
+  }
   const qpoints: QPoint[] = data.qpoints.map(({ q_position }, qpoint_idx) => ({
     label: labels_by_index[qpoint_idx] ?? null,
     frac_coords: q_position,
@@ -440,11 +435,8 @@ export function phonon_mode_run(
   const equilibrium = supercell.structure
   // Fractional coordinates move by the displacement in the lattice basis, so the inverse
   // matrix is applied to the (small) displacement and added to the fixed equilibrium abc
-  const [
-    [index_a, index_b, index_c],
-    [inverse_ja, inverse_jb, inverse_jc],
-    [ambient_color, inverse_kb, inverse_kc],
-  ] = math.matrix_inverse_3x3(equilibrium.lattice.matrix)
+  const [[inv_xa, inv_xb, inv_xc], [inv_ya, inv_yb, inv_yc], [inv_za, inv_zb, inv_zc]] =
+    math.matrix_inverse_3x3(equilibrium.lattice.matrix)
   const phase_of = (frame_idx: number) => (2 * Math.PI * frame_idx) / n_frames
 
   // Phonon eigenvectors conventionally evolve as exp(-iωt): u(φ) = Re(u) cos φ + Im(u) sin φ.
@@ -468,9 +460,9 @@ export function phonon_mode_run(
         provenance: site.provenance,
         xyz: [xyz[0] + delta_x, xyz[1] + delta_y, xyz[2] + delta_z] as Vec3,
         abc: [
-          abc[0] + delta_x * index_a + delta_y * inverse_ja + delta_z * ambient_color,
-          abc[1] + delta_x * index_b + delta_y * inverse_jb + delta_z * inverse_kb,
-          abc[2] + delta_x * index_c + delta_y * inverse_jc + delta_z * inverse_kc,
+          abc[0] + delta_x * inv_xa + delta_y * inv_ya + delta_z * inv_za,
+          abc[1] + delta_x * inv_xb + delta_y * inv_yb + delta_z * inv_zb,
+          abc[2] + delta_x * inv_xc + delta_y * inv_yc + delta_z * inv_zc,
         ] as Vec3,
         properties: { ...properties, [vector_key]: [delta_x, delta_y, delta_z] as Vec3 },
       }

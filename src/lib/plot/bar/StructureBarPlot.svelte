@@ -76,13 +76,15 @@
     allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
     on_entry: (entry) => (dropped_entries = [entry, ...dropped_entries]),
-    on_error: (msg) => {
-      error_msg = msg
-    },
+    on_error: (msg) => (error_msg = msg),
     set_loading: (val) => {
       loading = val
       if (val) [error_msg, dragover] = [undefined, false]
     },
+  })
+  const drag_handlers = drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
   })
 </script>
 
@@ -103,10 +105,7 @@
         ? `Drag and drop structure files here to compute ${subject}`
         : `No ${empty_subject} to display`}
     ondrop={handle_file_drop}
-    {...drag_over_handlers({
-      allow: () => allow_file_drop,
-      set_dragover: (over) => (dragover = over),
-    })}
+    {...drag_handlers}
   />
 {:else}
   <BarPlot
@@ -129,10 +128,7 @@
     bind:display
     tooltip={labelled_tooltip}
     ondrop={handle_file_drop}
-    {...drag_over_handlers({
-      allow: () => allow_file_drop,
-      set_dragover: (over) => (dragover = over),
-    })}
+    {...drag_handlers}
     class={[rest.class, dragover && `dragover`]}
   />
 {/if}

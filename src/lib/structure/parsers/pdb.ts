@@ -23,16 +23,11 @@ const num_field = (line: string, start: number, end: number): number => {
 
 // CRYST1 columns per the PDB spec: a(7-15) b(16-24) c(25-33) alpha(34-40) beta(41-47)
 // gamma(48-54). Falls back to whitespace splitting for files that don't pad the record.
+const CRYST1_FIELD_BOUNDS = [6, 15, 24, 33, 40, 47, 54]
 const read_cryst1_params = (line: string): number[] | null => {
-  const columns: [number, number][] = [
-    [6, 15],
-    [15, 24],
-    [24, 33],
-    [33, 40],
-    [40, 47],
-    [47, 54],
-  ]
-  const fixed = columns.map(([start, end]) => num_field(line, start, end))
+  const fixed = CRYST1_FIELD_BOUNDS.slice(1).map((end, idx) =>
+    num_field(line, CRYST1_FIELD_BOUNDS[idx], end),
+  )
   const values = fixed.every(Number.isFinite)
     ? fixed
     : line.trim().split(/\s+/).slice(1, 7).map(Number)
@@ -115,12 +110,9 @@ export const parse_pdb = (content: string): AnyStructure => {
         console.warn(`PDB CONECT record has no central atom serial: '${line}'`)
         continue
       }
-      const partners = [
-        num_field(line, 11, 16),
-        num_field(line, 16, 21),
-        num_field(line, 21, 26),
-        num_field(line, 26, 31),
-      ].filter(Number.isFinite)
+      const partners = [11, 16, 21, 26]
+        .map((start) => num_field(line, start, start + 5))
+        .filter(Number.isFinite)
       // PDB carries no bond orders: repeated CONECT entries are how some writers encode
       // multiplicity, but that is not part of the spec, so every bond is recorded single
       for (const partner of partners) {
@@ -169,7 +161,7 @@ export const parse_pdb = (content: string): AnyStructure => {
   for (const [atom_idx, line] of atom_lines.entries()) {
     const element = pdb_element(line, atom_idx)
     const xyz = vec3_from_values(
-      [num_field(line, 30, 38), num_field(line, 38, 46), num_field(line, 46, 54)],
+      [30, 38, 46].map((start) => num_field(line, start, start + 8)),
       `PDB atom coordinates on '${line.trim()}'`,
     )
     const abc = to_frac(xyz)

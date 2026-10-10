@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BoxPlotSeries } from '#lib/plot/index.js'
+  import type { BoxHandlerProps, BoxPlotSeries } from '#lib/plot/index.js'
   import { BoxPlot } from '#lib/plot/index.js'
 
   // Deterministic pseudo-random distribution generator (seeded) for stable test renders
@@ -43,6 +43,8 @@
     { y: make_dist(12, 150, 50, 20), label: `Secondary`, color: `#e15759`, y_axis: `y2` },
   ]
 
+  const describe_box = (data: BoxHandlerProps) =>
+    `${data.category_label} (median=${data.stats.median.toFixed(3)})`
   let hover_msg = $state(`Hover over a box`)
   let click_msg = $state(`Click on a box`)
 </script>
@@ -135,14 +137,9 @@
     series={basic_series}
     x_axis={{ label: `Model` }}
     y_axis={{ label: `Error` }}
-    on_box_hover={(data) => {
-      hover_msg = data
-        ? `Hovering: ${data.category_label} (median=${data.stats.median.toFixed(3)})`
-        : `Hover over a box`
-    }}
-    on_box_click={(data) => {
-      click_msg = `Clicked: ${data.category_label} (median=${data.stats.median.toFixed(3)})`
-    }}
+    on_box_hover={(data) =>
+      (hover_msg = data ? `Hovering: ${describe_box(data)}` : `Hover over a box`)}
+    on_box_click={(data) => (click_msg = `Clicked: ${describe_box(data)}`)}
     controls_toggle_props={{ class: `box-controls-toggle` }}
     style="height: 360px"
   />

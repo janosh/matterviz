@@ -7,18 +7,14 @@ const imports = import.meta.glob<PymatgenCompleteDos>([`./*.json`, `./*.json.gz`
   import: `default`,
 })
 
-// Extract files by pattern matching
 const entries = Object.entries(imports)
 
 // Exported so single-use demo datasets (e.g. lobster) load inline at the call site
 export function get_dos(pattern: string): PymatgenCompleteDos {
   const entry = entries.find(([path]) => path.includes(pattern))
   if (!entry) {
-    throw new Error(
-      `DOS file matching "${pattern}" not found in ${entries
-        .map(([path]) => path)
-        .join(`, `)}`,
-    )
+    const paths = entries.map(([path]) => path).join(`, `)
+    throw new Error(`DOS file matching "${pattern}" not found in ${paths}`)
   }
   return entry[1]
 }

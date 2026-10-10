@@ -318,12 +318,14 @@ describe(`Wyckoff`, () => {
     site_indices,
   })
 
-  test(`no rows produce gray unknown`, () => {
-    const { colors, values, unique_values } = atom_properties.get_wyckoff_colors(
-      diagonal_c(1),
-      [],
-    )
-    expect([colors[0], values[0], unique_values]).toEqual([`#808080`, `unknown`, [`unknown`]])
+  // oxfmt-ignore
+  test.each([
+    [`no rows produce gray unknown`, 1, [], [`unknown`], [`unknown`]],
+    [`sites no row claims are gray unknown and ignore out-of-range indices`, 2, [row(`1b`, `C`, [1, 7])], [`unknown`, `1b|C`], [`1b|C`, `unknown`]],
+  ] as [string, number, WyckoffPos[], string[], string[]][])(`%s`, (_name, count, rows, values, unique_values) => {
+    const result = atom_properties.get_wyckoff_colors(diagonal_c(count), rows)
+    expect(result).toMatchObject({ values, unique_values })
+    expect(result.colors[0]).toBe(`#808080`)
   })
 
   test(`orbit ids are multiplicity+letter|element, categorical per row`, () => {
@@ -337,13 +339,6 @@ describe(`Wyckoff`, () => {
     expect(colors[0]).toBe(colors[1])
     expect(colors[0]).toBe(colors[3])
     expect(colors[0]).not.toBe(colors[2])
-  })
-
-  test(`sites no row claims are gray unknown and ignore out-of-range indices`, () => {
-    const result = atom_properties.get_wyckoff_colors(diagonal_c(2), [row(`1b`, `C`, [1, 7])])
-    expect(result.values).toEqual([`unknown`, `1b|C`])
-    expect(result.colors[0]).toBe(`#808080`)
-    expect(result.unique_values).toEqual([`1b|C`, `unknown`])
   })
 
   // Rows index the DISPLAYED structure (see StructureSession.wyckoff_rows); a row claiming a
@@ -882,7 +877,7 @@ describe(`CNA structure type coloring`, () => {
       type,
     )
 
-  test(`maps codes onto the fixed OVITO palette in categorical mode`, () => {
+  test(`maps codes onto the fixed OVITO palette in categorical mode only`, () => {
     const { colors, values, unique_values } = cna_colors(all_codes)
     expect(colors).toEqual(palette)
     expect(values).toEqual(all_codes)
@@ -893,11 +888,8 @@ describe(`CNA structure type coloring`, () => {
       CNA_TYPE_COLORS.bcc,
       CNA_TYPE_COLORS.fcc,
     ])
-  })
-
-  test(`falls back to the d3 ramp for cna_type in continuous mode`, () => {
-    const { colors } = cna_colors(all_codes, `continuous`)
-    expect(colors).not.toEqual(palette)
+    // continuous mode falls back to the d3 ramp
+    expect(cna_colors(all_codes, `continuous`).colors).not.toEqual(palette)
   })
 
   test(`reaches the palette through the shared atom color entry point`, () => {

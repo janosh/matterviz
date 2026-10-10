@@ -68,12 +68,12 @@ export type RefLine = RefLineBase &
     | { type: `horizontal`; y: RefLineValue }
     | { type: `vertical`; x: RefLineValue }
     | { type: `diagonal`; slope: number; intercept: number }
+    // `segment` stops at p1 and p2, `line` extends through them across the plot
     | {
-        type: `segment`
+        type: `segment` | `line`
         p1: [RefLineValue, RefLineValue]
         p2: [RefLineValue, RefLineValue]
       }
-    | { type: `line`; p1: [RefLineValue, RefLineValue]; p2: [RefLineValue, RefLineValue] }
   )
 
 // Default style values for reference lines
@@ -114,8 +114,7 @@ export type RefLine3D = RefLine3DBase &
     | { type: `x-axis`; y: number; z: number } // line parallel to x-axis
     | { type: `y-axis`; x: number; z: number } // line parallel to y-axis
     | { type: `z-axis`; x: number; y: number } // line parallel to z-axis
-    | { type: `segment`; p1: Vec3; p2: Vec3 }
-    | { type: `line`; p1: Vec3; p2: Vec3 }
+    | { type: `segment` | `line`; p1: Vec3; p2: Vec3 }
   )
 
 // 3D reference plane styling

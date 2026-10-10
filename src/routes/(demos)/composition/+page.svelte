@@ -43,26 +43,15 @@
 </div>
 
 <LazyDemo label="Chart Controls" height="500px">
+  {@const chart_props = { composition, size: chart_size, show_labels, show_amounts, patterns }}
   <div class="chart-row">
-    <BarChart
-      {composition}
-      size={chart_size}
-      {bar_height}
-      {show_labels}
-      {show_amounts}
-      {show_percentages}
-      {patterns}
-    />
+    <BarChart {...chart_props} {bar_height} {show_percentages} />
     <PieChart
-      {composition}
-      size={chart_size}
+      {...chart_props}
       inner_radius={(inner_radius * chart_size) / 2}
-      {show_labels}
-      {show_amounts}
       {show_percentages}
-      {patterns}
     />
-    <BubbleChart {composition} size={chart_size} {show_labels} {show_amounts} {patterns} />
+    <BubbleChart {...chart_props} />
   </div>
 </LazyDemo>
 

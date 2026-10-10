@@ -29,6 +29,7 @@ import {
   query,
   with_measured_text,
   set_input,
+  svg_rect,
 } from '../setup'
 
 const dist = (count: number, center = 0): number[] =>
@@ -593,13 +594,10 @@ describe(`cartesian frame`, () => {
           const strips = plot.querySelectorAll(`.marginal-hit`)
           expect(strips).toHaveLength(4)
           for (const strip of strips) {
-            const rect = {
-              x: Number(strip.getAttribute(`x`)),
-              y: Number(strip.getAttribute(`y`)),
-              width: Number(strip.getAttribute(`width`)),
-              height: Number(strip.getAttribute(`height`)),
-            }
-            expect(rects_overlap(legend, rect), `${placement}, dense=${dense}`).toBe(false)
+            expect(
+              rects_overlap(legend, svg_rect(strip)),
+              `${placement}, dense=${dense}`,
+            ).toBe(false)
           }
         }
       }

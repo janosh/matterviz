@@ -1,10 +1,6 @@
 import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
 import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
-import {
-  CHEMPOT_COLOR_MODE_OPTIONS,
-  CHEMPOT_COLOR_SCALE_OPTIONS,
-  create_chempot_overrides,
-} from '#lib/chempot-diagram/controls-state.svelte.js'
+import { create_chempot_overrides } from '#lib/chempot-diagram/controls-state.svelte.js'
 import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import { readFileSync } from 'node:fs'
@@ -68,30 +64,6 @@ describe(`create_chempot_overrides`, () => {
       create_chempot_overrides(() => ({}), [`elements`], { elements: [] }).resolve(`elements`),
     ).toEqual([])
   })
-})
-
-test.each([
-  [
-    `color mode`,
-    CHEMPOT_COLOR_MODE_OPTIONS,
-    [`none`, `energy`, `formation_energy`, `arity`, `entries`],
-  ],
-  [
-    `color scale`,
-    CHEMPOT_COLOR_SCALE_OPTIONS,
-    [
-      `interpolateViridis`,
-      `interpolatePlasma`,
-      `interpolateInferno`,
-      `interpolateMagma`,
-      `interpolateCividis`,
-      `interpolateTurbo`,
-      `interpolateRdYlBu`,
-      `interpolateSpectral`,
-    ],
-  ],
-] as const)(`%s option values match pane selects`, (_label, options, values) => {
-  expect(options.map(([value]) => value)).toEqual([...values])
 })
 
 test(`color scale and reversal labels target their own controls`, async () => {

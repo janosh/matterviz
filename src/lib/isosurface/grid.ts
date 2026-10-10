@@ -56,6 +56,24 @@ export function scalar_grid_strides({
   throw new RangeError(`Unsupported scalar grid order: ${String(order)}`)
 }
 
+// Euclidean remainder in [0, dim), also for negative `val`
+export const safe_mod = (val: number, dim: number): number => ((val % dim) + dim) % dim
+
+// Lower voxel index along one axis of a trilinear sample. Singleton axes (n === 1) pin
+// both corners to 0 so the n - 2 clamp never goes negative.
+export const lower_corner = (count: number, floor_g: number, periodic: boolean): number => {
+  if (count === 1) return 0
+  if (!periodic) return Math.max(0, Math.min(floor_g, count - 2))
+  // World-coordinate samplers already wrap into the cell. Their integer voxel indices
+  // need no modulo; direct fractional callers can still arrive outside the cell.
+  return floor_g >= 0 && floor_g < count ? floor_g : safe_mod(floor_g, count)
+}
+export const upper_corner = (count: number, lower: number, periodic: boolean): number => {
+  if (count === 1) return 0
+  if (!periodic) return Math.min(lower + 1, count - 1)
+  return lower + 1 === count ? 0 : lower + 1
+}
+
 // Copy a nested [x][y][z] array into a z-fastest Float64Array. Rows must all have the
 // same length; ragged input throws instead of silently producing a misaligned grid.
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {

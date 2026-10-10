@@ -38,8 +38,7 @@ const find_tooltip_hit_point = async (
     if (await tooltip.isVisible()) return { x: click_x, y: click_y }
   }
 
-  const box = await target_surface.boundingBox()
-  if (!box) throw new Error(`Target surface bounding box not found`)
+  const box = await require_bbox(target_surface, `target surface`)
   for (let x_frac = 0.15; x_frac <= 0.85; x_frac += 0.1) {
     for (let y_frac = 0.15; y_frac <= 0.85; y_frac += 0.1) {
       const click_x = box.x + box.width * x_frac
@@ -270,8 +269,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
 
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
     const initial_zoom = await read_view_zoom(page, export_pane)
-    const canvas_box = await canvas.boundingBox()
-    if (!canvas_box) throw new Error(`ChemPot canvas bounding box unavailable`)
+    const canvas_box = await require_bbox(canvas, `ChemPot canvas`)
     await page.mouse.move(
       canvas_box.x + canvas_box.width / 2,
       canvas_box.y + canvas_box.height / 2,

@@ -1,34 +1,27 @@
-import type { D3InterpolateName } from '#lib/colors/index.js'
+import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import { clamp, type Vec2 } from '#lib/math.js'
 import { clamp01 } from '#lib/utils.js'
 import { rgb } from 'd3-color'
 import type { ColorRangeSymmetry } from './coloring'
-import { build_colormap_lut, COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
+import { COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
 import type { SliceResult } from './slice'
 
 export type VolumeSliceMode = `both` | `contours` | `filled`
 
 const MAX_CONTOUR_LEVELS = 256
-const slice_lut_cache = new Map<D3InterpolateName, Uint8ClampedArray>()
 
-// Canvas pixels want 8-bit sRGB, so the slice LUT keeps d3's sRGB output as is
-const get_slice_lut = (colormap: D3InterpolateName): Uint8ClampedArray =>
-  build_colormap_lut(colormap, slice_lut_cache, Uint8ClampedArray, (css) => {
-    const { r: red, g: green, b: blue } = rgb(css)
-    return [red, green, blue]
-  })
-
-// The slice LUT as opaque RGBA pixels, written byte-wise and read back as 32-bit words, so
-// they come out in the platform's byte order and each canvas pixel is a single store
+// Opaque 8-bit sRGB pixels (canvas wants d3's sRGB output as is), written byte-wise and read
+// back as 32-bit words, so they come out in the platform's byte order and each canvas pixel
+// is a single store
 const slice_pixel_cache = new Map<D3InterpolateName, Uint32Array>()
 const get_slice_pixel_lut = (colormap: D3InterpolateName): Uint32Array => {
   const cached = slice_pixel_cache.get(colormap)
   if (cached) return cached
-  const rgb_lut = get_slice_lut(colormap)
+  const interpolator = get_d3_interpolator(colormap)
   const bytes = new Uint8ClampedArray(COLORMAP_LUT_SIZE * 4)
   for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
-    bytes.set(rgb_lut.subarray(idx * 3, idx * 3 + 3), idx * 4)
-    bytes[idx * 4 + 3] = 255
+    const { r: red, g: green, b: blue } = rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1)))
+    bytes.set([red, green, blue, 255], idx * 4)
   }
   const words = new Uint32Array(bytes.buffer)
   slice_pixel_cache.set(colormap, words)

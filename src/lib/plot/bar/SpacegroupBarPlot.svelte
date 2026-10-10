@@ -1,9 +1,9 @@
 <script lang="ts">
   import type {
+    AxisConfig,
     BarPlotOptions,
     BarHandlerProps,
     BarSeries,
-    TickLabelConfig,
   } from '#lib/plot/index.js'
   import { format_num, format_value } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
@@ -13,12 +13,6 @@
   import type { CrystalSystem } from '#lib/symmetry/index.js'
   import * as symmetry from '#lib/symmetry/index.js'
   import * as spg from '#lib/symmetry/spacegroups.js'
-
-  // Merge tick label config with default rotation, preserving user overrides
-  const with_rotation = (
-    tick_label: TickLabelConfig | undefined,
-    default_rot: number,
-  ): TickLabelConfig => ({ ...tick_label, rotation: tick_label?.rotation ?? default_rot })
 
   const MAX_SPACEGROUP = 230
   const TICK_LABEL_HEIGHT_PX = 14 // 12px rotated tick label plus breathing room
@@ -185,29 +179,24 @@
   })
   const extra_count_rows = $derived(Math.max(0, ...count_label_rows.values()))
 
-  // Build axis configurations based on orientation
+  // Axis configs by orientation: user settings win over the defaults merged in here
+  const count_axis = (axis: AxisConfig): AxisConfig => ({
+    ...axis,
+    label: axis.label ?? `Counts`,
+  })
+  const spacegroup_axis = (axis: AxisConfig, rotation: number): AxisConfig => ({
+    ...axis,
+    label: axis.label ?? `International Spacegroup Number`,
+    range: x_range,
+    ticks: x_axis_ticks,
+    tick_label: { ...axis.tick_label, rotation: axis.tick_label?.rotation ?? rotation },
+  })
+  // Vertical bars rotate their spacegroup ticks 90° to avoid overlap
   const x_axis_config = $derived(
-    orientation === `horizontal`
-      ? { ...x_axis, label: x_axis.label ?? `Counts` }
-      : {
-          ...x_axis,
-          label: x_axis.label ?? `International Spacegroup Number`,
-          range: x_range,
-          ticks: x_axis_ticks,
-          tick_label: with_rotation(x_axis.tick_label, 90), // Rotate ticks 90° to avoid overlap
-        },
+    orientation === `horizontal` ? count_axis(x_axis) : spacegroup_axis(x_axis, 90),
   )
-
   const y_axis_config = $derived(
-    orientation === `horizontal`
-      ? {
-          ...y_axis,
-          label: y_axis.label ?? `International Spacegroup Number`,
-          range: x_range,
-          ticks: x_axis_ticks,
-          tick_label: with_rotation(y_axis.tick_label, 0),
-        }
-      : { ...y_axis, label: y_axis.label ?? `Counts` },
+    orientation === `horizontal` ? spacegroup_axis(y_axis, 0) : count_axis(y_axis),
   )
 </script>
 

@@ -81,7 +81,7 @@ export class CellSelection {
     this.rects = [...kept, { ...anchor, end_row: target.row, end_col: target.col }]
   }
 
-  // Selected cells as TSV blocks (one per rectangle, blank line between), read through
+  // Selected cells as TSV blocks (one per rectangle, newline-joined), read through
   // `cell_text`; rectangles are clipped to the current row/column counts.
   to_tsv(
     n_rows: number,

@@ -142,5 +142,8 @@ describe(`TemperatureSlider`, () => {
     expect(range()?.value).toBe(interpolate ? `640` : `3`)
     fire(readout(), `change`, ``)
     expect(state.temperature).toBe(interpolate ? 640 : 600)
+    fire(readout(), `change`, `2000`) // past the data: clamped / snapped to the top
+    expect(state.temperature).toBe(900)
+    expect(document.querySelector(`.slider-range`)?.textContent?.trim()).toBe(`300–900 K`)
   })
 })

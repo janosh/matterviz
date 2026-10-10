@@ -159,12 +159,14 @@ describe(`Explicit Bond Metadata`, () => {
     },
   )
 
+  const invalid = (idx: number, reason: string) =>
+    `Ignoring invalid explicit bond at index ${idx}: ${reason}`
   test.each<{
     desc: string
     bonds: unknown[]
     expected: StructureBond[]
-    n_warnings?: number
-    warning?: string
+    warnings: string[]
+    molecule?: boolean
   }>([
     {
       desc: `drops invalid entries`,
@@ -178,7 +180,21 @@ describe(`Explicit Bond Metadata`, () => {
         null,
       ],
       expected: [{ site_idx_1: 0, site_idx_2: 1, order: `aromatic` }],
-      n_warnings: 6,
+      warnings: [
+        invalid(1, `site indices must be integers`),
+        invalid(2, `site indices 0, 8 are out of range for 2 sites`),
+        invalid(3, `endpoints match`),
+        invalid(4, `unsupported order 4`),
+        invalid(5, `cell_shift must be three integers`),
+        invalid(6, `expected object`),
+      ],
+    },
+    {
+      desc: `drops periodic bonds of a lattice-free structure`,
+      bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] }],
+      expected: [],
+      warnings: [invalid(0, `cell_shift requires a crystal lattice`)],
+      molecule: true,
     },
     {
       desc: `lets a later duplicate overwrite an earlier one`,
@@ -187,23 +203,28 @@ describe(`Explicit Bond Metadata`, () => {
         { site_idx_1: 1, site_idx_2: 0, order: 2 },
       ],
       expected: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-      warning:
+      warnings: [
         `Duplicate explicit bond definition at index 1 for site indices 1, 0 ` +
-        `with order 2; will overwrite the previous entry`,
+          `with order 2; will overwrite the previous entry`,
+      ],
     },
   ])(
     `explicit bond metadata $desc with warnings`,
-    ({ bonds, expected, n_warnings, warning }) => {
+    ({ bonds, expected, warnings, molecule }) => {
       const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
       onTestFinished(() => warn_spy.mockRestore())
-      const structure = make_struct([
-        { xyz: [0, 0, 0], element: `C` },
-        { xyz: [1.4, 0, 0], element: `C` },
-      ])
+      const structure = molecule
+        ? make_molecule([
+            [`C`, [0, 0, 0]],
+            [`C`, [1.4, 0, 0]],
+          ])
+        : make_struct([
+            { xyz: [0, 0, 0], element: `C` },
+            { xyz: [1.4, 0, 0], element: `C` },
+          ])
       structure.properties = { bonds: bonds as unknown as StructureBond[] }
       expect(bonding.get_explicit_bond_metadata(structure)).toEqual(expected)
-      if (n_warnings !== undefined) expect(warn_spy).toHaveBeenCalledTimes(n_warnings)
-      if (warning) expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(warning))
+      expect(warn_spy.mock.calls.map(([message]) => message)).toEqual(warnings)
     },
   )
 
@@ -293,8 +314,10 @@ describe(`Explicit Bond Metadata`, () => {
     [`leaves a visible bond alone`, `add`, { added_bonds: [edge(0, 2, 2)] }, [0, 1], 3, undefined, `already-visible`, false, { removed_bonds: [] }],
     [`restores a removed bond at its calculated order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 1, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: [] }],
     [`restores a removed bond with a new order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 2, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(2) }],
+    [`restores a removed order-2 bond as order 1`, `add`, { removed_bonds: bond_0_1(2) }, [0, 1], 1, 2, `restored`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(1) }],
     [`restoring clears stale same-key edits`, `add`, { added_bonds: bond_0_1(1), removed_bonds: bond_0_1(2), bond_order_overrides: bond_0_1(3) }, [1, 0], 2, 2, `restored`, true, { added_bonds: [], removed_bonds: [], bond_order_overrides: [] }],
     [`deletes a calculated bond`, `delete`, {}, [1, 0], 1, undefined, `deleted-calculated`, true, { removed_bonds: bond_0_1(1) }],
+    [`deleting records the calculated order`, `delete`, {}, [1, 0], 1, 2, `deleted-calculated`, true, { removed_bonds: bond_0_1(2) }],
     [`deletes a manually added bond`, `delete`, { added_bonds: [edge(2, 3, 3)] }, [3, 2], 1, undefined, `deleted-added`, true, { added_bonds: [] }],
     [`ignores deleting a missing bond`, `delete`, {}, [4, 5], 1, undefined, `not-visible`, false, {}],
     [`overrides a calculated bond's order`, `order`, {}, [1, 0], 3, undefined, `ordered-calculated`, true, { bond_order_overrides: bond_0_1(3) }],
@@ -316,28 +339,6 @@ describe(`Explicit Bond Metadata`, () => {
           : bonding.set_bond_order(...args, order)
     expect(result).toMatchObject({ action, changed, state: after })
   })
-
-  test.each<{ selected_order: BondOrder; expected_overrides: StructureBond[] }>([
-    { selected_order: 2, expected_overrides: [] },
-    { selected_order: 1, expected_overrides: bond_0_1(1) },
-  ])(
-    `restores deleted order-2 calculated bonds as $selected_order`,
-    ({ selected_order, expected_overrides }) => {
-      const deleted_result = bonding.delete_bond(
-        empty_bond_edit_state(),
-        { site_idx_1: 1, site_idx_2: 0 },
-        calculated_bonds(2),
-      )
-      expect(deleted_result.state.removed_bonds).toEqual(bond_0_1(2))
-      const restored_result = bonding.add_or_restore_bond(
-        deleted_result.state,
-        { site_idx_1: 0, site_idx_2: 1 },
-        calculated_bonds(2),
-        selected_order,
-      )
-      expect(restored_result.state.bond_order_overrides).toEqual(expected_overrides)
-    },
-  )
 
   test(`bond edit helpers preserve periodic cell-shift keys`, () => {
     const shifted_bonds = [
@@ -404,6 +405,11 @@ describe(`Explicit Bond Metadata`, () => {
       { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
     ])
     expect(bonding.get_bond_key(0, 1, [1, 0, 0])).toBe(`0-1@1,0,0`)
+    // swapped endpoints negate the shift, a zero shift keys like an in-cell bond and a periodic
+    // self-bond keys under its canonical shift (first nonzero component positive)
+    expect(bonding.get_bond_key(1, 0, [-1, 0, 0])).toBe(`0-1@1,0,0`)
+    expect(bonding.get_bond_key(1, 0, [0, 0, 0])).toBe(`0-1`)
+    expect(bonding.get_bond_key(2, 2, [0, -1, 1])).toBe(`2-2@0,1,-1`)
 
     const bond = bonding.structure_bond_to_bond_pair(structure, explicit_bonds[0])
 
@@ -509,6 +515,9 @@ describe(`explicit_only strategy`, () => {
   }[])(`returns exactly the bonds for $desc`, ({ declared, expected }) => {
     const structure = make_bonded_triangle(declared)
     const bonds = bonding.explicit_only(structure)
+    // no silent fallback to proximity perception (which would mask a missing or unparsed bond
+    // block in PDB/MOL/MOL2/SDF): the undeclared C-O pair is perceived but never returned
+    expect(find_bond(bonding.electroneg_ratio(structure), 0, 2)).toBeDefined()
 
     expect(bonds.map((bond) => [bond.site_idx_1, bond.site_idx_2, bond.bond_order])).toEqual(
       expected,
@@ -520,30 +529,6 @@ describe(`explicit_only strategy`, () => {
         Math.hypot(...bond.pos_2.map((coord, idx) => coord - bond.pos_1[idx])),
       )
     }
-  })
-
-  test(`returns no bonds instead of perceived ones when none are declared`, () => {
-    const structure = make_bonded_triangle()
-
-    // key regression guard: no silent fallback to a proximity strategy, which would
-    // mask a missing or unparsed bond block in formats like PDB/MOL/MOL2/SDF
-    expect(bonding.explicit_only(structure)).toEqual([])
-    expect(bonding.electroneg_ratio(structure).length).toBeGreaterThan(0)
-  })
-
-  test(`does not invent bonds that electroneg_ratio perceives`, () => {
-    const declared: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    const structure = make_bonded_triangle(declared)
-
-    const explicit_bonds = bonding.explicit_only(structure)
-    // electroneg_ratio merges the declared bond in, so its count is the perceived superset
-    const perceived_bonds = bonding.electroneg_ratio(structure)
-
-    expect(explicit_bonds).toHaveLength(1)
-    expect(perceived_bonds.length).toBeGreaterThan(explicit_bonds.length)
-    // the undeclared C-O pair is perceived but must not show up in explicit_only
-    expect(find_bond(perceived_bonds, 0, 2)).toBeDefined()
-    expect(find_bond(explicit_bonds, 0, 2)).toBeUndefined()
   })
 
   test(`respects cell_shift on periodic structures`, () => {

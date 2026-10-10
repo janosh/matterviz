@@ -252,6 +252,12 @@ function create_lammps_reader(
       )
     }
     const [x_col, y_col, z_col] = pos_variant.keys.map((key) => col[key])
+    // Image flags turn wrapped coordinates into LAMMPS's own unwrapped ones, x + ix·a + iy·b +
+    // iz·c. Without them MSD/VACF fall back to the frame-to-frame minimum image, which is
+    // wrong for any atom that moves more than half a box between dumps.
+    const image_cols = [`ix`, `iy`, `iz`].map((name) => col[name])
+    const use_images =
+      !pos_variant.unwrapped && image_cols.every((col_idx) => col_idx !== undefined)
     const type_col = col.type
     const element_col = col.element
     const mass_col = col.mass
@@ -345,11 +351,23 @@ function create_lammps_reader(
         ids.push(atom_id)
       }
       if (!sites) continue
-      positions.push(
-        frac_to_cart
-          ? frac_to_cart(coords)
-          : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]],
-      )
+      const position: math.Vec3 = frac_to_cart
+        ? frac_to_cart(coords)
+        : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
+      if (use_images) {
+        const images = image_cols.map((col_idx) => scanner.num(col_idx))
+        if (!images.every(Number.isInteger)) {
+          throw new TypeError(
+            `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-integer image flags: "${lines.line(idx - 1)}"`,
+          )
+        }
+        for (let axis = 0; axis < 3; axis++) {
+          for (let vec_idx = 0; vec_idx < 3; vec_idx++) {
+            position[axis] += images[vec_idx] * lattice_matrix[vec_idx][axis]
+          }
+        }
+      }
+      positions.push(position)
 
       const props: Record<string, unknown> = {}
       for (const { key, indices } of vector_props) {
@@ -376,7 +394,7 @@ function create_lammps_reader(
     }
     identity_uses_ids ??= frame_uses_ids
     const metadata = {
-      coords_unwrapped: pos_variant.unwrapped,
+      coords_unwrapped: pos_variant.unwrapped || use_images,
       box_origin,
       ...(time === null ? {} : { time }),
     }

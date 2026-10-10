@@ -4,18 +4,7 @@
   import { scaleSequentialLog } from 'd3-scale'
   import { interpolateCool } from 'd3-scale-chromatic'
 
-  let horizontal_primary_ticks: (string | number)[] = [0, 25, 50, 75, 100]
-  let vertical_secondary_range: Vec2 = [-10, 10]
-  let horizontal_inside_range: Vec2 = [0, 1]
-  let vertical_log_range: Vec2 = [1, 1000]
-  let horizontal_date_range: Vec2 = [
-    new Date(2023, 0, 1).getTime(),
-    new Date(2023, 11, 31).getTime(),
-  ]
-  let vertical_no_snap_range: Vec2 = [0.1, 0.9]
   let nice_range_output: Vec2 = [0, 1]
-
-  // Custom color scale function
   const custom_color_scale = scaleSequentialLog(interpolateCool).domain([0.1, 10])
 </script>
 
@@ -30,7 +19,7 @@
   id="horizontal-primary"
   title="Temperature (°C)"
   scale="interpolatePlasma"
-  tick_labels={horizontal_primary_ticks}
+  tick_labels={[0, 25, 50, 75, 100]}
   range={[0, 100]}
   tick_side="primary"
   title_side="top"
@@ -42,7 +31,7 @@
   orientation="vertical"
   title="Pressure (Pa)"
   scale="interpolateBlues"
-  range={vertical_secondary_range}
+  range={[-10, 10]}
   tick_labels={5}
   tick_side="secondary"
   title_side="right"
@@ -54,7 +43,7 @@
   id="horizontal-inside"
   title="Intensity"
   scale="interpolateTurbo"
-  range={horizontal_inside_range}
+  range={[0, 1]}
   tick_labels={5}
   snap_ticks={false}
   tick_side="inside"
@@ -67,7 +56,7 @@
   orientation="vertical"
   title="Frequency (Hz)"
   scale="interpolateViridis"
-  range={vertical_log_range}
+  range={[1, 1000]}
   tick_labels={4}
   tick_side="inside"
   scale_type="log"
@@ -79,7 +68,7 @@
   id="horizontal-date"
   title="Timestamp"
   scale="interpolateCividis"
-  range={horizontal_date_range}
+  range={[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 31).getTime()]}
   tick_labels={4}
   tick_format="%b %d, %Y"
   snap_ticks={false}
@@ -92,7 +81,7 @@
   orientation="vertical"
   title="Ratio"
   scale="interpolateMagma"
-  range={vertical_no_snap_range}
+  range={[0.1, 0.9]}
   tick_labels={5}
   snap_ticks={false}
   tick_format=".1%"

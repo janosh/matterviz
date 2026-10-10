@@ -351,6 +351,9 @@ describe(`StructureInfoPane`, () => {
     })
     expect(headings(4)).toEqual([`Structure`, `Cell`, `Symmetry`, `Selected sites (0)`])
     const with_sym_content = document.body.textContent ?? ``
+    for (const cell_row of [`125 Å³, 0.054 g/cm³`, `5, 5, 5 Å`, `90°, 90°, 90°`]) {
+      expect(with_sym_content).toContain(cell_row)
+    }
     expect(with_sym_content).toContain(`227 (Fd-3m)`)
     expect(with_sym_content).toContain(`1 (0 trans, 1 rot, 0 roto-trans)`)
   })

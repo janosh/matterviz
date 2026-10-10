@@ -2,10 +2,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { Filter } from 'svelte-widgets/icons'
-  import {
-    get_electro_neg_formula,
-    get_formula_label_segments,
-  } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/format.js'
   import type { FormulaLabelSegment } from '#lib/composition/format.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
@@ -46,6 +43,7 @@
     CHEMPOT_COLOR_MODE_OPTIONS,
     container_pointer,
     create_chempot_state,
+    domain_formula_text,
   } from './controls-state.svelte'
   import {
     export_glb_file,
@@ -58,7 +56,6 @@
   } from './export'
   import type { VisibleDomainLabel } from './compute'
   import {
-    apply_element_padding,
     assign_faces_to_domains,
     bbox_diagonal,
     build_axis_ranges,
@@ -68,7 +65,7 @@
     get_ternary_combinations,
     get_touches_limits,
     get_visible_domain_labels,
-    pad_domain_points,
+    pad_domains,
     scale_to_font_range,
     strip_closing_faces,
     swizzle_to_render,
@@ -138,7 +135,6 @@
     diagram_data,
     computing: diagram_computing,
     error: diagram_error,
-    entries: temp_filtered_entries,
     has_temp_data,
     available_temperatures,
     energy_stats: entry_energy_stats_by_formula,
@@ -153,9 +149,7 @@
   )
 
   const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
-    get_formula_label_segments(
-      get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` }),
-    )
+    get_formula_label_segments(domain_formula_text(formula))
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -222,10 +216,8 @@
   let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
 
-  function to_vec3(point: number[]): THREE.Vector3 {
-    const [x_val, y_val, z_val] = to_render_xyz(point)
-    return new THREE.Vector3(x_val, y_val, z_val)
-  }
+  const to_vec3 = (point: number[]): THREE.Vector3 =>
+    new THREE.Vector3(...to_render_xyz(point))
 
   // The chemical system comes from every entry, not the temperature slice: a slice can be
   // empty or miss an element, and the projection axes must stay selectable either way
@@ -292,52 +284,57 @@
     return { edges: is_planar ? planar_edges : hull_crease_edges(points_3d), ann_loc }
   }
 
-  // Crease edges (dihedral angle > 1°) of the 3D convex hull, as point pairs in the input
-  // coordinates. Degenerate hulls (ConvexGeometry throws) fall back to an empty outline.
-  function hull_crease_edges(points_3d: number[][]): [number[], number[]][] {
+  // Crease edges (dihedral angle > 1°) of the 3D convex hull of `points`; null for a
+  // degenerate hull (ConvexGeometry throws)
+  function crease_geometry(points: THREE.Vector3[]): THREE.EdgesGeometry | null {
     try {
-      const hull = new ConvexGeometry(
-        dedup_3d(points_3d).map(
-          ([x_val, y_val, z_val]) => new THREE.Vector3(x_val, y_val, z_val),
-        ),
-      )
+      const hull = new ConvexGeometry(points)
       const creases = new THREE.EdgesGeometry(hull)
       hull.dispose()
-      const coords = creases.getAttribute(`position`).array
-      creases.dispose()
-      const edges: [number[], number[]][] = []
-      for (let offset = 0; offset + 5 < coords.length; offset += 6) {
-        edges.push([
-          [coords[offset], coords[offset + 1], coords[offset + 2]],
-          [coords[offset + 3], coords[offset + 4], coords[offset + 5]],
-        ])
-      }
-      return edges
+      return creases
     } catch {
-      return []
+      return null
     }
+  }
+
+  // Crease edges as point pairs in the input coordinates, empty for a degenerate hull
+  function hull_crease_edges(points_3d: number[][]): [number[], number[]][] {
+    const creases = crease_geometry(
+      dedup_3d(points_3d).map(
+        ([x_val, y_val, z_val]) => new THREE.Vector3(x_val, y_val, z_val),
+      ),
+    )
+    if (!creases) return []
+    const coords = creases.getAttribute(`position`).array
+    creases.dispose()
+    const edges: [number[], number[]][] = []
+    for (let offset = 0; offset + 5 < coords.length; offset += 6) {
+      edges.push([
+        [coords[offset], coords[offset + 1], coords[offset + 2]],
+        [coords[offset + 3], coords[offset + 4], coords[offset + 5]],
+      ])
+    }
+    return edges
+  }
+
+  // BufferGeometry over a flat xyz position array
+  const position_geometry = (positions: ArrayLike<number>): THREE.BufferGeometry => {
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
+    return geom
   }
 
   const render_domains = $derived.by((): RenderDomain[] => {
     if (!diagram_data || plot_elements.length < 2) return []
 
-    const dim = diagram_data.elements.length
-    const indices = Array.from({ length: dim }, (_, idx) => idx)
-    const new_lims =
-      element_padding > 0
-        ? apply_element_padding(
-            diagram_data.domains,
-            indices,
-            element_padding,
-            default_min_limit,
-          )
-        : null
-
+    const padded_domains = pad_domains(
+      diagram_data.domains,
+      diagram_data.elements.map((_, idx) => idx),
+      element_padding,
+      default_min_limit,
+    )
     const result: RenderDomain[] = []
-    for (const [formula, pts] of Object.entries(diagram_data.domains)) {
-      const padded = new_lims
-        ? pad_domain_points(pts, indices, new_lims, default_min_limit)
-        : pts
+    for (const [formula, padded] of Object.entries(padded_domains)) {
       if (padded.length < 2) continue
       const { edges, ann_loc } = get_domain_outline(padded)
       result.push({
@@ -424,17 +421,10 @@
   const edge_geometry = $derived.by(() => {
     if (is_projection_mode) {
       const unique_points = dedup_3d(base_domains.flatMap((domain) => domain.points_3d))
-      if (unique_points.length >= 4) {
-        try {
-          const hull_vectors = unique_points.map((point) => to_vec3(point))
-          const hull_geometry = new ConvexGeometry(hull_vectors)
-          const hull_edges = new THREE.EdgesGeometry(hull_geometry)
-          hull_geometry.dispose()
-          return hull_edges
-        } catch {
-          // Fall back to per-domain edges below.
-        }
-      }
+      // degenerate hulls fall back to the per-domain edges below
+      const hull_edges =
+        unique_points.length >= 4 && crease_geometry(unique_points.map(to_vec3))
+      if (hull_edges) return hull_edges
     }
 
     // round so a shared edge whose endpoints came from different hyperplane triples
@@ -450,9 +440,7 @@
         positions.push(...to_render_xyz(pt_a), ...to_render_xyz(pt_b))
       }
     }
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    return geom
+    return position_geometry(positions)
   })
 
   // Coplanar-merged convex hull of the points in render coords; null for fewer than four
@@ -481,8 +469,7 @@
       occlusion_hull_geometry &&
       strip_closing_faces(occlusion_hull_geometry.getAttribute(`position`).array)
     if (!merged) return null
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
+    const geom = position_geometry(merged)
     const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
     const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
     geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
@@ -667,15 +654,11 @@
     formula_colors[formulas_to_draw.indexOf(formula) % formula_colors.length]
 
   // Formula overlay edges (crease edges, per formula)
-  const overlay_edge_geometries = memo_overlay_geometry((domain) => {
-    const positions = domain.edges.flatMap(([pt_a, pt_b]) => [
-      ...to_render_xyz(pt_a),
-      ...to_render_xyz(pt_b),
-    ])
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    return geom
-  })
+  const overlay_edge_geometries = memo_overlay_geometry((domain) =>
+    position_geometry(
+      domain.edges.flatMap(([pt_a, pt_b]) => [...to_render_xyz(pt_a), ...to_render_xyz(pt_b)]),
+    ),
+  )
   const formula_edge_data = $derived(
     overlay_edge_geometries(draw_formula_lines ? overlay_domains : []),
   )
@@ -703,9 +686,7 @@
   function merge_coplanar_geometry(geom: THREE.BufferGeometry): THREE.BufferGeometry {
     const non_indexed = geom.index ? geom.toNonIndexed() : geom
     const pos = non_indexed.getAttribute(`position`)
-    const merged = merge_coplanar_triangles(pos.array as Float32Array)
-    const result = new THREE.BufferGeometry()
-    result.setAttribute(`position`, new THREE.Float32BufferAttribute(merged, 3))
+    const result = position_geometry(merge_coplanar_triangles(pos.array as Float32Array))
     result.computeVertexNormals()
     // Dispose intermediate geometry from toNonIndexed() (avoid double-dispose if same object)
     if (non_indexed !== geom) non_indexed.dispose()
@@ -722,10 +703,7 @@
     // For exactly 3 unique points (planar/degenerate domain), create a triangle
     // geometry directly since ConvexGeometry requires 4+ points for a 3D hull
     if (unique_points.length === 3) {
-      const geom = new THREE.BufferGeometry()
-      const vectors = unique_points.map((point) => to_vec3(point))
-      const verts = new Float32Array(vectors.flatMap((vec) => [vec.x, vec.y, vec.z]))
-      geom.setAttribute(`position`, new THREE.Float32BufferAttribute(verts, 3))
+      const geom = position_geometry(unique_points.flatMap(to_render_xyz))
       geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
       geom.computeVertexNormals()
       return { geometry: geom, n_vertices: 3 }
@@ -772,7 +750,6 @@
       n_vertices: number
     }[] = []
     for (const domain of render_domains) {
-      if (domain.points_3d.length < 3) continue
       const hover_geometry = create_hover_geometry(domain.points_3d)
       if (hover_geometry) result.push({ domain, ...hover_geometry })
     }
@@ -781,43 +758,28 @@
 
   const hover_mesh_data = $derived.by((): HoverMesh[] => {
     if (!diagram_data) return []
-    const result: HoverMesh[] = []
-    const lims = diagram_data.lims
-    const energy_stats_by_formula = entry_energy_stats_by_formula
-
-    for (const { domain, geometry, n_vertices } of hover_geometries) {
-      const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
-      const touches_limits = get_touches_limits(domain.points_3d, lims, plot_elements)
-      const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
-        matching_entry_count: 0,
-        min_energy_per_atom: null,
-        max_energy_per_atom: null,
-      }
-
+    const { lims } = diagram_data
+    return hover_geometries.map(({ domain, geometry, n_vertices }) => {
+      const { formula, points_3d } = domain
       const info: ChemPotHoverInfo3D = {
-        formula: domain.formula,
+        formula,
         view: `3d`,
         n_vertices,
         n_edges: domain.edges.length,
-        n_points: domain.points_3d.length,
+        n_points: points_3d.length,
         ann_loc: domain.ann_loc,
-        axis_ranges,
-        touches_limits,
-        is_elemental: all_entry_elements.includes(domain.formula),
-        is_draw_formula: overlay_formulas.has(domain.formula),
-        matching_entry_count: energy_stats.matching_entry_count,
-        min_energy_per_atom: energy_stats.min_energy_per_atom,
-        max_energy_per_atom: energy_stats.max_energy_per_atom,
-        neighbors: domain_neighbors.get(domain.formula) ?? [],
+        axis_ranges: build_axis_ranges(points_3d, plot_elements),
+        touches_limits: get_touches_limits(points_3d, lims, plot_elements),
+        is_elemental: all_entry_elements.includes(formula),
+        is_draw_formula: overlay_formulas.has(formula),
+        matching_entry_count: 0,
+        min_energy_per_atom: null,
+        max_energy_per_atom: null,
+        ...entry_energy_stats_by_formula.get(formula),
+        neighbors: domain_neighbors.get(formula) ?? [],
       }
-
-      result.push({
-        formula: domain.formula,
-        geometry,
-        info,
-      })
-    }
-    return result
+      return { formula, geometry, info }
+    })
   })
 
   dispose_on_change(() => [edge_geometry])
@@ -1266,11 +1228,7 @@
                       formula_colors.length
                   ]}
                 ></span>
-                {get_electro_neg_formula(formula, {
-                  plain_text: true,
-                  delim: ``,
-                  amount_format: `.3~s`,
-                })}
+                {domain_formula_text(formula)}
               </label>
             {/each}
           {/if}
@@ -1303,36 +1261,18 @@
       >
         {#if has_multinary_system && plot_elements.length === 3}
           <div class="pane-row projection-axes">
-            <label for="chempot-proj-x">X:</label>
-            <select
-              id="chempot-proj-x"
-              value={plot_elements[0]}
-              onchange={(event) => set_projection_axis(0, event.currentTarget.value)}
-            >
-              {#each all_entry_elements as element_name (element_name)}
-                <option value={element_name}>{element_name}</option>
-              {/each}
-            </select>
-            <label for="chempot-proj-y">Y:</label>
-            <select
-              id="chempot-proj-y"
-              value={plot_elements[1]}
-              onchange={(event) => set_projection_axis(1, event.currentTarget.value)}
-            >
-              {#each all_entry_elements as element_name (element_name)}
-                <option value={element_name}>{element_name}</option>
-              {/each}
-            </select>
-            <label for="chempot-proj-z">Z:</label>
-            <select
-              id="chempot-proj-z"
-              value={plot_elements[2]}
-              onchange={(event) => set_projection_axis(2, event.currentTarget.value)}
-            >
-              {#each all_entry_elements as element_name (element_name)}
-                <option value={element_name}>{element_name}</option>
-              {/each}
-            </select>
+            {#each [`x`, `y`, `z`] as axis, axis_idx (axis)}
+              <label for="chempot-proj-{axis}">{axis.toUpperCase()}:</label>
+              <select
+                id="chempot-proj-{axis}"
+                value={plot_elements[axis_idx]}
+                onchange={(event) => set_projection_axis(axis_idx, event.currentTarget.value)}
+              >
+                {#each all_entry_elements as element_name (element_name)}
+                  <option value={element_name}>{element_name}</option>
+                {/each}
+              </select>
+            {/each}
           </div>
           <div class="projection-presets">
             {#each projection_presets as preset_elements (preset_elements.join(`|`))}

@@ -503,6 +503,11 @@
       [atom_color_config, inactive_tool_color] = [inactive_tool_color, atom_color_config]
     tool_overlay_visible = visible
   }
+  // The shown output now belongs to the current input (and its revision while one is shown)
+  const adopt_tool_source = (): void => {
+    tool_source = session.tool_input
+    tool_source_revision = tool_overlay ? tool_input_revision : ``
+  }
   const apply_tool_overlay = (published: StructureToolPrediction | null): void => {
     // A transient overlay over its run's result previews other field values (e.g. an earlier
     // SCF step) or geometry (a relaxation step) on the same layers: the result stays the
@@ -550,8 +555,7 @@
       for (const identifier of owned_volume_ids)
         if (!volume_by_id.has(identifier)) removed_tool_fields.add(identifier)
     tool_overlay = overlay
-    tool_source = session.tool_input
-    tool_source_revision = overlay ? tool_input_revision : ``
+    adopt_tool_source()
     const restore_active =
       active_volume_id !== undefined && owned_volume_set.has(active_volume_id)
     const preserve_active = restore_active || (same_run && owned_volume_ids.length > 0)
@@ -616,8 +620,7 @@
       tool_overlay = rebase(tool_overlay)
       tool_result = rebase(tool_result)
     }
-    tool_source = session.tool_input
-    tool_source_revision = tool_overlay ? tool_input_revision : ``
+    adopt_tool_source()
     show_toast(`Applied the result geometry to the structure; undo in edit-atoms mode`)
   }
   const tool_controller = create_structure_tool_controller(
@@ -975,12 +978,11 @@
   // === camera context ===
   // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
   // an explicit pose; supercell/image/cell changes re-center the orbit target on the new cell.
+  let transform_key = $derived(`${supercell_scaling}\0${show_image_atoms}\0${cell_type}`)
   let previous_series_key: unknown = untrack(() => series_key)
-  let previous_transform = untrack(
-    () => `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`,
-  )
+  let previous_transform = untrack(() => transform_key)
   $effect.pre(() => {
-    const transform = `${supercell_scaling}\0${show_image_atoms}\0${cell_type}`
+    const transform = transform_key
     const series_changed = series_key !== previous_series_key
     const transform_changed = transform !== previous_transform
     previous_series_key = series_key

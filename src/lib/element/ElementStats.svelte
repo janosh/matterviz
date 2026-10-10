@@ -2,6 +2,7 @@
   import type { ChemicalElement } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { CalendarBlank, Gas, Liquid, Scale, Solid, Weight } from 'svelte-widgets/icons'
+  import type { IconData } from 'svelte-widgets/icons'
   import { format_num } from '#lib/labels.js'
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -14,42 +15,35 @@
   }: HTMLAttributes<HTMLDivElement> & {
     element: ChemicalElement | null
   } = $props()
+
+  // label, icon, value and optional unit abbreviation with its expansion
+  type Stat = [string, IconData, string | number, string?, string?]
+  const stats = (elem: ChemicalElement): Stat[] => [
+    [
+      `Atomic Mass`,
+      Weight,
+      format_num(elem.atomic_mass),
+      `(u)`,
+      `Dalton aka atomic mass unit`,
+    ],
+    [`Density`, Scale, format_num(elem.density), `(g/cm³)`, `grams per cubic centimeter`],
+    [`Phase`, PHASE_ICONS[elem.phase], elem.phase],
+    [`Year of Discovery`, CalendarBlank, elem.year],
+  ]
 </script>
 
 {#if element}
   <div {...rest}>
     <ElementHeading {element} style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0" />
-    <section>
-      <p>
-        Atomic Mass
-        <abbr title="Dalton aka atomic mass unit">(u)</abbr>
-      </p>
-      <strong>
-        <Icon icon={Weight} />
-        {format_num(element.atomic_mass)}
-      </strong>
-    </section>
-    <section>
-      <p>
-        Density
-        <abbr title="grams per cubic centimeter">(g/cm³)</abbr>
-      </p>
-      <strong>
-        <Icon icon={Scale} />
-        {format_num(element.density)}
-      </strong>
-    </section>
-    <section>
-      <p>Phase</p>
-      <strong> <Icon icon={PHASE_ICONS[element.phase]} /> {element.phase}</strong>
-    </section>
-    <section>
-      <p>Year of Discovery</p>
-      <strong>
-        <Icon icon={CalendarBlank} />
-        {element.year}
-      </strong>
-    </section>
+    {#each stats(element) as [label, icon, value, unit, unit_title] (label)}
+      <section>
+        <p>
+          {label}
+          {#if unit}<abbr title={unit_title}>{unit}</abbr>{/if}
+        </p>
+        <strong><Icon {icon} /> {value}</strong>
+      </section>
+    {/each}
   </div>
 {:else}
   <h3 style="text-align: center">Hover or tap an element!</h3>

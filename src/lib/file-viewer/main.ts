@@ -212,16 +212,8 @@ export const setup_vscode_download = (): void => {
       console.error(`Invalid filename provided to download`)
       return
     }
-
-    const send_message = (content: string, is_binary: boolean) => {
-      vscode_api?.postMessage({
-        command: `saveAs`,
-        content,
-        filename,
-        is_binary,
-      })
-    }
-
+    const send_message = (content: string, is_binary: boolean) =>
+      vscode_api?.postMessage({ command: `saveAs`, content, filename, is_binary })
     try {
       if (typeof data === `string`) {
         send_message(data, false)
@@ -320,10 +312,7 @@ const remount_current = async (container: HTMLElement, gen: number): Promise<voi
   const dispose = display_disposers.get(app)
   display_disposers.delete(app)
   await unmount(app)
-  if (!is_current(gen)) {
-    dispose?.()
-    return
-  }
+  if (!is_current(gen)) return dispose?.()
   try {
     mount_result(container, result)
   } catch (error) {
@@ -450,10 +439,7 @@ export const create_display = (
     width: `100%`,
     height: `100%`,
     position: `absolute`,
-    top: `0`,
-    left: `0`,
-    right: `0`,
-    bottom: `0`,
+    inset: `0`,
     background: `var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)))`,
     color: `var(--vscode-editor-foreground, var(--text-color, CanvasText))`,
     overflow: `hidden`,
@@ -619,9 +605,7 @@ const listen_to_host = (): void => {
 // Initialize the MatterViz application from data passed by the extension
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
-  const file_data = globalThis.matterviz_data?.data
-  const theme = globalThis.matterviz_data?.theme
-  const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
+  const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
   if (!file_data?.content || !file_data.filename) {
     throw new Error(`No data provided to MatterViz app`)
   }

@@ -1,11 +1,9 @@
-// Saving a figure and saving the numbers behind it, shared by every chart. The
-// hierarchy charts had this wired up privately; the Cartesian ones had no way to get
-// a figure out at all, which for a scientific viewer is a routine ask.
+// Saving a figure and saving the numbers behind it, shared by every chart.
 
 import { DEFAULT_PNG_DPI } from '#lib/constants.js'
 import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
 import { download } from '#lib/io/fetch.js'
-import { unique_id } from '../utils'
+import { unique_id } from '#lib/plot/core/utils.js'
 import type { FileExportContext, FileSaver } from '#lib/io/file-export.svelte.js'
 import { escape_csv_field } from 'svelte-widgets/csv'
 

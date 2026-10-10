@@ -15,7 +15,6 @@ import { assert_series_lengths, type DataSeries } from '#lib/plot/core/types.js'
 import { html_to_text } from '#lib/utils.js'
 import type { TrajectoryMetadata } from './index'
 
-// Configuration constants
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]
 const ENERGY_KEYS = new Set(TRAJECTORY_ENERGY_KEYS.map(normalize_property_key))
 export const is_energy_property = (key: string): boolean =>
@@ -382,7 +381,6 @@ export function extract_label_and_unit(
 }
 
 function calculate_priority(unit: string, group_series: readonly DataSeries[]): number {
-  // Energy units get highest priority
   const unit_priority = ENERGY_UNITS.indexOf(unit)
   if (unit_priority !== -1) return unit_priority
 

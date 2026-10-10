@@ -27,7 +27,9 @@ import {
   element_from_candidates,
   is_cif_data_header,
   is_cif_loop_header,
+  is_cif_unset,
   iter_cif_loops,
+  leading_letters,
   make_lattice,
   matrix3x3_from_rows,
   normalize_cif_names,
@@ -44,7 +46,7 @@ import {
   lines_cursor,
   parse_vasp_header,
 } from '#lib/structure/parsers/vasp-header.js'
-import { wrap_frac_coord, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
@@ -78,6 +80,9 @@ function parse_coordinate_line(line: string): number[] {
 // Symmetry images and atom-site rows closer than this (Å, minimum image) are one site:
 // published coordinates are rounded (0.3333 for 1/3), and no two real atoms sit this close.
 const CIF_SITE_TOLERANCE = 0.05
+// Same-element rows merged onto one site may sum past 1 by this much before they are read
+// as one atom listed twice: occupancies rounded to 2 decimals (0.67 + 0.34) overshoot by 0.01
+const CIF_OCCUPANCY_TOLERANCE = 0.02
 
 // Fractional positions in [0, 1) bucketed at least `tolerance` Å wide per cell height, so a
 // site within `tolerance` (minimum image) is found in the 27 neighbouring buckets, visited in
@@ -246,15 +251,13 @@ export const parse_poscar = (content: string): Crystal => {
   }
   // The header cursor stops on the first coordinate line
   const first_coord_line = cursor.position()
+  // VASP reads the flags case-insensitively (`T`/`t`/`.TRUE.` all mean movable)
+  const is_true = (flag: string) => /^\.?t/i.test(flag)
   const sites: Site[] = []
-  let atom_index = 0
 
-  for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
-    const element = elements[elem_idx]
-    const count = counts[elem_idx]
-
-    for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
-      const coord_line_idx = first_coord_line + atom_index + atom_count_idx
+  for (const [elem_idx, element] of elements.entries()) {
+    for (let atom_count_idx = 0; atom_count_idx < counts[elem_idx]; atom_count_idx++) {
+      const coord_line_idx = first_coord_line + sites.length
       if (coord_line_idx >= lines.length)
         throw new Error(`Not enough coordinate lines in POSCAR`)
 
@@ -263,9 +266,7 @@ export const parse_poscar = (content: string): Crystal => {
         `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
       )
 
-      // VASP reads the flags case-insensitively (`T`/`t`/`.TRUE.` all mean movable)
       const flags = has_selective_dynamics ? lines[coord_line_idx].trim().split(/\s+/) : []
-      const is_true = (flag: string) => /^\.?t/i.test(flag)
       const selective_dynamics: [boolean, boolean, boolean] | undefined =
         flags.length >= 6
           ? [is_true(flags[3]), is_true(flags[4]), is_true(flags[5])]
@@ -283,13 +284,11 @@ export const parse_poscar = (content: string): Crystal => {
           element,
           abc,
           xyz,
-          `${element}${atom_index + atom_count_idx + 1}`,
+          `${element}${sites.length + 1}`,
           selective_dynamics ? { selective_dynamics } : {},
         ),
       )
     }
-
-    atom_index += count
   }
 
   return { sites, lattice: make_lattice(scaled_lattice) }
@@ -475,7 +474,6 @@ type CifAtom = {
   element: ElementSymbol
   ambiguity?: string // how an ambiguous all-caps label was read (see cif_row_element)
   coords: Vec3
-  coords_type: `fract` | `cart`
   occupancy: number
 }
 
@@ -514,7 +512,7 @@ const cif_group_element = (text = ``): ElementSymbol | undefined => {
 // The element a CIF type symbol (`Fe2+`, `FE2+`, `O2-`, `NO3`) names: a group, then its
 // leading letters read two-then-one case-normalized; undefined when it names nothing
 const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => {
-  const letters = /^[A-Za-z]+/.exec(raw_symbol)?.[0] ?? ``
+  const letters = leading_letters(raw_symbol)
   return (
     cif_group_element(raw_symbol) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 2))) ??
@@ -539,7 +537,7 @@ const cif_row_element = (
   atom_idx: number,
   pdb_names = false,
 ): { element: ElementSymbol; ambiguity?: string } => {
-  const symbol_letters = /^[A-Za-z]+/.exec(raw_symbol ?? ``)?.[0] ?? ``
+  const symbol_letters = leading_letters(raw_symbol)
   const element = cif_type_symbol_element(raw_symbol) ?? cif_group_element(raw_label)
   if (element) return { element }
   // an all-caps label reads two letters first; `label_letters` is then its one-letter reading
@@ -565,11 +563,10 @@ const cif_row_element = (
 const parse_cif_atom_data = (
   raw_data: string[],
   indices: Record<string, number>,
-  coords_type: `fract` | `cart`,
   coord_indices: number[],
   atom_idx: number,
 ): CifAtom => {
-  const { label = 0, symbol = -1, occupancy = -1 } = indices
+  const { label, symbol = -1, occupancy = -1 } = indices
 
   const coords_triplet = vec3_from_values(
     coord_indices.map((idx) => {
@@ -582,30 +579,22 @@ const parse_cif_atom_data = (
     `CIF atom coordinates`,
   )
 
-  const raw_occu =
-    occupancy >= 0 && raw_data[occupancy]
-      ? parse_cif_uncertain_number(raw_data[occupancy])
-      : null
   // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
-  const occu = raw_occu ?? 1.0
+  const occu =
+    (occupancy >= 0 && raw_data[occupancy]
+      ? parse_cif_uncertain_number(raw_data[occupancy])
+      : null) ?? 1
 
+  // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
+  const raw_label = label === undefined ? undefined : raw_data[label]
   const { element, ambiguity } = cif_row_element(
     symbol >= 0 ? raw_data[symbol] : undefined,
-    raw_data[label],
+    raw_label,
     atom_idx,
     indices.residue !== undefined,
   )
-  // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
-  const raw_id = indices.label === undefined ? undefined : raw_data[indices.label]
-  const identifier = raw_id && ![`.`, `?`].includes(raw_id) ? raw_id : undefined
-  return {
-    id: identifier,
-    element,
-    ambiguity,
-    coords: coords_triplet,
-    coords_type,
-    occupancy: occu,
-  }
+  const id = raw_label && !is_cif_unset(raw_label) ? raw_label : undefined
+  return { id, element, ambiguity, coords: coords_triplet, occupancy: occu }
 }
 
 // The symop column tag (old `_symmetry_` and current `_space_group_` spellings; parse_cif
@@ -701,7 +690,7 @@ const keep_one_disorder_group = (
   const group_of = (row: string[]): number => Math.abs(parse_float_token(row[disorder]))
   const assembly_of = (row: string[]): string | undefined => {
     const value = assembly === undefined ? undefined : row[assembly]
-    return value === `.` || value === `?` ? undefined : value
+    return is_cif_unset(value) ? undefined : value
   }
   const kept = new Map<string | undefined, number>()
   for (const row of rows) {
@@ -721,8 +710,12 @@ export const parse_cif = (content: string): Crystal => {
   const lines = normalize_cif_names(text.split(`\n`))
   const block_ids = cif_block_ids(lines)
 
-  // The first atom-site loop that has coordinates (fract or Cartn) and data rows
+  // The first atom-site loop that has coordinates (fract or Cartn), an element column and
+  // at least one readable atom row. A loop of only placeholder rows (`? ? ? ? ?`) is
+  // skipped, so a multi-block file whose first block is empty reads the next block like
+  // pymatgen does. Throws the reason the last candidate loop was rejected.
   const find_atom_loop = () => {
+    let failure = `No valid atom site loop found in CIF file`
     for (const { headers, data_start } of iter_cif_loops(lines)) {
       if (!headers.some((header) => header.includes(`_atom_site_`))) continue
       const header_indices = build_cif_atom_site_header_indices(headers)
@@ -730,14 +723,29 @@ export const parse_cif = (content: string): Crystal => {
       if (!coord_cols) continue
       const atom_rows = cif_loop_rows(cif_loop_lines(lines, data_start), headers)
       if (atom_rows.length === 0) continue
-      return { header_indices, coord_cols, atom_rows, block_id: block_ids[data_start] }
+      // Without either column no element can be read: guessing from column 0 turned a
+      // refinement flag `S` into a sulfur atom (pymatgen rejects such files too)
+      if (header_indices.label === undefined && header_indices.symbol === undefined) {
+        failure = `CIF atom-site loop has neither _atom_site_type_symbol nor _atom_site_label`
+        continue
+      }
+      const atoms = keep_one_disorder_group(atom_rows, header_indices)
+        .map((tokens, atom_idx) => {
+          try {
+            return parse_cif_atom_data(tokens, header_indices, coord_cols.columns, atom_idx)
+          } catch (error) {
+            console.warn(`Skipping invalid atom data: ${error}`)
+            return null
+          }
+        })
+        .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+      if (atoms.length > 0) return { coord_cols, atoms, block_id: block_ids[data_start] }
+      failure = `No valid atoms found in CIF file`
     }
-    return null
+    throw new Error(failure)
   }
 
-  const atom_loop = find_atom_loop()
-  if (!atom_loop) throw new Error(`No valid atom site loop found in CIF file`)
-  const { header_indices, coord_cols, atom_rows, block_id } = atom_loop
+  const { coord_cols, atoms, block_id } = find_atom_loop()
   // Everything else describing these atoms — cell, space group, symops, atom-type counts —
   // is read from the data block the atom-site loop lives in. A multi-block file (a global
   // block plus one per phase) declares a different cell and space group in each, so
@@ -757,30 +765,12 @@ export const parse_cif = (content: string): Crystal => {
     }
   }
 
-  const atoms = keep_one_disorder_group(atom_rows, header_indices)
-    .map((tokens, atom_idx) => {
-      try {
-        return parse_cif_atom_data(
-          tokens,
-          header_indices,
-          coord_cols.coords_type,
-          coord_cols.columns,
-          atom_idx,
-        )
-      } catch (error) {
-        console.warn(`Skipping invalid atom data: ${error}`)
-        return null
-      }
-    })
-    .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
   const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
   if (ambiguous_labels.size > 0) {
     console.warn(
       `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
     )
   }
-
-  if (atoms.length === 0) throw new Error(`No valid atoms found in CIF file`)
 
   const cell_params = read_cell_params(block_lines, `CIF`)
   if (!cell_params) throw new Error(`Insufficient cell parameters in CIF file`)
@@ -847,12 +837,13 @@ export const parse_cif = (content: string): Crystal => {
   // ONE site: a symmetry image landing on an existing image of the same row is a
   // duplicate and dropped, while another row at that position contributes its species
   // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
-  // repeats (Fe2+ / Fe3+ rows). This is what pymatgen's CifParser does and is what lets
+  // repeats (Fe2+ / Fe3+ rows) up to full occupancy. This is what pymatgen's CifParser does and is what lets
   // a CIF written from a disordered structure read back with the same site count.
   // Sites keep the row's _atom_site_label (refinement labels like `Fe1`/`OH2` survive a
   // parse -> structure_to_cif_str round trip); without a label column they are named
   // `${element}${site_idx + 1}` like every other parser's.
-  const build_sites = (extra_centering: Vec3[]): Site[] => {
+  // n_overlaps counts same-element merges capped at full occupancy (warned once, below)
+  const build_sites = (extra_centering: Vec3[]): { sites: Site[]; n_overlaps: number } => {
     const sites: Site[] = []
     const n_images = (ops_to_use.length + 1) * (extra_centering.length + 1)
     const site_index = create_frac_site_index(
@@ -863,10 +854,11 @@ export const parse_cif = (content: string): Crystal => {
     // Latest atom row merged into each site. Rows are visited in order, so a site already
     // holds the current row exactly when this equals its index (no Set per site needed)
     const last_row_at_site: number[] = []
+    let n_overlaps = 0
     for (const [row_idx, atom] of atoms.entries()) {
       const { element, occupancy, id } = atom
       const coords = wrap_to_unit_cell(
-        atom.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
+        coord_cols.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
       )
       // the row's first site keeps its label, later images get a unique `_k` suffix
       let n_row_sites = 0
@@ -886,11 +878,18 @@ export const parse_cif = (content: string): Crystal => {
         last_row_at_site[site_idx] = row_idx
         const { species } = sites[site_idx]
         const same_element = species.find((spec) => spec.element === element)
-        if (same_element) same_element.occu += occupancy
-        else species.push({ element, occu: occupancy, oxidation_state: 0 })
+        if (!same_element) species.push({ element, occu: occupancy, oxidation_state: 0 })
+        else if (same_element.occu + occupancy <= 1 + CIF_OCCUPANCY_TOLERANCE)
+          same_element.occu += occupancy
+        else {
+          // past full occupancy these rows are one atom listed twice (e.g. Na1 and Na2
+          // related by a symop), not a disordered site: keep the larger occupancy
+          same_element.occu = Math.max(same_element.occu, occupancy)
+          n_overlaps++
+        }
       }
     }
-    return sites
+    return { sites, n_overlaps }
   }
 
   // Expand with point-group ops first. If the space group is centered and the
@@ -899,11 +898,11 @@ export const parse_cif = (content: string): Crystal => {
   // CIFs listing point-only ops for the asymmetric unit while avoiding
   // double-counting CIFs whose atom list already embeds centering (e.g. C2/c
   // COD 7008984, where listed ops + atoms already total the cell contents).
-  let sites = build_sites(magn_centering)
+  let { sites, n_overlaps } = build_sites(magn_centering)
   const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
   if (centering.length > 0 && expected_total > sites.length) {
     // The letter's translations add to explicit mcif centerings (with all their sums)
-    const centered_sites = build_sites([
+    const centered = build_sites([
       ...magn_centering,
       ...centering,
       ...magn_centering.flatMap((shift) => centering.map((vec) => math.add(shift, vec))),
@@ -912,12 +911,17 @@ export const parse_cif = (content: string): Crystal => {
     // the total alone is insufficient: it can coincide while individual element
     // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
     // species entries, not sites: a disordered site holds one entry per merged row
-    const species = centered_sites.flatMap((site) => site.species)
+    const species = centered.sites.flatMap((site) => site.species)
     const counts = count_elements(species.map((spec) => spec.element))
     const reconciles =
       species.length === expected_total &&
       Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
-    if (reconciles) sites = centered_sites
+    if (reconciles) ({ sites, n_overlaps } = centered)
+  }
+  if (n_overlaps > 0) {
+    console.warn(
+      `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the larger occupancy instead of summing`,
+    )
   }
 
   return { sites, lattice: make_lattice(lattice_matrix) }
@@ -1072,13 +1076,8 @@ export function normalize_fractional_coords<T extends AnyStructure>(
   const frac_to_cart = math.create_frac_to_cart(structure.lattice.matrix)
   const site_shifts: (Vec3 | undefined)[] = []
   const sites = structure.sites.map((site, site_idx) => {
-    const source = site.abc
-    const abc: Vec3 = [
-      wrap_a ? wrap_frac_coord(source[0]) : source[0],
-      wrap_b ? wrap_frac_coord(source[1]) : source[1],
-      wrap_c ? wrap_frac_coord(source[2]) : source[2],
-    ]
-    const shift = abc.map((coord, axis) => Math.round(coord - source[axis])) as Vec3
+    const abc = wrap_to_unit_cell(site.abc, pbc)
+    const shift = abc.map((coord, axis) => Math.round(coord - site.abc[axis])) as Vec3
     if (shift.some(Boolean)) site_shifts[site_idx] = shift
     return { ...site, abc, xyz: frac_to_cart(abc) }
   })

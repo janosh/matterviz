@@ -24,7 +24,11 @@
   import { onMount } from 'svelte'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { collect_series_extent, create_color_scale } from '#lib/plot/core/scales.js'
+  import {
+    auto_scale_range,
+    collect_series_extent,
+    create_color_scale,
+  } from '#lib/plot/core/scales.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -189,7 +193,9 @@
 
   // Finite colour extent across all series; [0, 1] when no series carries colour values
   const color_extent = $derived(collect_series_extent(series, `color_values`))
-  const auto_color_range = $derived<Vec2>([color_extent.min ?? 0, color_extent.max ?? 1])
+  const auto_color_range = $derived(
+    auto_scale_range(color_extent, normalized_color_scale.type),
+  )
   let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
 
   // Legend data

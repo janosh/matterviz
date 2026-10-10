@@ -6,6 +6,7 @@ import {
 } from '#lib/convex-hull/thermodynamics.js'
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
@@ -44,7 +45,6 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(point_color({ e_above_hull: 0 })).toBe(`#111`)
     expect(point_color({ e_above_hull: 0.1 })).toBe(`#222`)
     const entry = { is_stable: false, e_above_hull: 0 }
-    expect(helpers.entry_is_stable(entry)).toBe(false)
     expect(helpers.visible_entries([entry], true, false)).toEqual([])
     expect(helpers.visible_entries([entry], false, true)).toEqual([entry])
     expect(point_color(entry)).toBe(`#222`)
@@ -54,12 +54,19 @@ describe(`helpers: energy color scale + point color`, () => {
   })
 
   test(`entry_within_hull_dist keeps stable entries and finite distances within the cutoff`, () => {
-    expect(helpers.entry_within_hull_dist({ is_stable: true, e_above_hull: 5 }, 0.1)).toBe(
+    const entries = [
+      { is_stable: true, e_above_hull: 5 },
+      { e_above_hull: 0.1 },
+      { e_above_hull: 0.2 },
+      {},
+    ]
+    // unknown distance ≠ stable
+    expect(entries.map((entry) => helpers.entry_within_hull_dist(entry, 0.1))).toEqual([
       true,
-    )
-    expect(helpers.entry_within_hull_dist({ e_above_hull: 0.1 }, 0.1)).toBe(true)
-    expect(helpers.entry_within_hull_dist({ e_above_hull: 0.2 }, 0.1)).toBe(false)
-    expect(helpers.entry_within_hull_dist({}, 0.1)).toBe(false) // unknown ≠ stable
+      true,
+      false,
+      false,
+    ])
   })
 
   test(`hull_distance_range floors the max at 0.1 and skips non-finite values`, () => {
@@ -202,20 +209,18 @@ describe(`helpers: thresholds and tooltips`, () => {
     },
   )
 
-  test(`build_entry_tooltip_text contains key fields`, () => {
-    const param_1 = helpers.build_entry_tooltip_text({
-      composition: { Li: 1 },
-      energy: -1,
-    })
-    expect(param_1).toBe(`Li (Lithium)\n`)
-    const param_2 = helpers.build_entry_tooltip_text({
+  test(`build_entry_tooltip_text lists name, composition, energies and id`, () => {
+    expect(helpers.build_entry_tooltip_text({ composition: { Li: 1 }, energy: -1 })).toBe(
+      `Li (Lithium)\n`,
+    )
+    const compound = {
       composition: { Li: 1, O: 1 },
       energy: -6,
       e_form_per_atom: -3,
       e_above_hull: 0,
       entry_id: `mp-1`,
-    })
-    expect(param_2).toBe(
+    }
+    expect(helpers.build_entry_tooltip_text(compound)).toBe(
       `\nComposition: Li: ½, O: ½\nE_above_hull: 0 eV/atom\nE_form: −3 eV/atom\nID: mp-1`,
     )
     // an absolute energy_per_atom is not a formation energy, so it is not labelled as one
@@ -406,9 +411,8 @@ describe(`helpers: batch polymorph stats computation`, () => {
       phase(`mp-2`, { Li: 2, O: 4 }, { e_above_hull: 0.1 }),
       { composition: { Li: 1, O: 1 }, e_above_hull: 0 } as PhaseData, // no entry_id
     ])
-    expect(stats_map.size).toBe(2) // the id-less entry is skipped
+    expect([...stats_map.keys()]).toEqual([`mp-1`, `mp-2`]) // the id-less entry is skipped
     expect(stats_map.get(`mp-1`)?.total).toBe(1) // sees mp-2 as polymorph
-    expect(stats_map.get(`mp-2`)?.total).toBe(1) // sees mp-1 as polymorph
   })
 })
 
@@ -631,22 +635,20 @@ describe(`helpers: temperature interpolation`, () => {
       [`single element`, { composition: { Fe: 1 } }, `Fe`],
       [`unreduced cell`, { composition: { La: 12, Ni: 6, O: 25 } }, `La12Ni6O25`],
       [`multi-atom unary`, { composition: { La: 4 } }, `La4`],
-    ] as [string, { composition: Record<string, number> }, string][])(
+      // composition key order without `elements`, the given element order with it
+      [`unsorted keys`, { composition: { O: 3, Fe: 1, Li: 2 } }, `O3FeLi2`],
+      [
+        `elements order`,
+        { composition: { O: 3, Fe: 1, Li: 2 } },
+        `Li2FeO3`,
+        [`Li`, `Fe`, `O`],
+      ],
+    ] as [string, { composition: Record<string, number> }, string, ElementSymbol[]?][])(
       `%s → %s`,
-      (_desc, entry, expected) => {
-        expect(helpers.get_entry_label(entry)).toBe(expected)
+      (_desc, entry, expected, elements) => {
+        expect(helpers.get_entry_label(entry, elements)).toBe(expected)
       },
     )
-
-    test(`sorts by elements order when provided`, () => {
-      const entry = { composition: { O: 3, Fe: 1, Li: 2 } }
-      // Without elements: alphabetical order from Object.entries
-      const without = helpers.get_entry_label(entry)
-      expect(without).toBe(`O3FeLi2`)
-      // With elements: sorted by provided order
-      const with_order = helpers.get_entry_label(entry, [`Li`, `Fe`, `O`])
-      expect(with_order).toBe(`Li2FeO3`)
-    })
   })
 })
 

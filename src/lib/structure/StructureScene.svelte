@@ -516,8 +516,9 @@
 
   // Keep reset centered on the current structure without moving the live camera between
   // trajectory frames. On first mount, an explicit camera pose retains its supplied target.
-  let target_structure = $state.raw<AnyStructure | null | undefined>()
-  let has_target_structure = $state(false)
+  // Non-reactive: only compares successive effect runs
+  let target_structure: AnyStructure | undefined
+  let has_target_structure = false
   $effect(() => {
     const current_structure = structure
     if (has_target_structure && current_structure === target_structure) return
@@ -567,14 +568,11 @@
     hovered_bond_key = bond_key
   }
 
-  const atom_hover_props = (site_idx: number | null) =>
-    !interactive || site_idx == null
-      ? {}
-      : {
-          onpointerenter: (event: StoppableEvent) => set_atom_hover(site_idx, event),
-          onpointermove: (event: StoppableEvent) => set_atom_hover(site_idx, event),
-          onpointerleave: () => schedule_atom_hover_clear(site_idx),
-        }
+  const atom_hover_props = (site_idx: number) => ({
+    onpointerenter: (event: StoppableEvent) => set_atom_hover(site_idx, event),
+    onpointermove: (event: StoppableEvent) => set_atom_hover(site_idx, event),
+    onpointerleave: () => schedule_atom_hover_clear(site_idx),
+  })
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
@@ -589,9 +587,7 @@
           ? `pointer`
           : `not-allowed`
       }
-      if (measure_mode === `edit-atoms`) {
-        if (is_image_site(get_site(structure, hovered_idx ?? -1))) return `not-allowed`
-      }
+      if (measure_mode === `edit-atoms` && is_image_site_idx(hovered_idx)) return `not-allowed`
       return `pointer`
     }
     return `default`
@@ -645,11 +641,13 @@
   const find_added_bond_by_rendered_key = (key: string): StructureBond | undefined =>
     added_bonds.find((bond) => rendered_bond_key_for(bond) === key)
 
-  function resolve_bond_edit_target(
-    site_idx_1: number,
-    site_idx_2: number,
-    cell_shift?: Vec3,
-  ): BondKeyTarget {
+  // The bond a rendered (or context-menu) bond edit applies to: a manually added bond keeps
+  // its own key, a calculated one is addressed by its canonical key
+  function resolve_bond_edit_target({
+    site_idx_1,
+    site_idx_2,
+    cell_shift,
+  }: BondKeyTarget): BondKeyTarget {
     const rendered_target = { site_idx_1, site_idx_2, cell_shift }
     const rendered_key = rendered_bond_key_for(rendered_target)
     return (
@@ -657,7 +655,7 @@
     )
   }
 
-  const is_image_bond_site = (site_idx: number): boolean =>
+  const is_image_site_idx = (site_idx: number): boolean =>
     is_image_site(get_site(structure, site_idx))
 
   const can_select_bond_site = (site_idx: number): boolean =>
@@ -667,8 +665,8 @@
     const target = canonical_bond_target(bond)
     return (
       bond_edits_enabled &&
-      !is_image_bond_site(target.site_idx_1) &&
-      !is_image_bond_site(target.site_idx_2)
+      !is_image_site_idx(target.site_idx_1) &&
+      !is_image_site_idx(target.site_idx_2)
     )
   }
 
@@ -733,9 +731,7 @@
         .localToWorld(site_world_pos.set(...candidate_site.xyz))
         .distanceTo(world_position) <= BOND_ENDPOINT_SITE_MATCH_TOLERANCE
 
-    if (matches_world_position(site)) {
-      return site_idx
-    }
+    if (matches_world_position(site)) return site_idx
 
     const image_site_idx = structure.sites.findIndex(
       (candidate_site) =>
@@ -753,10 +749,8 @@
     const parent = event.object?.parent
     if (!parent) return null
 
-    const world_pos_1 = new Vector3(...bond.pos_1)
-    const world_pos_2 = new Vector3(...bond.pos_2)
-    parent.localToWorld(world_pos_1)
-    parent.localToWorld(world_pos_2)
+    const world_pos_1 = parent.localToWorld(new Vector3(...bond.pos_1))
+    const world_pos_2 = parent.localToWorld(new Vector3(...bond.pos_2))
 
     const bond_vec = world_pos_2.clone().sub(world_pos_1)
     const length_sq = bond_vec.lengthSq()
@@ -764,12 +758,10 @@
 
     const hit_vec = event.point.clone().sub(world_pos_1)
     const bond_fraction = hit_vec.dot(bond_vec) / length_sq
-    if (bond_fraction <= BOND_ENDPOINT_HIT_FRACTION) {
+    if (bond_fraction <= BOND_ENDPOINT_HIT_FRACTION)
       return get_bond_endpoint_site_idx(bond.site_idx_1, world_pos_1, parent)
-    }
-    if (bond_fraction >= 1 - BOND_ENDPOINT_HIT_FRACTION) {
+    if (bond_fraction >= 1 - BOND_ENDPOINT_HIT_FRACTION)
       return get_bond_endpoint_site_idx(bond.site_idx_2, world_pos_2, parent)
-    }
     return null
   }
 
@@ -839,26 +831,28 @@
         rendered_bond_key_for(rendered_target),
         bond_key_for(target),
       ]
+      const visible_bonds = bond_records(filtered_bond_pairs)
       const bond =
-        bond_records(filtered_bond_pairs).find(
-          (pair) => rendered_bond_key_for(pair) === rendered_key,
-        ) ??
-        bond_records(filtered_bond_pairs).find((pair) => bond_key_for(pair) === canonical_key)
+        visible_bonds.find((pair) => rendered_bond_key_for(pair) === rendered_key) ??
+        visible_bonds.find((pair) => bond_key_for(pair) === canonical_key)
       if (bond) open_bond_context_menu(bond)
       return
     }
     apply_bond_edit_result(result, false)
   }
 
-  function set_bond_order(
-    site_idx_1: number,
-    site_idx_2: number,
-    order: BondOrder,
-    cell_shift?: Vec3,
-  ) {
-    const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
-    if (!can_edit_bond(target)) return
-    apply_bond_edit_result(
+  // Order change or deletion of a rendered bond (or the context menu's when bond is null)
+  function edit_bond(
+    bond: BondKeyTarget | null,
+    edit: (target: BondKeyTarget) => BondEditResult,
+  ): void {
+    const target = bond && resolve_bond_edit_target(bond)
+    if (target && can_edit_bond(target)) apply_bond_edit_result(edit(target))
+  }
+  const context_bond = () => bond_context_target ?? bond_context_menu
+
+  const set_context_bond_order = (order: BondOrder) =>
+    edit_bond(context_bond(), (target) =>
       apply_set_bond_order(
         current_bond_edit_state(),
         target,
@@ -866,27 +860,11 @@
         order,
       ),
     )
-  }
 
-  function set_context_bond_order(order: BondOrder) {
-    const menu = bond_context_target ?? bond_context_menu
-    if (!menu) return
-    set_bond_order(menu.site_idx_1, menu.site_idx_2, order, menu.cell_shift)
-  }
-
-  function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
-    const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
-    if (!can_edit_bond(target)) return
-    apply_bond_edit_result(
+  const remove_bond = (bond: BondKeyTarget | null) =>
+    edit_bond(bond, (target) =>
       apply_delete_bond(current_bond_edit_state(), target, editable_perceived_bond_pairs),
     )
-  }
-
-  function remove_context_bond() {
-    const menu = bond_context_target ?? bond_context_menu
-    if (!menu) return
-    remove_bond(menu.site_idx_1, menu.site_idx_2, menu.cell_shift)
-  }
 
   // Deduplicate clicks: when a highlight sphere and the underlying atom both
   // intercept the same native click, only the first intersection should fire.
@@ -967,6 +945,9 @@
     }
   }
 
+  const toggle_site = (sites: number[], site_idx: number): number[] =>
+    sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
     const event_with_native = evt as (Event & { nativeEvent?: unknown }) | undefined
@@ -987,10 +968,7 @@
       }
       if (!can_select_bond_site(site_index)) return
       // In Add mode, select atom pairs without making existing bonds destructive.
-      const new_sites = measured_sites.includes(site_index)
-        ? measured_sites.filter((idx) => idx !== site_index)
-        : [...measured_sites, site_index]
-
+      const new_sites = toggle_site(measured_sites, site_index)
       measured_sites = new_sites
       selected_sites = new_sites
 
@@ -1007,24 +985,18 @@
       // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
       if (!interactive) return
       // Block viewer-generated image atoms.
-      if (is_image_site(get_site(structure, site_index))) return
+      if (is_image_site_idx(site_index)) return
 
-      const is_selected = selected_sites.includes(site_index)
       // threlte dispatches plain objects wrapping the DOM event, so read shift
       // from the extracted native event (evt itself is never a MouseEvent for 3D hits)
       const is_shift = native_event instanceof MouseEvent && native_event.shiftKey
-
-      // In edit-atoms mode, selected_sites and measured_sites always stay in sync
-      let new_sites: number[]
-      if (is_shift) {
-        // Multi-select: toggle this site in/out of selection
-        new_sites = is_selected
-          ? selected_sites.filter((idx) => idx !== site_index)
-          : [...selected_sites, site_index]
-      } else {
-        // Single-select: replace selection (or deselect if already selected)
-        new_sites = is_selected ? [] : [site_index]
-      }
+      // In edit-atoms mode, selected_sites and measured_sites always stay in sync. Shift
+      // multi-selects; a plain click replaces the selection (or deselects a selected site).
+      const new_sites = is_shift
+        ? toggle_site(selected_sites, site_index)
+        : selected_sites.includes(site_index)
+          ? []
+          : [site_index]
       selected_sites = new_sites
       measured_sites = new_sites
       return
@@ -1044,12 +1016,8 @@
       return
     }
 
-    measured_sites = measured_sites.includes(site_index)
-      ? measured_sites.filter((idx) => idx !== site_index)
-      : [...measured_sites, site_index]
-    selected_sites = selected_sites.includes(site_index)
-      ? selected_sites.filter((idx) => idx !== site_index)
-      : [...selected_sites, site_index]
+    measured_sites = toggle_site(measured_sites, site_index)
+    selected_sites = toggle_site(selected_sites, site_index)
   }
 
   $effect(() => {
@@ -1513,8 +1481,11 @@
 
   // Only the edit-bonds handlers read these, so outside that mode skip the per-bond
   // canonicalisation pass a trajectory would otherwise pay on every frame
+  let editing_bonds = $derived(
+    interactive && bond_edits_enabled && measure_mode === `edit-bonds`,
+  )
   let editable_perceived_bond_pairs = $derived(
-    interactive && bond_edits_enabled && measure_mode === `edit-bonds`
+    editing_bonds
       ? bond_records(perceived_bond_pairs).map((bond) => ({
           ...bond,
           ...canonical_bond_target(bond),
@@ -1621,9 +1592,7 @@
   })
 
   let editable_bond_pairs = $derived(
-    interactive && bond_edits_enabled && measure_mode === `edit-bonds`
-      ? bond_records(bonds_to_render).filter(can_edit_bond)
-      : [],
+    editing_bonds ? bond_records(bonds_to_render).filter(can_edit_bond) : [],
   )
 
   // Coordination polyhedra around cation-like centers, derived from the same
@@ -1632,32 +1601,27 @@
   // never recompute the hull geometry.
   let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
-    if (defer_expensive_geometry) {
-      return cutaway_centers
-        ? last_polyhedra.filter((poly) => cutaway_centers.has(poly.center_site_idx))
-        : last_polyhedra
-    }
-    if (
-      !structure ||
-      dragging_atoms ||
-      !applies_to_structure(effective_show_polyhedra, Boolean(lattice)) ||
-      filtered_bond_pairs.length === 0
-    ) {
-      last_polyhedra = []
-      return last_polyhedra
-    }
-    last_polyhedra = compute_polyhedra(structure, filtered_bond_pairs, {
-      neighbor_mode: polyhedra_neighbor_mode,
-      min_neighbors: polyhedra_min_neighbors,
-      // The two sliders have overlapping ranges (min goes to 12, max down to 4), so they can
-      // be dragged past each other. Widening the cap instead of honoring an empty window
-      // keeps polyhedra on screen rather than silently rendering none.
-      max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
-      excluded_center_elements: polyhedra_excluded_elements,
-      included_center_elements: polyhedra_included_elements,
-    })
-    return cutaway_centers
-      ? last_polyhedra.filter((poly) => cutaway_centers.has(poly.center_site_idx))
+    // Deferred geometry keeps the last hulls
+    if (!defer_expensive_geometry)
+      last_polyhedra =
+        structure &&
+        !dragging_atoms &&
+        applies_to_structure(effective_show_polyhedra, Boolean(lattice)) &&
+        filtered_bond_pairs.length > 0
+          ? compute_polyhedra(structure, filtered_bond_pairs, {
+              neighbor_mode: polyhedra_neighbor_mode,
+              min_neighbors: polyhedra_min_neighbors,
+              // The two sliders have overlapping ranges (min goes to 12, max down to 4), so
+              // they can be dragged past each other. Widening the cap instead of honoring an
+              // empty window keeps polyhedra on screen rather than silently rendering none.
+              max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
+              excluded_center_elements: polyhedra_excluded_elements,
+              included_center_elements: polyhedra_included_elements,
+            })
+          : []
+    const centers = last_polyhedra.length > 0 ? cutaway_centers : undefined
+    return centers
+      ? last_polyhedra.filter((poly) => centers.has(poly.center_site_idx))
       : last_polyhedra
   })
 
@@ -1767,16 +1731,12 @@
     // Resolve once per site, not once per bond endpoint. Bond writes these values directly
     // into its persistent instance-color buffers without allocating per-cylinder objects.
     const [element_colors, fallback_color] = [palette, bond_color]
+    const color_of = (element: ElementSymbol | null | undefined) =>
+      (element && element_colors[element]) || fallback_color
     const columns = numeric_sites.get(structure)
     const resolved_colors = columns
-      ? Array.from(columns.numbers, (number) => {
-          const element = element_from_atomic_number(number)
-          return (element && element_colors?.[element]) || fallback_color
-        })
-      : structure.sites.map((site) => {
-          const element = get_majority_element(site)
-          return (element && element_colors?.[element]) || fallback_color
-        })
+      ? Array.from(columns.numbers, (number) => color_of(element_from_atomic_number(number)))
+      : structure.sites.map((site) => color_of(get_majority_element(site)))
     previous_bond_colors = topology
       ? { topology, appearance, colors: resolved_colors }
       : undefined
@@ -1803,10 +1763,7 @@
   $effect(() => () => partial_atoms.dispose())
 
   let editable_atom_hit_targets = $derived(
-    interactive &&
-      measure_mode === `edit-bonds` &&
-      bond_edit_mode === `add` &&
-      bond_edits_enabled
+    editing_bonds && bond_edit_mode === `add`
       ? [...atom_groups.first_by_site.values()]
           .filter((atom) => can_select_bond_site(atom.site_idx))
           .map(site_anchor)
@@ -2163,85 +2120,79 @@
       {/if}
 
       <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
-      {#if interactive && measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
-        {#each editable_bond_pairs as bond (`bond-hit-${bond_edit_mode}-${rendered_bond_key_for(bond)}`)}
-          {@const bond_key = rendered_bond_key_for(bond)}
-          {@const is_hovered = hovered_bond_key === bond_key}
-          {@const is_delete_mode = bond_edit_mode === `delete`}
-          {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
-          {@const bond_hover_radius = bond_thickness * 1.1}
+      {#each editable_bond_pairs as bond (`bond-hit-${bond_edit_mode}-${rendered_bond_key_for(bond)}`)}
+        {@const bond_key = rendered_bond_key_for(bond)}
+        {@const is_hovered = hovered_bond_key === bond_key}
+        {@const is_delete_mode = bond_edit_mode === `delete`}
+        {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
+        {@const bond_hover_radius = bond_thickness * 1.1}
+        <T.Mesh
+          geometry={bond_hit_geometry}
+          material={hit_material}
+          visible={false}
+          matrixAutoUpdate={false}
+          oncreate={(ref) => {
+            apply_bond_transform(ref, bond, bond_hit_radius)
+            enable_cutaway_picking(ref, (raycaster, hits) =>
+              raycast_bond(ref, bond, bond_thickness, raycaster, hits),
+            )
+          }}
+          onpointerdown={(event: BondPointerEvent) => {
+            if (event.nativeEvent?.button === 2) return
+            event.stopPropagation()
+            if (is_delete_mode) {
+              remove_bond(bond)
+              measured_sites = []
+              selected_sites = []
+              hovered_bond_key = null
+            } else {
+              const endpoint_site_idx = get_bond_endpoint_hit_site_idx(bond, event)
+              if (endpoint_site_idx != null) select_edit_bonds_site(endpoint_site_idx, event)
+            }
+          }}
+          oncontextmenu={(event: BondContextMenuEvent) => {
+            event.nativeEvent?.preventDefault()
+            event.stopPropagation?.()
+            open_bond_context_menu(bond, event)
+          }}
+          onpointerenter={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
+          onpointermove={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
+          onpointerleave={() => (hovered_bond_key = null)}
+        />
+        {#if is_hovered}
           <T.Mesh
             geometry={bond_hit_geometry}
-            material={hit_material}
-            visible={false}
             matrixAutoUpdate={false}
             oncreate={(ref) => {
-              apply_bond_transform(ref, bond, bond_hit_radius)
-              enable_cutaway_picking(ref, (raycaster, hits) =>
-                raycast_bond(ref, bond, bond_thickness, raycaster, hits),
-              )
+              apply_bond_transform(ref, bond, bond_hover_radius)
+              disable_raycast(ref)
             }}
-            onpointerdown={(event: BondPointerEvent) => {
-              if (event.nativeEvent?.button === 2) return
-              event.stopPropagation()
-              if (is_delete_mode) {
-                remove_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-                measured_sites = []
-                selected_sites = []
-                hovered_bond_key = null
-              } else {
-                const endpoint_site_idx = get_bond_endpoint_hit_site_idx(bond, event)
-                if (endpoint_site_idx != null) {
-                  select_edit_bonds_site(endpoint_site_idx, event)
-                }
-              }
-            }}
-            oncontextmenu={(event: BondContextMenuEvent) => {
-              event.nativeEvent?.preventDefault()
-              event.stopPropagation?.()
-              open_bond_context_menu(bond, event)
-            }}
-            onpointerenter={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
-            onpointermove={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
-            onpointerleave={() => (hovered_bond_key = null)}
-          />
-          {#if is_hovered}
-            <T.Mesh
-              geometry={bond_hit_geometry}
-              matrixAutoUpdate={false}
-              oncreate={(ref) => {
-                apply_bond_transform(ref, bond, bond_hover_radius)
-                disable_raycast(ref)
-              }}
-            >
-              <T.MeshBasicMaterial
-                transparent
-                opacity={0.25}
-                color={is_delete_mode ? `#ff4444` : `#6cf0ff`}
-                depthWrite={false}
-              />
-            </T.Mesh>
-          {/if}
-        {/each}
-      {/if}
+          >
+            <T.MeshBasicMaterial
+              transparent
+              opacity={0.25}
+              color={is_delete_mode ? `#ff4444` : `#6cf0ff`}
+              depthWrite={false}
+            />
+          </T.Mesh>
+        {/if}
+      {/each}
 
-      {#if interactive && editable_atom_hit_targets.length > 0}
-        {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
-          <T.Mesh
-            geometry={atom_hit_geometry}
-            oncreate={(ref) =>
-              enable_atom_sphere_picking(ref, 1 / EDITABLE_ATOM_HIT_RADIUS_SCALE)}
-            material={hit_material}
-            visible={false}
-            position={atom_hit.position}
-            scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
-            {...atom_hover_props(atom_hit.site_idx)}
-            onpointerdown={(event: PointerEvent) => {
-              select_edit_bonds_site(atom_hit.site_idx, event)
-            }}
-          />
-        {/each}
-      {/if}
+      {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
+        <T.Mesh
+          geometry={atom_hit_geometry}
+          oncreate={(ref) =>
+            enable_atom_sphere_picking(ref, 1 / EDITABLE_ATOM_HIT_RADIUS_SCALE)}
+          material={hit_material}
+          visible={false}
+          position={atom_hit.position}
+          scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
+          {...atom_hover_props(atom_hit.site_idx)}
+          onpointerdown={(event: PointerEvent) => {
+            select_edit_bonds_site(atom_hit.site_idx, event)
+          }}
+        />
+      {/each}
 
       {#if interactive && measure_mode === `edit-bonds` && bond_context_menu}
         {@const current_order = get_current_bond_order(
@@ -2260,7 +2211,11 @@
                 {label}
               </button>
             {/each}
-            <button type="button" class="remove" {...menu_action_props(remove_context_bond)}>
+            <button
+              type="button"
+              class="remove"
+              {...menu_action_props(() => remove_bond(context_bond()))}
+            >
               Remove
             </button>
             <button type="button" {...menu_action_props(close_bond_context_menu)}>
@@ -2294,7 +2249,7 @@
       {/each}
 
       <!-- selection order labels (1, 2, 3, ...) for measurements and bond editing -->
-      {#if structure && (measured_sites?.length ?? 0) > 0 && (measure_mode === `distance` || measure_mode === `angle` || measure_mode === `dihedral` || measure_mode === `edit-bonds`)}
+      {#if structure && measured_sites.length > 0 && measure_mode !== `edit-atoms`}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -2374,10 +2329,9 @@
           .map((idx) => structure?.sites?.[idx])
           .filter((site): site is Site => site != null)}
         {#if selected_atoms.length > 0}
-          {@const avg = (dim: number) =>
-            selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /
-            selected_atoms.length}
-          {@const centroid = [avg(0), avg(1), avg(2)] as Vec3}
+          {@const centroid = math
+            .add(...selected_atoms.map(({ xyz }) => xyz))
+            .map((sum) => sum / selected_atoms.length) as Vec3}
           <!-- Invisible mesh at centroid for TransformControls to manipulate.
                During drag, use frozen_centroid so Svelte doesn't override TransformControls
                with the wrapped centroid (which jumps on PBC boundary crossings). -->
@@ -2392,20 +2346,12 @@
             space="world"
             onobjectChange={() => {
               if (!transform_object?.position || !drag_start_centroid) return
-              const {
-                x: translate_x,
-                y: translate_y,
-                z: translate_z,
-              } = transform_object.position
-              const delta: Vec3 = [
-                translate_x - drag_start_centroid[0],
-                translate_y - drag_start_centroid[1],
-                translate_z - drag_start_centroid[2],
-              ]
+              const position = transform_object.position.toArray()
+              const delta = math.subtract(position, drag_start_centroid)
               // Update reference point so deltas are incremental, not cumulative.
               // Without this, each frame compounds: sites already moved by previous
               // delta get the full cumulative delta re-applied.
-              drag_start_centroid = [translate_x, translate_y, translate_z]
+              drag_start_centroid = position
               on_sites_moved?.(selected_sites, delta)
             }}
             onmouseDown={() => {
@@ -2430,14 +2376,10 @@
         <T.Mesh
           position={rotation_target}
           onBeforeRender={(mesh: Mesh) => {
-            if (camera) {
-              mesh.lookAt(camera.position)
-            }
+            if (camera) mesh.lookAt(camera.position)
           }}
-          onclick={(event: { point: { x: number; y: number; z: number } }) => {
-            const { x: coord_x, y: coord_y, z: coord_z } = event.point
-            on_add_atom?.([coord_x, coord_y, coord_z] as Vec3, add_element as ElementSymbol)
-          }}
+          onclick={(event: { point: Vector3 }) =>
+            on_add_atom?.(event.point.toArray(), add_element)}
         >
           <T.PlaneGeometry
             args={[Math.max(200, structure_size * 4), Math.max(200, structure_size * 4)]}
@@ -2456,7 +2398,7 @@
       {/if}
 
       <!-- Measurement overlays for measured sites -->
-      {#if structure && (measured_sites?.length ?? 0) > 0}
+      {#if structure && measured_sites.length > 0}
         {#if measure_mode === `distance`}
           {#each measured_sites as idx_i, loop_idx (idx_i)}
             {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}

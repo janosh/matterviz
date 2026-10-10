@@ -377,19 +377,18 @@ describe(`extract_volume_range`, () => {
   })
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {
-    const extracted = extract_volume_range(periodic_vol(), [
+    const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }
+    const extracted = extract_volume_range(vol, [
       [-0.15, 2.15],
       [0, 1],
       [0, 1],
     ])
     expect(extracted.dims[0]).toBe(24) // round(2.3 * 10) + 1
-    // First/last planes wrap: fx=-0.15→0.85, fx=2.15→0.15
-    // First plane sits at fx = -0.15 → wraps to 0.85 → interpolated value 0.85
+    // First plane sits at fx = -0.15 → wraps to 0.85, last at fx = 2.15 → wraps to 0.15
     expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0.85, 10)
-    // Last plane sits at fx = 2.15 → wraps to 0.15
     expect(grid_value(extracted, 23, 0, 0)).toBeCloseTo(0.15, 10)
-    // Origin shifts by range_min·lattice; lattice row spans the width
-    expect(extracted.origin[0]).toBeCloseTo(-1.5)
+    // Origin shifts by range_min·lattice on top of the source origin; lattice row spans the width
+    expect(extracted.origin).toEqual([expect.closeTo(3 - 1.5, 12), -2, 5])
     expect(extracted.lattice[0][0]).toBeCloseTo(23)
     // data_range recomputed over the extracted block
     expect(extracted.data_range.min).toBeGreaterThanOrEqual(0)
@@ -411,18 +410,6 @@ describe(`extract_volume_range`, () => {
     expect(Math.min(size_x, size_y, size_z)).toBeGreaterThanOrEqual(2)
     // Lattice still spans the full requested range despite reduced resolution
     expect(extracted.lattice[0][0]).toBeCloseTo(50)
-  })
-
-  test(`non-zero origin shifts by range_min·lattice on top of the source origin`, () => {
-    const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }
-    const extracted = extract_volume_range(vol, [
-      [-0.5, 1.5],
-      [0, 1],
-      [0, 1],
-    ])
-    // Values still wrap correctly: first plane at fx = -0.5 → grid value 0.5
-    expect(extracted.origin).toEqual([3 - 5, -2, 5]) // -0.5 * 10 along x
-    expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0.5, 10) // fx=-0.5 → 0.5
   })
 
   test(`non-periodic volumes are cropped, never repeated`, () => {

@@ -3,20 +3,15 @@ import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { make_phase } from '../test-fixtures'
 
-// Entry with tabulated free energies; total energy = energy_per_atom * atom count
+// Entry with tabulated free energies
 const temp_phase = (
   composition: Record<string, number>,
   energy_per_atom: number,
   temperatures: number[],
   free_energies: number[],
-): PhaseData => ({
-  composition,
-  energy: energy_per_atom * Object.values(composition).reduce((sum, amt) => sum + amt, 0),
-  energy_per_atom,
-  temperatures,
-  free_energies,
-})
+): PhaseData => make_phase(composition, energy_per_atom, { temperatures, free_energies })
 
 const binary_temp_entries = [
   temp_phase({ Li: 1 }, -1, [300, 900], [-1.2, -0.8]),

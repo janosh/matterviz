@@ -14,7 +14,6 @@
     VolumetricFileData,
   } from '#lib/isosurface/types.js'
   import {
-    auto_volume_layer,
     DEFAULT_ISOSURFACE_SETTINGS,
     format_data_value,
     label_file_volumes,
@@ -84,26 +83,44 @@
     layers: (volumes: VolumetricData[]) => IsosurfaceLayer[]
   }
 
-  // Convenience: surface of volume `volume_idx` colored by volume `color_idx`.
-  // The colormap is auto-picked from the color volume's data; color_range stays
-  // unset so the renderer fits it to the values sampled on the surface.
-  const colored_layer = (
-    volumes: VolumetricData[],
-    volume_idx: number,
-    color_idx: number,
+  // Surface of `volume` at a fraction of its |max| with neutral defaults
+  const surface_layer = (
+    volume: VolumetricData,
     overrides: Partial<IsosurfaceLayer> = {},
   ): IsosurfaceLayer => ({
-    isovalue: volumes[volume_idx].data_range.abs_max * 0.2,
+    isovalue: volume.data_range.abs_max * 0.2,
     color: `#9ca3af`,
     opacity: 0.85,
     visible: true,
     show_negative: false,
     negative_color: `#ef4444`,
-    volume_id: volumes[volume_idx].id,
-    color_volume_id: volumes[color_idx].id,
-    colormap: auto_color_config(volumes[color_idx].data_range).colormap,
+    volume_id: volume.id,
     ...overrides,
   })
+
+  // Surface of the first volume at `iso_frac` of its |max|, colored by the second volume.
+  // The colormap is auto-picked from the color volume's data; color_range stays
+  // unset so the renderer fits it to the values sampled on the surface.
+  const colored_layer = (
+    [volume, color_volume]: VolumetricData[],
+    iso_frac: number,
+    overrides: Partial<IsosurfaceLayer> = {},
+  ): IsosurfaceLayer =>
+    surface_layer(volume, {
+      isovalue: volume.data_range.abs_max * iso_frac,
+      color_volume_id: color_volume.id,
+      colormap: auto_color_config(color_volume.data_range).colormap,
+      ...overrides,
+    })
+
+  const orbital_layer = (volume: VolumetricData, color: string, negative_color: string) =>
+    surface_layer(volume, {
+      isovalue: 0.02,
+      color,
+      opacity: 0.75,
+      show_negative: true,
+      negative_color,
+    })
 
   const scenarios: Scenario[] = [
     {
@@ -111,37 +128,16 @@
       title: `Density × ESP (glycine)`,
       description: `Glycine electron-density surface colored by ESP: red = nucleophilic (carboxyl O), blue = electrophilic (amine/hydroxyl H). The ESP cube renders no surface of its own; it is purely a color source.`,
       files: [`glycine-density.cube.gz`, `glycine-esp.cube.gz`],
-      layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.12,
-          opacity: 0.85,
-        }),
-      ],
+      layers: (volumes) => [colored_layer(volumes, 0.12)],
     },
     {
       id: `caffeine-homo-lumo`,
       title: `HOMO + LUMO together (caffeine)`,
       description: `Two real Psi4 orbital cubes at once: HOMO in blue/red, LUMO in green/purple, each with ± lobes, giving four transparent surfaces from independent volumes in one scene.`,
       files: [`caffeine-HOMO.cube.gz`, `caffeine-LUMO.cube.gz`],
-      layers: (volumes) => [
-        {
-          isovalue: 0.02,
-          color: `#3b82f6`,
-          opacity: 0.75,
-          visible: true,
-          show_negative: true,
-          negative_color: `#ef4444`,
-          volume_id: volumes[0].id,
-        },
-        {
-          isovalue: 0.02,
-          color: `#22c55e`,
-          opacity: 0.75,
-          visible: true,
-          show_negative: true,
-          negative_color: `#a855f7`,
-          volume_id: volumes[1].id,
-        },
+      layers: ([homo, lumo]) => [
+        orbital_layer(homo, `#3b82f6`, `#ef4444`),
+        orbital_layer(lumo, `#22c55e`, `#a855f7`),
       ],
     },
     {
@@ -150,12 +146,7 @@
       description: `Spin-polarized CHGCAR (two volumes in one file): the charge surface is colored by magnetization density, in a 2×2×2 supercell with colors continuous across cell boundaries.`,
       files: [`Fe-spin-CHGCAR.gz`],
       supercell: `2x2x2`,
-      layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.18,
-          opacity: 1,
-        }),
-      ],
+      layers: (volumes) => [colored_layer(volumes, 0.18, { opacity: 1 })],
     },
     {
       id: `si-potential`,
@@ -163,11 +154,7 @@
       description: `Si diamond CHGCAR colored by a matching LOCPOT on two 80×80×96 grids (~614k points each). Drag isovalue vs colormap-range to compare mesh rebuild vs recolor cost.`,
       files: [`large-grid-CHGCAR.gz`, `large-grid-LOCPOT.gz`],
       layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.25,
-          opacity: 0.9,
-          colormap: `interpolateTurbo`,
-        }),
+        colored_layer(volumes, 0.25, { opacity: 0.9, colormap: `interpolateTurbo` }),
       ],
     },
     {
@@ -177,19 +164,12 @@
       files: [`hBN-CHGCAR.gz`, `hBN-ELFCAR.gz`],
       supercell: `3x3x1`,
       layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.12,
-          opacity: 0.65,
-        }),
-        {
+        colored_layer(volumes, 0.12, { opacity: 0.65 }),
+        surface_layer(volumes[0], {
           isovalue: volumes[0].data_range.abs_max * 0.45,
           color: `#f97316`,
           opacity: 1,
-          visible: true,
-          show_negative: false,
-          negative_color: `#ef4444`,
-          volume_id: volumes[0].id,
-        },
+        }),
       ],
     },
     {
@@ -203,12 +183,7 @@
         [-0.15, 2.15],
         [0, 1],
       ],
-      layers: (volumes) => [
-        colored_layer(volumes, 0, 1, {
-          isovalue: volumes[0].data_range.abs_max * 0.12,
-          opacity: 0.85,
-        }),
-      ],
+      layers: (volumes) => [colored_layer(volumes, 0.12)],
     },
   ]
 

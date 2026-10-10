@@ -2,11 +2,13 @@ import type { Vec3 } from '#lib/math.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
+  drag_canvas,
   expect_canvas_changed,
   expect_canvas_changed_by,
   expect_gizmo_click_flies_camera,
   get_canvas_timeout,
   IS_CI,
+  require_bbox,
   wait_for_3d_canvas,
   wait_for_canvas_rendered,
 } from '../helpers'
@@ -78,9 +80,8 @@ test(`touch controls keep every axis row visible`, async ({ browser }) => {
     const pane = await open_controls_pane(page)
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 })
-      const pane_bounds = await pane.boundingBox()
-      const last_field = await pane.getByLabel(`Z max`, { exact: true }).boundingBox()
-      if (!pane_bounds || !last_field) throw new Error(`Missing touch controls at ${width}px`)
+      const pane_bounds = await require_bbox(pane)
+      const last_field = await require_bbox(pane.getByLabel(`Z max`, { exact: true }))
       expect(last_field.y + last_field.height).toBeLessThanOrEqual(
         pane_bounds.y + pane_bounds.height,
       )
@@ -171,8 +172,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
       .toBe(true)
     const tooltip = container.locator(`.tooltip`)
     await expect(tooltip).toBeVisible()
-    const tooltip_bounds = await tooltip.boundingBox()
-    if (!tooltip_bounds) throw new Error(`Missing tooltip bounds at camera ${position}`)
+    const tooltip_bounds = await require_bbox(tooltip, `tooltip at camera ${position}`)
     const gap = marker_y - tooltip_bounds.y - tooltip_bounds.height
     expect(gap).toBeGreaterThan(7) // 8px clearance plus the projected halo radius
     expect(gap).toBeLessThan(32) // small test markers must not leave a large detached gap
@@ -242,19 +242,9 @@ test.describe(`ScatterPlot3D`, () => {
   test(`drag to rotate changes view`, async ({ page }) => {
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
-    const initial = await canvas.screenshot()
-
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas bounding box not found`)
-
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 50, {
-      steps: 10,
-    })
-    await page.mouse.up()
-
-    await expect_canvas_changed(canvas, initial, get_canvas_timeout())
+    await expect_canvas_changed_by(canvas, () =>
+      drag_canvas(canvas, { dx: 100, dy: 50, steps: 10 }),
+    )
   })
 
   test(`scroll wheel zoom changes view`, async ({ page }) => {
@@ -266,8 +256,7 @@ test.describe(`ScatterPlot3D`, () => {
     await expect(controls_pane).toBeHidden()
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
-    const initial_box = await canvas.boundingBox()
-    if (!initial_box) throw new Error(`Canvas bounding box not found`)
+    const initial_box = await require_bbox(canvas)
 
     await page.mouse.move(
       initial_box.x + initial_box.width / 2,
@@ -286,8 +275,7 @@ test.describe(`ScatterPlot3D`, () => {
     await expect
       .poll(async () => (await canvas.boundingBox())?.width)
       .toBeLessThan(initial_box.width)
-    const resized_box = await canvas.boundingBox()
-    if (!resized_box) throw new Error(`Resized canvas bounding box not found`)
+    const resized_box = await require_bbox(canvas)
     // The page fixes height at 500px, so 320px makes width the shorter edge. Asserted rather
     // than assumed: the fit zoom follows min(width, height), so a resize that left the height
     // shorter would not move it and the ratio below would hold vacuously.
@@ -362,8 +350,7 @@ test.describe(`ScatterPlot3D`, () => {
     for (const width of [320, 390, 900]) {
       await page.setViewportSize({ width, height: 844 })
       await axis_label.scrollIntoViewIfNeeded()
-      const pane_bounds = await pane.boundingBox()
-      if (!pane_bounds) throw new Error(`Missing controls pane at viewport width ${width}`)
+      const pane_bounds = await require_bbox(pane, `controls pane at ${width}px`)
       const covered_labels = await page.locator(CONTAINER_SELECTOR).evaluate((container) => {
         const pane_element = container.querySelector(`.draggable-pane`)
         if (!pane_element) throw new Error(`Missing open controls pane`)
@@ -387,14 +374,11 @@ test.describe(`ScatterPlot3D`, () => {
       expect(covered_labels.length).toBeGreaterThan(0)
       expect(covered_labels.every(Boolean)).toBe(true)
       for (const name of [`X`, `Y`, `Z`]) {
-        const fields = await Promise.all(
+        const [label, minimum, maximum] = await Promise.all(
           [`label`, `min`, `max`].map((field) =>
-            pane.getByLabel(`${name} ${field}`, { exact: true }).boundingBox(),
+            require_bbox(pane.getByLabel(`${name} ${field}`, { exact: true })),
           ),
         )
-        const [label, minimum, maximum] = fields
-        if (!label || !minimum || !maximum)
-          throw new Error(`Missing ${name} fields at viewport width ${width}`)
         expect(minimum.y).toBe(label.y)
         expect(maximum.y).toBe(label.y)
         expect(minimum.x).toBeGreaterThanOrEqual(label.x + label.width)
@@ -525,9 +509,7 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await page.keyboard.press(`Escape`)
     await expect(pane).toBeHidden()
 
-    const box = await canvas.boundingBox()
-    if (!box) throw new Error(`Canvas bounding box not found`)
-
+    const box = await require_bbox(canvas)
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     const initial = await canvas_screenshot(canvas)
     await page.mouse.down()

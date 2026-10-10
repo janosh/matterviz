@@ -47,11 +47,6 @@ describe(`is_on_hull`, () => {
       false,
       `excluded overrides zero e_above_hull`,
     ],
-    [
-      { exclude_from_hull: true, is_stable: true, e_above_hull: 0 },
-      false,
-      `excluded with both`,
-    ],
     [{ exclude_from_hull: false, is_stable: true }, true, `not excluded, stable`],
     [{ e_above_hull: 0.05 }, true, `custom tolerance 0.1 overrides default`, 0.1],
   ] as [Partial<PhaseData>, boolean, string, number?][])(
@@ -79,9 +74,10 @@ describe(`compute_hull_stability`, () => {
   ] as [string, number, boolean, number, boolean, number?][])(
     `%s`,
     (_label, raw, excluded, expected_e, expected_stable, tol) => {
-      const result = compute_hull_stability(raw, excluded, tol)
-      expect(result.e_above_hull).toBe(expected_e)
-      expect(result.is_stable).toBe(expected_stable)
+      expect(compute_hull_stability(raw, excluded, tol)).toEqual({
+        e_above_hull: expected_e,
+        is_stable: expected_stable,
+      })
     },
   )
 

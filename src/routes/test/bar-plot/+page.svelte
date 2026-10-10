@@ -9,7 +9,6 @@
       label: `Series 1`,
       color: `steelblue`,
       bar_width: 0.6,
-      visible: true,
     },
   ]
 
@@ -20,7 +19,6 @@
       label: `Alpha`,
       color: `#4e79a7`,
       bar_width: 0.6,
-      visible: true,
     },
     {
       x: [1, 2, 3, 4],
@@ -28,7 +26,6 @@
       label: `Beta`,
       color: `#e15759`,
       bar_width: 0.6,
-      visible: true,
     },
   ]
 
@@ -40,7 +37,6 @@
       label: `Sposneg`,
       color: `#8cd17d`,
       bar_width: 0.8,
-      visible: true,
     },
     {
       x: [1, 2, 3],
@@ -48,7 +44,6 @@
       label: `Snegpos`,
       color: `#76b7b2`,
       bar_width: 0.8,
-      visible: true,
     },
   ]
 
@@ -59,7 +54,6 @@
       label: `VarWidth`,
       color: `#ff9da7`,
       bar_width: [0.3, 0.6, 1.0, 0.4],
-      visible: true,
     },
   ]
 
@@ -70,14 +64,12 @@
       label: `With Handlers`,
       color: `#9467bd`,
       bar_width: 0.6,
-      visible: true,
     },
   ]
 
   let hover_msg = $state(`Hover over a bar`)
   let click_msg = $state(`Click on a bar`)
 
-  // Y2 axis test series
   const y2_axis_series: BarSeries[] = [
     {
       x: [1, 2, 3, 4],
@@ -85,7 +77,6 @@
       label: `Y1 Series`,
       color: `#4e79a7`,
       bar_width: 0.6,
-      visible: true,
     },
     {
       x: [1, 2, 3, 4],
@@ -93,7 +84,6 @@
       label: `Y2 Series`,
       color: `#e15759`,
       bar_width: 0.6,
-      visible: true,
       y_axis: `y2`,
     },
   ]
@@ -105,7 +95,6 @@
       label: `Small Scale`,
       color: `#59a14f`,
       bar_width: 0.6,
-      visible: true,
     },
     {
       x: [1, 2, 3, 4],
@@ -113,7 +102,6 @@
       label: `Large Scale`,
       color: `#f28e2b`,
       bar_width: 0.6,
-      visible: true,
       y_axis: `y2`,
     },
   ]
@@ -125,7 +113,6 @@
       label: `Y1-A`,
       color: `#edc948`,
       bar_width: 0.8,
-      visible: true,
     },
     {
       x: [1, 2, 3],
@@ -133,7 +120,6 @@
       label: `Y1-B`,
       color: `#b07aa1`,
       bar_width: 0.8,
-      visible: true,
     },
     {
       x: [1, 2, 3],
@@ -141,7 +127,6 @@
       label: `Y2-A`,
       color: `#76b7b2`,
       bar_width: 0.8,
-      visible: true,
       y_axis: `y2`,
     },
     {
@@ -150,7 +135,6 @@
       label: `Y2-B`,
       color: `#ff9da7`,
       bar_width: 0.8,
-      visible: true,
       y_axis: `y2`,
     },
   ]
@@ -162,14 +146,12 @@
       label: `Bar Series`,
       color: `#4e79a7`,
       bar_width: 0.6,
-      visible: true,
     },
     {
       x: [1, 2, 3, 4],
       y: [100, 200, 150, 250],
       label: `Line Series`,
       color: `#e15759`,
-      visible: true,
       y_axis: `y2`,
       render_mode: `line`,
     },
@@ -275,16 +257,12 @@
     series={handlers_series}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
-    on_bar_hover={(data) => {
-      if (data) {
-        hover_msg = `Hovering: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
-      } else {
-        hover_msg = `Hover over a bar`
-      }
-    }}
-    on_bar_click={(data) => {
-      click_msg = `Clicked: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
-    }}
+    on_bar_hover={(data) =>
+      (hover_msg = data
+        ? `Hovering: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
+        : `Hover over a bar`)}
+    on_bar_click={(data) =>
+      (click_msg = `Clicked: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`)}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />
@@ -398,16 +376,11 @@
     series={categorical_single_series}
     x_axis={{ label: `Element` }}
     y_axis={{ label: `Abundance (ppm)` }}
-    on_bar_hover={(data) => {
-      if (data) {
-        cat_hover_msg = `Hovering: ${data.category_label} (y=${data.y})`
-      } else {
-        cat_hover_msg = `Hover over a bar`
-      }
-    }}
-    on_bar_click={(data) => {
-      cat_click_msg = `Clicked: ${data.category_label} (y=${data.y})`
-    }}
+    on_bar_hover={(data) =>
+      (cat_hover_msg = data
+        ? `Hovering: ${data.category_label} (y=${data.y})`
+        : `Hover over a bar`)}
+    on_bar_click={(data) => (cat_click_msg = `Clicked: ${data.category_label} (y=${data.y})`)}
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />

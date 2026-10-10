@@ -16,6 +16,7 @@
   } from '#lib/plot/core/interactions.js'
   import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
+  import { toggle_muted } from '#lib/plot/core/utils/hierarchy-chart.js'
   import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
   import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
   import type { PositionedLink, PositionedNode } from '#lib/plot/sankey/sankey.js'
@@ -141,7 +142,6 @@
     links: data.links,
   })
 
-  // Invalid graphs (cycles, unknown node refs) render an error message in place
   // Long-tail folding runs before layout, so d3-sankey only ever sees the graph the
   // user will actually look at (positions stay stable under the fold)
   let bucketed_data = $derived(bucket_sankey_data(colored_data, { min_fraction, max_links }))
@@ -151,7 +151,8 @@
     bucketed_data.nodes.map((node, idx) => node.color ?? plot_color(idx)),
   )
 
-  // of the diagram instead of crashing the host page
+  // Invalid graphs (cycles, unknown node refs) render an error message in place of the
+  // diagram instead of crashing the host page
   let layout = $derived.by(() => {
     try {
       return {
@@ -358,15 +359,12 @@
       element: legend_element,
       element_size: { width: 120, height: 60 },
       axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
       points: layout.nodes.map(node_center),
     })
   })
 
-  function toggle_node(series_idx: number) {
-    const identifier = node_by_idx.get(series_idx)?.id ?? series_idx
-    if (!muted_nodes.delete(identifier)) muted_nodes.add(identifier)
-  }
+  const toggle_node = (series_idx: number) =>
+    toggle_muted(muted_nodes, node_by_idx.get(series_idx)?.id ?? series_idx)
 
   // Node label placement: horizontal -> beside node; vertical -> above node
   function label_attrs(node: PositionedNode) {

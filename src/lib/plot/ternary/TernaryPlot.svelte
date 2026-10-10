@@ -18,6 +18,7 @@
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
+  import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import {
     closest_data_idx,
     focus_left,
@@ -319,18 +320,13 @@
   // Legend: one entry per series, toggling hides the series
   let legend_element = $state<HTMLDivElement | undefined>()
   let legend_data = $derived(
-    series.map((srs, series_idx) => ({
-      series_idx,
-      label: series_label(series_idx),
-      visible: is_visible(series_idx),
-      display_style: {
-        symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
-        symbol_color: series_color(series_idx),
-        line_color: srs.markers?.includes(`line`)
-          ? (srs.line_style?.color ?? series_color(series_idx))
-          : undefined,
-        line_dash: srs.line_style?.dash,
-      },
+    build_legend_items(series, (srs, series_idx) => ({
+      symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
+      symbol_color: series_color(series_idx),
+      line_color: srs.markers?.includes(`line`)
+        ? (srs.line_style?.color ?? series_color(series_idx))
+        : undefined,
+      line_dash: srs.line_style?.dash,
     })),
   )
   let legend_visible = $derived(resolve_legend_visibility(show_legend, legend, series.length))
@@ -341,7 +337,6 @@
       element: legend_element,
       element_size: { width: 120, height: 60 },
       axis_clearance: legend?.axis_clearance,
-      exclude_rects: [],
       points: visible_points.map(svg_pixel),
     })
   })

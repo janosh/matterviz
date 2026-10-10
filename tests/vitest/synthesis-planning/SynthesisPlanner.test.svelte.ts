@@ -14,6 +14,7 @@ import { bind_props, doc_query, install_stub_worker, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
+type PlanMessage = { id: number; input: SynthesisPlanRequest; options: undefined }
 const mount_planner = (props: Partial<ComponentProps<typeof SynthesisPlanner>> = {}): void => {
   const component = mount(SynthesisPlanner, {
     target: document.body,
@@ -69,11 +70,7 @@ test.each([
 })
 
 test(`preserves experiment choices and shortlist through rescaling and replanning`, async () => {
-  const stub = install_stub_worker<{
-    id: number
-    input: SynthesisPlanRequest
-    options: undefined
-  }>(({ input }) => plan_synthesis(input))
+  const stub = install_stub_worker<PlanMessage>(({ input }) => plan_synthesis(input))
   const state = $state({
     target: `BaTiO3`,
     plan: null as SynthesisPlan | null,
@@ -88,23 +85,33 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     expect(stub.posted).toHaveLength(1)
     expect(document.querySelector(`.detail`)).not.toBeNull()
   })
+  const write_text = vi.fn().mockResolvedValue(undefined)
+  vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  for (const [title, content] of [
+    [`Copy the agent-style text summary`, `BaTiO3`],
+    [`Copy the full plan as JSON`, `"routes"`],
+  ]) {
+    const button = doc_query<HTMLButtonElement>(`.copy button[title="${title}"]`)
+    button.click()
+    await vi.waitFor(() => expect(button.textContent?.trim()).toBe(`Copied`))
+    expect(write_text).toHaveBeenLastCalledWith(expect.stringContaining(content))
+  }
   const temperature = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
   set_input(temperature, `1100`)
   await tick()
   const route_id = state.plan?.routes[0].id
   expect(state.plan?.routes[0].recipe.assumptions.temperature_K).toBe(`1100`)
-  const mass_input = document.querySelector<HTMLInputElement>(`.recipe-card header input`)
-  expect(mass_input).not.toBeNull()
-  if (!mass_input) return
-  set_input(mass_input, `2`)
+  set_input(doc_query<HTMLInputElement>(`.recipe-card header input`), `2`)
   await tick()
 
   expect(stub.posted).toHaveLength(1)
-  expect(document.querySelector(`.detail`)).not.toBeNull()
+  const detail = doc_query(`.detail`)
   expect(document.querySelector(`.recipe-card tr.target td:nth-child(3)`)?.textContent).toBe(
     `2`,
   )
-  const detail = document.querySelector(`.detail`)
   const alternative = plan_synthesis({
     entries,
     target: `BaTiO3`,
@@ -123,9 +130,9 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   expect(document.querySelector(`.detail`)).toBe(detail)
   expect(state.shortlist_ids).toEqual(shortlist)
   expect(state.selected_route_id).toBe(alternative.id)
-  const recipe = state.plan?.routes.find(
-    ({ id: identifier }) => identifier === route_id,
-  )?.recipe
+  const route_recipe = () =>
+    state.plan?.routes.find(({ id: identifier }) => identifier === route_id)?.recipe
+  const recipe = route_recipe()
   expect(recipe?.assumptions.temperature_K).toBe(`1100`)
   expect(recipe?.target_mass_g).toBe(2)
   expect(JSON.stringify(state.plan)).toContain(`"temperature_K":"1100"`)
@@ -139,21 +146,14 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
   state.conditions = { temperature: 0, open_species: [`CO2`, `O2`] }
   await vi.waitFor(() => expect(state.plan?.target.formula).toBe(`BaTiO3`))
   expect(slider.value).toBe(`0`)
-  expect(
-    state.plan?.routes.find(({ id: identifier }) => identifier === route_id)?.recipe
-      .assumptions.temperature_K,
-  ).toBe(`1100`)
+  expect(route_recipe()?.assumptions.temperature_K).toBe(`1100`)
 })
 
 // A temperature drag replans every step: aborting the pending plan each time tore the worker
 // down and rebuilt it per step, so plans waiting behind one now replace each other and only the
 // latest runs once it lands. A new target still aborts outright.
 test(`condition changes queue behind one plan; target changes abort stale work`, async () => {
-  const stub = install_stub_worker<{
-    id: number
-    input: SynthesisPlanRequest
-    options: undefined
-  }>()
+  const stub = install_stub_worker<PlanMessage>()
   const state = $state({
     target: `BaTiO3`,
     plan: null as SynthesisPlan | null,

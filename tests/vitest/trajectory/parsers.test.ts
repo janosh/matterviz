@@ -1116,6 +1116,23 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
       expect(structure.sites[0].abc).toEqual([0.5, 0.5, 0.5])
       expect(metadata).toMatchObject({ box_origin: [-2, -3, -4], coords_unwrapped: unwrapped })
     })
+
+    // Image flags unwrap wrapped/scaled coordinates through the tilted cell vectors, as LAMMPS
+    // writes xu: wrapped [2.75, 2.625, 3] + a − b + 2c = [6.75, -1.875, 15]
+    it.each([
+      [`x y z ix iy iz`, `0.75 -0.375 -1.0 1 -1 2`],
+      [`xs ys zs ix iy iz`, `0.5 0.5 0.5 1 -1 2`],
+    ])(`unwraps general triclinic %s with image flags`, async (columns, values) => {
+      const box = `ITEM: BOX BOUNDS abc origin pp ff pp\n4 0 0 -2\n1 5 0 -3\n0.5 0.25 6 -4`
+      const head = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\n${box}\nITEM: ATOMS id type ${columns}`
+      const { structure, metadata } = (await open(`${head}\n1 1 ${values}`, `img.lammpstrj`))
+        .preview
+      expect(structure.sites[0].xyz).toEqual([6.75, -1.875, 15])
+      expect(metadata?.coords_unwrapped).toBe(true)
+      await expect(
+        open(`${head}\n1 1 ${values.replace(/ 2$/, ` 1.5`)}`, `img.lammpstrj`),
+      ).rejects.toThrow(`non-integer image flags`)
+    })
   })
 
   // Most dumps carry no element column, so unmapped types read as atomic numbers (ASE's

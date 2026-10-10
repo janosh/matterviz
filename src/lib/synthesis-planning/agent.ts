@@ -1,4 +1,3 @@
-import { format_recipe_text } from './recipe'
 // Agent-facing surface: a JSON schema for the request (drop-in tool `input_schema`), a compact
 // text rendering of a plan for the model channel, and a ready-made tool definition. The full
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
@@ -6,7 +5,8 @@ import { format_recipe_text } from './recipe'
 import { GAS_SPECIES } from '#lib/convex-hull/types.js'
 import { format_num, plural } from '#lib/labels.js'
 import { format_mev } from './format-mev'
-import { DEFAULT_SCORE_WEIGHTS } from './scoring'
+import { format_recipe_text } from './recipe'
+import { DEFAULT_SCORE_WEIGHTS, describe_interface } from './scoring'
 import type { SynthesisPlan, SynthesisRoute } from './types'
 
 // JSON Schema (draft 2020-12 compatible subset) for SynthesisPlanRequest minus `entries`, which
@@ -115,7 +115,7 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
 
 export const SYNTHESIS_PLANNER_TOOL = {
   name: `plan_synthesis`,
-  description: `Rank solid-state synthesis routes to a target inorganic phase from simulated convex-hull data (formation energies per atom from DFT, ML potentials or experiment). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature window in which gas-exchanging reactions are downhill (above a lower bound for gas release, below an upper bound for gas uptake), and an experiment card (calculated masses for each step, unreferenced precursor-library notes, editable experimental assumptions and checkpoints). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
+  description: `Rank solid-state synthesis routes to a target inorganic phase from convex-hull data (computed or experimental formation energies per atom). For every precursor set it balances the reaction (with optional gas release/uptake), computes the reaction energy, the competing phases that can form from the same mixture with their driving forces, the inverse hull energy (https://doi.org/10.1038/s44160-024-00502-y), the temperature window in which gas-exchanging reactions are downhill (above a lower bound for gas release, below an upper bound for gas uptake), and an experiment card (calculated masses for each step, unreferenced precursor-library notes, editable experimental assumptions and checkpoints). Returns routes best-first with per-term score breakdowns and plain-language rationale. Needs thermodynamic entries covering the target's chemical system plus any precursor-only elements (C for carbonates, H for hydroxides) and the corresponding open_species.`,
   input_schema: SYNTHESIS_PLAN_REQUEST_SCHEMA,
 } as const
 
@@ -144,14 +144,7 @@ export function format_route_text(route: SynthesisRoute, rank?: number): string 
   )
   const non_target = selectivity.interfaces.filter((iface) => !iface.forms_target)
   if (selectivity.interfaces.length > 1 && non_target.length) {
-    lines.push(
-      `   interfaces: ${non_target
-        .map(
-          (iface) =>
-            `${iface.precursors[0].formula}|${iface.precursors[1].formula} → ${iface.first_product?.phase.formula ?? `nothing`}`,
-        )
-        .join(`; `)}`,
-    )
+    lines.push(`   interfaces: ${non_target.map(describe_interface).join(`; `)}`)
   }
   lines.push(format_recipe_text(route))
   if (practicality.notes.length) {

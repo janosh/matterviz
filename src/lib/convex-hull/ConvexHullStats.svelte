@@ -255,62 +255,42 @@
     if (entry) on_entry_click?.(entry)
   }
 
+  // Every column's header is its id; only the energy columns are colour-scaled
+  const col = (id: string, opts: Partial<Column> = {}): Column => ({
+    id,
+    label: id,
+    color_scale: null,
+    ...opts,
+  })
+  const energy_opts = { format: `.4f`, better: `lower` } as const
   const table_columns = $derived<Column[]>([
-    { id: `#`, label: `#`, color_scale: null, format: `d`, description: `Row number` },
-    { id: `Formula`, label: `Formula`, color_scale: null },
-    {
-      id: `E<sub>hull</sub>`,
-      label: `E<sub>hull</sub>`,
-      better: `lower`,
+    col(`#`, { format: `d`, description: `Row number` }),
+    col(`Formula`),
+    col(`E<sub>hull</sub>`, {
+      ...energy_opts,
       color_scale: `interpolateRdYlGn`,
-      format: `.4f`,
       description: `Energy above convex hull (eV/atom)`,
-    },
-    {
-      id: `E<sub>form</sub>`,
-      label: `E<sub>form</sub>`,
-      better: `lower`,
+    }),
+    col(`E<sub>form</sub>`, {
+      ...energy_opts,
       color_scale: `interpolateBlues`,
-      format: `.4f`,
       description: `Formation energy (eV/atom)`,
-    },
+    }),
     ...(has_raw
       ? [
-          {
-            id: `E<sub>raw</sub>`,
-            label: `E<sub>raw</sub>`,
-            color_scale: `interpolateCool` as const,
+          col(`E<sub>raw</sub>`, {
             format: `.4f`,
+            color_scale: `interpolateCool`,
             description: `Raw energy per atom (eV/atom)`,
-          },
+          }),
         ]
       : []),
-    ...(has_ids
-      ? [{ id: `ID`, label: `ID`, color_scale: null, description: `Entry identifier` }]
-      : []),
+    ...(has_ids ? [col(`ID`, { description: `Entry identifier` })] : []),
     ...(has_polymorphs
-      ? [
-          {
-            id: `Poly`,
-            label: `Poly`,
-            color_scale: null,
-            description: `Number of polymorphs (same reduced formula)`,
-          },
-        ]
+      ? [col(`Poly`, { description: `Number of polymorphs (same reduced formula)` })]
       : []),
-    {
-      id: `N<sub>el</sub>`,
-      label: `N<sub>el</sub>`,
-      color_scale: null,
-      description: `Number of elements`,
-    },
-    {
-      id: `N<sub>at</sub>`,
-      label: `N<sub>at</sub>`,
-      color_scale: null,
-      format: `d`,
-      description: `Number of atoms in unit cell`,
-    },
+    col(`N<sub>el</sub>`, { description: `Number of elements` }),
+    col(`N<sub>at</sub>`, { format: `d`, description: `Number of atoms in unit cell` }),
   ])
 
   // Filename for HeatmapTable's built-in CSV/JSON export

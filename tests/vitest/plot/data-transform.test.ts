@@ -1,8 +1,5 @@
-import {
-  build_legend_items,
-  extract_series_color,
-  series_symbol_swatch,
-} from '#lib/plot/core/data-transform.js'
+import { build_legend_items, extract_series_color } from '#lib/plot/core/data-transform.js'
+import type { DataSeries } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { describe, expect, test } from 'vitest'
 
@@ -21,7 +18,12 @@ describe(`data-transform utility functions`, () => {
       [`handles undefined stroke color`, { line_style: { stroke: undefined } }, fallback],
       [`handles undefined fill color`, { point_style: { fill: undefined } }, fallback],
     ])(`%s`, (_name, styles, expected) => {
-      expect(extract_series_color({ x: [1, 2, 3], y: [1, 2, 3], ...styles })).toBe(expected)
+      const series: DataSeries = { x: [1, 2, 3], y: [1, 2, 3], ...styles }
+      expect(extract_series_color(series)).toBe(expected)
+    })
+
+    test.each([undefined, null, {}])(`a custom fallback colors %o`, (series) => {
+      expect(extract_series_color(series, `orange`)).toBe(`orange`)
     })
   })
 
@@ -77,7 +79,11 @@ describe(`data-transform utility functions`, () => {
       },
       { name: `handles empty series array`, series: [], expected: [] },
     ])(`$name`, ({ series, expected }) => {
-      expect(build_legend_items(series, series_symbol_swatch)).toEqual(expected)
+      const swatch = (srs: DataSeries) => ({
+        symbol_type: DEFAULTS.scatter.symbol_type,
+        symbol_color: extract_series_color(srs),
+      })
+      expect(build_legend_items(series, swatch)).toEqual(expected)
     })
 
     test(`honors a chart-specific generated label and swatch`, () => {

@@ -7,7 +7,7 @@
 // x - measurement error is rarely confined to one axis.
 
 import type { Vec2 } from '#lib/math.js'
-import type { RunningExtent } from './scales'
+import type { RunningExtent } from '#lib/plot/core/scales.js'
 
 // Scalar (same for every point), per-point array, or asymmetric. Deliberately the same
 // shape `ErrorBand.error` accepts, so moving between a ribbon and bars is a prop rename.

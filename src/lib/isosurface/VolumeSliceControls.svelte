@@ -1,12 +1,8 @@
 <script lang="ts">
   import { track_settings } from '#lib/controls.js'
-  import { ISO_COLORMAPS } from '#lib/isosurface/coloring.js'
-  import type { VolumetricData } from '#lib/isosurface/types.js'
-  import {
-    format_data_value,
-    index_volumes,
-    normalize_active_volume_id,
-  } from '#lib/isosurface/types.js'
+  import { ISO_COLORMAPS } from './coloring'
+  import type { VolumetricData } from './types'
+  import { format_data_value, index_volumes, normalize_active_volume_id } from './types'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
@@ -53,9 +49,8 @@
     resolve_slice_cartesian_point(resolved_settings.cartesian_point, active_volume),
   )
 
-  function update_settings(updates: Partial<VolumeSliceSettings>): void {
-    const next_settings = create_volume_slice_settings({ ...resolved_settings, ...updates })
-    settings = next_settings
+  const update_settings = (updates: Partial<VolumeSliceSettings>): void => {
+    settings = create_volume_slice_settings({ ...resolved_settings, ...updates })
   }
 
   function update_vector(key: CartesianVectorKey, axis_idx: number, value: number): void {
@@ -80,13 +75,10 @@
   }
 
   const cross_section_settings = $derived(
-    track_settings(
-      () => ({
-        ...resolved_settings,
-        active_volume_id,
-      }),
-      { ...create_volume_slice_settings(), active_volume_id: volumes[0]?.id },
-    ),
+    track_settings(() => ({ ...resolved_settings, active_volume_id }), {
+      ...create_volume_slice_settings(),
+      active_volume_id: volumes[0]?.id,
+    }),
   )
 </script>
 
@@ -279,11 +271,9 @@
     gap: 0.35em;
     flex-wrap: wrap;
   }
-  .vector-inputs {
-    input {
-      width: 5.5em;
-      min-width: 0;
-    }
+  .vector-inputs input {
+    width: 5.5em;
+    min-width: 0;
   }
   .range-inputs input {
     width: 6.5em;

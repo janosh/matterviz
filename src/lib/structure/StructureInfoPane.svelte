@@ -189,15 +189,7 @@
     }
     const cards: InfoPaneCard[] = [{ title: `Structure`, rows: structure_rows }]
     if (!(`lattice` in structure)) return cards
-    const {
-      a: lattice_a,
-      b: lattice_b,
-      c: lattice_c,
-      alpha,
-      beta,
-      gamma,
-      volume,
-    } = structure.lattice
+    const { a, b, c, alpha, beta, gamma, volume } = structure.lattice
     cards.push({
       title: `Cell`,
       rows: [
@@ -208,12 +200,14 @@
         },
         {
           label: `a, b, c`,
-          value: `${format_num(lattice_a, `.3~f`)}, ${format_num(lattice_b, `.3~f`)}, ${format_num(lattice_c, `.3~f`)} Å`,
+          value: `${[a, b, c].map((length) => format_num(length, `.3~f`)).join(`, `)} Å`,
           key: `cell-abc`,
         },
         {
           label: `α, β, γ`,
-          value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${format_num(gamma, `.2~f`)}°`,
+          value: [alpha, beta, gamma]
+            .map((angle) => `${format_num(angle, `.2~f`)}°`)
+            .join(`, `),
           key: `cell-angles`,
         },
       ],
@@ -272,6 +266,7 @@
   })
   let analysis_open = $state(false)
   const rdf_structure = $derived(has_usable_lattice(structure) ? structure : undefined)
+  // A boolean, so a new periodic structure keeps the user's plot choice
   const rdf_available = $derived(Boolean(rdf_structure))
   let analysis_kind = $derived<`rdf` | `coordination` | `angles`>(
     rdf_available ? `rdf` : `coordination`,

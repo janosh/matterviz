@@ -13,9 +13,12 @@ import {
   get_effective_pressures,
   P_REF,
 } from '#lib/convex-hull/gas-thermodynamics.js'
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
+import { compute_hull_model } from '#lib/convex-hull/model.js'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.js'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
@@ -143,17 +146,6 @@ describe(`gas-thermodynamics: get_effective_pressures`, () => {
       N2: 0.1,
     })
   })
-
-  test.each([
-    [`negative`, -1],
-    [`zero`, 0],
-    [`NaN`, NaN],
-    [`Infinity`, Infinity],
-    [`-Infinity`, -Infinity],
-  ])(`ignores %s pressure values`, (_, invalid_value) => {
-    const pressures = get_effective_pressures({ pressures: { O2: invalid_value } })
-    expect(pressures.O2).toBe(DEFAULT_GAS_PRESSURES.O2)
-  })
 })
 
 describe(`gas-thermodynamics: apply_gas_corrections`, () => {
@@ -242,6 +234,41 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
   })
 })
 
+// A tabulated O2 G(T) already holds -T*S, so the atmosphere only adds k_B T ln(p/p0); the full
+// mu(T, p) - mu(0 K, 1 bar) shift counted the entropy twice: O at -7.4939 instead of -6.2316
+// eV/atom and Li2O dG_f -1.1020 instead of -1.5228 = (1/3) * 1.2623 too high
+test(`a tabulated O2 reference only gets the pressure term, matching the ternary model`, () => {
+  const temperature = 1000
+  const g_o2 = -4.9 - 1.2623 // G(1000 K) per atom: 0 K energy - T*S
+  const tabulated = (composition: Record<string, number>, g_per_atom: number) =>
+    make_phase(composition, -1, {
+      entry_id: Object.keys(composition).join(``),
+      temperatures: [300, temperature],
+      free_energies: [-1, g_per_atom],
+    })
+  const entries = [
+    tabulated({ Li: 1 }, -2.1),
+    tabulated({ O: 2 }, g_o2),
+    tabulated({ Li: 2, O: 1 }, -5),
+  ]
+  const gas_config: GasThermodynamicsConfig = {
+    enabled_gases: [`O2`],
+    pressures: { O2: 0.2 },
+  }
+  const at_temperature = filter_entries_at_temperature(entries, temperature)
+  const corrected = apply_gas_corrections(at_temperature, gas_config, temperature)
+  const o_ref = g_o2 + gas_pressure_term(`O2`, temperature, 0.2)
+  expect(o_ref).toBeCloseTo(-6.2316, 4)
+  expect(corrected[1].energy_per_atom).toBeCloseTo(o_ref, 12)
+  const expected_dg = -5 - (2 / 3) * -2.1 - (1 / 3) * o_ref
+  expect(expected_dg).toBeCloseTo(-1.5228, 4)
+  const hull = compute_hull_model(corrected, { energy_source_mode: `on-the-fly` })
+  const li2o = hull.entries.find((entry) => entry.entry_id === `LiO`)
+  expect(li2o?.e_form_per_atom).toBeCloseTo(expected_dg, 12)
+  const ternary = build_free_energy_model(entries, [`Li`, `O`], { gas_config })
+  expect(ternary.phases[2].dg_form(temperature)).toBeCloseTo(expected_dg, 12)
+})
+
 describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
   const provider = get_default_gas_provider()
   const setup = (config: GasThermodynamicsConfig, temperature: number) => {
@@ -321,9 +348,14 @@ describe(`gas-thermodynamics: boundary pressures`, () => {
     [`NaN`, NaN],
     [`Infinity`, Infinity],
     [`-Infinity`, -Infinity],
-  ])(`handles %s pressure gracefully (falls back to P_REF)`, (_, invalid_P) => {
-    const mu_ref = compute_gas_chemical_potential(provider, `O2`, 300, P_REF)
-    const mu_invalid = compute_gas_chemical_potential(provider, `O2`, 300, invalid_P)
-    expect(mu_invalid).toBe(mu_ref)
-  })
+  ])(
+    `%s pressure: effective pressure keeps the default, μ falls back to P_REF`,
+    (_, invalid_P) => {
+      expect(get_effective_pressures({ pressures: { O2: invalid_P } }).O2).toBe(
+        DEFAULT_GAS_PRESSURES.O2,
+      )
+      const mu_ref = compute_gas_chemical_potential(provider, `O2`, 300, P_REF)
+      expect(compute_gas_chemical_potential(provider, `O2`, 300, invalid_P)).toBe(mu_ref)
+    },
+  )
 })

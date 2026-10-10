@@ -2,7 +2,7 @@
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
 import type { Vec2 } from '#lib/math.js'
-import { clamp, quantile_unordered, sample_std } from '#lib/math.js'
+import { array_extent, clamp, quantile_unordered, sample_std } from '#lib/math.js'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
@@ -95,12 +95,7 @@ function binned_density(
   band: number,
 ): number[] {
   const n_eval = eval_samples.length
-  let sample_min = Infinity
-  let sample_max = -Infinity
-  for (const sample of eval_samples) {
-    if (sample < sample_min) sample_min = sample
-    if (sample > sample_max) sample_max = sample
-  }
+  const [sample_min, sample_max] = array_extent(eval_samples)
   if (sample_max <= sample_min) return exact_density(eval_samples, grid, band)
 
   const span = sample_max - sample_min
@@ -166,12 +161,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   const n_vals = finite.length
   if (n_vals === 0) return { grid: [], density: [], bandwidth: 0 }
 
-  let data_min = Infinity
-  let data_max = -Infinity
-  for (const sample of finite) {
-    if (sample < data_min) data_min = sample
-    if (sample > data_max) data_max = sample
-  }
+  const [data_min, data_max] = array_extent(finite)
 
   // Deterministic stride subsample for the density sum on large inputs.
   let eval_samples: readonly number[] = finite
@@ -188,8 +178,6 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
       : bandwidth === `scott`
         ? scott_bandwidth(finite)
         : silverman_bandwidth(finite)
-
-  const n_eval = eval_samples.length
 
   let lower = range ? range[0] : data_min - cut * band
   let upper = range ? range[1] : data_max + cut * band
@@ -223,7 +211,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
   grid[0] = lower
   grid[n_grid - 1] = upper
   const density =
-    max_samples && n_eval > KDE_EXACT_SAMPLE_LIMIT
+    max_samples && eval_samples.length > KDE_EXACT_SAMPLE_LIMIT
       ? binned_density(eval_samples, grid, band)
       : exact_density(eval_samples, grid, band)
 

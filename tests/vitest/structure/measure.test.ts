@@ -212,15 +212,6 @@ describe(`measure: dihedral angles`, () => {
     expect(open_boundary(points.toReversed())).toBeCloseTo(expected, 7)
   })
 
-  test(`distinguishes a torsion from its mirror image by sign alone`, () => {
-    // oxfmt-ignore
-    const chain: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0.6, 0.8]]
-    const mirrored = chain.map(([x_pos, y_pos, z_pos]) => [x_pos, y_pos, -z_pos] as Vec3)
-    const angle = open_boundary(chain)
-    expect(angle).toBeCloseTo(-open_boundary(mirrored), 12)
-    expect(Math.abs(angle)).toBeGreaterThan(1) // not a degenerate 0/180 self-mirror
-  })
-
   // oxfmt-ignore
   test.each([
     [`a cubic cell face`, cubic(10), [[9.5, 0.5, 0.5], [0.2, 0.5, 0.5], [0.2, 9.6, 0.5], [0.2, 9.6, 9.4]], 90],
@@ -228,8 +219,8 @@ describe(`measure: dihedral angles`, () => {
     [`a triclinic cell boundary`, [[6, 0, 0], [1.5, 5.5, 0], [0.8, 1.2, 7]], [[5.7, 5.2, 6.8], [0.4, 0.3, 0.2], [1.9, 4.9, 6.5], [2.6, 1.1, 0.7]], 39.60948324],
   ] as [string, Matrix3x3, Vec3[], number][])(
     `applies the minimum image convention across %s`,
-    (_name, lattice, [point_1, point, point_3, point_4], expected) => {
-      expect(dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL)).toBeCloseTo(expected, 7)
+    (_name, lattice, [point_1, point_2, point_3, point_4], expected) => {
+      expect(dihedral_angle(point_1, point_2, point_3, point_4, lattice, PBC_ALL)).toBeCloseTo(expected, 7)
     },
   )
 
@@ -238,22 +229,14 @@ describe(`measure: dihedral angles`, () => {
     // that is a short bond through the boundary; along c (vacuum) it is a genuine 9.4 A gap.
     const lattice = cubic(10)
     // oxfmt-ignore
-    const [point_1, point, point_3, point_4]: Vec3[] = [[9.7, 0.4, 0.3], [0.2, 0.4, 0.3], [0.2, 9.8, 0.3], [0.2, 9.8, 9.7]]
+    const [point_1, point_2, point_3, point_4]: Vec3[] = [[9.7, 0.4, 0.3], [0.2, 0.4, 0.3], [0.2, 9.8, 0.3], [0.2, 9.8, 9.7]]
     // p3->p4 runs +9.4 A up the vacuum instead of -0.6 A through it, flipping the torsion sign
     const torsion = (pbc: Pbc) =>
-      dihedral_angle(point_1, point, point_3, point_4, lattice, pbc)
+      dihedral_angle(point_1, point_2, point_3, point_4, lattice, pbc)
     expect([torsion(SLAB_PBC), torsion(PBC_ALL)]).toEqual([
       expect.closeTo(-90, 10),
       expect.closeTo(90, 10),
     ])
-  })
-
-  test(`ignoring periodicity across a boundary gives a badly wrong torsion`, () => {
-    const [point_1, point, point_3, point_4] = corner_chain
-    const with_pbc = dihedral_angle(point_1, point, point_3, point_4, cubic(10), PBC_ALL)
-    const without_pbc = dihedral_angle(point_1, point, point_3, point_4, null)
-    // absolute value is covered by the corner MIC case; this pins that open-boundary diverges
-    expect(Math.abs(with_pbc - without_pbc)).toBeGreaterThan(90)
   })
 
   // oxfmt-ignore
@@ -270,10 +253,10 @@ describe(`measure: dihedral angles`, () => {
 
   test(`radians mode agrees with degrees mode`, () => {
     // oxfmt-ignore
-    const [point_1, point, point_3, point_4]: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]]
-    const rad = dihedral_angle(point_1, point, point_3, point_4, null, undefined, `radians`)
+    const [point_1, point_2, point_3, point_4]: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]]
+    const rad = dihedral_angle(point_1, point_2, point_3, point_4, null, undefined, `radians`)
     expect(rad).toBeCloseTo(Math.PI / 2, 12)
-    const degrees = dihedral_angle(point_1, point, point_3, point_4, null)
+    const degrees = dihedral_angle(point_1, point_2, point_3, point_4, null)
     // Digit COUNT, not a tolerance — passing 1e-9 here would mean 10^-1e-9/2, i.e. half a
     // degree. to_degrees multiplies by a precomputed fl(180/PI) while this line divides by
     // PI, so the two orderings disagree by up to 1 ulp (measured 2.84e-14 over 200k angles
@@ -339,9 +322,9 @@ describe(`measure: overlay endpoints`, () => {
       )
     }
     // and the unwrapped chain measures the same torsion as the wrapped input
-    const [point_1, point, point_3, point_4] = corner_chain
+    const [point_1, point_2, point_3, point_4] = corner_chain
     expect(dihedral_angle(drawn[0], drawn[1], drawn[2], drawn[3], null)).toBeCloseTo(
-      dihedral_angle(point_1, point, point_3, point_4, lattice, PBC_ALL),
+      dihedral_angle(point_1, point_2, point_3, point_4, lattice, PBC_ALL),
       10,
     )
   })

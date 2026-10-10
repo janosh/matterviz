@@ -56,7 +56,6 @@
       element: legend_element,
       element_size: { width: 120, height: 60 },
       axis_clearance: chart_state.legend?.axis_clearance,
-      exclude_rects: [],
       points: chart_state.legend_points(),
     })
   })

@@ -28,6 +28,7 @@ import { Buffer } from 'node:buffer'
 import * as file_system from 'node:fs'
 import * as operating_system from 'node:os'
 import * as path from 'node:path'
+import process from 'node:process'
 import * as vscode from 'vscode'
 import { MAX_STREAMING_FILE_SIZE, read_indexed_trajectory_file } from './node-io'
 
@@ -73,7 +74,7 @@ let extension_version = `unknown`
 // "MatterViz" entry in the Output panel. Render confirmations land here rather than as toasts:
 // with auto-save every keystroke re-renders, and a notification per render buried the editor
 let output_channel: vscode.LogOutputChannel | undefined
-export const log_info = (message: string): void => {
+const log_info = (message: string): void => {
   output_channel ??= vscode.window.createOutputChannel(`MatterViz`, { log: true })
   output_channel.info(message)
 }
@@ -156,12 +157,9 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     return { filename, content: transfer.content, is_base64: false }
   }
 
-  // For normal-sized files, read using VSCode API
   try {
-    const uint8array = await vscode.workspace.fs.readFile(uri)
-    const content = transfer.is_base64
-      ? Buffer.from(uint8array).toString(`base64`)
-      : Buffer.from(uint8array).toString(`utf8`)
+    const bytes = Buffer.from(await vscode.workspace.fs.readFile(uri))
+    const content = bytes.toString(transfer.is_base64 ? `base64` : `utf8`)
     return { filename, content, is_base64: transfer.is_base64 }
   } catch (error) {
     throw new Error(`Failed to read file ${filename}: ${to_error(error).message}`, {
@@ -181,6 +179,8 @@ const resolve_target_uri = (uri?: vscode.Uri): vscode.Uri | undefined => {
   return undefined
 }
 
+const NO_FILE_SELECTED = `No file selected. MatterViz needs an active editor to know what to render.`
+
 // Prefer the active editor buffer when it is the target so unsaved edits render
 export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
   const editor = vscode.window.activeTextEditor
@@ -193,7 +193,7 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
   }
   const target = resolve_target_uri(uri)
   if (target) return read_file(target.fsPath)
-  throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
+  throw new Error(NO_FILE_SELECTED)
 }
 
 // The user's matterviz.theme, with `auto` resolved from VS Code's active color theme. The
@@ -358,14 +358,8 @@ export const handle_msg = async (
   } else if (msg.command === `request_frame` && msg.file_path && webview) {
     try {
       const { request_id, file_path, frame_index } = msg
-      if (
-        typeof request_id !== `string` ||
-        frame_index === undefined ||
-        !Number.isInteger(frame_index) ||
-        frame_index < 0
-      ) {
+      if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
-      }
       const run = active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
       const frame = await materialize_frame_result(run.read_frame(frame_index))
@@ -381,31 +375,28 @@ export const handle_msg = async (
       })
     }
   } else if (msg.command === `saveAs` && msg.content) {
-    let is_binary_save = false
     try {
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(msg.filename ?? `structure`),
         filters: { Files: [`*`] },
       })
-
-      if (uri) {
-        if (msg.is_binary) {
-          is_binary_save = true
-          const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
-          if (!base64_data) throw new Error(`Invalid data URL: missing base64 data`)
-          await vscode.workspace.fs.writeFile(
-            uri,
-            Uint8Array.from(Buffer.from(base64_data, `base64`)),
-          )
-        } else {
-          await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.content))
-        }
-        vscode.window.showInformationMessage(`Saved: ${path.basename(uri.fsPath)}`)
+      if (!uri) return
+      if (msg.is_binary) {
+        const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
+        if (!base64_data) throw new Error(`Invalid data URL: missing base64 data`)
+        await vscode.workspace.fs.writeFile(
+          uri,
+          Uint8Array.from(Buffer.from(base64_data, `base64`)),
+        )
+      } else {
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.content))
       }
+      vscode.window.showInformationMessage(`Saved: ${path.basename(uri.fsPath)}`)
     } catch (error: unknown) {
-      const message = to_error(error).message
-      const error_type = is_binary_save ? `binary data` : `text file`
-      vscode.window.showErrorMessage(`Failed to save ${error_type}: ${message}`)
+      const error_type = msg.is_binary ? `binary data` : `text file`
+      vscode.window.showErrorMessage(
+        `Failed to save ${error_type}: ${to_error(error).message}`,
+      )
     }
   }
 }
@@ -514,13 +505,8 @@ function stop_watching_file(file_path: string, webview?: WebviewLike): void {
   }
 
   active_watcher_subscribers.delete(file_path)
-
-  const watcher = active_watchers.get(file_path)
-  if (watcher) {
-    watcher.dispose()
-    active_watchers.delete(file_path)
-  }
-
+  active_watchers.get(file_path)?.dispose()
+  active_watchers.delete(file_path)
   dispose_run(file_path)
 }
 
@@ -627,9 +613,7 @@ const open_resource = async (
 ): Promise<void> => {
   const target = resolve_target_uri(uri)
   if (!target) {
-    vscode.window.showErrorMessage(
-      `No file selected. MatterViz needs an active editor to know what to render.`,
-    )
+    vscode.window.showErrorMessage(NO_FILE_SELECTED)
     return
   }
 
@@ -648,15 +632,8 @@ const open_resource = async (
 class Provider implements vscode.CustomReadonlyEditorProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
-  openCustomDocument(
-    uri: vscode.Uri,
-    _open_context: vscode.CustomDocumentOpenContext,
-    _token: vscode.CancellationToken,
-  ): vscode.CustomDocument {
-    return {
-      uri,
-      dispose: () => {},
-    }
+  openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
+    return { uri, dispose: () => {} }
   }
 
   async resolveCustomEditor(
@@ -695,51 +672,45 @@ export const activate = (context: vscode.ExtensionContext) => {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
-      // Update context on any document open
       update_supported_resource_context(document.uri)
       // Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
+      const file_path = document.uri.fsPath
       if (
-        document.uri.scheme === `file` &&
-        is_auto_renderable_filename(path.basename(document.uri.fsPath))
-      ) {
-        const file_path = document.uri.fsPath
+        document.uri.scheme !== `file` ||
+        !is_auto_renderable_filename(path.basename(file_path))
+      )
+        return
 
-        // Clear existing timer and reveal existing panel if present
-        const existing_timer = auto_render_timers.get(file_path)
-        if (existing_timer) {
-          clearTimeout(existing_timer)
-          auto_render_timers.delete(file_path)
-        }
-        const existing_panel = active_auto_render_panels.get(file_path)
-        if (existing_panel) {
-          existing_panel.reveal(vscode.ViewColumn.One)
-          return
-        }
-
-        const timer = setTimeout(() => {
-          void (async () => {
-            try {
-              if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
-                return
-              const panel = create_webview_panel(
-                context,
-                await read_file(file_path),
-                file_path,
-                vscode.ViewColumn.One,
-              )
-              active_auto_render_panels.set(file_path, panel)
-              panel.onDidDispose(() => active_auto_render_panels.delete(file_path))
-            } catch (error: unknown) {
-              console.error(`Error auto-rendering file:`, error)
-              vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
-            } finally {
-              auto_render_timers.delete(file_path)
-            }
-          })()
-        }, 100) // Small delay to allow VS Code to finish opening the document
-
-        auto_render_timers.set(file_path, timer)
+      clearTimeout(auto_render_timers.get(file_path))
+      auto_render_timers.delete(file_path)
+      const existing_panel = active_auto_render_panels.get(file_path)
+      if (existing_panel) {
+        existing_panel.reveal(vscode.ViewColumn.One)
+        return
       }
+
+      const timer = setTimeout(() => {
+        void (async () => {
+          try {
+            if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
+              return
+            const panel = create_webview_panel(
+              context,
+              await read_file(file_path),
+              file_path,
+              vscode.ViewColumn.One,
+            )
+            active_auto_render_panels.set(file_path, panel)
+            panel.onDidDispose(() => active_auto_render_panels.delete(file_path))
+          } catch (error: unknown) {
+            console.error(`Error auto-rendering file:`, error)
+            vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
+          } finally {
+            auto_render_timers.delete(file_path)
+          }
+        })()
+      }, 100) // Small delay to allow VS Code to finish opening the document
+      auto_render_timers.set(file_path, timer)
     }),
     vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
       update_supported_resource_context(editor?.document?.uri)
@@ -749,103 +720,87 @@ export const activate = (context: vscode.ExtensionContext) => {
 
 // Collect debug information for bug reporting
 async function collect_debug_info(): Promise<string> {
-  // Check if running remotely
-  const remote_name = vscode.env.remoteName
-  const is_remote = Boolean(remote_name)
+  const { remoteName: remote_name } = vscode.env
   const ui_kind = vscode.env.uiKind === vscode.UIKind.Desktop ? `Desktop` : `Web`
 
-  // Collect info about actively watched/rendered files (stats fetched in parallel)
-  const active_files = await Promise.all(
+  // Actively watched/rendered files, stats fetched in parallel
+  const file_sections = await Promise.all(
     Array.from(active_watchers.keys()).map(async (file_path) => {
-      const filename = path.basename(file_path)
-      let file_size: number | undefined
+      let file_size: number | undefined // stays undefined (Unknown) for a deleted file
       try {
         file_size = (await vscode.workspace.fs.stat(vscode.Uri.file(file_path))).size
-      } catch {
-        // File might not exist anymore
-      }
-      const has_trajectory_run = active_runs.has(file_path)
-      return { filename, file_path, file_size, has_watcher: true, has_trajectory_run }
+      } catch {}
+      return [
+        `**${path.basename(file_path)}**`,
+        `- **Path**: \`${file_path}\``,
+        `- **Size**: ${format_bytes(file_size)}`,
+        `- **Has Watcher**: true`,
+        `- **Has Trajectory Run**: ${active_runs.has(file_path)}\n\n`,
+      ].join(`\n`)
     }),
   )
+  const memory_usage = process.memoryUsage()
 
-  // Get memory usage if available (use global process object)
-  const memory_usage = globalThis.process?.memoryUsage() ?? {
-    rss: 0,
-    heapUsed: 0,
-    heapTotal: 0,
-    external: 0,
-    arrayBuffers: 0,
-  }
+  return `### Environment
 
-  // Build debug report
-  let report = `### Environment\n\n`
-  report += `- **Editor**: ${vscode.env.appName}\n`
-  report += `- **Editor Version**: ${vscode.version}\n`
-  report += `- **MatterViz Version**: ${extension_version}\n`
-  report += `- **OS**: ${operating_system.type()} ${operating_system.platform()} ${operating_system.arch()}\n`
-  report += `- **OS Version**: ${operating_system.release()}\n`
-  report += `- **UI Kind**: ${ui_kind}\n`
-  report += `- **Remote Session**: ${is_remote ? `Yes (${remote_name})` : `No (Local)`}\n\n`
+- **Editor**: ${vscode.env.appName}
+- **Editor Version**: ${vscode.version}
+- **MatterViz Version**: ${extension_version}
+- **OS**: ${operating_system.type()} ${operating_system.platform()} ${operating_system.arch()}
+- **OS Version**: ${operating_system.release()}
+- **UI Kind**: ${ui_kind}
+- **Remote Session**: ${remote_name ? `Yes (${remote_name})` : `No (Local)`}
 
-  report += `### System Resources\n\n`
-  report += `- **Total Memory**: ${format_bytes(operating_system.totalmem())}\n`
-  report += `- **Free Memory**: ${format_bytes(operating_system.freemem())}\n`
-  report += `- **Process RSS**: ${format_bytes(memory_usage.rss)}\n`
-  report += `- **Process Heap Used**: ${format_bytes(memory_usage.heapUsed)}\n`
-  report += `- **Process Heap Total**: ${format_bytes(memory_usage.heapTotal)}\n\n`
+### System Resources
 
-  report += `### Active Files & Extension State\n\n`
-  report += `- **Active Watchers**: ${active_watchers.size}\n`
-  report += `- **Active Trajectory Runs**: ${active_runs.size}\n`
-  report += `- **Auto-Render Timers**: ${auto_render_timers.size}\n`
-  report += `- **Active Auto-Render Panels**: ${active_auto_render_panels.size}\n\n`
+- **Total Memory**: ${format_bytes(operating_system.totalmem())}
+- **Free Memory**: ${format_bytes(operating_system.freemem())}
+- **Process RSS**: ${format_bytes(memory_usage.rss)}
+- **Process Heap Used**: ${format_bytes(memory_usage.heapUsed)}
+- **Process Heap Total**: ${format_bytes(memory_usage.heapTotal)}
 
-  if (active_files.length === 0) {
-    report += `No files currently being watched/rendered.\n\n`
-  } else {
-    report += `Currently watching/rendering ${active_files.length} file(s):\n\n`
-    for (const file_info of active_files) {
-      report += `**${file_info.filename}**\n`
-      report += `- **Path**: \`${file_info.file_path}\`\n`
-      report += `- **Size**: ${format_bytes(file_info.file_size)}\n`
-      report += `- **Has Watcher**: ${file_info.has_watcher}\n`
-      report += `- **Has Trajectory Run**: ${file_info.has_trajectory_run}\n\n`
-    }
-  }
+### Active Files & Extension State
 
-  report += `### Console Logs\n\n`
-  report += `**Please check for console errors/warnings:**\n\n`
-  report += `1. Open Developer Tools:\n`
-  report += `   - Cursor/VSCode: Help → Toggle Developer Tools (or Cmd/Ctrl+Shift+I)\n`
-  report += `2. Go to the "Console" tab\n`
-  report += `3. Look for any errors or warnings related to MatterViz (especially in red)\n`
-  report += `4. Copy and paste any relevant error messages into your GitHub issue\n\n`
-  report += `Tip: You can filter console messages by typing "matterviz" in the filter box.\n\n`
+- **Active Watchers**: ${active_watchers.size}
+- **Active Trajectory Runs**: ${active_runs.size}
+- **Auto-Render Timers**: ${auto_render_timers.size}
+- **Active Auto-Render Panels**: ${active_auto_render_panels.size}
 
-  report += `---\n\n`
-  report += `**Generated**: ${new Date().toISOString()}\n\n`
-  report += `Please include this information when reporting bugs at:\n`
-  report += `https://github.com/janosh/matterviz/issues\n`
+${
+  file_sections.length === 0
+    ? `No files currently being watched/rendered.\n\n`
+    : `Currently watching/rendering ${file_sections.length} file(s):\n\n${file_sections.join(``)}`
+}### Console Logs
 
-  return report
+**Please check for console errors/warnings:**
+
+1. Open Developer Tools:
+   - Cursor/VSCode: Help → Toggle Developer Tools (or Cmd/Ctrl+Shift+I)
+2. Go to the "Console" tab
+3. Look for any errors or warnings related to MatterViz (especially in red)
+4. Copy and paste any relevant error messages into your GitHub issue
+
+Tip: You can filter console messages by typing "matterviz" in the filter box.
+
+---
+
+**Generated**: ${new Date().toISOString()}
+
+Please include this information when reporting bugs at:
+https://github.com/janosh/matterviz/issues
+`
 }
 
 // Command to report a bug with debug information
 async function report_bug(): Promise<void> {
   try {
-    // Collect debug information
     const debug_info = await collect_debug_info()
-
-    // Create a new untitled document with the debug info
     const doc = await vscode.workspace.openTextDocument({
       content: debug_info,
       language: `markdown`,
     })
-
     await vscode.window.showTextDocument(doc, { preview: false })
 
-    // Show a message with instructions
     const action = await vscode.window.showInformationMessage(
       `Debug information collected. Please copy this information and include it when reporting a bug on GitHub.`,
       `Copy to Clipboard`,

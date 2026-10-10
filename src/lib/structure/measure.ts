@@ -49,12 +49,11 @@ export function angle_between_vectors(
   vector_2: Vec3,
   mode: AngleMode = `degrees`,
 ) {
-  const count_1 = Math.hypot(vector_1[0], vector_1[1], vector_1[2])
-  const count = Math.hypot(vector_2[0], vector_2[1], vector_2[2])
-  if (count_1 === 0 || count === 0) return 0
-
+  const norm_1 = Math.hypot(...vector_1)
+  const norm_2 = Math.hypot(...vector_2)
+  if (norm_1 === 0 || norm_2 === 0) return 0
   // Normalize dot product to get cosine, clamped to [-1, 1] to avoid acos NaN
-  const ang = Math.acos(clamp(dot(vector_1, vector_2) / (count_1 * count), -1, 1))
+  const ang = Math.acos(clamp(dot(vector_1, vector_2) / (norm_1 * norm_2), -1, 1))
   return mode === `degrees` ? to_degrees(ang) : ang
 }
 
@@ -149,7 +148,7 @@ export function compute_displacements(
 // distinguishable, and the sign labels their handedness correctly.
 export function dihedral_angle(
   point_1: Vec3,
-  point: Vec3,
+  point_2: Vec3,
   point_3: Vec3,
   point_4: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
@@ -158,8 +157,8 @@ export function dihedral_angle(
 ): number {
   // One converter set for all three bonds instead of three (this runs per label render)
   const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
-  const bond_12 = displacement_pbc(point_1, point, lattice_matrix, converters, pbc)
-  const bond_23 = displacement_pbc(point, point_3, lattice_matrix, converters, pbc)
+  const bond_12 = displacement_pbc(point_1, point_2, lattice_matrix, converters, pbc)
+  const bond_23 = displacement_pbc(point_2, point_3, lattice_matrix, converters, pbc)
   const bond_34 = displacement_pbc(point_3, point_4, lattice_matrix, converters, pbc)
 
   // Plane normals of the p1-p2-p3 and p2-p3-p4 triangles

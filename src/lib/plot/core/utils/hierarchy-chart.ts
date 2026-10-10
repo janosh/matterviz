@@ -1,6 +1,6 @@
 // Pure helpers shared by the hierarchical part-of-whole charts (Sunburst, Treemap):
 // label strings + measured variants, metric coloring, hover/mute dimming, handler
-// payloads, breadcrumbs, color-bar layout, keyboard navigation and SVG/PNG export.
+// payloads, breadcrumbs, color-bar layout and keyboard navigation.
 // Everything operates on the flat pre-order arc arrays compute_sunburst_layout
 // produces, so each chart keeps only its geometry (polar projection vs tiling).
 
@@ -411,5 +411,3 @@ export function color_bar_layout(opts: {
     offset_px: (side === `left` ? pad.l : pad.r) + COLOR_BAR_GAP,
   }
 }
-
-// === Export ===

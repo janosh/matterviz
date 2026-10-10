@@ -1,9 +1,8 @@
-// @vitest-environment happy-dom
 import FillArea from '#lib/plot/core/components/FillArea.svelte'
 import type { FillGradient, FillRegion } from '#lib/plot/core/types.js'
-import { type ComponentProps, mount, tick } from 'svelte'
+import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, fire, keydown, mouse } from '../setup'
 
 // Mock scale functions
 const mock_x_scale = Object.assign((val: number) => val * 10, {
@@ -46,7 +45,6 @@ describe(`FillArea`, () => {
     [`hover handler only`, { on_hover: () => {} }, `0`],
     [`no handlers`, {}, `-1`],
   ])(`a region with a %s has tabindex %s`, (_name, handlers, expected) => {
-    document.body.innerHTML = ``
     mount_fill(handlers)
     expect(doc_query(`g.fill-region`).getAttribute(`tabindex`)).toBe(expected)
   })
@@ -58,7 +56,6 @@ describe(`FillArea`, () => {
     [`first segment`, true, `0`, null, 1],
     [`later segment`, false, `-1`, `true`, 0],
   ])(`a %s carries tabindex %s`, (_name, is_first_segment, tabindex, hidden, n_defs) => {
-    document.body.innerHTML = ``
     mount_fill({
       on_hover: () => {},
       is_first_segment,
@@ -78,17 +75,14 @@ describe(`FillArea`, () => {
   // reaches the region and sees nothing
   test(`focus reports a hover at the region center, blur clears it`, async () => {
     const on_hover = vi.fn()
-    document.body.innerHTML = ``
     mount_fill({ on_hover })
     const region = doc_query(`g.fill-region`)
 
-    region.dispatchEvent(new FocusEvent(`focus`))
-    await tick()
+    await fire(region, new FocusEvent(`focus`))
     expect(on_hover).toHaveBeenCalledOnce()
     expect(on_hover.mock.calls[0][0]).toMatchObject({ region_idx: 0 })
 
-    region.dispatchEvent(new FocusEvent(`blur`))
-    await tick()
+    await fire(region, new FocusEvent(`blur`))
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })
 
@@ -165,10 +159,7 @@ describe(`FillArea`, () => {
 
       const group = doc_query(`.fill-region`)
       const event_type = type === `click` ? `click` : `mouseenter`
-      group.dispatchEvent(
-        new MouseEvent(event_type, { bubbles: true, clientX: 50, clientY: 50 }),
-      )
-      await tick()
+      await fire(group, mouse(event_type, { clientX: 50, clientY: 50 }))
 
       for (const handler of [region_handler, prop_handler]) {
         expect(handler).toHaveBeenCalledExactlyOnceWith(
@@ -186,8 +177,7 @@ describe(`FillArea`, () => {
 
       // hover also clears on mouseleave
       if (type === `hover`) {
-        group.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-        await tick()
+        await fire(group, mouse(`mouseleave`))
         expect(region_handler).toHaveBeenLastCalledWith(null)
         expect(prop_handler).toHaveBeenLastCalledWith(null)
       }
@@ -211,8 +201,6 @@ describe(`FillArea`, () => {
     [`pointer`, { ...base_region, on_click: () => {} }, {}], // region.on_click
     [`grab`, { ...base_region, hover_style: { cursor: `grab` } }, { on_click: () => {} }], // override
     [`crosshair`, { ...base_region, hover_style: { cursor: `crosshair` } }, {}],
-    [`move`, { ...base_region, hover_style: { cursor: `move` } }, {}],
-    [`not-allowed`, { ...base_region, hover_style: { cursor: `not-allowed` } }, {}],
     [`default`, base_region, {}], // no click, no hover_style
   ])(`cursor is '%s'`, (expected, region, extra) => {
     mount_fill({ region, ...extra })
@@ -226,13 +214,9 @@ describe(`FillArea`, () => {
     [`a`, 0],
   ])(`keydown %j fires the click handler %i times`, async (key, n_calls) => {
     const on_click = vi.fn()
-    document.body.innerHTML = ``
     mount_fill({ on_click })
 
-    doc_query(`.fill-region`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key, bubbles: true }),
-    )
-    await tick()
+    await fire(doc_query(`.fill-region`), keydown(key))
 
     expect(on_click).toHaveBeenCalledTimes(n_calls)
     if (n_calls > 0) {

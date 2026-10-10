@@ -101,17 +101,14 @@ export const normalize_point = (point: [RefLineValue, RefLineValue]): Vec2 => [
   normalize_value(point[1]),
 ]
 
-// Clip a line segment to a rectangle using Liang-Barsky algorithm
-// Returns clipped [x1, y1, x2, y2] or null if segment is entirely outside
-function clip_segment_to_rect(
-  p1x: number,
-  p1y: number,
-  p2x: number,
-  p2y: number,
-  x_min: number,
-  x_max: number,
-  y_min: number,
-  y_max: number,
+// Clip the line p1 + t·(p2 - p1) to the rect [x_min, x_max, y_min, y_max] with Liang-Barsky.
+// t_range [0, 1] clips the segment p1→p2, [-Infinity, Infinity] the infinite line through both.
+// Returns the clipped [x1, y1, x2, y2] in p1→p2 order, or null if nothing is inside.
+function clip_to_rect(
+  [p1x, p1y]: Vec2,
+  [p2x, p2y]: Vec2,
+  [x_min, x_max, y_min, y_max]: Vec4,
+  [t_min, t_max]: Vec2 = [0, 1],
 ): Vec4 | null {
   const delta_x = p2x - p1x
   const delta_y = p2y - p1y
@@ -121,7 +118,7 @@ function clip_segment_to_rect(
   const p_vals = [-delta_x, delta_x, -delta_y, delta_y]
   const q_vals = [p1x - x_min, x_max - p1x, p1y - y_min, y_max - p1y]
 
-  let [t_enter, t_leave] = [0, 1]
+  let [t_enter, t_leave] = [t_min, t_max]
 
   for (let idx = 0; idx < 4; idx++) {
     if (p_vals[idx] === 0) {
@@ -136,7 +133,7 @@ function clip_segment_to_rect(
     }
   }
 
-  if (t_enter > t_leave) return null // Segment entirely outside
+  if (t_enter > t_leave) return null
 
   return [
     p1x + t_enter * delta_x,
@@ -148,103 +145,71 @@ function clip_segment_to_rect(
 
 // Compute the screen coordinates for a reference line against the axes it is drawn on (see
 // resolve_ref_line_axes). Returns [x1, y1, x2, y2] in pixel coordinates, or null if the line
-// is not visible.
+// is not visible. Lines are drawn straight in pixel space, so extension, clipping and relative
+// coords all happen there: on log/arcsinh axes data-space math would bend a line away from its
+// defining points and change a clipped segment's shape on zoom.
 export function resolve_line_endpoints(ref_line: RefLine, axes: RefLineAxes): Vec4 | null {
   const { x_min, x_max, y_min, y_max, x_scale, y_scale } = axes
+  // Spans narrow the visible rect like every other bound; they never widen it
+  const [x_lo, x_hi] = apply_span(x_min, x_max, ref_line.x_span)
+  const [y_lo, y_hi] = apply_span(y_min, y_max, ref_line.y_span)
+  if (x_lo > x_hi || y_lo > y_hi) return null
+  const finite = (pixels: Vec4 | null): Vec4 | null =>
+    pixels?.every(Number.isFinite) ? pixels : null
+  const to_px = ([x_val, y_val]: Vec2): Vec2 => [x_scale(x_val), y_scale(y_val)]
+  // relative coords: 0 = min, 1 = max of the axis, interpolated linearly in pixels
+  const relative_px = (scale: Scale, min: number, max: number, frac: number): number =>
+    scale(min) + frac * (scale(max) - scale(min))
 
-  const is_x_visible = (x_val: number): boolean => x_val >= x_min && x_val <= x_max
-
-  // Apply span constraints (works for both x and y)
-  const apply_x_span = (coord_x_1: number, coord_x: number) =>
-    apply_span(coord_x_1, coord_x, ref_line.x_span)
-  const apply_y_span = (coord_y_1: number, coord_y_2: number) =>
-    apply_span(coord_y_1, coord_y_2, ref_line.y_span)
-
-  let [x1_data, x2_data] = [0, 0]
-  let [y1_data, y2_data] = [0, 0]
-
-  const line_type = ref_line.type
-
-  if (line_type === `horizontal`) {
-    const y_val = normalize_value(ref_line.y)
-    const y_coord =
-      ref_line.coord_mode === `relative` ? y_min + y_val * (y_max - y_min) : y_val
-    if (!(y_coord >= y_min && y_coord <= y_max)) return null
-    ;[x1_data, x2_data] = apply_x_span(x_min, x_max)
-    y1_data = y_coord
-    y2_data = y_coord
-  } else if (line_type === `vertical`) {
-    const x_val = normalize_value(ref_line.x)
-    const x_coord =
-      ref_line.coord_mode === `relative` ? x_min + x_val * (x_max - x_min) : x_val
-    if (!is_x_visible(x_coord)) return null
-    x1_data = x_coord
-    x2_data = x_coord
-    ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
-  } else if (line_type === `diagonal` || line_type === `line`) {
-    // Get slope/intercept - either from props or computed from points
-    let slope: number
-    let intercept: number
-    let handled_as_vertical = false
-
-    if (ref_line.type === `diagonal`) {
-      slope = ref_line.slope
-      intercept = ref_line.intercept
-    } else {
-      const [p1x, p1y] = normalize_point(ref_line.p1)
-      const [p2x, p2y] = normalize_point(ref_line.p2)
-      const delta_x = p2x - p1x
-      if (Math.abs(delta_x) < 1e-10) {
-        // Nearly vertical line - check x-bounds like we do for vertical type
-        if (!is_x_visible(p1x)) return null
-        x1_data = p1x
-        x2_data = p1x
-        ;[y1_data, y2_data] = apply_y_span(y_min, y_max)
-        handled_as_vertical = true
-        slope = 0 // Won't be used
-        intercept = 0
-      } else {
-        slope = (p2y - p1y) / delta_x
-        intercept = p1y - slope * p1x
-      }
-    }
-
-    if (!handled_as_vertical) {
-      // Intersect bounds with span constraints, then clip the line segment spanning the
-      // clipped x-extent to that rect — keeps endpoints paired on y = slope·x + intercept
-      const [x_lo, x_hi] = apply_x_span(x_min, x_max)
-      const [y_lo, y_hi] = apply_y_span(y_min, y_max)
-      if (x_lo > x_hi || y_lo > y_hi) return null
-      const [y_at_lo, y_at_hi] = [slope * x_lo + intercept, slope * x_hi + intercept]
-      const seg = clip_segment_to_rect(x_lo, y_at_lo, x_hi, y_at_hi, x_lo, x_hi, y_lo, y_hi)
-      // Degenerate (single-point) result means the line only grazes a corner
-      if (!seg || (seg[0] === seg[2] && seg[1] === seg[3])) return null
-      ;[x1_data, y1_data, x2_data, y2_data] = seg
-    }
-  } else if (line_type === `segment`) {
-    const [p1x, p1y] = normalize_point(ref_line.p1)
-    const [p2x, p2y] = normalize_point(ref_line.p2)
-    // Spans narrow the visible rect like every other line type; they never widen it
-    const [clip_x_min, clip_x_max] = apply_x_span(x_min, x_max)
-    const [clip_y_min, clip_y_max] = apply_y_span(y_min, y_max)
-    const clipped = clip_segment_to_rect(
-      p1x,
-      p1y,
-      p2x,
-      p2y,
-      clip_x_min,
-      clip_x_max,
-      clip_y_min,
-      clip_y_max,
+  if (ref_line.type === `horizontal` || ref_line.type === `vertical`) {
+    const is_horizontal = ref_line.type === `horizontal`
+    const value = normalize_value(is_horizontal ? ref_line.y : ref_line.x)
+    const [scale, min, max] = is_horizontal ? [y_scale, y_min, y_max] : [x_scale, x_min, x_max]
+    const relative = ref_line.coord_mode === `relative`
+    if (relative ? value < 0 || value > 1 : value < min || value > max) return null
+    const px = relative ? relative_px(scale, min, max, value) : scale(value)
+    return finite(
+      is_horizontal
+        ? [x_scale(x_lo), px, x_scale(x_hi), px]
+        : [px, y_scale(y_lo), px, y_scale(y_hi)],
     )
-    if (!clipped) return null
-    ;[x1_data, y1_data, x2_data, y2_data] = clipped
-  } else {
-    return null
   }
+  if (ref_line.type === `diagonal`) {
+    // slope/intercept define a data-space line (a curve on nonlinear axes), so it is clipped
+    // in data space and drawn as the chord between its visible ends
+    const { slope, intercept } = ref_line
+    const seg = clip_to_rect(
+      [x_lo, slope * x_lo + intercept],
+      [x_hi, slope * x_hi + intercept],
+      [x_lo, x_hi, y_lo, y_hi],
+    )
+    // Degenerate (single-point) result means the line only grazes a corner
+    if (!seg || (seg[0] === seg[2] && seg[1] === seg[3])) return null
+    return finite([...to_px([seg[0], seg[1]]), ...to_px([seg[2], seg[3]])])
+  }
+  if (ref_line.type !== `segment` && ref_line.type !== `line`) return null
 
-  const pixels: Vec4 = [x_scale(x1_data), y_scale(y1_data), x_scale(x2_data), y_scale(y2_data)]
-  return pixels.every(Number.isFinite) ? pixels : null
+  let [p1, p2] = [normalize_point(ref_line.p1), normalize_point(ref_line.p2)]
+  // Infinite lines run toward increasing data x (then y), independent of point order
+  if (ref_line.type === `line` && (p1[0] > p2[0] || (p1[0] === p2[0] && p1[1] > p2[1]))) {
+    ;[p1, p2] = [p2, p1]
+  }
+  const [px_1, px_2] = [to_px(p1), to_px(p2)]
+  if (![...px_1, ...px_2].every(Number.isFinite)) return null
+  const [rect_x_1, rect_x_2] = [x_scale(x_lo), x_scale(x_hi)]
+  const [rect_y_1, rect_y_2] = [y_scale(y_lo), y_scale(y_hi)]
+  const rect: Vec4 = [
+    Math.min(rect_x_1, rect_x_2),
+    Math.max(rect_x_1, rect_x_2),
+    Math.min(rect_y_1, rect_y_2),
+    Math.max(rect_y_1, rect_y_2),
+  ]
+  if (ref_line.type === `segment`) return finite(clip_to_rect(px_1, px_2, rect))
+  // Coincident points define no direction
+  if (px_1[0] === px_2[0] && px_1[1] === px_2[1]) return null
+  const seg = clip_to_rect(px_1, px_2, rect, [-Infinity, Infinity])
+  // Degenerate (single-point) result means the line only grazes a corner
+  return seg && !(seg[0] === seg[2] && seg[1] === seg[3]) ? finite(seg) : null
 }
 
 interface AnnotationPosition {

@@ -16,6 +16,8 @@ describe(`ElementStats`, () => {
         doc_query(`div > section:nth-child(${nth}) > strong`).textContent?.trim(),
       )
       expect(values).toEqual([format_num(atomic_mass), format_num(density), phase, `${year}`])
+      const units = [...document.querySelectorAll(`abbr`)].map((abbr) => abbr.textContent)
+      expect(units).toEqual([`(u)`, `(g/cm³)`])
     },
   )
 })

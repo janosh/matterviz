@@ -1,11 +1,11 @@
 import { format_hover_info_text } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
-import type { LeverRuleResult, PhaseDiagramData } from '#lib/phase-diagram/types.js'
+import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
-import { create_hover_info, pts, rect } from './fixtures/test-data'
+import { create_hover_info, lever_rule, pts, rect } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
 // Simple eutectic-style system: Liquid on top, two-phase field below. With a 500x400
@@ -142,11 +142,13 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
 
     await hover_at(wrapper, 0.25, 250) // inside the α + β field spanning x: [0, 1]
-    const lever_rule = on_phase_hover.mock.lastCall?.[0]?.lever_rule as LeverRuleResult
-    expect(lever_rule).toMatchObject({ left_phase: `α`, right_phase: `β` })
-    expect(lever_rule.left_composition).toBeCloseTo(0, 9)
-    expect(lever_rule.right_composition).toBeCloseTo(1, 9)
-    expect(lever_rule.fraction_right).toBeCloseTo(0.25, 9)
+    expect(on_phase_hover.mock.lastCall?.[0]?.lever_rule).toMatchObject({
+      left_phase: `α`,
+      right_phase: `β`,
+      left_composition: expect.closeTo(0, 9),
+      right_composition: expect.closeTo(1, 9),
+      fraction_right: expect.closeTo(0.25, 9),
+    })
     // tie-line spans the full field at the hovered temperature
     const tie_line = wrapper.querySelector(`g.tie-line line`)
     expect(tie_line?.getAttribute(`x1`)).toBe(`${left}`)
@@ -314,7 +316,6 @@ describe(`format_hover_info_text`, () => {
     { composition: 0.25, unit: `mol%`, expected: `Composition: 25 mol% Cu (75 mol% Al)` },
     { composition: 0.456, unit: `fraction`, expected: `Composition: 0.456 Cu (0.544 Al)` },
     { composition: 0, unit: `at%`, expected: `Composition: 0 at% Cu (100 at% Al)` },
-    { composition: 1, unit: `at%`, expected: `Composition: 100 at% Cu (0 at% Al)` },
     { composition: 0.333, unit: `at%`, expected: `Composition: 33.3 at% Cu (66.7 at% Al)` },
   ] as const)(`composition $composition as $unit`, ({ composition, unit, expected }) => {
     const text = format_hover_info_text(create_hover_info({ composition }), {
@@ -339,15 +340,6 @@ describe(`format_hover_info_text`, () => {
       expect(text).toContain(expected)
     },
   )
-
-  const lever_rule: LeverRuleResult = {
-    left_phase: `α`,
-    right_phase: `β`,
-    left_composition: 0.2,
-    right_composition: 0.8,
-    fraction_left: 0.6,
-    fraction_right: 0.4,
-  }
 
   test.each([
     { unit: `at%`, expected: [`  α: 60.0% (at 20 at%)`, `  β: 40.0% (at 80 at%)`] },

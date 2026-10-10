@@ -63,8 +63,8 @@
       angle = end
       const large_arc = span > 180 ? 1 : 0
       const [coord_x_1, coord_y_1] = polar(outer_radius, start)
-      const [coord_x, coord_y_2] = polar(outer_radius, end)
-      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${coord_x} ${coord_y_2}`
+      const [coord_x_2, coord_y_2] = polar(outer_radius, end)
+      const outer_arc = `A ${outer_radius} ${outer_radius} 0 ${large_arc} 1 ${coord_x_2} ${coord_y_2}`
       let path: string
       if (ring_inner > 0) {
         const [coord_x_3, coord_y_3] = polar(ring_inner, end)

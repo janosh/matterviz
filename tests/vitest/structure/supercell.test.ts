@@ -185,10 +185,8 @@ describe(`make_supercell`, () => {
       const supercell = make_supercell(sample_structure, scaling as string | number | Vec3)
 
       expect(supercell.sites).toHaveLength(expected_sites)
-      expect(supercell.lattice.volume).toBe(expected_volume)
-      expect(supercell.lattice.a).toBe(expected_lattice[0])
-      expect(supercell.lattice.b).toBe(expected_lattice[1])
-      expect(supercell.lattice.c).toBe(expected_lattice[2])
+      const { a: len_a, b: len_b, c: len_c, volume } = supercell.lattice
+      expect([len_a, len_b, len_c, volume]).toEqual([...expected_lattice, expected_volume])
     },
   )
 

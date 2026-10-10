@@ -32,6 +32,8 @@ describe(`parse_formula`, () => {
     // hydrates and adducts: coefficient scales the whole segment
     [`CuSO4·5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }],
     [`CuSO4⋅5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }],
+    [`CuSO4•5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }], // bullet U+2022
+    [`CuSO4∙5H2O`, { Cu: 1, S: 1, O: 9, H: 10 }], // bullet operator U+2219
     [`MgSO4*7H2O`, { Mg: 1, S: 1, O: 11, H: 14 }],
     [`Fe(NO3)3·9H2O`, { Fe: 1, N: 3, O: 18, H: 18 }],
     [`CaCl2·H2O`, { Ca: 1, Cl: 2, H: 2, O: 1 }],
@@ -56,6 +58,13 @@ describe(`parse_formula`, () => {
     [`Ca (OH) 2`, { Ca: 1, O: 2, H: 2 }],
     [`H2O\n`, { H: 2, O: 1 }],
     [``, {}],
+    // deuterium and tritium count as hydrogen, as in pymatgen's Composition
+    [`D2O`, { H: 2, O: 1 }],
+    [`T2O`, { H: 2, O: 1 }],
+    [`HDO`, { H: 2, O: 1 }],
+    [`CD4`, { C: 1, H: 4 }],
+    [`DyD2`, { Dy: 1, H: 2 }],
+    [`TiTa`, { Ti: 1, Ta: 1 }],
   ])(`%s -> %j`, (formula, expected) => {
     expect(parse_formula(formula)).toEqual(expected)
   })
@@ -91,6 +100,8 @@ describe(`normalize_formula_unicode`, () => {
     [`SO₄²⁻`, `SO4^2-`],
     [`CuSO₄ ⋅ 5 H₂O`, `CuSO4·5H2O`],
     [`Li−Fe`, `Li-Fe`],
+    [`CuSO4•5H2O`, `CuSO4·5H2O`],
+    [`CuSO4∙5H2O`, `CuSO4·5H2O`],
   ])(`%s -> %s`, (input, expected) => {
     expect(normalize_formula_unicode(input)).toBe(expected)
   })
@@ -137,10 +148,16 @@ describe(`parse_formula_with_oxidation`, () => {
   ])(`%s -> oxidation %d`, (formula, expected) => {
     expect(parse_formula_with_oxidation(formula)[0].oxidation_state).toBe(expected)
   })
+})
 
-  test(`throws on invalid element`, () => {
-    expect(() => parse_formula_with_oxidation(`Xx2O3`)).toThrow(`Invalid element symbol: Xx`)
-  })
+// every formula entry point rejects unknown symbols (see parse_formula above for the rest)
+test.each([
+  [parse_formula_with_oxidation, `Xx2O3`, `Invalid element symbol: Xx`],
+  [parse_formula_with_wildcards, `Xx*2`, `Invalid element symbol: Xx`],
+  [parse_formula_with_wildcards, `Li*Yy2`, `Invalid element symbol: Yy`],
+  [extract_formula_elements, `ABC`, `Invalid element symbol: A`],
+])(`%o throws for "%s"`, (parse_fn, input, error) => {
+  expect(() => parse_fn(input)).toThrow(error)
 })
 
 describe(`parse_formula_with_wildcards`, () => {
@@ -165,13 +182,6 @@ describe(`parse_formula_with_wildcards`, () => {
   ])(`"%s" -> %j`, (input, expected) => {
     expect(parse_formula_with_wildcards(input)).toEqual(expected)
   })
-
-  test.each([
-    [`Xx*2`, `Invalid element symbol: Xx`],
-    [`Li*Yy2`, `Invalid element symbol: Yy`],
-  ])(`throws for "%s"`, (input, error) => {
-    expect(() => parse_formula_with_wildcards(input)).toThrow(error)
-  })
 })
 
 describe(`extract_formula_elements`, () => {
@@ -185,10 +195,6 @@ describe(`extract_formula_elements`, () => {
     [``, {}, []],
   ])(`extract_formula_elements(%s, %j) -> %j`, (formula, opts, expected) => {
     expect(extract_formula_elements(formula, opts)).toEqual(expected)
-  })
-
-  test(`throws on invalid symbols`, () => {
-    expect(() => extract_formula_elements(`ABC`)).toThrow(`Invalid element symbol: A`)
   })
 })
 

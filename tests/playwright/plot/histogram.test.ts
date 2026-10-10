@@ -6,6 +6,7 @@ import {
   get_axis_range_inputs,
   get_tick_range,
   open_plot_controls,
+  require_bbox,
   set_input_value,
   set_range_input,
   tick_texts,
@@ -217,13 +218,11 @@ test.describe(`Histogram Component Tests`, () => {
     for (const width of [390, 320, 1280]) {
       await page.setViewportSize({ width, height: 844 })
       await stroke_color.scrollIntoViewIfNeeded()
-      const color_box = await stroke_color.boundingBox()
-      expect(color_box?.width).toBeGreaterThan(20)
+      expect((await require_bbox(stroke_color)).width).toBeGreaterThan(20)
       const rows = pane.locator(`label:has(> input[type="range"])`)
       for (const row of await rows.all()) {
         const children = await bounding_boxes(row.locator(`:scope > *`))
-        const row_box = await row.boundingBox()
-        if (!row_box) throw new Error(`Missing controls row bounds`)
+        const row_box = await require_bbox(row, `controls row`)
         for (let idx = 0; idx < children.length; idx++) {
           expect(children[idx].x).toBeGreaterThanOrEqual(row_box.x)
           expect(children[idx].x + children[idx].width).toBeLessThanOrEqual(

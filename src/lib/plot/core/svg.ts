@@ -17,21 +17,16 @@ export function violin_path(
 ): string {
   const n_pts = grid_px.length
   if (n_pts === 0) return ``
-  const pts: Vec2[] = []
-  if (side === `both`) {
-    for (let idx = 0; idx < n_pts; idx++) {
-      pts.push(orient(center + half_offsets_px[idx], grid_px[idx]))
-    }
+  const sign = side === `negative` ? -1 : 1
+  const pts = grid_px.map((val_px, idx) =>
+    orient(center + sign * half_offsets_px[idx], val_px),
+  )
+  // `both` returns down the mirrored side, a half violin along a straight inner edge
+  if (side !== `both`) pts.push(orient(center, grid_px[n_pts - 1]), orient(center, grid_px[0]))
+  else {
     for (let idx = n_pts - 1; idx >= 0; idx--) {
       pts.push(orient(center - half_offsets_px[idx], grid_px[idx]))
     }
-  } else {
-    const sign = side === `negative` ? -1 : 1
-    for (let idx = 0; idx < n_pts; idx++) {
-      pts.push(orient(center + sign * half_offsets_px[idx], grid_px[idx]))
-    }
-    // straight inner edge back along the center line
-    pts.push(orient(center, grid_px[n_pts - 1]), orient(center, grid_px[0]))
   }
   return `M${pts.map(([x_pos, y_pos]) => `${x_pos},${y_pos}`).join(`L`)}Z`
 }

@@ -79,7 +79,6 @@
     for (const col of changed) on_toggle?.(col, col.visible !== false)
   }
 
-  // Check if a column's visibility differs from its default
   const is_changed = (col: MenuColumn) =>
     (col.visible !== false) !== (default_visibility.get(col.id) ?? true)
 
@@ -95,21 +94,15 @@
     publish_visibility(changed)
   }
 
-  // Keep first-occurrence group order, with ungrouped columns last, even when filtering.
-  let filtered_sections = $derived.by(() => {
-    const groups = Map.groupBy(columns, (col) => col.group || ``)
-    const ungrouped = groups.get(``)
-    if (ungrouped) {
-      groups.delete(``)
-      groups.set(``, ungrouped)
-    }
-    return [...groups]
+  // Keep first-occurrence group order (stable sort), ungrouped columns last, even when filtering.
+  let filtered_sections = $derived(
+    [...Map.groupBy(columns, (col) => col.group || ``)]
+      .toSorted(([name1], [name2]) => Number(!name1) - Number(!name2))
       .map(([name, items]) => ({ name, items: items.filter(column_matches_filter) }))
-      .filter(({ items }) => items.length > 0)
-  })
+      .filter(({ items }) => items.length > 0),
+  )
   let filtered_columns = $derived(filtered_sections.flatMap(({ items }) => items))
 
-  // Check if any column defines a group (to decide whether to show sections)
   let has_sections = $derived(columns.some((col) => col.group))
 
   function toggle_section(name: string) {
@@ -126,6 +119,18 @@
 
   let trigger_el = $state<HTMLButtonElement>()
 </script>
+
+{#snippet reset_btn(items: MenuColumn[], name: string)}
+  <button
+    class="reset-btn"
+    onclick={() => reset_columns(items)}
+    type="button"
+    aria-label="Reset {name} to defaults"
+    {@attach tooltip()}
+  >
+    <Icon icon={Reset} width="12px" />
+  </button>
+{/snippet}
 
 {#snippet toggle_item(col: MenuColumn)}
   {#snippet label(trigger_props: HTMLAttributes<HTMLLabelElement> = {})}
@@ -170,15 +175,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
     {/if}
   </button>
   {#if has_any_changes}
-    <button
-      class="reset-btn"
-      onclick={() => reset_columns(columns)}
-      type="button"
-      aria-label="Reset all columns to defaults"
-      {@attach tooltip()}
-    >
-      <Icon icon={Reset} width="12px" />
-    </button>
+    {@render reset_btn(columns, `all columns`)}
   {/if}
 
   {#if column_panel_open}
@@ -224,15 +221,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
                   {section.name}
                 </button>
                 {#if section.items.some(is_changed)}
-                  <button
-                    class="reset-btn"
-                    onclick={() => reset_columns(section.items)}
-                    type="button"
-                    aria-label="Reset {section.name} to defaults"
-                    {@attach tooltip()}
-                  >
-                    <Icon icon={Reset} width="12px" />
-                  </button>
+                  {@render reset_btn(section.items, section.name)}
                 {/if}
               </div>
             {/if}

@@ -86,7 +86,7 @@ const auto_panels = panel_inputs.map(({ key, data }) => ({
   data: { series: data.series },
 }))
 
-const mounted_grids: { component: ReturnType<typeof mount>; target: HTMLElement }[] = []
+const mounted_grids: ReturnType<typeof mount>[] = []
 
 const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
   const target = document.createElement(`div`)
@@ -123,7 +123,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
     target,
     props: { panels, columns: 2, children },
   })
-  mounted_grids.push({ component, target })
+  mounted_grids.push(component)
   await tick()
   const root = query(target, `.facet-grid`)
 
@@ -138,10 +138,7 @@ const mount_facet_plot = async (plot_case: PlotCase, panels = panel_inputs) => {
 
 describe(`FacetGrid + Cartesian plots`, () => {
   afterEach(async () => {
-    for (const { component, target } of mounted_grids.splice(0)) {
-      await unmount(component)
-      target.remove()
-    }
+    for (const component of mounted_grids.splice(0)) await unmount(component)
     vi.restoreAllMocks()
   })
 

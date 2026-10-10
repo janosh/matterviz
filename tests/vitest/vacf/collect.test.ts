@@ -1,4 +1,6 @@
+import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/index.js'
+import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import {
@@ -8,6 +10,7 @@ import {
 } from '#lib/vacf/collect.js'
 import { describe, expect, it, vi } from 'vitest'
 import { make_frame } from '../test-fixtures'
+import { make_ase_md_buffer } from '../trajectory/fixtures'
 import { max_abs_error, orbit_run } from './helpers'
 
 const make_run = (n_frames: number, with_velocities: boolean): TrajectoryRun =>
@@ -39,6 +42,46 @@ describe(`collect_vacf_input`, () => {
     ).toBeLessThan(1e-12)
   })
 
+  // ASE stores momenta, not velocities, in .traj frames and the extXYZ it writes. Both must
+  // reach VACF as stored p/m in Å/fs (atoms.get_velocities() * ase.units.fs), with frame 0's
+  // recorded masses (inherited by .traj frames without a topology header) or standard ones.
+  const ase_extxyz = (masses: boolean): string =>
+    [0, 1]
+      .map((frame_idx) =>
+        [
+          `2`,
+          `Lattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3:momenta:R:3${masses ? `:masses:R:1` : ``} pbc="T T T"`,
+          ...[0, 1].map(
+            (atom_idx) =>
+              `H ${atom_idx + 1} 1 1 ${2 * (frame_idx + 1)} 0 0${masses ? ` 2` : ``}`,
+          ),
+        ].join(`\n`),
+      )
+      .join(`\n`)
+  it.each([
+    [`.traj with recorded masses`, () => make_ase_md_buffer(2), `md.traj`, 2],
+    [`.traj with standard masses`, () => make_ase_md_buffer(2, false), `md.traj`, 1.008],
+    [`extXYZ with masses`, () => ase_extxyz(true), `md.extxyz`, 2],
+    [`extXYZ with standard masses`, () => ase_extxyz(false), `md.extxyz`, 1.008],
+  ])(`uses ASE momenta of %s as stored velocities`, async (_label, source, filename, mass) => {
+    // eager (in-memory) and indexed runs decode frames through the same readers
+    for (const index_above_bytes of [0, Infinity]) {
+      const run = await open_trajectory(source(), { filename, index_above_bytes })
+      const collected = await collect_vacf_input(run)
+      expect(collected.velocity_unit).toBe(`A/fs`)
+      expect(collected.velocities).toEqual(
+        Float64Array.from(
+          [1, 2]
+            .flatMap((scale) => [scale, scale])
+            .flatMap((scale) => [((2 * scale) / mass) * FS_IN_ASE_TIME, 0, 0]),
+        ),
+      )
+      const result = calc_vacf(collected)
+      expect(result).toMatchObject({ velocity_source: `stored`, velocity_unit: `(A/fs)^2` })
+      run.dispose()
+    }
+  })
+
   it(`falls back to central differences when no velocities are stored`, async () => {
     const collected = await collect_vacf_input(make_run(50, false))
     expect(collected.velocities).toBeNull()
@@ -53,10 +96,16 @@ describe(`collect_vacf_input`, () => {
     expect(collected.velocities?.[3]).toBeCloseTo(1.5 * omega * Math.cos(omega * 3), 12)
   })
 
-  it.each([1, 2])(`rejects a %i-frame run`, async (n_frames) => {
-    await expect(collect_vacf_input(make_run(n_frames, true))).rejects.toThrow(
-      `need at least 3 frames`,
+  // calc_vacf needs 2 velocity frames; differentiating positions drops the two endpoints
+  it.each([
+    [1, true, 2],
+    [3, false, 4],
+  ])(`rejects %i frames (stored velocities: %s)`, async (n_frames, stored, min_frames) => {
+    await expect(collect_vacf_input(make_run(n_frames, stored))).rejects.toThrow(
+      `need at least ${min_frames} frames`,
     )
+    const shortest = await collect_vacf_input(make_run(min_frames, stored))
+    expect(calc_vacf(shortest).lags).toHaveLength(2)
   })
 
   it(`requests the velocity channel from a streaming run`, async () => {

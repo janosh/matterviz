@@ -23,9 +23,9 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
   const data: Record<string, number> = { Step: frame.step }
   const { metadata } = frame
   if (!metadata) return data
-  copy_numeric_fields(data, metadata, [`force_max`, `force_norm`])
   // pressure lives here, not in structural_data_extractor, so full_data_extractor gets it once
-  copy_numeric_fields(data, metadata, [`stress_max`, `stress_frobenius`, `pressure`])
+  const keys = [`force_max`, `force_norm`, `stress_max`, `stress_frobenius`, `pressure`]
+  copy_numeric_fields(data, metadata, keys)
   return data
 }
 

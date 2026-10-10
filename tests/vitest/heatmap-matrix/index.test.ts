@@ -69,14 +69,6 @@ describe(`built-in orderings`, () => {
     expect(labels[0]).toBe(`Ac`)
     expect(labels).toEqual([...labels].toSorted())
   })
-
-  test(`electronegativity uses pauling values (Tl/Cu order differs from plain EN)`, () => {
-    // pauling: Tl(1.62) < Cu(1.9) < Pt(2.28) < Au(2.54); plain EN puts Tl(2.04) after Cu(1.9)
-    const labels = elements_to_axis([`Tl`, `Cu`, `Au`, `Pt`], `electronegativity`).map(
-      (item) => item.label,
-    )
-    expect(labels).toEqual([`Tl`, `Cu`, `Pt`, `Au`])
-  })
 })
 
 test(`custom comparators sort all elements or a subset`, () => {

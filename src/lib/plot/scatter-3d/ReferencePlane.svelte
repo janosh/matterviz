@@ -10,21 +10,15 @@
 
   let {
     ref_plane,
-    scene_size = [10, 10, 5],
     ranges,
   }: {
     ref_plane: RefPlane
-    scene_size?: Vec3
     ranges: { x: Vec2; y: Vec2; z: Vec2 }
   } = $props()
 
-  let [scene_x, scene_y, scene_z] = $derived(scene_size)
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
-
   // Transform data coords to Three.js coordinates
-  const to_coords = $derived(
-    create_to_threejs({ scene_x, scene_y, scene_z, x_range, y_range, z_range }),
-  )
+  const to_coords = $derived(create_to_threejs(ranges))
 
   // Apply span constraints or use full range
   let [x_min, x_max] = $derived(span_or(ref_plane.x_span, x_range))

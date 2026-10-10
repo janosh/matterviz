@@ -24,14 +24,13 @@ export type HullModel = ReadonlyValue<{
 export type EnergySourceMode = `precomputed` | `on-the-fly`
 
 // Which energies the hull can be built from. The user toggle only applies when the data
-// carries both E_form and E_above_hull and nothing has shifted the energies since they were
-// computed; temperature-dependent free energies and gas-pressure corrections change `energy`
-// only, so the hull must be rebuilt on the fly for them to have any effect. Without unary
-// references nothing can be recomputed and the precomputed values are all there is.
+// carries E_form and nothing has shifted the energies since it was computed; temperature-
+// dependent free energies and gas-pressure corrections change `energy` only, so the hull must
+// be rebuilt on the fly for them to have any effect. Without absolute-energy unary references
+// nothing can be recomputed and the precomputed values are all there is.
 export interface EnergyModeInfo {
   has_precomputed_e_form: boolean
-  has_precomputed_hull: boolean
-  can_compute: boolean // unary references exist for every element (E_form and hull alike)
+  can_compute: boolean // absolute-energy unary references exist for every element
   // Temperature or gas-pressure corrections are active, so the energy mode is forced on the fly
   corrections_active: boolean
   energy_mode: EnergySourceMode
@@ -45,20 +44,20 @@ export function compute_energy_mode_info(
 ): EnergyModeInfo {
   const has_precomputed_e_form =
     entries.length > 0 && entries.every((entry) => typeof entry.e_form_per_atom === `number`)
-  const has_precomputed_hull =
-    entries.length > 0 && entries.every((entry) => typeof entry.e_above_hull === `number`)
   const unary_refs = thermo.find_lowest_energy_unary_refs(entries)
+  // E_form is recomputed from absolute energies, so E_form-only references can't anchor it
   const can_compute = entries.every((entry) =>
-    Object.keys(entry.composition).every((element) => element in unary_refs),
+    Object.keys(entry.composition).every(
+      (element) => element in unary_refs && thermo.has_absolute_energy(unary_refs[element]),
+    ),
   )
+  // Missing hull distances alone don't force recomputing E_form: build_hull_model fills them
+  // from the precomputed E_form
   let energy_mode: EnergySourceMode = energy_source_mode
   if (!can_compute) energy_mode = `precomputed`
-  else if (corrections_active || !has_precomputed_e_form || !has_precomputed_hull) {
-    energy_mode = `on-the-fly`
-  }
+  else if (corrections_active || !has_precomputed_e_form) energy_mode = `on-the-fly`
   return {
     has_precomputed_e_form,
-    has_precomputed_hull,
     can_compute,
     corrections_active,
     energy_mode,
@@ -73,6 +72,8 @@ export const apply_formation_energies = (
   energy_mode === `precomputed`
     ? entries
     : entries.map((entry) => {
+        // E_form-only entries have nothing to recompute their E_form from
+        if (!thermo.has_absolute_energy(entry)) return entry
         const e_form = thermo.compute_e_form_per_atom(entry, unary_refs)
         return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
       })

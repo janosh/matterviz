@@ -12,6 +12,7 @@ import {
   fire,
   query,
   set_input,
+  set_select,
 } from '../setup'
 import HeatmapDemo from '../../../src/routes/(demos)/plot/heatmap-matrix/+page.svelte'
 
@@ -68,24 +69,18 @@ describe(`HeatmapMatrixControls`, () => {
       return selects
     })
     const matrices = document.querySelectorAll(`.heatmap-controls-anchor .heatmap`)
-    // Svelte reads :checked on options, which happy-dom doesn't match.
-    for (const select of orderings) {
-      vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])
-    }
     const labels = (idx: number) =>
       [...matrices[idx].querySelectorAll(`.x-label`)].map((label) => label.textContent)
     const initial_full = labels(0)
     const initial_subset = labels(1)
     expect(initial_full.length).toBeGreaterThan(0)
-    orderings[1].value = `atomic_mass`
-    orderings[1].dispatchEvent(new Event(`change`, { bubbles: true }))
+    set_select(orderings[1], `atomic_mass`)
     await tick()
     const reordered_subset = labels(1)
     expect(reordered_subset).not.toEqual(initial_subset)
     expect(labels(0)).toEqual(initial_full)
     expect(orderings[0].value).toBe(`atomic_number`)
-    orderings[0].value = `alphabetical`
-    orderings[0].dispatchEvent(new Event(`change`, { bubbles: true }))
+    set_select(orderings[0], `alphabetical`)
     await tick()
     expect(labels(0)).not.toEqual(initial_full)
     expect(labels(1)).toEqual(reordered_subset)

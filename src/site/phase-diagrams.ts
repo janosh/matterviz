@@ -4,7 +4,6 @@ import { build_diagram } from '#lib/phase-diagram/build-diagram.js'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import { normalize_system_name } from '#site/phase-diagrams/tdb-parse.js'
 import { glob_basename, site_file_info } from '#site/imports.js'
-import { SvelteMap } from 'svelte/reactivity'
 
 const diagram_modules = import.meta.glob<DiagramInput>(`./phase-diagrams/binary/data/*.json`, {
   eager: true,
@@ -37,7 +36,7 @@ export const all_phase_diagram_files: FileInfo[] = [
   ...tdb_files,
 ]
 
-const precomputed_map = new SvelteMap(
+const precomputed_map = new Map(
   built_diagrams.map(([name, data]) => [normalize_system_name(name), data]),
 )
 

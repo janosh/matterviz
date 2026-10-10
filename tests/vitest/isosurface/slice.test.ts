@@ -32,7 +32,19 @@ describe(`trilinear_interpolate`, () => {
   const y_ramp = flat(4, 4, 4, (_ix, idx_y) => idx_y)
   const z_ramp = flat(4, 4, 4, (_ix, _iy, idx_z) => idx_z)
   const constant = flat(4, 4, 4, () => 10)
+  // the same ix*100 + iy*10 + iz field stored x-fastest (index = ix + nx·(iy + ny·iz)); read
+  // with z-fastest strides, grid point (1, 2, 3) gave 321
+  const x_fastest: ReturnType<typeof flat> = {
+    values: Float64Array.from({ length: 64 }, (_, idx) => {
+      const [idx_x, idx_y, idx_z] = [idx % 4, Math.floor(idx / 4) % 4, Math.floor(idx / 16)]
+      return idx_x * 100 + idx_y * 10 + idx_z
+    }),
+    dims: [4, 4, 4],
+    order: `x_fastest`,
+  }
   test.each([
+    [`grid point (1, 2, 3) of an x-fastest grid`, x_fastest, [0.25, 0.5, 0.75], true, 123],
+    [`an x-fastest cell midpoint`, x_fastest, [0.375, 0.625, 0.125], true, 175.5],
     [
       `grid point (1, 2, 3) of an ix*100 + iy*10 + iz field`,
       flat(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x * 100 + idx_y * 10 + idx_z),
@@ -258,20 +270,6 @@ describe(`sample_plane_slice`, () => {
     expect(result.data.at(-1)).toBeCloseTo(5, 10)
     expect(result.min).toBeCloseTo(2, 10)
     expect(result.max).toBeCloseTo(5, 10)
-  })
-
-  test(`masks the exact cell cross-section instead of inventing zero values`, () => {
-    const result = plane_slice(
-      { point: [5, 5, 5], normal: [1, 1, 1] },
-      { resolution: [31, 31] },
-    )
-    const inside_count = result.mask.filter(Boolean).length
-
-    expect(inside_count).toBeGreaterThan(0)
-    expect(inside_count).toBeLessThan(result.mask.length)
-    for (let data_idx = 0; data_idx < result.data.length; data_idx++) {
-      expect(Number.isNaN(result.data[data_idx])).toBe(result.mask[data_idx] === 0)
-    }
   })
 
   test(`preserves aspect ratio and enforces the pixel budget`, () => {

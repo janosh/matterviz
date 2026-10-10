@@ -38,11 +38,8 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     return min > max ? ([lower, lower] as const) : ([min, max] as const)
   })
 
-  const normalize_fps = (value: number): number => {
-    const finite = Number.isFinite(value) ? value : fps_limits[0]
-    const stepped = snap_fps(finite)
-    return clamp(stepped, fps_limits[0], fps_limits[1])
-  }
+  const normalize_fps = (value: number): number =>
+    clamp(snap_fps(Number.isFinite(value) ? value : fps_limits[0]), ...fps_limits)
   const playback_fps = $derived(normalize_fps(inputs.fps()))
 
   // Keep externally-bound values within the control range and configured step grid.
@@ -138,10 +135,6 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
     let accumulated_ms = 0
     let play_raf: number
     const tick = (now: number) => {
-      if (!is_playing || !can_play) {
-        set_playing(false)
-        return
-      }
       accumulated_ms += clamp(now - last_timestamp, 0, 250)
       last_timestamp = now
       const step_ms = 1000 / playback_fps
@@ -154,11 +147,8 @@ export function create_sequence_player(inputs: SequencePlayerInputs) {
         accumulated_ms -= step_ms
         advance()
       }
-      if (!is_playing || !can_play) {
-        set_playing(false)
-        return
-      }
-      play_raf = requestAnimationFrame(tick)
+      if (is_playing && can_play) play_raf = requestAnimationFrame(tick)
+      else set_playing(false)
     }
     play_raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(play_raf)

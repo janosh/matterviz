@@ -13,7 +13,7 @@ import { open_lammps_frames } from '../parse/lammps'
 import type { WarnFn, WarningCollector } from '../parse/shared'
 import { open_xdatcar_frames } from '../parse/vasp'
 import { frame_property_row } from '../extract'
-import { build_xyz_frame, index_xyz_frames } from '../parse/xyz'
+import { build_xyz_frame, extxyz_run_metadata, index_xyz_frames } from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -36,7 +36,12 @@ const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames =>
       collector,
     )
   // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
-  return { frame_count: frames.length, decode, plot_row_frame: decode }
+  return {
+    frame_count: frames.length,
+    decode,
+    plot_row_frame: decode,
+    metadata: extxyz_run_metadata(frames[0]?.comment),
+  }
 }
 
 export const indexed_text_run = (

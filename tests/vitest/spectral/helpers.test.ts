@@ -490,6 +490,15 @@ describe(`normalize_band_structure`, () => {
         distance: [0],
       },
     ],
+    [
+      `a branch with a NaN start index`,
+      {
+        qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
+        branches: [{ start_index: NaN, end_index: 0, name: `t` }],
+        bands: [[0]],
+        distance: [0],
+      },
+    ],
     [`pymatgen input without bands`, pmg({ qpoints: line(2), bands: null })],
     [
       `pymatgen input with an unknown unit`,
@@ -649,13 +658,11 @@ describe(`normalize_band_structure`, () => {
     [`lattice_rec`, 1],
     [`recip_lattice`, 2 * Math.PI],
   ])(`measures k-path distance in Cartesian reciprocal space from %s.matrix`, (key, scale) => {
-    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const result = normalize_band_structure({
       '@class': `PhononBandStructureSymmLine`,
       ...hex_path,
       [key]: { matrix: hex_matrix },
     })
-    spy.mockRestore()
     expect(result?.distance).toHaveLength(9)
     // corners sit at even indices
     hex_distance.forEach((val, idx) =>
@@ -716,14 +723,12 @@ describe(`normalize_band_structure`, () => {
   })
 
   it(`passes pymatgen phonon flags through`, () => {
-    const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const flagged = normalize_band_structure(
       pmg({ qpoints: line(2), bands: [[0, 1]], has_nac: true, has_imaginary_modes: false }),
     )
     expect(flagged).toMatchObject({ has_nac: true, has_imaginary_modes: false })
     const unflagged = normalize_band_structure(pmg({ qpoints: line(2), bands: [[0, 1]] }))
     expect(unflagged && `has_nac` in unflagged).toBe(false)
-    spy.mockRestore()
   })
 
   describe(`branches`, () => {
@@ -1109,9 +1114,19 @@ describe(`compute_frequency_range`, () => {
       { bands, type },
     ),
   })
-  const dos_of = (frequencies: number[]) => ({
-    sample: { type: `phonon` as const, frequencies, densities: frequencies.map(() => 1) },
+  const dos_of = (frequencies: number[], density_of = (_freq: number) => 1) => ({
+    sample: { type: `phonon` as const, frequencies, densities: frequencies.map(density_of) },
   })
+  // grid -0.6…15 THz at unit density, with density `tail` below 0
+  const stable_dos = (tail: number) =>
+    dos_of(
+      Array.from({ length: 157 }, (_, idx) => -0.6 + idx / 10),
+      (freq) => (freq < 0 ? tail : 1),
+    )
+  // grid -1…20 THz: an imaginary-mode peak (2.0 at -0.8 THz) plus a broad band at 8 THz
+  const imaginary_grid = Array.from({ length: 211 }, (_, idx) => -1 + idx / 10)
+  const imaginary_density = (freq: number) =>
+    2 * Math.exp(-(((freq + 0.8) / 0.15) ** 2)) + Math.exp(-(((freq - 8) / 4) ** 2))
   it.each([
     [
       `phonon bands`,
@@ -1166,13 +1181,33 @@ describe(`compute_frequency_range`, () => {
       {},
       [-1.5 - 9.5 * 0.02, 8 + 9.5 * 0.02],
     ],
-    // DOS grids run below 0 at zero density (-0.59 THz in mp-2691 PBE); only band
-    // frequencies can signal an imaginary mode
+    // DOS grids run below 0 at zero density (-0.59 THz in mp-2691 PBE), or with a smearing
+    // tail far below IMAGINARY_MODE_NOISE_THRESHOLD of the total density: no imaginary mode
     [
       `a DOS grid reaching below the imaginary cutoff`,
       bands_of([[0, 5, 10]]),
-      dos_of(Array.from({ length: 157 }, (_, idx) => -0.6 + idx / 10)),
-      [0, 15 + 15 * 0.02],
+      stable_dos(0),
+      [0, 15.3],
+    ],
+    [
+      `a DOS smearing tail below the imaginary cutoff`,
+      bands_of([[0, 5, 10]]),
+      stable_dos(1e-4),
+      [0, 15.3],
+    ],
+    // ...but DOS density below -0.5 THz is a real imaginary mode, with or without bands
+    // (was clamped to [0, 20.4] when the bands had no negative frequency or were absent)
+    [
+      `a DOS imaginary-mode peak`,
+      {},
+      dos_of(imaginary_grid, imaginary_density),
+      [-1.42, 20.42],
+    ],
+    [
+      `a DOS imaginary-mode peak next to stable bands`,
+      bands_of([[0, 5, 10]]),
+      dos_of(imaginary_grid, imaginary_density),
+      [-1.42, 20.42],
     ],
     [
       `electronic bands retain small negative values`,

@@ -295,9 +295,7 @@
     const pending: PendingSurface[] = []
 
     for (const [layer_idx, layer] of layers.entries()) {
-      const vol = layer.volume
       if (!layer.visible || !Number.isFinite(layer.isovalue)) continue
-
       for (const sign of mirror_signs(layer)) {
         const key = `${layer_idx}:${sign}`
         const geo_key = geometry_key(layer, sign)
@@ -315,7 +313,7 @@
             layer_idx,
             sign,
             isovalue: sign * layer.isovalue,
-            volume: vol,
+            volume: layer.volume,
           }
           pending.push(surface)
           plans.push(surface)

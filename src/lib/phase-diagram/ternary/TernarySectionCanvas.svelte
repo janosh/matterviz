@@ -209,7 +209,6 @@
   // Base layer: everything that doesn't change while the pointer moves
   function draw_frame(frame: CanvasFrame): void {
     const { ctx, text_color } = frame
-    const { scale } = layout
     const [corner_a, corner_b, corner_c] = TRIANGLE_VERTICES
     if (settings.show_grid) {
       ctx.strokeStyle = add_alpha(text_color, 0.12)

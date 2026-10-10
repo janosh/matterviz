@@ -161,6 +161,7 @@ describe(`detect_view_type`, () => {
         origin: [0, 0, 0],
         data_range: { min: 0, max: 1 },
         periodic: true,
+        id: `charge`,
       },
     ],
     [
@@ -338,6 +339,19 @@ describe(`detect_view_type`, () => {
       },
     ],
     [`column table with unequal lengths`, null, { col_a: [1, 2, 3], col_b: [4, 5] }],
+    // make_volume needs a nonempty string id, so id-less grids threw on open
+    ...[{}, { id: `` }, { id: `  ` }, { id: 7 }].map((id_field) => [
+      `volumetric grid with id ${JSON.stringify(id_field)}`,
+      null,
+      {
+        values: [1, 2, 3, 4, 5, 6, 7, 8],
+        dims: [2, 2, 2],
+        lattice: k_lattice_3x3,
+        origin: [0, 0, 0],
+        periodic: true,
+        ...id_field,
+      },
+    ]),
     [
       `row table with inconsistent keys`,
       null,

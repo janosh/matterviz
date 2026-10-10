@@ -21,35 +21,39 @@
     { key: `lithium-fluoride`, title: `Lithium fluoride`, offset: 0.12, curvature: 0.004 },
   ]
   type FacetPlot = Component<Record<string, unknown>>
-  const plot_config = (component: unknown, props: Record<string, unknown>) => ({
+  const plot_config = (component: unknown, label: string, props: Record<string, unknown>) => ({
     component: component as FacetPlot,
+    label,
     props,
   })
   const strain_axis = { label: `Isotropic strain (%)`, format: `.0f` }
   const energy_axis = { label: `Relative energy (eV/atom)` }
   const standard_props = { legend: null, show_controls: false }
   const plot_configs = {
-    scatter: plot_config(ScatterPlot, {
+    scatter: plot_config(ScatterPlot, `Scatter`, {
       x_axis: strain_axis,
       y_axis: energy_axis,
       range_padding: 0.04,
-      legend: null,
-      show_controls: false,
+      ...standard_props,
       point_tween: { duration: 0 },
       line_tween: { duration: 0 },
     }),
-    bar: plot_config(BarPlot, { x_axis: strain_axis, y_axis: energy_axis, ...standard_props }),
-    box: plot_config(BoxPlot, {
+    bar: plot_config(BarPlot, `Bar`, {
+      x_axis: strain_axis,
+      y_axis: energy_axis,
+      ...standard_props,
+    }),
+    box: plot_config(BoxPlot, `Box`, {
       x_axis: { label: `Method` },
       y_axis: energy_axis,
       ...standard_props,
     }),
-    histogram: plot_config(Histogram, {
+    histogram: plot_config(Histogram, `Histogram`, {
       x_axis: energy_axis,
       y_axis: { label: `Count` },
       ...standard_props,
     }),
-    binned: plot_config(BinnedScatterPlot, {
+    binned: plot_config(BinnedScatterPlot, `Binned scatter`, {
       x_axis: strain_axis,
       y_axis: energy_axis,
       color_bar: null,
@@ -108,11 +112,9 @@
   <label
     >Plot type
     <select bind:value={plot_type}>
-      <option value="scatter">Scatter</option>
-      <option value="bar">Bar</option>
-      <option value="box">Box</option>
-      <option value="histogram">Histogram</option>
-      <option value="binned">Binned scatter</option>
+      {#each Object.entries(plot_configs) as [value, { label }] (value)}
+        <option {value}>{label}</option>
+      {/each}
     </select>
   </label>
   {#if plot_type === `scatter`}

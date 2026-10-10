@@ -69,15 +69,8 @@ test.describe(`BrillouinBandsDos Component Tests`, { lock: `brillouin-3d` }, () 
     expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
   })
 
-  test(`applies custom styling and column widths`, async ({ page }) => {
-    // Custom widths
-    const widths_container = page.locator(`[data-testid="bz-bands-dos-custom-widths"]`)
-    const grid_style = await widths_container.evaluate(
-      (element) => getComputedStyle(element).gridTemplateColumns,
-    )
-    expect(grid_style).toBeTruthy()
-
-    // Custom bands styling (red, thick lines)
+  test(`applies custom bands styling`, async ({ page }) => {
+    // red, thick lines
     const styling_container = page.locator(`[data-testid="bz-bands-dos-bands-styling"]`)
     const first_path = styling_container
       .locator(`svg:has(g.x-axis)`)

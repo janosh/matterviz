@@ -94,11 +94,7 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
 // A fixed atom's force or a vacuum density is ~1e-17 rather than 0; an SI-prefixed range end
 // read "10a" (atto) instead of 0
 test(`range ends at floating noise read 0`, async () => {
-  const rows: TrajectoryMetadata[] = [0, 1].map((frame_number) => ({
-    frame_number,
-    step: frame_number,
-    properties: { force_max: frame_number ? 0.5 : 1e-17 },
-  }))
+  const rows = make_metadata(2, (frame_number) => ({ force_max: frame_number ? 0.5 : 1e-17 }))
   await mount_pane(sampled_run(2, rows), 0)
   expect(pane_text()).toContain(`Fmax Range 0 - 500m eV/Å`)
 })

@@ -74,17 +74,23 @@ test.each([
   expect(spg.normalize_spacegroup(input)).toBe(expected)
 })
 
-// Canonical symbols are pinned by SPACEGROUP_NUM_TO_SYMBOL plus the all-230 round trip
+// Canonical symbols are pinned by SPACEGROUP_NUM_TO_SYMBOL plus the all-230 round trip, so
+// only full-setting aliases need listing
 describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
+  // Full symbols are pymatgen's SpaceGroup.full_symbol with spaces dropped. The last six were
+  // stored malformed (`I2/b2/c2/a`, `P4/m2_1/bm`, ...), so their real full symbols were null.
   test.each([
     [`P121`, 3],
-    [`P2_1`, 4],
     [`P12_11`, 4],
-    [`P2/m`, 10],
-    [`P6_3/mmc`, 194],
-    [`I4/mmm`, 139],
-  ])(`should map '%s' to %i`, (symbol, number) => {
+    [`I2_1/b2_1/c2_1/a`, 73],
+    [`I2_1/m2_1/m2_1/a`, 74],
+    [`P4/m2_1/b2/m`, 127],
+    [`P4/m2_1/n2/c`, 128],
+    [`P4/n2_1/m2/m`, 129],
+    [`P4/n2_1/c2/c`, 130],
+  ])(`should map alias '%s' to %i`, (symbol, number) => {
     expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(number)
+    expect(spg.normalize_spacegroup(symbol)).toBe(number)
   })
 })
 

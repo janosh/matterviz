@@ -10,6 +10,12 @@ const SAFE_ATTR_SET = new Set(SAFE_ATTRS)
 // only allow safe CSS properties for text formatting
 const SAFE_STYLE_RE =
   /^\s*(?:color|font-weight|font-style|font-size|text-decoration|vertical-align)\s*:/
+// The safe declarations of a style attribute, empty when none survive
+const safe_style = (style: string): string =>
+  style
+    .split(`;`)
+    .filter((rule) => SAFE_STYLE_RE.test(rule))
+    .join(`;`)
 
 const ensure_token = (value: string, token: string): string => {
   const tokens = new Set(value.split(/\s+/).filter(Boolean))
@@ -28,9 +34,9 @@ function get_purify(): ReturnType<typeof DOMPurify> | null {
   purify = instance
   instance.addHook(`uponSanitizeAttribute`, (node, data) => {
     if (data.attrName === `style`) {
-      const rules = data.attrValue.split(`;`).filter((rule) => SAFE_STYLE_RE.test(rule))
-      if (rules.length === 0) data.keepAttr = false
-      else data.attrValue = rules.join(`;`)
+      const style = safe_style(data.attrValue)
+      if (style) data.attrValue = style
+      else data.keepAttr = false
     }
     // force rel="noopener" on links to prevent window.opener attacks
     if (data.attrName === `href`) {
@@ -41,12 +47,59 @@ function get_purify(): ReturnType<typeof DOMPurify> | null {
   return instance
 }
 
-// Strip void / raw-text blocks that must not leak content when tags are removed
+// Openers of void / raw-text blocks that must not leak content when tags are removed.
 // `[^<>]*` for the attribute run, not `[^>]*`, which rescans to end of input from every
 // unclosed `<` (quadratic). An attribute value containing `<` then reads as text, the safe
 // direction for an allowlist sanitizer: it is escaped, not passed through.
-const DANGEROUS_BLOCK_RE =
-  /<(?<block>script|style|iframe|object|embed|textarea|noscript|template)\b[^<>]*>[\s\S]*?<\/\k<block>\s*>/gi
+const DANGEROUS_OPENER_RE =
+  /<(?<block>script|style|iframe|object|embed|textarea|noscript|template)\b[^<>]*>/gi
+
+// Cut every `opener … first closer after it` span, like replacing
+// /opener[\s\S]*?closer/g but linear: that lazy scan ran from each unclosed opener to the
+// end of input (128 KB of `<script>` took 175 ms). A closer search that fails once fails
+// for every later opener of the same kind too, so the kind is not searched again.
+function cut_spans(
+  html: string,
+  opener_re: RegExp,
+  closer_re_for: (opener: RegExpExecArray) => { kind: string; closer_re: RegExp },
+): string {
+  const unclosed = new Set<string>()
+  let out = ``
+  let last = 0
+  opener_re.lastIndex = 0
+  for (let opener = opener_re.exec(html); opener; opener = opener_re.exec(html)) {
+    const { kind, closer_re } = closer_re_for(opener)
+    if (unclosed.has(kind)) continue
+    closer_re.lastIndex = opener_re.lastIndex
+    const closer = closer_re.exec(html)
+    if (!closer) {
+      unclosed.add(kind)
+      continue
+    }
+    out += html.slice(last, opener.index)
+    last = closer.index + closer[0].length
+    opener_re.lastIndex = last
+  }
+  return out + html.slice(last)
+}
+
+const block_closer_res = new Map<string, RegExp>()
+const strip_dangerous_blocks = (html: string): string =>
+  cut_spans(html, DANGEROUS_OPENER_RE, (opener) => {
+    const kind = (opener.groups?.block ?? ``).toLowerCase()
+    const closer_re = block_closer_res.get(kind) ?? new RegExp(`</${kind}\\s*>`, `gi`)
+    block_closer_res.set(kind, closer_re)
+    return { kind, closer_re }
+  })
+const COMMENT_OPENER_RE = /<!--/g
+const COMMENT_CLOSER_RE = /-->/g
+const strip_comments = (html: string): string =>
+  cut_spans(html, COMMENT_OPENER_RE, () => ({ kind: `comment`, closer_re: COMMENT_CLOSER_RE }))
+// The tag name is matched atomically (lookahead + backreference, as JS has no possessive
+// quantifiers): a backtracking `[\w:-]*\b[^<>]*` re-split `<a-a-a-…` at every `-` and rescanned
+// the rest each time, 15 s for 200 KB. A name ending in `-` or `:` is now that name (`<b->`
+// is a `b-` tag, dropped) rather than `b` with an attribute `-`.
+const TAG_RE = /<\/?(?=(?<tag>[A-Za-z][\w:-]*))\k<tag>(?<attrs>[^<>]*)\/?>/g
 const ATTR_RE =
   /(?<name>[^\s=]+)(?:\s*=\s*(?:"(?<dq>[^"]*)"|'(?<sq>[^']*)'|(?<bare>[^\s"'=<>`]+)))?/g
 const SAFE_HREF_RE = /^(?:\/|#|https?:|mailto:)/i
@@ -68,9 +121,8 @@ function filter_attrs(attr_str: string, allowed: ReadonlySet<string>, tag: strin
       if (!SAFE_HREF_RE.test(raw.trim())) continue
       has_href = true
     } else if (name === `style`) {
-      const rules = raw.split(`;`).filter((rule) => SAFE_STYLE_RE.test(rule))
-      if (rules.length === 0) continue
-      out += ` style="${escape_html(rules.join(`;`))}"`
+      const style = safe_style(raw)
+      if (style) out += ` style="${escape_html(style)}"`
       continue
     }
     out += ` ${name}="${escape_html(raw)}"`
@@ -87,18 +139,15 @@ function sanitize_allowlist_ssr(
   tags: ReadonlySet<string>,
   attrs: ReadonlySet<string>,
 ): string {
-  const without_blocks = html
-    .replace(DANGEROUS_BLOCK_RE, ``)
-    .replaceAll(/<!--[\s\S]*?-->/g, ``)
-  const tag_re = /<\/?(?<tag>[A-Za-z][\w:-]*)\b(?<attrs>[^<>]*)\/?>/g
-  // Text between the tags is escaped, never copied verbatim. `tag_re` needs a closing `>`, so
+  const without_blocks = strip_comments(strip_dangerous_blocks(html))
+  // Text between the tags is escaped, never copied verbatim. `TAG_RE` needs a closing `>`, so
   // an unterminated tag was not seen as one and survived byte for byte - and SSR emits this
   // into the middle of a page, where the following markup supplies the `>`. That turned
   // `<img src=x onerror=alert(1)` into a live img element with a working handler.
   const escape_markup = (text: string) => text.replaceAll(`<`, `&lt;`)
   let out = ``
   let last = 0
-  for (const match of without_blocks.matchAll(tag_re)) {
+  for (const match of without_blocks.matchAll(TAG_RE)) {
     out += escape_markup(without_blocks.slice(last, match.index))
     last = match.index + match[0].length
     const name = (match.groups?.tag ?? ``).toLowerCase()

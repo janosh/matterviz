@@ -233,14 +233,12 @@
   const transformed_regions = $derived(
     effective_data.regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
-      const { width: box_width, height: box_height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
         region.name,
-        { width: box_width, height: box_height },
+        compute_bounding_box_2d(svg_vertices),
         merged_config.font_size,
       )
-      const gradient = get_multi_phase_gradient(region.name)
-      const [x_min, x_max] = array_extent(svg_vertices.map(([vector_x]) => vector_x))
+      const [x_min, x_max] = array_extent(svg_vertices.map(([svg_x]) => svg_x))
       return {
         ...region,
         svg_path: generate_region_path(svg_vertices),
@@ -250,7 +248,7 @@
         label_rotation: label_props.rotation,
         label_lines: label_props.lines,
         label_scale: label_props.scale,
-        gradient,
+        gradient: get_multi_phase_gradient(region.name),
         x_min,
         x_max,
       }
@@ -313,15 +311,18 @@
   // The line runs between the two endpoint markers, the cursor marker sits at the hover point.
   const tie_line = $derived.by(() => {
     const info = effective_hover_info
-    if (!info) return null
-    const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
-    const endpoint = (phase: string, center_x: number, center_y: number) =>
-      ({ cx: center_x, cy: center_y, color: get_phase_color(phase, `hex`) }) as const
+    if (!info?.lever_rule) return null
     const { lever_rule } = info
-    if (!lever_rule) return null
+    const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
+    const endpoint = (phase: string, composition: number) =>
+      ({
+        cx: x_scale(composition),
+        cy: cursor.cy,
+        color: get_phase_color(phase, `hex`),
+      }) as const
     const endpoints = [
-      endpoint(lever_rule.left_phase, x_scale(lever_rule.left_composition), cursor.cy),
-      endpoint(lever_rule.right_phase, x_scale(lever_rule.right_composition), cursor.cy),
+      endpoint(lever_rule.left_phase, lever_rule.left_composition),
+      endpoint(lever_rule.right_phase, lever_rule.right_composition),
     ] as const
     return { cursor, endpoints }
   })
@@ -646,7 +647,7 @@
           cursor,
           endpoints: [start, end],
         } = tie_line}
-        {@const top_left = merged_config.tie_line}
+        {@const tie_style = merged_config.tie_line}
         <g class="tie-line" class:locked={locked_hover_info} clip-path={plot_clip}>
           {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
             <line
@@ -655,7 +656,7 @@
               x2={end.cx}
               y2={end.cy}
               {stroke}
-              stroke-width={top_left.stroke_width + (stroke === `white` ? 1 : 0)}
+              stroke-width={tie_style.stroke_width + (stroke === `white` ? 1 : 0)}
               stroke-linecap="round"
             />
           {/each}
@@ -663,7 +664,7 @@
             <circle
               cx={endpoint.cx}
               cy={endpoint.cy}
-              r={top_left.endpoint_radius}
+              r={tie_style.endpoint_radius}
               fill={endpoint.color}
               stroke="white"
               stroke-width={1.5}
@@ -672,7 +673,7 @@
           <circle
             cx={cursor.cx}
             cy={cursor.cy}
-            r={top_left.cursor_radius}
+            r={tie_style.cursor_radius}
             fill={TIE_LINE_COLOR}
             stroke="white"
             stroke-width={2}

@@ -788,9 +788,8 @@
   let sticky_offsets = $derived.by(() => {
     const offsets: Record<string, number> = {}
     let offset = 0
-    for (const col of visible_columns) {
-      if (!col.sticky) continue
-      const col_id = col.id
+    for (const { id: col_id, sticky } of visible_columns) {
+      if (!sticky) continue
       offsets[col_id] = offset
       offset += sticky_widths[col_id] ?? 0
     }
@@ -840,12 +839,8 @@
         stats,
         bar: col.render_as === `bar` || col.render_as === `both`,
         best:
-          col.highlight_best && stats
-            ? better === `lower`
-              ? stats.min
-              : better === `higher`
-                ? stats.max
-                : null
+          col.highlight_best && stats && better
+            ? stats[better === `lower` ? `min` : `max`]
             : null,
       }
     })
@@ -1107,10 +1102,7 @@
 
   function handle_window_keydown(event: KeyboardEvent) {
     if (selection.size === 0) return
-    if (event.key === `Escape`) {
-      selection.clear()
-      return
-    }
+    if (event.key === `Escape`) return selection.clear()
     if (event.key !== `c` || !(event.metaKey || event.ctrlKey)) return
     // Native text selections and focused form fields keep native copy
     if (is_interactive_cell_target(event.target) || globalThis.getSelection()?.toString())
@@ -1234,6 +1226,13 @@
   })
   let selected_id_set = $derived(new Set(selected_ids))
   const is_row_selected = (row: Row): boolean => selected_id_set.has(get_row_id(row))
+  // Shared by the animated and static row loops
+  const row_attrs = (row: Row & RowData, abs_idx: number) => ({
+    style: row.style,
+    class: [row.class, { selected: show_row_select && is_row_selected(row) }],
+    'data-row-idx': abs_idx,
+    tabindex: on_row_click ? 0 : undefined,
+  })
   function toggle_row_select(row: Row) {
     const row_id = get_row_id(row)
     selected_ids = selected_id_set.has(row_id)
@@ -1800,12 +1799,12 @@
         ondblclick={on_row_double_click ? row_handler(on_row_double_click) : undefined}
       >
         {@render virtual_spacer(spacer_top)}
-        {#snippet row_cells(row: Row & RowData, abs_idx: number, row_selected: boolean)}
+        {#snippet row_cells(row: Row & RowData, abs_idx: number)}
           {#if show_row_select}
             <td class="select-col">
               <input
                 type="checkbox"
-                checked={row_selected}
+                checked={is_row_selected(row)}
                 onchange={() => toggle_row_select(row)}
               />
             </td>
@@ -1833,11 +1832,11 @@
               class:numeric-col={view.numeric}
               class:cell-selected={selection.has(abs_idx, col_idx)}
               class:best-cell={view.best !== null && num === view.best}
-              tabindex={!keyboard_cells
-                ? undefined
-                : tab_stop.row === abs_idx && tab_stop.col === col_idx
+              tabindex={keyboard_cells
+                ? tab_stop.row === abs_idx && tab_stop.col === col_idx
                   ? 0
-                  : -1}
+                  : -1
+                : undefined}
               style:--cell-bg={col.render_as === `bar` ? null : color.bg}
               style:color={col.render_as === `bar` ? null : color.text}
               style={view.cell_style}
@@ -1885,29 +1884,14 @@
         {:else if row_animation_ms > 0 && !virtual_config && !reduced_motion.current}
           {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
             {@const abs_idx = display_range.start + row_idx}
-            {@const row_selected = show_row_select && is_row_selected(row)}
-            <tr
-              animate:flip={{ duration: row_animation_ms }}
-              style={row.style}
-              class={[row.class, { selected: row_selected }]}
-              data-row-idx={abs_idx}
-              tabindex={on_row_click ? 0 : undefined}
-            >
-              {@render row_cells(row, abs_idx, row_selected)}
+            <tr animate:flip={{ duration: row_animation_ms }} {...row_attrs(row, abs_idx)}>
+              {@render row_cells(row, abs_idx)}
             </tr>
           {/each}
         {:else}
           {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
             {@const abs_idx = display_range.start + row_idx}
-            {@const row_selected = show_row_select && is_row_selected(row)}
-            <tr
-              style={row.style}
-              class={[row.class, { selected: row_selected }]}
-              data-row-idx={abs_idx}
-              tabindex={on_row_click ? 0 : undefined}
-            >
-              {@render row_cells(row, abs_idx, row_selected)}
-            </tr>
+            <tr {...row_attrs(row, abs_idx)}>{@render row_cells(row, abs_idx)}</tr>
           {/each}
         {/if}
         {@render virtual_spacer(spacer_bottom)}

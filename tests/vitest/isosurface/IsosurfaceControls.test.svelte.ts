@@ -346,6 +346,21 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(Number(slider.value)).toBeCloseTo(1.04, 12)
   })
 
+  // A weak field (values 1e-6…8e-6) gets a slider over its own [abs_max / 200, abs_max]: a
+  // 0.001 floor on abs_max made the track [5e-6, 1e-3], so the 2e-6 isovalue showed as 5e-6
+  // and only 2 of 199 steps drew a surface
+  test(`isovalue slider spans a weak field's own range`, () => {
+    const weak = make_volume_fixture(
+      make_grid(2, 2, 2, (idx_x, idx_y, idx_z) => (idx_x * 4 + idx_y * 2 + idx_z + 1) * 1e-6),
+      { data_range: { min: 1e-6, max: 8e-6, abs_max: 8e-6, mean: 4.5e-6 } },
+    )
+    mount_layers([make_layer(`0`, { isovalue: 2e-6 })], { volumes: [weak] })
+    const slider = doc_query<HTMLInputElement>(`.volume-group input[aria-label="Isovalue"]`)
+    const [min, max, step, value] = [slider.min, slider.max, slider.step, slider.value]
+    expect([min, max, step].map(Number)).toEqual([4e-8, 8e-6, 4e-8])
+    expect(Number(value)).toBeCloseTo(2e-6, 15)
+  })
+
   // A removed volume could only come back by reloading its file
   test(`a removed volume restores in place with its surfaces until volumes change`, () => {
     const props = mount_layers([make_layer(`0`), make_layer(`1`, { isovalue: 3 })])
@@ -407,14 +422,6 @@ describe(`IsosurfaceControls multi-volume`, () => {
         ...document.querySelectorAll<HTMLInputElement>(`input[aria-label^="Color range "]`),
       ].every((input) => input.value === ``),
     ).toBe(true)
-  })
-
-  test(`editing one bound of an auto range seeds the other from the color volume's data range`, () => {
-    const props = mount_colored({ colormap: `interpolateViridis` })
-    const range_input = doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`)
-    change_value(range_input, `2.5`)
-    // color volume data_range is [1, 8] → the untouched max bound comes from there
-    expect(props.settings.layers[0].color_range).toEqual([2.5, 8])
   })
 
   test(`display range inputs materialize, update, and reset; hidden when non-periodic`, () => {
@@ -497,6 +504,29 @@ describe(`IsosurfaceControls multi-volume`, () => {
       expected: { color_range: undefined, colormap: `interpolateViridis` },
       reset_visible: false,
     },
+    {
+      desc: `editing one bound of an auto range seeds the other from the color volume's data range`,
+      layer: { color_volume_id: `1`, colormap: `interpolateViridis` },
+      act: () =>
+        change_value(
+          doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
+          `2.5`,
+        ),
+      // color volume data_range is [1, 8] → the untouched max bound comes from there
+      expected: { color_range: [2.5, 8] },
+      reset_visible: true,
+    },
+    {
+      desc: `visibility checkbox toggles layer.visible`,
+      layer: {},
+      act: () => {
+        const checkbox = doc_query(`.layer-row input[type="checkbox"]`)
+        checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
+        flushSync()
+      },
+      expected: { visible: false },
+      reset_visible: false,
+    },
   ])(`$desc`, ({ layer, act, expected, reset_visible }) => {
     const props = mount_layers([make_layer(`0`, layer as Partial<IsosurfaceLayer>)])
     act()
@@ -506,14 +536,5 @@ describe(`IsosurfaceControls multi-volume`, () => {
         document.querySelector(`button[aria-label="Reset colormap + range to auto-fit"]`),
       ),
     ).toBe(reset_visible)
-  })
-
-  test(`visibility checkbox toggles layer.visible`, () => {
-    const props = mount_layers([make_layer(`0`)])
-    document
-      .querySelector<HTMLInputElement>(`.layer-row input[type="checkbox"]`)
-      ?.dispatchEvent(new Event(`change`, { bubbles: true }))
-    flushSync()
-    expect(props.settings.layers[0].visible).toBe(false)
   })
 })

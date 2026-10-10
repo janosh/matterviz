@@ -29,7 +29,7 @@
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
   import type { HullSelection } from './canvas-interactions.svelte'
-  import type { ConvexHullEntry, ConvexHullControlsType } from './types'
+  import type { ConvexHullControlsType } from './types'
 
   let {
     dim,

@@ -6,34 +6,8 @@ import { det_3x3, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/mat
 
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/isosurface/grid.js'
 
-// Edge table: for each cube configuration (256 cases), which edges are intersected
-// Each bit indicates whether that edge has an intersection
-// oxfmt-ignore
-const EDGE_TABLE = new Uint16Array([
-  0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a,
-  0xd03, 0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c,
-  0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90, 0x230, 0x339, 0x33, 0x13a, 0x636,
-  0x73f, 0x435, 0x53c, 0xa3c, 0xb35, 0x83f, 0x936, 0xe3a, 0xf33, 0xc39, 0xd30, 0x3a0,
-  0x2a9, 0x1a3, 0xaa, 0x7a6, 0x6af, 0x5a5, 0x4ac, 0xbac, 0xaa5, 0x9af, 0x8a6, 0xfaa,
-  0xea3, 0xda9, 0xca0, 0x460, 0x569, 0x663, 0x76a, 0x66, 0x16f, 0x265, 0x36c, 0xc6c,
-  0xd65, 0xe6f, 0xf66, 0x86a, 0x963, 0xa69, 0xb60, 0x5f0, 0x4f9, 0x7f3, 0x6fa, 0x1f6,
-  0xff, 0x3f5, 0x2fc, 0xdfc, 0xcf5, 0xfff, 0xef6, 0x9fa, 0x8f3, 0xbf9, 0xaf0, 0x650,
-  0x759, 0x453, 0x55a, 0x256, 0x35f, 0x55, 0x15c, 0xe5c, 0xf55, 0xc5f, 0xd56, 0xa5a,
-  0xb53, 0x859, 0x950, 0x7c0, 0x6c9, 0x5c3, 0x4ca, 0x3c6, 0x2cf, 0x1c5, 0xcc, 0xfcc,
-  0xec5, 0xdcf, 0xcc6, 0xbca, 0xac3, 0x9c9, 0x8c0, 0x8c0, 0x9c9, 0xac3, 0xbca, 0xcc6,
-  0xdcf, 0xec5, 0xfcc, 0xcc, 0x1c5, 0x2cf, 0x3c6, 0x4ca, 0x5c3, 0x6c9, 0x7c0, 0x950,
-  0x859, 0xb53, 0xa5a, 0xd56, 0xc5f, 0xf55, 0xe5c, 0x15c, 0x55, 0x35f, 0x256, 0x55a,
-  0x453, 0x759, 0x650, 0xaf0, 0xbf9, 0x8f3, 0x9fa, 0xef6, 0xfff, 0xcf5, 0xdfc, 0x2fc,
-  0x3f5, 0xff, 0x1f6, 0x6fa, 0x7f3, 0x4f9, 0x5f0, 0xb60, 0xa69, 0x963, 0x86a, 0xf66,
-  0xe6f, 0xd65, 0xc6c, 0x36c, 0x265, 0x16f, 0x66, 0x76a, 0x663, 0x569, 0x460, 0xca0,
-  0xda9, 0xea3, 0xfaa, 0x8a6, 0x9af, 0xaa5, 0xbac, 0x4ac, 0x5a5, 0x6af, 0x7a6, 0xaa,
-  0x1a3, 0x2a9, 0x3a0, 0xd30, 0xc39, 0xf33, 0xe3a, 0x936, 0x83f, 0xb35, 0xa3c, 0x53c,
-  0x435, 0x73f, 0x636, 0x13a, 0x33, 0x339, 0x230, 0xe90, 0xf99, 0xc93, 0xd9a, 0xa96,
-  0xb9f, 0x895, 0x99c, 0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x99, 0x190, 0xf00,
-  0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c, 0x70c, 0x605, 0x50f, 0x406, 0x30a,
-  0x203, 0x109, 0x0,
-])
-// Triangle table: for each cube configuration, the edge-index triplets of its triangles
+// Triangle table: for each of the 256 cube configurations (bit i set = corner i below the
+// isovalue), the edge-index triplets of its triangles
 const TRI_TABLE: number[][] = [
   [],
   [0, 8, 3],
@@ -477,7 +451,9 @@ export function marching_cubes(
     const val_1 = cube_values[v1_idx]
     const val_2 = cube_values[v2_idx]
     const value_delta = val_2 - val_1
-    const frac = Math.abs(value_delta) < 1e-10 ? 0 : (isovalue - val_1) / value_delta
+    // TRI_TABLE only uses crossed edges (one end < isovalue <= the other), so value_delta is
+    // never 0; an absolute cutoff here only made tiny-valued fields snap to grid points
+    const frac = (isovalue - val_1) / value_delta
     const frac_x = (idx_x + ox1 + frac * (ox2 - ox1)) * inv_nx
     const frac_y = (idx_y + oy1 + frac * (oy2 - oy1)) * inv_ny
     const frac_z = (idx_z + oz1 + frac * (oz2 - oz1)) * inv_nz
@@ -511,7 +487,7 @@ export function marching_cubes(
       }
       const length = Math.hypot(gradient_x, gradient_y, gradient_z)
       normals = grow(normals, 3 * n_vertices)
-      if (length > 1e-10) {
+      if (length > 0) {
         normals[3 * vert_idx] = gradient_x / length
         normals[3 * vert_idx + 1] = gradient_y / length
         normals[3 * vert_idx + 2] = gradient_z / length
@@ -563,9 +539,7 @@ export function marching_cubes(
         if (cube_values[6] < isovalue) cube_index |= 64
         if (cube_values[7] < isovalue) cube_index |= 128
 
-        // Cube entirely inside or outside
-        if (EDGE_TABLE[cube_index] === 0) continue
-
+        // Empty for a cube entirely inside or outside
         const tri_list = TRI_TABLE[cube_index]
         for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
           const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
@@ -587,7 +561,7 @@ export function marching_cubes(
   return {
     positions: positions.slice(0, 3 * n_vertices),
     indices: indices.slice(0, n_indices),
-    normals: normals.slice(0, compute_norms ? 3 * n_vertices : 0),
+    normals: normals.slice(0, 3 * n_vertices), // empty when normals are off
   }
 }
 
@@ -620,13 +594,13 @@ export function compute_vertex_normals(
     const e2_z = positions[3 * idx2 + 2] - v0_z
     // Cross product (face normal × 2 × area) accumulated onto the triangle's vertices
     const normal_x = e1_y * e2_z - e1_z * e2_y
-    const size_y = e1_z * e2_x - e1_x * e2_z
-    const size_z = e1_x * e2_y - e1_y * e2_x
+    const normal_y = e1_z * e2_x - e1_x * e2_z
+    const normal_z = e1_x * e2_y - e1_y * e2_x
     for (let corner = 0; corner < 3; corner++) {
       const idx = 3 * indices[tri + corner]
       normals[idx] += normal_x
-      normals[idx + 1] += size_y
-      normals[idx + 2] += size_z
+      normals[idx + 1] += normal_y
+      normals[idx + 2] += normal_z
     }
   }
   for (let idx = 0; idx < normals.length; idx += 3) {

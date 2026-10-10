@@ -88,12 +88,11 @@ export function group_nav_routes(
   return groups.flatMap((group) => {
     // first matching group wins, so a prefix repeated across groups claims a route only once
     const children = nav_routes
-      .filter((route) => prefix_idx(route, group) !== -1)
       .filter((route) => groups.find((other) => prefix_idx(route, other) !== -1) === group)
       .toSorted(
-        (radius_1, radius) =>
-          prefix_idx(radius_1, group) - prefix_idx(radius, group) ||
-          radius_1.localeCompare(radius),
+        (route_a, route_b) =>
+          prefix_idx(route_a, group) - prefix_idx(route_b, group) ||
+          route_a.localeCompare(route_b),
       )
     if (children.length === 0) return []
     return [

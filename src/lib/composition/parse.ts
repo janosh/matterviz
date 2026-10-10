@@ -28,7 +28,7 @@ const SUPERSCRIPT_ASCII = `0123456789+-`
 
 // Strip whitespace and map Unicode typography to the ASCII the tokenizer understands:
 // subscript digits become counts (H₂O -> H2O), a superscript run is an oxidation state
-// (Fe³⁺ -> Fe^3+), ⋅ becomes the hydrate dot and − the ASCII minus
+// (Fe³⁺ -> Fe^3+), the dot look-alikes ⋅ • ∙ become the hydrate dot and − the ASCII minus
 export const normalize_formula_unicode = (formula: string): string =>
   formula
     .replaceAll(/\s+/g, ``)
@@ -38,7 +38,7 @@ export const normalize_formula_unicode = (formula: string): string =>
       (run) =>
         `^${run.replaceAll(/./gu, (char) => SUPERSCRIPT_ASCII[SUPERSCRIPT_CHARS.indexOf(char)])}`,
     )
-    .replaceAll(`⋅`, `·`)
+    .replaceAll(/[⋅•∙]/g, `·`)
     .replaceAll(`−`, `-`)
 
 const NUMBER_RE = /\d+(?:\.\d+)?|\.\d+/y
@@ -95,7 +95,10 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
         for (const token of inner) tokens.push({ ...token, amount: token.amount * multiplier })
         continue
       }
-      const symbol = read(element_re)?.[0] ?? fail(`Unexpected character "${char}"`)
+      const read_symbol = read(element_re)?.[0] ?? fail(`Unexpected character "${char}"`)
+      // deuterium and tritium are hydrogen isotopes, not elements: D2O is {H: 2, O: 1}, as in
+      // pymatgen. The greedy two-letter read keeps Db, Ds, Dy, Ta, Tb, ... intact.
+      const symbol = read_symbol === `D` || read_symbol === `T` ? `H` : read_symbol
       if (symbol !== `*` && !is_elem_symbol(symbol)) fail(`Invalid element symbol: ${symbol}`)
       // count and charge in either order: Fe2^3+ or Fe^3+2
       let count = read(NUMBER_RE)?.[0]

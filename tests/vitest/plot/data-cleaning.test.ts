@@ -11,24 +11,17 @@ import {
 import { mount, unmount } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import DataCleaningDemo from '../../../src/routes/(demos)/plot/data-cleaning/+page.svelte'
+import { fire, form_controls } from '../setup'
 
 it(`updates the accessible highlighted example when cleaning options change`, async () => {
   const target = document.createElement(`div`)
   document.body.append(target)
   const component = mount(DataCleaningDemo, { target })
-  onTestFinished(async () => {
-    await unmount(component)
-    target.remove()
-  })
+  onTestFinished(() => unmount(component))
   const example = target.querySelector(`[aria-label="Data cleaning example"]`)
   await vi.waitFor(() => expect(example?.querySelector(`.pl-k`)?.textContent).toBe(`import`))
   expect(example?.getAttribute(`tabindex`)).toBe(`0`)
-  const bounds_label = [...target.querySelectorAll(`label`)].find((label) =>
-    label.textContent?.includes(`Apply Bounds`),
-  )
-  const checkbox = bounds_label?.querySelector(`input`)
-  expect(checkbox).toBeInstanceOf(HTMLInputElement)
-  checkbox?.click()
+  await fire(form_controls(target).control(`Apply Bounds`))
   await vi.waitFor(() => {
     expect(example?.getAttribute(`aria-busy`)).toBe(`false`)
     expect(example?.textContent).toContain(`bounds: { min: 0, max: 30, mode: 'clamp' }`)
@@ -459,9 +452,8 @@ describe(`clean_series`, () => {
       },
     )
 
-    it(`damps oscillations and renormalizes over finite neighbours`, () => {
-      const oscillating = alternating(9, 2)
-      expect(variance(savgol(oscillating, 5, 2), 1)).toBeLessThan(variance(oscillating, 1))
+    // damping itself is pinned by `applies savgol smoothing`
+    it(`renormalizes over finite neighbours`, () => {
       // invalid_values: propagate keeps the NaN in place so the kernel has to skip it
       const smoothed = savgol([1, 2, NaN, 4, 5, 6, 7], 5, 2, `propagate`)
       expect(smoothed).toHaveLength(7)

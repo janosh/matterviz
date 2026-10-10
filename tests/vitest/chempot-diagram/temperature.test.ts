@@ -5,40 +5,15 @@ import {
 } from '#lib/chempot-diagram/temperature.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { describe, expect, test } from 'vitest'
+import { make_phase } from '../test-fixtures'
 
-const temp_entries_fixture: PhaseData[] = [
-  {
-    composition: { Li: 1 },
-    energy: -1,
-    energy_per_atom: -1,
-    temperatures: [300, 900],
-    free_energies: [-1.2, -0.8],
-  },
-  {
-    composition: { O: 1 },
-    energy: -2,
-    energy_per_atom: -2,
-    temperatures: [700],
-    free_energies: [-2.0],
-  },
-  {
-    composition: { Li: 1, O: 1 },
-    energy: -3.2,
-    energy_per_atom: -1.6,
-    temperatures: [700],
-    free_energies: [-1.7],
-  },
-  {
-    composition: { Li: 2, O: 1 },
-    energy: -5.1,
-    energy_per_atom: -1.7,
-  },
+const temp_entries_fixture = [
+  make_phase({ Li: 1 }, -1, { temperatures: [300, 900], free_energies: [-1.2, -0.8] }),
+  make_phase({ O: 1 }, -2, { temperatures: [700], free_energies: [-2.0] }),
+  make_phase({ Li: 1, O: 1 }, -1.6, { temperatures: [700], free_energies: [-1.7] }),
+  make_phase({ Li: 2, O: 1 }, -1.7),
 ]
-
-const static_entries_fixture: PhaseData[] = [
-  { composition: { Li: 1 }, energy: -1, energy_per_atom: -1 },
-  { composition: { O: 1 }, energy: -2, energy_per_atom: -2 },
-]
+const static_entries_fixture = [make_phase({ Li: 1 }, -1), make_phase({ O: 1 }, -2)]
 
 const has_formula = (entries: PhaseData[], formula: string): boolean =>
   entries.some((entry) => formula_key_from_composition(entry.composition) === formula)

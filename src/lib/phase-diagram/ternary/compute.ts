@@ -82,7 +82,7 @@ export function prepare_diagram(
     is_unary_entry(entry) && Boolean(entry.composition[element]) && !entry.exclude_from_hull
   const missing = elements.filter((element) => !normalized.some(has_corner(element)))
   // A 0 eV corner is only a formation-energy reference when the other references are 0 eV too;
-  // next to absolute DFT energies (Li at -1.9 eV/atom) it would make every compound's dG_f wrong
+  // next to absolute computed energies (Li at -1.9 eV/atom) it would skew every compound's dG_f
   const absolute_refs = Object.entries(find_lowest_energy_unary_refs(normalized)).flatMap(
     ([element, ref]) => {
       const energy = get_energy_per_atom(ref)

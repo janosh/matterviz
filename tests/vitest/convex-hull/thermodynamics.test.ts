@@ -692,17 +692,15 @@ describe(`process_hull_for_stats`, () => {
       make_phase({ Li: 1, Fe: 1 }, -0.5, { entry_id: `LiFe`, exclude_from_hull: true }),
       make_phase({ Li: 1, Fe: 2 }, -0.1, { entry_id: `LiFe2` }),
     ]
-    const result = process_hull_for_stats(entries)
-    const all = result?.entries ?? []
+    const all = process_hull_for_stats(entries)?.entries ?? []
+    const by_id = (entry_id: string) => all.find((entry) => entry.entry_id === entry_id)
     // LiFe2 (-0.1) sits on the Li-Fe tie-line (else ~0.233 above the Li-LiFe-Fe hull);
     // LiFe is scored (below hull → 0) but never counted stable
-    expect(all.find((entry) => entry.entry_id === `LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
-    expect(all.find((entry) => entry.entry_id === `LiFe`)?.e_above_hull).toBeCloseTo(0, 10)
-    expect(
-      result?.entries
-        .filter((entry) => entry.is_stable)
-        .some((entry) => entry.entry_id === `LiFe`),
-    ).toBe(false)
+    expect(by_id(`LiFe2`)?.e_above_hull).toBeCloseTo(0, 10)
+    expect(by_id(`LiFe`)).toMatchObject({
+      e_above_hull: expect.closeTo(0, 10),
+      is_stable: false,
+    })
   })
 
   // Hull distances are keyed by entry_id, else composition + energy: same-composition

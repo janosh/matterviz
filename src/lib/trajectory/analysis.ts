@@ -116,13 +116,10 @@ export function analysis_frame_times(
   const values = run.properties.rows.map(({ frame_number, step }, idx) =>
     frame_number === idx ? step * time_step.value : NaN,
   )
-  if (
-    !values.every(
-      (value, idx) => Number.isFinite(value) && (idx === 0 || value > values[idx - 1]),
-    )
+  const increasing = values.every(
+    (value, idx) => Number.isFinite(value) && (idx === 0 || value > values[idx - 1]),
   )
-    return null
-  return { values, unit: time_step.unit }
+  return increasing ? { values, unit: time_step.unit } : null
 }
 
 // Adapts a sweep's (done, total) callback to the pane's progress shape
@@ -197,14 +194,10 @@ export function sweep_frame_plan(
   // ceil, not floor: a stride that rounds down would let ceil(total / stride) exceed the cap
   const { start_frame, end_frame } = resolve_frame_range(total_frames, range)
   const frame_stride = Math.max(1, Math.ceil((end_frame - start_frame) / max_frames))
-  const frame_numbers: number[] = []
-  for (
-    let frame_number = start_frame;
-    frame_number < end_frame;
-    frame_number += frame_stride
-  ) {
-    frame_numbers.push(frame_number)
-  }
+  const frame_numbers = Array.from(
+    { length: Math.ceil((end_frame - start_frame) / frame_stride) },
+    (_unused, idx) => start_frame + idx * frame_stride,
+  )
   return { frame_numbers, frame_stride }
 }
 

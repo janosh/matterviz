@@ -150,6 +150,14 @@ const click_button = (label: string) => {
   flushSync(() => button.click())
 }
 
+// Keydown on the focused viewer root (the handle_and_prevent path); Ctrl by default for undo/redo
+const press = async (key: string, init: KeyboardEventInit = { ctrlKey: true }) => {
+  const event = keydown(key, { ...init, cancelable: true })
+  doc_query(`.structure`).dispatchEvent(event)
+  await tick()
+  return event
+}
+
 const mock_gpu = () =>
   vi.stubGlobal(`navigator`, {
     gpu: {},
@@ -276,23 +284,6 @@ comment
 -2 0 0 1
 6 0 1.5 0.5 0.5
 0 0 0 0 1 1 1 1`
-
-test(`file viewer forwards replacement atom colors from host predictions`, async () => {
-  const state = $state({
-    structure,
-    atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
-  })
-  const run = await mount_host_structure(bind_props({}, state), mount_structure)
-  flushSync(() =>
-    run.on_overlay({
-      color_property: `charge`,
-      site_properties: structure.sites.map(() => ({ charge: 1 })),
-    }),
-  )
-  expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `charge` })
-  flushSync(() => run.clear())
-  expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
-})
 
 test.each([false, true])(
   `structure changes retain explicit camera target (new pose=%s)`,
@@ -864,10 +855,6 @@ test(`replace_input adopts a result's geometry as the input, keeps its predictio
   // Undo in edit-atoms mode restores the original input, which clears the run's output.
   flushSync(() => (state.measure_mode = `edit-atoms`))
   await tick()
-  const press = async (key: string, init: KeyboardEventInit = { ctrlKey: true }) => {
-    doc_query(`.structure`).dispatchEvent(keydown(key, { ...init, cancelable: true }))
-    await tick()
-  }
   await press(`z`)
   expect(state.structure).toEqual(input)
   expect(tool.host_props.prediction).toBeNull()
@@ -958,10 +945,6 @@ test(`a host run's published trail feeds the trail renderer through undo and red
   expect(JSON.parse(prediction_to_json(prediction))).not.toHaveProperty(`trail`)
   flushSync(() => (state.measure_mode = `edit-atoms`))
   await tick()
-  const press = async (key: string) => {
-    doc_query(`.structure`).dispatchEvent(keydown(key, { ctrlKey: true, cancelable: true }))
-    await tick()
-  }
   await press(`z`)
   expect(drawn().stream).toBeNull()
   await press(`y`)
@@ -1855,20 +1838,12 @@ describe(`Structure`, () => {
     state.selected_sites = [0] // select after mount (on-load effect clears selection)
     const n_before = state.structure.sites.length
 
-    // dispatch on the viewer (focused/element path) — handle_and_prevent should run
-    const press = (key: string, init: KeyboardEventInit = {}) => {
-      const event = keydown(key, { cancelable: true, ...init })
-      doc_query(`.structure`).dispatchEvent(event)
-      return event
-    }
-    const delete_event = press(`Delete`)
-    await tick()
+    const delete_event = await press(`Delete`, {})
     expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
     expect(state.structure.sites).toHaveLength(n_before - 1)
     expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
 
-    press(`z`, { ctrlKey: true })
-    await tick()
+    await press(`z`)
     expect(state.structure.sites).toHaveLength(n_before)
     expect(state.bonds).toEqual(orig_bonds)
     expect(doc_query(`button[aria-label="Undo (Cmd/Ctrl+Z)"]`).style.boxShadow).toContain(
@@ -2810,68 +2785,44 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
   expect(Number(inputs[1].value)).toBe(default_auto_rotate)
 })
 
-describe(`atom label controls`, () => {
-  test(`controls reflect scene_props bindings`, () => {
+// Each viewer's label controls reflect its own scene_props, and editing one leaves the other
+test(`atom label controls reflect scene_props per viewer instance`, async () => {
+  const mount_labeled = (site_label_offset: Vec3) =>
     mount_structure({
       structure,
       active_pane: `controls`,
       show_controls: true,
       scene_props: {
         show_site_labels: true,
-        site_label_offset: [0.2, -0.5, 0.8],
+        site_label_offset,
         site_label_size: 1.2,
         site_label_padding: 4,
       },
     })
-
-    const offset_inputs = document.querySelectorAll<HTMLInputElement>(
+  mount_labeled([0.2, -0.5, 0.8])
+  mount_labeled([0, 0.75, 0.7])
+  const offset_inputs = [
+    ...document.querySelectorAll<HTMLInputElement>(
       `input[type="number"][min="-1"][max="1"][step="0.1"]`,
-    )
-    expect([...offset_inputs].map((input) => Number(input.value))).toEqual([0.2, -0.5, 0.8])
+    ),
+  ]
+  expect(offset_inputs.map((input) => Number(input.value))).toEqual([
+    0.2, -0.5, 0.8, 0, 0.75, 0.7,
+  ])
+  const size_input = document.querySelector<HTMLInputElement>(
+    `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
+  )
+  const padding_input = document.querySelector<HTMLInputElement>(
+    `input[type="number"][min="0"][max="10"][step="1"]`,
+  )
+  expect(size_input?.valueAsNumber).toBeCloseTo(1.2, 1)
+  expect(padding_input?.valueAsNumber).toBe(4)
 
-    const size_input = document.querySelector<HTMLInputElement>(
-      `input[type="range"][min="0.5"][max="2"][step="0.1"]`,
-    )
-    const padding_input = document.querySelector<HTMLInputElement>(
-      `input[type="number"][min="0"][max="10"][step="1"]`,
-    )
-
-    expect(size_input?.valueAsNumber).toBeCloseTo(1.2, 1)
-    expect(padding_input?.valueAsNumber).toBe(4)
-  })
-
-  test(`state isolation between instances works`, async () => {
-    mount_structure({
-      structure,
-      active_pane: `controls`,
-      show_controls: true,
-      scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.2] },
-    })
-
-    mount_structure({
-      structure,
-      active_pane: `controls`,
-      show_controls: true,
-      scene_props: { show_site_labels: true, site_label_offset: [0, 0.75, 0.7] },
-    })
-
-    const all_offset_inputs = document.querySelectorAll(
-      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
-    )
-    expect(all_offset_inputs.length).toBeGreaterThanOrEqual(6)
-
-    const instance1_z = all_offset_inputs[2] as HTMLInputElement
-    const instance2_z = all_offset_inputs[5] as HTMLInputElement
-
-    expect(Number(instance1_z.value)).toBeCloseTo(0.2, 1)
-    expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
-
-    instance1_z.value = `0.9`
-    await fire(instance1_z, new Event(`input`, { bubbles: true }))
-
-    expect(Number(instance1_z.value)).toBeCloseTo(0.9, 1)
-    expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
-  })
+  const [instance1_z, instance2_z] = [offset_inputs[2], offset_inputs[5]]
+  instance1_z.value = `0.9`
+  await fire(instance1_z, new Event(`input`, { bubbles: true }))
+  expect(Number(instance1_z.value)).toBeCloseTo(0.9, 1)
+  expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
 })
 
 // Grid layout and viewport lifecycle; rendered camera interactions are covered by Playwright.

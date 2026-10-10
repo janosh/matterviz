@@ -722,9 +722,5 @@
     .tabs button {
       flex: 1;
     }
-    .toolbar select {
-      flex: 1;
-      min-width: 0;
-    }
   }
 </style>

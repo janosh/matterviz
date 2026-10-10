@@ -71,20 +71,8 @@
     return v_span > 0 ? u_span / v_span : 1
   })
 
-  // Trace a closed ring of sampled pixel coordinates, mirroring y like the flipped pixel rows
-  function trace_ring(
-    context: CanvasRenderingContext2D,
-    ring: number[][],
-    height: number,
-  ): void {
-    for (const [point_idx, [point_x, sampled_y]] of ring.entries()) {
-      const point_y = height - sampled_y
-      if (point_idx === 0) context.moveTo(point_x, point_y)
-      else context.lineTo(point_x, point_y)
-    }
-    context.closePath()
-  }
-
+  // Clip to the cell/plane polygon in sampled pixel coordinates, y mirrored like the flipped
+  // pixel rows
   function clip_to_slice_polygon(
     context: CanvasRenderingContext2D,
     { polygon, u_range, v_range, width, height }: SliceResult,
@@ -92,14 +80,13 @@
     const u_span = u_range[1] - u_range[0]
     const v_span = v_range[1] - v_range[0]
     context.beginPath()
-    trace_ring(
-      context,
-      polygon.map(([u_coord, v_coord]) => [
-        ((u_coord - u_range[0]) / u_span) * (width - 1) + 0.5,
-        ((v_coord - v_range[0]) / v_span) * (height - 1) + 0.5,
-      ]),
-      height,
-    )
+    for (const [point_idx, [u_coord, v_coord]] of polygon.entries()) {
+      const pixel_x = ((u_coord - u_range[0]) / u_span) * (width - 1) + 0.5
+      const pixel_y = height - (((v_coord - v_range[0]) / v_span) * (height - 1) + 0.5)
+      if (point_idx === 0) context.moveTo(pixel_x, pixel_y)
+      else context.lineTo(pixel_x, pixel_y)
+    }
+    context.closePath()
     context.clip()
   }
 

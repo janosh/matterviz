@@ -19,7 +19,6 @@
     label: string
     description: string
     show_ibz?: boolean
-    order?: number
   }
 
   const examples: BZExample[] = [
@@ -68,37 +67,21 @@
     },
   ]
 
+  // [example id, BZ order]: labels come from the matching first-order example
+  const higher_order_ids = [
+    [`Po-simple-cubic`, 2],
+    [`Fe-BCC`, 2],
+    [`Cu-FCC`, 3],
+    [`mp-862690-Ac4-hexagonal`, 3],
+  ] as const
   const higher_order_examples = [
-    {
-      id: `Po-simple-cubic`,
-      label: `Simple Cubic (SC)`,
-      description: `2nd order BZ`,
-      order: 2,
-    },
-    {
-      id: `Fe-BCC`,
-      label: `Body-Centered Cubic (BCC)`,
-      description: `2nd order BZ`,
-      order: 2,
-    },
-    {
-      id: `Cu-FCC`,
-      label: `Face-Centered Cubic (FCC)`,
-      description: `3rd order BZ`,
-      order: 3,
-    },
-    {
-      id: `mp-862690-Ac4-hexagonal`,
-      label: `Hexagonal`,
-      description: `3rd order BZ`,
-      order: 3,
-    },
-    {
-      id: null,
-      label: `Drag & Drop`,
-      description: `Drop your structure file here`,
-      order: 1,
-    },
+    ...higher_order_ids.map(([id, order]) => ({
+      id,
+      label: examples.find((example) => example.id === id)?.label,
+      description: `${order === 2 ? `2nd` : `3rd`} order BZ`,
+      order,
+    })),
+    { id: null, label: `Drag & Drop`, description: `Drop your structure file here`, order: 1 },
   ]
 
   let surface_opacity = $state(0.4)

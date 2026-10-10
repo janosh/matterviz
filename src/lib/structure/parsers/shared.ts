@@ -201,32 +201,62 @@ export const count_elements = (elements: readonly string[]): Record<string, numb
 export const normalize_cif_names = (lines: readonly string[]): string[] =>
   lines.map((line) => line.replace(/^(?<name>[ \t]*_[^\s.]+)\./, `$<name>_`))
 
+// A blank or `#` comment line, which CIF allows anywhere whitespace is
+const is_cif_blank_or_comment = (trimmed: string): boolean =>
+  trimmed === `` || trimmed.startsWith(`#`)
+
 // Key-value cell parameters (`_cell_length_a 5.43(2)`, from normalize_cif_names lines); no
 // dialect puts them in a loop. Tags are matched exactly on a line's first token
 // (case-insensitively), so `_cell_length_a_su` / `_cell_length_a_esd` (the uncertainty,
 // which some writers emit first) cannot shadow the value and the order of the lines in the
-// file does not matter. Returns [a, b, c, alpha, beta, gamma], or null when any tag is
-// absent or unset (`.` / `?`). A tag whose value does not parse, or a non-positive edge
-// length, is corruption and throws.
+// file does not matter. A bare tag takes its value from the next non-comment line, as CIF
+// allows. Returns [a, b, c, alpha, beta, gamma], or null when any tag is absent or unset
+// (`.` / `?`). A tag whose value does not parse, or a non-positive edge length, is
+// corruption and throws.
 export const read_cell_params = (
   lines: readonly string[],
   format: `CIF` | `mmCIF`,
 ): number[] | null => {
-  const tags = [`length_a`, `length_b`, `length_c`, `angle_alpha`, `angle_beta`, `angle_gamma`]
-  const tag_for = (name: string) => `_cell_${name}`
-  const wanted = new Set(tags.map(tag_for))
+  const names = [
+    `length_a`,
+    `length_b`,
+    `length_c`,
+    `angle_alpha`,
+    `angle_beta`,
+    `angle_gamma`,
+  ]
+  const tags = names.map((name) => `_cell_${name}`)
   const token_by_tag = new Map<string, { token: string | undefined; line: string }>()
-  for (const line of lines) {
+  for (const [line_idx, line] of lines.entries()) {
     const trimmed = line.trim()
     if (!/^_cell_/i.test(trimmed)) continue
-    const [tag, token] = trimmed.split(/\s+/)
+    const [tag, inline_token] = trimmed.split(/\s+/)
     const key = tag.toLowerCase()
-    if (wanted.has(key) && !token_by_tag.has(key))
-      token_by_tag.set(key, { token, line: trimmed })
+    if (!tags.includes(key) || token_by_tag.has(key)) continue
+    let token = inline_token?.startsWith(`#`) ? undefined : inline_token
+    let value_line = trimmed
+    if (token === undefined) {
+      let next = ``
+      for (let idx = line_idx + 1; idx < lines.length && !next; idx++) {
+        const candidate = lines[idx].trim()
+        if (!is_cif_blank_or_comment(candidate)) next = candidate
+      }
+      // a following data name, loop_ or data_ block means the value is missing, not `next`
+      if (
+        next &&
+        !next.startsWith(`_`) &&
+        !is_cif_loop_header(next) &&
+        !is_cif_data_header(next)
+      ) {
+        token = next.split(/\s+/)[0]
+        value_line = `${trimmed} ${next}`
+      }
+    }
+    token_by_tag.set(key, { token, line: value_line })
   }
-  const values = tags.map((name) => {
-    const found = token_by_tag.get(tag_for(name))
-    if (!found?.token || [`.`, `?`].includes(found.token)) return null
+  const values = tags.map((tag) => {
+    const found = token_by_tag.get(tag)
+    if (!found || is_cif_unset(found.token)) return null
     const value = parse_cif_uncertain_number(found.token)
     if (value === null)
       throw new Error(`Invalid ${format} cell parameter in line: ${found.line}`)
@@ -253,11 +283,11 @@ export const is_placeholder_cell = (params: readonly number[]): boolean =>
 // Null (with a warning, since the file does declare a cell) for the placeholder cell, so the
 // structure parses as a molecule
 export const drop_placeholder_cell = (
-  params: readonly number[],
+  params: readonly number[] | null,
   format: string,
   cell_name: string,
 ): readonly number[] | null => {
-  if (!is_placeholder_cell(params)) return params
+  if (!params || !is_placeholder_cell(params)) return params
   console.warn(
     `${format}: ignoring placeholder ${cell_name} (1 1 1 90 90 90), treating as molecule`,
   )
@@ -455,6 +485,13 @@ export const resolve_bonds = (
 
 // === CIF tokenization (shared by parse_cif and parse_mmcif) ===
 
+// CIF (and mmCIF) writes unset values as `.` (inapplicable) or `?` (unknown)
+export const is_cif_unset = (token: string | undefined): token is `.` | `?` | undefined =>
+  token === undefined || token === `.` || token === `?`
+
+// Leading run of letters of a CIF type symbol or label (`Fe2+` -> `Fe`, `.` -> ``)
+export const leading_letters = (text = ``): string => /^[A-Za-z]+/.exec(text)?.[0] ?? ``
+
 // Parse a CIF numeric token, stripping a trailing uncertainty like "1.234(5)"
 export const parse_cif_uncertain_number = (token: string): number | null => {
   const value = parse_float_token(token.split(`(`)[0])
@@ -488,7 +525,9 @@ export const cif_block_ids = (lines: readonly string[]): number[] => {
   return block_ids
 }
 
-// Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line
+// Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line.
+// Blank and comment lines between `loop_` and its tags (`# symmetry operations`) are skipped:
+// stopping at them dropped every tag, silently losing a symop loop or the atom-site loop.
 export function* iter_cif_loops(
   lines: string[],
 ): Generator<{ headers: string[]; data_start: number }> {
@@ -496,9 +535,10 @@ export function* iter_cif_loops(
     if (!is_cif_loop_header(lines[idx])) continue
     const headers: string[] = []
     let col_index = idx + 1
-    while (col_index < lines.length && lines[col_index].trim().startsWith(`_`)) {
-      headers.push(lines[col_index].trim())
-      col_index++
+    for (; col_index < lines.length; col_index++) {
+      const trimmed = lines[col_index].trim()
+      if (trimmed.startsWith(`_`)) headers.push(trimmed)
+      else if (!is_cif_blank_or_comment(trimmed)) break
     }
     yield { headers, data_start: col_index }
   }

@@ -36,10 +36,9 @@ interface BandsDosSyncInputs {
   doses: () => Record<string, DosData>
   units: () => FrequencyUnit
   fermi_level?: () => number | undefined
-  bands_y_axis: () => AxisConfig | undefined
-  dos_y_axis: () => AxisConfig | undefined
-  bands_padding: () => Sides | undefined
-  dos_padding: () => Sides | undefined
+  // the panels' caller props whose axes and padding the sync extends
+  bands_props: () => { y_axis?: AxisConfig; padding?: Sides }
+  dos_props: () => { x_axis?: AxisConfig; y_axis?: AxisConfig; padding?: Sides }
   // DOS horizontal beside the bands (frequency on both y axes); false stacks it below with
   // density on y, where only the bands axis takes part in the link
   side_by_side: () => boolean
@@ -74,11 +73,16 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   // Side by side, the DOS axis label defaults to empty since the bands axis already names
   // the quantity; a caller's label still wins
   const y_axes = $derived<AxisConfig[]>([
-    axis_with_range(inputs.bands_y_axis(), shared_range),
+    axis_with_range(inputs.bands_props().y_axis, shared_range),
     inputs.side_by_side()
-      ? axis_with_range({ label: ``, ...inputs.dos_y_axis() }, shared_range)
-      : { ...inputs.dos_y_axis() },
+      ? axis_with_range({ label: ``, ...inputs.dos_props().y_axis }, shared_range)
+      : { ...inputs.dos_props().y_axis },
   ])
+  // Stacked, a vertical DOS plots frequency along x, so the shared range moves to its x axis
+  const dos_x_axis = $derived<AxisConfig>({
+    ...axis_with_range(undefined, inputs.side_by_side() ? undefined : shared_range),
+    ...inputs.dos_props().x_axis,
+  })
   // Each panel's `view` (bind:view). Side by side both y axes carry the frequency, so the
   // panel whose y view moved since the last agreed range leads and the other follows; a
   // reset in one panel shows up as a move back to the shared range and resets the other too.
@@ -120,7 +124,12 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared_padding = $derived(
     inputs.side_by_side()
       ? max_side_padding(
-          [inputs.base_padding, inputs.bands_padding(), inputs.dos_padding(), floor.value],
+          [
+            inputs.base_padding,
+            inputs.bands_props().padding,
+            inputs.dos_props().padding,
+            floor.value,
+          ],
           [`t`, `b`],
         )
       : {},
@@ -134,6 +143,9 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     },
     get y_axes() {
       return y_axes
+    },
+    get dos_x_axis() {
+      return dos_x_axis
     },
     views,
     get shared_padding() {

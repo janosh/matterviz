@@ -42,11 +42,13 @@
     resume_after_slider_scrub = playback.is_playing
     playback.pause()
   }
-  const finish_slider_scrub = (next_index: number): void => {
-    playback.seek(next_index)
+  const finish_slider_scrub = (event: { currentTarget: HTMLInputElement }): void => {
+    playback.seek(event.currentTarget.valueAsNumber)
     if (resume_after_slider_scrub) playback.play()
     resume_after_slider_scrub = false
   }
+  const step_locked = $derived(playback.is_playing && disable_step_while_playing)
+  const play_label = $derived(playback.is_playing ? `Pause` : `Play`)
 </script>
 
 {#if controls_config.visible(`nav`)}
@@ -55,7 +57,7 @@
       type="button"
       onclick={playback.previous}
       style={playback.shortcut_flash.style(`previous`)}
-      disabled={index === 0 || (playback.is_playing && disable_step_while_playing)}
+      disabled={index === 0 || step_locked}
       title={previous_title ?? `Previous ${item_name}`}
       aria-label={`Previous ${item_name}`}
     >
@@ -66,8 +68,8 @@
       onclick={playback.toggle}
       style={playback.shortcut_flash.style(`play`)}
       disabled={count <= 1}
-      title={play_title ?? (playback.is_playing ? `Pause` : `Play`)}
-      aria-label={playback.is_playing ? `Pause` : `Play`}
+      title={play_title ?? play_label}
+      aria-label={play_label}
       class={['play-button', { playing: playback.is_playing }]}
     >
       {playback.is_playing ? `⏸` : `▶`}
@@ -76,7 +78,7 @@
       type="button"
       onclick={playback.next}
       style={playback.shortcut_flash.style(`next`)}
-      disabled={index === count - 1 || (playback.is_playing && disable_step_while_playing)}
+      disabled={index === count - 1 || step_locked}
       title={next_title ?? `Next ${item_name}`}
       aria-label={`Next ${item_name}`}
     >
@@ -112,13 +114,13 @@
         max={max_index}
         value={index}
         onpointerdown={begin_slider_scrub}
-        onpointerup={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
-        onpointercancel={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
+        onpointerup={finish_slider_scrub}
+        onpointercancel={finish_slider_scrub}
         oninput={(event) => {
           playback.pause()
           on_index_input(event.currentTarget.valueAsNumber)
         }}
-        onchange={(event) => finish_slider_scrub(event.currentTarget.valueAsNumber)}
+        onchange={finish_slider_scrub}
         onkeydown={(event) => {
           if (!playback.handle_keydown(event)) return
           event.preventDefault()

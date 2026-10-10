@@ -11,7 +11,7 @@ test(`URL acquisition decompresses once and records source provenance`, async ()
   vi.spyOn(globalThis, `fetch`).mockResolvedValue(new Response(await gzip_bytes(text)))
   const parse = vi
     .spyOn(parse_worker, `parse_in_worker`)
-    .mockImplementation(async (data, filename): Promise<ParseResult> => ({
+    .mockImplementation(async (_data, filename): Promise<ParseResult> => ({
       type: `structure`,
       data: { sites: [] },
       filename,

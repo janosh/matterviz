@@ -23,7 +23,7 @@ export const THEME_TYPE: Record<ThemeName, ThemeType> = {
   [COLOR_THEMES.dark]: `dark`,
   [COLOR_THEMES.white]: `light`,
   [COLOR_THEMES.black]: `dark`,
-} as const
+}
 
 export type ThemeName = keyof typeof COLOR_THEMES
 export type ThemeMode = ThemeName | typeof AUTO_THEME

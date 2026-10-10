@@ -160,11 +160,41 @@ function hkl_family_key([h_idx, k_idx, l_idx]: Hkl): string {
   return `${min_abs},${abs_h + abs_k + abs_l - min_abs - max_abs},${max_abs}`
 }
 
+// Hexagonal lattices group on Miller–Bravais (h, k, i = -h-k, l) like pymatgen, whose
+// XRDCalculator rewrites hkls to 4 indices before get_unique_families: (100), (010) and
+// (1-10) are then one {10-10} family, which 3-index permutations split as 100 ×4 + 1-10 ×2
+const hkil_family_key = ([h_idx, k_idx, l_idx]: Hkl): string =>
+  [h_idx, k_idx, h_idx + k_idx, l_idx]
+    .map(Math.abs)
+    .toSorted((val_1, val_2) => val_1 - val_2)
+    .join(`,`)
+
+// pymatgen's Lattice.is_hexagonal (default tolerances): two angles 90 ± 5°, the third
+// 60 or 120 ± 5° and the two lengths along the right-angle pair equal within 0.01 Å
+function is_hexagonal_lattice(matrix: math.Matrix3x3): boolean {
+  const { a, b, c, alpha, beta, gamma } = math.calc_lattice_params(matrix)
+  const [lengths, angles] = [
+    [a, b, c],
+    [alpha, beta, gamma],
+  ]
+  const right_idx = [0, 1, 2].filter((idx) => Math.abs(angles[idx] - 90) <= 5)
+  const n_hex = angles.filter(
+    (angle) => Math.abs(angle - 60) <= 5 || Math.abs(angle - 120) <= 5,
+  ).length
+  return (
+    right_idx.length === 2 &&
+    n_hex === 1 &&
+    Math.abs(lengths[right_idx[0]] - lengths[right_idx[1]]) <= 0.01
+  )
+}
+
 // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
-function get_unique_families(hkls: Hkl[]): HklObj[] {
+// (of the Miller–Bravais indices for hexagonal lattices, see hkil_family_key)
+function get_unique_families(hkls: Hkl[], is_hexagonal: boolean): HklObj[] {
+  const family_key = is_hexagonal ? hkil_family_key : hkl_family_key
   const key_map = new Map<string, Hkl[]>()
   for (const hkl of hkls) {
-    const key = hkl_family_key(hkl)
+    const key = family_key(hkl)
     const group = key_map.get(key)
     if (group) group.push(hkl)
     else key_map.set(key, [hkl])
@@ -557,7 +587,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const two_theta = math.to_degrees(2 * theta)
 
     // hkls stay 3-index (h, k, l) even for hexagonal systems where pymatgen presents
-    // Miller–Bravais (h, k, i, l), matching consumers.
+    // Miller–Bravais (h, k, i, l), matching consumers; families are still grouped on the
+    // 4 indices (get_unique_families).
     const last = peaks.at(-1)
     if (last && Math.abs(last.two_theta - two_theta) < merge_tol) {
       last.intensity += intensity_hkl
@@ -581,11 +612,12 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   const d_out: number[] = []
 
   // Already in ascending 2θ: peaks were appended in |g| order
+  const is_hexagonal = is_hexagonal_lattice(structure.lattice.matrix)
   for (const peak of peaks) {
     if ((peak.intensity / max_intensity) * 100 <= scaled_tol) continue
     x_values.push(peak.two_theta)
     y_values.push(peak.intensity)
-    hkls_out.push(get_unique_families(peak.hkls))
+    hkls_out.push(get_unique_families(peak.hkls, is_hexagonal))
     d_out.push(peak.d_hkl)
   }
 

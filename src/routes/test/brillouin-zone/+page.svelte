@@ -43,33 +43,26 @@
     if (typeof window === `undefined`) return
     const params = new URLSearchParams(window.location.search)
 
-    if (params.has(`source`)) {
-      const url_data = params.get(`source`)
-      if (url_data) {
-        source = url_data
-        structure = undefined
-      }
+    const source_param = params.get(`source`)
+    if (source_param) {
+      source = source_param
+      structure = undefined
     }
-
-    if (params.has(`bz_order`)) {
-      const order = Math.trunc(Number(params.get(`bz_order`) || `1`))
-      if (!isNaN(order)) bz_order = order
+    const order = Math.trunc(Number(params.get(`bz_order`) || `1`))
+    if (params.has(`bz_order`) && !isNaN(order)) bz_order = order
+    const projection = params.get(`camera_projection`)
+    if (projection === `perspective` || projection === `orthographic`) {
+      camera_projection = projection
     }
-
-    if (params.has(`camera_projection`)) {
-      const cam = params.get(`camera_projection`)
-      if (cam === `perspective` || cam === `orthographic`) camera_projection = cam
+    const controls_param = params.get(`show_controls`) as typeof show_controls | null
+    if (controls_param && [`always`, `hover`, `never`].includes(controls_param)) {
+      show_controls = controls_param
     }
-
-    if (params.has(`show_controls`)) {
-      const param = params.get(`show_controls`) as `always` | `hover` | `never` | null
-      if (param && [`always`, `hover`, `never`].includes(param)) show_controls = param
-    }
-
-    if (params.has(`show_ibz`)) {
-      show_ibz = params.get(`show_ibz`) === `true`
-    }
-
+    if (params.has(`show_ibz`)) show_ibz = params.get(`show_ibz`) === `true`
+  })
+  // separate from the URL effect above, which re-applied the URL params (resetting e.g. a
+  // bz_order changed since) after every logged event when it read event_calls
+  $effect(() => {
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
 </script>

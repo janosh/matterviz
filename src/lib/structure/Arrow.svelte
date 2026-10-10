@@ -25,12 +25,10 @@
   } = $props()
 
   const geometry = $derived(arrow_axis_geometry(vector, scale, arrow_head_length))
-  const shaft_r = $derived(
-    shaft_radius < 0 ? geometry.shaft_length * -shaft_radius : shaft_radius,
-  )
-  const head_r = $derived(
-    arrow_head_radius < 0 ? geometry.shaft_length * -arrow_head_radius : arrow_head_radius,
-  )
+  // negative radii are fractions of the shaft length
+  const absolute = (size: number): number => (size < 0 ? geometry.shaft_length * -size : size)
+  const shaft_r = $derived(absolute(shaft_radius))
+  const head_r = $derived(absolute(arrow_head_radius))
 </script>
 
 <T.Group {position} rotation={geometry.rotation}>

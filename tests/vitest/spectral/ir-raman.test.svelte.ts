@@ -285,25 +285,17 @@ describe(`selection rules`, () => {
 describe(`raman_invariants`, () => {
   it.each([
     // Isotropic tensor: no anisotropy, activity = 45 a^2, depolarization 0
-    [`isotropic`, 2, 2, 2, 0, 45 * 4, 0],
+    [`isotropic`, mat3([2, 0, 0], [0, 2, 0], [0, 0, 2]), 45 * 4, 0],
     // Traceless uniaxial tensor: a = 0, so activity = 7 gamma^2 and rho saturates at 3/4
-    [`traceless uniaxial`, 1, 1, -2, 0, 7 * 9, 0.75],
+    [`traceless uniaxial`, mat3([1, 0, 0], [0, 1, 0], [0, 0, -2]), 7 * 9, 0.75],
     // Pure shear: a = 0, gamma^2 = 3 * xy^2
-    [`pure shear`, 0, 0, 0, 3, 7 * 27, 0.75],
-  ])(
-    `%s tensor`,
-    (_name, tensor_xx, tensor_yy, tensor_zz, coords_xy, activity, depolarization) => {
-      const invariants = raman_invariants(
-        mat3([tensor_xx, coords_xy, 0], [coords_xy, tensor_yy, 0], [0, 0, tensor_zz]),
-      )
-      expect(invariants.activity).toBeCloseTo(activity, 12)
-      expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
-    },
-  )
-
-  it(`uses only the symmetric part of the tensor`, () => {
-    const antisymmetric = mat3([0, 1, 0], [-1, 0, 0], [0, 0, 0])
-    expect(raman_invariants(antisymmetric).activity).toBe(0)
+    [`pure shear`, mat3([0, 3, 0], [3, 0, 0], [0, 0, 0]), 7 * 27, 0.75],
+    // only the symmetric part scatters, so a purely antisymmetric tensor is silent
+    [`antisymmetric`, mat3([0, 1, 0], [-1, 0, 0], [0, 0, 0]), 0, 0],
+  ])(`%s tensor`, (_name, tensor, activity, depolarization) => {
+    const invariants = raman_invariants(tensor)
+    expect(invariants.activity).toBeCloseTo(activity, 12)
+    expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
   })
 
   it(`CO2 nu1 activity matches the invariant formula applied to the fixture tensor`, () => {

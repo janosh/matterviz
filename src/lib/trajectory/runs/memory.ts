@@ -3,7 +3,7 @@ import { encode_frame, type NumericFrame } from '../frame'
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
 import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
 import { frame_property_row, full_data_extractor } from '../extract'
-import { is_supported_trajectory_signal_shape } from '../helpers'
+import { is_supported_trajectory_signal_shape, values_per_sample } from '../helpers'
 import type {
   TrajectoryDataExtractor,
   TrajectoryFrame,
@@ -82,7 +82,7 @@ function validate_frames(
           `got ${JSON.stringify(sample_shape)}`,
       )
     }
-    const sample_size = sample_shape.reduce((total, size) => total * size, 1)
+    const sample_size = values_per_sample(sample_shape)
     if (!(values instanceof Float64Array) || values.length !== steps.length * sample_size) {
       throw new Error(
         `signals.${key} needs a Float64Array of ${steps.length * sample_size} values for ` +
@@ -127,27 +127,25 @@ export function trajectory_from_frames(
   })
 }
 
+type NumericRunExtras = Omit<MemoryRunExtras, `data_extractor`> & {
+  properties: TrajectoryMetadata[]
+  read_atoms?: ReadAtoms
+}
+
 // Synchronous frame source that is not materialised up front (phonon mode animation builds
 // each frame from a displacement pattern on read). Nothing is validated here: the caller
 // guarantees a constant site count and supplies the property rows.
-export function trajectory_from_frame_source(
+export const trajectory_from_frame_source = (
   frame_count: number,
   read: (frame_idx: number) => TrajectoryFrame,
-  extras: Omit<MemoryRunExtras, `data_extractor`> & {
-    properties: TrajectoryMetadata[]
-    read_atoms?: ReadAtoms
-  },
-): TrajectoryRun {
-  return numeric_run(frame_count, (frame_idx) => encode_frame(read(frame_idx)), extras)
-}
+  extras: NumericRunExtras,
+): TrajectoryRun =>
+  numeric_run(frame_count, (frame_idx) => encode_frame(read(frame_idx)), extras)
 
 function numeric_run(
   frame_count: number,
   read: (frame_idx: number) => NumericFrame,
-  extras: Omit<MemoryRunExtras, `data_extractor`> & {
-    properties: TrajectoryMetadata[]
-    read_atoms?: ReadAtoms
-  },
+  extras: NumericRunExtras,
 ): TrajectoryRun {
   const { provenance = {}, metadata = {}, warnings = [], properties, ...fields } = extras
   return sync_run({

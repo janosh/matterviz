@@ -107,6 +107,7 @@
   const is_horizontal = $derived(layout === `horizontal`)
   const is_vertical = $derived(layout === `vertical`)
   const is_grid = $derived(layout === `grid`)
+  const scroll_axis = $derived(is_horizontal ? `scrollLeft` : `scrollTop`)
   // a finite size floored at `floor`, or the fallback for anything unusable
   const finite_size = (value: number | null, fallback: number, floor = 1): number =>
     value != null && Number.isFinite(value) ? Math.max(floor, value) : fallback
@@ -360,7 +361,7 @@
       clearTimeout(settle_timer)
       settle_timer = setTimeout(() => (scrolling = false), 150)
     }
-    scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
+    scroll_pos = track[scroll_axis]
     prefetch() // window_start re-derives from the offset just written
   }
 
@@ -376,15 +377,13 @@
   // boundary falls through to the surrounding page instead of being swallowed.
   const scroll_to = (next: number): boolean => {
     if (!track) return false
-    const current = is_horizontal ? track.scrollLeft : track.scrollTop
+    const current = track[scroll_axis]
     if (next === current) return false
-    if (is_horizontal) track.scrollLeft = next
-    else track.scrollTop = next
+    track[scroll_axis] = next
     // Re-read: the browser clamps the assignment to the scrollable range, which
     // on_wheel can't predict while scrollWidth is unmeasured (it passes Infinity
     // as its limit). Without this a clamped write swallows the event.
-    const applied = is_horizontal ? track.scrollLeft : track.scrollTop
-    if (applied === current) return false
+    if (track[scroll_axis] === current) return false
     on_scroll()
     return true
   }
@@ -405,7 +404,7 @@
     if (items.length <= page_size) return
     const wheel_delta = is_horizontal ? horizontal_wheel_delta(event) : event.deltaY
     if (wheel_delta === 0) return
-    const current_scroll_pos = is_horizontal ? track.scrollLeft : track.scrollTop
+    const current_scroll_pos = track[scroll_axis]
     const wheel_page_size = is_horizontal ? track.clientWidth : track.clientHeight
     const delta_scale =
       event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -442,7 +441,7 @@
       ? [`ArrowLeft`, `ArrowRight`]
       : [`ArrowUp`, `ArrowDown`]
     const limit = max_scroll()
-    const current = is_horizontal ? track.scrollLeft : track.scrollTop
+    const current = track[scroll_axis]
     const deltas: Record<string, number> = {
       [back_key]: -item_stride,
       [fwd_key]: item_stride,

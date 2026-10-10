@@ -298,13 +298,11 @@ export function reconcile_facet_ranges<Datum>(
         if (is_valid_range(own_range)) ranges[axis] = own_range
         continue
       }
-      const grouped_panels = layout.panels.filter((candidate) =>
-        facet_panels_share_axis(panel, candidate, mode),
+      const shared_range = union_ranges(
+        layout.panels
+          .filter((candidate) => facet_panels_share_axis(panel, candidate, mode))
+          .map((candidate) => reports_by_key.get(candidate.key)?.ranges?.[axis]),
       )
-      const grouped_ranges = grouped_panels.map(
-        (candidate) => reports_by_key.get(candidate.key)?.ranges?.[axis],
-      )
-      const shared_range = union_ranges(grouped_ranges)
       if (shared_range) ranges[axis] = shared_range
     }
     return { key: panel.key, ranges }
@@ -346,12 +344,10 @@ export function propagate_facet_range<Datum>(
 export const reconcile_facet_padding = (
   layout: FacetGridLayout,
   reports: readonly KeyedFacetPanelLayoutReport[],
-): Sides => {
-  const panel_paddings = layout.panels.map(
-    (panel) => reports.find((report) => report.key === panel.key)?.padding,
+): Sides =>
+  max_side_padding(
+    layout.panels.map((panel) => reports.find((report) => report.key === panel.key)?.padding),
   )
-  return max_side_padding(panel_paddings)
-}
 
 const is_outer_axis = (
   axis: FacetAxis,

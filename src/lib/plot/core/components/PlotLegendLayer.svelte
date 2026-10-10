@@ -72,16 +72,10 @@
 </script>
 
 {#if legend && frame.legend_visible}
-  {@const solved_pos = frame.legend_placement ?? {
-    x: frame.pad.l + 10,
-    y: frame.pad.t + 10,
-  }}
   {@const auto_pos =
-    frame.legend_placement?.location === `outside`
-      ? solved_pos
-      : frame.legend_tween.placed()
-        ? frame.legend_tween.coords.current
-        : solved_pos}
+    frame.legend_placement?.location !== `outside` && frame.legend_tween.placed()
+      ? frame.legend_tween.coords.current
+      : (frame.legend_placement ?? { x: frame.pad.l + 10, y: frame.pad.t + 10 })}
   {@const pos =
     frame.legend_is_dragging && frame.legend_manual_position
       ? frame.legend_manual_position

@@ -12,11 +12,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 const bytes = (...nums: number[]): Uint8Array => new Uint8Array(nums)
-const to_buffer = (nums: number[]): ArrayBuffer => {
-  const buffer = new ArrayBuffer(nums.length)
-  new Uint8Array(buffer).set(nums)
-  return buffer
-}
+const to_buffer = (nums: number[]): ArrayBuffer => new Uint8Array(nums).buffer
 
 // magic-byte signatures reused across cases
 const GZIP = [0x1f, 0x8b]

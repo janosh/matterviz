@@ -3,6 +3,7 @@
   import { color_interpolator } from '#lib/plot/core/scales.js'
   import { symbol_map } from '#lib/labels.js'
   import type { LegendItem, Orientation } from '#lib/plot/index.js'
+  import { fill_gradient_def } from '#lib/plot/core/components/FillArea.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks.js'
   import {
@@ -311,7 +312,7 @@
       class="legend-marker"
       style:width={series.display_style.color_scale ? `44px` : undefined}
     >
-      <!-- Fill region swatch -->
+      <!-- Color scale gradient swatch -->
       {#if series.display_style.color_scale}
         {@const interpolate = color_interpolator(series.display_style.color_scale)}
         {@const gradient_id = `legend-scale-${instance_id}-${series.series_idx}`}
@@ -348,29 +349,7 @@
             <defs><PatternDefs patterns={[pattern]} /></defs>
           {/if}
           {#if gradient}
-            <defs>
-              {#if gradient.type === `linear`}
-                <linearGradient
-                  id={gradient_id}
-                  gradientTransform="rotate({gradient.angle ?? 0}, 0.5, 0.5)"
-                >
-                  {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
-                    <stop offset="{offset * 100}%" stop-color={color} />
-                  {/each}
-                </linearGradient>
-              {:else if gradient.type === `radial`}
-                <radialGradient
-                  id={gradient_id}
-                  cx={gradient.center?.x ?? 0.5}
-                  cy={gradient.center?.y ?? 0.5}
-                  r="0.5"
-                >
-                  {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
-                    <stop offset="{offset * 100}%" stop-color={color} />
-                  {/each}
-                </radialGradient>
-              {/if}
-            </defs>
+            <defs>{@render fill_gradient_def(gradient_id, gradient)}</defs>
           {/if}
           <rect
             x="1"
@@ -393,7 +372,7 @@
               y1="5"
               x2="20"
               y2="5"
-              stroke={series.display_style.line_color ?? `currentColor`}
+              stroke={series.display_style.line_color}
               stroke-opacity={series.display_style.line_opacity}
               stroke-width="2"
               stroke-dasharray={series.display_style.line_dash ?? `none`}

@@ -101,7 +101,9 @@ function is_convex_hull_entries(obj: unknown): boolean {
 }
 
 // VolumetricData JSON: a 3D scalar grid (nested `grid` [x][y][z] or flat `values` + `dims`)
-// with lattice info. volume_from_json turns either encoding into typed-array storage.
+// with lattice info and a nonempty string `id` (make_volume rejects anything else, so
+// id-less JSON detected here threw on open instead of falling back to the JSON browser).
+// volume_from_json turns either encoding into typed-array storage.
 function is_volumetric(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
@@ -115,6 +117,8 @@ function is_volumetric(obj: unknown): boolean {
   }
   return (
     has_grid &&
+    typeof data.id === `string` &&
+    data.id.trim() !== `` &&
     has_array(data, `lattice`, 3) &&
     has_array(data, `origin`, 3) &&
     typeof data.periodic === `boolean`
@@ -140,17 +144,14 @@ function is_phase_diagram(obj: unknown): boolean {
 // (qpoints, bands array, labels_dict, reciprocal lattice), which never serialises branches
 function is_band_structure(obj: unknown): boolean {
   const data = as_record(obj)
-  if (!data) return false
-  if (!as_record(data.labels_dict)) return false
+  if (!data || !as_record(data.labels_dict)) return false
   if (
     has_array(data, `qpoints`) &&
     has_array(data, `bands`) &&
     (as_record(data.lattice_rec) || as_record(data.recip_lattice))
   )
     return true
-  if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) {
-    return false
-  }
+  if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) return false
   // Normalized format
   if (
     has_array(data, `qpoints`) &&
@@ -159,10 +160,11 @@ function is_band_structure(obj: unknown): boolean {
   )
     return true
   // Pymatgen format: kpoints + bands object (not array) + efermi
-  if (has_array(data, `kpoints`) && as_record(data.bands)) {
-    return typeof data.efermi === `number`
-  }
-  return false
+  return (
+    has_array(data, `kpoints`) &&
+    Boolean(as_record(data.bands)) &&
+    typeof data.efermi === `number`
+  )
 }
 
 // DOS: pymatgen CompleteDos format or normalized DosData
@@ -172,22 +174,13 @@ function is_dos(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
   const has_spectra = has_array(data, `energies`) || has_array(data, `frequencies`)
-  // pymatgen CompleteDos format
-  if (
+  const complete_dos =
     typeof data[`@class`] === `string` &&
     data[`@class`].includes(`Dos`) &&
-    has_spectra &&
     data.densities !== undefined
-  )
-    return true
-  // Normalized DosData format
-  if (
-    (data.type === `phonon` || data.type === `electronic`) &&
-    has_spectra &&
-    has_array(data, `densities`)
-  )
-    return true
-  return false
+  const dos_data =
+    (data.type === `phonon` || data.type === `electronic`) && has_array(data, `densities`)
+  return has_spectra && (complete_dos || dos_data)
 }
 
 // BandsAndDos: object containing both band_structure and dos data at the same level.

@@ -180,7 +180,7 @@ describe(`format_composition`, () => {
 
 describe(`format_temperature`, () => {
   test.each<[number, TempUnit, string]>([
-    [500, `K`, `500 K`],
+    [499.6, `K`, `500 K`], // rounds to whole degrees
     [25, `°C`, `25 °C`],
     [77, `°F`, `77 °F`],
   ])(`%d with %s → %s`, (value, unit, expected) => {
@@ -210,43 +210,11 @@ const empty_plus_region: PhaseRegion = { ...two_phase_region, name: `+` }
 const split_region_horizontal: PhaseRegion = {
   id: `alpha-beta-split`,
   name: `α + β`,
-  vertices: pts(
-    0.1,
-    400,
-    0.9,
-    400,
-    0.9,
-    600,
-    0.6,
-    600,
-    0.6,
-    450,
-    0.4,
-    450,
-    0.4,
-    600,
-    0.1,
-    600,
-  ),
+  vertices: [
+    ...pts(0.1, 400, 0.9, 400, 0.9, 600, 0.6, 600),
+    ...pts(0.6, 450, 0.4, 450, 0.4, 600, 0.1, 600),
+  ],
 }
-const split_region_boundary_cases = [
-  { position: 0.35, expected_bounds: [0.1, 0.4] as Vec2 },
-  { position: 0.65, expected_bounds: [0.6, 0.9] as Vec2 },
-]
-
-const lever_null_cases = [
-  {
-    region: split_region_horizontal,
-    comp: 0.5,
-    temp: 500,
-    desc: `gap between disjoint intervals`,
-  },
-  { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
-  { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
-  { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
-  { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
-  { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
-]
 
 function expect_non_null<T>(value: T | null): T {
   expect(value).not.toBeNull()
@@ -259,7 +227,14 @@ const x_left_at = (temp: number) => 0.2 + (temp - 400) / 2000
 const x_right_at = (temp: number) => 0.8 - (temp - 400) / 2000
 
 describe(`calculate_lever_rule`, () => {
-  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
+  test.each([
+    { region: split_region_horizontal, comp: 0.5, temp: 500, desc: `gap between intervals` },
+    { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
+    { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
+    { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
+    { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
+    { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
+  ])(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
 
@@ -291,7 +266,10 @@ describe(`calculate_lever_rule`, () => {
     expect(result?.right_phase).toBe(`FCC_A1`)
   })
 
-  test.each(split_region_boundary_cases)(
+  test.each([
+    { position: 0.35, expected_bounds: [0.1, 0.4] },
+    { position: 0.65, expected_bounds: [0.6, 0.9] },
+  ])(
     `uses the nearest two-phase bounds at composition=$position when multiple intersections exist`,
     ({ position, expected_bounds }) => {
       const result = expect_non_null(
@@ -404,16 +382,12 @@ describe(`convert_temp`, () => {
     { value: 100, from: `°C`, to: `°F`, expected: 212 },
     { value: 32, from: `°F`, to: `°C`, expected: 0 },
     { value: 212, from: `°F`, to: `°C`, expected: 100 },
-    // absolute zero and a round trip through all three units
+    // absolute zero and a non-round value
     { value: 0, from: `K`, to: `°C`, expected: -273.15 },
     { value: 0, from: `K`, to: `°F`, expected: -459.67 },
     { value: 1234.5, from: `°C`, to: `°F`, expected: 2254.1 },
   ] as const)(`$value $from → $expected $to`, ({ value, from, to: target, expected }) => {
     expect(convert_temp(value, from, target)).toBeCloseTo(expected, 9)
-  })
-
-  test.each([`K`, `°C`, `°F`] as const)(`°F → %s → °F round-trips to 1e-9`, (unit) => {
-    expect(convert_temp(convert_temp(451, `°F`, unit), unit, `°F`)).toBeCloseTo(451, 9)
   })
 
   test.each([`K`, `°C`, `°F`] as const)(

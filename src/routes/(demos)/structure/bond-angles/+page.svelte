@@ -16,14 +16,14 @@
   import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
 
-  const strategies = SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}
+  const { value: default_strategy, enum: strategy_options } =
+    SETTINGS_CONFIG.structure.bonding_strategy
+  const strategies = strategy_options ?? {}
 
   // Zr16Bi16O56 spans several coordination environments, so its ADF shows well separated
   // tetrahedral, octahedral and cubic angle families
   let single_id = $state(`mp-756175`)
-  let single_strategy = $state<BondingStrategy>(
-    SETTINGS_CONFIG.structure.bonding_strategy.value,
-  )
+  let single_strategy = $state<BondingStrategy>(default_strategy)
   let single_split_mode = $state<BondAngleSplitMode>(`by_triplet`)
   let bin_width = $state(BOND_ANGLE_DEFAULT_BIN_WIDTH)
 
@@ -32,9 +32,7 @@
 
   let selected_ids = $state([`mp-1`, `mp-2`, `mp-1234`])
   let multi_normalize = $state<BondAngleNormalizeMode>(`density`)
-  let multi_strategy = $state<BondingStrategy>(
-    SETTINGS_CONFIG.structure.bonding_strategy.value,
-  )
+  let multi_strategy = $state<BondingStrategy>(default_strategy)
 
   const selected_structures = $derived(labeled_structures(selected_ids))
 </script>

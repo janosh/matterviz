@@ -221,22 +221,18 @@ export async function collect_trajectory_spectroscopy_input(
   signal?.throwIfAborted()
   const signal_of = (key: string, align: boolean): TrajectorySignal | undefined => {
     const declared = run.signals?.[key]
-    let series = declared && is_loaded_signal(declared) ? declared : stream.signals?.[key]
-    if (
-      series &&
-      declared &&
-      is_loaded_signal(declared) &&
-      (start_frame !== undefined || end_frame !== undefined)
-    ) {
-      const first = series.steps.findIndex((step) => step >= start_step)
-      const last = series.steps.findIndex((step) => step >= end_step)
-      const begin = first === -1 ? series.steps.length : first
-      const end = last === -1 ? series.steps.length : last
-      const size = values_per_sample(series.sample_shape)
+    const eager = declared && is_loaded_signal(declared) ? declared : undefined
+    let series = eager ?? stream.signals?.[key]
+    if (eager && (start_frame !== undefined || end_frame !== undefined)) {
+      const first = eager.steps.findIndex((step) => step >= start_step)
+      const last = eager.steps.findIndex((step) => step >= end_step)
+      const begin = first === -1 ? eager.steps.length : first
+      const end = last === -1 ? eager.steps.length : last
+      const size = values_per_sample(eager.sample_shape)
       series = {
-        ...series,
-        steps: series.steps.slice(begin, end),
-        values: series.values.slice(begin * size, end * size),
+        ...eager,
+        steps: eager.steps.slice(begin, end),
+        values: eager.values.slice(begin * size, end * size),
       }
     }
     return series && align && frame_stride > 1

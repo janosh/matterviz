@@ -1,15 +1,15 @@
 <script lang="ts">
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { track_settings } from '#lib/controls.js'
-  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { BarStyle, HistogramSeries, PlotConfig } from '#lib/plot/index.js'
   import { PlotControls } from '#lib/plot/index.js'
   import type { PlotControlsProps } from '#lib/plot/core/types.js'
   import { type HistogramNormalize, uses_bar_color } from '#lib/plot/histogram/histogram.js'
   import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
 
   let {
@@ -47,7 +47,7 @@
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
-  let visible_series = $derived(series.filter((srs) => srs.visible ?? true))
+  let has_visible_series = $derived(series.some((srs) => srs.visible ?? true))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const set_bar = (key: keyof typeof DEFAULTS.histogram.bar) => (value: string | number) =>
     (bar = { ...bar, [key]: value })
@@ -60,13 +60,6 @@
   })
   const bar_style_settings = track_settings(() => resolved_bar, DEFAULTS.histogram.bar)
 </script>
-
-<!-- select options come from the settings schema so labels/values have a single source of truth -->
-{#snippet options(enum_map: Record<string, string>)}
-  {#each Object.entries(enum_map) as [value, label] (value)}
-    <option {value}>{label}</option>
-  {/each}
-{/snippet}
 
 <PlotControls
   bind:show_controls
@@ -90,21 +83,21 @@
       <label>
         <span>Normalize</span>
         <select bind:value={normalize}>
-          {@render options(enum_labels(SETTINGS_CONFIG.histogram.normalize))}
+          {@render enum_options(SETTINGS_CONFIG.histogram.normalize)}
         </select>
       </label>
       {#if series.length > 1}
         <label>
           <span>Mode</span>
           <select bind:value={mode}>
-            {@render options(enum_labels(SETTINGS_CONFIG.histogram.mode))}
+            {@render enum_options(SETTINGS_CONFIG.histogram.mode)}
           </select>
         </label>
         {#if mode === `single`}
           <label style="flex-basis: 100%">
             <span>Series</span>
-            <select bind:value={selected_series_idx} disabled={!visible_series.length}>
-              {#if !visible_series.length}<option value={-1}>No visible series</option>{/if}
+            <select bind:value={selected_series_idx} disabled={!has_visible_series}>
+              {#if !has_visible_series}<option value={-1}>No visible series</option>{/if}
               {#each series as { label, visible = true }, series_idx (series_idx)}
                 {#if visible}
                   <option value={series_idx}>{label || `Series ${series_idx + 1}`}</option>

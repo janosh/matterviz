@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expect_bottom_within, get_chart_svg } from '../helpers'
+import { expect_bottom_within, get_chart_svg, require_bbox } from '../helpers'
 
 test(`structure picker selects one structure and toggles many`, async ({ page }) => {
   await page.goto(`/structure/coordination`, { waitUntil: `networkidle` })
@@ -47,14 +47,9 @@ test(`keeps the multi-structure layout bounded and responsive`, async ({ page })
   await expect(structure_tiles).toHaveCount(3)
 
   await expect_bottom_within(get_chart_svg(plot), plot.locator(`.axis-label.x-label`))
-  const [plot_bounds, grid_bounds, last_tile_bounds] = await Promise.all([
-    plot.boundingBox(),
-    structure_grid.boundingBox(),
-    structure_tiles.last().boundingBox(),
-  ])
-  if (!plot_bounds || !grid_bounds || !last_tile_bounds) {
-    throw new Error(`Missing coordination layout bounds`)
-  }
+  const [plot_bounds, grid_bounds, last_tile_bounds] = await Promise.all(
+    [plot, structure_grid, structure_tiles.last()].map((locator) => require_bbox(locator)),
+  )
   expect(grid_bounds.height).toBeCloseTo(plot_bounds.height, 0)
   expect(last_tile_bounds.width).toBeCloseTo(grid_bounds.width, 0)
   expect(await structure_grid.evaluate((grid) => grid.scrollWidth <= grid.clientWidth)).toBe(
@@ -62,13 +57,11 @@ test(`keeps the multi-structure layout bounded and responsive`, async ({ page })
   )
 
   await page.setViewportSize({ width: 900, height: 1000 })
-  const [responsive_plot_bounds, top_right, bottom_left, bottom_right] = await Promise.all([
-    plot.boundingBox(),
-    ...[0, 1, 2].map((tile_idx) => structure_tiles.nth(tile_idx).boundingBox()),
-  ])
-  if (!responsive_plot_bounds || !top_right || !bottom_left || !bottom_right) {
-    throw new Error(`Missing responsive coordination layout bounds`)
-  }
+  const [responsive_plot_bounds, top_right, bottom_left, bottom_right] = await Promise.all(
+    [plot, ...[0, 1, 2].map((tile_idx) => structure_tiles.nth(tile_idx))].map((locator) =>
+      require_bbox(locator),
+    ),
+  )
 
   expect(top_right.x).toBeGreaterThan(responsive_plot_bounds.x)
   expect(top_right.y).toBeCloseTo(responsive_plot_bounds.y, 0)

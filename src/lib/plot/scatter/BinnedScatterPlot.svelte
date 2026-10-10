@@ -182,7 +182,7 @@
     series.map((srs, idx) => ({
       x: srs.x,
       y: srs.y,
-      color: srs.color ?? plot_color(idx),
+      color: series_color(idx),
       label: srs.label,
       visible: true,
     })),
@@ -431,7 +431,9 @@
       ? `points`
       : `density`
   })
-  const auto_size_range = $derived(collect_size_range(series))
+  // the type alone, so radius changes don't re-scan the size values
+  const size_scale_type = $derived(size_scale.type)
+  const auto_size_range = $derived(collect_size_range(series, size_scale_type))
   const size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
   const min_point_radius = $derived(
     size_scale.radius_range?.[0] ?? SCALE_DEFAULTS.binned_radius[0],
@@ -548,8 +550,8 @@
     ctx.globalAlpha = 1
   }
 
-  // NaN fails every comparison, so this also rejects non-finite coords. Derived, not a plain
-  // function, so draw_points resolves the bounds once rather than per point.
+  // NaN fails every comparison, so this also rejects non-finite coords. Derived so the
+  // bounds are sorted once per view, not per call.
   const in_view = $derived.by(() => {
     const [x_min, x_max] = range_bounds(x_range)
     const [y_min, y_max] = range_bounds(y_range)
@@ -564,16 +566,8 @@
       const { series_idx, point_idx, cx: center_x, cy: center_y, size_value } = point
       if (selected_point?.series_idx === series_idx && selected_point.point_idx === point_idx)
         continue
-      const color = series[series_idx].color ?? plot_color(series_idx)
-      draw_marker(
-        ctx,
-        center_x,
-        center_y,
-        point_radius_for_value(size_value),
-        color,
-        0.65,
-        null,
-      )
+      const radius = point_radius_for_value(size_value)
+      draw_marker(ctx, center_x, center_y, radius, series_color(series_idx), 0.65, null)
     }
     ctx.globalAlpha = 1
   }
@@ -594,7 +588,7 @@
       const [coord_x, coord_y] = [srs?.x[point_idx], srs?.y[point_idx]]
       if (!in_view(coord_x, coord_y)) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
-      const color = srs.color ?? plot_color(series_idx)
+      const color = series_color(series_idx)
       draw_marker(ctx, x_scale_fn(coord_x), y_scale_fn(coord_y), radius, color, 1, pulse)
     }
     ctx.globalAlpha = 1
@@ -626,6 +620,11 @@
   // under the axes, reference lines and marginals, above the title background.
   let base_canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
+  // Base layer for the data, overlay for the hovered/selected markers (see draw_marked_points)
+  const canvas_layers = [
+    [`density-canvas`, (canvas?: HTMLCanvasElement) => (base_canvas = canvas)],
+    [`marked-points`, (canvas?: HTMLCanvasElement) => (overlay_canvas = canvas)],
+  ] as const
   $effect(() =>
     paint(
       base_canvas,
@@ -663,15 +662,15 @@
   const fmt_x = (val: number): string => format_value(val, x_axis.format ?? `.3~g`)
   const fmt_y = (val: number): string => format_value(val, y_axis.format ?? `.3~g`)
 
-  const point_color = (point: DenseInternalPoint<Metadata>): string =>
-    series[point.series_idx]?.color ?? plot_color(point.series_idx)
+  const series_color = (series_idx: number): string =>
+    series[series_idx]?.color ?? plot_color(series_idx)
 
   const point_label_key = (point: DenseInternalPoint<Metadata>): string =>
     `${point.series_idx}-${point.point_idx}`
 
   function point_payload(
     point: DenseInternalPoint<Metadata>,
-    color = point_color(point),
+    color = series_color(point.series_idx),
   ): BinnedPointPayload<Metadata, PointData> {
     const base_payload = { ...handler_props(point), point, color }
     return { ...base_payload, point_data: point_data?.(base_payload) ?? undefined }
@@ -818,14 +817,6 @@
       hovered_point = point
   }
 
-  function emit_point_click(
-    point: DenseInternalPoint<Metadata>,
-    event: MouseEvent,
-    color?: string,
-  ) {
-    on_point_click?.({ ...point_payload(point, color), event })
-  }
-
   function on_click(event: MouseEvent) {
     // A rect-zoom drag ends in a click the frame flags; don't also zoom the bin under it
     if (pan_zoom.suppress_click || pan_zoom.drag_start || pan_zoom.is_panning) return
@@ -833,7 +824,7 @@
     if (!coords) return
     if (render_mode === `points`) {
       const point = pick_at(coords)
-      if (point) emit_point_click(point, event)
+      if (point) on_point_click?.({ ...point_payload(point), event })
       return
     }
     const bin = bin_at(coords)
@@ -847,9 +838,14 @@
     }
     if (bin.count > 1 && density_settings.bin_click !== `point`) return
     const point = first_point_in_bin(series, density_result, bin, x_scale_fn, y_scale_fn)
-    if (point) emit_point_click(point, event, bin_color(bin))
+    if (point) on_point_click?.({ ...point_payload(point, bin_color(bin)), event })
   }
 </script>
+
+{#snippet xy_values(x_value: string, y_value: string)}
+  <TooltipValue label={x_axis.label || `x`} unit={x_axis.unit} value={x_value} /><br />
+  <TooltipValue label={y_axis.label || `y`} unit={y_axis.unit} value={y_value} />
+{/snippet}
 
 <CartesianFrame
   {frame}
@@ -872,22 +868,16 @@
     ``}"
 >
   {#snippet layers()}
-    <foreignObject
-      x="0"
-      y="0"
-      {width}
-      {height}
-      pointer-events="none"
-      {@attach attach_canvas(`density-canvas`, (canvas) => (base_canvas = canvas))}
-    ></foreignObject>
-    <foreignObject
-      x="0"
-      y="0"
-      {width}
-      {height}
-      pointer-events="none"
-      {@attach attach_canvas(`marked-points`, (canvas) => (overlay_canvas = canvas))}
-    ></foreignObject>
+    {#each canvas_layers as [name, assign] (name)}
+      <foreignObject
+        x="0"
+        y="0"
+        {width}
+        {height}
+        pointer-events="none"
+        {@attach attach_canvas(name, assign)}
+      ></foreignObject>
+    {/each}
 
     <!-- Overlay ref lines ignore z-order: every level renders here, below the axes -->
     <g class="reference-lines">
@@ -981,16 +971,11 @@
           />
         {/if}
         {hovered_bin.count.toLocaleString()} samples<br />
-        <TooltipValue
-          label={x_axis.label || `x`}
-          unit={x_axis.unit}
-          value={`${fmt_x(hovered_bin.x_range[0])} - ${fmt_x(hovered_bin.x_range[1])}`}
-        /><br />
-        <TooltipValue
-          label={y_axis.label || `y`}
-          unit={y_axis.unit}
-          value={`${fmt_y(hovered_bin.y_range[0])} - ${fmt_y(hovered_bin.y_range[1])}`}
-        />
+        {@const { x_range: bin_x, y_range: bin_y } = hovered_bin}
+        {@render xy_values(
+          `${fmt_x(bin_x[0])} - ${fmt_x(bin_x[1])}`,
+          `${fmt_y(bin_y[0])} - ${fmt_y(bin_y[1])}`,
+        )}
       </PlotTooltip>
     {:else if hovered_point}
       {@const props = point_payload(hovered_point)}
@@ -1005,16 +990,7 @@
         {#if tooltip}
           {@render tooltip(props)}
         {:else}
-          <TooltipValue
-            label={x_axis.label || `x`}
-            unit={x_axis.unit}
-            value={props.x_formatted}
-          /><br />
-          <TooltipValue
-            label={y_axis.label || `y`}
-            unit={y_axis.unit}
-            value={props.y_formatted}
-          />
+          {@render xy_values(props.x_formatted, props.y_formatted)}
         {/if}
       </PlotTooltip>
     {/if}

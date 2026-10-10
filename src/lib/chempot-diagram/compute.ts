@@ -4,9 +4,12 @@
 
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import {
+  absolute_energy_per_atom,
   compute_e_form_per_atom,
   compute_quickhull_nd,
+  find_lowest_energy_unary_refs,
   get_energy_per_atom,
+  has_absolute_energy,
 } from '#lib/convex-hull/thermodynamics.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import {
@@ -39,8 +42,22 @@ export function safe_energy_per_atom(entry: PhaseData): number {
   return Number.isFinite(epa) ? epa : Number.NaN
 }
 
-// Same-formula EPA total order: lower energy, then hull-eligible, then stable, then lower
-// e_above_hull, then a deterministic fingerprint so ties never depend on input order.
+// E_form-only entries (no energy, or a 0 eV placeholder next to E_form) placed on their
+// references' absolute scale (E_form + Σ x_e E_e), so they share the absolute entries' axes
+export function with_absolute_energies(entries: PhaseData[]): PhaseData[] {
+  if (entries.every(has_absolute_energy)) return entries
+  const unary_refs = find_lowest_energy_unary_refs(entries)
+  return entries.map((entry) => {
+    if (has_absolute_energy(entry)) return entry
+    const energy_per_atom = absolute_energy_per_atom(entry, unary_refs)
+    const energy = energy_per_atom * count_atoms_in_composition(entry.composition)
+    // E_form already includes any MP correction, so drop it or get_energy_per_atom re-applies
+    return { ...entry, energy, energy_per_atom, correction: undefined }
+  })
+}
+
+// Same-formula EPA total order: lower energy, then stable, then lower e_above_hull, then a
+// deterministic fingerprint so ties never depend on input order.
 function prefer_min_entry(
   candidate: PhaseData,
   candidate_epa: number,
@@ -48,9 +65,6 @@ function prefer_min_entry(
   existing_epa: number,
 ): boolean {
   if (candidate_epa !== existing_epa) return candidate_epa < existing_epa
-  if (Boolean(candidate.exclude_from_hull) !== Boolean(existing.exclude_from_hull)) {
-    return !candidate.exclude_from_hull
-  }
   if ((candidate.is_stable === true) !== (existing.is_stable === true)) {
     return candidate.is_stable === true
   }
@@ -85,14 +99,16 @@ export function entry_elements(entries: PhaseData[]): string[] {
 // === Core Algorithm ===
 
 // Group entries by reduced formula, keep only the minimum-energy entry per composition.
-// Also extract elemental reference entries.
+// Also extract elemental reference entries. Like the convex hull, exclude_from_hull entries
+// neither build the diagram nor serve as elemental references.
 export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   min_entries: PhaseData[]
   el_refs: Record<string, PhaseData>
 } {
   const by_formula = new Map<string, { entry: PhaseData; epa: number }>()
 
-  for (const entry of entries) {
+  for (const entry of with_absolute_energies(entries)) {
+    if (entry.exclude_from_hull) continue
     const key = formula_key_from_composition(entry.composition)
     const epa = safe_energy_per_atom(entry)
     if (!Number.isFinite(epa)) continue
@@ -142,28 +158,22 @@ export function get_energy_stats_by_formula(
   entries: PhaseData[],
 ): Map<string, FormulaEnergyStats> {
   const stats = new Map<string, FormulaEnergyStats>()
-  for (const entry of entries) {
+  for (const entry of with_absolute_energies(entries)) {
     const energy_per_atom = safe_energy_per_atom(entry)
     if (!Number.isFinite(energy_per_atom)) continue
     const formula_key = formula_key_from_composition(entry.composition)
-    const existing = stats.get(formula_key)
-    if (existing) {
-      existing.matching_entry_count += 1
-      existing.min_energy_per_atom = Math.min(
-        existing.min_energy_per_atom ?? energy_per_atom,
+    const prev = stats.get(formula_key)
+    stats.set(formula_key, {
+      matching_entry_count: (prev?.matching_entry_count ?? 0) + 1,
+      min_energy_per_atom: Math.min(
+        prev?.min_energy_per_atom ?? energy_per_atom,
         energy_per_atom,
-      )
-      existing.max_energy_per_atom = Math.max(
-        existing.max_energy_per_atom ?? energy_per_atom,
+      ),
+      max_energy_per_atom: Math.max(
+        prev?.max_energy_per_atom ?? energy_per_atom,
         energy_per_atom,
-      )
-    } else {
-      stats.set(formula_key, {
-        matching_entry_count: 1,
-        min_energy_per_atom: energy_per_atom,
-        max_energy_per_atom: energy_per_atom,
-      })
-    }
+      ),
+    })
   }
   return stats
 }
@@ -218,7 +228,6 @@ export function build_hyperplanes(
     }
     const on_precomputed_hull =
       use_precomputed_hull &&
-      !entry.exclude_from_hull &&
       (entry.is_stable === true ||
         (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
     let include_entry = on_precomputed_hull || always_include.has(entry)
@@ -238,26 +247,17 @@ export function build_hyperplanes(
   return { hyperplanes, hyperplane_entries }
 }
 
-// Build border hyperplanes from per-element limits.
-// For each axis with limits [lo, hi], creates two halfspace rows.
-export function build_border_hyperplanes(lims: Vec2[]): number[][] {
-  const dim = lims.length
-  const borders: number[][] = []
-  for (let idx = 0; idx < dim; idx++) {
-    // Lower bound: -mu_i + lo <= 0 → [-1, 0, ..., lo]
-    const lower = Array(dim + 1).fill(0)
-    lower[idx] = -1
-    lower[dim] = lims[idx][0]
-    borders.push(lower)
-
-    // Upper bound: mu_i - hi <= 0 → [1, 0, ..., -hi]
-    const upper = Array(dim + 1).fill(0)
-    upper[idx] = 1
-    upper[dim] = -lims[idx][1]
-    borders.push(upper)
-  }
-  return borders
-}
+// Border hyperplanes from per-element limits: two halfspace rows per axis with limits [lo, hi],
+// -mu_i + lo <= 0 → [-1, 0, ..., lo] and mu_i - hi <= 0 → [1, 0, ..., -hi]
+export const build_border_hyperplanes = (lims: Vec2[]): number[][] =>
+  lims.flatMap(([lower, upper], idx) => {
+    const row = (coeff: number, offset: number): number[] =>
+      Array(lims.length + 1)
+        .fill(0)
+        .with(idx, coeff)
+        .with(lims.length, offset)
+    return [row(-1, lower), row(1, -upper)]
+  })
 
 // Value of halfspace row [a_1..a_dim, b] at a point: a·mu + b (feasible when <= 0)
 function halfspace_value(halfspace: number[], point: number[], dim: number): number {
@@ -425,46 +425,41 @@ function compute_domains(
 const at_min_limit = (val: number, default_min_limit: number): boolean =>
   Math.abs(val - default_min_limit) <= 1e-8 + 1e-5 * Math.abs(default_min_limit)
 
-// Apply element padding: replace coordinates close to default_min_limit with
-// actual_min - padding for cleaner visual bounds. Single pass over all points.
-export function apply_element_padding(
+// Domains with every coordinate at default_min_limit (the artificial floor) on the given axes
+// moved to that axis' lowest real coordinate minus `padding`, for cleaner visual bounds.
+// Without padding the domains come back unchanged.
+export function pad_domains(
   domains: Record<string, number[][]>,
   elem_indices: number[],
   padding: number,
   default_min_limit: number,
-): number[] {
-  // Single-pass: track min per axis, skipping default_min_limit values
+): Record<string, number[][]> {
+  if (!(padding > 0)) return domains
+  // Single pass: track min per axis, skipping default_min_limit values
   const mins = elem_indices.map(() => Infinity)
   for (const pts of Object.values(domains)) {
     for (const point of pts) {
-      for (let idx = 0; idx < elem_indices.length; idx++) {
-        const val = point[elem_indices[idx]]
-        if (!at_min_limit(val, default_min_limit) && val < mins[idx]) {
-          mins[idx] = val
-        }
+      for (const [idx, col] of elem_indices.entries()) {
+        const val = point[col]
+        if (!at_min_limit(val, default_min_limit) && val < mins[idx]) mins[idx] = val
       }
     }
   }
-  return mins.map(
+  const new_lims = mins.map(
     (min_val) => (Number.isFinite(min_val) ? min_val : default_min_limit) - padding,
   )
-}
-
-// Replace default_min_limit coordinates with padded limits for display
-export function pad_domain_points(
-  pts: number[][],
-  elem_indices: number[],
-  new_lims: number[],
-  default_min_limit: number,
-): number[][] {
-  return pts.map((point) => {
-    const padded = [...point]
-    for (let idx = 0; idx < elem_indices.length; idx++) {
-      const col = elem_indices[idx]
-      if (at_min_limit(padded[col], default_min_limit)) padded[col] = new_lims[idx]
-    }
-    return padded
-  })
+  return Object.fromEntries(
+    Object.entries(domains).map(([formula, pts]) => [
+      formula,
+      pts.map((point) => {
+        const padded = [...point]
+        for (const [idx, col] of elem_indices.entries()) {
+          if (at_min_limit(padded[col], default_min_limit)) padded[col] = new_lims[idx]
+        }
+        return padded
+      }),
+    ]),
+  )
 }
 
 // Build per-axis min/max ranges for a set of points
@@ -501,8 +496,6 @@ export function get_touches_limits(
 
 // === Label Placement Helpers ===
 
-// Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
-// Used in 3D for finding domain polygon orientation for label placement.
 // Strip from `vec` (in place) its components along each vector of the orthonormal `basis`
 const project_out = (vec: number[], basis: number[][]): void => {
   for (const basis_vec of basis) {
@@ -525,6 +518,8 @@ const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null
   return best
 }
 
+// Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
+// Used in 3D for finding domain polygon orientation for label placement.
 export function simple_pca(
   data: number[][],
   order: number = 2,
@@ -872,7 +867,7 @@ export const swizzle_to_render =
 
 export interface VisibleDomainLabel {
   formula: string
-  position: [number, number, number]
+  position: Vec3
   label_font_size: number
 }
 
@@ -905,13 +900,9 @@ export function get_visible_domain_labels(
 
   const visible_labels = [...accum.entries()]
     .filter(([, entry]) => entry.area > EPS)
-    .map(([formula, entry]) => ({
+    .map(([formula, entry]): VisibleDomainLabel => ({
       formula,
-      position: [entry.x / entry.area, entry.y / entry.area, entry.z / entry.area] as [
-        number,
-        number,
-        number,
-      ],
+      position: [entry.x / entry.area, entry.y / entry.area, entry.z / entry.area],
       label_font_size: label_font_size_by_formula.get(formula) ?? 12,
     }))
 
@@ -946,7 +937,6 @@ function entry_fingerprint(entry: PhaseData): string {
     reduced_formula: entry.reduced_formula ?? null,
     composition,
     energy_per_atom: Number.isFinite(effective_energy) ? effective_energy : null,
-    exclude_from_hull: entry.exclude_from_hull === true,
     is_stable: entry.is_stable === true,
     e_above_hull: Number.isFinite(entry.e_above_hull) ? entry.e_above_hull : null,
   })

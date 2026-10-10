@@ -1,5 +1,6 @@
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
+import type { ElementSymbol } from '#lib/element/types.js'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import * as math from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
@@ -77,11 +78,33 @@ export const read_ndarray_from_view = (
   })
 }
 
+// Mass (amu) ASE divides an atom's momentum by: the one the file records, else the element's
+// standard atomic mass (what ASE assigns an Atoms without masses). Shared by every reader that
+// turns ASE momenta into velocities, so frames, atom batches and extXYZ agree.
+export function ase_momentum_mass(
+  element: ElementSymbol | undefined,
+  recorded: number | undefined,
+  label: string,
+): number {
+  const mass = recorded ?? (element && element_by_symbol.get(element)?.atomic_mass)
+  if (mass === undefined || !(mass > 0 && Number.isFinite(mass)))
+    throw new Error(`${label} has invalid mass ${mass} (element ${element})`)
+  return mass
+}
+
+// ASE momenta are in sqrt(amu*eV), so p/m (m in amu) is in Å per ASE time unit; ase.units.fs
+// converts it to Å/fs, i.e. atoms.get_velocities() * ase.units.fs
+export const ase_velocity = (momentum: number, mass: number): number =>
+  (momentum / mass) * FS_IN_ASE_TIME
+
 export interface AseFrameOptions {
   // ASE writes numbers and pbc into frame 0 only, repeating them when they change, so later
   // frames inherit the last values seen
   fallback_numbers?: number[]
   fallback_pbc?: Pbc
+  // Frame 0's recorded masses, which ASE gives every frame without its own topology header
+  // (a frame with one carries its own masses, or none for standard ones)
+  fallback_masses?: readonly number[]
   // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
   // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
   inherit?: () => { numbers?: number[]; pbc?: Pbc }
@@ -182,6 +205,7 @@ export function decode_ase_frame(
   {
     fallback_numbers,
     fallback_pbc,
+    fallback_masses,
     inherit,
     max_json_length,
     base_offset = 0,
@@ -244,14 +268,52 @@ export function decode_ase_frame(
   }
   const cell = ase_cell(frame_data)
   if (!plot_row) {
+    const elements = convert_atomic_numbers(numbers)
+    const momenta_ref: unknown = frame_data[`momenta.`] ?? frame_data.momenta
+    let velocities: number[][] | undefined
+    if (momenta_ref !== undefined) {
+      const momenta = is_ndarray_ref(momenta_ref)
+        ? read_ndarray(momenta_ref)
+        : (momenta_ref as number[][])
+      const masses_ref: unknown =
+        own_numbers === undefined
+          ? fallback_masses
+          : (frame_data[`masses.`] ?? frame_data.masses)
+      const masses = is_ndarray_ref(masses_ref)
+        ? read_ndarray(masses_ref).flat()
+        : (masses_ref as readonly number[] | undefined)
+      if (
+        momenta.length !== n_atoms ||
+        momenta.some((momentum) => momentum.length !== 3) ||
+        (masses && masses.length !== n_atoms)
+      )
+        throw new Error(
+          `ASE frame has ${n_atoms} atoms but momenta of shape [${momenta.length}, ${momenta[0]?.length}] and ${masses?.length ?? `no`} masses`,
+        )
+      velocities = momenta.map((momentum, atom_idx) => {
+        const mass = ase_momentum_mass(
+          elements[atom_idx],
+          masses?.[atom_idx],
+          `ASE atom ${atom_idx}`,
+        )
+        return momentum.map((component) => ase_velocity(component, mass))
+      })
+    }
+    const site_properties =
+      forces || velocities
+        ? elements.map((_element, atom_idx) => ({
+            ...(forces && { force: forces[atom_idx] }),
+            ...(velocities && { velocity: velocities[atom_idx] }),
+          }))
+        : undefined
     const frame = create_trajectory_frame(
       positions ?? [],
-      convert_atomic_numbers(numbers),
+      elements,
       cell,
       pbc,
       step,
       metadata,
-      forces?.map((force) => ({ force })),
+      site_properties,
     )
     return { frame, numbers, pbc }
   }
@@ -345,6 +407,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       const { buffer, view } = live()
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
         inherit: () => inherited_topology(frame_idx),
+        fallback_masses: atom_masses,
         max_json_length: MAX_ASE_HEADER_BYTES,
         plot_row,
         warn,
@@ -445,21 +508,26 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
         const atom_idx = start + idx
         const atomic_number = elements.value(atom_idx)
         const symbol = element_from_atomic_number(atomic_number)
-        const standard_mass = symbol && element_by_symbol.get(symbol)?.atomic_mass
-        if (standard_mass === undefined)
+        if (!symbol)
           throw new Error(`ASE atom ${atom_idx} has invalid atomic number ${atomic_number}`)
-        const recorded_mass = masses ? masses.value(atom_idx) : standard_mass
-        if ((momenta || mass_source) && !(recorded_mass > 0 && Number.isFinite(recorded_mass)))
-          throw new Error(`ASE atom ${atom_idx} has invalid mass ${recorded_mass}`)
+        const label = `ASE atom ${atom_idx}`
+        const recorded_mass =
+          momenta || mass_source
+            ? ase_momentum_mass(symbol, masses ? masses.value(atom_idx) : undefined, label)
+            : undefined
         batch.atomic_numbers[idx] = atomic_number
-        if (batch.masses)
-          batch.masses[idx] = mass_source === `standard` ? standard_mass : recorded_mass
+        if (batch.masses && recorded_mass !== undefined)
+          batch.masses[idx] =
+            mass_source === `standard`
+              ? ase_momentum_mass(symbol, undefined, label)
+              : recorded_mass
         for (let axis = 0; axis < 3; axis++) {
           batch.positions[idx * 3 + axis] = positions.value(atom_idx * 3 + axis)
-          // ASE momenta are in sqrt(amu*eV); ase.units.fs converts p/m to A/fs.
-          if (batch.velocities && momenta && recorded_mass)
-            batch.velocities[idx * 3 + axis] =
-              (momenta.value(atom_idx * 3 + axis) / recorded_mass) * FS_IN_ASE_TIME
+          if (batch.velocities && momenta && recorded_mass !== undefined)
+            batch.velocities[idx * 3 + axis] = ase_velocity(
+              momenta.value(atom_idx * 3 + axis),
+              recorded_mass,
+            )
         }
         if (batch.energies && energies) batch.energies[idx] = energies.value(atom_idx)
         if (batch.selected && selection) {

@@ -81,28 +81,20 @@ describe(`histogram-data random generators`, () => {
     }
   })
 
-  test(`seeded_rng is deterministic and draws from [0, 1)`, () => {
-    const draws = (seed: number) => Array.from({ length: 5 }, utils.seeded_rng(seed))
-    expect(draws(42)).toEqual(draws(42))
-    expect(draws(42)).not.toEqual(draws(43))
-    for (const value of draws(1)) {
-      expect(value).toBeGreaterThanOrEqual(0)
-      expect(value).toBeLessThan(1)
-    }
-  })
-
   // The LCG multiply must stay exact: `state * 1103515245` in doubles exceeds 2^53 once
   // state passes ~8e6 and drops low bits, collapsing the state space. Check against an
   // exact BigInt reference from seeds that put the product past 2^53 immediately.
   test.each([1, 12345, 2 ** 24 + 1, 0x7fffffff])(
-    `seed %i matches the exact 32-bit LCG`,
+    `seed %i matches the exact 32-bit LCG and draws from [0, 1)`,
     (seed) => {
       let state = BigInt(seed)
       const exact_draws = Array.from({ length: 20 }, () => {
         state = (state * 1103515245n + 12345n) & 0x7fffffffn
         return Number(state) / 0x7fffffff
       })
-      expect(Array.from({ length: 20 }, utils.seeded_rng(seed))).toEqual(exact_draws)
+      const draws = Array.from({ length: 20 }, utils.seeded_rng(seed))
+      expect(draws).toEqual(exact_draws)
+      expect(draws.every((value) => value >= 0 && value < 1)).toBe(true)
     },
   )
 })

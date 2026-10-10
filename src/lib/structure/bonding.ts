@@ -147,20 +147,14 @@ const normalize_bond_endpoints = (
   site_idx_2: number,
   cell_shift?: Vec3,
 ): Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`> => {
-  if (site_idx_1 === site_idx_2) {
-    const ordered = { site_idx_1, site_idx_2 }
-    if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ordered
-    return { ...ordered, cell_shift: canonical_self_bond_shift(cell_shift) }
-  }
-  const ordered =
-    site_idx_1 < site_idx_2
-      ? { site_idx_1, site_idx_2 }
-      : { site_idx_1: site_idx_2, site_idx_2: site_idx_1 }
-  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ordered
-  return {
-    ...ordered,
-    cell_shift: site_idx_1 < site_idx_2 ? cell_shift : negate_cell_shift(cell_shift),
-  }
+  const swap = site_idx_1 > site_idx_2
+  const ordered = swap
+    ? { site_idx_1: site_idx_2, site_idx_2: site_idx_1 }
+    : { site_idx_1, site_idx_2 }
+  if (!cell_shift || is_zero_cell_shift(cell_shift)) return ordered
+  if (site_idx_1 === site_idx_2) cell_shift = canonical_self_bond_shift(cell_shift)
+  else if (swap) cell_shift = negate_cell_shift(cell_shift)
+  return { ...ordered, cell_shift }
 }
 
 export const normalize_structure_bond = (
@@ -190,12 +184,10 @@ export function shift_bonds_for_moved_sites(
   })
 }
 
+// normalize_bond_endpoints drops zero shifts, so only a real image gets the `@` suffix
 export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
   const normalized = normalize_bond_endpoints(idx_1, idx_2, cell_shift)
-  const shift_suffix =
-    normalized.cell_shift === undefined || is_zero_cell_shift(normalized.cell_shift)
-      ? ``
-      : `@${normalized.cell_shift.join(`,`)}`
+  const shift_suffix = normalized.cell_shift ? `@${normalized.cell_shift.join(`,`)}` : ``
   return `${normalized.site_idx_1}-${normalized.site_idx_2}${shift_suffix}`
 }
 
@@ -425,19 +417,17 @@ export function set_bond_order(
       includes_bond_key(edit_state.added_bonds, key) ||
       includes_bond_key(edit_state.removed_bonds, key) ||
       includes_bond_key(edit_state.bond_order_overrides, key)
-    const next_overrides =
-      order === visible_order
-        ? remove_bond_key(edit_state.bond_order_overrides, key)
-        : replace_bond(edit_state.bond_order_overrides, record)
-    const next_state = {
-      added_bonds: remove_bond_key(edit_state.added_bonds, key),
-      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: next_overrides,
-    }
     return {
       action: `ordered-calculated`,
       changed: has_existing_edit || order !== visible_order,
-      state: next_state,
+      state: {
+        added_bonds: remove_bond_key(edit_state.added_bonds, key),
+        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
+        bond_order_overrides:
+          order === visible_order
+            ? remove_bond_key(edit_state.bond_order_overrides, key)
+            : replace_bond(edit_state.bond_order_overrides, record),
+      },
     }
   }
   return {
@@ -482,20 +472,6 @@ function normalize_cell_shift(cell_shift: unknown): Vec3 | undefined | null {
     : [cell_shift[0], cell_shift[1], cell_shift[2]]
 }
 
-function lattice_translation(structure: AnyStructure, cell_shift: Vec3 | undefined): Vec3 {
-  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return [0, 0, 0]
-  if (!(`lattice` in structure)) {
-    throw new Error(`Explicit bond cell_shift requires a crystal lattice`)
-  }
-  const [shift_a, shift_b, shift_c] = cell_shift
-  const [vec_a, vec_b, vec_c] = structure.lattice.matrix
-  return math.add(
-    math.scale(vec_a, shift_a),
-    math.scale(vec_b, shift_b),
-    math.scale(vec_c, shift_c),
-  )
-}
-
 export function structure_bond_to_bond_pair(
   structure: AnyStructure,
   bond: StructureBond,
@@ -509,11 +485,21 @@ export function structure_bond_to_bond_pair(
     )
   }
   const pos_1 = site_1.xyz
+  let pos_2 = site_2.xyz
   // In-cell bonds (the vast majority) skip the translation allocation
-  const pos_2 =
-    cell_shift === undefined || is_zero_cell_shift(cell_shift)
-      ? site_2.xyz
-      : math.add(site_2.xyz, lattice_translation(structure, cell_shift))
+  if (cell_shift && !is_zero_cell_shift(cell_shift)) {
+    if (!(`lattice` in structure)) {
+      throw new Error(`Explicit bond cell_shift requires a crystal lattice`)
+    }
+    const [vec_a, vec_b, vec_c] = structure.lattice.matrix
+    const [shift_a, shift_b, shift_c] = cell_shift
+    const translation = math.add(
+      math.scale(vec_a, shift_a),
+      math.scale(vec_b, shift_b),
+      math.scale(vec_c, shift_c),
+    )
+    pos_2 = math.add(pos_2, translation)
+  }
   return {
     pos_1,
     pos_2,
@@ -546,58 +532,44 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
   if (memo?.n_sites === n_sites && memo.has_lattice === has_lattice) return memo.bonds
 
   const explicit_bonds = new Map<string, StructureBond>()
+  const is_int = (val: unknown): val is number => Number.isInteger(val)
   for (const [entry_idx, raw_bond] of raw_bonds.entries()) {
+    const reject = (reason: string) =>
+      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: ${reason}`)
     if (typeof raw_bond !== `object` || raw_bond === null) {
-      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: expected object`)
+      reject(`expected object`)
       continue
     }
-    const bond_record = raw_bond as Record<string, unknown>
-    const { order } = bond_record
-    const site_idx_1 = bond_record.site_idx_1
-    const site_idx_2 = bond_record.site_idx_2
-    if (
-      typeof site_idx_1 !== `number` ||
-      typeof site_idx_2 !== `number` ||
-      !Number.isInteger(site_idx_1) ||
-      !Number.isInteger(site_idx_2)
-    ) {
-      console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: site indices must be integers`,
-      )
+    const {
+      site_idx_1,
+      site_idx_2,
+      order,
+      cell_shift: raw_shift,
+    } = raw_bond as Record<string, unknown>
+    if (!is_int(site_idx_1) || !is_int(site_idx_2)) {
+      reject(`site indices must be integers`)
       continue
     }
     if (site_idx_1 < 0 || site_idx_2 < 0 || site_idx_1 >= n_sites || site_idx_2 >= n_sites) {
-      console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: site indices ${
-          site_idx_1
-        }, ${site_idx_2} are out of range for ${n_sites} sites`,
-      )
+      reject(`site indices ${site_idx_1}, ${site_idx_2} are out of range for ${n_sites} sites`)
       continue
     }
     const bond_order = normalize_bond_order(order)
     if (bond_order === null) {
-      console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: unsupported order ${String(
-          order,
-        )}`,
-      )
+      reject(`unsupported order ${String(order)}`)
       continue
     }
-    const cell_shift = normalize_cell_shift(bond_record.cell_shift)
+    const cell_shift = normalize_cell_shift(raw_shift)
     if (cell_shift === null) {
-      console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift must be three integers`,
-      )
+      reject(`cell_shift must be three integers`)
       continue
     }
     if (site_idx_1 === site_idx_2 && is_zero_cell_shift(cell_shift)) {
-      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: endpoints match`)
+      reject(`endpoints match`)
       continue
     }
-    if (!is_zero_cell_shift(cell_shift) && !(`lattice` in structure)) {
-      console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift requires a crystal lattice`,
-      )
+    if (!is_zero_cell_shift(cell_shift) && !has_lattice) {
+      reject(`cell_shift requires a crystal lattice`)
       continue
     }
 
@@ -687,15 +659,14 @@ const MAX_PAIRS_PER_SITE = 16
 const MAX_BINS_PER_POSITION = 2
 
 // Amortized doubling, never past `cap` (so a capped buffer fills exactly to its budget)
-const grow_f64 = (buffer: Float64Array, needed: number, cap = Infinity): Float64Array => {
+const grow = <Buffer extends Float64Array | Int32Array>(
+  buffer: Buffer,
+  needed: number,
+  cap = Infinity,
+): Buffer => {
   if (needed <= buffer.length) return buffer
-  const next = new Float64Array(Math.min(cap, Math.max(needed, buffer.length * 2)))
-  next.set(buffer)
-  return next
-}
-const grow_i32 = (buffer: Int32Array, needed: number, cap = Infinity): Int32Array => {
-  if (needed <= buffer.length) return buffer
-  const next = new Int32Array(Math.min(cap, Math.max(needed, buffer.length * 2)))
+  const BufferType = buffer.constructor as new (length: number) => Buffer
+  const next = new BufferType(Math.min(cap, Math.max(needed, buffer.length * 2)))
   next.set(buffer)
   return next
 }
@@ -922,9 +893,9 @@ function neighbor_query_cutoff(
       )
     }
     n_cloud = n_sites + n_images
-    cloud_pos = grow_f64(cloud_pos, n_cloud * 3)
-    cloud_src = grow_i32(cloud_src, n_cloud)
-    cloud_shift = grow_i32(cloud_shift, n_cloud * 3)
+    cloud_pos = grow(cloud_pos, n_cloud * 3)
+    cloud_src = grow(cloud_src, n_cloud)
+    cloud_shift = grow(cloud_shift, n_cloud * 3)
     let slot = 0
     const push_cloud = (idx: number, shift_a: number, shift_b: number, shift_c: number) => {
       const face_a = frac[idx * 3] + shift_a
@@ -1169,9 +1140,9 @@ function neighbor_query_cutoff(
                   `lower the cutoff or the site count`,
               )
             }
-            pair_a = grow_i32(pair_a, n_pairs + 1, max_pairs)
-            pair_b = grow_i32(pair_b, n_pairs + 1, max_pairs)
-            pair_dist_sq = grow_f64(pair_dist_sq, n_pairs + 1, max_pairs)
+            pair_a = grow(pair_a, n_pairs + 1, max_pairs)
+            pair_b = grow(pair_b, n_pairs + 1, max_pairs)
+            pair_dist_sq = grow(pair_dist_sq, n_pairs + 1, max_pairs)
           }
           pair_a[n_pairs] = slot_a
           pair_b[n_pairs] = slot_b
@@ -1213,9 +1184,9 @@ function neighbor_query_cutoff(
     const start = offsets[center]
     const count = offsets[center + 1] - start
     if (count > block_partner.length) {
-      block_partner = grow_i32(block_partner, count)
-      block_dist_sq = grow_f64(block_dist_sq, count)
-      block_perm = grow_i32(block_perm, count)
+      block_partner = grow(block_partner, count)
+      block_dist_sq = grow(block_dist_sq, count)
+      block_perm = grow(block_perm, count)
     }
     for (let rank = 0; rank < count; rank++) {
       const entry = entry_at[start + rank]
@@ -1946,11 +1917,11 @@ function perceive_bonds(
       if (norm_dist < shell[orig_idxs[partner]]) shell[orig_idxs[partner]] = norm_dist
 
       if (n_cand === cand_slot.length) {
-        cand_slot = grow_i32(cand_slot, n_cand + 1)
-        cand_center = grow_i32(cand_center, n_cand + 1)
-        cand_norm = grow_f64(cand_norm, n_cand + 1)
-        cand_metallic = grow_i32(cand_metallic, n_cand + 1)
-        cand_strength = grow_f64(cand_strength, n_cand + 1)
+        cand_slot = grow(cand_slot, n_cand + 1)
+        cand_center = grow(cand_center, n_cand + 1)
+        cand_norm = grow(cand_norm, n_cand + 1)
+        cand_metallic = grow(cand_metallic, n_cand + 1)
+        cand_strength = grow(cand_strength, n_cand + 1)
       }
       cand_slot[n_cand] = slot
       cand_center[n_cand] = center

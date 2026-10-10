@@ -68,7 +68,6 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
     // array (must follow the category reordering, else point styles misalign with bars)
     const remap_per_point = <T>(prop: T[] | T | undefined): T[] | T | undefined =>
       Array.isArray(prop) ? (remap<T | undefined>(prop, undefined) as T[]) : prop
-    const bw_arr = Array.isArray(srs.bar_width) ? srs.bar_width : null
     const meta_arr = Array.isArray(srs.metadata) ? srs.metadata : null
     return {
       ...srs,
@@ -82,8 +81,8 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       point_hover: remap_per_point(srs.point_hover),
       point_label: remap_per_point(srs.point_label),
       point_offset: remap_per_point(srs.point_offset),
-      bar_width: bw_arr
-        ? remap(bw_arr, DEFAULT_CATEGORY_WIDTH)
+      bar_width: Array.isArray(srs.bar_width)
+        ? remap(srs.bar_width, DEFAULT_CATEGORY_WIDTH)
         : (srs.bar_width ?? DEFAULT_CATEGORY_WIDTH),
       ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
       ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
@@ -307,7 +306,7 @@ export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
   // stack on the correct baseline (matching stacked totals in compute_bar_auto_ranges)
   const acc = new Map<string, number>()
   internal_series.forEach((srs, series_idx) => {
-    if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
+    if (!(srs.visible ?? true) || srs.render_mode === `line`) return
     const axis = on_secondary_value_axis(srs, orientation) ? `2` : `1`
     srs.x.forEach((x_val, bar_idx) => {
       const y_val = srs.y[bar_idx]
@@ -333,7 +332,7 @@ export function compute_group_info<Metadata = Record<string, unknown>>(
 ): GroupInfo {
   if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
   const bar_series_indices = internal_series
-    .map((srs, idx) => ((srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1))
+    .map((srs, idx) => ((srs.visible ?? true) && srs.render_mode !== `line` ? idx : -1))
     .filter((idx) => idx >= 0)
   return { bar_series_count: bar_series_indices.length, bar_series_indices }
 }

@@ -45,7 +45,6 @@ const point_mode = (config: BinnedDensityConfig = {}): BinnedProps => ({
 })
 
 afterEach(() => {
-  document.body.replaceChildren()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -88,6 +87,11 @@ const plot_rect = (): TestRect => {
   const num = (attr: string) => Number(clip.getAttribute(attr))
   return { x: num(`x`), y: num(`y`), width: num(`width`), height: num(`height`) }
 }
+// Drawn reference lines, without the transparent hit line each ReferenceLine adds
+const visible_ref_lines = () =>
+  [...document.querySelectorAll(`.reference-lines line`)].filter(
+    (line) => line.getAttribute(`stroke`) !== `transparent`,
+  )
 const tick_labels = (axis: `x` | `y`): string[] =>
   [...document.querySelectorAll(`.binned-scatter .${axis}-axis text`)].map(
     (label) => label.textContent?.trim() ?? ``,
@@ -563,10 +567,7 @@ describe(`BinnedScatterPlot`, () => {
           ...hidden_colorbar,
         })
         await settle()
-        const lines = [...document.querySelectorAll(`.reference-lines line`)].filter(
-          (line) => line.getAttribute(`stroke`) !== `transparent`,
-        )
-        return lines.map((line) =>
+        return visible_ref_lines().map((line) =>
           [`x1`, `y1`, `x2`, `y2`].map((attr) => Number(line.getAttribute(attr))),
         )
       }
@@ -593,11 +594,7 @@ describe(`BinnedScatterPlot`, () => {
     })
     await settle()
 
-    // one kept line = one visible stroke (each ReferenceLine also draws a transparent hit line)
-    const visible_lines = [...document.querySelectorAll(`.reference-lines line`)].filter(
-      (line) => line.getAttribute(`stroke`) !== `transparent`,
-    )
-    expect(visible_lines).toHaveLength(1)
+    expect(visible_ref_lines()).toHaveLength(1) // one kept line
   })
 
   test(`uses density color scale type for colorbar ticks`, async () => {
@@ -864,13 +861,14 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
     const svg = plot_svg()
     const area = plot_rect()
-    const drag = async (start: Vec2, end: Vec2) => {
+    const drag = async (start: Vec2, end: Vec2, init: MouseEventInit = {}) => {
       svg.dispatchEvent(
         new MouseEvent(`mousedown`, {
           bubbles: true,
           button: 0,
           clientX: start[0],
           clientY: start[1],
+          ...init,
         }),
       )
       window.dispatchEvent(
@@ -948,23 +946,7 @@ describe(`BinnedScatterPlot`, () => {
     // touching the axis props, as in ScatterPlot
     const panned = plot_rect()
     const [pan_x, pan_y] = [panned.x + panned.width / 2, panned.y + panned.height / 2]
-    svg.dispatchEvent(
-      new MouseEvent(`mousedown`, {
-        bubbles: true,
-        button: 0,
-        shiftKey: true,
-        clientX: pan_x,
-        clientY: pan_y,
-      }),
-    )
-    window.dispatchEvent(
-      new MouseEvent(`mousemove`, {
-        buttons: 1,
-        clientX: pan_x - panned.width / 2,
-        clientY: pan_y,
-      }),
-    )
-    window.dispatchEvent(new MouseEvent(`mouseup`))
+    await drag([pan_x, pan_y], [pan_x - panned.width / 2, pan_y], { shiftKey: true })
     await settle()
     expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`3`, `4`, `5`]))
     expect(tick_labels(`x`)).not.toContain(`2`)

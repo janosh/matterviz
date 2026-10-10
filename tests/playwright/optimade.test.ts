@@ -75,13 +75,7 @@ test.describe(`OPTIMADE route`, () => {
     }, mocks)
   })
 
-  test(`page loads correctly`, async ({ page }) => {
-    await page.goto(`/optimade-mp-1`)
-
-    await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
-    await expect(page.locator(`input[placeholder="Enter structure ID"]`)).toBeVisible()
-    await expect(page.locator(`button.fetch-button`)).toBeVisible()
-
+  test(`how-to page highlights the OPTIMADE viewer source`, async ({ page }) => {
     await page.goto(`/how-to/hook-up-to-external-api`)
     const source = page
       .locator(`details`)

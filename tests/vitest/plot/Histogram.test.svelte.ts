@@ -15,6 +15,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  form_controls,
   mount_sized,
   mouse,
   one_tab_stop,
@@ -459,14 +460,9 @@ describe(`Histogram`, () => {
       ),
     )
 
-    const series_select = [...document.querySelectorAll<HTMLSelectElement>(`select`)].find(
-      (select) => select.closest(`label`)?.textContent?.includes(`Series`),
-    )
-    if (!series_select) throw new Error(`Missing histogram series selector`)
-    // happy-dom neither matches :checked on options nor refreshes selectedOptions.
-    vi.spyOn(series_select, `querySelector`).mockImplementation(
-      () => series_select.options[series_select.selectedIndex],
-    )
+    const { control, set_value } = form_controls()
+    const series_select = control(`Series`)
+    if (!(series_select instanceof HTMLSelectElement)) throw new Error(`Series is no select`)
     const option_labels = [...series_select.options].map((option) => option.textContent)
     expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series 4`, `Series 5`])
     expect(series_select.value).toBe(`1`)
@@ -474,9 +470,7 @@ describe(`Histogram`, () => {
     expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()
     expect(document.querySelector(`input[aria-label="Stroke color hex"]`)).not.toBeNull()
     for (const series_idx of [1, 2, 3, 4]) {
-      series_select.value = String(series_idx)
-      series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
+      await set_value(`Series`, String(series_idx))
       expect(state.selected_series_idx).toBe(series_idx)
       const groups = [...document.querySelectorAll(`g.histogram-series`)]
       expect(groups.map((group) => group.getAttribute(`data-series-idx`))).toEqual([
@@ -545,19 +539,9 @@ describe(`Histogram`, () => {
         stroke_opacity: 0.25,
       })
       // the controls pane's normalize select writes back into a bound normalize prop
-      const normalize_select = [
-        ...document.querySelectorAll<HTMLSelectElement>(`select`),
-      ].find((select) => select.parentElement?.textContent?.includes(`Normalize`))
-      if (!normalize_select) throw new Error(`Histogram normalize select not found`)
-      expect(normalize_select.value).toBe(`count`)
-      normalize_select.value = `density`
-      // Svelte's select binding reads the chosen option via querySelector(':checked'), which
-      // happy-dom doesn't match on <option> (it would fall back to the first option)
-      vi.spyOn(normalize_select, `querySelector`).mockImplementation(
-        () => normalize_select.selectedOptions[0],
-      )
-      normalize_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
+      const { control, set_value } = form_controls()
+      expect(control(`Normalize`).value).toBe(`count`)
+      await set_value(`Normalize`, `density`)
       expect(state.normalize).toBe(`density`)
       expect(sample_reads).toBe(initial_reads)
     },
@@ -659,10 +643,8 @@ describe(`Histogram`, () => {
       show_legend: undefined,
       bins: 10,
     })
-    const legend_checkbox = [
-      ...document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-    ].find((checkbox) => checkbox.parentElement?.textContent?.includes(`Show legend`))
-    if (!legend_checkbox) throw new Error(`Show legend checkbox not found`)
+    const legend_checkbox = form_controls().control(`Show legend`)
+    if (!(legend_checkbox instanceof HTMLInputElement)) throw new Error(`no legend checkbox`)
     expect(legend_checkbox.checked).toBe(true)
     legend_checkbox.click()
     await tick()

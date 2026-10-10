@@ -106,7 +106,7 @@ export const parse_mol2 = (content: string): AnyStructure => {
   // Cartesian coordinates stay authoritative and are not wrapped into the cell so
   // molecules are not torn apart across periodic boundaries
   const { lattice_matrix, to_frac } = cell_frame(
-    crysin && drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
+    drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
     `MOL2 CRYSIN cell`,
   )
 

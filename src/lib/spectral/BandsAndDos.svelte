@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { BandsOptions, DosOptions } from './index'
-  import { axis_with_range } from '#lib/plot/core/shared-axes.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
@@ -43,10 +42,8 @@
     doses: () => doses,
     units: () => units,
     fermi_level: () => fermi_level,
-    bands_y_axis: () => bands_props.y_axis,
-    dos_y_axis: () => dos_props.y_axis,
-    bands_padding: () => bands_props.padding,
-    dos_padding: () => dos_props.padding,
+    bands_props: () => bands_props,
+    dos_props: () => dos_props,
     side_by_side: () => !stacked,
     shared_axis: () => shared_y_axis,
     sync_zoom: () => sync_y_zoom,
@@ -76,12 +73,7 @@
     bind:units
     fermi_level={sync.fermi_level}
     orientation={stacked ? `vertical` : `horizontal`}
-    x_axis={{
-      // a vertical Dos plots frequency along x (density along y), so the shared frequency
-      // range belongs on x when stacked and on y (synced above) side by side
-      ...axis_with_range(undefined, stacked ? sync.shared_range : undefined),
-      ...dos_props.x_axis,
-    }}
+    x_axis={sync.dos_x_axis}
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}

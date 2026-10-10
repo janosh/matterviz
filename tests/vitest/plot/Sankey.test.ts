@@ -6,10 +6,10 @@ import type {
   SankeyLinkHandlerProps,
   SankeyNodeHandlerProps,
 } from '#lib/plot/index.js'
-import { type ComponentProps, tick } from 'svelte'
+import type { ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bucket_sankey_data } from '#lib/plot/sankey/sankey.js'
-import { mount_sized } from '../setup'
+import { fire, keydown, mount_sized, mouse, plot_svg } from '../setup'
 
 const data: SankeyData = {
   nodes: [
@@ -104,12 +104,8 @@ describe(`Sankey`, () => {
     const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]
     const plot = await mount_sized_sankey({ data, on_node_hover, on_link_hover })
     const rect = plot.querySelector<SVGRectElement>(`.nodes rect`)
-    const hover = (element: Element | null, coord_x = 0, coord_y = 0) => {
-      element?.dispatchEvent(
-        new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
-      )
-      return tick()
-    }
+    const hover = (element: Element | null | undefined, coord_x = 0, coord_y = 0) =>
+      fire(element, mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
     await hover(rect, 30, 40)
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(tooltip()?.textContent).toMatch(/A.*8/)
@@ -158,8 +154,7 @@ describe(`Sankey`, () => {
     expect(on_node_hover).toHaveBeenCalledTimes(5)
     expect(tooltip()?.textContent).toMatch(/A.*8/)
     // leaving the svg clears everything once
-    plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
-    await tick()
+    await fire(plot_svg(plot), mouse(`mouseleave`))
     expect(tooltip()).toBeNull()
     expect(on_node_hover).toHaveBeenLastCalledWith(null)
     expect([on_node_hover.mock.calls.length, on_link_hover.mock.calls.length]).toEqual([6, 2])
@@ -183,8 +178,7 @@ describe(`Sankey`, () => {
     expect(rect?.getAttribute(`aria-label`)).toBe(`A: 8`)
     expect(path?.getAttribute(`aria-label`)).toBe(`flow A to C: 8`)
 
-    rect?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    await tick()
+    await fire(rect)
     expect(on_node_click).toHaveBeenCalledOnce()
     expect(on_node_click.mock.calls[0][0] as SankeyNodeHandlerProps).toMatchObject({
       type: `node`,
@@ -194,24 +188,16 @@ describe(`Sankey`, () => {
       color: `#e15759`,
     })
     // Enter/Space on a focused mark activates it like a click; other keys are ignored
-    const canceled_event = new KeyboardEvent(`keydown`, {
-      key,
-      bubbles: true,
-      cancelable: true,
-    })
+    const canceled_event = keydown(key, { cancelable: true })
     canceled_event.preventDefault()
     rect?.dispatchEvent(canceled_event)
-    rect?.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key, bubbles: true, isComposing: true }),
-    )
+    rect?.dispatchEvent(keydown(key, { isComposing: true }))
     expect(on_node_click).toHaveBeenCalledOnce()
-    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-    rect?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Tab`, bubbles: true }))
-    await tick()
+    rect?.dispatchEvent(keydown(key))
+    await fire(rect, keydown(`Tab`))
     expect(on_node_click).toHaveBeenCalledTimes(2)
 
-    path?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    await tick()
+    await fire(path)
     expect(on_link_click).toHaveBeenCalledOnce()
     expect(on_link_click.mock.calls[0][0] as SankeyLinkHandlerProps).toMatchObject({
       type: `link`,
@@ -249,13 +235,11 @@ describe(`Sankey`, () => {
     expect(dim_nodes()).toEqual([])
     expect(dim_links()).toBe(0)
 
-    plot.querySelector<HTMLElement>(`.legend-item`)?.click() // toggle first node (A)
-    await tick()
+    await fire(plot.querySelector(`.legend-item`)) // toggle first node (A)
     expect(dim_nodes()).toEqual([`A`]) // node A dimmed
     expect(dim_links()).toBe(1) // its single link (A->C) dimmed
 
-    plot.querySelector<HTMLElement>(`.legend-item`)?.click() // re-click restores
-    await tick()
+    await fire(plot.querySelector(`.legend-item`)) // re-click restores
     expect(dim_nodes()).toEqual([])
     expect(dim_links()).toBe(0)
   })

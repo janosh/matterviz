@@ -4,7 +4,6 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
 import { normalize_band_structure, normalize_dos } from '#lib/spectral/index.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { SvelteMap } from 'svelte/reactivity'
 
 // pymatgen `PhononBandStructureSymmLine.as_dict()` as dumped by the fixture workflow (the
 // reciprocal lattice is spelled `recip_lattice`); `normalize_band_structure` does the conversion
@@ -72,7 +71,7 @@ for (const [path, data] of Object.entries(raw_imports)) {
 
 // Group fixtures by material while preserving each calculation method as a selectable key.
 export const phonon_fixture_groups: PhononFixtureGroup[] = (() => {
-  const by_material = new SvelteMap<string, string[]>()
+  const by_material = new Map<string, string[]>()
   for (const key of Object.keys(phonon_bands)) {
     const material = key.replace(METHOD_SUFFIX, ``)
     by_material.set(material, [...(by_material.get(material) ?? []), key])

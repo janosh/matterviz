@@ -1,5 +1,5 @@
 import type { Vec2 } from '#lib/math.js'
-import type { PhaseHoverInfo } from '#lib/phase-diagram/index.js'
+import type { LeverRuleResult, PhaseHoverInfo } from '#lib/phase-diagram/index.js'
 
 // Vec2 vertices from a flat [x0, y0, x1, y1, ...] list, so polygons stay on one line
 export const pts = (...flat: number[]): Vec2[] =>
@@ -16,3 +16,13 @@ export const create_hover_info = (
   position: { x: 100, y: 100 },
   ...overrides,
 })
+
+// α (left, 60 %) at x = 0.2 and β (right, 40 %) at x = 0.8
+export const lever_rule: LeverRuleResult = {
+  left_phase: `α`,
+  right_phase: `β`,
+  left_composition: 0.2,
+  right_composition: 0.8,
+  fraction_left: 0.6,
+  fraction_right: 0.4,
+}

@@ -1,9 +1,18 @@
 import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
+import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
 import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '#lib/plot/index.js'
 import { PLOT_COLORS } from '#lib/colors/index.js'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { fire, keydown, mount_sized, mouse, query, resize_element } from '../setup'
+import {
+  fire,
+  flush_render,
+  keydown,
+  mount_sized,
+  mouse,
+  query,
+  with_measured_text,
+} from '../setup'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 const tree: SunburstNode[] = [
@@ -423,18 +432,11 @@ describe(`Sunburst`, () => {
     }))
     try {
       for (let idx = 0; idx < 2; idx++) {
-        const target = document.createElement(`div`)
-        document.body.append(target)
-        mount(Sunburst, {
-          target,
-          props: {
-            data: multi_root,
-            value_mode: `total`,
-            style: `width: 500px; height: 360px`,
-          },
-        })
-        const plot = query(target, `.sunburst`)
-        await resize_element(plot, 500, 360)
+        const plot = await mount_sized(
+          Sunburst,
+          { data: multi_root, value_mode: `total` },
+          { selector: `.sunburst`, width: 500, height: 360 },
+        )
         expect(n_arcs(plot)).toBe(7 * 35) // 7 roots x (34 children + 1 root arc)
       }
     } finally {
@@ -457,24 +459,20 @@ describe(`Sunburst`, () => {
   // hover/focus state is index-based - swapping data must clear it, else the old
   // tooltip lingers and whatever node now occupies the index renders as hovered
   test(`swapping data clears stale hover/tooltip state`, async () => {
-    const props = $state({
-      data: tree,
-      tween: { duration: 0 },
-      style: `width: 500px; height: 360px;`,
+    // mounted with the $state object itself so reassigning data reaches the component
+    const props = $state({ data: tree, tween: { duration: 0 } })
+    const plot = await mount_sized(Sunburst, props, {
+      selector: `.sunburst`,
+      width: 500,
+      height: 360,
     })
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(Sunburst, { target, props })
-    const plot = query(target, `.sunburst`)
-    await resize_element(plot, 500, 360)
     await fire(arc_path(plot, `B`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     props.data = Array.from({ length: 5 }, (_node, idx) => ({
       label: `N${idx}`,
       value: idx + 1,
     }))
-    flushSync()
-    await tick()
+    await flush_render()
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
     // no arc of the new data may inherit the stale hover highlight/dimming
     const opacities = [...plot.querySelectorAll(`.arcs path`)].map((path) =>
@@ -659,10 +657,8 @@ describe(`Sunburst zoom navigation`, () => {
 describe(`Sunburst display options`, () => {
   // tree fixture: A=10 (50%), A1=4 (20%), A2=6 (30%), B=10 (50%)
   test.each([
+    // other modes' strings are pinned by hierarchy-chart's node_label_str table
     [`percent`, `50%`],
-    [`value`, `4`],
-    [`label+value`, `A1 4`],
-    [`label+percent`, `A1 20%`],
     // % of PARENT: A1 is 4 of A's 10
     [`label+parent-percent`, `A1 (40%)`],
   ] as const)(`label_text=%s renders %j`, async (label_text, expected) => {
@@ -763,6 +759,32 @@ describe(`Sunburst display options`, () => {
     expect(plot.querySelector(`.plot-tooltip small`)?.textContent).toBe(`%`)
   })
 
+  // The layout reads the view root only while bucketing measures against it: otherwise every
+  // zoom would rebuild it (re-measuring every label) for an identical result
+  test.each([
+    [`without bucketing, zooming keeps the layout`, 0, true],
+    [`with bucketing, zooming re-buckets against the view root`, 0.07, false],
+  ])(`%s`, (_name, min_fraction, keeps_layout) => {
+    const view = $state<{ zoom_root_id: string | null }>({ zoom_root_id: null })
+    const noop = () => {}
+    const cleanup = $effect.root(() => {
+      const chart_state = new HierarchyChartState({
+        chart: `sunburst`,
+        uid: `test`,
+        data: () => tree,
+        layout_options: () => ({ min_fraction, max_children: 0 }),
+        zoom_root_id: () => view.zoom_root_id,
+        set_hovered: noop,
+        on_node_hover: noop,
+        node_center: () => null,
+      } as never)
+      const before = chart_state.layout
+      view.zoom_root_id = `A`
+      expect(chart_state.layout === before).toBe(keeps_layout)
+    })
+    cleanup()
+  })
+
   test(`max_children prop keeps the largest N arcs per parent`, async () => {
     const plot = await mount_sized_sunburst({ data: long_tail, max_children: 2 })
     expect(n_arcs(plot)).toBe(3) // job-6 + job-7 + Other
@@ -808,14 +830,9 @@ describe(`icicle shape`, () => {
   })
 
   test(`rotates labels 90° in thin-but-tall cells, keeps wide cells horizontal`, async () => {
-    // jsdom's canvas measureText returns 0, so force a width wide enough that a narrow
+    // happy-dom's canvas measureText returns 0, so force widths wide enough that a narrow
     // cell can't fit a horizontal label but a tall one fits it rotated
-    const get_context = vi.spyOn(HTMLCanvasElement.prototype, `getContext`)
-    get_context.mockReturnValue({
-      font: ``,
-      measureText: () => ({ width: 40 }),
-    } as unknown as CanvasRenderingContext2D)
-    try {
+    await with_measured_text(async () => {
       // one wide leaf (~320px) + 10 narrow ones (~16px) sharing one full-height row
       const data: SunburstNode[] = [
         { label: `wide`, value: 20 },
@@ -832,8 +849,6 @@ describe(`icicle shape`, () => {
       expect(
         transforms.filter((transform) => !transform.includes(`rotate`)).length,
       ).toBeGreaterThan(0)
-    } finally {
-      get_context.mockRestore()
-    }
+    }, 20)
   })
 })

@@ -58,14 +58,15 @@
     ...electron_props,
   })
   let viewBox = $derived(`-${size / 2}, -${size / 2}, ${size}, ${size}`)
+  let aria_label = $derived(name || symbol || undefined)
 </script>
 
 <svg
   fill={base_fill}
   {viewBox}
-  role={name || symbol ? `img` : undefined}
-  aria-label={name || symbol || undefined}
-  aria-hidden={name || symbol ? undefined : `true`}
+  role={aria_label && `img`}
+  aria-label={aria_label}
+  aria-hidden={aria_label ? undefined : `true`}
   {...rest}
 >
   <!-- nucleus -->
@@ -107,13 +108,9 @@
             {#if typeof number_electrons === `function`}
               {number_electrons(elec_idx)}
             {:else if number_electrons === `hierarchical`}
-              {shell_idx + 1}.{elec_idx + 1}
+              {shell_number}.{elec_idx + 1}
             {:else}
-              {@const nth_electron =
-                shells.slice(0, shell_idx).reduce((sum, count) => sum + count, 0) +
-                elec_idx +
-                1}
-              {nth_electron}
+              {shells.slice(0, shell_idx).reduce((sum, count) => sum + count, elec_idx + 1)}
             {/if}
           </text>
         {/if}

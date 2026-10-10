@@ -1,6 +1,6 @@
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
-import type { Matrix3x3 } from '#lib/math.js'
+import { is_finite_vec3, type Matrix3x3 } from '#lib/math.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
@@ -13,6 +13,7 @@ import {
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { ase_momentum_mass, ase_velocity } from './ase'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
 
@@ -288,6 +289,14 @@ function parse_xyz_atom_lines(
       const value = read_extxyz_column(scanner, column)
       if (value !== undefined) props[name] = value
     }
+    // ASE writes an Atoms' momenta as-is (sqrt(amu*eV)) and its masses only when set, so its
+    // reader divides by the standard masses otherwise. An explicit velocity column wins.
+    if (props.velocity === undefined && is_finite_vec3(props.momentum)) {
+      const recorded = typeof props.mass === `number` ? props.mass : undefined
+      const label = `XYZ ${frame_label} line ${line_number} atom`
+      const mass = ase_momentum_mass(element_symbol, recorded, label)
+      props.velocity = props.momentum.map((momentum) => ase_velocity(momentum, mass))
+    }
     if (has_move_flags) {
       const flags = read_extxyz_move_flags(scanner, layout)
       if (flags) {
@@ -312,6 +321,15 @@ function parse_xyz_atom_lines(
     for (const props of site_properties) delete props.selective_dynamics
   }
   return { elements, positions, forces, site_properties }
+}
+
+// Run metadata of an extXYZ whose velocities parse_xyz_atom_lines derives from ASE momenta,
+// in Å/fs. An explicit velocity column is in the file's own, unrecorded units.
+export function extxyz_run_metadata(comment: string | undefined): Record<string, unknown> {
+  const layout = comment === undefined ? null : parse_extxyz_columns(comment).layout
+  const explicit = layout?.velocities ?? layout?.velocity
+  const momenta = layout?.momenta ?? layout?.momentum
+  return momenta && !explicit ? { velocity_unit: `A/fs` } : {}
 }
 
 export function build_xyz_frame(
@@ -396,7 +414,8 @@ export function parse_xyz_trajectory(
   collector: WarningCollector,
 ): ParsedTrajectory {
   const lines = TextLines.of(content)
-  const frames = index_xyz_frames(lines, collector.warn).map((spec, frame_idx) =>
+  const specs = index_xyz_frames(lines, collector.warn)
+  const frames = specs.map((spec, frame_idx) =>
     build_xyz_frame(
       lines,
       spec,
@@ -405,5 +424,5 @@ export function parse_xyz_trajectory(
     ),
   )
   if (frames.length === 0) throw new Error(`No XYZ frames found`)
-  return { format: `xyz`, frames, metadata: {} }
+  return { format: `xyz`, frames, metadata: extxyz_run_metadata(specs[0]?.comment) }
 }

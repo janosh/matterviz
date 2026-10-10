@@ -14,9 +14,10 @@ import type {
 import type { VacfInput } from './index'
 
 // Site property the parsers write per-atom velocities to (extXYZ vx/vy/vz, LAMMPS dump
-// vx vy vz), and the run signal an HDF5 file declares them under. A vec3 in the file's own
-// units; nothing here converts it. Only HDF5 runs record the unit (on the signal
-// descriptor), so for text formats calc_vacf labels the stored VACF as file velocity units.
+// vx vy vz, ASE momenta over masses), and the run signal an HDF5 file declares them under. A
+// vec3 in the file's own units; nothing here converts it. HDF5 runs record the unit on the
+// signal descriptor, readers that convert ASE momenta as run metadata `velocity_unit` (Å/fs);
+// for other text formats calc_vacf labels the stored VACF as file velocity units.
 export const VELOCITY_SITE_PROPERTY = `velocity`
 
 // Frame stride that keeps every trajectory-sized buffer calc_vacf holds inside `max_bytes`:
@@ -70,17 +71,21 @@ export async function collect_vacf_input(
   run: TrajectoryRun,
   options: AnalysisStreamOptions = {},
 ): Promise<VacfInput> {
+  const stored = has_velocities(run.preview)
   const stream = await collect_trajectory_positions(run, {
     ...options,
-    ...(has_velocities(run.preview) && { vector_keys: [VELOCITY_SITE_PROPERTY] }),
+    ...(stored && { vector_keys: [VELOCITY_SITE_PROPERTY] }),
     analysis_name: `VACF`,
-    // 3 rather than MSD's 2: central differences drop the first and last frame, so a
-    // 2-frame run leaves no velocity at all
-    min_frames: 3,
+    // calc_vacf needs 2 velocity frames to form a lag. Central differences drop the first and
+    // last frame, so differentiated positions need 4
+    min_frames: stored ? 2 : 4,
   })
+  const metadata_unit = run.metadata.velocity_unit
   return {
     ...stream,
     velocities: stream_velocities(stream),
-    velocity_unit: run.signals?.[VELOCITY_SITE_PROPERTY]?.unit ?? null,
+    velocity_unit:
+      run.signals?.[VELOCITY_SITE_PROPERTY]?.unit ??
+      (typeof metadata_unit === `string` ? metadata_unit : null),
   }
 }

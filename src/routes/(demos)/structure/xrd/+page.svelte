@@ -8,7 +8,7 @@
   import { format_num } from '#lib/labels.js'
   import type { Vec3 } from '#lib/math.js'
   import { Structure } from '#lib/structure/index.js'
-  import type { SaedOptions, SaedPatternData, XrdPattern } from '#lib/xrd/index.js'
+  import type { SaedOptions, XrdPattern } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern,
     compute_xrd_pattern,
@@ -76,13 +76,16 @@
   const compute_ids = structures.map((struct) => struct.id ?? ``)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<Crystal | null>(structure_map.get(compute_id) ?? null)
-  const computed = $derived.by(() => {
+  const try_compute = <Pattern>(
+    compute: () => Pattern | null,
+  ): { pattern: Pattern | null; error: string | null } => {
     try {
-      return { pattern: ensure_pattern(compute_id), error: null }
+      return { pattern: compute(), error: null }
     } catch (exc) {
       return { pattern: null, error: to_error(exc).message }
     }
-  })
+  }
+  const computed = $derived(try_compute(() => ensure_pattern(compute_id)))
 
   // Radiation comparison: the same structure probed with X-rays, neutrons and electrons.
   // XrdPlot already accepts an array of patterns, so overlaying them needs no plot changes.
@@ -134,14 +137,9 @@
     const timer = setTimeout(() => (saed_options = next), 250)
     return () => clearTimeout(timer)
   })
-  const saed = $derived.by((): { pattern: SaedPatternData | null; error: string | null } => {
+  const saed = $derived.by(() => {
     const struct = computed_struct
-    if (!struct) return { pattern: null, error: null }
-    try {
-      return { pattern: compute_saed_pattern(struct, saed_options), error: null }
-    } catch (exc) {
-      return { pattern: null, error: to_error(exc).message }
-    }
+    return try_compute(() => struct && compute_saed_pattern(struct, saed_options))
   })
 
   // Multi-select demo: allow overlaying multiple structures
@@ -167,12 +165,7 @@
     <LazyDemo label="xrd" height="600px">
       <XrdPlot
         patterns={computed.pattern
-          ? [
-              {
-                label: `${compute_id} ${formula_for(compute_id)}`,
-                pattern: computed.pattern,
-              },
-            ]
+          ? [{ label: `${compute_id} ${formula_for(compute_id)}`, pattern: computed.pattern }]
           : []}
         annotate_peaks={3}
         hkl_format="compact"
@@ -265,11 +258,10 @@
       <div class="selected-structures-grid">
         {#each selected_ids as struct_id, idx (struct_id)}
           {@const struct_obj = structure_map.get(struct_id)}
-          {@const series_color = plot_color(idx)}
           {#if struct_obj}
             <div
               class="structure-tile"
-              style:background-color={hex_with_alpha(series_color, 0.15)}
+              style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
             >
               <h3>{struct_id}</h3>
               <Structure

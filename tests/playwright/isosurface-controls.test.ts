@@ -1,10 +1,12 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  canvas_center,
   canvas_screenshot,
   expect_canvas_changed,
   get_canvas_timeout,
   IS_CI,
   open_settings_pane,
+  require_bbox,
   select_view_layout,
   set_input_value,
   wait_for_canvas_rendered,
@@ -25,18 +27,9 @@ async function open_slice_view(page: Page) {
   return slice
 }
 
-// Get center of a bounding box, throwing if null
-async function get_center(locator: Locator) {
-  const box = await locator.boundingBox()
-  if (!box) throw new Error(`Element has no bounding box`)
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-}
-
-// Drag from a locator's center by a given offset
+// Drag from a locator's center (scrolled into view first) by a given offset
 async function drag_from(page: Page, locator: Locator, delta_x: number, delta_y: number) {
-  // Scroll element into view so mouse coordinates are within the viewport
-  await locator.scrollIntoViewIfNeeded()
-  const { x: coord_x, y: coord_y } = await get_center(locator)
+  const { x: coord_x, y: coord_y } = await canvas_center(locator)
   await page.mouse.move(coord_x, coord_y)
   await page.mouse.down()
   await page.mouse.move(coord_x + delta_x, coord_y + delta_y, { steps: 5 })
@@ -50,37 +43,24 @@ test.describe(`Isosurface page`, () => {
     await wait_for_isosurface(page)
   })
 
-  test.describe(`Isosurface controls`, () => {
-    test(`neg. lobe toggle adds and removes negative surface`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
-      await expect(neg_cb).toBeVisible()
-      await neg_cb.check()
-      await expect(neg_cb).toBeChecked()
-      await neg_cb.uncheck()
-      await expect(neg_cb).not.toBeChecked()
-    })
-
-    // The collapsed search magnifier is pinned to the pane's top-right corner and used to
-    // cover the Volumetric data header's `isosurface` subtitle
-    test(`settings search trigger sits above the first group header`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      const trigger = await pane.getByRole(`button`, { name: `Search settings` }).boundingBox()
-      const header = await pane
-        .locator(`details.settings-group > summary`)
-        .first()
-        .boundingBox()
-      expect(trigger && header && trigger.y + trigger.height).toBeLessThanOrEqual(
-        header?.y ?? -Infinity,
-      )
-    })
-
-    test(`halo slider is present for periodic volumes`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
-      await expect(halo_slider).toBeVisible()
-      await expect(halo_slider).toHaveValue(`0`)
-    })
+  // The collapsed search magnifier is pinned to the pane's top-right corner and used to
+  // cover the Volumetric data header's `isosurface` subtitle
+  test(`settings pane: search trigger clears the first header, halo and neg. lobe controls`, async ({
+    page,
+  }) => {
+    const pane = await open_settings_pane(page)
+    const trigger = await require_bbox(pane.getByRole(`button`, { name: `Search settings` }))
+    const header = await require_bbox(pane.locator(`details.settings-group > summary`).first())
+    expect(trigger.y + trigger.height).toBeLessThanOrEqual(header.y)
+    // periodic volumes get a halo slider
+    const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
+    await expect(halo_slider).toBeVisible()
+    await expect(halo_slider).toHaveValue(`0`)
+    const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
+    await neg_cb.check()
+    await expect(neg_cb).toBeChecked()
+    await neg_cb.uncheck()
+    await expect(neg_cb).not.toBeChecked()
   })
 
   test.describe(`Volumetric slices`, () => {
@@ -93,14 +73,9 @@ test.describe(`Isosurface page`, () => {
       const colorbar = slice.locator(`.slice-colorbar`)
       await wait_for_canvas_rendered(canvas)
 
-      const [viewer_box, canvas_box, colorbar_box] = await Promise.all([
-        viewer.boundingBox(),
-        canvas.boundingBox(),
-        colorbar.boundingBox(),
-      ])
-      if (!viewer_box || !canvas_box || !colorbar_box) {
-        throw new Error(`Missing slice layout bounding box`)
-      }
+      const [viewer_box, canvas_box, colorbar_box] = await Promise.all(
+        [viewer, canvas, colorbar].map((locator) => require_bbox(locator)),
+      )
       expect(canvas_box.width).toBeCloseTo(viewer_box.width, 0)
       expect(canvas_box.height).toBeCloseTo(viewer_box.height, 0)
       await expect(canvas).toHaveCSS(`object-fit`, `fill`)
@@ -121,8 +96,7 @@ test.describe(`Isosurface page`, () => {
         viewer.locator(`section.control-buttons`),
         page.locator(`.demo-overlay-label`),
       ]) {
-        const overlay_box = await overlay.boundingBox()
-        if (!overlay_box) throw new Error(`Missing slice overlay bounding box`)
+        const overlay_box = await require_bbox(overlay, `slice overlay`)
         expect(overlay_box.x).toBeGreaterThanOrEqual(canvas_box.x)
         expect(overlay_box.y).toBeGreaterThanOrEqual(canvas_box.y)
         expect(overlay_box.x + overlay_box.width).toBeLessThanOrEqual(
@@ -239,38 +213,32 @@ test.describe(`Isosurface page`, () => {
     })
   })
 
-  test.describe(`DraggablePane resize grip`, () => {
-    test(`resizes and resets`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      const grip = pane.locator(`.resize-grip`)
-      await expect(grip).toBeVisible()
-      const initial_box = await pane.boundingBox()
-      expect(initial_box).toBeTruthy()
-      await drag_from(page, grip, 100, 0)
-      await expect(pane).toBeVisible()
-      const resized_box = await pane.boundingBox()
-      expect(resized_box).toBeTruthy()
-      expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
+  test(`DraggablePane dragging exposes reset and close; resize grip resizes and resets`, async ({
+    page,
+  }) => {
+    const pane = await open_settings_pane(page)
+    const tab = pane.locator(`.control-tab`)
+    await expect(tab.locator(`.drag-handle`)).toBeVisible()
+    await expect(tab.locator(`.reset-button`)).not.toBeVisible()
+    await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
+    await expect(tab.locator(`.reset-button`)).toBeVisible()
+    await expect(tab.locator(`.close-button`)).toBeVisible()
+    await tab.locator(`.reset-button`).click()
+    await expect(pane).toBeVisible()
 
-      // The gutter beneath the grip owns the dblclick-to-reset (the grip itself is a
-      // decorative overlay with pointer-events: none). Dispatched rather than synthesized:
-      // the gutter's pointerdown takes pointer capture, and Chromium then never emits the
-      // dblclick for a real double-click, though one from a user does reset the pane.
-      await pane.locator(`[data-resize-edge="right"]`).dispatchEvent(`dblclick`)
-      expect(await pane.evaluate((element) => element.style.width)).toBe(``)
-    })
+    const grip = pane.locator(`.resize-grip`)
+    await expect(grip).toBeVisible()
+    const initial_box = await require_bbox(pane)
+    await drag_from(page, grip, 100, 0)
+    await expect(pane).toBeVisible()
+    expect((await require_bbox(pane)).width).toBeGreaterThan(initial_box.width + 50)
 
-    test(`exposes reset and close controls after dragging`, async ({ page }) => {
-      const pane = await open_settings_pane(page)
-      const tab = pane.locator(`.control-tab`)
-      await expect(tab.locator(`.drag-handle`)).toBeVisible()
-      await expect(tab.locator(`.reset-button`)).not.toBeVisible()
-      await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
-      await expect(tab.locator(`.reset-button`)).toBeVisible()
-      await expect(tab.locator(`.close-button`)).toBeVisible()
-      await tab.locator(`.reset-button`).click()
-      await expect(pane).toBeVisible()
-    })
+    // The gutter beneath the grip owns the dblclick-to-reset (the grip itself is a
+    // decorative overlay with pointer-events: none). Dispatched rather than synthesized:
+    // the gutter's pointerdown takes pointer capture, and Chromium then never emits the
+    // dblclick for a real double-click, though one from a user does reset the pane.
+    await pane.locator(`[data-resize-edge="right"]`).dispatchEvent(`dblclick`)
+    expect(await pane.evaluate((element) => element.style.width)).toBe(``)
   })
 })
 

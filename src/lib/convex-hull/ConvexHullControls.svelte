@@ -293,7 +293,7 @@
           >On the fly (T / P corrections active)</span
         >
       </div>
-    {:else if energy_info?.has_precomputed_e_form && energy_info.has_precomputed_hull && energy_info.can_compute}
+    {:else if energy_info?.has_precomputed_e_form && energy_info.can_compute}
       {@render toggle_row(
         `Energy source`,
         [

@@ -67,8 +67,7 @@ const parse_file_worker = async (
     try {
       worker = worker_factory()
     } catch (error) {
-      reject(to_error(error))
-      return
+      return reject(to_error(error))
     }
     let settled = false
     let run: WorkerRun | undefined
@@ -168,10 +167,7 @@ export const parse_in_worker = async (
     content,
     filename,
     is_base64,
-    {
-      ...options,
-      load_options,
-    },
+    { ...options, load_options },
     () => dispose_pool?.(),
   )
   if (

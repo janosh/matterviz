@@ -22,15 +22,16 @@ const VECTOR_KEY_PREFIXES = [
   `dipole`,
 ] as const
 
+const has_key_prefix = (key: string, prefix: string): boolean =>
+  key === prefix || key.startsWith(`${prefix}_`)
+
 // Memoised: the scan below asks this for every property key of every site on every
 // trajectory frame, and the set of distinct key names in a session is tiny
 const vector_key_memo = new Map<string, boolean>()
 export const is_vector_key = (key: string): boolean => {
   let is_vector = vector_key_memo.get(key)
   if (is_vector === undefined) {
-    is_vector = VECTOR_KEY_PREFIXES.some(
-      (prefix) => key === prefix || key.startsWith(`${prefix}_`),
-    )
+    is_vector = VECTOR_KEY_PREFIXES.some((prefix) => has_key_prefix(key, prefix))
     if (vector_key_memo.size >= 1024) vector_key_memo.clear()
     vector_key_memo.set(key, is_vector)
   }
@@ -47,14 +48,10 @@ export const VECTOR_PALETTE = [
   `#1abc9c`,
 ] as const
 
-// Same key shape as is_vector_key, restricted to the velocity prefixes
-const is_velocity_vector_key = (key: string): boolean =>
-  [`velocity`, `velocities`].some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
-
 // MD velocities are much larger than typical force-vector values in supported file units.
 // Shorter, thinner defaults keep velocity arrows from overwhelming the structure or cell.
 export const vector_display_defaults = (key: string) =>
-  is_velocity_vector_key(key)
+  [`velocity`, `velocities`].some((prefix) => has_key_prefix(key, prefix))
     ? { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 }
     : { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }
 

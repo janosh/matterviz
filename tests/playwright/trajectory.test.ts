@@ -160,9 +160,8 @@ test.describe(`Trajectory Component`, () => {
       element.style.width = `800px`
     })
     await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
-    const slider_box = await trajectory_viewer.locator(`.slider-container`).boundingBox()
-    const fps_box = await trajectory_viewer.locator(`.fps-section`).boundingBox()
-    if (!slider_box || !fps_box) throw new Error(`slider or fps section not laid out`)
+    const slider_box = await require_bbox(trajectory_viewer.locator(`.slider-container`))
+    const fps_box = await require_bbox(trajectory_viewer.locator(`.fps-section`))
     expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
   })
 
@@ -1078,11 +1077,9 @@ test.describe(`Trajectory Component`, () => {
         `.content-area > .structure > .control-buttons`,
       )
       await expect(structure_controls).toBeVisible()
-      const [trajectory_box, structure_box] = await Promise.all([
-        hover_controls.boundingBox(),
-        structure_controls.boundingBox(),
-      ])
-      if (!trajectory_box || !structure_box) throw new Error(`toolbar bounds not found`)
+      const [trajectory_box, structure_box] = await Promise.all(
+        [hover_controls, structure_controls].map((locator) => require_bbox(locator)),
+      )
       expect(structure_box.y).toBeGreaterThanOrEqual(trajectory_box.y + trajectory_box.height)
     })
   })
@@ -1175,9 +1172,6 @@ test.describe(`Trajectory Component`, () => {
         `title`,
         /Play|Pause/,
       )
-      await expect(
-        trajectory_controls.locator(`button[title^="Previous step"]`),
-      ).toHaveAttribute(`title`, /^Previous step/)
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
       await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
       await info_toggle.click()
@@ -1200,11 +1194,9 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#loaded-trajectory`)
       await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
-      await step_input.focus()
       await expect(step_input).toHaveValue(`0`)
-      await step_input.fill(`1`)
+      await step_input.fill(`1`) // fill leaves the input focused
       await expect(step_input).toHaveValue(`1`)
-      await step_input.focus()
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
       await expect(play_button).toHaveText(`▶`)
@@ -1475,8 +1467,7 @@ test.describe(`Trajectory Component`, () => {
         })
         const drag_divider = async (delta_x: number, delta_y: number) => {
           await divider.scrollIntoViewIfNeeded()
-          const bounds = await divider.boundingBox()
-          if (!bounds) throw new Error(`pane divider bounds not found`)
+          const bounds = await require_bbox(divider, `pane divider`)
           const start = {
             x: bounds.x + bounds.width / 2,
             y: bounds.y + bounds.height / 2,

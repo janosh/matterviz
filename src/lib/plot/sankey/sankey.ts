@@ -161,25 +161,22 @@ function find_cycle(
   return null
 }
 
-// Vertical ribbon path: mirror of d3's sankeyLinkHorizontal but flowing top->bottom.
-// Reads the raw d3 layout fields (link.y0/y1 are stacking-axis centers, which in
-// vertical mode map to screen x; source.x1/target.x0 are depth positions = screen y).
-function vertical_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
-  const coord_x_0 = link.y0 ?? 0
-  const coord_x_1 = link.y1 ?? 0
-  const coord_y_0 = (link.source as PositionedNode).x1
-  const coord_y_1 = (link.target as PositionedNode).x0
-  const mid_y = (coord_y_0 + coord_y_1) / 2
-  return `M${coord_x_0},${coord_y_0}C${coord_x_0},${mid_y} ${coord_x_1},${mid_y} ${coord_x_1},${coord_y_1}`
-}
-
-function horizontal_link_path(link: D3Link<NodeExtra, LinkExtra>): string {
-  const coord_x_0 = (link.source as PositionedNode).x1
-  const coord_x_1 = (link.target as PositionedNode).x0
-  const coord_y_0 = link.y0 ?? 0
-  const coord_y_1 = link.y1 ?? 0
-  const mid_x = (coord_x_0 + coord_x_1) / 2
-  return `M${coord_x_0},${coord_y_0}C${mid_x},${coord_y_0} ${mid_x},${coord_y_1} ${coord_x_1},${coord_y_1}`
+// Ribbon path (d3's sankeyLinkHorizontal) and midpoint of a link, from the raw d3 layout
+// fields: source.x1/target.x0 are depth positions, link.y0/y1 stacking-axis centers. A
+// vertical sankey flows top->bottom, so its depth is screen y and its stack screen x.
+function link_geometry(
+  link: PositionedLink,
+  vertical: boolean,
+): Pick<PositionedLink, `path` | `mid`> {
+  const [depth_0, depth_1] = [link.source.x1, link.target.x0]
+  const [cross_0, cross_1] = [link.y0 ?? 0, link.y1 ?? 0]
+  const [mid_depth, mid_cross] = [(depth_0 + depth_1) / 2, (cross_0 + cross_1) / 2]
+  const pt = (depth: number, cross: number) =>
+    vertical ? `${cross},${depth}` : `${depth},${cross}`
+  return {
+    path: `M${pt(depth_0, cross_0)}C${pt(mid_depth, cross_0)} ${pt(mid_depth, cross_1)} ${pt(depth_1, cross_1)}`,
+    mid: vertical ? { x: mid_cross, y: mid_depth } : { x: mid_depth, y: mid_cross },
+  }
 }
 
 // === Long-tail bucketing ===
@@ -422,15 +419,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   const is_vertical = orientation === `vertical`
   // d3 lays out left->right (depth on x). For vertical we run in a transposed
   // extent (depth on what becomes screen y) then swap node boxes afterwards.
-  const extent: [Vec2, Vec2] = is_vertical
-    ? [
-        [0, 0],
-        [height, width],
-      ]
-    : [
-        [0, 0],
-        [width, height],
-      ]
+  const extent: [Vec2, Vec2] = [[0, 0], is_vertical ? [height, width] : [width, height]]
 
   const layout = d3_sankey<NodeExtra, LinkExtra>()
     .nodeId((node) => node.node_idx)
@@ -446,29 +435,12 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   }
 
   // Build link ribbon paths from raw d3 fields BEFORE transposing node boxes.
-  for (const link of graph.links) {
-    if (is_vertical) {
-      link.path = vertical_link_path(link)
-      link.mid = {
-        x: ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2,
-        y: (link.source.x1 + link.target.x0) / 2,
-      }
-    } else {
-      link.path = horizontal_link_path(link)
-      const coord_x = (link.source.x1 + link.target.x0) / 2
-      const coord_y = ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2
-      link.mid = { x: coord_x, y: coord_y }
-    }
-  }
+  for (const link of graph.links) Object.assign(link, link_geometry(link, is_vertical))
 
   // Transpose node boxes into screen space for vertical orientation
   if (is_vertical) {
     for (const node of graph.nodes) {
-      const { x0: coord_x_0, x1: coord_x_1, y0: coord_y_0, y1: coord_y_1 } = node
-      node.x0 = coord_y_0
-      node.x1 = coord_y_1
-      node.y0 = coord_x_0
-      node.y1 = coord_x_1
+      ;[node.x0, node.x1, node.y0, node.y1] = [node.y0, node.y1, node.x0, node.x1]
     }
   }
 

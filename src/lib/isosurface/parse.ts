@@ -19,7 +19,7 @@ import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { normalize_scientific_notation, parse_leading_num, to_error } from '#lib/utils.js'
 import { transpose_x_fastest } from './grid'
-import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
+import { make_volume, type VolumetricFileData } from './types'
 
 // === Parse error contract ===
 // parse_chgcar/parse_cube throw on anything malformed or truncated — a volume silently
@@ -174,6 +174,35 @@ function find_line_offset(text: string, target_line: number): number {
   return pos
 }
 
+// Only a grid needing this many values is gated on the remaining byte count. A smaller one
+// allocates little even when the file is truncated, and letting it through keeps the parsers'
+// own "expected N values, got M" message, which says far more about an ordinary truncation.
+const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
+
+// A declared grid size drives a Float64Array allocation before a single value is read, so it
+// has to be plausible for the bytes that remain: every value needs at least a digit and a
+// separator. Without this a 110-byte file declaring a 600x600x600 grid allocated 1.7 GB before
+// discovering there was no data, and a nonsensical one raised a bare RangeError. `n_grids` is
+// how many arrays of this size the caller will allocate (one per band, for the Fermi readers).
+export const checked_grid_points = (
+  dims: readonly number[],
+  remaining_bytes: number,
+  label: string,
+  n_grids = 1,
+): number => {
+  const total = dims.reduce((product, dim) => product * dim, 1)
+  if (!Number.isSafeInteger(total) || total <= 0) {
+    throw new Error(`${label} grid ${dims.join(`×`)} is not a valid point count`)
+  }
+  const needed = total * Math.max(n_grids, 1)
+  if (needed > GUARDED_POINT_COUNT && needed > Math.floor(remaining_bytes / 2)) {
+    throw new Error(
+      `${label} declares a ${dims.join(`×`)} grid needing ${needed} values but only ${remaining_bytes} bytes remain`,
+    )
+  }
+  return total
+}
+
 // === CHGCAR Parser ===
 
 // VASP writes Fortran-style exponents (1.0D-04) that a bare Number() turns into NaN.
@@ -220,9 +249,12 @@ const vasp_kind_from_name = (filename: string): VaspVolumetricKind | undefined =
 // A renamed file (`Si_elf.vasp`) says nothing, so read it off the content:
 // - ELF is bounded to [0, 1], while density values (rho·V_cell) average to the electron
 //   count, so a file whose every value lies in [0, 1] would hold under one electron
-// - a density's first block (the total) is non-negative up to pseudo-density noise, while a
-//   local potential is mostly negative, so a substantially negative first block is a LOCPOT
-//   (dividing it by V_cell as a density shrank -15 eV to -0.085)
+// - a local potential has deep wells at the nuclei and shallow maxima (min/max = -30 and -8
+//   in the shipped LOCPOTs, or all negative), while a density's first block is either
+//   non-negative (the total) or, for a signed field written as a CHGCAR (density difference,
+//   AFM magnetization), roughly symmetric (min/max ~ -1). So only a minimum deeper than twice
+//   the maximum makes a LOCPOT: dividing one by V_cell as a density shrank -15 eV to -0.085,
+//   and reading a signed density as a potential skipped the division (NiO m_z 36x too large)
 const infer_vasp_kind = (blocks: readonly { values: Float64Array }[]): VaspVolumetricKind => {
   const in_unit_interval = blocks.every(({ values }) =>
     values.every((value) => value >= 0 && value <= 1),
@@ -233,7 +265,7 @@ const infer_vasp_kind = (blocks: readonly { values: Float64Array }[]): VaspVolum
     first_min = Math.min(first_min, value)
     first_max = Math.max(first_max, value)
   }
-  return first_min < -0.01 * Math.abs(first_max) ? `locpot` : `density`
+  return first_min < -2 * first_max ? `locpot` : `density`
 }
 
 // Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG: a POSCAR header followed by one or more
@@ -245,14 +277,12 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
 
-  // Shared POSCAR-family header. `lenient` reads any mode line but C/K... as Direct, as VASP
-  // does, and the result object keeps this parser non-throwing.
+  // Shared POSCAR-family header. `lenient` reads any mode line but C/K... as Direct, like VASP
   const cursor = text_cursor(content, pos)
   const parsed = parse_vasp_header(cursor, { format: `CHGCAR`, coord_mode: `lenient` })
   if (!parsed.ok) throw new Error(parsed.error)
   const { scale, lattice, elements, counts, is_direct } = parsed.header
   pos = cursor.position()
-  let cur: { line: string; next: number }
 
   // Parse atomic positions
   let cart_to_frac: (value: Vec3) => Vec3
@@ -265,17 +295,12 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
     })
   }
   const sites: Site[] = []
-  let atom_idx = 0
-
-  for (let elem_idx = 0; elem_idx < elements.length; elem_idx++) {
-    const element = elements[elem_idx]
-    const count = counts[elem_idx]
-
-    for (let count_idx = 0; count_idx < count; count_idx++) {
+  for (const [elem_idx, element] of elements.entries()) {
+    for (let count_idx = 0; count_idx < counts[elem_idx]; count_idx++) {
       if (pos >= content.length) {
         throw new Error(`CHGCAR: file ends before all atom coordinates are read`)
       }
-      cur = read_text_line(content, pos)
+      const cur = read_text_line(content, pos)
       const coords = parse_vasp_vec3(cur.line)
       pos = cur.next
 
@@ -284,11 +309,8 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
       const abc = wrap_to_unit_cell(
         is_direct ? coords : cart_to_frac(apply_axis_scale(coords, scale)),
       )
-      const xyz = frac_to_cart(abc)
-
-      sites.push(make_site(element, abc, xyz, `${element}${atom_idx + count_idx + 1}`))
+      sites.push(make_site(element, abc, frac_to_cart(abc), `${element}${sites.length + 1}`))
     }
-    atom_idx += count
   }
 
   // Build the structure (volumetric files are always periodic)
@@ -309,23 +331,17 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
   for (let vol_idx = 0; ; vol_idx++) {
     let dims: Vec3 | undefined
     while (pos < content.length) {
-      cur = read_text_line(content, pos)
+      const cur = read_text_line(content, pos)
       pos = cur.next
       const tokens = cur.line.trim().split(/\s+/)
       if (tokens[0] === ``) continue
       if (grid_line === undefined) {
         // the first non-blank line after the header has to be the grid line
-        const grid_tokens = tokens.map(Number)
-        if (grid_tokens.length >= 3 && !grid_tokens.some(isNaN)) {
-          dims = grid_tokens.slice(0, 3) as Vec3
-          grid_line = tokens.join(` `)
-        }
-        break
-      }
-      if (tokens.join(` `) === grid_line) {
-        dims = grid_line.split(` `).slice(0, 3).map(Number) as Vec3
-        break
-      }
+        if (tokens.length < 3 || tokens.some((token) => isNaN(Number(token)))) break
+        grid_line = tokens.join(` `)
+      } else if (tokens.join(` `) !== grid_line) continue
+      dims = tokens.slice(0, 3).map(Number) as Vec3
+      break
     }
     if (!dims) break
     const [ngx, ngy, ngz] = dims
@@ -378,7 +394,6 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
       label: labels[block_idx],
     }),
   )
-
   return { structure, volumes }
 }
 
@@ -387,35 +402,6 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
 // Parse Gaussian .cube file format.
 // Contains atomic structure and volumetric data in a single file.
 // Units: if grid dimensions are positive, coordinates are in Bohr; if negative, in Angstrom.
-// Only a grid needing this many values is gated on the remaining byte count. A smaller one
-// allocates little even when the file is truncated, and letting it through keeps the parsers'
-// own "expected N values, got M" message, which says far more about an ordinary truncation.
-const GUARDED_POINT_COUNT = 1_000_000 // 8 MB as Float64
-
-// A declared grid size drives a Float64Array allocation before a single value is read, so it
-// has to be plausible for the bytes that remain: every value needs at least a digit and a
-// separator. Without this a 110-byte file declaring a 600x600x600 grid allocated 1.7 GB before
-// discovering there was no data, and a nonsensical one raised a bare RangeError. `n_grids` is
-// how many arrays of this size the caller will allocate (one per band, for the Fermi readers).
-export const checked_grid_points = (
-  dims: readonly number[],
-  remaining_bytes: number,
-  label: string,
-  n_grids = 1,
-): number => {
-  const total = dims.reduce((product, dim) => product * dim, 1)
-  if (!Number.isSafeInteger(total) || total <= 0) {
-    throw new Error(`${label} grid ${dims.join(`×`)} is not a valid point count`)
-  }
-  const needed = total * Math.max(n_grids, 1)
-  if (needed > GUARDED_POINT_COUNT && needed > Math.floor(remaining_bytes / 2)) {
-    throw new Error(
-      `${label} declares a ${dims.join(`×`)} grid needing ${needed} values but only ${remaining_bytes} bytes remain`,
-    )
-  }
-  return total
-}
-
 export function parse_cube(
   content: string,
   options: { periodic?: boolean } = {},
@@ -485,12 +471,8 @@ export function parse_cube(
   try {
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch (error) {
-    throw new Error(
-      `.cube voxel vectors are singular (coplanar); cannot place atoms in the grid`,
-      {
-        cause: error,
-      },
-    )
+    const message = `.cube voxel vectors are singular (coplanar); cannot place atoms in the grid`
+    throw new Error(message, { cause: error })
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -505,12 +487,7 @@ export function parse_cube(
     pos = cur.next
 
     // Validate: need atomic_number, charge, x, y, z (5 tokens, indices 2-4 finite)
-    if (
-      atom_line.length < 5 ||
-      !isFinite(atom_line[2]) ||
-      !isFinite(atom_line[3]) ||
-      !isFinite(atom_line[4])
-    ) {
+    if (atom_line.length < 5 || !atom_line.slice(2, 5).every(Number.isFinite)) {
       console.warn(`.cube atom ${atom_idx}: malformed line "${cur.line.trim()}", skipping`)
       continue
     }
@@ -589,17 +566,14 @@ export function parse_cube(
   }
 
   // .cube data is already z-fastest (z varies fastest, then y, then x)
-  const volumes: VolumetricData[] = [
-    make_volume(data, n_grid, {
-      id: `scalar`,
-      lattice,
-      origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
-      periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
-      label: `volumetric data`,
-    }),
-  ]
-
-  return { structure, volumes }
+  const volume = make_volume(data, n_grid, {
+    id: `scalar`,
+    lattice,
+    origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
+    periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
+    label: `volumetric data`,
+  })
+  return { structure, volumes: [volume] }
 }
 
 export type VolumetricFormat = `cube` | `chgcar`

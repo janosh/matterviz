@@ -19,6 +19,7 @@ import { is_structure_file } from '#lib/structure/format-detect.js'
 import { structure_to_cif_str } from '#lib/structure/export.js'
 import {
   complete_lattice_matrix,
+  count_elements,
   element_from_candidates,
   LineScanner,
   parse_coordinate,
@@ -164,6 +165,8 @@ describe(`POSCAR Parser`, () => {
     // the first placeholder is H and an index-0-only check can't tell the indexed placeholders
     // apart from a blanket "unknown element becomes hydrogen".
     { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
+    // VASP reads only the first 3 numbers of a lattice line, so a trailing comment is ignored
+    { name: `lattice lines with trailing comments`, content: `Test\n1.0\n3.0 0.0 0.0 ! a\n0.0 3.0 0.0 ! b\n0.0 0.0 3.0 ! c\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
   ])(`should handle $name`, ({ content, expected }) => {
     const result = parse_poscar(content)
 
@@ -219,15 +222,6 @@ describe(`POSCAR Parser`, () => {
     expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
 
-  // oxfmt-ignore
-  it.each([
-    // non-finite lattice vector, then non-finite site coordinate
-    `Test\n1.0\n5.0 0.0 0.0\n0.0 Infinity 0.0\n0.0 0.0 5.0\nH\n1\nDirect\n0.0 0.0 0.0`,
-    `Test\n1.0\n5.0 0.0 0.0\n0.0 5.0 0.0\n0.0 0.0 5.0\nH\n1\nDirect\n0.0 Infinity 0.0`,
-  ])(`rejects non-finite POSCAR coordinates`, (content) => {
-    expect(() => parse_poscar(content)).toThrow(`Invalid coordinate value: 'Infinity'`)
-  })
-
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
     assert(`lattice` in result, `Failed to parse aviary-CuF3K-triolith.poscar`)
@@ -248,14 +242,6 @@ describe(`POSCAR Parser`, () => {
         expect(site.xyz[axis]).toBeLessThan(len + 0.1)
       })
     }
-  })
-
-  // oxfmt-ignore
-  it.each([
-    [`too few coordinates`, `Test\n1.0\n3.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`, `Invalid lattice vector on line 3: expected 3 coordinates, got 2`],
-    [`too many coordinates`, `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0 5.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`, `Invalid lattice vector on line 4: expected 3 coordinates, got 4`],
-  ])(`should reject lattice vectors with %s`, (_name, content, expected_error) => {
-    expect(() => parse_poscar(content)).toThrow(expected_error)
   })
 })
 
@@ -360,12 +346,14 @@ describe(`XYZ Parser`, () => {
   // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
   // Ignoring that promoted the molecule to a 3D crystal and folded its atoms through faces
   // that don't exist. Every quoting style ASE emits has to reach the same conclusion.
+  // A file declaring no pbc at all is fully periodic and still wraps into the cell
   it.each([
     [`pbc="F F F"`, [false, false, false]],
     [`pbc="FFF"`, [false, false, false]],
     [`pbc=F`, [false, false, false]],
     [`pbc="T T F"`, [true, true, false]],
-  ])(`honors %s from the comment line`, (pbc_field, expected) => {
+    [``, [true, true, true]],
+  ])(`honors '%s' from the comment line`, (pbc_field, expected) => {
     const content = `1\nLattice="5 0 0 0 5 0 0 0 5" ${pbc_field}\nH 6.0 6.0 6.0\n`
     const result = parse_xyz(content)
     assert(`lattice` in result, `Failed to parse pbc-annotated XYZ`)
@@ -436,13 +424,6 @@ C 1.23 0.7101408311032397 0.0`
     expect(math.euclidean_dist(wrapped.sites[0].xyz, end)).toBeCloseTo(1.4, 12)
   })
 
-  it(`still wraps into the cell when the file declares no pbc`, () => {
-    const result = parse_xyz(`1\nLattice="5 0 0 0 5 0 0 0 5"\nH 6.0 6.0 6.0\n`)
-    assert(`lattice` in result, `Failed to parse XYZ without pbc`)
-    expect(result.lattice.pbc).toEqual([true, true, true])
-    expect_abc_in_unit_cell(result.sites[0])
-  })
-
   // The old parser hardcoded species at column 0 and positions at 1-3, so any file whose
   // Properties declared a different layout was mis-read as coordinates without a word.
   it(`reads species and positions from their declared columns`, () => {
@@ -458,23 +439,14 @@ Properties=id:I:1:species:S:1:pos:R:3
   })
 
   it.each([
-    [`selective_dynamics:L:3`, `T F T`, [true, false, true]],
-    [`move_mask:L:1`, `F`, [false, false, false]],
-  ])(`carries %s onto site properties`, (declaration, tokens, expected) => {
-    const content = `1\nProperties=species:S:1:pos:R:3:${declaration}\nSi 0 0 0 ${tokens}\n`
-    const result = parse_xyz(content)
-    expect(result.sites[0].properties.selective_dynamics).toEqual(expected)
-  })
-
-  it(`carries declared forces onto site properties`, () => {
-    const content = `1\nProperties=species:S:1:pos:R:3:forces:R:3\nSi 0 0 0 -0.1 0.2 0.3\n`
-    const result = parse_xyz(content)
-    expect(result.sites[0].properties.force).toEqual([-0.1, 0.2, 0.3])
-  })
-
-  it(`leaves properties empty when no extra columns are declared`, () => {
-    const result = parse_xyz(`1\nTest\nSi 0 0 0\n`)
-    expect(result.sites[0].properties).toEqual({})
+    [`selective_dynamics:L:3`, `T F T`, { selective_dynamics: [true, false, true] }],
+    [`move_mask:L:1`, `F`, { selective_dynamics: [false, false, false] }],
+    [`forces:R:3`, `-0.1 0.2 0.3`, { force: [-0.1, 0.2, 0.3] }],
+    [``, ``, {}], // no extra columns declared
+  ])(`carries extra column '%s' onto site properties`, (declaration, tokens, expected) => {
+    const properties = declaration ? `:${declaration}` : ``
+    const content = `1\nProperties=species:S:1:pos:R:3${properties}\nSi 0 0 0 ${tokens}\n`
+    expect(parse_xyz(content).sites[0].properties).toEqual(expected)
   })
 
   // A declared-but-unreadable cell is corrupt input; degrading to "molecule" would render a
@@ -541,13 +513,6 @@ describe(`Auto-detection & Error Handling`, () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`no element symbols`))
   })
 
-  // An unknown symbol used to be drawn as H, He, … by position: a wrong but plausible cell
-  it(`rejects a POSCAR element symbol that names no element`, () => {
-    expect(() =>
-      parse_poscar(`Test\n1.0\n5 0 0\n0 5 0\n0 0 5\nFe Xx\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`),
-    ).toThrow(`Invalid element symbol in POSCAR: Xx`)
-  })
-
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {
     // Test triclinic lattice (non-orthogonal) - this would fail with simple division method
     const triclinic_poscar = `Triclinic test\n1.0\n5.0 0.0 0.0\n2.5 4.33 0.0\n1.0 1.0 4.0\nC N\n1 1\nCartesian\n1.0 1.0 1.0\n3.5 2.5 2.0`
@@ -588,6 +553,14 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`, error: `Invalid coordinate value: 'invalid'` },
     { parser: parse_xyz, content: `1\nTest\nC invalid 0.0 0.0`, error: `non-numeric coordinates` },
     { parser: parse_poscar, content: `Test\n1.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n0.0 0.0 1.0\nH\n1\nFoo\n0.0 0.0 0.0`, error: `Unknown coordinate mode in POSCAR` },
+    // non-finite lattice vector, then non-finite site coordinate
+    { parser: parse_poscar, content: `Test\n1.0\n5.0 0.0 0.0\n0.0 Infinity 0.0\n0.0 0.0 5.0\nH\n1\nDirect\n0.0 0.0 0.0`, error: `Invalid coordinate value: 'Infinity'` },
+    { parser: parse_poscar, content: `Test\n1.0\n5.0 0.0 0.0\n0.0 5.0 0.0\n0.0 0.0 5.0\nH\n1\nDirect\n0.0 Infinity 0.0`, error: `Invalid coordinate value: 'Infinity'` },
+    // lattice vectors with too few, then too many coordinates
+    { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`, error: `Invalid lattice vector on line 3: expected 3 coordinates, got 2` },
+    { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0 5.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`, error: `Invalid lattice vector on line 4: expected 3 coordinates, got 4` },
+    // An unknown symbol used to be drawn as H, He, … by position: a wrong but plausible cell
+    { parser: parse_poscar, content: `Test\n1.0\n5 0 0\n0 5 0\n0 0 5\nFe Xx\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`, error: `Invalid element symbol in POSCAR: Xx` },
     // Auto-detection errors
     { parser: parse_structure_file, content: `not a structure file`, error: `Unable to determine file format` },
     { parser: parse_structure_file, content: `2\nTest\n123 0.0 0.0 0.0\n456 1.0 1.0 1.0`, error: `Unable to determine file format` },
@@ -631,13 +604,8 @@ const rounded_abc = (sites: { abc: number[] }[]): number[][] =>
   sites.map((site) => site.abc.map((coord) => Math.round(coord * 1e6) / 1e6))
 
 // Exact composition of a parsed structure as element -> site count
-const element_counts = (result: { sites: { species: { element: string }[] }[] }) => {
-  const counts: Record<string, number> = {}
-  for (const { species } of result.sites) {
-    counts[species[0].element] = (counts[species[0].element] ?? 0) + 1
-  }
-  return counts
-}
+const element_counts = (result: { sites: { species: { element: string }[] }[] }) =>
+  count_elements(result.sites.map(({ species }) => species[0].element))
 
 describe(`CIF Parser`, () => {
   const QUARTZ_CIF = `data_quartz_alpha
@@ -721,6 +689,8 @@ O2   O   0.410  0.140  0.880  1.000`
     [`c listed before a`, `_cell_length_c 3\n_cell_length_b 4\n_cell_length_a 5.4309`],
     [`leading whitespace`, `  _cell_length_a 5.4309\n\t_cell_length_b 4\n _cell_length_c 3`],
     [`uppercase tags`, `_CELL_LENGTH_A 5.4309\n_Cell_Length_B 4\n_cell_length_c 3`],
+    // CIF lets a value follow its tag on the next (non-comment) line
+    [`values on the next line`, `_cell_length_a\n5.4309\n_cell_length_b 4\n_cell_length_c\n# edge c\n3`],
   ])(`should read the cell with %s`, (_name, lengths) => {
     const result = parse_cif(
       `data_test\n${lengths}\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0 0 0`,
@@ -1093,6 +1063,9 @@ O2   O   0.410  0.140  0.880  1.000`
   test.each([
     [`CIF`, multi_block_cif(`data`, `loop_`), `multi-block.cif`, [[0.5, 0.5, 0.5]]],
     [`CIF with uppercase reserved words`, multi_block_cif(`DATA`, `LOOP_`), `multi-block-upper.cif`, [[0.5, 0.5, 0.5]]],
+    // a block whose atom loop holds only unset placeholder rows yields no atoms, so the next
+    // block's loop is read (pymatgen returns that block's structure too)
+    [`CIF whose first block has only placeholder atom rows`, [`data_a`, cif_cell(20), site_loop, `? ? ? ? ?`, `data_b`, cell5, site_loop, `Na1 Na 0.5 0.5 0.5`].join(`\n`), `placeholder-block.cif`, [[0.5, 0.5, 0.5]]],
     [`mmCIF`, `data_global\n${mmcif_cell_tags(20)}\n#\n${mmcif_cell(5, `Cartn`, [`Si 0 0 0`, `Si 2.5 2.5 2.5`])}`, `multi-block.mmcif`, [[0, 0, 0], [0.5, 0.5, 0.5]]],
   ])(
     `%s reads cell and symops from the atom loop's own data_ block`,
@@ -1131,6 +1104,10 @@ O2   O   0.410  0.140  0.880  1.000`
     [`a text field holding an indented semicolon`, `${symop_loop(`_audit_note\n;\n  ; still inside the field\n  -x, -y, -z\n;`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
     // CIF lets a data item put its value on the following line; that value is not a loop row
     [`a data item whose value is on the next line`, `${symop_loop(`_audit_creation_method\n'-x,-y,-z'`)}\n${atom_loop}`, [[0.1, 0.2, 0.3]]],
+    // comments and blank lines may sit between `loop_` and its tags (pymatgen: 3 sites); header
+    // collection used to stop there, dropping the symops or rejecting the atom-site loop
+    [`a comment and blank line before the symop tag`, `loop_\n# symmetry operations\n\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n'-x, -y, -z'\n${atom_loop}\nCl1 Cl 0.5 0.5 0.5`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7], [0.5, 0.5, 0.5]]],
+    [`a comment and blank line before the atom-site tags`, `${symop_loop(`'-x, -y, -z'`)}\n${atom_loop.replace(`loop_\n`, `loop_\n# atoms\n\n`)}\nCl1 Cl 0.5 0.5 0.5`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7], [0.5, 0.5, 0.5]]],
   ])(`expands only real symop rows, with %s`, (_case, body, expected_abc) => {
     const result = parse_cif(`data_test\n${cell5}\n${body}`)
     expect(rounded_abc(result.sites)).toEqual(expected_abc)
@@ -1155,16 +1132,29 @@ O2   O   0.410  0.140  0.880  1.000`
       [`single line`, `data_test`, `No valid atom site loop found in CIF file`],
       [`no atom sites`, `data_test\n${cell5}`, `No valid atom site loop found in CIF file`],
       [`missing cell params`, `data_test\n${site_loop}\nSi1  Si  0.000  0.000  0.000`, `Insufficient cell parameters in CIF file`],
+      // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
+      [`only question-mark atoms`, `data_test\n${cell5}\n${site_loop}\n? ? 0.000 0.000 0.000`, `No valid atoms found in CIF file`],
+      [`an unreadable _cell_length_a`, `data_test\n${cell5.replace(`5.000`, `invalid`)}\n${site_loop}\nC1 C 0 0 0`, `Invalid CIF cell parameter in line: _cell_length_a  invalid`],
+      [`a zero _cell_length_a`, `data_test\n${cell5.replace(`5.000`, `0`)}\n${site_loop}\nC1 C 0 0 0`, `CIF cell has non-positive edge lengths: [0, 5, 5, 90, 90, 90]`],
+      // `.` / `?` mean unset, so the cell is missing rather than corrupt
+      [`an unset _cell_length_a`, `data_test\n${cell5.replace(`5.000`, `?`)}\n${site_loop}\nC1 C 0 0 0`, `Insufficient cell parameters in CIF file`],
+      // no label or type-symbol column names an element (pymatgen rejects the file too); column 0
+      // was read as the label, inventing a sulfur atom from refinement flag `S`
+      [`neither _atom_site_label nor _atom_site_type_symbol`, `data_test\n${cell5}\nloop_\n_atom_site_refinement_flags\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nS 0 0 0`, `CIF atom-site loop has neither _atom_site_type_symbol nor _atom_site_label`],
     ])(`should reject a CIF with %s`, (_test_name, content, expected_error) => {
       expect(() => parse_cif(content)).toThrow(expected_error)
     })
 
-    // A row with a non-numeric coordinate is dropped (Si1) while the valid O1 row survives
-    it(`should keep parsing a CIF with a non-numeric coordinate`, () => {
-      const rows = `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`
-      const result = parse_cif(`data_test\n${cell5}\n${site_loop}\n${rows}`)
-
-      expect(result.sites.map((site) => site.species[0].element)).toEqual([`O`])
+    // A row with a non-numeric coordinate is dropped (Si1) while the valid O1 row survives;
+    // `#` comments and unknown tags interleaved with the data rows are skipped rather than
+    // ending the loop
+    // oxfmt-ignore
+    test.each([
+      [`a non-numeric coordinate`, `Si1  Si  abc  0.000  0.000\nO1   O   0.250  0.250  0.250`, [`O`]],
+      [`comments and unknown tags`, `Si1  Si  0.000  0.000  0.000\n# Comment in loop\nO1   O   0.250  0.250  0.250\n_unknown_tag  value\nH1   H   0.500  0.500  0.500`, [`Si`, `O`, `H`]],
+    ])(`keeps parsing a CIF with %s`, (_name, rows, expected) => {
+      const result = parse_cif(`data_test\n# Comment\n${cell5}\n${site_loop}\n${rows}`)
+      expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
     })
 
     it(`should handle malformed loops and missing occupancy`, () => {
@@ -1190,15 +1180,6 @@ O2   O   0.410  0.140  0.880  1.000`
       }`
       expect(parse_cif(cif).sites[0]?.species[0]?.occu).toBe(expected)
     })
-
-    it(`should handle comments and syntax errors`, () => {
-      // a `#` comment and an unknown tag interleaved with the data rows must be skipped
-      // rather than end the loop
-      const cif_with_comments = `data_test\n# Comment\n${cell5}\n${site_loop}\nSi1  Si  0.000  0.000  0.000\n# Comment in loop\nO1   O   0.250  0.250  0.250\n_unknown_tag  value\nH1   H   0.500  0.500  0.500`
-      const result = parse_cif(cif_with_comments)
-
-      expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`, `H`])
-    })
   })
 
   describe(`TiO2 CIF Oxidation State Tests`, () => {
@@ -1212,22 +1193,11 @@ O2   O   0.410  0.140  0.880  1.000`
       const result = parse_cif(tio2_cif)
       assert(`lattice` in result, `Failed to parse TiO2 CIF`)
 
-      const {
-        a: lattice_a,
-        b: lattice_b,
-        c: lattice_c,
-        alpha,
-        beta,
-        gamma,
-        volume,
-      } = result.lattice
-      expect_vec3_close(
-        [lattice_a, lattice_b, lattice_c],
-        [4.59983732, 4.59983732, 2.95921356],
-        8,
-      )
-      expect_vec3_close([alpha, beta, gamma], [90, 90, 90], 8)
-      expect(volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
+      const { lattice } = result
+      const lengths = [lattice.a, lattice.b, lattice.c]
+      expect_vec3_close(lengths, [4.59983732, 4.59983732, 2.95921356], 8)
+      expect_vec3_close([lattice.alpha, lattice.beta, lattice.gamma], [90, 90, 90], 8)
+      expect(lattice.volume).toBeCloseTo(4.59983732 * 4.59983732 * 2.95921356, 6)
 
       // _atom_site_label is kept verbatim (the file numbers from 0)
       const labels = result.sites.map((site) => site.label)
@@ -1360,6 +1330,26 @@ loop_
     expect(species_at([0.5, 0, 0])).toEqual([`Fe:1`])
     expect(species_at([0, 0.5, 0.5])).toEqual([`Fe:1`])
     expect(result.sites).toHaveLength(6)
+  })
+
+  // Same-element rows of different labels that symmetry maps onto each other list one atom
+  // twice rather than a disordered site, so summing gave Na:2 on both sites. pymatgen rejects
+  // the file (occupancy_tolerance=1) or rescales to 1 (occupancy_tolerance=2); the larger
+  // row's occupancy is kept here, with a warning
+  test(`keeps the larger occupancy when same-element rows overlap past full occupancy`, () => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const symops = `loop_\n_symmetry_equiv_pos_as_xyz\n'x,y,z'\n'x+1/2,y+1/2,z'`
+    const rows = `Na1 0 0 0 1\nNa2 0.5 0.5 0 0.9`
+    const result = parse_cif(`data_t\n${cell5}\n${symops}\n${label_loop}\n${rows}`)
+    expect(result.sites.map((site) => [site.abc, site.species])).toEqual([
+      [[0, 0, 0], [{ element: `Na`, occu: 1, oxidation_state: 0 }]],
+      [[0.5, 0.5, 0], [{ element: `Na`, occu: 1, oxidation_state: 0 }]],
+    ])
+    const overlap_warnings = warn_spy.mock.calls.filter(([msg]) =>
+      String(msg).includes(`same-element rows overlap`),
+    )
+    expect(overlap_warnings).toHaveLength(1)
+    warn_spy.mockRestore()
   })
 
   test(`parses ICSD-like CIF with specific symmetry format`, () => {
@@ -1521,13 +1511,6 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     const symop_rows = symops.map((symop) => `   '${symop}'`).join(`\n`)
     return `data_test\n${cell5}\n_space_group_name_H-M_alt 'P 1'\n_space_group_IT_number 1\n\nloop_\n_space_group_symop_operation_xyz\n${symop_rows}\n\n${site_loop}\n${atom_row}`
   }
-
-  // `?` is CIF's unknown-value token, so neither the label nor the symbol names an element
-  test(`rejects a question-mark CIF with no valid atoms`, () => {
-    expect(() => parse_cif(p1_cif([`x, y, z`], `? ? 0.000 0.000 0.000`))).toThrow(
-      `No valid atoms found in CIF file`,
-    )
-  })
 
   test(`handles symmetry operations with dangling operators correctly`, () => {
     // oxfmt-ignore
@@ -2232,22 +2215,6 @@ describe(`Structure File Detection`, () => {
   })
 })
 
-describe(`CIF cell parameter errors`, () => {
-  // replaces only the first 5.000, i.e. the _cell_length_a value
-  const cif_with_length_a = (value: string) =>
-    `data_test\n${cell5.replace(`5.000`, value)}\n${site_loop}\nC1 C 0 0 0`
-
-  // oxfmt-ignore
-  it.each([
-    [`invalid`, `Invalid CIF cell parameter in line: _cell_length_a  invalid`],
-    [`0`, `CIF cell has non-positive edge lengths: [0, 5, 5, 90, 90, 90]`],
-    // `.` / `?` mean unset, so the cell is missing rather than corrupt
-    [`?`, `Insufficient cell parameters in CIF file`],
-  ])(`rejects _cell_length_a %s naming the problem`, (value, message) => {
-    expect(() => parse_cif(cif_with_length_a(value))).toThrow(message)
-  })
-})
-
 describe(`shared numeric coercion`, () => {
   // A blank token is NaN (Number(``) would be 0); parse_coordinate rejects what
   // parse_float_token cannot read as a finite number
@@ -2605,15 +2572,6 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(bond_tuples(result)).toEqual([[0, 1, 1]])
   })
 
-  test(`PDB placeholder CRYST1 cell is ignored`, () => {
-    // MD and docking tools write a 1 1 1 90 90 90 P1 cell for aperiodic systems
-    const cryst1 = `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1`
-    const content = `${cryst1}\n${pdb_atom_line(1, ` C  `, [1, 2, 3], `C`)}`
-    const result = parse_structure_file(content, `dummy.pdb`)
-    expect(`lattice` in result).toBe(false)
-    expect(result.sites[0].abc).toEqual([0, 0, 0])
-  })
-
   test(`explicit MOL bonds feed the explicit_only bonding strategy`, () => {
     const structure = parse_structure_file(ethanol_mol, `ethanol.mol`)
     const bond_pairs = explicit_only(structure)
@@ -2683,13 +2641,16 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_sites_reconstruct(result)
   })
 
-  test(`MOL2 placeholder CRYSIN cell is ignored`, () => {
-    // MD and docking tools write 1 1 1 90 90 90 for aperiodic systems, like a PDB CRYST1
-    const content = `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 1.0000 1.0000 1.0000 90.0000 90.0000 90.0000 1 1`
-    const result = parse_structure_file(content, `dummy.mol2`)
+  // MD and docking tools write a 1 1 1 90 90 90 cell for aperiodic systems
+  // oxfmt-ignore
+  test.each([
+    [`dummy.pdb`, `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1\n${pdb_atom_line(1, ` C  `, [1, 2, 3], `C`)}`],
+    [`dummy.mol2`, `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 1.0000 1.0000 1.0000 90.0000 90.0000 90.0000 1 1`],
+  ])(`%s placeholder cell is ignored`, (filename, content) => {
+    const result = parse_structure_file(content, filename)
     expect(`lattice` in result).toBe(false)
     expect(result.sites[0].abc).toEqual([0, 0, 0])
-    expect(detect_structure_type(`dummy.mol2`, content)).toBe(`molecule`)
+    expect(detect_structure_type(filename, content)).toBe(`molecule`)
   })
 
   test(`mmCIF dot-notation tags are not swallowed by the CIF parser`, () => {
@@ -2726,23 +2687,24 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.2, 0, 0], 8)
   })
 
-  test(`mmCIF drops rows that stop short of the coordinate columns`, () => {
-    // A value wrapping onto a continuation line leaves a short row. Reading coordinates off
-    // it throws, which used to abort the whole parse rather than skip the one atom.
-    const content = mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`])
-    const result = parse_structure_file(content, `wrapped.mmcif`)
+  // A value wrapping onto a continuation line leaves a row short of the coordinate columns,
+  // which is skipped rather than aborting the whole parse. Real mmCIF writers also omit
+  // trailing columns (here occupancy): the coordinates are still aligned, so that row stays
+  const occupancy_tags = [`type_symbol`, `Cartn_x`, `Cartn_y`, `Cartn_z`, `occupancy`]
+    .map((tag) => `_atom_site.${tag}`)
+    .join(`\n`)
+  test.each([
+    [
+      `a wrapped row`,
+      mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`]),
+    ],
+    [
+      `a missing trailing column`,
+      `data_x\nloop_\n${occupancy_tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`,
+    ],
+  ])(`mmCIF keeps only rows reaching the coordinate columns with %s`, (_name, content) => {
+    const result = parse_structure_file(content, `rows.mmcif`)
     expect(result.sites.map((site) => site.xyz[0])).toEqual([1, 3])
-  })
-
-  test(`mmCIF keeps a row missing only a trailing non-coordinate column`, () => {
-    // Real mmCIF writers omit trailing columns; the coordinates are still aligned, so
-    // thresholding on the full header count would fail the whole file over it
-    const tags = [`type_symbol`, `Cartn_x`, `Cartn_y`, `Cartn_z`, `occupancy`]
-      .map((tag) => `_atom_site.${tag}`)
-      .join(`\n`)
-    // second row omits occupancy, so it is one token short of the header count
-    const content = `data_x\nloop_\n${tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`
-    expect(parse_structure_file(content, `short.mmcif`).sites).toHaveLength(2)
   })
 
   // Small-molecule CIF2 spells tags with dots too, but stores fractional coordinates and
@@ -2772,20 +2734,21 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // oxfmt-ignore
     [`# test`, ``, `${atoms.length} atoms`, `1 atom types`, ...box, ``, `Masses`, ``, mass, ``, `Atoms # atomic`, ``, ...atoms].join(`\n`)
 
-  test(`LAMMPS data maps atom types to elements by mass and reads triclinic tilts`, () => {
-    // mass 26.9815 identifies Al; the `xy xz yz` line adds a 1 Å tilt on the b vector
-    const box = [
-      `0.0 4.0 xlo xhi`,
-      `0.0 4.0 ylo yhi`,
-      `0.0 4.0 zlo zhi`,
-      `1.0 0.0 0.0 xy xz yz`,
-    ]
-    const content = lammps_data(box, `1 26.9815`, [`1 1 0.0 0.0 0.0`, `2 1 2.0 2.0 2.0`])
-    const result = parse_structure_file(content, `Al.lmp`)
+  // Elements come from the Masses comment (`# C`), else by mass (26.9815 is Al). The box is
+  // restricted triclinic (`xy xz yz` adds a 1 Å tilt on b), shifted by its -2..2 origin, or
+  // general triclinic (avec/bvec/cvec + origin), and coordinates move by the box origin
+  // oxfmt-ignore
+  test.each([
+    [`restricted triclinic tilts`, [`0.0 4.0 xlo xhi`, `0.0 4.0 ylo yhi`, `0.0 4.0 zlo zhi`, `1.0 0.0 0.0 xy xz yz`], `1 26.9815`, `1 1 2.0 2.0 2.0`, `Al`, [[4, 0, 0], [1, 4, 0], [0, 0, 4]], [2, 2, 2], [0.375, 0.5, 0.5]],
+    [`a shifted box origin`, [`-2.0 2.0 xlo xhi`, `-2.0 2.0 ylo yhi`, `-2.0 2.0 zlo zhi`], `1 12.011  # C`, `1 1 -1.0 0.0 1.0`, `C`, [[4, 0, 0], [0, 4, 0], [0, 0, 4]], [1, 2, 3], [0.25, 0.5, 0.75]],
+    [`a general triclinic box origin`, [`4 0 0 avec`, `1 5 0 bvec`, `0.5 0.25 6 cvec`, `-2 -3 -4 abc   origin`], `1 12.011 # C`, `1 1 0.75 -0.375 -1.0`, `C`, [[4, 0, 0], [1, 5, 0], [0.5, 0.25, 6]], [2.75, 2.625, 3], [0.5, 0.5, 0.5]],
+  ])(`LAMMPS data reads %s`, (_name, box, mass, atom, element, matrix, xyz, abc) => {
+    const result = parse_structure_file(lammps_data(box, mass, [atom]), `box.lmp`)
     assert(`lattice` in result)
-    expect(result.sites.map((site) => site.species[0].element)).toEqual([`Al`, `Al`])
-    // oxfmt-ignore
-    expect(result.lattice.matrix).toEqual([[4, 0, 0], [1, 4, 0], [0, 0, 4]])
+    expect(result.sites[0].species[0].element).toBe(element)
+    expect(result.lattice.matrix).toEqual(matrix)
+    expect_vec3_close(result.sites[0].xyz, xyz, 8)
+    expect_vec3_close(result.sites[0].abc, abc, 8)
     expect_sites_reconstruct(result)
   })
 
@@ -2832,26 +2795,6 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_vec3_close(result.sites[0].abc, [0.357142857142857, 0.5, 0.5], 8)
   })
 
-  test(`LAMMPS data shifts coordinates by the box origin`, () => {
-    const box = [`-2.0 2.0 xlo xhi`, `-2.0 2.0 ylo yhi`, `-2.0 2.0 zlo zhi`]
-    const content = lammps_data(box, `1 12.011  # C`, [`1 1 -1.0 0.0 1.0`])
-    const result = parse_structure_file(content, `offset.lmp`)
-    expect(result.sites[0].species[0].element).toBe(`C`)
-    expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
-    expect_vec3_close(result.sites[0].abc, [0.25, 0.5, 0.75], 8)
-  })
-
-  test(`LAMMPS data normalizes a general triclinic box origin`, () => {
-    const box = [`4 0 0 avec`, `1 5 0 bvec`, `0.5 0.25 6 cvec`, `-2 -3 -4 abc   origin`]
-    const content = lammps_data(box, `1 12.011 # C`, [`1 1 0.75 -0.375 -1.0`])
-    const result = parse_structure_file(content, `general.lmp`)
-    assert(`lattice` in result)
-    // oxfmt-ignore
-    expect(result.lattice.matrix).toEqual([[4, 0, 0], [1, 5, 0], [0.5, 0.25, 6]])
-    expect_vec3_close(result.sites[0].xyz, [2.75, 2.625, 3], 8)
-    expect_vec3_close(result.sites[0].abc, [0.5, 0.5, 0.5], 8)
-  })
-
   // Undeclared atom styles are inferred from the column count; counts shared by two
   // styles (6: charge/molecular, 7: full/sphere) are decided by which reading has a
   // declared atom type in its type column on every row
@@ -2888,6 +2831,26 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(() => parse_structure_file(lammps_no_style(types, rows), `test.lmp`)).toThrow(expected)
   })
 
+  // write_data writes wrapped coordinates plus `ix iy iz` image flags; ASE (and the dump
+  // reader) add ix·a + iy·b + iz·c. Ignoring them stretched this O-H bond across the box to
+  // 9.3 Å instead of ASE's 0.7 Å (H at [10.6, 5, 5]).
+  const lammps_images = (flags: string) =>
+    `# images\n\n2 atoms\n1 bonds\n2 atom types\n1 bond types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\nMasses\n\n1 15.999\n2 1.008\n\nAtoms # full\n\n1 1 1 -0.8 9.9 5 5 0 0 0\n2 1 2 0.4 0.6 5 5 ${flags}\n\nBonds\n\n1 1 1 2\n`
+  test(`LAMMPS data applies image flags so bonds stay intact across the box`, () => {
+    const result = parse_structure_file(lammps_images(`1 0 0`), `images.data`)
+    assert(`lattice` in result)
+    expect(bond_tuples(result)).toEqual([[0, 1, 1]])
+    const [oxygen, hydrogen] = result.sites
+    // max |a - b| vs ASE positions is 1.8e-15 Å (ASE's 10.600000000000001)
+    expect_vec3_close(oxygen.xyz, [9.9, 5, 5], 12)
+    expect_vec3_close(hydrogen.xyz, [10.6, 5, 5], 12)
+    expect(math.euclidean_dist(oxygen.xyz, hydrogen.xyz)).toBeCloseTo(0.7, 12)
+    expect_sites_reconstruct(result)
+    expect(() => parse_structure_file(lammps_images(`0.5 0 0`), `images.data`)).toThrow(
+      /non-integer image flags '0.5 0 0'/,
+    )
+  })
+
   test(`LAMMPS data rejects a non-integer atom type rather than inventing an element`, () => {
     // `sphere` columns declared as `full`: the type column then holds the diameter
     const content = lammps_no_style(1, [`1 1 1.5 2.7 1.0 1.0 1.0`]).replace(
@@ -2922,14 +2885,22 @@ describe(`molecular and LAMMPS structure formats`, () => {
 })
 
 describe(`multi-model / multi-record structure files`, () => {
-  test(`PDB keeps only the first MODEL`, () => {
-    const model = (serial: number, xyz: number[]) =>
-      `MODEL        ${serial}\n${pdb_atom_line(1, ` N  `, xyz, `N`)}\nENDMDL`
-    const result = parse_structure_file(
-      `${model(1, [1, 2, 3])}\n${model(2, [9, 9, 9])}`,
-      `nmr.pdb`,
-    )
-    expect(result.sites).toHaveLength(1)
+  // Only the first MODEL is read, and the same atom in two conformers keeps only alt loc A
+  const pdb_model = (serial: number, xyz: number[]) =>
+    `MODEL        ${serial}\n${pdb_atom_line(1, ` C  `, xyz, `C`)}\nENDMDL`
+  const pdb_conformer = (alt_loc: string, xyz: number[]) => {
+    const line = pdb_atom_line(1, ` CB `, xyz, `C`)
+    return `${line.slice(0, 16)}${alt_loc}${line.slice(17)}`
+  }
+  test.each([
+    [`the first MODEL`, `${pdb_model(1, [1, 2, 3])}\n${pdb_model(2, [9, 9, 9])}`],
+    [
+      `alternate location A`,
+      `${pdb_conformer(`A`, [1, 2, 3])}\n${pdb_conformer(`B`, [4, 5, 6])}`,
+    ],
+  ])(`PDB keeps only %s`, (_name, content) => {
+    const result = parse_structure_file(content, `models.pdb`)
+    expect(result.sites.map((site) => site.species[0].element)).toEqual([`C`])
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 6)
   })
 
@@ -2965,19 +2936,6 @@ describe(`multi-model / multi-record structure files`, () => {
         : [],
     )
     warn_spy.mockRestore()
-  })
-
-  test(`PDB skips alternate location indicators other than A`, () => {
-    // The same atom in two conformers, so keeping the wrong one is detectable
-    const conformer = (alt_loc: string, xyz: number[]) => {
-      const line = pdb_atom_line(1, ` CB `, xyz, `C`)
-      return `${line.slice(0, 16)}${alt_loc}${line.slice(17)}`
-    }
-    const content = `${conformer(`A`, [1, 2, 3])}\n${conformer(`B`, [4, 5, 6])}`
-    const result = parse_structure_file(content, `altloc.pdb`)
-    expect(result.sites).toHaveLength(1)
-    expect(result.sites[0].species[0].element).toBe(`C`)
-    expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 6)
   })
 
   // Writers routinely omit the last `$$$$`, and the record count must not be off by one
@@ -3048,6 +3006,8 @@ describe(`malformed molecular / LAMMPS input records a failure reason`, () => {
     [`LAMMPS data without an Atoms section`, `empty.lmp`, `# header only\n\n2 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n`, /no Atoms section/],
     [`LAMMPS data whose atom count disagrees with its Atoms section`, `count.lmp`, `# mismatch\n\n3 atoms\n1 atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /declares 3 atoms but its Atoms section has 1 rows/],
     [`LAMMPS data without box bounds`, `nobox.lmp`, `# no box\n\n1 atoms\n1 atom types\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /box bounds/],
+    [`LAMMPS data with unreadable tilt factors`, `tilt.lmp`, `# bad tilt\n\n1 atoms\n1 atom types\n0 4 xlo xhi\n0 4 ylo yhi\n0 4 zlo zhi\nabc 0 0 xy xz yz\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /invalid xy xz yz tilt factors: 'abc 0 0'/],
+    [`LAMMPS data with a general triclinic box missing its origin`, `general.lmp`, `# no origin\n\n1 atoms\n1 atom types\n4 0 0 avec\n0 4 0 bvec\n0 0 4 cvec\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n`, /requires finite avec, bvec, cvec, and abc origin rows/],
     [`LAMMPS dump without ITEM sections`, `binary.dump`, `\u0000not a text dump\nat all\n`, /no 'ITEM: TIMESTEP' section/],
   ])(`%s`, (_name, filename, content, expected_reason) => {
     expect(() => parse_structure_file(content, filename)).toThrow(expected_reason)

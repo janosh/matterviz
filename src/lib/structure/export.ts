@@ -2,10 +2,11 @@ import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { download } from '#lib/io/fetch.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { is_plain_object } from '#lib/utils.js'
 import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
 import { get_element_counts } from './density'
+import { wrap_frac_coord } from './pbc'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -65,21 +66,14 @@ const lazy_cart_to_frac = (matrix: Matrix3x3): ((xyz: Vec3) => Vec3) => {
   return (xyz) => (convert ??= math.create_cart_to_frac(matrix))(xyz)
 }
 
-const has_fractional_coords = (site: Site): boolean =>
-  Array.isArray(site.abc) && site.abc.length >= 3
-
-const has_cartesian_coords = (site: Site): boolean =>
-  Array.isArray(site.xyz) && site.xyz.length >= 3
+const has_coords = (coords: unknown): coords is number[] =>
+  Array.isArray(coords) && coords.length >= 3
 const coordinate_error = (idx: number): string =>
   `No valid coordinates found for site ${idx}; expected three finite numeric components`
+// The requested coordinate kind when present, else the other one it would be converted from
 const valid_export_coords = (site: Site, fractional: boolean): boolean => {
-  const coords = fractional
-    ? has_fractional_coords(site)
-      ? site.abc
-      : site.xyz
-    : has_cartesian_coords(site)
-      ? site.xyz
-      : site.abc
+  const [preferred, fallback] = fractional ? [site.abc, site.xyz] : [site.xyz, site.abc]
+  const coords = has_coords(preferred) ? preferred : fallback
   return Array.isArray(coords) && math.is_finite_vec3_like(coords.slice(0, 3))
 }
 
@@ -96,11 +90,11 @@ function coordinate_export_unavailable_reason(
   if (
     fractional ||
     (`lattice` in structure && structure.lattice) ||
-    structure.sites.some((site) => !has_cartesian_coords(site))
+    structure.sites.some((site) => !has_coords(site.xyz))
   ) {
     return lattice_unavailable_reason(
       structure,
-      fractional && structure.sites.some((site) => !has_fractional_coords(site)),
+      fractional && structure.sites.some((site) => !has_coords(site.abc)),
     )
   }
   return undefined
@@ -121,7 +115,7 @@ function get_frac_coords(
   idx: number,
 ): number[] {
   if (!valid_export_coords(site, true)) throw new Error(coordinate_error(idx))
-  if (has_fractional_coords(site)) return site.abc.slice(0, 3)
+  if (has_coords(site.abc)) return site.abc.slice(0, 3)
   return cart_to_frac(site.xyz.slice(0, 3) as Vec3)
 }
 
@@ -223,12 +217,13 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   for (const [site_idx, site] of structure.sites.entries()) {
     // xyz is authoritative; abc is converted when xyz is missing (see get_frac_coords for
     // why a site with neither throws)
-    let coords: number[]
-    if (Array.isArray(site.xyz) && site.xyz.length >= 3) coords = site.xyz.slice(0, 3)
-    else if (site.abc?.length >= 3 && frac_to_cart) coords = frac_to_cart(site.abc)
-    else throw new Error(`No valid coordinates found for site ${site_idx}`)
-
-    if (!math.is_finite_vec3_like(coords)) throw new Error(coordinate_error(site_idx))
+    const coords = has_coords(site.xyz)
+      ? site.xyz.slice(0, 3)
+      : has_coords(site.abc)
+        ? frac_to_cart?.(site.abc)
+        : undefined
+    if (!coords || !math.is_finite_vec3_like(coords))
+      throw new Error(coordinate_error(site_idx))
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
     if (has_constraints) columns.push(...move_flag_columns(site))
@@ -261,11 +256,17 @@ function get_cif_block_name(structure: AnyStructure): string {
 const cif_token = (value: string): string =>
   !/\s|^[_#$'";[\]]/.test(value) ? value : value.includes(`'`) ? `"${value}"` : `'${value}'`
 
-export function structure_to_cif_str(structure?: AnyStructure): string {
+// CIF and POSCAR write fractional coordinates against the cell, so both need a lattice matrix
+function require_lattice(structure: AnyStructure | undefined, format: string): Crystal {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
   if (!has_lattice_matrix(structure)) {
-    throw new Error(`CIF export: ${lattice_unavailable_reason(structure)}`)
+    throw new Error(`${format} export: ${lattice_unavailable_reason(structure)}`)
   }
+  return structure
+}
+
+export function structure_to_cif_str(input?: AnyStructure): string {
+  const structure = require_lattice(input, `CIF`)
   const { lattice } = structure
   const params = math.calc_lattice_params(lattice.matrix)
   // The data block header is required by the CIF spec (and pymatgen)
@@ -313,11 +314,16 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   )
 
   const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
+  // CIF stores only cell parameters, which readers rebuild as a right-handed cell, so a
+  // left-handed lattice (det < 0) would come back mirrored. Its sites are written against
+  // the right-handed basis (-a, -b, -c) with the same parameters instead: negated, wrapped
+  // fractional coords keep every Cartesian position and the structure's handedness.
+  const left_handed = math.det_3x3(lattice.matrix) < 0
   // One row per species entry so disordered (multi-species) sites keep every component with
   // its own occupancy; labels must be unique per row, so those get a per-species suffix
   for (const [idx, site] of structure.sites.entries()) {
     const coords_str = get_frac_coords(site, cart_to_frac, idx)
-      .map((coord) => coord.toFixed(8))
+      .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
     const species_list = site.species.length ? site.species : [{ element: `X`, occu: 1 }]
     for (const [spec_idx, species] of species_list.entries()) {
@@ -333,11 +339,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   return lines.join(`\n`)
 }
 
-export function structure_to_poscar_str(structure?: AnyStructure): string {
-  if (!structure?.sites) throw new Error(`No structure or sites to export`)
-  if (!has_lattice_matrix(structure)) {
-    throw new Error(`POSCAR export: ${lattice_unavailable_reason(structure)}`)
-  }
+export function structure_to_poscar_str(input?: AnyStructure): string {
+  const structure = require_lattice(input, `POSCAR`)
   const { lattice } = structure
 
   // Title line: the id, else the plain-text formula; scale factor 1.0 since coordinates are
@@ -347,9 +350,8 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   const lines = [
     title,
     `1.0`,
-    ...lattice.matrix
-      .slice(0, 3)
-      .map((vec) => [vec[0], vec[1], vec[2]].map((coord) => coord.toFixed(8)).join(` `)),
+    // has_lattice_matrix guarantees exactly 3 rows of 3 finite numbers
+    ...lattice.matrix.map((vec) => vec.map((coord) => coord.toFixed(8)).join(` `)),
   ]
 
   // VASP wants one block per species: site indices grouped by element in first-appearance order
@@ -397,8 +399,7 @@ export const STRUCT_TEXT_FORMATS = {
 export type StructTextFormat = keyof typeof STRUCT_TEXT_FORMATS
 
 // Serialize structure in the given text format and trigger a browser download. Throws for
-// structures the format cannot express (a molecule as CIF/POSCAR); StructureExportPane disables
-// those rows up front and catches anything else so a click never escapes as an uncaught error.
+// structures the format cannot express (a molecule as CIF/POSCAR).
 export function export_structure_as(fmt: StructTextFormat, structure: AnyStructure): void {
   const { to_str, ext, mime } = STRUCT_TEXT_FORMATS[fmt]
   download(to_str(structure), create_structure_filename(structure, ext), mime)

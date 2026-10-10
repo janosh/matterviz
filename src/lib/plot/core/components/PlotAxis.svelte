@@ -263,14 +263,14 @@
     <AxisLabel
       x={label_x ?? 0}
       y={(label_y ?? 0) + (side === `x` ? title_shift : -title_shift)}
-      rotate={side === `y` || side === `y2`}
+      rotate={!is_x}
       label={axis.label ?? ``}
       options={axis.options}
       selected_key={axis.selected_key}
       loading={axis_loading}
       axis_type={side}
       color={axis.color}
-      on_select={(key) => on_axis_change?.(key)}
+      on_select={on_axis_change}
       width={title_wrap_width}
     />
   {/if}

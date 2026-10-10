@@ -7,6 +7,7 @@ import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
+  is_num_token,
   parse_coordinate,
   parse_float_token,
   strip_potcar_suffix,
@@ -143,18 +144,22 @@ export function parse_vasp_header(
     let uniform_scale = factors[0]
 
     // Lattice rows sit on file lines 3-5 of the header and are named by that line in errors
-    const lattice_rows: string[] = []
-    for (let row_idx = 0; row_idx < 3; row_idx++) {
-      const row = require_line(
+    const lattice_rows = [0, 1, 2].map((row_idx) =>
+      require_line(
         cursor.peek(row_idx),
         `${format}: file ends before lattice vector ${row_idx + 1}`,
-      )
-      lattice_rows.push(row)
-    }
+      ),
+    )
     cursor.advance(3)
+    // VASP reads the first 3 numbers of a lattice line, so a trailing comment (`3 0 0 ! a`)
+    // is dropped; a 4th NUMBER still fails the 3-coordinate check as a malformed row
+    const lattice_tokens = (row: string): string[] => {
+      const tokens = split_tokens(row)
+      return tokens.length > 3 && !is_num_token(tokens[3]) ? tokens.slice(0, 3) : tokens
+    }
     const raw_lattice = lattice_rows.map((row, row_idx) =>
       vec3_from_values(
-        split_tokens(row).map(parse_coordinate),
+        lattice_tokens(row).map(parse_coordinate),
         `lattice vector on line ${line_offset + row_idx + 3}`,
       ),
     ) as Matrix3x3

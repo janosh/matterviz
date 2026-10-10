@@ -9,6 +9,7 @@ describe(`chem_sys_sunburst_data`, () => {
       `LiFePO4`, // formula -> quaternary Fe-Li-O-P
       `Fe2O3`,
       `Fe-O`,
+      `Fe-O-Fe`, // a repeated element counts once toward arity
       `LiCoO2`,
       `Fe[+3]2O[-2]3`,
       `Fe2^3+O3^2-`,
@@ -23,13 +24,7 @@ describe(`chem_sys_sunburst_data`, () => {
     ])
     expect(ternary.children?.[0].id).toBe(`ternary/Fe-Li-O`)
     expect(ternary.children?.[0].metadata).toEqual({ chem_sys: `Fe-Li-O`, arity: 3 })
-    expect(data[0].children?.map((node) => [node.label, node.value])).toEqual([[`Fe-O`, 5]])
-  })
-
-  test(`duplicate elements in a formula count once toward arity`, () => {
-    const data = chem_sys_sunburst_data([`Li2Fe2O4`])
-    expect(data[0].children?.[0].label).toBe(`Fe-Li-O`)
-    expect(data[0].id).toBe(`ternary`)
+    expect(data[0].children?.map((node) => [node.label, node.value])).toEqual([[`Fe-O`, 6]])
   })
 
   test(`skips invalid entries with a single warning`, () => {

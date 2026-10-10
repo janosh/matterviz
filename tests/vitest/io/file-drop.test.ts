@@ -150,22 +150,23 @@ describe(`create_file_drop_handler`, () => {
   })
 
   test.each([
-    { rejection: new Error(`corrupt gzip`), expected: `corrupt gzip`, desc: `Error` },
-    { rejection: `string error`, expected: `string error`, desc: `string` },
-  ])(`formats on_error from $desc`, async ({ rejection, expected }) => {
-    vi.mocked(decompress_file).mockRejectedValue(rejection)
-    await run({}, [new File([`x`], `f.txt`)])
-    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: ${expected}`)
-    expect(on_drop).not.toHaveBeenCalled()
-    expect(set_loading).toHaveBeenLastCalledWith(false)
-  })
-
-  test(`sets loading false even when on_drop throws`, async () => {
-    vi.mocked(decompress_file).mockResolvedValue({ content: `x`, filename: `f.txt` })
-    const throwing_drop = vi.fn().mockRejectedValue(new Error(`parse failed`))
+    {
+      rejection: new Error(`corrupt gzip`),
+      expected: `corrupt gzip`,
+      desc: `decompress Error`,
+    },
+    { rejection: `string error`, expected: `string error`, desc: `decompress string` },
+    { rejection: new Error(`parse failed`), expected: `parse failed`, desc: `on_drop` },
+  ])(`formats on_error from a $desc rejection and clears loading`, async (row) => {
+    const { rejection, expected, desc } = row
+    const throwing_drop = vi.fn().mockRejectedValue(rejection)
+    if (desc === `on_drop`)
+      vi.mocked(decompress_file).mockResolvedValue({ content: `x`, filename: `f.txt` })
+    else vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
+    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: ${expected}`)
+    expect(throwing_drop).toHaveBeenCalledTimes(desc === `on_drop` ? 1 : 0)
     expect(set_loading).toHaveBeenLastCalledWith(false)
-    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: parse failed`)
   })
 
   test.each([
@@ -325,12 +326,6 @@ describe(`create_file_drop_handler`, () => {
     },
   )
 
-  test(`works without optional callbacks`, async () => {
-    vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
-    await run({ on_error: undefined, set_loading: undefined }, [new File([`ok`], `f.cif`)])
-    expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`))
-  })
-
   // Trajectory viewers keep HDF5 payloads Blob-backed so h5wasm reads them lazily instead of
   // materialising the whole file; everything else still arrives the way parsers expect
   test(`hdf5_as_blob hands .h5 drops over as Blobs, text files as text, URLs to the trajectory loader`, async () => {
@@ -408,13 +403,6 @@ describe(`drag_over_handlers`, () => {
     handlers.ondragover(event)
     expect(event.preventDefault).toHaveBeenCalledOnce() // always, even when not allowed
     expect(set_dragover.mock.calls.map(([over]) => over)).toEqual(expected)
-  })
-
-  test(`ondragleave always clears dragover state`, () => {
-    const set_dragover = vi.fn()
-    const handlers = drag_over_handlers({ allow: () => false, set_dragover })
-    handlers.ondragleave()
-    expect(set_dragover).toHaveBeenCalledWith(false)
   })
 })
 

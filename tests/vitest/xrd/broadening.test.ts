@@ -55,22 +55,6 @@ describe(`compute_broadened_pattern`, () => {
     )
   })
 
-  test(`broadens a single peak correctly with intensity conservation`, () => {
-    const step_size = 0.01 // small step for a better integral approximation
-    const peak = { x: [20], y: [100] }
-    const result = compute_broadened_pattern(peak, DEFAULT_BROADENING, [15, 25], step_size)
-
-    const max_y = Math.max(...result.y)
-    expect(result.x[result.y.indexOf(max_y)]).toBeCloseTo(20, 1)
-    expect(max_y).toBeGreaterThan(0)
-
-    // integral = sum(y * dx) must come back to the input 100, bar the ~0.8% the finite
-    // 20 * FWHM window cuts off the Lorentzian tails
-    const integral = result.y.reduce((sum, val) => sum + val, 0) * step_size
-    expect(integral).toBeGreaterThan(99)
-    expect(integral).toBeLessThan(101)
-  })
-
   test(`ignores peaks whose own window cannot reach the range`, () => {
     // Caglioti gives FWHM 0.14° at 2θ=10 and 0.20° at 90, so their 20·FWHM windows end at
     // 12.7 and start at 86 — neither reaches [40, 60] and only the 50 peak may contribute

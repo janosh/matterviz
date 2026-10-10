@@ -64,6 +64,14 @@ describe(`BarPlot`, () => {
         ),
       ).toEqual([`bar 1 of triclinic: 1`, `bar 1 of cubic: 2`])
       expect(plot.querySelectorAll(`.crystal-system-overlays rect`)).toHaveLength(7)
+      // the spacegroup numbers go on the category axis, the counts on the value axis
+      const [sg_side, count_side] = orientation === `vertical` ? [`x`, `y`] : [`y`, `x`]
+      expect(plot.querySelector(`.${sg_side}-axis .axis-label`)?.textContent).toContain(
+        `International Spacegroup Number`,
+      )
+      expect(plot.querySelector(`.${count_side}-axis .axis-label`)?.textContent).toContain(
+        `Counts`,
+      )
     },
   )
 
@@ -364,6 +372,11 @@ describe(`BarPlot`, () => {
     markers[0].dispatchEvent(mouse(`click`))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_click).toHaveBeenCalledOnce()
+    // Moving between markers keeps the hover; leaving the marker group clears it
+    markers[0].dispatchEvent(mouse(`mouseout`, { relatedTarget: markers[1] }))
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    markers[0].dispatchEvent(mouse(`mouseout`, { relatedTarget: document.body }))
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`markerless line series emit point hover and click callbacks`, async () => {

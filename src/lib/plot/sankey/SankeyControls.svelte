@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { SankeyNodeAlign, Orientation } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -53,13 +54,6 @@
   )
 </script>
 
-<!-- select options come from the settings schema so labels/values have a single source of truth -->
-{#snippet options(enum_map: Record<string, string>)}
-  {#each Object.entries(enum_map) as [value, label] (value)}
-    <option {value}>{label}</option>
-  {/each}
-{/snippet}
-
 <ControlPane
   {show_controls}
   bind:controls_open
@@ -88,13 +82,13 @@
     <label>
       <span>Orientation</span>
       <select bind:value={orientation}>
-        {@render options(enum_labels(SETTINGS_CONFIG.sankey.orientation))}
+        {@render enum_options(SETTINGS_CONFIG.sankey.orientation)}
       </select>
     </label>
     <label>
       <span>Node align</span>
       <select bind:value={node_align}>
-        {@render options(enum_labels(SETTINGS_CONFIG.sankey.node_align))}
+        {@render enum_options(SETTINGS_CONFIG.sankey.node_align)}
       </select>
     </label>
     <NumberRangeInput min={4} max={60} step={1} bind:value={node_width}

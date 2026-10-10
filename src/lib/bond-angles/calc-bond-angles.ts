@@ -106,15 +106,14 @@ export function resolve_angle_bins({
 export const angle_bin_centers = (n_bins: number, bin_width: number): number[] =>
   Array.from({ length: n_bins }, (_unused, bin_idx) => (bin_idx + 0.5) * bin_width)
 
-// Bins are half-open on the lower edge, [lo, hi). An angle sitting exactly on a boundary
-// lands in the upper bin whenever `bin_width` is representable in binary (all widths the UI
-// can produce are); for other widths `angle / bin_width` may round just below the integer
-// and put such an angle one bin low. Only exactly-on-boundary angles are affected, they move
-// by a single bin, and the set of them has measure zero. Exactly 180 degrees is clamped into
-// the last bin so perfectly linear triplets are counted rather than dropped. No lower clamp:
-// angle_between_vectors clamps its cosine to [-1, 1], so `angle` is never negative.
+// Bins are half-open on the lower edge, [lo, hi). Exact crystal angles (60, 90, 120 deg) sit
+// on bin edges but come out of acos a few ulp low, so the 1e-9 nudge (as in calc-rdf.ts)
+// keeps one shell from splitting across two bins; it is far below any physical separation.
+// Exactly 180 degrees is clamped into the last bin so perfectly linear triplets are counted
+// rather than dropped. No lower clamp: angle_between_vectors clamps its cosine to [-1, 1], so
+// `angle` is never negative.
 export const angle_bin_index = (angle: number, n_bins: number, bin_width: number): number =>
-  Math.min(n_bins - 1, Math.floor(angle / bin_width))
+  Math.min(n_bins - 1, Math.floor(angle / bin_width + 1e-9))
 
 // Every bond angle in the structure, one entry per unordered neighbour pair per centre.
 export function calc_bond_angles(

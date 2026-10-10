@@ -611,7 +611,7 @@ describe(`convex hull replacement state`, () => {
       new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers }),
     )
     await tick()
-    expect(doc_query(`[data-testid="selected-entry"]`).textContent).toBe(expected)
+    expect(selected_text()).toBe(expected)
   })
 })
 
@@ -690,7 +690,6 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     const hull_path = [...plot.querySelectorAll<SVGPathElement>(`path`)]
       .map((path) => path.getAttribute(`d`) ?? ``)
       .find((datum) => datum.startsWith(`M`) && datum.split(`L`).length === 5)
-    expect(hull_path).toBeDefined()
     // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
     expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)
   })

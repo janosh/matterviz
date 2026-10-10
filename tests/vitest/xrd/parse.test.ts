@@ -467,7 +467,7 @@ describe(`parse_brml_file`, () => {
     ).buffer
 
   test.each([
-    // 2θ is always column 3 and the intensity the last column, whatever the column count
+    // without <DataViews>: the default layout, 2θ in column 3 and the intensity last
     {
       desc: `HRXRD 8-column Datum rows`,
       xml: `<RawData><DataRoutes><DataRoute>
@@ -501,6 +501,84 @@ describe(`parse_brml_file`, () => {
     result.y.forEach((val, idx) => expect(val).toBeCloseTo(coord_y[idx], 9))
   })
 
+  // <DataViews> as Bruker writes it: `views` are [xsi:type, Start, Length, inner XML]
+  const data_views = (views: [string, number, number, string][]) =>
+    `<DataViews>${views
+      .map(
+        ([type, start, length, inner]) =>
+          `<RawDataView xsi:type="${type}" Start="${start}" Length="${length}"${type === `FixedRawDataView` && start === 0 ? ` LogicName="MeasuredTime"` : ``}>${inner}</RawDataView>`,
+      )
+      .join(``)}</DataViews>`
+  const scan_axes = (axis_ids: string[]) =>
+    `<Varying LogicName="ScanAxes">${axis_ids
+      .map((id) => `<FieldDefinitions FieldName="${id}" AxisId="${id}"/>`)
+      .join(``)}<BlankingValue>-9999</BlankingValue></Varying>`
+  const counts_view = `<Recording LogicName="ScanCounter"><BlankingValue>-9999</BlankingValue></Recording>`
+  const raw_data = (views: string, rows: string[], extra = ``) =>
+    `<RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${extra}<DataRoutes><DataRoute>${views}${rows
+      .map((row) => `<Datum>${row}</Datum>`)
+      .join(``)}</DataRoute></DataRoutes></RawData>`
+
+  const advanced_axes = scan_axes([`Chi`, `Phi`, `TwoTheta`, `Theta`])
+  const powder_axes = scan_axes([`TwoTheta`, `Theta`])
+  test.each([
+    {
+      // advanced scan: 2θ is the third scan axis (column 4), not column 2 (Chi)
+      desc: `a 7-column advanced scan with 2θ after Chi and Phi`,
+      xml: raw_data(
+        data_views([
+          [`FixedRawDataView`, 0, 1, ``],
+          [`FixedRawDataView`, 1, 1, ``],
+          [`VaryingRawDataView`, 2, 4, advanced_axes],
+          [`RecordedRawDataView`, 6, 1, counts_view],
+        ]),
+        [`1,1,5,90,30,15,50`, `1,1,5,90,30.1,15.05,100`],
+      ),
+      x: [30, 30.1],
+      y: [50, 100],
+    },
+    {
+      // counts before the scan axes: the last column is θ, not the intensity
+      desc: `counts declared before the scan axes`,
+      xml: raw_data(
+        data_views([
+          [`FixedRawDataView`, 0, 1, ``],
+          [`RecordedRawDataView`, 1, 1, counts_view],
+          [`VaryingRawDataView`, 2, 2, powder_axes],
+        ]),
+        [`1,40,20,10`, `1,80,20.02,10.01`],
+      ),
+      x: [20, 20.02],
+      y: [50, 100],
+    },
+    {
+      // time + counts only: 2θ comes from the ScanAxisInfo grid, blank steps are dropped
+      desc: `time+counts rows on the <ScanAxisInfo> 2θ grid`,
+      xml: raw_data(
+        data_views([
+          [`FixedRawDataView`, 0, 1, ``],
+          [`RecordedRawDataView`, 1, 1, counts_view],
+        ]),
+        [`1,5`, `1,10`, `0,-9999`],
+        `<ScanAxisInfo AxisId="TwoTheta"><Start>10</Start><Stop>10.2</Stop><Increment>0.1</Increment></ScanAxisInfo>`,
+      ),
+      x: [10, 10.1],
+      y: [50, 100],
+    },
+    {
+      // measuring time 0 or counts -9999 mark never-measured steps (also without DataViews)
+      desc: `default-layout rows with never-measured steps`,
+      xml: `<RawData><Datum>19.2,1,5,2.5,100</Datum><Datum>19.2,1,5.02,2.51,200</Datum><Datum>0,0,5.04,2.52,-9999</Datum><Datum>0,0,5.06,2.53,7</Datum><Datum>19.2,1,5.08,2.54,-9999</Datum></RawData>`,
+      x: [5, 5.02],
+      y: [50, 100],
+    },
+  ])(`reads $desc`, async ({ xml, x: coord_x, y: coord_y }) => {
+    const result = await parse_brml_file(zip({ 'Experiment0/RawData0.xml': xml }))
+    expect(result.x).toHaveLength(coord_x.length)
+    result.x.forEach((val, idx) => expect(val).toBeCloseTo(coord_x[idx], 9))
+    expect(result.y).toEqual(coord_y)
+  })
+
   test(`falls back to any XML entry carrying Datum rows when no RawData file exists`, async () => {
     const xml = `<X><Datum>1,1,30,15,100</Datum><Datum>1,1,30.01,15,200</Datum></X>`
     const result = await parse_brml_file(zip({ 'Experiment0/DataFile.xml': xml }))
@@ -522,6 +600,18 @@ describe(`parse_brml_file`, () => {
       `RawData without intensities`,
       () => zip({ 'RawData0.xml': `<RawData/>` }),
       /neither <Datum> rows nor/,
+    ],
+    [
+      `2θ neither a column nor on a matching ScanAxisInfo grid`,
+      () =>
+        zip({
+          'RawData0.xml': raw_data(
+            data_views([[`RecordedRawDataView`, 0, 1, counts_view]]),
+            [`5`, `10`, `15`],
+            `<ScanAxisInfo AxisId="TwoTheta"><Start>10</Start><Stop>10.1</Stop><Increment>0.1</Increment></ScanAxisInfo>`,
+          ),
+        }),
+      /does not describe the 3 rows/,
     ],
     [
       `a list without a grid`,
@@ -631,7 +721,7 @@ describe(`real example files`, () => {
     [`PANalytical-powder-xrd-3-70deg.xrdml`, 3.0084, 70.0038],
     [`YBCO-A1-HG-600C-950C.brml`, 4.9979, 89.9933],
     [`YBCO-B1-BM-600C-950C-20min.brml`, 7.9979, 89.9901],
-    [`YBCO-B1-BM-600C-950C.brml`, 4.9979, 89.9933],
+    [`YBCO-B1-BM-600C-950C.brml`, 4.9979, 35.277], // 1473 of 4133 steps measured
     [`aimat-powder-xrd-30-110deg.xy.gz`, 30.0031, 110.0656], // stitched two-range scan
     [`synthetic-quartz-xrd.xye`, 20.85, 136.55],
   ]
@@ -642,7 +732,16 @@ describe(`real example files`, () => {
     expect(result.x[0]).toBeCloseTo(first, 3)
     expect(result.x[result.x.length - 1]).toBeCloseTo(last, 3)
     expect(array_max(result.y)).toBeCloseTo(100, 9)
-    expect(result.y.every(Number.isFinite)).toBe(true)
+    expect(result.y.every((val) => Number.isFinite(val) && val >= 0)).toBe(true)
+  })
+
+  // The aborted scan stops at 35.28°: the 2660 later steps are `0,0,2θ,θ,-9999` blank rows
+  // (measuring time 0, counts at the -9999 BlankingValue) and must not be read as intensities
+  test(`YBCO-B1-BM-600C-950C.brml keeps only the 1473 measured steps`, async () => {
+    const result = await load(`YBCO-B1-BM-600C-950C.brml`)
+    expect(result.x).toHaveLength(1473)
+    expect(result.y[0]).toBeCloseTo((5360 / 5407) * 100, 9)
+    expect(Math.min(...result.y)).toBeCloseTo((112 / 5407) * 100, 9)
   })
 
   // The garnet bank is 10(I2,F6.0) with 1..10 overlapping detectors per point; split on

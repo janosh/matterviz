@@ -58,13 +58,11 @@
             const suffix = item.filename.startsWith(`${default_name}.`)
               ? item.filename.slice(default_name.length)
               : `-${item.filename}`
-            return `columns` in item
-              ? save(columns_to_csv(item.columns()), `${filename}${suffix}`, `text/csv`)
-              : save(
-                  JSON.stringify(item.json(), null, 2),
-                  `${filename}${suffix}`,
-                  `application/json`,
-                )
+            const [text, mime] =
+              `columns` in item
+                ? [columns_to_csv(item.columns()), `text/csv`]
+                : [JSON.stringify(item.json(), null, 2), `application/json`]
+            return save(text, `${filename}${suffix}`, mime)
           })}
       >
         ⬇ {item.label}

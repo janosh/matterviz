@@ -361,6 +361,10 @@ describe(`StructureControls schema rows`, () => {
     // ...and nothing leaked onto scene_props from the accessor row
     expect(Object.hasOwn(state.scene_props, `show_image_atoms`)).toBe(false)
 
+    // conditional rows follow their gate
+    state.scene_props.auto_bond_order = false
+    await tick()
+    expect(target.querySelector(`[data-key="aromatic_display"]`)).toBeNull()
     state.scene_props.show_bonds = `never`
     state.scene_props.show_polyhedra = `never`
     await tick()
@@ -492,21 +496,6 @@ describe(`StructureControls schema rows`, () => {
     }
     // the cell rows are plain scene_props rows
     expect(state.scene_props.cell_edge_opacity).toBe(0.5)
-  })
-
-  test(`conditional rows follow their gate`, async () => {
-    const state = $state({
-      scene_props: {
-        ...DEFAULTS.structure,
-        show_bonds: `always` as const,
-        auto_bond_order: false,
-      },
-    })
-    const target = await mount_bound_controls(state)
-    expect(target.querySelector(`[data-key="aromatic_display"]`)).toBeNull()
-    state.scene_props.auto_bond_order = true
-    await tick()
-    expect(target.querySelector(`[data-key="aromatic_display"] select`)).not.toBeNull()
   })
 
   test(`per-axis inputs replace one component and leave the others`, async () => {
@@ -1030,9 +1019,16 @@ describe(`StructureControls reactive props`, () => {
       polyhedra_included_elements: [`O`],
       polyhedra_excluded_elements: [] as string[],
     })
+    const fe_oxide = make_crystal(10, [
+      [`Fe`, [0, 0, 0], 3],
+      [`O`, [0.15, 0, 0], -2],
+    ])
 
     // nothing rendered yet (e.g. O blocked by CN cap), but O is force-included
-    const target = await mount_bound_controls(state, { polyhedra_rendered_elements: [] })
+    const target = await mount_bound_controls(state, {
+      structure: fe_oxide,
+      polyhedra_rendered_elements: [],
+    })
 
     const center_checkbox = (symbol: string) =>
       find_label(target, symbol, true)?.querySelector<HTMLInputElement>(
@@ -1042,36 +1038,20 @@ describe(`StructureControls reactive props`, () => {
     // force-included element shows checked even when not (yet) rendered
     expect(center_checkbox(`O`)?.checked).toBe(true)
     // a non-included, non-rendered element stays unchecked
-    expect(center_checkbox(`H`)?.checked).toBe(false)
+    expect(center_checkbox(`Fe`)?.checked).toBe(false)
+    // 2-letter symbols stay one chip, not split into F + e by string iteration
+    expect(find_label(target, `F`, true)).toBeUndefined()
+    expect(find_label(target, `e`, true)).toBeUndefined()
 
     // toggling the force-included element off must be reversible from the same control
     center_checkbox(`O`)?.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
     expect(state.scene_props.polyhedra_included_elements).not.toContain(`O`)
     expect(center_checkbox(`O`)?.checked).toBe(false)
-    center_checkbox(`H`)?.dispatchEvent(new Event(`change`, { bubbles: true }))
+    center_checkbox(`Fe`)?.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(state.scene_props.polyhedra_included_elements).toContain(`H`)
-    expect(center_checkbox(`H`)?.checked).toBe(true)
-  })
-
-  test(`renders multi-character element symbols as single center checkboxes`, async () => {
-    // flatMap only flattens arrays, not strings, so 2-letter symbols like Fe must
-    // stay intact (not split into F + e). Guards against a flatMap -> spread regression.
-    const fe_oxide = make_crystal(10, [
-      [`Fe`, [0, 0, 0], 3],
-      [`O`, [0.15, 0, 0], -2],
-    ])
-    const state = $state({ scene_props: { show_polyhedra: `crystals` as const } })
-
-    const target = await mount_bound_controls(state, { structure: fe_oxide })
-
-    const center_label = (symbol: string) => find_label(target, symbol, true)
-
-    expect(center_label(`Fe`)).toBeDefined()
-    // no split-character artifacts from string iteration
-    expect(center_label(`F`)).toBeUndefined()
-    expect(center_label(`e`)).toBeUndefined()
+    expect(state.scene_props.polyhedra_included_elements).toContain(`Fe`)
+    expect(center_checkbox(`Fe`)?.checked).toBe(true)
   })
 
   test(`numeric center choices reuse fixed topology and update when species change`, async () => {

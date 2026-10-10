@@ -188,7 +188,6 @@ const parse_rgb = (color: string): RGBColor => {
 // Calculate human-perceived brightness from gamma-encoded RGB channels.
 export function perceived_brightness(color: string): number {
   const { r: red, g: green, b: blue } = parse_rgb(color)
-
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
@@ -256,13 +255,9 @@ export function pick_contrast_color(paint: Paint): string {
   const parsed_bg = parse_rgb(background)
   let effective_bg = parsed_bg
   if (parsed_bg.opacity < 1) {
-    if (!backdrop) {
-      throw new Error(`Translucent background requires a backdrop: ${background}`)
-    }
+    if (!backdrop) throw new Error(`Translucent background requires a backdrop: ${background}`)
     const parsed_backdrop = parse_rgb(backdrop)
-    if (parsed_backdrop.opacity < 1) {
-      throw new Error(`backdrop must be opaque: ${backdrop}`)
-    }
+    if (parsed_backdrop.opacity < 1) throw new Error(`backdrop must be opaque: ${backdrop}`)
     effective_bg = composite_rgb(parsed_bg, parsed_backdrop)
   }
   const bg_luminance = rgb_luminance(effective_bg)

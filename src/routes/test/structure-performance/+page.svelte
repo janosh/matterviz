@@ -31,9 +31,10 @@
     bonding_options: { force_large_structure },
   })
 
-  // Generate a test structure with the specified number of atoms
+  // Cubic cell with `count` atoms on a slightly jittered grid, cycling through a few elements
   function generate_structure(count: number): Crystal {
-    const lattice_size = Math.ceil(Math.cbrt(count)) * 3
+    const sites_per_edge = Math.ceil(Math.cbrt(count))
+    const lattice_size = sites_per_edge * 3
     const lattice = {
       matrix: [
         [lattice_size, 0, 0],
@@ -50,50 +51,29 @@
       volume: lattice_size ** 3,
     }
 
-    const sites: Crystal[`sites`] = Array.from({ length: count })
-    const sites_per_edge = Math.ceil(Math.cbrt(count))
     const spacing = 1 / (sites_per_edge + 1)
-    const random_offset = 0.1 / lattice_size
-    const sites_per_layer = sites_per_edge * sites_per_edge
-
+    const to_frac = (grid_idx: number) =>
+      (grid_idx + 1) * spacing + (Math.random() - 0.5) * (0.1 / lattice_size)
     const elements: ElementSymbol[] = [`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Si`, `Al`]
-    const element_count = elements.length
     const species_cache = elements.map((element) => [
       { element, occu: 1.0, oxidation_state: 0 },
     ])
 
-    const random_count = count * 3
-    const randoms = new Float32Array(random_count)
-    for (let idx = 0; idx < random_count; idx++) {
-      randoms[idx] = (Math.random() - 0.5) * random_offset
-    }
-
-    let random_idx = 0
-    for (let idx = 0; idx < count; idx++) {
-      const grid_z = Math.trunc(idx / sites_per_layer)
-      const remainder = idx - grid_z * sites_per_layer
-      const grid_y = Math.trunc(remainder / sites_per_edge)
-      const grid_x = remainder - grid_y * sites_per_edge
-
-      const frac_x = (grid_x + 1) * spacing + randoms[random_idx++]
-      const frac_y = (grid_y + 1) * spacing + randoms[random_idx++]
-      const frac_z = (grid_z + 1) * spacing + randoms[random_idx++]
-
-      const cart_x = frac_x * lattice_size
-      const cart_y = frac_y * lattice_size
-      const cart_z = frac_z * lattice_size
-
-      const element_idx = idx % element_count
-      const element = elements[element_idx]
-
-      sites[idx] = {
+    const sites: Crystal[`sites`] = Array.from({ length: count }, (_, idx) => {
+      const abc: Vec3 = [
+        to_frac(idx % sites_per_edge),
+        to_frac(Math.trunc(idx / sites_per_edge) % sites_per_edge),
+        to_frac(Math.trunc(idx / sites_per_edge ** 2)),
+      ]
+      const element_idx = idx % elements.length
+      return {
         species: species_cache[element_idx],
-        abc: [frac_x, frac_y, frac_z] as Vec3,
-        xyz: [cart_x, cart_y, cart_z] as Vec3,
-        label: `${element}${idx + 1}`,
+        abc,
+        xyz: [abc[0] * lattice_size, abc[1] * lattice_size, abc[2] * lattice_size],
+        label: `${elements[element_idx]}${idx + 1}`,
         properties: {},
       }
-    }
+    })
 
     return { lattice, sites, charge: 0 } as Crystal
   }
@@ -115,27 +95,29 @@
       const parsed = Math.trunc(Number(val))
       return !isNaN(parsed) && parsed >= min && parsed <= max ? parsed : fallback
     }
-
     const parse_bool = (key: string, fallback: boolean) => {
       const val = params.get(key)
       return val === null ? fallback : val === `true`
+    }
+    const parse_enum = <T extends string>(
+      key: string,
+      options: readonly string[],
+      fallback: T,
+    ) => {
+      const val = params.get(key)
+      return val && options.includes(val) ? (val as T) : fallback
     }
 
     atom_count = parse_int(`atoms`, 1, 50000, atom_count)
     sphere_segments = parse_int(`sphere_segments`, 3, 64, sphere_segments)
     supercell_scaling = params.get(`supercell`) || supercell_scaling
-    performance_mode = [`quality`, `speed`].includes(params.get(`performance_mode`) || ``)
-      ? (params.get(`performance_mode`) as typeof performance_mode)
-      : performance_mode
-    const valid_strategies = Object.keys(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {})
-    bonding_strategy = valid_strategies.includes(params.get(`bonding_strategy`) || ``)
-      ? (params.get(`bonding_strategy`) as typeof bonding_strategy)
-      : bonding_strategy
-    show_bonds = (SHOW_BONDS_OPTIONS as readonly string[]).includes(
-      params.get(`show_bonds`) || ``,
+    performance_mode = parse_enum(`performance_mode`, [`quality`, `speed`], performance_mode)
+    bonding_strategy = parse_enum(
+      `bonding_strategy`,
+      Object.keys(SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}),
+      bonding_strategy,
     )
-      ? (params.get(`show_bonds`) as typeof show_bonds)
-      : show_bonds
+    show_bonds = parse_enum(`show_bonds`, SHOW_BONDS_OPTIONS, show_bonds)
     show_atoms = parse_bool(`show_atoms`, show_atoms)
     show_site_labels = parse_bool(`show_site_labels`, show_site_labels)
     show_site_indices = parse_bool(`show_site_indices`, show_site_indices)
@@ -147,19 +129,25 @@
 
   function update_url() {
     if (typeof window === `undefined`) return
-    const params = new URLSearchParams()
-    params.set(`atoms`, atom_count.toString())
-    params.set(`show_atoms`, show_atoms.toString())
-    params.set(`show_bonds`, show_bonds)
-    params.set(`show_site_labels`, show_site_labels.toString())
-    params.set(`show_site_indices`, show_site_indices.toString())
-    params.set(`show_image_atoms`, show_image_atoms.toString())
-    params.set(`sphere_segments`, sphere_segments.toString())
-    params.set(`supercell`, supercell_scaling)
-    params.set(`performance_mode`, performance_mode)
-    params.set(`bonding_strategy`, bonding_strategy)
-    params.set(`force_large_structure`, force_large_structure.toString())
+    const params = new URLSearchParams({
+      atoms: `${atom_count}`,
+      show_atoms: `${show_atoms}`,
+      show_bonds,
+      show_site_labels: `${show_site_labels}`,
+      show_site_indices: `${show_site_indices}`,
+      show_image_atoms: `${show_image_atoms}`,
+      sphere_segments: `${sphere_segments}`,
+      supercell: supercell_scaling,
+      performance_mode,
+      bonding_strategy,
+      force_large_structure: `${force_large_structure}`,
+    })
     void goto(`?${params}`, { shallow: true, replace: true })
+  }
+
+  const regenerate = () => {
+    update_url()
+    generate_structure_async(atom_count)
   }
 </script>
 
@@ -174,10 +162,7 @@
       min="1"
       max="50000"
       step="100"
-      onchange={() => {
-        update_url()
-        generate_structure_async(atom_count)
-      }}
+      onchange={regenerate}
     />
   </label>
 
@@ -254,8 +239,7 @@
     <button
       onclick={() => {
         atom_count = count as number
-        update_url()
-        generate_structure_async(atom_count)
+        regenerate()
       }}
     >
       {label} ({count})

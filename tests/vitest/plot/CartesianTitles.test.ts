@@ -7,7 +7,7 @@ import { calc_auto_padding, DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.j
 import { resolve_plot_title } from '#lib/plot/core/plot-title.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { mock_text_measurement, mount_sized } from '../setup'
+import { clip_rect, mock_text_measurement, mount_sized, query } from '../setup'
 
 const title = {
   text: `Measured plot title`,
@@ -47,19 +47,16 @@ describe(`Cartesian plot titles`, () => {
         { ...shared_props, ...get_props() },
         { selector },
       )
-      const title_text = root.querySelector(`.plot-title-text`)
-      const subtitle_text = root.querySelector(`.plot-subtitle-text`)
-      const clip_rect = title_text?.closest(`svg`)?.querySelector(`clipPath rect`)
-
-      expect(title_text?.getAttribute(`aria-label`)).toBe(title.text)
-      expect(subtitle_text?.getAttribute(`aria-label`)).toBe(title.subtitle)
-      expect(Number(title_text?.querySelector(`tspan`)?.getAttribute(`x`))).toBe(
-        Number(clip_rect?.getAttribute(`x`)),
+      const title_text = query(root, `.plot-title-text`)
+      const subtitle_text = query(root, `.plot-subtitle-text`)
+      const clip = clip_rect(root)
+      expect(title_text.getAttribute(`aria-label`)).toBe(title.text)
+      expect(subtitle_text.getAttribute(`aria-label`)).toBe(title.subtitle)
+      expect(Number(query(title_text, `tspan`).getAttribute(`x`))).toBe(clip.x)
+      expect(Number(query(subtitle_text, `tspan:last-child`).getAttribute(`y`))).toBeLessThan(
+        clip.y,
       )
-      expect(
-        Number(subtitle_text?.querySelector(`tspan:last-child`)?.getAttribute(`y`)),
-      ).toBeLessThan(Number(clip_rect?.getAttribute(`y`)))
-      expect(Number(clip_rect?.getAttribute(`y`))).toBeGreaterThan(17)
+      expect(clip.y).toBeGreaterThan(17)
     },
   )
 
@@ -71,15 +68,12 @@ describe(`Cartesian plot titles`, () => {
         { ...hidden_axis_props, ...get_props() },
         { selector },
       )
-      const clip_rect = root.querySelector(`clipPath rect`)
-      const clip_x = Number(clip_rect?.getAttribute(`x`))
+      const clip = clip_rect(root)
       expect(root.querySelector(`.x2-axis, .y2-axis`)).toBeNull()
       // every Cartesian plot falls back to the shared DEFAULT_PLOT_PADDING on a side
       // whose axis is hidden, so assert the constants rather than their current values
-      expect(Number(clip_rect?.getAttribute(`y`))).toBe(DEFAULT_PLOT_PADDING.t)
-      expect(400 - clip_x - Number(clip_rect?.getAttribute(`width`))).toBe(
-        DEFAULT_PLOT_PADDING.r,
-      )
+      expect(clip.y).toBe(DEFAULT_PLOT_PADDING.t)
+      expect(400 - clip.x - clip.width).toBe(DEFAULT_PLOT_PADDING.r)
     },
   )
 

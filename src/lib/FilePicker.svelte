@@ -58,21 +58,17 @@
 
   // File type from the explicit `type`, else the extension (ignoring compression suffixes);
   // ext_of returns an extensionless name (POSCAR, INCAR, ...) whole, so it is its own type
-  const get_base_file_type = (file: FileInfo): string => {
-    if (file.type) return file.type.toLowerCase()
-    return ext_of(strip_compression_extensions(file.name)) || `file`
-  }
+  const get_base_file_type = (file: FileInfo): string =>
+    file.type?.toLowerCase() || ext_of(strip_compression_extensions(file.name)) || `file`
   const get_category_id = (file: FileInfo): string =>
     file.category ? `${file.category_icon ?? ``} ${file.category}`.trim() : `(uncategorized)`
 
-  let filtered_files = $derived(
-    files.filter((file) => {
-      if (!effective_filter) return true
-      const file_value =
-        effective_filter.kind === `category` ? get_category_id(file) : get_base_file_type(file)
-      return file_value === effective_filter.value
-    }),
-  )
+  let filtered_files = $derived.by(() => {
+    if (!effective_filter) return files
+    const { kind, value } = effective_filter
+    const value_of = kind === `category` ? get_category_id : get_base_file_type
+    return files.filter((file) => value_of(file) === value)
+  })
   // A filter with a single option can't narrow anything, so it isn't offered
   const filter_options = (values: string[]): string[] => {
     const uniq = [...new Set(values)].toSorted()
@@ -108,7 +104,7 @@
   {@const is_active = is_filter_active(kind, value)}
   <button
     type="button"
-    class={['legend-item', { active: is_active, 'format-item': kind === `type` }]}
+    class={[`legend-item`, { active: is_active, 'format-item': kind === `type` }]}
     onclick={() => toggle_filter(kind, value)}
     aria-pressed={is_active}
     {@attach tooltip({
@@ -153,7 +149,7 @@
     {@const paint = paint_for(base_type)}
     {@const is_active = active_files.includes(file.name)}
     <div
-      class={['file-item', { active: is_active }]}
+      class={[`file-item`, { active: is_active }]}
       style:background-color={paint.item}
       draggable="true"
       ondragstart={handle_drag_start(file)}

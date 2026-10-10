@@ -583,23 +583,23 @@ export function draw_hull_faces(
       continue
     }
     // Screen-space linear gradient solving a*x + b*y + c = alpha at the three projected vertices
-    const [point_1, point, point_3] = face.projected
+    const [point_1, point_2, point_3] = face.projected
     const [value_a_1, value_a_2, value_a_3] = face.vertices.map((vertex) =>
       norm_alpha(vertex.e_form_per_atom ?? 0),
     )
     const det =
-      point_1.x * (point.y - point_3.y) +
-      point.x * (point_3.y - point_1.y) +
-      point_3.x * (point_1.y - point.y)
+      point_1.x * (point_2.y - point_3.y) +
+      point_2.x * (point_3.y - point_1.y) +
+      point_3.x * (point_1.y - point_2.y)
     const coef_a =
-      (value_a_1 * (point.y - point_3.y) +
+      (value_a_1 * (point_2.y - point_3.y) +
         value_a_2 * (point_3.y - point_1.y) +
-        value_a_3 * (point_1.y - point.y)) /
+        value_a_3 * (point_1.y - point_2.y)) /
       det
     const coef_b =
-      (value_a_1 * (point_3.x - point.x) +
+      (value_a_1 * (point_3.x - point_2.x) +
         value_a_2 * (point_1.x - point_3.x) +
-        value_a_3 * (point.x - point_1.x)) /
+        value_a_3 * (point_2.x - point_1.x)) /
       det
     const mag = Math.hypot(coef_a, coef_b)
     const [alpha_min, alpha_max] = [
@@ -610,8 +610,8 @@ export function draw_hull_faces(
     let fill: string | CanvasGradient = add_alpha(color, alpha_mean)
     if (Math.abs(det) > 1e-9 && mag > 1e-9) {
       const [dir_x, dir_y] = [coef_a / mag, coef_b / mag]
-      const center_x = (point_1.x + point.x + point_3.x) / 3
-      const center_y = (point_1.y + point.y + point_3.y) / 3
+      const center_x = (point_1.x + point_2.x + point_3.x) / 3
+      const center_y = (point_1.y + point_2.y + point_3.y) / 3
       const [s_min, s_max] = [(alpha_min - alpha_mean) / mag, (alpha_max - alpha_mean) / mag]
       const grad = ctx.createLinearGradient(
         center_x + dir_x * s_min,

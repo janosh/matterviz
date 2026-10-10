@@ -24,8 +24,7 @@ export function is_periodic(obj: unknown): obj is Crystal {
 // Raw-format lattice presence (is_crystal) is intentionally looser than usable geometry.
 export function has_lattice_matrix(obj: unknown): obj is Crystal {
   if (!has_lattice(obj) || (!numeric_sites.has(obj) && !Array.isArray(obj.sites))) return false
-  const { matrix } = obj.lattice
-  return is_finite_matrix3x3(matrix)
+  return is_finite_matrix3x3(obj.lattice.matrix)
 }
 
 export function has_usable_lattice(obj: unknown): obj is Crystal {

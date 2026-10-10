@@ -42,6 +42,12 @@ interface HullDataPipelineInputs {
   hide_labels: () => void
 }
 
+const NO_GAS_ANALYSIS: GasAnalysis = Object.freeze({
+  has_gas_dependent_elements: false,
+  gas_elements: [],
+  relevant_gases: [],
+})
+
 // Merge gas_pressures into gas_config.pressures and apply chemical-potential corrections when
 // the system contains gas-derived elements; otherwise entries pass through untouched.
 function get_gas_corrected_entries(
@@ -50,25 +56,16 @@ function get_gas_corrected_entries(
   gas_pressures: Partial<Record<string, number>>,
   temperature: number,
 ): { entries: PhaseData[]; analysis: GasAnalysis; merged_config?: GasThermodynamicsConfig } {
-  if (!gas_config?.enabled_gases?.length) {
-    const analysis = {
-      has_gas_dependent_elements: false,
-      gas_elements: [],
-      relevant_gases: [],
-    }
-    return { entries, analysis }
-  }
+  if (!gas_config?.enabled_gases?.length) return { entries, analysis: NO_GAS_ANALYSIS }
   const merged_config = {
     ...gas_config,
     pressures: { ...gas_config.pressures, ...gas_pressures },
   }
   const analysis = analyze_gas_data(entries, merged_config)
-  if (!analysis.has_gas_dependent_elements) return { entries, analysis, merged_config }
-  return {
-    entries: apply_gas_corrections(entries, merged_config, temperature),
-    analysis,
-    merged_config,
-  }
+  const corrected = analysis.has_gas_dependent_elements
+    ? apply_gas_corrections(entries, merged_config, temperature)
+    : entries
+  return { entries: corrected, analysis, merged_config }
 }
 
 export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {

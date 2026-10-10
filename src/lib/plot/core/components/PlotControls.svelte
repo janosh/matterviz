@@ -1,3 +1,9 @@
+<script module lang="ts">
+  import { enum_labels, type SettingType } from '#lib/settings.js'
+
+  export { enum_options }
+</script>
+
 <script lang="ts">
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import ExportButtons from '#lib/io/ExportButtons.svelte'
@@ -13,7 +19,7 @@
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import { tooltip } from 'svelte-widgets/attachments'
-  import type { Vec2 } from '#lib/math.js'
+  import { in_range, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, AxisKey, PlotControlsProps } from '#lib/plot/core/types.js'
   import { normalize_y2_sync } from '#lib/plot/core/interactions.js'
   import {
@@ -46,10 +52,6 @@
   }: PlotControlsProps = $props()
 
   const export_state = new FileExportState(() => export_filename)
-
-  // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
-  const range_spans_zero = (lower: number, upper: number): boolean =>
-    Math.min(lower, upper) <= 0 && Math.max(lower, upper) >= 0
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
   const auto_range = (axis: AxisKey): Vec2 | undefined =>
@@ -95,12 +97,12 @@
       .filter((axis) => axis === `x` || axis === `y` || auto_ranges[axis] !== undefined)
       .map((axis) => [axis, axis.toUpperCase()] as const),
   )
-  // whether each axis range spans zero, gating the zero-line toggles
+  // whether each axis range (either order) spans zero, gating the zero-line toggles
   let includes_zero = $derived(
     axis_record((axis) => {
       const auto = auto_range(axis)
       const { range } = axis_config(axis)
-      return auto != null && range_spans_zero(range?.[0] ?? auto[0], range?.[1] ?? auto[1])
+      return auto != null && in_range(0, [range?.[0] ?? auto[0], range?.[1] ?? auto[1]])
     }),
   )
   const format_placeholders: Record<AxisKey, string> = {
@@ -186,6 +188,13 @@
   const ticks_settings = track_axis_field(`ticks`)
   const tick_format_settings = track_axis_field(`format`)
 </script>
+
+<!-- <option>s from the settings schema, so a select's labels/values have one source of truth -->
+{#snippet enum_options(setting: SettingType)}
+  {#each Object.entries(enum_labels(setting)) as [value, label] (value)}
+    <option {value}>{label}</option>
+  {/each}
+{/snippet}
 
 {#snippet axis_checks(
   label: string,

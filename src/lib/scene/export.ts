@@ -44,16 +44,13 @@ function extract_bond_color_for_instance(
   geometry: BufferGeometry,
   instance_idx: number,
 ): Color | null {
-  const color_start_attr = geometry.getAttribute(`instanceColorStart`)
-  const color_end_attr = geometry.getAttribute(`instanceColorEnd`)
-
-  if (!color_start_attr || !color_end_attr) return null
-  if (instance_idx < 0 || instance_idx >= color_start_attr.count) return null
-
+  const start = geometry.getAttribute(`instanceColorStart`)
+  const end = geometry.getAttribute(`instanceColorEnd`)
+  if (!start || !end || instance_idx >= start.count) return null
   return new Color(
-    (color_start_attr.getX(instance_idx) + color_end_attr.getX(instance_idx)) / 2,
-    (color_start_attr.getY(instance_idx) + color_end_attr.getY(instance_idx)) / 2,
-    (color_start_attr.getZ(instance_idx) + color_end_attr.getZ(instance_idx)) / 2,
+    (start.getX(instance_idx) + end.getX(instance_idx)) / 2,
+    (start.getY(instance_idx) + end.getY(instance_idx)) / 2,
+    (start.getZ(instance_idx) + end.getZ(instance_idx)) / 2,
   )
 }
 
@@ -92,7 +89,6 @@ export function generate_mtl_content(scene: Object3D): string {
 
     const materials = Array.isArray(object.material) ? object.material : [object.material]
     for (const mat of materials) {
-      // Skip if already processed or no name
       // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty name should use default
       const mat_name = mat.name || `default_material`
       if (processed_materials.has(mat_name)) continue
@@ -100,7 +96,6 @@ export function generate_mtl_content(scene: Object3D): string {
 
       lines.push(`newmtl ${mat_name}`)
 
-      // Get diffuse color (main color), defaulting to white
       const color = has_color_property(mat) ? mat.color : { r: 1, g: 1, b: 1 }
       lines.push(
         `Kd ${encode_srgb(color, 1)}`,
@@ -145,7 +140,6 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
     const parent = instanced_mesh.parent
     if (!parent) continue
 
-    // Create a group to hold all the individual meshes
     const group = new Group()
     group.name = instanced_mesh.name
 
@@ -187,7 +181,6 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
       return material
     }
 
-    // Create individual meshes for each instance
     const instance_color = new Color()
     const instance_matrix = new Matrix4()
     const combined_matrix = new Matrix4()
@@ -202,10 +195,7 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
               .multiply(material_tint)
           : material_color
       const material = get_material(resolved_color)
-
       const mesh = new Mesh(shared_geometry, material)
-
-      // Combine base transform with instance transform
       combined_matrix.multiplyMatrices(instanced_mesh.matrix, instance_matrix)
       // Keep the captured matrix directly: decomposing a collapsed (zero-radius) instance
       // creates NaN rotations, and recomposition needlessly perturbs ordinary transforms.
@@ -215,12 +205,10 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
       group.add(mesh)
     }
 
-    // Replace the InstancedMesh with the Group in the parent
     parent.remove(instanced_mesh)
     parent.add(group)
   }
 
-  // Update all world matrices in the modified scene
   cloned_scene.updateMatrixWorld(true)
 
   // Strip leftover per-instance color attributes from any mesh the instancing pass didn't

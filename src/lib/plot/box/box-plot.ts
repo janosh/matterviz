@@ -164,17 +164,9 @@ export function compute_box_whiskers(
     collect_outliers = true,
   } = opts
 
-  const {
-    values: vals,
-    n: n_vals,
-    min: data_min,
-    max: data_max,
-    mean,
-    q1: quartile_1,
-    median,
-    q3: quartile_3,
-  } = summary
-  if (n_vals === 0) return { ...EMPTY_STATS, outliers: [] }
+  const { values: vals, ...stats } = summary
+  if (stats.n === 0) return { ...EMPTY_STATS, outliers: [] }
+  const { min: data_min, max: data_max, mean, q1: quartile_1, q3: quartile_3 } = stats
 
   let whisker_low: number
   let whisker_high: number
@@ -222,18 +214,7 @@ export function compute_box_whiskers(
     if (collect_outliers) outliers.sort(ascending)
   }
 
-  return {
-    min: data_min,
-    max: data_max,
-    q1: quartile_1,
-    median,
-    q3: quartile_3,
-    mean,
-    whisker_low,
-    whisker_high,
-    outliers,
-    n: n_vals,
-  }
+  return { ...stats, whisker_low, whisker_high, outliers }
 }
 
 // Cross-axis px offset of each sample from its box's center line, given the samples'

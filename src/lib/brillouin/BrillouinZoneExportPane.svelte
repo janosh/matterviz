@@ -36,18 +36,9 @@
 
   function json_string() {
     if (!bz_data) return null
-    return JSON.stringify(
-      {
-        order: bz_data.order,
-        volume: bz_data.volume,
-        vertices: bz_data.vertices,
-        faces: bz_data.faces,
-        edges: bz_data.edges,
-        reciprocal_lattice: bz_data.k_lattice,
-      },
-      null,
-      2,
-    )
+    const { order, volume, vertices, faces, edges, k_lattice } = bz_data
+    const json = { order, volume, vertices, faces, edges, reciprocal_lattice: k_lattice }
+    return JSON.stringify(json, null, 2)
   }
 
   const sections = $derived<ExportSection[]>([

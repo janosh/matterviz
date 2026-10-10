@@ -2,13 +2,11 @@
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { clamp, reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
+import { reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
 import { clamp01 } from '#lib/utils.js'
-import type { ScalarGrid3D } from './grid'
+import { lower_corner, type ScalarGrid3D, upper_corner } from './grid'
 import type { VolumeGrid, VolumetricData } from './types'
 import { grid_data_range, MAX_GRID_POINTS } from './types'
-
-const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
 // Preserve the rounding of ((frac % 1) + 1) % 1 while avoiding remainder operations
 // for coordinates already in the cell. The addition can round up to exactly 2.
@@ -18,22 +16,7 @@ const wrap_fraction = (frac: number): number => {
   return shifted
 }
 
-// Lower voxel index along one axis of a trilinear sample. Singleton axes (n === 1) pin
-// both corners to 0 so the n - 2 clamp never goes negative.
-const lower_corner = (count: number, floor_g: number, periodic: boolean): number => {
-  if (count === 1) return 0
-  if (!periodic) return clamp(floor_g, 0, count - 2)
-  // World-coordinate samplers already wrap into the cell. Their integer voxel indices
-  // need no modulo; direct fractional callers can still arrive outside the cell.
-  return floor_g >= 0 && floor_g < count ? floor_g : safe_mod(floor_g, count)
-}
-const upper_corner = (count: number, lower: number, periodic: boolean): number => {
-  if (count === 1) return 0
-  if (!periodic) return Math.min(lower + 1, count - 1)
-  return lower + 1 === count ? 0 : lower + 1
-}
-
-// Trilinear interpolation of a z-fastest scalar grid at fractional coordinates.
+// Trilinear interpolation of a scalar grid (either value order) at fractional coordinates.
 // Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds. Scalar
 // arithmetic only: this runs once per slice pixel and per isosurface vertex.
 export function trilinear_interpolate(
@@ -69,10 +52,13 @@ export function trilinear_interpolate(
   const x_fraction = periodic ? grid_x - floor_x : grid_x - coord_x_0
   const y_fraction = periodic ? grid_y - floor_y : grid_y - coord_y_0
   const z_fraction = periodic ? grid_z - floor_z : grid_z - coord_z_0
+  // scalar_grid_strides inlined: its Vec3 allocation per sample cost 7% here
+  const x_fastest = grid.order === `x_fastest`
   return interpolate_cell(
     grid.values,
-    size_y * size_z,
-    size_z,
+    x_fastest ? 1 : size_y * size_z,
+    x_fastest ? size_x : size_z,
+    x_fastest ? size_x * size_y : 1,
     coord_x_0,
     upper_corner(size_x, coord_x_0, periodic),
     coord_y_0,
@@ -85,11 +71,12 @@ export function trilinear_interpolate(
   )
 }
 
-// 8-corner trilinear blend on a z-fastest value array with the given strides
+// 8-corner trilinear blend on a value array with the given strides
 const interpolate_cell = (
   values: ArrayLike<number>,
   stride_x: number,
   stride_y: number,
+  stride_z: number,
   coord_x_0: number,
   coord_x_1: number,
   coord_y_0: number,
@@ -104,18 +91,12 @@ const interpolate_cell = (
   const row_01 = coord_x_0 * stride_x + coord_y_1 * stride_y
   const row_10 = coord_x_1 * stride_x + coord_y_0 * stride_y
   const row_11 = coord_x_1 * stride_x + coord_y_1 * stride_y
-  const c00 =
-    values[row_00 + coord_z_0] +
-    (values[row_10 + coord_z_0] - values[row_00 + coord_z_0]) * x_fraction
-  const c01 =
-    values[row_00 + coord_z_1] +
-    (values[row_10 + coord_z_1] - values[row_00 + coord_z_1]) * x_fraction
-  const c10 =
-    values[row_01 + coord_z_0] +
-    (values[row_11 + coord_z_0] - values[row_01 + coord_z_0]) * x_fraction
-  const c11 =
-    values[row_01 + coord_z_1] +
-    (values[row_11 + coord_z_1] - values[row_01 + coord_z_1]) * x_fraction
+  const z_0 = coord_z_0 * stride_z
+  const z_1 = coord_z_1 * stride_z
+  const c00 = values[row_00 + z_0] + (values[row_10 + z_0] - values[row_00 + z_0]) * x_fraction
+  const c01 = values[row_00 + z_1] + (values[row_10 + z_1] - values[row_00 + z_1]) * x_fraction
+  const c10 = values[row_01 + z_0] + (values[row_11 + z_0] - values[row_01 + z_0]) * x_fraction
+  const c11 = values[row_01 + z_1] + (values[row_11 + z_1] - values[row_01 + z_1]) * x_fraction
   const value_c_0 = c00 + (c10 - c00) * y_fraction
   const value_c_1 = c01 + (c11 - c01) * y_fraction
   return value_c_0 + (value_c_1 - value_c_0) * z_fraction
@@ -370,15 +351,10 @@ const precompute_axis_interpolation = (
   for (let sample_idx = 0; sample_idx < count; sample_idx++) {
     const grid_coord = grid_start + sample_idx * grid_step
     const grid_floor = Math.floor(grid_coord)
-    if (periodic) {
-      lower[sample_idx] = safe_mod(grid_floor, source_dim)
-      upper[sample_idx] = (lower[sample_idx] + 1) % source_dim
-      weight[sample_idx] = grid_coord - grid_floor
-    } else {
-      lower[sample_idx] = clamp(grid_floor, 0, source_dim - 2)
-      upper[sample_idx] = Math.min(lower[sample_idx] + 1, source_dim - 1)
-      weight[sample_idx] = grid_coord - lower[sample_idx]
-    }
+    const lower_idx = lower_corner(source_dim, grid_floor, periodic)
+    lower[sample_idx] = lower_idx
+    upper[sample_idx] = upper_corner(source_dim, lower_idx, periodic)
+    weight[sample_idx] = grid_coord - (periodic ? grid_floor : lower_idx)
   }
   return { lower, upper, weight, direct }
 }
@@ -398,11 +374,7 @@ export function extract_volume_range(
 ): Omit<VolumetricData, `id`> {
   const sanitized = sanitize_display_range(range, volume.periodic)
   const [range_x, range_y, range_z] = sanitized
-  const widths: Vec3 = [
-    range_x[1] - range_x[0],
-    range_y[1] - range_y[0],
-    range_z[1] - range_z[0],
-  ]
+  const widths = sanitized.map(([lower, upper]) => upper - lower) as Vec3
 
   // Sample counts follow the source voxel density, capped to the point budget. The
   // reduction loop guards against cbrt undershoot when the min-2 floor prevents an axis
@@ -454,6 +426,7 @@ export function extract_volume_range(
             src,
             src_stride_x,
             src_nz,
+            1,
             x_lower,
             x_upper,
             y_lower,

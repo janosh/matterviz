@@ -57,11 +57,9 @@ export function resolve_series_ref(
   ref: { type: `series`; series_idx?: number; series_id?: string | number },
   series: readonly DataSeries[],
 ): DataSeries | null {
-  if (`series_idx` in ref && typeof ref.series_idx === `number`) {
-    const idx = ref.series_idx
-    return idx >= 0 && idx < series.length ? series[idx] : null
-  }
-  if (`series_id` in ref && ref.series_id !== undefined) {
+  const idx = ref.series_idx
+  if (typeof idx === `number`) return idx >= 0 && idx < series.length ? series[idx] : null
+  if (ref.series_id !== undefined) {
     return series.find((data_series) => data_series?.id === ref.series_id) ?? null
   }
   return null
@@ -136,17 +134,9 @@ function monotone_tangents(
   return tangents
 }
 
-// Index of the bracket [lo, lo+1] containing x (xs ascending); clamps to interior brackets
-const bracket = (x_values: readonly number[], coord_x: number): number => {
-  let lower = 0
-  let upper = x_values.length - 1
-  while (upper - lower > 1) {
-    const mid = (lower + upper) >> 1
-    if (x_values[mid] <= coord_x) lower = mid
-    else upper = mid
-  }
-  return lower
-}
+// Index of the bracket [lo, lo+1] containing x (xs ascending, x strictly inside the domain)
+const bracket = (x_values: readonly number[], coord_x: number): number =>
+  partition_point(x_values, (val) => val <= coord_x) - 1
 
 // y clamped to the endpoint value when x is at/outside the domain (null when x is strictly inside)
 const endpoint_clamp = (
@@ -239,18 +229,14 @@ function prepare_boundary(boundary: ResolvedBoundary): PreparedBoundary {
   const { points, curve } = boundary
   const x_values = points.map((point) => point.x)
   const y_values = points.map((point) => point.y)
-  if (MONOTONE_LIKE.has(curve)) {
-    const tangents = monotone_tangents(x_values, y_values)
-    return {
-      points,
-      curve,
-      eval: (coord_x) => monotone_interpolate(x_values, y_values, coord_x, tangents),
-    }
-  }
+  const tangents = MONOTONE_LIKE.has(curve) ? monotone_tangents(x_values, y_values) : null
   return {
     points,
     curve,
-    eval: (coord_x) => piecewise_eval(x_values, y_values, coord_x, curve),
+    eval: (coord_x) =>
+      tangents
+        ? monotone_interpolate(x_values, y_values, coord_x, tangents)
+        : piecewise_eval(x_values, y_values, coord_x, curve),
   }
 }
 

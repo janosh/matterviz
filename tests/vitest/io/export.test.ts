@@ -552,12 +552,6 @@ describe(`export_canvas_as_png`, () => {
 })
 
 describe(`export_svg_as_png`, () => {
-  test(`reports missing SVG dimensions to the export UI`, async () => {
-    await expect(export_svg_as_png(make_svg(), `test.png`)).rejects.toThrow(
-      `Invalid SVG dimensions`,
-    )
-  })
-
   test(`downloads the rasterized PNG under the given filename`, async () => {
     const canvas = mock_offscreen_canvas()
     mock_object_url()

@@ -2,7 +2,7 @@
 // Enables atmosphere-controlled phase diagram analysis
 
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { drop_cached_hull_data } from './thermodynamics'
+import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
@@ -126,6 +126,19 @@ export const gas_pressure_term = (
 ): number =>
   (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure / P_REF)) / gas_num_atoms(gas)
 
+// Shift of an element whose reference already carries its own G(T) (a tabulated entry, SISSO's
+// experimental 1 bar gas): only k_B T ln(p/p0) is missing, since -T*S is in G(T) already. Only
+// elemental gases (O2, N2, ...) map one element to one pressure term; compound gases (CO2, CO,
+// H2O) have no such reference.
+export const tabulated_reference_shift = (
+  gas: GasSpecies,
+  temperature: number,
+  pressure: number,
+): number =>
+  Object.keys(GAS_STOICHIOMETRY[gas]).length === 1
+    ? gas_pressure_term(gas, temperature, pressure)
+    : 0
+
 // Gas chemical potential per atom at temperature (K) and pressure (bar), PIRO's convention:
 // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
 // non-finite pressure counts as the reference pressure.
@@ -142,55 +155,29 @@ export function compute_gas_chemical_potential(
 
 // Gas Analysis and Corrections
 
-// Analyze entries to determine which gases are relevant for the chemical system
+// Elements present (positive amount) that come from an enabled gas, and those gases, in
+// order of first appearance
 export function analyze_gas_data(
   entries: PhaseData[],
   config: GasThermodynamicsConfig,
 ): GasAnalysis {
   const enabled_gases = config.enabled_gases ?? []
-  if (enabled_gases.length === 0) {
-    return {
-      has_gas_dependent_elements: false,
-      gas_elements: [],
-      relevant_gases: [],
-    }
-  }
-
-  // Get element-to-gas mapping
-  const element_to_gas = {
-    ...DEFAULT_ELEMENT_TO_GAS,
-    ...config.element_to_gas,
-  }
-
-  // Find all elements in the chemical system
-  const all_elements = new Set<ElementSymbol>()
-  for (const entry of entries) {
-    for (const element of Object.keys(entry.composition)) {
-      if ((entry.composition[element as ElementSymbol] ?? 0) > 0) {
-        all_elements.add(element as ElementSymbol)
-      }
-    }
-  }
-
-  // Find elements that come from enabled gases
-  const gas_elements: ElementSymbol[] = []
-  const relevant_gases: GasSpecies[] = []
-
-  for (const element of all_elements) {
+  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
+  const present = new Set(
+    entries.flatMap(({ composition }) =>
+      (Object.keys(composition) as ElementSymbol[]).filter(
+        (element) => (composition[element] ?? 0) > 0,
+      ),
+    ),
+  )
+  const gas_elements = [...present].filter((element) => {
     const gas = element_to_gas[element]
-    if (gas && enabled_gases.includes(gas)) {
-      gas_elements.push(element)
-      if (!relevant_gases.includes(gas)) {
-        relevant_gases.push(gas)
-      }
-    }
-  }
-
-  return {
-    has_gas_dependent_elements: gas_elements.length > 0,
-    gas_elements,
-    relevant_gases,
-  }
+    return gas !== undefined && enabled_gases.includes(gas)
+  })
+  const relevant_gases = [
+    ...new Set(gas_elements.flatMap((element) => element_to_gas[element] ?? [])),
+  ]
+  return { has_gas_dependent_elements: gas_elements.length > 0, gas_elements, relevant_gases }
 }
 
 // Pressures for every gas: the config's finite positive values over the defaults
@@ -273,20 +260,24 @@ export function compute_gas_correction(
 // If we applied corrections to ALL entries, they would cancel out in the
 // formation energy calculation, resulting in no change to the hull.
 // By only correcting unary references, we effectively replace the standard
-// elemental reference with the gas chemical potential at (T, P).
+// elemental reference with the gas chemical potential at (T, P). A unary with a G(T) table
+// (its energy is G(T) after filter_entries_at_temperature) only gets the pressure term.
 export function apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig | undefined,
   temperature: number,
 ): PhaseData[] {
-  if (!config?.enabled_gases?.length) return entries
-
-  const analysis = analyze_gas_data(entries, config)
-
-  // No gas-dependent elements, return entries unchanged
-  if (!analysis.has_gas_dependent_elements) return entries
+  // No enabled gas or no gas-dependent element: entries unchanged
+  if (!config || !analyze_gas_data(entries, config).has_gas_dependent_elements) return entries
 
   const pressures = get_effective_pressures(config)
+  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
+  const tabulated_shift = (element: ElementSymbol): number => {
+    const gas = element_to_gas[element]
+    return gas && config.enabled_gases?.includes(gas)
+      ? tabulated_reference_shift(gas, temperature, pressures[gas])
+      : 0
+  }
 
   // Elements whose reference energy moved: every formation energy measured against one of them
   // is now stale, including on the compounds returned untouched, hence the second pass below.
@@ -300,7 +291,9 @@ export function apply_gas_corrections(
     )
     if (elements_in_entry.length !== 1) return entry // Not unary, skip
 
-    const correction = compute_gas_correction(entry, config, temperature, pressures)
+    const correction = entry_has_temp_data(entry)
+      ? tabulated_shift(elements_in_entry[0][0] as ElementSymbol)
+      : compute_gas_correction(entry, config, temperature, pressures)
 
     // If no correction needed, return entry unchanged
     if (Math.abs(correction) < 1e-12) return entry

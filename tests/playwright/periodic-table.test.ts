@@ -1,6 +1,7 @@
 import { ELEM_HEATMAP_KEYS, format_num } from '#lib/labels.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import element_data from './element-data'
+import { require_bbox } from './helpers'
 
 test.describe(`Periodic Table`, () => {
   // Open the heatmap multiselect dropdown, retrying the click until the options
@@ -106,12 +107,9 @@ test.describe(`Periodic Table`, () => {
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.5)
 
     const inset = table.locator(`.table-inset`)
-    const [inset_box, h_box, sc_box] = await Promise.all([
-      inset.boundingBox(),
-      tile(`H`).boundingBox(),
-      tile(`Sc`).boundingBox(),
-    ])
-    if (!inset_box || !h_box || !sc_box) throw new Error(`missing inset/tile boxes`)
+    const [inset_box, h_box, sc_box] = await Promise.all(
+      [inset, tile(`H`), tile(`Sc`)].map((locator) => require_bbox(locator)),
+    )
     expect(Math.abs(inset_box.y - h_box.y)).toBeLessThan(2)
     expect(inset_box.y + inset_box.height).toBeLessThanOrEqual(sc_box.y + 2)
 
@@ -123,8 +121,7 @@ test.describe(`Periodic Table`, () => {
     expect(sc_box.y - tick_bottom).toBeGreaterThan(8)
 
     // Scale bar must span the inset hole, not shrink to the color-scale chip (~14em).
-    const scale_box = await table.locator(`section > .colorbar`).boundingBox()
-    if (!scale_box) throw new Error(`missing scale colorbar box`)
+    const scale_box = await require_bbox(table.locator(`section > .colorbar`))
     expect(scale_box.width).toBeGreaterThan(inset_box.width * 0.7)
   })
 
@@ -196,15 +193,12 @@ test.describe(`Periodic Table`, () => {
       const tooltip = await hover_until_tooltip(page, hydrogen_tile)
       await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
       await expect(tooltip).toContainText(`H • 1`)
-      const initial_box = await tooltip.boundingBox()
-      expect(initial_box).not.toBeNull()
+      const initial_box = await require_bbox(tooltip)
 
       await hover_until_tooltip(page, neon_tile)
       await expect(tooltip).toContainText(`Neon`)
       await expect(tooltip).toContainText(`Ne • 10`)
-      const new_box = await tooltip.boundingBox()
-      expect(new_box).not.toBeNull()
-      if (!initial_box || !new_box) throw new Error(`Tooltip bounding box not found`)
+      const new_box = await require_bbox(tooltip)
 
       expect(new_box.x).not.toBe(initial_box.x)
       expect(new_box.height).toBeCloseTo(initial_box.height, 0) // same two lines

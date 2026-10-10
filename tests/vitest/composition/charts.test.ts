@@ -18,13 +18,15 @@ const mount_chart = <T extends Component<{ composition: CompositionType }>>(
   component: T,
   props: ComponentProps<T>,
 ) => mount(component, { target: document.body, props })
+// each chart with the selector of its per-element marks
+const CHARTS = [
+  [PieChart, `path.pie-segment`],
+  [BarChart, `rect.bar-segment`],
+  [BubbleChart, `circle.bubble`],
+] as const
 
 describe(`shared segment helpers`, () => {
-  test.each([
-    [PieChart, `path.pie-segment`],
-    [BarChart, `rect.bar-segment`],
-    [BubbleChart, `circle.bubble`],
-  ] as const)(
+  test.each(CHARTS)(
     `%o shows rich unit tooltips and cleans up hover state`,
     async (chart, selector) => {
       const component = mount_chart(chart, { composition: { Fe: 2, O: 3 } })
@@ -103,12 +105,8 @@ describe(`shared segment helpers`, () => {
     expect(translucent.text_color).toBe(`currentColor`)
   })
 
-  test.each([
-    [PieChart, `path.pie-segment`],
-    [BarChart, `rect.bar-segment`],
-    [BubbleChart, `circle.bubble`],
-  ] as const)(`%o fills patterned elements from its own <defs>`, (component, selector) => {
-    mount_chart(component, {
+  test.each(CHARTS)(`%o fills patterned elements from its own <defs>`, (chart, selector) => {
+    mount_chart(chart, {
       composition: { Fe: 2, O: 3 },
       patterns: { Fe: `x`, O: { shape: `dots`, mode: `replace` } },
     })
@@ -163,6 +161,14 @@ describe(`shared segment helpers`, () => {
   ])(`fit_font_scale(%d, %d chars, %dpx) -> %d`, (base, n_chars, space, expected) => {
     expect(fit_font_scale(base, n_chars, space)).toBeCloseTo(expected, 12)
   })
+
+  // LiFePO4 at the default size: Bar puts the three thin segments' labels outside the bar
+  test.each(
+    CHARTS.flatMap(([chart]) => [[chart, true, 4] as const, [chart, false, 0] as const]),
+  )(`%o show_labels=%s renders %d labels`, (chart, show_labels, expected) => {
+    mount_chart(chart, { composition: lfp, show_labels })
+    expect(document.querySelectorAll(`text`)).toHaveLength(expected)
+  })
 })
 
 describe(`PieChart`, () => {
@@ -211,15 +217,6 @@ describe(`PieChart`, () => {
       }
     },
   )
-
-  test.each([
-    [true, 4],
-    [false, 0],
-  ])(`show_labels=%s renders %d labels`, (show_labels, expected) => {
-    mount_chart(PieChart, { composition: lfp, show_labels })
-    expect(document.querySelectorAll(`text`)).toHaveLength(expected)
-    expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(0)
-  })
 
   test(`labels are plain SVG text (exportable) with element symbol and amount subscript`, () => {
     mount_chart(PieChart, { composition: { Fe: 2, O: 3 } })
@@ -276,14 +273,6 @@ describe(`BarChart`, () => {
     ])
     expect(doc_query(`.bar-chart`).getAttribute(`viewBox`)).toBe(`0 0 400 74`) // 20+2+30+2+20
     expect(doc_query(`clipPath rect`).getAttribute(`rx`)).toBe(`2`)
-  })
-
-  test.each([
-    [true, 2],
-    [false, 0],
-  ])(`show_labels=%s -> %d inside labels`, (show_labels, expected) => {
-    mount_chart(BarChart, { composition: { H: 2, O: 1 }, size: 300, show_labels })
-    expect(document.querySelectorAll(`text.bar-label`)).toHaveLength(expected)
   })
 
   // oxfmt-ignore

@@ -19,7 +19,8 @@
   } as unknown as Record<string, Crystal>
 
   let selected = $state([`Al₂Lu`, `Pd`])
-  let mode = $state<`element_pairs` | `full`>(`full`)
+  type RdfMode = `element_pairs` | `full`
+  let mode = $state<RdfMode>(`full`)
   let cutoff = $state(7)
   let n_bins = $state(100)
 
@@ -75,7 +76,7 @@
   // Amorphous structure
   let n_atoms = $state(200)
   let box_size = $state(20)
-  let amorphous_mode = $state<`element_pairs` | `full`>(`full`)
+  let amorphous_mode = $state<RdfMode>(`full`)
 
   const amorphous = $derived.by(() => {
     let seed = 42 + n_atoms
@@ -86,33 +87,39 @@
 
     const comp = { Si: 1, O: 2, Al: 0.5, Fe: 0.3 }
     const total = Object.values(comp).reduce((sum, count) => sum + count, 0)
-    const sites: Crystal[`sites`] = []
-
-    for (const [element, frac] of Object.entries(comp)) {
-      for (let _ = 0; _ < Math.round((frac / total) * n_atoms); _++) {
-        const abc: Vec3 = [rand(), rand(), rand()]
-        sites.push(cubic_site(element as ElementSymbol, abc, box_size))
-      }
-    }
+    const sites = Object.entries(comp).flatMap(([element, frac]) =>
+      Array.from({ length: Math.round((frac / total) * n_atoms) }, () =>
+        cubic_site(element as ElementSymbol, [rand(), rand(), rand()], box_size),
+      ),
+    )
     return { lattice: cubic_lattice(box_size), sites }
   })
 </script>
+
+{#snippet structure_rdf(
+  structure: Crystal,
+  rdf_mode: RdfMode,
+  rdf_cutoff: number,
+  rdf_bins: number,
+)}
+  <section class="demo-2col">
+    <Structure {structure} />
+    <RdfPlot
+      structures={structure}
+      mode={rdf_mode}
+      cutoff={rdf_cutoff}
+      n_bins={rdf_bins}
+      style="height: 100%"
+    />
+  </section>
+{/snippet}
 
 <h1 id="radial-distribution-functions-rdf">Radial Distribution Functions (RDF)</h1>
 
 <div class="bleed-1400">
   <h2 id="element-pair-rdfs">Element-Pair RDFs</h2>
   <LazyDemo label="Element-Pair RDFs">
-    <section class="demo-2col">
-      <Structure structure={structures[`Al₂Lu`]} />
-      <RdfPlot
-        structures={structures[`Al₂Lu`]}
-        mode="element_pairs"
-        {cutoff}
-        {n_bins}
-        style="height: 100%"
-      />
-    </section>
+    {@render structure_rdf(structures[`Al₂Lu`], `element_pairs`, cutoff, n_bins)}
   </LazyDemo>
 
   <h2 id="full-rdf">Full RDF</h2>
@@ -164,16 +171,7 @@
 
   <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
   <LazyDemo label="Complex: Bi₂Zr₂O₈">
-    <section class="demo-2col">
-      <Structure structure={structures[`Bi₂Zr₂O₈`]} />
-      <RdfPlot
-        structures={structures[`Bi₂Zr₂O₈`]}
-        mode="element_pairs"
-        {cutoff}
-        {n_bins}
-        style="height: 100%"
-      />
-    </section>
+    {@render structure_rdf(structures[`Bi₂Zr₂O₈`], `element_pairs`, cutoff, n_bins)}
   </LazyDemo>
 
   <h2 id="compare-structures">Compare Structures</h2>
@@ -208,9 +206,7 @@
 
   <LazyDemo label="Compare Structures">
     <RdfPlot
-      structures={Object.fromEntries(
-        selected.map((key) => [key, structures[key as keyof typeof structures]]),
-      )}
+      structures={Object.fromEntries(selected.map((key) => [key, structures[key]]))}
       {mode}
       {cutoff}
       {n_bins}
@@ -238,16 +234,7 @@
   </div>
 
   <LazyDemo label="Amorphous Structure">
-    <section class="demo-2col">
-      <Structure structure={amorphous} />
-      <RdfPlot
-        structures={amorphous}
-        mode={amorphous_mode}
-        cutoff={10}
-        n_bins={100}
-        style="height: 100%"
-      />
-    </section>
+    {@render structure_rdf(amorphous, amorphous_mode, 10, 100)}
   </LazyDemo>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>

@@ -32,6 +32,7 @@
 
   // Styled tooltip (reads the button's title attr), forwarded as a spreadable attachment
   const tooltip_attachment = { [createAttachmentKey()]: tooltip() }
+  const show_toggle = $derived(fullscreen_toggle && controls_config.visible(`fullscreen`))
 </script>
 
 <section
@@ -45,10 +46,10 @@
 
   {#if controls_config.mode !== `never`}{@render children?.()}{/if}
 
-  {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+  {#if fullscreen || show_toggle}
     <FullscreenButton
       bind:fullscreen
-      hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+      hidden={!show_toggle}
       {wrapper}
       bg_css_var={fullscreen_bg_css_var}
       on_change={on_fullscreen_change}

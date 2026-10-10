@@ -1,5 +1,4 @@
-// Theme Detection for Embedded MatterViz Views
-
+// Theme detection for embedded MatterViz views
 import { perceived_brightness } from '#lib/colors/index.js'
 import type { ThemeType } from '#lib/theme/index.js'
 import {
@@ -9,7 +8,6 @@ import {
   observe_theme_attributes,
 } from '#lib/theme/index.js'
 
-// Extend globalThis with our custom properties
 declare global {
   var jupyterlab:
     | {
@@ -22,8 +20,8 @@ declare global {
 // `color-scheme` is what every light-dark() token on the page resolves against — and then
 // through the marker conventions hosts use: a `dark`/`light` word in a class token or in
 // `data-theme` (JupyterLab `jp-theme-dark`, VS Code `vscode-dark`, marimo `dark`/`data-theme`).
-// Computed color-scheme is `normal` when nothing declared it and may list both schemes
-// (`light dark`), in which case the first is the preferred one.
+// Computed color-scheme is `normal` when nothing declared it, and listing both schemes
+// (`light dark`) declares neither, so both fall through to the markers.
 const THEME_WORD = /(?:^|[\s_-])(?<scheme>dark|light)(?=$|[\s_-])/i
 const declared_theme = (element: Element): ThemeType | null => {
   const scheme = declared_color_scheme(element)

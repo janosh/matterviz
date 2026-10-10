@@ -11,21 +11,15 @@
 
   let {
     ref_line,
-    scene_size = [10, 10, 5],
     ranges,
   }: {
     ref_line: RefLine3D
-    scene_size?: Vec3
     ranges: { x: Vec2; y: Vec2; z: Vec2 }
   } = $props()
 
-  let [scene_x, scene_y, scene_z] = $derived(scene_size)
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
-
   // Transform data coords to Three.js coordinates
-  const to_coords = $derived(
-    create_to_threejs({ scene_x, scene_y, scene_z, x_range, y_range, z_range }),
-  )
+  const to_coords = $derived(create_to_threejs(ranges))
   const endpoints_from = (point_a: Vec3, point_b: Vec3): [Point3D, Point3D] => [
     to_coords(...point_a),
     to_coords(...point_b),

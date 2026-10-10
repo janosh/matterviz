@@ -223,19 +223,19 @@ export function generate_candidates(
   axis_x: number,
   axis_y: number,
   point_radius: number,
-  label_w: number,
-  label_h: number,
+  label_width: number,
+  label_height: number,
   gap: number,
 ): Point2D[] {
   const offset = point_radius + gap
   return [
-    { x: axis_x + offset, y: axis_y - label_h + offset / 2 }, // R  (baseline just below center)
-    { x: axis_x + offset, y: axis_y - label_h - offset / 2 }, // TR
-    { x: axis_x - label_w / 2, y: axis_y - label_h - offset }, // T
-    { x: axis_x - label_w - offset, y: axis_y - label_h - offset / 2 }, // TL
-    { x: axis_x - label_w - offset, y: axis_y - label_h + offset / 2 }, // L  (baseline just below center)
-    { x: axis_x - label_w - offset, y: axis_y + offset / 2 }, // BL
-    { x: axis_x - label_w / 2, y: axis_y + offset }, // B
+    { x: axis_x + offset, y: axis_y - label_height + offset / 2 }, // R  (baseline just below center)
+    { x: axis_x + offset, y: axis_y - label_height - offset / 2 }, // TR
+    { x: axis_x - label_width / 2, y: axis_y - label_height - offset }, // T
+    { x: axis_x - label_width - offset, y: axis_y - label_height - offset / 2 }, // TL
+    { x: axis_x - label_width - offset, y: axis_y - label_height + offset / 2 }, // L  (baseline just below center)
+    { x: axis_x - label_width - offset, y: axis_y + offset / 2 }, // BL
+    { x: axis_x - label_width / 2, y: axis_y + offset }, // B
     { x: axis_x + offset, y: axis_y + offset / 2 }, // BR
   ]
 }
@@ -499,26 +499,27 @@ export function compute_label_positions(
       const label_size =
         point.point_label.size ??
         estimate_label_size(point.point_label.text, point.point_label.font_size)
-      const label_w = Math.max(0, label_size.width)
-      const label_h = Math.max(0, label_size.height)
+      const label_width = Math.max(0, label_size.width)
+      const label_height = Math.max(0, label_size.height)
       const radius = Math.max(0, point.point_style?.radius ?? 3)
       // A non-finite anchor (log scale on a non-positive value, say) has nothing to place a
       // label against, and keeping it would make every delta NaN -- so every SA move loses to
       // `delta < 0` and the whole scene silently freezes at its greedy positions, not just
       // this label. Degenerate `plot_bounds` (max < min) is separate and not handled here.
-      if (![anchor_x, anchor_y, label_w, label_h, radius].every(Number.isFinite)) continue
+      if (![anchor_x, anchor_y, label_width, label_height, radius].every(Number.isFinite))
+        continue
 
       label_infos.push({
         id: `${point.series_idx}-${point.point_idx}`,
         anchor: { x: anchor_x, y: anchor_y, radius },
-        width: label_w,
-        height: label_h,
+        width: label_width,
+        height: label_height,
         candidates: generate_candidates(
           anchor_x,
           anchor_y,
           radius,
-          label_w,
-          label_h,
+          label_width,
+          label_height,
           candidate_gap,
         ),
       })
@@ -571,8 +572,8 @@ export function compute_label_positions(
   for (let idx = 0; idx < num_labels; idx++) {
     const {
       id: identifier,
-      width: legend_width,
-      height: legend_height,
+      width: label_width,
+      height: label_height,
       anchor,
     } = label_infos[idx]
     const offset = warm_start?.get(identifier)
@@ -581,10 +582,10 @@ export function compute_label_positions(
       continue
     }
     labels[idx] = {
-      x: anchor.x + offset.x - legend_width / 2,
-      y: anchor.y + offset.y - legend_height / 2,
-      w: legend_width,
-      h: legend_height,
+      x: anchor.x + offset.x - label_width / 2,
+      y: anchor.y + offset.y - label_height / 2,
+      w: label_width,
+      h: label_height,
       anchor_idx: idx,
     }
     placed.push(labels[idx])
@@ -593,7 +594,7 @@ export function compute_label_positions(
   // Greedy initialization for the rest: pick best candidate per label. With nothing carried
   // over this runs over every label in order, scoring against those already placed.
   for (const idx of cold_labels) {
-    const { candidates, width: legend_width, height: legend_height, anchor } = label_infos[idx]
+    const { candidates, width: label_width, height: label_height, anchor } = label_infos[idx]
     let best_candidate = candidates[0]
     let best_score = Infinity
 
@@ -601,8 +602,8 @@ export function compute_label_positions(
       const test_rect: Rect = {
         x: candidate.x,
         y: candidate.y,
-        w: legend_width,
-        h: legend_height,
+        w: label_width,
+        h: label_height,
       }
       let score = weights.bounds * rect_out_of_bounds_area(test_rect, plot_bounds)
 
@@ -616,8 +617,8 @@ export function compute_label_positions(
       score +=
         weights.distance *
         Math.hypot(
-          candidate.x + legend_width / 2 - anchor.x,
-          candidate.y + legend_height / 2 - anchor.y,
+          candidate.x + label_width / 2 - anchor.x,
+          candidate.y + label_height / 2 - anchor.y,
         )
 
       if (score < best_score) {
@@ -629,8 +630,8 @@ export function compute_label_positions(
     labels[idx] = {
       x: best_candidate.x,
       y: best_candidate.y,
-      w: legend_width,
-      h: legend_height,
+      w: label_width,
+      h: label_height,
       anchor_idx: idx,
     }
     placed.push(labels[idx])

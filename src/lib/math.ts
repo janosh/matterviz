@@ -198,9 +198,10 @@ export function euclidean_dist(vec1: readonly number[], vec2: readonly number[])
 // Exact minimum-image displacement `to - from` for row-vector lattices. Rounded
 // fractional wrapping is only approximate for skewed cells, so it is the starting guess
 // and the integer shifts that reciprocal-space bounds say could still beat that Cartesian
-// radius are then searched (in the reduced basis when fully periodic, which keeps that
-// search a handful of candidates however sheared the cell is). Runs per atom pair in RDF/MSD/bonding loops, so it works in
-// scalars and allocates only the returned Vec3.
+// radius are then searched (in the pbc-specific basis of LatticeConverters.search_basis,
+// which keeps that search a handful of candidates however sheared the cell is). Runs per
+// atom pair in RDF/MSD/bonding loops, so it works in scalars and allocates only the
+// returned Vec3.
 export const min_image_displacement = (
   from: Vec3,
   target: Vec3,
@@ -230,10 +231,9 @@ export function min_image_displacement_into(
     return out
   }
 
-  const all_converters = converters ?? create_lattice_converters(lattice_matrix)
-  // Basis reduction mixes axes, so a partly periodic cell keeps its own basis
-  const { lattice, reciprocal, reciprocal_axis_norms } =
-    pbc[0] && pbc[1] && pbc[2] ? all_converters.reduced : all_converters
+  const { lattice, reciprocal, reciprocal_axis_norms } = (
+    converters ?? create_lattice_converters(lattice_matrix)
+  ).search_basis(pbc)
   // An exactly diagonal cell has independent axes: rounding each periodic fractional
   // component already minimizes the Cartesian distance, including negative cell vectors.
   // Avoid per-atom matrix products and candidate enumeration for ordinary MD boxes.
@@ -402,13 +402,17 @@ export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
 // [[1,0,0],[s,1,0],[0,0,1]] supercell) starts from a sliver of radius ~s², and the
 // radius-bounded G enumeration in compute_brillouin_zone grows as s⁴ (47 s at s = 3, out of
 // memory by s = 30). Also used by lattice_point_group_matrices, whose {-1,0,1} integer-matrix
-// search assumes a reduced basis.
-export function reduce_basis(basis: Matrix3x3): Matrix3x3 {
+// search assumes a reduced basis. `rows` restricts the reduction to those rows (the periodic
+// ones of a slab or wire); the others are copied unchanged.
+export function reduce_basis(
+  basis: Matrix3x3,
+  rows: readonly number[] = [0, 1, 2],
+): Matrix3x3 {
   const reduced = basis.map((row) => [...row]) as Matrix3x3
   for (let iter = 0; iter < 64; iter++) {
     let changed = false
-    for (let idx_i = 0; idx_i < 3; idx_i++) {
-      for (let idx_j = 0; idx_j < 3; idx_j++) {
+    for (const idx_i of rows) {
+      for (const idx_j of rows) {
         if (idx_i === idx_j) continue
         const len_sq_j = dot(reduced[idx_j], reduced[idx_j])
         const coeff = Math.round(dot(reduced[idx_i], reduced[idx_j]) / len_sq_j)
@@ -590,17 +594,18 @@ export const create_cart_to_frac = (lattice: Matrix3x3) => {
   return (cart: Vec3, target?: Vec3): Vec3 => mat3x3_vec3_multiply(reciprocal, cart, target)
 }
 
+// A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
+type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
+
 // Paired converters for a lattice, built once and reused across every site or frame.
 // The raw matrices are exposed for allocation-free scalar arithmetic in hot loops
 // (min_image_displacement); reciprocal_axis_norms[i] = |b_i| bounds how far a Cartesian
 // radius can reach along fractional axis i.
-// A basis with its reciprocal (rows b_i with b_i · a_j = δ_ij) and the reciprocal row norms
-type LatticeBasis = { lattice: Matrix3x3; reciprocal: Matrix3x3; reciprocal_axis_norms: Vec3 }
-
 export type LatticeConverters = LatticeBasis & {
-  // The same lattice in a reduced basis: the minimum-image search of a fully periodic cell
-  // runs there, since a sheared basis's candidate box grows with the shear (and throws)
-  reduced: LatticeBasis
+  // The basis the minimum-image search under `pbc` runs in (see min_image_search_basis),
+  // built on first use per periodicity: a sheared basis's candidate box grows with the
+  // shear (and throws)
+  search_basis: (pbc: Pbc) => LatticeBasis
   cart_to_frac: (cart: Vec3) => Vec3
   frac_to_cart: (frac: Vec3) => Vec3
 }
@@ -611,11 +616,43 @@ const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
   return { lattice, reciprocal, reciprocal_axis_norms }
 }
 
+// Images only ever shift along the periodic rows, so any basis whose periodic rows span the
+// same lattice gives the same minimum image. The periodic rows are Gauss-reduced among
+// themselves (unimodular), and each non-periodic row, which only expresses fractional
+// coordinates, is replaced by its component orthogonal to the periodic rows. That keeps the
+// periodic |b_i| (hence the candidate box) at their in-plane size: reducing only fully
+// periodic cells made a sheared slab ([[3,0,0],[200,3,0],[0,0,30]], z open) test 303756
+// candidates and throw.
+export function min_image_search_basis(lattice: Matrix3x3, pbc: Pbc): Matrix3x3 {
+  const periodic = [0, 1, 2].filter((axis) => pbc[axis])
+  const basis = reduce_basis(lattice, periodic)
+  if (periodic.length === 0 || periodic.length === 3) return basis
+  // project out the periodic row, or keep only the component along the two rows' normal.
+  // Rows already orthogonal stay bit-identical, so orthogonal boxes keep their exact
+  // diagonal fast path.
+  const [first, second] = periodic.map((axis) => basis[axis])
+  const normal = second ? cross_3d(first, second) : undefined
+  for (const axis of [0, 1, 2]) {
+    const row = basis[axis]
+    if (pbc[axis] || periodic.every((periodic_axis) => dot(row, basis[periodic_axis]) === 0))
+      continue
+    basis[axis] = normal
+      ? scale(normal, dot(row, normal) / dot(normal, normal))
+      : subtract(row, scale(first, dot(row, first) / dot(first, first)))
+  }
+  return basis
+}
+
 export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
   const basis = lattice_basis(lattice)
+  // indexed by the pbc bit mask: per-pair callers must not rebuild a basis each call
+  const search_bases: (LatticeBasis | undefined)[] = []
   return {
     ...basis,
-    reduced: lattice_basis(reduce_basis(lattice)),
+    search_basis: (pbc: Pbc): LatticeBasis => {
+      const mask = (pbc[0] ? 1 : 0) | (pbc[1] ? 2 : 0) | (pbc[2] ? 4 : 0)
+      return (search_bases[mask] ??= lattice_basis(min_image_search_basis(lattice, pbc)))
+    },
     cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(basis.reciprocal, cart),
     frac_to_cart: create_frac_to_cart(lattice),
   }
@@ -958,13 +995,10 @@ export function normalize_vec<T extends readonly number[]>(
 // Compute orthonormal basis vectors in a plane perpendicular to `normal`.
 // Uses Gram-Schmidt orthogonalization + cross product.
 export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
-  let ref_vec: Vec3 = [1, 0, 0]
-  if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
-
+  const ref_vec: Vec3 = Math.abs(normal[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]
   const u_raw = subtract(ref_vec, scale(normal, dot(normal, ref_vec)))
   const u_vec = normalize_vec(u_raw, [0, 1, 0])
-  const v_vec = cross_3d(normal, u_vec)
-  return [u_vec, v_vec] // u, v basis vectors
+  return [u_vec, cross_3d(normal, u_vec)]
 }
 
 // Merge coplanar adjacent triangles in a flat non-indexed position array.
@@ -993,16 +1027,12 @@ export function merge_coplanar_triangles(
     const vert_a: Vec3 = [positions[base], positions[base + 1], positions[base + 2]]
     const vert_b: Vec3 = [positions[base + 3], positions[base + 4], positions[base + 5]]
     const vert_c: Vec3 = [positions[base + 6], positions[base + 7], positions[base + 8]]
+    const verts: [Vec3, Vec3, Vec3] = [vert_a, vert_b, vert_c]
     const raw_normal = cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
     const len = Math.hypot(raw_normal[0], raw_normal[1], raw_normal[2])
     if (len < tolerance) {
-      tri_planes.push({
-        verts: [vert_a, vert_b, vert_c],
-        normal: [0, 0, 0],
-        plane_d: 0,
-        degenerate: true,
-        canon_flipped: false,
-      })
+      // oxfmt-ignore
+      tri_planes.push({ verts, normal: [0, 0, 0], plane_d: 0, degenerate: true, canon_flipped: false })
       continue
     }
     // Normalize and canonicalize: first non-zero component must be positive
@@ -1017,8 +1047,7 @@ export function merge_coplanar_triangles(
     const canon_flipped = first_nonzero < 0
     if (canon_flipped) normal = [-normal[0], -normal[1], -normal[2]]
     const plane_d = dot(normal, vert_a)
-    // oxfmt-ignore
-    tri_planes.push({ verts: [vert_a, vert_b, vert_c], normal, plane_d, degenerate: false, canon_flipped })
+    tri_planes.push({ verts, normal, plane_d, degenerate: false, canon_flipped })
   }
 
   // === Step 2: Build adjacency via edge hash map ===
@@ -1176,14 +1205,10 @@ export function merge_coplanar_triangles(
 
 // Check if a matrix is a finite-numeric square matrix of dimension NxN (type predicate
 // so callers get number[][] narrowing without assertions). Rejects NaN/Infinity entries.
-export function is_square_matrix(matrix: unknown, dim: number): matrix is number[][] {
-  if (!Array.isArray(matrix)) return false
-  if (matrix.length !== dim) return false
-  return matrix.every(
-    (row) =>
-      Array.isArray(row) && row.length === dim && row.every((val) => Number.isFinite(val)),
-  )
-}
+export const is_square_matrix = (matrix: unknown, dim: number): matrix is number[][] =>
+  Array.isArray(matrix) &&
+  matrix.length === dim &&
+  matrix.every((row) => Array.isArray(row) && row.length === dim && row.every(Number.isFinite))
 
 // === 2D geometry ===
 

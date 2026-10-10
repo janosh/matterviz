@@ -74,7 +74,7 @@
     axis_scale_types,
   } from '#lib/plot/core/axis-assignment.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
-  import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+  import { extract_series_color, get_series_symbol } from '#lib/plot/core/data-transform.js'
   import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
@@ -602,10 +602,10 @@
   const resolved_marginals = $derived(
     normalize_marginals(marginals, { top: true, right: true }),
   )
-  // A series' color as a whole (line, else first marker, else palette) for the marks that
-  // summarize it: marginals and density contours
+  // A series' color as a whole (palette fallback) for the marks that summarize it:
+  // marginals and density contours
   const series_color = (srs: DataSeries<Metadata> | undefined, idx: number): string =>
-    srs?.line_style?.stroke ?? first_point_style(srs)?.fill ?? plot_color(idx)
+    extract_series_color(srs, plot_color(idx))
   // Map series to the generic marginal input, reusing the line/legend color fallback. Skipped
   // (the default) while no strip is enabled so data changes don't pay for it.
   const marginal_series = $derived<MarginalSeriesInput[]>(
@@ -621,9 +621,17 @@
         }))
       : [],
   )
+  const color_scale_config = $derived<ColorScaleConfig>(
+    typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
+  )
   // Finite color and size bounds across all series. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.
-  const scale_ranges = $derived(collect_scale_ranges(assigned_series))
+  // Reads only the scale types, so scheme/radius changes don't re-scan the values.
+  const color_scale_type = $derived(color_scale_config.type)
+  const size_scale_type = $derived(size_scale.type)
+  const scale_ranges = $derived(
+    collect_scale_ranges(assigned_series, { color: color_scale_type, size: size_scale_type }),
+  )
   const has_color_scale = $derived(
     scale_ranges.color_extent.n_finite > 0 ||
       Object.keys(color_bar?.categories ?? {}).length > 0,
@@ -638,9 +646,6 @@
   )
   const auto_color_range = $derived(scale_ranges.color_range)
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
-  const color_scale_config = $derived<ColorScaleConfig>(
-    typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
-  )
   let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
 
   // === Size legend: solver-placed clear of the data, after the legend and colorbar ===
@@ -1518,7 +1523,7 @@
   // Only the offsets are materialised - flattening 100k points on every keystroke
   // would cost more than the whole canvas render it exists to compensate for.
   let kbd_nav = $derived.by(() => {
-    const lists = filtered_series.map((series_data) => series_data.filtered_data ?? [])
+    const lists = filtered_series.map((series_data) => series_data.filtered_data)
     const offsets: number[] = []
     let total = 0
     for (const list of lists) {
@@ -1623,18 +1628,18 @@
   const csv_series = () =>
     filtered_series.map((series_data, series_idx) => ({
       label: series_data.label ?? `series ${series_idx + 1}`,
-      x: series_data.filtered_data?.map((point) => point.x) ?? [],
-      y: series_data.filtered_data?.map((point) => point.y) ?? [],
+      x: series_data.filtered_data.map((point) => point.x),
+      y: series_data.filtered_data.map((point) => point.y),
       extras: {
-        color_value: series_data.filtered_data?.map((point) => point.color_value ?? null),
-        size_value: series_data.filtered_data?.map((point) => point.size_value ?? null),
+        color_value: series_data.filtered_data.map((point) => point.color_value ?? null),
+        size_value: series_data.filtered_data.map((point) => point.size_value ?? null),
         ...(series_data.x_error != null && {
-          x_error_lower: series_data.filtered_data?.map((pt) => pt.x_error?.[0] ?? null),
-          x_error_upper: series_data.filtered_data?.map((pt) => pt.x_error?.[1] ?? null),
+          x_error_lower: series_data.filtered_data.map((pt) => pt.x_error?.[0] ?? null),
+          x_error_upper: series_data.filtered_data.map((pt) => pt.x_error?.[1] ?? null),
         }),
         ...(series_data.y_error != null && {
-          y_error_lower: series_data.filtered_data?.map((pt) => pt.y_error?.[0] ?? null),
-          y_error_upper: series_data.filtered_data?.map((pt) => pt.y_error?.[1] ?? null),
+          y_error_lower: series_data.filtered_data.map((pt) => pt.y_error?.[0] ?? null),
+          y_error_upper: series_data.filtered_data.map((pt) => pt.y_error?.[1] ?? null),
         }),
       },
     }))
@@ -1811,7 +1816,6 @@
                 line_width={underlay.line_style?.stroke_width ?? 1}
                 line_dash={underlay.line_style?.line_dash}
                 curve={underlay.line_style?.curve}
-                area_color="transparent"
                 line_tween={effective_line_tween}
               />
             {/each}
@@ -1822,7 +1826,6 @@
               line_dash={line.dash}
               stroke-opacity={line.opacity}
               curve={series_data.line_style?.curve}
-              area_color="transparent"
               line_tween={effective_line_tween}
             />
           </g>
@@ -1953,11 +1956,7 @@
       bind:y2_axis
       bind:display
       bind:styles
-      auto_ranges={{
-        ...intrinsic_ranges,
-        x2: has_x2_points ? intrinsic_ranges.x2 : undefined,
-        y2: has_y2_points ? intrinsic_ranges.y2 : undefined,
-      }}
+      auto_ranges={frame.controls_auto_ranges}
       bind:selected_series_idx={
         () => active_series_idx, (value) => (selected_series_idx = value)
       }
@@ -1989,26 +1988,25 @@
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {@const tooltip_props = handler_props}
-          {#if has_multiple_series && tooltip_props.label}<strong>{tooltip_props.label}</strong
+          {#if has_multiple_series && handler_props.label}<strong>{handler_props.label}</strong
             ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
           <TooltipValue
-            label={tooltip_props.x_axis.label || `x`}
-            value={tooltip_props.x_formatted}
-            unit={tooltip_props.x_axis.unit}
+            label={handler_props.x_axis.label || `x`}
+            value={handler_props.x_formatted}
+            unit={handler_props.x_axis.unit}
           /><br />
           <TooltipValue
-            label={tooltip_props.y_axis.label || `y`}
-            value={tooltip_props.y_formatted}
-            unit={tooltip_props.y_axis.unit}
+            label={handler_props.y_axis.label || `y`}
+            value={handler_props.y_formatted}
+            unit={handler_props.y_axis.unit}
           />
-          {#if tooltip_props.color_bar?.value != null}
+          {#if handler_props.color_bar?.value != null}
             <br /><TooltipValue
-              label={tooltip_props.color_bar.title || `Color`}
+              label={handler_props.color_bar.title || `Color`}
               value={format_value(
-                tooltip_props.color_bar.value,
-                tooltip_props.color_bar.tick_format || `.3~g`,
+                handler_props.color_bar.value,
+                handler_props.color_bar.tick_format || `.3~g`,
               )}
             />
           {/if}

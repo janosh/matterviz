@@ -1,6 +1,6 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
-// N_a · N_b · 4π r² Δr / V, so g(r) → 1 for an uncorrelated system.
+// N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
 import { calc_lattice_params } from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { visit_neighbor_distances } from '#lib/structure/bonding.js'
@@ -59,6 +59,12 @@ function prepare_rdf(structure: Crystal, options: RdfOptions) {
   }
 }
 
+// Exact volume of the shell [r - Δ/2, r + Δ/2): 4π/3·((r + Δ/2)³ − (r − Δ/2)³). The midpoint
+// rule 4π·r²·Δ undercounts it by Δ²/12, which inflates g(r) by 1/(12·(k + ½)²) in bin k, e.g.
+// 33% in the first bin of an ideal gas.
+export const shell_volume = (radius: number, bin_size: number): number =>
+  4 * Math.PI * bin_size * (radius ** 2 + bin_size ** 2 / 12)
+
 function normalize_histogram(
   { n_bins, bin_size, volume, r: radius }: ReturnType<typeof prepare_rdf>,
   g_r: number[],
@@ -67,7 +73,7 @@ function normalize_histogram(
 ): RdfPattern {
   if (pair_weight > 0) {
     for (let idx = 0; idx < n_bins; idx++) {
-      g_r[idx] /= (pair_weight * 4 * Math.PI * radius[idx] ** 2 * bin_size) / volume
+      g_r[idx] /= (pair_weight * shell_volume(radius[idx], bin_size)) / volume
     }
   }
   return { r: radius, g_r, element_pair }

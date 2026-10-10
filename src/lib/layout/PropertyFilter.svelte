@@ -3,7 +3,7 @@
   import { Close } from 'svelte-widgets/icons'
   import { sanitize_html } from '#lib/sanitize.js'
   import { html_to_text } from '#lib/utils.js'
-  import type { AxisConfig, HistogramSeries } from '#lib/plot/index.js'
+  import type { HistogramSeries } from '#lib/plot/index.js'
   import { Histogram } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -63,14 +63,6 @@
     on_change?.(undefined, undefined)
   }
 
-  const axis_config: AxisConfig = {
-    ticks: 0,
-    label: ``,
-    grid_style: { style: `opacity: 0` },
-    tick_label: { inside: true },
-    color: `color-mix(in srgb, currentColor 60%, transparent)`,
-  }
-
   const series: HistogramSeries[] = $derived.by(() => {
     const all = histogram_data ?? []
     const [min, max] = [min_value ?? -Infinity, max_value ?? Infinity]
@@ -92,7 +84,13 @@
     bins={50}
     show_controls={false}
     show_legend={false}
-    x_axis={{ ...axis_config, ticks: 3 }}
+    x_axis={{
+      ticks: 3,
+      label: ``,
+      grid_style: { style: `opacity: 0` },
+      tick_label: { inside: true },
+      color: `color-mix(in srgb, currentColor 60%, transparent)`,
+    }}
     y_axis={{
       ticks: 0,
       label: ``,
@@ -109,7 +107,7 @@
   {#if log}<span class="log-label">log</span>{/if}
 {/snippet}
 
-<div class:active class:disabled {...rest} class={[`filter-container`, rest.class]}>
+<div {...rest} class={[`filter-container`, { active, disabled }, rest.class]}>
   {#if histogram_at === `top`}
     {@render histogram_snippet()}
   {/if}

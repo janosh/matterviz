@@ -255,10 +255,10 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   }
   if (has_lookups) resolve_ids(root, ``, ``)
 
-  if (sort !== `none`) {
-    const sign = sort === `descending` ? -1 : 1
-    root.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
-  }
+  const sign = sort === `descending` ? -1 : 1
+  const by_value = (node_a: Node, node_b: Node) =>
+    sign * ((node_a.value ?? 0) - (node_b.value ?? 0))
+  if (sort !== `none`) root.sort(by_value)
 
   // The value every member of `group` shares for `field`, or undefined if they disagree
   const shared_field = <Field extends `color` | `pattern`>(
@@ -316,7 +316,6 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // is no longer a property any single child carries.
   const buckets = new Map<Node, number>() // synthetic bucket node -> siblings folded
   if (min_fraction > 0 || max_children > 0) {
-    const sign = sort === `descending` ? -1 : 1
     // Rewriting `node.children` from inside `each` is safe: d3's traversal is a
     // generator that reads a node's children only after yielding it, so the
     // callback runs first and the queue picks up the new array - including the
@@ -368,9 +367,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         writable.value = member.data.value
         if (in_zoom_subtree.has(node)) in_zoom_subtree.add(member)
       })
-      if (sort !== `none`) {
-        bucket.sort((node_a, node_b) => sign * ((node_a.value ?? 0) - (node_b.value ?? 0)))
-      }
+      if (sort !== `none`) bucket.sort(by_value)
       // Synthetic nodes exist only from here on, so the lookup above could not see them: a
       // caller may have zoomed to or expanded a merged node (`Other/gpu`). Resolve their ids
       // now (after the sort, which fixes unlabeled kids' index segments) and before `each`
@@ -485,7 +482,6 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     const identifier =
       node.data.id ?? (depth === 0 ? (label ?? ``) : `${parent_prefix}${segment}`)
 
-    const { x0: coord_x_0, x1: coord_x_1, y0: coord_y_0, y1: coord_y_1 } = node
     const arc = push_arc(parent, {
       id: identifier,
       label,
@@ -496,10 +492,10 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       is_leaf: !node.children?.length,
       ...(other_count && { is_other: true, other_count }),
       pattern: node.data.pattern,
-      x0: coord_x_0,
-      x1: coord_x_1,
-      y0: coord_y_0,
-      y1: coord_y_1,
+      x0: node.x0,
+      x1: node.x1,
+      y0: node.y0,
+      y1: node.y1,
       metadata: node.data.metadata,
     })
     node.children?.forEach((child, idx) => {

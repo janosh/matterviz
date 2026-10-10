@@ -128,14 +128,14 @@
   $effect(() => {
     if (typeof window === `undefined`) return
     const params = new URLSearchParams(globalThis.location.search)
-    const dim = params.get(`dim`)
-    if (dim && [`2d`, `3d`, `4d`].includes(dim)) dimension = dim as Dimension
-    const cnt = Math.trunc(Number(params.get(`count`) ?? ``))
-    if (!isNaN(cnt) && cnt >= 10 && cnt <= 50000) entry_count = cnt
-    const hull = Number(params.get(`hull_dist`) || NaN)
-    if (!isNaN(hull) && hull >= 0) max_hull_dist = hull
-    const click_sel = params.get(`click_selection`)
-    if (click_sel !== null) enable_click_selection = click_sel !== `false`
+    const dim_param = params.get(`dim`)
+    if (dim_param && Object.hasOwn(ELEMENTS, dim_param)) dimension = dim_param as Dimension
+    const count_param = Math.trunc(Number(params.get(`count`) ?? ``))
+    if (count_param >= 10 && count_param <= 50000) entry_count = count_param
+    const hull_param = Number(params.get(`hull_dist`) || NaN)
+    if (hull_param >= 0) max_hull_dist = hull_param
+    const click_param = params.get(`click_selection`)
+    if (click_param !== null) enable_click_selection = click_param !== `false`
     magnetic_orderings = params.get(`magnetic`) === `true`
     const title_param = params.get(`title`)
     if (title_param !== null) custom_title = title_param
@@ -155,6 +155,11 @@
     void goto(`?${params}`, { shallow: true, replace: true })
   }
 
+  const update_and_regenerate = () => {
+    update_url()
+    regenerate()
+  }
+
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
 </script>
 
@@ -163,13 +168,7 @@
 <div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
   <label>
     Dimension:
-    <select
-      bind:value={dimension}
-      onchange={() => {
-        update_url()
-        regenerate()
-      }}
-    >
+    <select bind:value={dimension} onchange={update_and_regenerate}>
       <option value="2d">2D Binary</option>
       <option value="3d">3D Ternary</option>
       <option value="4d">4D Quaternary</option>
@@ -185,10 +184,7 @@
       max="50000"
       step="100"
       style="width: 5em"
-      onchange={() => {
-        update_url()
-        regenerate()
-      }}
+      onchange={update_and_regenerate}
     />
   </label>
 
@@ -197,8 +193,7 @@
       style:font-weight={entry_count === count ? `bold` : `normal`}
       onclick={() => {
         entry_count = count
-        update_url()
-        regenerate()
+        update_and_regenerate()
       }}
     >
       {count}

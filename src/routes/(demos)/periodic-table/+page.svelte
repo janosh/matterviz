@@ -37,7 +37,6 @@
   let window_width: number = $state(0)
 
   // Missing color demo periodic table
-  let missing_heatmap_key: string | null = $state(`atomic_mass`)
   let missing_color: string = $state(`#666666`)
   let missing_use_category: boolean = $state(false)
   let missing_label: string = $state(``)
@@ -45,27 +44,17 @@
   let missing_active_element: ChemicalElement | null = $state(null)
   let missing_active_category: ElementCategory | null = $state(null)
 
-  // Missing color demo derived values (null = missing, distinct from a real 0)
-  let missing_get_element_value = $derived((element: ChemicalElement): number | null => {
-    if (!missing_heatmap_key) return null
-    const value = element[missing_heatmap_key as keyof typeof element]
-    return typeof value === `number` ? value : null
-  })
-
   let missing_config = $derived({
     color: missing_use_category ? `element-category` : missing_color,
     label: missing_label || undefined,
     // dim missing tiles via the `style` escape hatch (opacity fades the whole tile)
     style: missing_opacity < 1 ? `opacity: ${missing_opacity}` : undefined,
   })
-  let missing_heatmap_values = $derived.by(() => {
-    if (!missing_heatmap_key) return []
-
-    const full_values = element_data.map(missing_get_element_value)
-
-    // only show every 3rd element so the rest demo the missing fallback
-    return full_values.map((value, idx) => (idx % 3 === 0 ? value : null))
-  })
+  // only every 3rd element gets an atomic mass so the rest demo the missing fallback
+  // (null = missing, distinct from a real 0)
+  const missing_heatmap_values = element_data.map((element, idx) =>
+    idx % 3 === 0 ? element.atomic_mass : null,
+  )
 
   // Active elements border demo
   let active_elements: ElementSymbol[] = $state([`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Au`, `Ag`])
@@ -145,21 +134,13 @@
       {@const style = `display: flex; align-items: center; gap: 3pt;`}
       <TableInset style="display: flex; gap: 1em; justify-content: center; flex-wrap: wrap">
         <label {style}>
-          <input
-            type="checkbox"
-            bind:checked={missing_use_category}
-            disabled={!missing_heatmap_values?.length}
-          />
+          <input type="checkbox" bind:checked={missing_use_category} />
           Use element category colors
         </label>
 
         <label {style}>
           Missing color:
-          <input
-            type="color"
-            bind:value={missing_color}
-            disabled={missing_use_category || !missing_heatmap_values?.length}
-          />
+          <input type="color" bind:value={missing_color} disabled={missing_use_category} />
         </label>
 
         <label {style}>
@@ -168,21 +149,13 @@
             type="text"
             placeholder="e.g. N/A"
             bind:value={missing_label}
-            disabled={!missing_heatmap_values?.length}
             style="width: 5em"
           />
         </label>
 
         <label {style}>
           Missing opacity: {missing_opacity}
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.1"
-            bind:value={missing_opacity}
-            disabled={!missing_heatmap_values?.length}
-          />
+          <input type="range" min="0.1" max="1" step="0.1" bind:value={missing_opacity} />
         </label>
       </TableInset>
     {/snippet}

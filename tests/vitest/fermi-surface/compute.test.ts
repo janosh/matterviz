@@ -149,19 +149,16 @@ describe(`extract_fermi_surface`, () => {
     expect(iso.indices.length % 3).toBe(0)
   })
 
-  test(`respects mu offset`, () => {
+  test(`respects mu offset and returns no isosurfaces when E_F + mu crosses no band`, () => {
     const band_data = create_spherical_band_data(10, 9)
     // mu=0 gives surface at E_F=9 (radius 3); mu=7 at E_F=16 (radius 4): area ratio (4/3)²
     const area_0 = total_area(extract_fermi_surface(band_data, { mu: 0 }))
     const area_7 = total_area(extract_fermi_surface(band_data, { mu: 7 }))
     expect(area_7 / area_0).toBeCloseTo(16 / 9, 1)
-  })
-
-  test(`returns empty isosurfaces when no intersection`, () => {
-    const band_data = create_spherical_band_data(10, 100) // Fermi level too high
-    const result = extract_fermi_surface(band_data)
-    expect(result.isosurfaces).toHaveLength(0)
-    expect(result.metadata.n_surfaces).toBe(0)
+    // E_F + mu = 1009 lies above the band maximum (9·√3/2)² ≈ 61 at the cell corner
+    const above_band = extract_fermi_surface(band_data, { mu: 1000 })
+    expect(above_band.isosurfaces).toHaveLength(0)
+    expect(above_band.metadata.n_surfaces).toBe(0)
   })
 
   test(`extracts every band and spin channel`, () => {

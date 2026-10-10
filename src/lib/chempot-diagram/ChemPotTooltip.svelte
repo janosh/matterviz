@@ -2,12 +2,10 @@
   // Hover tooltip shared by ChemPotDiagram (wrapper), ChemPotDiagram2D and ChemPotDiagram3D.
   // Placed with PlotTooltip inside the diagram container; `hover_info.pointer` is already
   // container-relative (see container_pointer in controls-state.svelte.ts).
-  import {
-    get_electro_neg_formula,
-    get_formula_label_segments,
-  } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/format.js'
   import { format_num } from '#lib/labels.js'
   import { PlotTooltip } from '#lib/plot/index.js'
+  import { domain_formula_text } from './controls-state.svelte'
   import type { ChemPotHoverInfo } from './types'
 
   let {
@@ -23,8 +21,6 @@
     constrain_to: { width: number; height: number }
   } = $props()
 
-  const label = (formula: string): string =>
-    get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` })
   const fmt = (value: number): string => format_num(value, `.4~g`)
 </script>
 
@@ -36,7 +32,7 @@
   class="chempot-tooltip"
 >
   <h4>
-    {#each get_formula_label_segments(label(hover_info.formula)) as segment, idx (idx)}
+    {#each get_formula_label_segments(domain_formula_text(hover_info.formula)) as segment, idx (idx)}
       {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
     {/each}
   </h4>
@@ -79,7 +75,7 @@
       </p>
       {#if hover_info.neighbors.length > 0}
         <h5>Neighbors ({hover_info.neighbors.length})</h5>
-        <p>{hover_info.neighbors.map(label).join(`, `)}</p>
+        <p>{hover_info.neighbors.map(domain_formula_text).join(`, `)}</p>
       {/if}
       {#if hover_info.touches_limits.length > 0}
         <h5>Touches bounds</h5>

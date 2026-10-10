@@ -17,7 +17,7 @@
     ISO_COLORMAP_SELECT_PROPS,
   } from './coloring'
   import type { DisplayRange } from './sampling'
-  import { compare_volume_grids } from './sampling'
+  import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
     auto_isosurface_settings,
@@ -228,14 +228,13 @@
   // Halo and display range only apply to periodic volumes
   let any_periodic = $derived(volumes.some((vol) => vol.periodic))
 
+  const RANGE_BOUNDS = [0, 1] as const
   // Update one bound of the fractional display range. Clearing an input resets
   // that bound to its default (0 or 1); a fully default range unsets display_range
   // so surfaces follow the structure's integer supercell again.
   function update_display_range(axis: number, bound: 0 | 1, raw_value: string) {
-    const range = (settings.display_range?.map((pair) => [...pair]) ?? [
-      [0, 1],
-      [0, 1],
-      [0, 1],
+    const range = (settings.display_range ?? UNIT_CELL_RANGE).map((pair) => [
+      ...pair,
     ]) as DisplayRange
     const value = raw_value.trim() === `` ? bound : Number(raw_value)
     if (Number.isNaN(value)) return
@@ -424,7 +423,9 @@
       {/if}
 
       {#each entries as { layer, layer_idx } (layer_idx)}
-        {@const layer_abs_max = Math.max(vol.data_range.abs_max, 0.001)}
+        <!-- the volume's own scale (weak fields reach 1e-5), 0.05 only for an all-zero one
+          like auto_volume_layer -->
+        {@const layer_abs_max = vol.data_range.abs_max > 0 ? vol.data_range.abs_max : 0.05}
         {@const layer_step = layer_abs_max / 200}
         {@const warning = compat_warning(layer)}
         {@const color_vol = color_vol_of(layer)}
@@ -599,20 +600,16 @@
         {#each [`a`, `b`, `c`] as axis_label, axis (axis)}
           <label class="range-axis">
             <span>{axis_label}</span>
-            <input
-              type="number"
-              step="0.05"
-              placeholder="0"
-              value={settings.display_range?.[axis][0] ?? ``}
-              onchange={(event) => update_display_range(axis, 0, event.currentTarget.value)}
-            />
-            <input
-              type="number"
-              step="0.05"
-              placeholder="1"
-              value={settings.display_range?.[axis][1] ?? ``}
-              onchange={(event) => update_display_range(axis, 1, event.currentTarget.value)}
-            />
+            {#each RANGE_BOUNDS as bound (bound)}
+              <input
+                type="number"
+                step="0.05"
+                placeholder={String(bound)}
+                value={settings.display_range?.[axis][bound] ?? ``}
+                onchange={(event) =>
+                  update_display_range(axis, bound, event.currentTarget.value)}
+              />
+            {/each}
           </label>
         {/each}
         {#if settings.display_range}
@@ -695,6 +692,17 @@
     opacity: 0.6;
     white-space: nowrap;
   }
+  :is(.removed-volumes button, .empty-volume .add-surface) {
+    padding: 1pt 6pt;
+    border-radius: var(--iso-ctrl-radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    &:hover {
+      background: color-mix(in srgb, currentColor 10%, transparent);
+    }
+  }
   .removed-volumes {
     grid-column: 1 / -1;
     display: flex;
@@ -705,17 +713,10 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      padding: 1pt 6pt;
       border: 1px dashed color-mix(in srgb, currentColor 35%, transparent);
-      border-radius: var(--iso-ctrl-radius);
-      background: transparent;
-      color: inherit;
-      font: inherit;
       opacity: 0.8;
-      cursor: pointer;
       &:hover {
         opacity: 1;
-        background: color-mix(in srgb, currentColor 10%, transparent);
       }
     }
   }
@@ -724,16 +725,7 @@
     align-items: center;
     gap: 0.6em;
     .add-surface {
-      padding: 1pt 6pt;
       border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: var(--iso-ctrl-radius);
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-      &:hover {
-        background: color-mix(in srgb, currentColor 10%, transparent);
-      }
     }
   }
   .volume-header .icon-btn:first-of-type {

@@ -188,8 +188,6 @@
   // Perspective controls dolly instead of changing camera.zoom.
   const read_zoom = (): number | undefined =>
     camera instanceof OrthographicCamera ? camera.zoom : undefined
-  // Pans are a view offset on the camera (see scene/pan.ts), not a target move
-  const read_pan = (): Vec2 => read_pan_offset(camera)
 
   // Camera values can be absent before initialization; perspective cameras also have no zoom. Omit rather than emit undefined: JSON.stringify drops
   // such keys, so serialized host payloads would otherwise differ in
@@ -222,9 +220,7 @@
       }
       clear_pan_offset(camera)
       orbit_controls.update()
-      camera_position = read_camera_position()
-      camera_target = read_orbit_target()
-      remember_current_view()
+      adopt_live_view()
     }
     on_camera_reset?.(camera_event(false, camera_position, camera_target, read_zoom()))
   }
@@ -259,7 +255,8 @@
     const pos = read_camera_position()
     const target = read_orbit_target()
     const zoom = read_zoom()
-    const pan = read_pan()
+    // Pans are a view offset on the camera (see scene/pan.ts), not a target move
+    const pan = read_pan_offset(camera)
     // Interactions that end where they started (a click, or the effect cleanup below running
     // after the end listener already synced) would otherwise emit a second, identical move.
     const unmoved =
@@ -281,8 +278,14 @@
       position: read_camera_position(),
       target: read_orbit_target(),
       zoom: read_zoom(),
-      pan: read_pan(),
+      pan: read_pan_offset(camera),
     }
+  }
+  // Mirror the live pose into the bindable props and take it as this pane's own
+  const adopt_live_view = () => {
+    camera_position = read_camera_position()
+    camera_target = read_orbit_target()
+    remember_current_view()
   }
   // Capture parent props while mounted: evaluating their derived getters during destruction
   // can disconnect the layout dependencies that are removing this pane.
@@ -330,9 +333,7 @@
       restore_camera_view(live_camera, saved, width, height)
       if (view_state.target) controls.target.set(...view_state.target)
       controls.update()
-      camera_position = read_camera_position()
-      camera_target = read_orbit_target()
-      remember_current_view()
+      adopt_live_view()
     })
     return () => {
       cancelled = true

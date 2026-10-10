@@ -1,4 +1,5 @@
 import { default_element_colors } from '#lib/colors/index.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import { colors } from '#lib/state.svelte.js'
 import AtomLegend from '#lib/structure/AtomLegend.svelte'
@@ -6,8 +7,10 @@ import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-pr
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
 import { dismiss_popover, doc_query, set_input } from '../setup'
+import { simple_structure } from '../test-fixtures'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
@@ -493,6 +496,35 @@ describe(`AtomLegend Component`, () => {
       )
       await tick()
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
+    })
+
+    test(`radius inputs override element and selected-site radii within bounds`, async () => {
+      const site_radius_overrides = new SvelteMap<number, number>()
+      let element_radius_overrides: Partial<Record<ElementSymbol, number>> = {}
+      mount_legend({
+        elements: { H: 2, O: 1 },
+        structure: simple_structure,
+        selected_sites: [0],
+        site_radius_overrides,
+        get element_radius_overrides() {
+          return element_radius_overrides
+        },
+        set element_radius_overrides(value) {
+          element_radius_overrides = value
+        },
+      })
+      const site_input = doc_query<HTMLInputElement>(`.site-radius-control input`)
+      set_input(site_input, `9`) // above MAX_RADIUS: ignored
+      expect(site_radius_overrides.size).toBe(0)
+      set_input(site_input, `1.5`)
+      expect(site_radius_overrides.get(0)).toBe(1.5)
+      await tick()
+      doc_query<HTMLButtonElement>(`.site-radius-control .reset-btn`).click()
+      expect(site_radius_overrides.size).toBe(0)
+
+      await open_remap_menu()
+      set_input(doc_query<HTMLInputElement>(`.radius-control input`), `0.7`)
+      expect(element_radius_overrides).toEqual({ H: 0.7 })
     })
 
     // oxfmt-ignore

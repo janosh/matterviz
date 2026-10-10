@@ -2,7 +2,7 @@ import ColorScaleSelect from '#lib/plot/core/components/ColorScaleSelect.svelte'
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, fire } from '../setup'
+import { bind_props, doc_query, fire, mouse } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
   test.each([
@@ -38,7 +38,7 @@ describe(`ColorScaleSelect`, () => {
 
     expect(controls_state.value).toBe(`interpolateViridis`)
     expect(doc_query(`.selected`)?.textContent?.trim()).toBe(`Viridis`)
-    await fire(doc_query(`.multiselect`), new MouseEvent(`mouseup`, { bubbles: true }))
+    await fire(doc_query(`.multiselect`), mouse(`mouseup`))
     await fire(doc_query(`[role="option"]`))
     expect(controls_state.value).toBe(`interpolatePlasma`)
     expect(on_add).toHaveBeenCalledExactlyOnceWith({
@@ -71,8 +71,7 @@ describe(`ColorScaleSelect`, () => {
     })
     flushSync()
     for (const open of [false, true]) {
-      if (open)
-        await fire(doc_query(`.multiselect`), new MouseEvent(`mouseup`, { bubbles: true }))
+      if (open) await fire(doc_query(`.multiselect`), mouse(`mouseup`))
       const bars = document.body.querySelectorAll<HTMLElement>(`.colorbar`)
       // The closed chip only; after opening, one bar per scheme including the chip.
       expect(bars).toHaveLength(open ? options.length : 1)

@@ -31,7 +31,7 @@ import type {
   SynthesisReaction,
 } from '#lib/synthesis-planning/index.js'
 import { create_thermo_cache } from '#lib/synthesis-planning/thermo.js'
-import { describe_atmosphere } from '#lib/synthesis-planning/scoring.js'
+import { describe_atmosphere, describe_interface } from '#lib/synthesis-planning/scoring.js'
 import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
 import * as math from '#lib/math.js'
 import { describe, expect, test, vi } from 'vitest'
@@ -216,19 +216,12 @@ describe(`balance_reaction`, () => {
   })
 
   test.each([
-    [[`BaO`, `TiO2`, `BaCO3`], `redundant_precursor`],
-    [[`BaO`, `BaCO3`], `unbalanced`],
-  ])(`rejects %j as %s`, (formulas, reason) => {
+    [[`BaO`, `TiO2`, `BaCO3`], true, `redundant_precursor`],
+    [[`BaO`, `BaCO3`], true, `unbalanced`],
+    [[`BaCO3`, `TiO2`], false, `unbalanced`], // closed system: no CO2 sink
+  ])(`rejects %j (open=%s) as %s`, (formulas, open, reason) => {
     const precursors = formulas.map((formula) => find(phase_set.phases, formula))
-    expect(balance_reaction(precursors, target, gases, true)).toBe(reason)
-  })
-
-  test(`closed system cannot balance a carbonate route`, () => {
-    const closed = prepare_phase_set(ba_ti_c_o)
-    const precursors = [find(closed.phases, `BaCO3`), find(closed.phases, `TiO2`)]
-    expect(balance_reaction(precursors, find(closed.phases, `BaTiO3`), [], true)).toBe(
-      `unbalanced`,
-    )
+    expect(balance_reaction(precursors, target, open ? gases : [], true)).toBe(reason)
   })
 })
 
@@ -536,17 +529,20 @@ describe(`plan_synthesis`, () => {
     expect(text).toContain(`Hold (h): 4`)
     expect(text).toContain(`Protocol reference / rationale: Lab protocol A`)
     expect(text).toContain(`unreferenced`)
+    expect(text).toContain(`BaCO3: approximate decomposition 1630 K`)
     expect(text).toContain(`BaCO3: hazards — toxic`)
     const oxide = plan.routes.find(
       (route) => route.reaction.equation === `BaO + TiO2 → BaTiO3`,
     )
-    expect(oxide?.recipe.guidance).toEqual(
-      expect.arrayContaining([
-        `BaO: hygroscopic`,
-        `BaO: air-sensitive`,
-        `BaO: hazards — toxic, corrosive`,
-      ]),
-    )
+    expect(oxide?.recipe.guidance).toEqual([
+      `BaO: approximate melting point 2196 K`,
+      `BaO: hygroscopic`,
+      `BaO: air-sensitive`,
+      `BaO: hazards — toxic, corrosive`,
+      `BaO: BaCO3 is the practical Ba source.`,
+      `TiO2: approximate melting point 2116 K`,
+      `TiO2: Anatase converts to rutile above ~900 K; both work as precursors.`,
+    ])
     expect(text).not.toMatch(/ball-mill 30 min|3–5 K\/min|6–12 h/)
     for (const invalid_mass of [0, -1, Number.NaN, Infinity]) {
       expect(() =>
@@ -721,6 +717,8 @@ describe(`agent surface`, () => {
     expect(text).toMatch(/Precursor: [\d.]+ g BaCO3/)
     expect(text).toContain(`more routes in the structured result`)
     expect(text.length).toBeLessThan(6000)
+    const [iface] = plan.routes[0].selectivity.interfaces
+    expect(describe_interface({ ...iface, first_product: null })).toBe(`TiO2|BaCO3 → nothing`)
   })
 
   test(`request schema covers the request type and the tool definition is well-formed`, () => {

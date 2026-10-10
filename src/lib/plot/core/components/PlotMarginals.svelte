@@ -495,7 +495,7 @@
     render}
   <defs>
     <clipPath id={clip_id}>
-      <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+      <rect {...rect} />
     </clipPath>
   </defs>
   <g
@@ -512,10 +512,7 @@
         {#if curve.kind === `bars`}
           {#each curve.bars as bar, bar_idx (bar_idx)}
             <rect
-              x={bar.x}
-              y={bar.y}
-              width={bar.width}
-              height={bar.height}
+              {...bar}
               fill={curve.fill}
               fill-opacity={curve.fill_opacity}
               stroke={curve.stroke}
@@ -582,10 +579,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <rect
       class={[`marginal-hit`, `marginal-hit-${side}`]}
-      x={rect.x}
-      y={rect.y}
-      width={rect.width}
-      height={rect.height}
+      {...rect}
       fill="transparent"
       style="pointer-events: all"
       onpointermove={(event) => {

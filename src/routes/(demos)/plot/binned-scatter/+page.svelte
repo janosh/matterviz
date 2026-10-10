@@ -138,11 +138,6 @@
   const make_series = (): DensePointSeries<MaterialPoint>[] =>
     family_configs.map((config, family_idx) => {
       const point_count = 2400
-      const coord_x = new Float32Array(point_count)
-      const coord_y = new Float32Array(point_count)
-      const size_values = new Float32Array(point_count)
-      const metadata: MaterialPoint[] = []
-      const point_ids: string[] = []
       const centers = [
         { e_form: config.base_energy, band_gap: config.base_gap, cutoff: 0.45 },
         { e_form: config.base_energy + 0.55, band_gap: config.base_gap - 0.42, cutoff: 0.75 },
@@ -150,7 +145,7 @@
         { e_form: config.base_energy + 1.5, band_gap: config.base_gap - 1.25, cutoff: 1 },
       ]
 
-      for (let idx = 0; idx < point_count; idx++) {
+      const metadata = Array.from({ length: point_count }, (_, idx): MaterialPoint => {
         const mix_val = (Math.sin((idx + 1) * (family_idx + 2) * 19.19) + 1) / 2
         const cluster_idx = centers.findIndex(({ cutoff }) => mix_val <= cutoff)
         const center = centers[cluster_idx]
@@ -163,37 +158,26 @@
             0.1 * (e_form - center.e_form),
         )
         const trend = idx / (point_count - 1)
-        const e_above_hull = Math.max(0, 0.35 * trend - 0.08 + family_idx * 0.025)
-        const n_sites = 4 + ((idx + family_idx) % 8) * 4
-        const material_id = `${config.family.toLowerCase()}-${idx + 1}`
-        const formula = point_formula(config.elements, idx)
-        const lattice_a = 4.5 + trend + family_idx * 0.2
-
-        coord_x[idx] = e_form
-        coord_y[idx] = band_gap
-        size_values[idx] = n_sites
-        point_ids.push(material_id)
-        metadata.push({
-          material_id,
-          formula,
+        return {
+          material_id: `${config.family.toLowerCase()}-${idx + 1}`,
+          formula: point_formula(config.elements, idx),
           family: config.family,
           band_gap,
           e_form,
-          e_above_hull,
-          n_sites,
+          e_above_hull: Math.max(0, 0.35 * trend - 0.08 + family_idx * 0.025),
+          n_sites: 4 + ((idx + family_idx) % 8) * 4,
           elements: config.elements,
-          lattice_a,
-        })
-      }
-      const { family: identifier, family: label, color } = config
+          lattice_a: 4.5 + trend + family_idx * 0.2,
+        }
+      })
       return {
-        id: identifier,
-        label,
-        color,
-        x: coord_x,
-        y: coord_y,
-        size_values,
-        point_ids,
+        id: config.family,
+        label: config.family,
+        color: config.color,
+        x: Float32Array.from(metadata, (point) => point.e_form),
+        y: Float32Array.from(metadata, (point) => point.band_gap),
+        size_values: Float32Array.from(metadata, (point) => point.n_sites),
+        point_ids: metadata.map((point) => point.material_id),
         metadata,
       }
     })

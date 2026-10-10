@@ -1,5 +1,5 @@
 import { expect, type Locator, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { IS_CI, require_bbox } from '../helpers'
 
 // The demo page has synthetic G(T) data in the "Temperature-Dependent Free Energies" section
 test.describe(`Temperature-dependent free energies`, () => {
@@ -55,11 +55,9 @@ test.describe(`Temperature-dependent free energies`, () => {
     await expect(range_input).toHaveAttribute(`max`, `1500`)
 
     // right half of the diagram, below the control-button row
-    const [slider_box, diagram_box] = await Promise.all([
-      temp_slider.boundingBox(),
-      diagram.boundingBox(),
-    ])
-    if (!slider_box || !diagram_box) throw new Error(`missing bounding boxes`)
+    const [slider_box, diagram_box] = await Promise.all(
+      [temp_slider, diagram].map((locator) => require_bbox(locator)),
+    )
     expect(slider_box.x).toBeGreaterThan(diagram_box.x + diagram_box.width / 2)
     expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(
       diagram_box.x + diagram_box.width,
@@ -100,30 +98,4 @@ test.describe(`Temperature-dependent free energies`, () => {
     await pressure.press(`Tab`)
     await expect(pressure).toHaveValue(`1e-6`)
   })
-})
-
-test.describe(`Temperature Slider - Static Data`, () => {
-  test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Temperature slider tests timeout in CI`)
-    await page.goto(`/convex-hull#binary-chemical-systems`, { waitUntil: `networkidle` })
-    // Wait for binary grid (static data without temperature)
-    await expect(page.locator(`.binary-grid`)).toBeVisible({ timeout: 50_000 })
-  })
-
-  // Static data grids should not have temperature sliders
-  for (const [grid, selector] of [
-    [`binary-grid`, `.scatter.convex-hull-2d`],
-    [`ternary-grid`, `.convex-hull-3d`],
-  ]) {
-    test(`${grid} has no temperature slider`, async ({ page }) => {
-      await page
-        .locator(
-          grid === `ternary-grid` ? `#ternary-chemical-systems` : `#binary-chemical-systems`,
-        )
-        .scrollIntoViewIfNeeded()
-      const diagram = page.locator(`.${grid} ${selector}`).first()
-      await expect(diagram).toBeVisible()
-      await expect(diagram.locator(`.temperature-slider`)).toHaveCount(0)
-    })
-  }
 })

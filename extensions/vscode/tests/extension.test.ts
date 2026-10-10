@@ -8,7 +8,6 @@ import {
 } from '#lib/constants.js'
 import { DEFAULTS } from '#lib/settings.js'
 import type { ThemeName } from '#lib/theme/index.js'
-import { is_trajectory_file } from '#lib/trajectory/parse/index.js'
 import { Buffer } from 'node:buffer'
 import type * as node_path from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -568,18 +567,6 @@ describe(`MatterViz Extension`, () => {
     })
   })
 
-  test(`ASE trajectory file end-to-end processing`, async () => {
-    const ase_filename = `ase-LiMnO2-chgnet-relax.traj`
-    expect(is_trajectory_file(ase_filename)).toBe(true)
-
-    const data = await read_file(`/test/${ase_filename}`)
-    const html = create_html(mock_webview, mock_context, { data, theme: `light` })
-    expect(bootstrap_data_of(html)).toEqual({
-      data: { filename: ase_filename, content: mock_base64, is_base64: true },
-      theme: `light`,
-    })
-  })
-
   test.each([
     {
       label: `explicit URI`,
@@ -651,26 +638,33 @@ describe(`MatterViz Extension`, () => {
     },
   )
 
+  // The bootstrap JSON must round-trip any file content, including script-breaking payloads
   test.each([
-    [`structure`, { filename: `test.cif`, content: `content`, is_base64: false }],
-    [`trajectory`, { filename: `test.traj`, content: `YmluYXJ5`, is_base64: true }],
-    [`structure`, { filename: `test"quotes.cif`, content: `content`, is_base64: false }],
-    [`structure`, { filename: `test.cif`, content: ``, is_base64: false }],
-    [
-      `structure`,
-      { filename: `test.cif`, content: `<script>alert("xss")</script>`, is_base64: false },
-    ],
-    [`structure`, { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false }],
-  ] as const)(`HTML generation: %s files`, (type, data) => {
-    const webview_data = { type, data, theme: `light` } as const
+    { filename: `test.traj`, content: `YmluYXJ5`, is_base64: true },
+    { filename: `test"quotes.cif`, content: `content`, is_base64: false },
+    { filename: `test.cif`, content: ``, is_base64: false },
+    { filename: `large.cif`, content: `x`.repeat(100_000), is_base64: false },
+    ...[
+      `<script>alert("XSS")</script>`,
+      `<img src="x" onerror="alert(1)">`,
+      `javascript:alert(1)`,
+      `"><script>alert(1)</script>`,
+      `';alert(1);//`,
+      `</script><script>alert(document.cookie)</script>`,
+    ].map((content) => ({ filename: `test.cif`, content, is_base64: false })),
+  ])(`HTML generation embeds $filename content safely`, (data) => {
+    const webview_data = { data, theme: `light` } as const
     const html = create_html(mock_webview, mock_context, webview_data)
     expect(html).toContain(`<!DOCTYPE html>`)
     expect(html).toContain(`Content-Security-Policy`)
     expect(html).toContain(`default-src 'none'`)
     expect(html).toContain(`script-src 'nonce-`)
     expect(html).toMatch(/nonce="[a-zA-Z0-9]{8,32}"/)
-    expect(html).toContain(JSON.stringify(webview_data).replaceAll(`</`, `<\\/`))
     expect(html).toContain(`matterviz-app`)
+    expect(html).toContain(JSON.stringify(webview_data).replaceAll(`</`, `<\\/`))
+    // no raw </script> inside the JSON data breaks out of the script tag
+    expect(/window\.matterviz_data=(?<json>.*);\n/.exec(html)?.[1]).not.toContain(`</script>`)
+    expect(bootstrap_data_of(html)).toEqual(webview_data)
   })
 
   // Guards against the white-flash/wrong-theme regression: color-scheme must be set as a
@@ -802,9 +796,10 @@ describe(`MatterViz Extension`, () => {
   test.each([{ command: `info` }, { command: `saveAs` }, { command: `unknown` }])(
     `malformed message handling: $command`,
     async (msg) => {
-      await expect(
-        handle_msg({ ...msg, ...msg_args } as unknown as WebviewToHostMessage),
-      ).resolves.toBeUndefined()
+      await handle_msg({ ...msg, ...msg_args } as unknown as WebviewToHostMessage)
+      expect(mock_output_channel.info).not.toHaveBeenCalled()
+      expect(mock_vscode.window.showSaveDialog).not.toHaveBeenCalled()
+      expect(mock_vscode.window.showErrorMessage).not.toHaveBeenCalled()
     },
   )
 
@@ -842,23 +837,6 @@ describe(`MatterViz Extension`, () => {
     await render(mock_context)
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(
       `Failed: No file selected. MatterViz needs an active editor to know what to render.`,
-    )
-  })
-
-  test(`extension activation`, () => {
-    activate(mock_context)
-    expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-      `matterviz.open`,
-      expect.any(Function),
-    )
-    expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-      `matterviz.report_bug`,
-      expect.any(Function),
-    )
-    expect(mock_vscode.window.registerCustomEditorProvider).toHaveBeenCalledWith(
-      `matterviz.viewer`,
-      expect.any(Object),
-      expect.any(Object),
     )
   })
 
@@ -1046,27 +1024,6 @@ describe(`MatterViz Extension`, () => {
     expect(nonces.size).toBe(1000)
   })
 
-  test.each([
-    `<script>alert("XSS")</script>`,
-    `<img src="x" onerror="alert(1)">`,
-    `javascript:alert(1)`,
-    `"><script>alert(1)</script>`,
-    `';alert(1);//`,
-    `</script><script>alert(document.cookie)</script>`,
-  ])(`XSS prevention: %s`, (payload) => {
-    const data = {
-      data: { filename: `test.cif`, content: payload, is_base64: false },
-      theme: `light`,
-    } as const
-    const html = create_html(mock_webview, mock_context, data)
-    const escaped_json = JSON.stringify(data).replaceAll(`</`, `<\\/`)
-
-    expect(html).toContain(escaped_json)
-    // Ensure no raw </script> inside the JSON data breaks out of the script tag
-    const data_script = /window\.matterviz_data=(?<json>.*?);/s.exec(html)
-    if (data_script) expect(data_script[1]).not.toContain(`</script>`)
-  })
-
   describe(`Theme functionality`, () => {
     // Stub vscode.workspace.getConfiguration so get(`theme`, default) returns theme_value
     const stub_theme_config = (theme_value: string) => {
@@ -1101,21 +1058,6 @@ describe(`MatterViz Extension`, () => {
       },
     )
 
-    test(`webview data includes theme`, () => {
-      stub_theme_config(`dark`)
-
-      const data = {
-        data: { filename: `test.cif`, content: `content`, is_base64: false },
-        theme: get_theme(),
-      }
-
-      const html = create_html(mock_webview, mock_context, data)
-      expect(bootstrap_data_of(html).theme).toBe(`dark`)
-    })
-
-    // high-contrast auto mappings (HighContrast → black, HighContrastLight → white)
-    // are covered by the theme detection test.each above
-
     test(`invalid theme setting warns and follows the VS Code theme`, () => {
       const warn = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
       stub_theme_config(`invalid-theme`)
@@ -1141,19 +1083,6 @@ describe(`MatterViz Extension`, () => {
 
       return { mock_dispose, mock_panel }
     }
-
-    test(`sets up and cleans up panel listeners`, async () => {
-      const { mock_dispose, mock_panel } = setup_panel()
-
-      await render(mock_context)
-
-      expect(mock_vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled()
-      expect(mock_panel.onDidDispose).toHaveBeenCalled()
-
-      // Test cleanup
-      fire_event(mock_panel.onDidDispose)
-      expect(mock_dispose).toHaveBeenCalledTimes(3)
-    })
 
     // Rebuilding the HTML would re-read the file from disk, discarding the unsaved editor
     // buffer the panel was rendered from, so theme/config changes are pushed as a message
@@ -1231,7 +1160,10 @@ describe(`MatterViz Extension`, () => {
       // Register the provider via activate() and grab the instance VSCode would use
       const get_provider = (): ProviderLike => {
         activate(mock_context)
-        return mock_vscode.window.registerCustomEditorProvider.mock.calls[0][1] as ProviderLike
+        const [[view_type, provider]] = mock_vscode.window.registerCustomEditorProvider.mock
+          .calls as unknown as [string, ProviderLike][]
+        expect(view_type).toBe(`matterviz.viewer`)
+        return provider
       }
 
       test(`resolveCustomEditor wires webview options, html, watcher, and cleanup`, async () => {
@@ -1358,8 +1290,6 @@ describe(`MatterViz Extension`, () => {
         )
       })
     })
-
-    // activation itself is covered by the top-level `extension activation` test
   })
 
   describe(`Auto-Render Functionality`, () => {

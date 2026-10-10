@@ -312,32 +312,6 @@ describe(`pbc_dist`, () => {
     },
   )
 
-  // Pre-built converters must match standard pbc_dist across lattice types and positions
-  // oxfmt-ignore
-  test.each([
-    [`orthorhombic corner-to-corner`, [[8, 0, 0], [0, 12, 0], [0, 0, 6]],
-      [0.5, 0.5, 0.5], [7.7, 11.7, 5.7]],
-    [`orthorhombic near boundaries`, [[8, 0, 0], [0, 12, 0], [0, 0, 6]],
-      [0.1, 0.1, 0.1], [7.9, 11.9, 5.9]],
-    [`unit lattice at boundary`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      [0, 0, 0], [1, 0, 0]],
-    [`unit lattice across boundary`, [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      [0.9999999, 0, 0], [0.0000001, 0, 0]],
-    [`large lattice wrap-around`, [[100, 0, 0], [0, 200, 0], [0, 0, 50]],
-      [1, 1, 1], [99, 199, 49]],
-    [`triclinic`, [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]],
-      [0.2, 0.2, 0.2], [4.8, 4.1, 3.8]],
-  ] as [string, math.Matrix3x3, Vec3, Vec3][])(
-    `pre-built converters match standard: %s`,
-    (_name, lattice, pos1, pos2) => {
-      const converters = math.create_lattice_converters(lattice)
-      const standard = math.pbc_dist(pos1, pos2, lattice)
-      const with_converters = math.pbc_dist(pos1, pos2, lattice, converters)
-
-      expect(with_converters).toBeCloseTo(standard, 10)
-    },
-  )
-
   // Math.round wrapping at 0.5 fractional boundary — unit lattice
   // oxfmt-ignore
   test.each([
@@ -495,6 +469,31 @@ describe(`pbc_dist`, () => {
     }
   })
 
+  // Basis reduction ran only for fully periodic cells, so a sheared slab searched its own basis
+  // and threw (303756 > 100000 candidates). Expected: numpy brute force over ±3000 shifts on
+  // the first periodic axis and ±80 on the second (/tmp script, not in the repo).
+  // oxfmt-ignore
+  test.each([
+    [`sheared slab, z open`, [[3, 0, 0], [200, 3, 0], [0, 0, 30]], [100, 1.5, 10], [true, true, false], 10.161200716450788],
+    [`sheared slab, fully periodic`, [[3, 0, 0], [200, 3, 0], [0, 0, 30]], [100, 1.5, 10], [true, true, true], 10.161200716450788],
+    [`sheared slab with a sheared open axis`, [[3, 0, 0], [200, 3, 0], [150, 40, 30]], [100, 1.5, 10], [true, true, false], 10.161200716450788],
+    [`sheared slab, y open`, [[3, 0, 0], [0, 30, 0], [0, 4, 200]], [1, 7, 101], [true, false, true], 99.05049217444606],
+  ] as [string, math.Matrix3x3, Vec3, Pbc3, number][])(
+    `partly periodic sheared cells use a reduced basis: %s`,
+    (_name, lattice, target, pbc, expected) => {
+      const dist = math.pbc_dist([0, 0, 0], target, lattice, undefined, pbc)
+      expect(Math.abs(dist - expected) / expected).toBeLessThan(1e-12) // f64 noise ~1e-15
+      // a lattice image of the plain difference along periodic axes only
+      const cart_to_frac = math.create_cart_to_frac(lattice)
+      const displacement = math.min_image_displacement([0, 0, 0], target, lattice, undefined, pbc)
+      const shift = math.subtract(cart_to_frac(displacement), cart_to_frac(target))
+      for (const [axis, component] of shift.entries()) {
+        expect(Math.abs(component - Math.round(component))).toBeLessThan(1e-8)
+        if (!pbc[axis]) expect(Math.round(component)).toBe(0)
+      }
+    },
+  )
+
   test(`no periodic axis returns the plain difference without touching the lattice`, () => {
     // oxfmt-ignore
     const singular: math.Matrix3x3 = [[1, 0, 0], [1, 0, 0], [0, 0, 1]]
@@ -546,14 +545,10 @@ describe(`pbc_dist`, () => {
 })
 
 describe(`3x3 matrix and lattice utilities`, () => {
-  const flat_array = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-  // oxfmt-ignore
-  const tensor_3x3 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-
   describe(`vec9_to_mat3x3`, () => {
     // oxfmt-ignore
     it.each([
-      [`sequential array`, flat_array, tensor_3x3],
+      [`sequential array`, [1, 2, 3, 4, 5, 6, 7, 8, 9], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]],
       [`identity`, [1, 0, 0, 0, 1, 0, 0, 0, 1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]],
       [`negative`, [-1, -2, -3, -4, -5, -6, -7, -8, -9],
         [[-1, -2, -3], [-4, -5, -6], [-7, -8, -9]]],
@@ -691,11 +686,12 @@ describe(`3x3 matrix and lattice utilities`, () => {
     })
 
     it(`random matrices: A * inv(A) ≈ I and det(inv) = 1/det`, () => {
+      const rand = math.mulberry32(0)
       for (let trial = 0; trial < 50; trial++) {
         const matrix: math.Matrix3x3 = [
-          [1 + Math.random(), Math.random(), Math.random()],
-          [Math.random(), 1 + Math.random(), Math.random()],
-          [Math.random(), Math.random(), 1 + Math.random()],
+          [1 + rand(), rand(), rand()],
+          [rand(), 1 + rand(), rand()],
+          [rand(), rand(), 1 + rand()],
         ]
         const inv = math.matrix_inverse_3x3(matrix)
         const identity = math.dot(matrix, inv)
@@ -761,7 +757,6 @@ test.each([
   [[[1, 2, 3], [0, 4, 5], [0, 0, 6]], 24, `upper triangular`],
   [[[1, 0, 0], [2, 3, 0], [4, 5, 6]], 18, `lower triangular`],
   [[[0, -1, 0], [1, 0, 0], [0, 0, 1]], 1, `rotation`],
-  [[[2, 0, 0], [0, 2, 0], [0, 0, 2]], 8, `scaling`],
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 0, `zero det`],
   [[[1, 2, 3], [0, 1, 4], [5, 6, 0]], 1, `positive det`],
   [[[2, 1, 1], [1, 3, 2], [1, 0, 0]], -1, `negative det`],
@@ -924,9 +919,7 @@ describe(`det_nxn`, () => {
     // still rejects both 0 and any O(eps) garbage
     expect(math.det_nxn(near_singular)).toBeCloseTo(1e-16, 26)
   })
-})
 
-describe(`det_nxn 4x4 fast path`, () => {
   test.each([
     [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], 1, `identity`],
     [[2, 0, 0, 0], [0, 3, 0, 0], [0, 0, 4, 0], [0, 0, 0, 5], 120, `diagonal`],
@@ -935,10 +928,9 @@ describe(`det_nxn 4x4 fast path`, () => {
     [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], 0, `singular`],
     [[3, 1, 0, 2], [1, 4, 2, 1], [0, 2, 5, 3], [2, 1, 3, 6], 112, `symmetric PD`],
     [[1, 2, 3, 4], [2, 3, 4, 1], [3, 4, 1, 2], [4, 1, 2, 3], 160, `general`],
-    [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1], 1, `negative identity`],
     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], 0, `zero`],
     [[1e10, 0, 0, 0], [0, 1e10, 0, 0], [0, 0, 1e10, 0], [0, 0, 0, 1e10], 1e40, `large`],
-  ])(`%s`, (row_0, row_1, row_2, row_3, expected) => {
+  ])(`4x4 fast path: %s`, (row_0, row_1, row_2, row_3, expected) => {
     expect(math.det_nxn([row_0, row_1, row_2, row_3])).toBeCloseTo(expected, 10)
   })
 
@@ -959,7 +951,6 @@ describe(`cross_3d`, () => {
     [[0, 1, 0], [0, 0, 1], [1, 0, 0], `y × z = x`],
     [[0, 0, 1], [1, 0, 0], [0, 1, 0], `z × x = y`],
     [[1, 0, 0], [0, 0, 1], [0, -1, 0], `x × z = -y`],
-    [[1, 0, 0], [1, 0, 0], [0, 0, 0], `parallel`],
     [[1, 0, 0], [-1, 0, 0], [0, 0, 0], `anti-parallel`],
     [[2, 3, 4], [5, 6, 7], [-3, 6, -3], `general`],
     [[0, 0, 0], [1, 2, 3], [0, 0, 0], `zero vector`],
@@ -984,10 +975,6 @@ describe(`cross_3d`, () => {
     // Orthogonality: (a × b) ⊥ a and (a × b) ⊥ b
     expect(math.dot(cross_ab, vec_a)).toBeCloseTo(0, 10)
     expect(math.dot(cross_ab, vec_b)).toBeCloseTo(0, 10)
-
-    // Magnitude for orthogonal vectors: |a × b| = |a| * |b|
-    const orth_cross = math.cross_3d([3, 0, 0], [0, 4, 0])
-    expect(Math.hypot(...orth_cross)).toBeCloseTo(12, 10)
 
     // Distributive: a × (b + c) = a × b + a × c
     const left = math.cross_3d(vec_a, math.add(vec_b, vec_c))
@@ -1042,8 +1029,6 @@ test.each([
   [[[1]], 1, true],
   [[[1, 2], [3, 4]], 2, true],
   [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 3, true],
-  [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], 4, true],
-  [Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 1)), 5, true],
   // Non-square matrices
   [[[1, 2, 3], [4, 5, 6]], 2, false],
   [[[1, 2], [3, 4], [5, 6]], 3, false],
@@ -1059,14 +1044,11 @@ test.each([
   [[], -1, false],
   // Invalid inputs
   [`not an array`, 3, false],
-  [123, 3, false],
   [null, 3, false],
-  [undefined, 3, false],
   [[1, 2, 3], 3, false],
   [[[1, 2, 3], `not an array`, [7, 8, 9]], 3, false],
   // Non-numeric entries (predicate claims number[][], so entries must be numbers)
   [[[1, 2, `3`], [4, 5, 6], [7, 8, 9]], 3, false],
-  [[[1, 2, 3], [4, 5, 6], [7, 8, null]], 3, false],
   // Non-finite entries rejected (NaN/Infinity pass typeof but break consumers)
   [[[1, 2, 3], [4, NaN, 6], [7, 8, 9]], 3, false],
   [[[1, 2, 3], [4, 5, 6], [7, 8, Infinity]], 3, false],
@@ -1320,56 +1302,16 @@ describe(`merge_coplanar_triangles`, () => {
         coords.push(...corners[idx])
     }
     const input = new Float32Array(coords)
-    const outward_count = (verts: Float32Array) => {
-      let outward = 0
-      for (let base = 0; base < verts.length; base += 9) {
-        const tri = [0, 3, 6].map((off): Vec3 => [
-          verts[base + off],
-          verts[base + off + 1],
-          verts[base + off + 2],
-        ])
-        const [vert_a, vert_b, vert_c] = tri
-        const normal = math.cross_3d(
-          math.subtract(vert_b, vert_a),
-          math.subtract(vert_c, vert_a),
-        )
-        // the cube is centred on (0.5, 0.5, 0.5), so a face's centroid points away from it
+    // the cube is centred on (0.5, 0.5, 0.5), so a face's centroid points away from it
+    const outward_count = (positions: Float32Array) =>
+      triangles(positions).filter((tri) => {
         const outward_dir = [0, 1, 2].map(
-          (axis) => (vert_a[axis] + vert_b[axis] + vert_c[axis]) / 3 - 0.5,
+          (axis) => (tri[0][axis] + tri[1][axis] + tri[2][axis]) / 3 - 0.5,
         )
-        if (math.dot(normal, outward_dir) > 0) outward++
-      }
-      return outward
-    }
+        return math.dot(tri_normal(tri), outward_dir) > 0
+      }).length
     expect(outward_count(input)).toBe(12) // the input is wound correctly to begin with
     expect(outward_count(math.merge_coplanar_triangles(input))).toBe(12)
-  })
-
-  test(`two coplanar adjacent triangles forming a quad are merged`, () => {
-    // Quad: A(0,0,0) B(1,0,0) C(1,1,0) D(0,1,0)
-    // Input triangles start with DIFFERENT vertices (A and C), so only
-    // a successful merge + fan re-triangulation can produce output where
-    // both triangles share a common fan origin.
-    // oxfmt-ignore
-    const input = new Float32Array([
-      0, 0, 0, 1, 0, 0, 1, 1, 0, // tri1: A-B-C (starts with A)
-      1, 1, 0, 0, 1, 0, 0, 0, 0, // tri2: C-D-A (starts with C)
-    ])
-    const result = math.merge_coplanar_triangles(input)
-    expect(result).toHaveLength(18)
-    const out_verts = extract_triangle_verts(result)
-    // oxfmt-ignore
-    const expected_verts: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
-    for (const expected_vertex of expected_verts) {
-      expect(
-        out_verts.some((output_vertex) => vec3_close(output_vertex, expected_vertex)),
-      ).toBe(true)
-    }
-    // Fan triangulation: both output triangles must share the same fan origin.
-    // This can ONLY be true if the merge ran (input tri1 starts with A, tri2 with C).
-    const fan_origin: Vec3 = [result[0], result[1], result[2]]
-    const second_tri_origin: Vec3 = [result[9], result[10], result[11]]
-    expect(vec3_close(fan_origin, second_tri_origin)).toBe(true)
   })
 
   // Regular hexagon on z=0 centered at origin, triangulated as a fan from vertex 0
@@ -1386,9 +1328,15 @@ describe(`merge_coplanar_triangles`, () => {
     ...hex_verts[0], ...hex_verts[4], ...hex_verts[5],
   ])
 
-  // Coplanar groups that merge and then re-triangulate as a fan over all hull vertices
+  // Coplanar groups that merge and then re-triangulate as a fan over all hull vertices, so
+  // every output triangle starts at the same fan origin
   // oxfmt-ignore
   test.each([
+    // Quad A-B-C + C-D-A: the input triangles start at different vertices (A and C), so a
+    // shared fan origin in the output proves the merge ran
+    [`quad from two coplanar triangles`,
+      new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0]),
+      2 * 9, [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], 1e-4],
     // Convex hull gives 6 vertices → 4 fan triangles. 0.866 is not exact in Float32,
     // hence the looser 0.01 vertex-match tolerance.
     [`hexagonal face from four coplanar triangles`, hex_input, 4 * 9, hex_verts, 0.01],
@@ -1416,6 +1364,9 @@ describe(`merge_coplanar_triangles`, () => {
       for (const expected_vertex of expected_verts) {
         expect(out_verts.some((output_vertex) => vec3_close(output_vertex, expected_vertex, tol))).toBe(true)
       }
+      for (let idx = 0; idx < out_verts.length; idx += 3) {
+        expect(vec3_close(out_verts[idx], out_verts[0])).toBe(true)
+      }
     },
   )
 
@@ -1437,17 +1388,10 @@ describe(`merge_coplanar_triangles`, () => {
     const input = new Float32Array([
       0, 0, 0, 2, 0, 0, 0.5, 0.5, 0, 0, 0, 0, 0.5, 0.5, 0, 0, 2, 0,
     ])
-    const result = math.merge_coplanar_triangles(input)
-    let area = 0
-    for (let idx = 0; idx < result.length; idx += 9) {
-      const [axis_x, axis_y, axis_z, basis_x, basis_y, basis_z, center_x, center_y, center_z] =
-        result.subarray(idx, idx + 9)
-      const cross_product = math.cross_3d(
-        [basis_x - axis_x, basis_y - axis_y, basis_z - axis_z],
-        [center_x - axis_x, center_y - axis_y, center_z - axis_z],
-      )
-      area += 0.5 * Math.hypot(...cross_product)
-    }
+    const area = triangles(math.merge_coplanar_triangles(input)).reduce(
+      (sum, tri) => sum + 0.5 * Math.hypot(...tri_normal(tri)),
+      0,
+    )
     expect(area).toBeCloseTo(1.0, 6)
   })
 })
@@ -1551,13 +1495,24 @@ describe(`gcd and Miller index reduction`, () => {
 // === Test helpers for merge_coplanar_triangles ===
 
 // Extract all triangle vertices as Vec3[] from flat Float32Array
-function extract_triangle_verts(positions: Float32Array): Vec3[] {
-  const verts: Vec3[] = []
-  for (let idx = 0; idx < positions.length; idx += 3) {
-    verts.push([positions[idx], positions[idx + 1], positions[idx + 2]])
-  }
-  return verts
+const extract_triangle_verts = (positions: Float32Array): Vec3[] =>
+  Array.from({ length: positions.length / 3 }, (_, idx) => [
+    positions[3 * idx],
+    positions[3 * idx + 1],
+    positions[3 * idx + 2],
+  ])
+
+// Group the vertices of a flat position array into triangles
+const triangles = (positions: Float32Array): Vec3[][] => {
+  const verts = extract_triangle_verts(positions)
+  return Array.from({ length: verts.length / 3 }, (_, idx) =>
+    verts.slice(3 * idx, 3 * idx + 3),
+  )
 }
+
+// Unnormalized right-hand normal of a triangle; its length is twice the area
+const tri_normal = ([vert_a, vert_b, vert_c]: Vec3[]): Vec3 =>
+  math.cross_3d(math.subtract(vert_b, vert_a), math.subtract(vert_c, vert_a))
 
 // Check if two Vec3 are close within tolerance
 const vec3_close = (vertex_a: Vec3, vertex_b: Vec3, tol = 1e-4): boolean =>

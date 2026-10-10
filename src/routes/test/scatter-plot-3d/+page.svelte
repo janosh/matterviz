@@ -14,16 +14,17 @@
   const params = browser ? page.url.searchParams : undefined
   const initial_count = Number(params?.get(`points`) ?? 50)
   const varying_sizes = params?.has(`varying_sizes`)
-  const make_helix = (n_points: number): DataSeries3D => ({
-    x: Array.from({ length: n_points }, (_, idx) => Math.cos(idx * 0.2)),
-    y: Array.from({ length: n_points }, (_, idx) => idx * 0.1),
-    z: Array.from({ length: n_points }, (_, idx) => Math.sin(idx * 0.2)),
-    color_values: Array.from({ length: n_points }, (_, idx) => idx / n_points),
-    size_values: varying_sizes
-      ? Array.from({ length: n_points }, (_, idx) => idx / n_points)
-      : undefined,
-    label: `Test Helix`,
-  })
+  const make_helix = (n_points: number): DataSeries3D => {
+    const indices = Array.from({ length: n_points }, (_, idx) => idx)
+    return {
+      x: indices.map((idx) => Math.cos(idx * 0.2)),
+      y: indices.map((idx) => idx * 0.1),
+      z: indices.map((idx) => Math.sin(idx * 0.2)),
+      color_values: indices.map((idx) => idx / n_points),
+      size_values: varying_sizes ? indices.map((idx) => idx / n_points) : undefined,
+      label: `Test Helix`,
+    }
+  }
   let series = $state.raw([make_helix(initial_count)])
 
   // Expose camera state for testing
@@ -31,13 +32,20 @@
   let hovered_point = $state<InternalPoint3D | null>(null)
   let camera = $state<Camera>()
   let scene = $state<Scene>()
+  const show_projections = params?.has(`projections`) ?? false
   let display = $state({
-    projections: {
-      xy: params?.has(`projections`) ?? false,
-      xz: params?.has(`projections`) ?? false,
-      yz: params?.has(`projections`) ?? false,
-    },
+    projections: { xy: show_projections, xz: show_projections, yz: show_projections },
   })
+  // Instanced meshes in the scene with their (first) material
+  const instanced_meshes = () => {
+    const meshes: { mesh: InstancedMesh; transparent: boolean }[] = []
+    scene?.traverse((object) => {
+      if (!(object instanceof InstancedMesh)) return
+      const material = Array.isArray(object.material) ? object.material[0] : object.material
+      meshes.push({ mesh: object, transparent: material.transparent })
+    })
+    return meshes
+  }
   let wrapper: HTMLDivElement | undefined = $state()
   $effect(() => {
     window.scatter_probe = {
@@ -54,23 +62,18 @@
       hover: () => hovered_point?.point_idx ?? null,
       targets: () => {
         if (!camera || !scene || !wrapper) return []
-        const current_camera = camera
         const viewport = wrapper.getBoundingClientRect()
         const targets: ReturnType<ScatterProbe['targets']> = []
         const matrix = new Matrix4()
         const position = new Vector3()
-        scene.traverse((object) => {
-          if (!(object instanceof InstancedMesh)) return
-          const material = Array.isArray(object.material)
-            ? object.material[0]
-            : object.material
-          if (material.transparent) return
-          for (let point_idx = 0; point_idx < object.count; point_idx++) {
-            object.getMatrixAt(point_idx, matrix)
+        for (const { mesh, transparent } of instanced_meshes()) {
+          if (transparent) continue
+          for (let point_idx = 0; point_idx < mesh.count; point_idx++) {
+            mesh.getMatrixAt(point_idx, matrix)
             position
               .setFromMatrixPosition(matrix)
-              .applyMatrix4(object.matrixWorld)
-              .project(current_camera)
+              .applyMatrix4(mesh.matrixWorld)
+              .project(camera)
             targets.push({
               point_idx,
               x: viewport.x + ((position.x + 1) * viewport.width) / 2,
@@ -78,25 +81,16 @@
               depth: position.z,
             })
           }
-        })
+        }
         return targets.toSorted((left, right) => left.depth - right.depth)
       },
-      instances: () => {
-        const meshes: ReturnType<ScatterProbe['instances']> = []
-        scene?.traverse((object) => {
-          if (!(object instanceof InstancedMesh)) return
-          const material = Array.isArray(object.material)
-            ? object.material[0]
-            : object.material
-          meshes.push({
-            count: object.count,
-            matrices: Array.from(object.instanceMatrix.array).slice(0, object.count * 16),
-            colors: Array.from(object.instanceColor?.array ?? []).slice(0, object.count * 3),
-            projection: material.transparent,
-          })
-        })
-        return meshes
-      },
+      instances: () =>
+        instanced_meshes().map(({ mesh, transparent }) => ({
+          count: mesh.count,
+          matrices: Array.from(mesh.instanceMatrix.array).slice(0, mesh.count * 16),
+          colors: Array.from(mesh.instanceColor?.array ?? []).slice(0, mesh.count * 3),
+          projection: transparent,
+        })),
     }
     return () => {
       Reflect.deleteProperty(window, `scatter_probe`)

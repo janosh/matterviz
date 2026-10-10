@@ -703,11 +703,8 @@ export class StructureSession {
   // === edit-atoms operations ===
   // Map scene indices (into displayed_structure) back to raw structure indices through the
   // supercell and image-atom provenance properties
-  scene_to_structure_indices(
-    scene_indices: number[],
-    skip_image_atoms = false,
-  ): SvelteSet<number> {
-    const result = new SvelteSet<number>()
+  scene_to_structure_indices(scene_indices: number[], skip_image_atoms = false): Set<number> {
+    const result = new Set<number>()
     for (const scene_idx of scene_indices) {
       const site = this.displayed_structure?.sites[scene_idx]
       if (!site) continue

@@ -66,9 +66,8 @@ export function gizmo_rect(
 // Gizmo edge length for a multi-view pane. Panes are ~half the viewer, so the fixed
 // single-view size would dominate them: scale with the pane's short side instead, clamped to
 // stay legible when small and below the single-view size when large.
-export const responsive_gizmo_size = (width: number, height: number): number => {
-  return Math.round(clamp(Math.min(width, height) * 0.2, 34, 72))
-}
+export const responsive_gizmo_size = (width: number, height: number): number =>
+  Math.round(clamp(Math.min(width, height) * 0.2, 34, 72))
 
 export const GIZMO_AXES: readonly (readonly [GizmoAxisKey, Vec3, boolean])[] = [
   [`x`, [1, 0, 0], false],

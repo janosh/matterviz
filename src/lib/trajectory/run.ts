@@ -329,9 +329,9 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
       assert_frame_idx({ frame_count }, frame_idx)
       live()
       signal?.throwIfAborted()
-      if (frame_idx === 0 && initial_frame)
-        return select_frame_channels(initial_frame, channels)
-      return select_frame_channels(read(frame_idx, channels), channels)
+      const frame =
+        frame_idx === 0 && initial_frame ? initial_frame : read(frame_idx, channels)
+      return select_frame_channels(frame, channels)
     },
     ...(collect_positions && {
       collect_positions: async (options = {}) => {

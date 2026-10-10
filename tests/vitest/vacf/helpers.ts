@@ -8,7 +8,7 @@ import { make_frame } from '../test-fixtures'
 
 export { make_rng, max_abs_error, max_rel_error } from '../numeric-helpers'
 
-export type BuildVacfInputOptions = BuildPositionsOptions & {
+type BuildVacfInputOptions = BuildPositionsOptions & {
   // frames[frame_idx][atom_idx] = [vx, vy, vz], same shape as the positions
   velocity_frames?: number[][][]
   velocity_unit?: string

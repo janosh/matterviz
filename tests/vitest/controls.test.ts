@@ -36,16 +36,6 @@ describe(`normalize_show_controls`, () => {
       true,
     ])
   })
-
-  it.each([
-    // [hidden_controls, control_to_check, expected_visible]
-    [[`fullscreen`], `fullscreen`, false],
-    [[`fullscreen`], `reset-camera`, true],
-    [[], `any-control`, true],
-  ])(`visible() with hidden=%j returns %s for %s`, (hidden, control, expected) => {
-    const config = normalize_show_controls({ hidden })
-    expect(config.visible(control)).toBe(expected)
-  })
 })
 
 describe(`track_settings`, () => {

@@ -1,5 +1,11 @@
 import type { Vec3 } from '#lib/math.js'
-import type { BondPair, Site } from '#lib/structure/index.js'
+import type {
+  BondEditMode,
+  BondPair,
+  MeasureMode,
+  Site,
+  StructureBond,
+} from '#lib/structure/index.js'
 import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
 import type { StructureCutaway } from '#lib/structure/cutaway.js'
 import { cutaway_planes, StructureCutawayGroup } from '#lib/structure/cutaway.js'
@@ -27,6 +33,7 @@ import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
+import { bind_props } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
@@ -52,6 +59,44 @@ const spy_interactivity = () => {
     return captured.value
   }
 }
+
+// Whole-atom slab through z = 0 of an identity cell
+const whole_atom_cutaway = (): StructureCutaway => ({
+  mode: `slab`,
+  axis: 2,
+  position: 0,
+  thickness: 0.2,
+  whole_atoms: true,
+  cartesian_to_fractional: new Matrix4(),
+})
+const meshes_of = <Kind extends Object3D>(
+  scene: Object3D,
+  kind: new (...args: never[]) => Kind,
+): Kind[] =>
+  scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .filter((mesh): mesh is Kind => mesh instanceof kind)
+const sphere_count = (scene: Object3D): number =>
+  meshes_of(scene, AtomInstances).reduce((sum, mesh) => sum + mesh.count, 0)
+// Both ends of every instanced bond cylinder
+const bond_endpoints = (bond: BondMesh): number[][][] =>
+  Array.from({ length: bond.count }, (_unused, bond_idx) =>
+    [-1, 1].map((direction) =>
+      [0, 1, 2].map(
+        (axis) =>
+          bond.centers.array[bond_idx * 3 + axis] +
+          (direction * bond.deltas.array[bond_idx * 3 + axis]) / 2,
+      ),
+    ),
+  )
+// SiO4 tetrahedron: Si-O 1.62 A along the cube diagonals
+const SIO4_ARM = 1.62 / Math.sqrt(3)
+const SIO4_CORNERS: Vec3[] = [
+  [SIO4_ARM, SIO4_ARM, SIO4_ARM],
+  [SIO4_ARM, -SIO4_ARM, -SIO4_ARM],
+  [-SIO4_ARM, SIO4_ARM, -SIO4_ARM],
+  [-SIO4_ARM, -SIO4_ARM, SIO4_ARM],
+]
 
 test.each(
   ([`plane`, `slab`] as const).flatMap((mode) =>
@@ -190,14 +235,7 @@ test.each(
         get structure() {
           return structure
         },
-        cutaway: {
-          mode: `slab`,
-          axis: 2,
-          position: 0,
-          thickness: 0.2,
-          whole_atoms: true,
-          cartesian_to_fractional: new Matrix4(),
-        },
+        cutaway: whole_atom_cutaway(),
         show_bonds,
         show_polyhedra: `always`,
         polyhedra_neighbor_mode: `bonded`,
@@ -215,10 +253,8 @@ test.each(
       structure = make_structure(center_z, vertex_z)
       flushSync()
       const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
-      const atoms = meshes.filter(
-        (mesh): mesh is AtomInstances => mesh instanceof AtomInstances,
-      )
-      const bond = meshes.find((mesh) => mesh instanceof BondMesh)
+      const atoms = meshes_of(scene, AtomInstances)
+      const [bond] = meshes_of(scene, BondMesh)
       const faces = meshes.find(
         (mesh) =>
           mesh instanceof Mesh &&
@@ -254,15 +290,8 @@ test.each(
         if (!(bond instanceof BondMesh)) throw new Error(`Missing complete bonds`)
         expect(bond.count).toBe(4)
         expect(cutaway_planes(bond)).toEqual([])
-        for (let bond_idx = 0; bond_idx < bond.count; bond_idx++) {
-          for (const direction of [-1, 1]) {
-            const endpoint = [0, 1, 2].map(
-              (axis) =>
-                bond.centers.array[bond_idx * 3 + axis] +
-                (direction * bond.deltas.array[bond_idx * 3 + axis]) / 2,
-            )
-            expect(positions).toContainEqual(endpoint)
-          }
+        for (const endpoint of bond_endpoints(bond).flat()) {
+          expect(positions).toContainEqual(endpoint)
         }
       }
     }
@@ -340,6 +369,76 @@ test.each([
   expect(hover.idx).toBe(front_idx)
 })
 
+// Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path
+test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
+  const interactivity = spy_interactivity()
+  const state = $state<{
+    measure_mode: MeasureMode
+    bond_edit_mode: BondEditMode
+    selected_sites: number[]
+    measured_sites: number[]
+    added_bonds: StructureBond[]
+  }>({
+    measure_mode: `distance`,
+    bond_edit_mode: `add`,
+    selected_sites: [],
+    measured_sites: [],
+    added_bonds: [],
+  })
+  const sites = [0, 3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+  const { unmount_scene } = mount_scene((anchor) =>
+    StructureScene(
+      anchor,
+      bind_props({ structure: { sites }, show_bonds: `never` as const, gizmo: false }, state),
+    ),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const scene_interactivity = interactivity()
+  // Cast a ray straight down onto x and press there, as a click does
+  const click = (x_coord: number, init: MouseEventInit = {}, type = `click`) => {
+    scene_interactivity.compute = (_event, { raycaster }) =>
+      raycaster.set(new Vector3(x_coord, 0, 10), new Vector3(0, 0, -1))
+    const target = scene_interactivity.target.current
+    target?.dispatchEvent(new PointerEvent(`pointerdown`, init))
+    target?.dispatchEvent(new MouseEvent(type, init))
+    flushSync()
+  }
+  const shift = { shiftKey: true }
+  for (const [mode, clicks, expected] of [
+    [`distance`, [[0], [3], [0]], [[0], [0, 1], [1]]],
+    [`edit-atoms`, [[0], [3], [6, shift], [3, shift], [6]], [[0], [1], [1, 2], [2], []]],
+  ] as const) {
+    Object.assign(state, { measure_mode: mode, selected_sites: [], measured_sites: [] })
+    flushSync()
+    for (const [idx, [x_coord, init]] of clicks.entries()) {
+      click(x_coord, init)
+      expect(state.selected_sites, `${mode} click ${idx}`).toEqual(expected[idx])
+      expect(state.measured_sites).toEqual(expected[idx])
+    }
+  }
+  // A picked pair becomes a bond and the picks clear; a delete-mode click removes it again
+  state.measure_mode = `edit-bonds`
+  flushSync()
+  click(0)
+  expect(state.selected_sites).toEqual([0])
+  click(3)
+  expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+  expect([state.selected_sites, state.measured_sites]).toEqual([[], []])
+  // Right-clicking the bond opens its order menu
+  click(1.5, { button: 2 }, `contextmenu`)
+  const menu_buttons = document.querySelectorAll(`.bond-context-menu button`)
+  const double = [...menu_buttons].find((button) => button.textContent?.trim() === `Double`)
+  double?.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+  flushSync()
+  expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+  expect(document.querySelector(`.bond-context-menu`)).toBeNull()
+  state.bond_edit_mode = `delete`
+  flushSync()
+  click(1.5)
+  expect(state.added_bonds).toEqual([])
+})
+
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
 // show: hidden, translucent or tiny atoms
 test.each([
@@ -361,9 +460,7 @@ test.each([
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const mesh = scene
-    .getObjectsByProperty(`type`, `Mesh`)
-    .find((obj) => obj instanceof BondMesh)
+  const [mesh] = meshes_of(scene, BondMesh)
   expect(mesh?.geometry.index?.count).toBe(triangles * 3)
 })
 
@@ -833,6 +930,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
   let mode = $state<PolyhedraColorMode>(`uniform`)
   let show_edges = $state(false)
   let show_polyhedra = $state(true)
+  let defer_expensive_geometry = $state(false)
   const property_colors = {
     colors: [`red`, `blue`],
     values: [0, 1, 2, 1, 2],
@@ -854,6 +952,9 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       },
       get polyhedra_show_edges() {
         return show_edges
+      },
+      get defer_expensive_geometry() {
+        return defer_expensive_geometry
       },
     }),
   )
@@ -908,6 +1009,14 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(disposal).not.toHaveBeenCalled()
       expect(face_disposal).not.toHaveBeenCalled()
     }
+    // Deferred geometry keeps the last hulls while their inputs change
+    defer_expensive_geometry = true
+    show_polyhedra = false
+    flushSync()
+    expect(scene.getObjectById(edges.id)).toBe(edges)
+    defer_expensive_geometry = false
+    flushSync()
+    expect(scene.getObjectById(edges.id)).toBeUndefined()
   } finally {
     await unmount_scene()
   }
@@ -1080,18 +1189,10 @@ test.each([
 ])(
   `bonds capped=$capped with hidden centers=$hide_centers, whole-atom slab=$whole_atom_slab`,
   ({ hide_centers, whole_atom_slab, capped }) => {
-    // SiO4 tetrahedron: Si-O 1.62 A along the cube diagonals
-    const arm = 1.62 / Math.sqrt(3)
-    const corners: Vec3[] = [
-      [arm, arm, arm],
-      [arm, -arm, -arm],
-      [-arm, arm, -arm],
-      [-arm, -arm, arm],
-    ]
     const structure = {
       sites: [
         make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`),
-        ...corners.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`)),
+        ...SIO4_CORNERS.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`)),
       ],
     }
     const { scene, unmount_scene } = mount_scene((anchor) =>
@@ -1102,29 +1203,17 @@ test.each([
         polyhedra_hide_center_atoms: hide_centers,
         // Thin bonds, so opaque atoms alone always cover the open ends
         bond_thickness: 0.05,
-        cutaway: whole_atom_slab
-          ? {
-              mode: `slab`,
-              axis: 2,
-              position: 0,
-              thickness: 0.2,
-              whole_atoms: true,
-              cartesian_to_fractional: new Matrix4(),
-            }
-          : undefined,
+        cutaway: whole_atom_slab ? whole_atom_cutaway() : undefined,
         gizmo: false,
       }),
     )
     onTestFinished(unmount_scene)
     flushSync()
-    const bond = scene
-      .getObjectsByProperty(`type`, `Mesh`)
-      .find((mesh) => mesh instanceof BondMesh)
-    if (!(bond instanceof BondMesh)) throw new Error(`no bond mesh rendered`)
-    expect(bond.count).toBe(4)
+    const [bond] = meshes_of(scene, BondMesh)
+    expect(bond?.count).toBe(4)
     const cylinder_indices = (open_ended: boolean) =>
       new CylinderGeometry(1, 1, 1, 8, 1, open_ended).index?.count
-    expect(bond.geometry.index?.count).toBe(cylinder_indices(!capped))
+    expect(bond?.geometry.index?.count).toBe(cylinder_indices(!capped))
   },
 )
 
@@ -1132,17 +1221,10 @@ test.each([
 // per-site overlays (force arrows here) must keep the slice's surface clip, and every kept
 // atom keeps its label, including the shell endpoints outside the slice
 test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint labels`, () => {
-  const arm = 1.62 / Math.sqrt(3)
-  const corners: Vec3[] = [
-    [arm, arm, arm],
-    [arm, -arm, -arm],
-    [-arm, arm, -arm],
-    [-arm, -arm, arm],
-  ]
   const structure = {
     sites: [
       make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`, { force: [0.5, 0, 0] }),
-      ...corners.map((xyz, idx) =>
+      ...SIO4_CORNERS.map((xyz, idx) =>
         make_site(`O`, [0, 0, 0], xyz, `O${idx}`, { force: [0.5, 0, 0] }),
       ),
     ],
@@ -1153,14 +1235,7 @@ test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint 
       show_bonds: `always`,
       show_polyhedra: `always`,
       show_site_labels: true,
-      cutaway: {
-        mode: `slab`,
-        axis: 2,
-        position: 0,
-        thickness: 0.2,
-        whole_atoms: true,
-        cartesian_to_fractional: new Matrix4(),
-      },
+      cutaway: whole_atom_cutaway(),
       gizmo: false,
     }),
   )
@@ -1173,12 +1248,10 @@ test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint 
     throw new Error(`${object.type} has no cutaway group`)
   }
   const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
-  const of_kind = <Kind extends Object3D>(kind: new (...args: never[]) => Kind) =>
-    meshes.filter((mesh): mesh is Kind => mesh instanceof kind)
   const [atoms, bonds, arrows] = [
-    of_kind(AtomInstances),
-    of_kind(BondMesh),
-    of_kind(ArrowMesh),
+    meshes_of(scene, AtomInstances),
+    meshes_of(scene, BondMesh),
+    meshes_of(scene, ArrowMesh),
   ]
   // The merged polyhedra faces: the one plain vertex-colored mesh
   const polyhedra = meshes.find(
@@ -1252,32 +1325,15 @@ test.each([
       structure,
       show_bonds: `always`,
       show_polyhedra: `never`,
-      cutaway: {
-        mode: `slab`,
-        axis: 2,
-        position: 0,
-        thickness: 0.2,
-        whole_atoms: true,
-        cartesian_to_fractional: new Matrix4(),
-      },
+      cutaway: whole_atom_cutaway(),
       gizmo: false,
     }),
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const bond_mesh = scene
-    .getObjectsByProperty(`type`, `Mesh`)
-    .find((mesh) => mesh instanceof BondMesh)
-  if (!(bond_mesh instanceof BondMesh)) throw new Error(`no bond mesh rendered`)
-  const drawn = Array.from({ length: bond_mesh.count }, (_, bond_idx) =>
-    [-1, 1].map((direction) =>
-      [0, 1, 2].map(
-        (axis) =>
-          bond_mesh.centers.array[bond_idx * 3 + axis] +
-          (direction * bond_mesh.deltas.array[bond_idx * 3 + axis]) / 2,
-      ),
-    ),
-  )
+  const [bond_mesh] = meshes_of(scene, BondMesh)
+  if (!bond_mesh) throw new Error(`no bond mesh rendered`)
+  const drawn = bond_endpoints(bond_mesh)
   expect(drawn).toHaveLength(expected_bonds.length)
   for (const [start, end] of expected_bonds) {
     const match = drawn.find((ends) =>
@@ -1339,24 +1395,13 @@ test.each([`center first`, `center second`])(
         structure,
         show_bonds: `always`,
         show_polyhedra: `always`,
-        cutaway: {
-          mode: `slab`,
-          axis: 2,
-          position: 0,
-          thickness: 0.2,
-          whole_atoms: true,
-          cartesian_to_fractional: new Matrix4(),
-        },
+        cutaway: whole_atom_cutaway(),
         gizmo: false,
       }),
     )
     onTestFinished(unmount_scene)
     flushSync()
-    const spheres = scene
-      .getObjectsByProperty(`type`, `Mesh`)
-      .filter((mesh): mesh is AtomInstances => mesh instanceof AtomInstances)
-      .reduce((sum, mesh) => sum + mesh.count, 0)
-    expect(spheres).toBe(5) // Ti plus its 4 O images
+    expect(sphere_count(scene)).toBe(5) // Ti plus its 4 O images
   },
 )
 
@@ -1380,11 +1425,11 @@ test.each([false, true])(
     )
     onTestFinished(unmount_scene)
     flushSync()
-    const atoms = scene
-      .getObjectsByProperty(`type`, `Mesh`)
-      .filter((mesh): mesh is AtomInstances => mesh instanceof AtomInstances)
     // Whole-atom mode keeps only the selected z = 0.5 atom; surface mode clips the cell's atoms
-    if (whole_atoms) expect(atoms.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(1)
-    else expect(atoms.flatMap((mesh) => cutaway_planes(mesh))).toHaveLength(2)
+    if (whole_atoms) expect(sphere_count(scene)).toBe(1)
+    else
+      expect(
+        meshes_of(scene, AtomInstances).flatMap((mesh) => cutaway_planes(mesh)),
+      ).toHaveLength(2)
   },
 )

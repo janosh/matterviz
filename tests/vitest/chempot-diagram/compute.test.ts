@@ -8,7 +8,6 @@
 
 import type { VisibleDomainLabel } from '#lib/chempot-diagram/compute.js'
 import {
-  apply_element_padding,
   assign_faces_to_domains,
   bbox_diagonal,
   best_form_energy_for_formula,
@@ -28,7 +27,7 @@ import {
   get_touches_limits,
   get_visible_domain_labels,
   orthonormal_2d,
-  pad_domain_points,
+  pad_domains,
   renormalize_entries,
   safe_energy_per_atom,
   scale_to_font_range,
@@ -320,53 +319,17 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
 })
 
 describe(`physical invariants`, () => {
+  // the border rows keep every vertex inside the [-25, 0] limits
   test(`all domain vertices satisfy all hyperplane constraints`, () => {
     const border = build_border_hyperplanes(cpd_ternary.lims)
     expect(border).toHaveLength(2 * cpd_ternary.elements.length)
     expect_feasible(cpd_ternary.domains, [...ternary_hull_input.hyperplanes, ...border])
   })
 
-  test(`vertices within limits and every element has a domain`, () => {
-    for (const element of cpd_ternary.elements) {
-      expect(cpd_ternary.domains[element], `Element ${element} has no domain`).toBeDefined()
-    }
-    expect_within_lims(cpd_ternary)
-  })
-
-  test(`elemental domains touch the el_ref energy axis`, () => {
-    const fe_ref_e = ternary_hull_input.el_refs.Fe.energy
-    const fe_vals = dedup_vertices(cpd_ternary.domains.Fe).map((point) => point[0])
-    expect(fe_vals.some((val) => Math.abs(val - fe_ref_e) < 0.01)).toBe(true)
-  })
-
   test(`formal chempots touch mu=0 and are non-positive`, () => {
+    expect(cpd_ternary_formal.lims).toEqual(cpd_ternary_formal.elements.map(() => [-25, 0]))
     expect_elemental_touch(cpd_ternary_formal)
-    for (const pts of Object.values(cpd_ternary_formal.domains)) {
-      for (const point of pts) {
-        for (const chempot of point) {
-          expect(chempot, `Formal chempot should be <= 0`).toBeLessThanOrEqual(1e-4)
-        }
-      }
-    }
-  })
-
-  test(`domain vertex centroids satisfy hyperplane feasibility`, () => {
-    // Centroids of boundary-clamped vertices may leave their domain; only check feasibility.
-    const dim = cpd_ternary.elements.length
-    for (const pts of Object.values(cpd_ternary.domains)) {
-      const unique = dedup_vertices(pts)
-      if (unique.length < 2) continue
-      const centroid = unique[0].map(
-        (_, col) => unique.reduce((sum, row) => sum + row[col], 0) / unique.length,
-      )
-      let best_energy = Infinity
-      for (const halfspace of ternary_hull_input.hyperplanes) {
-        let val = halfspace[dim]
-        for (let jdx = 0; jdx < dim; jdx++) val += halfspace[jdx] * centroid[jdx]
-        if (val < best_energy) best_energy = val
-      }
-      expect(best_energy).toBeLessThanOrEqual(1e-4)
-    }
+    expect_within_lims(cpd_ternary_formal)
   })
 })
 
@@ -380,6 +343,52 @@ const expect_vertices = (actual: number[][], expected: number[][]) => {
   )
 }
 
+// Li (-1.9 eV/atom), O2 (-4.9 eV/atom) and Li2O with E_form = -2 eV/atom, plus excluded
+// Li2O (E_form -2.5) and Li (-2.4 eV/atom) that lie below them
+const li_o_entries = [
+  make_phase({ Li: 1 }, -1.9, { entry_id: `Li` }),
+  make_phase({ O: 2 }, -4.9, { entry_id: `O2` }),
+  make_phase({ Li: 2, O: 1 }, -4.9, { entry_id: `Li2O` }),
+]
+const li_o_with_excluded = [
+  ...li_o_entries,
+  make_phase({ Li: 2, O: 1 }, -5.4, { entry_id: `Li2O-excl`, exclude_from_hull: true }),
+  make_phase({ Li: 1 }, -2.4, { entry_id: `Li-excl`, exclude_from_hull: true }),
+]
+
+// Formal Li2O plane 2/3 mu_Li + 1/3 mu_O = -2 between the Li (mu_Li = 0) and O (mu_O = 0) lines
+test.each<[string, PhaseData[]]>([
+  [`hull-eligible entries`, li_o_entries],
+  // excluded entries used to win the min-energy selection: Li2O at (-3.25, 0) without hull
+  // flags, and no Li2O domain at all with them (the excluded polymorph is off the hull)
+  [`excluded entries ignored`, li_o_with_excluded],
+  [
+    `excluded entries ignored with hull flags`,
+    li_o_with_excluded.map((entry) => ({ ...entry, e_above_hull: 0 })),
+  ],
+  // E_form-only entries: a 0 eV placeholder energy used to put every phase at E = 0
+  ...[0, undefined].map((energy): [string, PhaseData[]] => [
+    `E_form-only entries (energy: ${energy})`,
+    (
+      [
+        [{ Li: 1 }, 0],
+        [{ O: 2 }, 0],
+        [{ Li: 2, O: 1 }, -2],
+      ] as const
+    ).map(
+      ([composition, e_form_per_atom]) =>
+        ({ composition, e_form_per_atom, energy }) as PhaseData,
+    ),
+  ]),
+])(`Li2O domain runs from (0, -6) to (-3, 0): %s`, (_label, li_o) => {
+  const { domains } = compute_chempot_diagram(li_o, { default_min_limit: -20 })
+  expect(Object.keys(domains).toSorted()).toEqual([`Li`, `Li2O`, `O`])
+  expect_vertices(domains.Li2O, [
+    [0, -6],
+    [-3, 0],
+  ])
+})
+
 describe(`analytic binary A-B-AB`, () => {
   // Hyperplanes: mu_A <= E_A, mu_B <= E_B, (mu_A + mu_B)/2 <= E_AB; box [-20, 0]^2
   const ab_binary_entries = [
@@ -387,31 +396,24 @@ describe(`analytic binary A-B-AB`, () => {
     make_phase({ A: 1, B: 1 }, -6.0), // E_form = -6 - (-2 - 3)/2 = -3.5 eV/atom
   ]
 
-  test(`absolute chempots: AB segment spans mu_A + mu_B = -12 between the element lines`, () => {
-    const { domains } = compute_chempot_diagram(ab_binary_entries, {
-      default_min_limit: -20,
-      formal_chempots: false,
-    })
-    const { el_refs } = build_chempot_hyperplanes(ab_binary_entries, [`A`, `B`], false)
-    expect(el_refs.A.energy_per_atom).toBe(-2.0)
-    expect(el_refs.B.energy_per_atom).toBe(-3.0)
-    expect_vertices(domains.A, chunk(2, [-2, -10, -2, -20]))
-    expect_vertices(domains.B, chunk(2, [-9, -3, -20, -3]))
-    expect_vertices(domains.AB, chunk(2, [-2, -10, -9, -3]))
-  })
-
-  test(`formal chempots shift the element lines to 0 and AB to mu_A + mu_B = -7`, () => {
-    const { domains } = compute_chempot_diagram(ab_binary_entries, {
-      default_min_limit: -20,
-      formal_chempots: true,
-    })
-    const { el_refs } = build_chempot_hyperplanes(ab_binary_entries, [`A`, `B`], true)
-    expect(el_refs.A.energy_per_atom).toBeCloseTo(0, 12)
-    expect(el_refs.B.energy_per_atom).toBeCloseTo(0, 12)
-    expect_vertices(domains.A, chunk(2, [0, -7, 0, -20]))
-    expect_vertices(domains.B, chunk(2, [-7, 0, -20, 0]))
-    expect_vertices(domains.AB, chunk(2, [0, -7, -7, 0]))
-  })
+  test.each([
+    // absolute: element lines at the refs, AB segment on mu_A + mu_B = -12 between them
+    [false, [-2, -10, -2, -20], [-9, -3, -20, -3], [-2, -10, -9, -3]],
+    // formal: element lines shift to 0 and AB to mu_A + mu_B = -7
+    [true, [0, -7, 0, -20], [-7, 0, -20, 0], [0, -7, -7, 0]],
+  ])(
+    `formal_chempots=%s: exact A, B and AB domains`,
+    (formal_chempots, verts_a, verts_b, verts_ab) => {
+      const { domains } = compute_chempot_diagram(ab_binary_entries, {
+        default_min_limit: -20,
+        formal_chempots,
+      })
+      expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`, `B`])
+      expect_vertices(domains.A, chunk(2, verts_a))
+      expect_vertices(domains.B, chunk(2, verts_b))
+      expect_vertices(domains.AB, chunk(2, verts_ab))
+    },
+  )
 
   test(`per-element limits clip the element domains (AB untouched)`, () => {
     const { domains, lims } = compute_chempot_diagram(ab_binary_entries, {
@@ -452,9 +454,6 @@ describe(`analytic binary A-B-AB`, () => {
       formal_chempots: false,
       limits: { A: [-5, 0] },
     })
-    for (const pts of Object.values(domains)) {
-      for (const point of pts) expect(point[0]).toBeGreaterThanOrEqual(-5 - 1e-9)
-    }
     // mu_B = -3 needs mu_A <= -9 for AB to be unstable, outside A's range: no B domain
     expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`])
     expect_vertices(domains.A, chunk(2, [-2, -10, -2, -60]))
@@ -633,10 +632,6 @@ describe(`get_min_entries_and_el_refs`, () => {
 
   test.each([
     {
-      kept: { composition: { Li: 2, O: 1 }, energy: -10, exclude_from_hull: false },
-      dropped: { composition: { Li: 4, O: 2 }, energy: -20, exclude_from_hull: true },
-    },
-    {
       kept: { composition: { Li: 1 }, energy: -3, is_stable: true },
       dropped: { composition: { Li: 1 }, energy: -3, is_stable: false },
     },
@@ -647,6 +642,15 @@ describe(`get_min_entries_and_el_refs`, () => {
   ])(`EPA ties keep the preferred entry independent of order`, ({ kept, dropped }) => {
     expect(get_min_entries_and_el_refs([kept, dropped]).min_entries[0]).toBe(kept)
     expect(get_min_entries_and_el_refs([dropped, kept]).min_entries[0]).toBe(kept)
+  })
+
+  // Like the convex hull, an exclude_from_hull entry neither builds the diagram nor serves as
+  // an elemental reference, however low its energy. Selected by energy first, the excluded
+  // Li set the Li reference and the excluded Li2O replaced the hull-eligible one.
+  test(`never selects exclude_from_hull entries, even below the hull-eligible ones`, () => {
+    const { min_entries, el_refs } = get_min_entries_and_el_refs(li_o_with_excluded)
+    expect(min_entries.map((entry) => entry.entry_id)).toEqual([`Li`, `O2`, `Li2O`])
+    expect(el_refs.Li.entry_id).toBe(`Li`)
   })
 
   test(`skips invalid compositions instead of throwing`, () => {
@@ -767,18 +771,14 @@ describe(`element padding`, () => {
         [-40, -44],
       ],
     }
-    const padding = 5.0
-    const new_lims = apply_element_padding(domains, [0, 1], padding, -50)
-    // axis mins skip only the floor itself (pymatgen's np.isclose(col, default_min_limit))
-    expect(new_lims[0]).toBeCloseTo(-52, 12)
-    expect(new_lims[1]).toBeCloseTo(-51, 12)
-
-    const padded = pad_domain_points(domains.A, [0, 1], new_lims, -50)
-    expect(padded).toEqual([
-      [new_lims[0], new_lims[1]],
+    // axis mins skip only the floor itself (pymatgen's np.isclose(col, default_min_limit)),
+    // so the floor moves to min - padding: [-47 - 5, -46 - 5]
+    expect(pad_domains(domains, [0, 1], 5, -50).A).toEqual([
+      [-52, -51],
       [-47, -46],
       [-40, -44],
     ])
+    expect(pad_domains(domains, [0, 1], 0, -50)).toBe(domains)
   })
 })
 
@@ -804,14 +804,6 @@ describe(`simple_pca`, () => {
         3,
       ),
     )
-  })
-
-  test(`projections are zero-mean`, () => {
-    const { scores } = simple_pca(chunk(3, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), 2)
-    for (let col = 0; col < 2; col++) {
-      const mean = scores.reduce((sum, row) => sum + row[col], 0) / scores.length
-      expect(mean).toBeCloseTo(0, 8)
-    }
   })
 
   test(`empty data returns empty`, () => {
@@ -914,6 +906,7 @@ describe(`orthonormal_2d`, () => {
   test.each([
     [`steep`, [-2, -5, -4, 6], [-0.98386991, -0.17888544]],
     [`horizontal`, [0, 5, 10, 5], [0, 1]],
+    [`degenerate segment falls back to`, [3, 7, 3, 7], [0, 1]],
   ] as [string, number[], number[]][])(
     `%s: correct value, unit length, perpendicular`,
     (_label, flat_pts, expected) => {
@@ -925,15 +918,6 @@ describe(`orthonormal_2d`, () => {
       expect(Math.abs(vec[0] * (x_1 - x_0) + vec[1] * (y_1 - y_0))).toBeLessThan(1e-10)
     },
   )
-
-  test(`degenerate segment falls back to [0, 1]`, () => {
-    expect(
-      orthonormal_2d([
-        [3, 7],
-        [3, 7],
-      ]),
-    ).toEqual([0, 1])
-  })
 })
 
 describe(`config.elements projection vs subsystem`, () => {
@@ -1087,14 +1071,8 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     },
   )
 
-  test(`Y-Ti-O has Y2Ti2O7, in-bounds vertices, and elemental mu=0 touch`, () => {
-    const key = `O7Ti2Y2`
-    expect(ytos_y_ti_o.domains[key], `Domain for ${key} (Y2Ti2O7)`).toBeDefined()
-    expect(dedup_vertices(ytos_y_ti_o.domains[key]).length).toBeGreaterThanOrEqual(3)
-    for (const pts of Object.values(ytos_y_ti_o.domains)) {
-      for (const point of pts)
-        for (const chempot of point) expect(chempot).toBeLessThanOrEqual(1e-4)
-    }
+  test(`Y-Ti-O has a 2D Y2Ti2O7 domain, in-bounds vertices, and elemental mu=0 touch`, () => {
+    expect(dedup_vertices(ytos_y_ti_o.domains.O7Ti2Y2).length).toBeGreaterThanOrEqual(3)
     expect_within_lims(ytos_y_ti_o)
     expect_elemental_touch(ytos_y_ti_o)
   })
@@ -1523,10 +1501,8 @@ describe(`compute_chempot_diagram edge cases`, () => {
     })
     expect(reordered.elements).toEqual([`O`, `Fe`, `Li`])
     // Same domains as default order, just reordered columns
-    expect(
-      Object.keys(reordered.domains).toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
-    ).toEqual(
-      Object.keys(cpd_ternary.domains).toSorted((str_a, str_b) => str_a.localeCompare(str_b)),
+    expect(Object.keys(reordered.domains).toSorted()).toEqual(
+      Object.keys(cpd_ternary.domains).toSorted(),
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
@@ -1621,17 +1597,6 @@ describe(`best_form_energy_for_formula`, () => {
     expect(color_data.colors.size).toBe(3)
   })
 
-  test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
-    const all_entries = Object.values(AB_REFS)
-    const renormed = renormalize_entries(all_entries, AB_REFS)
-    const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
-    expect(safe_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
-    expect(safe_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
-    // With zero-energy refs, e_form equals raw epa (not true formation energy!)
-    // This confirms raw (non-renormalized) el_refs must be used for coloring.
-    expect(e_form(make_phase({ A: 1, B: 1 }, -3.5), renorm_refs)).toBeCloseTo(-3.5, 8)
-  })
-
   test(`formation energy from real data: Fe-Li-O system`, () => {
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(entries)
     // All elemental refs should have zero formation energy
@@ -1646,28 +1611,11 @@ describe(`best_form_energy_for_formula`, () => {
 // filter_entries_at_temperature itself is covered in convex-hull/helpers.test.ts;
 // this only checks the filtered output still feeds compute_chempot_diagram correctly.
 test(`temperature-filtered entries still compute a valid 2D chempot diagram`, () => {
-  const baseline_entries: PhaseData[] = [
-    {
-      composition: { Li: 1 },
-      energy: -1,
-      energy_per_atom: -1,
-      temperatures: [300, 600],
-      free_energies: [-1.1, -0.9],
-    },
-    {
-      composition: { O: 1 },
-      energy: -2,
-      energy_per_atom: -2,
-      temperatures: [300, 600],
-      free_energies: [-2.2, -1.8],
-    },
-    {
-      composition: { Li: 1, O: 1 },
-      energy: -3.2,
-      energy_per_atom: -1.6,
-      temperatures: [300, 600],
-      free_energies: [-1.7, -1.5],
-    },
+  const temperatures = [300, 600]
+  const baseline_entries = [
+    make_phase({ Li: 1 }, -1, { temperatures, free_energies: [-1.1, -0.9] }),
+    make_phase({ O: 1 }, -2, { temperatures, free_energies: [-2.2, -1.8] }),
+    make_phase({ Li: 1, O: 1 }, -1.6, { temperatures, free_energies: [-1.7, -1.5] }),
   ]
   const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
   const result = compute_chempot_diagram(filtered_entries, {

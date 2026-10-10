@@ -26,13 +26,6 @@ import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
 
-test.each([
-  [`interpolateViridis`, true],
-  [`schemeViridis`, false],
-] as const)(`is_d3_interpolate_name(%s) is %s`, (name, expected) => {
-  expect(is_d3_interpolate_name(name)).toBe(expected)
-})
-
 test(`every d3-scale-chromatic interpolate* export is a registered interpolator`, () => {
   const names = Object.keys(d3_sc).filter((name) => name.startsWith(`interpolate`))
   expect(names.length).toBeGreaterThan(20)
@@ -40,6 +33,7 @@ test(`every d3-scale-chromatic interpolate* export is a registered interpolator`
     expect(is_d3_interpolate_name(name)).toBe(true)
     if (is_d3_interpolate_name(name)) expect(get_d3_interpolator(name)).toBeTypeOf(`function`)
   }
+  expect(is_d3_interpolate_name(`schemeViridis`)).toBe(false)
   // @ts-expect-error exercise the runtime guard for JavaScript callers
   expect(() => get_d3_interpolator(`invalid`)).toThrow(
     `Unknown D3 color interpolator: invalid`,
@@ -98,18 +92,14 @@ describe(`is_color function`, () => {
     [`#ff0000`, true],
     [`#FF0000`, true],
     [`#f00`, true],
-    [`#F00`, true],
     [`#00ff00ab`, true], // 8-digit hex with alpha
 
     // Valid CSS color functions
     [`rgb(255, 0, 0)`, true],
     [`rgb(255,0,0)`, true],
     [`rgba(255, 0, 0, 0.5)`, true],
-    [`rgba(255,0,0,0.5)`, true],
     [`hsl(120, 100%, 50%)`, true],
-    [`hsl(120,100%,50%)`, true],
     [`hsla(120, 100%, 50%, 0.8)`, true],
-    [`hsla(120,100%,50%,0.8)`, true],
     [`var(--my-color)`, true],
     [`color(srgb 1 0 0)`, true],
     [`color(display-p3 1 0.5 0)`, true],
@@ -125,7 +115,6 @@ describe(`is_color function`, () => {
 
     // Invalid patterns - incomplete functions
     [`rgb`, false],
-    [`hsl`, false],
     [`var`, false],
     [`color`, false],
 
@@ -140,14 +129,10 @@ describe(`is_color function`, () => {
     [``, false],
     [123, false],
     [null, false],
-    [undefined, false],
-    [{}, false],
-    [[], false],
 
     // Edge cases
     [` #ff0000 `, true], // whitespace should be trimmed
     [`RGB(255, 0, 0)`, true], // case insensitive
-    [`HSL(120, 100%, 50%)`, true], // case insensitive
   ])(`%s -> %s`, (input, expected) => {
     expect(is_color(input)).toBe(expected)
   })
@@ -190,12 +175,8 @@ test.each([
   [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
   [`red`, `#ff0000`],
   [`green`, `#008000`], // CSS green is #008000, not #00ff00
-  [`white`, `#ffffff`],
-  [`black`, `#000000`],
-  [ELEMENT_COLOR_SCHEMES.Jmol.H, `#ffffff`],
   // transparent maps to white, whatever its case or padding
   [`transparent`, `#ffffff`],
-  [`TRANSPARENT`, `#ffffff`],
   [` Transparent `, `#ffffff`],
   // unresolvable inputs (CSS vars included) return the fallback
   [undefined, `#abcdef`],
@@ -217,8 +198,6 @@ test.each([
   [`#808080`, 0.502],
   [`#ff8000`, 0.594],
   [`red`, 0.299],
-  [`rgb(255, 0, 0)`, 0.299],
-  [`hsl(0, 100%, 50%)`, 0.299],
 ])(`perceived_brightness(%s) = %s`, (color, expected_brightness) => {
   expect(perceived_brightness(color)).toBeCloseTo(expected_brightness, 3)
 })

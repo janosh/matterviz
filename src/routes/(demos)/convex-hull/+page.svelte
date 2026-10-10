@@ -20,6 +20,7 @@
     create_temp_ternary_entries_li_fe_o,
     demo_temperatures,
     make_demo_phase,
+    make_polymorph_pair,
   } from '#site/convex-hull/demo-temperature.js'
   import {
     filter_by_elements,
@@ -200,19 +201,15 @@
   ]
 
   // === Temperature-dependent G(T) synthetic data ===
-  // G(T) ≈ E_0K + entropy_coef * T * 0.0001 - 0.00005 * T * ln(T)
-  const temperatures = demo_temperatures // 300-1500K
-  type Comp = Record<string, number>
-  const make_phase = make_demo_phase
+  // G(T) ≈ E_0K + entropy_coef * T * 0.0001 - 0.00005 * T * ln(T), T = 300-1500K
 
   // Binary Li-Fe: elements + 7 compositions at different x values
   const temp_binary_entries: PhaseData[] = [
-    make_phase({ Li: 1 }, 1),
-    make_phase({ Fe: 1 }, 2),
-    ...[0.25, 0.33, 0.4, 0.5, 0.6, 0.67, 0.75].flatMap((li_fraction, idx) => [
-      make_phase({ Li: li_fraction, Fe: 1 - li_fraction }, 10 + idx), // ordered
-      make_phase({ Li: li_fraction, Fe: 1 - li_fraction }, 20 + idx, 2), // disordered (high entropy)
-    ]),
+    make_demo_phase({ Li: 1 }, 1),
+    make_demo_phase({ Fe: 1 }, 2),
+    ...[0.25, 0.33, 0.4, 0.5, 0.6, 0.67, 0.75].flatMap((li_fraction, idx) =>
+      make_polymorph_pair({ Li: li_fraction, Fe: 1 - li_fraction }, 10 + idx, 20 + idx, 2),
+    ),
   ]
 
   // Ternary Li-Fe-O: elements + binary edges + interior points + polymorphs
@@ -221,7 +218,7 @@
   // Quaternary Li-Fe-Ni-O: programmatic generation
   const temp_quaternary_entries: PhaseData[] = [
     // Pure elements
-    ...[`Li`, `Fe`, `Ni`, `O`].map((element, idx) => make_phase({ [element]: 1 }, idx)),
+    ...[`Li`, `Fe`, `Ni`, `O`].map((element, idx) => make_demo_phase({ [element]: 1 }, idx)),
     // All binary pairs
     ...[
       [`Li`, `Fe`],
@@ -230,31 +227,31 @@
       [`Fe`, `Ni`],
       [`Fe`, `O`],
       [`Ni`, `O`],
-    ].flatMap(([value_a, value_b], idx) => [
-      make_phase({ [value_a]: 0.5, [value_b]: 0.5 }, 500 + idx),
-      make_phase({ [value_a]: 0.5, [value_b]: 0.5 }, 600 + idx, 2.5),
-    ]),
+    ].flatMap(([elem_a, elem_b], idx) =>
+      make_polymorph_pair({ [elem_a]: 0.5, [elem_b]: 0.5 }, 500 + idx, 600 + idx, 2.5),
+    ),
     // Ternary faces (4 faces × 2 polymorphs)
     ...[
       [`Li`, `Fe`, `Ni`],
       [`Li`, `Fe`, `O`],
       [`Li`, `Ni`, `O`],
       [`Fe`, `Ni`, `O`],
-    ].flatMap(([value_a, value_b, value_c], idx) => [
-      make_phase({ [value_a]: 0.33, [value_b]: 0.33, [value_c]: 0.34 }, 700 + idx),
-      make_phase({ [value_a]: 0.33, [value_b]: 0.33, [value_c]: 0.34 }, 800 + idx, 3.5),
-    ]),
-    // Quaternary interior with dramatic order-disorder transitions
+    ].flatMap(([elem_a, elem_b, elem_c], idx) =>
+      make_polymorph_pair(
+        { [elem_a]: 0.33, [elem_b]: 0.33, [elem_c]: 0.34 },
+        700 + idx,
+        800 + idx,
+        3.5,
+      ),
+    ),
+    // Quaternary interior with dramatic order-disorder transitions (high-entropy oxides)
     ...[
       { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
       { Li: 0.4, Fe: 0.2, Ni: 0.2, O: 0.2 },
       { Li: 0.2, Fe: 0.4, Ni: 0.2, O: 0.2 },
       { Li: 0.2, Fe: 0.2, Ni: 0.4, O: 0.2 },
       { Li: 0.2, Fe: 0.2, Ni: 0.2, O: 0.4 },
-    ].flatMap((comp, idx) => [
-      make_phase(comp, 900 + idx), // ordered
-      make_phase(comp, 1000 + idx, 5), // high-entropy (HEO)
-    ]),
+    ].flatMap((comp, idx) => make_polymorph_pair(comp, 900 + idx, 1000 + idx, 5)),
   ]
 
   // Gas pressure demo: configurable gas atmosphere control
@@ -271,16 +268,14 @@
   // Gas demo helper: linear G(T) = E - S*(T - 300K)*0.001 for smooth T-dependence
   // Demo entropy values 30-80 (unitless scaling factor, not physical meV/K)
   const make_gas_phase = (
-    comp: Comp,
+    composition: Record<string, number>,
     energy: number,
-    entropy: number, // unitless scaling factor
+    entropy: number,
   ): PhaseData => ({
-    composition: comp,
+    composition,
     energy,
-    temperatures,
-    free_energies: temperatures.map(
-      (temperature_2) => energy - entropy * (temperature_2 - 300) * 0.001,
-    ),
+    temperatures: demo_temperatures,
+    free_energies: demo_temperatures.map((temp) => energy - entropy * (temp - 300) * 0.001),
   })
 
   // Gas demo: Fe-O binary - entropy increases with O content (oxides have higher S)
@@ -620,50 +615,44 @@
     text-align: center;
     margin-top: 1rem;
   }
-  .ternary-grid {
+  .ternary-grid,
+  .highlight-grid,
+  .quaternary-grid,
+  .binary-grid,
+  .stats-example-grid,
+  .side-by-side-example,
+  .temp-grid,
+  .gas-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
     width: 100%;
-    margin: 0 auto 3rem auto;
+    margin: 0 auto 3rem;
   }
   .highlight-grid {
-    display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    width: 100%;
-    margin: 0 auto 3rem auto;
   }
   .quaternary-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    width: 100%;
     margin: 0 auto;
   }
   .binary-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    width: 100%;
-    margin: 2rem auto 0 auto;
+    margin: 2rem auto 0;
   }
   .stats-example-grid {
-    display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 1rem;
-    width: 100%;
-    margin: 2rem auto 0 auto;
+    margin: 2rem auto 0;
     align-items: start;
   }
   .side-by-side-example {
-    display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-    gap: 1rem;
-    width: 100%;
-    max-width: 100%;
-    margin: 0 auto 3rem auto;
     align-items: start;
+  }
+  .temp-grid {
+    grid-template-columns: 1fr;
+    max-width: 900px;
+  }
+  .gas-grid {
+    margin: 0 auto 1rem;
   }
   .marker-legend {
     display: flex;
@@ -683,72 +672,35 @@
       grid-template-columns: 1fr 1fr;
     }
   }
-  .temp-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1rem;
-    width: 100%;
-    max-width: 900px;
-    margin: 0 auto 3rem auto;
-  }
-  .gas-selector {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-  .gas-selector label {
-    font-weight: 500;
-  }
-  .gas-selector select {
-    padding: 0.2rem 0.4rem;
-    border-radius: 3px;
-    border: 1px solid var(--border-color, #ccc);
-    background: var(--page-bg, Canvas);
-    color: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
+  .gas-selector,
   .quinary-stats-controls {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    margin: 0 0 1rem 0;
-  }
-  .quinary-stats-controls label {
-    font-weight: 500;
-  }
-  .quinary-stats-controls select {
-    padding: 0.2rem 0.4rem;
-    border-radius: 3px;
-    border: 1px solid var(--border-color, #ccc);
-    background: var(--page-bg, Canvas);
-    color: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-  .gas-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    width: 100%;
-    margin: 0 auto 1rem auto;
+    margin-bottom: 1rem;
+    label {
+      font-weight: 500;
+    }
+    select {
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      border: 1px solid var(--border-color, #ccc);
+      background: var(--page-bg, Canvas);
+      color: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
   }
   @media (max-width: 1100px) {
     .ternary-grid,
     .quaternary-grid,
     .binary-grid,
     .highlight-grid,
+    .stats-example-grid,
+    .side-by-side-example,
     .temp-grid,
     .gas-grid {
-      grid-template-columns: 1fr;
-    }
-    .stats-example-grid {
-      grid-template-columns: 1fr;
-    }
-    .side-by-side-example {
       grid-template-columns: 1fr;
     }
     .marker-legend {

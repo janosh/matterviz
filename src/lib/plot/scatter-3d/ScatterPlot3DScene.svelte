@@ -45,6 +45,7 @@
     box_clipping_planes,
     hover_marker_geometry,
     normalize_to_scene,
+    SCENE_SIZE,
   } from '#lib/plot/scatter-3d/scene-coords.js'
   import PointInstances, {
     type InstanceEvent,
@@ -142,12 +143,9 @@
 
   type AxisKey = `x` | `y` | `z`
 
-  // Scene dimensions: x/y are horizontal (2:2), z is vertical (1)
-  // Note: In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical)
-  // and user's Y → Three.js Z (depth). So scene_z here refers to Three.js Y.
-  const scene_x = 10 // user X → Three.js X (horizontal)
-  const scene_y = 10 // user Y → Three.js Z (depth/horizontal)
-  const scene_z = 5 // user Z → Three.js Y (vertical)
+  // In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical) and user's Y →
+  // Three.js Z (depth). So scene_z here refers to Three.js Y.
+  const [scene_x, scene_y, scene_z] = SCENE_SIZE
   const half_x = scene_x / 2
   const half_y = scene_y / 2
   const half_z = scene_z / 2
@@ -218,7 +216,9 @@
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
   // Size scale (the color scale is computed by the wrapper and passed as a prop)
-  const auto_size_range = $derived(collect_size_range(series))
+  // the type alone, so radius changes don't re-scan the size values
+  const size_scale_type = $derived(size_scale.type)
+  const auto_size_range = $derived(collect_size_range(series, size_scale_type))
   let size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
 
   // One marker: `key` identifies the same logical point across data changes
@@ -346,7 +346,9 @@
   const point_events = {
     onpointerenter: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (point) handle_point_enter(point)
+      if (!point) return
+      hovered_point = point
+      on_point_hover?.(make_event_data(point))
     },
     onpointerleave: () => {
       hovered_point = null
@@ -356,7 +358,9 @@
       const point = instance_point(event)
       if (!point) return
       const native = event.nativeEvent
-      handle_point_click(point, native instanceof MouseEvent ? native : undefined)
+      on_point_click?.(
+        make_event_data(point, native instanceof MouseEvent ? native : undefined),
+      )
     },
   }
 
@@ -522,15 +526,6 @@
       event,
       point,
     }
-  }
-
-  function handle_point_enter(point: InternalPoint3D<Metadata>) {
-    hovered_point = point
-    on_point_hover?.(make_event_data(point))
-  }
-
-  function handle_point_click(point: InternalPoint3D<Metadata>, event?: MouseEvent) {
-    on_point_click?.(make_event_data(point, event))
   }
 
   // Everything drawn from data (lines, surfaces, reference lines/planes) stays inside the box
@@ -732,21 +727,13 @@
   {/each}
 
   <!-- Reference Planes -->
-  {#each (ref_planes ?? []).filter((plane) => plane.visible !== false) as ref_plane, plane_idx (ref_plane.id ?? plane_idx)}
-    <ReferencePlane
-      {ref_plane}
-      scene_size={[scene_x, scene_y, scene_z]}
-      ranges={{ x: x_range, y: y_range, z: z_range }}
-    />
+  {#each ref_planes.filter((plane) => plane.visible !== false) as ref_plane, plane_idx (ref_plane.id ?? plane_idx)}
+    <ReferencePlane {ref_plane} {ranges} />
   {/each}
 
   <!-- Reference Lines -->
-  {#each (ref_lines ?? []).filter((line) => line.visible !== false) as ref_line, line_idx (ref_line.id ?? line_idx)}
-    <ReferenceLine3D
-      {ref_line}
-      scene_size={[scene_x, scene_y, scene_z]}
-      ranges={{ x: x_range, y: y_range, z: z_range }}
-    />
+  {#each ref_lines.filter((line) => line.visible !== false) as ref_line, line_idx (ref_line.id ?? line_idx)}
+    <ReferenceLine3D {ref_line} {ranges} />
   {/each}
 
   <!-- Series lines connecting points (fat lines using Line2) -->
@@ -803,27 +790,9 @@
         {@render tooltip(data)}
       {:else}
         <div class="tooltip">
-          <div>
-            <TooltipValue
-              label={x_axis.label || `x`}
-              value={data.x_formatted}
-              unit={x_axis.unit}
-            />
-          </div>
-          <div>
-            <TooltipValue
-              label={y_axis.label || `y`}
-              value={data.y_formatted}
-              unit={y_axis.unit}
-            />
-          </div>
-          <div>
-            <TooltipValue
-              label={z_axis.label || `z`}
-              value={data.z_formatted}
-              unit={z_axis.unit}
-            />
-          </div>
+          {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
+            <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
+          {/each}
           {#if data.color_value != null}
             <div>value: {format_num(data.color_value, `.3~g`)}</div>
           {/if}

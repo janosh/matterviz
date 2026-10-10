@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clamp } from '#lib/math.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import VerticalSlider from './VerticalSlider.svelte'
 
@@ -26,7 +27,7 @@
   function set_closest_temp(value: number): void {
     if (!Number.isFinite(value)) return
     temperature = interpolate_temperature
-      ? Math.max(min_temp, Math.min(max_temp, value))
+      ? clamp(value, min_temp, max_temp)
       : available_temperatures.reduce((prev, curr) =>
           Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev,
         )
@@ -54,6 +55,6 @@
     <span>K</span>
   {/snippet}
   {#snippet range_label()}
-    {available_temperatures[0]}–{available_temperatures.at(-1)} K
+    {min_temp}–{max_temp} K
   {/snippet}
 </VerticalSlider>

@@ -410,11 +410,9 @@ export function normalize_fermi_surface(
 
 // Same for a `band_data` prop: flat Float64Array grids pass through, nested JSON
 // [spin][band][kx][ky][kz] energies are flattened and shape-checked against k_grid
-export function normalize_band_grid(
+export const normalize_band_grid = (
   data: BandGridData | BandGridJson | Record<string, unknown>,
-): BandGridData {
-  return is_typed_band_grid(data) ? data : band_grid_from_json(data, `band_data`)
-}
+): BandGridData => (is_typed_band_grid(data) ? data : band_grid_from_json(data, `band_data`))
 
 // Route an already-parsed JSON object to the matching Fermi surface / band grid shape
 function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData | BandGridData {

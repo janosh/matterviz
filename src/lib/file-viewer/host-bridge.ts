@@ -31,7 +31,6 @@ try {
   host_api = globalThis.acquireVsCodeApi?.() ?? null
 } catch (error) {
   console.warn(`VSCode API already acquired or not available:`, error)
-  host_api = null
 }
 
 export const get_vscode_api = (): VSCodeAPI | null => host_api

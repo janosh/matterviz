@@ -103,6 +103,25 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         expect(y_err, `y at 2θ=${expected.x[idx].toFixed(3)}`).toBeLessThanOrEqual(1)
       }
 
+      // hkl families and multiplicities of every peak both patterns share. pymatgen writes
+      // Miller–Bravais (h, k, i, l) for hexagonal cells; drop i to compare with our 3 indices
+      const family_text = (families: XrdPattern[`hkls`], idx: number) =>
+        (families?.[idx] ?? [])
+          .map(({ hkl, multiplicity }) => {
+            const indices: number[] = hkl
+            const hkl_3 = indices.length === 4 ? [indices[0], indices[1], indices[3]] : indices
+            return `${hkl_3}×${multiplicity}`
+          })
+          .toSorted()
+          .join(`; `)
+      for (const [idx, two_theta] of expected.x.entries()) {
+        const nearest = computed.x.findIndex((x_val) => Math.abs(x_val - two_theta) <= 1e-6)
+        if (nearest === -1) continue
+        expect(family_text(computed.hkls, nearest), `hkls at 2θ=${two_theta}`).toBe(
+          family_text(expected.hkls, idx),
+        )
+      }
+
       // Compare d-spacings if present (fixture consistency test asserts d_hkls aligns with x)
       const computed_d = computed.d_hkls
       if (expected.d_hkls && computed_d) {
@@ -114,6 +133,46 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
       }
     },
   )
+})
+
+// Wurtzite ZnO at Cu Kα: hexagonal families group on Miller–Bravais indices like pymatgen
+// (XRDCalculator("CuKa").get_pattern with Lattice.hexagonal(3.25, 5.207), u = 0.382). The
+// 3-index grouping split all but the basal (002)/(004) peaks, e.g. 100 ×4 + 1-10 ×2 at 31.79°.
+test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, () => {
+  const [a_len, c_len, u_param] = [3.25, 5.207, 0.382]
+  const lattice: Matrix3x3 = [
+    [a_len, 0, 0],
+    [-a_len / 2, (a_len * Math.sqrt(3)) / 2, 0],
+    [0, 0, c_len],
+  ]
+  const zno = make_crystal(lattice, [
+    [`Zn`, [1 / 3, 2 / 3, 0]],
+    [`Zn`, [2 / 3, 1 / 3, 0.5]],
+    [`O`, [1 / 3, 2 / 3, u_param]],
+    [`O`, [2 / 3, 1 / 3, 0.5 + u_param]],
+  ])
+  const pattern = compute_xrd_pattern(zno, { wavelength: `CuKa` })
+  // pymatgen's (h, k, i, l) with i dropped: [2θ, hkl, multiplicity]
+  const expected: [number, number[], number][] = [
+    [31.7932, [1, 0, 0], 6],
+    [34.4481, [0, 0, 2], 2],
+    [36.2819, [1, 0, 1], 12],
+    [47.5774, [1, 0, 2], 12],
+    [56.6422, [2, -1, 0], 6],
+    [62.9098, [1, 0, 3], 12],
+    [66.433, [2, 0, 0], 6],
+    [68.0063, [2, -1, 2], 12],
+    [69.1464, [2, 0, 1], 12],
+    [72.6291, [0, 0, 4], 2],
+    [77.0289, [2, 0, 2], 12],
+    [81.4594, [1, 0, 4], 12],
+    [89.6987, [2, 0, 3], 12],
+  ]
+  expect(pattern.x).toHaveLength(expected.length)
+  for (const [idx, [two_theta, hkl, multiplicity]] of expected.entries()) {
+    expect(pattern.x[idx]).toBeCloseTo(two_theta, 3)
+    expect(pattern.hkls?.[idx]).toEqual([{ hkl, multiplicity }])
+  }
 })
 
 describe(`compute_xrd_pattern edge cases`, () => {
