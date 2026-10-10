@@ -412,7 +412,8 @@ describe(`temperature dependence`, () => {
       make_phase({ Co: 1 }, 0, { entry_id: `Co` }),
       make_phase({ O: 1 }, 0, { entry_id: `O` }),
       make_phase({ Co: 1, O: 1 }, -1.2, { entry_id: `CoO` }),
-      make_phase({ Co: 3, O: 4 }, -1.3, { entry_id: `Co3O4` }),
+      // 6 CoO + O2 -> 2 Co3O4 is downhill while μ_O > -1.55 eV/atom (21 kPa O2: ~1280 K)
+      make_phase({ Co: 3, O: 4 }, -1.25, { entry_id: `Co3O4` }),
     ]
     const plan_at = (temperature: number) =>
       plan_synthesis({

@@ -43,18 +43,24 @@ export const GAS_STOICHIOMETRY: Readonly<
 
 // Default Thermodynamic Data (abstracted - users can provide their own)
 
-// Temperature grid (K) shared by all tabulated T*S data below
+// Standard chemical potential per atom on the 0 K enthalpy scale of the elements, matching 0 K
+// computed energies: μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T·S(T), divided by atoms per molecule.
+// Elemental gases sit at 0 at 0 K, so a 0 K computed reference E_0K becomes
+// E_0K + [H(T) - H(0 K)] - T·S(T) (+ k_B·T·ln(p/p0), all per atom). Dropping the enthalpy
+// increment (μ° = Δ_fH - T·S) overstated how far μ_O falls by 0.16 eV/atom at 1000 K.
+// Source: NIST-JANAF Thermochemical Tables, 4th ed. (Chase 1998, https://janaf.nist.gov/tables):
+// O2 O-029, H2 H-050, N2 N-023, CO C-093, CO2 C-095, H2O H-064 (ideal gas), F2 F-054.
+
+// Temperature grid (K) shared by all tabulated data below
 // oxfmt-ignore
 const TS_TEMPERATURES = [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
 
-// Default T*S values in eV PER ATOM (not per molecule) at TS_TEMPERATURES, interpolated between
-// grid points. Cross-checked against NIST standard entropies: O2 at 298 K is S = 205.15 J/mol/K
-// = 0.6339 eV/molecule, and the table holds 0.317, i.e. half of it. compute_gas_correction's
-// num_atoms factor assumes this, so regenerating the table per molecule would scale every gas
-// correction by its atom count.
-// Source: Barin Thermochemical Tables and NBS Thermochemical Tables
-// Data compiled to match PIRO (https://github.com/GENESIS-EFRC/piro)
-// F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
+// T*S(T) in eV PER ATOM (not per molecule) at TS_TEMPERATURES, interpolated between grid points.
+// O2 at 298 K: S = 205.15 J/mol/K = 0.6339 eV/molecule and the table holds 0.317, i.e. half of
+// it. compute_gas_correction's num_atoms factor assumes this, so regenerating the table per
+// molecule would scale every gas correction by its atom count. Barin/NBS tables as compiled by
+// PIRO (https://github.com/GENESIS-EFRC/piro), F2 from JANAF F-054; all within 1e-3 eV/atom of
+// JANAF.
 // oxfmt-ignore
 const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, number[]>> = {
   O2: [0, 0.317, 0.3192, 0.4433, 0.5718, 0.7041, 0.8396, 0.9781, 1.119, 1.2623, 1.4075, 1.5547, 1.7036, 1.8541, 2.006, 2.1594, 2.3141, 2.47, 2.6271, 2.7854],
@@ -63,22 +69,34 @@ const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, number[]>> = {
   CO: [0, 0.3054, 0.3076, 0.4275, 0.5515, 0.6788, 0.8092, 0.9423, 1.0778, 1.2155, 1.3552, 1.4967, 1.64, 1.7848, 1.9311, 2.0788, 2.2277, 2.3779, 2.5291, 2.6815],
   CO2: [0, 0.2202, 0.2218, 0.3113, 0.4057, 0.5042, 0.6064, 0.7116, 0.8197, 0.9303, 1.0432, 1.1582, 1.2751, 1.3938, 1.5141, 1.636, 1.7593, 1.8839, 2.0098, 2.1369],
   H2O: [0, 0.1946, 0.1961, 0.2749, 0.357, 0.4419, 0.5293, 0.6189, 0.7107, 0.8045, 0.9001, 0.9975, 1.0966, 1.1972, 1.2994, 1.403, 1.5079, 1.6142, 1.7216, 1.8303],
-  F2: [0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83, 1.98, 2.13, 2.29, 2.45, 2.61, 2.77],
+  F2: [0, 0.3131, 0.3156, 0.4399, 0.5694, 0.7029, 0.8399, 0.9799, 1.1224, 1.2673, 1.41424, 1.5631, 1.7137, 1.8659, 2.0196, 2.1747, 2.3311, 2.4888, 2.6477, 2.8077],
 }
 
-// Formation enthalpies H_f at 0K in eV/molecule
-// Reference energies for formation from elements, in eV PER ATOM like DEFAULT_TS_DATA above:
-// the CO2 base of -1.3583 eV is the JANAF -4.0748 eV/molecule divided by its 3 atoms.
+// Enthalpy increment H(T) - H(0 K) in eV PER ATOM at TS_TEMPERATURES (JANAF H - H(298.15 K)
+// plus its 0 K row's H(298.15 K) - H(0 K), e.g. O2: 22.703 + 8.683 kJ/mol at 1000 K)
+// oxfmt-ignore
+const DEFAULT_ENTHALPY_INCREMENT: Readonly<Record<GasSpecies, number[]>> = {
+  O2: [0, 0.045, 0.0453, 0.0607, 0.0765, 0.0929, 0.1098, 0.1271, 0.1447, 0.1626, 0.1808, 0.1992, 0.2178, 0.2365, 0.2554, 0.2744, 0.2935, 0.3128, 0.3322, 0.3516],
+  H2: [0, 0.0439, 0.0442, 0.0592, 0.0744, 0.0895, 0.1048, 0.1201, 0.1355, 0.151, 0.1668, 0.1827, 0.1989, 0.2153, 0.2319, 0.2488, 0.2659, 0.2831, 0.3006, 0.3183],
+  N2: [0, 0.0449, 0.0452, 0.0603, 0.0756, 0.091, 0.1068, 0.1229, 0.1394, 0.1562, 0.1732, 0.1906, 0.2082, 0.226, 0.2439, 0.2621, 0.2803, 0.2987, 0.3172, 0.3358],
+  CO: [0, 0.0449, 0.0452, 0.0604, 0.0757, 0.0913, 0.1072, 0.1236, 0.1403, 0.1573, 0.1747, 0.1923, 0.2101, 0.2281, 0.2463, 0.2646, 0.283, 0.3016, 0.3202, 0.339],
+  CO2: [0, 0.0323, 0.0326, 0.0462, 0.061, 0.0769, 0.0937, 0.1111, 0.1292, 0.1477, 0.1667, 0.186, 0.2056, 0.2255, 0.2455, 0.2658, 0.2862, 0.3068, 0.3275, 0.3482],
+  H2O: [0, 0.0342, 0.0344, 0.0461, 0.0581, 0.0705, 0.0832, 0.0964, 0.11, 0.124, 0.1385, 0.1534, 0.1688, 0.1845, 0.2006, 0.217, 0.2338, 0.2508, 0.2681, 0.2857],
+  F2: [0, 0.0457, 0.046, 0.0627, 0.0802, 0.0982, 0.1166, 0.1353, 0.1542, 0.1733, 0.1926, 0.212, 0.2315, 0.2512, 0.2709, 0.2908, 0.3107, 0.3307, 0.3508, 0.3709],
+}
+
+// Formation enthalpies Δ_fH(0 K) in eV PER ATOM (JANAF 0 K rows, the 0 K scale above), e.g.
+// CO2: -393.151 kJ/mol = -4.0748 eV/molecule over 3 atoms = -1.3583
 const DEFAULT_ENTHALPY: Readonly<Partial<Record<GasSpecies, number>>> = {
   CO: -0.5897,
-  // CO2: Base value -1.3583 eV from JANAF tables, with -0.2482 eV correction
-  // to improve accuracy for carbonate phase predictions (Wang et al., PRB 73, 195107)
+  // CO2: -0.2482 eV correction to improve accuracy for carbonate phase predictions
+  // (Wang et al., PRB 73, 195107)
   CO2: -1.3583 - 0.2482,
   H2O: -0.82547,
   // O2, N2, H2, F2 are reference states with H_f = 0
 }
 
-// Linearly interpolate a T*S value at `temperature` (clamped to the tabulated range)
+// Linearly interpolate a tabulated value at `temperature` (clamped to the tabulated range)
 function interpolate_ts(values: number[], temperature: number): number {
   const temps = TS_TEMPERATURES
   if (temperature <= temps[0]) return values[0]
@@ -94,10 +112,15 @@ function interpolate_ts(values: number[], temperature: number): number {
 
 // Default provider backed by the built-in tables above. Stateless, so one shared instance.
 const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
-  // μ°(T) = H_f - T*S; the elemental gases (O2, N2, H2, F2) have H_f = 0
+  // μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T*S(T); the elemental gases (O2, N2, H2, F2) have
+  // Δ_fH = 0
   get_standard_chemical_potential(gas: GasSpecies, temperature: number): number {
     const formation_enthalpy = DEFAULT_ENTHALPY[gas] ?? 0
-    return formation_enthalpy - interpolate_ts(DEFAULT_TS_DATA[gas], temperature)
+    return (
+      formation_enthalpy +
+      interpolate_ts(DEFAULT_ENTHALPY_INCREMENT[gas], temperature) -
+      interpolate_ts(DEFAULT_TS_DATA[gas], temperature)
+    )
   },
 
   get_supported_gases(): GasSpecies[] {
@@ -127,9 +150,9 @@ export const gas_pressure_term = (
   (BOLTZMANN_EV_PER_K * temperature * Math.log(pressure / P_REF)) / gas_num_atoms(gas)
 
 // Shift of an element whose reference already carries its own G(T) (a tabulated entry, SISSO's
-// experimental 1 bar gas): only k_B T ln(p/p0) is missing, since -T*S is in G(T) already. Only
-// elemental gases (O2, N2, ...) map one element to one pressure term; compound gases (CO2, CO,
-// H2O) have no such reference.
+// experimental 1 bar gas): only k_B T ln(p/p0) is missing, since H(T) - H(0 K) - T*S is in G(T)
+// already. Only elemental gases (O2, N2, ...) map one element to one pressure term; compound
+// gases (CO2, CO, H2O) have no such reference.
 export const tabulated_reference_shift = (
   gas: GasSpecies,
   temperature: number,
@@ -139,7 +162,7 @@ export const tabulated_reference_shift = (
     ? gas_pressure_term(gas, temperature, pressure)
     : 0
 
-// Gas chemical potential per atom at temperature (K) and pressure (bar), PIRO's convention:
+// Gas chemical potential per atom at temperature (K) and pressure (bar):
 // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms, in eV/atom. An invalid or
 // non-finite pressure counts as the reference pressure.
 export function compute_gas_chemical_potential(
@@ -217,7 +240,8 @@ export function compute_element_mu_shift(
         `Gas reservoirs for ${[...resolving, elem].join(` → `)} depend on each other; map each element to a gas whose other elements have their own reservoir`,
       )
     }
-    // Per molecule at (T, P) versus the reference (0 K, 1 bar), where T*S vanishes
+    // Per molecule at (T, P) versus the reference (0 K, 1 bar), where H(T) - H(0 K) and T*S
+    // vanish
     const molecule_shift =
       (compute_gas_chemical_potential(provider, gas, temperature, pressures[gas]) -
         provider.get_standard_chemical_potential(gas, 0)) *
