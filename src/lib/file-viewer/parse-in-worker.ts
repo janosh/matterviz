@@ -2,16 +2,15 @@
 // main thread receives a TrajectoryRun backed by its MessagePort.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
-import type { ParseProgress, TrajectoryRun, TrajectorySource } from '#lib/trajectory/index.js'
+import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
+import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { to_error } from '#lib/utils.js'
-import { content_byte_size } from '#lib/io/decompress.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
-import { WebviewWorkerUnavailableError } from './host-bridge'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 
@@ -33,9 +32,9 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
-// Keep the VS Code fallback bounded: a large eager parse would freeze the webview.
-const MAIN_THREAD_TEXT_MAX_BYTES = 25 * 1024 ** 2
-const MAIN_THREAD_BINARY_MAX_BYTES = 50 * 1024 ** 2
+type WorkerParseResult =
+  | Exclude<ParseResult, { type: `trajectory` }>
+  | (Extract<ParseResult, { type: `trajectory` }> & { data: WorkerRun })
 
 const parse_file_worker = async (
   content: TrajectorySource,
@@ -43,7 +42,7 @@ const parse_file_worker = async (
   is_base64: boolean = false,
   options: ParseInWorkerOptions & { replica?: ParseWorkerRequest[`replica`] } = {},
   on_release?: () => void,
-): Promise<ParseResult> => {
+): Promise<WorkerParseResult> => {
   const {
     signal,
     worker_factory = () =>
@@ -53,10 +52,6 @@ const parse_file_worker = async (
     owns_content = false,
   } = options
   signal?.throwIfAborted()
-  // Host markers require the main-thread host bridge; they contain no file bytes to parse.
-  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
-    return parse_file_content(content, filename, is_base64, load_options, on_progress)
-  }
   const request: ParseWorkerRequest = {
     id: next_request_id++,
     content,
@@ -66,47 +61,18 @@ const parse_file_worker = async (
     replica: options.replica,
   }
   const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
-  return new Promise<ParseResult>((resolve, reject) => {
+  return new Promise<WorkerParseResult>((resolve, reject) => {
     if (signal?.aborted) return reject(to_error(signal.reason ?? parse_abort_error()))
     let worker: WorkerLike
     try {
       worker = worker_factory()
     } catch (error) {
-      if (error instanceof WebviewWorkerUnavailableError) {
-        signal?.throwIfAborted()
-        const binary = is_base64 || typeof content !== `string`
-        const byte_size =
-          is_base64 && typeof content === `string`
-            ? Math.floor((content.length * 3) / 4) -
-              (content.endsWith(`==`) ? 2 : content.endsWith(`=`) ? 1 : 0)
-            : content_byte_size(content)
-        const max_bytes = binary ? MAIN_THREAD_BINARY_MAX_BYTES : MAIN_THREAD_TEXT_MAX_BYTES
-        if (byte_size > max_bytes) {
-          reject(
-            new Error(
-              `Cannot parse ${filename} in this VS Code webview: main-thread parsing is limited to 25 MiB text or 50 MiB decoded binary`,
-              { cause: error },
-            ),
-          )
-          return
-        }
-        void parse_file_content(content, filename, is_base64, load_options, on_progress).then(
-          (result) => {
-            if (signal?.aborted) {
-              if (result.type === `trajectory`) result.data.dispose()
-              reject(to_error(signal.reason ?? parse_abort_error()))
-            } else resolve(result)
-          },
-          reject,
-        )
-        return
-      }
       reject(to_error(error))
       return
     }
     let settled = false
-    let run: TrajectoryRun | undefined
-    const settle = (outcome: ParseResult | Error): void => {
+    let run: WorkerRun | undefined
+    const settle = (outcome: WorkerParseResult | Error): void => {
       if (settled) return
       settled = true
       signal?.removeEventListener(`abort`, abort)
@@ -192,6 +158,11 @@ export const parse_in_worker = async (
   options: ParseInWorkerOptions = {},
 ): Promise<ParseResult> => {
   const load_options = options.load_options && structuredClone(options.load_options)
+  // Host markers require the main-thread host bridge; they contain no file bytes to parse.
+  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
+    options.signal?.throwIfAborted()
+    return parse_file_content(content, filename, is_base64, load_options, options.on_progress)
+  }
   let dispose_pool: (() => void) | undefined
   const result = await parse_file_worker(
     content,
@@ -211,8 +182,7 @@ export const parse_in_worker = async (
   )
     return result
   const primary = result.data
-  const primary_prepare = primary.prepare_frame?.bind(primary)
-  if (!primary_prepare) throw new Error(`Numeric HDF5 worker cannot prepare frames`)
+  const primary_prepare = primary.prepare_frame.bind(primary)
   const device_memory = Reflect.get(navigator, `deviceMemory`)
   const memory_budget = display_cache_budget()
   const concurrency = Math.max(
@@ -239,7 +209,7 @@ export const parse_in_worker = async (
     }),
   }
   type Slot = {
-    run?: TrajectoryRun
+    run?: WorkerRun
     opening?: AbortController
     busy: boolean
   }
@@ -294,8 +264,7 @@ export const parse_in_worker = async (
           slot.run.atom_count !== primary.atom_count ||
           slot.run.frame_count !== primary.frame_count ||
           slot.run.provenance.format !== primary.provenance.format ||
-          slot.run.provenance.hdf5_group !== primary.provenance.hdf5_group ||
-          !slot.run.prepare_frame
+          slot.run.provenance.hdf5_group !== primary.provenance.hdf5_group
         )
           throw new Error(`HDF5 preparation replica does not match ${filename}`)
       })
@@ -316,7 +285,8 @@ export const parse_in_worker = async (
       if (job.slot) continue
       if (slots.filter((slot) => slot.busy).length >= capacity()) return
       const slot = slots.find(
-        (candidate) => candidate.run && !candidate.opening && !candidate.busy,
+        (candidate): candidate is Slot & { run: WorkerRun } =>
+          Boolean(candidate.run) && !candidate.opening && !candidate.busy,
       )
       if (!slot) {
         open_replica()
@@ -327,8 +297,7 @@ export const parse_in_worker = async (
       void (async () => {
         try {
           const prepare =
-            slot.run === primary ? primary_prepare : slot.run?.prepare_frame?.bind(slot.run)
-          if (!prepare) throw new Error(`HDF5 preparation replica has no frame preparer`)
+            slot.run === primary ? primary_prepare : slot.run.prepare_frame.bind(slot.run)
           // Keep a primary slot occupied until its actual RPC completes. Aborting its
           // outward promise must not queue another preparation behind the cancelled one.
           const display = await prepare(job.idx, job.preparation)
