@@ -106,16 +106,13 @@ class FetchedScriptWorker extends EventTarget implements Worker {
       .then((blob_url) => {
         if (this.#terminated) return
         const worker = new NativeWorker(blob_url, options)
-        worker.addEventListener(`message`, ({ data, ports }) => {
-          const event = new MessageEvent(`message`, { data, ports: [...ports] })
-          this.dispatchEvent(event)
-          this.onmessage?.(event)
-        })
-        worker.addEventListener(`messageerror`, ({ data, ports }) => {
-          const event = new MessageEvent(`messageerror`, { data, ports: [...ports] })
-          this.dispatchEvent(event)
-          this.onmessageerror?.(event)
-        })
+        for (const type of [`message`, `messageerror`] as const) {
+          worker.addEventListener(type, ({ data, ports }) => {
+            const event = new MessageEvent(type, { data, ports: [...ports] })
+            this.dispatchEvent(event)
+            this[`on${type}`]?.(event)
+          })
+        }
         worker.addEventListener(`error`, (event) => {
           if (this.#dispatch_error(event)) event.preventDefault()
         })

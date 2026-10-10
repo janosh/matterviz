@@ -90,6 +90,8 @@ parse_in_worker.mockImplementation((content, filename, is_base64) =>
 afterEach(async () => {
   await cleanup_matterviz?.()
   vi.unstubAllGlobals()
+  test_mocks.native_workers.length = 0
+  test_mocks.object_url_blobs.length = 0
 })
 
 const result = (version: string): ParseResult => ({
@@ -567,8 +569,6 @@ test(`a bootstrap that fails before displaying still accepts host reloads`, asyn
 // fetches the script on the document and starts the worker from a blob URL instead.
 test(`starts cross-origin workers from fetched blob scripts`, async () => {
   const { native_workers, object_url_blobs } = test_mocks
-  native_workers.length = 0
-  object_url_blobs.length = 0
   const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/parse-worker.js`
   const fetch_mock = vi.fn(async () => new Response(`self.onmessage = () => {}`))
   vi.stubGlobal(`fetch`, fetch_mock)
@@ -616,7 +616,6 @@ test(`starts cross-origin workers from fetched blob scripts`, async () => {
 
 test(`reports a failed worker script fetch as an error event and retries it`, async () => {
   const { native_workers } = test_mocks
-  native_workers.length = 0
   const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/msd-worker.js`
   const fetch_mock = vi.fn(async () => new Response(`missing`, { status: 404 }))
   vi.stubGlobal(`fetch`, fetch_mock)
@@ -636,13 +635,12 @@ test(`reports a failed worker script fetch as an error event and retries it`, as
 
 test(`constructs same-origin and blob workers natively`, () => {
   const { native_workers, object_url_blobs } = test_mocks
-  native_workers.length = 0
-  object_url_blobs.length = 0
   const workers = [
     new ShimmedWorker(`${location.origin}/assets/same-origin.js`, { type: `module` }),
     new ShimmedWorker(`blob:${location.origin}/already-a-blob`),
   ]
-  expect(workers).toHaveLength(2)
+  // The proxy hands back the native instances, not stand-ins
+  for (const worker of workers) expect(worker).toBeInstanceOf(ShimmedWorker)
   expect(native_workers.map(({ url, options }) => ({ url, options }))).toEqual([
     { url: `${location.origin}/assets/same-origin.js`, options: { type: `module` } },
     { url: `blob:${location.origin}/already-a-blob`, options: undefined },
