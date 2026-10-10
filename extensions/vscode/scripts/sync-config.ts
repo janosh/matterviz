@@ -65,6 +65,11 @@ export const build_custom_editor_selectors = (): { filenamePattern: string }[] =
   )
 }
 
+// VS Code can only show binary files as a placeholder, so MatterViz opens the binary formats
+// it decodes by default. Text formats keep the text editor and offer MatterViz as an option.
+export const build_editor_associations = (): Record<string, string> =>
+  Object.fromEntries(BINARY_VIEWER_EXTENSIONS.map((ext) => [`*.${ext}`, `matterviz.viewer`]))
+
 // Every non-web_only leaf of SETTINGS_CONFIG as a `matterviz.<path>` VS Code setting.
 // Exported so tests can check generated ids against the settings the code actually reads.
 export const build_vscode_settings = (
@@ -139,6 +144,9 @@ function sync_package_config(): void {
     )
   }
   editors[0].selector = selectors
+  package_content.contributes.configurationDefaults = {
+    'workbench.editorAssociations': build_editor_associations(),
+  }
 
   const updated = `${JSON.stringify(package_content, null, 2)}\n`
   // --check: fail instead of writing, so CI catches a package.json that no longer matches

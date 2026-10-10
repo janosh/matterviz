@@ -39,6 +39,8 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 3. **Select "MatterViz: Open"** from the context menu
 4. **Or use the keyboard shortcut**: `Ctrl+Shift+V` (Windows/Linux) / `Cmd+Shift+V` (Mac)
 
+Binary files MatterViz can decode (ASE `.traj`, `.h5`/`.hdf5`) open in MatterViz directly. To use a different editor for them, override `workbench.editorAssociations`, e.g. `"*.h5": "default"`.
+
 ### Supported File Formats
 
 #### Structure Files

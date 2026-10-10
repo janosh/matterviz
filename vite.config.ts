@@ -244,7 +244,8 @@ export default defineConfig({
   staged: {
     '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
     '*.{ts,js,mjs,svelte}': [
-      `vp lint`,
+      // Files under lint ignorePatterns (e.g. extensions/**) can be the only ones staged
+      `vp lint --no-error-on-unmatched-pattern`,
       () => `npx svelte-kit sync`,
       () =>
         `npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning`,

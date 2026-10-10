@@ -1883,6 +1883,13 @@
           "maximum": 6.283
         }
       }
+    },
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "*.traj": "matterviz.viewer",
+        "*.h5": "matterviz.viewer",
+        "*.hdf5": "matterviz.viewer"
+      }
     }
   },
   "activationEvents": [
