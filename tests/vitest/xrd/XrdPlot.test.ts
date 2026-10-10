@@ -1,6 +1,7 @@
 import XrdPlot from '#lib/xrd/XrdPlot.svelte'
 // static so loading the demo page (and the structures it ships) is not billed to the test timeout
 import Page from '#root/src/routes/(demos)/structure/xrd/+page.svelte'
+import type { Matrix3x3 } from '#lib/math.js'
 import type { XrdPattern } from '#lib/xrd/index.js'
 import * as xrd from '#lib/xrd/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -70,6 +71,14 @@ const all_hkl_labels = [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, 
 
 test(`XRD demos defer calculation, reuse cached patterns and display calculation errors`, async () => {
   const compute = vi.spyOn(xrd, `compute_xrd_pattern`).mockReturnValue(pattern)
+  const symmetry_rotations: Matrix3x3[] = [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  ]
+  const analyze = vi.spyOn(xrd, `xrd_symmetry_rotations`).mockResolvedValue(symmetry_rotations)
   const saed = vi.spyOn(xrd, `compute_saed_pattern`).mockImplementation(() => {
     throw new Error(`SAED unavailable`)
   })
@@ -88,10 +97,14 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
       await tick()
       return region
     }
+    expect(analyze).not.toHaveBeenCalled()
+    // patterns wait for each structure's async symmetry analysis, then receive its rotations
     const main = await show(`xrd`)
-    expect(compute).toHaveBeenCalledOnce()
+    expect(analyze).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(compute).toHaveBeenCalledOnce())
+    expect(compute).toHaveBeenCalledWith(expect.anything(), { symmetry_rotations })
     await show(`Overlay multiple structures`)
-    expect(compute).toHaveBeenCalledTimes(4)
+    await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(4))
     const buttons = document.querySelectorAll<HTMLButtonElement>(
       `.structure-picker:first-child button`,
     )
@@ -99,8 +112,9 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
       throw new Error(`XRD unavailable`)
     })
     buttons[4].click()
-    await tick()
-    expect(main.textContent).toContain(`Compute error: XRD unavailable`)
+    await vi.waitFor(() =>
+      expect(main.textContent).toContain(`Compute error: XRD unavailable`),
+    )
     buttons[0].click()
     await tick()
     expect(main.textContent).not.toContain(`Compute error`)
@@ -114,6 +128,7 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
   } finally {
     await unmount(component)
     compute.mockRestore()
+    analyze.mockRestore()
     saed.mockRestore()
   }
 })

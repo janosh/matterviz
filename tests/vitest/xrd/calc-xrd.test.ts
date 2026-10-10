@@ -5,6 +5,7 @@ import type { RadiationType } from '#lib/scattering/index.js'
 import { electron_form_factor, xray_form_factor } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
+import { apply_symmetry_operations } from '#lib/symmetry/wyckoff.js'
 import {
   add_xrd_pattern,
   compute_xrd_pattern,
@@ -12,14 +13,19 @@ import {
   enumerate_reciprocal_points,
   structure_factors_squared,
   WAVELENGTHS,
+  xrd_symmetry_rotations,
 } from '#lib/xrd/calc-xrd.js'
-import type { RecipPoint, XrdPattern } from '#lib/xrd/index.js'
+import type { HklObj, RecipPoint, XrdOptions, XrdPattern } from '#lib/xrd/index.js'
+import { operations_from_number } from '@spglib/moyo-wasm'
 import file_system from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
-import { make_crystal, read_maybe_gz } from '../test-fixtures'
+import { symmetry_families } from '../fixtures/xrd/symmetry-families'
+import { init_moyo_for_tests, make_crystal, read_maybe_gz } from '../test-fixtures'
+
+beforeAll(init_moyo_for_tests)
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 
@@ -40,6 +46,17 @@ const make_rocksalt = (a_len: number, cation: ElementSymbol, anion: ElementSymbo
     { element: anion, abc: [0, 0.5, 0], label: `X3` },
     { element: anion, abc: [0, 0, 0.5], label: `X4` },
   ])
+
+// One peak's families in output order (sorted by representative) as `h,k,l×multiplicity; ...`
+const families_text = (families: HklObj[] | undefined): string =>
+  (families ?? []).map(({ hkl, multiplicity }) => `${hkl}×${multiplicity}`).join(`; `)
+
+// hexagonal lattice in pymatgen's Lattice.hexagonal orientation
+const hexagonal_lattice = (a_len: number, c_len: number): Matrix3x3 => [
+  [a_len, 0, 0],
+  [-a_len / 2, (a_len * Math.sqrt(3)) / 2, 0],
+  [0, 0, c_len],
+]
 
 // Intensity of the peak whose hkl family list contains `target`. Throws rather than
 // returning null so a missing reflection names itself instead of failing a later comparison.
@@ -65,7 +82,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
 
   test.each(file_pairs.map((pair) => [pair.name, pair] as const))(
     `compare XRD for %s`,
-    (_name, pair) => {
+    async (_name, pair) => {
       const structure_json = read_maybe_gz(path.join(structures_dir, pair.name))
       const structure = parse_structure_file(structure_json, pair.name) as Crystal | null
       expect(structure).not.toBeNull()
@@ -76,7 +93,9 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         wavelength: `CuKa`,
         scaled: true,
         two_theta_range: [0, 90],
+        symmetry_rotations: await xrd_symmetry_rotations(structure),
       })
+      expect(computed.family_grouping).toBe(`symmetry`)
 
       const angle_tol = 5e-3 // degrees
       const has_close = (arr: number[], target: number, tol: number) =>
@@ -103,8 +122,23 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         expect(y_err, `y at 2θ=${expected.x[idx].toFixed(3)}`).toBeLessThanOrEqual(1)
       }
 
-      // hkl families and multiplicities of every peak both patterns share. pymatgen writes
-      // Miller–Bravais (h, k, i, l) for hexagonal cells; drop i to compare with our 3 indices
+      // hkl families and multiplicities of every peak both patterns share. pymatgen's
+      // index-permutation heuristic misgroups some cells (mp-10018 is Fm-3m in a primitive
+      // basis, mp-12712 is R-3), which are checked against symmetry grouping by spglib
+      // instead, matched by 2θ (fixture rounds to 6 decimals; mp-10018's slightly strained
+      // cell splits nominally equal lines by ~1e-5°).
+      const reference = symmetry_families[fixture_id(pair.name)]
+      if (reference) {
+        for (const [two_theta, expected_text] of reference) {
+          const nearest = computed.x.findIndex((x_val) => Math.abs(x_val - two_theta) < 1e-6)
+          expect(nearest, `peak at 2θ=${two_theta}`).toBeGreaterThan(-1)
+          expect(families_text(computed.hkls?.[nearest]), `hkls at 2θ=${two_theta}`).toBe(
+            expected_text,
+          )
+        }
+      }
+      // pymatgen writes Miller–Bravais (h, k, i, l) for hexagonal cells; drop i to compare
+      // with our 3 indices
       const family_text = (families: XrdPattern[`hkls`], idx: number) =>
         (families?.[idx] ?? [])
           .map(({ hkl, multiplicity }) => {
@@ -114,7 +148,7 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
           })
           .toSorted()
           .join(`; `)
-      for (const [idx, two_theta] of expected.x.entries()) {
+      for (const [idx, two_theta] of reference ? [] : expected.x.entries()) {
         const nearest = computed.x.findIndex((x_val) => Math.abs(x_val - two_theta) <= 1e-6)
         if (nearest === -1) continue
         expect(family_text(computed.hkls, nearest), `hkls at 2θ=${two_theta}`).toBe(
@@ -135,23 +169,22 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
   )
 })
 
-// Wurtzite ZnO at Cu Kα: hexagonal families group on Miller–Bravais indices like pymatgen
-// (XRDCalculator("CuKa").get_pattern with Lattice.hexagonal(3.25, 5.207), u = 0.382). The
-// 3-index grouping split all but the basal (002)/(004) peaks, e.g. 100 ×4 + 1-10 ×2 at 31.79°.
-test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, () => {
-  const [a_len, c_len, u_param] = [3.25, 5.207, 0.382]
-  const lattice: Matrix3x3 = [
-    [a_len, 0, 0],
-    [-a_len / 2, (a_len * Math.sqrt(3)) / 2, 0],
-    [0, 0, c_len],
-  ]
-  const zno = make_crystal(lattice, [
+// Wurtzite ZnO (P6₃mc) at Cu Kα, where point-group grouping agrees with pymatgen
+// (XRDCalculator("CuKa").get_pattern with Lattice.hexagonal(3.25, 5.207), u = 0.382). Grouping
+// by 3-index permutations split all but the basal (002)/(004) peaks, e.g. 100 ×4 + 1-10 ×2
+// at 31.79°.
+test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, async () => {
+  const u_param = 0.382
+  const zno = make_crystal(hexagonal_lattice(3.25, 5.207), [
     [`Zn`, [1 / 3, 2 / 3, 0]],
     [`Zn`, [2 / 3, 1 / 3, 0.5]],
     [`O`, [1 / 3, 2 / 3, u_param]],
     [`O`, [2 / 3, 1 / 3, 0.5 + u_param]],
   ])
-  const pattern = compute_xrd_pattern(zno, { wavelength: `CuKa` })
+  const pattern = compute_xrd_pattern(zno, {
+    wavelength: `CuKa`,
+    symmetry_rotations: await xrd_symmetry_rotations(zno),
+  })
   // pymatgen's (h, k, i, l) with i dropped: [2θ, hkl, multiplicity]
   const expected: [number, number[], number][] = [
     [31.7932, [1, 0, 0], 6],
@@ -172,6 +205,87 @@ test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, () => {
   for (const [idx, [two_theta, hkl, multiplicity]] of expected.entries()) {
     expect(pattern.x[idx]).toBeCloseTo(two_theta, 3)
     expect(pattern.hkls?.[idx]).toEqual([{ hkl, multiplicity }])
+  }
+})
+
+// Asymmetric unit expanded by the ITA standard setting of space group `number`, matching
+// pymatgen's Structure.from_spacegroup for these settings
+const from_spacegroup = (
+  number: number,
+  lattice: number | Matrix3x3, // number → cubic
+  asym_unit: [ElementSymbol, Vec3][],
+): Crystal => {
+  const operations = operations_from_number(number, { type: `Standard` }, false)
+  return make_crystal(
+    lattice,
+    asym_unit.flatMap(([element, abc]) =>
+      apply_symmetry_operations(abc, operations).map((pos): [ElementSymbol, Vec3] => [
+        element,
+        pos,
+      ]),
+    ),
+  )
+}
+
+// pymatgen merges every hkl whose absolute indices are permutations of each other, wrong
+// whenever the point group is smaller than the lattice's holohedry: e.g. quartz {101} ×12 is
+// really 101 ×6 + 10-1 ×6 (P3₂21 has no mirror taking l to -l at fixed h, k), corundum
+// {102} ×12 is 102 ×6 + 10-2 ×6 and pyrite {210} ×24 is 210 ×12 + 201 ×12 (Pa-3 lacks the
+// 4-fold axes). Reference families come from spglib rotations (see the fixture).
+test.each([
+  [
+    `quartz`,
+    () =>
+      from_spacegroup(154, hexagonal_lattice(4.913, 5.405), [
+        [`Si`, [0.4697, 0, 0]],
+        [`O`, [0.4135, 0.2669, 0.1191]],
+      ]),
+  ],
+  [
+    `corundum`,
+    () =>
+      from_spacegroup(167, hexagonal_lattice(4.759, 12.99), [
+        [`Al`, [0, 0, 0.35216]],
+        [`O`, [0.30624, 0, 0.25]],
+      ]),
+  ],
+  [
+    `pyrite`,
+    () =>
+      from_spacegroup(205, 5.417, [
+        [`Fe`, [0, 0, 0]],
+        [`S`, [0.385, 0.385, 0.385]],
+      ]),
+  ],
+])(`%s hkl families follow the point group, not index permutations`, async (name, build) => {
+  const structure = build()
+  const options: XrdOptions = { wavelength: `CuKa`, two_theta_range: [0, 90] }
+  const pattern = compute_xrd_pattern(structure, {
+    ...options,
+    symmetry_rotations: await xrd_symmetry_rotations(structure),
+  })
+  const reference = symmetry_families[name]
+  expect(pattern.x).toHaveLength(reference.length)
+  for (const [idx, [two_theta, expected_text]] of reference.entries()) {
+    expect(pattern.x[idx]).toBeCloseTo(two_theta, 5)
+    expect(families_text(pattern.hkls?.[idx]), `hkls at 2θ=${two_theta}`).toBe(expected_text)
+  }
+  expect(pattern.family_grouping).toBe(`symmetry`)
+
+  // Without rotations only Friedel pairs merge, and the result says so. Positions and
+  // intensities stay bit-identical: grouping only relabels the summed reflections.
+  const friedel = compute_xrd_pattern(structure, options)
+  expect(friedel.family_grouping).toBe(`friedel`)
+  expect([friedel.x, friedel.y, friedel.d_hkls]).toEqual([
+    pattern.x,
+    pattern.y,
+    pattern.d_hkls,
+  ])
+  const total = (families: HklObj[]) =>
+    families.reduce((sum, { multiplicity = 0 }) => sum + multiplicity, 0)
+  for (const [idx, families] of (friedel.hkls ?? []).entries()) {
+    expect(families.every(({ multiplicity }) => multiplicity === 2)).toBe(true)
+    expect(total(families)).toBe(total(pattern.hkls?.[idx] ?? []))
   }
 })
 
@@ -639,6 +753,20 @@ describe(`radiation types`, () => {
     ],
     [`unknown radiation type`, { radiation: `positron` }, /Unknown radiation type positron/],
     [`unknown X-ray anode key`, { wavelength: `FooBar` }, /Unknown radiation key/i],
+    [`empty symmetry_rotations`, { symmetry_rotations: [] }, /symmetry_rotations is empty/],
+    [
+      `non-unimodular symmetry rotation`,
+      {
+        symmetry_rotations: [
+          [
+            [2, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+        ],
+      },
+      /integer rotation parts W \(det ±1\).*with det 2/,
+    ],
   ] as const)(`%s throws`, (_label, options, expected) => {
     const structure = make_simple_cubic_structure(3)
     expect(() => compute_xrd_pattern(structure, options as never)).toThrow(expected)
@@ -714,6 +842,9 @@ describe(`add_xrd_pattern`, () => {
     const entry = await add_xrd_pattern(content, `test.json`, wavelength)
     expect(entry.label).toBe(`test.json`)
     expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
+    // dropped structures get their point group analyzed: Pm-3m merges all six (100)
+    expect(entry.pattern.family_grouping).toBe(`symmetry`)
+    expect(entry.pattern.hkls?.[0]).toEqual([{ hkl: [1, 0, 0], multiplicity: 6 }])
   })
 
   test.each([

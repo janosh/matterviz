@@ -131,6 +131,18 @@ export function count_symmetry_op_kinds(
   return counts
 }
 
+// Distinct rotation parts W of space-group operations as row-major matrices in the fractional
+// basis of the analyzed (input) cell, x' = W·x + w: the crystal's point group in that basis.
+// Supercell inputs repeat each W once per lattice translation, hence the dedupe.
+export function point_group_rotations(
+  operations: MoyoDataset[`operations`],
+): math.Matrix3x3[] {
+  const by_key = new Map<string, math.Matrix3x3>()
+  for (const { rotation } of operations)
+    by_key.set(rotation.join(`,`), mat3_from_flat_col_major(rotation))
+  return [...by_key.values()]
+}
+
 // Whether `value` is an integer in [min, max]. The WASM entry points below take a u32/i32 and
 // panic (not throw) on a fractional, negative or NaN number, which SymmetryStats would hit
 // inside a $derived from a malformed public `sym_data` prop, so every number is range-checked

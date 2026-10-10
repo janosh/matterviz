@@ -1,5 +1,5 @@
 import type { CompositionType } from '#lib/composition/index.js'
-import { array_max, type Vec2, type Vec3 } from '#lib/math.js'
+import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import type { RadiationKey } from './calc-xrd'
 
@@ -37,12 +37,17 @@ export function format_hkl(hkl: Hkl, format: HklFormat): string {
 // drawn as a line, thinned for display and never broadened again. The parsers in ./parse
 // mark every file they read as a profile.
 export type XrdPatternKind = `sticks` | `profile`
+// How compute_xrd_pattern grouped each peak's hkls into families: `symmetry` by the crystal's
+// point group (options.symmetry_rotations) plus Friedel pairs, `friedel` by Friedel pairs
+// alone because no rotations were supplied.
+export type HklFamilyGrouping = `symmetry` | `friedel`
 export type XrdPattern = {
   x: number[]
   y: number[]
   hkls?: HklObj[][]
   d_hkls?: number[]
   kind?: XrdPatternKind
+  family_grouping?: HklFamilyGrouping
 }
 
 // Thin a long measured scan to at most `max_points` for rendering: uniform sampling plus
@@ -101,6 +106,11 @@ export type XrdOptions = {
   peak_merge_tol?: number
   // Scaled intensity threshold (% of max) to include a peak (default = SCALED_INTENSITY_TOL)
   scaled_intensity_tol?: number
+  // Integer rotation parts W of the crystal's space-group operations in the structure's
+  // fractional basis (x' = W·x + w), as returned by xrd_symmetry_rotations(). Groups each
+  // peak's hkls into symmetry-equivalent families. Omitted → Friedel pairs only, recorded as
+  // family_grouping: `friedel` on the result. Never affects positions or intensities.
+  symmetry_rotations?: readonly Matrix3x3[]
 }
 
 // One diffraction spot in a zone-axis (SAED) pattern.
