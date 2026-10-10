@@ -44,7 +44,7 @@ export function safe_energy_per_atom(entry: PhaseData): number {
 
 // E_form-only entries (no energy, or a 0 eV placeholder next to E_form) placed on their
 // references' absolute scale (E_form + Σ x_e E_e), so they share the absolute entries' axes
-export function with_absolute_energies(entries: PhaseData[]): PhaseData[] {
+function with_absolute_energies(entries: PhaseData[]): PhaseData[] {
   if (entries.every(has_absolute_energy)) return entries
   const unary_refs = find_lowest_energy_unary_refs(entries)
   return entries.map((entry) => {
